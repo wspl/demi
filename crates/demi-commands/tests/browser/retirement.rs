@@ -2,7 +2,8 @@
 
 use std::{collections::HashSet, os::unix::fs::PermissionsExt, path::PathBuf, time::Duration};
 
-use demi_commands::browser::{BrowserError, LaunchOptions, with_browser};
+use demi_commands::browser::{BrowserError, DirectoryBases, LaunchOptions, with_browser};
+use serde_json::json;
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 use tokio_util::sync::CancellationToken;
 
@@ -226,16 +227,29 @@ async fn chrome_process_tree_and_profile_retire_together() {
                     .remove(&leader)
                     .expect("the test owns Chrome's profile");
                 assert!(profile.is_dir());
-                // Every user shares `/tmp`: only this one reads the profile.
-                assert_eq!(
-                    std::fs::metadata(&profile).unwrap().permissions().mode() & 0o777,
-                    0o700,
-                    "{}",
-                    profile.display()
-                );
-                // Chrome links its process-singleton socket from the profile.
+                // Chrome links its process-singleton socket from the profile
+                // into its temporary directory, the environment's runtime
+                // directory.
                 let socket = std::fs::read_link(profile.join("SingletonSocket"))
                     .expect("Chrome links its socket from the profile");
+                let runtime = socket
+                    .parent()
+                    .and_then(std::path::Path::parent)
+                    .expect("the socket's directory is in the runtime directory")
+                    .to_owned();
+                assert_eq!(
+                    runtime.parent(),
+                    Some(DirectoryBases::host().runtime.as_path())
+                );
+                // Every user shares the bases: only this one reads either.
+                for directory in [&profile, &runtime] {
+                    assert_eq!(
+                        std::fs::metadata(directory).unwrap().permissions().mode() & 0o777,
+                        0o700,
+                        "{}",
+                        directory.display()
+                    );
+                }
                 let snapshot = processes();
                 assert_eq!(
                     snapshot
@@ -293,7 +307,7 @@ async fn chrome_process_tree_and_profile_retire_together() {
                     descendants.len() > 1,
                     "Chrome must have spawned helpers on {mode}"
                 );
-                *observation = Some((leader, descendants, profile, socket));
+                *observation = Some((leader, descendants, profile, runtime));
                 match mode {
                     "failure" => Err(BrowserError::Configuration("injected work failure".into())),
                     "cancel" => {
@@ -325,7 +339,7 @@ async fn chrome_process_tree_and_profile_retire_together() {
             ),
             _ => unreachable!(),
         }
-        let (leader, descendants, profile, socket) = observed.unwrap();
+        let (leader, descendants, profile, runtime) = observed.unwrap();
         let remaining = processes();
         assert!(
             !remaining
@@ -338,98 +352,51 @@ async fn chrome_process_tree_and_profile_retire_together() {
             "profile survived {mode}: {}",
             profile.display()
         );
-        let socket_directory = socket.parent().unwrap();
         assert!(
-            !socket_directory.exists(),
-            "Chrome's socket directory survived {mode}: {}",
-            socket_directory.display()
+            !runtime.exists(),
+            "Chrome's temporary directory survived {mode}: {}",
+            runtime.display()
         );
     }
 }
 
 /// The service's own temporary directory can be long: a Mac's is about 49
-/// characters, and a user can set any. Chrome's profile, with the
-/// process-singleton socket Chrome makes inside it, stays in the short
-/// profile base anyway, so the socket's path keeps within its limit and
-/// Chrome starts (`browser.md` § Native driver). Under this directory of at
-/// least 90 characters the socket's path would take at least 155 bytes, past
-/// Linux's 107. Chrome writes nothing of its own in the service's home but
-/// the user's certificate database: its crash reports go with the profile.
-/// About 5 s: the service's `TMPDIR` and home differ from this test
-/// process's only when the service runs as a program of its own, which finds
-/// Chrome only where it installs it (1.5 s); starting Chrome and opening a
-/// tab take 2 s, and retiring it 1.5 s.
+/// characters, and a user can set any. The profile, which can grow large,
+/// goes there, while Chrome's temporary directory, where it makes its
+/// process-singleton socket, stays in the short, fixed runtime base, so the
+/// socket's path keeps within its limit and Chrome starts (`browser.md`
+/// § Native driver). Under this directory of at least 90 characters the
+/// socket's path would take at least 155 bytes, past Linux's 107. Retirement
+/// leaves nothing in that directory, and Chrome writes nothing of its own in
+/// the service's home but the user's certificate database: its crash
+/// reports go with the profile. About 5 s: the service's `TMPDIR` and home
+/// differ from this test process's only when the service runs as a program
+/// of its own, which finds Chrome only where it installs it (1.5 s);
+/// starting Chrome and opening a tab take 2 s, and retiring it 1.5 s.
 #[tokio::test]
 #[ignore = "requires DEMI_TEST_CHROME; starts the service program with its own home and a long TMPDIR"]
-async fn chrome_starts_and_keeps_out_of_the_services_home_whatever_its_temporary_directory() {
-    use demi_command_service::{
-        protocol::{CommandCaller, CommandContext, CommandLocale, Invocation},
-        testing::ServiceProcess,
-    };
-    use serde_json::json;
+async fn chrome_keeps_its_directories_apart_whatever_the_services_home_and_temporary_directory() {
     let scratch = tempfile::tempdir().unwrap();
     let padding = 90usize
         .saturating_sub(scratch.path().as_os_str().len() + 1)
         .max(1);
     let temporary = scratch.path().join("t".repeat(padding));
     std::fs::create_dir(&temporary).unwrap();
-    // The service installs Chrome under its home and finds it there.
     let home = tempfile::tempdir().unwrap();
-    crate::families::install_chrome(&home.path().join(".demi/browsers")).await;
     tokio::time::timeout(Duration::from_secs(60), async {
-        let service = ServiceProcess::start(
-            env!("CARGO_BIN_EXE_demi-commands"),
-            &["--command-service"],
-            &[
-                ("HOME", home.path().to_str().unwrap()),
-                ("TMPDIR", temporary.to_str().unwrap()),
-            ],
-        )
-        .await
-        .unwrap();
-        let invocation = |operation: &str, args| Invocation {
-            operation: operation.into(),
-            invocation_id: uuid::Uuid::new_v4().to_string(),
-            context: CommandContext {
-                conversation: "long-temporary-directory".into(),
-                caller: CommandCaller::agent("agent-root"),
-                locale: CommandLocale {
-                    time_zone: "UTC".into(),
-                    languages: vec!["en-US".into()],
-                },
-            },
-            json: Some(true),
-            edits: None,
-            args,
-            cwd: scratch.path().to_str().unwrap().into(),
-            env: std::collections::BTreeMap::new(),
-        };
-        let (completion, _, stderr) = crate::commands::exchange(
-            service.client(),
-            &invocation("browser.open", json!({"url": "about:blank"})),
-            false,
-        )
-        .await;
+        let service = service_program(home.path(), temporary.to_str().unwrap()).await;
+        agent_call(&service, "browser.open", json!({"url": "about:blank"}), scratch.path()).await;
         assert_eq!(
-            completion.exit_code,
-            0,
-            "{}",
-            String::from_utf8_lossy(&stderr)
-        );
-        assert_eq!(
-            chrome_profiles_of(service.id().unwrap()).len(),
+            chrome_profiles_of(service.id().unwrap(), &temporary).len(),
             1,
             "the service's Chrome keeps its profile in {}",
-            demi_commands::browser::profile_base().display()
+            temporary.display()
         );
-        let (completion, _, _) =
-            crate::commands::exchange(service.client(), &invocation("release", json!({})), true)
-                .await;
-        assert_eq!(completion.exit_code, 0);
-        assert!(service.shutdown().await.unwrap().success());
+        release_and_shut_down(service, scratch.path()).await;
     })
     .await
     .unwrap();
+    assert_eq!(walk(&temporary), Vec::<PathBuf>::new());
     // Besides the installation, only what Chrome keeps for the user, and the
     // directories above it, are in the home (`browser.md` § Native driver):
     // on Linux the certificate database, on macOS the crash reports.
@@ -445,6 +412,127 @@ async fn chrome_starts_and_keeps_out_of_the_services_home_whatever_its_temporary
         })
         .collect();
     assert!(written.is_empty(), "Chrome wrote in the service's home: {written:?}");
+}
+
+/// Without `TMPDIR`, as on the Cloud, a profile and a download saved without
+/// `--output` go to `/var/tmp`, on disk, rather than to a `/tmp` that may be
+/// held in memory (`browser.md` § Native driver, § Upload, download, and
+/// clipboard). An empty `TMPDIR` stands in for none, since the service
+/// program inherits this test's environment. About 5 s, as above.
+#[tokio::test]
+#[ignore = "requires DEMI_TEST_CHROME; starts the service program without TMPDIR, so it uses /var/tmp"]
+async fn without_tmpdir_profiles_and_downloads_go_to_var_tmp() {
+    let scratch = tempfile::tempdir().unwrap();
+    let home = tempfile::tempdir().unwrap();
+    let base = std::path::Path::new("/var/tmp");
+    let page = url::Url::from_file_path(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/browser/download.html"),
+    )
+    .unwrap();
+    let profile = tokio::time::timeout(Duration::from_secs(60), async {
+        let service = service_program(home.path(), "").await;
+        let tab = agent_call(&service, "browser.open", json!({"url": page.as_str()}), scratch.path())
+            .await["tab"]
+            .clone();
+        let profiles = chrome_profiles_of(service.id().unwrap(), base);
+        assert_eq!(profiles.len(), 1, "the service's Chrome keeps its profile in {}", base.display());
+        let download = agent_call(
+            &service,
+            "browser.download",
+            json!({"tab": tab, "css": "#instant"}),
+            scratch.path(),
+        )
+        .await;
+        let saved = PathBuf::from(download["path"].as_str().unwrap());
+        let content = std::fs::read(&saved);
+        std::fs::remove_file(&saved).unwrap();
+        assert!(saved.starts_with(base), "{}", saved.display());
+        assert_eq!(content.unwrap(), b"download fixture\n");
+        release_and_shut_down(service, scratch.path()).await;
+        profiles.into_values().next().unwrap()
+    })
+    .await
+    .unwrap();
+    assert!(!profile.exists(), "{}", profile.display());
+}
+
+/// The service program as the runner starts it, with `home`, where it
+/// installs and finds the pinned Chrome, and `temporary` as its `TMPDIR`.
+async fn service_program(
+    home: &std::path::Path,
+    temporary: &str,
+) -> demi_command_service::testing::ServiceProcess {
+    crate::families::install_chrome(&home.join(".demi/browsers")).await;
+    demi_command_service::testing::ServiceProcess::start(
+        env!("CARGO_BIN_EXE_demi-commands"),
+        &["--command-service"],
+        &[("HOME", home.to_str().unwrap()), ("TMPDIR", temporary)],
+    )
+    .await
+    .unwrap()
+}
+
+/// The service program's conversation and caller.
+fn service_context() -> demi_command_service::protocol::CommandContext {
+    use demi_command_service::protocol::{CommandCaller, CommandContext, CommandLocale};
+    CommandContext {
+        conversation: "service-program".into(),
+        caller: CommandCaller::agent("agent-root"),
+        locale: CommandLocale {
+            time_zone: "UTC".into(),
+            languages: vec!["en-US".into()],
+        },
+    }
+}
+
+/// The agent's `operation` on the service program, from `cwd`; answers its
+/// JSON result, once it succeeded.
+async fn agent_call(
+    service: &demi_command_service::testing::ServiceProcess,
+    operation: &str,
+    args: serde_json::Value,
+    cwd: &std::path::Path,
+) -> serde_json::Value {
+    let invocation = demi_command_service::protocol::Invocation {
+        operation: operation.into(),
+        invocation_id: uuid::Uuid::new_v4().to_string(),
+        context: service_context(),
+        json: Some(true),
+        edits: None,
+        args,
+        cwd: cwd.to_str().unwrap().into(),
+        env: std::collections::BTreeMap::new(),
+    };
+    let (completion, stdout, stderr) =
+        crate::commands::exchange(service.client(), &invocation, false).await;
+    assert_eq!(
+        completion.exit_code,
+        0,
+        "{operation}: {}",
+        String::from_utf8_lossy(&stderr)
+    );
+    serde_json::from_slice(&stdout).unwrap()
+}
+
+/// Releases the service program's conversation, which retires its browser,
+/// and shuts the service down.
+async fn release_and_shut_down(
+    service: demi_command_service::testing::ServiceProcess,
+    cwd: &std::path::Path,
+) {
+    let release = demi_command_service::protocol::Invocation {
+        operation: "release".into(),
+        invocation_id: uuid::Uuid::new_v4().to_string(),
+        context: service_context(),
+        json: Some(true),
+        edits: None,
+        args: json!({}),
+        cwd: cwd.to_str().unwrap().into(),
+        env: std::collections::BTreeMap::new(),
+    };
+    let (completion, _, _) = crate::commands::exchange(service.client(), &release, true).await;
+    assert_eq!(completion.exit_code, 0);
+    assert!(service.shutdown().await.unwrap().success());
 }
 
 /// Every file and directory under `root`, relative to it.
@@ -465,12 +553,13 @@ fn walk(root: &std::path::Path) -> Vec<PathBuf> {
 
 /// The profiles of the Chrome processes this test started, by main process.
 fn chrome_profiles() -> std::collections::BTreeMap<i32, PathBuf> {
-    chrome_profiles_of(std::process::id())
+    chrome_profiles_of(std::process::id(), &DirectoryBases::host().profiles)
 }
 
-/// The profiles of the Chrome processes `parent` started, by main process,
-/// read from the profiles' singleton locks rather than asked of the service.
-fn chrome_profiles_of(parent: u32) -> std::collections::BTreeMap<i32, PathBuf> {
+/// The profiles in `base` of the Chrome processes `parent` started, by main
+/// process, read from the profiles' singleton locks rather than asked of the
+/// service.
+fn chrome_profiles_of(parent: u32, base: &std::path::Path) -> std::collections::BTreeMap<i32, PathBuf> {
     let parent = i32::try_from(parent).unwrap();
     let children: HashSet<_> = processes()
         .into_iter()
@@ -480,13 +569,13 @@ fn chrome_profiles_of(parent: u32) -> std::collections::BTreeMap<i32, PathBuf> {
     let mut profiles = std::collections::BTreeMap::new();
     // Chrome can replace its Linux argv with a single process-title string.
     // Its singleton lock records the profile owner without parsing that title.
-    for entry in std::fs::read_dir(demi_commands::browser::profile_base()).unwrap() {
+    for entry in std::fs::read_dir(base).unwrap() {
         let path = entry.unwrap().path();
         if !path
             .file_name()
             .unwrap()
             .to_string_lossy()
-            .starts_with("demi-browser-")
+            .starts_with("demi-profile-")
         {
             continue;
         }
@@ -494,7 +583,7 @@ fn chrome_profiles_of(parent: u32) -> std::collections::BTreeMap<i32, PathBuf> {
             Ok(lock) => lock,
             // A profile that has not started, or has retired, owns no browser.
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-            // Another user's: on Unix every user's profiles share `/tmp`.
+            // Another user's: on Unix every user's profiles share the base.
             Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => continue,
             Err(error) => panic!("read Chrome profile owner: {error}"),
         };
@@ -516,7 +605,6 @@ fn chrome_profiles_of(parent: u32) -> std::collections::BTreeMap<i32, PathBuf> {
 #[tokio::test]
 #[ignore = "requires DEMI_TEST_CHROME; exercises conversation retirement"]
 async fn conversation_release_cancels_only_its_commands_and_retires_its_profile() {
-    use serde_json::json;
     crate::families::with_browser_fixture(|first| async move {
         let mut second = first.clone();
         second.conversation = "second-conversation".into();
@@ -593,7 +681,6 @@ async fn conversation_release_cancels_only_its_commands_and_retires_its_profile(
 #[tokio::test]
 #[ignore = "requires DEMI_TEST_CHROME; verifies trusted invocation identity"]
 async fn browser_uses_trusted_conversation_and_caller_despite_script_environment() {
-    use serde_json::json;
     crate::families::with_browser_fixture(|mut first| async move {
         let mut second = first.clone();
         second.conversation = "other-conversation".into();
@@ -721,7 +808,6 @@ async fn fixture_assertions_retire_chrome_and_profiles_before_resuming_panic() {
 #[tokio::test]
 #[ignore = "requires DEMI_TEST_CHROME; verifies the last-tab closing outcome"]
 async fn last_tab_close_fails_its_running_command_as_browser_lost() {
-    use serde_json::json;
     crate::families::with_browser_fixture(|fixture| async move {
         let tab = fixture.open("fixture.html").await;
         let waiting = fixture.result(
@@ -749,7 +835,6 @@ async fn last_tab_close_fails_its_running_command_as_browser_lost() {
 #[tokio::test]
 #[ignore = "requires installed pinned Chrome for Testing release"]
 async fn a_new_open_recovers_after_chrome_crashes_without_replaying_old_tabs() {
-    use serde_json::json;
     crate::families::with_browser_fixture(|fixture| async move {
         let old = fixture.open("cdp.html").await;
         fixture

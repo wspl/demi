@@ -373,23 +373,47 @@ unsupported results and never falls back to unrestricted evaluation. Cancellatio
 stops further driver steps and releases held input, without claiming to undo
 side effects that Chrome has already executed.
 
-The browser environment owns its Chrome process tree, event task, and temporary
-profile. A profile is a new directory that only its user can read, in `/tmp` on
-Unix and in the system's temporary directory on Windows. On Unix, Chrome
-launches in a separate process group and inherits a private environment marker
-identifying its profile owner, and the profile is also Chrome's temporary
-directory: Linux Chrome takes it from `TMPDIR`, and macOS Chrome from
-`MAC_CHROMIUM_TMPDIR`, which it reads before asking the system for one. Chrome
-keeps its process-singleton socket, through which a second start of the same
-profile would reach the running browser, in a directory of its own there, such
-as `/tmp/demi-browser-a1B2c3/org.chromium.Chromium.d4E5f6/SingletonSocket` on
-Linux. Only Chrome's own shutdown removes that directory, so removing the profile
-removes it after a crash or a kill too. The socket's path has a length limit:
-under 108 bytes on Linux and at most 253 on macOS, and a longer one stops
-Chrome as it starts. That is why profiles live in the short, fixed `/tmp`
-rather than in the service's own temporary directory, which the user can set
-to any length (a Mac's is about 49 characters): in `/tmp` the path stays under
-80 bytes.
+The browser environment owns its Chrome process tree, event task, and two
+directories, each new and readable only by its user, since every user shares
+the directories they live in. For example, on a Linux device without `TMPDIR`:
+
+```text
+/tmp/demi-browser-a1B2c3/                 the runtime directory, Chrome's temporary directory
+  demi-profile.lock                       the environment's lock
+  profile -> /var/tmp/demi-profile-a1B2c3
+  org.chromium.Chromium.d4E5f6/SingletonSocket
+/var/tmp/demi-profile-a1B2c3/             the profile: Chrome's user data
+  downloads/  uploads/
+```
+
+- The runtime directory is Chrome's temporary directory: Linux Chrome takes
+  it from `TMPDIR`, and macOS Chrome from `MAC_CHROMIUM_TMPDIR`, which it reads
+  before asking the system for one. Chrome keeps there, in a directory of its
+  own, its process-singleton socket, through which a second start of the same
+  profile would reach the running browser, and on Linux its shared memory
+  files. Only Chrome's own shutdown removes the socket's directory, so
+  removing the runtime directory removes it after a crash or a kill too. The
+  socket's path has a length limit: under 108 bytes on Linux and at most 253
+  on macOS, and a longer one stops Chrome as it starts. That is why runtime
+  directories live in the short, fixed `/tmp` on Unix rather than in the
+  service's own temporary directory, which the user can set to any length (a
+  Mac's is about 49 characters): in `/tmp` the path stays under 80 bytes.
+- The profile holds Chrome's user data, the downloads, and the files the user
+  chose in the [live view](live-view.md#input), and it can grow large: Chrome
+  also sizes its cache and each site's storage quota from the disk the profile
+  is on. So on Unix profiles live in the service's `TMPDIR` when it is set to
+  an absolute path, the Host user's choice, and otherwise in `/var/tmp`,
+  which is on disk on Linux and macOS and, on the Cloud, on the system disk
+  that the runner grows. In a `/tmp` held in memory a profile would take the
+  Host's memory: the Cloud's `/tmp` is 256 MiB of the Cloud's memory.
+- On Windows one directory in the system's temporary directory holds the
+  whole environment.
+
+The service makes the runtime directory first, with its lock, then the link,
+then the profile, and retirement removes them in the opposite order, so a
+running environment's profile always has its runtime directory. On Unix,
+Chrome launches in a separate process group and inherits a private
+environment marker naming its environment by the runtime directory.
 
 Linux Chrome's crash reports go with the profile too. Chrome keeps them in its
 default user data directory whatever `--user-data-dir` says, under the user's
@@ -415,39 +439,49 @@ lies inside the Chrome for Testing installation, so retirement never reads the
 environment of every process on the Host. Retirement closes Chrome, reaps its
 main process, terminates remaining group members and marked helpers, waits for
 them to disappear within the control timeout, and joins the event task before
-removing the profile.
+removing the profile and then the runtime directory.
 Failed launch, owner cancellation, and failed graceful closure use the same
-termination and reaping path. Profile removal retries only
+termination and reaping path. Removal retries only
 “directory not empty” errors for at most 300 ms after process retirement; any
-remaining cleanup failure retains the profile path and reports the failure.
+remaining cleanup failure retains both directories and reports the failure
+with the profile's path.
 Invocation cancellation does not retire an unrelated tab or owner.
 
 No Chrome outlives the service that started it. A service that shuts down
 retires its browsers first ([Release](#release)). A service that ends before
 its browsers are retired, because it crashed, was killed, or overran the
-runner's shutdown deadline, cannot retire them, and two rules cover that case:
+runner's shutdown deadline, cannot retire them, and three rules cover that case:
 
-- Each environment holds an exclusive lock on its profile directory for as
-  long as the environment exists. The lock is a file lock, so the operating
-  system releases it when the owning service ends, however it ends. A new
-  profile's lock file takes the name the sweep opens only once it is held, so
-  a sweep that runs while the profile is being made, in another service of the
-  same user, finds either no lock or a held one.
+- Each environment holds an exclusive lock on a file in its runtime directory
+  for as long as the environment exists. The lock is a file lock, so the
+  operating system releases it when the owning service ends, however it ends.
+  A new environment's lock file takes the name the sweep opens only once it is
+  held, so a sweep that runs while the environment is being made, in another
+  service of the same user, finds either no lock or a held one.
 - On Linux, Chrome's main process also gets a parent-death signal, so the
   kernel ends it when the service process ends. The signal follows the thread
   that started Chrome, so Chrome is started from a thread that lives as long
   as the service. Helpers that detached from Chrome's process group can still
   survive it.
-- At start, on every platform, the service sweeps orphans from the directory
-  where profiles live. It looks only at its own user's profiles: on a Host
-  with several users every user's profiles share `/tmp`, and another user's
-  are neither opened nor reported. A profile whose lock it can take belongs to
-  no running service: the sweep keeps the lock,
-  terminates the marked Chrome processes of that profile with the path
-  retirement uses, and removes the profile. A profile whose lock is held
-  belongs to another running service and is never touched; during an upgrade,
-  for example, the service of the previous `demi.builtin` release can still
-  hold conversations' browsers while the new one starts.
+- At start, on every platform, the service sweeps orphans in two passes. It
+  looks only at its own user's directories: on a Host with several users
+  every user's share the same bases, and another user's are neither opened
+  nor reported.
+  1. The runtime directories. One whose lock the sweep can take belongs to no
+     running service: the sweep keeps the lock, terminates the marked Chrome
+     processes of that environment with the path retirement uses, removes the
+     profile its link names, but only a profile directory of this user's,
+     and removes the runtime directory. One whose lock is held belongs to
+     another running service and is never touched; during an upgrade, for
+     example, the service of the previous `demi.builtin` release can still
+     hold conversations' browsers while the new one starts.
+  2. The profiles whose runtime directory is gone, which no running
+     environment has. A restart that empties a `/tmp` held in memory leaves
+     them on disk.
+
+  A profile in a `TMPDIR` the service no longer uses is found only through
+  its runtime directory's link, so after a restart that also emptied `/tmp`
+  it stays.
 
 ### One command path
 
@@ -1354,7 +1388,9 @@ by the application server.
 Download installs observation before the trigger and publishes the output only
 after completion. Supported media targets can download through the current page.
 Cancellation and failure remove partial files. If output is omitted, generate
-and return a temporary Host path. Suggested filenames are data, never permission
+and return a path beside the profiles ([Native driver](#native-driver)), so that
+a large download does not fill a `/tmp` held in memory; the file stays there
+until someone removes it. Suggested filenames are data, never permission
 for path traversal.
 
 An ordinary click may report an observed download, but that is not a completed
