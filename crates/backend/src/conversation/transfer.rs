@@ -12,6 +12,7 @@ use std::future::Future;
 use std::rc::Rc;
 
 use axum::http::header::{ACCEPT_RANGES, CONTENT_LENGTH, CONTENT_RANGE};
+use bytes::Bytes;
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use demi_host_remote::{PipeReader, PipeWriter};
 use demi_shell::{ByteRange, FileKind, FileStat, HostError, HostFs, WriteOptions};
@@ -386,6 +387,20 @@ impl RangeAnswer {
                 offset: start,
                 length: Some(length),
             }),
+            Self::Unsatisfiable { .. } => None,
+        }
+    }
+
+    /// The part of `bytes`, held whole, that the answer sends; none for a
+    /// refusal. `bytes` are the `size` the answer was made for.
+    pub(crate) fn part_of(&self, bytes: &Bytes) -> Option<Bytes> {
+        match *self {
+            Self::Whole { .. } => Some(bytes.clone()),
+            Self::Part { start, length, .. } => {
+                let start = usize::try_from(start).expect("a part of held bytes fits usize");
+                let length = usize::try_from(length).expect("a part of held bytes fits usize");
+                Some(bytes.slice(start..start + length))
+            }
             Self::Unsatisfiable { .. } => None,
         }
     }

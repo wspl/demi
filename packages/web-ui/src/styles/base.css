@@ -243,6 +243,11 @@ svg.lucide {
   stroke-width: var(--icon-stroke-width);
 }
 
+/* Transparency in a picture shows over a checkerboard, wherever a picture is previewed. */
+.checkerboard {
+  background: repeating-conic-gradient(var(--line) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px;
+}
+
 .btn,
 .btn-solid {
   background: var(--btn-bg);
