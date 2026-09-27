@@ -40,6 +40,17 @@ fn an_http_status_decides_the_code() {
         (529, "", Some(ErrorCode::Overloaded)),
         (400, "prompt is too long: 213000 tokens", Some(ErrorCode::ContextLengthExceeded)),
         (400, "Context length exceeded", Some(ErrorCode::ContextLengthExceeded)),
+        // A body over the vendor's size, whatever its text, and the
+        // Anthropic API's refusals of too many images or of images too large
+        // for a request with many.
+        (413, "", Some(ErrorCode::ContextLengthExceeded)),
+        (400, "Request too large", Some(ErrorCode::ContextLengthExceeded)),
+        (400, "Too many images in request", Some(ErrorCode::ContextLengthExceeded)),
+        (
+            400,
+            "image dimensions exceed max allowed size for many-image requests: 2000 pixels",
+            Some(ErrorCode::ContextLengthExceeded),
+        ),
         (400, "bad request", None),
         (404, "", None),
     ];
@@ -53,6 +64,13 @@ fn a_vendor_failure_classifies_by_whole_words_and_falls_back_to_the_vendor_code(
     let cases = [
         (None, "maximum context length", Some(ErrorCode::ContextLengthExceeded)),
         (None, "max_tokens: 64000 > 32000 tokens", Some(ErrorCode::ContextLengthExceeded)),
+        (Some("request_too_large"), "Request exceeds the maximum size", Some(ErrorCode::ContextLengthExceeded)),
+        (Some("invalid_request_error"), "Too many images in request", Some(ErrorCode::ContextLengthExceeded)),
+        (
+            Some("invalid_request_error"),
+            "image dimensions exceed max allowed size for many-image requests",
+            Some(ErrorCode::ContextLengthExceeded),
+        ),
         (None, "rate limit reached", Some(ErrorCode::RateLimit)),
         (Some("rate_limit_error"), "Number of requests exceeded", Some(ErrorCode::RateLimit)),
         (None, "insufficient balance", Some(ErrorCode::RateLimit)),
