@@ -663,7 +663,10 @@ configured backend address/port, and the configured DNS resolver on TCP/UDP 53.
 Deny other private, loopback, link-local, metadata, multicast, reserved, and
 other-tenant destinations, including the host's own services. Enforce policy on
 both forwarded traffic and traffic addressed to the execution host. Disable IPv6
-in the initial profile so it cannot bypass IPv4 policy. Resolver configuration
+in the initial profile so it cannot bypass IPv4 policy: the manager turns it off
+on the host end of each veth pair and in the sandbox's namespace. A host whose
+kernel runs without IPv6, such as one booted with `ipv6.disable=1`, has no IPv6
+to turn off, and a boot there skips that step. Resolver configuration
 uses an address reachable from the sandbox, never a container engine's loopback
 resolver. Filtering is by destination address, so DNS rebinding does not grant
 private-network access. Exceptions for a private backend or resolver are exact
