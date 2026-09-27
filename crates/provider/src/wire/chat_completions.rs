@@ -95,7 +95,7 @@ impl Usage {
     /// The run's usage, with the cached prefix kept apart from the input.
     pub fn token_usage(&self) -> TokenUsage {
         let cached = self.prompt_tokens_details.and_then(|details| details.cached_tokens);
-        usage_with_cached_input(self.prompt_tokens, self.completion_tokens, cached)
+        usage_with_cached_input(self.prompt_tokens, self.completion_tokens, cached, None)
     }
 }
 
