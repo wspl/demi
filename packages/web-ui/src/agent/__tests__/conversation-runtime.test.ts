@@ -347,6 +347,44 @@ test('a page back from sleep breaks a conversation socket silent past the watch 
   }
 })
 
+test('a page back from sleep breaks a conversation socket that still waits for its session to open, and opens the conversation again at once', async () => {
+  const sockets = playSockets()
+  const current = state()
+  const runtime = new ConversationRuntime({
+    state: current,
+    connect: (signal) => connectAgentClient('ws://fixture', signal),
+  })
+  jest.useFakeTimers()
+  try {
+    const opening = runtime.connect()
+    const slept = sockets.last()
+    slept.open()
+    await turn()
+    expect(slept.sent).toEqual([{ type: 'open' }])
+    // The laptop sleeps for 80 seconds before the session answers `open`.
+    jest.setSystemTime(Date.now() + 80_000)
+    pageReturned()
+    expect(slept.closed).toBe(true)
+    // The opening learns of the break through its promises, then waits no
+    // reconnect wait: the zero-delay timer the return left is due now.
+    await turn()
+    expect(current.load).toBe('reconnecting')
+    jest.advanceTimersByTime(0)
+    await turn()
+    const next = sockets.last()
+    expect(next).not.toBe(slept)
+    next.open()
+    await turn()
+    next.receive({ type: 'opened' })
+    await opening
+    expect(current.load).toBe('ready')
+  } finally {
+    jest.useRealTimers()
+    runtime.dispose()
+    sockets.restore()
+  }
+})
+
 test('a session that refuses to open is a failure told once', async () => {
   const current = state()
   const refusal = 'Choose a model for the conversation before opening it'
