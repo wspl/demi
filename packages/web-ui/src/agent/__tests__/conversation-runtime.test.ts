@@ -189,28 +189,25 @@ test('a queued message sent now steers the running turn, and runs next without a
   }
 })
 
-test('server takeover does not start a reconnect fight between views', async () => {
-  const h = clientHarness()
+test('a view whose tree another client disposed opens it again, as after a lost connection', async () => {
+  const harnesses = [clientHarness(), clientHarness()]
+  const current = state()
   let connects = 0
   const runtime = new ConversationRuntime({
-    state: state(),
+    state: current,
     prepareModel: async () => model,
-    connect: async () => {
-      connects += 1
-      return h.client
-    },
+    connect: async () => harnesses[connects++]!.client,
+    reconnect: { baseMs: 1, maxMs: 4 },
   })
-  await runtime.connect()
-  jest.useFakeTimers()
   try {
-    h.receive({ type: 'closed' })
-    // Whatever timer the takeover set fires now, however long its wait: none opens a connection.
-    jest.runAllTimers()
-    await turn()
-    expect(connects).toBe(1)
-    expect(runtime.connected).toBe(false)
+    await runtime.connect()
+    harnesses[0]!.receive({ type: 'closed' })
+    expect(current.load).toBe('reconnecting')
+    await waitFor(() => current.load === 'ready')
+    expect(connects).toBe(2)
+    expect(harnesses[1]!.sent.map((frame) => frame.type)).toEqual(['open'])
+    expect(runtime.connected).toBe(true)
   } finally {
-    jest.useRealTimers()
     runtime.dispose()
   }
 })
