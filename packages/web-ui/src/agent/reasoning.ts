@@ -1,14 +1,15 @@
-import type { ThinkingConfig } from '@demicodes/protocol'
-import { clamp } from '@demicodes/utils'
 import type { ModelInfo } from '../transport/protocol'
+import { THINKING_OFF } from './model-selection'
 
 export interface ReasoningOption {
   label: string
-  config: ThinkingConfig
+  /** The effort the option chooses: one the model lists, or thinking off. */
+  effort: string
 }
 
 export interface ReasoningState {
-  defaultConfig: ThinkingConfig
+  /** The effort the model starts with, which an effort it does not offer shows. */
+  defaultEffort: string
   options: ReasoningOption[]
   /** Whether thinking can be turned off. When false there is no Off option — the model
    *  (e.g. any Claude Code model) always thinks; you can only pick the effort. */
@@ -19,72 +20,31 @@ export function buildReasoningState(model: ModelInfo | null | undefined): Reason
   const reasoning = model?.reasoning
   if (!reasoning || reasoning.efforts.length === 0)
     return null
-  const defaultEffort = reasoning.defaultEffort ?? reasoning.efforts[0]!
   const effortOptions = reasoning.efforts.map((effort): ReasoningOption => ({
     label: effortLabel(effort),
-    config: { type: 'effort', effort, summary: null },
+    effort,
   }))
   const options: ReasoningOption[] = reasoning.canDisable
-    ? [{ label: 'Off', config: { type: 'disabled' } }, ...effortOptions]
+    ? [{ label: 'Off', effort: THINKING_OFF }, ...effortOptions]
     : effortOptions
   return {
-    defaultConfig: { type: 'effort', effort: defaultEffort, summary: null },
+    defaultEffort: reasoning.defaultEffort ?? reasoning.efforts[0]!,
     options,
     canDisable: reasoning.canDisable,
   }
 }
 
-export function thinkingConfigToEffort(config: ThinkingConfig): string | null {
-  return config.type === 'effort' || config.type === 'adaptive'
-    ? config.effort
-    : null
-}
-
-export function resolveThinkingConfig(
-  state: ReasoningState,
-  config: ThinkingConfig | undefined
-): ThinkingConfig {
-  const cfg = config ?? state.defaultConfig
-  if (!state.canDisable && cfg.type === 'disabled')
-    return state.defaultConfig
-  return cfg
-}
-
-function configsMatch(left: ThinkingConfig, right: ThinkingConfig): boolean {
-  if (left.type !== right.type)
-    return false
-  if (left.type === 'adaptive' && right.type === 'adaptive')
-    return left.effort === right.effort
-  if (left.type === 'effort' && right.type === 'effort')
-    return left.effort === right.effort
-  return true
-}
-
-export function reasoningOptionIndex(
-  state: ReasoningState,
-  config: ThinkingConfig | undefined
-): number {
-  const resolved = resolveThinkingConfig(state, config)
-  const selected = state.options.findIndex((option) => configsMatch(option.config, resolved))
+/** The option the effort `effort` shows: its own, else the model's default. */
+export function reasoningOptionIndex(state: ReasoningState, effort: string | null): number {
+  const selected = state.options.findIndex((option) => option.effort === effort)
   if (selected >= 0)
     return selected
-  const fallback = state.options.findIndex(
-    (option) => configsMatch(option.config, state.defaultConfig)
-  )
+  const fallback = state.options.findIndex((option) => option.effort === state.defaultEffort)
   return fallback >= 0 ? fallback : 0
 }
 
-export function reasoningOptionConfig(state: ReasoningState, index: number): ThinkingConfig {
-  const max = state.options.length - 1
-  const clamped = clamp(Math.round(index), 0, max)
-  return state.options[clamped]?.config ?? state.defaultConfig
-}
-
-export function reasoningOptionLabel(
-  state: ReasoningState,
-  config: ThinkingConfig | undefined
-): string {
-  return state.options[reasoningOptionIndex(state, config)]?.label ?? ''
+export function reasoningOptionLabel(state: ReasoningState, effort: string | null): string {
+  return state.options[reasoningOptionIndex(state, effort)]?.label ?? ''
 }
 
 function effortLabel(effort: string): string {
