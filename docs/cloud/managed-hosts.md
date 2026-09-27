@@ -765,7 +765,7 @@ suite runs; a run must show the following:
 | Identity and files | Jobs and Host file operations run as UID 1000; every conversation of a user reaches the same device; sudo works. |
 | Persistence | A system package and home files survive stop and wake, and so does the output of a job whose conversation no release reached; an idle stop leaves no job output of the conversations it released; home survives a reset; reset succeeds with a broken runner and with a broken system, such as disabled bash. |
 | Tools | Installers run in the login shell (rustup, nvm), and later jobs find the tools they installed (cargo, node). |
-| Browser | Chrome opens with its own sandbox; the live view receives frames and delivers input. |
+| Browser | Chrome opens with its own sandbox, and closes at the release of its conversation while the Cloud runs on; the live view receives frames and delivers input. |
 | Checkpoint | A live checkpoint with a running browser publishes both images; the saved image contains pages a live process wrote through a writable mapping and never flushed. |
 | Growth and space | Online growth records the actual capacity; it needs `CAP_SYS_RESOURCE` ([Linux requirements](setup.md#linux-requirements)). A full disk fails the operation and keeps working data. |
 | Recovery | A restart at each publication boundary loses neither published nor newer working data; runtime and out-of-memory loss report a death. |
