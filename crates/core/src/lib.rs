@@ -40,7 +40,7 @@ pub use block::{
     WakeupPlacement,
 };
 pub use bytes::B64Bytes;
-pub use catalog::{ModelCost, ProviderModel, ProviderModelList, ServiceTier};
+pub use catalog::{ModelCost, ProviderModel, ProviderModelList, ServiceTier, UnavailableSetting};
 pub use content::{
     Attachment, BlobRef, DocumentSource, MediaSource, ToolMediaSource, ToolResultContentBlock,
     UserContentBlock, attachment_tag, is_blank, trim,
@@ -55,9 +55,9 @@ pub use media::{
     model_media_type_for, sniff_model_media_type,
 };
 pub use model::{
-    ATTACHMENT_FILE_EXTENSIONS, FileExtension, Model, ModelSelection, ThinkingCapability,
-    ThinkingConfig, ThinkingSummary, TokenUsage, VIDEO_FILE_EXTENSIONS, file_extension_support,
-    model_accepts_video,
+    ATTACHMENT_FILE_EXTENSIONS, FileExtension, Model, ModelSelection, THINKING_OFF,
+    ThinkingCapability, ThinkingConfig, ThinkingSummary, TokenUsage, VIDEO_FILE_EXTENSIONS,
+    file_extension_support, model_accepts_video,
 };
 pub use provider_state::{AccountInfo, AuthState, LoginPending, RuntimeState, WireApi};
 pub use quota::{
