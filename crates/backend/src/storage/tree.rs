@@ -7,9 +7,10 @@
 //! where rows are also serialized and decoded. Every row read is decoded and
 //! checked, and corrupt data stops the read.
 //!
-//! A block's inline media goes to the conversation owner's blob namespace
-//! before the save that references it, and comes back when a session loads
-//! for inference (`storage.md` § Attachment and transcript media).
+//! Blocks hold their media by reference, and a checkpoint that holds media
+//! bytes is refused; each node's session reaches the conversation owner's
+//! blob namespace through its store (`storage.md` § Attachment and
+//! transcript media).
 //!
 //! The same readings serve what the browser reads without a live session: a
 //! conversation's summary facts and its history, on a read-only connection,
@@ -20,7 +21,7 @@ use std::rc::Rc;
 
 use demi_agent::store::{
     BoundaryEdge, Checkpoint, CheckpointState, CheckpointUpdate, ClosePhase, CommandStateSnapshot, CommandStorageKey,
-    CommandVersion, CommitGuard, NodeClose, NodeRecord, SessionBoundary, StoreError, media,
+    CommandVersion, CommitGuard, NodeClose, NodeRecord, SessionBoundary, StoreError, media::BlobStore,
 };
 use demi_agent::{AgentTreeStore, SessionStore};
 use demi_core::{Block, BlockId, CompletionId, NodeId, QueuedMessage, SessionPhase, Timestamp};
@@ -95,8 +96,7 @@ impl AgentTreeStore for SqliteTreeStore {
     fn create_node(&self, record: NodeRecord, initial: CheckpointUpdate) -> LocalBoxFuture<'_, Result<(), StoreError>> {
         Box::pin(async move {
             let completions = initial.carried_completions()?;
-            let mut initial = initial;
-            media::externalize_update(&mut initial, &self.blobs).await?;
+            initial.check_references()?;
             let node = record.id.clone();
             self.db
                 .call(move |connection| {
@@ -259,8 +259,7 @@ impl SessionStore for SqliteSessionStore {
         let node = self.node.clone();
         Box::pin(async move {
             let completions = update.carried_completions()?;
-            let mut update = update;
-            media::externalize_update(&mut update, &self.blobs).await?;
+            update.check_references()?;
             let commit = self.db.commit_point();
             self.db
                 .call(move |connection| {
@@ -286,20 +285,18 @@ impl SessionStore for SqliteSessionStore {
     fn load(&self) -> LocalBoxFuture<'_, Result<Option<Checkpoint>, StoreError>> {
         let node = self.node.clone();
         Box::pin(async move {
-            let loaded = self
-                .db
+            self.db
                 .call(move |connection| {
                     let transaction = connection.transaction()?;
                     checkpoint(&transaction, &node)
                 })
                 .await
-                .map_err(store_error)?;
-            let Some(mut checkpoint) = loaded else {
-                return Ok(None);
-            };
-            media::rehydrate_checkpoint(&mut checkpoint, &self.blobs).await?;
-            Ok(Some(checkpoint))
+                .map_err(store_error)
         })
+    }
+
+    fn blobs(&self) -> &dyn BlobStore {
+        &self.blobs
     }
 }
 
@@ -759,17 +756,14 @@ pub(crate) fn history(connection: &Connection) -> Result<History, StorageError> 
 mod tests {
     use std::num::NonZeroUsize;
 
-    use std::sync::Arc;
-
     use demi_agent::testing::{store_contract, test_model, text};
-    use demi_core::{B64Bytes, BlobRef, MediaSource, ResponseBlock, TextBlock, TokenUsage, TurnId, UserBlock, UserContentBlock};
+    use demi_core::{ResponseBlock, TextBlock, TokenUsage, TurnId, UserBlock};
     use demi_web_api::ids::ConversationId;
 
     use super::*;
     use crate::storage::blobs::BlobStores;
     use crate::storage::conversations::ConversationStores;
     use crate::storage::objects;
-    use crate::storage::objects::fake_s3::FakeS3;
 
     /// The owner of the conversation the tests store.
     const OWNER: &str = "ana";
@@ -916,47 +910,6 @@ mod tests {
         assert_eq!(root.load().await.unwrap().unwrap(), before);
     }
 
-    /// A message of the user's with a picture of `bytes`.
-    fn picture(block: &str, bytes: &[u8]) -> Block {
-        let mut message = user(block);
-        let Block::User(user) = &mut message else {
-            unreachable!()
-        };
-        user.content.push(UserContentBlock::Image {
-            source: MediaSource::Binary {
-                data: B64Bytes::new(bytes.to_vec()),
-                media_type: "image/png".into(),
-            },
-        });
-        message
-    }
-
-    #[tokio::test(flavor = "local")]
-    async fn a_save_whose_media_cannot_be_stored_leaves_the_checkpoint_and_its_media_readable() {
-        let s3 = FakeS3::start().await;
-        let data = tempfile::tempdir().unwrap();
-        let stores = ConversationStores::open(data.path().join("conversations"), NonZeroUsize::new(4).unwrap())
-            .await
-            .unwrap();
-        let owner = demi_web_api::ids::UserId::try_from(OWNER).unwrap();
-        let blobs = BlobStores::new(Arc::new(s3.client())).for_user(&owner);
-        let tree = SqliteTreeStore::new(stores.db(&conversation()), blobs, Rc::new(|_: &NodeId| {}));
-        tree.create_node(record("root", None, 1), update(vec![(0, picture("u1", &[1, 2, 3]))], 1))
-            .await
-            .unwrap();
-        let root = tree.session_store(&id("root"));
-        let before = root.load().await.unwrap().unwrap();
-        assert_eq!(before.transcript[0], picture("u1", &[1, 2, 3]), "the picture comes back from its blob");
-
-        // The bucket refuses writes: the save that brings a new picture
-        // changes nothing, and the picture already stored still reads.
-        s3.refuse_puts();
-        let save = update(vec![(0, picture("u1", &[1, 2, 3])), (1, picture("u2", &[4, 5, 6]))], 2);
-        let refused = root.save(save, &CommitGuard::default()).await.unwrap_err();
-        assert!(matches!(refused, StoreError::Failed(_)), "{refused:?}");
-        assert_eq!(root.load().await.unwrap().unwrap(), before);
-    }
-
     #[tokio::test(flavor = "local")]
     async fn the_history_is_the_root_then_each_subagent_depth_first_in_spawn_order() {
         let (tree, stores, _data) = store().await;
@@ -994,12 +947,9 @@ mod tests {
         store_contract::a_save_delivers_a_completion_it_holds_as_waiting_input(&tree).await;
         let (tree, _stores, _data) = store().await;
         store_contract::children_list_in_spawn_order_and_a_close_keeps_its_result(&tree).await;
-        let (tree, _stores, data) = store().await;
-        // A blob is the file `blobs/<user>/<sha256>` of the object store
-        // (`storage.md` § The object store).
-        let forget = |blob: &BlobRef| {
-            std::fs::remove_file(data.path().join("blobs").join(OWNER).join(blob.as_str())).unwrap();
-        };
-        store_contract::media_travels_by_reference(&tree, &tree.blobs, &forget).await;
+        let (tree, _stores, _data) = store().await;
+        store_contract::a_checkpoint_that_holds_media_bytes_is_refused(&tree).await;
+        let (tree, _stores, _data) = store().await;
+        store_contract::the_blob_namespace_names_bytes_by_their_sha256(&tree).await;
     }
 }
