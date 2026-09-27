@@ -554,6 +554,10 @@ impl Owner<'_> {
                 &WorkId::Spawn(spawn_id.clone()),
                 signal.unwrap_or(wire::Signal::Terminate),
             ),
+            Inbound::JobFollow { job_id, follow } => {
+                self.jobs.follow(&WorkId::Job(job_id.clone()), *follow);
+                Ok(())
+            }
             Inbound::JobKill { job_id, signal } => {
                 self.contexts.cancel(job_id);
                 self.jobs.signal(

@@ -1,6 +1,7 @@
 //! Jobs and raw processes (`runner.md` § Command lifetime): the connection
-//! owns its job table and routes each job's input, signals and end to it.
-//! Every job keeps full output logs and sends bounded views.
+//! owns its job table and routes each job's input, signals, following and end
+//! to it. Every job keeps full output logs and sends bounded views
+//! (`runner.md` § Pipes and output).
 
 use crate::connection::wire;
 use crate::{
@@ -27,6 +28,7 @@ use tokio::{
     io::AsyncWriteExt,
     sync::{mpsc, watch},
     task::JoinSet,
+    time::Instant,
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
@@ -83,12 +85,22 @@ pub struct Commands {
 struct Entry {
     input: mpsc::Sender<TaskInput>,
     signals: mpsc::Sender<Signal>,
+    /// Whether the backend follows the job's output beyond each stream's
+    /// first `JOB_VIEW_BYTES`.
+    follow: watch::Sender<bool>,
     cancel: CancellationToken,
 }
 
 enum TaskInput {
     Bytes(Bytes),
     End,
+}
+
+/// What reaches a task from the backend while it runs.
+struct Controls {
+    input: mpsc::Receiver<TaskInput>,
+    signals: mpsc::Receiver<Signal>,
+    following: watch::Receiver<bool>,
 }
 
 pub enum TaskCommand {
@@ -156,19 +168,26 @@ impl JobTable {
         }
         let (input, receiver) = mpsc::channel(INPUT_QUEUE);
         let (signals, signal_receiver) = mpsc::channel(SIGNAL_QUEUE);
+        let (follow, following) = watch::channel(false);
         let cancel = CancellationToken::new();
         self.entries.insert(
             key.clone(),
             Entry {
                 input,
                 signals,
+                follow,
                 cancel: cancel.clone(),
             },
         );
         let config = self.config.clone();
         let closed = self.closed.clone();
         self.running.spawn(async move {
-            let run = config.run(spec, receiver, signal_receiver, cancel, closed.clone());
+            let controls = Controls {
+                input: receiver,
+                signals: signal_receiver,
+                following,
+            };
+            let run = config.run(spec, controls, cancel, closed.clone());
             let outcome = std::panic::AssertUnwindSafe(run).catch_unwind().await;
             let terminal = match outcome {
                 Ok(Ok(terminal)) => Ok(terminal),
@@ -200,6 +219,14 @@ impl JobTable {
 
     pub fn end_input(&self, id: &WorkId) -> io::Result<()> {
         self.send(id, TaskInput::End)
+    }
+
+    /// Starts or stops following a job's output beyond each stream's first
+    /// `JOB_VIEW_BYTES`; a job that ended is not followed any more.
+    pub fn follow(&self, id: &WorkId, follow: bool) {
+        if let Some(entry) = self.entries.get(id) {
+            entry.follow.send_replace(follow);
+        }
     }
 
     pub fn signal(&self, id: &WorkId, signal: Signal) -> io::Result<()> {
@@ -314,11 +341,15 @@ impl JobConfig {
     async fn run(
         self: &Arc<Self>,
         spec: TaskSpec,
-        mut input: mpsc::Receiver<TaskInput>,
-        mut signals: mpsc::Receiver<Signal>,
+        controls: Controls,
         cancel: CancellationToken,
         closed: CancellationToken,
     ) -> io::Result<wire::Frame> {
+        let Controls {
+            mut input,
+            mut signals,
+            mut following,
+        } = controls;
         let id = spec.id;
         let mut env = spec.env;
         let mut job = None;
@@ -471,8 +502,13 @@ impl JobConfig {
         });
         let mut failure = None;
         let mut pending_input = None;
+        // Whether the backend follows the job; a raw process has no views
+        // to follow.
+        let mut followed = false;
+        let mut follow_open = job.is_some();
         let streamed = async {
         loop {
+            let due = job.as_ref().and_then(|(logs, _, _)| logs.due(followed));
             tokio::select! {
                 biased;
                 _ = cancel.cancelled(), if !child.is_cancelled() => child.cancel(),
@@ -501,28 +537,49 @@ impl JobConfig {
                         input.close();
                     }
                 },
+                // Before the output: a job that prints without a pause
+                // still sends what is due beyond its views.
+                () = tokio::time::sleep_until(due.unwrap_or_else(Instant::now)), if due.is_some() => {
+                    if let Some((logs, _, _)) = job.as_mut() {
+                        logs.send_beyond(&id, followed, Due::Now, &self.output)?;
+                    }
+                }
+                changed = following.changed(), if follow_open => match changed {
+                    Ok(()) => {
+                        followed = *following.borrow_and_update();
+                        // Following starts with each stream's newest bytes.
+                        if followed && let Some((logs, _, _)) = job.as_mut() {
+                            logs.send_beyond(&id, followed, Due::Waiting, &self.output)?;
+                        }
+                    }
+                    // The table let go of the job: nobody follows it.
+                    Err(_) => {
+                        followed = false;
+                        follow_open = false;
+                    }
+                },
                 chunk = child.output.recv() => {
                     let Some(chunk) = chunk else {
                         break;
                     };
-                    let bytes = if let Some((logs, _, _)) = job.as_mut() {
-                        logs.write(chunk.stream, &chunk.bytes).await?
-                    } else {
-                        chunk.bytes.clone()
-                    };
-                    if !bytes.is_empty() {
-                        let message = match kind {
-                            WorkId::Job(_) => wire::encode(&wire::Outbound::JobOutput {
+                    let message = match job.as_mut() {
+                        Some((logs, _, _)) => {
+                            let (offset, head) = logs.write(chunk.stream, &chunk.bytes).await?;
+                            (!head.is_empty()).then(|| wire::encode(&wire::Outbound::JobOutput {
                                 job_id: id.clone(),
                                 stream: chunk.stream,
-                                bytes: wire::WireBytes(bytes.to_vec()),
-                            }),
-                            WorkId::Spawn(_) => wire::encode(&wire::Outbound::SpawnOutput {
-                                spawn_id: id.clone(),
-                                stream: chunk.stream,
-                                bytes: wire::WireBytes(bytes.to_vec()),
-                            }),
-                        }.map_err(io::Error::other)?;
+                                offset,
+                                bytes: wire::WireBytes(head.to_vec()),
+                            }))
+                        }
+                        None => Some(wire::encode(&wire::Outbound::SpawnOutput {
+                            spawn_id: id.clone(),
+                            stream: chunk.stream,
+                            bytes: wire::WireBytes(chunk.bytes.to_vec()),
+                        })),
+                    };
+                    if let Some(message) = message {
+                        let message = message.map_err(io::Error::other)?;
                         tokio::select! {
                             _ = cancel.cancelled() => child.cancel(),
                             _ = self.output.send(message) => {},
@@ -543,6 +600,10 @@ impl JobConfig {
         if let Err(error) = streamed {
             failure = Some(error.to_string());
             child.cancel();
+        }
+        // A followed job's last output leaves before its exit.
+        if followed && let Some((logs, _, _)) = job.as_mut() {
+            logs.send_last(&id, &self.output, &closed).await?;
         }
         let (exit, cwd) = child.wait().await;
         drop(stdout_pipe);
@@ -749,28 +810,63 @@ impl JobDirectory {
     }
 }
 
+/// One stream of a job: its file, its length and last bytes, and what the
+/// backend was sent beyond its first `JOB_VIEW_BYTES`.
 struct Log {
+    stream: OutputStream,
     path: PathBuf,
     file: tokio::fs::File,
+    /// The stream's length.
     bytes: u64,
+    /// Its last `JOB_VIEW_BYTES` bytes.
     tail: Vec<u8>,
+    /// Where the bytes the backend holds end: the first `JOB_VIEW_BYTES`,
+    /// then each followed message's end.
+    held: u64,
+    /// The length the last message beyond the first `JOB_VIEW_BYTES`
+    /// reported.
+    reported: u64,
+    /// When that message went, or found the connection's queue full.
+    reported_at: Option<Instant>,
+}
+
+/// Which of a job's waiting messages beyond its views go.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Due {
+    /// Those whose interval has passed.
+    Now,
+    /// Every one that waits.
+    Waiting,
 }
 
 impl Log {
-    async fn new(path: PathBuf, cancel: &CancellationToken) -> io::Result<Self> {
+    async fn new(
+        stream: OutputStream,
+        path: PathBuf,
+        cancel: &CancellationToken,
+    ) -> io::Result<Self> {
         // Out of open files, the log waits for one (`runner.md` § Load).
         let file =
             demi_command_service::descriptors::retry(cancel, || tokio::fs::File::create(&path))
                 .await?;
         Ok(Self {
+            stream,
             path,
             file,
             bytes: 0,
             tail: Vec::new(),
+            held: 0,
+            reported: 0,
+            reported_at: None,
         })
     }
-    async fn write(&mut self, bytes: &Bytes) -> io::Result<Bytes> {
+
+    /// Writes `bytes` to the file, and returns where they start in the
+    /// stream and their part within its first `JOB_VIEW_BYTES`, which the
+    /// backend always receives.
+    async fn write(&mut self, bytes: &Bytes) -> io::Result<(u64, Bytes)> {
         self.file.write_all(bytes).await?;
+        let offset = self.bytes;
         let remaining = wire::JOB_VIEW_BYTES.saturating_sub(self.bytes as usize);
         self.bytes += bytes.len() as u64;
         if bytes.len() >= wire::JOB_VIEW_BYTES {
@@ -782,7 +878,84 @@ impl Log {
             self.tail.drain(..remove);
             self.tail.extend_from_slice(bytes);
         }
-        Ok(bytes.slice(..remaining.min(bytes.len())))
+        let head = bytes.slice(..remaining.min(bytes.len()));
+        self.held += head.len() as u64;
+        Ok((offset, head))
+    }
+
+    /// When the stream's next message beyond its first `JOB_VIEW_BYTES` is
+    /// due: while followed, once it has bytes the backend does not hold;
+    /// otherwise once it grew past the length last reported.
+    fn due(&self, followed: bool) -> Option<Instant> {
+        let (waiting, interval) = if followed {
+            (self.held < self.bytes, wire::JOB_LIVE_INTERVAL)
+        } else {
+            (
+                self.bytes > wire::JOB_VIEW_BYTES as u64 && self.reported < self.bytes,
+                wire::JOB_GROWTH_INTERVAL,
+            )
+        };
+        waiting.then(|| self.reported_at.map_or_else(Instant::now, |at| at + interval))
+    }
+
+    /// The message beyond the first `JOB_VIEW_BYTES`: while followed, the
+    /// newest bytes the backend does not hold, at most `JOB_LIVE_BYTES`;
+    /// otherwise the stream's length alone.
+    fn beyond(&self, job: &str, followed: bool) -> Result<wire::Frame, wire::WireError> {
+        let (offset, bytes) = if followed {
+            let offset = self
+                .held
+                .max(self.bytes.saturating_sub(wire::JOB_LIVE_BYTES as u64));
+            // Past the first `JOB_VIEW_BYTES` the tail is whole, and it
+            // holds the newest `JOB_LIVE_BYTES`.
+            let start = self.bytes - self.tail.len() as u64;
+            let from = usize::try_from(offset - start).expect("the newest bytes are in the tail");
+            (offset, self.tail[from..].to_vec())
+        } else {
+            (self.bytes, Vec::new())
+        };
+        wire::encode(&wire::Outbound::JobOutput {
+            job_id: job.to_owned(),
+            stream: self.stream,
+            offset,
+            bytes: wire::WireBytes(bytes),
+        })
+    }
+
+    /// Records that the message beyond the first `JOB_VIEW_BYTES` went.
+    fn reported(&mut self, followed: bool) {
+        self.reported = self.bytes;
+        self.reported_at = Some(Instant::now());
+        if followed {
+            self.held = self.bytes;
+        }
+    }
+
+    /// Sends the stream's message beyond its first `JOB_VIEW_BYTES` when
+    /// one is `due`, without waiting for room: one that finds the
+    /// connection's queue full waits for the stream's next interval.
+    fn send_beyond(
+        &mut self,
+        job: &str,
+        followed: bool,
+        due: Due,
+        output: &mpsc::Sender<wire::Frame>,
+    ) -> io::Result<()> {
+        let Some(at) = self.due(followed) else {
+            return Ok(());
+        };
+        if due == Due::Now && at > Instant::now() {
+            return Ok(());
+        }
+        let message = self.beyond(job, followed).map_err(io::Error::other)?;
+        match output.try_send(message) {
+            Ok(()) => self.reported(followed),
+            Err(mpsc::error::TrySendError::Full(_)) => self.reported_at = Some(Instant::now()),
+            // A disconnected backend follows nothing; the job's cancellation
+            // ends it.
+            Err(mpsc::error::TrySendError::Closed(_)) => {}
+        }
+        Ok(())
     }
 }
 
@@ -793,15 +966,60 @@ struct Logs {
 impl Logs {
     async fn new(path: PathBuf, cancel: &CancellationToken) -> io::Result<Self> {
         Ok(Self {
-            stdout: Log::new(path.join("stdout.txt"), cancel).await?,
-            stderr: Log::new(path.join("stderr.txt"), cancel).await?,
+            stdout: Log::new(OutputStream::Stdout, path.join("stdout.txt"), cancel).await?,
+            stderr: Log::new(OutputStream::Stderr, path.join("stderr.txt"), cancel).await?,
         })
     }
-    async fn write(&mut self, stream: OutputStream, bytes: &Bytes) -> io::Result<Bytes> {
+
+    async fn write(&mut self, stream: OutputStream, bytes: &Bytes) -> io::Result<(u64, Bytes)> {
         match stream {
             OutputStream::Stdout => self.stdout.write(bytes).await,
             OutputStream::Stderr => self.stderr.write(bytes).await,
         }
+    }
+
+    /// When the next message beyond a stream's first `JOB_VIEW_BYTES` is
+    /// due.
+    fn due(&self, followed: bool) -> Option<Instant> {
+        [self.stdout.due(followed), self.stderr.due(followed)]
+            .into_iter()
+            .flatten()
+            .min()
+    }
+
+    /// Sends each stream's message beyond its first `JOB_VIEW_BYTES` that
+    /// `due` names.
+    fn send_beyond(
+        &mut self,
+        job: &str,
+        followed: bool,
+        due: Due,
+        output: &mpsc::Sender<wire::Frame>,
+    ) -> io::Result<()> {
+        self.stdout.send_beyond(job, followed, due, output)?;
+        self.stderr.send_beyond(job, followed, due, output)
+    }
+
+    /// Sends a followed job's last bytes that the backend does not hold,
+    /// waiting for room, before its exit goes.
+    async fn send_last(
+        &mut self,
+        job: &str,
+        output: &mpsc::Sender<wire::Frame>,
+        closed: &CancellationToken,
+    ) -> io::Result<()> {
+        for log in [&mut self.stdout, &mut self.stderr] {
+            if log.due(true).is_none() {
+                continue;
+            }
+            let message = log.beyond(job, true).map_err(io::Error::other)?;
+            tokio::select! {
+                // A disconnected backend no longer receives the job's output.
+                _ = closed.cancelled() => return Ok(()),
+                _ = output.send(message) => log.reported(true),
+            }
+        }
+        Ok(())
     }
     async fn finish(mut self) -> io::Result<wire::RetainedOutput> {
         self.stdout.file.flush().await?;

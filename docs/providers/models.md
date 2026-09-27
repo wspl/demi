@@ -303,7 +303,17 @@ model-specific limit is known. The agent reads it for every request, including
 continuations after the user switches models within one provider: a provider
 runtime never keeps the first model's limit.
 
-| Family | Request field | When `outputLimit` is null |
+A request may also cap its own output. A title request asks for at most 1,024
+tokens ([Conversation titles](../product/product.md#conversation-titles)); a
+turn sets no cap. The field the vendor receives, in the table below, carries
+the lower of the model's limit and the cap, and the cap alone when the model
+has no limit. The cap belongs to the request, not to the model: a configured
+model list replaces the model's limit at every inference boundary
+([Request parameters](#request-parameters)), and the cap stays. For example,
+with a configured model whose limit is 8,000 tokens, a turn sends 8,000 and a
+title request sends 1,024.
+
+| Family | Request field | Without a limit or a cap |
 |---|---|---|
 | `anthropic` | `max_tokens` | 32,000 |
 | `google` | `generationConfig.maxOutputTokens` | 32,000 |

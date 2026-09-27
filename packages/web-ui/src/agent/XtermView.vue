@@ -6,12 +6,18 @@ import {
   useTerminalTheme,
   xtermThemeFromElement,
 } from '../composables/useTerminalTheme'
+import { liveOutputDelta } from './terminals'
 import '@xterm/xterm/css/xterm.css'
 
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace'
 
 const props = defineProps<{
   output: string
+  /**
+   * The live view's count of characters at the end of `output`; absent for
+   * output that is whole, such as a transcript's.
+   */
+  chars?: number
   running?: boolean
 }>()
 
@@ -20,7 +26,9 @@ const { terminalTheme } = useTerminalTheme()
 
 let term: Terminal | undefined
 let fit: FitAddon | undefined
+/** The output the terminal shows, and the live view's count at its end. */
 let written = ''
+let shownChars: number | undefined
 let resize: ResizeObserver | undefined
 let appearance: MutationObserver | undefined
 
@@ -34,20 +42,35 @@ function applyTheme(): void {
   host.style.setProperty('--xterm-selection', theme.selectionBackground)
 }
 
-function writeDelta(next: string): void {
+/** What whole `output` adds to the output written: its rest, or all of it anew. */
+function continuation(output: string): { anew: boolean; text: string } {
+  return output.startsWith(written)
+    ? { anew: false, text: output.slice(written.length) }
+    : { anew: true, text: output }
+}
+
+/**
+ * Writes what `output` adds to what the terminal shows, so it keeps its
+ * scrollback: for a live view, the characters beyond those shown, by the
+ * view's count (`runtime.md` § Rendering boundary); for whole output, what
+ * continues it. Anything else is shown anew.
+ */
+function show(output: string, chars: number | undefined): void {
   if (!term) {
     return
   }
-  if (!next.startsWith(written)) {
+  const { anew, text } = chars === undefined
+    ? continuation(output)
+    : liveOutputDelta(shownChars, output, chars)
+  written = output
+  shownChars = chars
+  if (anew) {
     term.reset()
-    written = ''
   }
-  const add = next.slice(written.length)
-  if (!add) {
+  if (!text) {
     return
   }
-  term.write(add)
-  written = next
+  term.write(text)
   if (props.running) {
     term.scrollToBottom()
   }
@@ -86,7 +109,7 @@ onMounted(() => {
     fit?.fit()
     requestAnimationFrame(() => fit?.fit())
   })
-  writeDelta(props.output)
+  show(props.output, props.chars)
   resize = new ResizeObserver(() => fit?.fit())
   resize.observe(host)
   appearance = new MutationObserver(applyTheme)
@@ -96,7 +119,10 @@ onMounted(() => {
   })
 })
 
-watch(() => props.output, writeDelta)
+watch(
+  () => [props.output, props.chars] as const,
+  ([output, chars]) => show(output, chars),
+)
 watch(
   () => props.running,
   (running) => applyCursor(running === true),

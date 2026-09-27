@@ -58,7 +58,8 @@ impl ShellEnvironmentFactory<RemoteHost> for RunnerShells {
         host: Rc<RemoteHost>,
     ) -> LocalBoxFuture<'a, Result<Rc<dyn ShellEnvironment>, HostError>> {
         let context: ContextSource = Rc::new(|| Box::pin(async { Ok(test_command_context()) }));
-        let mut options = EnvironmentOptions::new(RemoteHost::clone(&host), context);
+        let mut options =
+            EnvironmentOptions::new(RemoteHost::clone(&host), context, scope.feed.clone());
         options.initial_env = BTreeMap::from([("PATH".to_owned(), "/usr/bin:/bin".to_owned())]);
         let made = self
             .0
@@ -85,6 +86,11 @@ pub struct Fixture {
 impl Fixture {
     /// A fixture whose model plays `script`.
     pub async fn start(script: &ScriptedRuntime) -> Self {
+        Self::start_with(script, ServerConfig::default()).await
+    }
+
+    /// A fixture whose model plays `script`, with the server's `config`.
+    pub async fn start_with(script: &ScriptedRuntime, config: ServerConfig) -> Self {
         let runner = RunnerFixture::start(FixtureOptions {
             commands: demi_commands(),
             ..FixtureOptions::default()
@@ -111,7 +117,7 @@ impl Fixture {
             stores: Rc::new(move |_: &NodeId| store.clone() as Rc<dyn AgentTreeStore>),
             clock: Arc::new(TokioClock::new("2026-09-24T12:00:00Z".parse().unwrap())),
             ids: Rc::new(SequentialIds::new("id")),
-            config: ServerConfig::default(),
+            config,
         });
         Self {
             runner,

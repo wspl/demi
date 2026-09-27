@@ -7,11 +7,10 @@
 
 use std::{rc::Rc, sync::Arc};
 
-use demi_agent_protocol::ServerFrame;
 use demi_core::{Clock, CommandId, ModelSelection, NodeId, QueuedMessage};
 use demi_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_provider::{ProviderRuntime, ToolDefinition};
-use demi_shell::{CommandSet, CommandStatus, JobCaller, Reader};
+use demi_shell::{CommandSet, JobCaller, PageFeed, PageState, PageView};
 use futures_util::future::LocalBoxFuture;
 
 use crate::{
@@ -76,43 +75,42 @@ impl<H: AgentHarness> Node<H> {
     }
 
     /// Writes `stdin` to a running command through the node's environment
-    /// for the conversation's current Host, as `shell_write` asks.
+    /// for the conversation's current Host, as a page's `shell_write` asks.
     pub(crate) async fn shell_write(
         &self,
         command: &CommandId,
         stdin: String,
-    ) -> Result<CommandStatus, CallError> {
-        let (_, status) = self
-            .runtime
-            .shell_access()
-            .write(command, stdin, Reader::Page)
-            .await?;
-        Ok(status)
+    ) -> Result<(), CallError> {
+        self.runtime.shell_access().write(command, stdin).await?;
+        Ok(())
     }
 
     /// Stops a running command through the node's environment for the
-    /// conversation's current Host, as `shell_abort` asks.
-    pub(crate) async fn shell_abort(
-        &self,
-        command: &CommandId,
-    ) -> Result<CommandStatus, CallError> {
-        let (_, status) = self
-            .runtime
-            .shell_access()
-            .abort(command, Reader::Page)
-            .await?;
-        Ok(status)
+    /// conversation's current Host, as a page's `shell_abort` asks.
+    pub(crate) async fn shell_abort(&self, command: &CommandId) -> Result<(), CallError> {
+        self.runtime.shell_access().abort(command).await?;
+        Ok(())
     }
 
-    /// The `shell_output` of each command the transcript last saw running
-    /// that one of the node's environments still owns.
-    pub(crate) fn live_shells(&self) -> Vec<ServerFrame> {
-        let access = self.runtime.shell_access();
-        tools::stored_running_commands(&self.session.transcript().blocks)
-            .iter()
-            .filter_map(|command| access.status_of(command))
-            .map(|status| tools::shell_output(&status))
-            .collect()
+    /// Whether one of the node's environments holds `command`.
+    pub(crate) fn holds(&self, command: &CommandId) -> bool {
+        self.runtime.environments.owning(command).is_some()
+    }
+
+    /// The pages' view of each live command of the node (`runtime.md`
+    /// § Live output): each one its shells run, and each one the transcript
+    /// last saw running that they still hold, oldest first.
+    pub(crate) fn live_views(&self) -> Vec<PageView> {
+        let stored = tools::stored_running_commands(&self.session.transcript().blocks);
+        let mut views: Vec<PageView> = self
+            .runtime
+            .environments
+            .page_views()
+            .into_iter()
+            .filter(|view| view.state == PageState::Running || stored.contains(&view.command_id))
+            .collect();
+        views.sort_by_key(|view| std::cmp::Reverse(view.running_ms));
+        views
     }
 
     /// Ends the node's shells on every Host, their running commands with
@@ -197,8 +195,8 @@ pub(crate) struct NodeRuntime<H: AgentHarness> {
     shells: Rc<dyn ShellEnvironmentFactory<H::Host>>,
     /// The node's shell environment on each Host its tools used.
     environments: Environments,
-    /// Where a running shell tool's status goes: the root's client.
-    shell_output: Option<Rc<dyn Fn(&CommandStatus)>>,
+    /// Where its environments tell the pages of its commands.
+    feed: Rc<dyn PageFeed>,
 }
 
 impl<H: AgentHarness> NodeRuntime<H> {
@@ -218,7 +216,7 @@ impl<H: AgentHarness> NodeRuntime<H> {
             environments: &self.environments,
             context: self.prompt_context(),
             commands: &self.commands,
-            progress: self.shell_output.as_deref(),
+            feed: &self.feed,
         }
     }
 }
@@ -326,9 +324,9 @@ pub(crate) struct NodeSpec<H: AgentHarness> {
     pub(crate) first_message: Option<QueuedMessage>,
     pub(crate) store: Rc<dyn AgentTreeStore>,
     pub(crate) shells: Rc<dyn ShellEnvironmentFactory<H::Host>>,
-    /// Where a running shell tool's status goes; the root's goes to its
-    /// client, a child's to no one.
-    pub(crate) shell_output: Option<Rc<dyn Fn(&CommandStatus)>>,
+    /// Where the node's environments tell the pages of its commands: the
+    /// node's feed of its tree.
+    pub(crate) feed: Rc<dyn PageFeed>,
     pub(crate) admission: ActivityGate,
     pub(crate) ids: Rc<dyn IdSource>,
     pub(crate) clock: Arc<dyn Clock>,
@@ -374,7 +372,7 @@ pub(crate) async fn assemble<H: AgentHarness>(
         first_message,
         store,
         shells,
-        shell_output,
+        feed,
         admission,
         ids,
         clock,
@@ -411,7 +409,7 @@ pub(crate) async fn assemble<H: AgentHarness>(
         store: store.clone(),
         shells,
         environments: Environments::default(),
-        shell_output,
+        feed,
     });
     let deps = SessionDeps {
         runtime: node_runtime.clone(),

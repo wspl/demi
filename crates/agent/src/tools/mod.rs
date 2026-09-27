@@ -20,7 +20,7 @@ use demi_core::{CommandId, ModelSelection, NodeId};
 use demi_provider::ToolDefinition;
 use demi_shell::{
     CommandSet, CommandStatus, ExecRequest, Host, HostError, JobCaller, ObservationWindow,
-    Reader, ShellEnvironment, ShellError, ShellTarget,
+    PageFeed, ShellEnvironment, ShellError, ShellTarget,
 };
 use futures_util::future::LocalBoxFuture;
 
@@ -42,6 +42,10 @@ pub struct EnvironmentScope<'a> {
     pub node: &'a NodeId,
     /// The commands the environment's shells offer: the node's.
     pub commands: &'a Rc<CommandSet>,
+    /// Where the environment tells the pages of its commands, and learns
+    /// whether a page watches: the node's feed of its tree
+    /// (`runtime.md` § Live output).
+    pub feed: &'a Rc<dyn PageFeed>,
 }
 
 /// Where a node's shell environments come from. The product makes the
@@ -135,9 +139,8 @@ pub(crate) struct ShellAccess<'a, H: AgentHarness> {
     pub(crate) environments: &'a Environments,
     pub(crate) context: PromptContext<'a>,
     pub(crate) commands: &'a Rc<CommandSet>,
-    /// Where a running shell tool's status goes: the root's client; a
-    /// child's reaches no one.
-    pub(crate) progress: Option<&'a dyn Fn(&CommandStatus)>,
+    /// The node's feed, which its environments are made with.
+    pub(crate) feed: &'a Rc<dyn PageFeed>,
 }
 
 impl<H: AgentHarness> ShellAccess<'_, H> {
@@ -156,6 +159,7 @@ impl<H: AgentHarness> ShellAccess<'_, H> {
             root: self.context.root,
             node: self.context.node,
             commands: self.commands,
+            feed: self.feed,
         };
         let key = host.key();
         self.environments
@@ -188,6 +192,7 @@ impl<H: AgentHarness> ShellAccess<'_, H> {
     ) -> Result<ToolOutcome, CallError> {
         let name = tool.name();
         let ToolInvocation {
+            tool_use_id,
             input,
             model,
             generation,
@@ -225,29 +230,27 @@ impl<H: AgentHarness> ShellAccess<'_, H> {
                         node: self.context.node.clone(),
                         generation,
                     },
+                    tool_use_id,
                 };
                 let status = environment.exec(request, cancel).await?;
-                self.report(environment.as_ref(), &status.command_id);
                 finish(environment.as_ref(), status, &model).await
             }
             StandardTool::ShellStatus => {
                 let input: CommandInput = parse(name, input).map_err(CallError::Refused)?;
                 let (_, environment) = self.environment(Handle::Command(&input.command_id)).await?;
-                let status = environment.status(&input.command_id, Reader::Model)?;
+                let status = environment.status(&input.command_id)?;
                 finish(environment.as_ref(), status, &model).await
             }
             StandardTool::ShellWrite => {
                 let input: ShellWriteInput = parse(name, input).map_err(CallError::Refused)?;
-                let (environment, status) = self
-                    .write(&input.command_id, input.stdin.0, Reader::Model)
-                    .await?;
-                self.report(environment.as_ref(), &status.command_id);
+                let environment = self.write(&input.command_id, input.stdin.0).await?;
+                let status = environment.status(&input.command_id)?;
                 finish(environment.as_ref(), status, &model).await
             }
             StandardTool::ShellAbort => {
                 let input: CommandInput = parse(name, input).map_err(CallError::Refused)?;
-                let (environment, status) = self.abort(&input.command_id, Reader::Model).await?;
-                self.report(environment.as_ref(), &status.command_id);
+                let environment = self.abort(&input.command_id).await?;
+                let status = environment.status(&input.command_id)?;
                 // A stop the model asked for is never an error.
                 ToolOutcome {
                     is_error: false,
@@ -257,50 +260,27 @@ impl<H: AgentHarness> ShellAccess<'_, H> {
         })
     }
 
-    /// Sends a running shell tool's command to the root's client, as the
-    /// page's own view of it: the model's view is the model's. A
-    /// `shell_status` call sends none.
-    fn report(&self, environment: &dyn ShellEnvironment, command: &CommandId) {
-        if let Some(progress) = self.progress
-            && let Ok(status) = environment.status(command, Reader::Page)
-        {
-            progress(&status);
-        }
-    }
-
-    /// The page's status of `command`, when an environment of the node owns it.
-    pub(crate) fn status_of(&self, command: &CommandId) -> Option<CommandStatus> {
-        // The environment that owns the command answers its status: nothing
-        // happens between the two, so it cannot forget the command meanwhile.
-        self.environments
-            .owning(command)?
-            .status(command, Reader::Page)
-            .ok()
-    }
-
-    /// Writes `stdin` to a running command of the current Host; the status is
-    /// `reader`'s.
+    /// Writes `stdin` to a running command of the current Host, and returns
+    /// the environment that runs it.
     pub(crate) async fn write(
         &self,
         command: &CommandId,
         stdin: String,
-        reader: Reader,
-    ) -> Result<(Rc<dyn ShellEnvironment>, CommandStatus), CallError> {
+    ) -> Result<Rc<dyn ShellEnvironment>, CallError> {
         let (_, environment) = self.environment(Handle::Command(command)).await?;
-        let status = environment.write(command, Bytes::from(stdin), reader).await?;
-        Ok((environment, status))
+        environment.write(command, Bytes::from(stdin)).await?;
+        Ok(environment)
     }
 
-    /// Stops a running command of the current Host; the status is
-    /// `reader`'s.
+    /// Stops a running command of the current Host, and returns the
+    /// environment that ran it.
     pub(crate) async fn abort(
         &self,
         command: &CommandId,
-        reader: Reader,
-    ) -> Result<(Rc<dyn ShellEnvironment>, CommandStatus), CallError> {
+    ) -> Result<Rc<dyn ShellEnvironment>, CallError> {
         let (_, environment) = self.environment(Handle::Command(command)).await?;
-        let status = environment.abort(command, reader).await?;
-        Ok((environment, status))
+        environment.abort(command).await?;
+        Ok(environment)
     }
 }
 

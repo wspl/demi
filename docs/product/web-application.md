@@ -157,8 +157,8 @@ attachment without stopping the backend task. Reload starts a new browser cache.
 A conversation open in several tabs or browsers is live and usable in each.
 For example, the user sends a message in one tab: a second tab shows the
 message, the reply as it streams and each tool call, and its Stop stops the
-turn. Every tab shows the same messages, output of running commands
-([Results and previews](../agent/runtime.md#results-and-previews)), phase,
+turn. Every tab shows the same messages, output of running commands as it comes
+([Live output](../agent/runtime.md#live-output)), phase,
 queue, pending steers and subagents; every tab can send, steer, queue, stop, edit,
 retry, switch the model and write to a running command; and what one tab does
 shows in all of them. Opening the conversation in another tab takes nothing
