@@ -7,7 +7,8 @@ import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
  * a stored view saw one. A stored view is history, so none of these is
  * running: liveness comes only from the session's `shell_output` events,
  * which the server replays for the commands it still owns when the session
- * opens. A reloaded page and a fork therefore show only what actually runs.
+ * opens. A reloaded page and a fork therefore show only what actually runs,
+ * and a command a stored view saw stopped stays stopped.
  */
 export function transcriptTerminals(blocks: readonly Block[]): TerminalRecord[] {
   const commands = new Map<string, TerminalRecord>()
@@ -26,7 +27,7 @@ export function transcriptTerminals(blocks: readonly Block[]): TerminalRecord[] 
     commands.set(view.commandId, {
       id: view.commandId,
       name,
-      phase: 'exited',
+      phase: view.status === 'aborted' ? 'aborted' : 'exited',
       startedAt: previous?.startedAt ?? block.createdAt,
       ...(view.status !== 'running'
         ? {
