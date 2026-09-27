@@ -20,7 +20,8 @@ use demi_core::{
     UserContentBlock, WakeupId, WakeupPlacement,
 };
 use demi_provider::{
-    InferenceRequest, PromptCache, ProviderEvent, ProviderFailure, ProviderRuntime, ToolDefinition,
+    InferenceRequest, PromptCache, ProviderEvent, ProviderFailure, ProviderRuntime, RequestLimits,
+    ToolDefinition,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -123,6 +124,10 @@ pub(super) struct ActionRun {
     /// The transcript's revision when the action started: an action that
     /// wrote nothing since has not begun.
     started_at: u64,
+    /// The blobs a send's message references until its `user` block is
+    /// written: waiting input meanwhile, whose held bytes stay
+    /// (`runtime.md` § Media).
+    unwritten_media: Vec<BlobRef>,
     /// Taken by the worker when it starts the action.
     start: Option<StartedAction>,
 }
@@ -531,11 +536,16 @@ impl SessionCore {
         };
         let cancel = TurnCancel::new();
         self.held = false;
+        let unwritten_media = match &kind {
+            ActionKind::Send { content } => media::content_references(content).cloned().collect(),
+            _ => Vec::new(),
+        };
         self.activity = Activity::Running(ActionRun {
             turn: turn.clone(),
             cancel: cancel.clone(),
             stage: TurnStage::Preparing,
             started_at: self.transcript.version().revision,
+            unwritten_media,
             start: Some(StartedAction {
                 kind,
                 turn,
@@ -1123,6 +1133,9 @@ impl SessionCore {
             .push_user(turn, &self.model, content, preamble);
         self.commands
             .capture(id, BoundaryEdge::BeforeUser, revision);
+        if let Activity::Running(run) = &mut self.activity {
+            run.unwritten_media.clear();
+        }
         self.commit();
     }
 
@@ -1230,7 +1243,7 @@ impl SessionCore {
         request_id: String,
         cancel: CancellationToken,
     ) -> InferenceRequest {
-        let replayed = replay(view);
+        let replayed = replay(view, &self.model.model, self.request_limits());
         InferenceRequest {
             session_id: self.id.to_string(),
             turn_id: self.turn().to_string(),
@@ -1250,6 +1263,15 @@ impl SessionCore {
         }
     }
 
+    /// What the current model's vendor takes in one request, from the
+    /// runtime in its slot (`models.md` § Request limits).
+    pub(super) fn request_limits(&self) -> RequestLimits {
+        self.provider
+            .as_ref()
+            .expect("the provider runtime is in its slot between runs")
+            .request_limits(&self.model.model)
+    }
+
     // Media.
 
     /// The blocks replay sends: from the last compaction boundary on.
@@ -1259,7 +1281,8 @@ impl SessionCore {
     }
 
     /// The blobs the replayed blocks and the waiting input reference: the
-    /// queued messages and the pending steers.
+    /// queued messages, the pending steers and the message of a send whose
+    /// `user` block is not written yet, such as while a switch lands first.
     fn referenced_media(&self) -> HashSet<BlobRef> {
         let mut referenced: HashSet<BlobRef> = self
             .replayed()
@@ -1274,6 +1297,9 @@ impl SessionCore {
         }
         for steer in self.inputs.pending_steers() {
             referenced.extend(media::content_references(&steer.content).cloned());
+        }
+        if let Activity::Running(run) = &self.activity {
+            referenced.extend(run.unwritten_media.iter().cloned());
         }
         referenced
     }
