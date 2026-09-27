@@ -87,6 +87,14 @@ async fn each_request_sends_its_own_output_limit_or_the_agent_sized_default() {
         body_of(inference_request()).await["generationConfig"]["maxOutputTokens"],
         json!(32_000)
     );
+    // A request's cap lowers the model's limit.
+    let mut capped = inference_request();
+    capped.output_limit = NonZeroU32::new(8_000);
+    capped.output_cap = NonZeroU32::new(1_024);
+    assert_eq!(
+        body_of(capped).await["generationConfig"]["maxOutputTokens"],
+        json!(1_024)
+    );
 }
 
 #[tokio::test]

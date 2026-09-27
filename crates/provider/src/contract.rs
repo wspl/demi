@@ -133,6 +133,9 @@ pub struct InferenceRequest {
     /// The current model's output limit; null when the model names none
     /// (`models.md` § Output limit).
     pub output_limit: Option<NonZeroU32>,
+    /// The most output the request itself asks for, whatever the model's
+    /// limit, such as a title request's; null for a turn.
+    pub output_cap: Option<NonZeroU32>,
     pub system_prompt: String,
     /// The transcript as the model receives it (`runtime.md` § Replay).
     pub items: Arc<[InferenceItem]>,
@@ -142,6 +145,18 @@ pub struct InferenceRequest {
     /// Cancels the run: it stops its work at once and ends without a further
     /// event.
     pub cancel: CancellationToken,
+}
+
+impl InferenceRequest {
+    /// The output limit a provider sends: the model's limit, lowered to the
+    /// request's cap, or the cap alone when the model has no limit; null
+    /// when neither is set (`models.md` § Output limit).
+    pub fn max_output_tokens(&self) -> Option<NonZeroU32> {
+        match (self.output_limit, self.output_cap) {
+            (Some(limit), Some(cap)) => Some(limit.min(cap)),
+            (limit, cap) => limit.or(cap),
+        }
+    }
 }
 
 /// One entry of the transcript as a provider replays it.

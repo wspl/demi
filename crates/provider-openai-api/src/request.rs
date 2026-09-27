@@ -40,7 +40,7 @@ pub(crate) fn responses(
         store: false,
         include: ["reasoning.encrypted_content"],
         prompt_cache_key: prompt_cache_key(&request.session_id),
-        max_output_tokens: request.output_limit.map(|limit| limit.get()),
+        max_output_tokens: request.max_output_tokens().map(|limit| limit.get()),
         instructions: (!is_blank(&request.system_prompt)).then_some(request.system_prompt.as_str()),
         tools: request
             .tools
@@ -95,7 +95,7 @@ pub(crate) fn chat_completions(
         stream: true,
         tools: request.tools.iter().map(ChatTool::from).collect(),
         tool_choice: (!request.tools.is_empty()).then_some("auto"),
-        max_completion_tokens: request.output_limit.map(|limit| limit.get()),
+        max_completion_tokens: request.max_output_tokens().map(|limit| limit.get()),
         reasoning_effort: reasoning_effort(request.thinking.as_ref()),
         service_tier: request.service_tier_id.as_deref(),
         stream_options: StreamOptions {

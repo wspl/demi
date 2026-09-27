@@ -175,6 +175,15 @@ async fn each_request_sends_its_own_output_limit_and_none_without_one() {
     assert!(responses.get("max_output_tokens").is_none());
     let chat = body_of(WireApi::ChatCompletions, NO_POLICY, with_limit(None)).await;
     assert!(chat.get("max_completion_tokens").is_none());
+    // A request's cap lowers the model's limit, and stands in for none.
+    let capped = |limit: Option<u32>| InferenceRequest {
+        output_cap: NonZeroU32::new(1_024),
+        ..with_limit(limit)
+    };
+    let responses = body_of(WireApi::Responses, NO_POLICY, capped(Some(8_000))).await;
+    assert_eq!(responses["max_output_tokens"], json!(1_024));
+    let chat = body_of(WireApi::ChatCompletions, NO_POLICY, capped(None)).await;
+    assert_eq!(chat["max_completion_tokens"], json!(1_024));
 }
 
 #[tokio::test]

@@ -26,7 +26,7 @@ use reqwest::StatusCode;
 use serde_json::json;
 use tokio::sync::Semaphore;
 
-use crate::conversations::{FIRST, SECOND, Socket, choose, create, summaries};
+use crate::conversations::{FIRST, SECOND, Socket, choose, configured, create, summaries};
 use crate::support::{Harness, Session, TestBackend, eventually};
 
 /// The title the scripted model writes.
@@ -169,18 +169,16 @@ fn input(request: &InferenceRequest) -> String {
 }
 
 /// A backend with titles on, whose master has an entry of the scripted
-/// family, and that entry; the harness holds the backend's data.
+/// family that configures the model `m` with an output limit of 8,000
+/// tokens, and that entry; the harness holds the backend's data.
 async fn titling(script: &Arc<Script>) -> (Harness, TestBackend, Session, String) {
     let mut harness = Harness::new().with_families(FamilyRegistry::builtin().with("titling", Titling(script.clone())));
     harness.conversations.titles = true;
     let (backend, master) = harness.start_set_up().await;
-    let created = backend
-        .post(
-            "/api/providers",
-            Some(&master),
-            json!({ "source": "custom", "providerType": "titling", "label": "T", "apiKey": "k" }),
-        )
-        .await;
+    let entry = json!({
+        "source": "custom", "providerType": "titling", "label": "T", "apiKey": "k", "models": [configured(8_000)]
+    });
+    let created = backend.post("/api/providers", Some(&master), entry).await;
     assert_eq!(created.status, StatusCode::CREATED);
     let provider = created.json::<ProviderAnswer>().provider.id.as_str().to_owned();
     (harness, backend, master, provider)
@@ -218,7 +216,9 @@ async fn a_title_follows_the_first_message_and_a_rename_or_an_archive_while_one_
     {
         let asked = script.asked.lock().unwrap();
         assert_eq!(input(&asked[0]), format!("1. {message}"));
-        assert_eq!(asked[0].output_limit.map(|limit| limit.get()), Some(1_024));
+        // The request's own cap, although the configured model allows more
+        // (`models.md` § Output limit).
+        assert_eq!(asked[0].max_output_tokens().map(|limit| limit.get()), Some(1_024));
         assert!(asked[0].tools.is_empty() && asked[0].thinking.is_none());
     }
     // The request is metered like a turn.

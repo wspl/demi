@@ -91,6 +91,7 @@ pub type ProviderRun<'a> = LocalBoxStream<'a, ProviderEvent>;
 pub struct InferenceRequest {
     pub session_id: String, pub turn_id: String, pub request_id: String,
     pub model_id: String, pub output_limit: Option<NonZeroU32>,
+    pub output_cap: Option<NonZeroU32>,  // the request's own, below the model's
     pub system_prompt: String, pub items: Arc<[InferenceItem]>,
     pub tools: Arc<[ToolDefinition]>, pub thinking: Option<ThinkingConfig>,
     pub service_tier_id: Option<String>, pub cancel: CancellationToken,
@@ -111,7 +112,9 @@ Write `run` as a stream that keeps the rules of
 1. Build the request body from the request and the entry's typed
    configuration. Map the thinking setting, the output limit and the service
    tier as [Request parameters](../providers/models.md#request-parameters)
-   defines for your vendor. Serialize a body that carries media on the blocking
+   defines for your vendor; the output limit you send is
+   `request.max_output_tokens()`, which lowers the model's limit to the
+   request's cap. Serialize a body that carries media on the blocking
    pool, not on the shard
    ([Blocking work](../architecture/concurrency.md#blocking-work)).
 2. Send it once, with the client from `RuntimeEnv`. Never build a client of your
