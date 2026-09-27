@@ -60,12 +60,13 @@ retries, compaction, and title requests
   on. A write that fails is logged and the request goes on: inference never
   fails because accounting did.
 - **As the vendor reports it.** An HTTP provider's usage comes from the
-  vendor's response. Claude Code's usage comes from the CLI's stream-json
-  output, relayed over the runner connection from the user's Cloud, so its
-  accuracy also depends on the CLI. The CLI reports usage once, on the
-  `result` line that ends its turn, and the run's response carries the usage
-  of the turn's last API call. When the CLI calls tools during a turn, only
-  that last API call therefore has a row
+  vendor's response, with its cache reads and writes apart from the input it
+  processed in full ([Usage](providers.md#usage)). Claude Code's usage comes
+  from the CLI's stream-json output, relayed over the runner connection from
+  the user's Cloud, so its accuracy also depends on the CLI. The CLI reports
+  usage once, on the `result` line that ends its turn, and the run's response
+  carries the usage of the turn's last API call. When the CLI calls tools
+  during a turn, only that last API call therefore has a row
   ([Requests over stream-json](claude-code.md#requests-over-stream-json)). The
   ledger is not an independently verified billing record.
 - **Answered requests only.** A request that ends without a response event has

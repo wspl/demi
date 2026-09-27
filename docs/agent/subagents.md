@@ -135,7 +135,7 @@ message. Help renders a quoted heredoc usage template from the declaration
 ([Help](../execution/commands.md#help)). Demi does not reject a short prompt.
 
 The field description follows the same four beats as the compaction summary
-instruction ([Keeping the cache prefix](compaction.md#keeping-the-cache-prefix)):
+instruction ([The summary request](compaction.md#the-summary-request)):
 job, stance, inventory, and output. Compaction has the history and must not
 obey it. A child has no history, so the parent must put the continuation facts
 into this argument:
