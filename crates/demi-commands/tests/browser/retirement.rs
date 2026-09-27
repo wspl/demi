@@ -188,6 +188,13 @@ async fn chrome_process_tree_and_profile_retire_together() {
                     .remove(&leader)
                     .expect("the test owns Chrome's profile");
                 assert!(profile.is_dir());
+                // Every user shares `/tmp`: only this one reads the profile.
+                assert_eq!(
+                    std::fs::metadata(&profile).unwrap().permissions().mode() & 0o777,
+                    0o700,
+                    "{}",
+                    profile.display()
+                );
                 // Chrome links its process-singleton socket from the profile.
                 let socket = std::fs::read_link(profile.join("SingletonSocket"))
                     .expect("Chrome links its socket from the profile");
@@ -302,10 +309,98 @@ async fn chrome_process_tree_and_profile_retire_together() {
     }
 }
 
+/// The service's own temporary directory can be long: a Mac's is about 49
+/// characters, and a user can set any. Chrome's profile, with the
+/// process-singleton socket Chrome makes inside it, stays in the short
+/// profile base anyway, so the socket's path keeps within its limit and
+/// Chrome starts (`browser.md` § Native driver). Under this directory of at
+/// least 90 characters the socket's path would take at least 155 bytes, past
+/// Linux's 107. About 5 s: the service's `TMPDIR` differs from this test
+/// process's only when the service runs as a program of its own, which finds
+/// Chrome only where it installs it (1.5 s); starting Chrome and opening a
+/// tab take 2 s, and retiring it 1.5 s.
+#[tokio::test]
+#[ignore = "requires DEMI_TEST_CHROME; starts the service program with a long TMPDIR"]
+async fn chrome_starts_whatever_the_services_temporary_directory() {
+    use demi_command_service::{
+        protocol::{CommandCaller, CommandContext, CommandLocale, Invocation},
+        testing::ServiceProcess,
+    };
+    use serde_json::json;
+    let scratch = tempfile::tempdir().unwrap();
+    let padding = 90usize
+        .saturating_sub(scratch.path().as_os_str().len() + 1)
+        .max(1);
+    let temporary = scratch.path().join("t".repeat(padding));
+    std::fs::create_dir(&temporary).unwrap();
+    // The service installs Chrome under its home and finds it there.
+    let home = tempfile::tempdir().unwrap();
+    crate::families::install_chrome(&home.path().join(".demi/browsers")).await;
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let service = ServiceProcess::start(
+            env!("CARGO_BIN_EXE_demi-commands"),
+            &["--command-service"],
+            &[
+                ("HOME", home.path().to_str().unwrap()),
+                ("TMPDIR", temporary.to_str().unwrap()),
+            ],
+        )
+        .await
+        .unwrap();
+        let invocation = |operation: &str, args| Invocation {
+            operation: operation.into(),
+            invocation_id: uuid::Uuid::new_v4().to_string(),
+            context: CommandContext {
+                conversation: "long-temporary-directory".into(),
+                caller: CommandCaller::agent("agent-root"),
+                locale: CommandLocale {
+                    time_zone: "UTC".into(),
+                    languages: vec!["en-US".into()],
+                },
+            },
+            json: Some(true),
+            edits: None,
+            args,
+            cwd: scratch.path().to_str().unwrap().into(),
+            env: std::collections::BTreeMap::new(),
+        };
+        let (completion, _, stderr) = crate::commands::exchange(
+            service.client(),
+            &invocation("browser.open", json!({"url": "about:blank"})),
+            false,
+        )
+        .await;
+        assert_eq!(
+            completion.exit_code,
+            0,
+            "{}",
+            String::from_utf8_lossy(&stderr)
+        );
+        assert_eq!(
+            chrome_profiles_of(service.id().unwrap()).len(),
+            1,
+            "the service's Chrome keeps its profile in {}",
+            demi_commands::browser::profile_base().display()
+        );
+        let (completion, _, _) =
+            crate::commands::exchange(service.client(), &invocation("release", json!({})), true)
+                .await;
+        assert_eq!(completion.exit_code, 0);
+        assert!(service.shutdown().await.unwrap().success());
+    })
+    .await
+    .unwrap();
+}
 
-/// Locate the test service's browser profiles without exposing diagnostic product APIs.
+/// The profiles of the Chrome processes this test started, by main process.
 fn chrome_profiles() -> std::collections::BTreeMap<i32, PathBuf> {
-    let parent = i32::try_from(std::process::id()).unwrap();
+    chrome_profiles_of(std::process::id())
+}
+
+/// The profiles of the Chrome processes `parent` started, by main process,
+/// read from the profiles' singleton locks rather than asked of the service.
+fn chrome_profiles_of(parent: u32) -> std::collections::BTreeMap<i32, PathBuf> {
+    let parent = i32::try_from(parent).unwrap();
     let children: HashSet<_> = processes()
         .into_iter()
         .filter(|process| process.parent == parent)
@@ -314,7 +409,7 @@ fn chrome_profiles() -> std::collections::BTreeMap<i32, PathBuf> {
     let mut profiles = std::collections::BTreeMap::new();
     // Chrome can replace its Linux argv with a single process-title string.
     // Its singleton lock records the profile owner without parsing that title.
-    for entry in std::fs::read_dir(std::env::temp_dir()).unwrap() {
+    for entry in std::fs::read_dir(demi_commands::browser::profile_base()).unwrap() {
         let path = entry.unwrap().path();
         if !path
             .file_name()
@@ -328,6 +423,8 @@ fn chrome_profiles() -> std::collections::BTreeMap<i32, PathBuf> {
             Ok(lock) => lock,
             // A profile that has not started, or has retired, owns no browser.
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            // Another user's: on Unix every user's profiles share `/tmp`.
+            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => continue,
             Err(error) => panic!("read Chrome profile owner: {error}"),
         };
         let owner: i32 = lock

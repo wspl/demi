@@ -45,7 +45,7 @@ async fn call(
     .await
 }
 
-async fn exchange(
+pub(crate) async fn exchange(
     client: &Client,
     request: &Invocation,
     lifecycle: bool,

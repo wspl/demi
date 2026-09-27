@@ -374,13 +374,22 @@ stops further driver steps and releases held input, without claiming to undo
 side effects that Chrome has already executed.
 
 The browser environment owns its Chrome process tree, event task, and temporary
-profile. On Unix, Chrome launches in a separate process group and inherits a
-private environment marker identifying its profile owner, and the profile is
-also Chrome's temporary directory. Chrome keeps its process-singleton socket
-in a directory of its own there, which only Chrome's own shutdown removes, so
-removing the profile removes it after a crash or a kill too. On Linux the
-socket's path must stay under 108 bytes, which holds while the service's
-temporary directory is at most 42 characters long, as `/tmp` is. Helpers such as
+profile. A profile is a new directory that only its user can read, in `/tmp` on
+Unix and in the system's temporary directory on Windows. On Unix, Chrome
+launches in a separate process group and inherits a private environment marker
+identifying its profile owner, and the profile is also Chrome's temporary
+directory: Linux Chrome takes it from `TMPDIR`, and macOS Chrome from
+`MAC_CHROMIUM_TMPDIR`, which it reads before asking the system for one. Chrome
+keeps its process-singleton socket, through which a second start of the same
+profile would reach the running browser, in a directory of its own there, such
+as `/tmp/demi-browser-a1B2c3/org.chromium.Chromium.d4E5f6/SingletonSocket` on
+Linux. Only Chrome's own shutdown removes that directory, so removing the profile
+removes it after a crash or a kill too. The socket's path has a length limit:
+under 108 bytes on Linux and at most 253 on macOS, and a longer one stops
+Chrome as it starts. That is why profiles live in the short, fixed `/tmp`
+rather than in the service's own temporary directory, which the user can set
+to any length (a Mac's is about 49 characters): in `/tmp` the path stays under
+80 bytes. Helpers such as
 Crashpad can detach into another session; retirement tracks these by that marker
 as well as the group. The marker is read only from processes whose executable
 lies inside the Chrome for Testing installation, so retirement never reads the
@@ -407,8 +416,9 @@ runner's shutdown deadline, cannot retire them, and two rules cover that case:
   that started Chrome, so Chrome is started from a thread that lives as long
   as the service. Helpers that detached from Chrome's process group can still
   survive it.
-- At start, on every platform, the service sweeps orphans. A profile whose
-  lock it can take belongs to no running service: the sweep keeps the lock,
+- At start, on every platform, the service sweeps orphans from the directory
+  where profiles live. A profile whose lock it can take belongs to no running
+  service: the sweep keeps the lock,
   terminates the marked Chrome processes of that profile with the path
   retirement uses, and removes the profile. A profile whose lock is held
   belongs to another running service and is never touched; during an upgrade,

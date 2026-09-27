@@ -1,8 +1,8 @@
 //! The tests of `demi-commands`, in one binary: the built executable serving
 //! the builtin operations, conversation release, and the browser. Most browser
 //! tests start the pinned Chrome for Testing and are ignored unless asked for.
-//! They check the whole process table and the temporary directory, so they
-//! run one at a time:
+//! They check the whole process table and the directory of browser profiles,
+//! so they run one at a time:
 //! `DEMI_TEST_CHROME=<chrome> cargo test --workspace --features
 //! demi-runner/test-fixtures,demi-commands/testing --test browser --
 //! --include-ignored --test-threads=1`.
