@@ -205,8 +205,8 @@ opens, a live view when its first `state` arrives. Meanwhile the page keeps
 the channel's copy as it was, and a conversation shows that it is connecting.
 A conversation socket that is lost before the session answered `open`, as
 when the backend restarts while the conversation opens, follows the same
-rule: only a session that answers `open` with a refusal, an `error` or a
-`rejected`, shows the conversation as failed.
+rule; a session that refuses to open, answering `open` with an `error` or a
+`rejected`, shows the conversation as failed instead.
 
 A page that comes back does not wait. Its timers stop while its computer
 sleeps, so the 75-second watch counts only the time the page was awake, and a
