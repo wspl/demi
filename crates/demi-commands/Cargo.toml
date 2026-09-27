@@ -53,5 +53,6 @@ sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 
 [dev-dependencies]
 axum = "0.8"
+demi-artifact = { path = "../artifact", features = ["testing"] }
 demi-command-service = { path = "../command-service", features = ["testing"] }
 uuid = { version = "1", features = ["v4"] }

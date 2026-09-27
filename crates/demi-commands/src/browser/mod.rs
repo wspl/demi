@@ -40,5 +40,6 @@ mod webmcp;
 
 pub(crate) use conversations::Conversations;
 pub use environment::{BrowserEnvironment, LaunchOptions, sweep_orphans, with_browser};
+pub use installation::{BrowserDirectories, pinned_archive};
 pub use operation::{BrowserError, Result};
 pub use tab::BrowserTab;

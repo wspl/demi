@@ -7,7 +7,7 @@ use demi_command_service::{
     Handler, Input, InvocationContext, Output, ServiceError,
     protocol::{CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Record},
 };
-use demi_commands::DemiCommands;
+use demi_commands::{DemiCommands, browser::BrowserDirectories};
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
@@ -20,6 +20,8 @@ pub type Invoked = (
 #[derive(Clone)]
 pub struct BrowserFixture {
     service: Arc<DemiCommands>,
+    /// The browser directory the service finds Chrome in, until it ends.
+    _chrome: Arc<tempfile::TempDir>,
     pub root: Arc<tempfile::TempDir>,
     pub conversation: String,
     pub env: BTreeMap<String, String>,
@@ -204,13 +206,38 @@ impl BrowserFixture {
     }
 }
 
+/// A browser directory holding the pinned Chrome for Testing that
+/// `DEMI_TEST_CHROME` names, installed there as the service installs a
+/// release, so that the service finds it: no test downloads Chrome or
+/// writes into the home.
+pub async fn installed_chrome() -> (tempfile::TempDir, BrowserDirectories) {
+    let executable =
+        std::path::PathBuf::from(std::env::var_os("DEMI_TEST_CHROME").expect("DEMI_TEST_CHROME"));
+    let directory = tempfile::tempdir().unwrap();
+    demi_artifact::testing::install_unpacked(
+        directory.path(),
+        &demi_commands::browser::pinned_archive().unwrap(),
+        &executable,
+        &CancellationToken::new(),
+    )
+    .await
+    .expect("DEMI_TEST_CHROME names a readable installation of the pinned release");
+    let directories = BrowserDirectories {
+        image: None,
+        install: Some(directory.path().to_owned()),
+    };
+    (directory, directories)
+}
+
 pub async fn with_browser_fixture<F, W>(exercise: F)
 where
     F: FnOnce(BrowserFixture) -> W,
     W: Future<Output = BrowserFixture>,
 {
+    let (chrome, directories) = installed_chrome().await;
     let fixture = BrowserFixture {
-        service: Arc::new(DemiCommands::default()),
+        service: Arc::new(DemiCommands::new(directories)),
+        _chrome: Arc::new(chrome),
         root: Arc::new(tempfile::tempdir().unwrap()),
         caller: "browser-family-test".into(),
         conversation: uuid::Uuid::new_v4().to_string(),

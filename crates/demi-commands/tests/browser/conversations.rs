@@ -5,13 +5,16 @@ use demi_command_service::{
         CommandCaller, CommandContext, CommandLocale, ConversationRequest, Invocation, Record,
     },
 };
-use demi_commands::DemiCommands;
+use demi_commands::{DemiCommands, browser::BrowserDirectories};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
 #[tokio::test]
 async fn release_cancels_a_browser_command_blocked_on_output() {
-    let service = DemiCommands::default();
+    let service = DemiCommands::new(BrowserDirectories {
+        image: None,
+        install: None,
+    });
     let cancel = CancellationToken::new();
     let (output, mut records) = Output::channel(cancel.clone());
     for _ in 0..4 {

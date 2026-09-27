@@ -320,7 +320,11 @@ next to the wire's types, so that a command program depends on one crate.
   atomic write goes through it: the runner's artifact cache, the Chrome and
   Claude Code installers, the machine manager's image store and `xtask`
   release packaging.
-- **Public boundary:** the functions and types above.
+- **Public boundary:** the functions and types above. Its `testing` feature
+  adds a fixture HTTP server on `127.0.0.1` that downloads can reach, the count
+  of waits for install locks, and `install_unpacked`, which installs a release
+  a test was given unpacked, such as the Chrome suite's `DEMI_TEST_CHROME`, as
+  archive installation installs a download.
 - **Must not:** choose what to install or read release pointers: its callers
   name the location, size and digest they expect.
 

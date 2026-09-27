@@ -294,10 +294,17 @@ starts another crate's program, build the selection with
 `cargo build --workspace --all-targets --features demi-runner/test-fixtures`.
 The TypeScript tests take the programs from `DEMI_TEST_PROGRAMS`, which
 `bun run test` sets to that directory. An ordinary test run starts no Chrome;
-release acceptance runs the Chrome tests. Besides the executable, the Chrome
-tests need `ffmpeg` on `PATH`, with which two live view tests decode the H.264
-pictures the view streams, and on Linux an ordinary user: Chrome for Testing
-refuses to start as root with its sandbox, which Demi keeps
+release acceptance runs the Chrome tests. `DEMI_TEST_CHROME` names the
+executable of an installation of the pinned release that the user running the
+tests can read in full, such as the one Demi installs under `~/.demi/browsers`.
+The tests that go through the browser service install that release into a
+temporary directory of their own, as the service installs a download, with
+hard links where the system allows them, and give the service that directory
+([Browser distribution](../browser/browser.md#browser-distribution)): no test
+downloads Chrome or needs the home. Besides the executable, the
+Chrome tests need `ffmpeg` on `PATH`, with which two live view tests decode
+the H.264 pictures the view streams, and on Linux an ordinary user: Chrome for
+Testing refuses to start as root with its sandbox, which Demi keeps
 ([Native driver](../browser/browser.md#native-driver)). The machine manager builds only for Linux, so
 on a Mac its tests are cross-built with cargo-zigbuild and run in the Lima VM
 ([Verification](../cloud/managed-hosts.md#verification)). The tests that need

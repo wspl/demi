@@ -32,7 +32,10 @@ pub use reqwest::Client;
 pub mod testing {
     //! Test support: a fixture HTTP server on `127.0.0.1` and the zip
     //! archives it serves, which [`crate::client_allowing_http`] downloads
-    //! from, and the count of the process's waits for install locks.
+    //! from, the count of the process's waits for install locks, and the
+    //! installation of a release a test was given unpacked.
+
+    pub use crate::archive::install_unpacked;
 
     use std::{
         collections::HashMap,
