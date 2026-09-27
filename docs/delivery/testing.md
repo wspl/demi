@@ -104,8 +104,9 @@ backend's scenario suites in [Scenarios](scenarios.md).
 - No automated test calls a real model. Tests use scripted providers and
   fixtures, so a run costs nothing and answers the same way every time. Suites
   that need a real machine manager, Chrome or a vendor's CLI run only when
-  environment variables supply those resources; of them the Chrome suite and
-  the Cloud suite exist, and release acceptance checks the rest by hand
+  environment variables supply those resources; of them the Chrome, Cloud and
+  Claude Code suites exist, and release acceptance checks by hand what they
+  leave out
   ([Real machine acceptance](scenarios.md#real-machine-acceptance)).
 - Each crate has one integration test binary
   ([Module layout](../architecture/crates-and-packages.md#module-layout)); a

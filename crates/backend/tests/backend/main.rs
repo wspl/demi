@@ -19,6 +19,7 @@ mod auth;
 mod blobs;
 mod browser;
 mod claude;
+mod claude_code;
 mod cloud;
 mod conversations;
 mod edge;

@@ -287,6 +287,7 @@ its own copy of every shared dependency.
 | `cargo check --workspace --all-targets --features demi-runner/test-fixtures` | The type check of every crate, test and example |
 | `cargo test --workspace --features demi-runner/test-fixtures` | The Rust tests, the crate boundary check among them ([Boundary checks](../architecture/crates-and-packages.md#boundary-checks)); `--test <name>` runs one test target |
 | `DEMI_TEST_CHROME=<chrome> cargo test --workspace --features demi-runner/test-fixtures,demi-commands/testing --test browser -- --include-ignored --test-threads=1` | The tests that start Chrome, one at a time, with the executable of the pinned Chrome for Testing release; the selection adds the page-driving helpers of `demi-commands` |
+| `DEMI_TEST_CLAUDE_CODE=<claude> SSL_CERT_FILE=$PWD/crates/backend/tests/backend/claude_code/distribution-ca.pem cargo test --workspace --features demi-runner/test-fixtures --test backend -- --ignored claude_code` | The Claude Code suite, with the executable of the vendor's CLI and the CA of the suite's local distribution |
 | `bun run test` | The TypeScript tests, the package boundary check among them ([Boundary checks](../architecture/crates-and-packages.md#boundary-checks)), and the test of the capture extension's JavaScript, which sits beside the extension in `demi-commands`; it first builds the programs the tests start, with the same selection |
 | `sudo bash crates/machines/scripts/cloud-suite.sh --image <release> --native <configuration> --work <directory>` | The Cloud suite on Linux, as root, against a machine manager with its resource limits off that the script starts in a stand-in execution host; against an installed manager, the suite's variables and its `cargo test` command instead ([Cloud suite](scenarios.md#cloud-suite)) |
 
@@ -326,6 +327,17 @@ cargo zigbuild --tests --target aarch64-unknown-linux-musl \
 limactl shell demi-machines -- <test executable>
 limactl shell demi-machines -- sudo <test executable> --include-ignored
 ```
+
+The Claude Code suite runs as an ordinary user, as the Cloud's runner does:
+the CLI refuses the provider's permission mode as root. Its local
+distribution serves HTTPS, since `demi.claude` downloads nothing else, and
+`SSL_CERT_FILE` names the CA the suite carries for it, for the test process and
+the runners it starts only. The backend in the test process and the Cloud's
+`demi.claude` trust that CA because the one selection builds reqwest with the
+machine's roots, which the variable replaces; a selection without them fails
+the suite's install with an unknown issuer. The CA's key was discarded, and
+its certificate and the distribution's expire on 2126-09-03.
+
 [Scenarios](scenarios.md) defines the suites that run the whole backend.
 
 Release acceptance also checks the artifacts and installers on each platform:
