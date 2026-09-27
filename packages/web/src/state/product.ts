@@ -1,17 +1,98 @@
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
-import { SerialQueue } from '@demicodes/utils'
-import { apiRequest, readResponse } from '../api/client'
+import { apiRequest, apiUrl, notifySessionEnded, readResponse } from '../api/client'
 import {
   modelCatalogSchema,
-  productStateSchema,
+  syncEventSchema,
   vendorCatalogSchema,
   type CatalogProvider,
+  type ConversationSummary,
   type ProductState,
+  type SyncEvent,
   type VendorCatalog,
 } from '../api/generated/web-api'
 
-/** One account snapshot; REST polling never replaces agent transcript state. */
+/** The first wait before a closed channel connects again; each later one doubles, up to the longest. */
+const FIRST_RETRY_MS = 1_000
+const LONGEST_RETRY_MS = 30_000
+/** Two and a half of the backend's 30-second heartbeats: a channel silent this long is broken. */
+const WATCHDOG_MS = 75_000
+/** The close code of a channel whose session ended (`web-api.md` § Page synchronization). */
+const SESSION_ENDED = 4002
+
+/** A message that carries one part of the product state, as a write's answer can. */
+export type PartEvent = Exclude<SyncEvent, { type: 'snapshot' | 'heartbeat' }>
+
+/** A part of the product state, which a message or a write's answer replaces whole. */
+type Part = `conversation:${string}` | Exclude<PartEvent['type'], 'conversation'>
+
+function partOf(event: PartEvent): Part {
+  return event.type === 'conversation' ? `conversation:${event.conversation.id}` : event.type
+}
+
+/** The conversations with `summary` in its place, or, new, at the front of the active or the end of the archived ones. */
+function withSummary(conversations: ConversationSummary[], summary: ConversationSummary): ConversationSummary[] {
+  const index = conversations.findIndex((conversation) => conversation.id === summary.id)
+  if (index >= 0) {
+    return conversations.toSpliced(index, 1, summary)
+  }
+  return summary.archived ? [...conversations, summary] : [summary, ...conversations]
+}
+
+/**
+ * The conversations in the order `ids` gives. One the order does not name
+ * yet was created after the order was read and keeps the front; its own
+ * order comes next.
+ */
+function inOrder(conversations: ConversationSummary[], ids: string[]): ConversationSummary[] {
+  const place = new Map(ids.map((id, index) => [id, index]))
+  const unplaced = conversations.filter((conversation) => !place.has(conversation.id))
+  const placed = conversations
+    .filter((conversation) => place.has(conversation.id))
+    .sort((a, b) => place.get(a.id)! - place.get(b.id)!)
+  return [...unplaced, ...placed]
+}
+
+/** `state` with the part `event` carries replaced. */
+function withPart(state: ProductState, event: PartEvent): ProductState {
+  switch (event.type) {
+    case 'conversation':
+      return { ...state, conversations: withSummary(state.conversations, event.conversation) }
+    case 'conversation_order':
+      return { ...state, conversations: inOrder(state.conversations, event.ids) }
+    case 'preferences':
+      return { ...state, preferences: event.preferences }
+    case 'user':
+      return { ...state, user: event.user }
+    case 'workspaces':
+      return { ...state, workspaces: event.workspaces }
+    case 'devices':
+      return { ...state, devices: event.devices }
+    case 'exposes':
+      return { ...state, exposes: event.exposes }
+    case 'providers':
+      return { ...state, providers: event.providers }
+    case 'cloud':
+      return { ...state, cloud: event.cloud }
+  }
+}
+
+function parse(data: unknown): unknown {
+  try {
+    return JSON.parse(String(data))
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The product state this page shows around its conversations
+ * (`web-application.md` § Page synchronization): the one module that follows
+ * it, through the synchronization channel. The channel's snapshot is the
+ * whole copy, and each later message replaces one part of it; each state of
+ * the page follows the copy by its own rule. Nothing asks for this state on
+ * a timer or after a write: a write's answer goes through `answered`.
+ */
 export const useProduct = defineStore('product', () => {
   const snapshot = ref<ProductState | null>(null)
   const load = ref<'loading' | 'ready' | 'failed'>('loading')
@@ -31,65 +112,194 @@ export const useProduct = defineStore('product', () => {
   })))
   const catalog = computed(() => modelSnapshot.value?.key === catalogKey.value
     ? modelSnapshot.value.providers : [])
-  const reads = new SerialQueue()
   let modelRequest: { key: string; promise: Promise<void>; controller: AbortController } | null = null
   let vendorRequest: Promise<void> | null = null
+  /** Set while the page is signed in and follows the state. */
   let controller: AbortController | null = null
-  let timer: ReturnType<typeof setTimeout> | null = null
-  let etag: string | null = null
+  let socket: WebSocket | null = null
+  let retryTimer: ReturnType<typeof setTimeout> | null = null
+  let watchdog: ReturnType<typeof setTimeout> | null = null
+  /** Consecutive connections that ended before their snapshot. */
+  let failures = 0
+  /** Messages received, which numbers them. */
+  let received = 0
+  /** The number of the last snapshot, and of each part's last value. */
+  let snapshotAt = 0
+  const partAt = new Map<Part, number>()
 
-  function clearTimer(): void {
-    if (timer !== null) {
-      clearTimeout(timer)
+  function clearRetry(): void {
+    if (retryTimer !== null) {
+      clearTimeout(retryTimer)
     }
-    timer = null
+    retryTimer = null
   }
 
-  async function refresh(): Promise<void> {
-    const current = controller
-    if (!current) {
+  function clearWatchdog(): void {
+    if (watchdog !== null) {
+      clearTimeout(watchdog)
+    }
+    watchdog = null
+  }
+
+  /** Forgets the open channel, which then closes without telling this module. */
+  function dropChannel(): WebSocket | null {
+    const channel = socket
+    socket = null
+    clearWatchdog()
+    return channel
+  }
+
+  /** Takes a channel that brings nothing for too long as broken, and replaces it. */
+  function armWatchdog(channel: WebSocket): void {
+    clearWatchdog()
+    watchdog = setTimeout(() => {
+      if (socket === channel) {
+        replace()
+      }
+    }, WATCHDOG_MS)
+  }
+
+  /** Closes the channel and connects again after the wait. */
+  function replace(): void {
+    dropChannel()?.close()
+    failures += 1
+    scheduleRetry()
+  }
+
+  /** Connects again after a wait that doubles with each failure, shortened by a random part. */
+  function scheduleRetry(): void {
+    if (!controller) {
       return
     }
-    if (!snapshot.value) {
-      load.value = 'loading'
+    clearRetry()
+    const longest = Math.min(FIRST_RETRY_MS * 2 ** (failures - 1), LONGEST_RETRY_MS)
+    retryTimer = setTimeout(connect, longest * (1 - Math.random() / 2))
+  }
+
+  function connect(): void {
+    if (!controller || socket) {
+      return
     }
-    try {
-      await reads.run(async () => {
-        current.signal.throwIfAborted()
-        const response = await apiRequest('/state', {
-          signal: current.signal,
-          headers: etag ? { 'If-None-Match': etag } : {},
-          allowNotModified: true,
-        })
-        if (response.status !== 304) {
-          const next = await readResponse(response, productStateSchema)
-          current.signal.throwIfAborted()
-          snapshot.value = next
-          etag = response.headers.get('ETag')
-        }
-        load.value = 'ready'
-      })
-    } catch (cause) {
-      // A refresh that fails while a snapshot is on screen is not told: the
-      // snapshot stays, the next poll tries again, and a lost connection is
-      // the session's to reconnect. Only the first load has nothing to keep.
-      if (controller === current && !current.signal.aborted && !snapshot.value) {
+    clearRetry()
+    const url = new URL(apiUrl('/sync'), window.location.href)
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+    const channel = new WebSocket(url)
+    socket = channel
+    let opened = false
+    channel.onopen = () => {
+      opened = true
+      armWatchdog(channel)
+    }
+    channel.onmessage = (message) => {
+      if (socket !== channel) {
+        return
+      }
+      armWatchdog(channel)
+      const parsed = syncEventSchema.safeParse(parse(message.data))
+      if (!parsed.success) {
+        // A message outside the contract changes nothing; a new connection
+        // starts again from a snapshot.
+        replace()
+        return
+      }
+      receive(parsed.data)
+    }
+    channel.onclose = (close) => {
+      if (socket !== channel) {
+        return
+      }
+      dropChannel()
+      if (close.code === SESSION_ENDED) {
+        notifySessionEnded()
+        return
+      }
+      if (!snapshot.value) {
         load.value = 'failed'
       }
-      throw cause
+      // The browser does not say why an upgrade failed: an ended session
+      // answers this with 401, which ends it on the page as any 401 does.
+      if (!opened && controller) {
+        void apiRequest('/auth/me', { signal: controller.signal }).catch(() => {})
+      }
+      failures += 1
+      scheduleRetry()
     }
   }
 
-  async function revalidate(refreshModels = false): Promise<void> {
-    if (refreshModels)
-      clearModels()
-    try {
-      await refresh()
-      await loadModels(refreshModels)
-    } catch {
-      // A failed refresh keeps the snapshot; a model catalog failure is the
-      // composer's state.
+  function receive(event: SyncEvent): void {
+    received += 1
+    if (event.type === 'heartbeat') {
+      return
     }
+    if (event.type === 'snapshot') {
+      snapshotAt = received
+      failures = 0
+      snapshot.value = event.state
+      load.value = 'ready'
+      // Model discovery never holds the page; it records its own failure.
+      void loadModels().catch(() => {})
+      return
+    }
+    partAt.set(partOf(event), received)
+    if (snapshot.value) {
+      snapshot.value = withPart(snapshot.value, event)
+    }
+    if (event.type === 'providers') {
+      void loadModels().catch(() => {})
+    }
+  }
+
+  /** Where the channel stands as a write is sent, which its answer is measured against. */
+  function sent(): number {
+    return received
+  }
+
+  /**
+   * Applies the part a write's answer carries, as the write left it, unless
+   * the channel brought a value of that part since the write was sent `at`:
+   * that value may be newer, and if it is older, the value the write caused
+   * is still to come on the channel. Answers whether it applied.
+   */
+  function answered(at: number, event: PartEvent): boolean {
+    if (!snapshot.value || Math.max(snapshotAt, partAt.get(partOf(event)) ?? 0) > at) {
+      return false
+    }
+    snapshot.value = withPart(snapshot.value, event)
+    return true
+  }
+
+  /**
+   * Resolves once the copy holds what `check` looks for, such as an entry a
+   * write just made, which the channel brings moments after it commits;
+   * rejects when `signal` aborts first.
+   */
+  function until(check: (state: ProductState) => boolean, signal: AbortSignal): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (signal.aborted) {
+        reject(signal.reason)
+        return
+      }
+      let stop: (() => void) | null = null
+      const aborted = () => {
+        stop?.()
+        reject(signal.reason)
+      }
+      const found = () => {
+        stop?.()
+        signal.removeEventListener('abort', aborted)
+        resolve()
+      }
+      if (snapshot.value && check(snapshot.value)) {
+        found()
+        return
+      }
+      stop = watch(snapshot, (state) => {
+        if (state && check(state)) {
+          found()
+        }
+      })
+      signal.addEventListener('abort', aborted, { once: true })
+    })
   }
 
   function clearModels(): void {
@@ -142,6 +352,16 @@ export const useProduct = defineStore('product', () => {
     }
   }
 
+  /**
+   * Loads the catalog again, asking the backend to refresh it, as a change
+   * of an entry's configuration or account does (`models.md` § Catalog
+   * cache); the catalog records a failure itself.
+   */
+  async function reloadModels(): Promise<void> {
+    clearModels()
+    await loadModels(true).catch(() => {})
+  }
+
   async function loadVendors(): Promise<void> {
     const current = controller
     if (!current || vendors.value !== null) {
@@ -177,39 +397,38 @@ export const useProduct = defineStore('product', () => {
     }
   }
 
-  async function poll(): Promise<void> {
-    const current = controller
-    if (!current) {
-      return
-    }
-    try {
-      await refresh()
-      // Model discovery must not hold initial app or conversation restoration.
-      // loadModels records its own failure and keeps the last usable snapshot.
-      void loadModels().catch(() => {})
-    } catch {
-      // refresh records its own failure.
-    } finally {
-      if (controller === current && !current.signal.aborted) {
-        clearTimer()
-        timer = setTimeout(() => void poll(), 3000)
-      }
-    }
-  }
-
-  async function start(): Promise<void> {
+  /** Follows the state from now on, until `stop`. */
+  function start(): void {
     if (controller) {
       return
     }
     controller = new AbortController()
-    await poll()
+    connect()
+  }
+
+  /**
+   * Connects at once when the channel is not open: a page that becomes
+   * visible or comes back online does, and so does a retry.
+   */
+  function reconnect(): void {
+    if (!controller || socket) {
+      return
+    }
+    if (!snapshot.value) {
+      load.value = 'loading'
+    }
+    connect()
   }
 
   function stop(): void {
     controller?.abort()
     controller = null
-    clearTimer()
-    etag = null
+    clearRetry()
+    dropChannel()?.close()
+    failures = 0
+    received = 0
+    snapshotAt = 0
+    partAt.clear()
     snapshot.value = null
     clearModels()
     vendors.value = null
@@ -227,11 +446,14 @@ export const useProduct = defineStore('product', () => {
     vendorLoad,
     catalogLoad,
     activeConversationId,
-    refresh,
-    revalidate,
+    sent,
+    answered,
+    until,
     loadModels,
+    reloadModels,
     loadVendors,
     start,
+    reconnect,
     stop,
   }
 })

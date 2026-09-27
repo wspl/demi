@@ -80,6 +80,7 @@ async function rename(nickname: string): Promise<void> {
   nameSaving.value = true
   nameDraft.value = nickname
   try {
+    const sentAt = product.sent()
     const response = await apiRequest('/auth/me', {
       method: 'PATCH',
       signal: lifetime.signal,
@@ -91,12 +92,9 @@ async function rename(nickname: string): Promise<void> {
       status: 'signedIn',
       user,
     }
-    if (product.snapshot) {
-      product.snapshot.user = user
-    }
+    product.answered(sentAt, { type: 'user', user })
     nameDraft.value = null
     nameSaving.value = false
-    await product.revalidate()
   } catch (error) {
     // The field keeps the draft; the toast says why it was not saved.
     nameSaving.value = false
@@ -202,6 +200,7 @@ async function verifyEmail(code: string): Promise<void> {
     error: undefined,
   }
   try {
+    const sentAt = product.sent()
     const response = await apiRequest('/auth/email/confirm', {
       method: 'POST',
       ...jsonBody({
@@ -216,16 +215,13 @@ async function verifyEmail(code: string): Promise<void> {
       status: 'signedIn',
       user,
     }
-    if (product.snapshot) {
-      product.snapshot.user = user
-    }
+    product.answered(sentAt, { type: 'user', user })
     emailDraft.value = { email: '', password: '', code: '' }
     challengeId = null
     emailPhase.value = {
       kind: 'done',
       email: user.email,
     }
-    await product.revalidate()
   } catch (error) {
     if (!controller.signal.aborted) {
       if (!emailOpen.value) {

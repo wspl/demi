@@ -1,7 +1,7 @@
 import { apiRequest, readResponse } from './client'
 import { exposeAnswerSchema } from './generated/web-api'
 
-/** The list comes from the `GET /api/state` snapshot; only writes go through these. */
+/** The list comes with the product state's channel; only writes go through these. */
 
 /** Moves the expose's expiry to one hour from now (`POST /exposes/:id/renew`). */
 export async function renewExpose(
