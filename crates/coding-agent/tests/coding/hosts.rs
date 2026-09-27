@@ -46,7 +46,9 @@ async fn a_node_keeps_each_hosts_shell_and_a_handle_answers_only_on_its_host() {
         let reader = frames
             .iter()
             .find_map(|frame| match frame {
-                ServerFrame::ShellOutput { status } => Some(status.command().command_id.clone()),
+                ServerFrame::ShellOutput { status, .. } => {
+                    Some(status.command().command_id.clone())
+                }
                 _ => None,
             })
             .unwrap();
@@ -69,15 +71,16 @@ async fn a_node_keeps_each_hosts_shell_and_a_handle_answers_only_on_its_host() {
                 stdin: "right\n".into(),
             })
             .await;
-        let answer = client.received();
+        let answer = client
+            .next_until(|frame| {
+                matches!(
+                    frame,
+                    ServerFrame::ShellWriteResult { .. } | ServerFrame::Error { .. }
+                )
+            })
+            .await;
         assert!(
-            matches!(
-                &answer[..],
-                [
-                    ServerFrame::ShellOutput { .. },
-                    ServerFrame::ShellWriteResult { .. }
-                ]
-            ),
+            matches!(answer.last(), Some(ServerFrame::ShellWriteResult { .. })),
             "{answer:?}"
         );
         fixture.stop().await;

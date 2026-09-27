@@ -2,8 +2,10 @@
 //! tree, `subagents.md`): its root and every live child, the connections
 //! attached to it, the frames its sessions' events become, and its eviction
 //! once it has stayed detached and quiescent. The supervisor operations on
-//! its children are in [`supervisor`].
+//! its children are in [`supervisor`], and its commands' live output in
+//! [`live`].
 
+mod live;
 mod supervisor;
 
 use std::{
@@ -15,15 +17,18 @@ use std::{
 };
 
 use demi_agent_protocol::{ModelSwitchApply, ServerFrame};
-use demi_core::{Clock, ModelSelection, NodeId};
+use demi_core::{Clock, CommandId, ModelSelection, NodeId};
 use demi_gates::{ActivityGate, KeyedSerialGate, Reservation};
-use demi_shell::{CommandStatus, RegisterError};
+use demi_shell::RegisterError;
 use futures_util::future::join_all;
 use tokio::sync::watch;
 use tokio_util::task::{AbortOnDropHandle, TaskTracker};
 
 pub(crate) use self::supervisor::{AgentSnapshot, StartInput, TreeEntry};
-use self::supervisor::{Child, INHERIT_PROFILE};
+use self::{
+    live::LiveOutput,
+    supervisor::{Child, INHERIT_PROFILE},
+};
 use super::{AgentServer, ResolveError, commands, connection::Outbox};
 use crate::{
     AgentHarness, IdSource, Node, Profile,
@@ -65,16 +70,23 @@ pub struct Tree<H: AgentHarness> {
     ids: Rc<dyn IdSource>,
     disposing: Cell<bool>,
     sink: Rc<FrameSink>,
+    /// The commands whose new output waits for the pages.
+    live: Rc<LiveOutput>,
     /// The root session's events as frames, until the tree is dropped.
     _frames: Subscription,
     /// Disposes the tree once it has stayed detached and quiescent.
     _eviction: AbortOnDropHandle<()>,
+    /// Sends the commands' new output to the attached connections.
+    _live: AbortOnDropHandle<()>,
 }
 
 /// Where a tree's frames go: the outbox of every attached connection. The
 /// turns of a tree with none keep running; their events go nowhere.
 pub(crate) struct FrameSink {
     attachments: watch::Sender<Vec<Attachment>>,
+    /// Whether any connection is attached, which the nodes' jobs follow
+    /// (`runtime.md` § Live output).
+    attached: watch::Sender<bool>,
 }
 
 #[derive(Clone)]
@@ -87,6 +99,7 @@ impl FrameSink {
     fn new() -> Self {
         Self {
             attachments: watch::Sender::new(Vec::new()),
+            attached: watch::Sender::new(false),
         }
     }
 
@@ -104,8 +117,9 @@ impl FrameSink {
         if refused.is_empty() {
             return;
         }
-        self.attachments.send_modify(|attachments| {
+        self.change(|attachments| {
             attachments.retain(|attachment| !refused.contains(&attachment.connection));
+            true
         });
     }
 
@@ -116,14 +130,26 @@ impl FrameSink {
             .any(|attachment| attachment.connection == connection)
     }
 
+    /// Whether any connection is attached.
+    pub(crate) fn attached(&self) -> bool {
+        *self.attached.borrow()
+    }
+
+    /// Whether any connection is attached, now and at each change.
+    pub(crate) fn watch_attached(&self) -> watch::Receiver<bool> {
+        self.attached.subscribe()
+    }
+
     /// Attaches a connection beside the others.
     fn attach(&self, attachment: Attachment) {
-        self.attachments
-            .send_modify(|attachments| attachments.push(attachment));
+        self.change(|attachments| {
+            attachments.push(attachment);
+            true
+        });
     }
 
     pub(crate) fn detach(&self, connection: u64) {
-        self.attachments.send_if_modified(|attachments| {
+        self.change(|attachments| {
             let before = attachments.len();
             attachments.retain(|attachment| attachment.connection != connection);
             attachments.len() != before
@@ -132,11 +158,26 @@ impl FrameSink {
 
     /// Detaches every connection, each with `closed`.
     fn close_all(&self) {
-        for attachment in self.attachments.send_replace(Vec::new()) {
+        let mut detached = Vec::new();
+        self.change(|attachments| {
+            detached = std::mem::take(attachments);
+            !detached.is_empty()
+        });
+        for attachment in detached {
             // A connection that lagged or lost its socket is detached
             // either way; its `closed` goes nowhere.
             attachment.outbox.push(ServerFrame::Closed);
         }
+    }
+
+    /// Changes the attachments with `modify`, which says whether it changed
+    /// them, and whether any is attached with them.
+    fn change(&self, modify: impl FnOnce(&mut Vec<Attachment>) -> bool) {
+        if !self.attachments.send_if_modified(modify) {
+            return;
+        }
+        let attached = !self.attachments.borrow().is_empty();
+        self.attached.send_if_modified(|current| std::mem::replace(current, attached) != attached);
     }
 }
 
@@ -185,10 +226,7 @@ impl<H: AgentHarness> Tree<H> {
         let admission = ActivityGate::new();
         let runtime = deps.providers.runtime(root, &model).await?;
         let sink = Rc::new(FrameSink::new());
-        let shell_output: Rc<dyn Fn(&CommandStatus)> = {
-            let sink = sink.clone();
-            Rc::new(move |status| sink.emit(tools::shell_output(status)))
-        };
+        let live = LiveOutput::new(sink.clone());
         let assembled = node::assemble(NodeSpec {
             record: NodeRecord::root(root.clone(), deps.clock.now()),
             role: NodeRole::Root,
@@ -204,7 +242,7 @@ impl<H: AgentHarness> Tree<H> {
             first_message: None,
             store: store.clone(),
             shells: deps.shells.clone(),
-            shell_output: Some(shell_output),
+            feed: live.feed(None),
             admission: admission.clone(),
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),
@@ -238,6 +276,7 @@ impl<H: AgentHarness> Tree<H> {
                 session.status_watch(),
                 changes.subscribe(),
             ));
+            let sending = tokio::task::spawn_local(live::send_changes(live.clone()));
             Self {
                 server: Rc::downgrade(server),
                 root: Rc::new(assembled.node),
@@ -254,8 +293,10 @@ impl<H: AgentHarness> Tree<H> {
                 ids: deps.ids.clone(),
                 disposing: Cell::new(false),
                 sink,
+                live,
                 _frames: frames,
                 _eviction: AbortOnDropHandle::new(eviction),
+                _live: AbortOnDropHandle::new(sending),
             }
         });
         server.trees.borrow_mut().insert(root.clone(), tree.clone());
@@ -308,7 +349,20 @@ impl<H: AgentHarness> Tree<H> {
 
     /// Whether any connection is attached.
     pub fn is_attached(&self) -> bool {
-        !self.sink.attachments.borrow().is_empty()
+        self.sink.attached()
+    }
+
+    /// The node whose shells hold `command`: the root or a live child; the
+    /// root when none does, whose shells then refuse the handle.
+    pub(crate) fn shells_of(&self, command: &CommandId) -> Rc<Node<H>> {
+        if self.root.holds(command) {
+            return self.root.clone();
+        }
+        self.children
+            .borrow()
+            .values()
+            .find(|child| child.node().holds(command))
+            .map_or_else(|| self.root.clone(), |child| child.node().clone())
     }
 
     pub(crate) fn sink(&self) -> &FrameSink {
@@ -325,9 +379,9 @@ impl<H: AgentHarness> Tree<H> {
 
     /// Attaches a connection beside the others and sends it the open
     /// handshake in one step, so nothing happens to the tree between
-    /// `opened` and the last child's transcript: the root's snapshot frames,
-    /// then each live child's `started` and transcript, depth first in spawn
-    /// order, then the root's live commands.
+    /// `opened` and the last live command: the root's snapshot frames, then
+    /// each live child's `started` and transcript, depth first in spawn
+    /// order, then the view of each live command of the tree.
     pub(crate) fn attach(&self, connection: u64, outbox: Rc<Outbox>) {
         self.sink.attach(Attachment {
             connection,
@@ -352,17 +406,20 @@ impl<H: AgentHarness> Tree<H> {
                 pending_steers: session.pending_steers(),
             },
         ];
-        let live_shells = self.root.live_shells();
-        for frame in root.into_iter().chain(self.replay()).chain(live_shells) {
+        for frame in root
+            .into_iter()
+            .chain(self.replay())
+            .chain(self.live_commands())
+        {
             // A frame the fresh outbox refuses belongs to a socket that is
             // gone; the next emit detaches the connection.
             outbox.push(frame);
         }
     }
 
-    /// Fresh transcripts of the root and of every live child, with the
-    /// root's live commands: the answer to a connection that saw a gap in
-    /// the patch revisions, which goes to that connection alone.
+    /// Fresh transcripts of the root and of every live child, with the view
+    /// of each live command of the tree: the answer to a connection that saw
+    /// a gap in the patch revisions, which goes to that connection alone.
     pub(crate) fn fresh_transcripts(&self) -> Vec<ServerFrame> {
         let snapshot = self.root.session().transcript();
         let reset = ServerFrame::TranscriptReset {
@@ -371,9 +428,32 @@ impl<H: AgentHarness> Tree<H> {
             failures: None,
         };
         std::iter::once(reset)
-            .chain(self.root.live_shells())
             .chain(self.replay())
+            .chain(self.live_commands())
             .collect()
+    }
+
+    /// The `shell_output` of each live command (`runtime.md` § Live
+    /// output): the root's, then each live child's, depth first in spawn
+    /// order.
+    fn live_commands(&self) -> Vec<ServerFrame> {
+        let mut frames: Vec<ServerFrame> = self
+            .root
+            .live_views()
+            .into_iter()
+            .map(|view| tools::shell_output(None, view))
+            .collect();
+        for child in self.descendants() {
+            let id = child.node().id();
+            frames.extend(
+                child
+                    .node()
+                    .live_views()
+                    .into_iter()
+                    .map(|view| tools::shell_output(Some(id.clone()), view)),
+            );
+        }
+        frames
     }
 
     /// Aligns the tree's model with `model`: from the next action, or also

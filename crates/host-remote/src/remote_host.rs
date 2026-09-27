@@ -1052,7 +1052,11 @@ impl HostProcess for RemoteHost {
 }
 
 /// A process's handle over its shared output and end.
-fn process(shared: Rc<Shared<ProcessEnd, ProcessOutput>>, link: Option<Link>, id: String) -> Process {
+fn process(
+    shared: Rc<Shared<ProcessEnd, ProcessOutput>>,
+    link: Option<Link>,
+    id: String,
+) -> Process {
     let output = futures_util::stream::unfold(shared.clone(), |shared| async move {
         shared.next_output().await.map(|chunk| (chunk, shared))
     })
