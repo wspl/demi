@@ -430,9 +430,13 @@ the five completes as an error `Tool not found: <name>`.
   whatever was read before ([Server frames](#server-frames)). So every page
   that receives a `shell_output` shows the same output, and a page that opens
   the conversation while the command runs, or reloads, shows its current tail
-  at once. The pages share one place in the output: a `shell_output` also
-  carries the output since the previous `shell_output` of the command, which
-  no page shows.
+  at once. Output reaches the pages only in `shell_output` frames: when a tool
+  reports the command, when a client writes to or stops it, and when a page
+  attaches or asks for a fresh transcript. Until the next of these, a page
+  that attached earlier shows the tail of the last one it received, which can
+  be shorter than what a page that attached since shows. The pages share one
+  place in the output: a `shell_output` also carries the output since the
+  previous `shell_output` of the command, which no page shows.
 - A result gives the command's status and exit code, its handle and timings
   when the handle matters, a preview of the output, and a hint for the next
   step.
@@ -807,7 +811,7 @@ each connection's frames to the session one at a time, and the session takes
 the frames of all connections in the order they reach it, so the rule that
 decides a lone client's frame decides each:
 
-- Two sends queue in the order they arrive
+- Two sends run in the order they arrive; the later one waits in the queue
   ([Messages and the queue](#messages-and-the-queue)).
 - An edit and a send: a send that arrives while the edit is being prepared is
   refused, and an edit that arrives while a send's turn runs or waits is
