@@ -180,40 +180,45 @@ way and shows the tree as the backend then has it.
 
 ### Liveness and reconnection
 
-A page holds two kinds of WebSocket to the backend: the synchronization
-channel, and a socket for each open conversation. Both follow one rule for
-telling a quiet socket from a dead one and for connecting again, and one
-module of `web-ui` implements it for both. For example, a laptop sleeps and
-its network drops without a close. Nothing tells the page: its sockets still
-look open, and a conversation would go on showing a turn as running. The
-backend sends a heartbeat on each socket that has sent nothing else for 30
-seconds ([Order and delivery](../agent/runtime.md#order-and-delivery),
+A page holds WebSockets of three kinds to the backend: the synchronization
+channel, a socket for each open conversation, and the stream of each
+[live browser view](../browser/live-view.md). All three connect again by one
+rule, the first two also tell a quiet socket from a dead one by one rule, and
+one module of `web-ui` implements both. For example, a laptop sleeps and its
+network drops without a close. Nothing tells the page: its sockets still look
+open, and a conversation would go on showing a turn as running. The backend
+sends a heartbeat on the channel and on each conversation socket that has
+sent nothing else for 30 seconds
+([Order and delivery](../agent/runtime.md#order-and-delivery),
 [Page synchronization](web-api.md#page-synchronization)), so a socket that
 brings nothing for 75 seconds, two and a half heartbeats, is broken: the page
-closes it and connects again.
+closes it and connects again. A live view's stream has a heartbeat of its
+own, by which the page shows a stall
+([Delivery](../browser/live-view.md#delivery)).
 
 A socket that closes, is taken as broken, or cannot be made connects again
 after a second, then after twice as long each time, up to 30 seconds, each
 wait shortened by a random part so that the pages of all users do not return
 at once after a restart. The waits start over at a second once the socket
 works again: the channel when its snapshot arrives, a conversation when it
-opens. Meanwhile the page keeps the channel's copy as it was, and a
-conversation shows that it is connecting. A conversation socket that is lost
-before the session answered `open`, as when the backend restarts while the
-conversation opens, follows the same rule: only a session that answers
-`open` with a refusal, an `error` or a `rejected`, shows the conversation as
-failed.
+opens, a live view when its first `state` arrives. Meanwhile the page keeps
+the channel's copy as it was, and a conversation shows that it is connecting.
+A conversation socket that is lost before the session answered `open`, as
+when the backend restarts while the conversation opens, follows the same
+rule: only a session that answers `open` with a refusal, an `error` or a
+`rejected`, shows the conversation as failed.
 
 A page that comes back does not wait. Its timers stop while its computer
 sleeps, so the 75-second watch counts only the time the page was awake, and a
 wait that began before the sleep still has the rest of its time to run. So
 when the page becomes visible again or comes back online, the module checks
-every socket at once: a socket whose last message came 75 seconds ago or more
-by the clock is broken, and a closed socket connects without waiting for the
-rest of its wait. For example, a laptop sleeps for an hour with the product
-open, and its user then opens the lid: the page shows again, and replaces the
-channel and each conversation socket at once rather than after up to 75
-seconds more of a watch that did not count the hour.
+every socket at once: a channel or conversation socket whose last message
+came 75 seconds ago or more by the clock is broken, and a closed socket
+connects without waiting for the rest of its wait. For example, a laptop
+sleeps for an hour with the product open, and its user then opens the lid:
+the page shows again, and replaces the channel and each conversation socket
+at once rather than after up to 75 seconds more of a watch that did not count
+the hour.
 
 ### Page synchronization
 
