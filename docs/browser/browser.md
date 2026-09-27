@@ -429,15 +429,20 @@ runner's shutdown deadline, cannot retire them, and two rules cover that case:
 
 - Each environment holds an exclusive lock on its profile directory for as
   long as the environment exists. The lock is a file lock, so the operating
-  system releases it when the owning service ends, however it ends.
+  system releases it when the owning service ends, however it ends. A new
+  profile's lock file takes the name the sweep opens only once it is held, so
+  a sweep that runs while the profile is being made, in another service of the
+  same user, finds either no lock or a held one.
 - On Linux, Chrome's main process also gets a parent-death signal, so the
   kernel ends it when the service process ends. The signal follows the thread
   that started Chrome, so Chrome is started from a thread that lives as long
   as the service. Helpers that detached from Chrome's process group can still
   survive it.
 - At start, on every platform, the service sweeps orphans from the directory
-  where profiles live. A profile whose lock it can take belongs to no running
-  service: the sweep keeps the lock,
+  where profiles live. It looks only at its own user's profiles: on a Host
+  with several users every user's profiles share `/tmp`, and another user's
+  are neither opened nor reported. A profile whose lock it can take belongs to
+  no running service: the sweep keeps the lock,
   terminates the marked Chrome processes of that profile with the path
   retirement uses, and removes the profile. A profile whose lock is held
   belongs to another running service and is never touched; during an upgrade,

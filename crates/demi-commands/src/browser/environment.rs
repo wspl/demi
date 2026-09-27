@@ -2,7 +2,7 @@ use std::{
     future::Future,
     io,
     ops::Deref,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, Weak},
     time::Duration,
 };
@@ -82,6 +82,47 @@ impl BrowserHandle {
 const PROFILE_PREFIX: &str = "demi-browser-";
 /// The file a profile's lock is held on while its environment exists.
 const PROFILE_LOCK: &str = "demi-profile.lock";
+/// The lock file until it is held. The sweep never opens it, so it finds a
+/// profile either without a lock or with a held one.
+const STAGED_LOCK: &str = "demi-profile.lock.new";
+
+/// The user a service sweeps browser directories for: its own. Other
+/// users' directories in the shared bases are neither opened nor reported
+/// (`browser.md` § Native driver).
+#[derive(Clone, Copy, Debug)]
+struct Owner {
+    #[cfg(unix)]
+    uid: u32,
+}
+
+impl Owner {
+    /// The user this service runs as.
+    fn current() -> Self {
+        Self {
+            // SAFETY: `geteuid` has no preconditions and cannot fail.
+            #[cfg(unix)]
+            uid: unsafe { libc::geteuid() },
+        }
+    }
+
+    /// Whether `path` is a directory of this user's, not following a
+    /// symbolic link. On Windows every user has a temporary directory of
+    /// their own, so every directory there is.
+    fn owns_directory(self, path: &Path) -> bool {
+        let Ok(metadata) = std::fs::symlink_metadata(path) else {
+            return false;
+        };
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            metadata.is_dir() && metadata.uid() == self.uid
+        }
+        #[cfg(not(unix))]
+        {
+            metadata.is_dir()
+        }
+    }
+}
 
 /// Where browser profiles live, and where the orphan sweep looks: `/tmp` on
 /// Unix, whatever the service's own temporary directory is, and the
@@ -94,6 +135,30 @@ pub fn profile_base() -> PathBuf {
     } else {
         std::env::temp_dir()
     }
+}
+
+/// A new profile in `base` that only its user can read, with its lock held
+/// until the returned file closes, however this service ends. The lock file
+/// takes the name the sweep opens only once it is held, so a sweep that runs
+/// meanwhile, in another service of the same user, leaves the profile alone.
+fn create_profile(base: &Path) -> Result<(tempfile::TempDir, std::fs::File)> {
+    let mut profile = tempfile::Builder::new();
+    profile.prefix(PROFILE_PREFIX);
+    // Only its user may read it: every user shares `/tmp`.
+    #[cfg(unix)]
+    profile.permissions(std::os::unix::fs::PermissionsExt::from_mode(0o700));
+    let profile = profile.tempdir_in(base)?;
+    let staged = profile.path().join(STAGED_LOCK);
+    let lock = std::fs::File::create_new(&staged)?;
+    lock.try_lock().map_err(|error| match error {
+        std::fs::TryLockError::Error(error) => BrowserError::Io(error),
+        // Nothing else opens the staged file; a lock there is a defect.
+        std::fs::TryLockError::WouldBlock => {
+            BrowserError::Io(io::Error::other("a new browser profile is already locked"))
+        }
+    })?;
+    std::fs::rename(&staged, profile.path().join(PROFILE_LOCK))?;
+    Ok((profile, lock))
 }
 
 /// The caller supplies the installed, verified release executable, never a PATH lookup.
@@ -150,21 +215,7 @@ where
             "Chrome executable must be absolute".into(),
         ));
     }
-    let mut profile = tempfile::Builder::new();
-    profile.prefix(PROFILE_PREFIX);
-    // Only its user may read it: every user shares `/tmp`.
-    #[cfg(unix)]
-    profile.permissions(std::os::unix::fs::PermissionsExt::from_mode(0o700));
-    let mut profile = profile.tempdir_in(profile_base())?;
-    // Held until the profile is removed, however this service ends; a later
-    // service's sweep takes it only once this one is gone.
-    let profile_lock = std::fs::File::create_new(profile.path().join(PROFILE_LOCK))?;
-    profile_lock.try_lock().map_err(|error| match error {
-        std::fs::TryLockError::Error(error) => BrowserError::Io(error),
-        std::fs::TryLockError::WouldBlock => {
-            BrowserError::Io(io::Error::other("a new browser profile is already locked"))
-        }
-    })?;
+    let (mut profile, profile_lock) = create_profile(&profile_base())?;
     let mut process = ChromeProcess::new(profile.path(), &options.executable);
     let download_directory = profile.path().join("downloads");
     tokio::fs::create_dir(&download_directory).await?;
@@ -310,15 +361,16 @@ where
 }
 
 /// Removes what browsers left behind when their service ended without
-/// retiring them (`browser.md` § Native driver). A profile whose lock this
-/// service can take belongs to no running service: its marked Chrome
-/// processes end the way retirement ends them, then the profile goes. A
-/// profile whose lock is held, or that has no lock yet, is left alone.
+/// retiring them (`browser.md` § Native driver). A profile of this user's
+/// whose lock this service can take belongs to no running service: its
+/// marked Chrome processes end the way retirement ends them, then the
+/// profile goes. A profile whose lock is held, or that has no lock yet, is
+/// left alone, and so is another user's, without a word.
 pub async fn sweep_orphans(directories: &super::BrowserDirectories) {
-    sweep_orphans_in(&profile_base(), directories.roots()).await;
+    sweep_orphans_in(&profile_base(), directories.roots(), Owner::current()).await;
 }
 
-async fn sweep_orphans_in(directory: &std::path::Path, installations: Vec<PathBuf>) {
+async fn sweep_orphans_in(directory: &Path, installations: Vec<PathBuf>, owner: Owner) {
     let Ok(mut entries) = tokio::fs::read_dir(directory).await else {
         return;
     };
@@ -327,6 +379,9 @@ async fn sweep_orphans_in(directory: &std::path::Path, installations: Vec<PathBu
             continue;
         }
         let profile = entry.path();
+        if !owner.owns_directory(&profile) {
+            continue;
+        }
         if let Err(error) = sweep_orphan(&profile, installations.clone()).await {
             tracing::warn!("could not remove orphaned browser profile {}: {error}", profile.display());
         }
@@ -720,11 +775,79 @@ mod tests {
         let other = temporary.path().join("not-a-profile");
         std::fs::create_dir(&other).unwrap();
         std::fs::File::create(other.join(PROFILE_LOCK)).unwrap();
-        sweep_orphans_in(temporary.path(), Vec::new()).await;
+        sweep_orphans_in(temporary.path(), Vec::new(), Owner::current()).await;
         assert!(!orphan.exists());
         assert!(held.exists());
         assert!(unlocked.exists());
         assert!(other.exists());
+    }
+
+    /// Every user's profiles share `/tmp`, and a service sweeps only its
+    /// own user's: another user's orphan is neither opened nor reported.
+    /// Here the orphan is this test's, and the first sweep runs for another
+    /// user.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_sweep_leaves_other_users_profiles_alone() {
+        let temporary = tempfile::tempdir().unwrap();
+        let orphan = temporary.path().join(format!("{PROFILE_PREFIX}orphan"));
+        std::fs::create_dir(&orphan).unwrap();
+        std::fs::File::create(orphan.join(PROFILE_LOCK)).unwrap();
+        let this_user = Owner::current();
+        let another_user = Owner {
+            uid: this_user.uid.wrapping_add(1),
+        };
+        sweep_orphans_in(temporary.path(), Vec::new(), another_user).await;
+        assert!(orphan.exists());
+        sweep_orphans_in(temporary.path(), Vec::new(), this_user).await;
+        assert!(!orphan.exists());
+    }
+
+    /// Another service of the same user may sweep at any moment, also while
+    /// this one makes a profile, and takes none: a new profile's lock is
+    /// held before the sweep can find it. Three sweeps race the making of
+    /// 4,000 profiles; with the lock file named before it was held, they
+    /// took one in each of 20 runs, and with only one sweep and 2,000
+    /// profiles in 13 of 20. About 0.4 s.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
+    async fn a_sweep_takes_no_profile_being_made() {
+        let base = tempfile::tempdir().unwrap();
+        let made = CancellationToken::new();
+        let sweeps: Vec<_> = (0..3)
+            .map(|_| {
+                tokio::spawn({
+                    let base = base.path().to_owned();
+                    let made = made.clone();
+                    async move {
+                        while !made.is_cancelled() {
+                            sweep_orphans_in(&base, Vec::new(), Owner::current()).await;
+                        }
+                    }
+                })
+            })
+            .collect();
+        let making = tokio::task::spawn_blocking({
+            let base = base.path().to_owned();
+            move || {
+                for _ in 0..4000 {
+                    let (profile, lock) =
+                        create_profile(&base).expect("the sweep took the lock of a profile being made");
+                    assert!(
+                        profile.path().join(PROFILE_LOCK).is_file(),
+                        "the sweep removed a profile being made"
+                    );
+                    // Retirement removes a profile before it lets its lock go.
+                    drop(profile);
+                    drop(lock);
+                }
+            }
+        })
+        .await;
+        made.cancel();
+        for sweep in sweeps {
+            sweep.await.unwrap();
+        }
+        making.unwrap();
     }
 
     #[tokio::test]
