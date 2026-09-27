@@ -134,6 +134,14 @@ opens the file, seeks, replies, and uploads the bytes as the backend accepts
 them. When the user picks another file, the backend fails the pipe, and the
 runner's upload ends and the file closes.
 
+A write's temporary file is named `.demi-partial-` and six random characters,
+for example `.demi-partial-q7XkP2`, and so is the one a
+[file command](commands.md#file-commands) writes beside the file it replaces.
+Only a runner or a command stopped in the middle of a write, by a crash or a
+kill, leaves one behind, and nothing reads it again. Deleting one is always
+safe: the file it was written for keeps its contents, and a write still running
+when its temporary file goes fails instead of replacing the file.
+
 ### Working tree
 
 A `git_changes` request lists the uncommitted changes under a directory, and
