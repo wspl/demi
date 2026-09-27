@@ -1,17 +1,20 @@
 # Web API reference
 
 The browser and backend ship together, so routes have no version prefix.
-Application data uses HTTP JSON; an open conversation uses the agent WebSocket
-protocol. [Backend architecture](../backend/backend.md) defines authentication
-and transport boundaries. This reference owns product endpoint contracts;
+Application data uses HTTP JSON, each page follows the user's state through
+its [synchronization channel](#page-synchronization), and an open conversation
+uses the agent WebSocket protocol.
+[Backend architecture](../backend/backend.md) defines authentication and
+transport boundaries. This reference owns product endpoint contracts;
 domain rules remain in the linked topic documents.
 
 The `web-api` crate defines every JSON body of this reference, request and
-response, and every error code; the conversation stream carries the agent
-protocol's frames ([Frame protocol](../agent/runtime.md#frame-protocol)). The
-backend decodes each request into its type and serializes each response from
-its type, and the browser's REST types and schemas are generated from the same
-types ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
+response, every message of the synchronization channel, and every error code;
+the conversation stream carries the agent protocol's frames
+([Frame protocol](../agent/runtime.md#frame-protocol)). The backend decodes
+each request into its type and serializes each response from its type, and
+the browser's REST types and schemas are generated from the same types
+([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
 A response carries the fields its type declares and nothing more: fields the
 backend keeps for itself in a stored record, such as a conversation's owner or
 its message counts, never reach the browser.
@@ -33,7 +36,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Setup | `GET /setup` returns `{ needed }`; `POST /setup` creates the first master account and signs it in |
 | Authentication | `POST /auth/login`, `POST /auth/logout`, `GET/PATCH /auth/me`, `PUT /auth/password`, `POST /auth/email`, `POST /auth/email/confirm` |
 | Users | `GET/POST /users`, `PATCH /users/:id`; role hierarchy restricts administration |
-| Application state | `GET /state`; conditional snapshot with private ETag |
+| Page synchronization | `WS /sync` sends the product state, then each part of it that changes ([Page synchronization](#page-synchronization)) |
 | Settings | `GET /settings` returns fixed instance mode; `GET/PATCH /settings/preferences` |
 | Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id }`, `PATCH /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }`, `POST /conversations/:id/title` requests a [generated title](product.md#conversation-titles) |
 | Conversation history | `GET /conversations/:id/transcript` returns root blocks and subagent histories, each with the [failure facts](../backend/backend.md#failure-facts) of its error blocks; `WS /conversations/:id/stream` carries the [agent frames](../agent/runtime.md#frame-protocol) of that one conversation |
@@ -230,13 +233,15 @@ Host handle while the Cloud was changing state
 [user stream](../execution/native-runtime.md#user-streams) `name` on the
 conversation's main Host; `browser` is the
 [live browser view](../browser/live-view.md). The upgrade requires the session
-cookie, a conversation the user owns, and an `Origin` of the product: the
-stream operates a browser signed in to the user's sites, so an upgrade from
-any other origin answers 403 `forbidden_origin` before the backend reaches the
-Host. The route answers before the upgrade:
+cookie, a page of the product
+([Authentication and ownership](../backend/backend.md#authentication-and-ownership)),
+which matters all the more here since the stream operates a browser signed in
+to the user's sites, and a conversation the user owns. The route answers
+before the upgrade:
 
 | Answer | When |
 | --- | --- |
+| 403 `forbidden_origin` | The upgrade comes from a page that is not the product's |
 | 404 `unknown_stream` | No stream has that name |
 | 426 `upgrade_required` | The request is not a WebSocket upgrade |
 | 409 `conversation_archived` | The conversation is archived |
@@ -285,7 +290,7 @@ The backend keeps one draft per conversation: the message its composer holds
 before it is sent. For example, a user types "Fix the login" into the
 composer in one tab and drops `trace.txt` into it. Every other page that shows
 the conversation, in another tab or on the user's phone, shows the same text
-and the file's capsule within a few seconds, and any of them can send the
+and the file's capsule moments after each save, and any of them can send the
 message. [Drafts](web-application.md#drafts) says when a page saves and what
 it shows.
 
@@ -336,16 +341,16 @@ because another save or action changed it, the answer is 409 `draft_changed`.
 Otherwise the replaced version stays until a later save replaces a version:
 a send, an archive or a reload keeps it.
 
-Other pages learn of a change from the state snapshot they poll every few
-seconds, whose conversation summary carries the draft's revision as
-`draftRevision`
-([page synchronization](#sidebar-mutations-read-state-and-page-synchronization)),
-and read the draft only then. A page takes a draft only when its revision is
-higher than the one it holds, since a save's answer and a read can reach it
-in either order. An archived conversation reads its draft and refuses the
-other operations with 409 `conversation_archived`; after a restore it has the
-draft it had. A draft lasts as long as its conversation, and a Fork starts
-with an empty one ([Conversation Fork](../agent/conversation-fork.md)).
+Other pages learn of a change from the conversation's summary, which their
+synchronization channel brings once the change commits and which carries the
+draft's revision as `draftRevision`
+([Page synchronization](#page-synchronization)); they read the draft only
+then. A page takes a draft only when its revision is higher than the one it
+holds, since a save's answer and a read can reach it in either order. An
+archived conversation reads its draft and refuses the other operations with
+409 `conversation_archived`; after a restore it has the draft it had. A draft
+lasts as long as its conversation, and a Fork starts with an empty one
+([Conversation Fork](../agent/conversation-fork.md)).
 
 ## Conversation browser tabs
 
@@ -404,9 +409,9 @@ without an expose domain answers 409 `expose_unavailable`.
 `POST /api/exposes/:id/renew` sets the expiry to one hour from now and
 returns `{ expose }`. `DELETE /api/exposes/:id` destroys it, ends its
 connections, and returns 204. An expose the caller does not own, or one that
-has expired, answers 404 `expose_not_found`. The `GET /api/state` snapshot
-includes the same list and `exposeDomain`, null when the feature is
-unavailable.
+has expired, answers 404 `expose_not_found`. The product state
+([Page synchronization](#page-synchronization)) includes the same list and
+`exposeDomain`, null when the feature is unavailable.
 
 Requests whose `Host` header is an expose hostname are not part of this API:
 the backend answers them with the public relay, for every path and method,
@@ -626,7 +631,7 @@ already-running request finishes with its original runtime. An entry without
 an account is refused before inference; the backend never falls back to a
 vendor login of the machine it runs on.
 
-## Sidebar mutations, read state and page synchronization
+## Sidebar mutations and read state
 
 The backend applies the fields of `PATCH /api/conversations/:id` independently:
 `title` (trimmed, 1 to 256 characters), `archived`, `pinned`, `target`, and
@@ -672,18 +677,20 @@ each to the value the one before left:
 
 A crash before the commit changes nothing. A crash after it leaves the change
 in the record, and the tree takes it when it is next opened. A page whose
-connection broke before the answer shows the outcome from its next snapshot,
-whichever it was. Opening the conversation's socket names no model, and the
-backend opens a tree only with the record's selection, so an open never
-changes the settings, whatever the opening page last saw
+connection broke before the answer shows the outcome from its synchronization
+channel, whichever it was. Opening the conversation's socket names no model,
+and the backend opens a tree only with the record's selection, so an open
+never changes the settings, whatever the opening page last saw
 ([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)).
 
 Every page shows the record's value. The page that made a change shows it from
 the patch's answer at once, and every other page, in another tab or on another
-device, from its next snapshot. A page keeps no model settings of its own for a
-conversation with a record, and never sends the value back: a change names only
-the part its user changed, so a page that has not yet seen another page's
-change cannot undo it. Two changes of one part end with the one applied last,
+device, from the conversation's summary, which its synchronization channel
+brings once the change commits ([Page synchronization](#page-synchronization)).
+A page keeps no model settings of its own for a conversation with a record,
+and never sends the value back: a change names only the part its user
+changed, so a page that has not yet seen another page's change cannot undo
+it. Two changes of one part end with the one applied last,
 and changes of different parts both stay. A new conversation keeps its
 settings in its browser until its first send writes them to its record
 ([User preferences](#user-preferences)), and a change on a page of a
@@ -716,8 +723,12 @@ wait for an entire inference turn.
 Archived conversations allow transcript reads and read acknowledgements;
 stream upgrades, frames on an open socket, attachment delivery, host changes
 and metadata edits are refused until restore, with 409
-`conversation_archived` where the refusal is an HTTP answer. A request to
-the stream that is not a WebSocket upgrade answers 426 `upgrade_required`.
+`conversation_archived` where the refusal is an HTTP answer. An upgrade of
+the stream from a page that is not the product's answers 403
+`forbidden_origin`
+([Authentication and ownership](../backend/backend.md#authentication-and-ownership)),
+and a request to the stream that is not a WebSocket upgrade 426
+`upgrade_required`.
 
 `POST /api/sidebar/reorder` takes `{ kind: "conversation" | "workspace", id,
 beforeId: string | null }`; null appends, and a success answers 204.
@@ -738,7 +749,7 @@ new one could say nothing new, and `titleGenerating` whether a title request is
 in flight. `draftRevision` is the revision of the conversation's
 [draft](#conversation-drafts), 0 before its first save: the page reads the
 draft itself only when this number is higher than the revision it holds, so a
-snapshot carries no draft's text.
+summary carries no draft's text.
 
 `POST /api/conversations/:id/title`, without a body, asks the conversation's
 model selection for a new title from every message the user sent and answers
@@ -769,20 +780,89 @@ not. A browser sends `POST /api/conversations/:id/read { revision }` for the
 output it actually showed. Acknowledgements only move forward, and revisions
 beyond current output are refused.
 
-`GET /api/state` returns the current user, mode, preferences, projects, active
-and archived conversation summaries, devices (the paired ones and the user's
-Cloud device, which the file and working-tree routes address alike), public
-provider status, Cloud state, and `publicUrl`, the URL runners connect to
-(`DEMI_BACKEND_PUBLIC_URL`). Each provider entry of the user's scope
-carries its `details`: `{ type: "read", ... }` with what
-`GET /api/providers/:id/status` answers, or `{ type: "failed", message }` for
-an entry whose provider could not be read, which leaves the others intact. It
-never starts Cloud or runs inference.
-Responses use a private ETag; `If-None-Match` returns 304 when unchanged.
-Browsers revalidate on open, reconnect and a polling interval. This is a
-reconstructible snapshot, not an atomic transaction across the control and
-conversation databases; a later poll includes changes made during a read.
-Chat continues using agent frames.
+## Page synchronization
+
+Each page follows the user's state through one WebSocket, `WS /api/sync`,
+rather than asking for it. For example, a user renames a conversation in a tab
+on their laptop. Once the rename commits, the backend sends the conversation's
+new summary on the channel of every page the user has open: the laptop's
+other tabs and the phone show the new title a few milliseconds later, and none
+of them asked for anything. The channel carries what a page shows around its
+conversations; an open conversation's transcript, phase and commands stay on
+that conversation's own [stream](../agent/runtime.md#frame-protocol).
+
+The upgrade requires the session cookie and a page of the product: the
+channel shows the user's state to whatever reads it, so an upgrade from
+another origin answers 403 `forbidden_origin`
+([Authentication and ownership](../backend/backend.md#authentication-and-ownership)).
+A request that is not an upgrade answers 426 `upgrade_required`.
+
+After the upgrade, the backend sends JSON text messages, each a `SyncEvent`,
+and the page sends none. The first message is the whole product state; each
+later one is the current value of one part of it that changed:
+
+| Message | Carries | Sent when |
+| --- | --- | --- |
+| `snapshot` | `state`, the product state below | First, on every connection |
+| `conversation` | `conversation`, the conversation's summary as the conversation lists carry it | Its record changes: a patch or a batch item, an archive, a restore or a target switch once it completes, a read acknowledgement, a draft saved, restored or dismissed, a message sent, a title requested or written. It is created or forked. Its tree saves a checkpoint, starts or stops working, or is disposed |
+| `conversation_order` | `ids`, the id of every conversation, in the product state's order | A conversation is created, forked, moved, pinned or unpinned, archived or restored |
+| `preferences` | `preferences` | A preferences patch |
+| `user` | `user` | The nickname or the email address changes |
+| `workspaces` | `workspaces`, in the user's order | A workspace is created, renamed, moved or deleted |
+| `devices` | `devices`, the paired ones and the Cloud's | A device is paired or revoked, its runner connects or disconnects, or the Cloud's device is made |
+| `exposes` | `exposes` | An expose is created, renewed or removed, or expires |
+| `providers` | `providers`, each with its details | An entry the user infers with, or an account of it, is created, changed or removed, a sign-in completes, an account's credential is renewed, or its quota snapshot is stored |
+| `cloud` | `cloud` | The Cloud's lifecycle or its reset moves |
+| `heartbeat` | Nothing | 30 seconds pass without another message |
+
+The product state holds the current user, the instance mode, preferences, the
+provider entries of the user's scope, workspaces, devices (the paired ones and
+the user's Cloud device, which the file and working-tree routes address
+alike), exposes and their domain, the summaries of the active and then the
+archived conversations, the Cloud's state, and `publicUrl`, the URL runners
+connect to (`DEMI_BACKEND_PUBLIC_URL`). Each provider entry carries its
+`details`: `{ type: "read", ... }` with what `GET /api/providers/:id/status`
+answers, or `{ type: "failed", message }` for an entry whose provider could
+not be read, which leaves the others intact. Reading the state never starts
+the Cloud or runs inference. It is not one atomic read across the control and
+conversation databases, and it need not be: a change made while it is read is
+sent after it.
+
+Drafts are not sent: a draft can be large, and only the pages that show its
+conversation need it. The summary carries the draft's revision, and a page
+that shows the conversation reads the draft when the revision is higher than
+the one it holds ([Conversation drafts](#conversation-drafts)).
+
+**Order.** The backend reads a part when it sends it, after the change that
+caused the message, and reads it again for a change made meanwhile. So a
+part's messages come in the order of its changes, and a later one is never
+older than an earlier one.
+
+**A page that falls behind.** The backend keeps no queue of messages for a
+channel: it keeps the set of parts that changed since it last sent them, and
+sends each of them once, as it is when the page takes more. For example, the
+user types a draft on the laptop while the phone's page reads slowly: the
+phone may never see some of the draft's revisions in between, and receives
+the conversation's summary with the latest one once it reads again. A page
+is never closed for falling behind and loses no change, and its channel costs
+the backend at most one entry per part.
+
+**Reconnecting.** A page whose channel closed connects again and receives a
+new `snapshot`, which replaces everything it held. The backend registers the
+channel for changes before it reads the snapshot, so each change is in the
+snapshot or sent after it, and a page that was away misses nothing.
+
+The backend closes the channel with a code and a reason:
+
+| Code and reason | When |
+| --- | --- |
+| 1001 `backend_closing` | The backend shuts down |
+| 1008 `unexpected_message` | The page sent a message |
+| 1011 `internal_error` | A part could not be read |
+| 4002 `session_ended` | The session the channel opened with ended: it was signed out, or it expired |
+
+The channel never renews its session; only requests do
+([Authentication and ownership](../backend/backend.md#authentication-and-ownership)).
 
 ## Device files and remote references
 

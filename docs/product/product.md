@@ -48,7 +48,8 @@ current password, edit their nickname, and change email after verifying a code
 sent to the new address. Setup and account creation do not require email delivery;
 email change does, and reports an unavailable mail service explicitly.
 
-Browser HTTP and conversation WebSockets use the same session cookie.
+Browser HTTP, the synchronization channel and conversation WebSockets use
+the same session cookie.
 [Backend authentication](../backend/backend.md#authentication-and-ownership)
 owns session and lockout behavior; [Web API](web-api.md#account-api) owns
 account request shapes and verification limits. There are no organizations or
@@ -267,9 +268,9 @@ shows the Rename button busy, for the first request too.
 `POST /api/conversations/:id/title` starts the request with the model
 settings the conversation's record holds and answers 202 at once; it answers
 409 `no_messages` when the user has sent no text. The browser learns the new
-title the way it learns a rename made elsewhere, from the next
-[state snapshot](web-api.md#sidebar-mutations-read-state-and-page-synchronization);
-there is no title event.
+title the way it learns a rename made elsewhere, from the conversation's
+summary on its [synchronization channel](web-api.md#page-synchronization);
+there is no title event of its own.
 
 Not included: retitling by itself as a conversation grows, and titling from a
 different, cheaper model. The last is a
