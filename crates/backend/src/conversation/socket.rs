@@ -94,9 +94,9 @@ fn refusal(code: ErrorCode, message: impl Into<String>) -> ServerFrame {
 impl Shard {
     /// Serves a socket of `conversation` until either end closes it or the
     /// shard closes. A frame the socket has handed to the agent is handled to
-    /// its end; while it is, the outbox's frames keep flowing to the page. A
-    /// socket that has sent nothing for the heartbeat interval sends a
-    /// `heartbeat`.
+    /// its end, even when the shard closes meanwhile; until then, the
+    /// outbox's frames keep flowing to the page. A socket that has sent
+    /// nothing for the heartbeat interval sends a `heartbeat`.
     pub(crate) async fn serve_conversation_socket(self: Rc<Self>, conversation: ConversationRecord, socket: WebSocket) {
         // Counted before any wait, so the shard's close waits for this
         // socket; one adopted as the close begins ends at once.
@@ -125,57 +125,62 @@ impl Shard {
         let (sink, mut stream) = socket.split();
         let mut page = PageSocket::new(sink, self.services().pages);
         let mut handling: Option<LocalBoxFuture<'_, Handled>> = None;
-        let mut closing = false;
-        let ending = 'relay: loop {
-            if closing && handling.is_none() {
-                break Ending::Closing;
-            }
-            tokio::select! {
-                handled = async { handling.as_mut().expect("the branch runs only while a frame is handled").await },
-                    if handling.is_some() =>
-                {
-                    handling = None;
-                    let replies = match handled {
-                        Handled::Replies(replies) => replies,
-                        Handled::NotJson => break Ending::NotJson,
-                    };
-                    for reply in replies {
-                        if !self.send_frame(&mut page, reply).await {
-                            break 'relay Ending::Gone;
+        let relay = async {
+            'relay: loop {
+                tokio::select! {
+                    handled = async { handling.as_mut().expect("the branch runs only while a frame is handled").await },
+                        if handling.is_some() =>
+                    {
+                        handling = None;
+                        let replies = match handled {
+                            Handled::Replies(replies) => replies,
+                            Handled::NotJson => break Ending::NotJson,
+                        };
+                        for reply in replies {
+                            if !self.send_frame(&mut page, reply).await {
+                                break 'relay Ending::Gone;
+                            }
                         }
                     }
-                }
-                message = stream.next(), if handling.is_none() && !closing => match message {
-                    Some(Ok(Message::Text(text))) => {
-                        let shard = self.clone();
-                        let connection = &connection;
-                        let resolver = &resolver;
-                        let id = id.clone();
-                        handling = Some(Box::pin(async move {
-                            shard.handle_message(&id, connection, resolver, text.as_str()).await
-                        }));
-                    }
-                    Some(Ok(Message::Binary(_))) => break Ending::NotJson,
-                    // Pings are answered by the socket itself.
-                    Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
-                    Some(Ok(Message::Close(_)) | Err(_)) | None => break Ending::Gone,
-                },
-                outgoing = frames.recv() => match outgoing {
-                    Outgoing::Frame(frame) => {
-                        if !self.send_frame(&mut page, frame).await {
+                    message = stream.next(), if handling.is_none() => match message {
+                        Some(Ok(Message::Text(text))) => {
+                            let shard = self.clone();
+                            let connection = &connection;
+                            let resolver = &resolver;
+                            let id = id.clone();
+                            handling = Some(Box::pin(async move {
+                                shard.handle_message(&id, connection, resolver, text.as_str()).await
+                            }));
+                        }
+                        Some(Ok(Message::Binary(_))) => break Ending::NotJson,
+                        // Pings are answered by the socket itself.
+                        Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
+                        Some(Ok(Message::Close(_)) | Err(_)) | None => break Ending::Gone,
+                    },
+                    outgoing = frames.recv() => match outgoing {
+                        Outgoing::Frame(frame) => {
+                            if !self.send_frame(&mut page, frame).await {
+                                break Ending::Gone;
+                            }
+                        }
+                        Outgoing::Lagged => break Ending::Lagged,
+                        Outgoing::Closed => break Ending::Gone,
+                    },
+                    () = page.silent() => {
+                        if page.send(to_text(&ServerFrame::Heartbeat)).await.is_err() {
                             break Ending::Gone;
                         }
                     }
-                    Outgoing::Lagged => break Ending::Lagged,
-                    Outgoing::Closed => break Ending::Gone,
-                },
-                () = page.silent() => {
-                    if page.send(to_text(&ServerFrame::Heartbeat)).await.is_err() {
-                        break Ending::Gone;
-                    }
                 }
-                () = self.closed(), if !closing => closing = true,
             }
+        };
+        // The shard's close ends the relay wherever it waits, a send to a
+        // page that stopped reading included (`backend.md` § Startup and
+        // shutdown).
+        let ending = tokio::select! {
+            biased;
+            () = self.closed() => Ending::Closing,
+            ending = relay => ending,
         };
         // A frame that reached the agent is handled to its end: its session
         // may be in the middle of taking it. What it replies goes nowhere.
