@@ -226,7 +226,6 @@ fn string_schema(string: &StringShape) -> String {
         StringFormat::DateTime => "z.iso.datetime({ precision: 3 })",
         StringFormat::Email => "z.email()",
         StringFormat::HttpUrl => "z.url({ protocol: z.regexes.httpProtocol })",
-        StringFormat::Base64 => "z.base64()",
     });
     if let Some(min) = string.min_length {
         write!(code, ".min({min})").expect("writing to a string");

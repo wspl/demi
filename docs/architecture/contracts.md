@@ -184,13 +184,12 @@ Zod source and z.infer types
   optional fields (`.optional()`, which refuses `null`) and nullable ones
   (`.nullable()`, which must be present); string lengths and patterns;
   integer and number bounds, an integer's within JavaScript's safe range;
-  base64 bytes (`z.base64()`); times as core's
-  `Timestamp` writes them (`z.iso.datetime({ precision: 3 })`: UTC with three
-  fractional digits, the contract's one spelling); email addresses; `http`
-  and `https` URLs (`z.url` with those protocols, `web-api`'s `EndpointUrl`);
-  text the backend trims on arrival, whose bounds count what the trim leaves
-  (`z.string().trim()`, `web-api`'s `Trimmed`); JSON values (`z.json()`);
-  flattened plain structs (merged properties); one
+  times as core's `Timestamp` writes them (`z.iso.datetime({ precision: 3 })`:
+  UTC with three fractional digits, the contract's one spelling); email
+  addresses; `http` and `https` URLs (`z.url` with those protocols,
+  `web-api`'s `EndpointUrl`); text the backend trims on arrival, whose bounds
+  count what the trim leaves (`z.string().trim()`, `web-api`'s `Trimmed`);
+  JSON values (`z.json()`); flattened plain structs (merged properties); one
   named instantiation of a generic root type; recursion through `$ref`, as a
   getter of the object property that refers back, which Zod types
   recursively; strict and tolerant objects; and constant tables with

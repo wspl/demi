@@ -4,7 +4,6 @@ use std::{borrow::Cow, fmt, ops::Deref};
 
 use base64::{Engine, engine::general_purpose::STANDARD};
 use bytes::Bytes;
-use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 
 /// Bytes that travel in JSON as a base64 string (RFC 4648, the standard
@@ -85,19 +84,5 @@ impl<'de> Deserialize<'de> for B64Bytes {
             .decode(text.as_bytes())
             .map_err(|error| de::Error::custom(format_args!("invalid base64: {error}")))?;
         Ok(Self(bytes.into()))
-    }
-}
-
-impl JsonSchema for B64Bytes {
-    fn inline_schema() -> bool {
-        true
-    }
-
-    fn schema_name() -> Cow<'static, str> {
-        "B64Bytes".into()
-    }
-
-    fn json_schema(_: &mut SchemaGenerator) -> Schema {
-        json_schema!({ "type": "string", "contentEncoding": "base64" })
     }
 }
