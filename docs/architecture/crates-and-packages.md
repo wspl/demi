@@ -465,14 +465,14 @@ Each crate implements the provider contract for one vendor family.
     records and checkpoints they carry in `store`);
   - the resolution of the files a frame's content refers to, which the
     backend answers (`ContentResolver`);
-  - the mapping of media between inline bytes and blob references
-    (`store::media`, over the `BlobStore` a store or the conversation socket
-    reaches), the blocks an upload becomes with its recorded media type and
-    opening (`attachments`), and the conversation title request and its rules
-    (`title`).
+  - the media rules (`store::media`): a medium stored once when it enters a
+    transcript, the bytes a session holds for its requests and the model's
+    view of them, over the `BlobStore` its tree store gives it; the blocks an
+    upload becomes with its recorded media type and opening (`attachments`);
+    and the conversation title request and its rules (`title`).
 - **Public boundary:** the items above; `agent::testing` supplies an in-memory
-  tree store (`MemoryTreeStore`), which keeps media by reference over an
-  in-memory blob namespace (`MemoryBlobs`), the tree store contract's cases
+  tree store (`MemoryTreeStore`) with an in-memory blob namespace
+  (`MemoryBlobs`), the tree store contract's cases
   that every realization passes (`store_contract`), predictable identities
   (`SequentialIds`), provider runtimes that play scripts
   (`ScriptedProviders`), a Host type for agents without shell tools
@@ -484,9 +484,9 @@ Each crate implements the provider contract for one vendor family.
   [Agent runtime](../agent/runtime.md), [Subagents](../agent/subagents.md)
   and [Compaction](../agent/compaction.md).
 - **Rules:** the node assembly is the one place that creates a node's session;
-  the supervisor asks it for a child and never builds one. Media persistence
-  goes through the tree store: the product's store decides where media bytes
-  go, and `AgentServer` never sees a blob store.
+  the supervisor asks it for a child and never builds one. A session stores
+  and reads media only through its tree store: the product's store decides
+  where media bytes go, and `AgentServer` never sees a blob store.
 - **Must not:** depend on concrete providers, Host implementations or user
   interfaces; own a shell interpreter; own a socket. The backend owns the
   conversation socket and hands the agent decoded frames. The compaction

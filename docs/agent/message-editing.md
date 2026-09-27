@@ -54,13 +54,12 @@ reference, and takes nothing from elsewhere:
 
 - An `attachment` reference names the record that holds its path.
 - A `media` reference names a block of its kind (`image`, `video` or
-  `document`) by its blob: the block matches when the SHA-256 of its bytes,
-  which names the blob that holds them
-  ([Encodings and digests](../backend/storage.md#encodings-and-digests)),
-  equals the reference. The block keeps the media type and, for a document,
-  the file name as the message holds them, whatever the reference says. It
-  carries the bytes the session holds ([Media](runtime.md#media)), so the
-  model reads the chart itself, and the store saves it by reference again.
+  `document`) by its blob: the block matches when it references that blob.
+  The block keeps the media type and, for a document, the file name as the
+  message holds them, whatever the reference says. The block goes in place as
+  the message holds it, by reference, so nothing is stored again, and the
+  model reads the chart's bytes, which the session holds or reads back
+  ([Media](runtime.md#media)).
 
 A reference that no block of the target message matches rejects the edit
 without mutation: `The edited message holds no attachment at <path>`, or
@@ -251,7 +250,6 @@ restart.
 | Fault or pause | Required observation |
 | --- | --- |
 | The save is blocked | Connected clients keep the accepted transcript; replacement inference has not started. |
-| Blob externalization fails | No checkpoint changes; retained media stays readable. |
 | The database fails after block writes or deletions and before the transaction completes | Reopening the database shows the complete pre-edit checkpoint, never mixed blocks and state. |
 | An earlier checkpoint write is in flight | The edit commit is ordered after it; no delayed write restores removed rows or overwrites the replacement state. |
 | The commit succeeds but the acceptance frame is lost | Reconnect recovers the replacement; repeating the operation produces no second rewrite. |

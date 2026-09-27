@@ -10,7 +10,7 @@ use demi_core::{
 use demi_provider::InferenceItem;
 use serde_json::Value;
 
-use super::{RESUME_TEXT, WAKEUP_TEXT};
+use super::{RESUME_TEXT, WAKEUP_TEXT, replay_start};
 
 /// The scalar values a replayed text keeps from its start, and from its end,
 /// when it is longer than both together.
@@ -19,10 +19,7 @@ const TAIL_CHARS: usize = 8_000;
 
 /// The inference items of `blocks`, in order.
 pub(crate) fn replay(blocks: &[Block]) -> Vec<InferenceItem> {
-    let start = blocks
-        .iter()
-        .rposition(|block| matches!(block, Block::CompactionBoundary(_)))
-        .unwrap_or(0);
+    let start = replay_start(blocks);
     let mut items = Vec::new();
     for block in &blocks[start..] {
         match block {

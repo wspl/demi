@@ -33,6 +33,15 @@ pub(crate) const INTERRUPTED_TURN_MESSAGE: &str =
 /// The code of that record.
 pub(crate) const INTERRUPTED_CODE: &str = "interrupted";
 
+/// Where replay starts in `blocks` (`runtime.md` § Replay): at the last
+/// `compaction_boundary`, or at the first block when there is none.
+pub(crate) fn replay_start(blocks: &[Block]) -> usize {
+    blocks
+        .iter()
+        .rposition(|block| matches!(block, Block::CompactionBoundary(_)))
+        .unwrap_or(0)
+}
+
 /// Whether a block opens an input turn (`runtime.md` § Block types): recovery
 /// treats it as the start of its turn, and its `before_user` command-state
 /// boundary is recorded.

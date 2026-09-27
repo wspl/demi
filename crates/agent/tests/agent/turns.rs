@@ -7,7 +7,7 @@ use std::{rc::Rc, time::Duration};
 
 use demi_agent::{
     ServerConfig, attachments,
-    store::media::{BlobStore, externalize_frame},
+    store::media::BlobStore,
     testing::{MemoryBlobs, MemoryTreeStore, TestClient, TestFiles, model_of},
 };
 use demi_agent_protocol::{
@@ -210,64 +210,37 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
     const PNG: [u8; 12] = [
         0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe, 0x01,
     ];
-    let image = UserContentBlock::Image {
-        source: MediaSource::Binary {
-            data: B64Bytes::new(PNG.to_vec()),
-            media_type: "image/png".into(),
-        },
-    };
-    let seen = |expected: Vec<UserContentBlock>, answer: &'static str| {
-        Turn::Respond(Box::new(move |request| {
-            let first = request.items.first().cloned();
-            assert_eq!(
-                first,
-                Some(InferenceItem::UserMessage { content: expected })
-            );
-            vec![event::text(answer), event::response(1, 1)]
-        }))
-    };
+    let said = |answer: &str| Turn::Events(vec![event::text(answer), event::response(1, 1)]);
+    let script = ScriptedRuntime::new([
+        said("a tiny png"),
+        said("still a png"),
+        said("the image is gone"),
+        said("still gone"),
+    ]);
+    // The upload route stored the file: its blob holds the bytes.
     let blobs = MemoryBlobs::new();
-    let uploaded = blobs.put(B64Bytes::new(PNG.to_vec())).await.unwrap();
+    let png = B64Bytes::new(PNG.to_vec());
+    let uploaded = blobs.put(png.clone()).await.unwrap();
     let path = "/home/demi/.demi/attachments/conversation/tiny.png";
-    let blocks = attachments::upload_blocks(attachments::Upload {
+    let resolved = attachments::upload_blocks(attachments::Upload {
         name: "tiny.png",
         path,
         media_type: "image/png",
         sha256: &uploaded,
-        bytes: &PNG,
+        bytes: &png,
     });
-    let record = blocks[1].clone();
+    let record = resolved.0[1].clone();
     let text = UserContentBlock::Text {
         text: "describe this".into(),
     };
-    let script = ScriptedRuntime::new([
-        seen(
-            vec![text.clone(), image.clone(), record.clone()],
-            "a tiny png",
-        ),
-        seen(
-            vec![text.clone(), image.clone(), record.clone()],
-            "still a png",
-        ),
-        seen(
-            vec![
-                text.clone(),
-                UserContentBlock::Text {
-                    text: format!("[missing image blob {uploaded}]"),
-                },
-                record.clone(),
-            ],
-            "the image is gone",
-        ),
-    ]);
     let store = MemoryTreeStore::with_blobs(blobs.clone());
     let fixture = Fixture::with(&script, store, ServerConfig::default());
     let files = TestFiles::new();
-    files.upload("upload-1", blocks);
+    files.upload("upload-1", resolved);
     let mut client =
         TestClient::connect_with(&fixture.server, &conversation(), "/workspace", files);
     client.send(open()).await;
-    client.next_until(is_pending_steers).await;
+    frames_until(&mut client, is_pending_steers).await;
     client
         .send(ClientFrame::Send {
             message_id: crate::support::turn("m1"),
@@ -282,7 +255,7 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
             ],
         })
         .await;
-    let frames = client.next_until(is_idle).await;
+    let frames = frames_until(&mut client, is_idle).await;
 
     // At rest and on the wire, the image is its reference.
     let by_reference = UserContentBlock::Image {
@@ -299,12 +272,11 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
         user.content,
         [text.clone(), by_reference.clone(), record.clone()]
     );
-    let mut added = frames
+    let added = frames
         .into_iter()
         .find(|frame| matches!(frame, ServerFrame::TranscriptPatch { patches, .. }
             if patches.iter().any(|patch| matches!(patch, TranscriptPatch::Add { value: Block::User(_), .. }))))
         .unwrap();
-    externalize_frame(&mut added, &*blobs).await.unwrap();
     let ServerFrame::TranscriptPatch { patches, .. } = &added else {
         unreachable!()
     };
@@ -320,18 +292,46 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
     // Loaded again, the model reads the bytes; a blob that is gone is named.
     for message in ["m2", "m3"] {
         client.send(ClientFrame::Close {}).await;
-        client
-            .next_until(|frame| *frame == ServerFrame::Closed)
-            .await;
+        frames_until(&mut client, |frame| *frame == ServerFrame::Closed).await;
         if message == "m3" {
             blobs.forget(&uploaded);
         }
         client.send(open()).await;
-        client.next_until(is_pending_steers).await;
+        frames_until(&mut client, is_pending_steers).await;
         client.send(send(message, "and now?")).await;
-        client.next_until(is_idle).await;
+        frames_until(&mut client, is_idle).await;
     }
-    assert_eq!(script.remaining(), 0);
+    // A blob found missing stays missing for the live tree, even when the
+    // same bytes are stored again, so the start of each request stays what
+    // the one before sent.
+    blobs.put(png).await.unwrap();
+    client.send(send("m4", "and now?")).await;
+    frames_until(&mut client, is_idle).await;
+
+    let image = UserContentBlock::Image {
+        source: MediaSource::Binary {
+            data: B64Bytes::new(PNG.to_vec()),
+            media_type: "image/png".into(),
+        },
+    };
+    let missing = UserContentBlock::Text {
+        text: format!("[missing image blob {uploaded}]"),
+    };
+    let first_messages: Vec<Option<InferenceItem>> = script
+        .requests()
+        .iter()
+        .map(|request| request.items.first().cloned())
+        .collect();
+    let message = |content: Vec<UserContentBlock>| Some(InferenceItem::UserMessage { content });
+    assert_eq!(
+        first_messages,
+        [
+            message(vec![text.clone(), image.clone(), record.clone()]),
+            message(vec![text.clone(), image, record.clone()]),
+            message(vec![text.clone(), missing.clone(), record.clone()]),
+            message(vec![text, missing, record]),
+        ]
+    );
 }
 
 #[tokio::test(flavor = "local")]

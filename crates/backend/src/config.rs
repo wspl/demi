@@ -198,6 +198,10 @@ pub struct BackendConfig {
     pub cloud: CloudTuning,
     /// How the public relay treats its connections.
     pub exposes: ExposeTuning,
+    /// Counts what reaches the object store, for the scenarios that prove
+    /// what the backend reads and writes there.
+    #[cfg(feature = "testing")]
+    pub object_counts: Option<crate::ObjectCounts>,
 }
 
 /// When Demi reclaims what a conversation uses on a Host
@@ -403,6 +407,8 @@ impl BackendConfig {
             lifecycle: LifecycleTuning::default(),
             cloud: CloudTuning::default(),
             exposes: ExposeTuning::default(),
+            #[cfg(feature = "testing")]
+            object_counts: None,
         }
     }
 }
