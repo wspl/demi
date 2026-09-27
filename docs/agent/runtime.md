@@ -648,6 +648,11 @@ each provider request while the block is replayed:         the held bytes
   A tool's medium whose put fails becomes the text
   `[<kind> not stored: <reason>]` in its result, so the turn goes on and no
   block names a blob that was not stored.
+- **Text in a medium's place.** A text that takes a tool medium's place in a
+  result, such as the one above, is a text part of its own that starts with
+  `[image` or `[video`, and no other text part of a tool result starts so.
+  The page shows it where the medium was
+  ([Media a tool returned](../product/file-previews.md#media-a-tool-returned)).
 - **References.** The transcript, the queued messages, the pending steers,
   every checkpoint row and every frame hold media only by reference. Nothing
   converts media when a block is saved or sent, a store refuses a checkpoint
@@ -748,6 +753,11 @@ A renderer uses the `tool_call` fields as [Transcript](#transcript) defines
 them: `toolName` selects the rendering, `input` is JSON text the renderer
 parses, `status` and `output` give the result, and `view` enriches the display
 with the command's own output and status.
+
+The images and videos a result carries are parts of its `output`, held by
+reference ([Media](#media)); the view never holds them. Each tool's rendering
+shows them with the call, and a text in a medium's place where the medium was
+([Media a tool returned](../product/file-previews.md#media-a-tool-returned)).
 
 Live frames add to the transcript; they do not replace it:
 
@@ -1113,6 +1123,7 @@ where a tool runs; no test calls a real model.
 | A client stops reading | The connection closes as lagging; a reconnect adopts the running tree and its turn completes |
 | Frames of an open | The handshake order above; patch revisions increase by one; a stale patch after a reset is ignored; a gap triggers `sync_transcript` |
 | Scripted tool events | Each of the five tools renders with its own component and its `description` title; updates replace the block in place; an unknown tool name renders as a generic card |
+| A tool's result carries an image, a video, or a text in a medium's place | The page shows each under the call's row, the media loaded from the blob route; a click on the image opens it large |
 | Tool calls | Input refusals, the repeat guard, preview budgets, handle release and binary stdout verdicts match [Tools](#tools) |
 | A stored conversation with images is opened by two pages, and one asks for the transcript again after a gap | No blob is put: every frame carries the references its rows hold |
 | A restored conversation with images before and after its last `compaction_boundary` runs a turn of two requests | The first request reads the blob of each replayed medium once and none from before the boundary; the second reads none; both carry the replayed media's bytes |
