@@ -95,19 +95,14 @@ impl CompactionConfig {
     }
 }
 
-/// Whether the history's estimate for `model` is at or over its threshold,
-/// read from the replayed blocks as the model receives them.
-async fn over_token_threshold(
-    s: &SessionShared,
-    model: &ModelSelection,
-    cancel: &TurnCancel,
-) -> Result<bool, TurnError> {
+/// Whether the estimate of `blocks`, the replayed blocks as the model
+/// receives them, is at or over the token threshold of `model`.
+fn over_token_threshold(s: &SessionShared, model: &ModelSelection, blocks: &[Block]) -> bool {
     let window = model.model.context_window;
-    let Some(threshold) = s.config.compaction.threshold(window) else {
-        return Ok(false);
-    };
-    let view = model_view(s, cancel).await?;
-    Ok(context_tokens(&view.blocks, Some(window)) >= threshold)
+    s.config
+        .compaction
+        .threshold(window)
+        .is_some_and(|threshold| context_tokens(blocks, Some(window)) >= threshold)
 }
 
 /// Whether the history is at or over a threshold of `model`, whose vendor
@@ -119,11 +114,11 @@ async fn over_a_threshold(
     limits: RequestLimits,
     cancel: &TurnCancel,
 ) -> Result<bool, TurnError> {
-    if over_token_threshold(s, model, cancel).await? {
+    let view = model_view(s, cancel).await?;
+    if over_token_threshold(s, model, &view.blocks) {
         return Ok(true);
     }
     let system_prompt = cancel.guard(s.runtime.system_prompt()).await?;
-    let view = model_view(s, cancel).await?;
     let replayed = replay(&view.blocks, &model.model, limits);
     let size = request_size(&system_prompt, &replayed.items);
     Ok(s.config.compaction.size_reached(limits, size))
@@ -148,7 +143,8 @@ pub(super) async fn compacting<T>(
 /// token threshold; a request's size is checked before each request.
 pub(super) async fn preflight(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnError> {
     let model = s.read(|core| core.model.clone());
-    if over_token_threshold(s, &model, cancel).await? {
+    let view = model_view(s, cancel).await?;
+    if over_token_threshold(s, &model, &view.blocks) {
         compacting(s, run_pass(s, cancel)).await?;
     }
     Ok(())
