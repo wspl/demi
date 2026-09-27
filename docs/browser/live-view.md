@@ -184,8 +184,11 @@ viewport that the viewer's panel asks for, it tells that viewer in a `notice`
 and writes to the [Host's log](../execution/runner.md#host-log).
 
 A view ends once. The module's `ended` message and the socket's close are one
-end, and the page opens at most one view after it. An answer that cannot
-change, such as 404 for a conversation that does not exist, is not retried.
+end, and the page opens at most one view after it, once the page's
+[reconnect waits](../product/web-application.md#liveness-and-reconnection)
+have passed; a view works again, and the waits start over, when its first
+`state` arrives. An answer that cannot change, such as 404 for a conversation
+that does not exist, is not retried.
 
 ### Framing and versions
 

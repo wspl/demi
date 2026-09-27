@@ -219,11 +219,22 @@ without asking.
 
 A reverse proxy in front of the backend passes each request's `Origin` and
 `Host` headers to it unchanged, since the check reads both. A proxy that
-drops `Origin` turns the check off without a sign: every request then passes,
-as a request from `curl` does. Behind a proxy that rewrites `Host`, the
-backend refuses the product's own pages, unless `DEMI_BACKEND_PUBLIC_URL` is
-their origin. An operator checks a deployment from outside with a request
-that names another origin, which must answer 403 `forbidden_origin`:
+drops `Origin` turns the check off: every request then passes, as a request
+from `curl` does. The backend notices a browser's request that lost its
+`Origin` on the way. Every current browser sends Fetch Metadata
+(`Sec-Fetch-Site`) with each request to an HTTPS site or to `localhost`, and
+`Origin` with each request the check covers, so such a request that has
+`Sec-Fetch-Site` and no `Origin` passed a proxy that dropped `Origin`. The
+request still passes, as any request without `Origin` does, and the backend
+logs one warning, the first time it sees such a request: the proxy drops
+`Origin`, so the check against other sites' pages is off. For example, a
+user signs in through a proxy that strips `Origin`: the sign-in works, and
+the backend's log shows the warning once, however many requests follow.
+
+Behind a proxy that rewrites `Host`, the backend refuses the product's own
+pages, unless `DEMI_BACKEND_PUBLIC_URL` is their origin. An operator checks a
+deployment from outside with a request that names another origin, which must
+answer 403 `forbidden_origin`:
 
 ```sh
 curl -s -X POST https://demi.example/api/auth/login \

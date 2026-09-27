@@ -2,7 +2,9 @@
  * One live view of the conversation's browser (`live-view.md` § The
  * stream): the page's side of the protocol. It keeps what the view shows,
  * hands pictures to a decoder, acknowledges what the viewer saw, and sends
- * the viewer's input while the stream is alive.
+ * the viewer's input while the stream is alive. A view that ends opens again
+ * after the page's reconnect waits (`web-application.md` § Liveness and
+ * reconnection).
  */
 import {
   LIVE_CAPTURE_FAILED,
@@ -17,6 +19,7 @@ import {
 } from '@demicodes/protocol'
 import { reactive } from 'vue'
 import { reportError } from '../infra/errors'
+import { waitToReconnect, type ReconnectWait } from '../transport/liveness'
 import { LiveFrameReader, encodeFile, encodeMessage, type LiveBytes, type LiveFrame, type LiveVideoFrame } from './frames'
 import type { PanelSize } from './view'
 
@@ -70,20 +73,13 @@ export interface LiveSessionOptions {
   onClipboard?: (text: string) => void
   /** The browser's tabs, each time the view reports them. */
   onTabs?: (tabs: LiveTab[]) => void
-  /** The view ended; it may open again by itself. */
-  onEnded?: (reason: string) => void
   /**
-   * How long to wait before opening the view again after the stream ended,
-   * or null to leave it ended. A Host that becomes reachable again, or a
-   * browser started later, reaches the page through a new view.
+   * The view ended; it opens again by itself, since a Host that becomes
+   * reachable again, or a browser started later, reaches the page through a
+   * new view.
    */
-  reconnect?: (attempt: number) => number | null
+  onEnded?: (reason: string) => void
   now?: () => number
-}
-
-/** A second, then longer, up to ten. */
-function backoff(attempt: number): number {
-  return Math.min(10_000, 1000 * 2 ** (attempt - 1))
 }
 
 /** An upload the viewer started, whose bytes follow. */
@@ -112,8 +108,9 @@ export class LiveSession {
   private uploads = 0
   private received: number
   private resynced = 0
-  private attempt = 0
-  private reopening: ReturnType<typeof setTimeout> | null = null
+  /** Views that ended in a row since one last worked. */
+  private failures = 0
+  private reopening: ReconnectWait | null = null
   private panelReport: { panel: PanelSize; ratio: number; screen: PanelSize } | null = null
   /** The page closed this view; nothing reopens it. */
   private done = false
@@ -168,10 +165,8 @@ export class LiveSession {
 
   close(): void {
     this.done = true
-    if (this.reopening !== null) {
-      clearTimeout(this.reopening)
-      this.reopening = null
-    }
+    this.reopening?.cancel()
+    this.reopening = null
     this.pictures?.stop()
     this.stream?.close()
     this.stream = null
@@ -183,29 +178,22 @@ export class LiveSession {
     this.stream = null
     stream?.close()
     this.state.ended = reason
-    // A view the page closed itself has nothing to tell.
-    if (!this.done) {
-      this.options.onEnded?.(reason)
-    }
     this.state.dialog = null
     this.state.controls = []
-    const delay = this.done
-      ? null
-      : this.options.reconnect
-        ? this.options.reconnect(this.attempt + 1)
-        : backoff(this.attempt + 1)
-    if (delay === null) {
+    // A view the page closed itself has nothing to tell, and none follows it.
+    if (this.done) {
       this.state.connection = 'ended'
       return
     }
-    this.attempt += 1
+    this.options.onEnded?.(reason)
+    this.failures += 1
     this.state.connection = 'opening'
     this.state.running = false
     this.state.tabs = []
-    this.reopening = setTimeout(() => {
+    this.reopening = waitToReconnect(this.failures, () => {
       this.reopening = null
       this.start()
-    }, delay)
+    })
   }
 
   /**
@@ -254,7 +242,7 @@ export class LiveSession {
       const message = frame.message
       switch (message.type) {
         case 'state':
-          this.attempt = 0
+          this.failures = 0
           this.state.ended = null
           this.state.connection = this.state.connection === 'opening' ? 'live' : this.state.connection
           this.state.running = message.running
