@@ -143,10 +143,7 @@ pub(super) async fn compacting<T>(
 /// token threshold; a request's size is checked before each request.
 pub(super) async fn preflight(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnError> {
     let view = model_view(s, cancel).await?;
-    let over = s.read(|core| {
-        let request = RequestView::new(&view, &core.model.model, core.request_limits());
-        over_token_threshold(s, &request)
-    });
+    let over = s.read(|core| over_token_threshold(s, &core.request_view(&view)));
     if over {
         compacting(s, run_pass(s, cancel)).await?;
     }
@@ -221,7 +218,7 @@ pub(super) async fn run_pass(
     // boundary and its marker: `cut` never falls below `first + 1`.
     loop {
         let compacted_tokens = s.read(|core| {
-            let request = RequestView::new(&view, &core.model.model, core.request_limits());
+            let request = core.request_view(&view);
             view.blocks[start..cut]
                 .iter()
                 .map(|block| block_tokens(block, &request))

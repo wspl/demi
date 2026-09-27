@@ -29,7 +29,6 @@ use super::{
 use crate::{
     store::{BoundaryEdge, media},
     transcript::{
-        RequestView,
         estimate::{context_tokens, request_size},
         resume_point, tool_input,
     },
@@ -110,13 +109,7 @@ async fn run_turn(
 /// blocks, as the model receives them.
 async fn estimate(s: &SessionShared, cancel: &TurnCancel) -> Result<u64, TurnError> {
     let view = model_view(s, cancel).await?;
-    Ok(s.read(|core| {
-        context_tokens(&RequestView::new(
-            &view,
-            &core.model.model,
-            core.request_limits(),
-        ))
-    }))
+    Ok(s.read(|core| context_tokens(&core.request_view(&view))))
 }
 
 /// Lands the recorded model switch: the history is first compacted to fit

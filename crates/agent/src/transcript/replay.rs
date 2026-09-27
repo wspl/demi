@@ -33,7 +33,7 @@ pub(crate) struct Replay {
 
 /// What `request` carries of its model's view.
 pub(crate) fn replay(request: &RequestView) -> Replay {
-    let blocks = &request.view.blocks;
+    let blocks = request.blocks();
     let start = replay_start(blocks);
     let answer = latest_answer(blocks);
     let kept = kept_past_summary(blocks, start);
