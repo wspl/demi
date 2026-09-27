@@ -512,8 +512,8 @@ the tree: shell_output to every attached page,
   every change of its view reach every attached connection as `shell_output`:
   the start and new output at most every 250 ms, the tree's changed commands
   together, and the command's end at once. Output that comes after a quiet
-  quarter of a second goes at once. A command therefore sends a page at most four frames a second
-  however much it prints, and cannot fill an outbox
+  quarter of a second goes at once. A command therefore sends a page at most
+  four frames a second however much it prints, and cannot fill an outbox
   ([Order and delivery](#order-and-delivery)) by itself.
 - **A page that attaches** receives each live command's view in its
   handshake, then every change as the other pages do. A live command is one
