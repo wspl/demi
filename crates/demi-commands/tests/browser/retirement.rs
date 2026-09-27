@@ -305,7 +305,7 @@ fn chrome_profiles() -> std::collections::BTreeMap<i32, PathBuf> {
 }
 
 #[tokio::test]
-#[ignore = "installs the pinned Chrome release and exercises conversation retirement"]
+#[ignore = "requires DEMI_TEST_CHROME; exercises conversation retirement"]
 async fn conversation_release_cancels_only_its_commands_and_retires_its_profile() {
     use serde_json::json;
     crate::families::with_browser_fixture(|first| async move {
@@ -382,7 +382,7 @@ async fn conversation_release_cancels_only_its_commands_and_retires_its_profile(
 }
 
 #[tokio::test]
-#[ignore = "installs the pinned Chrome release and verifies trusted invocation identity"]
+#[ignore = "requires DEMI_TEST_CHROME; verifies trusted invocation identity"]
 async fn browser_uses_trusted_conversation_and_caller_despite_script_environment() {
     use serde_json::json;
     crate::families::with_browser_fixture(|mut first| async move {
@@ -555,8 +555,9 @@ async fn a_new_open_recovers_after_chrome_crashes_without_replaying_old_tabs() {
                 json!({"tab":old,"method":"Fetch.enable","params":"{}"}),
             )
             .await;
-        // The fixture runs the Chrome the product installed, which need not be
-        // `DEMI_TEST_CHROME`; the one profile it holds names its main process.
+        // The fixture's Chrome runs from the service's own installation, not
+        // from `DEMI_TEST_CHROME`; the one profile it holds names its main
+        // process.
         let mut profiles = chrome_profiles();
         assert_eq!(profiles.len(), 1, "the fixture owns one Chrome");
         let (leader, profile) = profiles.pop_first().unwrap();

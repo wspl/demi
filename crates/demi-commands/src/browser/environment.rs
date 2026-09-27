@@ -296,8 +296,8 @@ where
 /// service can take belongs to no running service: its marked Chrome
 /// processes end the way retirement ends them, then the profile goes. A
 /// profile whose lock is held, or that has no lock yet, is left alone.
-pub async fn sweep_orphans() {
-    sweep_orphans_in(&std::env::temp_dir(), super::installation::roots()).await;
+pub async fn sweep_orphans(directories: &super::BrowserDirectories) {
+    sweep_orphans_in(&std::env::temp_dir(), directories.roots()).await;
 }
 
 async fn sweep_orphans_in(directory: &std::path::Path, installations: Vec<PathBuf>) {

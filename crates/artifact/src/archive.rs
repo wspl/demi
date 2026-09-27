@@ -100,6 +100,17 @@ pub async fn install_archive(
     drop(output);
     let extracted = temporary.path().join("extracted");
     extract_zip(&downloaded, &extracted, cancel).await?;
+    publish_installation(&extracted, &destination, archive, cancel).await
+}
+
+/// Writes the receipt of `archive`'s files, unpacked at `extracted`, and
+/// publishes them as `destination`; returns the executable there.
+async fn publish_installation(
+    extracted: &Path,
+    destination: &Path,
+    archive: &Archive,
+    cancel: &CancellationToken,
+) -> Result<PathBuf, Error> {
     let executable = match crate::digest(&extracted.join(&archive.executable), EXECUTABLE_BYTES, cancel).await {
         Ok(executable) => executable,
         Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -108,15 +119,79 @@ pub async fn install_archive(
         Err(error) => return Err(error),
     };
     let receipt = Receipt {
-        archive_hash: sha256.clone(),
+        archive_hash: archive.digest.sha256.clone(),
         executable_hash: executable.sha256,
     };
-    crate::receipt::write(&extracted, &receipt).await?;
+    crate::receipt::write(extracted, &receipt).await?;
     if cancel.is_cancelled() {
         return Err(Error::Cancelled);
     }
-    crate::publish_directory(&extracted, &destination).await?;
+    crate::publish_directory(extracted, destination).await?;
     Ok(destination.join(&archive.executable))
+}
+
+/// Installs into `root`, as [`install_archive`] does after its download, the
+/// files of `archive` that a copy unpacked elsewhere holds, named by that
+/// copy's `executable`, so that [`installed`] accepts them. For a test given
+/// an installed release's executable, such as the Chrome suite's
+/// `DEMI_TEST_CHROME`: nothing is downloaded, and the files are hard links
+/// where the system allows them, copies otherwise.
+#[cfg(feature = "testing")]
+pub async fn install_unpacked(
+    root: &Path,
+    archive: &Archive,
+    executable: &Path,
+    cancel: &CancellationToken,
+) -> Result<PathBuf, Error> {
+    let unpacked = Path::new(&archive.executable)
+        .components()
+        .try_fold(executable, |path, _| path.parent())
+        .filter(|unpacked| unpacked.join(&archive.executable) == executable)
+        .ok_or_else(|| {
+            Error::Archive(format!("{} is not its {}", executable.display(), archive.executable))
+        })?
+        .to_owned();
+    tokio::fs::create_dir_all(root).await?;
+    let temporary = tempfile::Builder::new().prefix(".install-").tempdir_in(root)?;
+    let extracted = temporary.path().join("extracted");
+    let linked = extracted.clone();
+    tokio::task::spawn_blocking(move || link_tree(&unpacked, &linked))
+        .await
+        .map_err(std::io::Error::other)??;
+    publish_installation(&extracted, &root.join(&archive.digest.sha256), archive, cancel).await
+}
+
+/// Makes `destination` a tree like `source`: new directories, the same
+/// symbolic links, and each file hard-linked, or copied.
+#[cfg(feature = "testing")]
+fn link_tree(source: &Path, destination: &Path) -> std::io::Result<()> {
+    std::fs::create_dir(destination)?;
+    for entry in std::fs::read_dir(source).map_err(|error| at(source, error))? {
+        let entry = entry?;
+        let from = entry.path();
+        let to = destination.join(entry.file_name());
+        let kind = entry.file_type()?;
+        if kind.is_dir() {
+            link_tree(&from, &to)?;
+        } else if kind.is_symlink() {
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(std::fs::read_link(&from)?, &to)?;
+            #[cfg(not(unix))]
+            return Err(std::io::Error::other(format!("{} is a symbolic link", from.display())));
+        } else if std::fs::hard_link(&from, &to).is_err() {
+            // Every system refuses a hard link across filesystems, and Linux
+            // one to another user's file (`protected_hardlinks`); a copy has
+            // the same bytes, and fails on its own if the file is unreadable.
+            std::fs::copy(&from, &to).map_err(|error| at(&from, error))?;
+        }
+    }
+    Ok(())
+}
+
+/// `error`, naming the file of the unpacked copy it happened to.
+#[cfg(feature = "testing")]
+fn at(path: &Path, error: std::io::Error) -> std::io::Error {
+    std::io::Error::new(error.kind(), format!("{}: {error}", path.display()))
 }
 
 /// Whether the zip archive at `archive` holds a file at `path`, such as the
