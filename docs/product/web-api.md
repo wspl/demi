@@ -60,6 +60,28 @@ Partial conversation mutations use the explicit outcomes described below.
 | Runner transport | `WS /runner`; device-authenticated `PUT/GET /pipes/:id` for source/sink streams |
 | Public installation | `GET /install.sh`, `GET /install.ps1`, `GET /runner-artifacts/:release/:target/:file`, and a development store's command executables, `GET /native-artifacts/:sha256` ([Backend deployment configuration](../execution/native-runtime.md#backend-deployment-configuration)) (root paths, outside `/api`) |
 
+### Authentication
+
+Each route authenticates its caller in one of these ways
+([Authentication and ownership](../backend/backend.md#authentication-and-ownership)):
+
+| Routes | Authentication |
+|---|---|
+| `GET/POST /setup`, `POST /auth/login` | None; a successful `POST` sets the session cookie |
+| `WS /sync` | The session cookie, which the route checks without renewing the session |
+| Every other path under `/api`, unknown paths included, except the runner transport | The session cookie, which the session gate checks |
+| The runner transport, `WS /runner` and `PUT/GET /pipes/:id` | A runner's device token; an unpaired runner's socket waits without one until a user claims its code |
+| The public installation routes and the [browser build](#serving-the-browser-build) | None |
+| Every path on an expose hostname | None; the public relay answers it, never a route of this API ([Exposes](#exposes)) |
+
+The first three rows are the browser's routes. Such a route answers 403
+`forbidden_origin` to a request that could act with the user's session and
+comes from a page that is not the product's: a request whose method is not
+GET, HEAD, OPTIONS or TRACE, or an upgrade, such as a WebSocket's. It answers
+before any other check, so the request changes nothing and is refused with or
+without a session. A request without `Origin` does not come from a browser
+and passes, so `curl` can call `POST /api/setup` without one.
+
 ### Request bodies
 
 The backend reads a JSON body whole, up to 1 MiB, and an attachment's bytes up
@@ -233,11 +255,10 @@ Host handle while the Cloud was changing state
 [user stream](../execution/native-runtime.md#user-streams) `name` on the
 conversation's main Host; `browser` is the
 [live browser view](../browser/live-view.md). The upgrade requires the session
-cookie, a page of the product
-([Authentication and ownership](../backend/backend.md#authentication-and-ownership)),
-which matters all the more here since the stream operates a browser signed in
-to the user's sites, and a conversation the user owns. The route answers
-before the upgrade:
+cookie and a conversation the user owns, and is refused from a page that is
+not the product's ([Authentication](#authentication)), which matters all the
+more here since the stream operates a browser signed in to the user's sites.
+The route answers before the upgrade:
 
 | Answer | When |
 | --- | --- |
@@ -725,10 +746,8 @@ stream upgrades, frames on an open socket, attachment delivery, host changes
 and metadata edits are refused until restore, with 409
 `conversation_archived` where the refusal is an HTTP answer. An upgrade of
 the stream from a page that is not the product's answers 403
-`forbidden_origin`
-([Authentication and ownership](../backend/backend.md#authentication-and-ownership)),
-and a request to the stream that is not a WebSocket upgrade 426
-`upgrade_required`.
+`forbidden_origin` ([Authentication](#authentication)), and a request to the
+stream that is not a WebSocket upgrade 426 `upgrade_required`.
 
 `POST /api/sidebar/reorder` takes `{ kind: "conversation" | "workspace", id,
 beforeId: string | null }`; null appends, and a success answers 204.
@@ -791,11 +810,10 @@ of them asked for anything. The channel carries what a page shows around its
 conversations; an open conversation's transcript, phase and commands stay on
 that conversation's own [stream](../agent/runtime.md#frame-protocol).
 
-The upgrade requires the session cookie and a page of the product: the
-channel shows the user's state to whatever reads it, so an upgrade from
-another origin answers 403 `forbidden_origin`
-([Authentication and ownership](../backend/backend.md#authentication-and-ownership)).
-A request that is not an upgrade answers 426 `upgrade_required`.
+The upgrade requires the session cookie. The channel shows the user's state
+to whatever reads it, so an upgrade from a page that is not the product's
+answers 403 `forbidden_origin` ([Authentication](#authentication)). A request
+that is not an upgrade answers 426 `upgrade_required`.
 
 After the upgrade, the backend sends JSON text messages, each a `SyncEvent`,
 and the page sends none. The first message is the whole product state; each
