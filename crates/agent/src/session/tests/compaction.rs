@@ -3,7 +3,7 @@
 //! `compact` action, and the request prefix a provider caches.
 
 use demi_core::{BlockId, QueuedMessage, TokenUsage};
-use demi_provider::ProviderFailure;
+use demi_provider::{PromptCache, ProviderFailure};
 
 use super::*;
 use crate::{
@@ -306,6 +306,14 @@ async fn a_request_repeats_the_one_before_as_its_prefix_a_pass_restarts_it_at_it
             vec![answer_item("small-model", "answer C"), user_item("D")]
         ]
         .concat()
+    );
+    // Each request says how many of its items the latest answered request
+    // carried: none before the first answer, and none after a pass until the
+    // first answer after it.
+    assert_eq!(
+        [a, b, c, d].map(|request| request.prompt_cache),
+        [0, a.items.len(), 0, c.items.len()]
+            .map(|answered_items| PromptCache::Session { answered_items })
     );
     // What a request holds comes from the history alone.
     assert_eq!(

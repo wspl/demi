@@ -30,8 +30,8 @@ use tokio::sync::Notify;
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 use crate::{
-    InferenceItem, InferenceRequest, Provider, ProviderEvent, ProviderFailure, ProviderRun,
-    ProviderRuntime, RequestLimits, ToolCall,
+    InferenceItem, InferenceRequest, PromptCache, Provider, ProviderEvent, ProviderFailure,
+    ProviderRun, ProviderRuntime, RequestLimits, ToolCall,
 };
 
 /// Builders of the events a scripted run yields.
@@ -94,6 +94,7 @@ pub fn inference_request() -> InferenceRequest {
         tools: Arc::new([]),
         thinking: None,
         service_tier_id: None,
+        prompt_cache: PromptCache::Off,
         cancel: CancellationToken::new(),
     }
 }
