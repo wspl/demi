@@ -5,7 +5,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::{
     BrowserError, Result,
-    protocol::{ActionProgress, BrowserErrorCode, ErrorDetails, INLINE_BYTES},
+    protocol::{ActionProgress, BrowserErrorCode, BrowserOperation, ErrorDetails, INLINE_BYTES},
 };
 
 /// A typed result as the JSON value [`render`] bounds.
@@ -104,9 +104,10 @@ async fn publish(
     }
 }
 
-/// Prints a result, shortening its content or its list until it fits
-/// [`INLINE_BYTES`]; a result that cannot shrink fails.
-pub(super) fn render(mut value: Value, json: bool) -> Result<Vec<u8>> {
+/// Prints `operation`'s result, shortening its content or its list until it
+/// fits [`INLINE_BYTES`]; a result that cannot shrink fails. `--json` prints
+/// the result, anything else its text (`browser.md` § Default text).
+pub(super) fn render(operation: &BrowserOperation, mut value: Value, json: bool) -> Result<Vec<u8>> {
     loop {
         let bytes = serde_json::to_vec(&value)
             .map_err(|error| BrowserError::InvalidResult(error.to_string()))?;
@@ -152,45 +153,8 @@ pub(super) fn render(mut value: Value, json: bool) -> Result<Vec<u8>> {
     let mut result = if json {
         serde_json::to_string(&value)
             .map_err(|error| BrowserError::InvalidResult(error.to_string()))?
-    } else if let Some(nodes) = value
-        .get("tree")
-        .or_else(|| value.get("matches"))
-        .and_then(Value::as_array)
-    {
-        let mut text = String::new();
-        let mut pending: Vec<_> = nodes.iter().rev().map(|node| (node, 0_usize)).collect();
-        while let Some((node, depth)) = pending.pop() {
-            if let Some(children) = node["children"].as_array() {
-                pending.extend(children.iter().rev().map(|child| (child, depth + 1)));
-            }
-            let depth = depth.min(64);
-            let role = node["role"].as_str().unwrap_or("");
-            let name = node["name"].as_str().unwrap_or("");
-            let reference = node["ref"].as_str().unwrap_or("");
-            text.push_str(&format!("{}{role} {name:?}", "  ".repeat(depth)));
-            if !reference.is_empty() {
-                text.push_str(&format!(" [ref={reference}]"));
-            }
-            if let Some(states) = node["states"].as_array() {
-                for state in states.iter().filter_map(Value::as_str) {
-                    text.push_str(&format!(" [{state}]"));
-                }
-            }
-            if let Some(value) = node.get("value") {
-                text.push_str(&format!(" [value={value}]"));
-            }
-            text.push('\n');
-        }
-        if nodes.is_empty() {
-            text.push_str("No matching nodes.\n");
-        }
-        if value["truncated"] == true {
-            text.push_str("[truncated]\n");
-        }
-        text
     } else {
-        serde_json::to_string_pretty(&value)
-            .map_err(|error| BrowserError::InvalidResult(error.to_string()))?
+        super::text::render(operation, value)?
     };
     if !result.ends_with('\n') {
         result.push('\n');
@@ -204,6 +168,7 @@ pub(super) fn render(mut value: Value, json: bool) -> Result<Vec<u8>> {
 /// Render browser failures with the same progress and details as their JSON form.
 pub(super) fn render_error(code: BrowserErrorCode, message: &str, details: &ErrorDetails) -> String {
     let action = details.action.unwrap_or(ActionProgress::NotStarted);
+    let message = super::text::plain(message);
     let mut text = format!("Error: {code}\n{message}\nAction: {action}.\n");
     // Details are plain data, which always serializes to an object.
     if let Ok(Value::Object(details)) = serde_json::to_value(details) {
@@ -221,7 +186,7 @@ pub(super) fn render_error(code: BrowserErrorCode, message: &str, details: &Erro
                 }
             };
             let value = match value {
-                Value::String(value) => value,
+                Value::String(value) => super::text::plain(&value),
                 _ => value.to_string(),
             };
             text.push_str(&format!("{title}: {value}\n"));
@@ -238,7 +203,9 @@ mod tests {
     #[test]
     fn stream_output_truncation_does_not_skip_the_omitted_entries() {
         let entries: Vec<_> = (0..3).map(|sequence| json!({"sequence":sequence,"level":"info","text":"x".repeat(30_000),"timestamp":0})).collect();
+        let logs = BrowserOperation::parse("logs", json!({"tab": "t_test"})).unwrap();
         let bytes = render(
+            &logs,
             json!({"entries":entries,"cursor":"logs_test:3","hasMore":false,"truncated":false}),
             true,
         )
@@ -279,23 +246,5 @@ mod tests {
             assert!(text.contains(line));
         }
         assert!(!text.contains("Details:"));
-    }
-
-    #[test]
-    fn inspect_text_renders_nested_states_and_values() {
-        let value = json!({
-            "tab": "t_test", "url": "about:blank", "title": "", "view": "accessibility",
-            "tree": [{"role": "main", "children": [{"role": "checkbox", "name": "Confirm", "states": ["checked=false"], "value": "hello"}]}],
-            "truncated": false,
-        });
-        let text = String::from_utf8(render(value.clone(), false).unwrap()).unwrap();
-        assert!(text.contains("main "));
-        assert!(text.contains("  checkbox \"Confirm\" [checked=false] [value=\"hello\"]"));
-        let structured: Value =
-            serde_json::from_slice(&render(value, true).unwrap()).unwrap();
-        assert_eq!(
-            structured["tree"][0]["children"][0]["states"][0],
-            "checked=false"
-        );
     }
 }
