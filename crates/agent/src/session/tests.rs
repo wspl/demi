@@ -36,6 +36,7 @@ mod compaction;
 mod editing;
 mod input;
 mod recovery;
+mod requests;
 
 type Invoke =
     Rc<dyn Fn(ToolInvocation) -> LocalBoxFuture<'static, Result<ToolOutcome, ToolFailure>>>;
