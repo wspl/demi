@@ -6,7 +6,7 @@ use std::{future::Future, rc::Rc, sync::Arc};
 
 use demi_core::{B64Bytes, BlobRef, Block, ModelSelection, TokenUsage, TurnId, UserContentBlock};
 use demi_gates::{ActivityGate, GateLease, Purpose, Reservation};
-use demi_provider::{ErrorCode, ToolDefinition};
+use demi_provider::{ErrorCode, RequestLimits, ToolDefinition};
 use futures_util::future::LocalBoxFuture;
 
 use super::{
@@ -26,8 +26,8 @@ use crate::{
     },
     transcript::{
         TranscriptLog, compaction_window,
-        estimate::{block_tokens, context_tokens, text_tokens},
-        last_assistant_text,
+        estimate::{RequestSize, block_tokens, context_tokens, request_size, text_tokens},
+        last_assistant_text, replay,
     },
 };
 
@@ -56,6 +56,13 @@ impl Default for CompactionConfig {
 }
 
 impl CompactionConfig {
+    /// Whether the session compacts without being asked: before a turn,
+    /// before a request, after a response or a refusal. A session copy does
+    /// not, so its refused summary request comes back to its pass.
+    pub(crate) fn automatic(&self) -> bool {
+        self.threshold_percent.is_some()
+    }
+
     /// The threshold of a model with `context_window`, rounded down; none
     /// for a model that reports no window.
     pub(crate) fn threshold(&self, context_window: u32) -> Option<u64> {
@@ -73,11 +80,24 @@ impl CompactionConfig {
         self.threshold(context_window)
             .is_some_and(|threshold| used >= threshold)
     }
+
+    /// Whether a request of `size` reaches a size threshold of a vendor that
+    /// takes requests within `limits` (`compaction.md` § When compaction
+    /// runs): the same share of its body limit or of its image limit.
+    pub(crate) fn size_reached(&self, limits: RequestLimits, size: RequestSize) -> bool {
+        let Some(percent) = self.threshold_percent else {
+            return false;
+        };
+        let reached = |limit: Option<u64>, value: u64| {
+            limit.is_some_and(|limit| value >= limit * u64::from(percent) / 100)
+        };
+        reached(limits.body_bytes, size.bytes) || reached(limits.images.map(u64::from), size.images)
+    }
 }
 
 /// Whether the history's estimate for `model` is at or over its threshold,
 /// read from the replayed blocks as the model receives them.
-async fn over_threshold(
+async fn over_token_threshold(
     s: &SessionShared,
     model: &ModelSelection,
     cancel: &TurnCancel,
@@ -88,6 +108,25 @@ async fn over_threshold(
     };
     let view = model_view(s, cancel).await?;
     Ok(context_tokens(&view.blocks, Some(window)) >= threshold)
+}
+
+/// Whether the history is at or over a threshold of `model`, whose vendor
+/// takes requests within `limits`: its estimate, or the size of the request
+/// that model would be sent.
+async fn over_a_threshold(
+    s: &SessionShared,
+    model: &ModelSelection,
+    limits: RequestLimits,
+    cancel: &TurnCancel,
+) -> Result<bool, TurnError> {
+    if over_token_threshold(s, model, cancel).await? {
+        return Ok(true);
+    }
+    let system_prompt = cancel.guard(s.runtime.system_prompt()).await?;
+    let view = model_view(s, cancel).await?;
+    let replayed = replay(&view.blocks, &model.model, limits);
+    let size = request_size(&system_prompt, &replayed.items);
+    Ok(s.config.compaction.size_reached(limits, size))
 }
 
 /// Runs `work` in the compacting stage, which clients see as the phase
@@ -106,30 +145,32 @@ pub(super) async fn compacting<T>(
 }
 
 /// Before a turn: one pass when the history is over the current model's
-/// threshold.
+/// token threshold; a request's size is checked before each request.
 pub(super) async fn preflight(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnError> {
     let model = s.read(|core| core.model.clone());
-    if over_threshold(s, &model, cancel).await? {
+    if over_token_threshold(s, &model, cancel).await? {
         compacting(s, run_pass(s, cancel)).await?;
     }
     Ok(())
 }
 
 /// Before a model switch lands: passes with the current model until the
-/// history fits `target`'s threshold, at most eight, stopping when a pass
-/// compacts nothing. Returns whether any pass compacted.
+/// history fits the thresholds of `target`, whose vendor takes requests
+/// within `limits`, at most eight, stopping when a pass compacts nothing.
+/// Returns whether any pass compacted.
 pub(super) async fn compact_to_fit(
     s: &Rc<SessionShared>,
     target: &ModelSelection,
+    limits: RequestLimits,
     cancel: &TurnCancel,
 ) -> Result<bool, TurnError> {
-    if !over_threshold(s, target, cancel).await? {
+    if !over_a_threshold(s, target, limits, cancel).await? {
         return Ok(false);
     }
     compacting(s, async {
         let mut compacted = false;
         for _ in 0..MAX_FIT_PASSES {
-            if !over_threshold(s, target, cancel).await? || !run_pass(s, cancel).await? {
+            if !over_a_threshold(s, target, limits, cancel).await? || !run_pass(s, cancel).await? {
                 break;
             }
             compacted = true;

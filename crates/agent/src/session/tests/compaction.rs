@@ -3,7 +3,7 @@
 //! `compact` action, and the request prefix a provider caches.
 
 use demi_core::{BlockId, QueuedMessage, TokenUsage};
-use demi_provider::{PromptCache, ProviderFailure};
+use demi_provider::{PromptCache, ProviderFailure, RequestLimits};
 
 use super::*;
 use crate::{
@@ -1567,6 +1567,239 @@ async fn a_pass_after_an_edit_summarizes_only_the_history_the_edit_kept() {
             summary_item("summary of A"),
             answer_item("small-model", "answer A"),
             user_item("B2")
+        ]
+    );
+}
+
+/// The images `request` carries, in messages and tool results.
+fn images(request: &demi_provider::InferenceRequest) -> usize {
+    crate::transcript::estimate::request_size("", &request.items).images as usize
+}
+
+#[tokio::test(flavor = "local")]
+async fn screenshots_toward_the_vendors_image_limit_compact_before_a_request_would_reach_it() {
+    // The vendor takes five images a request, so a request of four reaches
+    // its threshold. Each call returns a screenshot.
+    let shot = |call: &str| {
+        Turn::Events(vec![
+            event::tool_call(call, "shoot", json!({})),
+            event::response(1, 1),
+        ])
+    };
+    let provider = ScriptedRuntime::new([
+        shot("shot-1"),
+        shot("shot-2"),
+        shot("shot-3"),
+        shot("shot-4"),
+        answer("the screen so far"),
+        answer("done"),
+    ])
+    .with_limits(RequestLimits {
+        body_bytes: None,
+        images: Some(5),
+    });
+    let png = B64Bytes::from(b"\x89PNG\r\n\x1a\n\0\0\0\x01".to_vec());
+    let shoot = tool("shoot", move |_| {
+        let image = ToolResultContentBlock::Image {
+            source: ToolMediaSource::Binary {
+                data: png.clone(),
+                media_type: "image/png".into(),
+            },
+        };
+        Box::pin(async move {
+            Ok(ToolOutcome {
+                output: vec![image],
+                ..output("")
+            })
+        })
+    });
+    let store = MemoryTreeStore::new();
+    let session = start(&provider, vec![shoot], &store, SessionConfig::default()).await;
+    session
+        .update_model(ModelSwitch {
+            model: model_reading("stub", "test-model", &[FileExtension::Png]),
+            runtime: None,
+        })
+        .unwrap();
+
+    session
+        .send(text("watch the screen"), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+
+    // No request reaches four images: the fifth would have carried four, so
+    // the pass before it summarizes what the fourth carried, whose request
+    // it extends, and the turn goes on after the last screenshot.
+    let requests = provider.requests();
+    assert_eq!(
+        requests.iter().map(images).collect::<Vec<_>>(),
+        [0, 1, 2, 3, 3, 1]
+    );
+    let (fourth, summary, fifth) = (&requests[3], &requests[4], &requests[5]);
+    assert_eq!(
+        summary.items.as_ref(),
+        [
+            fourth.items.to_vec(),
+            vec![user_item(COMPACTION_SUMMARY_INSTRUCTION)]
+        ]
+        .concat()
+    );
+    assert_eq!(
+        item_kinds(&fifth.items),
+        ["user_message", "tool_use", "tool_result", "user_message"]
+    );
+    assert_eq!(fifth.items[0], summary_item("the screen so far"));
+    assert_eq!(fifth.items[3], user_item(RESUME_TEXT));
+}
+
+#[tokio::test(flavor = "local")]
+async fn a_request_refused_as_too_large_compacts_once_and_goes_again_and_a_second_refusal_fails_the_turn()
+ {
+    let provider = ScriptedRuntime::new([
+        answer("first"),
+        too_long(),
+        answer("summary of the first message"),
+        answer("second"),
+        too_long(),
+        answer("summary of the second message"),
+        too_long(),
+    ]);
+    let store = MemoryTreeStore::new();
+    let session = small_session(&provider, Vec::new(), &store).await;
+    let retries = Rc::new(Cell::new(0));
+    let _listener = session.subscribe({
+        let retries = retries.clone();
+        move |event| {
+            if let SessionEvent::RetryScheduled { .. } = event {
+                retries.set(retries.get() + 1);
+            }
+        }
+    });
+    session.send(text("one"), turn("t1")).unwrap().await.unwrap();
+
+    session.send(text("two"), turn("t2")).unwrap().await.unwrap();
+
+    // The refused request left nothing behind; the pass summarized what the
+    // first request carried, and the request went again from the summary.
+    let requests = provider.requests();
+    let [first, refused, summary, again] = &requests[..4] else {
+        panic!("{requests:?}");
+    };
+    assert_eq!(
+        summary.items.as_ref(),
+        [first.items.to_vec(), vec![user_item(COMPACTION_SUMMARY_INSTRUCTION)]].concat()
+    );
+    assert_eq!(
+        refused.items.as_ref(),
+        [user_item("one"), answer_item("small-model", "first"), user_item("two")]
+    );
+    assert_eq!(
+        again.items.as_ref(),
+        [
+            summary_item("summary of the first message"),
+            answer_item("small-model", "first"),
+            user_item("two")
+        ]
+    );
+    assert_eq!(retries.get(), 0);
+    assert!(!kinds(&session.transcript().blocks).contains(&"error".to_owned()));
+
+    // Refused again after its pass, the request fails the turn.
+    let failed = session.send(text("three"), turn("t3")).unwrap().await;
+
+    assert_eq!(
+        failed.unwrap_err().code.as_deref(),
+        Some("context_length_exceeded")
+    );
+    assert_eq!(provider.remaining(), 0);
+    assert_eq!(
+        kinds(&session.transcript().blocks).last().map(String::as_str),
+        Some("error")
+    );
+}
+
+#[tokio::test(flavor = "local")]
+async fn a_switch_to_a_vendor_that_takes_fewer_images_compacts_with_the_model_before_it() {
+    let shot = |call: &str| {
+        Turn::Events(vec![
+            event::tool_call(call, "shoot", json!({})),
+            event::response(1, 1),
+        ])
+    };
+    let first = ScriptedRuntime::new([
+        shot("shot-1"),
+        shot("shot-2"),
+        shot("shot-3"),
+        answer("three shots"),
+        answer("summary of the shots"),
+    ]);
+    // The new model's vendor takes four images a request: three reach its
+    // threshold.
+    let second = ScriptedRuntime::new([answer("after the switch")]).with_limits(RequestLimits {
+        body_bytes: None,
+        images: Some(4),
+    });
+    let png = B64Bytes::from(b"\x89PNG\r\n\x1a\n\0\0\0\x01".to_vec());
+    let shoot = tool("shoot", move |_| {
+        let image = ToolResultContentBlock::Image {
+            source: ToolMediaSource::Binary {
+                data: png.clone(),
+                media_type: "image/png".into(),
+            },
+        };
+        Box::pin(async move {
+            Ok(ToolOutcome {
+                output: vec![image],
+                ..output("")
+            })
+        })
+    });
+    let store = MemoryTreeStore::new();
+    let session = start(&first, vec![shoot], &store, SessionConfig::default()).await;
+    let reads = [FileExtension::Png];
+    session
+        .update_model(ModelSwitch {
+            model: model_reading("stub", "model-a", &reads),
+            runtime: None,
+        })
+        .unwrap();
+    session
+        .send(text("take three"), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+    session
+        .update_model(ModelSwitch {
+            model: model_reading("other", "model-b", &reads),
+            runtime: Some(Box::new(second.clone())),
+        })
+        .unwrap();
+
+    session
+        .send(text("and now?"), turn("t2"))
+        .unwrap()
+        .await
+        .unwrap();
+
+    // The model before the switch summarized what its last request carried,
+    // and the new model's request holds no image.
+    let requests = first.requests();
+    let [.., last, summary] = requests.as_slice() else {
+        panic!("{requests:?}");
+    };
+    assert_eq!(images(last), 3);
+    assert_eq!(summary.model_id, "model-a");
+    assert_eq!(
+        summary.items.as_ref(),
+        [last.items.to_vec(), vec![user_item(COMPACTION_SUMMARY_INSTRUCTION)]].concat()
+    );
+    assert_eq!(
+        second.requests()[0].items.as_ref(),
+        [
+            summary_item("summary of the shots"),
+            answer_item("model-a", "three shots"),
+            user_item("and now?")
         ]
     );
 }
