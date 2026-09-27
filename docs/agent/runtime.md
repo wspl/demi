@@ -420,26 +420,21 @@ the five completes as an error `Tool not found: <name>`.
 
 ### Results and previews
 
-- The model and the conversation's pages each keep their own place in a
-  command's output, so neither's read changes what the other sees next. A
-  result shows the output since the model's last look at the command. For
-  example, a page reads a running command's new output; the model's next
-  `shell_status` still shows all of it.
-- A page shows a command's tail: the last 4,096 characters of its merged
-  output as the backend holds it, which every `shell_output` frame carries
-  whatever was read before ([Server frames](#server-frames)). So every page
-  that receives a `shell_output` shows the same output, and a page that opens
-  the conversation while the command runs, or reloads, shows its current tail
-  at once. Output reaches the pages only in `shell_output` frames: when a tool
-  reports the command, when a client writes to or stops it, and when a page
-  attaches or asks for a fresh transcript. Until the next of these, a page
-  that attached earlier shows the tail of the last one it received, which can
-  be shorter than what a page that attached since shows. The pages share one
-  place in the output: a `shell_output` also carries the output since the
-  previous `shell_output` of the command, which no page shows.
+- The model keeps its own place in each command's output: a result shows the
+  output since the model's last look at the command. What the pages are sent
+  never moves it ([Live output](#live-output)). For example, a page shows a
+  running command's new output; the model's next `shell_status` still shows
+  all of it.
 - A result gives the command's status and exit code, its handle and timings
   when the handle matters, a preview of the output, and a hint for the next
   step.
+- A result's `idleMs` counts from the last time the command's output grew,
+  also beyond the first 32 KiB of a stream, which the model's view does not
+  hold: the runner reports such growth within 2 seconds even while no page
+  follows the command
+  ([Pipes and output](../execution/runner.md#pipes-and-output)). For example,
+  a build that prints its 100th KiB of log lines a second ago shows an
+  `idleMs` below 3,000, so the model does not take it for a hung one.
 - The preview is the start of the merged output, up to four characters per
   budget token. The budget is 10,000 tokens when the request's model has a
   context window below 800,000 tokens, and 100,000 tokens at or above it. It
@@ -456,6 +451,86 @@ the five completes as an error `Tool not found: <name>`.
   the model-media table, the model accepts that type, and it fits the cap for
   its kind: 4 MiB for an image, 16 MiB for a video. Otherwise the result says
   why nothing was attached and where the raw bytes remain readable.
+
+### Live output
+
+For example, the model runs `npm test` with a two-minute window while the
+conversation is open in tabs A and B. Both tabs show the test output under the
+call as the runner reads it. The window ends while the tests still run: the
+call returns the command's handle to the model, and both tabs count the
+command in the dock's Running chip, whose panel keeps showing its output as it
+comes, although the model no longer looks at it. Tab C, opened now, shows the
+end of the output at once and then follows as A and B do. When the tests end,
+all three show the end.
+
+```text
+the job's stdout and stderr
+  |
+  v
+runner: job_output, each with its stream and offset
+  |       the first 32 KiB of each stream, always
+  |       beyond them, while followed: the newest bytes,
+  |       at most 16 KiB per stream every 250 ms;
+  |       while not: the stream's length, at most every 2 s
+  v
+backend: the command's record
+  |       the model's place and text
+  |       the pages' view: its last 4,096 characters and their count
+  v
+the tree: shell_output to every attached page,
+          new output at most every 250 ms, an end at once
+```
+
+- **The pages' view.** A command keeps one view of its output for the pages,
+  apart from the model's place: its output in the order it reached the
+  backend, with a note where the runner left some out. The pages are sent the
+  view's last 4,096 characters (`tail`) and how many characters the view has
+  held since the command started (`chars`); characters are Unicode scalar
+  values. The view is the same for every page, whatever any page or the model
+  read, and no read changes it. When the command ends, the view gets what the
+  end adds: the end of each stream that the backend had not received
+  ([Pipes and output](../execution/runner.md#pipes-and-output)), why the
+  command could not run, or a binary stdout's description.
+- **Which commands.** Every command of the tree, the root's and each live
+  subagent's, several at once, on a Cloud and on a paired device alike: both
+  are Hosts behind a runner.
+- **While a page is attached.** While at least one connection is attached to
+  the tree ([Connections and the live tree](#connections-and-the-live-tree)),
+  the backend follows every running command of the tree: the runner then sends
+  each stream's output beyond its first 32 KiB as well. A command's start and
+  every change of its view reach every attached connection as `shell_output`:
+  the start and new output at most every 250 ms, the tree's changed commands
+  together, and the command's end at once. Output that comes after a quiet
+  quarter of a second goes at once. A command therefore sends a page at most four frames a second
+  however much it prints, and cannot fill an outbox
+  ([Order and delivery](#order-and-delivery)) by itself.
+- **A page that attaches** receives each live command's view in its
+  handshake, then every change as the other pages do. A live command is one
+  that runs in a node's shells, or that the node's transcript last shows
+  running and its shells still hold. When no page was attached before, the
+  backend was not following, so the handshake shows what the backend holds;
+  the runner's newest output follows as soon as the runner starts following.
+- **No page attached.** When the last connection detaches, the backend stops
+  following and sends nothing; the runner sends each stream's first 32 KiB
+  again and, beyond them, only the stream's length, which the model's idle
+  time counts from ([Results and previews](#results-and-previews)). The next
+  connection to attach starts from its handshake.
+- **The end.** A command's last frame shows its end: its exit, a stop (a
+  `shell_abort` from a page or from the model, a Stop of the action that
+  started it), or the end of its node's shells: the close of its subagent, the
+  tree's interruption for a Host transition, or the tree's disposal, which
+  ends the tree's commands before its connections receive `closed`. No frame
+  of the command follows it.
+
+What keeps the output coming, and where each part is released:
+
+| Part | Lives in | Released |
+| --- | --- | --- |
+| The runner's messages beyond a stream's first 32 KiB, with their timer | The job's task on the runner | With the job; the timer runs only while a message waits |
+| The backend's following of a job: it watches whether a page is attached and tells the runner | The job's task in the node's shell environment | With the job |
+| The commands whose new output is not sent yet | The tree | Emptied when sent, when a command ends, and when the last connection detaches |
+| The task that sends them | The tree; it has a timer only while commands wait | With the tree |
+| The reports of new output and ends | The tree's feed, which each shell environment of each node holds without keeping the tree alive | With the environment |
 
 ### Dispatch and failures
 
@@ -597,7 +672,16 @@ with the command's own output and status.
 Live frames add to the transcript; they do not replace it:
 
 - `transcript_reset` and `transcript_patch` are the primary input.
-- `shell_output` adds live output and status to a running shell command.
+- `shell_output` adds a command's live output and status
+  ([Live output](#live-output)). While the `shell_exec` call that started the
+  command runs, the page shows them under that call, which the frame names
+  (`toolUseId`, in the subagent's transcript when `subagentId` is set). Once
+  the call has returned, a command that still runs is one of the
+  conversation's running commands: the dock's Running chip counts it, its
+  panel shows it under its script, and its output keeps coming there, while
+  the call keeps the view its result stored. A page adds to what it shows
+  only the characters beyond those it has shown (`chars`), so a terminal
+  keeps its scrollback; after a gap it shows the `tail` anew.
 - `shell_write_result` and `abort_result` acknowledge the user's controls.
   They do not mean the command or the turn has finished, and they do not
   replace the `tool_call` rendering.
@@ -663,9 +747,9 @@ open { model } --------------------> attach to the live tree
 | `abort` | Stop one thing ([Stop](#stop)) | `abort_result`, in request order |
 | `abort_subagents`, `abort_subagent { subagentId }` | Stop subagents ([Abort](subagents.md#abort)) | `subagent` frames |
 | `retry`, `resume`, `compact` | Run the action | `rejected` when the session is busy |
-| `shell_write { commandId, stdin }` | Write stdin to a running command | `shell_output`, then `shell_write_result` |
-| `shell_abort { commandId }` | Stop a running command | `shell_output` |
-| `sync_transcript` | Ask for a fresh transcript | `transcript_reset`, `shell_output` for each live command, the subagent replay, to this connection alone |
+| `shell_write { commandId, stdin }` | Write stdin to a running command | `shell_write_result` |
+| `shell_abort { commandId }` | Stop a running command | None; the command's `shell_output` shows its end |
+| `sync_transcript` | Ask for a fresh transcript | `transcript_reset`, the subagent replay, `shell_output` for each live command, to this connection alone |
 | `close` | Dispose the tree | `closed`, to every attached connection |
 
 Content in `send`, `steer` and `edit_and_send` is typed. It is text, a
@@ -685,9 +769,9 @@ resolves uploads and remote files before the session sees the content
 and the session resolves an edit's kept files from the edited message
 ([Files the edit keeps](message-editing.md#files-the-edit-keeps)).
 
-`shell_write` and `shell_abort` reach the command through the root's shell
-environment for the conversation's current Host, with the handle checks of
-[Running shell tools](#running-shell-tools).
+`shell_write` and `shell_abort` reach the command through the shells of the
+node that runs it, the root or a live subagent, for the conversation's current
+Host, with the handle checks of [Running shell tools](#running-shell-tools).
 
 ### Server frames
 
@@ -702,7 +786,7 @@ environment for the conversation's current Host, with the handle checks of
 | `steer_result` | The steer id and an `outcome`: `{ status: "accepted" }` or `{ status: "rejected", reason }` |
 | `edit_result` | The operation id and an `outcome`: `{ status: "accepted", turnId }` or `{ status: "rejected", reason }` |
 | `abort_result` | What was stopped, and whether another `abort` would stop more |
-| `shell_output` | A command's status (`running`, `exited` or `aborted`) with its shell and command ids and its bounded output views; binary stdout is described by size and truncation, never sent as bytes |
+| `shell_output` | A command's live view ([Live output](#live-output)): `subagentId` when the command is a subagent's, and its `status`: `running`, `exited` with the `exitCode`, or `aborted`, each with the `shellId`, the `commandId`, the `toolUseId` of the `shell_exec` call that started it, the `tail` and `chars` of the pages' view, and `runningMs` |
 | `shell_write_result` | The command id |
 | `retry_scheduled` | The attempt, the delay in milliseconds, the code and the diagnostics of a failure being retried ([Retries](failures-and-recovery.md#retries)) |
 | `error` | A message, a code and diagnostics: a failed turn, a refused frame, or a failed save |
@@ -714,17 +798,13 @@ environment for the conversation's current Host, with the handle checks of
 attached when the frame is sent and never stored
 ([Failure facts](../backend/backend.md#failure-facts)). Media in outgoing blocks
 travels by blob reference ([Media by reference](../backend/backend.md#media-by-reference)).
-A running shell tool's status reaches the clients as `shell_output`; a
-`shell_status` call sends none. Every `shell_output` is the pages' view of the
-command, whether it reports a running tool, follows a client's `shell_write`
-or `shell_abort`, or answers an attach or a `sync_transcript`: the command's
-status, its tails, and the output since the previous `shell_output` of the
-command; it moves only the pages' place, not the model's
-([Results and previews](#results-and-previews)). Child sessions send only
-their transcript frames. A live command is one the
-transcript last shows running that the root's shell environment still has;
-its `shell_output` after a transcript reset carries its current status, so a
-command that ended while no client watched shows as ended.
+Every `shell_output` is a command's live view, the same for every page: it
+reports a change of a live command of any node of the tree, or answers an
+attach or a `sync_transcript` ([Live output](#live-output)). No tool sends
+one, and no read moves the model's place. Besides their commands' output,
+child sessions send only their transcript frames. After a transcript reset,
+a live command's `shell_output` carries its current status, so a command that
+ended while no page watched shows as ended.
 
 ### Order and delivery
 
@@ -783,8 +863,8 @@ connection B --+                    +--> B's outbox: events, and B's replies
   the tree.
 - An event goes to every attached connection: the transcript, phase, queue,
   pending-steer, retry and subagent frames, the `error` of a failed turn, save
-  or subagent lifecycle, and every `shell_output` that a running tool or a
-  client's `shell_write` or `shell_abort` causes. A reply goes only to the
+  or subagent lifecycle, and every `shell_output` of a live command's change
+  ([Live output](#live-output)). A reply goes only to the
   connection whose frame it answers: `rejected`, an `error` that refuses the
   frame, `steer_result`, `edit_result`, `abort_result`, `shell_write_result`,
   and the frames that answer `sync_transcript`.
@@ -925,7 +1005,13 @@ where a tool runs; no test calls a real model.
 | Two connections of one conversation | Both receive the same events of a turn; a reply reaches only the connection that asked; a `close` sends `closed` to both |
 | One of two connections stops reading | It alone closes as lagging; the other receives the whole turn |
 | Two connections act at once | Two sends run in the order they arrived; a send while the other's edit is prepared is refused, and so is an edit while the other's send waits or runs |
-| A connection attaches while a command runs | Its handshake carries the command's tail, whatever the other connection read; later `shell_output` frames reach both alike |
+| A command prints while its `shell_exec` call runs | The attached connections receive the output before the call's result |
+| A command prints after its call returned | Every attached connection receives the new output, with no frame from any client |
+| A connection attaches while a command runs | Its handshake carries the command's view, whatever another connection or the model read; it then receives each change as the others do |
+| A command prints faster than a page reads | A page receives at most one frame of it every 250 ms, and its outbox does not fill; the view shows the output beyond the first 32 KiB of each stream |
+| A command ends | No frame of it follows the frame of its end |
+| The last connection detaches | The runner sends no more output beyond the first 32 KiB of a stream, and the tree sends nothing, until a connection attaches again |
+| A command prints only beyond the first 32 KiB of its streams while no page is attached | The model's `idleMs` counts from its latest output, within 2 seconds |
 | A client stops reading | The connection closes as lagging; a reconnect adopts the running tree and its turn completes |
 | Frames of an open | The handshake order above; patch revisions increase by one; a stale patch after a reset is ignored; a gap triggers `sync_transcript` |
 | Scripted tool events | Each of the five tools renders with its own component and its `description` title; updates replace the block in place; an unknown tool name renders as a generic card |
