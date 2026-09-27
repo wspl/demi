@@ -603,13 +603,13 @@ A `tool_call` block holds the provider's `toolUseId` and `toolName`, the call's
 
 ### Replay
 
-The model receives the blocks from the last `compaction_boundary` onward,
-each as the table says. A long text is cut in the middle by the replay bound
-([Text bounds](compaction.md#text-bounds)). Signed thinking and redacted data
-are replayed whole, because the vendor verifies them as they were sent. Media
-stored as blob references is loaded back before the request
-([Tree store](#tree-store)). A tool call's input is replayed as the JSON value
-the provider supplied, or as text when it is not valid JSON.
+The model receives the blocks from the last `compaction_boundary` onward, the
+replayed blocks, each as the table says. A long text is cut in the middle by
+the replay bound ([Text bounds](compaction.md#text-bounds)). Signed thinking
+and redacted data are replayed whole, because the vendor verifies them as they
+were sent. Each medium is replayed with the bytes the session holds for it
+([Media](#media)). A tool call's input is replayed as the JSON value the
+provider supplied, or as text when it is not valid JSON.
 
 Replay reads only what the blocks hold for the model, never an ID or a time,
 and a block keeps its place. The same history therefore gives the same items in
@@ -617,6 +617,76 @@ any session, and each request's items begin with the previous request's until a
 history rewrite or a new `compaction_boundary` changes what is replayed. With
 an unchanged system prompt and tools, a provider that caches request prefixes
 reuses them ([Keeping the cache prefix](compaction.md#keeping-the-cache-prefix)).
+
+### Media
+
+A message's images, videos and documents and a tool result's images and
+videos are stored once, as blobs in the conversation owner's blob namespace,
+and blocks hold them by reference: `{ type: "ref", ref, mediaType }`, with a
+document's `fileName`. The session keeps a medium's bytes only while a
+provider request can still send them.
+
+For example, the agent runs a command that prints a 400 KB screenshot:
+
+```text
+the tool returns the PNG's bytes
+  -> the session's store puts them under their SHA-256:  blobs/<owner>/<sha256>
+  -> the tool_call block's result holds the reference, and the
+     session holds the bytes beside the transcript
+saves, patches, resets, syncs, other pages, edits, Forks:  the reference
+each provider request while the block is replayed:         the held bytes
+```
+
+- **Storing.** A medium's bytes are stored when the medium enters, and never
+  again. An upload is stored when the page uploads it, and the medium a
+  message receives from it references the upload's own blob
+  ([Media by reference](../backend/backend.md#media-by-reference)). The
+  session has its store put a tool's medium after the tool returns and
+  before the result enters the transcript. The put computes the bytes'
+  SHA-256, which names the blob, and sends no bytes for a blob the namespace
+  holds already ([The object store](../backend/storage.md#the-object-store)).
+  A tool's medium whose put fails becomes the text
+  `[<kind> not stored: <reason>]` in its result, so the turn goes on and no
+  block names a blob that was not stored.
+- **References.** The transcript, the queued messages, the pending steers,
+  every checkpoint row and every frame hold media only by reference. Nothing
+  converts media when a block is saved or sent, a store refuses a checkpoint
+  that holds media bytes ([Saving](#saving)), and an edit or a Fork copies
+  references.
+- **Held bytes.** The session holds something only for the media that its
+  replayed blocks or its waiting input (queued messages and pending steers)
+  reference: the medium's bytes, or the fact that its blob is missing. A
+  medium arrives with its bytes: a tool's medium with its own, an upload's
+  with those the backend read to write the file to the Host. When a new
+  `compaction_boundary`, a history rewrite or a withdrawn input leaves a
+  medium unreferenced, the session lets go of it before its next request. A
+  live tree therefore holds, per live session, at most the media its next
+  request sends and those of its waiting input.
+- **The model's view.** Replay, the token estimates and compaction read the
+  replayed blocks with each medium's held bytes in place of its reference
+  ([Replay](#replay), [Token estimates](compaction.md#token-estimates)); a
+  provider request is the only place a medium carries its bytes. Before the
+  session builds that view, it reads the blob of each replayed medium it
+  holds nothing for, which after a restore is every one, a few at a time
+  concurrently, since on S3 each read is a round trip. Opening a
+  conversation therefore reads no blob, a request never reads a blob the
+  session holds, and no blob from before the last `compaction_boundary` is
+  read. A blob that is missing becomes the text `[missing <kind> blob <ref>]`
+  in the view, so the turn goes on; the transcript keeps the reference.
+- **Stable requests.** Within a live tree, a medium reaches the model in one
+  form for as long as it is replayed: its held bytes, or the missing text for
+  a blob found missing. Bytes the session let go of and reads again are the
+  same bytes, since a blob's name is their hash and a blob that a block, a
+  queued message or a pending steer references is never deleted
+  ([Collecting blobs](../backend/storage.md#collecting-blobs)). Media therefore never
+  change the start a request shares with the previous one.
+- **Failures.** A read that fails, rather than finding the blob missing,
+  fails the action before its request, as a failed save does; the next
+  action reads again.
+- **Where the bytes go.** The agent defines these rules, and the backend
+  decides where the bytes go. A session reaches the owner's blob namespace
+  only through its tree store ([Tree store](#tree-store)); the agent's server
+  has no blob store of its own.
 
 ### Views
 
@@ -854,8 +924,9 @@ Host, with the handle checks of [Running shell tools](#running-shell-tools).
 
 `failures` is the backend's reading of the error blocks a frame carries,
 attached when the frame is sent and never stored
-([Failure facts](../backend/backend.md#failure-facts)). Media in outgoing blocks
-travels by blob reference ([Media by reference](../backend/backend.md#media-by-reference)).
+([Failure facts](../backend/backend.md#failure-facts)). Blocks, queued
+messages and pending steers hold their media by blob reference, so no frame
+carries media bytes ([Media](#media)).
 Every `shell_output` is a command's live view, the same for every page: it
 reports a change of a live command of any node of the tree, or answers an
 attach or a `sync_transcript` ([Live output](#live-output)). No tool sends
@@ -984,7 +1055,11 @@ conversation's database. One store holds one conversation's tree: every node
 with its parent link and its checkpoint. The backend realizes it over the
 conversation's database
 ([Conversation state and transactions](../backend/storage.md#conversation-state-and-transactions)).
-Tests use an in-memory store that meets the same contract.
+Tests use an in-memory store that meets the same contract. A node's store also
+gives its session the conversation owner's blob namespace, where the session
+puts the media that enter its transcript and reads back those its requests
+send ([Media](#media)): a put names bytes by their SHA-256, and a get answers
+a blob's bytes or that the namespace does not hold it.
 
 A node's checkpoint has three parts:
 
@@ -1030,23 +1105,11 @@ atomic commits of the same store ([Persistence](subagents.md#persistence)).
 - A history rewrite is saved before it is published: the store commits the
   retained rows with the command state of the cut, then the session adopts them
   and publishes one `replace` patch.
-
-### Media
-
-- Before a save, the store moves each block's inline media into the
-  conversation owner's blob namespace and saves references instead. A blob is
-  published before the row that references it
-  ([Attachment and transcript media](../backend/storage.md#attachment-and-transcript-media)).
-- Loading a session for inference puts the bytes back. A reference whose blob
-  is missing becomes the text `[missing <kind> blob <ref>]`, so the turn goes
-  on; a malformed reference is a decode error.
-- The media an edit keeps arrive as references to blocks the edited message
-  holds, and the session puts those blocks, bytes and all, in their place
-  ([Files the edit keeps](message-editing.md#files-the-edit-keeps)). A live
-  session's transcript therefore holds bytes, never a reference.
-- The agent defines this mapping between inline bytes and references; where
-  the bytes go is the store's decision. The agent's server never sees a blob
-  store.
+- A save writes its rows as they are. Their media are references whose blobs
+  were stored when the media entered ([Media](#media)), so a save stores no
+  blob. A store refuses a save, or a node's first checkpoint, in which a
+  block or a queued message holds media bytes instead of a reference: it
+  answers an error that names the block or the message, and writes nothing.
 
 ### Restoring
 
@@ -1058,6 +1121,8 @@ atomic commits of the same store ([Persistence](subagents.md#persistence)).
   unique.
 - The session then completes interrupted tool calls and hands back its queue
   as [Dispose and restore](#dispose-and-restore) describes.
+- A restore reads no blob: the session reads the blobs of its replayed media
+  before its first request ([Media](#media)).
 
 ## Acceptance
 
@@ -1091,3 +1156,7 @@ where a tool runs; no test calls a real model.
 | Frames of an open | The handshake order above; patch revisions increase by one; a stale patch after a reset is ignored; a gap triggers `sync_transcript` |
 | Scripted tool events | Each of the five tools renders with its own component and its `description` title; updates replace the block in place; an unknown tool name renders as a generic card |
 | Tool calls | Input refusals, the repeat guard, preview budgets, handle release and binary stdout verdicts match [Tools](#tools) |
+| A stored conversation with images is opened by two pages, and one asks for the transcript again after a gap | No blob is put: every frame carries the references its rows hold |
+| A restored conversation with images before and after its last `compaction_boundary` runs a turn of two requests | The first request reads the blob of each replayed medium once and none from before the boundary; the second reads none; both carry the replayed media's bytes |
+| A tool's medium cannot be stored | Its result holds `[<kind> not stored: <reason>]`, the model receives that text, and the turn goes on |
+| A replayed medium's blob is missing | The model receives `[missing <kind> blob <ref>]` in its place, in every request of the live tree, and the turn goes on |
