@@ -226,8 +226,8 @@ when to send that release from the one
 [conversation idle rule](../execution/resource-lifecycle.md), an hour in which
 the conversation was not active, or from a target change or archive; an open
 tab, a page that is still loading, or a running download never postpones it.
-On Cloud the release is not sent: an idle machine stops, and the browser ends
-with it.
+A running Cloud hears the release as a paired device does, and a Cloud that
+stops ends the browser with the machine.
 
 Retirement stops Chrome for Testing, terminates its process tree, removes the
 temporary profile, and invalidates every tab, reference, and debugging handle
@@ -1976,10 +1976,10 @@ part of every acceptance that touches the browser, not an optional run.
     whether the headless clipboard is isolated from the Host user's clipboard
     and that the `clipboard` capability reports the result.
 13. Verify the [conversation release](../execution/resource-lifecycle.md#acceptance): an
-    idle conversation's release on a paired device ends Chrome and its profile
-    while the device stays available; a Cloud stop ends it with the machine; a
-    running job or waiting child turn defers it; a target change or archive
-    releases the old device.
+    idle conversation's release on a paired device or a running Cloud ends
+    Chrome and its profile while the Host stays available; a Cloud stop ends it
+    with the machine; a running job or waiting child turn defers it; a target
+    change or archive releases the old device.
 14. Deliver native changes to every required build target, paired device, and
     Cloud guest. Verify Chrome for Testing provisioning on every platform
     offering the feature; success on the development Mac is insufficient.
