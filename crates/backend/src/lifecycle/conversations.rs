@@ -4,9 +4,11 @@
 //! runner is connected: a paired device or a running Cloud. Its watch starts
 //! with the conversation's first Host admission and ends once it released;
 //! a won target switch starts it again, so a deadline of the old binding
-//! never releases the new one; an archive ends it. A Cloud's idle stop sends
-//! the releases that fall due with it first (`managed`), and a Host that
-//! missed one hears it after its hello (`answer_held`).
+//! never releases the new one; an archive ends it. A release a Host did not
+//! take ends the watch as one it took does, since the Host hears it again
+//! (`resource-lifecycle.md` § A release that fails). A Cloud's idle stop
+//! sends the releases that fall due with it first (`managed`), and a Host
+//! that missed one hears it after its hello (`answer_held`).
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -110,10 +112,8 @@ impl Shard {
         let Some(record) = record else {
             // Nothing of a conversation its owner does not have runs on the
             // device.
-            let Some(link) = self.devices().link(device) else {
-                return Ok(());
-            };
-            return link.release_conversation(name).await.map_err(|error| error.to_string());
+            self.release_on(name, device).await;
+            return Ok(());
         };
         if !record.archived {
             let target = self.resolve_target(&record).await.map_err(|error| error.to_string())?;
@@ -129,7 +129,8 @@ impl Shard {
         // Held as a transition holds it: the release meets no job of the
         // conversation.
         let _held = self.conversations().slot(&record.id).files.reserve().await;
-        self.release_on(&record.id, device).await.map_err(|error| error.to_string())
+        self.release_on(record.id.as_str(), device).await;
+        Ok(())
     }
 }
 

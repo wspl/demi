@@ -317,7 +317,9 @@ impl Harness {
     /// fixture: `echo` answers what the page sends, `where` reports its
     /// context and directory, `retain` makes the resident service hold the
     /// conversation, as the browser service holds a conversation's Chrome
-    /// until its release, and `held` answers what the service holds.
+    /// until its release, `held` answers what the service holds,
+    /// `stall_release` holds the conversation so that its release never ends
+    /// by itself, and `stalled` ends once such a release waits.
     pub fn with_native_fixture(mut self) -> Self {
         let package = FIXTURE.descriptor.id.clone();
         let stream = |operation: &str| NativeOperation {
@@ -325,7 +327,7 @@ impl Harness {
             operation: operation.into(),
         };
         self.user_streams = Some(
-            ["echo", "where", "retain", "held"]
+            ["echo", "where", "retain", "held", "stall_release", "stalled"]
                 .map(|name| (name.to_owned(), stream(name)))
                 .into(),
         );
