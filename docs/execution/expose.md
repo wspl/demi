@@ -114,7 +114,7 @@ hostname is never served on the product origin. Expose hostnames carry no
 Demi session and set no Demi cookie; the page and the visitor are anonymous
 to Demi. An expose's page shares the product's site, so a signed-in
 visitor's browser would send the session cookie with the page's requests to
-the product; the product's WebSocket routes refuse such a page
+the product; the product refuses every request of such a page that could act
 ([Authentication and ownership](../backend/backend.md#authentication-and-ownership)).
 
 For each visitor request the backend:
