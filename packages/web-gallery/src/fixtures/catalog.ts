@@ -1,4 +1,4 @@
-import type { ThinkingConfig, TokenUsage } from '@demicodes/protocol'
+import type { TokenUsage } from '@demicodes/protocol'
 import type { ModelInfo, ProviderInfo } from '@demicodes/web-ui/transport/protocol'
 
 export const demoProviders: ProviderInfo[] = [
@@ -54,12 +54,6 @@ export const demoModels: Record<string, ModelInfo[]> = {
   openai: [
     model({ id: 'gpt-5', name: 'GPT-5', serviceTiers: fastTier }),
   ],
-}
-
-export const mediumThinking: ThinkingConfig = {
-  type: 'effort',
-  effort: 'medium',
-  summary: null
 }
 
 export function usageAt(ratio: number): TokenUsage {

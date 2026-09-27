@@ -2,7 +2,6 @@ import { test, expect } from 'bun:test'
 import type { ModelInfo } from '../../transport/protocol'
 import {
   buildReasoningState,
-  reasoningOptionConfig,
   reasoningOptionIndex,
   reasoningOptionLabel
 } from '../reasoning'
@@ -25,7 +24,7 @@ test('offers Off when the model can disable thinking', () => {
   const state = buildReasoningState(base)!
   expect(state.canDisable).toBe(true)
   expect(state.options.map((o) => o.label)).toContain('Off')
-  expect(state.options[0]!.config).toEqual({ type: 'disabled' })
+  expect(state.options[0]!.effort).toBe('disabled')
 })
 
 test('omits Off when the model cannot disable thinking (e.g. Claude Code)', () => {
@@ -40,45 +39,19 @@ test('omits Off when the model cannot disable thinking (e.g. Claude Code)', () =
   )!
   expect(state.canDisable).toBe(false)
   expect(state.options.map((o) => o.label)).not.toContain('Off')
-  expect(state.options.every((o) => o.config.type === 'effort')).toBe(true)
   // the default selection is still a real effort, never "disabled"
-  expect(state.defaultConfig).toEqual(
-    {
-      type: 'effort',
-      effort: 'low',
-      summary: null
-    }
-  )
+  expect(state.defaultEffort).toBe('low')
 })
 
 test('no reasoning state when the model has no efforts', () => {
   expect(buildReasoningState({ ...base, reasoning: null })).toBeNull()
 })
 
-test('option index maps disabled and effort configs', () => {
+test('an effort shows its own option, and one the model does not offer its default', () => {
   const state = buildReasoningState(base)!
-  expect(reasoningOptionIndex(state, { type: 'disabled' })).toBe(0)
-  expect(reasoningOptionIndex(state, {
-      type: 'effort',
-      effort: 'medium',
-      summary: null
-    })).toBe(
-    2
-  )
-  expect(reasoningOptionConfig(state, 0)).toEqual({ type: 'disabled' })
-  expect(reasoningOptionConfig(state, 3)).toEqual(
-    {
-      type: 'effort',
-      effort: 'high',
-      summary: null
-    }
-  )
-  expect(reasoningOptionLabel(state, { type: 'disabled' })).toBe('Off')
-  expect(reasoningOptionLabel(state, {
-      type: 'effort',
-      effort: 'high',
-      summary: null
-    })).toBe(
-    'High'
-  )
+  expect(reasoningOptionIndex(state, 'disabled')).toBe(0)
+  expect(reasoningOptionIndex(state, 'medium')).toBe(2)
+  expect(reasoningOptionLabel(state, 'disabled')).toBe('Off')
+  expect(reasoningOptionLabel(state, 'high')).toBe('High')
+  expect(reasoningOptionLabel(state, 'xhigh')).toBe('Low')
 })

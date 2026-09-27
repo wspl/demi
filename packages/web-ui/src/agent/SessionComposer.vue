@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { ThinkingConfig, TokenUsage } from '@demicodes/protocol'
+import type { TokenUsage } from '@demicodes/protocol'
 import { ArrowUp, File as FileIcon, HardDrive, Plus, RotateCcw, Square, X } from '@lucide/vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import { appOverlayStore } from '../overlay/appOverlay'
@@ -20,7 +20,7 @@ import { showToast } from '../infra/toast'
 import ComposerShell from './ComposerShell.vue'
 import ContextUsageIndicator from './ContextUsageIndicator.vue'
 import ModelSelector from './ModelSelector.vue'
-import { composerModel } from './model-selection'
+import { composerModel, type ModelSettings, type ModelSettingsChange } from './model-selection'
 import SessionNoticeBar from './SessionNoticeBar.vue'
 import Dropdown from '../ui/Dropdown.vue'
 import IconButton from '../ui/IconButton.vue'
@@ -46,10 +46,8 @@ const props = withDefaults(
     modelLoad?: 'loading' | 'ready' | 'failed'
     providers: ProviderInfo[]
     models: Record<string, ModelInfo[]>
-    selectedProviderId?: string | null
-    selectedModelId?: string | null
-    thinkingConfig?: ThinkingConfig
-    serviceTierId?: string | null
+    /** The conversation's model settings; none while nothing is chosen. */
+    modelSettings?: ModelSettings | null
     usage?: TokenUsage | null
     /** When no model can send, show Configure models. Hide the action if the user cannot open that page. */
     canConfigure?: boolean
@@ -80,9 +78,8 @@ const emit = defineEmits<{
   arrangeAttachments: [ids: string[]]
   /** Try a failed upload again. */
   retryAttachment: [id: string]
-  selectModel: [providerId: string, modelId: string]
-  changeThinking: [config: ThinkingConfig]
-  changeServiceTier: [id: string | null]
+  /** One change of the model settings, naming only the parts it changes. */
+  changeModel: [change: ModelSettingsChange]
   configure: []
   restore: []
   'update:messageEdit': [state: MessageEditState | null]
@@ -148,8 +145,8 @@ const modelState = computed(() =>
   composerModel(
     props.providers,
     props.models,
-    props.selectedProviderId,
-    props.selectedModelId,
+    props.modelSettings?.providerId,
+    props.modelSettings?.modelId,
   ),
 )
 const sendDisabled = computed(
@@ -180,8 +177,8 @@ watch(edit.attachmentError, (message) => {
   }
 })
 const selected = computed(() =>
-  props.models[props.selectedProviderId ?? '']?.find(
-    (model) => model.id === props.selectedModelId,
+  props.models[props.modelSettings?.providerId ?? '']?.find(
+    (model) => model.id === props.modelSettings?.modelId,
   ),
 )
 const submitLabel = computed(() => props.messageEdit
@@ -383,15 +380,8 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
               @retry="emit('retryModels')"
               :providers="providers"
               :models="models"
-              :selected-provider-id="selectedProviderId"
-              :selected-model-id="selectedModelId"
-              :thinking-config="thinkingConfig"
-              :service-tier-id="serviceTierId"
-              @select-model="
-                (provider, model) => emit('selectModel', provider, model)
-              "
-              @change-thinking="emit('changeThinking', $event)"
-              @change-service-tier="emit('changeServiceTier', $event)"
+              :settings="modelSettings"
+              @change="emit('changeModel', $event)"
             />
           </div>
         </template>

@@ -2,19 +2,17 @@ import { expect, test } from 'bun:test'
 import { deferred } from '@demicodes/utils'
 import { ConversationCache } from '../conversation-cache'
 import { ConversationRuntime, type RuntimeState } from '../conversation-runtime'
-import { clientHarness, model } from './agent-harness'
+import { clientHarness } from './agent-harness'
 
 function fixture(id: string) {
   const state: RuntimeState = {
     blocks: [], phase: 'idle', queue: [], pendingSteers: [],
-    model: { providerId: 'stub', modelId: 'stub', thinkingEffort: null, serviceTierId: null },
     lastError: null, load: 'loading', pendingAction: null,
     failures: {},
   }
   const harnesses: ReturnType<typeof clientHarness>[] = []
   const runtime = new ConversationRuntime({
     state,
-    prepareModel: async () => model,
     connect: async () => {
       const harness = clientHarness()
       harnesses.push(harness)

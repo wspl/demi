@@ -5,9 +5,9 @@ import type { SubagentRecord } from './subagents'
 import type { TerminalRecord } from './terminals'
 import type { ComposerAttachment } from './message-input/attachments'
 import type { PersistedScrollState } from '../composables/useBlockVirtualizer'
-import type { ModelIntent } from './model-selection'
+import type { ModelSettings } from './model-selection'
 
-export type { ModelIntent } from './model-selection'
+export type { ModelSettings } from './model-selection'
 
 /** A steer the server holds for the running turn, as it sends them. */
 export type PendingSteerMessage = Pick<PendingSteer, 'id' | 'content'>
@@ -30,7 +30,8 @@ export interface ConversationState {
   phase: SessionPhase
   queue: QueuedMessage[]
   pendingSteers: PendingSteerMessage[]
-  model: ModelIntent
+  /** The conversation's model settings, which its composer shows. */
+  model: ModelSettings
   lastError: string | null
   /** History restore and the live socket. A new conversation starts `ready`. */
   load: SessionLoad

@@ -1,5 +1,5 @@
 import { expect, jest, test } from 'bun:test'
-import type { ModelSelection, PendingSteer } from '@demicodes/protocol'
+import type { PendingSteer } from '@demicodes/protocol'
 import { deferred, waitFor } from '@demicodes/utils'
 import { computed } from 'vue'
 import { ConversationRuntime, type RuntimeState } from '../conversation-runtime'
@@ -12,12 +12,6 @@ function state(): RuntimeState {
     phase: 'idle',
     queue: [],
     pendingSteers: [],
-    model: {
-      providerId: 'stub',
-      modelId: 'stub',
-      thinkingEffort: null,
-      serviceTierId: null,
-    },
     lastError: null,
     load: 'loading',
     pendingAction: null,
@@ -36,7 +30,7 @@ function turn(): Promise<void> {
 
 test('the current edit version reacts to connection, snapshots, patches and disconnect', async () => {
   const h = clientHarness()
-  const runtime = new ConversationRuntime({ state: state(), prepareModel: async () => model, connect: async () => h.client })
+  const runtime = new ConversationRuntime({ state: state(), connect: async () => h.client })
   const version = computed(() => runtime.transcriptVersion())
   expect(version.value).toBeNull()
   await runtime.connect()
@@ -52,7 +46,7 @@ for (const failure of ['none', 'before-confirmation', 'before-reconciliation'] a
   test(`edit confirmation preserves generation recovery: ${failure}`, async () => {
     const h = clientHarness()
     const current = state()
-    const runtime = new ConversationRuntime({ state: current, prepareModel: async () => model, connect: async () => h.client })
+    const runtime = new ConversationRuntime({ state: current, connect: async () => h.client })
     await runtime.connect()
     h.receive({
       type: 'transcript_reset',
@@ -83,23 +77,19 @@ for (const failure of ['none', 'before-confirmation', 'before-reconciliation'] a
   })
 }
 
-test('disposing a view during model preparation prevents a late connection', async () => {
-  const prepared = deferred<ModelSelection>()
-  let connects = 0
+test('disposing a view while its socket connects never opens the late connection', async () => {
+  const late = clientHarness()
+  const connected = deferred<typeof late.client>()
   const runtime = new ConversationRuntime({
     state: state(),
-    prepareModel: () => prepared.promise,
-    connect: async () => {
-      connects += 1
-      return clientHarness().client
-    },
+    connect: () => connected.promise,
   })
   const opening = runtime.connect()
   const result = opening.catch((error) => error)
   runtime.dispose()
-  prepared.resolve(model)
+  connected.resolve(late.client)
   expect(await result).toBeInstanceOf(Error)
-  expect(connects).toBe(0)
+  expect(late.sent).toEqual([])
 })
 
 test('disposing an open view detaches without sending task-close or abort commands', async () => {
@@ -107,7 +97,6 @@ test('disposing an open view detaches without sending task-close or abort comman
   const current = state()
   const runtime = new ConversationRuntime({
     state: current,
-    prepareModel: async () => model,
     connect: async () => h.client,
   })
   await runtime.connect()
@@ -122,7 +111,6 @@ test('retry reconciles an already accepted message before submitting again', asy
   const current = state()
   const runtime = new ConversationRuntime({
     state: current,
-    prepareModel: async () => model,
     connect: async () => h.client,
   })
   try {
@@ -142,7 +130,7 @@ test('retry reconciles an already accepted message before submitting again', asy
 test('a pending steer delivered now stops the turn, which writes it, and continues the turn', async () => {
   const h = clientHarness()
   const current = state()
-  const runtime = new ConversationRuntime({ state: current, prepareModel: async () => model, connect: async () => h.client })
+  const runtime = new ConversationRuntime({ state: current, connect: async () => h.client })
   try {
     await runtime.connect()
     const steer: PendingSteer = { id: 'steer', turnId: 'turn', model, content: [{ type: 'text', text: 'now' }] }
@@ -166,7 +154,7 @@ test('a pending steer delivered now stops the turn, which writes it, and continu
 test('a queued message sent now steers the running turn, and runs next without an error when the ending turn refuses the steer', async () => {
   const h = clientHarness()
   const current = state()
-  const runtime = new ConversationRuntime({ state: current, prepareModel: async () => model, connect: async () => h.client })
+  const runtime = new ConversationRuntime({ state: current, connect: async () => h.client })
   try {
     await runtime.connect()
     h.receive({ type: 'queue', queue: [{ id: 'queued', content: [{ type: 'text', text: 'next' }] }] })
@@ -195,7 +183,6 @@ test('a view whose tree another client disposed opens it again, as after a lost 
   let connects = 0
   const runtime = new ConversationRuntime({
     state: current,
-    prepareModel: async () => model,
     connect: async () => harnesses[connects++]!.client,
     reconnect: { baseMs: 1, maxMs: 4 },
   })
@@ -215,7 +202,7 @@ test('a view whose tree another client disposed opens it again, as after a lost 
 test('a failure the session reported is over once another tab starts the next action', async () => {
   const h = clientHarness()
   const current = state()
-  const runtime = new ConversationRuntime({ state: current, prepareModel: async () => model, connect: async () => h.client })
+  const runtime = new ConversationRuntime({ state: current, connect: async () => h.client })
   try {
     await runtime.connect()
     h.receive({ type: 'phase', phase: 'running' })
@@ -237,7 +224,6 @@ test('a connection that cannot be made is retried with backoff, never told as a 
   let connects = 0
   const runtime = new ConversationRuntime({
     state: current,
-    prepareModel: async () => model,
     connect: async () => {
       connects += 1
       if (connects < 3) {
@@ -263,17 +249,20 @@ test('a connection that cannot be made is retried with backoff, never told as a 
 
 test('a session that refuses to open is a failure told once', async () => {
   const current = state()
+  const refusal = 'Choose a model for the conversation before opening it'
+  let connects = 0
   const runtime = new ConversationRuntime({
     state: current,
-    prepareModel: async () => {
-      throw new Error('No provider is configured')
+    connect: async () => {
+      connects += 1
+      return clientHarness({ type: 'error', message: refusal, code: 'model_not_selected' }).client
     },
-    connect: async () => clientHarness().client,
     reconnect: { baseMs: 1, maxMs: 4 },
   })
-  await expect(runtime.connect()).rejects.toThrow('No provider is configured')
+  await expect(runtime.connect()).rejects.toThrow(refusal)
   expect(current.load).toBe('failed')
-  expect(current.lastError).toBe('No provider is configured')
+  expect(current.lastError).toBe(refusal)
+  expect(connects).toBe(1)
   runtime.dispose()
 })
 
@@ -281,7 +270,6 @@ test('disposing during the backoff wait ends the retries', async () => {
   let connects = 0
   const runtime = new ConversationRuntime({
     state: state(),
-    prepareModel: async () => model,
     connect: async () => {
       connects += 1
       throw new AgentSocketError('Agent socket failed to connect')
@@ -308,7 +296,7 @@ test('disposing during the backoff wait ends the retries', async () => {
 test('a resume is pending from the request until the next phase event', async () => {
   const h = clientHarness()
   const s = state()
-  const runtime = new ConversationRuntime({ state: s, prepareModel: async () => model, connect: async () => h.client })
+  const runtime = new ConversationRuntime({ state: s, connect: async () => h.client })
   await runtime.connect()
   const resumed = runtime.resume()
   expect(s.pendingAction).toBe('resume')
@@ -323,7 +311,7 @@ test('a resume is pending from the request until the next phase event', async ()
 test('the agent\'s own retries change nothing the page shows: the row keeps saying Requesting', async () => {
   const h = clientHarness()
   const s = state()
-  const runtime = new ConversationRuntime({ state: s, prepareModel: async () => model, connect: async () => h.client })
+  const runtime = new ConversationRuntime({ state: s, connect: async () => h.client })
   await runtime.connect()
   h.receive({ type: 'phase', phase: 'running' })
   const before = structuredClone(s)
@@ -335,7 +323,7 @@ test('the agent\'s own retries change nothing the page shows: the row keeps sayi
 test('failure facts arrive beside the transcript, accumulate across patches, and start over on a reset', async () => {
   const h = clientHarness()
   const s = state()
-  const runtime = new ConversationRuntime({ state: s, prepareModel: async () => model, connect: async () => h.client })
+  const runtime = new ConversationRuntime({ state: s, connect: async () => h.client })
   await runtime.connect()
   const lifts = { retryAt: '2026-09-22T07:37:39.000Z' }
   h.receive({ type: 'transcript_reset', version: { epoch: 'epoch', revision: 1 }, blocks: [], failures: { first: lifts } })
@@ -352,7 +340,7 @@ test('failure facts arrive beside the transcript, accumulate across patches, and
 test('a closed connection ends a pending resume', async () => {
   const h = clientHarness()
   const s = state()
-  const runtime = new ConversationRuntime({ state: s, prepareModel: async () => model, connect: async () => h.client })
+  const runtime = new ConversationRuntime({ state: s, connect: async () => h.client })
   await runtime.connect()
   void runtime.resume().catch(() => {})
   expect(s.pendingAction).toBe('resume')

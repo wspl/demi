@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from 'vue'
-import { previewMediaType, type ThinkingConfig, type TokenUsage, type UserContentBlock } from '@demicodes/protocol'
+import { computed, onBeforeUnmount, ref } from 'vue'
+import { previewMediaType, type TokenUsage, type UserContentBlock } from '@demicodes/protocol'
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
 import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
@@ -25,6 +25,7 @@ import {
   type UploadedFile,
   type UploadFile,
 } from '@demicodes/web-ui/agent/message-input/attachments'
+import { applyModelChange, type ModelSettings, type ModelSettingsChange } from '@demicodes/web-ui/agent/model-selection'
 import type { ModelInfo, ProviderInfo } from '@demicodes/web-ui/transport/protocol'
 import { demoUsage } from '../fixtures/blocks'
 import { demoModels, demoProviders } from '../fixtures/catalog'
@@ -45,6 +46,7 @@ const props = withDefaults(
     focused?: boolean
     attachOpen?: boolean
     dropping?: boolean
+    /** The model the specimen starts with, and its Fast tier. */
     selectedProviderId?: string
     selectedModelId?: string
     serviceTierId?: string | null
@@ -97,13 +99,17 @@ const picked = new Map<string, File>(
   ),
 )
 const answers = new Map<string, UploadedFile>()
-const providerId = ref(props.selectedProviderId)
-const modelId = ref(props.selectedModelId)
-const tier = ref(props.serviceTierId ?? null)
-const thinking = ref<ThinkingConfig>({
-  type: 'effort',
-  effort: 'medium',
-  summary: null,
+/** The specimen's model settings, which its model menu changes as the product's draft does. */
+const settings = ref<ModelSettings>({
+  providerId: props.selectedProviderId,
+  modelId: props.selectedModelId,
+  thinkingEffort: 'medium',
+  serviceTierId: props.serviceTierId ?? null,
+})
+/** What the composer takes of the specimen's props: the model it starts with is the settings'. */
+const composerProps = computed(() => {
+  const { selectedProviderId: _provider, selectedModelId: _model, serviceTierId: _tier, ...rest } = props
+  return rest
 })
 
 function applyUpdate(id: string, update: AttachmentUploadUpdate) {
@@ -236,9 +242,8 @@ function attachRemote(file: { host: string; path: string }) {
     composer.value?.insertCapsules([composerCapsule(item)])
   }
 }
-function selectModel(provider: string, model: string) {
-  providerId.value = provider
-  modelId.value = model
+function changeModel(change: ModelSettingsChange) {
+  settings.value = applyModelChange(settings.value, change)
 }
 onBeforeUnmount(() => {
   uploads.cancelAll()
@@ -255,7 +260,7 @@ onBeforeUnmount(() => {
 <template>
   <SessionComposer
     ref="composer"
-    v-bind="props"
+    v-bind="composerProps"
     v-model:draft="draft"
     @update:message-edit="emit('update:messageEdit', $event)"
     @submit-edit="emit('submitEdit')"
@@ -266,10 +271,7 @@ onBeforeUnmount(() => {
     :can-configure="canConfigure !== false"
     :archived="archived"
     :hold="hold"
-    :selected-provider-id="providerId"
-    :selected-model-id="modelId"
-    :service-tier-id="tier"
-    :thinking-config="thinking"
+    :model-settings="settings"
     :usage="props.usage ?? demoUsage"
     remote-files
     @submit="submit"
@@ -280,9 +282,7 @@ onBeforeUnmount(() => {
     @attach-remote="remotePicker?.open()"
     @arrange-attachments="arrange"
     @retry-attachment="retry"
-    @select-model="selectModel"
-    @change-thinking="thinking = $event"
-    @change-service-tier="tier = $event"
+    @change-model="changeModel"
     @stop="emit('stop')"
     @compact="emit('compact')"
   />
