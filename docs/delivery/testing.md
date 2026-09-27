@@ -81,7 +81,11 @@ backend's scenario suites in [Scenarios](scenarios.md).
   browser packages, bun's `jest.useFakeTimers()` is that clock: it moves
   `setTimeout`, `setInterval`, `Date.now` and `performance.now`, while
   `setImmediate` stays real, so a test can still let the event loop turn
-  once.
+  once. Its `jest.runAllTimers()` also runs the timers that the timers set,
+  with no limit, so where a timer sets the next one, as a socket's silence
+  watch does for each new socket, it never returns and fills the memory: run
+  the timers due now (`jest.runOnlyPendingTimers()`) or advance the clock by
+  the wait instead.
 - A failure without a related change is a defect in the product or the test.
   Find its cause; never rerun to get a pass, and never fix a failure with a
   longer timeout, a retry, a weaker assertion or a broader fake.
