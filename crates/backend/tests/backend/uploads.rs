@@ -8,6 +8,8 @@
 //! cannot be stored reaches the page as an error, and the frames after it
 //! still arrive. No test calls a real model.
 
+use std::sync::LazyLock;
+
 use demi_agent_protocol::{ClientContent, ClientFrame, EditOutcome, EditRequest, MediaRef, ServerFrame, SteerOutcome};
 use demi_backend::ObjectCounts;
 use demi_core::{Block, BlockId, MediaSource, SessionPhase, TurnId, UserContentBlock};
@@ -24,8 +26,9 @@ use crate::conversations::{
 };
 use crate::support::{Answer, Harness, Session, TestBackend, answer as read};
 
-/// A PNG image's first bytes, from which the backend reads its type.
-const PNG: [u8; 12] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe, 0x01];
+/// A PNG image, whose type the backend reads from its bytes; a real one,
+/// since an image is decoded as it enters a transcript.
+static PNG: LazyLock<Vec<u8>> = LazyLock::new(|| demi_agent::testing::png(4, 3, 0).as_bytes().to_vec());
 
 async fn post(backend: &TestBackend, session: &Session, query: &str, media_type: Option<&str>, bytes: Vec<u8>) -> Answer {
     let headers: Vec<(&str, &str)> = media_type.into_iter().map(|media_type| ("content-type", media_type)).collect();
@@ -68,7 +71,7 @@ async fn a_repeated_upload_sends_the_object_store_no_bytes() {
     let before = counts.tally();
     let first = upload(&backend, &master, "shot.png", "image/png", &PNG).await;
     let stored = counts.tally().since(&before);
-    assert_eq!((stored.puts, stored.bytes_put), (1, 12), "{stored:?}");
+    assert_eq!((stored.puts, stored.bytes_put), (1, PNG.len() as u64), "{stored:?}");
 
     // The same bytes under another name are the same blob: the object store
     // is asked whether it holds it, and receives none of its bytes again.
@@ -101,10 +104,10 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
     // The answer says what the backend read from the bytes: a type it
     // recognizes, and a text file's opening, which the name decides.
     let image = upload(&backend, &master, "shot.png", "application/octet-stream", &PNG).await;
-    let sha256 = format!("{:x}", Sha256::digest(PNG));
+    let sha256 = format!("{:x}", Sha256::digest(&*PNG));
     assert_eq!(
         (image.media_type.as_str(), image.size_bytes, image.sha256.as_str(), image.snippet.as_deref()),
-        ("image/png", 12, sha256.as_str(), None)
+        ("image/png", PNG.len() as u64, sha256.as_str(), None)
     );
     let notes = upload(&backend, &master, "notes.log", "application/octet-stream", b"\r\n  first\r\nsecond").await;
     assert_eq!(
@@ -139,7 +142,7 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
     // The files are on the conversation's Host, outside its working
     // directory; another user's upload is not.
     let directory = format!("{}/.demi/attachments/{FIRST}", paired.runner.home());
-    assert_eq!(std::fs::read(format!("{directory}/shot.png")).unwrap(), PNG);
+    assert_eq!(std::fs::read(format!("{directory}/shot.png")).unwrap(), *PNG);
     assert_eq!(std::fs::read_to_string(format!("{directory}/notes.log")).unwrap(), "\r\n  first\r\nsecond");
     assert!(!std::path::Path::new(&format!("{directory}/hers.txt")).exists());
     // The model reads the image and each file's record, and learns the other
@@ -174,7 +177,7 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
     vendor.respond(answer(&["Again."], 1, 1));
     socket.send(&with_upload("m2", "Once more", &[(&image, "shot.png")])).await;
     socket.until_idle().await;
-    assert_eq!(std::fs::read(format!("{directory}/shot-2.png")).unwrap(), PNG);
+    assert_eq!(std::fs::read(format!("{directory}/shot-2.png")).unwrap(), *PNG);
 
     // A steer names an upload as a message does: the file goes to the Host,
     // and the running turn's next request reads its image and its record.
@@ -195,7 +198,7 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
     std::fs::write(format!("{root}/go"), "").unwrap();
     // The turn was running before the steer's answer came.
     socket.until(|frame| matches!(frame, ServerFrame::Phase { phase: SessionPhase::Idle })).await;
-    assert_eq!(std::fs::read(format!("{directory}/shot-3.png")).unwrap(), PNG);
+    assert_eq!(std::fs::read(format!("{directory}/shot-3.png")).unwrap(), *PNG);
     let continued = vendor.requests()[3].json()["messages"].to_string();
     assert!(continued.contains("And this one") && continued.contains(&base64), "{continued}");
     assert!(continued.contains(&format!("{directory}/shot-3.png")), "{continued}");
@@ -246,7 +249,7 @@ async fn a_tool_medium_that_cannot_be_stored_becomes_text_and_the_turn_goes_on()
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
     let (_paired, root) = on_device(&harness, &backend, &master, FIRST).await;
-    std::fs::write(format!("{root}/shot.png"), PNG).unwrap();
+    std::fs::write(format!("{root}/shot.png"), &*PNG).unwrap();
     // The owner's blob namespace cannot be made, so nothing can be stored
     // there: the object store's directory `blobs/<user>` is a file.
     let blobs = harness.data_dir().join("blobs");
@@ -279,11 +282,77 @@ async fn a_tool_medium_that_cannot_be_stored_becomes_text_and_the_turn_goes_on()
     backend.close().await;
 }
 
-/// A PNG image that differs from the others by its last byte.
-fn png(last: u8) -> Vec<u8> {
-    let mut bytes = PNG.to_vec();
-    bytes.push(last);
-    bytes
+/// The width and height a PNG's header states.
+fn png_size(bytes: &[u8]) -> (u32, u32) {
+    let side = |at: usize| u32::from_be_bytes(bytes[at..at + 4].try_into().unwrap());
+    (side(16), side(20))
+}
+
+/// The base64 of the first image a Messages API request carries, in a
+/// message or a tool result.
+fn first_image(request: &serde_json::Value) -> String {
+    let text = request["messages"].to_string();
+    let start = text.find("\"data\":\"").expect("the request carries an image") + 8;
+    let end = start + text[start..].find('"').unwrap();
+    text[start..end].to_owned()
+}
+
+// About a second: an upload and a shell's output reach a real device.
+#[tokio::test]
+async fn an_image_over_2000_px_enters_fitted_from_an_upload_and_a_tool_and_stays_whole_on_the_host() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    let (paired, root) = on_device(&harness, &backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    let wide = demi_agent::testing::png(2_400, 10, 1).as_bytes().to_vec();
+    std::fs::write(format!("{root}/wide.png"), &wide).unwrap();
+    let image = upload(&backend, &master, "wide.png", "image/png", &wide).await;
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+
+    vendor.respond(tool_use(
+        "toolu_1",
+        "shell_exec",
+        &json!({ "description": "Show it", "script": "cat wide.png", "timeoutMs": 60_000 }),
+    ));
+    vendor.respond(answer(&["Both are wide."], 1, 1));
+    socket.send(&with_upload("m1", "Look", &[(&image, "wide.png")])).await;
+    socket.until_idle().await;
+
+    // The upload's file on the Host is the original, and so is the shell's
+    // output; the model reads the image fitted to 2,000 px, the same bytes
+    // in every request and from either source.
+    let directory = format!("{}/.demi/attachments/{FIRST}", paired.runner.home());
+    assert_eq!(std::fs::read(format!("{directory}/wide.png")).unwrap(), wide);
+    let requests: Vec<serde_json::Value> = vendor.requests().iter().map(|request| request.json()).collect();
+    let fitted = first_image(&requests[0]);
+    let bytes = data_encoding::BASE64.decode(fitted.as_bytes()).unwrap();
+    assert_eq!(png_size(&bytes), (2_000, 8));
+    assert!(!requests[0]["messages"].to_string().contains(&data_encoding::BASE64.encode(&wide)));
+    assert_eq!(first_image(&requests[1]), fitted);
+    let result = requests[1]["messages"].to_string();
+    assert_eq!(result.matches(&fitted).count(), 2, "the upload's and the tool's: {result}");
+    assert!(result.contains("fitted to what every model accepts; the raw bytes remain readable at"), "{result}");
+    // The message's image is the fitted one's blob, which the page reads.
+    let blocks = transcript(&backend, &master, FIRST).await.blocks;
+    let Some(Block::User(user)) = blocks.first() else {
+        panic!("{blocks:?}");
+    };
+    let UserContentBlock::Image { source: MediaSource::Ref { r#ref, .. } } = &user.content[1] else {
+        panic!("{:?}", user.content);
+    };
+    assert_ne!(r#ref.as_str(), image.sha256.as_str());
+    let served = backend.get(&format!("/api/blobs/{}", r#ref.as_str()), Some(&master)).await;
+    assert_eq!((served.status, served.body), (StatusCode::OK, bytes));
+    backend.close().await;
+}
+
+/// A PNG image that differs from the others by its pixels.
+fn png(seed: u8) -> Vec<u8> {
+    demi_agent::testing::png(4, 3, seed).as_bytes().to_vec()
 }
 
 /// The frames of a compaction pass, to the idle phase that ends it.
@@ -359,12 +428,15 @@ async fn a_restored_conversation_reads_each_replayed_blob_once_and_none_before_i
     vendor.respond(answer(&["An old shot."], 1, 1));
     socket.send(&with_upload("m1", "Look", &[(&old, "old.png")])).await;
     socket.until_idle().await;
-    vendor.respond(answer(&["Nine shots."], 1, 1));
+    // The vendor refuses the nine shots' request, so the latest answered
+    // request is the first: the pass summarizes what it carried, the old
+    // shot, and keeps what came after it, the nine shots
+    // (`compaction.md` § One pass).
+    let refusal = json!({ "type": "error", "error": { "type": "invalid_request_error", "message": "try later" } });
+    vendor.respond(demi_provider::testing::MockResponse::status(400).chunk(refusal.to_string()));
     let named: Vec<(&AttachmentDto, &str)> = shots.iter().map(|shot| (shot, "shot.png")).collect();
     socket.send(&with_upload("m2", "Look at these", &named)).await;
     socket.until_idle().await;
-    // The pass keeps the nine shots, whose weight fills the kept history,
-    // and summarizes the first message (`compaction.md` § One pass).
     vendor.respond(answer(&["The user showed an old shot."], 1, 1));
     compact(&mut socket).await;
     socket.send(&ClientFrame::Close {}).await;

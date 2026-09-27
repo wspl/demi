@@ -26,6 +26,9 @@ demi-provider = { path = "../provider" }
 demi-shell = { path = "../shell" }
 futures-util.workspace = true
 garde.workspace = true
+# Fits an image as it enters a transcript (`runtime.md` § Images in the
+# transcript): only the codecs of the types a model reads, and no threads.
+image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
 rand = "0.9"
 schemars.workspace = true
 serde.workspace = true
