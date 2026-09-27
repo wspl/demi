@@ -662,7 +662,12 @@ before that `response` block, and its content is what the blocks before its
 answer replay. Compaction summarizes that content
 ([One pass](compaction.md#one-pass)), and a vendor reads its cache entry at its
 end. Before any request is answered after the last compaction, the request
-says none. A title request says instead that it is no session's
+says none. With Claude Code, a run that ends in a batch of tool calls
+([Tool-call batches](../providers/claude-code.md#tool-call-batches)) writes no
+`response` block, because the CLI reports usage only on the line that ends its
+turn
+([Requests over stream-json](../providers/claude-code.md#requests-over-stream-json)),
+so its latest answered request is the last request that ended a turn. A title request says instead that it is no session's
 ([Conversation titles](../product/product.md#conversation-titles)).
 
 ### Media
@@ -745,22 +750,26 @@ An image enters the transcript once: when a tool result attaches it
 ([Results and previews](#results-and-previews)), or when a message's upload
 becomes its native medium
 ([Attachments](../product/product.md#attachments)). It is fitted then to what
-every provider accepts of one image, and it never changes afterwards, so every
-request sends the same bytes.
+every provider accepts of one image, at most 2,000 px on each side and
+5,000,000 bytes as base64, which is 3,750,000 bytes of image, and it never
+changes afterwards, so every request sends the same bytes.
 
 | The image | What enters the transcript |
 | --- | --- |
-| PNG, JPEG or WebP, at most 2,000 px on each side and 4 MiB | The image, unchanged |
-| Larger than 2,000 px on a side | The image scaled down to fit 2,000 × 2,000 px, keeping its aspect ratio: a JPEG as JPEG at quality 90, a PNG or WebP as PNG |
+| PNG, JPEG or WebP, at most 2,000 px on each side and 3,750,000 bytes | The image, unchanged |
+| Larger than 2,000 px on a side | The image turned upright by its EXIF orientation and scaled down to fit 2,000 × 2,000 px, keeping its aspect ratio: a JPEG as JPEG at quality 90, a PNG or WebP as PNG |
 | A GIF | Its first frame as PNG, fitted the same way |
-| Over 4 MiB after that | The fitted image as JPEG at quality 85 |
-| Not decodable, or needing more than 256 MiB to decode | No image: a tool result says why, and an upload stays an attachment the model reads by path |
+| Over 3,750,000 bytes after that | The fitted image as JPEG at quality 85 |
+| Still over 3,750,000 bytes, not decodable, or needing more than 256 MiB to decode | No image: a tool result says why, and an upload stays an attachment the model reads by path |
 
 For example, a screenshot of 3,000 × 1,500 px enters as 2,000 × 1,000 px. The
-limit follows the vendors: the Anthropic API refuses a request with more than
+limits follow the vendors: the Anthropic API refuses a request with more than
 20 images when a side of any of them exceeds 2,000 px, and OpenAI and Gemini
-scale a larger image down themselves. A GIF becomes a PNG because Gemini does
-not read GIF and the other vendors read only its first frame.
+scale a larger image down themselves; the vendors' strictest limit for one
+image is that of the Anthropic models on Amazon Bedrock and Google Cloud, 5 MB
+as base64. A GIF becomes a PNG because Gemini does not read GIF and the other
+vendors read only its first frame. A fitted image carries no EXIF data, so its
+orientation is applied before it is scaled.
 
 The original stays where it came from: a tool's stdout in the command's
 retained output on the Host, whose path the result names, and an upload in its
