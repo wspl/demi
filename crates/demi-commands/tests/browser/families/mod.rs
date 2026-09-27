@@ -28,6 +28,9 @@ pub struct BrowserFixture {
     pub caller: String,
     /// The locale the invocations carry; the browser starts in the first one's.
     pub locale: CommandLocale,
+    /// Whether invocations ask for JSON, as `--json` does; text arrives as
+    /// the answer's `diagnostic`.
+    pub json: bool,
 }
 
 impl BrowserFixture {
@@ -67,7 +70,7 @@ impl BrowserFixture {
                     caller,
                     locale: self.locale.clone(),
                 },
-                json: Some(true),
+                json: Some(self.json),
                 edits: None,
                 args,
                 cwd: self.root.path().to_str().unwrap().into(),
@@ -246,6 +249,7 @@ where
             time_zone: "UTC".into(),
             languages: vec!["en-US".into()],
         },
+        json: true,
     };
     // Catch both construction and polling of the exercise, including the initial
     // service assertions, before joining retirement and resuming the same panic.

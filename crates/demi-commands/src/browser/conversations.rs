@@ -675,6 +675,7 @@ impl Conversations {
         mut context: InvocationContext,
         operation: std::result::Result<BrowserOperation, DecodeError>,
     ) -> std::result::Result<Completion, ServiceError> {
+        let json = context.request.json == Some(true);
         let result = async {
             let command =
                 operation.map_err(|error| BrowserError::Configuration(error.to_string()))?;
@@ -684,7 +685,7 @@ impl Conversations {
             let invocation =
                 self.execute(browser, &mut context, &command, &cancellation, deadline);
             tokio::pin!(invocation);
-            match tokio::time::timeout_at(deadline, invocation.as_mut()).await {
+            let produced = match tokio::time::timeout_at(deadline, invocation.as_mut()).await {
                 Ok(result) => result,
                 Err(_) => {
                     // Cancel the active phase, then join its bounded input/file cleanup.
@@ -705,13 +706,13 @@ impl Conversations {
                         result => result,
                     }
                 }
+            }?;
+            match produced {
+                CommandOutput::Json(value) => output::render(&command, value, json),
+                CommandOutput::Png(bytes) => Ok(bytes),
             }
         }
-        .await
-        .and_then(|value| match value {
-            CommandOutput::Json(value) => output::render(value, context.request.json == Some(true)),
-            CommandOutput::Png(bytes) => Ok(bytes),
-        });
+        .await;
         match result {
             Ok(bytes) => {
                 context.output.stdout(Bytes::from(bytes)).await?;
@@ -744,7 +745,7 @@ impl Conversations {
                         details.debugging_callers = Some(callers);
                     }
                 }
-                let bytes = if context.request.json == Some(true) {
+                let bytes = if json {
                     serde_json::to_vec(&FailureDocument {
                         error: BrowserFailure {
                             code,

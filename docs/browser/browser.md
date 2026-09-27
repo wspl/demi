@@ -884,8 +884,12 @@ shows only the declared arguments.
 | Capability discovery | `capabilities`, `webmcp list/call` |
 
 The `$` below is a prompt, not part of command input. Omitted long content is
-illustrative; actual truncation follows the explicit contract. Commands share
-the target, timeout, output-file, and JSON rules above.
+illustrative; actual truncation follows the explicit contract. Tab IDs and node
+references appear as `tab-1` and `e3`; real ones are `t_` and `e_` with 22
+characters ([One tab registry](#one-tab-registry)). Commands share the target,
+timeout, output-file, and JSON rules above. The text below is each command's
+default output; an action names the element its input targeted, or where the
+input went when it named none.
 
 ### Tabs and navigation
 
@@ -903,7 +907,7 @@ tab-2   Admin     agent child  http://localhost:3000/admin
 $ demi browser info tab-1
 Tab: tab-1 · Sign in
 URL: http://localhost:3000/login
-Viewport: 1280 × 720 CSS px
+Viewport: 1280 × 720 CSS px, device pixel ratio 1, web
 Dialog: none
 
 $ demi browser goto tab-1 http://localhost:3000/products
@@ -1011,16 +1015,17 @@ $ demi browser screenshot tab-1
 $ demi browser screenshot tab-1 --output /tmp/login.png
 Screenshot saved: /tmp/login.png
 Image: 1280 × 720 px, one pixel per CSS pixel
-Viewport: 1280 × 720 CSS px, Web mode, rendered at device pixel ratio 2
+Viewport: 1280 × 720 CSS px, device pixel ratio 2, web
 
 $ demi browser screenshot tab-1 --full-page --output /tmp/page.png
 Screenshot saved: /tmp/page.png
 Image: 1280 × 2400 px, one pixel per CSS pixel
-Viewport: 1280 × 720 CSS px, Web mode, rendered at device pixel ratio 2
+Viewport: 1280 × 720 CSS px, device pixel ratio 2, web
 
 $ demi browser screenshot tab-1 --clip 100,200,600,400 --output /tmp/region.png
 Screenshot saved: /tmp/region.png
 Image: 600 × 400 px, one pixel per CSS pixel
+Viewport: 1280 × 720 CSS px, device pixel ratio 2, web
 
 $ demi browser probe tab-1 --xy 420,300
 [ref=e3] button "Sign in"
@@ -1028,6 +1033,7 @@ Bounds: x=360 y=280 width=120 height=40 CSS px
 
 $ demi browser probe tab-1 --xy 420,300 --output /tmp/annotated.png
 [ref=e3] button "Sign in"
+Bounds: x=360 y=280 width=120 height=40 CSS px
 Annotated screenshot saved: /tmp/annotated.png
 ```
 
@@ -1049,10 +1055,10 @@ candidate elements, roles, names, bounds, and available locator information.
 
 ```text
 $ demi browser click tab-1 --ref e3
-Clicked button "Sign in" [ref=e3].
+Clicked [ref=e3].
 
 $ demi browser click tab-1 --role button --name 'Sign in'
-Clicked button "Sign in" [ref=e3].
+Clicked button "Sign in".
 
 $ demi browser click tab-1 --xy 420,300
 Clicked at 420,300.
@@ -1095,16 +1101,16 @@ page moved: it may already be at a boundary. Observe again when that matters.
 
 ```text
 $ demi browser fill tab-1 --ref e1 --text test@example.com
-Filled textbox "Email" [ref=e1].
+Filled [ref=e1].
 
 $ demi browser type tab-1 --text hello
-Typed into textbox "Email" [ref=e1].
+Typed into [ref=e1].
 
 $ demi browser key tab-1 --key Escape
-Pressed Escape in the focused element.
+Pressed Escape in [ref=e1].
 
 $ demi browser type tab-1 --ref e1 --text '.test'
-Typed into textbox "Email" [ref=e1].
+Typed into [ref=e1].
 
 $ demi browser key tab-1 --ref e1 --key Enter
 Pressed Enter in [ref=e1].
@@ -1119,7 +1125,7 @@ $ demi browser check tab-1 --ref e5 --value false
 Checkbox [ref=e5]: unchecked.
 
 $ demi browser select tab-1 --ref e6 --option-label Singapore
-Selected: Singapore (SG).
+Selected: SG.
 
 $ demi browser select tab-1 --ref e6 --value SG --value JP
 Selected: SG, JP.
@@ -1189,8 +1195,7 @@ a control is done with the pointer and keyboard commands.
 
 ```text
 $ demi browser wait tab-1 --role heading --name 'Welcome back' --state visible --timeout 10000
-Matched heading "Welcome back" [ref=e50].
-State: visible.
+Element [ref=e50] is visible.
 
 $ demi browser wait tab-1 --ref e51 --state hidden --timeout 5000
 Element [ref=e51] is hidden.
@@ -1202,8 +1207,8 @@ $ demi browser wait tab-1 --load domcontentloaded
 Load state reached: domcontentloaded.
 
 $ demi browser click tab-1 --ref e3 --wait-url '**/dashboard' --timeout 10000
-Clicked button "Sign in" [ref=e3].
-Navigated to http://localhost:3000/dashboard.
+Clicked [ref=e3].
+URL: http://localhost:3000/dashboard
 ```
 
 Wait selects exactly one condition: an element with
@@ -1278,6 +1283,8 @@ Attached 1 file through [ref=e60].
 
 $ demi browser upload tab-1 --ref e60 --file /tmp/a.pdf --file /tmp/b.pdf
 Attached 2 files through [ref=e60].
+  /tmp/a.pdf
+  /tmp/b.pdf
 
 $ demi browser download tab-1 --ref e61 --output /tmp/report.pdf
 Downloaded: /tmp/report.pdf
@@ -1353,6 +1360,7 @@ JS
 $ demi browser logs tab-1 --level error --limit 20
 [error] Failed to load orders
   http://localhost:3000/orders
+Cursor: logs-1:4
 
 $ demi browser viewport set tab-1 --width 390 --height 844
 Viewport: 390 × 844 CSS px, device pixel ratio 1, custom.
@@ -1528,7 +1536,6 @@ Inventory: assets-1
 $ demi browser assets export tab-1 --inventory assets-1 --kind image --output-dir /tmp/assets
 Exported 1 asset to /tmp/assets.
 Manifest: /tmp/assets/manifest.json
-Failures: 0
 ```
 
 Content read/fetch supports text, html, and dom. DOM uses the same observation
