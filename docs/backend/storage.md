@@ -69,7 +69,7 @@ input, which the multi-worker control service also relies on
   contract to [Web API](../product/web-api.md#account-api), and sessions and
   lockout to [Backend](backend.md#authentication-and-ownership).
 - **Preferences:** `user_preferences` stores validated appearance and shortcut
-  overrides, the last explicit model selection for new conversations, and the
+  overrides, the last explicit model settings for new conversations, and the
   locale the browser last reported. A patch merges specified fields in one
   transaction so independent edits do not overwrite each other.
 - **Devices and workspaces:** `devices` stores ownership, kind, name and
@@ -88,8 +88,10 @@ input, which the multi-worker control service also relies on
 - **Conversation index:** `conversations` stores ownership, title and its
   [origin](../product/product.md#conversation-titles), archive and pin state,
   ordering, read revision, target selection, target context revision, last
-  switch, Cloud reset marker, provider and model identifiers, and the counts of
-  messages the user sent and the last generated title had seen. The target is
+  switch, Cloud reset marker, the conversation's model selection as JSON
+  ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)),
+  and the counts of messages the user sent and the last generated title had
+  seen. The target is
   typed columns: its kind (Cloud, a device directory, or a workspace) and the
   device, path or workspace that kind names, checked per kind. A target switch
   compares and sets these columns, so it commits only against the selection it
