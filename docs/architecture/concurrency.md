@@ -191,7 +191,7 @@ cross-user state live at the edge and in shared services.
 
 | In the user's shard | At the edge or in shared services |
 |---|---|
-| File gates, transfer admission, idle watches, target switch, archive and detach | The bytes of downloads, uploads, user streams, pipes and the expose relay, with their stall and idle timers |
+| File gates, transfer admission, idle watches, target switch, archive and detach, each user's retention pass | The bytes of downloads, uploads, user streams, pipes and the expose relay, with their stall and idle timers |
 | Agent trees and their sessions | HTTP routing, the session gate, body limits and static files |
 | Runner connections, one task each, and pipe records | Runners not yet paired, which have no user |
 | The Cloud machine and its reset intent | Cloud capacity, counted across users, and the machine-manager client |
@@ -280,7 +280,9 @@ dropped.
 
 **`std::sync::Mutex`** stays only where state is shared across threads for a
 short section that never awaits, such as the backend's pending runner claims,
-which edge threads share. Each use says why in a comment. The native programs
+which edge threads share, and its record of blob uses, which the edge's
+uploads, the shards' collectors and the conversation databases' commits share
+([Collecting blobs](../backend/storage.md#collecting-blobs)). Each use says why in a comment. The native programs
 keep a handful of these, for example the set of changed paths that a file
 watcher's own thread records.
 
