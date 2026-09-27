@@ -26,7 +26,7 @@ use futures_util::future::{LocalBoxFuture, join_all};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 pub use connection::{Connection, FrameRx, Outgoing};
-pub use content::{ContentError, ContentResolver, FileReference};
+pub use content::{ContentError, ContentResolver, FileReference, ResolvedFiles};
 pub use tree::Tree;
 
 use crate::{

@@ -6,7 +6,7 @@ use demi_core::{
     Block, DocumentSource, MediaSource, ToolMediaSource, ToolResultContentBlock, UserContentBlock,
 };
 
-use super::{RESUME_TEXT, WAKEUP_TEXT};
+use super::{RESUME_TEXT, WAKEUP_TEXT, replay_start};
 
 /// An image with its bytes weighs at least this many tokens, as does an
 /// image the model fetches by URL.
@@ -42,11 +42,10 @@ pub fn context_tokens(blocks: &[Block], context_window: Option<u32>) -> u64 {
     if let Some((index, tokens)) = anchor {
         return tokens + blocks[index + 1..].iter().map(block_tokens).sum::<u64>();
     }
-    let start = blocks
+    blocks[replay_start(blocks)..]
         .iter()
-        .rposition(|block| matches!(block, Block::CompactionBoundary(_)))
-        .unwrap_or(0);
-    blocks[start..].iter().map(block_tokens).sum()
+        .map(block_tokens)
+        .sum()
 }
 
 /// The latest response block with usage above zero, and that usage, unless

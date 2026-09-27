@@ -28,20 +28,27 @@ pub use command_state::{
     SessionBoundary,
 };
 
-/// One node's checkpoint: what its session saves and restores from.
+/// One node's checkpoint: what its session saves and restores from, and the
+/// blob namespace its media live in.
 pub trait SessionStore {
     /// Commits `update` in one transaction. Right before the transaction the
-    /// store checks `guard`, after any other work such as publishing media;
-    /// the update took effect exactly when this returns `Ok`.
+    /// store checks `guard`; the update took effect exactly when this returns
+    /// `Ok`. An update that holds media bytes is refused
+    /// ([`CheckpointUpdate::check_references`]).
     fn save<'a>(
         &'a self,
         update: CheckpointUpdate,
         guard: &'a CommitGuard,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>>;
 
-    /// The node's checkpoint, decoded and checked; none when the node has
-    /// none. Corrupt data stops the load.
+    /// The node's checkpoint, decoded and checked, its media by reference as
+    /// saved; none when the node has none. Corrupt data stops the load.
     fn load(&self) -> LocalBoxFuture<'_, Result<Option<Checkpoint>, StoreError>>;
+
+    /// The conversation owner's blob namespace (`runtime.md` § Media), where
+    /// the session stores the media that enter its transcript and reads back
+    /// those its requests send.
+    fn blobs(&self) -> &dyn media::BlobStore;
 }
 
 /// A conversation's tree: its node records and each node's checkpoint.
@@ -59,7 +66,8 @@ pub trait AgentTreeStore {
 
     /// The node's record and its first checkpoint in one commit, so that a
     /// node the process loses before its first turn still has the message
-    /// queued in it. A node that exists is refused.
+    /// queued in it. A node that exists is refused, and so is a checkpoint
+    /// that holds media bytes ([`CheckpointUpdate::check_references`]).
     fn create_node(
         &self,
         record: NodeRecord,
@@ -343,6 +351,35 @@ pub struct CheckpointUpdate {
 }
 
 impl CheckpointUpdate {
+    /// Refuses an update that holds media bytes (`runtime.md` § Saving):
+    /// each block and each queued message holds its media by reference,
+    /// since a medium's bytes were stored when it entered. The error names
+    /// the block or the message that holds bytes.
+    pub fn check_references(&self) -> Result<(), StoreError> {
+        if let Some((_, block)) = self
+            .changed_blocks
+            .iter()
+            .find(|(_, block)| media::holds_bytes(block))
+        {
+            return Err(StoreError::Failed(format!(
+                "block {} holds media bytes instead of a blob reference",
+                block.id()
+            )));
+        }
+        if let Some(message) = self
+            .state
+            .queue
+            .iter()
+            .find(|message| media::content_holds_bytes(&message.content))
+        {
+            return Err(StoreError::Failed(format!(
+                "queued message {} holds media bytes instead of a blob reference",
+                message.id
+            )));
+        }
+        Ok(())
+    }
+
     /// The child rounds whose completion receipts this save carries, as
     /// waiting agent input or as `agent_message` blocks, which the save marks
     /// delivered.

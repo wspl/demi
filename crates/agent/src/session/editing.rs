@@ -4,12 +4,12 @@
 //! runtime. A Fork (`conversation-fork.md`) copies a prefix into a new root's
 //! first checkpoint.
 
-use std::{cell::OnceCell, rc::Rc};
+use std::rc::Rc;
 
 use demi_agent_protocol::{EditRequest, MediaRef, TranscriptVersion};
 use demi_command_service::protocol::canonical_digest;
 use demi_core::{
-    B64Bytes, BlobRef, Block, BlockId, DocumentSource, MediaSource, OperationId, UserContentBlock,
+    BlobRef, Block, BlockId, DocumentSource, MediaSource, OperationId, UserContentBlock,
 };
 use demi_provider::ProviderRuntime;
 use tokio::sync::watch;
@@ -33,8 +33,8 @@ pub(crate) enum EditContent {
     /// the session puts in its place (`message-editing.md` § Files the edit
     /// keeps).
     KeptAttachment(String),
-    /// The native media block of this kind the edited message holds whose
-    /// bytes the blob holds, which the session puts in its place.
+    /// The native media block of this kind the edited message holds by the
+    /// blob it names, which the session puts in its place.
     KeptMedia(MediaRef),
 }
 
@@ -222,9 +222,6 @@ impl Candidate {
         let Some(Block::User(target)) = blocks.get(prefix.len()) else {
             unreachable!("the prefix ends before the user block");
         };
-        // The blobs of the target's media, named once, when the edit keeps
-        // a medium.
-        let held = OnceCell::new();
         let content = submission
             .content
             .iter()
@@ -238,10 +235,9 @@ impl Candidate {
                     .ok_or_else(|| EditError::UnknownAttachment(path.clone())),
                 EditContent::KeptMedia(media) => {
                     let (kind, blob) = named(media);
-                    held.get_or_init(|| held_media(&target.content))
-                        .iter()
-                        .find(|(held_kind, held_blob, _)| *held_kind == kind && held_blob == blob)
-                        .map(|(_, _, block)| (*block).clone())
+                    referenced_media(&target.content)
+                        .find(|(its_kind, its_blob, _)| *its_kind == kind && *its_blob == blob)
+                        .map(|(_, _, block)| block.clone())
                         .ok_or_else(|| EditError::UnknownMedia {
                             kind,
                             blob: blob.clone(),
@@ -314,28 +310,26 @@ fn named(media: &MediaRef) -> (&'static str, &BlobRef) {
     }
 }
 
-/// Each native media block of `content` by its kind and the blob that holds
-/// its bytes. A live session holds media with their bytes (`runtime.md`
-/// § Media).
-fn held_media(content: &[UserContentBlock]) -> Vec<(&'static str, BlobRef, &UserContentBlock)> {
-    content
-        .iter()
-        .filter_map(|block| {
-            let (kind, data): (&'static str, &B64Bytes) = match block {
-                UserContentBlock::Image {
-                    source: MediaSource::Binary { data, .. },
-                } => ("image", data),
-                UserContentBlock::Video {
-                    source: MediaSource::Binary { data, .. },
-                } => ("video", data),
-                UserContentBlock::Document {
-                    source: DocumentSource::Binary { data, .. },
-                } => ("document", data),
-                _ => return None,
-            };
-            Some((kind, BlobRef::of(data.as_bytes()), block))
-        })
-        .collect()
+/// Each native media block of `content` by its kind and the blob it
+/// references (`runtime.md` § Media).
+fn referenced_media(
+    content: &[UserContentBlock],
+) -> impl Iterator<Item = (&'static str, &BlobRef, &UserContentBlock)> {
+    content.iter().filter_map(|block| {
+        let (kind, blob) = match block {
+            UserContentBlock::Image {
+                source: MediaSource::Ref { r#ref, .. },
+            } => ("image", r#ref),
+            UserContentBlock::Video {
+                source: MediaSource::Ref { r#ref, .. },
+            } => ("video", r#ref),
+            UserContentBlock::Document {
+                source: DocumentSource::Ref { r#ref, .. },
+            } => ("document", r#ref),
+            _ => return None,
+        };
+        Some((kind, blob, block))
+    })
 }
 
 /// Why a Fork cannot start where it was asked.

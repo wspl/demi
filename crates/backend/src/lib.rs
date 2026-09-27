@@ -24,7 +24,8 @@ mod vault;
 pub use auth::email_change::{AccountMail, MailError, VerificationMail};
 pub use backend::{Backend, ShutdownError, ShutdownErrors, StartError};
 pub use config::{
-    BackendConfig, CloudTuning, Config, ConfigError, ConversationTuning, ExposeTuning, LifecycleTuning, RunnerTuning,
+    BackendConfig, CloudTuning, Config, ConfigError, ConversationTuning, ExposeTuning, LifecycleTuning, PageTuning,
+    RunnerTuning,
 };
 pub use expose::{ExposeDomain, NotExposeDomain};
 #[cfg(feature = "testing")]
@@ -44,6 +45,8 @@ pub use shard::ShardPlacement;
 pub use storage::conversations::CommitHold;
 #[cfg(feature = "testing")]
 pub use sync::SyncStep;
+#[cfg(feature = "testing")]
+pub use storage::objects::counting::{ObjectCounts, ObjectTally};
 pub use storage::objects::S3ConfigError;
 pub use vault::logins::LoginTiming;
 pub use vault::secret::{InstanceSecret, SecretError};

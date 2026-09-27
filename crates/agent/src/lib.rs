@@ -32,7 +32,7 @@ pub use ids::{IdSource, RandomIds};
 pub use node::Node;
 pub use server::{
     AgentServer, Connection, ContentError, ContentResolver, FileReference, FrameRx, Outgoing,
-    ProviderResolver, ResolveError, ServerConfig, ServerDeps, Tree, TreeStores,
+    ProviderResolver, ResolveError, ResolvedFiles, ServerConfig, ServerDeps, Tree, TreeStores,
 };
 pub use session::{
     AgentSession, CompactionConfig, ForkError, ModelSwitch, RetryPolicy, SessionConfig,

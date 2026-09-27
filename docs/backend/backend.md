@@ -48,7 +48,7 @@ over the manager's Unix socket.
 | Module | Responsibility | Design contract |
 |---|---|---|
 | `edge` | The listener and router, the session gate, request extractors and body limits, error codes, installer, native artifact and browser-asset routes, and the byte copies of file transfers, pipes, user streams and the expose relay | [Web API](../product/web-api.md) |
-| `shard` | Shard threads, each user's shard, calls into it, socket adoption, leases | [Runtime model](#runtime-model) |
+| `shard` | Shard threads, each user's shard, calls into it, socket adoption and the page socket both of a page's sockets are served through, leases | [Runtime model](#runtime-model) |
 | `config` | The typed configuration, validated at startup | [Configuration](#configuration) |
 | `auth` | Accounts, password hashing, web sessions, login lockout, email-change delivery | [Authentication and ownership](#authentication-and-ownership), [Product](../product/product.md#user-system) |
 | `settings` | Per-user preferences | [Web API](../product/web-api.md#user-preferences) |
@@ -217,6 +217,25 @@ without asking.
   defines these methods as safe, the product's routes use them only to read,
   and another page cannot read their answers.
 
+A reverse proxy in front of the backend passes each request's `Origin` and
+`Host` headers to it unchanged, since the check reads both. A proxy that
+drops `Origin` turns the check off without a sign: every request then passes,
+as a request from `curl` does. Behind a proxy that rewrites `Host`, the
+backend refuses the product's own pages, unless `DEMI_BACKEND_PUBLIC_URL` is
+their origin. An operator checks a deployment from outside with a request
+that names another origin, which must answer 403 `forbidden_origin`:
+
+```sh
+curl -s -X POST https://demi.example/api/auth/login \
+  -H 'Origin: https://elsewhere.example' \
+  -H 'Content-Type: application/json' --data '{}'
+```
+
+Any other answer means that the proxy did not pass `Origin`: the backend then
+took the login as one from no page, and refused only its empty body, with 400
+`invalid_body`. The same request with the product's own origin, such as
+`https://demi.example`, must answer 400 `invalid_body`, not 403.
+
 The edge checks ownership before it hands a request to a shard: it resolves
 the caller from the cookie, loads the conversation, device, workspace or
 provider entry the path names, and answers 404 when it belongs to someone
@@ -296,6 +315,13 @@ one shared socket, a conversation that lagged would close the page's channel
 and every other conversation with it, and a transcript's handshake or a burst
 of command output would hold back the sidebar's changes behind it.
 
+Both kinds of socket send a heartbeat once they have sent nothing else for 30
+seconds, so that a page can tell a quiet socket from one that died without a
+close ([Liveness and reconnection](../product/web-application.md#liveness-and-reconnection)).
+The shard serves both through one page socket, which owns that interval and
+the bound on the close
+([Startup and shutdown](#startup-and-shutdown)).
+
 How the browser consumes both, with its adapters, its synchronization and
 its session handling, is defined in
 [Web application](../product/web-application.md).
@@ -304,10 +330,12 @@ not block readable history ([Models](../providers/models.md#catalog-cache)).
 
 ## Media by reference
 
-Transcript media sent to the browser uses blob references instead of inline
-bulk bytes. The conversation socket externalizes inline media in root and
-subagent reset and patch frames, preserving frame order. The browser retrieves
-the referenced bytes through the cookie-authenticated blob route in its user's
+Transcript blocks hold their media by blob reference
+([Media](../agent/runtime.md#media)), so the frames that carry them carry
+references, and the conversation socket sends each frame as the agent wrote
+it: it neither stores nor reads media. A blob is stored before the first frame
+that names it, so the browser can fetch every reference a frame carries, when
+the frame arrives, through the cookie-authenticated blob route in its user's
 namespace.
 
 Only the media types [file previews](../product/file-previews.md#keeping-file-content-inert)
@@ -330,9 +358,14 @@ socket validates the entire frame before changing metadata or granting
 attachments. It resolves upload references to caller-owned blobs and writes
 them under the selected Host's `~/.demi/attachments/<conversation>/`, outside
 the workspace. The agent receives an attachment record, with the same snippet
-for a text file, and the native media block of an image, a video or a PDF; an
-image's block holds it fitted to what every provider accepts
-([Images in the transcript](../agent/runtime.md#images-in-the-transcript)). A
+for a text file, and the native media block of an image, a video or a PDF,
+which references the upload's own blob. An image enters fitted to what every
+provider accepts
+([Images in the transcript](../agent/runtime.md#images-in-the-transcript)):
+when fitting changes it, its block references the fitted image's blob, which
+the socket stores first. The socket hands the session the bytes of the
+block's medium, those it read to write the file or the fitted ones, so the
+session holds them without reading the blob again. A
 missing or inaccessible upload becomes an explicit attachment-unavailable text
 block.
 An edit's references to the files the edited message holds pass to the
@@ -346,14 +379,11 @@ Its contents can change before that read.
 [Web API](../product/web-api.md#device-files-and-remote-references) defines
 the wire shape.
 
-Resolving uploads and externalizing media keep the socket's frame order
+Resolving uploads keeps the socket's frame order
 ([Order and delivery](../agent/runtime.md#order-and-delivery)). A frame whose
 resolution fails reports an error without affecting the frames behind it, and
-closing the socket stops resolution that has not reached the session yet. An
-outgoing transcript frame whose media cannot be stored is sent as an `error`
-frame (`frame_send_failed`) instead, and the frames behind it still arrive; the
-page asks for the transcript again at the revision gap. The underlying
-persistence and blob ownership are defined in [Storage](storage.md).
+closing the socket stops resolution that has not reached the session yet. The
+underlying persistence and blob ownership are defined in [Storage](storage.md).
 
 ## Failure facts
 
@@ -428,6 +458,16 @@ Transfers end before the Cloud hibernates because an open download holds the
 Cloud's gate, and a Cloud whose gate is busy would skip its save. Every step
 runs even when an earlier one fails; the failures are reported together, and
 the process exits with a failure status.
+
+A page cannot hold up shutdown. When a socket to a page closes, the
+synchronization channel or a conversation socket, the backend stops sending
+whatever it was sending on it and sends the close frame, and it waits at most
+one second for the page to take that frame. For example, a phone's page
+stopped reading in the middle of a long transcript, and the socket's buffers
+are full: without the bound, the backend would wait for the phone to read
+before the shard could close. After the second, the page loses the connection
+without the close frame, and connects again as it does after any close
+([Liveness and reconnection](../product/web-application.md#liveness-and-reconnection)).
 
 ## Configuration
 
@@ -563,7 +603,9 @@ routing key. Routing hints select placement; authentication still establishes
 identity. Login requests can reach any worker because account lookup uses
 shared control records. Pairing must reach the worker that holds the unclaimed
 runner's connection, so its routing must preserve that connection-to-code
-relationship. An off-the-shelf reverse proxy applies the map; the product
+relationship. An off-the-shelf reverse proxy applies the map, passing
+`Origin` and `Host` unchanged
+([Authentication and ownership](#authentication-and-ownership)); the product
 supplies deployment configuration rather than a custom router.
 
 At most one worker serves a user at a time, and a route map alone does not

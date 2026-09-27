@@ -1294,6 +1294,7 @@ version = "0.1.3"
 dependencies = [
  "aes-gcm",
  "argon2",
+ "async-trait",
  "axum",
  "axum-extra",
  "bytes",
@@ -1442,6 +1443,7 @@ name = "demi-command-service"
 version = "0.1.3"
 dependencies = [
  "bytes",
+ "demi-artifact",
  "demi-command-service",
  "futures-util",
  "garde",

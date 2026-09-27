@@ -3,8 +3,8 @@
 //! the user's shard once upgraded. The socket decodes each message into a
 //! client frame and hands it to the conversation's agent connection, one at a
 //! time in arrival order; the connection's outbox carries every server frame
-//! back, its media as references into the owner's blobs and with the
-//! failure facts of the error blocks it brings. A frame the
+//! back, with the failure facts of the error blocks it brings; its media are
+//! references into the owner's blobs already (`runtime.md` § Media). A frame the
 //! backend refuses before the agent sees it is answered with an `error`
 //! frame: one that is not a valid frame (`invalid_frame`), one sent while the
 //! conversation is archived (`conversation_archived`), an `open` of a
@@ -18,8 +18,8 @@ use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 
 use axum::extract::ws::{CloseFrame, Message, Utf8Bytes, WebSocket, close_code};
-use demi_agent::store::media;
-use demi_agent::{ContentError, ContentResolver, FileReference, Outgoing};
+use demi_agent::store::media::HeldMedia;
+use demi_agent::{ContentError, ContentResolver, FileReference, Outgoing, ResolvedFiles};
 use demi_agent_protocol::{
     ClientContent, ClientFrame, EditOutcome, FrameError, ServerFrame, TranscriptPatch, decode_client_frame,
 };
@@ -27,14 +27,14 @@ use demi_core::{Block, UserContentBlock};
 use demi_gates::{GateLease, Purpose};
 use demi_web_api::error::ErrorCode;
 use demi_web_api::ids::{ConversationId, ProviderId};
+use futures_util::StreamExt as _;
 use futures_util::future::LocalBoxFuture;
-use futures_util::{SinkExt as _, StreamExt as _};
 use tokio_util::sync::CancellationToken;
 
 use super::host_access::{Admitted, ConversationHost, Waits};
 use super::remote_files::RemoteFile;
 use super::{failure_facts, root_of};
-use crate::shard::Shard;
+use crate::shard::{PageSocket, Shard};
 use crate::storage::StorageError;
 use crate::storage::conversation_index::ConversationRecord;
 use crate::sync::Part;
@@ -94,7 +94,9 @@ fn refusal(code: ErrorCode, message: impl Into<String>) -> ServerFrame {
 impl Shard {
     /// Serves a socket of `conversation` until either end closes it or the
     /// shard closes. A frame the socket has handed to the agent is handled to
-    /// its end; while it is, the outbox's frames keep flowing to the page.
+    /// its end, even when the shard closes meanwhile; until then, the
+    /// outbox's frames keep flowing to the page. A socket that has sent
+    /// nothing for the heartbeat interval sends a `heartbeat`.
     pub(crate) async fn serve_conversation_socket(self: Rc<Self>, conversation: ConversationRecord, socket: WebSocket) {
         // Counted before any wait, so the shard's close waits for this
         // socket; one adopted as the close begins ends at once.
@@ -120,59 +122,65 @@ impl Shard {
             host: RefCell::new(None),
         });
         let (connection, mut frames) = self.agent().connect(root_of(&id), cwd, resolver.clone());
-        let (mut sink, mut stream) = socket.split();
+        let (sink, mut stream) = socket.split();
+        let mut page = PageSocket::new(sink, self.services().pages);
         let mut handling: Option<LocalBoxFuture<'_, Handled>> = None;
-        let mut closing = false;
-        let ending = loop {
-            if closing && handling.is_none() {
-                break Ending::Closing;
-            }
-            tokio::select! {
-                handled = async { handling.as_mut().expect("the branch runs only while a frame is handled").await },
-                    if handling.is_some() =>
-                {
-                    handling = None;
-                    let replies = match handled {
-                        Handled::Replies(replies) => replies,
-                        Handled::NotJson => break Ending::NotJson,
-                    };
-                    let mut sent = true;
-                    for reply in replies {
-                        sent = self.send_frame(&mut sink, reply).await;
-                        if !sent {
-                            break;
+        let relay = async {
+            'relay: loop {
+                tokio::select! {
+                    handled = async { handling.as_mut().expect("the branch runs only while a frame is handled").await },
+                        if handling.is_some() =>
+                    {
+                        handling = None;
+                        let replies = match handled {
+                            Handled::Replies(replies) => replies,
+                            Handled::NotJson => break Ending::NotJson,
+                        };
+                        for reply in replies {
+                            if !self.send_frame(&mut page, reply).await {
+                                break 'relay Ending::Gone;
+                            }
                         }
                     }
-                    if !sent {
-                        break Ending::Gone;
-                    }
-                }
-                message = stream.next(), if handling.is_none() && !closing => match message {
-                    Some(Ok(Message::Text(text))) => {
-                        let shard = self.clone();
-                        let connection = &connection;
-                        let resolver = &resolver;
-                        let id = id.clone();
-                        handling = Some(Box::pin(async move {
-                            shard.handle_message(&id, connection, resolver, text.as_str()).await
-                        }));
-                    }
-                    Some(Ok(Message::Binary(_))) => break Ending::NotJson,
-                    // Pings are answered by the socket itself.
-                    Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
-                    Some(Ok(Message::Close(_)) | Err(_)) | None => break Ending::Gone,
-                },
-                outgoing = frames.recv() => match outgoing {
-                    Outgoing::Frame(frame) => {
-                        if !self.send_frame(&mut sink, frame).await {
+                    message = stream.next(), if handling.is_none() => match message {
+                        Some(Ok(Message::Text(text))) => {
+                            let shard = self.clone();
+                            let connection = &connection;
+                            let resolver = &resolver;
+                            let id = id.clone();
+                            handling = Some(Box::pin(async move {
+                                shard.handle_message(&id, connection, resolver, text.as_str()).await
+                            }));
+                        }
+                        Some(Ok(Message::Binary(_))) => break Ending::NotJson,
+                        // Pings are answered by the socket itself.
+                        Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
+                        Some(Ok(Message::Close(_)) | Err(_)) | None => break Ending::Gone,
+                    },
+                    outgoing = frames.recv() => match outgoing {
+                        Outgoing::Frame(frame) => {
+                            if !self.send_frame(&mut page, frame).await {
+                                break Ending::Gone;
+                            }
+                        }
+                        Outgoing::Lagged => break Ending::Lagged,
+                        Outgoing::Closed => break Ending::Gone,
+                    },
+                    () = page.silent() => {
+                        if page.send(to_text(&ServerFrame::Heartbeat)).await.is_err() {
                             break Ending::Gone;
                         }
                     }
-                    Outgoing::Lagged => break Ending::Lagged,
-                    Outgoing::Closed => break Ending::Gone,
-                },
-                () = self.closed(), if !closing => closing = true,
+                }
             }
+        };
+        // The shard's close ends the relay wherever it waits, a send to a
+        // page that stopped reading included (`backend.md` § Startup and
+        // shutdown).
+        let ending = tokio::select! {
+            biased;
+            () = self.closed() => Ending::Closing,
+            ending = relay => ending,
         };
         // A frame that reached the agent is handled to its end: its session
         // may be in the middle of taking it. What it replies goes nowhere.
@@ -180,8 +188,7 @@ impl Shard {
             handled.await;
         }
         if let Some(close) = ending.close() {
-            // The page may be gone already; the socket closes either way.
-            let _ = sink.send(Message::Close(Some(close))).await;
+            page.close(close).await;
         }
         // Dropping the connection, last, detaches it from its tree, whose
         // turns go on.
@@ -301,27 +308,20 @@ impl Shard {
 
     /// Sends one server frame, presented as the page receives it; false when
     /// the socket is gone.
-    async fn send_frame(&self, sink: &mut futures_util::stream::SplitSink<WebSocket, Message>, frame: ServerFrame) -> bool {
+    async fn send_frame(&self, page: &mut PageSocket, frame: ServerFrame) -> bool {
         let frame = self.present(frame).await;
         let Some(text) = serialize(frame).await else {
             return false;
         };
-        sink.send(Message::Text(text.into())).await.is_ok()
+        page.send(text).await.is_ok()
     }
 
-    /// A server frame as the page receives it: the media of the blocks a
-    /// transcript frame carries are references into the owner's blobs
-    /// (`backend.md` § Media by reference), and it carries the failure facts
-    /// of the error blocks it brings (§ Failure facts). A frame whose media
-    /// could not be stored becomes an `error` frame, since no frame carries
-    /// media bytes; the page asks for the transcript again at the revision
-    /// gap it leaves.
-    async fn present(&self, mut frame: ServerFrame) -> ServerFrame {
+    /// A server frame as the page receives it: a transcript frame carries
+    /// the failure facts of the error blocks it brings (`backend.md`
+    /// § Failure facts). Its blocks hold their media by reference already
+    /// (§ Media by reference).
+    async fn present(&self, frame: ServerFrame) -> ServerFrame {
         let services = self.services();
-        let blobs = services.blobs.for_user(self.user());
-        if let Err(error) = media::externalize_frame(&mut frame, &blobs).await {
-            return refusal(ErrorCode::FrameSendFailed, format!("A transcript frame's media were not stored: {error}"));
-        }
         let assembly = &services.assembly;
         match frame {
             ServerFrame::TranscriptReset { blocks, version, .. } => {
@@ -463,7 +463,7 @@ impl ContentResolver for ConversationFiles {
     fn resolve<'a>(
         &'a self,
         files: Vec<FileReference>,
-    ) -> LocalBoxFuture<'a, Result<Vec<Vec<UserContentBlock>>, ContentError>> {
+    ) -> LocalBoxFuture<'a, Result<ResolvedFiles, ContentError>> {
         Box::pin(async move {
             let refused = |message: String| ContentError {
                 message,
@@ -474,8 +474,9 @@ impl ContentResolver for ConversationFiles {
                 .upgrade()
                 .ok_or_else(|| refused("The backend is shutting down".into()))?;
             // Each file's blocks by its place, the remote files' once they
-            // are granted together.
+            // are granted together, and the bytes of the uploads' media.
             let mut resolved: Vec<Option<Vec<UserContentBlock>>> = Vec::with_capacity(files.len());
+            let mut media = HeldMedia::default();
             let mut remote = Vec::new();
             for file in files {
                 match file {
@@ -483,11 +484,12 @@ impl ContentResolver for ConversationFiles {
                         // A frame with uploads is admitted on its Host first.
                         let host = self.host.borrow().clone();
                         let host = host.ok_or_else(|| refused("The frame's Host was not admitted".into()))?;
-                        let blocks = shard
+                        let (blocks, held) = shard
                             .resolve_upload(&self.conversation, &host, &r#ref, &file_name)
                             .await
                             .map_err(|error| refused(error.to_string()))?;
                         resolved.push(Some(blocks));
+                        media.absorb(held);
                     }
                     FileReference::RemoteFile { device_id, path } => {
                         remote.push(RemoteFile { device: device_id, path });
@@ -508,7 +510,7 @@ impl ContentResolver for ConversationFiles {
                 .into_iter()
                 .map(|blocks| blocks.unwrap_or_else(|| references.next().into_iter().collect()))
                 .collect();
-            Ok(blocks)
+            Ok(ResolvedFiles { blocks, media })
         })
     }
 }

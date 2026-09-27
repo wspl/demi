@@ -558,6 +558,10 @@ export class AgentClient {
       case 'subagent':
         this.emit(frame)
         return
+      // A heartbeat only shows that the socket is alive
+      // (`runtime.md` § Order and delivery); it changes nothing here.
+      case 'heartbeat':
+        return
     }
   }
 

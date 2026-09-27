@@ -5,8 +5,9 @@
 //! scripts, a reload whose history is what the database holds, a client that
 //! falls behind, the frames the backend refuses, provider edits
 //! and deletion at the inference boundary, the rate limit, a shutdown in the
-//! middle of a turn, and the patches and batches of the sidebar. No test
-//! calls a real model.
+//! middle of a turn and one that a page which stopped reading cannot hold
+//! up, and the patches and batches of the sidebar. No test calls a real
+//! model.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -35,6 +36,7 @@ use futures_util::future::{BoxFuture, LocalBoxFuture};
 use futures_util::{SinkExt as _, StreamExt as _, stream};
 use reqwest::StatusCode;
 use serde_json::{Value, json};
+use tokio::io::AsyncReadExt as _;
 use tokio::sync::watch;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest as _;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
@@ -942,6 +944,79 @@ async fn a_shutdown_in_the_middle_of_a_turn_saves_its_interruption_and_the_next_
     socket.chat("m3", "go on").await;
     assert_eq!(last_text(&socket.live().await), "done");
     backend.close().await;
+}
+
+/// A page's conversation socket that stops reading where the test says,
+/// with a receive buffer of a few kilobytes: a frame larger than the
+/// backend's send buffer then fills the socket's buffers, and the backend's
+/// send of it waits for a read that never comes.
+struct StalledPage {
+    socket: tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
+}
+
+impl StalledPage {
+    async fn connect(backend: &TestBackend, session: &Session, conversation: &str) -> Self {
+        let tcp = tokio::net::TcpSocket::new_v4().unwrap();
+        tcp.set_recv_buffer_size(4096).unwrap();
+        let stream = tcp.connect(backend.address()).await.unwrap();
+        let url = backend.ws_url(&format!("/api/conversations/{conversation}/stream"));
+        let mut request = url.into_client_request().unwrap();
+        let headers = request.headers_mut();
+        headers.insert("cookie", session.cookie.parse().unwrap());
+        headers.insert("origin", backend.url.parse().unwrap());
+        let (socket, _) = tokio_tungstenite::client_async(request, stream).await.unwrap();
+        Self { socket }
+    }
+
+    /// Opens the conversation and reads the socket's bytes as far as the
+    /// header of the frame after `opened`, the transcript's reset, whose
+    /// length it answers: the backend is sending the reset, and the page
+    /// reads no further.
+    async fn open_until_the_reset_is_sent(&mut self) -> u64 {
+        let open = serde_json::to_string(&ClientFrame::Open {}).unwrap();
+        self.socket.send(Message::Text(open.into())).await.unwrap();
+        // Read beneath the WebSocket, which would read the whole reset: a
+        // final text frame for `opened`, then the reset's frame header with
+        // its 64-bit length.
+        let opened = br#"{"type":"opened"}"#;
+        let mut head = [0; 2 + 17 + 10];
+        tokio::time::timeout(PATIENCE, self.socket.get_mut().read_exact(&mut head))
+            .await
+            .expect("the backend sends the handshake")
+            .unwrap();
+        assert_eq!(head[..2], [0x81, 17]);
+        assert_eq!(&head[2..19], opened);
+        assert_eq!(head[19..21], [0x81, 127]);
+        u64::from_be_bytes(head[21..].try_into().unwrap())
+    }
+}
+
+/// A page that stopped reading, its socket's buffers full, holds up
+/// shutdown no longer than the close frame's bound (`backend.md` § Startup
+/// and shutdown): the backend is in the middle of sending a transcript
+/// larger than any socket buffer when it shuts down. The 8 MiB message that
+/// makes the transcript so large costs most of the test's 2 s: a smaller
+/// one can fit the send buffer, whose limit is 4 MiB on Linux and macOS.
+#[tokio::test]
+async fn a_page_that_stopped_reading_does_not_hold_up_shutdown() {
+    let vendor = MockVendor::start().await;
+    let mut harness = Harness::new();
+    harness.pages.close_wait = Duration::from_millis(100);
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    vendor.respond(answer(&["noted"], 1, 1));
+    socket.chat("m1", &"x".repeat(8 << 20)).await;
+
+    let mut stalled = StalledPage::connect(&backend, &master, FIRST).await;
+    let reset = stalled.open_until_the_reset_is_sent().await;
+    assert!(reset > 8 << 20, "the reset carries the whole transcript: {reset} bytes");
+    tokio::time::timeout(PATIENCE, backend.close())
+        .await
+        .expect("a page that stopped reading does not hold up shutdown");
 }
 
 #[tokio::test]

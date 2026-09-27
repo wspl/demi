@@ -101,6 +101,14 @@ its native release configuration, are defined in
 [Backend configuration](../backend/backend.md#configuration). An image release
 and the backend's command releases must agree.
 
+A reverse proxy in front of the backend, such as the one that serves its
+public URL over TLS, must pass each request's `Origin` and `Host` headers to
+the backend unchanged. The backend refuses a request from another site by its
+`Origin`, and lets a request without one through, so a proxy that drops the
+header turns that check off without a sign.
+[Authentication and ownership](../backend/backend.md#authentication-and-ownership)
+gives the rule and the request that checks a deployment.
+
 Example manager configuration for an already prepared Linux execution host:
 
 ```dotenv
@@ -233,6 +241,9 @@ reuse another deployment's state directory to make a start succeed.
 
 ## Acceptance before use
 
+Check that the proxy in front of the backend passes `Origin`: a request that
+names another origin answers 403 `forbidden_origin`
+([Authentication and ownership](../backend/backend.md#authentication-and-ownership)).
 Start a real managed device through the backend, not the paired-device claim
 endpoint. Verify runner readiness, shell/native/browser operations, persistent
 package and home files across stop/wake, and reset with a broken system. Check

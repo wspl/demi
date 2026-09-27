@@ -1,5 +1,6 @@
 import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
+import { reconnectWait, watchSilence, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
 import { apiRequest, apiUrl, notifySessionEnded, readResponse } from '../api/client'
 import {
   modelCatalogSchema,
@@ -12,11 +13,6 @@ import {
   type VendorCatalog,
 } from '../api/generated/web-api'
 
-/** The first wait before a closed channel connects again; each later one doubles, up to the longest. */
-const FIRST_RETRY_MS = 1_000
-const LONGEST_RETRY_MS = 30_000
-/** Two and a half of the backend's 30-second heartbeats: a channel silent this long is broken. */
-const WATCHDOG_MS = 75_000
 /** The close code of a channel whose session ended (`web-api.md` § Page synchronization). */
 const SESSION_ENDED = 4002
 
@@ -118,7 +114,8 @@ export const useProduct = defineStore('product', () => {
   let controller: AbortController | null = null
   let socket: WebSocket | null = null
   let retryTimer: ReturnType<typeof setTimeout> | null = null
-  let watchdog: ReturnType<typeof setTimeout> | null = null
+  /** The open channel's silence watch (`web-application.md` § Liveness and reconnection). */
+  let silence: SilenceWatch | null = null
   /** Consecutive connections that ended before their snapshot. */
   let failures = 0
   /** Messages received, which numbers them. */
@@ -134,29 +131,13 @@ export const useProduct = defineStore('product', () => {
     retryTimer = null
   }
 
-  function clearWatchdog(): void {
-    if (watchdog !== null) {
-      clearTimeout(watchdog)
-    }
-    watchdog = null
-  }
-
   /** Forgets the open channel, which then closes without telling this module. */
   function dropChannel(): WebSocket | null {
     const channel = socket
     socket = null
-    clearWatchdog()
+    silence?.stop()
+    silence = null
     return channel
-  }
-
-  /** Takes a channel that brings nothing for too long as broken, and replaces it. */
-  function armWatchdog(channel: WebSocket): void {
-    clearWatchdog()
-    watchdog = setTimeout(() => {
-      if (socket === channel) {
-        replace()
-      }
-    }, WATCHDOG_MS)
   }
 
   /** Closes the channel and connects again after the wait. */
@@ -166,14 +147,13 @@ export const useProduct = defineStore('product', () => {
     scheduleRetry()
   }
 
-  /** Connects again after a wait that doubles with each failure, shortened by a random part. */
+  /** Connects again after the wait for this many failures. */
   function scheduleRetry(): void {
     if (!controller) {
       return
     }
     clearRetry()
-    const longest = Math.min(FIRST_RETRY_MS * 2 ** (failures - 1), LONGEST_RETRY_MS)
-    retryTimer = setTimeout(connect, longest * (1 - Math.random() / 2))
+    retryTimer = setTimeout(connect, reconnectWait(failures))
   }
 
   function connect(): void {
@@ -187,14 +167,18 @@ export const useProduct = defineStore('product', () => {
     socket = channel
     let opened = false
     channel.onopen = () => {
+      if (socket !== channel) {
+        return
+      }
       opened = true
-      armWatchdog(channel)
+      // A channel that brings nothing, heartbeats included, for too long is broken.
+      silence = watchSilence(replace)
     }
     channel.onmessage = (message) => {
       if (socket !== channel) {
         return
       }
-      armWatchdog(channel)
+      silence?.heard()
       const parsed = syncEventSchema.safeParse(parse(message.data))
       if (!parsed.success) {
         // A message outside the contract changes nothing; a new connection
