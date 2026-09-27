@@ -26,32 +26,33 @@ Driver: HTTP with a session cookie; conversation WebSocket, typed agent frames
          +-- rpc relay to the invoking node's backend handler
 
 Observe: the next provider request, target files, the cold transcript,
-the usage ledger, and the runner wire frames
+and the usage ledger
 ```
 
 The scenario harness, the *world*, starts the backend inside the test process,
 with its production shard threads and a temporary data directory. In place of
-external services it registers a scripted model as a provider family, serves
-a scripted machine manager on a Unix socket, and serves local fixtures in
-place of models.dev and the Claude Code release distribution. It loads the
+external services it uses a scripted model, serves a scripted machine manager
+on a Unix socket, and serves local fixtures in place of models.dev and the
+Claude Code release distribution. It loads the
 native packages the workspace built as development releases, which the
 backend's development store serves to the runners
 ([Backend deployment configuration](../execution/native-runtime.md#backend-deployment-configuration)).
-It pairs real runner processes, records every runner wire frame in both
-directions, and owns cleanup. The runners are the real runner executable,
-which the test starts from the target directory it runs from
+It pairs real runner processes and owns cleanup. The runners are the real
+runner executable, which the test starts from the target directory it runs from
 ([Validation](builds-and-releases.md#validation)). The fakes come from the
 test-support features of the crates that own what they fake
 ([Crates and packages](../architecture/crates-and-packages.md)); the scripted
 machine manager is the backend's own test code, since the manager's crate runs
 only on Linux.
 
-The scripted model keeps a queue of turn scripts per session, answers title
-requests from a queue of their own, and records every request it receives. A
-*driver* opens a conversation through the HTTP API, connects to its WebSocket,
-supplies the scripted events for each turn, and records inference requests and
-tool results. Assertions inspect what the model receives, not just what a
-client displays.
+The model is scripted in one of two ways: a scripted vendor (`MockVendor`, from
+`demi-provider`'s `testing` feature) that a built-in family sends to, which
+answers each request with the next scripted response and records every request;
+or a family the scenario registers, whose runtime it scripts. Title requests
+are off unless a scenario turns them on, since one beside the first turn would
+take a scripted answer. A *driver* opens a conversation through the HTTP API,
+connects to its WebSocket, and sends and reads the typed agent frames.
+Assertions inspect what the model receives, not just what a client displays.
 
 A driver reads a transcript as the backend serves it cold, through the
 transcript route, and follows events and phases in the frames. It does not
@@ -151,10 +152,11 @@ a suite that runs one backend cannot demonstrate it.
 
 ## Shared checks and their limits
 
-When a scenario closes, the world checks that every scripted response was
-consumed. It does not compare the live transcript with the cold one; tests for
-content, media, queue, and command-state correctness assert those values
-explicitly on the cold transcript.
+No check runs by itself when a scenario closes: each scenario asserts what it
+protects, such as the requests its scripted model received. The world does not
+compare the live transcript with the cold one; tests for content, media,
+queue, and command-state correctness assert those values explicitly on the
+cold transcript.
 
 The world does not bound the `job_output` bytes a job sends. The runner's wire
 test pins them where the runner sends them
@@ -163,22 +165,24 @@ beyond them, while the backend follows the job, at most 16 KiB of the newest
 bytes per stream and interval, the last before `job_exit`
 ([Pipes and output](../execution/runner.md#pipes-and-output)).
 
-For explicitly paired devices, the world reconciles job starts with exit
-reports or intentionally lost jobs. It also checks named pipe ends against
-`pipe_done` reports, allowing losses only for intentionally stopped runners.
-These are count checks, not a complete proof of job ownership or every
-wire-frame limit. Runners that the fake machine manager starts are not paired
-devices, so their equivalent coverage needs separate assertions.
+The world does not record the runner's wire frames either. `job_exit` and
+`pipe_done` are pinned where the runner sends them, by the runner tests of
+`host-remote` (`crates/host-remote/tests/host_remote/runner.rs`), which read
+every frame their runner sends: each job's end there comes from its
+`job_exit`, and they check `pipe_done` for a job's pipes, whole and refused, a
+file read whose reader left, and service and network streams. A scenario sees
+a missing `job_exit` as a command that never ends. The backend uses
+`pipe_done` only to fail a pipe early; the end of the pipe's HTTP exchange is
+what settles it.
 
-The usage check compares ledger rows with answered scripted requests; each
-answered script ends with a response that carries usage. It does not establish
-a row for a request that failed or was cancelled before a response
+The usage ledger is checked by the scenarios that read it through
+`GET /api/usage`, not after every scenario
 ([Usage ledger](../providers/usage-and-quota.md#usage-ledger)).
 
 Cleanup belongs to the world and its fake machine manager, including after
 assertion failures: drivers detach, runners stop, and the backend closes. Tests
 introducing new streams, processes, or failure injection must also verify their
-cleanup rather than relying only on the common job counters.
+cleanup.
 
 ## Browser-contract suite
 
