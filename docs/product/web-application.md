@@ -182,19 +182,22 @@ way and shows the tree as the backend then has it.
 
 A page holds WebSockets of three kinds to the backend: the synchronization
 channel, a socket for each open conversation, and the stream of each
-[live browser view](../browser/live-view.md). All three connect again by one
-rule, the first two also tell a quiet socket from a dead one by one rule, and
-one module of `web-ui` implements both. For example, a laptop sleeps and its
-network drops without a close. Nothing tells the page: its sockets still look
-open, and a conversation would go on showing a turn as running. The backend
-sends a heartbeat on the channel and on each conversation socket that has
-sent nothing else for 30 seconds
+[live browser view](../browser/live-view.md). All three tell a quiet socket
+from a dead one by one rule and connect again by another, and one module of
+`web-ui` implements both. For example, a laptop sleeps and its network drops
+without a close. Nothing tells the page: its sockets still look open, a
+conversation would go on showing a turn as running, and a live view would go
+on showing its stream as stalled. The far end of each socket sends a
+heartbeat once it has sent nothing else for a while: the backend on the
+channel and on each conversation socket after 30 seconds
 ([Order and delivery](../agent/runtime.md#order-and-delivery),
-[Page synchronization](web-api.md#page-synchronization)), so a socket that
-brings nothing for 75 seconds, two and a half heartbeats, is broken: the page
-closes it and connects again. A live view's stream has a heartbeat of its
-own, by which the page shows a stall
-([Delivery](../browser/live-view.md#delivery)).
+[Page synchronization](web-api.md#page-synchronization)), and a live view's
+module on its stream after a quarter of a second
+([Delivery](../browser/live-view.md#delivery)). So a socket that brings
+nothing for 75 seconds, two and a half of the longest heartbeat, is broken:
+the page closes it and connects again. A live view shows a stall after a
+second already, and a stall that ends within the 75 seconds, as when a Cloud
+pauses for a checkpoint, keeps the view.
 
 A socket that closes, is taken as broken, or cannot be made connects again
 after a second, then after twice as long each time, up to 30 seconds, each
@@ -212,10 +215,10 @@ A page that comes back does not wait. Its timers stop while its computer
 sleeps, so the 75-second watch counts only the time the page was awake, and a
 wait that began before the sleep still has the rest of its time to run. So
 when the page becomes visible again or comes back online, the module checks
-every socket at once. A channel or conversation socket whose last message
-came 75 seconds ago or more by the clock is broken, and one heard from since
-is watched for the rest of those 75 seconds by the clock. A closed socket
-connects without waiting for the rest of its wait. For example, a laptop
+every socket at once. A socket whose last message came 75 seconds ago or more
+by the clock is broken, and one heard from since is watched for the rest of
+those 75 seconds by the clock. A closed socket connects without waiting for
+the rest of its wait. For example, a laptop
 sleeps for an hour with the product open, and its user then opens the lid:
 the page shows again, and replaces the channel and each conversation socket
 at once rather than after up to 75 seconds more of a watch that did not count

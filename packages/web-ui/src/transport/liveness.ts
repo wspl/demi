@@ -1,17 +1,17 @@
 /**
  * The liveness of a page's WebSockets to the backend: the synchronization
  * channel, each conversation socket and each live browser view
- * (`web-application.md` § Liveness and reconnection). The backend sends a
- * heartbeat on a socket that has sent nothing else for 30 seconds, so a
- * socket that brings nothing for much longer died without a close, as when a
- * laptop slept and its network dropped. A socket that closes, breaks or
- * cannot be made is tried again after waits that double. Timers stop while a
- * laptop sleeps, so when the page becomes visible again or comes back online,
- * this module checks every socket at once.
+ * (`web-application.md` § Liveness and reconnection). The far end of each
+ * sends a heartbeat on a socket that has sent nothing else for a while, 30
+ * seconds at most, so a socket that brings nothing for much longer died
+ * without a close, as when a laptop slept and its network dropped. A socket
+ * that closes, breaks or cannot be made is tried again after waits that
+ * double. Timers stop while a laptop sleeps, so when the page becomes visible
+ * again or comes back online, this module checks every socket at once.
  */
 import { defaultDocument, defaultWindow, useEventListener } from '@vueuse/core'
 
-/** Two and a half of the backend's 30-second heartbeats: a socket silent this long is broken. */
+/** Two and a half of the longest heartbeat, the backend's 30 seconds: a socket silent this long is broken. */
 const SILENCE_MS = 75_000
 /** The first wait before a socket connects again; each later one doubles, up to the longest. */
 const FIRST_WAIT_MS = 1_000
