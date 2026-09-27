@@ -405,9 +405,13 @@ a failed installation. The routes are listed in
   with that account's token.
 - A conversation on a paired device infers through the user's Cloud, and the
   account's token never reaches the paired device.
-- A real CLI, driven by hand during acceptance, completes a two-tool batch and
-  its continuation, and its transcript shows every tool call arriving as an SDK
-  MCP `tools/call`. The same transcript shows how a new process takes the
-  replayed history, what a batch's results sent together with a steer make the
-  CLI print (one `result` or two), and which lines report rate limits, in which
-  units ([Vendor quota](usage-and-quota.md#claude-code)).
+- The real CLI, against a scripted vendor, does what the product relies on in
+  the Claude Code suite
+  ([Real machine acceptance](../delivery/scenarios.md#real-machine-acceptance)).
+- A real account, driven by hand during acceptance, runs against the vendor:
+  its setup token installs the CLI from the official distribution and passes
+  **Test connection**, a message and a two-tool batch complete, and the wire
+  trace shows what a batch's results sent together with a steer make the CLI
+  print (one `result` or two) and which lines report rate limits, in which
+  units ([Vendor quota](usage-and-quota.md#claude-code)); **Refresh usage**
+  probes the account's quota.

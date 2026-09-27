@@ -9,7 +9,7 @@
 //! mounts no image and isolates nothing: a reset clears the runner's state
 //! and keeps its home.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
@@ -18,6 +18,7 @@ use demi_machines_protocol::{
     BaseVersion, GenerationId, MachineCall, MachineImageState, MachineResponse, RuntimeState, decode_request,
     encode_line,
 };
+use demi_shell::SpawnEnv;
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{Notify, Semaphore, broadcast, mpsc, watch};
@@ -42,6 +43,9 @@ pub struct Script {
     pub silent_wake: bool,
     /// Fail the next hibernate with this message.
     pub fail_hibernate: Option<String>,
+    /// The whole environment of each Cloud runner that starts from now on,
+    /// as a guest image gives it; none inherits the test process's.
+    pub cloud_env: Option<BTreeMap<String, String>>,
 }
 
 /// A device's storage and its sandbox.
@@ -307,15 +311,19 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
             let worker = shared.worker(&device);
             let _turn = worker.acquire().await.unwrap();
             shared.record(format!("wake:{device}"));
-            let (silent, taken) = {
+            let (silent, env, taken) = {
                 let mut state = shared.lock();
                 let silent = state.script.silent_wake;
+                let env = match &state.script.cloud_env {
+                    Some(variables) => SpawnEnv::Exactly(variables.clone()),
+                    None => SpawnEnv::Inherit,
+                };
                 let guest = state.guests.entry(device.clone()).or_insert_with(|| Guest {
                     runner: None,
                     image: image(1, None, VOLUME_BYTES, VOLUME_BYTES),
                     generations: 1,
                 });
-                (silent, guest.runner.take())
+                (silent, env, guest.runner.take())
             };
             let backend = params.boot.backend_url.to_string();
             let token = params.boot.device_token.expose().to_owned();
@@ -335,9 +343,9 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
                 None => {
                     let options = RunnerProcessOptions {
                         name: "cloud".into(),
+                        env,
                         token: Some(token),
                         managed: true,
-                        ..RunnerProcessOptions::default()
                     };
                     Some(RunnerProcess::start(&backend, options))
                 }

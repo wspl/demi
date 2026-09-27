@@ -96,7 +96,7 @@ async fn cli(backend: &TestBackend, session: &Session, provider: &str) -> Provid
 
 /// The entry's CLI once no install is under way, asking every 50 ms for at
 /// most 30 s.
-async fn settled(backend: &TestBackend, session: &Session, provider: &str) -> ProviderCli {
+pub(crate) async fn settled(backend: &TestBackend, session: &Session, provider: &str) -> ProviderCli {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
     loop {
         let read = cli(backend, session, provider).await;

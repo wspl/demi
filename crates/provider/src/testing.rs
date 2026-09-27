@@ -249,6 +249,9 @@ pub fn sse_body(payloads: &[serde_json::Value]) -> String {
 /// scripted response and records every request. It stops when dropped.
 pub struct MockVendor {
     address: SocketAddr,
+    /// `http`, or `https` for a vendor started with
+    /// [`start_tls`](Self::start_tls).
+    scheme: &'static str,
     state: Arc<VendorState>,
     _server: AbortOnDropHandle<()>,
 }
@@ -373,9 +376,40 @@ impl MockResponse {
 
 impl MockVendor {
     pub async fn start() -> Self {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("a test port is free");
+        Self::serve(bind().await, "http")
+    }
+
+    /// The vendor over HTTPS, presenting `certificate`, a PEM certificate
+    /// chain for `127.0.0.1`, with its PEM `key`: for a client that accepts
+    /// nothing but `https`, such as `demi.claude` downloading from a
+    /// distribution. The client trusts the chain's issuer by its own means.
+    pub async fn start_tls(certificate: &[u8], key: &[u8]) -> Self {
+        use tokio_rustls::rustls::pki_types::pem::PemObject as _;
+        use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
+        use tokio_rustls::rustls::{ServerConfig, crypto::ring};
+
+        let chain = CertificateDer::pem_slice_iter(certificate)
+            .collect::<Result<Vec<_>, _>>()
+            .expect("the vendor's certificate is PEM");
+        let key = PrivateKeyDer::from_pem_slice(key).expect("the vendor's key is PEM");
+        let config = ServerConfig::builder_with_provider(Arc::new(ring::default_provider()))
+            .with_safe_default_protocol_versions()
+            .expect("ring offers the default protocol versions")
+            .with_no_client_auth()
+            .with_single_cert(chain, key)
+            .expect("the key is the certificate's");
+        let listener = TlsListener {
+            tcp: bind().await,
+            acceptor: tokio_rustls::TlsAcceptor::from(Arc::new(config)),
+        };
+        Self::serve(listener, "https")
+    }
+
+    /// Serves the vendor's answers on `listener`, whose URLs have `scheme`.
+    fn serve<L>(listener: L, scheme: &'static str) -> Self
+    where
+        L: axum::serve::Listener<Addr = SocketAddr>,
+    {
         let address = listener.local_addr().expect("a bound listener has an address");
         let state = Arc::new(VendorState {
             script: Mutex::new(VendorScript::default()),
@@ -391,6 +425,7 @@ impl MockVendor {
         });
         Self {
             address,
+            scheme,
             state,
             _server: AbortOnDropHandle::new(server),
         }
@@ -398,7 +433,7 @@ impl MockVendor {
 
     /// The URL of `path` on this server, such as `/v1`.
     pub fn url(&self, path: &str) -> String {
-        format!("http://{}{path}", self.address)
+        format!("{}://{}{path}", self.scheme, self.address)
     }
 
     /// Queues the answer to the next request.
@@ -538,6 +573,44 @@ async fn answer(State(state): State<Arc<VendorState>>, request: Request) -> Resp
         response.headers_mut().append(name, value);
     }
     response
+}
+
+/// A port of the loopback interface for a vendor.
+async fn bind() -> tokio::net::TcpListener {
+    tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("a test port is free")
+}
+
+/// How long a client has to complete its TLS handshake.
+const HANDSHAKE: Duration = Duration::from_secs(10);
+
+/// A listener that completes each connection's TLS handshake before the
+/// vendor serves it.
+struct TlsListener {
+    tcp: tokio::net::TcpListener,
+    acceptor: tokio_rustls::TlsAcceptor,
+}
+
+impl axum::serve::Listener for TlsListener {
+    type Io = tokio_rustls::server::TlsStream<tokio::net::TcpStream>;
+    type Addr = SocketAddr;
+
+    async fn accept(&mut self) -> (Self::Io, Self::Addr) {
+        loop {
+            let (stream, address) = axum::serve::Listener::accept(&mut self.tcp).await;
+            // A client that fails its handshake, or leaves it unfinished, sent
+            // no request; the vendor goes on with the next one.
+            let handshake = tokio::time::timeout(HANDSHAKE, self.acceptor.accept(stream)).await;
+            if let Ok(Ok(stream)) = handshake {
+                return (stream, address);
+            }
+        }
+    }
+
+    fn local_addr(&self) -> std::io::Result<Self::Addr> {
+        self.tcp.local_addr()
+    }
 }
 
 /// Held by an open response's body; the server drops the body when the
