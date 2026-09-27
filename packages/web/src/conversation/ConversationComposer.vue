@@ -13,7 +13,7 @@ import {
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
 import { executionFor } from '../targets/execution'
-import { composerModel, intentThinkingConfig } from '@demicodes/web-ui/agent/model-selection'
+import { composerModel } from '@demicodes/web-ui/agent/model-selection'
 import { useConversations } from './store'
 import { useProduct } from '../state/product'
 import { useResources } from '../state/resources'
@@ -45,7 +45,6 @@ function addFiles(files: File[]) {
   composer.value?.insertCapsules(store.addFiles(props.conversation, files).map(composerCapsule))
 }
 
-const thinking = computed(() => intentThinkingConfig(props.conversation.model))
 const usage = computed(
   () =>
     props.conversation.blocks.findLast((block) => block.type === 'response')
@@ -53,9 +52,6 @@ const usage = computed(
 )
 function openProviders() {
   resources.openSettings('models')
-}
-function selectModel(providerId: string, modelId: string) {
-  void store.selectModel(props.conversation, providerId, modelId)
 }
 function send() {
   if (canSend.value) {
@@ -160,10 +156,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       "
       :providers="resources.providerInfos"
       :models="resources.models"
-      :selected-provider-id="conversation.model.providerId"
-      :selected-model-id="conversation.model.modelId"
-      :thinking-config="thinking"
-      :service-tier-id="conversation.model.serviceTierId"
+      :model-settings="conversation.model"
       :usage="usage"
       :remote-files="remoteHosts.length > 0"
       :archived="conversation.archived"
@@ -175,9 +168,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       @attach-remote="remotePicker?.open()"
       @arrange-attachments="store.arrangeFiles(conversation, $event)"
       @retry-attachment="store.retryFile(conversation, $event)"
-      @select-model="selectModel"
-      @change-thinking="store.setThinking(conversation, $event)"
-      @change-service-tier="store.setTier(conversation, $event)"
+      @change-model="store.changeModel(conversation, $event)"
       @stop="store.stop(conversation)"
       @compact="store.compact(conversation)"
     />

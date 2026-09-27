@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { AgentClient } from '../client'
 import { createWebSocketTransport, type SocketClose, type SocketMessage, type WebSocketLike } from '../transport'
-import { model, text, user } from './harness'
+import { text, user } from './harness'
 
 /** A socket whose other end the test plays: what the client wrote, and what the server says. */
 class FakeSocket implements WebSocketLike {
@@ -60,8 +60,8 @@ test('frames travel as JSON text messages both ways', async () => {
   expect(acceptsBrowserSockets).toBe(true)
   const socket = new FakeSocket()
   const client = new AgentClient(createWebSocketTransport(socket))
-  const opening = client.open(model)
-  expect(socket.written.map((data) => JSON.parse(data))).toEqual([{ type: 'open', model }])
+  const opening = client.open()
+  expect(socket.written.map((data) => JSON.parse(data))).toEqual([{ type: 'open' }])
   socket.message(JSON.stringify({ type: 'opened' }))
   await opening
 

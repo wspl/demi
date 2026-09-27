@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import type { ClientFrame } from '@demicodes/protocol'
 import { EditRejectedError, SessionError } from '../client'
-import { createdAt, harness, model, pendingSteer, settle, text, user } from './harness'
+import { createdAt, harness, pendingSteer, settle, text, user } from './harness'
 
 function sentOfType<Type extends ClientFrame['type']>(sent: ClientFrame[], type: Type): Extract<ClientFrame, { type: Type }> {
   const frame = sent.find((candidate): candidate is Extract<ClientFrame, { type: Type }> => candidate.type === type)
@@ -11,10 +11,10 @@ function sentOfType<Type extends ClientFrame['type']>(sent: ClientFrame[], type:
   return frame
 }
 
-test('open resolves on opened and sends only the model', async () => {
+test('open resolves on opened', async () => {
   const h = harness()
-  const opening = h.client.open(model)
-  expect(h.sent).toEqual([{ type: 'open', model }])
+  const opening = h.client.open()
+  expect(h.sent).toEqual([{ type: 'open' }])
   h.receive({ type: 'opened' })
   await opening
 })
@@ -322,7 +322,7 @@ test('close disposes the tree, then detaches; a server-side end disconnects with
   expect(h.closes()).toBe(1)
 
   const other = harness()
-  const opening = other.client.open(model).catch((error: unknown) => error)
+  const opening = other.client.open().catch((error: unknown) => error)
   other.end(new Error('The agent socket closed (4001 lagged)'))
   expect(await opening).toBeInstanceOf(Error)
   expect(other.events.at(-1)).toMatchObject({ type: 'disconnected', error: { message: 'The agent socket closed (4001 lagged)' } })

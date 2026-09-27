@@ -93,8 +93,7 @@ function record(id: string, title = id): ConversationSummary {
     cwd: `/home/demi/sessions/${id}`,
     target: { kind: 'cloud' },
     contextVersion: 0,
-    providerId: null,
-    modelId: null,
+    model: null,
     createdAt: '2026-09-09T00:00:00.000Z',
     updatedAt: '2026-09-09T00:00:00.000Z',
     status: 'idle',
@@ -131,19 +130,12 @@ beforeEach(async () => {
         return Response.json({ code: 'internal_error', message: 'Fork unavailable' }, { status: 500 })
       }
       const created = records.find((item) => item.id === body.id) ?? {
-        ...record(body.id), title: 'first (Fork)', providerId: 'stub', modelId: 'model',
+        ...record(body.id), title: 'first (Fork)',
+        model: { providerId: 'stub', modelId: 'model', thinkingEffort: 'high', serviceTierId: 'priority' },
         target: { kind: 'cloud' as const, path: '/home/demi/sessions/first' },
       }
       if (!records.includes(created)) records.unshift(created)
-      return Response.json({
-        conversation: created,
-        model: {
-          providerId: 'stub', serviceTierId: 'priority',
-          thinking: { type: 'effort', effort: 'high', summary: null },
-          model: { id: 'model', name: 'Model', contextWindow: 1000,
-            outputLimit: null, inputLimit: null, acceptedExtensions: [], thinking: [] },
-        },
-      }, { status: 201 })
+      return Response.json({ conversation: created }, { status: 201 })
     }
     if (path === '/api/conversations') {
       if (rejectCreate) {
@@ -223,10 +215,11 @@ test('an empty draft saves the complete last choice and new conversations restor
   let store = useConversations()
   const id = store.create()
   const draft = store.items.find((item) => item.id === id)!
-  await store.selectModel(draft, 'account', 'chosen-model')
-  store.setThinking(draft, { type: 'effort', effort: 'high', summary: null })
-  store.setTier(draft, 'priority')
+  await store.changeModel(draft, { model: { providerId: 'account', modelId: 'chosen-model' } })
+  await store.changeModel(draft, { thinkingEffort: 'high' })
+  await store.changeModel(draft, { serviceTierId: 'priority' })
   const chosen = { ...draft.model }
+  expect(chosen).toEqual({ providerId: 'account', modelId: 'chosen-model', thinkingEffort: 'high', serviceTierId: 'priority' })
   const nextId = store.create('project')
   expect(store.items.find((item) => item.id === nextId)!.model).toEqual(chosen)
   expect(store.items.find((item) => item.id === FIRST)!.model.modelId).toBe('')
@@ -246,7 +239,7 @@ test('an empty draft saves the complete last choice and new conversations restor
   const restoredId = store.create()
   const restored = store.items.find((item) => item.id === restoredId)!
   expect(restored.model).toEqual(chosen)
-  await store.selectModel(restored, 'account', 'another-model')
+  await store.changeModel(restored, { model: { providerId: 'account', modelId: 'another-model' } })
   await usePreferences().flush()
   expect(savedPreferences.lastModel).toEqual({
     providerId: 'account', modelId: 'another-model',
@@ -535,108 +528,52 @@ test('leaving an empty draft discards it without removing a draft with input', a
   expect(store.items.some((item) => item.id === retained)).toBe(true)
 })
 
-test('a model another page chose reaches this page with its default effort and tier', async () => {
+test('a page shows the model settings another page chose and writes nothing back', async () => {
   const store = useConversations()
   const current = store.items.find((item) => item.id === FIRST)!
-  current.model = { providerId: 'stub', modelId: 'stub', thinkingEffort: 'high', serviceTierId: 'priority' }
   const record = records.find((item) => item.id === FIRST)!
-  record.providerId = 'stub'
-  record.modelId = 'other'
+  record.model = { providerId: 'stub', modelId: 'stub', thinkingEffort: 'low', serviceTierId: null }
   await useProduct().refresh()
   await nextTick()
-  expect(current.model).toEqual({ providerId: 'stub', modelId: 'other', thinkingEffort: null, serviceTierId: null })
+  expect(current.model).toEqual(record.model)
+  // Another page raises the effort and turns Fast on: this page's next
+  // snapshot shows both, as the record holds them.
+  record.model = { ...record.model, thinkingEffort: 'high', serviceTierId: 'priority' }
+  await useProduct().refresh()
+  await nextTick()
+  expect(current.model).toEqual({ providerId: 'stub', modelId: 'stub', thinkingEffort: 'high', serviceTierId: 'priority' })
+  expect(requests.some((request) => request.path === `/api/conversations/${FIRST}`)).toBe(false)
 })
 
-/** The conversation socket as the page opens it: it answers `open` with `opened` and keeps what the page sent. */
-class FakeSocket {
-  static made: FakeSocket[] = []
-  readonly sent: { type: string, model?: { model: { id: string } } }[] = []
-  private readonly listeners = new Map<string, Set<(event: unknown) => void>>()
-
-  constructor() {
-    FakeSocket.made.push(this)
-    queueMicrotask(() => this.dispatch('open', {}))
-  }
-
-  addEventListener(type: string, listener: (event: unknown) => void): void {
-    const listeners = this.listeners.get(type) ?? new Set()
-    listeners.add(listener)
-    this.listeners.set(type, listeners)
-  }
-
-  removeEventListener(type: string, listener: (event: unknown) => void): void {
-    this.listeners.get(type)?.delete(listener)
-  }
-
-  send(data: string): void {
-    const frame = JSON.parse(data)
-    this.sent.push(frame)
-    if (frame.type === 'open') {
-      queueMicrotask(() => this.dispatch('message', { data: JSON.stringify({ type: 'opened' }) }))
-    }
-  }
-
-  close(): void {}
-
-  private dispatch(type: string, event: unknown): void {
-    for (const listener of this.listeners.get(type) ?? []) {
-      listener(event)
-    }
-  }
-}
-
-test('the open a page sends names the model another page chose after its last poll', async () => {
+test('a model change names only the part it changes, so another page\'s change stays, and shows its answer at once', async () => {
   const store = useConversations()
   const current = store.items.find((item) => item.id === FIRST)!
   const record = records.find((item) => item.id === FIRST)!
-  record.providerId = 'stub'
-  record.modelId = 'stub'
-  const catalog = stubCatalog()
-  const provider = catalog.providers[0]!
-  const stub = provider.models[0]!
-  provider.models.push({
-    ...stub, id: 'other', displayName: 'Other',
-    selection: { ...model, model: { ...model.model, id: 'other', name: 'Other' } },
-  })
-  const originalFetch = globalThis.fetch
-  const originalSocket = globalThis.WebSocket
-  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
-  FakeSocket.made = []
-  globalThis.WebSocket = FakeSocket as unknown as typeof WebSocket
-  Object.defineProperty(globalThis, 'window', {
-    configurable: true,
-    value: { location: { href: 'http://127.0.0.1/' } },
-  })
+  record.model = { providerId: 'stub', modelId: 'stub', thinkingEffort: 'low', serviceTierId: null }
+  await useProduct().refresh()
+  await nextTick()
+  // Another page turned Fast on; this page has not read that yet.
+  record.model = { ...record.model, serviceTierId: 'priority' }
+  const patches: unknown[] = []
+  const fetch = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
-    const path = String(input)
-    if (path === '/api/state') {
-      return Response.json(productState({ preferences: savedPreferences, conversations: records, providers: [stubProvider] }))
+    if (String(input) !== `/api/conversations/${FIRST}` || init?.method !== 'PATCH') {
+      return fetch(input, init)
     }
-    if (path.startsWith('/api/models')) return Response.json(catalog)
-    if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
-    if (path.endsWith('/transcript')) return Response.json({ blocks: [], subagents: [] })
-    return originalFetch(input, init)
+    const change = JSON.parse(String(init.body)) as { thinkingEffort: string }
+    patches.push(change)
+    record.model = { ...record.model!, thinkingEffort: change.thinkingEffort }
+    return Response.json({ conversation: record, results: [{ field: 'thinking_effort', status: 'applied' }] })
   }) as typeof fetch
   try {
-    await useProduct().refresh()
-    await useProduct().loadModels(true)
-    await nextTick()
-    expect(current.model.modelId).toBe('stub')
-    // Another page switches the model; this page has not polled since.
-    record.modelId = 'other'
-    await store.activate(FIRST)
-    const opens = FakeSocket.made.flatMap((socket) => socket.sent.filter((frame) => frame.type === 'open'))
-    expect(opens.map((frame) => frame.model?.model.id)).toEqual(['other'])
-    expect(current.model.modelId).toBe('other')
+    await store.changeModel(current, { thinkingEffort: 'high' })
+    expect(patches).toEqual([{ thinkingEffort: 'high' }])
+    const both = { providerId: 'stub', modelId: 'stub', thinkingEffort: 'high', serviceTierId: 'priority' }
+    expect(current.model).toEqual(both)
+    await usePreferences().flush()
+    expect(savedPreferences.lastModel).toEqual(both)
   } finally {
-    store.stopAll()
-    globalThis.fetch = originalFetch
-    globalThis.WebSocket = originalSocket
-    if (originalWindow) {
-      Object.defineProperty(globalThis, 'window', originalWindow)
-    } else {
-      Reflect.deleteProperty(globalThis, 'window')
-    }
+    globalThis.fetch = fetch
   }
 })
 

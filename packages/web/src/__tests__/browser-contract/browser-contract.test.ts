@@ -183,11 +183,13 @@ test('a user signs in through the API client, and the session admits the account
   const state = await readResponse(await apiRequest('/state'), productStateSchema)
   expect(state.user.email).toBe(EMAIL)
   expect(state.cloud).toMatchObject({ device: null, state: 'unallocated' })
+  const model = await scriptedModel()
+  await patchConversation(id, { model: { providerId: model.providerId, modelId: model.model.id } })
   const client = await connect(id)
   try {
     const events: ClientSessionEvent['type'][] = []
     client.subscribe((event) => events.push(event.type))
-    await client.open(await scriptedModel())
+    await client.open()
     expect(events[0]).toBe('opened')
   } finally {
     client.disconnect()
@@ -206,7 +208,7 @@ test('a conversation created through the API runs a turn, and the client receive
         phases.push(event.phase)
       }
     })
-    await client.open(model)
+    await client.open()
     // The send resolves when the action it started ends.
     await client.send([text('Say hello')])
     expect(phases).toEqual(['idle', 'running', 'idle'])
@@ -232,7 +234,7 @@ test('a scripted tool call runs on the real runner, and its result appears in th
   vendor.reply({ type: 'text', text: 'The probe says contract.' })
   const client = await connect(id)
   try {
-    await client.open(model)
+    await client.open()
     await client.send([text('Write the probe')])
     const blocks = client.transcript().blocks
     // The switch to the device reaches the model as the context of its next request.
@@ -261,7 +263,7 @@ test('after a reload, the transcript the client assembled from live patches equa
   const live = await connect(id)
   let assembled: Block[]
   try {
-    await live.open(model)
+    await live.open()
     await live.send([text('Run a command')])
     // A send resolves when the socket shows idle, once the turn's save has committed.
     await live.send([text('Answer again')])
@@ -282,7 +284,7 @@ test('after a reload, the transcript the client assembled from live patches equa
         reset.resolve(event.blocks)
       }
     })
-    await reloaded.open(model)
+    await reloaded.open()
     expect(await reset.promise).toEqual(cold.blocks)
   } finally {
     reloaded.disconnect()
