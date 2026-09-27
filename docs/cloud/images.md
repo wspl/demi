@@ -72,7 +72,12 @@ stages:
 On the builder, the script runs a Linux build of `xtask` that the developer's
 machine cross-compiles for the builder's architecture with its own cross tools,
 as it does the runner ([Builds and releases](../delivery/builds-and-releases.md)).
-The image has the architecture that build runs on.
+The image has the architecture that build runs on. On a Linux builder, the
+`xtask` that the workspace's one Cargo selection builds into `target/debug`
+also works: it trusts the platform's certificate authorities beside its own
+and follows `HTTPS_PROXY`, so it downloads through a proxy that re-signs TLS.
+The [build instructions](../../packages/guest-image/README.md) give the
+options for a builder behind such a proxy.
 
 ## Root filesystem contents
 

@@ -60,6 +60,9 @@ enum Received {
 /// A page's conversation socket.
 pub(crate) struct Socket {
     socket: tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+    /// How long it waits for the next message before the test fails as
+    /// hung: ten seconds, longer where a real Cloud boots within a turn.
+    pub(crate) patience: Duration,
 }
 
 impl Socket {
@@ -78,7 +81,10 @@ impl Socket {
             .headers_mut()
             .insert("cookie", session.cookie.parse().unwrap());
         match tokio_tungstenite::connect_async(request).await {
-            Ok((socket, _)) => Ok(Self { socket }),
+            Ok((socket, _)) => Ok(Self {
+                socket,
+                patience: Duration::from_secs(10),
+            }),
             Err(tungstenite::Error::Http(response)) => Err(response.status().as_u16()),
             Err(error) => panic!("the socket did not connect: {error}"),
         }
@@ -94,9 +100,9 @@ impl Socket {
 
     async fn next(&mut self) -> Received {
         loop {
-            let message = tokio::time::timeout(Duration::from_secs(10), self.socket.next())
+            let message = tokio::time::timeout(self.patience, self.socket.next())
                 .await
-                .expect("the socket delivers within ten seconds");
+                .unwrap_or_else(|_| panic!("the socket delivers within {:?}", self.patience));
             match message {
                 Some(Ok(Message::Text(text))) => {
                     let frame = serde_json::from_str(text.as_str()).unwrap_or_else(|error| panic!("{error}: {text}"));

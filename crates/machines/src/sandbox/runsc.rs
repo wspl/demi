@@ -103,6 +103,9 @@ pub fn status_in(listing: &str, id: &SandboxId) -> Result<Option<Status>, serde_
 pub struct Runsc {
     tools: Tools,
     root: PathBuf,
+    /// Whether runsc sets up each sandbox's cgroup: only with the resource
+    /// limits on (`managed-hosts.md` § Resource limits).
+    cgroups: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -118,10 +121,11 @@ pub enum RunscError {
 }
 
 impl Runsc {
-    pub fn new(tools: Tools, runtime: &Path) -> Self {
+    pub fn new(tools: Tools, runtime: &Path, cgroups: bool) -> Self {
         Self {
             tools,
             root: runtime.join("runsc"),
+            cgroups,
         }
     }
 
@@ -131,9 +135,14 @@ impl Runsc {
     }
 
     /// The arguments of `command`: the state root, the profile, the command.
+    /// Without cgroups the profile says so: runsc gives a configuration
+    /// without a cgroup path one of its own.
     pub fn args<'a>(&self, command: impl IntoIterator<Item = &'a OsStr>) -> Vec<OsString> {
         let mut args = vec![OsString::from(format!("--root={}", self.root.display()))];
         args.extend(PROFILE_FLAGS.map(OsString::from));
+        if !self.cgroups {
+            args.push(OsString::from("--ignore-cgroups"));
+        }
         args.extend(command.into_iter().map(OsStr::to_owned));
         args
     }
@@ -261,7 +270,7 @@ mod tests {
 
     #[test]
     fn every_command_names_the_state_root_and_the_profile() {
-        let runsc = Runsc::new(Tools::placeholder(), Path::new("/run/demi-machines"));
+        let runsc = Runsc::new(Tools::placeholder(), Path::new("/run/demi-machines"), true);
         let args = runsc.args([OsStr::new("pause"), OsStr::new("demi-a")]);
         let args: Vec<_> = args.iter().map(|arg| arg.to_str().unwrap()).collect();
         assert_eq!(

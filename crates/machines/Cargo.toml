@@ -58,6 +58,10 @@ walkdir = "2"
 sha2 = { version = "0.10", features = ["asm"] }
 
 [dev-dependencies]
+# The process tests (`tests/manager`) use the Cloud image fixtures of the
+# `testing` feature; through this, the workspace's one Cargo selection builds
+# them too.
+demi-machines = { path = ".", features = ["testing"] }
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }
 

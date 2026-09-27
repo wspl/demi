@@ -13,7 +13,7 @@ Three suites drive the whole backend:
 | --- | --- | --- | --- | --- |
 | Backend scenarios | Rust integration tests of the backend crate (`crates/backend/tests`) | HTTP and the conversation WebSocket, with the agent protocol's typed frames | A scripted provider family | Real runner processes; a scripted machine manager for the Cloud |
 | Browser-contract suite | Tests of `packages/web` | The web application's API client and `AgentClient`, against the backend executable | A scripted Anthropic-compatible endpoint | A real runner; the backend scenarios' scripted machine manager, which no path asks for the Cloud |
-| Real-machine suites | Rust tests that run only when environment variables supply their resources; of them, the browser and Claude Code suites exist ([Real machine acceptance](#real-machine-acceptance)) | As the backend scenarios | Scripted | A real machine manager, gVisor sandbox, and shipped image; real Chrome; the real Claude Code CLI |
+| Real-machine suites | Rust tests that run only when environment variables supply their resources; of them, the Cloud and Claude Code suites and part of the browser suite exist ([Real machine acceptance](#real-machine-acceptance)) | As the backend scenarios | Scripted | A real machine manager, gVisor sandbox, and shipped image; real Chrome; the real Claude Code CLI |
 
 ## System under test
 
@@ -217,7 +217,7 @@ this verifies the patches without a second applier.
 The Cloud's real-machine suite runs the backend against a real machine
 manager, its gVisor/systrap sandbox, and a shipped image, with scripted
 providers. It reaches the Cloud through normal Host access, as a conversation
-does, and its package checks need network egress; no test calls a real model.
+does; no test calls a real model.
 [Managed hosts — Verification](../cloud/managed-hosts.md#verification) owns the
 full persistence, isolation, failure, and platform matrix that a run must
 show. Linux amd64, Linux arm64, and local Lima execution are separate
@@ -231,17 +231,97 @@ Chrome, or Claude Code CLI:
 
 | Suite | What is real | What its environment supplies |
 |---|---|---|
-| Cloud | The machine manager, its gVisor sandbox, and the shipped image | The manager's socket, a backend URL the manager allows, and a local copy of the image manifest |
+| Cloud | The machine manager, its gVisor sandbox, and the shipped image | The manager's socket, a backend URL the manager allows, the manager's state directory, and the native configuration of the command packages the image embeds ([Cloud suite](#cloud-suite)) |
 | Browser | Chrome for Testing on a paired device or on the Cloud | The pinned Chrome for Testing executable (`DEMI_TEST_CHROME`), and on the Cloud what the Cloud suite needs |
 | Claude Code | The vendor's CLI on the Cloud's runner, calling a local mock of the vendor's endpoint | The CLI executable (`DEMI_TEST_CLAUDE_CODE`) |
 
-The browser suite exists only in part: the Chrome tests of `demi-commands`
+Of the browser suite, only the Chrome tests of `demi-commands` exist: they
 drive a real Chrome for Testing through the command program on the machine
 that runs them, not through the backend or on a Cloud
-([Validation](builds-and-releases.md#validation) gives the command). The Cloud
-suite and the browser on a Cloud are not written, and whether to write them is
-open. Until they are, release acceptance checks what they would observe by hand
-on a real Cloud.
+([Validation](builds-and-releases.md#validation) gives the command). The
+Cloud suite opens Chrome on a Cloud but does not watch its live view. The
+browser on a Cloud is not written, and whether to write it is open. Until it
+is, release acceptance checks what it would observe by hand on a real Cloud.
+
+Deployment prerequisites are in [Cloud setup](../cloud/setup.md).
+
+### Cloud suite
+
+The Cloud suite is `real_cloud` in the backend's scenario binary; an ordinary
+run ignores its tests. Its world is the backend scenarios'
+([System under test](#system-under-test)) with the real manager in place of
+the scripted one, configured by four variables:
+
+- `DEMI_TEST_MACHINES_SOCKET`: the manager's socket, which the backend
+  connects to.
+- `DEMI_TEST_CLOUD_URL`: the backend URL the manager allows, its
+  `DEMI_MANAGED_BACKEND_URL`. The backend listens on that address and port and
+  gives the URL to the Clouds' runners as its public URL.
+- `DEMI_TEST_CLOUD_NATIVE`: a native configuration with a development store
+  ([Backend deployment configuration](../execution/native-runtime.md#backend-deployment-configuration))
+  that names the command package releases the image embeds, so a Cloud's
+  runner starts them from the image instead of downloading them.
+- `DEMI_TEST_MACHINES_DATA`: the manager's state directory. The suite only
+  reads it: it looks inside the generation a checkpoint saved, and finds a
+  boot's host processes to measure their memory.
+
+The suite runs on the manager's host, as root. Its tests share the manager,
+and a backend that starts reconciles the manager, which stops every Cloud, so
+the tests run one at a time. The suite asks the manager directly only for a
+checkpoint, whose time the backend's schedule would otherwise choose, and for
+a device's committed generation, which it looks inside. It
+observes what [Verification](../cloud/managed-hosts.md#verification) lists
+with the resource limits off, except the rows that section leaves to release
+acceptance. Each test prints what it measures, apart from its assertions: the
+first boot until the Cloud runs, the first command, Chrome's first and later
+tab, the checkpoint, the stop, the reset, and the peak memory of the Cloud's
+processes on the host.
+
+Against a manager installed on the host:
+
+```sh
+DEMI_TEST_MACHINES_SOCKET=/run/demi-cloud/machines.sock \
+DEMI_TEST_CLOUD_URL=http://<address>:<port> \
+DEMI_TEST_MACHINES_DATA=/var/lib/demi-machines \
+DEMI_TEST_CLOUD_NATIVE=<native configuration> \
+  cargo test --workspace --features demi-runner/test-fixtures --test backend \
+  -- --include-ignored real_cloud --test-threads=1 --nocapture
+```
+
+On a Linux machine without an installed manager,
+`crates/machines/scripts/cloud-suite.sh` runs the same command against a
+manager of its own, as root:
+
+```sh
+sudo bash crates/machines/scripts/cloud-suite.sh --image <release> \
+  --native <native configuration> --work <directory>
+```
+
+The script starts the manager the workspace built (`target/debug`) with its
+resource limits off, in a stand-in execution host: the init of a throwaway PID
+and mount namespace with its own `/run` and an empty, read-only cgroup root,
+sharing the machine's network namespace so that the Clouds reach the backend.
+Like a host's init, it reaps the processes it adopts, such as the Sentry of a
+sandbox that died, which `runsc` would otherwise take for a running one.
+Nothing in the stand-in can create a cgroup, so a boot that asked for one
+would fail, and the machine's cgroup hierarchies stay untouched. The backend
+URL is the machine's address toward the Clouds with a free port; the state
+directory, socket, and logs are beneath the work directory. After the run,
+also when it fails or is interrupted, the script stops the manager, which
+saves every Cloud, ends the stand-in, deletes the manager's nftables table,
+restores IP forwarding, and removes the state directory. It then compares the
+processes, mounts, loop devices, network interfaces and namespaces, nftables
+tables, cgroups, and listeners with their state before the run, and fails when
+anything the run made remains.
+
+A Cloud's disks cannot grow where the manager lacks `CAP_SYS_RESOURCE`
+([Linux requirements](../cloud/setup.md#linux-requirements)), as in a container
+that drops it even for root. There the growth test cannot pass, and the suite
+runs without it: the script takes `-- --skip grows_its_home_online` after its
+own arguments, and the `cargo test` command takes `--skip grows_its_home_online`
+after its `--`.
+
+### Claude Code suite
 
 The Claude Code suite is part of the backend scenarios' test binary and runs
 their world with the vendor's CLI in place of a scripted provider
@@ -272,5 +352,3 @@ Each scenario asserts what the product observes: the transcript, the frames,
 the usage ledger and what the scripted endpoint received. What the suite cannot
 show, a real account against the real vendor, stays a check by hand
 ([Claude Code](../providers/claude-code.md#acceptance)).
-
-Deployment prerequisites are in [Cloud setup](../cloud/setup.md).

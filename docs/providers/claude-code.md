@@ -430,8 +430,7 @@ a failed installation. The routes are listed in
 - A conversation on a paired device infers through the user's Cloud, and the
   account's token never reaches the paired device.
 - The real CLI, against a scripted vendor, does what the product relies on in
-  the Claude Code suite
-  ([Real machine acceptance](../delivery/scenarios.md#real-machine-acceptance)).
+  the [Claude Code suite](../delivery/scenarios.md#claude-code-suite).
 - A real account, driven by hand during acceptance, runs against the vendor:
   its setup token installs the CLI from the official distribution and passes
   **Test connection**, a message and a two-tool batch complete, and the wire
