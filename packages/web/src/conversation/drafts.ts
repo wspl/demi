@@ -3,13 +3,17 @@ import { attachedHostSchema, conversationSummarySchema } from '../api/generated/
 import { messageEditStateSchema } from '@demicodes/web-ui/agent/message-editing'
 import { modelIntentSchema } from '@demicodes/web-ui/agent/model-selection'
 
-/** The upload the backend took: the attachment id a message names the file by. */
-const uploadSchema = z.object({ id: z.string() })
+/**
+ * The upload the backend took: the attachment id a message names the file
+ * by, and where its bytes are, which a capsule's picture loads from.
+ */
+const uploadSchema = z.object({ id: z.string(), mediaType: z.string(), sha256: z.string() })
 const fileSchema = z.object({
   kind: z.literal('file'),
   id: z.string(),
   name: z.string(),
-  file: z.instanceof(File),
+  /** The bytes this browser added; none for a file another page uploaded. */
+  file: z.instanceof(File).nullable(),
   upload: uploadSchema.nullable(),
   /** A text file's opening, as the backend answered its upload. */
   snippet: z.string().optional(),
@@ -32,6 +36,13 @@ export const draftSchema = z.object({
       error: z.string().nullable(),
     })
     .nullable(),
+  /**
+   * The revision of the backend's draft the composer's text was built on,
+   * while the backend has not confirmed a change of it; null when the
+   * composer holds what the backend has, or for a conversation the backend
+   * does not have yet.
+   */
+  base: z.number().int().nonnegative().nullable(),
   local: z
     .object({
       phase: z.enum(['draft', 'pending']),
@@ -47,8 +58,10 @@ export const draftSchema = z.object({
       hosts: z.array(attachedHostSchema.pick({ deviceId: true, name: true, cwd: true })),
     })
     .nullable(),
+  /** The composer's text, when the backend does not have it. */
   text: z.string(),
   model: modelIntentSchema,
+  /** The files of that text, then those of a send not yet accepted. */
   files: z.array(z.union([fileSchema, remoteSchema])),
   scroll: z
     .object({
@@ -162,4 +175,45 @@ export async function deleteDraft(
   await draftStorage('readwrite', (store) =>
     store.delete([userId, conversationId]),
   )
+}
+
+/**
+ * A composer's text as the page closes (`web-application.md` § Drafts): the
+ * revision it was built on, its Markdown and the files of its marks, which
+ * the IndexedDB record carries. An IndexedDB write still under way when the
+ * page goes can be lost, so the page writes this where the browser writes
+ * at once, and the next page of the conversation takes it over the record.
+ */
+const lastWordsSchema = z.object({
+  base: z.number().int().nonnegative().nullable(),
+  text: z.string(),
+  attachmentIds: z.array(z.string()),
+})
+export type LastWords = z.infer<typeof lastWordsSchema>
+
+function lastWordsKey(userId: string, conversationId: string): string {
+  return `demi.draft.${userId}.${conversationId}`
+}
+
+export function writeLastWords(userId: string, conversationId: string, words: LastWords): void {
+  try {
+    localStorage.setItem(lastWordsKey(userId, conversationId), JSON.stringify(words))
+  } catch {
+    // Storage the browser refuses, as in a private window, leaves the
+    // IndexedDB record, a moment older, to the next page.
+  }
+}
+
+/** The text a page of the conversation left as it closed, once; none when it left none. */
+export function takeLastWords(userId: string, conversationId: string): LastWords | null {
+  const key = lastWordsKey(userId, conversationId)
+  try {
+    const kept = localStorage.getItem(key)
+    localStorage.removeItem(key)
+    return kept === null ? null : lastWordsSchema.parse(JSON.parse(kept))
+  } catch {
+    // Unreadable storage, or an entry that is not ours: the IndexedDB record
+    // stands, as it would had the page left nothing here.
+    return null
+  }
 }

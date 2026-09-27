@@ -275,8 +275,8 @@ The backend keeps the draft, its revision, and the version a save replaced
   closed. A save carries the revision the page's text was built on. A page
   sends one request about a conversation's draft at a time, each after the
   answer to the one before, so its own saves never replace each other unseen.
-  A save that does not reach the backend is tried again once a state poll
-  succeeds; a refused one is reported, and the next change tries again.
+  A save that does not reach the backend is tried again a few seconds later;
+  a refused one is reported, and the next change tries again.
 - **Stages files** by uploading each one as it is added. A file joins the
   saved draft once its upload is done; until then the saved text leaves out
   its mark, so other pages show the text without that capsule. A file on a
@@ -315,8 +315,13 @@ the revision it was based on and the bytes of files not yet uploaded, and it
 stays there until the backend confirms a save that holds it. A page that
 cannot reach the backend goes on writing that record. When it can again, it
 uploads the waiting files and saves, and its save wins over what other places
-saved meanwhile, which is then offered for restore. A page that opens with
-such a record shows it instead of the backend's draft, and saves it. The tabs
+saved meanwhile, which is then offered for restore. An IndexedDB write still
+under way when the page closes can be lost, so a closing page also writes each
+unconfirmed composer's text to local storage, which the browser writes at
+once, and the next page of the conversation takes that text over the record.
+A page that opens with such a record shows it instead of the backend's draft
+and saves it, unless the backend's draft is that text already, as when the
+save on closing arrived; it then only takes the backend's revision. The tabs
 of one browser share the record, so the last edit written is the one kept, as
 the last save is.
 
