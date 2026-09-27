@@ -105,6 +105,22 @@ fn retired_on(harness: &Harness) -> String {
     format!("[image:image/png, removed on {day}: a tool result's images and videos are kept for 30 days]")
 }
 
+#[tokio::test]
+async fn a_backend_runs_its_first_retention_pass_once_it_serves() {
+    let counts = ObjectCounts::default();
+    let mut harness = Harness::new().with_object_counts(&counts);
+    harness.clock.follow_system();
+    harness.lifecycle.retention_interval = Some(Duration::from_secs(24 * 60 * 60));
+    let (backend, master) = harness.start_set_up().await;
+    backend.close().await;
+    let left = orphan(&harness, &master, &png(4), DAY + SignedDuration::from_hours(1));
+
+    let backend = harness.start().await;
+    eventually("the first pass collects the blob", || async { !left.exists() }).await;
+    assert_eq!(counts.tally().deletes, 1);
+    backend.close().await;
+}
+
 // About two seconds: a real device runs the tool's shell command.
 #[tokio::test]
 async fn a_collection_deletes_an_unreferenced_blob_past_the_grace_and_nothing_while_a_database_cannot_be_read() {
