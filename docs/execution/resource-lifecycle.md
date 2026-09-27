@@ -96,10 +96,11 @@ conversation tries again; the release still succeeds, since nothing of the
 conversation runs there any more.
 
 No job of the conversation runs when its release arrives: the backend sends a
-release only while it holds the conversation's file gate, and every job runs
-inside a lease of that gate
-([Host operations](sessions-and-targets.md#host-operations)). The runner still
-keeps the directory of any job it runs, whatever the release names.
+release of a conversation of the device's owner only while it holds the
+conversation's file gate, and every job runs inside a lease of that gate
+([Host operations](sessions-and-targets.md#host-operations)); a conversation
+of anyone else runs nothing on the device. The runner still keeps the
+directory of any job it runs, whatever the release names.
 
 Repeating a release is harmless. A release never starts a service that is not
 running. When the device is offline, the connection loss has already ended the
@@ -121,7 +122,8 @@ directories for, and the backend, once it has bound the connection, answers
 for each:
 
 - a conversation the device's owner does not have, or one that is archived or
-  no longer bound to the device: the release, at once;
+  no longer bound to the device: the release, at once, under the
+  conversation's file gate when it is the owner's;
 - any other: the conversation's idle watch starts unless it runs
   ([Idle window](#idle-window)), so an idle conversation hears the release one
   window later.

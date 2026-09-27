@@ -1,7 +1,8 @@
 //! The Cloud through the backend (`managed-hosts.md`,
 //! `sessions-and-targets.md` § Resolve a target, § How a conversation uses a
 //! device, `resource-lifecycle.md`): the first uses of two conversations
-//! boot one Cloud, an idle Cloud stops and the next operation wakes it, a
+//! boot one Cloud, an idle Cloud stops, taking its commands' output with it,
+//! and the next operation wakes it, a
 //! Cloud the manager stopped without a word boots again, a conversation that
 //! left the Cloud still reaches it, a reset keeps home and identity and
 //! tells the model, a failed reset resumes, a reset holds the conversations
@@ -132,6 +133,10 @@ async fn the_first_uses_of_two_conversations_boot_one_cloud_which_stops_when_idl
     let home = harness.manager.home(&device);
     assert_eq!(std::fs::read_to_string(format!("{home}/sessions/{FIRST}/note")).unwrap(), "0\n");
     assert_eq!(std::fs::read_to_string(format!("{home}/sessions/{SECOND}/note")).unwrap(), "1\n");
+    // Each command's whole output stays in the runner's state while the
+    // Cloud runs.
+    let job_output = harness.manager.state(&device).join("jobs").join(FIRST);
+    assert!(job_output.exists(), "{}", job_output.display());
     let running = status(&backend, &master).await;
     assert_eq!(running.state, CloudState::Running);
     assert_eq!(running.device.map(|device| device.id.as_str().to_owned()), Some(device.clone()));
@@ -151,12 +156,15 @@ async fn the_first_uses_of_two_conversations_boot_one_cloud_which_stops_when_idl
     until_status(&backend, &master, "the Cloud is off", |status| status.state == CloudState::Off).await;
 
     // A file read wakes it, and the next command runs on the awake Cloud.
+    // The output of the commands before the stop went with it: no release
+    // reached the Cloud, and none was needed.
     let path = format!("{home}/sessions/{FIRST}/note");
     let read = backend
         .get(&format!("/api/conversations/{FIRST}/fs/file?path={}", query(&path)), Some(&master))
         .await;
     assert_eq!(read.status, StatusCode::OK, "{}", String::from_utf8_lossy(&read.body));
     assert_eq!(read.json::<FileText>().text, "0\n");
+    assert!(!job_output.exists(), "{}", job_output.display());
     let next = a.turn(vec![shell("a2", "cat note", 20_000), say("awake")]).await;
     assert!(next.received[0].contains("0\n"), "{}", next.received[0]);
     assert_eq!(harness.manager.count(&format!("wake:{device}")), 2);

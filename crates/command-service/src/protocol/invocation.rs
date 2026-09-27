@@ -59,7 +59,7 @@ pub struct CommandLocale {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CommandContext {
-    #[garde(length(min = 1))]
+    #[garde(custom(conversation_name))]
     pub conversation: String,
     #[garde(dive)]
     pub caller: CommandCaller,
@@ -125,6 +125,27 @@ pub struct Completion {
     pub exit_code: u8,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     pub error: Option<CommandError>,
+}
+
+/// The longest conversation name (`native-runtime.md` § Command context).
+pub const CONVERSATION_NAME_CHARS: usize = 64;
+
+/// A garde rule: the value names a conversation, or the provider entry that
+/// work outside any conversation serves, as 1 to 64 ASCII letters, digits,
+/// `-` and `_`. The runner names a job's directory after it
+/// (`runner.md` § Pipes and output), so it can never name another path.
+pub fn conversation_name(value: &str, _: &()) -> garde::Result {
+    let valid = !value.is_empty()
+        && value.len() <= CONVERSATION_NAME_CHARS
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_');
+    if !valid {
+        return Err(garde::Error::new(
+            "is not a conversation name: 1 to 64 ASCII letters, digits, '-' and '_'",
+        ));
+    }
+    Ok(())
 }
 
 /// A garde rule: the value holds no NUL character, as paths and environment

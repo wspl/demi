@@ -43,7 +43,7 @@ fn table(
     (
         JobTable::new(JobConfig {
             output,
-            output_dir: root.join("logs"),
+            directories: demi_runner::job_directories::JobDirectories::new(root.join("logs")),
             pipes,
             shell: demi_runner::shell::ShellRuntime::current(),
             commands: None,
@@ -76,6 +76,7 @@ async fn shell_job_keeps_full_logs_but_only_sends_head_and_tail_views() {
             cwd: root.path().into(),
             env: crate::home(root.path()),
             command: TaskCommand::Shell {
+                conversation: "conversation".into(),
                 script: "printf '%060000d' 0; printf '%040000d' 1 >&2; mkdir child; cd child"
                     .into(),
                 stdin: None,
@@ -212,6 +213,7 @@ async fn a_followed_job_sends_its_newest_output_beyond_the_view() {
             cwd: root.path().into(),
             env: crate::home(root.path()),
             command: TaskCommand::Shell {
+                conversation: "conversation".into(),
                 script: "printf '%060000d' 0; read a; i=0; while [ $i -lt 50 ]; do printf '%05d\n' $i; i=$((i+1)); sleep 0.01; done; read b; printf '%020000d' 1; read c; printf end".into(),
                 stdin: None,
                 stdout: None,
@@ -311,6 +313,7 @@ async fn functions_and_compound_pipelines_drain_large_output_and_here_documents(
             cwd: root.path().into(),
             env: crate::home(root.path()),
             command: TaskCommand::Shell {
+                conversation: "conversation".into(),
                 script: "producer() { cat input; }; value=$(producer | cat | cat); printf '%s\\n' \"${#value}\"; { producer; } | wc -c; (producer) | wc -c; cat <<EOF | wc -c\n$value\nEOF\ncat <<< \"$value\" | wc -c".into(),
                 stdin: None,
                 stdout: None,
@@ -355,6 +358,7 @@ async fn cancellation_terminates_a_blocking_native_builtin() {
             cwd: root.path().into(),
             env: crate::home(root.path()),
             command: TaskCommand::Shell {
+                conversation: "conversation".into(),
                 script: "printf ready; sleep 60".into(),
                 stdin: None,
                 stdout: None,
@@ -448,6 +452,7 @@ async fn shutdown_does_not_wait_for_a_blocked_output_consumer() {
             cwd: root.path().into(),
             env: crate::home(root.path()),
             command: TaskCommand::Shell {
+                conversation: "conversation".into(),
                 script: "while :; do printf '%04096d' 0; done".into(),
                 stdin: None,
                 stdout: None,
