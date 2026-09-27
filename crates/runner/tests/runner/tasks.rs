@@ -204,7 +204,8 @@ async fn written(logs: &Path, bytes: u64) {
 #[tokio::test]
 async fn a_followed_job_sends_its_newest_output_beyond_the_view() {
     let root = tempfile::tempdir().unwrap();
-    let logs = root.path().join("logs");
+    // The job's directory is under its conversation's.
+    let logs = root.path().join("logs").join("conversation");
     let (mut table, mut receiver) = table(root.path(), 64);
     let job = WorkId::Job("job".into());
     table

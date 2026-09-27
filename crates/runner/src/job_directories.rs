@@ -17,10 +17,10 @@ use demi_command_service::protocol::conversation_name;
 /// The job directories under one installation's `jobs/`.
 pub struct JobDirectories {
     root: PathBuf,
-    /// The directories of the jobs that run. A `std` mutex: making a job's
-    /// directory and removing a conversation's directories hold it on a
-    /// blocking thread, so a release never removes a directory a job is
-    /// making or using.
+    /// The directories of the jobs that run. A `std` mutex, held on a
+    /// blocking thread while a job makes its directory and while a release
+    /// chooses the directories it removes, so a release never removes one a
+    /// job is making or using; a job's end holds it only to drop its own.
     running: Mutex<HashSet<PathBuf>>,
 }
 
@@ -107,41 +107,61 @@ impl JobDirectories {
         let directories = self.clone();
         let parent = self.root.join(conversation.to_ascii_lowercase());
         let released = tokio::task::spawn_blocking(move || {
-            let running = directories.lock();
-            let entries = match std::fs::read_dir(&parent) {
-                Ok(entries) => entries,
-                Err(error) if error.kind() == io::ErrorKind::NotFound => return,
+            // Chosen under the lock: the directories of the jobs that ended,
+            // which no job uses any more. They are removed without it, so a
+            // large one holds up no job's start; a job that starts meanwhile
+            // makes a directory of its own.
+            let ended = match directories.ended(&parent) {
+                Ok(ended) => ended,
                 Err(error) => {
                     tracing::warn!(directory = %parent.display(), "job directories not released: {error}");
                     return;
                 }
             };
-            for entry in entries {
-                let path = match entry {
-                    Ok(entry) => entry.path(),
-                    Err(error) => {
-                        tracing::warn!(directory = %parent.display(), "a job directory not released: {error}");
-                        continue;
-                    }
-                };
-                if running.contains(&path) {
-                    continue;
-                }
+            for path in ended {
                 if let Err(error) = std::fs::remove_dir_all(&path) {
                     tracing::warn!(directory = %path.display(), "a job directory not released: {error}");
                 }
             }
-            // A directory still holding a running job's stays.
-            if let Err(error) = std::fs::remove_dir(&parent)
-                && error.kind() != io::ErrorKind::DirectoryNotEmpty
-            {
-                tracing::warn!(directory = %parent.display(), "a conversation's job directory not released: {error}");
+            // Under the lock again, so a job that is making its directory
+            // finds its conversation's. One still holding a running job's
+            // directory stays.
+            let _running = directories.lock();
+            match std::fs::remove_dir(&parent) {
+                Ok(()) => {}
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        io::ErrorKind::DirectoryNotEmpty | io::ErrorKind::NotFound
+                    ) => {}
+                Err(error) => {
+                    tracing::warn!(directory = %parent.display(), "a conversation's job directory not released: {error}");
+                }
             }
         })
         .await;
         if let Err(error) = released {
             tracing::warn!("job directories not released: {error}");
         }
+    }
+
+    /// The directories under `parent` that no running job holds; none when
+    /// `parent` does not exist.
+    fn ended(&self, parent: &Path) -> io::Result<Vec<PathBuf>> {
+        let running = self.lock();
+        let entries = match std::fs::read_dir(parent) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => return Err(error),
+        };
+        let mut ended = Vec::new();
+        for entry in entries {
+            let path = entry?.path();
+            if !running.contains(&path) {
+                ended.push(path);
+            }
+        }
+        Ok(ended)
     }
 
     /// The conversations the installation holds job directories for: each
