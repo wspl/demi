@@ -420,12 +420,19 @@ the five completes as an error `Tool not found: <name>`.
 
 ### Results and previews
 
-- The model and the user's page each keep their own place in a command's
-  output. A result shows the output since the model's last look at the
-  command, and a `shell_output` frame the output since the page's last look
-  ([Server frames](#server-frames)), so neither's read changes what the other
-  sees next. For example, the page reads a running command's new output; the
-  model's next `shell_status` still shows all of it.
+- The model and the conversation's pages each keep their own place in a
+  command's output, so neither's read changes what the other sees next. A
+  result shows the output since the model's last look at the command. For
+  example, a page reads a running command's new output; the model's next
+  `shell_status` still shows all of it.
+- A page shows a command's tail: the last 4,096 characters of its merged
+  output as the backend holds it, which every `shell_output` frame carries
+  whatever was read before ([Server frames](#server-frames)). So every page
+  that receives a `shell_output` shows the same output, and a page that opens
+  the conversation while the command runs, or reloads, shows its current tail
+  at once. The pages share one place in the output: a `shell_output` also
+  carries the output since the previous `shell_output` of the command, which
+  no page shows.
 - A result gives the command's status and exit code, its handle and timings
   when the handle matters, a preview of the output, and a hint for the next
   step.
@@ -654,8 +661,8 @@ open { model } --------------------> attach to the live tree
 | `retry`, `resume`, `compact` | Run the action | `rejected` when the session is busy |
 | `shell_write { commandId, stdin }` | Write stdin to a running command | `shell_output`, then `shell_write_result` |
 | `shell_abort { commandId }` | Stop a running command | `shell_output` |
-| `sync_transcript` | Ask for a fresh transcript | `transcript_reset`, `shell_output` for each live command, the subagent replay |
-| `close` | Dispose the tree | `closed` |
+| `sync_transcript` | Ask for a fresh transcript | `transcript_reset`, `shell_output` for each live command, the subagent replay, to this connection alone |
+| `close` | Dispose the tree | `closed`, to every attached connection |
 
 Content in `send`, `steer` and `edit_and_send` is typed. It is text, a
 `reference`, an `upload` of a file the page already uploaded
@@ -697,19 +704,20 @@ environment for the conversation's current Host, with the handle checks of
 | `error` | A message, a code and diagnostics: a failed turn, a refused frame, or a failed save |
 | `rejected` | The refused command and the reason |
 | `subagent`, `subagent_transcript_reset`, `subagent_transcript_patch` | Subagent lifecycle and transcripts ([Protocol](subagents.md#protocol)) |
-| `closed` | The connection is detached |
+| `closed` | The connection is detached: its tree was disposed, or it sent `close` while attached to none |
 
 `failures` is the backend's reading of the error blocks a frame carries,
 attached when the frame is sent and never stored
 ([Failure facts](../backend/backend.md#failure-facts)). Media in outgoing blocks
 travels by blob reference ([Media by reference](../backend/backend.md#media-by-reference)).
-A running shell tool's status reaches the client as `shell_output`; a
-`shell_status` call sends none. Every `shell_output` is the page's own view,
-with the output since the page last looked at the command, whether it answers
-a client's `shell_write` or `shell_abort`, follows an attach or a
-`sync_transcript`, or reports a running tool; it moves only the page's place,
-not the model's ([Results and previews](#results-and-previews)). Child
-sessions send only their transcript frames. A live command is one the
+A running shell tool's status reaches the clients as `shell_output`; a
+`shell_status` call sends none. Every `shell_output` is the pages' view of the
+command, whether it reports a running tool, follows a client's `shell_write`
+or `shell_abort`, or answers an attach or a `sync_transcript`: the command's
+status, its tails, and the output since the previous `shell_output` of the
+command; it moves only the pages' place, not the model's
+([Results and previews](#results-and-previews)). Child sessions send only
+their transcript frames. A live command is one the
 transcript last shows running that the root's shell environment still has;
 its `shell_output` after a transcript reset carries its current status, so a
 command that ended while no client watched shows as ended.
@@ -730,10 +738,10 @@ command that ended while no client watched shows as ended.
   behind it.
 - Every frame for one attachment, whether a reply or an event, goes through
   one outbox in causal order. The outbox holds at most 4,096 frames. When it is
-  full, the server closes the connection with close code 4001 `lagged`; the
-  client reconnects and adopts the running tree. A backend that shuts down
-  closes its conversation sockets with 1001 `backend_closing` before it
-  disposes the trees.
+  full, the server closes that connection with close code 4001 `lagged`, and
+  the tree's other attachments go on as before; the client reconnects and
+  adopts the running tree. A backend that shuts down closes its conversation
+  sockets with 1001 `backend_closing` before it disposes the trees.
 - The open handshake is one step: nothing can happen to the session between
   `opened` and `pending_steers`, so the snapshot frames agree with each other.
 - Each `transcript_patch` carries the revision one past the previous frame's.
@@ -753,22 +761,64 @@ steers.
 
 ### Connections and the live tree
 
+For example, a conversation is open in two browser tabs, A and B, each with
+its own connection. A sends a message: both tabs show it, the reply as it
+streams and the tool calls. B presses Stop while the turn runs: B alone
+receives the `abort_result`, and both receive the stopped marker and the
+phase `idle`.
+
+```text
+connection A --+                    +--> A's outbox: events, and A's replies
+               +--> the live tree --+
+connection B --+                    +--> B's outbox: events, and B's replies
+```
+
+- A tree has any number of attached connections. `open` attaches its
+  connection without detaching another, and the connection receives its own
+  handshake ([Order and delivery](#order-and-delivery)), then every event of
+  the tree.
+- An event goes to every attached connection: the transcript, phase, queue,
+  pending-steer, retry and subagent frames, the `error` of a failed turn, save
+  or subagent lifecycle, and every `shell_output` that a running tool or a
+  client's `shell_write` or `shell_abort` causes. A reply goes only to the
+  connection whose frame it answers: `rejected`, an `error` that refuses the
+  frame, `steer_result`, `edit_result`, `abort_result`, `shell_write_result`,
+  and the frames that answer `sync_transcript`.
 - A connection that closes only detaches. The tree's turns keep running, and
   the next `open` adopts the same live tree. Two concurrent opens of one
   conversation share one tree.
-- Opening a conversation that another connection is attached to takes it over:
-  the other connection receives `closed` and is detached. It can send `open`
-  again to take the conversation back.
 - `open` aligns the tree's model with the model it names, from the root's next
   turn on; a restored root keeps its checkpoint's model until then. When that
   model belongs to another provider, the new runtime is built before the
-  connection attaches, and a failure leaves the connection unattached.
-- `close` disposes the whole tree, then sends `closed`, even when nothing was
-  attached.
+  connection attaches, and a failure leaves the connection unattached. A page
+  names the model its conversation's record holds
+  ([page synchronization](../product/web-api.md#sidebar-mutations-read-state-and-page-synchronization)),
+  so a page that opens does not undo another page's model switch.
+- `close` disposes the whole tree. Every attached connection receives what the
+  disposal changed, then `closed`, and is detached; a connection that sends
+  `close` while attached to nothing receives `closed` alone.
 - A tree that has been detached and quiescent (no action running or waiting,
   no live subagent, no scheduled wakeup) for 10 minutes is disposed; an `open`
   or new activity within those 10 minutes keeps it live. The next `open`
   restores it from the store exactly as it was saved.
+
+Connections that act at once need no rule of their own. The backend hands
+each connection's frames to the session one at a time, and the session takes
+the frames of all connections in the order they reach it, so the rule that
+decides a lone client's frame decides each:
+
+- Two sends queue in the order they arrive
+  ([Messages and the queue](#messages-and-the-queue)).
+- An edit and a send: a send that arrives while the edit is being prepared is
+  refused, and an edit that arrives while a send's turn runs or waits is
+  refused ([Admission](message-editing.md#admission)). An edit against a
+  transcript that another connection has changed since is stale
+  ([Commit and idempotency](message-editing.md#commit-and-idempotency)).
+- Two `abort` frames stop one thing each, in the order they arrive
+  ([Stop](#stop)): the second can stop a queued message, and its
+  `abort_result` says what it stopped.
+- The model selection is the one named last, by `open` or `set_provider`
+  ([Model switch](#model-switch)).
 
 ## Tree store
 
@@ -868,6 +918,10 @@ where a tool runs; no test calls a real model.
 | A turn's closing save is held at its commit | The client sees no `idle` until the save commits; an edit it sends the moment it sees `idle` is admitted |
 | A message is queued while a tool runs | The queue is saved without any transcript change |
 | Two opens of one conversation at once | One live tree |
+| Two connections of one conversation | Both receive the same events of a turn; a reply reaches only the connection that asked; a `close` sends `closed` to both |
+| One of two connections stops reading | It alone closes as lagging; the other receives the whole turn |
+| Two connections act at once | Two sends run in the order they arrived; a send while the other's edit is prepared is refused, and so is an edit while the other's send waits or runs |
+| A connection attaches while a command runs | Its handshake carries the command's tail, whatever the other connection read; later `shell_output` frames reach both alike |
 | A client stops reading | The connection closes as lagging; a reconnect adopts the running tree and its turn completes |
 | Frames of an open | The handshake order above; patch revisions increase by one; a stale patch after a reset is ignored; a gap triggers `sync_transcript` |
 | Scripted tool events | Each of the five tools renders with its own component and its `description` title; updates replace the block in place; an unknown tool name renders as a generic card |

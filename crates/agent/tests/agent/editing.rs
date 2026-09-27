@@ -36,12 +36,12 @@ use crate::{
     },
 };
 
-fn said(text: &str) -> Turn {
+pub(crate) fn said(text: &str) -> Turn {
     Turn::Events(vec![event::text(text), event::response(1, 1)])
 }
 
 /// The `user` block of the turn `turn`.
-fn user_block(fixture: &Fixture, turn: &str) -> BlockId {
+pub(crate) fn user_block(fixture: &Fixture, turn: &str) -> BlockId {
     session_of(fixture)
         .transcript()
         .blocks
@@ -53,7 +53,7 @@ fn user_block(fixture: &Fixture, turn: &str) -> BlockId {
         .expect("the turn has a user block")
 }
 
-fn edit(
+pub(crate) fn edit(
     operation: &str,
     target: &BlockId,
     version: &TranscriptVersion,
@@ -70,7 +70,7 @@ fn edit(
 }
 
 /// The outcome the first `edit_result` frame carries.
-fn edit_outcome(frames: &[ServerFrame]) -> EditOutcome {
+pub(crate) fn edit_outcome(frames: &[ServerFrame]) -> EditOutcome {
     frames
         .iter()
         .find_map(|frame| match frame {

@@ -3,7 +3,7 @@
 //! protocol): creation under the browser's id, the list and the product
 //! state, a chat over the socket with an Anthropic endpoint the test
 //! scripts, a reload whose history is what the database holds, a client that
-//! falls behind, a takeover, the frames the backend refuses, provider edits
+//! falls behind, the frames the backend refuses, provider edits
 //! and deletion at the inference boundary, the rate limit, a shutdown in the
 //! middle of a turn, and the patches and batches of the sidebar. No test
 //! calls a real model.
@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use demi_agent::testing::{client_text, model_of};
-use demi_agent_protocol::{ClientFrame, ClientFrameKind, EditOutcome, EditRequest, ServerFrame, TranscriptVersion};
+use demi_agent_protocol::{ClientFrame, EditOutcome, EditRequest, ServerFrame, TranscriptVersion};
 use demi_backend::{FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily};
 use demi_core::{
     AuthState, Block, ModelSelection, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList, RuntimeState,
@@ -519,36 +519,6 @@ async fn a_client_that_falls_behind_is_closed_as_lagging_and_a_reopen_adopts_the
     };
     assert!(last_text(&blocks).ends_with("199 "), "the turn ran to its end");
     assert_eq!(vendor.requests().len(), 1, "the reopen adopted the tree, which asked once");
-    backend.close().await;
-}
-
-#[tokio::test]
-async fn a_second_socket_takes_the_conversation_over_and_the_first_can_take_it_back() {
-    let vendor = MockVendor::start().await;
-    let harness = Harness::new();
-    let (backend, master) = harness.start_set_up().await;
-    let provider = anthropic(&backend, &master, &vendor).await;
-    create(&backend, &master, FIRST).await;
-    let model = model_of(&provider, "claude-opus-4-8");
-
-    let mut first = Socket::connect(&backend, &master, FIRST).await;
-    first.open(&model).await;
-    let mut second = Socket::connect(&backend, &master, FIRST).await;
-    second.open(&model).await;
-    assert_eq!(first.frame().await, ServerFrame::Closed);
-    first.send(&send("m1", "hi")).await;
-    assert_eq!(
-        first.frame().await,
-        ServerFrame::Rejected {
-            command: ClientFrameKind::Send,
-            reason: "No session is open".into()
-        }
-    );
-    first.open(&model).await;
-    assert_eq!(second.frame().await, ServerFrame::Closed);
-    vendor.respond(answer(&["back"], 1, 1));
-    first.chat("m2", "I am back").await;
-    assert_eq!(last_text(&first.live().await), "back");
     backend.close().await;
 }
 
