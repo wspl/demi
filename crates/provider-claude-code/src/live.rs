@@ -242,7 +242,8 @@ impl LiveCli {
 
     /// Sends `initialize` and reads until the CLI's answer. The CLI may start
     /// its MCP handshake meanwhile, so control requests are answered as they
-    /// come; any other line is kept for the run.
+    /// come; any other line, such as the `system` line the CLI prints first,
+    /// is kept for the run.
     async fn initialize(&mut self, system_prompt: &str) -> Result<(), ProviderFailure> {
         let request_id = uuid::Uuid::new_v4().to_string();
         let request = Input::ControlRequest {
@@ -253,6 +254,10 @@ impl LiveCli {
             },
         };
         self.write(input::line(&request)).await?;
+        // The run's lines wait here until the answer: `advance` reads the
+        // kept lines first, so a line kept among them now would come back at
+        // once, and again, without the process ever being read.
+        let mut kept = VecDeque::new();
         loop {
             match self.advance().await {
                 Next::Line(_, Some(Line::ControlResponse(line)))
@@ -262,6 +267,7 @@ impl LiveCli {
                 {
                     let response = line.response.expect("the answer was matched");
                     if response.subtype.as_deref() == Some("success") {
+                        self.pending.append(&mut kept);
                         return Ok(());
                     }
                     let reason = response
@@ -275,7 +281,7 @@ impl LiveCli {
                 Next::Line(_, Some(Line::ControlRequest(line))) => {
                     self.control_request(line).await?
                 }
-                Next::Line(text, line) => self.pending.push_back((text, line)),
+                Next::Line(text, line) => kept.push_back((text, line)),
                 // The model has no message to call a tool in before the
                 // history is written, which waits for this answer.
                 Next::Opened(call) => {

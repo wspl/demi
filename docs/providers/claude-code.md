@@ -240,9 +240,10 @@ thinking setting.
 
 When the request offers tools, the provider first sends the CLI an `initialize`
 control request that declares one SDK MCP server, and waits for its success,
-answering the control requests the CLI sends meanwhile; a refusal, or an exit
-before the answer, fails the run. It then writes the history as the first
-messages: earlier tool calls and their results as assistant text, user
+answering the control requests the CLI sends meanwhile and keeping its other
+lines, such as the `system` line it prints first, for the run; a refusal, or
+an exit before the answer, fails the run. It then writes the history as the
+first messages: earlier tool calls and their results as assistant text, user
 messages with only the user's real input, and no earlier reasoning.
 
 **Continuing.** A kept process receives only what the transcript gained since
