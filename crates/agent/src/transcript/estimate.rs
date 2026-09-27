@@ -4,7 +4,9 @@
 
 use demi_core::{
     Block, DocumentSource, MediaSource, ToolMediaSource, ToolResultContentBlock, UserContentBlock,
+    attachment_tag,
 };
+use demi_provider::InferenceItem;
 
 use super::{RESUME_TEXT, WAKEUP_TEXT, replay_start};
 
@@ -46,6 +48,110 @@ pub fn context_tokens(blocks: &[Block], context_window: Option<u32>) -> u64 {
         .iter()
         .map(block_tokens)
         .sum()
+}
+
+/// What a request weighs as its vendor receives it (`compaction.md`
+/// § Request size).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RequestSize {
+    /// The base64 length of the media it carries, and the UTF-8 length of its
+    /// system prompt and texts; the vendor's format adds its keys and escapes.
+    pub bytes: u64,
+    /// The image blocks it carries, in messages and tool results alike.
+    pub images: u64,
+}
+
+/// The size of a request with `system_prompt` and `items`, which replay made
+/// for the request's model, so what it could not take is text already.
+pub fn request_size(system_prompt: &str, items: &[InferenceItem]) -> RequestSize {
+    let mut size = RequestSize {
+        bytes: byte_count(system_prompt.len()),
+        images: 0,
+    };
+    for item in items {
+        match item {
+            InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content } => {
+                for part in content {
+                    size.add_content(part);
+                }
+            }
+            InferenceItem::AssistantText { text, .. } => size.add_text(text),
+            InferenceItem::AssistantThinking {
+                text, signature, ..
+            } => {
+                size.add_text(text);
+                size.add_text(signature.as_deref().unwrap_or_default());
+            }
+            InferenceItem::AssistantRedactedThinking { data, .. } => size.add_text(data),
+            InferenceItem::ToolUse {
+                tool_use_id,
+                tool_name,
+                input,
+                ..
+            } => {
+                size.add_text(tool_use_id);
+                size.add_text(tool_name);
+                size.add_text(&input.to_string());
+            }
+            InferenceItem::ToolResult {
+                tool_use_id,
+                output,
+                ..
+            } => {
+                size.add_text(tool_use_id);
+                for part in output {
+                    match part {
+                        ToolResultContentBlock::Text { text } => size.add_text(text),
+                        ToolResultContentBlock::Image { source } => {
+                            size.images += 1;
+                            size.add_tool_media(source);
+                        }
+                        ToolResultContentBlock::Video { source } => size.add_tool_media(source),
+                    }
+                }
+            }
+        }
+    }
+    size
+}
+
+impl RequestSize {
+    fn add_text(&mut self, text: &str) {
+        self.bytes += byte_count(text.len());
+    }
+
+    fn add_content(&mut self, part: &UserContentBlock) {
+        match part {
+            UserContentBlock::Text { text } | UserContentBlock::Reference { reference: text } => {
+                self.add_text(text);
+            }
+            UserContentBlock::Attachment(attachment) => self.add_text(&attachment_tag(attachment)),
+            UserContentBlock::Image { source } => {
+                self.images += 1;
+                self.add_media(source);
+            }
+            UserContentBlock::Video { source } => self.add_media(source),
+            UserContentBlock::Document { source } => {
+                if let DocumentSource::Binary { data, .. } = source {
+                    self.bytes += data.base64_len();
+                }
+            }
+        }
+    }
+
+    fn add_media(&mut self, source: &MediaSource) {
+        match source {
+            MediaSource::Binary { data, .. } => self.bytes += data.base64_len(),
+            MediaSource::Url { url } => self.add_text(url),
+            MediaSource::Ref { .. } => {}
+        }
+    }
+
+    fn add_tool_media(&mut self, source: &ToolMediaSource) {
+        if let ToolMediaSource::Binary { data, .. } = source {
+            self.bytes += data.base64_len();
+        }
+    }
 }
 
 /// The latest response block with usage above zero, and that usage, unless
