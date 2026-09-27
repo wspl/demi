@@ -153,6 +153,12 @@ directories, then saves the machine without them and stops it. The
 conversation's own idle watch finds the Cloud stopped and releases the
 conversation on its other Hosts, if it has any.
 
+A conversation whose model's process runs on the Cloud, in the
+[`provider` role](sessions-and-targets.md#how-a-conversation-uses-a-device),
+holds nothing there that a release ends: the process is not a shell job, so
+it leaves no job output, and no service holds state for the conversation. So
+the stop sends its release only when the Cloud is one of its Hosts too.
+
 Only the idle stop sends releases. A Cloud that stops for another reason sends
 none: at its lifetime cap or at the backend's shutdown, the conversations using
 it have not all been idle for the window; a reset removes every job directory
@@ -233,6 +239,7 @@ database, in real time with a short window
 | The last conversations using a Cloud idle for the window | The Cloud hears their releases, then stops; their job directories are gone from the generation it saved |
 | A conversation is archived while its Cloud is stopped, and the Cloud wakes later | The archive does not wake the Cloud; the Cloud's `hello` after the wake names the conversation, which hears the release at once |
 | A paired device loses its connection while an archive's release waits for its answer | The archive succeeds; once the device connects again, its `hello` names the conversation, which hears the release at once, and its job output is gone |
+| The last conversation using a Cloud works on a paired device, has the Cloud attached, and its model's process runs on the Cloud; it idles for the window | The Cloud hears its release, then stops; its job directories are gone from the generation it saved |
 | A running job or a waiting child turn exists at the deadline | Nothing is retired; the window restarts when the activity ends |
 | A live browser view stays open with no agent activity, while the page lists the browser's tabs | Nothing is retired while the view is open, and the window starts when it closes; the listings restart nothing |
 | Target switch or archive while a timer is pending | One release to the old device; a stale timer cannot release the new binding |
