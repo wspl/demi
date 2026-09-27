@@ -18,16 +18,17 @@ use demi_agent::{
     AgentHarness, AgentServer, AgentTreeStore, CompactionConfig, PromptContext, ProviderResolver,
     RandomIds, ResolveError, ServerConfig, ServerDeps, SessionConfig,
     store::{
-        CheckpointState, CheckpointUpdate, CommandStateSnapshot, NodeRecord, media::HeldMedia,
+        CheckpointState, CheckpointUpdate, CommandStateSnapshot, NodeRecord,
+        media::{HeldMedia, ModelView},
     },
     testing::{MemoryTreeStore, NoHost, NoShells, TestClient, client_text},
-    transcript::estimate::context_tokens,
+    transcript::{RequestView, estimate::context_tokens},
 };
 use demi_agent_protocol::{ClientFrame, ServerFrame};
 use demi_core::{
     Block, Clock, Model, ModelSelection, NodeId, SessionPhase, SystemClock, TurnId, WireApi,
 };
-use demi_provider::{Provider, ProviderRuntime, RuntimeEnv, Secret};
+use demi_provider::{Provider, ProviderRuntime, RequestLimits, RuntimeEnv, Secret};
 use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider, VendorPolicy};
 use demi_shell::CommandSet;
 use futures_util::future::LocalBoxFuture;
@@ -288,16 +289,18 @@ impl Conversation {
         count(&self.blocks(), |block| matches!(block, Block::Error(_)))
     }
 
-    /// The history since the last compaction, as the next request would
-    /// estimate it with `window`, its media by reference only, as frames
-    /// carry them.
+    /// The history since the last compaction, as the next request of the
+    /// model with `window` would estimate it.
     fn context(&self, window: u32) -> u64 {
         let blocks = self.blocks();
         let start = blocks
             .iter()
             .rposition(|block| matches!(block, Block::CompactionBoundary(_)))
             .unwrap_or(0);
-        context_tokens(&blocks[start..], &HeldMedia::default(), Some(window))
+        let view = ModelView::of(start, &blocks[start..], &HeldMedia::default())
+            .expect("the fixture's history holds no media");
+        let model = flash(window).model;
+        context_tokens(&RequestView::new(&view, &model, RequestLimits::default()))
     }
 
     /// Runs `frame` to the end of the action it starts.
