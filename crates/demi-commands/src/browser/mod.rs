@@ -40,7 +40,9 @@ mod viewport;
 mod webmcp;
 
 pub(crate) use conversations::Conversations;
-pub use environment::{BrowserEnvironment, LaunchOptions, sweep_orphans, with_browser};
+pub use environment::{
+    BrowserEnvironment, LaunchOptions, profile_base, sweep_orphans, with_browser,
+};
 pub use installation::{BrowserDirectories, pinned_archive};
 #[cfg(feature = "testing")]
 pub use launch::CAPTURE_EXTENSION_ID;

@@ -209,22 +209,28 @@ impl BrowserFixture {
     }
 }
 
-/// A browser directory holding the pinned Chrome for Testing that
-/// `DEMI_TEST_CHROME` names, installed there as the service installs a
-/// release, so that the service finds it: no test downloads Chrome or
-/// writes into the home.
-pub async fn installed_chrome() -> (tempfile::TempDir, BrowserDirectories) {
+/// Installs the pinned Chrome for Testing that `DEMI_TEST_CHROME` names
+/// into `root`, as the service installs a release, so that a service whose
+/// browser directory `root` is finds it: no test downloads Chrome or writes
+/// into the home.
+pub async fn install_chrome(root: &std::path::Path) {
     let executable =
         std::path::PathBuf::from(std::env::var_os("DEMI_TEST_CHROME").expect("DEMI_TEST_CHROME"));
-    let directory = tempfile::tempdir().unwrap();
     demi_artifact::testing::install_unpacked(
-        directory.path(),
+        root,
         &demi_commands::browser::pinned_archive().unwrap(),
         &executable,
         &CancellationToken::new(),
     )
     .await
     .expect("DEMI_TEST_CHROME names a readable installation of the pinned release");
+}
+
+/// A browser directory holding the pinned Chrome for Testing
+/// ([`install_chrome`]).
+pub async fn installed_chrome() -> (tempfile::TempDir, BrowserDirectories) {
+    let directory = tempfile::tempdir().unwrap();
+    install_chrome(directory.path()).await;
     let directories = BrowserDirectories {
         image: None,
         install: Some(directory.path().to_owned()),
