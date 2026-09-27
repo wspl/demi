@@ -41,7 +41,7 @@ for (const scenario of ['stopped', 'silent', 'aborted', 'disconnected']) {
         this.readable = { getReader: () => ({ read: () => ended, cancel: async () => { end() } }) }
       }
     }
-    runInNewContext(source.replace("import { socket as address } from './config.js';", "const address = 'ws://capture.test';"), {
+    runInNewContext(source.replace("import { socket as address, codec } from './config.js';", "const address = 'ws://capture.test'; const codec = 'test-codec';"), {
       WebSocket: Socket,
       MediaStreamTrackProcessor: Processor,
       chrome: { runtime: { sendMessage: async (message: { type: string; target: string }) => {

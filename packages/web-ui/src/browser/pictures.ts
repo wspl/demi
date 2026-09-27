@@ -3,12 +3,13 @@
  * Delivery): WebCodecs decodes the Host's H.264, the page shows the newest
  * frame it has, and tells the module what it showed.
  */
+import { LIVE_VIDEO_CODEC } from '@demicodes/protocol'
 import { reportError } from '../infra/errors'
 import type { LiveVideoFrame } from './frames'
 import type { PictureSink } from './session'
 
-/** H.264 High 4:2:0, as the Host's extension encodes it, decoded with the least delay. */
-const DECODER: VideoDecoderConfig = { codec: 'avc1.640033', optimizeForLatency: true }
+/** The live protocol's codec, as the Host's extension encodes it, decoded with the least delay. */
+const DECODER: VideoDecoderConfig = { codec: LIVE_VIDEO_CODEC, optimizeForLatency: true }
 /** Beyond this the page is behind: it drops the stream and asks for a key frame. */
 const DECODE_QUEUE = 12
 

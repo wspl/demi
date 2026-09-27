@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import type { LiveViewerMessage } from '@demicodes/protocol'
+import { LIVE_VIDEO_CODEC, type LiveViewerMessage } from '@demicodes/protocol'
 import { deferred } from '@demicodes/utils'
 import { until } from '@vueuse/core'
 import { ref } from 'vue'
@@ -210,10 +210,11 @@ test('a page shown again reads the tab list and adds the tabs the agent opened w
 
 test('a browser that cannot decode the pictures opens no view, and one that can opens one', async () => {
   // A Chromium built without proprietary codecs has WebCodecs, and VP8 and VP9, but no H.264.
+  // The page asks for the codec the Host's extension encodes, the live protocol's.
   const browsers: Array<[string, ((codec: string) => boolean) | null, PictureSupport, number]> = [
     ['no WebCodecs', null, 'unsupported', 0],
     ['WebCodecs without H.264', (codec) => codec.startsWith('vp'), 'unsupported', 0],
-    ['WebCodecs with H.264', () => true, 'supported', 1],
+    ['WebCodecs with H.264', (codec) => codec === LIVE_VIDEO_CODEC, 'supported', 1],
   ]
   for (const [browser, decodes, support, viewCount] of browsers) {
     const restore = decodes ? stubDecoder(decodes) : () => {}
