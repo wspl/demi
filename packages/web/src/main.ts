@@ -134,7 +134,8 @@ const refreshVisible = () => {
   if (document.visibilityState !== 'visible' || !session.signedIn) {
     return
   }
-  void product.revalidate()
+  // A page that shows again connects its channel at once when it is closed.
+  product.reconnect()
   void preferences.reportLocale()
   const id = product.activeConversationId
   if (id) {
@@ -143,6 +144,9 @@ const refreshVisible = () => {
 }
 window.addEventListener('focus', refreshVisible)
 document.addEventListener('visibilitychange', refreshVisible)
+// A page that comes back online connects its channel at once.
+const reconnect = () => product.reconnect()
+window.addEventListener('online', reconnect)
 const app = createApp(App).use(pinia).use(router)
 app.mount('#app')
 if (import.meta.hot) {
@@ -161,6 +165,7 @@ if (import.meta.hot) {
     window.removeEventListener('pagehide', saveDrafts)
     window.removeEventListener('focus', refreshVisible)
     document.removeEventListener('visibilitychange', refreshVisible)
+    window.removeEventListener('online', reconnect)
     app.unmount()
     disposePinia(pinia)
   })

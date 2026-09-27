@@ -19,7 +19,7 @@ const { revoke, resetCloud } = settings
     :devices="resources.devices"
     :load="product.load"
     :pending-ids="revoking"
-    @retry="product.revalidate"
+    @retry="product.reconnect"
     :cloud="cloud"
     :reset-pending="reset.status === 'pending'"
     :reset-error="reset.status === 'failed' ? reset.message : null"

@@ -30,8 +30,13 @@ export function onSessionExpired(handler: () => void): () => void {
 
 export function notifySessionExpired(code: ErrorCode): void {
   if (code === 'unauthenticated') {
-    expired?.()
+    notifySessionEnded()
   }
+}
+
+/** Ends the session on the page: an answer of 401 does, and so does the synchronization channel's `session_ended`. */
+export function notifySessionEnded(): void {
+  expired?.()
 }
 
 export async function readResponse<T>(

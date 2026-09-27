@@ -213,7 +213,6 @@ export const useResources = defineStore('resources', () => {
         beforeId,
       } satisfies SidebarReorder),
     })
-    await product.revalidate()
   }
 
   async function createProject(draft: CreateWorkspace): Promise<string> {
@@ -224,8 +223,9 @@ export const useResources = defineStore('resources', () => {
       ...jsonBody(draft),
     })
     const { workspace } = await readResponse(response, workspaceAnswerSchema)
-    await product.revalidate()
-    current.signal.throwIfAborted()
+    // The caller opens the project, which the channel brings moments after
+    // it was made.
+    await product.until((state) => state.workspaces.some((item) => item.id === workspace.id), current.signal)
     rememberProject(workspace.id)
     return workspace.id
   }
@@ -235,7 +235,6 @@ export const useResources = defineStore('resources', () => {
       method: 'DELETE',
       signal: controller.signal,
     })
-    await product.revalidate()
   }
 
   return {

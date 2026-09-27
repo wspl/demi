@@ -55,7 +55,7 @@ async function create(draft: WorkspaceDraft) {
     :overlay-store="appOverlayStore"
     :pending="pending"
     :load="product.load"
-    @retry="product.revalidate"
+    @retry="product.reconnect"
     :devices="resources.devices"
     :message="message"
     :source-for="(id) => fileSourceFor(deviceById(id))"

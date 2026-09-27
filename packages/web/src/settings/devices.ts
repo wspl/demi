@@ -19,8 +19,8 @@ export const useDeviceSettings = defineStore('device-settings', () => {
         message: string
       }
   >({ status: 'idle' })
-  // Every snapshot carries the Cloud's status; there is none only before the
-  // first snapshot arrives.
+  // The product state carries the Cloud's status; there is none only before
+  // the channel's first snapshot arrives.
   const cloud = computed(() => {
     const status = product.snapshot?.cloud
     if (!status) {
@@ -37,7 +37,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
   })
   const exposes = computed(() => product.snapshot?.exposes ?? [])
 
-  /** Shared body of renew and remove: one request per expose, then a fresh snapshot. */
+  /** Shared body of renew and remove: one request per expose, whose outcome the channel brings. */
   async function exposeWrite(
     id: string,
     run: (signal: AbortSignal) => Promise<void>,
@@ -50,7 +50,6 @@ export const useDeviceSettings = defineStore('device-settings', () => {
     exposePending.value.push(id)
     try {
       await run(current.signal)
-      await product.revalidate()
     } catch (error) {
       if (!current.signal.aborted) {
         reportError(couldNot, error, { userVisible: true })
@@ -89,7 +88,6 @@ export const useDeviceSettings = defineStore('device-settings', () => {
         method: 'DELETE',
         signal: current.signal,
       })
-      await product.revalidate()
     } catch (error) {
       if (!current.signal.aborted) {
         reportError('Could not revoke device', error, { userVisible: true })
@@ -114,8 +112,6 @@ export const useDeviceSettings = defineStore('device-settings', () => {
         ...jsonBody({ operationId } satisfies CloudReset),
       })
       await readResponse(response, cloudResetAnswerSchema)
-      current.signal.throwIfAborted()
-      await product.revalidate()
       current.signal.throwIfAborted()
       reset.value = { status: 'idle' }
     } catch (error) {

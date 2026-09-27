@@ -108,14 +108,15 @@ export const usePreferences = defineStore('preferences', () => {
         return
       }
       try {
+        const sentAt = product.sent()
         const response = await apiRequest('/settings/preferences', {
           method: 'PATCH',
           keepalive: true,
           ...jsonBody(patch),
           signal: current.signal,
         })
-        await readResponse(response, userPreferencesSchema)
-        await product.refresh()
+        const { preferences } = await readResponse(response, userPreferencesSchema)
+        product.answered(sentAt, { type: 'preferences', preferences })
       } catch (error) {
         if (!current.signal.aborted) {
           reportError('Could not update settings', error, { userVisible: true })
@@ -158,13 +159,14 @@ export const usePreferences = defineStore('preferences', () => {
     const current = controller
     await writes.run(async () => {
       try {
+        const sentAt = product.sent()
         const response = await apiRequest('/settings/preferences', {
           method: 'PATCH',
           ...jsonBody({ locale } satisfies PreferencesPatch),
           signal: current.signal,
         })
-        await readResponse(response, userPreferencesSchema)
-        await product.refresh()
+        const { preferences } = await readResponse(response, userPreferencesSchema)
+        product.answered(sentAt, { type: 'preferences', preferences })
       } catch (error) {
         if (!current.signal.aborted) {
           reportError('Could not report the time zone and languages', error)

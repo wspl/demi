@@ -11,6 +11,7 @@ import { usePreferences } from '../state/preferences'
 import type { ConversationDraft, ConversationSummary, DraftFile, Preferences } from '../api/generated/web-api'
 import { useSession } from '../auth/session'
 import { productState } from '../__tests__/product-state'
+import { playChannels } from '../__tests__/sync-channel'
 import { applyConversationEvent, updateLiveStatus } from './activity'
 import * as draftStorage from './drafts'
 import * as localState from '../state/local'
@@ -80,6 +81,7 @@ let requests: {
   body: unknown
 }[]
 let pinia: ReturnType<typeof createPinia>
+let channels: ReturnType<typeof playChannels>
 let savedPreferences: Preferences
 /** The drafts the backend keeps, by conversation. */
 let serverDrafts: Map<string, ConversationDraft>
@@ -157,9 +159,6 @@ beforeEach(async () => {
       path,
       body,
     })
-    if (path === '/api/state') {
-      return Response.json(productState({ preferences: savedPreferences, conversations: records }))
-    }
     if (path === '/api/settings/preferences') {
       savedPreferences = { ...savedPreferences, ...body }
       return Response.json({ preferences: savedPreferences })
@@ -244,9 +243,9 @@ beforeEach(async () => {
     }
     throw new Error(`Unexpected request: ${path}`)
   }) as typeof fetch
+  channels = playChannels()
   useConversations()
-  await useProduct().start()
-  await nextTick()
+  await connect()
 })
 
 afterEach(() => {
@@ -254,8 +253,33 @@ afterEach(() => {
   usePreferences().stop()
   useProduct().stop()
   disposePinia(pinia)
+  channels.restore()
   globalThis.fetch = realFetch
 })
+
+/** The backend's state, as its channel brings it. */
+function backendState() {
+  return productState({ preferences: savedPreferences, conversations: records })
+}
+
+/** The page starts following the state, and its channel brings the backend's first. */
+async function connect(): Promise<void> {
+  useProduct().start()
+  channels.last().connect(backendState())
+  await nextTick()
+}
+
+/** The channel brings the backend's whole state again, as it does when it connects again. */
+async function reconnected(): Promise<void> {
+  channels.last().send({ type: 'snapshot', state: backendState() })
+  await nextTick()
+}
+
+/** The channel brings the conversation's summary, as it does once a change of it commits. */
+async function changed(id: string): Promise<void> {
+  channels.last().send({ type: 'conversation', conversation: records.find((item) => item.id === id)! })
+  await nextTick()
+}
 
 test('an empty draft saves the complete last choice and new conversations restore it after reload', async () => {
   let store = useConversations()
@@ -280,8 +304,7 @@ test('an empty draft saves the complete last choice and new conversations restor
   pinia = createPinia()
   setActivePinia(pinia)
   store = useConversations()
-  await useProduct().start()
-  await nextTick()
+  await connect()
   const restoredId = store.create()
   const restored = store.items.find((item) => item.id === restoredId)!
   expect(restored.model).toEqual(chosen)
@@ -491,13 +514,12 @@ test('new conversation is local and does not depend on the server', async () => 
   expect(requests.some((request) => request.path === '/api/conversations')).toBe(false)
 })
 
-test('repeated new reuses the active empty draft and polling preserves it', async () => {
+test('repeated new reuses the active empty draft and a new snapshot preserves it', async () => {
   const store = useConversations()
   const id = await store.create()
   await store.activate(id)
   expect(await store.create()).toBe(id)
-  await useProduct().refresh()
-  await nextTick()
+  await reconnected()
   expect(store.items[0]?.id).toBe(id)
   store.items[0]!.draft = 'Keep this draft'
   expect(await store.create()).not.toBe(id)
@@ -515,8 +537,7 @@ test('first send failure preserves the conversation and retries its UUID and mes
   expect(conversation.pendingSend?.error).toBe('Not saved')
   expect(conversation.draft).toBe('')
   const messageId = conversation.pendingSend!.id
-  await useProduct().refresh()
-  await nextTick()
+  await reconnected()
   expect(store.items[0]?.id).toBe(conversation.id)
   await store.send(conversation)
   expect(conversation.pendingSend?.id).toBe(messageId)
@@ -636,14 +657,12 @@ test('a page shows the model settings another page chose and writes nothing back
   const current = store.items.find((item) => item.id === FIRST)!
   const record = records.find((item) => item.id === FIRST)!
   record.model = { providerId: 'stub', modelId: 'stub', thinkingEffort: 'low', serviceTierId: null }
-  await useProduct().refresh()
-  await nextTick()
+  await changed(FIRST)
   expect(current.model).toEqual(record.model)
-  // Another page raises the effort and turns Fast on: this page's next
-  // snapshot shows both, as the record holds them.
+  // Another page raises the effort and turns Fast on: the summary this
+  // page's channel brings shows both, as the record holds them.
   record.model = { ...record.model, thinkingEffort: 'high', serviceTierId: 'priority' }
-  await useProduct().refresh()
-  await nextTick()
+  await changed(FIRST)
   expect(current.model).toEqual({ providerId: 'stub', modelId: 'stub', thinkingEffort: 'high', serviceTierId: 'priority' })
   expect(requests.some((request) => request.path === `/api/conversations/${FIRST}`)).toBe(false)
 })
@@ -653,9 +672,8 @@ test('a model change names only the part it changes, so another page\'s change s
   const current = store.items.find((item) => item.id === FIRST)!
   const record = records.find((item) => item.id === FIRST)!
   record.model = { providerId: 'stub', modelId: 'stub', thinkingEffort: 'low', serviceTierId: null }
-  await useProduct().refresh()
-  await nextTick()
-  // Another page turned Fast on; this page has not read that yet.
+  await changed(FIRST)
+  // Another page turned Fast on; this page's channel has not brought it yet.
   record.model = { ...record.model, serviceTierId: 'priority' }
   const patches: unknown[] = []
   const fetch = globalThis.fetch
@@ -680,7 +698,7 @@ test('a model change names only the part it changes, so another page\'s change s
   }
 })
 
-test('snapshot refresh preserves live transcript and unsent draft', async () => {
+test('a new snapshot preserves the live transcript and the unsent draft', async () => {
   const store = useConversations()
   const current = store.items[0]!
   current.draft = 'Still editing'
@@ -690,8 +708,7 @@ test('snapshot refresh preserves live transcript and unsent draft', async () => 
   ]
   records[0]!.title = 'Server title'
   records.reverse()
-  await useProduct().refresh()
-  await nextTick()
+  await reconnected()
   expect(store.items[1]).toBe(current)
   expect(current.title).toBe('Server title')
   expect(current.draft).toBe('Still editing')
@@ -870,8 +887,7 @@ test('inactive context changes invalidate only that session; retry explicitly re
   await store.activate(FIRST)
   await store.activate(SECOND)
   records[0]!.contextVersion += 1
-  await useProduct().refresh()
-  await nextTick()
+  await changed(FIRST)
   expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(2)
   await store.activate(FIRST)
   expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(3)
@@ -887,17 +903,14 @@ test('archive changes and removal invalidate cached history', async () => {
   await store.activate(FIRST)
   await store.activate(null)
   records[0]!.archived = true
-  await useProduct().refresh()
-  await nextTick()
+  await changed(FIRST)
   await store.activate(FIRST)
   expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(2)
   await store.activate(null)
   const removed = records.shift()!
-  await useProduct().refresh()
-  await nextTick()
+  await reconnected()
   records.unshift(removed)
-  await useProduct().refresh()
-  await nextTick()
+  await reconnected()
   await store.activate(FIRST)
   expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(3)
 })
@@ -946,7 +959,7 @@ test('slow or failed model discovery does not hold history behind the loading pa
   expect(current.blocks[0]?.id).toBe('visible-history')
 })
 
-test('a rename shows at once, survives a snapshot read before the write lands, and a refused one gives the title back', async () => {
+test('a rename shows at once, survives a summary read before the write lands, and a refused one gives the title back', async () => {
   const store = useConversations()
   const product = useProduct()
   const started = deferred<void>()
@@ -976,12 +989,14 @@ test('a rename shows at once, survives a snapshot read before the write lands, a
   store.rename(FIRST, 'Renamed')
   expect(title()).toBe('Renamed')
   await started.promise
-  // The poll still reads the old title from the backend.
-  await product.revalidate()
+  // The channel brings a summary read before the write landed, with the old title.
+  await changed(FIRST)
   expect(title()).toBe('Renamed')
   release.resolve()
-  // The write is answered, and the store reads the snapshot again, which now holds the new title.
-  await waitFor(() => product.snapshot?.conversations.find((item) => item.id === FIRST)?.title === 'Renamed')
+  // The write is answered, and the channel brings the summary it changed.
+  await waitFor(() => records.find((item) => item.id === FIRST)?.title === 'Renamed')
+  await changed(FIRST)
+  expect(product.snapshot?.conversations.find((item) => item.id === FIRST)?.title).toBe('Renamed')
   expect(title()).toBe('Renamed')
 
   refuse = true
@@ -1023,13 +1038,12 @@ async function settle(): Promise<void> {
   }
 }
 
-/** Another page saves the conversation's draft; this page learns of it at its next poll. */
+/** Another page saves the conversation's draft; this page learns of it from its channel. */
 async function savedElsewhere(id: string, text: string): Promise<void> {
   const current = serverDrafts.get(id)!
   serverDrafts.set(id, { ...current, revision: current.revision + 1, text })
   records.find((item) => item.id === id)!.draftRevision = current.revision + 1
-  await useProduct().refresh()
-  await nextTick()
+  await changed(id)
 }
 
 const draftSaves = () => requests.filter((request) => request.path.endsWith('/draft') && request.body !== null)
@@ -1158,7 +1172,7 @@ test('a page that closes while typing leaves its text to the next page, which ta
     jest.useFakeTimers()
     try {
       store = useConversations()
-      await useProduct().start()
+      await connect()
       current = store.items.find((item) => item.id === FIRST)!
       await store.activate(FIRST)
       expect([current.draft, current.draftBase]).toEqual(['Fix the login bug', 2])

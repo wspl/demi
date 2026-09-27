@@ -209,7 +209,9 @@ nothing. For example, tab A renames a conversation, and tab B pins it just
 after the rename commits. A's channel brings the summary with both changes
 before A receives the answer to its rename: A keeps the summary and drops the
 answer, which lacks the pin. Writes whose answer carries no state, such as a
-reorder, show from the channel alone.
+reorder, show from the channel alone; a flow that goes on with what its write
+made, such as opening a new provider entry's page, waits for the channel to
+bring it.
 
 **Connection.** A channel that closes connects again after a second, then
 after twice as long each time, up to 30 seconds, each wait shortened by a

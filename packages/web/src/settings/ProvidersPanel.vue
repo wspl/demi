@@ -38,7 +38,7 @@ function loadVendors(): void {
 }
 
 function retry(): void {
-  void product.revalidate()
+  product.reconnect()
   loadVendors()
 }
 

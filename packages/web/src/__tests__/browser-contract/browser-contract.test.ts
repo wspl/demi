@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { waitFor } from '@demicodes/utils'
 import { createPinia, setActivePinia } from 'pinia'
 import type { Block, ClientContent, ModelSelection } from '@demicodes/protocol'
 import { AgentSocketError, connectAgentClient } from '@demicodes/web-ui/transport/agent-socket'
@@ -12,7 +13,6 @@ import {
   conversationUpdateSchema,
   devicesSchema,
   modelCatalogSchema,
-  productStateSchema,
   providerAnswerSchema,
   transcriptSchema,
   type Claim,
@@ -22,6 +22,7 @@ import {
   type SetupRequest,
 } from '../../api/generated/web-api'
 import { useSession } from '../../auth/session'
+import { useProduct } from '../../state/product'
 import { openBrowser, startBackend, startRunner, temporaryRoot, type Backend, type Runner } from './harness'
 import { startScriptedAnthropic, type ScriptedAnthropic } from './scripted-anthropic'
 
@@ -165,24 +166,49 @@ function kinds(blocks: readonly Block[]): string[] {
   return blocks.map((block) => block.type)
 }
 
-test('a user signs in through the API client, and the session admits the account snapshot and the conversation socket', async () => {
+/** Whether a WebSocket to the `/api` route `path` opens, as the page's would. */
+function opens(path: string): Promise<boolean> {
+  const socket = new WebSocket(browser.socketUrl(path))
+  return new Promise((resolve) => {
+    socket.onopen = () => {
+      socket.close()
+      resolve(true)
+    }
+    socket.onclose = () => resolve(false)
+  })
+}
+
+test('a user signs in through the API client, and the session admits the synchronization channel, whose snapshot is the account\'s, and the conversation socket', async () => {
   const session = useSession()
   const id = await createConversation()
   await session.signOut()
   expect(browser.signedIn()).toBe(false)
-  // Signed out, the page reaches neither the API nor the socket.
+  // Signed out, the page reaches neither the API, nor its channel, nor the
+  // socket.
   const refused = await apiRequest('/conversations').catch((error: unknown) => error)
   expect(refused).toBeInstanceOf(ApiError)
   expect(refused).toMatchObject({ status: 401, code: 'unauthenticated' })
+  expect(await opens('/sync')).toBe(false)
   expect(await connect(id).catch((error: unknown) => error)).toBeInstanceOf(AgentSocketError)
 
   await session.signIn(EMAIL, PASSWORD, new AbortController().signal)
   expect(session.user?.email).toBe(EMAIL)
-  // The account snapshot the page renders; creating a conversation does not
-  // make the user's Cloud, so it is not made yet.
-  const state = await readResponse(await apiRequest('/state'), productStateSchema)
-  expect(state.user.email).toBe(EMAIL)
-  expect(state.cloud).toMatchObject({ device: null, state: 'unallocated' })
+  // The page's module takes the product state from its channel, checking
+  // every message against the generated schema. Creating a conversation
+  // does not make the user's Cloud, so it is not made yet.
+  const product = useProduct()
+  product.start()
+  try {
+    await waitFor(() => product.load === 'ready', () => `the channel is ${product.load}`, { timeoutMs: SETTLE_MS })
+    expect(product.snapshot?.user.email).toBe(EMAIL)
+    expect(product.snapshot?.cloud).toMatchObject({ device: null, state: 'unallocated' })
+    // A change made through the API reaches the page on its channel.
+    await patchConversation(id, { title: 'Renamed on another page' })
+    const title = () => product.snapshot?.conversations.find((conversation) => conversation.id === id)?.title
+    await waitFor(() => title() === 'Renamed on another page', () => `the title is ${title()}`, { timeoutMs: SETTLE_MS })
+  } finally {
+    product.stop()
+  }
   const model = await scriptedModel()
   await patchConversation(id, { model: { providerId: model.providerId, modelId: model.model.id } })
   const client = await connect(id)

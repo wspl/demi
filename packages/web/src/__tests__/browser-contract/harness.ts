@@ -273,16 +273,17 @@ export async function startRunner(root: string, origin: string, name: string): P
 type BunWebSocketConstructor = typeof WebSocket & (new (url: string | URL, options: WebSocketOptions) => WebSocket)
 
 /**
- * The page's browser for the web application's modules: `fetch` resolves the
- * page's relative `/api` paths against `origin` and keeps the cookies its
- * answers set, and a `WebSocket` sends them and the page's origin with its
- * upgrade, as a browser does for a same-origin page. `restore` puts the
- * test process's own back.
+ * The page's browser for the web application's modules: the page is at
+ * `origin`, `fetch` resolves the page's relative `/api` paths against it and
+ * keeps the cookies its answers set, and a `WebSocket` sends them and the
+ * page's origin with its upgrade, as a browser does for a same-origin page.
+ * `restore` puts the test process's own back.
  */
 export function openBrowser(origin: string) {
   const cookies = new Map<string, string>()
   const realFetch = globalThis.fetch
   const RealWebSocket = globalThis.WebSocket as BunWebSocketConstructor
+  const realWindow = Reflect.get(globalThis, 'window')
 
   const cookieHeader = () => [...cookies].map(([name, value]) => `${name}=${value}`).join('; ')
 
@@ -319,6 +320,9 @@ export function openBrowser(origin: string) {
 
   globalThis.fetch = Object.assign(pageFetch, { preconnect: realFetch.preconnect })
   globalThis.WebSocket = PageWebSocket
+  // The page's own address, which the product state's channel is opened
+  // relative to.
+  Reflect.set(globalThis, 'window', { location: { href: new URL('/chat', origin).toString() } })
 
   return {
     /** The URL of a WebSocket route under `/api`. */
@@ -328,6 +332,7 @@ export function openBrowser(origin: string) {
     restore(): void {
       globalThis.fetch = realFetch
       globalThis.WebSocket = RealWebSocket
+      Reflect.set(globalThis, 'window', realWindow)
     },
   }
 }

@@ -294,8 +294,9 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     signal.throwIfAborted()
     provider.apiKey = ''
     resources.hideProvider(saved.provider.id, provider.enabled)
-    await product.revalidate(true)
-    signal.throwIfAborted()
+    void product.reloadModels()
+    // The new entry's page opens once the channel brings it.
+    await product.until((state) => state.providers.some((entry) => entry.id === saved.provider.id), signal)
     select(saved.provider.id)
     drafts.value = drafts.value.filter((draft) => draft.id !== provider.id)
   }
@@ -312,7 +313,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     })
     signal.throwIfAborted()
     delete testResults.value[provider.id]
-    await product.revalidate(true)
+    await product.reloadModels()
     signal.throwIfAborted()
   }
 
@@ -395,7 +396,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         signal,
       })
       signal.throwIfAborted()
-      await product.revalidate(true)
+      await product.reloadModels()
     })
   }
 
@@ -577,7 +578,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         ...jsonBody({ credentialId: accountId } satisfies QuotaRequest),
       })
       current.signal.throwIfAborted()
-      await product.refresh()
     } catch (error) {
       // Automatic refresh stays silent unless the user explicitly joins it.
       if (!current.signal.aborted && refreshingUsage.value[provider.id]?.[accountId] === 'manual') {
@@ -598,10 +598,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   }
 
   function refresh(provider: SettingsProviderEntry): void {
-    perform(provider.id, { kind: 'refreshing' }, async (signal) => {
+    perform(provider.id, { kind: 'refreshing' }, async () => {
       await product.loadModels(true)
-      signal.throwIfAborted()
-      await product.refresh()
     })
   }
 
@@ -626,7 +624,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
           },
         )
         signal.throwIfAborted()
-        await product.revalidate(true)
+        await product.reloadModels()
       },
     )
   }
@@ -676,8 +674,11 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       }
       if (result.status === 'completed') {
         loginId = null
-        await product.refresh()
-        controller.signal.throwIfAborted()
+        // The account the login added shows once the channel brings it.
+        await product.until((state) => state.providers.some((entry) =>
+          entry.id === result.providerId &&
+          (entry.details.type !== 'read' || entry.details.accounts.some((account) => account.id === result.credentialId)),
+        ), controller.signal)
         const provider = resources.providers.find(
           (entry) => entry.id === result.providerId,
         )
@@ -795,7 +796,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
           ),
         },
       )
-      await product.revalidate(true)
+      await product.reloadModels()
       controller.signal.throwIfAborted()
       current.phase = {
         kind: 'done',
