@@ -118,11 +118,19 @@ const stopLocale = watch(
 const reportLocale = () => void preferences.reportLocale()
 window.addEventListener('languagechange', reportLocale)
 const saveDrafts = () => {
+  // The backend's saves go first: the browser sends them after the page is gone.
+  conversations.flushDrafts(true)
+  conversations.keepLastWords()
   conversations.saveDrafts()
   closeDraftStorage()
 }
 window.addEventListener('pagehide', saveDrafts)
 const refreshVisible = () => {
+  if (document.visibilityState === 'hidden') {
+    // A hidden page saves what its user typed, not waiting for a pause.
+    conversations.flushDrafts()
+    return
+  }
   if (document.visibilityState !== 'visible' || !session.signedIn) {
     return
   }

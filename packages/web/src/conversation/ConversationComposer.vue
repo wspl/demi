@@ -9,6 +9,7 @@ import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
 
 import {
   composerRemoteAttachment,
+  fileNameFromPath,
   remoteAttachmentError,
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
@@ -44,6 +45,19 @@ const composer = ref<InstanceType<typeof SessionComposer>>()
 function addFiles(files: File[]) {
   composer.value?.insertCapsules(store.addFiles(props.conversation, files).map(composerCapsule))
 }
+
+/** The version of the draft a later save replaced, which the composer offers to restore. */
+const replaced = computed(() => {
+  const version = props.conversation.savedDraft?.replaced
+  return version
+    ? {
+        markdown: version.text,
+        fileNames: version.files.map((file) =>
+          file.type === 'upload' ? file.fileName : fileNameFromPath(file.path),
+        ),
+      }
+    : null
+})
 
 const thinking = computed(() => intentThinkingConfig(props.conversation.model))
 const usage = computed(
@@ -168,6 +182,10 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       :remote-files="remoteHosts.length > 0"
       :archived="conversation.archived"
       :hold="hold"
+      :replaced="replaced"
+      :draft-shown="conversation.draftShown"
+      @restore-replaced="store.restoreReplaced(conversation)"
+      @dismiss-replaced="store.dismissReplaced(conversation)"
       @submit="send"
       @configure="openProviders"
       @restore="store.archive([conversation.id], false)"
