@@ -253,7 +253,7 @@ pub async fn externalize_frame(
                             externalize(block, blobs).await?;
                         }
                     }
-                    TranscriptPatch::Remove { .. } | TranscriptPatch::AppendText { .. } => {}
+                    TranscriptPatch::AppendText { .. } => {}
                 }
             }
         }
