@@ -203,7 +203,7 @@ mod tests {
     #[test]
     fn stream_output_truncation_does_not_skip_the_omitted_entries() {
         let entries: Vec<_> = (0..3).map(|sequence| json!({"sequence":sequence,"level":"info","text":"x".repeat(30_000),"timestamp":0})).collect();
-        let logs = BrowserOperation::parse("logs", json!({"tab": "t_test"})).unwrap();
+        let logs = BrowserOperation::parse("logs", json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ"})).unwrap();
         let bytes = render(
             &logs,
             json!({"entries":entries,"cursor":"logs_test:3","hasMore":false,"truncated":false}),
