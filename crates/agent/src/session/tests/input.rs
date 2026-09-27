@@ -530,6 +530,10 @@ impl SessionStore for GatedStore {
     fn load(&self) -> LocalBoxFuture<'_, Result<Option<crate::store::Checkpoint>, StoreError>> {
         self.inner.load()
     }
+
+    fn blobs(&self) -> &dyn crate::store::media::BlobStore {
+        self.inner.blobs()
+    }
 }
 
 #[tokio::test(flavor = "local")]

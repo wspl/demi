@@ -6,7 +6,7 @@
 
 use demi_core::{Block, BlockId, ToolCallStatus, TurnId, is_blank};
 
-use super::{estimate::block_tokens, opens_input_turn};
+use super::{estimate::block_tokens, opens_input_turn, replay_start};
 
 /// Where re-inference restarts after a turn failed to finish.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -172,10 +172,7 @@ pub(crate) fn compaction_window(
     blocks: &[Block],
     keep_recent_tokens: u64,
 ) -> Option<CompactionWindow> {
-    let start = blocks
-        .iter()
-        .rposition(|block| matches!(block, Block::CompactionBoundary(_)))
-        .unwrap_or(0);
+    let start = replay_start(blocks);
     let mut recent = 0;
     for index in (start + 1..blocks.len()).rev() {
         recent += block_tokens(&blocks[index]);
