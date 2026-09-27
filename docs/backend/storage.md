@@ -167,7 +167,7 @@ Host. The node lifecycle and its commits are defined in
 |---|---|
 | `nodes` | Parent relationship, description and profile, spawn time and whether the node may spawn children, close result or failure, completion-delivery state, checkpoint state, block count, command and output revisions |
 | `blocks` | One transcript block per node and block index |
-| `media` | An index of the blobs the blocks reference, for the [retention pass](#retention): one row per reference, with the node, the block index, the blob, whether a tool result holds it, and the block's time. The rows are derived from the blocks, never written on their own: one function derives a block's rows, and every path of the tree store that writes a block, a save, a history rewrite, an edit, a Fork's seed and a retirement, replaces that block's rows with it in the same transaction. It indexes what SQLite cannot index inside a block's JSON |
+| `media` | An index of the blobs the blocks reference, for the [retention pass](#retention): one row per reference, with the node, the block index, the medium's place among the block's media, the blob, whether a tool result holds it, and the block's time. The rows are derived from the blocks, never written on their own: one function derives a block's rows, and every path of the tree store that writes a block, a save, a history rewrite, an edit, a Fork's seed and a retirement, replaces that block's rows with it in the same transaction. It indexes what SQLite cannot index inside a block's JSON |
 | `command_snapshots` | Immutable complete command-state maps indexed by node and revision ([Command state history](../agent/command-state-history.md)) |
 | `session_boundaries` | History cutoffs linked to a command revision |
 
@@ -350,37 +350,46 @@ their place ([Retired tool media](../agent/runtime.md#retired-tool-media)).
 The pass applies that rule to every node of each conversation whose tree is
 not live:
 
-1. It holds the conversation as a transition does: it reserves the
+1. On a read-only connection, it applies the rule to the nodes whose `media`
+   rows hold tool media older than 30 days, and goes on only when the rule
+   retires something.
+2. It holds the conversation as a transition does: it reserves the
    conversation's file gate, and leaves a conversation whose gate is busy to
    the next pass. Every conversation socket frame, an `open` included, is
    handled under a lease of that gate, so while the pass holds it no tree
    opens, and frames wait as they wait for a transition
    ([How a conversation uses a device](../execution/sessions-and-targets.md#how-a-conversation-uses-a-device)).
    A reservation is not demand, so it restarts no idle window.
-2. It checks that the conversation still has no live tree.
-3. In one transaction on the conversation's writer connection, it finds the
+3. It checks that the conversation still has no live tree, and reads its
+   `live_at` again under the reservation.
+4. In one transaction on the conversation's writer connection, it finds the
    nodes whose `media` rows hold tool media older than 30 days, reads those
    nodes' blocks, and writes in place each block the rule changes. The
    transaction changes no node's state row, block count or output revision,
    so the conversation does not show as unread.
-4. It lets go of the conversation.
+5. It lets go of the conversation.
 
 A live tree is left alone. Its sessions hold their transcripts in memory: a
 save, a history rewrite or an edit would write the original block back, and
 a changed block would change the history a page's editor is built on. The
 pass records the tree as live instead. When a tree is disposed, the shard
-retires its conversation at once, in the same four steps, unless the shard is
-closing; the agent server tells it through `ServerDeps::status_changed`. A
-conversation that stays open in a page is therefore retired within about 10
-minutes of the last page leaving it
+retires its conversation at once, in the same steps, unless the shard is
+closing; the agent server tells it through `ServerDeps::status_changed`.
+There the gate is waited for rather than left to the next pass, since a
+`close` frame that disposes the tree holds a lease of it while it does; the
+wait ends without a retirement when the tree is live again or the shard
+closes. A conversation that stays open in a page is therefore retired within
+about 10 minutes of the last page leaving it
 ([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)).
 
 A conversation has been idle for 30 days when its tree is not live and its
 `live_at` is at least 30 days old. The index sets `live_at` when it creates
 the conversation, and the backend writes it again when the conversation's
 tree becomes live, before the tree admits any action; when the tree is
-disposed; and in each pass that finds the tree live. Only a live tree sends
-requests, so once the tree is disposed no request is later than `live_at`.
+disposed, with the time of the disposal; and in each pass that finds the tree
+live. A write never moves `live_at` back, so one that lands late cannot hide
+a later one. Only a live tree sends requests, so once the tree is disposed no
+request is later than `live_at`.
 After a crash there was no disposal, and the last request can be up to a day
 later than `live_at`: the idle rule then applies 29 days after the last
 request at the earliest, still far beyond any vendor's cache.
@@ -393,7 +402,8 @@ kinds of evidence:
 - **References:** the user's upload records, which hold every upload's hash,
   the files a draft stages included, since a draft names only uploads and
   files on devices ([Conversation drafts](../product/web-api.md#conversation-drafts));
-  and, for every conversation of the user, archived ones included, its
+  and, for every conversation of the user, archived ones included, and for
+  the destination of each of the user's Forks that is not published yet, its
   `media` rows, which cover every block of every node, and the media of each
   node's queued messages.
 - **Uses:** what no row shows yet, such as a medium that was put but whose
@@ -470,9 +480,9 @@ time on the test clock; none waits for a day to pass.
 | A put of a blob the collector is deleting | The put waits and stores the bytes again; the block that names the blob can read it |
 | A 31-day-old tool image before a boundary older than a day, in a stored conversation | It is retired; its blob goes at the next pass |
 | A 31-day-old tool image in the replayed window of a conversation idle for 30 days | It is retired, and the conversation's next request carries its text |
+| A 31-day-old tool image in the replayed window of a conversation used within 30 days | It stays |
 | The same conversations while a page has them open | Nothing is retired until their trees are disposed |
 | A message's image, 31 days old | Never retired |
-| A crash inside a retirement or between two deletions | Every block's blob is still readable |
 | One of the user's conversation databases does not open | The collection deletes nothing for that user and logs which database failed |
 | After a save, a history rewrite, an edit, a Fork's seed and a retirement | Each conversation's `media` rows equal the rows derived from its blocks; the check fails when any of these paths skips the one function |
 

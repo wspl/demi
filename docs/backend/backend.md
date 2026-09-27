@@ -421,14 +421,16 @@ At startup the backend:
    ([Managed hosts](../cloud/managed-hosts.md#system-reset)), and Fork
    creations whose destination root was committed are published
    ([Conversation Fork](../agent/conversation-fork.md#backend-creation-and-retries)).
-7. Opens its listener.
+7. Opens its listener, and starts the daily retention pass, whose first pass
+   runs at once ([The retention pass](storage.md#the-retention-pass)).
 
 Shutdown closes the listener first, so that no new work starts and no runner
 reconnects into a backend that is closing. A new request on a connection that
 is already open answers 503 `backend_closing`. Runner connections and pipes
 keep working, because the steps below need them:
 
-1. Login flows are cancelled.
+1. Login flows are cancelled, and no retention pass starts; one under way
+   ends with its shard.
 2. Each shard ends its user's work in this order. The synchronization
    channels close, so no page is sent what the steps below change; a page
    reads the state again from the next backend. Idle watches stop, and a

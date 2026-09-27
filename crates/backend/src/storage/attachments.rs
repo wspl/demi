@@ -68,6 +68,21 @@ impl ControlService {
     pub(crate) async fn attachment(&self, id: AttachmentId) -> Result<Option<AttachmentRecord>, StorageError> {
         self.call(move |connection, _| attachment_by_id(connection, &id)).await
     }
+
+    /// The blob of each of `owner`'s uploads, which stay for as long as the
+    /// account (`storage.md` § Retention).
+    pub(crate) async fn upload_blobs(&self, owner: UserId) -> Result<Vec<BlobRef>, StorageError> {
+        self.call(move |connection, _| {
+            let mut statement = connection.prepare("SELECT DISTINCT sha256 FROM attachments WHERE user_id = ?1")?;
+            let mut rows = statement.query([owner.as_str()])?;
+            let mut blobs = Vec::new();
+            while let Some(row) = rows.next()? {
+                blobs.push(decode("attachments", "sha256", BlobRef::try_from(row.get::<_, String>(0)?))?);
+            }
+            Ok(blobs)
+        })
+        .await
+    }
 }
 
 /// The upload `id` names, whoever's it is, read on `connection`.

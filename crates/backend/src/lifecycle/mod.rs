@@ -7,9 +7,12 @@
 //! is never retired. Maintenance holds a gate without demand: it postpones
 //! a retirement without restarting the window, and the retirement follows
 //! its release. The Cloud stops at the device level (`managed`); a paired
-//! device hears the conversation release ([`conversations`]).
+//! device hears the conversation release ([`conversations`]). Once a day,
+//! the retention pass retires expired tool media and collects the blobs
+//! nothing references ([`retention`]).
 
 pub(crate) mod conversations;
+pub(crate) mod retention;
 
 use std::future::Future;
 use std::time::Duration;
