@@ -222,8 +222,8 @@ A reverse proxy in front of the backend passes each request's `Origin` and
 drops `Origin` turns the check off without a sign: every request then passes,
 as a request from `curl` does. Behind a proxy that rewrites `Host`, the
 backend refuses the product's own pages, unless `DEMI_BACKEND_PUBLIC_URL` is
-their origin. An operator checks a deployment from outside with a request that names another
-origin, which must answer 403 `forbidden_origin`:
+their origin. An operator checks a deployment from outside with a request
+that names another origin, which must answer 403 `forbidden_origin`:
 
 ```sh
 curl -s -X POST https://demi.example/api/auth/login \
