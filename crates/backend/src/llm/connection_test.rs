@@ -78,6 +78,7 @@ impl Shard {
             request_id: uuid::Uuid::new_v4().to_string(),
             model_id: model.id,
             output_limit: selection.model.output_limit.and_then(NonZeroU32::new),
+            output_cap: None,
             system_prompt: "Reply with the word ok.".into(),
             items: Arc::new([InferenceItem::UserMessage {
                 content: vec![UserContentBlock::Text { text: "ping".into() }],

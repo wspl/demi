@@ -425,9 +425,10 @@ a faulty handler that cannot stop follows the
 service, beside the file. Each resolves relative paths against the invocation's
 cwd and stops at the invocation's cancellation. Mutations run one at a time in a
 service: one mutation's planning and writes finish before the next begins. Each
-replaced file is published atomically, from a temporary file beside it, and a
-patch that changes several files restores the files it already changed when a
-later write fails. Create, edit, and patch record their writes for
+replaced file is published atomically, from a temporary file beside it whose
+name says it is Demi's ([File contents](runner.md#file-contents)), and a patch
+that changes several files restores the files it already changed when a later
+write fails. Create, edit, and patch record their writes for
 [edit tracking](edit-tracking.md).
 
 ## Acceptance

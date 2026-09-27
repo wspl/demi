@@ -147,10 +147,6 @@
         }
       },
       {
-        "op": "remove",
-        "index": 1
-      },
-      {
         "op": "replace",
         "value": [
           {

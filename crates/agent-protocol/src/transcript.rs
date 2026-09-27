@@ -18,11 +18,6 @@ pub enum TranscriptPatch {
         #[garde(dive)]
         value: Block,
     },
-    /// Remove the block at the index.
-    Remove {
-        #[garde(skip)]
-        index: u32,
-    },
     /// Replace the block at the index.
     ReplaceBlock {
         #[garde(skip)]

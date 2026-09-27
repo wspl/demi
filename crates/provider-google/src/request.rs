@@ -53,7 +53,7 @@ pub(crate) fn encode(request: &InferenceRequest) -> Result<Vec<u8>, UnloadedMedi
         },
         generation_config: GenerationConfig {
             max_output_tokens: request
-                .output_limit
+                .max_output_tokens()
                 .map_or(DEFAULT_MAX_OUTPUT_TOKENS, |limit| limit.get()),
             thinking_config: thinking(request.thinking.as_ref()),
         },

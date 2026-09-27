@@ -646,7 +646,6 @@ naming the index of the block it touches:
 | `op` | Fields | Meaning |
 | --- | --- | --- |
 | `add` | `index`, `value` | Insert a block at the index |
-| `remove` | `index` | Remove the block at the index |
 | `replace_block` | `index`, `value` | Replace the block at the index |
 | `append_text` | `index`, `delta` | Append text to the block at the index |
 | `replace` | `value` | Replace every block |

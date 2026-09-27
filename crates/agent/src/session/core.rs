@@ -1216,6 +1216,7 @@ impl SessionCore {
             request_id,
             model_id: self.model.model.id.clone(),
             output_limit: self.model.model.output_limit.and_then(NonZeroU32::new),
+            output_cap: None,
             system_prompt,
             items: replay(self.transcript.blocks()).into(),
             tools,
