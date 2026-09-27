@@ -7,7 +7,7 @@
 
 use std::{collections::VecDeque, mem, num::NonZeroU32, rc::Rc, sync::Arc};
 
-use demi_agent_protocol::{AbortTarget, ModelSwitchApply, TranscriptPatch};
+use demi_agent_protocol::{AbortTarget, ModelSwitchApply};
 use demi_core::{
     AgentMessage, Block, BlockId, Clock, FailureSource, ModelSelection, NodeId, PendingSteer,
     ProviderErrorDiagnostics, QueuedMessage, SessionPhase, ToolResultContentBlock, TurnId,
@@ -1224,18 +1224,9 @@ impl SessionCore {
         let Some(batch) = self.transcript.take_patches() else {
             return;
         };
-        self.persist.rows.mark(&batch.patches);
+        self.persist.rows.merge(batch.rows);
         self.persist.dirty = true;
         self.requests.save = true;
-        let rewritten = batch.patches.iter().any(|patch| {
-            matches!(
-                patch,
-                TranscriptPatch::Remove { .. } | TranscriptPatch::Replace { .. }
-            )
-        });
-        if rewritten {
-            self.commands.retain_boundaries(self.transcript.blocks());
-        }
         let revision = self.commands.revision();
         for id in batch.touched {
             let Some(block) = self.transcript.find(&id) else {
@@ -1279,11 +1270,7 @@ impl SessionCore {
     pub(super) fn adopt_rewrite(&mut self, blocks: Vec<Block>, commands: CommandStateHistory) {
         self.commands = commands;
         self.generation = self.generation.next();
-        self.transcript.replace_all(blocks);
-        let batch = self
-            .transcript
-            .take_patches()
-            .expect("a replacement records its patch");
+        let batch = self.transcript.replace_all(blocks);
         self.persist.rows = Default::default();
         self.outbox.push(SessionEvent::TranscriptChanged {
             patches: batch.patches,

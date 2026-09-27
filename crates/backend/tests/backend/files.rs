@@ -366,29 +366,54 @@ async fn an_upload_streams_into_place_whole_and_asks_before_it_writes_over_a_fil
     assert_eq!(written.len(), chunks * block.len());
     assert!(written[written.len() - block.len()..] == block[..], "the upload's end arrived changed");
 
-    // A body cut short leaves the path as it was, with no partial copy
-    // beside it.
+    // A body the browser cuts short while the Host holds part of it: the
+    // browser, gone, hears no answer, as the page's own cut does, and the
+    // Host drops its partial copy at once and leaves the path as it was.
+    let listed = || {
+        std::fs::read_dir(&device.root)
+            .unwrap()
+            .filter_map(|entry| {
+                // An entry removed while the directory is read is not there.
+                let entry = entry.ok()?;
+                Some((entry.file_name(), entry.metadata().ok()?.len()))
+            })
+            .collect::<Vec<_>>()
+    };
+    let before: Vec<_> = listed().into_iter().map(|(name, _)| name).collect();
+    // The sizes of what the upload put beside the files: the partial copy,
+    // whatever the Host names it.
+    let partial = || {
+        listed()
+            .into_iter()
+            .filter(|(name, _)| !before.contains(name))
+            .map(|(_, size)| size)
+            .collect::<Vec<u64>>()
+    };
+    let (cut, cut_now) = tokio::sync::oneshot::channel::<()>();
     let broken = stream::iter([Ok::<_, std::io::Error>(block.clone())]).chain(stream::once(async {
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        // A dropped sender cuts it too.
+        let _ = cut_now.await;
         Err(std::io::Error::other("the browser went away"))
     }));
     let pairs = [("path", device.path("notes.md")), ("replace", "true".to_owned())];
     let pairs: Vec<(&str, &str)> = pairs.iter().map(|(name, value)| (*name, value.as_str())).collect();
     let url = format!("{}/api/conversations/{CONVERSATION}/fs/raw?{}", device.backend.url, query(&pairs));
-    let cut = reqwest::Client::new()
+    let upload = reqwest::Client::new()
         .put(url)
         .header("cookie", &device.master.cookie)
         .body(reqwest::Body::wrap_stream(broken))
-        .send()
-        .await;
-    assert!(cut.is_err() || cut.unwrap().status() != StatusCode::NO_CONTENT);
-    eventually("the cut upload leaves no partial copy", || async {
-        std::fs::read_dir(&device.root)
-            .unwrap()
-            .all(|entry| !entry.unwrap().file_name().to_string_lossy().starts_with(".demi-write-"))
-    })
-    .await;
-    assert_eq!(read("notes.md"), "second");
+        .send();
+    let cutting = async {
+        eventually("the Host holds part of the upload", || async { partial().iter().any(|size| *size > 0) }).await;
+        // An upload that ended already has dropped its body; the answer says
+        // how it ended.
+        let _ = cut.send(());
+    };
+    let (answer, ()) = tokio::join!(upload, cutting);
+    assert!(answer.is_err(), "the cut upload got an answer: {:?}", answer.map(|answer| answer.status()));
+    eventually("the cut upload leaves no partial copy", || async { partial().is_empty() }).await;
+    let kept = std::fs::read(device.root.join("notes.md")).unwrap();
+    assert!(kept == b"second", "the path is as it was, not {} bytes", kept.len());
     device.backend.close().await;
 }
 

@@ -14,6 +14,7 @@ import {
 import { useMessageEditComposer } from './message-input/useMessageEditComposer'
 import { editHasContent, type MessageEditState } from './message-editing'
 import { composerCapsule, composerTransfer, provideTransfers, type MessageCapsule } from './message-editor/capsules'
+import { parseUserMarkdown, serializeUserMarkdown } from '../markdown/user-markdown'
 import MessageEditor from './message-editor/MessageEditor.vue'
 import { showToast } from '../infra/toast'
 import ComposerShell from './ComposerShell.vue'
@@ -106,8 +107,15 @@ const fileInput = ref<HTMLInputElement>()
 const sendButton = ref<InstanceType<typeof IconButton>>()
 /** What the composer carries, as the editor builds its document from it. */
 const carried = computed(() => props.attachments.map(composerCapsule))
-/** The files the message has, in the order of their capsules: the document says so. */
-const capsules = ref<MessageCapsule[]>(carried.value)
+/**
+ * The files the message has, in the order of their capsules: the document
+ * says so. It starts as the editor builds it, with the files the draft's marks
+ * stand for, and not those the composer still holds for an undo; from then on
+ * the editor tells every change.
+ */
+const capsules = ref<MessageCapsule[]>(
+  serializeUserMarkdown<MessageCapsule>(parseUserMarkdown(draft.value, carried.value)).attachments,
+)
 /** Their transfers, and those of the files an edit adds, which the capsules in the editor read. */
 provideTransfers({
   transfer: (id) => {
