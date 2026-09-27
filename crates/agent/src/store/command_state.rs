@@ -267,17 +267,6 @@ impl CommandStateHistory {
         self.boundaries.contains_key(&(block.clone(), edge))
     }
 
-    /// Drops the boundaries of blocks the transcript no longer holds.
-    pub(crate) fn retain_boundaries(&mut self, blocks: &[Block]) {
-        let retained: BTreeSet<&BlockId> = blocks.iter().map(Block::id).collect();
-        let before = self.boundaries.len();
-        self.boundaries
-            .retain(|(block, _), _| retained.contains(block));
-        if self.boundaries.len() != before {
-            self.dirty = true;
-        }
-    }
-
     /// The whole state, with `pending` current when a commit carries it.
     pub(crate) fn snapshot(&self, pending: Option<&CommandVersion>) -> CommandStateSnapshot {
         let mut versions: Vec<CommandVersion> = self
