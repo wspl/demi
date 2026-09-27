@@ -167,6 +167,9 @@ fn run(
             };
             match line {
                 None | Some(Line::ControlResponse(_)) => {}
+                // A notice of a refused call repeats the failure the result
+                // reports, so the failure shows once.
+                Some(Line::Assistant(message)) if message.is_refusal_notice() => {}
                 Some(Line::Assistant(message)) => {
                     // Once the process streams, a whole message repeats what
                     // streamed, but its tool uses are whole only here.
@@ -227,11 +230,15 @@ fn run(
                     live.collecting.clear();
                     match line.end() {
                         TurnEnd::Answered(usage) => yield ProviderEvent::Response(usage),
-                        TurnEnd::Failed { message, code } => {
-                            yield ProviderEvent::Error(ProviderFailure {
+                        TurnEnd::Failed { message, code, status } => {
+                            let mut failure = ProviderFailure {
                                 code,
                                 ..ProviderFailure::protocol(message, text)
-                            });
+                            };
+                            if let Some(diagnostics) = &mut failure.diagnostics {
+                                diagnostics.http_status = status;
+                            }
+                            yield ProviderEvent::Error(failure);
                         }
                     }
                     runtime.live = Some(live);

@@ -28,6 +28,9 @@ tagged_wire! {
 pub(crate) struct AssistantLine {
     #[serde(default)]
     message: Option<AssistantMessage>,
+    /// Set on the message the CLI makes up for a call the vendor refused.
+    #[serde(default)]
+    error: ReportedString,
 }
 
 #[derive(Deserialize)]
@@ -37,6 +40,12 @@ struct AssistantMessage {
 }
 
 impl AssistantLine {
+    /// Whether the line is the CLI's notice of a call the vendor refused,
+    /// whose text repeats the failure the `result` line reports.
+    pub(crate) fn is_refusal_notice(&self) -> bool {
+        self.error.as_deref().is_some()
+    }
+
     pub(crate) fn content(self) -> impl Iterator<Item = ContentBlock> {
         self.message
             .and_then(|message| message.content)
@@ -207,6 +216,9 @@ pub(crate) struct ResultLine {
     result: ReportedString,
     #[serde(default)]
     errors: Reported<Vec<ReportedString>>,
+    /// The vendor's HTTP status, when the failure is a call it refused.
+    #[serde(default)]
+    api_error_status: Option<u16>,
     #[serde(default)]
     usage: Option<ResultUsage>,
 }
@@ -335,10 +347,12 @@ impl StreamEvent {
 pub(crate) enum TurnEnd {
     /// The usage of the turn's last API call.
     Answered(TokenUsage),
-    /// The CLI's error, as it worded it.
+    /// The CLI's error, as it worded it, with the vendor's HTTP status when
+    /// the vendor refused the call.
     Failed {
         message: String,
         code: Option<ErrorCode>,
+        status: Option<u16>,
     },
 }
 
@@ -364,8 +378,19 @@ impl ResultLine {
             } else {
                 parts.join("\n")
             };
-            let code = ErrorCode::classify(None, &message);
-            return TurnEnd::Failed { message, code };
+            let status = self.api_error_status;
+            // The CLI words every call the vendor refused `API Error:
+            // <status> …`, which its words alone read as a server error; the
+            // status decides, as for any HTTP failure.
+            let code = match status {
+                Some(status) => ErrorCode::from_http(status, &message),
+                None => ErrorCode::classify(None, &message),
+            };
+            return TurnEnd::Failed {
+                message,
+                code,
+                status,
+            };
         }
         TurnEnd::Answered(self.usage.map(ResultUsage::last_call).unwrap_or_default())
     }
