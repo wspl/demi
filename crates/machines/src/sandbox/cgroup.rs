@@ -1,6 +1,7 @@
-//! Cgroups (`managed-hosts.md` § Lifecycle and capacity): every sandbox's
-//! Sentry and Gofer live in `demi-cloud/<sandbox>` under the cgroup v2 root,
-//! which limits them together and lets the manager kill all of them.
+//! Cgroups (`managed-hosts.md` § Resource limits): with the resource limits
+//! on, every sandbox's Sentry and Gofer live in `demi-cloud/<sandbox>` under
+//! the cgroup v2 root, which limits them together and lets the manager kill
+//! all of them. With the limits off, nothing here runs.
 
 use std::{io, path::PathBuf, time::Duration};
 
@@ -18,8 +19,12 @@ const FENCE_POLL: Duration = Duration::from_millis(50);
 pub enum CgroupError {
     #[error(transparent)]
     Io(#[from] io::Error),
-    #[error("Missing cgroup v2 {0} controller")]
-    Missing(&'static str),
+    #[error(
+        "Cloud resource limits need the cgroup v2 cpu, memory and pids controllers at /sys/fs/cgroup; missing: {}. \
+         DEMI_MANAGED_LIMITS=off runs Clouds without limits",
+        .0.join(", ")
+    )]
+    Missing(Vec<&'static str>),
     #[error("Cloud runtime writers did not terminate")]
     Writers,
 }
@@ -29,15 +34,23 @@ fn sandboxes() -> PathBuf {
 }
 
 /// Requires the CPU, memory and PID controllers and enables them for the
-/// sandboxes' cgroups.
+/// sandboxes' cgroups. Nothing under the root changes before all three are
+/// there; an error names every one that is missing.
 pub async fn prepare() -> Result<(), CgroupError> {
     blocking::run(|_| {
-        let available = fs_err::read_to_string(PathBuf::from(ROOT).join("cgroup.controllers"))?;
+        let available = match fs_err::read_to_string(PathBuf::from(ROOT).join("cgroup.controllers")) {
+            Ok(available) => available,
+            // A root that is no cgroup v2 hierarchy offers no controller.
+            Err(error) if error.kind() == io::ErrorKind::NotFound => String::new(),
+            Err(error) => return Err(error.into()),
+        };
         let available: Vec<_> = available.split_whitespace().collect();
-        for controller in CONTROLLERS {
-            if !available.contains(&controller) {
-                return Err(CgroupError::Missing(controller));
-            }
+        let missing: Vec<_> = CONTROLLERS
+            .into_iter()
+            .filter(|controller| !available.contains(controller))
+            .collect();
+        if !missing.is_empty() {
+            return Err(CgroupError::Missing(missing));
         }
         let enable = "+cpu +memory +pids";
         fs_err::write(PathBuf::from(ROOT).join("cgroup.subtree_control"), enable)?;

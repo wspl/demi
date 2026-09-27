@@ -92,7 +92,10 @@ mod service {
         let namespace = SavedNamespace::new(&core.config);
         namespace.recover(&lock).await?;
         preflight::release_probes(&core.config.data).await?;
-        cgroup::prepare().await?;
+        match core.config.limits {
+            Some(_) => cgroup::prepare().await?,
+            None => tracing::warn!("demi-machines: DEMI_MANAGED_LIMITS=off: Clouds run without CPU, memory or PID limits"),
+        }
         let (working, images) = (core.config.working(), core.config.images());
         blocking::run(move |off| preflight::require_one_filesystem(off, &working, &images)).await?;
         recovery::fence_and_save(&core).await?;
@@ -112,7 +115,8 @@ mod service {
         // Readiness for systemd's Type=notify; without a notify socket this
         // does nothing.
         sd_notify::notify(&[sd_notify::NotifyState::Ready])?;
-        tracing::info!("demi-machines: gVisor/systrap ready at {}", socket_path.display());
+        let limits = if core.config.limits.is_some() { "on" } else { "off" };
+        tracing::info!("demi-machines: gVisor/systrap ready at {}, resource limits {limits}", socket_path.display());
         let stopping = async move {
             tokio::select! {
                 _ = terminate.recv() => {}

@@ -36,6 +36,7 @@ mod machines;
 mod native;
 mod panel;
 mod providers;
+mod real_cloud;
 mod runners;
 mod settings;
 mod startup;
