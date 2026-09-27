@@ -3,11 +3,17 @@ import { computed, ref } from 'vue'
 import { useSavedScroll } from '@demicodes/web-ui/composables/useSavedScroll'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import ToastHost from '@demicodes/web-ui/ui/ToastHost.vue'
+import ImageViewer from '@demicodes/web-ui/files/ImageViewer.vue'
+import { provideBlobUrl } from '@demicodes/web-ui/agent/media-source'
+import { provideImageViewer } from '@demicodes/web-ui/files/image-viewer'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import GalleryAppearanceMenu from './components/GalleryAppearanceMenu.vue'
 import { useGalleryView } from './gallery-views'
+import { galleryBlobUrl } from './fixtures/blobs'
 import { NAV } from './router'
 
+provideBlobUrl(galleryBlobUrl)
+const imageViewer = provideImageViewer()
 const route = useRoute()
 const viewport = ref<HTMLElement>()
 useSavedScroll(viewport, () => `demi-gallery-scroll:${route.fullPath}`)
@@ -61,5 +67,6 @@ const mainClass = computed(() => {
       </main>
     </div>
     <ToastHost />
+    <ImageViewer :viewer="imageViewer" />
   </div>
 </template>

@@ -5,6 +5,7 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import AnsiText from './AnsiText.vue'
 import ShellEditPills from './ShellEditPills.vue'
 import FunctionalBlock from './FunctionalBlock.vue'
+import ToolMedia from './ToolMedia.vue'
 import type { ToolCallBlock } from '../block-types'
 import { getToolErrorText, shellTerminalOutputChunks } from '../block-helpers'
 import { useLiveCalls } from '../live-calls'
@@ -76,5 +77,6 @@ watch(
       </div>
     </template>
   </FunctionalBlock>
+  <ToolMedia :output="block.output" :title="title" />
   <ShellEditPills :block="block" />
 </template>
