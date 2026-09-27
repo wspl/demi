@@ -20,15 +20,9 @@ export function transcriptTerminals(blocks: readonly Block[]): TerminalRecord[] 
       continue
     }
     const previous = commands.get(view.commandId)
-    let name = previous?.name ?? view.shellId
-    if (block.toolName === 'shell_exec') {
-      const input = z
-        .object({ script: z.string() })
-        .safeParse(parseInput(block.input))
-      if (input.success) {
-        name = input.data.script
-      }
-    }
+    const name = (block.toolName === 'shell_exec' ? script(block.input) : undefined)
+      ?? previous?.name
+      ?? view.shellId
     commands.set(view.commandId, {
       id: view.commandId,
       name,
@@ -45,6 +39,22 @@ export function transcriptTerminals(blocks: readonly Block[]): TerminalRecord[] 
     })
   }
   return [...commands.values()]
+}
+
+/** The script of the `shell_exec` call `toolUseId` among `blocks`, the latest when a model reused the id. */
+export function callScript(blocks: readonly Block[], toolUseId: string): string | undefined {
+  const call = blocks.findLast(
+    (block) => block.type === 'tool_call' && block.toolUseId === toolUseId,
+  )
+  return call?.type === 'tool_call' && call.toolName === 'shell_exec'
+    ? script(call.input)
+    : undefined
+}
+
+/** A `shell_exec` call's script, from its input's JSON text. */
+function script(input: string): string | undefined {
+  const parsed = z.object({ script: z.string() }).safeParse(parseInput(input))
+  return parsed.success ? parsed.data.script : undefined
 }
 
 function parseInput(input: string): unknown {

@@ -451,6 +451,7 @@ impl<H: AgentHarness> Tree<H> {
         let commands = with_agent_group(&inherited, &server, can_spawn, &self.profiles)
             .map_err(|error| error.to_string())?;
         let preamble = subagent_preamble(&record.id, owner.id(), can_spawn);
+        let feed = self.live.feed(Some(record.id.clone()));
         let assembled = node::assemble(NodeSpec {
             record,
             role: NodeRole::Child,
@@ -466,7 +467,7 @@ impl<H: AgentHarness> Tree<H> {
             first_message,
             store: self.store.clone(),
             shells: deps.shells.clone(),
-            shell_output: None,
+            feed,
             admission: self.admission.clone(),
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),
@@ -805,15 +806,24 @@ impl<H: AgentHarness> Tree<H> {
     /// Each live child's `started` frame and transcript, depth first in
     /// spawn order: what a connection that attaches or syncs receives.
     pub(super) fn replay(&self) -> Vec<ServerFrame> {
-        let mut frames = Vec::new();
-        self.replay_children(self.root.id(), &mut frames);
-        frames
+        self.descendants()
+            .iter()
+            .flat_map(|child| child_frames(child))
+            .collect()
     }
 
-    fn replay_children(&self, owner: &NodeId, frames: &mut Vec<ServerFrame>) {
+    /// Every live child, depth first in spawn order.
+    pub(super) fn descendants(&self) -> Vec<Rc<Child<H>>> {
+        let mut children = Vec::new();
+        self.collect_children(self.root.id(), &mut children);
+        children
+    }
+
+    fn collect_children(&self, owner: &NodeId, children: &mut Vec<Rc<Child<H>>>) {
         for child in self.children_of(owner) {
-            frames.extend(child_frames(&child));
-            self.replay_children(child.id(), frames);
+            let id = child.id().clone();
+            children.push(child);
+            self.collect_children(&id, children);
         }
     }
 

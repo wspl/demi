@@ -8,14 +8,19 @@ import AgentMessageList from './AgentMessageList.vue'
 import SessionOverlay from './SessionOverlay.vue'
 import SubagentHistoryMenu from './SubagentHistoryMenu.vue'
 import TabItem from './TabItem.vue'
+import { provideLiveCalls } from './live-calls'
 import { subagentPanelTabs, subagentStatus, type SubagentRecord } from './subagents'
+import { callTerminal, type TerminalRecord } from './terminals'
 
 const props = withDefaults(
   defineProps<{
     agents: readonly SubagentRecord[]
+    /** The conversation's commands: a child's running calls show theirs. */
+    terminals?: readonly TerminalRecord[]
     dismissOutside?: boolean
   }>(),
   {
+    terminals: () => [],
     dismissOutside: true,
   },
 )
@@ -32,6 +37,9 @@ const tabs = computed(() => subagentPanelTabs(props.agents, activeId.value))
 const active = computed(
   () =>
     tabs.value.find((agent) => agent.id === activeId.value) ?? tabs.value[0] ?? null,
+)
+provideLiveCalls((toolUseId) =>
+  active.value ? callTerminal(props.terminals, active.value.id, toolUseId) : undefined,
 )
 
 function activate(id: string): void {

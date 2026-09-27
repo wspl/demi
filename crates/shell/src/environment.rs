@@ -1,15 +1,17 @@
 //! The shell-environment contract behind the `shell_*` tools: a node's shells
-//! on one Host, the commands they run, and the model's status view of each
-//! (`runtime.md` § Tools).
+//! on one Host, the commands they run, the model's status view of each
+//! (`runtime.md` § Tools), and the pages' view of each, which the
+//! environment reports to the node's feed (`runtime.md` § Live output).
 
-use std::time::Duration;
+use std::{cell::RefCell, rc::Rc, time::Duration};
 
 use bytes::Bytes;
 use demi_core::{BinaryStdout, CommandId, EditedFile, NodeId, OutputView, ShellId, StreamView};
 use futures_util::future::LocalBoxFuture;
+use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
-use crate::{HostError, Reader};
+use crate::{CommandRecord, HostError, PageView};
 
 /// The longest an exec waits for its command before it returns the running
 /// command's handle.
@@ -27,37 +29,36 @@ pub const DEFAULT_OUTPUT_LIMIT_BYTES: usize = 1024 * 1024;
 pub const DEFAULT_BINARY_LIMIT_BYTES: usize = 16 * 1024 * 1024;
 
 /// A node's shells on one Host. Its handles belong to it: a command id or
-/// shell id another environment made is unknown here.
+/// shell id another environment made is unknown here. Every status it
+/// answers is the model's; the pages see its commands through the feed it
+/// was made with ([`PageFeed`]).
 pub trait ShellEnvironment {
     /// Runs `request.script`, and returns once the command ended or its
     /// observation window passed, whichever is first; a command still
     /// running then goes on, and `cancel` stops it whenever it is cancelled.
-    /// The status is the model's, which runs commands.
     fn exec(
         &self,
         request: ExecRequest,
         cancel: CancellationToken,
     ) -> LocalBoxFuture<'_, Result<CommandStatus, ShellError>>;
 
-    /// The command's status, with its output since `reader` last looked.
-    fn status(&self, command: &CommandId, reader: Reader) -> Result<CommandStatus, ShellError>;
+    /// The command's status, with its output since the model last looked.
+    fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError>;
 
-    /// Writes to a running command's standard input; the status is
-    /// `reader`'s.
+    /// Writes to a running command's standard input.
     fn write<'a>(
         &'a self,
         command: &'a CommandId,
         stdin: Bytes,
-        reader: Reader,
-    ) -> LocalBoxFuture<'a, Result<CommandStatus, ShellError>>;
+    ) -> LocalBoxFuture<'a, Result<(), ShellError>>;
 
     /// Stops a running command: asks it to end, and ends it when it does not.
-    /// A command that is not running answers its status, `reader`'s.
-    fn abort<'a>(
-        &'a self,
-        command: &'a CommandId,
-        reader: Reader,
-    ) -> LocalBoxFuture<'a, Result<CommandStatus, ShellError>>;
+    /// A command that is not running stays as it is.
+    fn abort<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<(), ShellError>>;
+
+    /// The pages' view of every command the environment holds: each one
+    /// that runs, and each one that ended and is not released.
+    fn page_views(&self) -> Vec<PageView>;
 
     /// Forgets a command, stopping it first when it runs; false when unknown.
     fn release_command<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, bool>;
@@ -73,6 +74,20 @@ pub trait ShellEnvironment {
     fn owns_command(&self, command: &CommandId) -> bool;
 }
 
+/// Where a node's shell environments tell the pages of their commands
+/// (`runtime.md` § Live output), and learn whether a page watches.
+pub trait PageFeed {
+    /// The pages' view of the command `record` holds changed: the command
+    /// started, its output grew, or it ended. An environment reports nothing
+    /// of a command after its end.
+    fn changed(&self, record: &Rc<RefCell<CommandRecord>>);
+
+    /// Whether a page watches now, and each change of it: while one does,
+    /// the environments' jobs send their output beyond what the model's view
+    /// holds.
+    fn watching(&self) -> watch::Receiver<bool>;
+}
+
 /// One exec, with every rule an environment enforces in its type.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecRequest {
@@ -81,6 +96,9 @@ pub struct ExecRequest {
     pub window: ObservationWindow,
     /// Whose command storage the job's `rpc` calls reach.
     pub caller: JobCaller,
+    /// The `shell_exec` call that runs the script, which the pages' view of
+    /// the command names.
+    pub tool_use_id: String,
 }
 
 /// Which shell an exec runs in.

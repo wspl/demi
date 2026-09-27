@@ -160,7 +160,7 @@ struct OutputConfig<'a> {
 
 fn body(request: &InferenceRequest) -> Result<Body<'_>, UnloadedMedia> {
     let max_tokens = request
-        .output_limit
+        .max_output_tokens()
         .map_or(DEFAULT_MAX_TOKENS, |limit| limit.get());
     let (thinking, output_config) = thinking(request.thinking.as_ref(), max_tokens);
     Ok(Body {

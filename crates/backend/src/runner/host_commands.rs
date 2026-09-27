@@ -303,11 +303,12 @@ async fn run_on_host(
                 ended.cancel();
                 end
             };
-            // The far job's view carries its standard error; its standard
-            // output is the pipe.
+            // The far job's view carries the first bytes of its standard
+            // error; its standard output is the pipe. A message without bytes
+            // says only that the stream grows.
             let view = async {
                 while let Some(output) = job.next_output().await {
-                    if output.stream == StreamKind::Stderr {
+                    if output.stream == StreamKind::Stderr && !output.bytes.is_empty() {
                         // A caller that went away reads nothing more.
                         let _ = port.stderr(output.bytes).await;
                     }

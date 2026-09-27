@@ -9,6 +9,11 @@ use tokio_util::sync::CancellationToken;
 
 use crate::Error;
 
+/// How a staged file's name starts, before its random part: a process
+/// killed while it writes leaves the file behind, and the name says whose it
+/// is (`runner.md` § File contents).
+const STAGED_PREFIX: &str = ".demi-partial-";
+
 /// Whether a publication may replace what is at its path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -152,9 +157,9 @@ fn stage_blocking(
     let parent = path
         .parent()
         .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "a file needs a parent directory"))?;
-    // Windows has no Unix mode for the file to be made with.
-    #[cfg_attr(not(unix), expect(unused_mut))]
     let mut builder = tempfile::Builder::new();
+    builder.prefix(STAGED_PREFIX);
+    // Windows has no Unix mode for the file to be made with.
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

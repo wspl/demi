@@ -19,9 +19,6 @@ export function applyTranscriptPatches(blocks: readonly Block[], patches: readon
       case 'add':
         next.splice(patch.index, 0, patch.value)
         break
-      case 'remove':
-        next.splice(patch.index, 1)
-        break
       case 'append_text': {
         const block = next[patch.index]
         if (block?.type === 'text' || block?.type === 'thinking') {
