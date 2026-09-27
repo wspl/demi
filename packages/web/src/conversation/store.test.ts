@@ -11,6 +11,7 @@ import { usePreferences } from '../state/preferences'
 import type { ConversationSummary, Preferences } from '../api/generated/web-api'
 import { productState } from '../__tests__/product-state'
 import { applyConversationEvent, updateLiveStatus } from './activity'
+import * as draftStorage from './drafts'
 import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
 
 const realFetch = globalThis.fetch
@@ -252,6 +253,30 @@ test('an empty draft saves the complete last choice and new conversations restor
     thinkingEffort: null, serviceTierId: null,
   })
   expect(draft.model).toEqual(chosen)
+})
+
+test('a page saves only the drafts it changed, so another tab\'s saved draft stays', async () => {
+  const written = spyOn(draftStorage, 'writeDraft').mockResolvedValue(undefined)
+  const deleted = spyOn(draftStorage, 'deleteDraft').mockResolvedValue(undefined)
+  try {
+    const store = useConversations()
+    const typedId = store.create()
+    const typed = store.items.find((item) => item.id === typedId)!
+    typed.draft = 'typed here'
+    const untouchedId = store.create('project')
+    const untouched = store.items.find((item) => item.id === untouchedId)!
+    untouched.draft = 'another tab may have saved a newer copy of this one'
+    await nextTick()
+    written.mockClear()
+    deleted.mockClear()
+    typed.draft = 'typed here, and more'
+    await nextTick()
+    expect(written.mock.calls.map(([, id]) => id)).toEqual([typed.id])
+    expect(deleted).not.toHaveBeenCalled()
+  } finally {
+    written.mockRestore()
+    deleted.mockRestore()
+  }
 })
 
 test('a completed earlier preference write cannot discard a newer model selection', async () => {

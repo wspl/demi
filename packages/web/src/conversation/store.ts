@@ -62,6 +62,8 @@ export const useConversations = defineStore('conversations', () => {
   const listStatus = computed(() => product.load)
   const writes = new SerialQueue()
   const restored = new Set<string>()
+  /** Each conversation's draft as this page last saved or restored it, in the shape `changedDraft` compares. */
+  const savedDrafts = new Map<string, string>()
   const uploads = createConversationUploads(saveDrafts, (error) =>
     report('Could not upload the attachment', error),
   )
@@ -326,6 +328,12 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
+  /**
+   * Saves the drafts this page changed since it last saved or restored them.
+   * Other tabs of this browser save to the same storage, so a draft this page
+   * did not change may be another tab's newer one; writing this page's copy
+   * of it would replace that.
+   */
   function saveDrafts(): void {
     const userId = session.user?.id ?? product.snapshot?.user.id
     if (!userId) {
@@ -337,6 +345,7 @@ export const useConversations = defineStore('conversations', () => {
         id: item.id,
         draft: persisted(item),
       }))
+      .filter((entry) => changedDraft(entry.id, entry.draft))
     const current = lifetime
     // IndexedDB serializes readwrite transactions; issue them now, including on pagehide.
     for (const entry of drafts) {
@@ -348,11 +357,28 @@ export const useConversations = defineStore('conversations', () => {
           ? deleteDraft(userId, entry.id)
           : writeDraft(userId, entry.id, entry.draft)
       void operation.catch((error) => {
+        // A draft that did not reach storage counts as changed, so the next
+        // save tries it again.
+        savedDrafts.delete(entry.id)
         if (current === lifetime) {
           storageError(error)
         }
       })
     }
+  }
+
+  /**
+   * Whether `draft` differs from what this page last saved or restored for
+   * the conversation; it becomes what the page saved. A file is compared by
+   * its id, name and upload, as the draft names it.
+   */
+  function changedDraft(id: string, draft: SavedDraft): boolean {
+    const shape = JSON.stringify(draft)
+    if (savedDrafts.get(id) === shape) {
+      return false
+    }
+    savedDrafts.set(id, shape)
+    return true
   }
 
   async function restoreLocalDrafts(): Promise<void> {
@@ -484,6 +510,9 @@ export const useConversations = defineStore('conversations', () => {
       storageError(error)
     }
     restored.add(conversation.id)
+    // The page starts from what storage held: saving the restored draft
+    // unchanged could only replace a newer one another tab saved since.
+    changedDraft(conversation.id, persisted(conversation))
     for (const file of conversation.files) {
       if (isComposerFile(file) && !file.upload) {
         void uploadFile(file).catch((error) => report('Could not upload the attachment', error))
@@ -562,6 +591,7 @@ export const useConversations = defineStore('conversations', () => {
       saveDrafts()
       items.value = items.value.filter((item) => item !== previous)
       restored.delete(previous.id)
+      savedDrafts.delete(previous.id)
       cache.delete(previous.id)
     }
     product.activeConversationId = id
@@ -1348,6 +1378,7 @@ export const useConversations = defineStore('conversations', () => {
     uploads.dispose(items.value)
     items.value = []
     restored.clear()
+    savedDrafts.clear()
     storageErrorReported = false
   }
 
