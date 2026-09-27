@@ -101,6 +101,7 @@ async fn the_chat_body_carries_the_tools_the_replay_and_the_effort_but_no_limit_
             model_id: "grok-4.5".into(),
             text: "hidden".into(),
             signature: None,
+            kept_past_summary: false,
         },
         InferenceItem::AssistantText {
             model_id: "grok-4.5".into(),
