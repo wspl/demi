@@ -191,8 +191,12 @@ is the regression suite for that contract: a change on either side that breaks
 the other fails here. It is part of the tests of `packages/web`. It starts the
 backend executable with a temporary data directory, calls it through the web
 application's API client, and drives conversations with `AgentClient` from
-`@demicodes/agent-client`, the client the page runs. The generated schemas
-validate every response and frame on arrival, as they do in the page
+`@demicodes/agent-client`, the client the page runs. Its requests carry what a
+browser adds to the product page's own: the session cookie, and the page's
+`Origin` wherever a browser sends one
+([Authentication and ownership](../backend/backend.md#authentication-and-ownership)).
+The generated schemas validate every response and frame on arrival, as they do
+in the page
 ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
 The model is an Anthropic-compatible HTTP endpoint that the suite scripts and
 the backend's Anthropic API provider calls; tools run on a real runner.
