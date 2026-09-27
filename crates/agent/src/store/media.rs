@@ -1,17 +1,18 @@
 //! Media by reference (`runtime.md` § Media): a medium is stored once, as a
 //! blob in the conversation owner's namespace, and blocks hold its reference
 //! everywhere. A session holds the bytes of the media its replayed blocks
-//! and its waiting input reference, and the model's view puts them in the
-//! references' place. This module is the one mapping between the two forms;
-//! where the bytes go is the store's decision, and the agent's server never
-//! holds a blob namespace.
+//! and its waiting input reference, and the model's view is the replayed
+//! blocks with what the session holds for their media, from which replay
+//! puts the bytes into a request. Where the bytes go is the store's
+//! decision, and the agent's server never holds a blob namespace.
 
 use std::collections::{HashMap, HashSet};
 
 use demi_core::{
-    B64Bytes, BlobRef, Block, DocumentSource, MediaSource, ToolMediaSource, ToolResultContentBlock,
-    UserContentBlock,
+    B64Bytes, BlobRef, Block, DocumentSource, GoneCause, MediaSource, ModelMediaKind,
+    ToolMediaSource, ToolResultContentBlock, UserContentBlock,
 };
+use demi_provider::{MediaBytes, ResultPart};
 use futures_util::{StreamExt as _, TryStreamExt as _, future::LocalBoxFuture, stream};
 
 use super::StoreError;
@@ -35,7 +36,7 @@ pub trait BlobStore {
 
 /// What a session holds for one medium.
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum Held {
+pub(crate) enum Held {
     Bytes(B64Bytes),
     /// The namespace does not hold the medium's blob.
     Missing,
@@ -65,8 +66,13 @@ impl HeldMedia {
         self.0.retain(|blob, _| referenced.contains(blob));
     }
 
+    /// What is held for `blob`; none when nothing is.
+    pub(crate) fn get(&self, blob: &BlobRef) -> Option<&Held> {
+        self.0.get(blob)
+    }
+
     /// The blobs `blocks` reference that nothing is held for, each once.
-    pub(crate) fn unheld(&self, blocks: &[Block]) -> Vec<BlobRef> {
+    fn unheld(&self, blocks: &[Block]) -> Vec<BlobRef> {
         let mut unheld = Vec::new();
         for blob in blocks.iter().flat_map(references) {
             if !self.0.contains_key(blob) && !unheld.contains(blob) {
@@ -85,145 +91,53 @@ impl HeldMedia {
             .collect();
         Self(selected)
     }
+}
 
-    /// The model's view of `blocks`: each held medium's bytes in the place of
-    /// its reference, and the text `[missing <kind> blob <ref>]` in the place
-    /// of a medium whose blob is missing. A medium nothing is held for keeps
-    /// its reference.
-    pub(crate) fn view(&self, blocks: &[Block]) -> Vec<Block> {
-        blocks
-            .iter()
-            .map(|block| {
-                let mut viewed = block.clone();
-                match &mut viewed {
-                    Block::User(user) => self.view_content(&mut user.content),
-                    Block::Steer(steer) => self.view_content(&mut steer.content),
-                    Block::ToolCall(call) => {
-                        for part in &mut call.output {
-                            if let Some(viewed) = self.view_result_part(part) {
-                                *part = viewed;
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-                viewed
-            })
-            .collect()
-    }
+/// The replayed blocks as the model receives them (`runtime.md` § Media):
+/// the blocks as the transcript holds them, by reference, with what the
+/// session holds for each medium they reference. Replay, the token
+/// estimates and compaction read it.
+pub(crate) struct ModelView {
+    /// Where the blocks start in the transcript.
+    pub(crate) start: usize,
+    pub(crate) blocks: Vec<Block>,
+    pub(crate) media: HeldMedia,
+}
 
-    fn view_content(&self, content: &mut [UserContentBlock]) {
-        for part in content {
-            if let Some(viewed) = self.view_content_part(part) {
-                *part = viewed;
-            }
+impl ModelView {
+    /// The view of `blocks`, which start at `start` in the transcript, with
+    /// what `held` holds for their media. When nothing is held for some of
+    /// them, there is no view yet: the blobs to read first.
+    pub(crate) fn of(
+        start: usize,
+        blocks: &[Block],
+        held: &HeldMedia,
+    ) -> Result<Self, Vec<BlobRef>> {
+        let unheld = held.unheld(blocks);
+        if !unheld.is_empty() {
+            return Err(unheld);
         }
+        Ok(Self {
+            start,
+            blocks: blocks.to_vec(),
+            media: held.select(blocks),
+        })
     }
 
-    /// What a message's part becomes in the model's view; none when it
-    /// stays as it is.
-    fn view_content_part(&self, part: &UserContentBlock) -> Option<UserContentBlock> {
-        let viewed = match part {
-            UserContentBlock::Image {
-                source: MediaSource::Ref { r#ref, media_type },
-            } => match self.0.get(r#ref)? {
-                Held::Bytes(data) => UserContentBlock::Image {
-                    source: MediaSource::Binary {
-                        data: data.clone(),
-                        media_type: media_type.clone(),
-                    },
-                },
-                Held::Missing => missing_text("image", r#ref),
-            },
-            UserContentBlock::Video {
-                source: MediaSource::Ref { r#ref, media_type },
-            } => match self.0.get(r#ref)? {
-                Held::Bytes(data) => UserContentBlock::Video {
-                    source: MediaSource::Binary {
-                        data: data.clone(),
-                        media_type: media_type.clone(),
-                    },
-                },
-                Held::Missing => missing_text("video", r#ref),
-            },
-            UserContentBlock::Document {
-                source:
-                    DocumentSource::Ref {
-                        r#ref,
-                        media_type,
-                        file_name,
-                    },
-            } => match self.0.get(r#ref)? {
-                Held::Bytes(data) => UserContentBlock::Document {
-                    source: DocumentSource::Binary {
-                        data: data.clone(),
-                        media_type: media_type.clone(),
-                        file_name: file_name.clone(),
-                    },
-                },
-                Held::Missing => missing_text("document", r#ref),
-            },
-            _ => return None,
-        };
-        Some(viewed)
-    }
-
-    /// What a tool result's part becomes in the model's view; none when it
-    /// stays as it is.
-    fn view_result_part(&self, part: &ToolResultContentBlock) -> Option<ToolResultContentBlock> {
-        let (kind, source) = match part {
-            ToolResultContentBlock::Image { source } => (ToolMedium::Image, source),
-            ToolResultContentBlock::Video { source } => (ToolMedium::Video, source),
-            ToolResultContentBlock::Text { .. } => return None,
-        };
-        let ToolMediaSource::Ref { r#ref, media_type } = source else {
-            return None;
-        };
-        let viewed = match self.0.get(r#ref)? {
-            Held::Bytes(data) => kind.part(ToolMediaSource::Binary {
-                data: data.clone(),
-                media_type: media_type.clone(),
-            }),
-            Held::Missing => ToolResultContentBlock::Text {
-                text: missing(kind.name(), r#ref),
-            },
-        };
-        Some(viewed)
+    /// What the session holds for `blob`, which one of the view's blocks
+    /// references.
+    pub(crate) fn held(&self, blob: &BlobRef) -> &Held {
+        self.media
+            .get(blob)
+            .expect("the model's view holds something for every medium its blocks reference")
     }
 }
 
-/// A tool result's kind of medium.
-#[derive(Debug, Clone, Copy)]
-enum ToolMedium {
-    Image,
-    Video,
-}
-
-impl ToolMedium {
-    fn name(self) -> &'static str {
-        match self {
-            Self::Image => "image",
-            Self::Video => "video",
-        }
-    }
-
-    /// The result part that holds `source` as this kind of medium.
-    fn part(self, source: ToolMediaSource) -> ToolResultContentBlock {
-        match self {
-            Self::Image => ToolResultContentBlock::Image { source },
-            Self::Video => ToolResultContentBlock::Video { source },
-        }
-    }
-}
-
-fn missing(kind: &str, blob: &BlobRef) -> String {
+/// The text a medium whose blob is missing becomes in a request, and in
+/// the estimate: `[missing <kind> blob <ref>]`, where the kind is `image`,
+/// `video` or `document`.
+pub(crate) fn missing_text(kind: &str, blob: &BlobRef) -> String {
     format!("[missing {kind} blob {blob}]")
-}
-
-fn missing_text(kind: &str, blob: &BlobRef) -> UserContentBlock {
-    UserContentBlock::Text {
-        text: missing(kind, blob),
-    }
 }
 
 /// Where one medium of a block is.
@@ -238,24 +152,14 @@ enum Source<'a> {
 }
 
 impl<'a> Source<'a> {
-    /// The blob the medium references; none when it holds its bytes or a
-    /// URL.
+    /// The blob the medium references; none for a URL.
     fn reference(self) -> Option<&'a BlobRef> {
         match self {
             Self::Media(MediaSource::Ref { r#ref, .. })
             | Self::Document(DocumentSource::Ref { r#ref, .. })
             | Self::Tool(ToolMediaSource::Ref { r#ref, .. }) => Some(r#ref),
-            _ => None,
+            Self::Media(MediaSource::Url { .. }) => None,
         }
-    }
-
-    fn has_bytes(self) -> bool {
-        matches!(
-            self,
-            Self::Media(MediaSource::Binary { .. })
-                | Self::Document(DocumentSource::Binary { .. })
-                | Self::Tool(ToolMediaSource::Binary { .. })
-        )
     }
 }
 
@@ -281,7 +185,7 @@ fn sources(block: &Block) -> Vec<Source<'_>> {
             .filter_map(|part| match part {
                 ToolResultContentBlock::Image { source }
                 | ToolResultContentBlock::Video { source } => Some(Source::Tool(source)),
-                ToolResultContentBlock::Text { .. } => None,
+                ToolResultContentBlock::Text { .. } | ToolResultContentBlock::Gone { .. } => None,
             })
             .collect(),
         _ => Vec::new(),
@@ -323,53 +227,47 @@ pub fn content_references(content: &[UserContentBlock]) -> impl Iterator<Item = 
     content_sources(content).filter_map(Source::reference)
 }
 
-/// Whether one of a block's media holds its bytes instead of a reference.
-pub(crate) fn holds_bytes(block: &Block) -> bool {
-    sources(block).into_iter().any(Source::has_bytes)
-}
-
-/// Whether one of the media of a message's content holds its bytes instead
-/// of a reference.
-pub(crate) fn content_holds_bytes(content: &[UserContentBlock]) -> bool {
-    content_sources(content).any(Source::has_bytes)
-}
-
 /// Stores the media of a tool's result as the result enters the transcript
 /// (`runtime.md` § Media): each medium's bytes are put, the result keeps
-/// the reference and the bytes are held. A medium whose put fails becomes
-/// the text `[<kind> not stored: <reason>]`, so no block names a blob that
-/// was not stored.
+/// the reference and the bytes are held. A medium whose put fails is gone
+/// from the result, not stored, with the store's error, so no block names a
+/// blob that was not stored.
 pub(crate) async fn store_result(
-    output: Vec<ToolResultContentBlock>,
+    output: Vec<ResultPart>,
     blobs: &dyn BlobStore,
 ) -> (Vec<ToolResultContentBlock>, HeldMedia) {
     let mut held = HeldMedia::default();
     let mut stored = Vec::with_capacity(output.len());
     for part in output {
-        let (kind, data, media_type) = match part {
-            ToolResultContentBlock::Image {
-                source: ToolMediaSource::Binary { data, media_type },
-            } => (ToolMedium::Image, data, media_type),
-            ToolResultContentBlock::Video {
-                source: ToolMediaSource::Binary { data, media_type },
-            } => (ToolMedium::Video, data, media_type),
-            other => {
-                stored.push(other);
+        let (kind, MediaBytes { data, media_type }) = match part {
+            ResultPart::Text(text) => {
+                stored.push(ToolResultContentBlock::Text { text });
                 continue;
             }
+            ResultPart::Image(bytes) => (ModelMediaKind::Image, bytes),
+            ResultPart::Video(bytes) => (ModelMediaKind::Video, bytes),
         };
-        match blobs.put(data.clone()).await {
+        let part = match blobs.put(data.clone()).await {
             Ok(blob) => {
-                stored.push(kind.part(ToolMediaSource::Ref {
-                    r#ref: blob.clone(),
+                held.hold(blob.clone(), data);
+                let source = ToolMediaSource::Ref {
+                    r#ref: blob,
                     media_type,
-                }));
-                held.hold(blob, data);
+                };
+                match kind {
+                    ModelMediaKind::Image => ToolResultContentBlock::Image { source },
+                    ModelMediaKind::Video => ToolResultContentBlock::Video { source },
+                }
             }
-            Err(error) => stored.push(ToolResultContentBlock::Text {
-                text: format!("[{} not stored: {error}]", kind.name()),
-            }),
-        }
+            Err(error) => ToolResultContentBlock::Gone {
+                kind,
+                media_type,
+                cause: GoneCause::NotStored {
+                    error: error.to_string(),
+                },
+            },
+        };
+        stored.push(part);
     }
     (stored, held)
 }

@@ -2,13 +2,27 @@
 //! (`runtime.md` § Results and previews). The set is closed: bytes are known
 //! by their magic numbers or not at all, never by guessing from a name.
 
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
 use crate::{FileExtension, Model, file_extension_support};
 
 /// Whether a model reads a medium as an image or as a video.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub enum ModelMediaKind {
     Image,
     Video,
+}
+
+impl ModelMediaKind {
+    /// The word a text names the kind by: `image` or `video`.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Image => "image",
+            Self::Video => "video",
+        }
+    }
 }
 
 /// A media type a model can receive, with the extension a model's catalog

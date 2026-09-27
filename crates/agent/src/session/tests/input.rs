@@ -3,8 +3,7 @@
 //! wakeups.
 
 use demi_core::{
-    AgentMessage, AgentMessageEvent, BlockId, CompletionOutcome, PendingSteer, UserContentBlock,
-    WakeupPlacement,
+    AgentMessage, AgentMessageEvent, BlockId, CompletionOutcome, PendingSteer, WakeupPlacement,
 };
 
 use super::*;
@@ -34,7 +33,7 @@ fn steers(items: &[InferenceItem]) -> Vec<String> {
         .iter()
         .filter_map(|item| match item {
             InferenceItem::UserSteer { content } => match content.as_slice() {
-                [UserContentBlock::Text { text }] => Some(text.clone()),
+                [UserPart::Text(text)] => Some(text.clone()),
                 other => panic!("a steer of more than one text: {other:?}"),
             },
             _ => None,
@@ -387,14 +386,14 @@ async fn retry_after_a_failed_continuation_reruns_it_from_its_message_and_keeps_
         requests[2].items.as_ref(),
         [
             InferenceItem::UserMessage {
-                content: text("the task"),
+                content: sent_text("the task"),
             },
             InferenceItem::AssistantText {
                 model_id: "test-model".into(),
                 text: "task answer".into(),
             },
             InferenceItem::UserSteer {
-                content: text(&agent_message_envelope(&agent_message("result"))),
+                content: sent_text(&agent_message_envelope(&agent_message("result"))),
             },
         ]
     );
@@ -716,7 +715,7 @@ async fn yield_ends_the_turn_and_its_wakeup_opens_a_continuation_once_the_action
     assert_eq!(
         request.items.last(),
         Some(&InferenceItem::UserMessage {
-            content: text(WAKEUP_TEXT),
+            content: sent_text(WAKEUP_TEXT),
         })
     );
     assert!(store.checkpoint(&root()).unwrap().state.wakeups.is_empty());

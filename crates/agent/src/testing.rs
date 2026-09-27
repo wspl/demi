@@ -15,7 +15,7 @@ use demi_core::{
     B64Bytes, BlobRef, Block, Clock, FileExtension, Model, ModelSelection, NodeId, QueuedMessage,
     Timestamp, UserContentBlock,
 };
-use demi_provider::{ProviderRuntime, testing::ScriptedRuntime};
+use demi_provider::{ProviderRuntime, UserPart, testing::ScriptedRuntime};
 use futures_util::future::LocalBoxFuture;
 
 use demi_shell::{Host, HostError, HostFs, HostIdentity, HostKey, HostProcess, ShellEnvironment};
@@ -147,6 +147,11 @@ pub fn text(text: &str) -> Vec<UserContentBlock> {
     vec![UserContentBlock::Text {
         text: text.to_owned(),
     }]
+}
+
+/// The same content as a request carries it.
+pub fn sent_text(text: &str) -> Vec<UserPart> {
+    vec![UserPart::Text(text.to_owned())]
 }
 
 /// A message's content of one text, as the browser sends it.
@@ -532,7 +537,6 @@ impl SessionStore for MemorySessionStore {
         guard: &'a CommitGuard,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
         Box::pin(async move {
-            update.check_references()?;
             let hold = self.stored.borrow().save_hold.clone();
             if let Some(hold) = hold {
                 hold.pass().await;
@@ -595,7 +599,6 @@ impl AgentTreeStore for MemoryTreeStore {
         initial: CheckpointUpdate,
     ) -> LocalBoxFuture<'_, Result<(), StoreError>> {
         Box::pin(async move {
-            initial.check_references()?;
             let mut stored = self.stored.borrow_mut();
             if stored.nodes.contains_key(&record.id) {
                 return Err(StoreError::Failed(format!(
@@ -822,16 +825,16 @@ pub fn waiting_frames(outbox: &mut FrameRx) -> Vec<ServerFrame> {
 /// `runtime.md` § Tree store), for any realization of [`AgentTreeStore`]:
 /// create queues the first message with the node, a save delivers the
 /// completions it carries, reopen and delete, a completion of an earlier
-/// round marks nothing delivered, a checkpoint that holds media bytes is
-/// refused, and the blob namespace names bytes by their SHA-256. Each case
+/// round marks nothing delivered, and the blob namespace names bytes by
+/// their SHA-256. Each case
 /// takes a store that holds nothing yet and reads back only through the
 /// contract, so the agent's in-memory store and the backend's database pass
 /// the same cases.
 pub mod store_contract {
     use demi_core::{
         AgentMessage, AgentMessageBlock, AgentMessageEvent, B64Bytes, BlobRef, Block, CompletionId,
-        CompletionOutcome, MediaSource, NodeId, QueuedMessage, Sender, SessionPhase, Timestamp,
-        TurnId, UserBlock, UserContentBlock,
+        CompletionOutcome, NodeId, QueuedMessage, Sender, SessionPhase, Timestamp, TurnId,
+        UserBlock,
     };
 
     use sha2::{Digest, Sha256};
@@ -1160,74 +1163,6 @@ pub mod store_contract {
             .await
             .expect("the save commits");
         assert!(delivered(store, "child").await);
-    }
-
-    /// A message's image, holding its bytes or referencing their blob.
-    fn picture(block: &str, source: MediaSource) -> Block {
-        Block::User(UserBlock {
-            id: block.try_into().expect("a test block id is not empty"),
-            turn_id: TurnId::try_from(block).expect("a test turn id is not empty"),
-            created_at: Timestamp::UNIX_EPOCH,
-            model: test_model(),
-            content: vec![UserContentBlock::Image { source }],
-            preamble: None,
-        })
-    }
-
-    /// A checkpoint holds media only by reference (`runtime.md` § Saving):
-    /// a node's first checkpoint or a save in which a block or a queued
-    /// message holds media bytes is refused, naming it, and nothing is
-    /// written.
-    pub async fn a_checkpoint_that_holds_media_bytes_is_refused(store: &dyn AgentTreeStore) {
-        let bytes = MediaSource::Binary {
-            data: B64Bytes::new(vec![0x89, b'P', b'N', b'G']),
-            media_type: "image/png".into(),
-        };
-        let refused = store
-            .create_node(
-                record("root", None, 1),
-                update(Vec::new(), vec![picture("u1", bytes.clone())]),
-            )
-            .await
-            .expect_err("a first checkpoint with media bytes is refused");
-        assert!(refused.to_string().contains("block u1"), "{refused}");
-        assert_eq!(stored(store, "root").await, None);
-
-        let blob = BlobRef::try_from("a".repeat(64)).expect("64 hexadecimal digits name a blob");
-        let by_reference = picture(
-            "u1",
-            MediaSource::Ref {
-                r#ref: blob,
-                media_type: "image/png".into(),
-            },
-        );
-        create(
-            store,
-            record("root", None, 1),
-            update(Vec::new(), vec![by_reference.clone()]),
-        )
-        .await;
-        let root = store.session_store(&id("root"));
-        let before = root.load().await.expect("the store reads its checkpoints");
-        let with_bytes = update(Vec::new(), vec![by_reference, picture("u2", bytes.clone())]);
-        let refused = root
-            .save(with_bytes, &Default::default())
-            .await
-            .expect_err("a save with media bytes is refused");
-        assert!(refused.to_string().contains("block u2"), "{refused}");
-        let queued = QueuedMessage {
-            id: TurnId::try_from("m2").expect("a test turn id is not empty"),
-            content: vec![UserContentBlock::Image { source: bytes }],
-        };
-        let refused = root
-            .save(update(vec![queued], Vec::new()), &Default::default())
-            .await
-            .expect_err("a save whose queued message holds media bytes is refused");
-        assert!(refused.to_string().contains("queued message m2"), "{refused}");
-        assert_eq!(
-            root.load().await.expect("the store reads its checkpoints"),
-            before
-        );
     }
 
     /// A node's blob namespace names bytes by their SHA-256 and gives them

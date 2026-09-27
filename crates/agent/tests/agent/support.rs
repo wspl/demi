@@ -11,9 +11,9 @@ use demi_agent::{
     },
 };
 use demi_agent_protocol::{ClientFrame, ServerFrame};
-use demi_core::{Block, Clock, ModelSelection, NodeId, Timestamp, TurnId, UserContentBlock};
+use demi_core::{Block, Clock, ModelSelection, NodeId, Timestamp, TurnId};
 use demi_provider::{
-    InferenceItem, InferenceRequest, ProviderRun, ProviderRuntime, RequestLimits,
+    InferenceItem, InferenceRequest, ProviderRun, ProviderRuntime, RequestLimits, UserPart,
     testing::{FixedClock, ScriptedRuntime, Turn},
 };
 use demi_shell::{
@@ -165,13 +165,13 @@ pub fn brief(request: &InferenceRequest) -> String {
         .unwrap_or_default()
 }
 
-/// Every text of `content`, one per line.
-pub fn texts(content: &[UserContentBlock]) -> String {
+/// Every text of `content` as a request carries it, one per line.
+pub fn texts(content: &[UserPart]) -> String {
     content
         .iter()
-        .filter_map(|block| match block {
-            UserContentBlock::Text { text } => Some(text.as_str()),
-            _ => None,
+        .filter_map(|part| match part {
+            UserPart::Text(text) => Some(text.as_str()),
+            UserPart::Image(_) | UserPart::Video(_) | UserPart::Document { .. } => None,
         })
         .collect::<Vec<_>>()
         .join("\n")

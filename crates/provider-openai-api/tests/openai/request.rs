@@ -3,12 +3,10 @@
 
 use std::{num::NonZeroU32, sync::Arc};
 
-use demi_core::{
-    B64Bytes, DocumentSource, MediaSource, ThinkingConfig, ThinkingSummary, TokenUsage,
-    ToolMediaSource, ToolResultContentBlock, UserContentBlock, WireApi,
-};
+use demi_core::{B64Bytes, ThinkingConfig, ThinkingSummary, TokenUsage, WireApi};
 use demi_provider::{
-    InferenceItem, InferenceRequest, Provider, ProviderEvent, RuntimeEnv, ToolDefinition,
+    InferenceItem, InferenceRequest, MediaBytes, Medium, Provider, ProviderEvent, ResultPart,
+    RuntimeEnv, ToolDefinition, UserPart,
     testing::{MockResponse, MockVendor, inference_request, sse_body},
 };
 use demi_provider_openai_api::VendorPolicy;
@@ -16,8 +14,8 @@ use serde_json::{Value, json};
 
 use crate::{body_of, provider_at, run};
 
-fn text(text: &str) -> Vec<UserContentBlock> {
-    vec![UserContentBlock::Text { text: text.into() }]
+fn text(text: &str) -> Vec<UserPart> {
+    vec![UserPart::Text(text.into())]
 }
 
 fn read_file_tool() -> ToolDefinition {
@@ -38,7 +36,7 @@ fn tool_use(id: &str, path: &str) -> InferenceItem {
     }
 }
 
-fn tool_result(id: &str, output: Vec<ToolResultContentBlock>) -> InferenceItem {
+fn tool_result(id: &str, output: Vec<ResultPart>) -> InferenceItem {
     InferenceItem::ToolResult {
         tool_use_id: id.into(),
         output,
@@ -46,8 +44,8 @@ fn tool_result(id: &str, output: Vec<ToolResultContentBlock>) -> InferenceItem {
     }
 }
 
-fn contents(text: &str) -> Vec<ToolResultContentBlock> {
-    vec![ToolResultContentBlock::Text { text: text.into() }]
+fn contents(text: &str) -> Vec<ResultPart> {
+    vec![ResultPart::Text(text.into())]
 }
 
 fn thinking(text: &str, signature: Option<&str>) -> InferenceItem {
@@ -359,29 +357,18 @@ async fn only_this_providers_reasoning_items_are_replayed_with_their_replayable_
 async fn user_media_rides_as_images_and_files() {
     let png = B64Bytes::from(&b"PNG"[..]);
     let content = vec![
-        UserContentBlock::Text {
-            text: "look".into(),
-        },
-        UserContentBlock::Image {
-            source: MediaSource::Binary {
-                data: png,
-                media_type: "image/png".into(),
-            },
-        },
-        UserContentBlock::Image {
-            source: MediaSource::Url {
-                url: "https://example.com/a.png".into(),
-            },
-        },
-        UserContentBlock::Document {
-            source: DocumentSource::Binary {
+        UserPart::Text("look".into()),
+        UserPart::Image(Medium::Bytes(MediaBytes {
+            data: png,
+            media_type: "image/png".into(),
+        })),
+        UserPart::Image(Medium::Url("https://example.com/a.png".into())),
+        UserPart::Document {
+            bytes: MediaBytes {
                 data: B64Bytes::from(&b"%PDF"[..]),
                 media_type: "application/pdf".into(),
-                file_name: "a.pdf".into(),
             },
-        },
-        UserContentBlock::Reference {
-            reference: "see notes.md".into(),
+            file_name: "a.pdf".into(),
         },
     ];
     let request = || {
@@ -397,7 +384,6 @@ async fn user_media_rides_as_images_and_files() {
             { "type": "input_image", "image_url": "data:image/png;base64,UE5H", "detail": "auto" },
             { "type": "input_image", "image_url": "https://example.com/a.png", "detail": "auto" },
             { "type": "input_file", "filename": "a.pdf", "file_data": "data:application/pdf;base64,JVBERg==" },
-            { "type": "input_text", "text": "see notes.md" },
         ])
     );
     let chat = body_of(WireApi::ChatCompletions, NO_POLICY, request()).await;
@@ -408,7 +394,6 @@ async fn user_media_rides_as_images_and_files() {
             { "type": "image_url", "image_url": { "url": "data:image/png;base64,UE5H", "detail": "auto" } },
             { "type": "image_url", "image_url": { "url": "https://example.com/a.png", "detail": "auto" } },
             { "type": "file", "file": { "filename": "a.pdf", "file_data": "data:application/pdf;base64,JVBERg==" } },
-            { "type": "text", "text": "see notes.md" },
         ])
     );
 }
@@ -416,21 +401,15 @@ async fn user_media_rides_as_images_and_files() {
 #[tokio::test]
 async fn media_a_tool_returned_follows_its_output_in_a_user_message() {
     let output = vec![
-        ToolResultContentBlock::Text {
-            text: "<binary stdout: 75 bytes>".into(),
-        },
-        ToolResultContentBlock::Image {
-            source: ToolMediaSource::Binary {
-                data: B64Bytes::from(&b"AAAA"[..]),
-                media_type: "image/png".into(),
-            },
-        },
-        ToolResultContentBlock::Video {
-            source: ToolMediaSource::Binary {
-                data: B64Bytes::from(&b"MP4"[..]),
-                media_type: "video/mp4".into(),
-            },
-        },
+        ResultPart::Text("<binary stdout: 75 bytes>".into()),
+        ResultPart::Image(MediaBytes {
+            data: B64Bytes::from(&b"AAAA"[..]),
+            media_type: "image/png".into(),
+        }),
+        ResultPart::Video(MediaBytes {
+            data: B64Bytes::from(&b"MP4"[..]),
+            media_type: "video/mp4".into(),
+        }),
     ];
     let responses = body_of(
         WireApi::Responses,
