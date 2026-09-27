@@ -19,8 +19,8 @@ use crate::{Client, ServiceError};
 /// The operations of the runner's native fixture service
 /// (`crates/runner/tests/fixtures/service.rs`), which the runner's and
 /// host-remote's tests name in its descriptors.
-pub const FIXTURE_OPERATIONS: [&str; 9] = [
-    "where", "echo", "first", "spin", "result", "retain", "crash", "stalled", "proceed",
+pub const FIXTURE_OPERATIONS: [&str; 10] = [
+    "where", "echo", "first", "spin", "result", "retain", "held", "crash", "stalled", "proceed",
 ];
 
 /// Every pause a [`crate::descriptors::Backoff`] of this process has taken.

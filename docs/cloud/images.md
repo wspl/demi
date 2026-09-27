@@ -101,9 +101,12 @@ release host, `releases.astral.sh`, which serves them directly.
 
 The image supplies `demi` UID/GID 1000, passwordless sudo, a minimal init
 (`tini`), and `/usr/bin/demi-runner`, with the `demi` command alias expected by
-the native runtime. Each embedded command package's executable lies at its
-content-addressed path, `/opt/demi/artifacts/<sha256>/<executable>`, the one
-file in the directory its SHA-256 names. The runner starts command services
+the native runtime. It makes the runner's two directories on the system layer,
+private to `demi`: `/var/lib/demi` for the job directories and `/var/log/demi`
+for the Host log ([Images](managed-hosts.md#images)). Each embedded command
+package's executable lies at its content-addressed path,
+`/opt/demi/artifacts/<sha256>/<executable>`, the one file in the directory its
+SHA-256 names. The runner starts command services
 from these copies instead of downloading the executables, after checking each
 against the backend's pinned descriptor
 ([Preinstalled executables](../execution/native-runtime.md#preinstalled-executables)).

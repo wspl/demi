@@ -300,6 +300,30 @@ fn read_in_image(image: &Path, path: &str) -> String {
     String::from_utf8_lossy(&output.stdout).into_owned()
 }
 
+/// The names in the directory `path` inside the ext4 image `image`, listed
+/// by debugfs without mounting the image; none when there is no such
+/// directory.
+fn names_in_image(image: &Path, path: &str) -> Vec<String> {
+    let output = Command::new("debugfs")
+        .arg("-R")
+        .arg(format!("ls -p {path}"))
+        .arg(image)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    // Each entry is `/inode/mode/uid/gid/name/size/`.
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| line.split('/').nth(5))
+        .filter(|name| !name.is_empty() && *name != "." && *name != "..")
+        .map(str::to_owned)
+        .collect()
+}
+
+/// Where the runner keeps its job directories on a Cloud, in the system
+/// image's upper layer (`managed-hosts.md` § Images).
+const JOBS_IN_SYSTEM_IMAGE: &str = "/upper/var/lib/demi/jobs";
+
 /// A package this suite builds and installs in the Cloud with dpkg, which
 /// needs no network: `cloud-suite-probe`, which installs
 /// `/usr/share/cloud-suite/marker`.
@@ -367,6 +391,18 @@ async fn a_cloud_runs_as_uid_1000_for_every_conversation_and_keeps_a_system_pack
     drop(working);
     until_cloud(&backend, &master, "the idle Cloud stops", |status| status.state == CloudState::Off).await;
     measured(TEST, "idle stop, window included", started.elapsed());
+    // Both conversations were released before the stop saved the Cloud: the
+    // generation it saved holds none of their job output.
+    let stopped = environment
+        .manager()
+        .call(ImageStateParams { device_id: device.clone() })
+        .await
+        .unwrap()
+        .expect("the stopped Cloud has a generation");
+    let system = environment.generation(&device, &stopped).join("system.ext4");
+    let jobs = names_in_image(&system, JOBS_IN_SYSTEM_IMAGE);
+    assert!(jobs.contains(&"edits.lock".to_owned()), "{jobs:?}");
+    assert!(!jobs.contains(&FIRST.to_owned()) && !jobs.contains(&SECOND.to_owned()), "{jobs:?}");
 
     let working = backend.file_gate(&master, FIRST).await.enter(Purpose::Demand).await;
     let started = Instant::now();
@@ -532,11 +568,11 @@ print("mapped", flush=True)
 time.sleep(600)
 "#;
 
-// Tens of seconds: the Cloud boots, Chrome starts in it, and the checkpoint
-// copies both images.
+// Tens of seconds: the Cloud boots, Chrome starts in it, the checkpoint copies
+// both images, and one conversation's idle window passes.
 #[tokio::test]
 #[ignore = "the Cloud suite: needs a machine manager and the suite's variables (scenarios.md § Cloud suite)"]
-async fn a_checkpoint_with_chrome_open_saves_both_images_with_what_a_mapping_wrote_and_keeps_every_process() {
+async fn a_checkpoint_with_chrome_open_saves_both_images_with_what_a_mapping_wrote_and_keeps_every_process_until_the_idle_conversations_release() {
     const TEST: &str = "checkpoint";
     let _one = one_at_a_time();
     let environment = Environment::read();
@@ -626,7 +662,32 @@ async fn a_checkpoint_with_chrome_open_saves_both_images_with_what_a_mapping_wro
     assert_eq!(listed.json::<BrowserTabs>().tabs.len(), 2);
     let alive = run(&mut first, "alive", "pgrep -f mapper.py > /dev/null && echo mapper-alive").await;
     assert!(alive.contains("mapper-alive"), "{alive}");
+
+    // A second conversation keeps the Cloud running while the first goes
+    // idle, its mapper ended: the first hears its release there, which
+    // closes its Chrome and removes its job output (`resource-lifecycle.md`
+    // § Conversation release).
+    let mut second = on_cloud(&backend, &master, &master, &vendor, SECOND, "/b").await;
+    let busy = backend.file_gate(&master, SECOND).await.enter(Purpose::Demand).await;
+    let ended = run(&mut first, "end", "pkill -f mapper.py; echo ended").await;
+    assert!(ended.contains("ended"), "{ended}");
+    let started = Instant::now();
     drop(working);
+    let deadline = Instant::now() + PATIENCE;
+    loop {
+        let listed = backend.get(&tabs, Some(&master)).await;
+        assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
+        if listed.json::<BrowserTabs>().tabs.is_empty() {
+            break;
+        }
+        assert!(Instant::now() < deadline, "the idle conversation's Chrome never closed");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    measured(TEST, "release of an idle conversation, window included", started.elapsed());
+    let held = run(&mut second, "held", "ls /var/lib/demi/jobs").await;
+    assert!(!held.contains(FIRST) && held.contains(SECOND), "{held}");
+    assert_eq!(status(&backend, &master).await.state, CloudState::Running);
+    drop(busy);
     backend.close().await;
 }
 
@@ -752,9 +813,12 @@ async fn a_cloud_whose_sandbox_is_killed_reports_a_death_and_boots_again_with_it
     measured(TEST, "death until off", started.elapsed());
 
     let started = Instant::now();
-    let back = run(&mut first, "back", "cat ~/note").await;
+    let back = run(&mut first, "back", &format!("cat ~/note; ls /var/lib/demi/jobs/{FIRST} | wc -l")).await;
     measured(TEST, "boot after the death and command", started.elapsed());
-    assert!(back.contains("before-death"), "{back}");
+    // The job output of the conversation, which no release reached, is on
+    // the system image and outlived the death: the earlier job's directory
+    // is there beside this job's own.
+    assert!(back.contains("before-death\n2"), "{back}");
     drop(working);
     backend.close().await;
 }

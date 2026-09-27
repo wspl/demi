@@ -588,7 +588,7 @@ starts, private to its user, under the conversation that the job's
 [command context](native-runtime.md#command-context) names:
 
 ```text
-<installation state>/jobs/
+jobs/                               the job root
   edits.lock                        the installation's edit lock (Edit tracking)
   <conversation>/                   one per conversation, its id in lowercase
     job-<random>/
@@ -597,17 +597,21 @@ starts, private to its user, under the conversation that the job's
       .work-<random>/               the scratch directory TMPDIR names; goes when the job ends
 ```
 
-The installation state is `~/.demi/instances/<backend>/` on a paired device,
-or the directory `DEMI_HOME` names, and `/run/demi` on a Cloud
-([Connection and identity](#connection-and-identity)). A job's directory
+On a paired device the job root is `jobs/` in the installation state, which is
+`~/.demi/instances/<backend>/` or the directory `DEMI_HOME` names
+([Connection and identity](#connection-and-identity)). A Cloud keeps its
+installation state in `/run/demi`, which every boot makes anew, and its job
+root at `/var/lib/demi/jobs/` on its system image, which a stop keeps
+([Images](../cloud/managed-hosts.md#images) says why there). A job's directory
 outlives the job, so that the backend reads what it needs when the command
 completes and a tool result can name a file for the model to read later
 (`raw bytes at <path>`). It goes with its conversation's Host resources: the
 [conversation release](resource-lifecycle.md#conversation-release) removes the
-conversation's directory on a paired device, and a Cloud loses its whole
-installation state when it stops. Keeping one directory per conversation lets
-a release remove that conversation's jobs and no other's, and lets the runner
-name, after a restart, the conversations it still holds output for
+conversation's directory on every Host, and a Cloud's
+[system reset](../cloud/managed-hosts.md#system-reset) removes the whole job
+root with the system. Keeping one directory per conversation lets a release
+remove that conversation's jobs and no other's, and lets the runner name,
+after a restart or a Cloud's wake, the conversations it still holds output for
 ([A release the device missed](resource-lifecycle.md#a-release-the-device-missed)).
 
 A job starts unfollowed. `job_follow { jobId, follow }` starts or stops the

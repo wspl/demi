@@ -266,6 +266,7 @@ impl Host {
             .expect("context directory"),
             pipes,
             log: log.reader(),
+            jobs: root.join("state").join("jobs"),
             shell: crate::shell::ShellRuntime::current(),
             endpoint: server.endpoint().into(),
             cwd: root.into(),

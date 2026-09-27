@@ -7,8 +7,9 @@
 //! one, keep a wake from starting its runner, or kill a runner as a crash
 //! would, which the manager reports as a death to every connection. It
 //! mounts no image and isolates nothing: a stop clears the runner's state
-//! but its log, as a Cloud's `/run/demi` goes with it while its system layer
-//! stays; a reset clears the log too; both keep its home.
+//! but its log and its job directories, as a Cloud's `/run/demi` goes with
+//! it while its system image, which holds those two, stays; a reset clears
+//! them too; both keep its home.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -178,7 +179,8 @@ impl ScriptedManager {
             .is_some_and(RunnerProcess::running)
     }
 
-    /// The runner's installation state, `/run/demi` on a real Cloud.
+    /// The runner's installation state, `/run/demi` on a real Cloud, whose
+    /// `jobs/` stands for the job root on the Cloud's system image.
     pub fn state(&self, device: &str) -> std::path::PathBuf {
         self.shared
             .lock()
@@ -412,7 +414,8 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
             stop_runner(shared, &device).await;
             let taken = shared.lock().guests.get_mut(&device).and_then(|guest| guest.runner.take());
             if let Some(mut runner) = taken {
-                // A reset replaces the system layer, the log with it.
+                // A reset replaces the system layer, the log and the job
+                // directories with it.
                 runner.clear_state();
                 shared.lock().guests.get_mut(&device).unwrap().runner = Some(runner);
             }
@@ -432,8 +435,8 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
 }
 
 /// Stops the device's runner, if it runs, and clears its state but its
-/// log, as a stop takes a Cloud's temporary mounts and keeps its system
-/// layer; the caller holds the device's turn.
+/// log and its job directories, as a stop takes a Cloud's temporary mounts
+/// and keeps its system image; the caller holds the device's turn.
 async fn stop_runner(shared: &Shared, device: &str) {
     let taken = shared.lock().guests.get_mut(device).and_then(|guest| guest.runner.take());
     let Some(mut runner) = taken else {

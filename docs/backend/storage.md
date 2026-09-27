@@ -310,7 +310,7 @@ retention pass does the rest:
 | A tool result's image or video | 30 days, and longer while a request could still send it | Retired: a part that says it was removed takes its place ([Retired tool media](../agent/runtime.md#retired-tool-media)); then its blob is collected |
 | Any other blob, such as a tool's screenshot in history an edit removed | While a block, a queued message or a pending steer references it, and 24 hours after its last use | Collected ([Collecting blobs](#collecting-blobs)) |
 | A conversation, its rows and its change objects | For as long as the account exists | Removed with the account |
-| A shell job's output on a Host | Until the conversation's Host resources are released | Removed by the conversation release, or when a Cloud stops ([Conversation release](../execution/resource-lifecycle.md#conversation-release)) |
+| A shell job's output on a Host | Until the conversation's Host resources are released | Removed by the conversation release, or with a Cloud's system at a reset ([Conversation release](../execution/resource-lifecycle.md#conversation-release)) |
 
 ### The retention pass
 
