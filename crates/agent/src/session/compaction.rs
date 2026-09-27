@@ -22,10 +22,10 @@ use super::{
 use crate::{
     store::{
         Checkpoint, CheckpointUpdate, CommandStateHistory, CommitGuard, SessionStore, StoreError,
-        media::{BlobStore, HeldMedia, ModelView},
+        media::{BlobStore, HeldMedia},
     },
     transcript::{
-        TranscriptLog, compaction_window,
+        RequestView, TranscriptLog, compaction_window,
         estimate::{RequestSize, block_tokens, context_tokens, request_size, text_tokens},
         last_assistant_text, replay,
     },
@@ -95,16 +95,13 @@ impl CompactionConfig {
     }
 }
 
-/// Whether the estimate of `view`, the replayed blocks as the model
-/// receives them, is at or over the token threshold of `model`.
-fn over_token_threshold(s: &SessionShared, model: &ModelSelection, view: &ModelView) -> bool {
-    let window = model.model.context_window;
+/// Whether the estimate of `request` is at or over the token threshold of
+/// its model.
+fn over_token_threshold(s: &SessionShared, request: &RequestView) -> bool {
     s.config
         .compaction
-        .threshold(window)
-        .is_some_and(|threshold| {
-            context_tokens(&view.blocks, &view.media, Some(window)) >= threshold
-        })
+        .threshold(request.model().context_window)
+        .is_some_and(|threshold| context_tokens(request) >= threshold)
 }
 
 /// Whether the history is at or over a threshold of `model`, whose vendor
@@ -117,11 +114,12 @@ async fn over_a_threshold(
     cancel: &TurnCancel,
 ) -> Result<bool, TurnError> {
     let view = model_view(s, cancel).await?;
-    if over_token_threshold(s, model, &view) {
+    let request = RequestView::new(&view, &model.model, limits);
+    if over_token_threshold(s, &request) {
         return Ok(true);
     }
     let system_prompt = cancel.guard(s.runtime.system_prompt()).await?;
-    let replayed = replay(&view, &model.model, limits);
+    let replayed = replay(&request);
     let size = request_size(&system_prompt, &replayed.items);
     Ok(s.config.compaction.size_reached(limits, size))
 }
@@ -144,9 +142,12 @@ pub(super) async fn compacting<T>(
 /// Before a turn: one pass when the history is over the current model's
 /// token threshold; a request's size is checked before each request.
 pub(super) async fn preflight(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnError> {
-    let model = s.read(|core| core.model.clone());
     let view = model_view(s, cancel).await?;
-    if over_token_threshold(s, &model, &view) {
+    let over = s.read(|core| {
+        let request = RequestView::new(&view, &core.model.model, core.request_limits());
+        over_token_threshold(s, &request)
+    });
+    if over {
         compacting(s, run_pass(s, cancel)).await?;
     }
     Ok(())
@@ -219,10 +220,13 @@ pub(super) async fn run_pass(
     // The window always holds `first`, the block after the previous
     // boundary and its marker: `cut` never falls below `first + 1`.
     loop {
-        let compacted_tokens = view.blocks[start..cut]
-            .iter()
-            .map(|block| block_tokens(block, &view.media))
-            .sum::<u64>();
+        let compacted_tokens = s.read(|core| {
+            let request = RequestView::new(&view, &core.model.model, core.request_limits());
+            view.blocks[start..cut]
+                .iter()
+                .map(|block| block_tokens(block, &request))
+                .sum::<u64>()
+        });
         // The copy holds the window by reference, with the bytes the session
         // holds for it.
         let (compacted, held) = s.read(|core| {

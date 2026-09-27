@@ -191,33 +191,39 @@ close to the provider's own count.
 ### Block estimates
 
 A block's estimate is the token estimate of its text plus the weight of its
-media, read from the replayed blocks as the model receives them: each medium
-with the bytes the session holds for it, and a medium whose blob is missing
-as its text ([Media](runtime.md#media)).
+media, for the model of one request: each medium as that request carries it
+([Replay](runtime.md#replay)). A medium it carries with its bytes weighs what
+the table below says. A medium it carries as the text that names it, because
+its blob is missing ([Media](runtime.md#media)), the model does not accept
+its type, or it would take more than half of the model's request body limit,
+weighs nothing, and its text counts. The same medium therefore weighs less
+for a model that does not read it: for example, after a switch to a model
+without images, a history of screenshots estimates as the lines that name
+them.
 
 | Block | Text |
 | --- | --- |
-| `user`, `steer`, `wakeup` | The content, not a `user` block's preamble, one line per part: a text as written; an image or a video as its URL or media type; a document as `<fileName> <mediaType>`; a reference as written; an attachment as `<name> <path>` |
+| `user`, `steer`, `wakeup` | The content, not a `user` block's preamble, one line per part: a text as written; an image or a video as its URL or media type; a document as `<fileName> <mediaType>`; a medium the request carries as text as that text; a reference as written; an attachment as `<name> <path>` |
 | `context` | Its text |
 | `agent_message` | The message as JSON |
 | `resume` | `Continue from where you left off.` |
 | `thinking`, `text` | Its text |
 | `redacted_thinking` | Its data |
-| `tool_call` | The tool name, the input and each output part (a text, a media type, or the text of a medium that is gone), one per line |
+| `tool_call` | The tool name, the input and each output part (a text; a medium's media type, or the text the request carries in its place; or the text of a medium that is gone), one per line |
 | `response` | Its usage as JSON |
 | `error` | Its message |
 | `abort` | `aborted` |
 | `compaction_boundary` | The summary |
 | `compaction_marker` | The summarized token count, in decimal |
 
-| Media | Weight in tokens |
+| Media the request carries | Weight in tokens |
 | --- | --- |
 | An image with its bytes, in a `user` or `steer` block | The larger of 1,600 and the byte count divided by 1,000, rounded up |
 | An image by URL | 1,600 |
-| A document | The byte count divided by 4, rounded up |
+| A document with its bytes | The byte count divided by 4, rounded up |
 | An image in a tool result | The larger of 1,600 and its decoded byte count divided by 1,000, rounded up |
 | A video, anywhere | 0 |
-| Media held by blob reference, whose bytes are not loaded | An image 1,600, a document 0 |
+| A medium as its text | 0; its text counts |
 
 Images and documents are weighted because their text rendering says nothing
 about their cost; an image-heavy history would otherwise estimate near zero
@@ -325,6 +331,7 @@ a real model.
 | A turn keeps hitting the threshold | The turn continues after at most three compactions; no pass summarizes only a previous summary |
 | A switch to a smaller window | Compaction runs first, with the previous model; a switch to a larger window compacts nothing |
 | Estimates | `你好` estimates as 2 tokens; an emoji is never cut in half by the replay bound, and the truncation count is in scalar values |
+| A medium a request carries as text: its model does not read it, or it is over half the body limit | The estimate for that model weighs the text, not the medium |
 | Signed thinking of 20,000 characters | It is replayed whole |
 
 A large recorded conversation, kept with the agent crate, is checked by hand

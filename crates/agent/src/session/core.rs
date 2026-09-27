@@ -42,8 +42,8 @@ use crate::{
         media::{self, HeldMedia, ModelView},
     },
     transcript::{
-        INTERRUPTED_CODE, INTERRUPTED_TURN_MESSAGE, TranscriptLog, opens_input_turn, replay,
-        replay_start,
+        INTERRUPTED_CODE, INTERRUPTED_TURN_MESSAGE, RequestView, TranscriptLog, opens_input_turn,
+        replay, replay_start,
     },
 };
 
@@ -1253,7 +1253,11 @@ impl SessionCore {
         request_id: String,
         cancel: CancellationToken,
     ) -> InferenceRequest {
-        let replayed = replay(view, &self.model.model, self.request_limits());
+        let replayed = replay(&RequestView::new(
+            view,
+            &self.model.model,
+            self.request_limits(),
+        ));
         InferenceRequest {
             session_id: self.id.to_string(),
             turn_id: self.turn().to_string(),
