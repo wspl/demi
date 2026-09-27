@@ -301,6 +301,8 @@ The script starts the manager the workspace built (`target/debug`) with its
 resource limits off, in a stand-in execution host: the init of a throwaway PID
 and mount namespace with its own `/run` and an empty, read-only cgroup root,
 sharing the machine's network namespace so that the Clouds reach the backend.
+Like a host's init, it reaps the processes it adopts, such as the Sentry of a
+sandbox that died, which `runsc` would otherwise take for a running one.
 Nothing in the stand-in can create a cgroup, so a boot that asked for one
 would fail, and the machine's cgroup hierarchies stay untouched. The backend
 URL is the machine's address toward the Clouds with a free port; the state
@@ -311,6 +313,13 @@ restores IP forwarding, and removes the state directory. It then compares the
 processes, mounts, loop devices, network interfaces and namespaces, nftables
 tables, cgroups, and listeners with their state before the run, and fails when
 anything the run made remains.
+
+A Cloud's disks cannot grow where the manager lacks `CAP_SYS_RESOURCE`
+([Linux requirements](../cloud/setup.md#linux-requirements)), as in a container
+that drops it even for root. There the growth test cannot pass, and the suite
+runs without it: the script takes `-- --skip grows_its_home_online` after its
+own arguments, and the `cargo test` command takes `--skip grows_its_home_online`
+after its `--`.
 
 ### Claude Code suite
 

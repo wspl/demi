@@ -23,7 +23,7 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 use demi_backend::MachinesClient;
-use demi_builtin_protocol::browser::BrowserTab;
+use demi_builtin_protocol::browser::{BrowserTab, TabId};
 use demi_gates::Purpose;
 use demi_machines_protocol::{CheckpointParams, ImageStateParams, MachineImageState};
 use demi_provider::testing::MockVendor;
@@ -31,7 +31,6 @@ use demi_web_api::auth::Role;
 use demi_web_api::browser::BrowserTabs;
 use demi_web_api::cloud::{CloudState, CloudStatus, ResetPhase};
 use demi_web_api::error::ErrorCode;
-use demi_web_api::state::ProductState;
 use reqwest::{Method, StatusCode};
 use serde::Deserialize;
 use serde_json::json;
@@ -216,6 +215,32 @@ async fn list(backend: &TestBackend, session: &Session, conversation: &str) -> c
     backend.get(&format!("/api/conversations/{conversation}/fs"), Some(session)).await
 }
 
+/// Opens a tab at `url` from the conversation's panel, whose tabs route is
+/// `tabs`, and answers its id. The panel's open answers before the page
+/// loads (`web-api.md` § Conversation browser tabs).
+async fn open_tab(backend: &TestBackend, session: &Session, tabs: &str, url: &str) -> TabId {
+    let opened = backend.post(tabs, Some(session), json!({ "url": url })).await;
+    assert!(opened.status.is_success(), "{}", String::from_utf8_lossy(&opened.body));
+    opened.json::<BrowserTab>().id
+}
+
+/// Waits until the tab `id` shows the page titled `title`, which Chrome
+/// reports once it has read the page, asking every 100 ms for at most
+/// [`PATIENCE`].
+async fn until_titled(backend: &TestBackend, session: &Session, tabs: &str, id: &TabId, title: &str) {
+    let deadline = Instant::now() + PATIENCE;
+    loop {
+        let listed = backend.get(tabs, Some(session)).await;
+        assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
+        let listed: BrowserTabs = listed.json();
+        if listed.tabs.iter().any(|tab| tab.id == *id && tab.title == title) {
+            return;
+        }
+        assert!(Instant::now() < deadline, "tab {id} never showed {title:?}: {:?}", listed.tabs);
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
 /// A conversation on the Cloud: its model answers from `vendor` under
 /// `prefix`, and its socket waits as long as a boot within a turn may take.
 async fn on_cloud<'a>(
@@ -284,13 +309,11 @@ echo installed > package/usr/share/cloud-suite/marker
 dpkg-deb --root-owner-group --build package probe.deb > /dev/null
 sudo -n dpkg -i probe.deb > /dev/null"#;
 
-// Tens of seconds: the Cloud boots, stops when idle, wakes, grows its home
-// and is saved.
+// Tens of seconds: the Cloud boots, stops when idle, wakes and is saved.
 #[tokio::test]
 #[ignore = "the Cloud suite: needs a machine manager and the suite's variables (scenarios.md § Cloud suite)"]
-async fn a_cloud_runs_as_uid_1000_for_every_conversation_keeps_a_system_package_and_home_across_a_stop_and_grows_its_home()
-{
-    const TEST: &str = "identity, persistence and growth";
+async fn a_cloud_runs_as_uid_1000_for_every_conversation_and_keeps_a_system_package_and_home_across_a_stop() {
+    const TEST: &str = "identity and persistence";
     let _one = one_at_a_time();
     let environment = Environment::read();
     let vendor = MockVendor::start().await;
@@ -301,6 +324,8 @@ async fn a_cloud_runs_as_uid_1000_for_every_conversation_keeps_a_system_package_
     let mut second = on_cloud(&backend, &master, &master, &vendor, SECOND, "/b").await;
     let working = backend.file_gate(&master, FIRST).await.enter(Purpose::Demand).await;
 
+    // Opening a conversation leaves its Cloud as it is; the first Host
+    // operation boots it.
     let started = Instant::now();
     let listed = list(&backend, &master, FIRST).await;
     assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
@@ -338,22 +363,11 @@ async fn a_cloud_runs_as_uid_1000_for_every_conversation_keeps_a_system_package_
     assert!(seen.contains("1000:1000\nfrom-api\nhome-data"), "{seen}");
     assert_eq!(the_device(&backend, &master).await, device);
 
-    // Fills the home past what its runner keeps free, without writing the
-    // blocks, so the host stores none of it. The runner looks at its
-    // volumes when it connects, and then once a minute.
-    let filled = run(&mut first, "fill", "fallocate -l 800M ~/fill && df -B1 --output=size /home | tail -1").await;
-    let initial: u64 = filled
-        .lines()
-        .find_map(|line| line.trim().parse().ok())
-        .unwrap_or_else(|| panic!("no size: {filled}"));
-
     let started = Instant::now();
     drop(working);
     until_cloud(&backend, &master, "the idle Cloud stops", |status| status.state == CloudState::Off).await;
     measured(TEST, "idle stop, window included", started.elapsed());
 
-    // Woken by a Host operation, not a job: the runner looks at its volumes
-    // as it connects only while no job runs.
     let working = backend.file_gate(&master, FIRST).await.enter(Purpose::Demand).await;
     let started = Instant::now();
     let listed = list(&backend, &master, FIRST).await;
@@ -367,6 +381,55 @@ async fn a_cloud_runs_as_uid_1000_for_every_conversation_keeps_a_system_package_
     .await;
     assert!(woken.contains("home-data\ninstall ok installed\ninstalled"), "{woken}");
     assert_eq!(the_device(&backend, &master).await, device);
+    measure_memory(TEST, &environment, &device);
+    drop(working);
+    backend.close().await;
+
+    // The saved generation records the home's capacity as its superblock
+    // gives it.
+    let saved = environment
+        .manager()
+        .call(ImageStateParams { device_id: device.clone() })
+        .await
+        .unwrap()
+        .expect("the saved Cloud has a generation");
+    let home = environment.generation(&device, &saved).join("home.ext4");
+    assert_eq!(saved.home_bytes.get(), superblock_capacity(&home));
+}
+
+// Tens of seconds: the Cloud boots, stops when idle, wakes, grows its home
+// and is saved; the runner asks for growth as it connects. It needs a
+// manager that holds CAP_SYS_RESOURCE (`scenarios.md` § Cloud suite).
+#[tokio::test]
+#[ignore = "the Cloud suite: needs a machine manager and the suite's variables (scenarios.md § Cloud suite)"]
+async fn a_cloud_grows_its_home_online_and_its_saved_generation_records_the_grown_capacity() {
+    const TEST: &str = "growth";
+    let _one = one_at_a_time();
+    let environment = Environment::read();
+    let vendor = MockVendor::start().await;
+    let harness = environment.harness();
+    let backend = harness.start_at(environment.address()).await;
+    let master = backend.setup().await;
+    let mut first = on_cloud(&backend, &master, &master, &vendor, FIRST, "/a").await;
+    let working = backend.file_gate(&master, FIRST).await.enter(Purpose::Demand).await;
+
+    // Fills the home past what its runner keeps free, without writing the
+    // blocks, so the host stores none of it. The runner looks at its
+    // volumes when it connects, and then once a minute.
+    let filled = run(&mut first, "fill", "fallocate -l 800M ~/fill && df -B1 --output=size /home | tail -1").await;
+    let initial: u64 = filled
+        .lines()
+        .find_map(|line| line.trim().parse().ok())
+        .unwrap_or_else(|| panic!("no size: {filled}"));
+    let device = the_device(&backend, &master).await;
+
+    // Woken by a Host operation, not a job: the runner looks at its volumes
+    // as it connects only while no job runs.
+    drop(working);
+    until_cloud(&backend, &master, "the idle Cloud stops", |status| status.state == CloudState::Off).await;
+    let working = backend.file_gate(&master, FIRST).await.enter(Purpose::Demand).await;
+    let listed = list(&backend, &master, FIRST).await;
+    assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
 
     // The home grows while the Cloud runs.
     let started = Instant::now();
@@ -385,7 +448,6 @@ async fn a_cloud_runs_as_uid_1000_for_every_conversation_keeps_a_system_package_
         .find_map(|line| line.strip_prefix("home-size ").and_then(|size| size.trim().parse().ok()))
         .unwrap_or_else(|| panic!("no size: {grown}"));
     assert!(size > initial, "the home stayed at {size} bytes: {grown}");
-    measure_memory(TEST, &environment, &device);
     drop(working);
     backend.close().await;
 
@@ -423,6 +485,9 @@ async fn a_reset_brings_back_a_cloud_whose_bash_or_runner_is_broken_and_keeps_it
     assert!(broken.contains("broken"), "{broken}");
     let device = the_device(&backend, &master).await;
 
+    // A reset waits for the conversation's file operations to end, so the
+    // test lets go of its own before each one.
+    drop(working);
     let started = Instant::now();
     reset(&backend, &master, &uuid::Uuid::new_v4().to_string()).await;
     until_cloud(&backend, &master, "the reset of a Cloud without bash is ready", |status| {
@@ -430,6 +495,7 @@ async fn a_reset_brings_back_a_cloud_whose_bash_or_runner_is_broken_and_keeps_it
     })
     .await;
     measured(TEST, "reset until ready", started.elapsed());
+    let working = backend.file_gate(&master, FIRST).await.enter(Purpose::Demand).await;
     let repaired = run(&mut first, "repaired", "cat ~/note; stat -c %a /usr/bin/bash").await;
     assert!(repaired.contains("latest-home\n755"), "{repaired}");
 
@@ -441,12 +507,12 @@ async fn a_reset_brings_back_a_cloud_whose_bash_or_runner_is_broken_and_keeps_it
     let refused = list(&backend, &master, FIRST).await;
     assert_eq!(refused.refusal(), (StatusCode::SERVICE_UNAVAILABLE, ErrorCode::CloudUnavailable));
 
-    let working = backend.file_gate(&master, FIRST).await.enter(Purpose::Demand).await;
     reset(&backend, &master, &uuid::Uuid::new_v4().to_string()).await;
     until_cloud(&backend, &master, "the reset of a Cloud without a runner is ready", |status| {
         status.operation.as_ref().is_some_and(|operation| operation.phase == ResetPhase::Ready)
     })
     .await;
+    let working = backend.file_gate(&master, FIRST).await.enter(Purpose::Demand).await;
     let back = run(&mut first, "back", "cat ~/note; test -x /usr/bin/demi-runner && echo runner-back").await;
     assert!(back.contains("latest-home\nrunner-back"), "{back}");
     assert_eq!(the_device(&backend, &master).await, device);
@@ -500,14 +566,13 @@ async fn a_checkpoint_with_chrome_open_saves_both_images_with_what_a_mapping_wro
     let tabs = format!("/api/conversations/{FIRST}/browser/tabs");
     let page = format!("file://{session}/page.html");
     let started = Instant::now();
-    let opened = backend.post(&tabs, Some(&master), json!({ "url": page })).await;
-    measured(TEST, "first Chrome tab", started.elapsed());
-    assert!(opened.status.is_success(), "{}", String::from_utf8_lossy(&opened.body));
-    assert_eq!(opened.json::<BrowserTab>().title, "cloud-suite page");
+    let opened = open_tab(&backend, &master, &tabs, &page).await;
+    until_titled(&backend, &master, &tabs, &opened, "cloud-suite page").await;
+    measured(TEST, "first Chrome tab until its page shows", started.elapsed());
     let started = Instant::now();
-    let again = backend.post(&tabs, Some(&master), json!({ "url": page })).await;
-    measured(TEST, "later Chrome tab", started.elapsed());
-    assert!(again.status.is_success(), "{}", String::from_utf8_lossy(&again.body));
+    let again = open_tab(&backend, &master, &tabs, &page).await;
+    until_titled(&backend, &master, &tabs, &again, "cloud-suite page").await;
+    measured(TEST, "later Chrome tab until its page shows", started.elapsed());
     // Chrome keeps its own sandbox: its renderers run under seccomp.
     let renderers = run(
         &mut first,
@@ -547,6 +612,9 @@ async fn a_checkpoint_with_chrome_open_saves_both_images_with_what_a_mapping_wro
             .status()
             .unwrap();
         assert!(copied.success());
+        // Delayed allocation counts a new file's extent tree only once the
+        // file is written back, as the saved image was.
+        std::fs::File::open(&copy).unwrap().sync_all().unwrap();
         let blocks = |path: &Path| std::fs::metadata(path).unwrap().blocks();
         assert!(blocks(image) <= blocks(&copy), "{}: {} blocks, cp's {}", image.display(), blocks(image), blocks(&copy));
         std::fs::remove_file(&copy).unwrap();
@@ -606,10 +674,12 @@ async fn two_users_clouds_run_at_once_and_reach_the_backend_but_nothing_else_pri
         .lines()
         .find_map(|line| line.trim().split_once('/').and_then(|(address, _)| address.parse().ok()))
         .unwrap_or_else(|| panic!("no address: {serving}"));
-    // Both Clouds run at once on the one manager.
+    // The first user's Cloud boots too: both run at once on the one
+    // manager.
+    let listed = list(&backend, &master, FIRST).await;
+    assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
     for session in [&master, &ana] {
-        let state: ProductState = backend.get("/api/state", Some(session)).await.json();
-        assert!(state.devices.iter().any(|device| device.online), "{:?}", state.devices);
+        assert_eq!(status(&backend, session).await.state, CloudState::Running);
     }
     assert_ne!(the_device(&backend, &master).await, the_device(&backend, &ana).await);
 
