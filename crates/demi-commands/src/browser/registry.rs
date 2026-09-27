@@ -155,8 +155,17 @@ impl Tabs {
     }
 
     /// The latest snapshot, once the owner has registered every tab it
-    /// knows of.
+    /// knows of, with the titles the pages have now: Chrome reports a page's
+    /// title with its target only when the page commits, before the document
+    /// names one (`browser.md` § One tab registry).
     pub async fn listing(&self) -> Result<Arc<Snapshot>> {
+        self.ask(|reply| Request::Retitle { reply }).await?;
+        self.registered().await
+    }
+
+    /// The latest snapshot, once the owner has registered every tab it
+    /// knows of.
+    async fn registered(&self) -> Result<Arc<Snapshot>> {
         let mut snapshot = self.snapshot.clone();
         let listing = snapshot
             .wait_for(|snapshot| !snapshot.registering)
@@ -172,7 +181,7 @@ impl Tabs {
         if let Some(tab) = self.latest().find(id) {
             return Ok(tab.clone());
         }
-        self.listing()
+        self.registered()
             .await?
             .find(id)
             .cloned()
@@ -243,6 +252,13 @@ enum Request {
     Popups {
         opener: TargetId,
         reply: oneshot::Sender<Result<Vec<TabId>>>,
+    },
+    /// Takes the pages' current titles from Chrome's target list.
+    Retitle { reply: oneshot::Sender<Result<()>> },
+    /// Chrome's target list, for a retitling.
+    Titled {
+        targets: Result<Vec<TargetInfo>>,
+        reply: oneshot::Sender<Result<()>>,
     },
     /// A creation's page, or why Chrome made none.
     Opened {
@@ -355,6 +371,20 @@ impl<T: Clone> Book<T> {
         seen.title.clone_into(&mut entry.title);
         seen.url.clone_into(&mut entry.url);
         changed && matches!(entry.stage, Stage::Live { .. })
+    }
+
+    /// Takes a known page's title from Chrome's current target list, when
+    /// the page still shows the document the list saw; true when a live
+    /// tab's listing changed.
+    fn retitle(&mut self, seen: &Sighting<'_>) -> bool {
+        let Some(entry) = self.entries.get_mut(seen.target) else {
+            return false;
+        };
+        if entry.url != seen.url || entry.title == seen.title {
+            return false;
+        }
+        seen.title.clone_into(&mut entry.title);
+        matches!(entry.stage, Stage::Live { .. })
     }
 
     fn is_pending(&self, target: &TargetId) -> bool {
@@ -861,6 +891,36 @@ impl Owner {
             }
             // Answered once no page the opener opened is being registered.
             Request::Popups { opener, reply } => self.popups.push((opener, reply)),
+            Request::Retitle { reply } => {
+                let context = self.context.clone();
+                self.context.tasks.spawn(async move {
+                    let targets = tokio::select! {
+                        _ = context.ended.cancelled() => Err(BrowserError::Closed),
+                        targets = async {
+                            Ok(context
+                                .browser
+                                .call()?
+                                .execute(GetTargetsParams::default())
+                                .await?
+                                .result
+                                .target_infos)
+                        } => targets,
+                    };
+                    context.tell(Request::Titled { targets, reply }).await;
+                });
+            }
+            Request::Titled { targets, reply } => {
+                let retitled = targets.map(|targets| {
+                    let mut changed = false;
+                    for seen in targets.iter().filter_map(Sighting::of) {
+                        changed |= self.book.retitle(&seen);
+                    }
+                    if changed {
+                        self.publish();
+                    }
+                });
+                let _gone = reply.send(retitled);
+            }
         }
     }
 
