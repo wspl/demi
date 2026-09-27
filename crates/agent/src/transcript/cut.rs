@@ -160,7 +160,8 @@ pub(crate) fn through_assistant<'a>(
 /// session's latest answered request carried, from the last
 /// `compaction_boundary`, or the first block, to the cut, where that
 /// request's answer begins. With no request answered since the last
-/// compaction, the window runs to the end.
+/// compaction, the window ends where the input no request answered begins,
+/// which the pass keeps.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CompactionWindow {
     pub(crate) start: usize,
@@ -169,10 +170,24 @@ pub(crate) struct CompactionWindow {
 
 /// The window of the next pass over `blocks`.
 pub(crate) fn compaction_window(blocks: &[Block]) -> CompactionWindow {
-    CompactionWindow {
-        start: replay_start(blocks),
-        cut: latest_answer(blocks).unwrap_or(blocks.len()),
-    }
+    let start = replay_start(blocks);
+    let cut = latest_answer(blocks).unwrap_or_else(|| unanswered_input(blocks).max(start));
+    CompactionWindow { start, cut }
+}
+
+/// Where the input no request has answered begins: at the last `user` block
+/// after the latest `response` block, or right after that response when no
+/// `user` block follows it; without a response, at the last `user` block,
+/// or at the first block.
+fn unanswered_input(blocks: &[Block]) -> usize {
+    let answered = blocks
+        .iter()
+        .rposition(|block| matches!(block, Block::Response(_)))
+        .map_or(0, |response| response + 1);
+    blocks[answered..]
+        .iter()
+        .rposition(|block| matches!(block, Block::User(_)))
+        .map_or(answered, |user| answered + user)
 }
 
 /// The text of the last `text` block from `since` on; empty when there is
