@@ -12,12 +12,12 @@ mod stream;
 use std::sync::Arc;
 
 use demi_core::{
-    AuthState, Clock, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
+    AuthState, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
     RuntimeState, Timestamp,
 };
 use demi_provider::{
     Capabilities, CatalogError, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
-    RuntimeEnv, RuntimeError, Secret, read_http_failure,
+    RequestLimits, RuntimeEnv, RuntimeError, Secret, read_http_failure,
 };
 use futures_util::{
     StreamExt,
@@ -148,5 +148,13 @@ impl ProviderRuntime for GoogleRuntime {
 
     fn close(&mut self) -> LocalBoxFuture<'_, ()> {
         Box::pin(async {})
+    }
+
+    /// 20 MB, since media travel inline, and 3,600 images.
+    fn request_limits(&self, _model: &Model) -> RequestLimits {
+        RequestLimits {
+            body_bytes: Some(20_000_000),
+            images: Some(3_600),
+        }
     }
 }
