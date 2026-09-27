@@ -76,19 +76,57 @@ it to:
 - every connected paired device of the conversation when it is archived.
 
 A Cloud never receives a release: it reclaims at the device level, when it
-stops.
+stops. Its runner keeps its whole state in `/run/demi`, a temporary mount that
+a stop and a reset remove ([Images](../cloud/managed-hosts.md#images)), so a
+Cloud's job directories go with it.
 
 The runner forwards the release to every resident native service on that device
 as the generic [conversation release operation](native-runtime.md#conversation-scoped-state);
 each service ends whatever it holds for that conversation and acknowledges. The
 browser is one such holder: it closes that conversation's Chrome and removes its
-profile. Repeating a release is harmless. A release never starts a service that
-is not running; when the device is offline, there is nothing to release and the
-connection loss has already ended the state.
+profile. The runner itself holds the conversation's job directories: each shell
+job of the conversation keeps its whole output there, and a tool result names
+such a file, for example `<binary stdout: 412000 bytes; raw bytes at <path>>`
+([Pipes and output](runner.md#pipes-and-output)). The release removes that
+conversation's directories and no other's, so a path a transcript names there
+is invalid afterwards. The runner acknowledges once the services have answered
+and the directories are gone. A directory it cannot remove goes to the
+[Host log](runner.md#host-log) with the reason, and the next release of the
+conversation tries again; the release still succeeds, since nothing of the
+conversation runs there any more.
+
+No job of the conversation runs when its release arrives: the backend sends a
+release only while it holds the conversation's file gate, and every job runs
+inside a lease of that gate
+([Host operations](sessions-and-targets.md#host-operations)). The runner still
+keeps the directory of any job it runs, whatever the release names.
+
+Repeating a release is harmless. A release never starts a service that is not
+running. When the device is offline, the connection loss has already ended the
+services' state, but not its job directories, which stay on its disk until the
+device hears the release after it connects again
+([A release the device missed](#a-release-the-device-missed)).
 
 Forking a conversation creates a new conversation and releases nothing. A runner
-shutdown or connection loss ends every conversation's state on that device
-through the native service shutdown contract.
+shutdown or connection loss ends every conversation's service state on that
+device through the native service shutdown contract; the job directories stay.
+
+### A release the device missed
+
+A laptop that sleeps through a conversation's idle deadline misses the
+release, since the backend sends a release only to a connected runner. Without
+a second chance, that conversation's job output would stay on the laptop for
+good. So the runner's `hello` names every conversation it holds job
+directories for, and the backend, once it has bound the connection, answers
+for each:
+
+- a conversation the device's owner does not have, or one that is archived or
+  no longer bound to the device: the release, at once;
+- any other: the conversation's idle watch starts unless it runs
+  ([Idle window](#idle-window)), so an idle conversation hears the release one
+  window later.
+
+A Cloud's runner names none: a Cloud's job directories go when it stops.
 
 ## Acceptance
 
@@ -101,7 +139,9 @@ database, in real time with a short window
 | --- | --- |
 | Activity arrives just before the deadline | Exactly one of activity or retirement wins; no live work is stopped as idle |
 | A conversation with open browser tabs idles for the window on a paired device | The device receives one release; its Chrome and profile are gone; the device and runner remain available |
-| A conversation idles for the window on Cloud | The machine stops; no release message is sent to it |
+| Two conversations ran shell jobs on one paired device, and one of them is released | That conversation's job directories are gone and the other's remain |
+| A paired device was offline at a conversation's idle deadline and connects again | Its `hello` names the conversation, which hears the release one window later, or at once when it is archived or no longer bound to the device |
+| A conversation idles for the window on Cloud | The machine stops; no release message is sent to it; after the next wake, the output file its earlier job's result names is gone |
 | A running job or a waiting child turn exists at the deadline | Nothing is retired; the window restarts when the activity ends |
 | A live browser view stays open with no agent activity, while the page lists the browser's tabs | Nothing is retired while the view is open, and the window starts when it closes; the listings restart nothing |
 | Target switch or archive while a timer is pending | One release to the old device; a stale timer cannot release the new binding |
