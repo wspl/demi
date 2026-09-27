@@ -46,8 +46,9 @@ export interface SilenceWatch {
  * Watches a socket from now on and calls `broken` once when it has brought
  * nothing for `SILENCE_MS`, counted from now or from the last `heard`: when
  * the watch's timer ends, or at the page's return when the clock shows that
- * much silence while the timer slept. The socket's owner stops the watch
- * when it lets the socket go, whatever the reason.
+ * much silence while the timer slept. At a return that finds less, the
+ * watch counts on from the last message by the clock. The socket's owner
+ * stops the watch when it lets the socket go, whatever the reason.
  */
 export function watchSilence(broken: () => void): SilenceWatch {
   // The wall clock, which goes on while the machine sleeps.
@@ -64,12 +65,21 @@ export function watchSilence(broken: () => void): SilenceWatch {
     stop()
     broken()
   }
-  const check = () => {
-    if (Date.now() - heardAt >= SILENCE_MS) {
-      fire()
+  const arm = (ms: number) => {
+    if (timer !== null) {
+      clearTimeout(timer)
     }
+    timer = setTimeout(fire, ms)
   }
-  timer = setTimeout(fire, SILENCE_MS)
+  const check = () => {
+    const silent = Date.now() - heardAt
+    if (silent >= SILENCE_MS) {
+      fire()
+      return
+    }
+    arm(SILENCE_MS - silent)
+  }
+  arm(SILENCE_MS)
   watched.add(check)
   return {
     heard() {
@@ -78,8 +88,7 @@ export function watchSilence(broken: () => void): SilenceWatch {
         return
       }
       heardAt = Date.now()
-      clearTimeout(timer)
-      timer = setTimeout(fire, SILENCE_MS)
+      arm(SILENCE_MS)
     },
     stop,
   }
@@ -114,9 +123,10 @@ export function waitToReconnect(failures: number, connect: () => void): Reconnec
 /**
  * The page came back: it became visible again, or came back online. Each
  * open socket that has brought nothing for `SILENCE_MS` by the clock is
- * broken at once, and then each closed socket connects without waiting for
- * the rest of its wait, one just broken among them when its owner starts the
- * wait as the break reaches it.
+ * broken at once, and each other one watched for the rest of that time by
+ * the clock. Then each closed socket connects without waiting for the rest
+ * of its wait, one just broken among them when its owner starts the wait as
+ * the break reaches it.
  */
 export function pageReturned(): void {
   for (const check of [...watched]) {

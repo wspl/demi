@@ -212,8 +212,9 @@ A page that comes back does not wait. Its timers stop while its computer
 sleeps, so the 75-second watch counts only the time the page was awake, and a
 wait that began before the sleep still has the rest of its time to run. So
 when the page becomes visible again or comes back online, the module checks
-every socket at once: a channel or conversation socket whose last message
-came 75 seconds ago or more by the clock is broken, and a closed socket
+every socket at once. A channel or conversation socket whose last message
+came 75 seconds ago or more by the clock is broken, and one heard from since
+is watched for the rest of those 75 seconds by the clock. A closed socket
 connects without waiting for the rest of its wait. For example, a laptop
 sleeps for an hour with the product open, and its user then opens the lid:
 the page shows again, and replaces the channel and each conversation socket
