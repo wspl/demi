@@ -3,7 +3,7 @@
 //! session with (`models.md` § Request parameters).
 
 use demi_provider::{
-    InferenceRequest, UnloadedMedia, json_body,
+    InferenceRequest, json_body,
     openai_request::{
         ChatDialect, ChatMedia, ChatMessage, ChatTool, chat_messages, reasoning_effort,
     },
@@ -21,14 +21,14 @@ pub(crate) const CLIENT_VERSION: &str = "1.0.5";
 
 /// The JSON body of `request`. The proxy reads images but no PDFs or
 /// video, and takes no output limit or service tier.
-pub(crate) fn encode(request: &InferenceRequest) -> Result<Vec<u8>, UnloadedMedia> {
+pub(crate) fn encode(request: &InferenceRequest) -> Vec<u8> {
     let dialect = ChatDialect {
         reasoning_content: false,
         media: ChatMedia::Images,
     };
     let body = Body {
         model: &request.model_id,
-        messages: chat_messages(&request.system_prompt, &request.items, dialect)?,
+        messages: chat_messages(&request.system_prompt, &request.items, dialect),
         stream: true,
         stream_options: StreamOptions {
             include_usage: true,
@@ -37,7 +37,7 @@ pub(crate) fn encode(request: &InferenceRequest) -> Result<Vec<u8>, UnloadedMedi
         tool_choice: (!request.tools.is_empty()).then_some("auto"),
         reasoning_effort: reasoning_effort(request.thinking.as_ref()),
     };
-    Ok(json_body(&body))
+    json_body(&body)
 }
 
 #[derive(Serialize)]

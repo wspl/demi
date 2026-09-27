@@ -36,7 +36,7 @@
       "why": "an optional field that is null",
       "fixture": "u1",
       "set": {
-        "/content/8/snippet": null
+        "/content/6/snippet": null
       },
       "browserRefuses": true
     },
@@ -89,17 +89,21 @@
       "fixture": "u1",
       "set": {
         "/content/1/source": {
-          "mediaType": "image/png",
-          "data": "iVBORw0KGgo="
+          "ref": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "mediaType": "image/png"
         }
       },
       "browserRefuses": true
     },
     {
-      "why": "bytes that are not base64",
+      "why": "a medium that holds its bytes",
       "fixture": "u1",
       "set": {
-        "/content/1/source/data": "not base64!"
+        "/content/1/source": {
+          "type": "binary",
+          "data": "iVBORw0KGgo=",
+          "mediaType": "image/png"
+        }
       },
       "browserRefuses": true
     },
@@ -107,7 +111,7 @@
       "why": "a blob reference that is not a SHA-256",
       "fixture": "u1",
       "set": {
-        "/content/2/source/ref": "sha-1-2-3"
+        "/content/1/source/ref": "sha-1-2-3"
       },
       "browserRefuses": true
     },
@@ -115,7 +119,7 @@
       "why": "a blob reference that is not a string",
       "fixture": "u1",
       "set": {
-        "/content/2/source/ref": 42
+        "/content/1/source/ref": 42
       },
       "browserRefuses": true
     },
@@ -123,8 +127,8 @@
       "why": "a document source without its tag",
       "fixture": "u1",
       "set": {
-        "/content/5/source": {
-          "data": "JVBERi0xLjc=",
+        "/content/4/source": {
+          "ref": "60303ae22b998861bce3b28f33eec1be758a213c86c93c076dbe9f558c11c752",
           "mediaType": "application/pdf",
           "fileName": "spec.pdf"
         }
@@ -135,7 +139,7 @@
       "why": "an attachment without a name",
       "fixture": "u1",
       "set": {
-        "/content/8/name": ""
+        "/content/6/name": ""
       },
       "browserRefuses": true
     },
@@ -143,7 +147,7 @@
       "why": "an attachment hash that is not a SHA-256",
       "fixture": "u1",
       "set": {
-        "/content/8/sha256": "abc"
+        "/content/6/sha256": "abc"
       },
       "browserRefuses": true
     },
@@ -151,7 +155,7 @@
       "why": "a size beyond JavaScript's safe integers",
       "fixture": "u1",
       "set": {
-        "/content/8/sizeBytes": 9007199254740992
+        "/content/6/sizeBytes": 9007199254740992
       },
       "browserRefuses": true
     },

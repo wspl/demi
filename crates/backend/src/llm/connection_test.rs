@@ -9,8 +9,7 @@ use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use demi_core::UserContentBlock;
-use demi_provider::{InferenceItem, InferenceRequest, PromptCache, Provider, ProviderEvent, RuntimeEnv};
+use demi_provider::{InferenceItem, InferenceRequest, PromptCache, Provider, ProviderEvent, RuntimeEnv, UserPart};
 use demi_web_api::ids::CredentialId;
 use demi_web_api::providers::TestResult;
 use futures_util::StreamExt;
@@ -81,7 +80,7 @@ impl Shard {
             output_cap: None,
             system_prompt: "Reply with the word ok.".into(),
             items: Arc::new([InferenceItem::UserMessage {
-                content: vec![UserContentBlock::Text { text: "ping".into() }],
+                content: vec![UserPart::Text("ping".into())],
             }]),
             tools: Arc::new([]),
             thinking: None,

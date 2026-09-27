@@ -14,7 +14,9 @@ use std::time::{Duration, SystemTime};
 
 use demi_agent_protocol::{ClientFrame, ServerFrame};
 use demi_backend::ObjectCounts;
-use demi_core::{Block, ToolMediaSource, ToolResultContentBlock, UserContentBlock};
+use demi_core::{
+    Block, GoneCause, ModelMediaKind, Timestamp, ToolMediaSource, ToolResultContentBlock, UserContentBlock,
+};
 use demi_provider::testing::MockVendor;
 use jiff::SignedDuration;
 use reqwest::StatusCode;
@@ -74,7 +76,8 @@ async fn close(socket: &mut Socket) {
 }
 
 /// The media of the result of the tool call `id` in the stored history: each
-/// image's blob, or the text in its place.
+/// image's blob, or, where an image was retired, its media type and the UTC
+/// day of its retirement.
 async fn result_media(backend: &TestBackend, master: &Session, id: &str) -> Vec<String> {
     let blocks = transcript(backend, master, FIRST).await.blocks;
     let call = blocks
@@ -90,19 +93,24 @@ async fn result_media(backend: &TestBackend, master: &Session, id: &str) -> Vec<
             ToolResultContentBlock::Image {
                 source: ToolMediaSource::Ref { r#ref, .. },
             } => Some(r#ref.to_string()),
-            ToolResultContentBlock::Text { text } if text.starts_with("[image:") => Some(text.clone()),
+            ToolResultContentBlock::Gone {
+                kind: ModelMediaKind::Image,
+                media_type,
+                cause: GoneCause::Retired { at },
+            } => Some(format!("{media_type} retired on {}", utc_day(*at))),
             _ => None,
         })
         .collect()
 }
 
-/// The line that takes a retired PNG's place, retired on the clock's day.
+/// The UTC day of `at`.
+fn utc_day(at: Timestamp) -> jiff::civil::Date {
+    at.to_jiff().to_zoned(jiff::tz::TimeZone::UTC).date()
+}
+
+/// A PNG retired on the clock's day, as `result_media` shows it.
 fn retired_on(harness: &Harness) -> String {
-    let day = jiff::Timestamp::from_millisecond(demi_core::Clock::now(&*harness.clock).as_millisecond())
-        .unwrap()
-        .to_zoned(jiff::tz::TimeZone::UTC)
-        .date();
-    format!("[image:image/png, removed on {day}: a tool result's images and videos are kept for 30 days]")
+    format!("image/png retired on {}", utc_day(demi_core::Clock::now(&*harness.clock)))
 }
 
 #[tokio::test]
@@ -263,8 +271,7 @@ async fn a_conversation_idle_for_30_days_loses_its_tool_images_and_its_next_requ
     harness.clock.advance(DAY * 31);
     let master = backend.login(MASTER_EMAIL, MASTER_PASSWORD).await;
     backend.run_retention(&master).await;
-    let retired = retired_on(&harness);
-    assert_eq!(result_media(&backend, &master, "toolu_1").await, [retired.clone()]);
+    assert_eq!(result_media(&backend, &master, "toolu_1").await, [retired_on(&harness)]);
 
     // The resumed conversation's next request carries the text where the
     // image was.
@@ -272,6 +279,10 @@ async fn a_conversation_idle_for_30_days_loses_its_tool_images_and_its_next_requ
     vendor.respond(say("Still here."));
     socket.chat("m2", "Anything new?").await;
     let sent = vendor.requests().last().unwrap().json()["messages"].to_string();
+    let day = utc_day(demi_core::Clock::now(&*harness.clock));
+    let retired = format!(
+        "[image:image/png, removed on {day}: a tool result's images and videos are kept for 30 days]"
+    );
     assert!(sent.contains(&retired), "{sent}");
     assert!(!sent.contains(&data_encoding::BASE64.encode(&png(1))), "{sent}");
     backend.close().await;

@@ -14,11 +14,11 @@ use demi_agent_protocol::{
     AbortResult, AbortTarget, ClientContent, ClientFrame, ServerFrame, TranscriptPatch,
 };
 use demi_core::{
-    Block, FailureSource, FileExtension, MediaSource, ModelSelection, SessionPhase,
-    ThinkingConfig, UserContentBlock,
+    Block, FailureSource, FileExtension, MediaSource, ModelSelection, SessionPhase, ThinkingConfig,
+    UserContentBlock, attachment_tag,
 };
 use demi_provider::{
-    ErrorCode, InferenceItem, ProviderEvent,
+    ErrorCode, InferenceItem, MediaBytes, Medium, ProviderEvent, UserPart,
     testing::{ScriptedRuntime, Turn, event},
 };
 use futures_util::StreamExt;
@@ -309,28 +309,30 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
     client.send(send("m4", "and now?")).await;
     frames_until(&mut client, is_idle).await;
 
-    let image = UserContentBlock::Image {
-        source: MediaSource::Binary {
-            data: png.clone(),
-            media_type: "image/png".into(),
-        },
+    // The model reads the record as the tag that names the file.
+    let UserContentBlock::Attachment(attachment) = &record else {
+        panic!("{record:?}")
     };
-    let missing = UserContentBlock::Text {
-        text: format!("[missing image blob {uploaded}]"),
-    };
+    let asked = UserPart::Text("describe this".into());
+    let image = UserPart::Image(Medium::Bytes(MediaBytes {
+        data: png.clone(),
+        media_type: "image/png".into(),
+    }));
+    let missing = UserPart::Text(format!("[missing image blob {uploaded}]"));
+    let tag = UserPart::Text(attachment_tag(attachment));
     let first_messages: Vec<Option<InferenceItem>> = script
         .requests()
         .iter()
         .map(|request| request.items.first().cloned())
         .collect();
-    let message = |content: Vec<UserContentBlock>| Some(InferenceItem::UserMessage { content });
+    let message = |content: Vec<UserPart>| Some(InferenceItem::UserMessage { content });
     assert_eq!(
         first_messages,
         [
-            message(vec![text.clone(), image.clone(), record.clone()]),
-            message(vec![text.clone(), image, record.clone()]),
-            message(vec![text.clone(), missing.clone(), record.clone()]),
-            message(vec![text, missing, record]),
+            message(vec![asked.clone(), image.clone(), tag.clone()]),
+            message(vec![asked.clone(), image, tag.clone()]),
+            message(vec![asked.clone(), missing.clone(), tag.clone()]),
+            message(vec![asked, missing, tag]),
         ]
     );
 }
@@ -666,12 +668,7 @@ async fn the_system_prompt_has_the_command_help_and_a_context_change_is_saved_be
                 let texts: Vec<String> = request
                     .items
                     .iter()
-                    .map(|item| match item {
-                        InferenceItem::UserMessage { content } => {
-                            serde_json::to_string(content).unwrap()
-                        }
-                        other => format!("{other:?}"),
-                    })
+                    .map(|item| format!("{item:?}"))
                     .collect();
                 vec![event::text(&texts.join(" | ")), event::response(1, 1)]
             }

@@ -5,13 +5,10 @@
 use std::{borrow::Cow, collections::HashMap};
 
 use base64::{Engine, engine::general_purpose::STANDARD};
-use demi_core::{
-    DocumentSource, MediaSource, ThinkingConfig, ToolMediaSource, ToolResultContentBlock,
-    UserContentBlock, attachment_tag, is_blank,
-};
+use demi_core::{ThinkingConfig, is_blank};
 use demi_provider::{
-    InferenceItem, InferenceRequest, ToolDefinition, UnloadedMedia, json_body,
-    openai_request::tool_arguments,
+    InferenceItem, InferenceRequest, MediaBytes, Medium, ResultPart, ToolDefinition, UserPart,
+    json_body, openai_request::tool_arguments,
 };
 use serde::Serialize;
 
@@ -32,9 +29,9 @@ const EFFORT_BUDGETS: [(&str, u32); 5] = [
 const MEDIUM_BUDGET: u32 = 16_384;
 
 /// The JSON body of `request`.
-pub(crate) fn encode(request: &InferenceRequest) -> Result<Vec<u8>, UnloadedMedia> {
+pub(crate) fn encode(request: &InferenceRequest) -> Vec<u8> {
     let body = Body {
-        contents: contents(&request.items)?,
+        contents: contents(&request.items),
         system_instruction: (!is_blank(&request.system_prompt)).then(|| SystemInstruction {
             parts: [TextPart {
                 text: &request.system_prompt,
@@ -58,7 +55,7 @@ pub(crate) fn encode(request: &InferenceRequest) -> Result<Vec<u8>, UnloadedMedi
             thinking_config: thinking(request.thinking.as_ref()),
         },
     };
-    Ok(json_body(&body))
+    json_body(&body)
 }
 
 #[derive(Serialize)]
@@ -231,7 +228,7 @@ struct ToolOutput {
 /// a signature of this provider's, typically history from another provider,
 /// is replayed as text, and so is its result, because Gemini refuses a
 /// function call without a signature.
-fn contents(items: &[InferenceItem]) -> Result<Vec<Content<'_>>, UnloadedMedia> {
+fn contents(items: &[InferenceItem]) -> Vec<Content<'_>> {
     let mut contents: Vec<Content<'_>> = Vec::new();
     // A function response names its tool, which only the tool use carries.
     let mut tool_names: HashMap<&str, &str> = HashMap::new();
@@ -241,7 +238,7 @@ fn contents(items: &[InferenceItem]) -> Result<Vec<Content<'_>>, UnloadedMedia> 
         let (role, parts) = match item {
             InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content } => {
                 pending_signature = None;
-                (Role::User, user_parts(content)?)
+                (Role::User, user_parts(content))
             }
             InferenceItem::AssistantText { text, .. } => {
                 pending_signature = None;
@@ -304,7 +301,7 @@ fn contents(items: &[InferenceItem]) -> Result<Vec<Content<'_>>, UnloadedMedia> 
                         text: Cow::Owned(text),
                     }]
                 } else {
-                    function_response(tool_use_id, name, output)?
+                    function_response(tool_use_id, name, output)
                 };
                 (Role::User, parts)
             }
@@ -317,7 +314,7 @@ fn contents(items: &[InferenceItem]) -> Result<Vec<Content<'_>>, UnloadedMedia> 
             _ => contents.push(Content { role, parts }),
         }
     }
-    Ok(contents)
+    contents
 }
 
 /// A signature this provider received, without its tag.
@@ -327,52 +324,33 @@ fn own_signature(tagged: &str) -> Option<&str> {
         .filter(|signature| !signature.is_empty())
 }
 
-/// A message's content: text, references and attachment tags as text; images,
-/// videos and PDFs as inline data, a video with its audio track; an image or
-/// video by URL as file data.
-fn user_parts(content: &[UserContentBlock]) -> Result<Vec<Part<'_>>, UnloadedMedia> {
+/// A message's content: text as text; images, videos and PDFs as inline
+/// data, a video with its audio track; an image or video by URL as file
+/// data.
+fn user_parts(content: &[UserPart]) -> Vec<Part<'_>> {
     content
         .iter()
-        .map(|block| {
-            Ok(match block {
-                UserContentBlock::Text { text } => Part::Text {
-                    text: Cow::Borrowed(text),
-                },
-                UserContentBlock::Reference { reference } => Part::Text {
-                    text: Cow::Borrowed(reference),
-                },
-                UserContentBlock::Attachment(attachment) => Part::Text {
-                    text: Cow::Owned(attachment_tag(attachment)),
-                },
-                UserContentBlock::Document { source } => match source {
-                    DocumentSource::Binary {
-                        data, media_type, ..
-                    } => inline(media_type, data),
-                    DocumentSource::Ref { r#ref, .. } => {
-                        return Err(UnloadedMedia(r#ref.to_string()));
-                    }
-                },
-                UserContentBlock::Image { source } | UserContentBlock::Video { source } => {
-                    match source {
-                        MediaSource::Binary { data, media_type } => inline(media_type, data),
-                        MediaSource::Url { url } => Part::FileData {
-                            file_data: FileUri { file_uri: url },
-                        },
-                        MediaSource::Ref { r#ref, .. } => {
-                            return Err(UnloadedMedia(r#ref.to_string()));
-                        }
-                    }
+        .map(|part| match part {
+            UserPart::Text(text) => Part::Text {
+                text: Cow::Borrowed(text),
+            },
+            UserPart::Document { bytes, .. }
+            | UserPart::Image(Medium::Bytes(bytes))
+            | UserPart::Video(Medium::Bytes(bytes)) => inline(bytes),
+            UserPart::Image(Medium::Url(url)) | UserPart::Video(Medium::Url(url)) => {
+                Part::FileData {
+                    file_data: FileUri { file_uri: url },
                 }
-            })
+            }
         })
         .collect()
 }
 
-fn inline<'a>(media_type: &str, data: &[u8]) -> Part<'a> {
+fn inline<'a>(bytes: &MediaBytes) -> Part<'a> {
     Part::InlineData {
         inline_data: Blob {
-            mime_type: media_type.to_owned(),
-            data: STANDARD.encode(data),
+            mime_type: bytes.media_type.clone(),
+            data: STANDARD.encode(&bytes.data),
         },
     }
 }
@@ -383,13 +361,13 @@ fn inline<'a>(media_type: &str, data: &[u8]) -> Part<'a> {
 fn function_response<'a>(
     tool_use_id: &'a str,
     name: &'a str,
-    output: &'a [ToolResultContentBlock],
-) -> Result<Vec<Part<'a>>, UnloadedMedia> {
+    output: &'a [ResultPart],
+) -> Vec<Part<'a>> {
     let text = output
         .iter()
-        .filter_map(|block| match block {
-            ToolResultContentBlock::Text { text } => Some(text.as_str()),
-            ToolResultContentBlock::Image { .. } | ToolResultContentBlock::Video { .. } => None,
+        .filter_map(|part| match part {
+            ResultPart::Text(text) => Some(text.as_str()),
+            ResultPart::Image(_) | ResultPart::Video(_) => None,
         })
         .collect::<Vec<_>>()
         .join("\n");
@@ -400,32 +378,24 @@ fn function_response<'a>(
             response: ToolOutput { output: text },
         },
     }];
-    for block in output {
-        let source = match block {
-            ToolResultContentBlock::Image { source } | ToolResultContentBlock::Video { source } => {
-                source
-            }
-            ToolResultContentBlock::Text { .. } => continue,
-        };
-        match source {
-            ToolMediaSource::Binary { data, media_type } => parts.push(inline(media_type, data)),
-            ToolMediaSource::Ref { r#ref, .. } => return Err(UnloadedMedia(r#ref.to_string())),
+    for part in output {
+        match part {
+            ResultPart::Image(bytes) | ResultPart::Video(bytes) => parts.push(inline(bytes)),
+            ResultPart::Text(_) => {}
         }
     }
-    Ok(parts)
+    parts
 }
 
 /// A tool's result as text for a call replayed as text: each image or video
 /// named by its media type.
-fn output_text(output: &[ToolResultContentBlock]) -> String {
+fn output_text(output: &[ResultPart]) -> String {
     output
         .iter()
-        .map(|block| match block {
-            ToolResultContentBlock::Text { text } => text.clone(),
-            ToolResultContentBlock::Image { source } | ToolResultContentBlock::Video { source } => {
-                let (ToolMediaSource::Binary { media_type, .. }
-                | ToolMediaSource::Ref { media_type, .. }) = source;
-                format!("[{media_type}]")
+        .map(|part| match part {
+            ResultPart::Text(text) => text.clone(),
+            ResultPart::Image(bytes) | ResultPart::Video(bytes) => {
+                format!("[{}]", bytes.media_type)
             }
         })
         .collect::<Vec<_>>()

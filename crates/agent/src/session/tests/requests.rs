@@ -316,12 +316,10 @@ async fn conversation(family: Family) -> Vec<Value> {
             let shot = shot.clone();
             Box::pin(async move {
                 finished.await?;
-                let image = ToolResultContentBlock::Image {
-                    source: demi_core::ToolMediaSource::Binary {
-                        data: shot,
-                        media_type: "image/png".into(),
-                    },
-                };
+                let image = ResultPart::Image(demi_provider::MediaBytes {
+                    data: shot,
+                    media_type: "image/png".into(),
+                });
                 Ok(ToolOutcome {
                     output: vec![image],
                     ..output("")

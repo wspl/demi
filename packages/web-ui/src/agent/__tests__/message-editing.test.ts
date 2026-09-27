@@ -62,7 +62,7 @@ test('an edit keeps the message\'s files by reference and names added files by t
 test('media that is not a blob of the conversation refuses the edit before it is sent', () => {
   const edit = beginMessageEdit({
     ...userBlock('user-B', 'turn-B', 'unused'),
-    content: [{ type: 'image', source: { type: 'binary', data: 'AAAA', mediaType: 'image/png' } }],
+    content: [{ type: 'image', source: { type: 'url', url: 'https://example.test/chart.png' } }],
   }, { epoch: 'epoch', revision: 4 })
   expect(() => sentEditRequest(edit.request)).toThrow(EditRejectedError)
 })

@@ -6,7 +6,7 @@ use std::borrow::Cow;
 
 use bytes::Bytes;
 use demi_provider::{
-    InferenceRequest, UnloadedMedia, json_body,
+    InferenceRequest, json_body,
     openai_request::{
         AssistantReplay, InputItem, Reasoning, ReasoningReplay, ResponsesDialect, ResponsesTool,
         SummaryOff, ToolMedia, prompt_cache_key, responses_input, responses_reasoning,
@@ -31,10 +31,7 @@ pub(crate) struct Encoded {
 }
 
 /// The body of `request`, and its WebSocket message when `websocket`.
-pub(crate) fn encode(
-    request: &InferenceRequest,
-    websocket: bool,
-) -> Result<Encoded, UnloadedMedia> {
+pub(crate) fn encode(request: &InferenceRequest, websocket: bool) -> Encoded {
     let dialect = ResponsesDialect {
         signature_tag: SIGNATURE_TAG,
         assistant: AssistantReplay::Identified,
@@ -44,7 +41,7 @@ pub(crate) fn encode(
     let body = Body {
         model: &request.model_id,
         instructions: &request.system_prompt,
-        input: responses_input(&request.items, &dialect)?,
+        input: responses_input(&request.items, &dialect),
         tools: request
             .tools
             .iter()
@@ -62,10 +59,10 @@ pub(crate) fn encode(
     };
     let http = json_body(&body);
     let websocket = websocket.then(|| websocket_message(&http));
-    Ok(Encoded {
+    Encoded {
         http: Bytes::from(http),
         websocket,
-    })
+    }
 }
 
 /// The body as the WebSocket's `response.create` message: the type, then

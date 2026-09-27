@@ -2,16 +2,19 @@
 //! from these, not from a tokenizer, and the latest usage a provider
 //! reported keeps the context estimate close to the provider's own count.
 
-use demi_core::{
-    Block, DocumentSource, MediaSource, ToolMediaSource, ToolResultContentBlock, UserContentBlock,
-    attachment_tag,
-};
-use demi_provider::InferenceItem;
+use std::borrow::Cow;
 
-use super::{RESUME_TEXT, WAKEUP_TEXT, replay_start};
+use demi_core::{
+    BlobRef, Block, DocumentSource, MediaSource, ToolMediaSource, ToolResultContentBlock,
+    UserContentBlock,
+};
+use demi_provider::{InferenceItem, Medium, ResultPart, UserPart};
+
+use super::{RESUME_TEXT, WAKEUP_TEXT, gone_text, replay_start};
+use crate::store::media::{Held, HeldMedia, missing_text};
 
 /// An image with its bytes weighs at least this many tokens, as does an
-/// image the model fetches by URL.
+/// image the model fetches by URL, and one nothing is held for.
 const IMAGE_TOKENS: u64 = 1_600;
 /// Bytes per token of an image with its bytes.
 const IMAGE_BYTES_PER_TOKEN: u64 = 1_000;
@@ -25,29 +28,31 @@ pub fn text_tokens(text: &str) -> u64 {
 }
 
 /// A block's estimate: the estimate of its text plus the weight of its
-/// media.
-pub fn block_tokens(block: &Block) -> u64 {
-    text_tokens(&block_text(block)) + media_tokens(block)
+/// media, each with what `media` holds for it (`compaction.md` § Block
+/// estimates). A medium whose blob is missing counts as its text; one that
+/// nothing is held for, as in blocks read from frames, weighs what an
+/// image by URL weighs, and a document nothing.
+pub fn block_tokens(block: &Block, media: &HeldMedia) -> u64 {
+    text_tokens(&block_text(block, media)) + media_tokens(block, media)
 }
 
-/// The estimate of the next request over `blocks`. It is anchored on the
-/// latest usage a provider reported after the last compaction: that usage
-/// plus the estimates of the blocks after it. There is no anchor when a
-/// compaction came after that response, when the last compaction has no
-/// marker yet, or when the usage is larger than `context_window`, which one
-/// request's usage cannot be; then the estimate is the sum of the blocks
-/// from the last compaction boundary on.
-pub fn context_tokens(blocks: &[Block], context_window: Option<u32>) -> u64 {
+/// The estimate of the next request over `blocks`, whose media weigh what
+/// `media` holds for them. It is anchored on the latest usage a provider
+/// reported after the last compaction: that usage plus the estimates of the
+/// blocks after it. There is no anchor when a compaction came after that
+/// response, when the last compaction has no marker yet, or when the usage
+/// is larger than `context_window`, which one request's usage cannot be;
+/// then the estimate is the sum of the blocks from the last compaction
+/// boundary on.
+pub fn context_tokens(blocks: &[Block], media: &HeldMedia, context_window: Option<u32>) -> u64 {
     let anchor = usage_anchor(blocks).filter(|(_, tokens)| {
         context_window.is_none_or(|window| window == 0 || *tokens <= u64::from(window))
     });
+    let estimate = |block: &Block| block_tokens(block, media);
     if let Some((index, tokens)) = anchor {
-        return tokens + blocks[index + 1..].iter().map(block_tokens).sum::<u64>();
+        return tokens + blocks[index + 1..].iter().map(estimate).sum::<u64>();
     }
-    blocks[replay_start(blocks)..]
-        .iter()
-        .map(block_tokens)
-        .sum()
+    blocks[replay_start(blocks)..].iter().map(estimate).sum()
 }
 
 /// What a request weighs as its vendor receives it (`compaction.md`
@@ -101,12 +106,12 @@ pub fn request_size(system_prompt: &str, items: &[InferenceItem]) -> RequestSize
                 size.add_text(tool_use_id);
                 for part in output {
                     match part {
-                        ToolResultContentBlock::Text { text } => size.add_text(text),
-                        ToolResultContentBlock::Image { source } => {
+                        ResultPart::Text(text) => size.add_text(text),
+                        ResultPart::Image(bytes) => {
                             size.images += 1;
-                            size.add_tool_media(source);
+                            size.bytes += bytes.data.base64_len();
                         }
-                        ToolResultContentBlock::Video { source } => size.add_tool_media(source),
+                        ResultPart::Video(bytes) => size.bytes += bytes.data.base64_len(),
                     }
                 }
             }
@@ -120,36 +125,22 @@ impl RequestSize {
         self.bytes += byte_count(text.len());
     }
 
-    fn add_content(&mut self, part: &UserContentBlock) {
+    fn add_content(&mut self, part: &UserPart) {
         match part {
-            UserContentBlock::Text { text } | UserContentBlock::Reference { reference: text } => {
-                self.add_text(text);
-            }
-            UserContentBlock::Attachment(attachment) => self.add_text(&attachment_tag(attachment)),
-            UserContentBlock::Image { source } => {
+            UserPart::Text(text) => self.add_text(text),
+            UserPart::Image(medium) => {
                 self.images += 1;
-                self.add_media(source);
+                self.add_medium(medium);
             }
-            UserContentBlock::Video { source } => self.add_media(source),
-            UserContentBlock::Document { source } => {
-                if let DocumentSource::Binary { data, .. } = source {
-                    self.bytes += data.base64_len();
-                }
-            }
+            UserPart::Video(medium) => self.add_medium(medium),
+            UserPart::Document { bytes, .. } => self.bytes += bytes.data.base64_len(),
         }
     }
 
-    fn add_media(&mut self, source: &MediaSource) {
-        match source {
-            MediaSource::Binary { data, .. } => self.bytes += data.base64_len(),
-            MediaSource::Url { url } => self.add_text(url),
-            MediaSource::Ref { .. } => {}
-        }
-    }
-
-    fn add_tool_media(&mut self, source: &ToolMediaSource) {
-        if let ToolMediaSource::Binary { data, .. } = source {
-            self.bytes += data.base64_len();
+    fn add_medium(&mut self, medium: &Medium) {
+        match medium {
+            Medium::Bytes(bytes) => self.bytes += bytes.data.base64_len(),
+            Medium::Url(url) => self.add_text(url),
         }
     }
 }
@@ -191,10 +182,10 @@ fn usage_anchor(blocks: &[Block]) -> Option<(usize, u64)> {
 }
 
 /// The text a block's estimate counts.
-fn block_text(block: &Block) -> String {
+fn block_text(block: &Block, media: &HeldMedia) -> String {
     match block {
-        Block::User(user) => content_text(&user.content),
-        Block::Steer(steer) => content_text(&steer.content),
+        Block::User(user) => content_text(&user.content, media),
+        Block::Steer(steer) => content_text(&steer.content, media),
         Block::Wakeup(_) => WAKEUP_TEXT.to_owned(),
         Block::Context(context) => context.text.clone(),
         Block::AgentMessage(receipt) => {
@@ -205,14 +196,23 @@ fn block_text(block: &Block) -> String {
         Block::RedactedThinking(redacted) => redacted.data.clone(),
         Block::Text(text) => text.text.clone(),
         Block::ToolCall(call) => {
-            let mut lines = vec![call.tool_name.as_str(), call.input.as_str()];
+            let mut lines = vec![
+                Cow::Borrowed(call.tool_name.as_str()),
+                Cow::Borrowed(call.input.as_str()),
+            ];
             lines.extend(call.output.iter().map(|part| match part {
-                ToolResultContentBlock::Text { text } => text.as_str(),
-                ToolResultContentBlock::Image { source }
-                | ToolResultContentBlock::Video { source } => match source {
-                    ToolMediaSource::Binary { media_type, .. }
-                    | ToolMediaSource::Ref { media_type, .. } => media_type.as_str(),
-                },
+                ToolResultContentBlock::Text { text } => Cow::Borrowed(text.as_str()),
+                ToolResultContentBlock::Image {
+                    source: ToolMediaSource::Ref { r#ref, media_type },
+                } => medium_line("image", r#ref, Cow::Borrowed(media_type), media),
+                ToolResultContentBlock::Video {
+                    source: ToolMediaSource::Ref { r#ref, media_type },
+                } => medium_line("video", r#ref, Cow::Borrowed(media_type), media),
+                ToolResultContentBlock::Gone {
+                    kind,
+                    media_type,
+                    cause,
+                } => Cow::Owned(gone_text(*kind, media_type, cause)),
             }));
             lines.join("\n")
         }
@@ -227,75 +227,102 @@ fn block_text(block: &Block) -> String {
 }
 
 /// One line per part of a message's content.
-fn content_text(content: &[UserContentBlock]) -> String {
+fn content_text(content: &[UserContentBlock], media: &HeldMedia) -> String {
     content
         .iter()
         .map(|part| match part {
-            UserContentBlock::Text { text } => text.clone(),
-            UserContentBlock::Image { source } | UserContentBlock::Video { source } => {
-                match source {
-                    MediaSource::Url { url } => url.clone(),
-                    MediaSource::Binary { media_type, .. }
-                    | MediaSource::Ref { media_type, .. } => media_type.clone(),
-                }
+            UserContentBlock::Text { text } => Cow::Borrowed(text.as_str()),
+            UserContentBlock::Image {
+                source: MediaSource::Ref { r#ref, media_type },
+            } => medium_line("image", r#ref, Cow::Borrowed(media_type), media),
+            UserContentBlock::Video {
+                source: MediaSource::Ref { r#ref, media_type },
+            } => medium_line("video", r#ref, Cow::Borrowed(media_type), media),
+            UserContentBlock::Image {
+                source: MediaSource::Url { url },
             }
-            UserContentBlock::Document { source } => match source {
-                DocumentSource::Binary {
-                    media_type,
-                    file_name,
-                    ..
-                }
-                | DocumentSource::Ref {
-                    media_type,
-                    file_name,
-                    ..
-                } => format!("{file_name} {media_type}"),
-            },
-            UserContentBlock::Reference { reference } => reference.clone(),
+            | UserContentBlock::Video {
+                source: MediaSource::Url { url },
+            } => Cow::Borrowed(url.as_str()),
+            UserContentBlock::Document {
+                source:
+                    DocumentSource::Ref {
+                        r#ref,
+                        media_type,
+                        file_name,
+                    },
+            } => medium_line(
+                "document",
+                r#ref,
+                Cow::Owned(format!("{file_name} {media_type}")),
+                media,
+            ),
+            UserContentBlock::Reference { reference } => Cow::Borrowed(reference.as_str()),
             UserContentBlock::Attachment(attachment) => {
-                format!("{} {}", attachment.name, attachment.path)
+                Cow::Owned(format!("{} {}", attachment.name, attachment.path))
             }
         })
         .collect::<Vec<_>>()
         .join("\n")
 }
 
+/// The line of the medium of `kind` that `blob` names: `line`, or the
+/// medium's text when its blob is missing.
+fn medium_line<'a>(
+    kind: &str,
+    blob: &BlobRef,
+    line: Cow<'a, str>,
+    media: &HeldMedia,
+) -> Cow<'a, str> {
+    match media.get(blob) {
+        Some(Held::Missing) => Cow::Owned(missing_text(kind, blob)),
+        Some(Held::Bytes(_)) | None => line,
+    }
+}
+
 /// The weight of a block's images and documents; videos weigh nothing.
-fn media_tokens(block: &Block) -> u64 {
+fn media_tokens(block: &Block, media: &HeldMedia) -> u64 {
     match block {
-        Block::User(user) => user.content.iter().map(content_media_tokens).sum(),
-        Block::Steer(steer) => steer.content.iter().map(content_media_tokens).sum(),
+        Block::User(user) => user
+            .content
+            .iter()
+            .map(|part| content_media_tokens(part, media))
+            .sum(),
+        Block::Steer(steer) => steer
+            .content
+            .iter()
+            .map(|part| content_media_tokens(part, media))
+            .sum(),
         Block::ToolCall(call) => call
             .output
             .iter()
             .map(|part| match part {
                 ToolResultContentBlock::Image {
-                    source: ToolMediaSource::Binary { data, .. },
-                } => image_tokens(data.len()),
-                // Media held by reference has no bytes to count here.
-                ToolResultContentBlock::Image {
-                    source: ToolMediaSource::Ref { .. },
-                } => IMAGE_TOKENS,
-                ToolResultContentBlock::Text { .. } | ToolResultContentBlock::Video { .. } => 0,
+                    source: ToolMediaSource::Ref { r#ref, .. },
+                } => image_weight(r#ref, media),
+                ToolResultContentBlock::Text { .. }
+                | ToolResultContentBlock::Video { .. }
+                | ToolResultContentBlock::Gone { .. } => 0,
             })
             .sum(),
         _ => 0,
     }
 }
 
-fn content_media_tokens(part: &UserContentBlock) -> u64 {
+fn content_media_tokens(part: &UserContentBlock, media: &HeldMedia) -> u64 {
     match part {
         UserContentBlock::Image {
-            source: MediaSource::Binary { data, .. },
-        } => image_tokens(data.len()),
-        UserContentBlock::Image { .. } => IMAGE_TOKENS,
+            source: MediaSource::Ref { r#ref, .. },
+        } => image_weight(r#ref, media),
+        UserContentBlock::Image {
+            source: MediaSource::Url { .. },
+        } => IMAGE_TOKENS,
         UserContentBlock::Document {
-            source: DocumentSource::Binary { data, .. },
-        } => byte_count(data.len()).div_ceil(DOCUMENT_BYTES_PER_TOKEN),
-        // A document held by reference has no bytes to count here.
-        UserContentBlock::Document {
-            source: DocumentSource::Ref { .. },
-        } => 0,
+            source: DocumentSource::Ref { r#ref, .. },
+        } => match media.get(r#ref) {
+            Some(Held::Bytes(data)) => byte_count(data.len()).div_ceil(DOCUMENT_BYTES_PER_TOKEN),
+            Some(Held::Missing) | None => 0,
+        },
         UserContentBlock::Text { .. }
         | UserContentBlock::Video { .. }
         | UserContentBlock::Reference { .. }
@@ -303,8 +330,17 @@ fn content_media_tokens(part: &UserContentBlock) -> u64 {
     }
 }
 
-fn image_tokens(bytes: usize) -> u64 {
-    IMAGE_TOKENS.max(byte_count(bytes).div_ceil(IMAGE_BYTES_PER_TOKEN))
+/// The weight of the image `blob` names: by its bytes, nothing when its
+/// blob is missing, since it counts as its text, and what an image by URL
+/// weighs when nothing is held for it.
+fn image_weight(blob: &BlobRef, media: &HeldMedia) -> u64 {
+    match media.get(blob) {
+        Some(Held::Bytes(data)) => {
+            IMAGE_TOKENS.max(byte_count(data.len()).div_ceil(IMAGE_BYTES_PER_TOKEN))
+        }
+        Some(Held::Missing) => 0,
+        None => IMAGE_TOKENS,
+    }
 }
 
 fn byte_count(bytes: usize) -> u64 {
@@ -314,8 +350,8 @@ fn byte_count(bytes: usize) -> u64 {
 #[cfg(test)]
 mod tests {
     use demi_core::{
-        CompactionBoundaryBlock, CompactionMarkerBlock, ResponseBlock, TextBlock, Timestamp,
-        TokenUsage, TurnId, UserBlock,
+        B64Bytes, CompactionBoundaryBlock, CompactionMarkerBlock, ResponseBlock, TextBlock,
+        Timestamp, TokenUsage, TurnId, UserBlock,
     };
 
     use super::*;
@@ -362,12 +398,13 @@ mod tests {
         ];
         // Anchored: the reported usage replaces the much larger estimate of
         // the text.
-        assert_eq!(context_tokens(&blocks, None), 1_384);
+        let none = HeldMedia::default();
+        assert_eq!(context_tokens(&blocks, &none, None), 1_384);
         blocks.push(user("u2", &"y".repeat(4_000)));
-        assert_eq!(context_tokens(&blocks, None), 1_384 + 1_000);
+        assert_eq!(context_tokens(&blocks, &none, None), 1_384 + 1_000);
         // A usage above the window is a provider reporting something else.
         blocks.push(response("r2", 2_000_000));
-        let unanchored = context_tokens(&blocks, Some(1_000_000));
+        let unanchored = context_tokens(&blocks, &none, Some(1_000_000));
         assert!(unanchored > 10_000 && unanchored < 20_000, "{unanchored}");
     }
 
@@ -395,11 +432,13 @@ mod tests {
         ];
         // Without the anchor: the boundary's summary, the user text, the
         // usage's JSON and the marker's count.
-        assert!(context_tokens(&blocks, None) < 10_000);
+        assert!(context_tokens(&blocks, &HeldMedia::default(), None) < 10_000);
     }
 
     #[test]
-    fn images_and_documents_weigh_by_their_bytes() {
+    fn images_and_documents_weigh_by_their_held_bytes() {
+        let image = B64Bytes::from(vec![0; 3_000_000]);
+        let document = B64Bytes::from(vec![1; 40_000]);
         let user = Block::User(UserBlock {
             id: "u".try_into().unwrap(),
             turn_id: TurnId::try_from("turn").unwrap(),
@@ -407,8 +446,8 @@ mod tests {
             model: test_model(),
             content: vec![
                 UserContentBlock::Image {
-                    source: MediaSource::Binary {
-                        data: vec![0; 3_000_000].into(),
+                    source: MediaSource::Ref {
+                        r#ref: BlobRef::of(&image),
                         media_type: "image/png".into(),
                     },
                 },
@@ -418,8 +457,8 @@ mod tests {
                     },
                 },
                 UserContentBlock::Document {
-                    source: DocumentSource::Binary {
-                        data: vec![0; 40_000].into(),
+                    source: DocumentSource::Ref {
+                        r#ref: BlobRef::of(&document),
                         media_type: "application/pdf".into(),
                         file_name: "doc.pdf".into(),
                     },
@@ -427,7 +466,16 @@ mod tests {
             ],
             preamble: None,
         });
+        let mut held = HeldMedia::default();
+        held.hold(BlobRef::of(&image), image);
+        held.hold(BlobRef::of(&document), document);
         let text = text_tokens("image/png\nhttps://example.com/a.png\ndoc.pdf application/pdf");
-        assert_eq!(block_tokens(&user), text + 3_000 + 1_600 + 10_000);
+        assert_eq!(block_tokens(&user, &held), text + 3_000 + 1_600 + 10_000);
+        // Held by reference only, as blocks read from frames are: an image
+        // weighs what one by URL weighs, and a document nothing.
+        assert_eq!(
+            block_tokens(&user, &HeldMedia::default()),
+            text + 1_600 + 1_600
+        );
     }
 }

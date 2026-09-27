@@ -2,20 +2,18 @@
 
 use std::{num::NonZeroU32, sync::Arc};
 
-use demi_core::{
-    Attachment, B64Bytes, DocumentSource, MediaSource, ThinkingConfig, ThinkingSummary,
-    ToolMediaSource, ToolResultContentBlock, TokenUsage, UserContentBlock,
-};
+use demi_core::{B64Bytes, ThinkingConfig, ThinkingSummary, TokenUsage};
 use demi_provider::{
-    InferenceItem, PromptCache, ProviderEvent, Provider, RuntimeEnv, ToolDefinition,
+    InferenceItem, MediaBytes, Medium, PromptCache, Provider, ProviderEvent, ResultPart,
+    RuntimeEnv, ToolDefinition, UserPart,
     testing::{MockVendor, inference_request},
 };
 use serde_json::{Value, json};
 
 use crate::{provider_at, run, runtime, stop};
 
-fn text(text: &str) -> Vec<UserContentBlock> {
-    vec![UserContentBlock::Text { text: text.into() }]
+fn text(text: &str) -> Vec<UserPart> {
+    vec![UserPart::Text(text.into())]
 }
 
 /// The body the vendor received for a request carrying `items` and
@@ -72,7 +70,7 @@ async fn the_body_groups_turns_and_carries_the_tools_system_prompt_and_tier() {
         },
         InferenceItem::ToolResult {
             tool_use_id: "toolu-1".into(),
-            output: vec![ToolResultContentBlock::Text { text: "contents".into() }],
+            output: vec![ResultPart::Text("contents".into())],
             is_error: false,
         },
         InferenceItem::UserSteer { content: text("also check b.ts") },
@@ -173,7 +171,7 @@ async fn a_session_request_marks_its_shared_prefix_the_latest_answered_request_a
         });
         items.push(InferenceItem::ToolResult {
             tool_use_id: id,
-            output: vec![ToolResultContentBlock::Text { text: "contents".into() }],
+            output: vec![ResultPart::Text("contents".into())],
             is_error: false,
         });
     }
@@ -344,41 +342,30 @@ async fn thinking_is_sent_back_only_when_this_provider_received_it_and_no_summar
 
 #[tokio::test]
 async fn media_travels_inline_and_what_the_api_cannot_read_becomes_text() {
-    let png = B64Bytes::from(vec![0x89, b'P', b'N', b'G']);
-    let pdf = B64Bytes::from(b"%PDF".to_vec());
-    let attachment = Attachment {
-        name: "notes.md".into(),
-        path: "/home/demi/.demi/attachments/c1/notes.md".into(),
-        media_type: "text/markdown".into(),
-        size_bytes: 82,
-        sha256: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08".parse().unwrap(),
-        snippet: None,
+    let bytes = |data: &[u8], media_type: &str| MediaBytes {
+        data: B64Bytes::from(data.to_vec()),
+        media_type: media_type.into(),
     };
+    let png = bytes(&[0x89, b'P', b'N', b'G'], "image/png");
     let body = body(
         vec![
             InferenceItem::UserMessage {
                 content: vec![
-                    UserContentBlock::Image { source: MediaSource::Binary { data: png.clone(), media_type: "image/png".into() } },
-                    UserContentBlock::Image { source: MediaSource::Url { url: "https://example.com/a.png".into() } },
-                    UserContentBlock::Document {
-                        source: DocumentSource::Binary { data: pdf, media_type: "application/pdf".into(), file_name: "spec.pdf".into() },
+                    UserPart::Image(Medium::Bytes(png.clone())),
+                    UserPart::Image(Medium::Url("https://example.com/a.png".into())),
+                    UserPart::Document {
+                        bytes: bytes(b"%PDF", "application/pdf"),
+                        file_name: "spec.pdf".into(),
                     },
-                    UserContentBlock::Video { source: MediaSource::Binary { data: png.clone(), media_type: "video/mp4".into() } },
-                    UserContentBlock::Attachment(attachment),
-                    UserContentBlock::Reference { reference: "src/main.rs".into() },
+                    UserPart::Video(Medium::Bytes(bytes(&[0x89, b'P', b'N', b'G'], "video/mp4"))),
                 ],
             },
             InferenceItem::ToolUse { model_id: "m".into(), tool_use_id: "toolu-1".into(), tool_name: "shot".into(), input: json!({}) },
             InferenceItem::ToolResult {
                 tool_use_id: "toolu-1".into(),
                 output: vec![
-                    ToolResultContentBlock::Image { source: ToolMediaSource::Binary { data: png, media_type: "image/png".into() } },
-                    ToolResultContentBlock::Video {
-                        source: ToolMediaSource::Ref {
-                            r#ref: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08".parse().unwrap(),
-                            media_type: "video/webm".into(),
-                        },
-                    },
+                    ResultPart::Image(png),
+                    ResultPart::Video(bytes(b"\x1a\x45\xdf\xa3", "video/webm")),
                 ],
                 is_error: false,
             },
@@ -394,8 +381,6 @@ async fn media_travels_inline_and_what_the_api_cannot_read_becomes_text() {
             { "type": "text", "text": "[image:https://example.com/a.png]" },
             { "type": "document", "source": { "type": "base64", "media_type": "application/pdf", "data": "JVBERg==" }, "title": "spec.pdf" },
             { "type": "text", "text": "[video]" },
-            { "type": "text", "text": "<attachment name=\"notes.md\" type=\"text/markdown\" size=\"82\" path=\"/home/demi/.demi/attachments/c1/notes.md\"/>" },
-            { "type": "text", "text": "src/main.rs" },
         ])
     );
     assert_eq!(
@@ -405,25 +390,4 @@ async fn media_travels_inline_and_what_the_api_cannot_read_becomes_text() {
             { "type": "text", "text": "[video:video/webm]" },
         ])
     );
-}
-
-#[tokio::test]
-async fn media_that_was_not_loaded_fails_the_run_before_any_request() {
-    let vendor = MockVendor::start().await;
-    let mut request = inference_request();
-    request.items = Arc::new([InferenceItem::UserMessage {
-        content: vec![UserContentBlock::Image {
-            source: MediaSource::Ref {
-                r#ref: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08".parse().unwrap(),
-                media_type: "image/png".into(),
-            },
-        }],
-    }]);
-    let events = run(runtime(&vendor).as_mut(), request).await;
-    let [ProviderEvent::Error(failure)] = events.as_slice() else {
-        panic!("{events:?}");
-    };
-    assert_eq!(failure.code, None);
-    assert!(failure.message.contains("9f86d081"), "{}", failure.message);
-    assert!(vendor.requests().is_empty());
 }

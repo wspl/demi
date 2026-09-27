@@ -10,9 +10,14 @@
 
 use std::sync::LazyLock;
 
-use demi_agent_protocol::{ClientContent, ClientFrame, EditOutcome, EditRequest, MediaRef, ServerFrame, SteerOutcome};
+use demi_agent_protocol::{
+    ClientContent, ClientFrame, EditOutcome, EditRequest, MediaRef, ServerFrame, SteerOutcome, TranscriptPatch,
+};
 use demi_backend::ObjectCounts;
-use demi_core::{Block, BlockId, MediaSource, SessionPhase, TurnId, UserContentBlock};
+use demi_core::{
+    Block, BlockId, GoneCause, MediaSource, ModelMediaKind, SessionPhase, ToolResultContentBlock, TurnId,
+    UserContentBlock,
+};
 use demi_provider::testing::MockVendor;
 use demi_web_api::attachments::{ATTACHMENT_MAX_BYTES, AttachmentAnswer, AttachmentDto};
 use demi_web_api::auth::Role;
@@ -242,7 +247,7 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
 }
 
 #[tokio::test]
-async fn a_tool_medium_that_cannot_be_stored_becomes_text_and_the_turn_goes_on() {
+async fn a_tool_medium_that_cannot_be_stored_is_gone_from_its_result_and_the_turn_goes_on() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
@@ -270,15 +275,39 @@ async fn a_tool_medium_that_cannot_be_stored_becomes_text_and_the_turn_goes_on()
     vendor.respond(answer(&["No picture."], 1, 1));
     let turn = socket.chat("m1", "Show me the picture").await;
 
-    // The picture was not stored, so the result says so in its place: the
-    // page and the model read the same text, the turn goes on, and nothing
-    // carries the picture's bytes.
+    // The picture was not stored, so in its place the page receives a part
+    // that says it is gone and why, the model reads that as its text, the
+    // turn goes on, and nothing carries the picture's bytes.
     let base64 = data_encoding::BASE64.encode(&PNG);
+    let gone: Vec<(ModelMediaKind, String, GoneCause)> = turn
+        .iter()
+        .filter_map(|frame| match frame {
+            ServerFrame::TranscriptPatch { patches, .. } => Some(patches),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|patch| match patch {
+            TranscriptPatch::Add { value: Block::ToolCall(call), .. }
+            | TranscriptPatch::ReplaceBlock { value: Block::ToolCall(call), .. } => Some(&call.output),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|part| match part {
+            ToolResultContentBlock::Gone { kind, media_type, cause } => {
+                Some((*kind, media_type.clone(), cause.clone()))
+            }
+            _ => None,
+        })
+        .collect();
+    let [(ModelMediaKind::Image, media_type, GoneCause::NotStored { error })] = gone.as_slice() else {
+        panic!("{gone:?}");
+    };
+    assert_eq!(media_type, "image/png");
     let frames = serde_json::to_string(&turn).unwrap();
-    assert!(frames.contains("[image not stored: ") && frames.contains("No picture."), "{frames}");
-    assert!(!frames.contains(&base64), "{frames}");
+    assert!(frames.contains("No picture.") && !frames.contains(&base64), "{frames}");
     let continued = vendor.requests()[1].json()["messages"].to_string();
-    assert!(continued.contains("[image not stored: ") && !continued.contains(&base64), "{continued}");
+    let text = serde_json::to_string(&format!("[image not stored: {error}]")).unwrap();
+    assert!(continued.contains(&text) && !continued.contains(&base64), "{continued}");
     backend.close().await;
 }
 

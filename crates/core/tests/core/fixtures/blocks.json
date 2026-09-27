@@ -68,14 +68,6 @@
       {
         "type": "image",
         "source": {
-          "type": "binary",
-          "data": "iVBORw0KGgo=",
-          "mediaType": "image/png"
-        }
-      },
-      {
-        "type": "image",
-        "source": {
           "type": "ref",
           "ref": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
           "mediaType": "image/png"
@@ -94,15 +86,6 @@
           "type": "ref",
           "ref": "60303ae22b998861bce3b28f33eec1be758a213c86c93c076dbe9f558c11c752",
           "mediaType": "video/mp4"
-        }
-      },
-      {
-        "type": "document",
-        "source": {
-          "type": "binary",
-          "data": "JVBERi0xLjc=",
-          "mediaType": "application/pdf",
-          "fileName": "spec.pdf"
         }
       },
       {
@@ -1105,8 +1088,8 @@
       {
         "type": "image",
         "source": {
-          "type": "binary",
-          "data": "iVBORw0KGgo=",
+          "type": "ref",
+          "ref": "60303ae22b998861bce3b28f33eec1be758a213c86c93c076dbe9f558c11c752",
           "mediaType": "image/png"
         }
       },
@@ -1116,6 +1099,24 @@
           "type": "ref",
           "ref": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
           "mediaType": "video/webm"
+        }
+      },
+      {
+        "type": "gone",
+        "kind": "image",
+        "mediaType": "image/png",
+        "cause": {
+          "type": "not_stored",
+          "error": "the object store refused the write"
+        }
+      },
+      {
+        "type": "gone",
+        "kind": "video",
+        "mediaType": "video/webm",
+        "cause": {
+          "type": "retired",
+          "at": "2026-10-21T09:30:00.000Z"
         }
       }
     ],

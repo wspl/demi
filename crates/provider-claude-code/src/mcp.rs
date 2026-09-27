@@ -13,8 +13,7 @@ use std::sync::Arc;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
-use demi_core::{ToolMediaSource, ToolResultContentBlock};
-use demi_provider::{ToolCall, ToolDefinition, UnloadedMedia};
+use demi_provider::{ResultPart, ToolCall, ToolDefinition};
 use futures_channel::mpsc;
 use futures_util::StreamExt as _;
 use rmcp::model::{
@@ -298,36 +297,21 @@ impl ServerHandler for Server {
 
 /// A tool's result as MCP content: text, an image as base64 with its media
 /// type, and a video as text naming its media type, since MCP has no video;
-/// a failed tool sets the error flag. A result naming media that was not
-/// loaded cannot be sent.
-pub(crate) fn tool_result(
-    output: &[ToolResultContentBlock],
-    is_error: bool,
-) -> Result<CallToolResult, UnloadedMedia> {
+/// a failed tool sets the error flag.
+pub(crate) fn tool_result(output: &[ResultPart], is_error: bool) -> CallToolResult {
     let content = output
         .iter()
-        .map(|block| {
-            Ok(match block {
-                ToolResultContentBlock::Text { text } => ContentBlock::text(text.clone()),
-                ToolResultContentBlock::Image { source } => match source {
-                    ToolMediaSource::Binary { data, media_type } => {
-                        ContentBlock::image(STANDARD.encode(data), media_type.clone())
-                    }
-                    ToolMediaSource::Ref { r#ref, .. } => {
-                        return Err(UnloadedMedia(r#ref.to_string()));
-                    }
-                },
-                ToolResultContentBlock::Video { source } => {
-                    let (ToolMediaSource::Binary { media_type, .. }
-                    | ToolMediaSource::Ref { media_type, .. }) = source;
-                    ContentBlock::text(format!("[video:{media_type}]"))
-                }
-            })
+        .map(|part| match part {
+            ResultPart::Text(text) => ContentBlock::text(text.clone()),
+            ResultPart::Image(bytes) => {
+                ContentBlock::image(STANDARD.encode(&bytes.data), bytes.media_type.clone())
+            }
+            ResultPart::Video(bytes) => ContentBlock::text(format!("[video:{}]", bytes.media_type)),
         })
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(if is_error {
+        .collect();
+    if is_error {
         CallToolResult::error(content)
     } else {
         CallToolResult::success(content)
-    })
+    }
 }

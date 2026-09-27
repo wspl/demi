@@ -10,8 +10,10 @@
 
 use std::rc::Rc;
 
-use demi_core::{Block, BlockId, ToolResultContentBlock, ToolView, WakeupId};
-use demi_provider::{ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun};
+use demi_core::{Block, BlockId, ToolView, WakeupId};
+use demi_provider::{
+    ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun, ResultPart,
+};
 use futures_util::StreamExt;
 
 use super::{
@@ -107,7 +109,7 @@ async fn run_turn(
 /// receives them.
 async fn estimate(s: &SessionShared, cancel: &TurnCancel) -> Result<u64, TurnError> {
     let view = model_view(s, cancel).await?;
-    Ok(context_tokens(&view.blocks, None))
+    Ok(context_tokens(&view.blocks, &view.media, None))
 }
 
 /// Lands the recorded model switch: the history is first compacted to fit
@@ -285,7 +287,7 @@ async fn request(s: &SessionShared, cancel: &TurnCancel) -> Result<InferenceRequ
     let view = model_view(s, cancel).await?;
     Ok(s.read(|core| {
         core.inference_request(
-            &view.blocks,
+            &view,
             system_prompt,
             tools,
             request_id,
@@ -401,7 +403,7 @@ async fn run_tools(
         let (output, held) = media::store_result(outcome.output, s.store.blobs()).await;
         s.update(|core| {
             core.media.absorb(held);
-            core.complete_tool_call(&call.tool_use_id, ToolOutcome { output, ..outcome });
+            core.complete_tool_call(&call.tool_use_id, output, outcome.is_error, outcome.view);
         });
         if !defer_input {
             write_inputs_since(s, before).await?;
@@ -416,7 +418,7 @@ async fn run_tools(
 fn yield_result(wakeup_id: WakeupId, duration_ms: u32) -> ToolOutcome {
     let text = format!("yield scheduled\nwakeupId: {wakeup_id}\ndurationMs: {duration_ms}");
     ToolOutcome {
-        output: vec![ToolResultContentBlock::Text { text }],
+        output: vec![ResultPart::Text(text)],
         is_error: false,
         view: Some(ToolView::YieldWakeup {
             wakeup_id,

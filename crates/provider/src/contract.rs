@@ -5,8 +5,8 @@
 use std::{num::NonZeroU32, sync::Arc};
 
 use demi_core::{
-    AuthState, Model, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
-    RuntimeState, ThinkingConfig, Timestamp, TokenUsage, ToolResultContentBlock, UserContentBlock,
+    AuthState, B64Bytes, Model, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
+    RuntimeState, ThinkingConfig, Timestamp, TokenUsage,
 };
 use futures_util::{
     future::{BoxFuture, LocalBoxFuture},
@@ -215,15 +215,17 @@ impl InferenceRequest {
     }
 }
 
-/// One entry of the transcript as a provider replays it.
+/// One entry of the transcript as a provider replays it. Its media hold
+/// their bytes, or an image's or a video's URL, and never a reference
+/// (`runtime.md` § Media).
 #[derive(Debug, Clone, PartialEq)]
 pub enum InferenceItem {
     UserMessage {
-        content: Vec<UserContentBlock>,
+        content: Vec<UserPart>,
     },
     /// A steer or an agent message that joined the running turn.
     UserSteer {
-        content: Vec<UserContentBlock>,
+        content: Vec<UserPart>,
     },
     AssistantText {
         model_id: String,
@@ -258,9 +260,51 @@ pub enum InferenceItem {
     },
     ToolResult {
         tool_use_id: String,
-        output: Vec<ToolResultContentBlock>,
+        output: Vec<ResultPart>,
         is_error: bool,
     },
+}
+
+/// One part of a message or a steer as a request carries it. A reference
+/// and an attachment record reach the model as the text that names them
+/// (`runtime.md` § Replay), and so does a medium the request's model does
+/// not take.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserPart {
+    Text(String),
+    Image(Medium),
+    /// Only a model whose catalog marks video support receives one with
+    /// its bytes.
+    Video(Medium),
+    /// A PDF, with the name the file came with.
+    Document {
+        bytes: MediaBytes,
+        file_name: String,
+    },
+}
+
+/// A message's image or video as a request carries it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Medium {
+    Bytes(MediaBytes),
+    /// A URL the vendor fetches.
+    Url(String),
+}
+
+/// A medium's bytes and their media type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MediaBytes {
+    pub data: B64Bytes,
+    pub media_type: String,
+}
+
+/// One part of a tool's result as the tool returns it and as a request
+/// carries it: text, or an image or a video with its bytes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResultPart {
+    Text(String),
+    Image(MediaBytes),
+    Video(MediaBytes),
 }
 
 /// A tool the model may call.

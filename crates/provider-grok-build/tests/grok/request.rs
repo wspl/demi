@@ -3,12 +3,10 @@
 
 use std::sync::Arc;
 
-use demi_core::{
-    B64Bytes, DocumentSource, MediaSource, ThinkingConfig, TokenUsage, ToolMediaSource,
-    ToolResultContentBlock, UserContentBlock,
-};
+use demi_core::{B64Bytes, ThinkingConfig, TokenUsage};
 use demi_provider::{
-    ErrorCode, InferenceItem, InferenceRequest, ProviderEvent, ToolCall, ToolDefinition,
+    ErrorCode, InferenceItem, InferenceRequest, MediaBytes, Medium, ProviderEvent, ResultPart,
+    ToolCall, ToolDefinition, UserPart,
     testing::{MockResponse, MockVendor, inference_request, next_event},
 };
 use serde_json::{Value, json};
@@ -93,9 +91,7 @@ async fn the_chat_body_carries_the_tools_the_replay_and_the_effort_but_no_limit_
     }]);
     request.items = Arc::new([
         InferenceItem::UserMessage {
-            content: vec![UserContentBlock::Text {
-                text: "hello".into(),
-            }],
+            content: vec![UserPart::Text("hello".into())],
         },
         InferenceItem::AssistantThinking {
             model_id: "grok-4.5".into(),
@@ -116,15 +112,11 @@ async fn the_chat_body_carries_the_tools_the_replay_and_the_effort_but_no_limit_
         InferenceItem::ToolResult {
             tool_use_id: "call-1".into(),
             output: vec![
-                ToolResultContentBlock::Text {
-                    text: "contents".into(),
-                },
-                ToolResultContentBlock::Image {
-                    source: ToolMediaSource::Binary {
-                        data: B64Bytes::from(&b"PNG"[..]),
-                        media_type: "image/png".into(),
-                    },
-                },
+                ResultPart::Text("contents".into()),
+                ResultPart::Image(MediaBytes {
+                    data: B64Bytes::from(&b"PNG"[..]),
+                    media_type: "image/png".into(),
+                }),
             ],
             is_error: false,
         },
@@ -154,27 +146,19 @@ async fn video_becomes_text_and_a_pdf_is_left_to_its_attachment_tag() {
     let mut request = inference_request();
     request.items = Arc::new([InferenceItem::UserMessage {
         content: vec![
-            UserContentBlock::Text {
-                text: "look".into(),
-            },
-            UserContentBlock::Video {
-                source: MediaSource::Binary {
-                    data: B64Bytes::from(vec![1, 2]),
-                    media_type: "video/mp4".into(),
-                },
-            },
-            UserContentBlock::Document {
-                source: DocumentSource::Binary {
+            UserPart::Text("look".into()),
+            UserPart::Video(Medium::Bytes(MediaBytes {
+                data: B64Bytes::from(vec![1, 2]),
+                media_type: "video/mp4".into(),
+            })),
+            UserPart::Document {
+                bytes: MediaBytes {
                     data: B64Bytes::from(&b"%PDF"[..]),
                     media_type: "application/pdf".into(),
-                    file_name: "a.pdf".into(),
                 },
+                file_name: "a.pdf".into(),
             },
-            UserContentBlock::Image {
-                source: MediaSource::Url {
-                    url: "https://example.com/shot.png".into(),
-                },
-            },
+            UserPart::Image(Medium::Url("https://example.com/shot.png".into())),
         ],
     }]);
     assert_eq!(

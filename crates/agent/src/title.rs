@@ -8,8 +8,10 @@
 
 use std::{num::NonZeroU32, sync::Arc};
 
-use demi_core::{Model, ModelSelection, ThinkingCapability, ThinkingConfig, UserContentBlock};
-use demi_provider::{InferenceItem, InferenceRequest, PromptCache, ProviderEvent, ProviderRuntime};
+use demi_core::{Model, ModelSelection, ThinkingCapability, ThinkingConfig};
+use demi_provider::{
+    InferenceItem, InferenceRequest, PromptCache, ProviderEvent, ProviderRuntime, UserPart,
+};
 use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
 
@@ -184,7 +186,7 @@ pub async fn request_title<S: AsRef<str>>(
         output_cap: Some(OUTPUT_CAP),
         system_prompt: TITLE_INSTRUCTION.to_owned(),
         items: Arc::from([InferenceItem::UserMessage {
-            content: vec![UserContentBlock::Text { text: input }],
+            content: vec![UserPart::Text(input)],
         }]),
         tools: Arc::from([]),
         thinking: lowest_thinking(&selection.model),
@@ -344,9 +346,7 @@ mod tests {
         assert_eq!(
             *request.items,
             [InferenceItem::UserMessage {
-                content: vec![UserContentBlock::Text {
-                    text: "1. @src/auth.ts add refresh tokens".into()
-                }]
+                content: vec![UserPart::Text("1. @src/auth.ts add refresh tokens".into())]
             }]
         );
         assert!(request.tools.is_empty());

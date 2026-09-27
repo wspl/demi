@@ -14,10 +14,10 @@ use demi_agent::{
 use demi_agent_protocol::{ClientFrame, JobPhase, ServerFrame, SubagentEvent, TranscriptPatch};
 use demi_core::{
     AgentMessage, AgentMessageEvent, Block, BlockId, CompletionId, CompletionOutcome, NodeId,
-    QueuedMessage, SessionPhase, TextBlock, Timestamp, TurnId, UserBlock, UserContentBlock,
+    QueuedMessage, SessionPhase, TextBlock, Timestamp, TurnId, UserBlock,
 };
 use demi_provider::{
-    InferenceItem,
+    InferenceItem, UserPart,
     testing::{Turn, event},
 };
 use demi_shell::{CommandSet, RpcError, StorageOp, StorageReply};
@@ -226,11 +226,7 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
     let [InferenceItem::UserMessage { content }] = &*asked[0].items else {
         panic!("{:?}", asked[0].items)
     };
-    let [
-        UserContentBlock::Text { text: preamble },
-        UserContentBlock::Text { text: first },
-    ] = content.as_slice()
-    else {
+    let [UserPart::Text(preamble), UserPart::Text(first)] = content.as_slice() else {
         panic!("{content:?}")
     };
     assert!(preamble.starts_with(&format!(

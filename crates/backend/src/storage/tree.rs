@@ -99,7 +99,6 @@ impl AgentTreeStore for SqliteTreeStore {
     fn create_node(&self, record: NodeRecord, initial: CheckpointUpdate) -> LocalBoxFuture<'_, Result<(), StoreError>> {
         Box::pin(async move {
             let completions = initial.carried_completions()?;
-            initial.check_references()?;
             let node = record.id.clone();
             let blobs = self.blobs.clone();
             self.db
@@ -270,7 +269,6 @@ impl SessionStore for SqliteSessionStore {
         let node = self.node.clone();
         Box::pin(async move {
             let completions = update.carried_completions()?;
-            update.check_references()?;
             let commit = self.db.commit_point();
             let blobs = self.blobs.clone();
             self.db
@@ -1083,8 +1081,6 @@ mod tests {
         store_contract::a_save_delivers_a_completion_it_holds_as_waiting_input(&tree).await;
         let (tree, _stores, _data) = store().await;
         store_contract::children_list_in_spawn_order_and_a_close_keeps_its_result(&tree).await;
-        let (tree, _stores, _data) = store().await;
-        store_contract::a_checkpoint_that_holds_media_bytes_is_refused(&tree).await;
         let (tree, _stores, _data) = store().await;
         store_contract::the_blob_namespace_names_bytes_by_their_sha256(&tree).await;
     }

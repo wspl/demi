@@ -268,7 +268,7 @@ async fn resume_after_a_failure_that_followed_a_tool_continues_after_its_result(
     assert_eq!(
         request.items[3],
         InferenceItem::UserMessage {
-            content: text(RESUME_TEXT),
+            content: sent_text(RESUME_TEXT),
         }
     );
 }
@@ -380,17 +380,17 @@ async fn resume_after_a_stop_marks_the_stop_resumed_and_continues_the_turn() {
         provider.requests()[1].items.as_ref(),
         [
             InferenceItem::UserMessage {
-                content: text("go")
+                content: sent_text("go")
             },
             InferenceItem::AssistantText {
                 model_id: "test-model".into(),
                 text: "interim finding".into(),
             },
             InferenceItem::UserSteer {
-                content: text("extra constraint"),
+                content: sent_text("extra constraint"),
             },
             InferenceItem::UserMessage {
-                content: text(RESUME_TEXT),
+                content: sent_text(RESUME_TEXT),
             },
         ]
     );

@@ -5,12 +5,10 @@
 
 use std::borrow::Cow;
 
-use demi_core::{
-    B64Bytes, DocumentSource, MediaSource, ThinkingConfig, ThinkingSummary, ToolMediaSource,
-    ToolResultContentBlock, UserContentBlock, attachment_tag, is_blank,
-};
+use demi_core::{B64Bytes, ThinkingConfig, ThinkingSummary, is_blank};
 use demi_provider::{
-    InferenceItem, InferenceRequest, PromptCache, ToolDefinition, UnloadedMedia, json_body,
+    InferenceItem, InferenceRequest, MediaBytes, Medium, PromptCache, ResultPart, ToolDefinition,
+    UserPart, json_body,
 };
 use serde::Serialize;
 
@@ -40,8 +38,8 @@ const CACHE_MARK: CacheControl = CacheControl {
 };
 
 /// The JSON body of `request`.
-pub(crate) fn encode(request: &InferenceRequest) -> Result<Vec<u8>, UnloadedMedia> {
-    Ok(json_body(&body(request)?))
+pub(crate) fn encode(request: &InferenceRequest) -> Vec<u8> {
+    json_body(&body(request))
 }
 
 #[derive(Serialize)]
@@ -164,12 +162,12 @@ struct Base64<'a> {
     data: &'a B64Bytes,
 }
 
-impl<'a> Base64<'a> {
-    fn new(media_type: &'a str, data: &'a B64Bytes) -> Self {
+impl<'a> From<&'a MediaBytes> for Base64<'a> {
+    fn from(bytes: &'a MediaBytes) -> Self {
         Self {
             kind: "base64",
-            media_type,
-            data,
+            media_type: &bytes.media_type,
+            data: &bytes.data,
         }
     }
 }
@@ -216,7 +214,7 @@ struct OutputConfig<'a> {
     effort: &'a str,
 }
 
-fn body(request: &InferenceRequest) -> Result<Body<'_>, UnloadedMedia> {
+fn body(request: &InferenceRequest) -> Body<'_> {
     let max_tokens = request
         .max_output_tokens()
         .map_or(DEFAULT_MAX_TOKENS, |limit| limit.get());
@@ -230,9 +228,9 @@ fn body(request: &InferenceRequest) -> Result<Body<'_>, UnloadedMedia> {
     }
     let mut tools: Vec<Tool<'_>> = request.tools.iter().map(Tool::from).collect();
     let messages = match request.prompt_cache {
-        PromptCache::Off => messages(&request.items, 0)?.0,
+        PromptCache::Off => messages(&request.items, 0).0,
         PromptCache::Session { answered_items } => {
-            let (mut messages, answered_end) = messages(&request.items, answered_items)?;
+            let (mut messages, answered_end) = messages(&request.items, answered_items);
             mark_shared_prefix(&mut system, &mut tools);
             let request_end = last_position(&messages);
             for position in [answered_end, request_end].into_iter().flatten() {
@@ -241,7 +239,7 @@ fn body(request: &InferenceRequest) -> Result<Body<'_>, UnloadedMedia> {
             messages
         }
     };
-    Ok(Body {
+    Body {
         model: &request.model_id,
         messages,
         max_tokens,
@@ -251,7 +249,7 @@ fn body(request: &InferenceRequest) -> Result<Body<'_>, UnloadedMedia> {
         thinking,
         output_config,
         service_tier: request.service_tier_id.as_deref(),
-    })
+    }
 }
 
 /// Marks the end of what the nodes of one harness and profile share: the
@@ -333,29 +331,26 @@ fn thinking(
 /// message and the tool results that answer them one user message. Also the
 /// position of the last block of the first `answered` items, none while they
 /// have no block.
-fn messages(
-    items: &[InferenceItem],
-    answered: usize,
-) -> Result<(Vec<Message<'_>>, Option<Position>), UnloadedMedia> {
+fn messages(items: &[InferenceItem], answered: usize) -> (Vec<Message<'_>>, Option<Position>) {
     let mut messages: Vec<Message<'_>> = Vec::new();
     let mut answered_end = None;
     for (count, item) in (1..).zip(items) {
-        if let Some((role, content)) = item_content(item)? {
+        if let Some((role, content)) = item_content(item) {
             append(&mut messages, role, content);
         }
         if count == answered {
             answered_end = last_position(&messages);
         }
     }
-    Ok((messages, answered_end))
+    (messages, answered_end)
 }
 
 /// What one item adds to the messages: its role and blocks, or nothing for
 /// reasoning this provider cannot send back.
-fn item_content(item: &InferenceItem) -> Result<Option<(Role, Vec<Content<'_>>)>, UnloadedMedia> {
+fn item_content(item: &InferenceItem) -> Option<(Role, Vec<Content<'_>>)> {
     let (role, blocks) = match item {
         InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content } => {
-            (Role::User, user_content(content)?)
+            (Role::User, user_content(content))
         }
         InferenceItem::AssistantText { text, .. } => (
             Role::Assistant,
@@ -374,11 +369,9 @@ fn item_content(item: &InferenceItem) -> Result<Option<(Role, Vec<Content<'_>>)>
             // a summary would fail the vendor's check of the history before
             // it, and leaving it out at the start of the history is allowed.
             if *kept_past_summary {
-                return Ok(None);
+                return None;
             }
-            let Some(signature) = signature.as_deref().and_then(own) else {
-                return Ok(None);
-            };
+            let signature = signature.as_deref().and_then(own)?;
             (
                 Role::Assistant,
                 vec![Block::Thinking {
@@ -392,9 +385,7 @@ fn item_content(item: &InferenceItem) -> Result<Option<(Role, Vec<Content<'_>>)>
             kept_past_summary,
             ..
         } => {
-            let Some(data) = own(data).filter(|_| !kept_past_summary) else {
-                return Ok(None);
-            };
+            let data = own(data).filter(|_| !kept_past_summary)?;
             (Role::Assistant, vec![Block::RedactedThinking { data }])
         }
         InferenceItem::ToolUse {
@@ -426,13 +417,13 @@ fn item_content(item: &InferenceItem) -> Result<Option<(Role, Vec<Content<'_>>)>
             Role::User,
             vec![Block::ToolResult {
                 tool_use_id,
-                content: tool_result_content(output)?,
+                content: tool_result_content(output),
                 is_error: *is_error,
             }],
         ),
     };
     let content = blocks.into_iter().map(Content::from).collect();
-    Ok(Some((role, content)))
+    Some((role, content))
 }
 
 fn append<'a>(messages: &mut Vec<Message<'a>>, role: Role, mut content: Vec<Content<'a>>) {
@@ -450,83 +441,48 @@ fn own(tagged: &str) -> Option<&str> {
     tagged.strip_prefix(SIGNATURE_TAG)
 }
 
-/// A message's content: text, references and attachment tags as text, images
-/// and PDFs inline. The API has no video block, and the catalog marks video
-/// unsupported, so a video becomes a placeholder.
-fn user_content(content: &[UserContentBlock]) -> Result<Vec<Block<'_>>, UnloadedMedia> {
+/// A message's content: text as text, images and PDFs inline, and an image
+/// by URL as a text that names it. The API has no video block, and the
+/// catalog marks video unsupported, so a video becomes a placeholder.
+fn user_content(content: &[UserPart]) -> Vec<Block<'_>> {
     content
         .iter()
-        .map(|block| {
-            Ok(match block {
-                UserContentBlock::Text { text } => Block::Text {
-                    text: Cow::Borrowed(text),
-                },
-                UserContentBlock::Reference { reference } => Block::Text {
-                    text: Cow::Borrowed(reference),
-                },
-                UserContentBlock::Attachment(attachment) => Block::Text {
-                    text: Cow::Owned(attachment_tag(attachment)),
-                },
-                UserContentBlock::Video { .. } => Block::Text {
-                    text: Cow::Borrowed("[video]"),
-                },
-                UserContentBlock::Image { source } => match source {
-                    MediaSource::Binary { data, media_type } => Block::Image {
-                        source: Base64::new(media_type, data),
-                    },
-                    MediaSource::Url { url } => Block::Text {
-                        text: Cow::Owned(format!("[image:{url}]")),
-                    },
-                    MediaSource::Ref { r#ref, .. } => return Err(UnloadedMedia(r#ref.to_string())),
-                },
-                UserContentBlock::Document { source } => match source {
-                    DocumentSource::Binary {
-                        data,
-                        media_type,
-                        file_name,
-                    } => Block::Document {
-                        source: Base64::new(media_type, data),
-                        title: file_name,
-                    },
-                    DocumentSource::Ref { r#ref, .. } => {
-                        return Err(UnloadedMedia(r#ref.to_string()));
-                    }
-                },
-            })
+        .map(|part| match part {
+            UserPart::Text(text) => Block::Text {
+                text: Cow::Borrowed(text),
+            },
+            UserPart::Video(_) => Block::Text {
+                text: Cow::Borrowed("[video]"),
+            },
+            UserPart::Image(Medium::Bytes(bytes)) => Block::Image {
+                source: Base64::from(bytes),
+            },
+            UserPart::Image(Medium::Url(url)) => Block::Text {
+                text: Cow::Owned(format!("[image:{url}]")),
+            },
+            UserPart::Document { bytes, file_name } => Block::Document {
+                source: Base64::from(bytes),
+                title: file_name,
+            },
         })
         .collect()
 }
 
 /// A tool result's content: text and images; a video becomes a placeholder
 /// that names its type.
-fn tool_result_content(
-    output: &[ToolResultContentBlock],
-) -> Result<Vec<ResultBlock<'_>>, UnloadedMedia> {
+fn tool_result_content(output: &[ResultPart]) -> Vec<ResultBlock<'_>> {
     output
         .iter()
-        .map(|block| {
-            Ok(match block {
-                ToolResultContentBlock::Text { text } => ResultBlock::Text {
-                    text: Cow::Borrowed(text),
-                },
-                ToolResultContentBlock::Video { source } => {
-                    let media_type = match source {
-                        ToolMediaSource::Binary { media_type, .. }
-                        | ToolMediaSource::Ref { media_type, .. } => media_type,
-                    };
-                    ResultBlock::Text {
-                        text: Cow::Owned(format!("[video:{media_type}]")),
-                    }
-                }
-                ToolResultContentBlock::Image { source } => match source {
-                    ToolMediaSource::Binary { data, media_type } => ResultBlock::Image {
-                        source: Base64::new(media_type, data),
-                    },
-                    ToolMediaSource::Ref { r#ref, .. } => {
-                        return Err(UnloadedMedia(r#ref.to_string()));
-                    }
-                },
-            })
+        .map(|part| match part {
+            ResultPart::Text(text) => ResultBlock::Text {
+                text: Cow::Borrowed(text),
+            },
+            ResultPart::Video(bytes) => ResultBlock::Text {
+                text: Cow::Owned(format!("[video:{}]", bytes.media_type)),
+            },
+            ResultPart::Image(bytes) => ResultBlock::Image {
+                source: Base64::from(bytes),
+            },
         })
         .collect()
 }

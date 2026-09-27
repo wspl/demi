@@ -33,8 +33,7 @@ pub use command_state::{
 pub trait SessionStore {
     /// Commits `update` in one transaction. Right before the transaction the
     /// store checks `guard`; the update took effect exactly when this returns
-    /// `Ok`. An update that holds media bytes is refused
-    /// ([`CheckpointUpdate::check_references`]).
+    /// `Ok`.
     fn save<'a>(
         &'a self,
         update: CheckpointUpdate,
@@ -66,8 +65,7 @@ pub trait AgentTreeStore {
 
     /// The node's record and its first checkpoint in one commit, so that a
     /// node the process loses before its first turn still has the message
-    /// queued in it. A node that exists is refused, and so is a checkpoint
-    /// that holds media bytes ([`CheckpointUpdate::check_references`]).
+    /// queued in it. A node that exists is refused.
     fn create_node(
         &self,
         record: NodeRecord,
@@ -351,35 +349,6 @@ pub struct CheckpointUpdate {
 }
 
 impl CheckpointUpdate {
-    /// Refuses an update that holds media bytes (`runtime.md` § Saving):
-    /// each block and each queued message holds its media by reference,
-    /// since a medium's bytes were stored when it entered. The error names
-    /// the block or the message that holds bytes.
-    pub fn check_references(&self) -> Result<(), StoreError> {
-        if let Some((_, block)) = self
-            .changed_blocks
-            .iter()
-            .find(|(_, block)| media::holds_bytes(block))
-        {
-            return Err(StoreError::Failed(format!(
-                "block {} holds media bytes instead of a blob reference",
-                block.id()
-            )));
-        }
-        if let Some(message) = self
-            .state
-            .queue
-            .iter()
-            .find(|message| media::content_holds_bytes(&message.content))
-        {
-            return Err(StoreError::Failed(format!(
-                "queued message {} holds media bytes instead of a blob reference",
-                message.id
-            )));
-        }
-        Ok(())
-    }
-
     /// The child rounds whose completion receipts this save carries, as
     /// waiting agent input or as `agent_message` blocks, which the save marks
     /// delivered.

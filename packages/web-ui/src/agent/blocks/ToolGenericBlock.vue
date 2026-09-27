@@ -6,7 +6,6 @@ import FunctionalBlock from './FunctionalBlock.vue'
 import ToolMedia from './ToolMedia.vue'
 import type { ToolCallBlock } from '../block-types'
 import { getToolErrorText } from '../block-helpers'
-import { takesMediumPlace } from '../tool-media'
 import { trimToolSummary } from '../tool-rendering'
 
 const props = defineProps<{
@@ -27,10 +26,8 @@ const summary = computed(() => {
     })
     .join(' ')
 })
-// The result's own text; its media, and a text in a medium's place, show under the row.
-const texts = computed(() =>
-  props.block.output.flatMap((part) => part.type === 'text' && !takesMediumPlace(part) ? [part.text] : []),
-)
+// The result's own text; its media, and a medium that is gone, show under the row.
+const texts = computed(() => props.block.output.flatMap((part) => part.type === 'text' ? [part.text] : []))
 const errorText = computed(() => getToolErrorText(props.block))
 const detail = computed(() => {
   const text = errorText.value

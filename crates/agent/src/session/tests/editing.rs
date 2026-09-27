@@ -437,7 +437,7 @@ async fn an_accepted_edit_stays_accepted_when_its_turn_fails_and_neither_a_repea
     assert_eq!(
         request.items[3],
         InferenceItem::UserMessage {
-            content: text(RESUME_TEXT),
+            content: sent_text(RESUME_TEXT),
         }
     );
 }
@@ -498,7 +498,7 @@ async fn an_edit_of_the_first_a_middle_or_the_last_message_keeps_exactly_the_blo
         ]
     );
     let question = |message: &str| InferenceItem::UserMessage {
-        content: text(message),
+        content: sent_text(message),
     };
     let answer = |message: &str| InferenceItem::AssistantText {
         model_id: "test-model".into(),
@@ -514,7 +514,7 @@ async fn an_edit_of_the_first_a_middle_or_the_last_message_keeps_exactly_the_blo
         },
         InferenceItem::ToolResult {
             tool_use_id: "note-1".into(),
-            output: texts(&["noted"]),
+            output: sent_texts(&["noted"]),
             is_error: false,
         },
         answer("answer A"),
@@ -523,7 +523,7 @@ async fn an_edit_of_the_first_a_middle_or_the_last_message_keeps_exactly_the_blo
         question("B"),
         answer("answer B1"),
         InferenceItem::UserSteer {
-            content: text("mind the tests"),
+            content: sent_text("mind the tests"),
         },
         answer("answer B2"),
     ];

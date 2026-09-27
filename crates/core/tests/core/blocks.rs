@@ -103,10 +103,10 @@ fn stored_blocks_refuse_what_the_contract_does_not_hold() {
 
 #[test]
 fn a_rule_break_names_the_field() {
-    let value = with(fixture("u1"), "/content/8/name", json!(""));
+    let value = with(fixture("u1"), "/content/6/name", json!(""));
     let error = decode_value(&value).unwrap_err();
     assert!(matches!(error, DecodeError::Invalid(_)), "{error}");
-    assert!(error.to_string().contains("content[8][0].name"), "{error}");
+    assert!(error.to_string().contains("content[6][0].name"), "{error}");
     let value = with(fixture("m1"), "/id", json!("m2"));
     let error = decode_value(&value).unwrap_err().to_string();
     assert!(error.contains("must be the message's id, m1"), "{error}");

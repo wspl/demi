@@ -7,8 +7,8 @@ import ToolMediumPreview from './ToolMediumPreview.vue'
 
 /**
  * The images and videos a call's result carries, under the call's row and
- * in the order of the result, whether the call is folded or open; a text
- * that took a medium's place shows where the medium was
+ * in the order of the result, whether the call is folded or open; a medium
+ * that is gone shows a line that says why where it was
  * (`file-previews.md` § Media a tool returned).
  */
 const props = defineProps<{

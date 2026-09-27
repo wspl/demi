@@ -4,10 +4,9 @@
 
 use demi_core::{
     B64Bytes, Model, ModelMediaKind, OutputChunk, ShellToolView, ShellViewStatus, StreamView,
-    ToolMediaSource, ToolResultContentBlock, ToolView, model_accepts_media_type,
-    sniff_model_media_type,
+    ToolView, model_accepts_media_type, sniff_model_media_type,
 };
-use demi_provider::RequestLimits;
+use demi_provider::{MediaBytes, RequestLimits, ResultPart};
 use demi_shell::{BinaryOutput, CommandState, CommandStatus};
 
 use crate::{images, session::ToolOutcome};
@@ -73,18 +72,20 @@ pub(super) async fn shell_outcome(
     model: &Model,
     limits: RequestLimits,
 ) -> ToolOutcome {
-    let mut output = vec![ToolResultContentBlock::Text {
-        text: result_text(status, budget_tokens, expose_handle),
-    }];
+    let mut output = vec![ResultPart::Text(result_text(
+        status,
+        budget_tokens,
+        expose_handle,
+    ))];
     if let CommandState::Exited {
         binary_stdout: Some(binary),
         ..
     } = &status.state
     {
-        let (block, note) =
+        let (medium, note) =
             binary_verdict(binary, status.stdout.path.as_deref(), model, limits).await;
-        output.extend(block);
-        output.push(ToolResultContentBlock::Text { text: note });
+        output.extend(medium);
+        output.push(ResultPart::Text(note));
     }
     ToolOutcome {
         output,
@@ -165,7 +166,7 @@ async fn binary_verdict(
     raw_path: Option<&str>,
     model: &Model,
     limits: RequestLimits,
-) -> (Option<ToolResultContentBlock>, String) {
+) -> (Option<ResultPart>, String) {
     let media = sniff_model_media_type(&binary.bytes);
     let total = binary.info.total_bytes;
     let place = match raw_path {
@@ -215,11 +216,11 @@ async fn binary_verdict(
                 } else {
                     format!("Attached stdout as {} ({total} bytes).", media.media_type)
                 };
-                let source = ToolMediaSource::Binary {
+                let image = ResultPart::Image(MediaBytes {
                     data: fitted.data,
                     media_type: fitted.media_type.to_owned(),
-                };
-                (Some(ToolResultContentBlock::Image { source }), note)
+                });
+                (Some(image), note)
             }
             Err(unfit) => (
                 None,
@@ -249,12 +250,12 @@ async fn binary_verdict(
             ),
         );
     }
-    let source = ToolMediaSource::Binary {
+    let video = ResultPart::Video(MediaBytes {
         data,
         media_type: media.media_type.to_owned(),
-    };
+    });
     (
-        Some(ToolResultContentBlock::Video { source }),
+        Some(video),
         format!("Attached stdout as {} ({total} bytes).", media.media_type),
     )
 }
@@ -390,10 +391,10 @@ mod tests {
         outcome
             .output
             .iter()
-            .map(|block| match block {
-                ToolResultContentBlock::Text { text } => text.as_str(),
-                ToolResultContentBlock::Image { .. } => "<image>",
-                ToolResultContentBlock::Video { .. } => "<video>",
+            .map(|part| match part {
+                ResultPart::Text(text) => text.as_str(),
+                ResultPart::Image(_) => "<image>",
+                ResultPart::Video(_) => "<video>",
             })
             .collect()
     }

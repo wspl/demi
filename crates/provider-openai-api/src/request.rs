@@ -6,7 +6,7 @@ use std::borrow::Cow;
 
 use demi_core::is_blank;
 use demi_provider::{
-    InferenceRequest, UnloadedMedia, json_body,
+    InferenceRequest, json_body,
     openai_request::{
         AssistantReplay, ChatDialect, ChatMedia, ChatMessage, ChatTool, InputItem, Reasoning,
         ReasoningReplay, ResponsesDialect, ResponsesTool, SummaryOff, ToolMedia, chat_messages,
@@ -18,10 +18,7 @@ use serde::Serialize;
 use crate::{SIGNATURE_TAG, VendorPolicy};
 
 /// The JSON body of a Responses request.
-pub(crate) fn responses(
-    request: &InferenceRequest,
-    policy: VendorPolicy,
-) -> Result<Vec<u8>, UnloadedMedia> {
+pub(crate) fn responses(request: &InferenceRequest, policy: VendorPolicy) -> Vec<u8> {
     let dialect = ResponsesDialect {
         signature_tag: SIGNATURE_TAG,
         assistant: if policy.replay_assistant_status {
@@ -35,7 +32,7 @@ pub(crate) fn responses(
     let has_tools = !request.tools.is_empty();
     let body = ResponsesBody {
         model: &request.model_id,
-        input: responses_input(&request.items, &dialect)?,
+        input: responses_input(&request.items, &dialect),
         stream: true,
         store: false,
         include: ["reasoning.encrypted_content"],
@@ -52,7 +49,7 @@ pub(crate) fn responses(
         reasoning: responses_reasoning(request.thinking.as_ref(), SummaryOff::Omitted),
         service_tier: request.service_tier_id.as_deref(),
     };
-    Ok(json_body(&body))
+    json_body(&body)
 }
 
 #[derive(Serialize)]
@@ -81,17 +78,14 @@ struct ResponsesBody<'a> {
 }
 
 /// The JSON body of a Chat Completions request.
-pub(crate) fn chat_completions(
-    request: &InferenceRequest,
-    policy: VendorPolicy,
-) -> Result<Vec<u8>, UnloadedMedia> {
+pub(crate) fn chat_completions(request: &InferenceRequest, policy: VendorPolicy) -> Vec<u8> {
     let dialect = ChatDialect {
         reasoning_content: policy.pass_back_reasoning_content,
         media: ChatMedia::Native,
     };
     let body = ChatBody {
         model: &request.model_id,
-        messages: chat_messages(&request.system_prompt, &request.items, dialect)?,
+        messages: chat_messages(&request.system_prompt, &request.items, dialect),
         stream: true,
         tools: request.tools.iter().map(ChatTool::from).collect(),
         tool_choice: (!request.tools.is_empty()).then_some("auto"),
@@ -102,7 +96,7 @@ pub(crate) fn chat_completions(
             include_usage: true,
         },
     };
-    Ok(json_body(&body))
+    json_body(&body)
 }
 
 #[derive(Serialize)]

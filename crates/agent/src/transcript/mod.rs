@@ -19,10 +19,28 @@ pub(crate) use log::TranscriptLog;
 pub(crate) use replay::agent_message_envelope;
 pub(crate) use replay::{char_offset, replay, tool_input};
 
-use demi_core::{Block, WakeupPlacement};
+use demi_core::{Block, GoneCause, ModelMediaKind, WakeupPlacement};
+use jiff::tz::TimeZone;
 
 /// What the model receives for a `resume` block.
 pub(crate) const RESUME_TEXT: &str = "Continue from where you left off.";
+
+/// What the model receives for a tool's medium that is gone (`runtime.md`
+/// § Media): `[<kind> not stored: <reason>]` when its bytes could not be
+/// stored, and, once retired, `[<kind>:<media type>, removed on <day>: a
+/// tool result's images and videos are kept for 30 days]` with the UTC day
+/// of the retirement.
+pub(crate) fn gone_text(kind: ModelMediaKind, media_type: &str, cause: &GoneCause) -> String {
+    let kind = kind.name();
+    match cause {
+        GoneCause::NotStored { error } => format!("[{kind} not stored: {error}]"),
+        GoneCause::Retired { at } => format!(
+            "[{kind}:{media_type}, removed on {}: a tool result's images and videos are kept for {} days]",
+            at.to_jiff().to_zoned(TimeZone::UTC).date(),
+            retire::KEPT.as_hours() / 24
+        ),
+    }
+}
 
 /// What the model receives for a fired yield wakeup.
 pub(crate) const WAKEUP_TEXT: &str = "Scheduled yield wakeup fired. Continue the previous work and inspect any running command with shell_status when needed.";

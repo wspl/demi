@@ -1,6 +1,7 @@
 //! What a message and a tool result hold (`runtime.md` § Transcript): text,
-//! media the model reads natively, references, and the records of files that
-//! came with a message.
+//! media the model reads natively, held by reference or by URL and never as
+//! bytes, references, the records of files that came with a message, and a
+//! tool's media that are gone.
 
 use std::{borrow::Cow, fmt, str::FromStr};
 
@@ -9,7 +10,7 @@ use serde::{Deserialize, Serialize, Serializer};
 use serde_with::rust::unwrap_or_skip;
 use sha2::{Digest, Sha256};
 
-use crate::B64Bytes;
+use crate::{ModelMediaKind, Timestamp};
 
 /// A blob's name: the SHA-256 of its bytes in lowercase hexadecimal
 /// (`storage.md` § Encodings and digests). A blob belongs to its owner's
@@ -112,7 +113,7 @@ pub enum UserContentBlock {
         source: DocumentSource,
     },
     /// Text that names something, such as a file on a paired device and the
-    /// command that reads it; providers render it as text.
+    /// command that reads it; the model reads it as text.
     Reference {
         #[garde(skip)]
         reference: String,
@@ -122,7 +123,7 @@ pub enum UserContentBlock {
 }
 
 /// The record of a file that came with a message: on the conversation's Host
-/// at `path`, never inlined. Providers render it as a tag that names the file
+/// at `path`, never inlined. The model reads it as a tag that names the file
 /// ([`attachment_tag`]); the page draws the file's tile from it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -204,7 +205,9 @@ fn is_trimmed_space(character: char) -> bool {
     character == '\u{feff}' || (character.is_whitespace() && character != '\u{85}')
 }
 
-/// Where an image's or a video's bytes are.
+/// Where a message's image or video is: never its bytes, which a session
+/// holds beside the transcript while a request can send them (`runtime.md`
+/// § Media).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(
     tag = "type",
@@ -213,13 +216,6 @@ fn is_trimmed_space(character: char) -> bool {
     deny_unknown_fields
 )]
 pub enum MediaSource {
-    /// The bytes themselves, as a session holds them for inference.
-    Binary {
-        #[garde(skip)]
-        data: B64Bytes,
-        #[garde(skip)]
-        media_type: String,
-    },
     /// A URL the provider fetches.
     Url {
         #[garde(skip)]
@@ -235,7 +231,9 @@ pub enum MediaSource {
     },
 }
 
-/// Where a document's bytes are, with the name the file came with.
+/// Where a document's bytes are, with the name the file came with: in the
+/// conversation owner's blob namespace. A tagged enum of one variant, so a
+/// stored document keeps `{ "type": "ref", ... }`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(
     tag = "type",
@@ -244,14 +242,6 @@ pub enum MediaSource {
     deny_unknown_fields
 )]
 pub enum DocumentSource {
-    Binary {
-        #[garde(skip)]
-        data: B64Bytes,
-        #[garde(skip)]
-        media_type: String,
-        #[garde(skip)]
-        file_name: String,
-    },
     Ref {
         #[garde(skip)]
         r#ref: BlobRef,
@@ -283,9 +273,39 @@ pub enum ToolResultContentBlock {
         #[garde(dive)]
         source: ToolMediaSource,
     },
+    /// An image or a video the result no longer holds, in its place: what
+    /// it was and why it is gone (`runtime.md` § Media). The model reads it
+    /// as one line of text.
+    Gone {
+        #[garde(skip)]
+        kind: ModelMediaKind,
+        #[garde(skip)]
+        media_type: String,
+        #[garde(skip)]
+        cause: GoneCause,
+    },
 }
 
-/// Where the bytes of a tool result's image or video are.
+/// Why a tool result's image or video is gone.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum GoneCause {
+    /// Its bytes could not be stored when the result entered the
+    /// transcript; `error` is the store's.
+    NotStored { error: String },
+    /// It was retired at `at`, 30 days on (`runtime.md` § Retired tool
+    /// media).
+    Retired { at: Timestamp },
+}
+
+/// Where the bytes of a tool result's image or video are: in the
+/// conversation owner's blob namespace. A tagged enum of one variant, so a
+/// stored result keeps `{ "type": "ref", ... }`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(
     tag = "type",
@@ -294,12 +314,6 @@ pub enum ToolResultContentBlock {
     deny_unknown_fields
 )]
 pub enum ToolMediaSource {
-    Binary {
-        #[garde(skip)]
-        data: B64Bytes,
-        #[garde(skip)]
-        media_type: String,
-    },
     Ref {
         #[garde(skip)]
         r#ref: BlobRef,

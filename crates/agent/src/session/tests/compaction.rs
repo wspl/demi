@@ -118,7 +118,7 @@ fn summary_sizes(provider: &ScriptedRuntime) -> Vec<usize> {
 
 fn user_item(message: &str) -> InferenceItem {
     InferenceItem::UserMessage {
-        content: text(message),
+        content: sent_text(message),
     }
 }
 
@@ -207,7 +207,10 @@ async fn a_history_over_the_threshold_is_compacted_before_the_turn_by_a_copy_tha
     assert_eq!(marker.boundary_id, boundary.id);
     assert_eq!(
         marker.compacted_tokens,
-        blocks[..1].iter().map(block_tokens).sum::<u64>()
+        blocks[..1]
+            .iter()
+            .map(|block| block_tokens(block, &HeldMedia::default()))
+            .sum::<u64>()
     );
     assert_eq!(
         second.items.as_ref(),
@@ -1107,7 +1110,7 @@ async fn a_round_whose_usage_with_its_cache_reaches_the_threshold_summarizes_wha
     assert_eq!(continuation.items[0], summary_item("tool summary"));
     assert!(matches!(
         &continuation.items[2],
-        InferenceItem::ToolResult { output, .. } if *output == texts(&["counted"])
+        InferenceItem::ToolResult { output, .. } if *output == sent_texts(&["counted"])
     ));
     assert_eq!(continuation.items[3], user_item(RESUME_TEXT));
     let blocks = session.transcript().blocks;
@@ -1312,7 +1315,7 @@ async fn input_that_arrives_during_a_pass_waits_outside_the_summary_for_the_firs
         ["user_message", "user_message"]
     );
     let steer = InferenceItem::UserSteer {
-        content: text("mind the tests"),
+        content: sent_text("mind the tests"),
     };
     assert_eq!(
         requests[2].items.as_ref(),
@@ -1600,12 +1603,10 @@ async fn screenshots_toward_the_vendors_image_limit_compact_before_a_request_wou
     });
     let png = B64Bytes::from(b"\x89PNG\r\n\x1a\n\0\0\0\x01".to_vec());
     let shoot = tool("shoot", move |_| {
-        let image = ToolResultContentBlock::Image {
-            source: ToolMediaSource::Binary {
-                data: png.clone(),
-                media_type: "image/png".into(),
-            },
-        };
+        let image = ResultPart::Image(MediaBytes {
+            data: png.clone(),
+            media_type: "image/png".into(),
+        });
         Box::pin(async move {
             Ok(ToolOutcome {
                 output: vec![image],
@@ -1742,12 +1743,10 @@ async fn a_switch_to_a_vendor_that_takes_fewer_images_compacts_with_the_model_be
     });
     let png = B64Bytes::from(b"\x89PNG\r\n\x1a\n\0\0\0\x01".to_vec());
     let shoot = tool("shoot", move |_| {
-        let image = ToolResultContentBlock::Image {
-            source: ToolMediaSource::Binary {
-                data: png.clone(),
-                media_type: "image/png".into(),
-            },
-        };
+        let image = ResultPart::Image(MediaBytes {
+            data: png.clone(),
+            media_type: "image/png".into(),
+        });
         Box::pin(async move {
             Ok(ToolOutcome {
                 output: vec![image],
