@@ -27,8 +27,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::support::{
     CommandRun, Fixture, Gate, Model, TestHarness, agent, agent_call, command_storage,
-    conversation, frames_until, held, is_idle, is_pending_steers, open, request_text, send, texts,
-    until,
+    conversation, held, is_idle, is_pending_steers, open, request_text, send, texts, until,
 };
 
 fn said(text: &str) -> Turn {
@@ -160,7 +159,7 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
     )
     .await;
     let child = child_id(&spawned);
-    let frames = frames_until(&mut client, is_idle).await;
+    let frames = client.next_until(is_idle).await;
 
     assert_eq!(
         refused(&empty),
@@ -322,7 +321,7 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
         json!({ "prompt": "task delta", "description": "delta" }),
     )
     .await;
-    frames_until(&mut client, is_idle).await;
+    client.next_until(is_idle).await;
     let alpha = spawn(
         &fixture,
         &root(),
@@ -543,7 +542,7 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
 
     // A child with a message waiting does not close before it reads it.
     beta_gate.open();
-    let frames = frames_until(&mut client, is_closed(&beta)).await;
+    let frames = client.next_until(is_closed(&beta)).await;
     assert!(
         !lifecycle(&frames)
             .iter()
@@ -556,7 +555,7 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
             result: "beta heard".into()
         })
     );
-    frames_until(&mut client, is_idle).await;
+    client.next_until(is_idle).await;
     let senders: Vec<NodeId> = root_receipts(&fixture)
         .into_iter()
         .map(|message| message.sender.id)
@@ -593,7 +592,7 @@ async fn abort_closes_the_subtree_and_dispose_detaches_it_for_the_next_open() {
         json!({ "id": alpha.as_str() }),
     )
     .await;
-    let frames = frames_until(&mut client, is_idle).await;
+    let frames = client.next_until(is_idle).await;
 
     assert_eq!(aborted.stdout, format!("aborted {alpha}\n"));
     let closes: Vec<(NodeId, JobPhase)> = lifecycle(&frames)
@@ -635,7 +634,9 @@ async fn abort_closes_the_subtree_and_dispose_detaches_it_for_the_next_open() {
     let beta = spawn(&fixture, &root(), json!({ "prompt": "task beta" })).await;
     until(|| model.requests_of("task beta").len() == 1).await;
     client.send(ClientFrame::Close {}).await;
-    frames_until(&mut client, |frame| *frame == ServerFrame::Closed).await;
+    client
+        .next_until(|frame| *frame == ServerFrame::Closed)
+        .await;
     let detached = fixture.store.record(&beta).unwrap();
     assert!(detached.closed.is_none());
     assert_eq!(
@@ -646,7 +647,7 @@ async fn abort_closes_the_subtree_and_dispose_detaches_it_for_the_next_open() {
     let mut reopened = fixture.client();
     reopened.send(open()).await;
     let handshake = reopened.received();
-    let frames = frames_until(&mut reopened, is_idle).await;
+    let frames = reopened.next_until(is_idle).await;
 
     let started: Vec<NodeId> = lifecycle(&handshake)
         .into_iter()
@@ -917,21 +918,24 @@ async fn a_start_request_is_safe_to_retry_and_outlives_a_cancelled_call() {
     cancel.cancel();
     call.abort();
     root_gate.open();
-    let frames = frames_until(&mut client, |frame| {
-        matches!(
-            frame,
-            ServerFrame::Subagent {
-                event: SubagentEvent::Closed,
-                ..
-            }
-        )
-    })
-    .await;
+    let frames = client
+        .next_until(|frame| {
+            matches!(
+                frame,
+                ServerFrame::Subagent {
+                    event: SubagentEvent::Closed,
+                    ..
+                }
+            )
+        })
+        .await;
     let child = lifecycle(&frames)[0].1.clone();
-    frames_until(&mut client, is_idle).await;
+    client.next_until(is_idle).await;
     // The receipts are the root's command storage: they outlive its tree.
     client.send(ClientFrame::Close {}).await;
-    frames_until(&mut client, |frame| *frame == ServerFrame::Closed).await;
+    client
+        .next_until(|frame| *frame == ServerFrame::Closed)
+        .await;
     let mut client = fixture.opened().await;
 
     let retried = agent(
@@ -956,8 +960,8 @@ async fn a_start_request_is_safe_to_retry_and_outlives_a_cancelled_call() {
         json!({ "id": child.as_str(), "message": "second task", "request-id": "r2" }),
     )
     .await;
-    frames_until(&mut client, is_closed(&child)).await;
-    frames_until(&mut client, is_idle).await;
+    client.next_until(is_closed(&child)).await;
+    client.next_until(is_idle).await;
     let second_round = fixture.store.record(&child).unwrap().round;
     let resumed_again = agent(
         &fixture.server,
@@ -973,8 +977,8 @@ async fn a_start_request_is_safe_to_retry_and_outlives_a_cancelled_call() {
         json!({ "id": child.as_str(), "message": "third task", "request-id": "r3" }),
     )
     .await;
-    frames_until(&mut client, is_closed(&child)).await;
-    frames_until(&mut client, is_idle).await;
+    client.next_until(is_closed(&child)).await;
+    client.next_until(is_idle).await;
     let superseded = agent(
         &fixture.server,
         &root(),
@@ -1112,7 +1116,7 @@ async fn profiles_and_the_spawn_restriction_shape_a_childs_prompt_and_commands()
     .await;
     let restricted_lists = agent(&fixture.server, &restricted, "list", json!({})).await;
     restricted_gate.open();
-    frames_until(&mut client, is_closed(&restricted)).await;
+    client.next_until(is_closed(&restricted)).await;
     until(|| fixture.store.record(&restricted).unwrap().delivered).await;
     agent(
         &fixture.server,
@@ -1131,7 +1135,7 @@ async fn profiles_and_the_spawn_restriction_shape_a_childs_prompt_and_commands()
     )
     .await;
     resumed_gate.open();
-    frames_until(&mut client, is_closed(&restricted)).await;
+    client.next_until(is_closed(&restricted)).await;
 
     assert_eq!(
         refused(&unknown),
@@ -1246,9 +1250,9 @@ async fn a_child_whose_turn_fails_closes_as_an_error_and_a_silent_one_completes_
     let mut client = fixture.opened().await;
 
     let failing = spawn(&fixture, &root(), json!({ "prompt": "task fails" })).await;
-    frames_until(&mut client, is_closed(&failing)).await;
+    client.next_until(is_closed(&failing)).await;
     let silent = spawn(&fixture, &root(), json!({ "prompt": "task silent" })).await;
-    frames_until(&mut client, is_closed(&silent)).await;
+    client.next_until(is_closed(&silent)).await;
     until(|| root_receipts(&fixture).len() == 2).await;
 
     assert_eq!(
@@ -1316,12 +1320,12 @@ async fn a_grandchild_completes_into_its_parent_which_then_completes_into_the_wo
         json!({ "id": "parent", "message": "status: delegating" }),
     )
     .await;
-    frames_until(&mut client, is_idle).await;
+    client.next_until(is_idle).await;
     let grandchild_start =
         spawn_during_turn(&fixture, &parent, json!({ "prompt": "task grandchild" }));
     gate.open();
     let grandchild = grandchild_start.await.unwrap();
-    let frames = frames_until(&mut client, is_closed(&parent)).await;
+    let frames = client.next_until(is_closed(&parent)).await;
     until(|| root_receipts(&fixture).len() == 2).await;
 
     assert_eq!(status.stdout, format!("sent to {}\n", root()));
@@ -1432,8 +1436,8 @@ async fn a_grandchild_inherits_its_parents_profile_and_every_node_reads_the_exec
     let inner = inner_start.await.unwrap();
     let listed = agent(&fixture.server, &inner, "list", json!({})).await;
     inner_gate.open();
-    frames_until(&mut client, is_closed(&outer)).await;
-    frames_until(&mut client, is_idle).await;
+    client.next_until(is_closed(&outer)).await;
+    client.next_until(is_idle).await;
 
     // Spawned without a profile under the worker, the grandchild runs the
     // worker's prompt and model, and keeps the `demi agent` group, which the
@@ -1483,7 +1487,9 @@ async fn a_reopened_tree_restores_a_childs_own_children_before_the_child_can_set
     // The tree goes while the inner child runs and the outer one, idle,
     // waits for it; both stay live in the store.
     client.send(ClientFrame::Close {}).await;
-    frames_until(&mut client, |frame| *frame == ServerFrame::Closed).await;
+    client
+        .next_until(|frame| *frame == ServerFrame::Closed)
+        .await;
     for node in [&outer, &inner] {
         assert!(
             fixture.store.record(node).unwrap().closed.is_none(),
@@ -1508,8 +1514,8 @@ async fn a_reopened_tree_restores_a_childs_own_children_before_the_child_can_set
     assert!(fixture.store.record(&outer).unwrap().closed.is_none());
     reading.release();
     let mut reopened = opening.await.unwrap();
-    let frames = frames_until(&mut reopened, is_closed(&outer)).await;
-    frames_until(&mut reopened, is_idle).await;
+    let frames = reopened.next_until(is_closed(&outer)).await;
+    reopened.next_until(is_idle).await;
 
     // It waited for the inner child's rerun turn, and closed after it.
     let events: Vec<(SubagentEvent, NodeId)> = lifecycle(&frames)
@@ -1580,8 +1586,8 @@ async fn a_child_waiting_on_its_yield_stays_live_while_no_action_holds_the_tree(
     assert!(!tree.is_quiescent());
 
     tokio::time::sleep(Duration::from_secs(61)).await;
-    frames_until(&mut client, is_closed(&child)).await;
-    frames_until(&mut client, is_idle).await;
+    client.next_until(is_closed(&child)).await;
+    client.next_until(is_idle).await;
     assert_eq!(
         closed_phase(&fixture, &child),
         Some(ClosePhase::Completed {

@@ -25,7 +25,7 @@ use futures_util::StreamExt;
 use serde_json::{Value, json};
 
 use crate::support::{
-    Fixture, Gate, conversation, frames_until, held, is_idle, is_pending_steers, kinds, open, send,
+    Fixture, Gate, conversation, held, is_idle, is_pending_steers, kinds, open, send,
     session_of, switch, until,
 };
 
@@ -241,7 +241,7 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
     let mut client =
         TestClient::connect_with(&fixture.server, &conversation(), "/workspace", files);
     client.send(open()).await;
-    frames_until(&mut client, is_pending_steers).await;
+    client.next_until(is_pending_steers).await;
     client
         .send(ClientFrame::Send {
             message_id: crate::support::turn("m1"),
@@ -256,7 +256,7 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
             ],
         })
         .await;
-    let frames = frames_until(&mut client, is_idle).await;
+    let frames = client.next_until(is_idle).await;
 
     // At rest and on the wire, the image is its reference.
     let by_reference = UserContentBlock::Image {
@@ -293,21 +293,21 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
     // Loaded again, the model reads the bytes; a blob that is gone is named.
     for message in ["m2", "m3"] {
         client.send(ClientFrame::Close {}).await;
-        frames_until(&mut client, |frame| *frame == ServerFrame::Closed).await;
+        client.next_until(|frame| *frame == ServerFrame::Closed).await;
         if message == "m3" {
             blobs.forget(&uploaded);
         }
         client.send(open()).await;
-        frames_until(&mut client, is_pending_steers).await;
+        client.next_until(is_pending_steers).await;
         client.send(send(message, "and now?")).await;
-        frames_until(&mut client, is_idle).await;
+        client.next_until(is_idle).await;
     }
     // A blob found missing stays missing for the live tree, even when the
     // same bytes are stored again, so the start of each request stays what
     // the one before sent.
     blobs.put(png.clone()).await.unwrap();
     client.send(send("m4", "and now?")).await;
-    frames_until(&mut client, is_idle).await;
+    client.next_until(is_idle).await;
 
     // The model reads the record as the tag that names the file.
     let UserContentBlock::Attachment(attachment) = &record else {
@@ -606,7 +606,7 @@ async fn a_switch_to_another_provider_builds_its_runtime_and_closes_the_old_one_
     fixture.resolver.provide("other", &other);
     let mut client = fixture.opened().await;
     client.send(send("m1", "first")).await;
-    frames_until(&mut client, is_idle).await;
+    client.next_until(is_idle).await;
 
     for model in [
         model_of("replaced", "replaced-model"),
@@ -616,7 +616,7 @@ async fn a_switch_to_another_provider_builds_its_runtime_and_closes_the_old_one_
         switch(&fixture, model).await;
     }
     client.send(send("m2", "second")).await;
-    frames_until(&mut client, is_idle).await;
+    client.next_until(is_idle).await;
 
     let calls: Vec<String> = fixture
         .resolver

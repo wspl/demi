@@ -15,9 +15,7 @@ use serde_json::json;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
-use crate::support::{
-    Fixture, command_storage, conversation, frames_until, is_idle, send, session_of, until,
-};
+use crate::support::{Fixture, command_storage, conversation, is_idle, send, session_of, until};
 
 fn write(value: serde_json::Value, expected: u64) -> StorageOp {
     StorageOp::WriteIf {
@@ -164,7 +162,7 @@ async fn a_write_ordered_before_an_answer_completes_is_in_its_boundary_and_a_lat
         gate.release();
         assert_eq!(writing.await, committed(2));
     }
-    frames_until(&mut client, is_idle).await;
+    client.next_until(is_idle).await;
     let (answer_id, done) = answer(&fixture).unwrap();
     assert!(done);
 

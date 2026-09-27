@@ -8,6 +8,7 @@ use std::{
     cell::{Cell, RefCell},
     collections::{BTreeMap, HashMap},
     rc::Rc,
+    time::Duration,
 };
 
 use demi_agent_protocol::{ClientContent, ClientFrame, ServerFrame};
@@ -740,11 +741,17 @@ impl BlobStore for MemoryBlobs {
     }
 }
 
+/// How long a test's wait for a frame may take before it fails as a hang
+/// (`testing.md` § Time and stability): the scripted model answers at once.
+pub const HANG_GUARD: Duration = Duration::from_secs(10);
+
 /// A client of one connection: it hands frames to the connection as the
 /// backend's socket task would, and reads what the outbox sends back.
 pub struct TestClient<H: AgentHarness> {
     connection: Connection<H>,
     frames: FrameRx,
+    /// How long a wait for a frame may take before it fails as a hang.
+    hang_guard: Duration,
 }
 
 impl<H: AgentHarness> TestClient<H> {
@@ -762,7 +769,19 @@ impl<H: AgentHarness> TestClient<H> {
         files: Rc<dyn ContentResolver>,
     ) -> Self {
         let (connection, frames) = server.connect(root.clone(), cwd.to_owned(), files);
-        Self { connection, frames }
+        Self {
+            connection,
+            frames,
+            hang_guard: HANG_GUARD,
+        }
+    }
+
+    /// This client with waits that fail as a hang only after `guard`, for a
+    /// caller that waits on something slower than a scripted model, such as
+    /// a real one.
+    pub fn with_hang_guard(mut self, guard: Duration) -> Self {
+        self.hang_guard = guard;
+        self
     }
 
     /// Hands `frame` to the connection and waits until it is handled.
@@ -789,17 +808,28 @@ impl<H: AgentHarness> TestClient<H> {
         (&self.connection, &mut self.frames)
     }
 
-    /// The frames up to and including the first that `until` accepts.
+    /// The frames up to and including the first that `until` accepts. The
+    /// wait fails, listing the frames it saw, when the connection closes
+    /// first or when the client's hang guard runs out.
     pub async fn next_until(&mut self, until: impl Fn(&ServerFrame) -> bool) -> Vec<ServerFrame> {
+        let guard = self.hang_guard;
         let mut frames = Vec::new();
-        while let Some(frame) = self.next().await {
-            let done = until(&frame);
-            frames.push(frame);
-            if done {
-                break;
+        let waited = tokio::time::timeout(guard, async {
+            while let Some(frame) = self.next().await {
+                let done = until(&frame);
+                frames.push(frame);
+                if done {
+                    return true;
+                }
             }
+            false
+        })
+        .await;
+        match waited {
+            Ok(true) => frames,
+            Ok(false) => panic!("the connection closed before a frame ended the wait: {frames:#?}"),
+            Err(_) => panic!("no frame ended the wait within {guard:?}: {frames:#?}"),
         }
-        frames
     }
 
     /// What the outbox has next, lagged or closed included.
