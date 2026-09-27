@@ -12,6 +12,7 @@ pub(crate) mod drafts;
 pub(crate) mod exposes;
 pub(crate) mod forks;
 pub(crate) mod managed;
+pub(crate) mod media;
 pub(crate) mod objects;
 pub(crate) mod panels;
 pub(crate) mod providers;

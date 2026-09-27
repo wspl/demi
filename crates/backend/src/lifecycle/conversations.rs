@@ -11,12 +11,14 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
-use demi_web_api::ids::ConversationId;
+use demi_web_api::devices::DeviceKind;
+use demi_web_api::ids::{ConversationId, DeviceId};
 use tokio_util::task::AbortOnDropHandle;
 
 use super::{Activity, IdlePolicy, Retirement};
 use crate::conversation::root_of;
 use crate::shard::Shard;
+use crate::storage::devices::DeviceRecord;
 
 /// The idle watch of each conversation that reached a Host.
 #[derive(Default)]
@@ -78,6 +80,59 @@ impl Shard {
     /// Ends every conversation's idle watch, for the shard's close.
     pub(crate) fn stop_idle_watches(&self) {
         self.idle_watches().watches.borrow_mut().clear();
+    }
+
+    /// Answers the conversations a paired device's runner holds job output
+    /// for, as its hello names them (`resource-lifecycle.md` § A release the
+    /// device missed): the device hears the release at once of a conversation
+    /// its owner does not have, or that is archived or no longer bound to the
+    /// device; any other's idle watch starts unless it runs, so an idle
+    /// conversation hears the release one window later. A Cloud hears no
+    /// release, and its runner names none.
+    pub(crate) async fn answer_held(&self, device: &DeviceRecord, conversations: Vec<String>) {
+        if device.kind == DeviceKind::Managed {
+            return;
+        }
+        for name in conversations {
+            if let Err(error) = self.answer_held_conversation(&device.id, &name).await {
+                tracing::warn!(device = %device.id, conversation = %name, "held job output not answered: {error}");
+            }
+        }
+    }
+
+    async fn answer_held_conversation(&self, device: &DeviceId, name: &str) -> Result<(), String> {
+        let control = &self.services().control;
+        let record = match ConversationId::try_from(name) {
+            Ok(id) => control
+                .conversation(id)
+                .await
+                .map_err(|error| error.to_string())?
+                .filter(|record| record.owner == *self.user()),
+            Err(_) => None,
+        };
+        let Some(record) = record else {
+            // Nothing of a conversation its owner does not have runs on the
+            // device.
+            let Some(link) = self.devices().link(device) else {
+                return Ok(());
+            };
+            return link.release_conversation(name).await.map_err(|error| error.to_string());
+        };
+        if !record.archived {
+            let target = self.resolve_target(&record).await.map_err(|error| error.to_string())?;
+            let hosts = self
+                .reachable_hosts(&record, &target)
+                .await
+                .map_err(|error| error.to_string())?;
+            if hosts.iter().any(|host| host.device == *device) {
+                self.track_idle(&record.id);
+                return Ok(());
+            }
+        }
+        // Held as a transition holds it: the release meets no job of the
+        // conversation.
+        let _held = self.conversations().slot(&record.id).files.reserve().await;
+        self.release_on(&record.id, device).await.map_err(|error| error.to_string())
     }
 }
 
@@ -171,6 +226,7 @@ mod tests {
         let lifecycle = LifecycleTuning {
             idle_window: WINDOW,
             idle_poll: Duration::from_millis(50),
+            ..LifecycleTuning::default()
         };
         let services = Services::start_for_tests_with_lifecycle(data, lifecycle).await;
         let control = services.control.clone();

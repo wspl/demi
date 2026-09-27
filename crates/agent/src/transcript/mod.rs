@@ -7,6 +7,7 @@ pub mod estimate;
 mod journal;
 mod log;
 mod replay;
+pub mod retire;
 
 pub use cut::CutError;
 pub(crate) use cut::{

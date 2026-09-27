@@ -1,4 +1,4 @@
-import { expect, jest, test } from 'bun:test'
+import { expect, jest, spyOn, test } from 'bun:test'
 import type { LiveControl, LiveModuleMessage, LiveTab, LiveViewerMessage } from '@demicodes/protocol'
 import { LiveFrameReader, encodeFile, encodeMessage, type LiveFrame } from '../frames'
 import { keyMessage, localKey, modifiers, pointerMessage, viewerPlatform, wheelMessage } from '../input'
@@ -205,7 +205,6 @@ function session(options: Partial<LiveSessionOptions> = {}) {
     },
     platform: 'mac',
     now: () => now,
-    reconnect: () => null,
     ...options,
   })
   live.attach(sink)
@@ -301,14 +300,46 @@ test('a choice names the revision the viewer saw, and a dialog is answered once'
 test('the view ends with the reason the module or the backend gave', () => {
   const view = session()
   view.receive(moduleFrame({ type: 'ended', reason: 'browser_ended' }))
-  expect(view.live.state).toMatchObject({ connection: 'ended', ended: 'browser_ended' })
+  expect(view.live.state).toMatchObject({ connection: 'opening', ended: 'browser_ended' })
   expect(view.pictures.at(-1)).toEqual(['stop', 0, 0] as never)
+  view.live.close()
+})
+
+test('a view that ends opens again after the page\'s waits, which start over once a view works', () => {
+  jest.useFakeTimers()
+  // Without the random part: a second, then twice as long each time, up to 30 seconds.
+  const random = spyOn(Math, 'random').mockReturnValue(0)
+  try {
+    const view = session()
+    const hellos = () => view.sent.filter((message) => message.type === 'hello').length
+    const reopenWait = () => {
+      const count = hellos()
+      view.close('host_unreachable')
+      let waited = 0
+      while (hellos() === count) {
+        jest.advanceTimersByTime(100)
+        waited += 100
+      }
+      return waited
+    }
+    const waits: number[] = []
+    for (let ends = 0; ends < 6; ends += 1) {
+      waits.push(reopenWait())
+    }
+    expect(waits).toEqual([1_000, 2_000, 4_000, 8_000, 16_000, 30_000])
+    view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
+    expect(reopenWait()).toBe(1_000)
+    view.live.close()
+  } finally {
+    random.mockRestore()
+    jest.useRealTimers()
+  }
 })
 
 test('a view that ends opens again, watching what the viewer watched', () => {
   jest.useFakeTimers()
   try {
-    const view = session({ reconnect: () => 0 })
+    const view = session()
     view.live.panel({ width: 800, height: 600 }, 2, { width: 1440, height: 900 })
     view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
     view.close('host_unreachable')
@@ -336,7 +367,7 @@ test('a frame the protocol refuses ends the view, and the next view opens', () =
   jest.useFakeTimers()
   try {
     const ended: string[] = []
-    const view = session({ reconnect: () => 0, onEnded: (reason) => ended.push(reason) })
+    const view = session({ onEnded: (reason) => ended.push(reason) })
     view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
     view.receive(rawFrame(1, new TextEncoder().encode('{"type":"state","running":"yes"}')))
     expect(ended).toEqual([REFUSED_FRAME])
@@ -352,7 +383,7 @@ test('a frame the protocol refuses ends the view, and the next view opens', () =
 test('a view that opens again reads its stream from the first byte', () => {
   jest.useFakeTimers()
   try {
-    const view = session({ reconnect: () => 0 })
+    const view = session()
     const state = moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id })
     // The stream ends inside a frame; the next stream's first frame is whole.
     view.receive(state.subarray(0, 7))
@@ -369,7 +400,7 @@ test('a view that opens again reads its stream from the first byte', () => {
 test('a view the module ended and the socket then closed opens again once', () => {
   jest.useFakeTimers()
   try {
-    const view = session({ reconnect: () => 0 })
+    const view = session()
     view.receive(moduleFrame({ type: 'ended', reason: 'browser_ended' }))
     view.close('closed')
     jest.runAllTimers()

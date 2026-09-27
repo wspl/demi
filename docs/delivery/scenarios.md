@@ -68,9 +68,10 @@ over a home that survives stop, wake and reset, and it records wake,
 hibernate, checkpoint, reset, and growth calls. A test can hold or fail a
 reset, keep a wake's runner from connecting, fail a save, or kill a runner as
 a crash would. It does not start a sandbox, mount disk images, or implement
-filesystem isolation. Its reset clears runner state while retaining home; a
-successful scripted reset does not demonstrate replacement of system
-packages.
+filesystem isolation. A stop clears the runner's state but its log, as a
+Cloud's `/run/demi` goes with a stop while its system layer stays; a reset
+clears the log too; both keep home. A successful scripted reset does not
+demonstrate replacement of system packages.
 
 Restart tests reuse the data directory. A backend restart whose runners come
 back listens at the address it had, since a runner keeps its backend's URL;

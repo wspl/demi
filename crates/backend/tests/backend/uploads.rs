@@ -28,7 +28,7 @@ use crate::support::{Answer, Harness, Session, TestBackend, answer as read};
 
 /// A PNG image, whose type the backend reads from its bytes; a real one,
 /// since an image is decoded as it enters a transcript.
-static PNG: LazyLock<Vec<u8>> = LazyLock::new(|| demi_agent::testing::png(4, 3, 0).as_bytes().to_vec());
+pub(crate) static PNG: LazyLock<Vec<u8>> = LazyLock::new(|| demi_agent::testing::png(4, 3, 0).as_bytes().to_vec());
 
 async fn post(backend: &TestBackend, session: &Session, query: &str, media_type: Option<&str>, bytes: Vec<u8>) -> Answer {
     let headers: Vec<(&str, &str)> = media_type.into_iter().map(|media_type| ("content-type", media_type)).collect();
@@ -37,7 +37,7 @@ async fn post(backend: &TestBackend, session: &Session, query: &str, media_type:
 }
 
 /// Uploads `bytes` sent as `media_type` under the name `name`.
-async fn upload(backend: &TestBackend, session: &Session, name: &str, media_type: &str, bytes: &[u8]) -> AttachmentDto {
+pub(crate) async fn upload(backend: &TestBackend, session: &Session, name: &str, media_type: &str, bytes: &[u8]) -> AttachmentDto {
     let uploaded = post(backend, session, &format!("?name={name}"), Some(media_type), bytes.to_vec()).await;
     assert_eq!(uploaded.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&uploaded.body));
     uploaded.json::<AttachmentAnswer>().attachment
@@ -56,7 +56,7 @@ fn naming(text: &str, uploads: &[(&AttachmentDto, &str)]) -> Vec<ClientContent> 
     content
 }
 
-fn with_upload(id: &str, text: &str, uploads: &[(&AttachmentDto, &str)]) -> ClientFrame {
+pub(crate) fn with_upload(id: &str, text: &str, uploads: &[(&AttachmentDto, &str)]) -> ClientFrame {
     ClientFrame::Send {
         message_id: TurnId::try_from(id).unwrap(),
         content: naming(text, uploads),
@@ -351,7 +351,7 @@ async fn an_image_over_2000_px_enters_fitted_from_an_upload_and_a_tool_and_stays
 }
 
 /// A PNG image that differs from the others by its pixels.
-fn png(seed: u8) -> Vec<u8> {
+pub(crate) fn png(seed: u8) -> Vec<u8> {
     demi_agent::testing::png(4, 3, seed).as_bytes().to_vec()
 }
 

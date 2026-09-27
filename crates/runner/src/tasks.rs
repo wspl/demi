@@ -4,6 +4,7 @@
 //! (`runner.md` § Pipes and output).
 
 use crate::connection::wire;
+use crate::job_directories::{JobDirectories, JobDirectory};
 use crate::{
     commands::{
         contexts::{self, ContextPaths, ExecutionContext, Installation},
@@ -60,8 +61,8 @@ pub struct JobTable {
 /// What every task of one connection shares.
 pub struct JobConfig {
     pub output: mpsc::Sender<wire::Frame>,
-    /// Where each job gets its own directory.
-    pub output_dir: PathBuf,
+    /// Where each job gets its own directory, under its conversation's.
+    pub directories: Arc<JobDirectories>,
     pub pipes: PipeClient,
     pub shell: ShellRuntime,
     /// For jobs whose manifest declares commands; absent where nothing makes
@@ -105,6 +106,9 @@ struct Controls {
 
 pub enum TaskCommand {
     Shell {
+        /// The conversation its command context names, whose directory holds
+        /// the job's.
+        conversation: String,
         script: String,
         stdin: Option<wire::PipeRef>,
         stdout: Option<wire::PipeRef>,
@@ -385,13 +389,17 @@ impl JobConfig {
                 (Execution::process(child), None, None)
             }
             TaskCommand::Shell {
+                conversation,
                 script,
                 stdin,
                 stdout,
                 commands,
             } => {
-                let JobDirectory { path, scratch } =
-                    JobDirectory::create(self.output_dir.clone()).await?;
+                let JobDirectory {
+                    path,
+                    scratch,
+                    running,
+                } = self.directories.create(&conversation).await?;
                 env.insert(
                     "TMPDIR".into(),
                     scratch.path().to_string_lossy().into_owned(),
@@ -401,7 +409,8 @@ impl JobConfig {
                 let edit_context = demi_command_service::protocol::EditContext {
                     directory: path.join("changes").to_string_lossy().into_owned(),
                     lock: self
-                        .output_dir
+                        .directories
+                        .root()
                         .join("edits.lock")
                         .to_string_lossy()
                         .into_owned(),
@@ -420,7 +429,7 @@ impl JobConfig {
                     }
                 };
                 let logs = Logs::new(path, &cancel).await?;
-                job = Some((logs, scratch, recorder.clone()));
+                job = Some((logs, scratch, recorder.clone(), running));
                 let commands = match commands {
                     Some((manifest_hash, command)) => {
                         let setup = self.context(&id, &manifest_hash, command, edit_context, &mut env);
@@ -508,7 +517,7 @@ impl JobConfig {
         let mut follow_open = job.is_some();
         let streamed = async {
         loop {
-            let due = job.as_ref().and_then(|(logs, _, _)| logs.due(followed));
+            let due = job.as_ref().and_then(|(logs, ..)| logs.due(followed));
             tokio::select! {
                 biased;
                 _ = cancel.cancelled(), if !child.is_cancelled() => child.cancel(),
@@ -540,7 +549,7 @@ impl JobConfig {
                 // Before the output: a job that prints without a pause
                 // still sends what is due beyond its views.
                 () = tokio::time::sleep_until(due.unwrap_or_else(Instant::now)), if due.is_some() => {
-                    if let Some((logs, _, _)) = job.as_mut() {
+                    if let Some((logs, ..)) = job.as_mut() {
                         logs.send_beyond(&id, followed, Due::Now, &self.output)?;
                     }
                 }
@@ -548,7 +557,7 @@ impl JobConfig {
                     Ok(()) => {
                         followed = *following.borrow_and_update();
                         // Following starts with each stream's newest bytes.
-                        if followed && let Some((logs, _, _)) = job.as_mut() {
+                        if followed && let Some((logs, ..)) = job.as_mut() {
                             logs.send_beyond(&id, followed, Due::Waiting, &self.output)?;
                         }
                     }
@@ -563,7 +572,7 @@ impl JobConfig {
                         break;
                     };
                     let message = match job.as_mut() {
-                        Some((logs, _, _)) => {
+                        Some((logs, ..)) => {
                             let (offset, head) = logs.write(chunk.stream, &chunk.bytes).await?;
                             (!head.is_empty()).then(|| wire::encode(&wire::Outbound::JobOutput {
                                 job_id: id.clone(),
@@ -602,7 +611,7 @@ impl JobConfig {
             child.cancel();
         }
         // A followed job's last output leaves before its exit.
-        if followed && let Some((logs, _, _)) = job.as_mut() {
+        if followed && let Some((logs, ..)) = job.as_mut() {
             logs.send_last(&id, &self.output, &closed).await?;
         }
         let (exit, cwd) = child.wait().await;
@@ -640,7 +649,8 @@ impl JobConfig {
             None => None,
         };
         match job {
-            Some((logs, scratch, recorder)) => {
+            // The job's directory stays running until its exit is built.
+            Some((logs, scratch, recorder, _running)) => {
                 let output = logs.finish().await?;
                 let (files, files_truncated) = tokio::task::spawn_blocking(move || {
                     scratch.close()?;
@@ -777,36 +787,6 @@ pub(crate) async fn report_pipe(
             }
         }
         Err(error) => tracing::warn!("pipe result encoding failed: {error}"),
-    }
-}
-
-/// A job's runner-owned directory for its logs and change records, and the
-/// scratch directory its `TMPDIR` names. Wire ids are not paths.
-struct JobDirectory {
-    path: PathBuf,
-    scratch: tempfile::TempDir,
-}
-
-impl JobDirectory {
-    /// Made in one blocking call, off the control thread.
-    async fn create(root: PathBuf) -> io::Result<Self> {
-        tokio::task::spawn_blocking(move || {
-            std::fs::create_dir_all(&root)?;
-            let mut builder = tempfile::Builder::new();
-            builder.prefix("job-");
-            // For the owner alone; Windows directories take their access
-            // from the parent's ACL.
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                builder.permissions(std::fs::Permissions::from_mode(0o700));
-            }
-            let path = builder.tempdir_in(&root)?.keep();
-            let scratch = tempfile::Builder::new().prefix(".work-").tempdir_in(&path)?;
-            Ok(Self { path, scratch })
-        })
-        .await
-        .map_err(io::Error::other)?
     }
 }
 

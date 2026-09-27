@@ -90,8 +90,10 @@ input, which the multi-worker control service also relies on
   ordering, read revision, target selection, target context revision, last
   switch, Cloud reset marker, the conversation's model selection as JSON
   ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)),
-  and the counts of messages the user sent and the last generated title had
-  seen. The target is
+  the counts of messages the user sent and the last generated title had
+  seen, and when its agent tree was last seen live (`live_at`), from which
+  the retention pass reads how long the conversation has been idle
+  ([Retiring tool media](#retiring-tool-media)). The target is
   typed columns: its kind (Cloud, a device directory, or a workspace) and the
   device, path or workspace that kind names, checked per kind. A target switch
   compares and sets these columns, so it commits only against the selection it
@@ -165,6 +167,7 @@ Host. The node lifecycle and its commits are defined in
 |---|---|
 | `nodes` | Parent relationship, description and profile, spawn time and whether the node may spawn children, close result or failure, completion-delivery state, checkpoint state, block count, command and output revisions |
 | `blocks` | One transcript block per node and block index |
+| `media` | An index of the blobs the blocks reference, for the [retention pass](#retention): one row per reference, with the node, the block index, the medium's place among the block's media, the blob, whether a tool result holds it, and the block's time. The rows are derived from the blocks, never written on their own: one function derives a block's rows, and every path of the tree store that writes a block, a save, a history rewrite, an edit, a Fork's seed and a retirement, replaces that block's rows with it in the same transaction. It indexes what SQLite cannot index inside a block's JSON |
 | `command_snapshots` | Immutable complete command-state maps indexed by node and revision ([Command state history](../agent/command-state-history.md)) |
 | `session_boundaries` | History cutoffs linked to a command revision |
 
@@ -235,9 +238,9 @@ is stored before a message can name it, a fitted image before its message
 reaches the session, and a tool's medium enters the transcript only once its
 put has succeeded. A database failure can leave an
 unreferenced blob; it never leaves a committed block pointing at unpublished
-bytes. There is no transaction spanning SQLite and the object store. Nothing
-reclaims an unreferenced blob; when one may go is an open decision
-([Open decisions](#open-decisions)).
+bytes. There is no transaction spanning SQLite and the object store. The
+retention pass deletes a blob that nothing references
+([Retention](#retention)).
 
 ## The object store
 
@@ -276,6 +279,215 @@ instead of the host name.
 Credentials come from the standard AWS environment variables, a web identity
 token, or container or instance metadata; shared credentials and profile
 files are not read. Shutdown releases the storage client.
+
+## Retention
+
+Demi keeps what a user made for as long as the account exists: uploads,
+conversations and their messages; a conversation can be archived but not
+deleted ([Conversations and projects](../product/product.md#conversations-and-projects)).
+What goes by itself is what tools produced: a tool result's images and videos
+after 30 days, the blobs nothing references any more, and a conversation's
+job output on a Host once its Host resources are released.
+
+For example, on 1 September an agent takes a screenshot with a shell command,
+and the tool result references it as the blob `blobs/<user>/ab12…`. The
+conversation compacts on 3 September, so the screenshot lies before the
+root's last `compaction_boundary`, where no request replays it. The daily
+retention pass does the rest:
+
+```text
+1 Sep   the screenshot enters: blobs/<user>/ab12…, referenced by a tool_call block
+3 Sep   compaction: the block now lies before the root's last boundary
+1 Oct   the pass retires it: the block holds a line of text in its place,
+        and ab12… is recorded as used on 1 Oct
+2 Oct   the pass collects: no row references ab12…, the object and its last
+        use are older than 24 hours, so the blob is deleted
+```
+
+| What | Kept | Then |
+|---|---|---|
+| An upload: its record and its blob | For as long as the account exists; the user set their retention aside | Removed with the account ([Account deletion](#account-deletion)) |
+| A tool result's image or video | 30 days, and longer while a request could still send it | Retired to a line of text ([Retired tool media](../agent/runtime.md#retired-tool-media)), then collected |
+| Any other blob, such as a tool's screenshot in history an edit removed | While a block, a queued message or a pending steer references it, and 24 hours after its last use | Collected ([Collecting blobs](#collecting-blobs)) |
+| A conversation, its rows and its change objects | For as long as the account exists | Removed with the account |
+| A shell job's output on a Host | Until the conversation's Host resources are released | Removed by the conversation release, or when a Cloud stops ([Conversation release](../execution/resource-lifecycle.md#conversation-release)) |
+
+### The retention pass
+
+Each backend runs one retention pass a day for every user placed on it, which
+in the single-backend deployment is every user: the first once it has started
+and startup recovery has published each
+Fork destination whose root committed
+([Backend creation and retries](../agent/conversation-fork.md#backend-creation-and-retries)),
+then every 24 hours. It hands the users' passes to their shards one after
+another, and a user's pass takes two steps in the user's shard: it retires
+the expired tool media of the user's conversations, then collects the user's
+blobs. The pass runs in the shard because the conversations' live trees, file
+gates and holds are there ([The user shard](../architecture/concurrency.md#the-user-shard)):
+it can tell a live tree from a stored one and hold a conversation as a
+transition does. It waits on the databases and the object store, never
+holding up the shard's other work.
+
+In the multi-worker deployment, each worker runs the passes of the users it
+holds: only that worker reads their conversation databases, and the use
+record the collector checks is that worker's. Moving a user must fence the
+old worker's pass with its other writers
+([Open decisions](#open-decisions)).
+
+A pass costs about as much as the user has conversations and blobs, not as
+much history as the conversations hold. Per user and day:
+
+- **Retiring:** one read-only query per conversation on its `media` rows for
+  tool media older than 30 days. A node's blocks are read only when it has
+  some, and the conversation's writer connection is opened only when there is
+  something to retire.
+- **Collecting:** one listing of `blobs/<user>/`, which on S3 is one LIST
+  request per 1,000 blobs; one query of the user's upload records; per
+  conversation, one read-only read of its `media` rows and its nodes' state
+  rows; and one delete per blob it removes.
+
+### Retiring tool media
+
+The agent defines which images and videos are retired and the text that takes
+their place ([Retired tool media](../agent/runtime.md#retired-tool-media)).
+The pass applies that rule to every node of each conversation whose tree is
+not live:
+
+1. On a read-only connection, it applies the rule to the nodes whose `media`
+   rows hold tool media older than 30 days, and goes on only when the rule
+   retires something.
+2. It holds the conversation as a transition does: it reserves the
+   conversation's file gate, and leaves a conversation whose gate is busy to
+   the next pass. Every conversation socket frame, an `open` included, is
+   handled under a lease of that gate, so while the pass holds it no tree
+   opens, and frames wait as they wait for a transition
+   ([How a conversation uses a device](../execution/sessions-and-targets.md#how-a-conversation-uses-a-device)).
+   A reservation is not demand, so it restarts no idle window.
+3. It checks that the conversation still has no live tree, and reads its
+   `live_at` again under the reservation.
+4. In one transaction on the conversation's writer connection, it finds the
+   nodes whose `media` rows hold tool media older than 30 days, reads those
+   nodes' blocks, and writes in place each block the rule changes. The
+   transaction changes no node's state row, block count or output revision,
+   so the conversation does not show as unread.
+5. It lets go of the conversation.
+
+A live tree is left alone. Its sessions hold their transcripts in memory: a
+save, a history rewrite or an edit would write the original block back, and
+a changed block would change the history a page's editor is built on. The
+pass records the tree as live instead. When a tree is disposed, the shard
+retires its conversation at once, in the same steps, unless the shard is
+closing; the agent server tells it through `ServerDeps::status_changed`.
+There the gate is waited for rather than left to the next pass, since a
+`close` frame that disposes the tree holds a lease of it while it does; the
+wait ends without a retirement when the tree is live again or the shard
+closes. A conversation that stays open in a page is therefore retired within
+about 10 minutes of the last page leaving it
+([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)).
+
+A conversation has been idle for 30 days when its tree is not live and its
+`live_at` is at least 30 days old. The index sets `live_at` when it creates
+the conversation, and the backend writes it again when the conversation's
+tree becomes live, before the tree admits any action; when the tree is
+disposed, with the time of the disposal; and in each pass that finds the tree
+live. A write never moves `live_at` back, so one that lands late cannot hide
+a later one. Only a live tree sends requests, so once the tree is disposed no
+request is later than `live_at`.
+After a crash there was no disposal, and the last request can be up to a day
+later than `live_at`: the idle rule then applies 29 days after the last
+request at the earliest, still far beyond any vendor's cache.
+
+### Collecting blobs
+
+The collector deletes a blob only when nothing can reach it. It reads two
+kinds of evidence:
+
+- **References:** the user's upload records, which hold every upload's hash,
+  the files a draft stages included, since a draft names only uploads and
+  files on devices ([Conversation drafts](../product/web-api.md#conversation-drafts));
+  and, for every conversation of the user, archived ones included, and for
+  the destination of each of the user's Forks that is not published yet, its
+  `media` rows, which cover every block of every node, and the media of each
+  node's queued messages.
+- **Uses:** what no row shows yet, such as a medium that was put but whose
+  block is not saved, or a pending steer, which lives only in its session
+  ([Pending steers](../agent/runtime.md#pending-steers)). Each backend
+  records, per user and blob, when the blob was last used: when a put of it
+  starts, before it asks whether the blob exists, and when a commit writes or
+  removes a reference to it, inside the commit's transaction, before it
+  commits. Each change of a conversation's `media` rows is such a commit. A
+  use is remembered for 24 hours.
+
+Every reference counts, not only those of the replayed blocks: a live session
+reads the bytes of a replayed medium again after it let go of them and must
+find the same bytes ([Media](../agent/runtime.md#media)), and an edit that
+removes a `compaction_boundary` brings the blocks before it back into replay.
+
+The object's age alone would not be enough: a put that finds its blob sends
+nothing, so the object keeps its old time ([The object store](#the-object-store)),
+and a Fork writes references it never put. The use record covers both, and
+the recorded use of a retired medium keeps its blob for a day after the
+retirement, longer than any copy of the rows that still named it takes.
+
+The collector fails closed. When it cannot read one of the user's reference
+sources, a conversation database that does not open or does not answer, or
+the upload records, the collection deletes nothing for that user and logs
+which source failed and why; the next pass tries again. Deleting on partial
+evidence could remove a blob that the unread source still names.
+
+A collection lists the user's namespace and keeps the objects older than 24
+hours, drops every one a reference names, and then, for each blob left, does
+one step on the use record: it checks that the blob's last use is older than
+24 hours and marks the blob as being deleted. It then deletes the blob and
+removes the mark. A put of a blob that is being deleted waits for the
+deletion and then stores its bytes again, so a put never reports a blob that
+is gone. A commit that would write a reference to such a blob fails instead
+of committing; only a copy of rows that took longer than the grace could make
+one, and none does.
+
+### Crashes
+
+No crash leaves a block that names a deleted blob:
+
+- A retirement is one transaction per conversation. A crash leaves either the
+  original blocks, which still reference their blobs, or the retired ones,
+  whose blobs have not been collected yet.
+- The collector deletes only blobs that no committed row referenced when it
+  read the references, every reference source included, and that nothing used
+  for 24 hours. A crash between two deletions leaves blobs that the next pass
+  deletes.
+- The use record is lost with the process, and so is everything it protected:
+  a session's unsaved blocks, an upload in flight, a Fork's capture. Startup
+  recovery publishes a committed Fork destination before the first pass reads
+  references.
+
+### Account deletion
+
+There is no account deletion
+([Account API](../product/web-api.md#account-api)). When it comes, it must
+remove, besides the account's records and conversation databases, the objects
+nothing else removes: the account's blob namespace, `blobs/<userId>/`, and the
+change objects of each of its conversations, `changes/<conversationId>/`. Its
+Cloud's disks belong to the machine manager
+([Lifecycle and capacity](../cloud/managed-hosts.md#lifecycle-and-capacity)).
+
+### Acceptance
+
+The tests count at the object store with the backend's counting store and move
+time on the test clock; none waits for a day to pass.
+
+| Situation | Required result |
+| --- | --- |
+| A blob no row references, older than 24 hours and unused for 24 hours | The pass deletes it |
+| A blob a block references; a blob put an hour ago; an upload's blob; a draft's staged file | The pass keeps each |
+| A put of a blob the collector is deleting | The put waits and stores the bytes again; the block that names the blob can read it |
+| A 31-day-old tool image before a boundary older than a day, in a stored conversation | It is retired; its blob goes at the next pass |
+| A 31-day-old tool image in the replayed window of a conversation idle for 30 days | It is retired, and the conversation's next request carries its text |
+| A 31-day-old tool image in the replayed window of a conversation used within 30 days | It stays |
+| The same conversations while a page has them open | Nothing is retired until their trees are disposed |
+| A message's image, 31 days old | Never retired |
+| One of the user's conversation databases does not open | The collection deletes nothing for that user and logs which database failed |
+| After a save, a history rewrite, an edit, a Fork's seed and a retirement | Each conversation's `media` rows equal the rows derived from its blocks; the check fails when any of these paths skips the one function |
 
 ## Encodings and digests
 
@@ -438,9 +650,9 @@ deployment configuration.
 ## Open decisions
 
 These durability questions are open. Each must be decided before the behavior
-that depends on it is built. The second and third also gate the multi-worker
+that depends on it is built. The second also gates the multi-worker
 deployment, and the [Roadmap](../delivery/roadmap.md#decisions-before-expanding-deployment)
-lists them with its other decisions; this section describes what each one
+lists it with its other decisions; this section describes what each one
 means for stored data.
 
 - **Local object durability.** A session writes a tool's image into the local
@@ -456,14 +668,6 @@ means for stored data.
   while the stale worker still writes a checkpoint or a disk, the two diverge.
   Multi-worker recovery needs a definition of how the stale worker is fenced
   and of when a replicated checkpoint is ready for the destination to open.
-- **Retention.** Nothing deletes a blob that no block references, such as an
-  attachment edited out of history or a tool's medium stored for a result that
-  was never saved, or the blobs and change objects of a deleted account. A
-  retention policy must say when such data may go. Whatever it decides, a
-  collector never deletes a blob that a block, a queued message or a pending
-  steer references, since a live session reads the bytes of a replayed medium
-  again after it let go of them and must find the same bytes
-  ([Media](../agent/runtime.md#media)). It waits a grace period before it
-  deletes a blob that nothing references, so it does not race a medium that
-  is stored but whose block is not yet committed, or a pending steer, which
-  lives only in its session.
+  The fence also ends the stale worker's retention pass, whose collector
+  trusts only its own process's record of blob uses
+  ([Collecting blobs](#collecting-blobs)).

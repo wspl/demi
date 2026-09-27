@@ -3,7 +3,9 @@ import type { PendingSteer } from '@demicodes/protocol'
 import { deferred, waitFor } from '@demicodes/utils'
 import { computed } from 'vue'
 import { ConversationRuntime, type RuntimeState } from '../conversation-runtime'
-import { AgentSocketError } from '../../transport/agent-socket'
+import { AgentSocketError, connectAgentClient } from '../../transport/agent-socket'
+import { pageReturned } from '../../transport/liveness'
+import { playSockets } from '../../transport/__tests__/test-socket'
 import { clientHarness, model, userBlock } from './agent-harness'
 
 function state(): RuntimeState {
@@ -267,6 +269,81 @@ test('a connection that cannot be made is tried again after the page\'s waits, n
     random.mockRestore()
     jest.useRealTimers()
     runtime.dispose()
+  }
+})
+
+test('a connection lost before the session answered opens the conversation again after the first wait, never told as a failure', async () => {
+  const sockets = playSockets()
+  const current = state()
+  const runtime = new ConversationRuntime({
+    state: current,
+    connect: (signal) => connectAgentClient('ws://fixture', signal),
+  })
+  jest.useFakeTimers()
+  const random = spyOn(Math, 'random').mockReturnValue(0)
+  try {
+    const opening = runtime.connect()
+    // The backend restarts while the conversation opens: the socket closes
+    // after the page sent `open` and before the session answered it.
+    const lost = sockets.last()
+    lost.open()
+    await turn()
+    expect(lost.sent).toEqual([{ type: 'open' }])
+    lost.end()
+    await turn()
+    expect(current.load).toBe('reconnecting')
+    expect(current.lastError).toBeNull()
+    jest.advanceTimersByTime(1_000)
+    await turn()
+    const next = sockets.last()
+    expect(next).not.toBe(lost)
+    next.open()
+    await turn()
+    next.receive({ type: 'opened' })
+    await opening
+    expect(current.load).toBe('ready')
+    expect(current.lastError).toBeNull()
+  } finally {
+    random.mockRestore()
+    jest.useRealTimers()
+    runtime.dispose()
+    sockets.restore()
+  }
+})
+
+test('a page back from sleep breaks a conversation socket silent past the watch and opens the conversation again at once', async () => {
+  const sockets = playSockets()
+  const current = state()
+  const runtime = new ConversationRuntime({
+    state: current,
+    connect: (signal) => connectAgentClient('ws://fixture', signal),
+  })
+  jest.useFakeTimers()
+  try {
+    const opening = runtime.connect()
+    const slept = sockets.last()
+    slept.open()
+    await turn()
+    slept.receive({ type: 'opened' })
+    await opening
+    // The laptop sleeps for 80 seconds: the clock goes on, the watch's timer
+    // does not, and no close reaches the page.
+    jest.setSystemTime(Date.now() + 80_000)
+    pageReturned()
+    expect(slept.closed).toBe(true)
+    // The conversation connects again without waiting.
+    const next = sockets.last()
+    expect(next).not.toBe(slept)
+    expect(current.load).toBe('reconnecting')
+    next.open()
+    await turn()
+    next.receive({ type: 'opened' })
+    await turn()
+    expect(current.load).toBe('ready')
+  } finally {
+    jest.useRealTimers()
+    runtime.dispose()
+    sockets.restore()
   }
 })
 
