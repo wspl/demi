@@ -527,9 +527,14 @@ from that health, and whether its transport is a process. `availability` is
 credential is missing or refused, `{ type: "unavailable", reason: "runtime",
 message }` with the runtime's message while the provider cannot run, and
 `{ type: "available" }` otherwise, unknown health included. Each model carries
-the `selection` the backend built from it. One provider's catalog failure does
-not remove the other providers or saved models. A static catalog, or one never
-fetched, reports the Unix epoch as `sourceFetchedAt`. `refresh=true` waits for
+the `selection` the backend built from it, and `unnamedEffort`, the thinking
+effort a conversation's model settings hold on the model when a change names
+none: null for a model that can turn thinking off, whose default sends no
+thinking setting
+([A conversation's model settings](../providers/models.md#a-conversations-model-settings)).
+One provider's catalog failure does not remove the other providers or saved
+models. A static catalog, or one never fetched, reports the Unix epoch as
+`sourceFetchedAt`. `refresh=true` waits for
 a shared forced refresh; how catalogs are cached and refreshed is defined in
 [Catalog cache](../providers/models.md#catalog-cache). The route does not wake
 Cloud or execute a model. The browser combines each provider's health with the
