@@ -16,10 +16,13 @@ dns=""
 data=/var/lib/demi-machines
 socket=/run/demi-cloud/machines.sock
 slots=256
+# The resource limits (managed-hosts.md § Resource limits); off for a host
+# without the cgroup v2 controllers.
+limits=on
 root=/
 usage() {
   echo 'usage: install-managed-hosts.sh --user USER --manager PATH --image DIR --backend-url URL --dns ADDRESSES' >&2
-  echo '         [--data DIR] [--socket PATH] [--slots COUNT] [--root DIR]' >&2
+  echo '         [--data DIR] [--socket PATH] [--slots COUNT] [--limits on|off] [--root DIR]' >&2
   exit 2
 }
 while [ "$#" -gt 0 ]; do
@@ -33,12 +36,17 @@ while [ "$#" -gt 0 ]; do
     --data) data=$2 ;;
     --socket) socket=$2 ;;
     --slots) slots=$2 ;;
+    --limits) limits=$2 ;;
     --root) root=$2 ;;
     *) echo "unknown argument: $1" >&2; usage ;;
   esac
   shift 2
 done
 [ -n "$user" ] && [ -n "$manager" ] && [ -n "$image" ] && [ -n "$backend" ] && [ -n "$dns" ] || usage
+case "$limits" in
+  on|off) ;;
+  *) echo "--limits is on or off, not $limits" >&2; usage ;;
+esac
 # The unit and the environment file take the values verbatim: none may bring
 # quoting, expansion or a systemd specifier.
 for value in "$user" "$manager" "$image" "$backend" "$dns" "$data" "$socket" "$slots" "$root"; do
@@ -81,6 +89,7 @@ DEMI_MANAGED_IMAGE=$image
 DEMI_MANAGED_BACKEND_URL=$backend
 DEMI_MANAGED_DNS=$dns
 DEMI_MANAGED_SLOTS=$slots
+DEMI_MANAGED_LIMITS=$limits
 CONFIG
 # Type=notify: the manager reports readiness once it has recovered, installed
 # its network policy, imported its base and opened its socket; none of that,
