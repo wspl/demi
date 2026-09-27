@@ -14,13 +14,12 @@ use futures_util::{SinkExt as _, StreamExt as _};
 use super::AppState;
 use super::conversations::owned;
 use super::error::ApiError;
-use super::gate::{AuthUser, ProductPage};
+use super::gate::AuthUser;
 use crate::conversation::stream::UserStream;
 
 /// `WS /conversations/:id/streams/:name`: everything that can refuse the
 /// stream answers before the upgrade, the Host's opening of it included.
 pub(super) async fn open(
-    _: ProductPage,
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path((id, name)): Path<(String, String)>,
