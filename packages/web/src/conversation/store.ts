@@ -1,15 +1,22 @@
 import { computed, ref, toRaw, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { SerialQueue } from '@demicodes/utils'
-import type { ClientContent, ModelSelection, ThinkingConfig } from '@demicodes/protocol'
+import type { ClientContent } from '@demicodes/protocol'
 import { ConversationCache, type CachedConversation } from '@demicodes/web-ui/agent/conversation-cache'
 import { ConversationRuntime, isRecordedTurnFailure } from '@demicodes/web-ui/agent/conversation-runtime'
 import { restoreMessageEdit, sentEditRequest, submitMessageEdit } from '@demicodes/web-ui/agent/message-editing'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { forkConversation } from '../api/message-fork'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
-import { composerModel, initialModelIntent } from '@demicodes/web-ui/agent/model-selection'
-import { thinkingConfigToEffort } from '@demicodes/web-ui/agent/reasoning'
+import {
+  applyModelChange,
+  composerModel,
+  initialModelSettings,
+  lookupSelectedModel,
+  offeredSettings,
+  type ModelSettings,
+  type ModelSettingsChange,
+} from '@demicodes/web-ui/agent/model-selection'
 import { hasAcceptedSubmission } from '@demicodes/web-ui/agent/submission'
 import {
   attachmentsReady,
@@ -33,7 +40,6 @@ import {
   type ReadRequest,
   type RenameHost,
   type SidebarReorder,
-  type TitleRequest,
 } from '../api/generated/web-api'
 import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { createConversationUploads } from './uploads'
@@ -158,30 +164,35 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * A synced conversation's model is the one its record names, whichever
-   * page chose it (`web-api.md` § Sidebar mutations, read state and page
-   * synchronization): a page takes a model another page chose, with the
-   * model's default thinking effort and service tier, as its own switch does.
+   * A conversation shows the model settings its record holds, whichever page
+   * or device changed them last (`web-api.md` § Sidebar mutations, read state
+   * and page synchronization). A record without a model leaves the page's
+   * own settings, which a send writes to it.
    */
   function followRecordModel(
     conversation: Conversation,
-    record: Pick<ConversationSummary, 'providerId' | 'modelId'>,
+    record: Pick<ConversationSummary, 'model'>,
   ): void {
-    if (!record.providerId || !record.modelId) {
-      return
+    if (record.model) {
+      conversation.model = { ...record.model }
     }
-    if (
-      conversation.model.providerId === record.providerId &&
-      conversation.model.modelId === record.modelId
-    ) {
-      return
+  }
+
+  /**
+   * The settings the composer shows: the conversation's, with the first
+   * usable model while it has none chosen.
+   */
+  function shownSettings(conversation: Conversation): ModelSettings {
+    const pick = composerModel(
+      resources.providerInfos,
+      resources.modelsFor(),
+      conversation.model.providerId,
+      conversation.model.modelId,
+    )
+    if (!pick.providerId || !pick.modelId) {
+      return conversation.model
     }
-    conversation.model = {
-      providerId: record.providerId,
-      modelId: record.modelId,
-      thinkingEffort: null,
-      serviceTierId: null,
-    }
+    return { ...conversation.model, providerId: pick.providerId, modelId: pick.modelId }
   }
 
   /** A local draft has no backend record yet, so no resolved `cwd`; the first send brings it. */
@@ -194,12 +205,7 @@ export const useConversations = defineStore('conversations', () => {
       phase: 'idle',
       queue: [],
       pendingSteers: [],
-      model: {
-        providerId: record.providerId ?? '',
-        modelId: record.modelId ?? '',
-        thinkingEffort: null,
-        serviceTierId: null,
-      },
+      model: record.model ? { ...record.model } : initialModelSettings(),
       lastError: null,
       draft: '',
       files: [],
@@ -309,7 +315,8 @@ export const useConversations = defineStore('conversations', () => {
               },
             },
       text: conversation.draft,
-      model: { ...conversation.model },
+      // A conversation with a record holds its model settings there.
+      model: conversation.persistence === 'synced' ? null : { ...conversation.model },
       files: messageFiles(conversation).map((file) =>
         isComposerFile(file)
           ? {
@@ -410,8 +417,7 @@ export const useConversations = defineStore('conversations', () => {
         }
         const conversation = newConversation({
           ...draft.local.conversation,
-          providerId: draft.model.providerId || null,
-          modelId: draft.model.modelId || null,
+          model: null,
           // A conversation the backend has not seen has no message to title.
           titleCurrent: true,
           titleGenerating: false,
@@ -479,17 +485,9 @@ export const useConversations = defineStore('conversations', () => {
           conversation.pendingSend.error =
             'Sending was interrupted. Retry to confirm delivery.'
         }
-        // A synced conversation's record names its model; the draft keeps
-        // this page's thinking effort and service tier for that model.
-        const named =
-          conversation.persistence === 'synced' &&
-          conversation.model.providerId !== '' &&
-          conversation.model.modelId !== ''
-        if (
-          !named ||
-          (draft.model.providerId === conversation.model.providerId &&
-            draft.model.modelId === conversation.model.modelId)
-        ) {
+        // A draft holds model settings only for a conversation without a
+        // record.
+        if (draft.model && conversation.persistence !== 'synced') {
           conversation.model = draft.model
         }
         conversation.scroll = draft.scroll
@@ -518,63 +516,6 @@ export const useConversations = defineStore('conversations', () => {
         void uploadFile(file).catch((error) => report('Could not upload the attachment', error))
       }
     }
-  }
-
-  async function prepareModel(
-    conversation: Conversation,
-  ): Promise<ModelSelection> {
-    if (conversation.persistence === 'synced') {
-      // The `open` or `set_provider` this prepares names the record's model,
-      // even when another page switched it since the last poll.
-      await refreshSnapshot()
-      const record = product.snapshot?.conversations.find(
-        (item) => item.id === conversation.id,
-      )
-      if (record) {
-        followRecordModel(conversation, record)
-      }
-    }
-    const pick = composerModel(
-      resources.providerInfos,
-      resources.modelsFor(),
-      conversation.model.providerId,
-      conversation.model.modelId,
-    )
-    if (pick.kind !== 'ready' || !pick.providerId || !pick.modelId) {
-      throw new Error('Choose an available provider and model before sending.')
-    }
-    const model = product.catalog
-      .find((provider) => provider.providerId === pick.providerId)
-      ?.models.find((model) => model.id === pick.modelId)
-    if (!model) {
-      throw new Error('The model catalog changed. Select a model again.')
-    }
-    conversation.model.providerId = pick.providerId
-    conversation.model.modelId = pick.modelId
-    const selection = structuredClone(toRaw(model.selection))
-    const effort = conversation.model.thinkingEffort
-    if (effort !== null) {
-      const capability = selection.model.thinking.find(
-        (item) => item.type === 'adaptive' || item.type === 'effort',
-      )
-      if (capability?.type === 'adaptive') {
-        selection.thinking = {
-          type: 'adaptive',
-          effort,
-        }
-      } else if (capability?.type === 'effort') {
-        selection.thinking = {
-          type: 'effort',
-          effort,
-          summary: capability.defaultSummary,
-        }
-      }
-    }
-    if (effort === 'disabled') {
-      selection.thinking = { type: 'disabled' }
-    }
-    selection.serviceTierId = conversation.model.serviceTierId
-    return selection
   }
 
   async function activate(id: string | null): Promise<void> {
@@ -668,7 +609,6 @@ export const useConversations = defineStore('conversations', () => {
       }
       const runtime = new ConversationRuntime({
         state: conversation,
-        prepareModel: () => prepareModel(conversation),
         connect: (signal) => {
           const url = new URL(
             `/api/conversations/${encodeURIComponent(conversation.id)}/stream`,
@@ -745,6 +685,12 @@ export const useConversations = defineStore('conversations', () => {
     )
     const result = await readResponse(response, conversationUpdateSchema)
     signal.throwIfAborted()
+    // The answer is the record as the patch left it: its model settings show
+    // at once, before the next snapshot.
+    const changed = items.value.find((item) => item.id === id)
+    if (changed) {
+      followRecordModel(changed, result.conversation)
+    }
     const failed = result.results.flatMap((field) => field.status === 'failed' ? [field] : [])
     if (failed.length) {
       reportError(
@@ -882,12 +828,11 @@ export const useConversations = defineStore('conversations', () => {
       titleGenerating: false,
       createdAt: now,
       updatedAt: now,
-      providerId: null,
-      modelId: null,
+      model: null,
       status: 'idle',
     })
     conversation.persistence = 'draft'
-    conversation.model = initialModelIntent(preferences.lastModel)
+    conversation.model = initialModelSettings(preferences.lastModel)
     conversation.load = 'ready'
     restored.add(conversation.id)
     items.value.unshift(conversation)
@@ -896,20 +841,12 @@ export const useConversations = defineStore('conversations', () => {
 
   async function fork(sourceId: string, request: MessageForkRequest): Promise<string> {
     const signal = lifetime.signal
-    const { conversation: record, model } = await forkConversation(sourceId, request, signal)
+    const { conversation: record } = await forkConversation(sourceId, request, signal)
     await product.refresh()
     signal.throwIfAborted()
-    let conversation = items.value.find((item) => item.id === record.id)
-    if (!conversation) {
-      conversation = newConversation(record)
-      items.value.unshift(conversation)
-    }
-    conversation.model = {
-      providerId: model.providerId,
-      modelId: model.model.id,
-      thinkingEffort: model.thinking?.type === 'disabled'
-        ? 'disabled' : model.thinking ? thinkingConfigToEffort(model.thinking) : null,
-      serviceTierId: model.serviceTierId,
+    // The destination's record holds the model settings it inherited.
+    if (!items.value.some((item) => item.id === record.id)) {
+      items.value.unshift(newConversation(record))
     }
     return record.id
   }
@@ -928,17 +865,21 @@ export const useConversations = defineStore('conversations', () => {
     })
     const result = await readResponse(response, conversationAnswerSchema)
     signal.throwIfAborted()
+    // The first send writes the conversation's model settings to its record,
+    // each part its model no longer offers as the model's default.
+    const shown = shownSettings(conversation)
+    const listed = lookupSelectedModel(resources.modelsFor(), shown.providerId, shown.modelId)
+    const settings = listed ? offeredSettings(shown, listed.model) : null
     if (
       !(await patch(result.conversation.id, {
         title: conversation.title,
         target: conversation.target,
         pinned: conversation.pinned,
-        ...(conversation.model.providerId && conversation.model.modelId
+        ...(settings
           ? {
-              model: {
-                providerId: conversation.model.providerId,
-                modelId: conversation.model.modelId,
-              },
+              model: { providerId: settings.providerId, modelId: settings.modelId },
+              thinkingEffort: settings.thinkingEffort,
+              serviceTierId: settings.serviceTierId,
             }
           : {}),
       }))
@@ -976,6 +917,7 @@ export const useConversations = defineStore('conversations', () => {
     )
     if (stored) {
       Object.assign(conversation, metadata(stored))
+      followRecordModel(conversation, stored)
     }
   }
 
@@ -1022,10 +964,10 @@ export const useConversations = defineStore('conversations', () => {
     conversation.titleGenerating = true
     pendingRetitles.add(conversation.id)
     try {
-      const model = await prepareModel(conversation)
+      // The backend asks the model the conversation's record holds.
       await apiRequest(
         `/conversations/${encodeURIComponent(conversation.id)}/title`,
-        { method: 'POST', signal: lifetime.signal, ...jsonBody({ model } satisfies TitleRequest) },
+        { method: 'POST', signal: lifetime.signal },
       )
       // From here the snapshot says whether the request is still running.
       pendingRetitles.delete(conversation.id)
@@ -1186,45 +1128,49 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
-  async function selectModel(
+  /**
+   * Makes one change of the conversation's model settings, which names only
+   * the parts the user changed (`web-api.md` § Sidebar mutations, read state
+   * and page synchronization): a conversation with a record changes its
+   * record and shows the answer, and every other page shows it from its next
+   * snapshot; a conversation without one keeps the change in its draft. The
+   * result is the user's last choice for new conversations.
+   */
+  async function changeModel(
     conversation: Conversation,
-    providerId: string,
-    modelId: string,
+    change: ModelSettingsChange,
   ): Promise<void> {
     if (conversation.persistence !== 'synced') {
-      conversation.model = {
-        providerId,
-        modelId,
-        thinkingEffort: null,
-        serviceTierId: null,
-      }
+      conversation.model = applyModelChange(shownSettings(conversation), change)
       saveDrafts()
-      rememberModel(conversation)
+      rememberModel(conversation.model)
       return
     }
+    // A record without a model takes the whole settings, as a first send
+    // writes them.
+    const recorded = product.snapshot?.conversations.some(
+      (item) => item.id === conversation.id && item.model,
+    )
+    const settings = recorded ? null : applyModelChange(shownSettings(conversation), change)
     const signal = lifetime.signal
     try {
       await writes.run(async () => {
         signal.throwIfAborted()
-        if (
-          !(await patch(conversation.id, {
-            model: { providerId, modelId },
-          }))
-        ) {
+        const body = settings
+          ? {
+              model: { providerId: settings.providerId, modelId: settings.modelId },
+              thinkingEffort: settings.thinkingEffort,
+              serviceTierId: settings.serviceTierId,
+            }
+          : change
+        if (!(await patch(conversation.id, body))) {
           return
         }
         signal.throwIfAborted()
-        conversation.model = {
-          providerId,
-          modelId,
-          thinkingEffort: null,
-          serviceTierId: null,
-        }
-        rememberModel(conversation)
-        const runtime = cache.get(conversation.id)?.runtime
-        if (runtime) {
-          await runtime.setModel()
-        } else {
+        rememberModel(conversation.model)
+        // A conversation opened without a usable model opens now with this one.
+        const cached = cache.get(conversation.id)
+        if (cached && !cached.runtime) {
           await reloadSession(conversation.id)
         }
       })
@@ -1233,39 +1179,12 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
-  function rememberModel(conversation: Conversation): void {
-    const pick = composerModel(
-      resources.providerInfos,
-      resources.modelsFor(),
-      conversation.model.providerId,
-      conversation.model.modelId,
-    )
-    if (!pick.providerId || !pick.modelId) {
+  /** The settings become the user's last choice, which new conversations start with. */
+  function rememberModel(settings: ModelSettings): void {
+    if (!settings.providerId || !settings.modelId) {
       return
     }
-    conversation.model.providerId = pick.providerId
-    conversation.model.modelId = pick.modelId
-    preferences.update({ lastModel: { ...conversation.model } }, true)
-  }
-
-  function setThinking(
-    conversation: Conversation,
-    thinking: ThinkingConfig | null,
-  ): void {
-    conversation.model.thinkingEffort =
-      thinking?.type === 'adaptive' || thinking?.type === 'effort'
-        ? thinking.effort
-        : thinking?.type === 'disabled'
-          ? 'disabled'
-          : null
-    rememberModel(conversation)
-    void cache.get(conversation.id)?.runtime?.setModel().catch((error) => report('Could not change the model', error))
-  }
-
-  function setTier(conversation: Conversation, tier: string | null): void {
-    conversation.model.serviceTierId = tier
-    rememberModel(conversation)
-    void cache.get(conversation.id)?.runtime?.setModel().catch((error) => report('Could not change the model', error))
+    preferences.update({ lastModel: { ...settings } }, true)
   }
 
   async function send(conversation: Conversation): Promise<void> {
@@ -1426,9 +1345,7 @@ export const useConversations = defineStore('conversations', () => {
         () => renameHost(conversation, deviceId, name),
         undefined,
       ),
-    selectModel,
-    setThinking,
-    setTier,
+    changeModel,
     send,
     editVersion: (conversation: Conversation) =>
       cache.get(conversation.id)?.runtime?.transcriptVersion() ?? null,
