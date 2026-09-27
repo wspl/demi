@@ -638,11 +638,13 @@ result's video reaches that model as
 `[video:video/mp4, not sent: the model does not accept it]` in every request,
 and a switch back sends the video again.
 
-Reasoning
-between the last `compaction_boundary` and its marker, which compaction kept
-after the summary, is marked as kept past a summary: the history it followed
-is gone, and a provider whose vendor checks reasoning against that history
-leaves it out ([Per vendor](../providers/providers.md#per-vendor)).
+Reasoning between the last `compaction_boundary` and its marker, which
+compaction kept after the summary, is marked as kept past a summary: the
+history it followed is gone, and a provider whose vendor checks reasoning
+against that history leaves it out
+([Per vendor](../providers/providers.md#per-vendor)). When an edit removed the
+marker, all reasoning after the boundary is marked, since leaving reasoning
+out is safe and replaying reasoning whose history changed is not.
 
 Replay reads only what the blocks hold for the model, and which media the
 request's model accepts, never an ID or a time, and a block keeps its place.
@@ -656,7 +658,8 @@ earlier request. This is how a session keeps its vendor's cache
 
 A request also says how many of its leading items the session's latest
 answered request carried. That request is the one whose `response` block
-comes last, after the last `compaction_marker` when the history has one; its
+comes last after the last compaction, that is, after the last
+`compaction_boundary` and its marker when the history has them; its
 answer begins at the first of the thinking, text and tool-call blocks directly
 before that `response` block, and its content is what the blocks before its
 answer replay. Compaction summarizes that content
