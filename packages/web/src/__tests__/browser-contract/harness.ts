@@ -274,10 +274,11 @@ type BunWebSocketConstructor = typeof WebSocket & (new (url: string | URL, optio
 
 /**
  * The page's browser for the web application's modules: the page is at
- * `origin`, `fetch` resolves the page's relative `/api` paths against it and
- * keeps the cookies its answers set, and a `WebSocket` sends them and the
- * page's origin with its upgrade, as a browser does for a same-origin page.
- * `restore` puts the test process's own back.
+ * `origin`, `fetch` resolves the page's relative `/api` paths against it,
+ * sends the cookies its answers set and, with every method but GET and HEAD,
+ * the page's origin, and a `WebSocket` sends them and the page's origin with
+ * its upgrade, as a browser does for a same-origin page. `restore` puts the
+ * test process's own back.
  */
 export function openBrowser(origin: string) {
   const cookies = new Map<string, string>()
@@ -306,6 +307,9 @@ export function openBrowser(origin: string) {
     const request = new Request(new URL(input instanceof Request ? input.url : String(input), origin), input instanceof Request ? input : init)
     if (cookies.size) {
       request.headers.set('Cookie', cookieHeader())
+    }
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      request.headers.set('Origin', origin)
     }
     const answer = await realFetch(request)
     keep(answer)

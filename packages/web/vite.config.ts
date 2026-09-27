@@ -21,6 +21,9 @@ export default defineConfig({
     port: 18934,
     strictPort: true,
     proxy: {
+      // The proxy keeps the page's Host, which the page's Origin names: that
+      // is how the backend knows this page for the product's and lets it act
+      // (backend.md § Authentication and ownership).
       '/api': {
         target: process.env.DEMI_BACKEND_URL ?? 'http://127.0.0.1:3271',
         ws: true,
