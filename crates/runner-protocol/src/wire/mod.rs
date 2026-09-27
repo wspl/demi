@@ -14,15 +14,28 @@ pub use messages::{
 };
 pub use replies::{FsOk, FsResult, GitOk, GitResult};
 
+use std::time::Duration;
+
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 /// The wire's version, which a runner's hello names.
-pub const VERSION: u32 = 20;
+pub const VERSION: u32 = 21;
 /// The largest frame either end sends.
 pub const MAX_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
-/// The most output of each stream a job's live view carries.
+/// How much of the start of each stream a job always sends: the model's view
+/// of it (`runner.md` § Pipes and output).
 pub const JOB_VIEW_BYTES: usize = 32 * 1024;
+/// The most bytes one message beyond a stream's first [`JOB_VIEW_BYTES`]
+/// carries while the backend follows the job: 4,096 characters of up to four
+/// bytes each.
+pub const JOB_LIVE_BYTES: usize = 16 * 1024;
+/// How often a followed job sends each stream's newest bytes beyond its
+/// first [`JOB_VIEW_BYTES`], at most.
+pub const JOB_LIVE_INTERVAL: Duration = Duration::from_millis(250);
+/// How often a job nobody follows says that a stream grows beyond its first
+/// [`JOB_VIEW_BYTES`], at most.
+pub const JOB_GROWTH_INTERVAL: Duration = Duration::from_secs(2);
 /// The most bytes of one live stdin frame.
 pub const STDIN_CHUNK_BYTES: usize = 64 * 1024;
 /// The most lines one `log_read` returns.
