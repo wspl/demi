@@ -563,6 +563,95 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     backend.close().await;
 }
 
+/// `value` without the cache marks an Anthropic request carries, which
+/// the vendor does not count as content: what the vendor caches.
+fn unmarked(value: &Value) -> Value {
+    match value {
+        Value::Object(fields) => Value::Object(
+            fields
+                .iter()
+                .filter(|(key, _)| key.as_str() != "cache_control")
+                .map(|(key, field)| (key.clone(), unmarked(field)))
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(items.iter().map(unmarked).collect()),
+        other => other.clone(),
+    }
+}
+
+// A backend, a scripted vendor and four requests: about half a second.
+#[tokio::test]
+async fn a_request_the_vendor_refuses_as_too_large_compacts_and_goes_again_from_the_summary() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let body = json!({
+        "source": "custom", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
+        "baseUrl": vendor.url("/v1"),
+        "models": [{
+            "id": "model-a", "displayName": "A", "contextWindow": 200000, "outputLimit": 8000,
+            "thinkingEfforts": [], "acceptedExtensions": [], "fastTier": null
+        }]
+    });
+    let provider = entry(&backend, &master, body).await;
+    create(&backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "model-a").await;
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    vendor.respond(answer(&["First answer."], 12, 3));
+    socket.chat("m1", "First question").await;
+
+    // The second request is refused as too large, as a compatible endpoint
+    // with a smaller limit than the API's would.
+    let refusal = json!({ "type": "error", "error": { "type": "request_too_large", "message": "Request exceeds the maximum size" } });
+    vendor.respond(MockResponse::status(413).header("content-type", "application/json").chunk(refusal.to_string()));
+    vendor.respond(answer(&["The user asked a first question."], 10, 5));
+    vendor.respond(answer(&["Second answer."], 8, 2));
+    let turn = socket.chat("m2", "Second question").await;
+
+    // One pass: the summary request is the first request, which the vendor
+    // took, with the instruction after it; then the refused request goes
+    // again, from the summary.
+    let requests: Vec<Value> = vendor.requests().iter().map(|request| request.json()).collect();
+    let [first, refused, summary, again] = requests.as_slice() else {
+        panic!("{requests:?}");
+    };
+    let messages = |body: &Value| unmarked(&body["messages"]).as_array().unwrap().clone();
+    // Each block with its message's role: consecutive user items share a
+    // message, and the vendor caches by block.
+    let blocks = |body: &Value| -> Vec<(Value, Value)> {
+        messages(body)
+            .iter()
+            .flat_map(|message| {
+                let role = message["role"].clone();
+                message["content"].as_array().unwrap().iter().map(move |block| (role.clone(), block.clone()))
+            })
+            .collect()
+    };
+    let (first_blocks, summary_blocks) = (blocks(first), blocks(summary));
+    assert_eq!(summary_blocks[..first_blocks.len()], first_blocks[..]);
+    assert_eq!(summary_blocks.len(), first_blocks.len() + 1);
+    let instruction = summary_blocks.last().unwrap().1.to_string();
+    assert!(instruction.contains("Summarize the conversation above"), "{summary}");
+    assert_eq!((unmarked(&summary["system"]), &summary["tools"]), (unmarked(&first["system"]), &first["tools"]));
+    assert_eq!(messages(refused).len(), 3);
+    let again = messages(again);
+    assert!(again[0].to_string().contains("Previous conversation summary:\\nThe user asked a first question."), "{again:?}");
+    assert!(again[1].to_string().contains("First answer."), "{again:?}");
+    assert!(again[2].to_string().contains("Second question"), "{again:?}");
+    // The page saw the pass, and no retry: the refusal left nothing behind.
+    assert!(
+        turn.iter().any(|frame| matches!(frame, ServerFrame::Phase { phase: SessionPhase::Compacting })),
+        "{turn:?}"
+    );
+    assert!(!turn.iter().any(|frame| matches!(frame, ServerFrame::RetryScheduled { .. })), "{turn:?}");
+    assert_eq!(
+        kinds(&socket.live().await),
+        ["user", "compaction_boundary", "text", "response", "user", "compaction_marker", "text", "response"]
+    );
+    backend.close().await;
+}
+
 #[tokio::test]
 async fn a_client_that_falls_behind_is_closed_as_lagging_and_a_reopen_adopts_the_running_tree() {
     let vendor = MockVendor::start().await;

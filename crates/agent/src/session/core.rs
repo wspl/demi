@@ -1077,9 +1077,17 @@ impl SessionCore {
     }
 
     /// The model the recorded switch lands with at the next provider
-    /// request.
-    pub(super) fn switch_target(&self) -> Option<ModelSelection> {
-        self.switch.as_ref().map(|switch| switch.model.clone())
+    /// request, and what its vendor takes in one request, from the runtime
+    /// it lands on.
+    pub(super) fn switch_target(&self) -> Option<(ModelSelection, RequestLimits)> {
+        let switch = self.switch.as_ref()?;
+        let runtime = switch
+            .runtime
+            .as_deref()
+            .or(self.provider.as_deref())
+            .expect("the provider runtime is in its slot between runs");
+        let limits = runtime.request_limits(&switch.model.model);
+        Some((switch.model.clone(), limits))
     }
 
     /// Makes the recorded switch current, and returns the runtimes it
