@@ -242,9 +242,23 @@ When the request offers tools, the provider first sends the CLI an `initialize`
 control request that declares one SDK MCP server, and waits for its success,
 answering the control requests the CLI sends meanwhile and keeping its other
 lines, such as the `system` line it prints first, for the run; a refusal, or
-an exit before the answer, fails the run. It then writes the history as the
-first messages: earlier tool calls and their results as assistant text, user
-messages with only the user's real input, and no earlier reasoning.
+an exit before the answer, fails the run.
+
+It then writes the transcript as one user message. The CLI keeps no order
+among the lines of a history: it adds an `assistant` line to its history at
+once, and merges every `user` line into the prompt of its next turn,
+`shouldQuery: false` included, so the lines `[user, assistant, user]` reach
+the vendor as `[assistant, user + user]` (Claude Code 2.1.283). The one
+message holds the transcript as text in order. Each speaker's part opens with
+`User:` or `Assistant:`, and a blank line separates the parts: the user's
+messages and steers with only the user's real input, their images and
+documents as blocks in their places; the model's text; its earlier tool calls
+and their results in its own words; and no earlier reasoning, whose signatures
+do not hold for a new process. The user's new input is the last part. For
+example, the process that starts after a Stop receives `User: Write a long
+answer.`, `Assistant: The long answer begins` and `User: Answer briefly
+instead.` as one text. A transcript of the user's input alone, as at a
+conversation's first request, is written as that input.
 
 **Continuing.** A kept process receives only what the transcript gained since
 its last request: the new user messages, steers included. The provider closes

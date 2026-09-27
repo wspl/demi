@@ -225,7 +225,7 @@ impl LiveCli {
 
     /// Sets a new process up for `request`: when the request offers tools,
     /// the `initialize` control request that declares the SDK MCP server,
-    /// and its success; then the history as the first messages.
+    /// and its success; then the transcript as one user message.
     pub(crate) async fn prepare(
         &mut self,
         request: &InferenceRequest,
@@ -234,8 +234,8 @@ impl LiveCli {
             self.initialize(&request.system_prompt).await?;
         }
         let items = request.items.clone();
-        let history = encode_body(FAMILY, move || input::history(&items)).await?;
-        self.write(history).await?;
+        let transcript = encode_body(FAMILY, move || input::transcript(&items)).await?;
+        self.write(transcript).await?;
         self.sent = Sent::of(&request.items);
         Ok(())
     }
@@ -283,7 +283,7 @@ impl LiveCli {
                 }
                 Next::Line(text, line) => kept.push_back((text, line)),
                 // The model has no message to call a tool in before the
-                // history is written, which waits for this answer.
+                // transcript is written, which waits for this answer.
                 Next::Opened(call) => {
                     return Err(failure(format!(
                         "Claude Code called the tool {} before its initialization completed",
