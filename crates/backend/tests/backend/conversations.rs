@@ -210,22 +210,43 @@ pub(crate) fn send(id: &str, text: &str) -> ClientFrame {
 /// A Messages API stream that answers `deltas`, in that many pieces, and
 /// reports `input` and `output` tokens.
 pub(crate) fn answer(deltas: &[&str], input: u64, output: u64) -> MockResponse {
-    let mut block = vec![json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } })];
-    for delta in deltas {
-        block.push(json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": delta } }));
-    }
-    message(block, "end_turn", input, output)
+    message(vec![text_block(0, deltas)], "end_turn", json!({ "input_tokens": input, "output_tokens": 0 }), output)
 }
 
 /// A Messages API stream that calls the tool `name` with `input`.
 pub(crate) fn tool_use(id: &str, name: &str, input: &Value) -> MockResponse {
-    let block = vec![
-        json!({ "type": "content_block_start", "index": 0,
+    let usage = json!({ "input_tokens": 1, "output_tokens": 0 });
+    message(vec![tool_use_block(0, id, name, input)], "tool_use", usage, 1)
+}
+
+/// The frames that open a text block at `index` and fill it with `deltas`.
+pub(crate) fn text_block(index: usize, deltas: &[&str]) -> Vec<Value> {
+    let mut frames = vec![json!({ "type": "content_block_start", "index": index, "content_block": { "type": "text", "text": "" } })];
+    for delta in deltas {
+        frames.push(json!({ "type": "content_block_delta", "index": index, "delta": { "type": "text_delta", "text": delta } }));
+    }
+    frames
+}
+
+/// The frames that open a thinking block at `index`, stream `text` and
+/// sign it.
+pub(crate) fn thinking_block(index: usize, text: &str, signature: &str) -> Vec<Value> {
+    vec![
+        json!({ "type": "content_block_start", "index": index,
+            "content_block": { "type": "thinking", "thinking": "", "signature": "" } }),
+        json!({ "type": "content_block_delta", "index": index, "delta": { "type": "thinking_delta", "thinking": text } }),
+        json!({ "type": "content_block_delta", "index": index, "delta": { "type": "signature_delta", "signature": signature } }),
+    ]
+}
+
+/// The frames of a call of the tool `name` with `input`, at `index`.
+pub(crate) fn tool_use_block(index: usize, id: &str, name: &str, input: &Value) -> Vec<Value> {
+    vec![
+        json!({ "type": "content_block_start", "index": index,
             "content_block": { "type": "tool_use", "id": id, "name": name, "input": {} } }),
-        json!({ "type": "content_block_delta", "index": 0,
+        json!({ "type": "content_block_delta", "index": index,
             "delta": { "type": "input_json_delta", "partial_json": input.to_string() } }),
-    ];
-    message(block, "tool_use", 1, 1)
+    ]
 }
 
 /// The text of the tool result `id` that a Messages API `request` carries.
@@ -240,20 +261,34 @@ pub(crate) fn tool_result(request: &Value, id: &str) -> String {
     result["content"][0]["text"].as_str().unwrap().to_owned()
 }
 
-/// One message of one content block, whose frames `block` opens and fills.
-fn message(block: Vec<Value>, stop_reason: &str, input: u64, output: u64) -> MockResponse {
-    let mut frames = vec![json!({ "type": "message_start", "message": {
-        "id": "msg_1", "type": "message", "role": "assistant", "model": "claude-opus-4-8", "content": [],
-        "usage": { "input_tokens": input, "output_tokens": 0 } } })];
-    frames.extend(block);
-    frames.push(json!({ "type": "content_block_stop", "index": 0 }));
+/// One message of the content blocks whose frames `blocks` open and fill,
+/// each closed after its frames; `usage` is the message's usage at its
+/// start, and `output` its output tokens at its end.
+pub(crate) fn message(blocks: Vec<Vec<Value>>, stop_reason: &str, usage: Value, output: u64) -> MockResponse {
+    let mut frames = vec![message_start(usage)];
+    for block in blocks {
+        let index = block[0]["index"].clone();
+        frames.extend(block);
+        frames.push(json!({ "type": "content_block_stop", "index": index }));
+    }
     frames.push(json!({ "type": "message_delta", "delta": { "stop_reason": stop_reason }, "usage": { "output_tokens": output } }));
     frames.push(json!({ "type": "message_stop" }));
-    let text: String = frames
+    MockResponse::event_stream(events(&frames))
+}
+
+/// The frame that starts a message whose usage at its start is `usage`.
+pub(crate) fn message_start(usage: Value) -> Value {
+    json!({ "type": "message_start", "message": {
+        "id": "msg_1", "type": "message", "role": "assistant", "model": "claude-opus-4-8", "content": [],
+        "usage": usage } })
+}
+
+/// `frames` as the text of a Messages API event stream.
+pub(crate) fn events(frames: &[Value]) -> String {
+    frames
         .iter()
         .map(|frame| format!("event: {}\ndata: {frame}\n\n", frame["type"].as_str().unwrap()))
-        .collect();
-    MockResponse::event_stream(text)
+        .collect()
 }
 
 /// A new API-key entry of the master's.
@@ -325,7 +360,7 @@ pub(crate) async fn transcript(backend: &TestBackend, session: &Session, id: &st
     read.json()
 }
 
-async fn usage(backend: &TestBackend, session: &Session) -> UsageTotals {
+pub(crate) async fn usage(backend: &TestBackend, session: &Session) -> UsageTotals {
     backend.get("/api/usage", Some(session)).await.json()
 }
 
