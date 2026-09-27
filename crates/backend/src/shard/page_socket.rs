@@ -2,7 +2,9 @@
 //! a conversation socket (`backend.md` § Browser synchronization). Both send
 //! their protocol's heartbeat once they have sent nothing else for the
 //! heartbeat interval, so that the page can tell a quiet socket from one that
-//! died without a close (`web-application.md` § Liveness and reconnection).
+//! died without a close (`web-application.md` § Liveness and reconnection),
+//! and both end with a close frame that a page which stopped reading cannot
+//! hold up (`backend.md` § Startup and shutdown).
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use futures_util::SinkExt as _;
@@ -45,10 +47,13 @@ impl PageSocket {
         tokio::time::sleep_until(self.sent_at + self.tuning.heartbeat)
     }
 
-    /// Ends the socket with `frame`.
+    /// Ends the socket with `frame`, which waits for the page at most the
+    /// close's bound: behind it may be the rest of a message the socket was
+    /// sending when its owner stopped, which a page that stopped reading
+    /// never takes.
     pub(crate) async fn close(mut self, frame: CloseFrame) {
-        // A page that went meanwhile hears nothing, which is what the close
-        // tells it.
-        let _ = self.sink.send(Message::Close(Some(frame))).await;
+        // A page that went meanwhile, or does not read, hears nothing, and
+        // dropping the socket ends the connection all the same.
+        let _ = tokio::time::timeout(self.tuning.close_wait, self.sink.send(Message::Close(Some(frame)))).await;
     }
 }
