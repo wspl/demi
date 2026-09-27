@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { LiveTab } from '@demicodes/protocol'
 import LiveControls from './LiveControls.vue'
 import LiveDialog from './LiveDialog.vue'
-import { CanvasPictures, picturesSupported } from './pictures'
+import { CanvasPictures } from './pictures'
 import type { LiveSession } from './session'
 import { viewerClipboard } from './clipboard'
 import { keyMessage, localKey, composingKey, pointerMessage, wheelMessage } from './input'
@@ -21,7 +21,6 @@ const canvas = ref<HTMLCanvasElement | null>(null)
 /** The viewer's keys, input method and clipboard go through this field. */
 const bridge = ref<HTMLInputElement | null>(null)
 const panel = ref<PanelSize>({ width: 1, height: 1 })
-const supported = picturesSupported()
 const state = props.session.state
 /** What moves the picture onto the screen's pixel grid, from where the panel stands. */
 const snap = ref({ x: 0, y: 0 })
@@ -206,7 +205,7 @@ function release(): void {
 }
 
 onMounted(() => {
-  if (canvas.value && supported) {
+  if (canvas.value) {
     pictures = new CanvasPictures(canvas.value, {
       shown: (generation, sequence, queue) => props.session.showed(generation, sequence, queue),
       lost: () => props.session.resync(),
@@ -289,13 +288,7 @@ watch(() => props.tab.id, (id) => {
       :viewport="tab.viewport"
     />
     <div
-      v-if="!supported"
-      class="absolute inset-0 flex items-center justify-center bg-surface text-[13px] text-fg-faint"
-    >
-      This browser cannot show the live view: it has no video decoder.
-    </div>
-    <div
-      v-else-if="stalled"
+      v-if="stalled"
       class="pointer-events-none absolute inset-x-0 top-0 flex justify-center p-2"
     >
       <span class="rounded-md bg-surface px-2 py-1 text-[12px] text-fg-subtle shadow">
