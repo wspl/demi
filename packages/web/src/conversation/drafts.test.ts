@@ -23,6 +23,7 @@ test('a saved edit keeps its operation, its files and the separate composer draf
     },
     pendingSend: null,
     local: null,
+    base: 4,
     text: 'unrelated composer draft',
     model: { providerId: 'provider', modelId: 'model', thinkingEffort: null, serviceTierId: null },
     files: [],
