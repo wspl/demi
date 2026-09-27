@@ -3,7 +3,7 @@ import { SessionError, SteerRejectedError, type AgentClient, type ClientSessionE
 import { asError } from '@demicodes/utils'
 import type { ClientContent, EditRequest, TranscriptVersion } from '@demicodes/protocol'
 import { AgentSocketError } from '../transport/agent-socket'
-import { reconnectWait } from '../transport/liveness'
+import { waitToReconnect, type ReconnectWait } from '../transport/liveness'
 import { hasAcceptedSubmission } from './submission'
 import type { ConversationState } from './types'
 
@@ -56,7 +56,8 @@ export class ConversationRuntime {
   private opening: Promise<AgentClient> | null = null
   private controller: AbortController | null = null
   private unsubscribe: (() => void) | null = null
-  private retryTimer: ReturnType<typeof setTimeout> | null = null
+  /** The wait before the next connection, while the socket is closed. */
+  private waiting: ReconnectWait | null = null
   /** Consecutive connections lost or not made since the session last opened. */
   private connectionFailures = 0
   private disposed = false
@@ -215,10 +216,8 @@ export class ConversationRuntime {
 
   private releaseConnection(): void {
     this.settlePendingAction()
-    if (this.retryTimer !== null) {
-      clearTimeout(this.retryTimer)
-    }
-    this.retryTimer = null
+    this.waiting?.cancel()
+    this.waiting = null
     this.unsubscribe?.()
     this.unsubscribe = null
     const controller = this.controller
@@ -266,7 +265,7 @@ export class ConversationRuntime {
         }
         this.options.state.load = 'reconnecting'
         this.connectionFailures += 1
-        await this.pause(reconnectWait(this.connectionFailures), controller.signal)
+        await this.pause(controller.signal)
       }
     }
   }
@@ -321,19 +320,19 @@ export class ConversationRuntime {
   }
 
   /** Waits before the next attempt; releasing the connection ends the wait. */
-  private pause(ms: number, signal: AbortSignal): Promise<void> {
+  private pause(signal: AbortSignal): Promise<void> {
     return new Promise((resolve, reject) => {
       const onAbort = () => {
-        clearTimeout(timer)
-        this.retryTimer = null
+        wait.cancel()
+        this.waiting = null
         reject(signal.reason ?? new Error('The connection attempt was released'))
       }
-      const timer = setTimeout(() => {
+      const wait = waitToReconnect(this.connectionFailures, () => {
         signal.removeEventListener('abort', onAbort)
-        this.retryTimer = null
+        this.waiting = null
         resolve()
-      }, ms)
-      this.retryTimer = timer
+      })
+      this.waiting = wait
       signal.addEventListener('abort', onAbort, { once: true })
     })
   }
@@ -379,11 +378,11 @@ export class ConversationRuntime {
         if (!this.disposed) {
           state.load = 'reconnecting'
           this.connectionFailures += 1
-          this.retryTimer = setTimeout(() => {
-            this.retryTimer = null
+          this.waiting = waitToReconnect(this.connectionFailures, () => {
+            this.waiting = null
             // The opening keeps trying on its own; only a refused open rejects here.
             void this.connect().catch(() => {})
-          }, reconnectWait(this.connectionFailures))
+          })
         }
         break
     }
