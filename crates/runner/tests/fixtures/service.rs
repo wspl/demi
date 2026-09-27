@@ -46,6 +46,16 @@ impl Handler for Fixture {
                         .unwrap()
                         .insert(context.request.context.conversation);
                 }
+                // What the service holds, as its status answers it, for a
+                // test that watches a release end a conversation's state.
+                "held" => {
+                    let held = conversations.lock().unwrap().clone();
+                    let value = serde_json::json!({ "conversations": held });
+                    context
+                        .output
+                        .stdout(Bytes::from(value.to_string()))
+                        .await?;
+                }
                 // The whole service fails, leaving its last words on
                 // standard error.
                 "crash" => {
