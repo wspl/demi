@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, jest, spyOn, test } from 'bun:test'
 import { waitFor } from '@demicodes/utils'
+import { pageReturned } from '@demicodes/web-ui/transport/liveness'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { onSessionExpired } from '../api/client'
 import type { ConversationSummary } from '../api/generated/web-api'
@@ -225,25 +226,43 @@ test('a channel closed as session_ended ends the session and connects no more', 
   }
 })
 
-test('a page that shows again connects at once instead of waiting', () => {
+test('a page that returns connects its closed channel at once instead of waiting', () => {
   jest.useFakeTimers()
   const random = spyOn(Math, 'random').mockReturnValue(0)
   try {
-    const product = started()
+    started()
     for (let closes = 0; closes < 4; closes += 1) {
       channels.last().end(1006)
       jest.advanceTimersByTime(30_000)
     }
     const count = channels.opened.length
     channels.last().end(1006)
-    product.reconnect()
+    pageReturned()
     expect(channels.opened.length).toBe(count + 1)
-    // An open channel stays as it is.
-    product.reconnect()
+    // A channel that connects, or one heard from lately, stays as it is.
+    pageReturned()
+    channels.last().connect(productState())
+    pageReturned()
     expect(channels.opened.length).toBe(count + 1)
   } finally {
     random.mockRestore()
   }
+})
+
+test('a page back from sleep replaces a channel silent for 75 seconds at once, and keeps one silent for less', () => {
+  jest.useFakeTimers()
+  started()
+  const slept = channels.last()
+  const heard = Date.now()
+  // The laptop sleeps: the clock goes on, the watch's timer does not, and
+  // no close reaches the page.
+  jest.setSystemTime(heard + 74_000)
+  pageReturned()
+  expect(slept.closed).toBe(false)
+  jest.setSystemTime(heard + 75_000)
+  pageReturned()
+  expect(slept.closed).toBe(true)
+  expect(channels.last()).not.toBe(slept)
 })
 
 test('vendor readers share one request and reopening uses cached data', async () => {

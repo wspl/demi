@@ -4,6 +4,7 @@ import { deferred, waitFor } from '@demicodes/utils'
 import { computed } from 'vue'
 import { ConversationRuntime, type RuntimeState } from '../conversation-runtime'
 import { AgentSocketError, connectAgentClient } from '../../transport/agent-socket'
+import { pageReturned } from '../../transport/liveness'
 import { playSockets } from '../../transport/__tests__/test-socket'
 import { clientHarness, model, userBlock } from './agent-harness'
 
@@ -304,6 +305,42 @@ test('a connection lost before the session answered opens the conversation again
     expect(current.lastError).toBeNull()
   } finally {
     random.mockRestore()
+    jest.useRealTimers()
+    runtime.dispose()
+    sockets.restore()
+  }
+})
+
+test('a page back from sleep breaks a conversation socket silent past the watch and opens the conversation again at once', async () => {
+  const sockets = playSockets()
+  const current = state()
+  const runtime = new ConversationRuntime({
+    state: current,
+    connect: (signal) => connectAgentClient('ws://fixture', signal),
+  })
+  jest.useFakeTimers()
+  try {
+    const opening = runtime.connect()
+    const slept = sockets.last()
+    slept.open()
+    await turn()
+    slept.receive({ type: 'opened' })
+    await opening
+    // The laptop sleeps for 80 seconds: the clock goes on, the watch's timer
+    // does not, and no close reaches the page.
+    jest.setSystemTime(Date.now() + 80_000)
+    pageReturned()
+    expect(slept.closed).toBe(true)
+    // The conversation connects again without waiting.
+    const next = sockets.last()
+    expect(next).not.toBe(slept)
+    expect(current.load).toBe('reconnecting')
+    next.open()
+    await turn()
+    next.receive({ type: 'opened' })
+    await turn()
+    expect(current.load).toBe('ready')
+  } finally {
     jest.useRealTimers()
     runtime.dispose()
     sockets.restore()

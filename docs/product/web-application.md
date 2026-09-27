@@ -204,6 +204,17 @@ conversation opens, follows the same rule: only a session that answers
 `open` with a refusal, an `error` or a `rejected`, shows the conversation as
 failed.
 
+A page that comes back does not wait. Its timers stop while its computer
+sleeps, so the 75-second watch counts only the time the page was awake, and a
+wait that began before the sleep still has the rest of its time to run. So
+when the page becomes visible again or comes back online, the module checks
+every socket at once: a socket whose last message came 75 seconds ago or more
+by the clock is broken, and a closed socket connects without waiting for the
+rest of its wait. For example, a laptop sleeps for an hour with the product
+open, and its user then opens the lid: the page shows again, and replaces the
+channel and each conversation socket at once rather than after up to 75
+seconds more of a watch that did not count the hour.
+
 ### Page synchronization
 
 One module of `web`, the product state, holds the page's copy of the user's
@@ -242,7 +253,7 @@ bring it.
 
 **Connection.** A channel that closes, or brings nothing for 75 seconds,
 connects again as [Liveness and reconnection](#liveness-and-reconnection)
-says; a page that becomes visible, or comes back online, connects at once.
+says, at once when the page comes back.
 The new `snapshot` replaces the whole copy, and each state follows it as it
 follows any change. The browser does not say why an upgrade failed, so a page whose channel does not open asks
 `GET /api/auth/me`, whose 401 ends the session as any 401 does
