@@ -342,7 +342,8 @@ impl From<CdpError> for BrowserError {
             }
             CdpError::Timeout => Self::Timeout,
             // Chrome says so only on its standard error, and exits: the
-            // launch sees the exit or the end of its output first.
+            // launch reports the exit, or the end of the output, with what
+            // Chrome wrote before it.
             CdpError::LaunchExit(_, ref stderr) | CdpError::LaunchIo(_, ref stderr)
                 if String::from_utf8_lossy(stderr.as_slice())
                     .contains("Running as root without --no-sandbox is not supported") =>

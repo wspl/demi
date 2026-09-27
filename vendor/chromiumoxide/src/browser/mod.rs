@@ -4,7 +4,7 @@ use std::io;
 use futures::SinkExt;
 use futures::channel::mpsc::{Sender, channel};
 use futures::channel::oneshot::channel as oneshot_channel;
-use futures::select;
+use futures::select_biased;
 
 use chromiumoxide_cdp::cdp::browser_protocol::browser::{
     BrowserContextId, CloseReturns, GetVersionParams, GetVersionReturns,
@@ -556,14 +556,12 @@ async fn ws_url_from_output(
     let mut exit_status_fut = Box::pin(child_process.wait()).fuse();
     let mut buf = futures::io::BufReader::new(stderr);
     loop {
-        select! {
+        // In this order: what the browser wrote is read before its exit is
+        // reported, so a browser that says why it cannot start and exits at
+        // once is reported with what it said, and output that never ends
+        // cannot hold off the timeout.
+        select_biased! {
             _ = timeout_fut => return Err(CdpError::LaunchTimeout(BrowserStderr::new(stderr_bytes))),
-            exit_status = exit_status_fut => {
-                return Err(match exit_status {
-                    Err(e) => CdpError::LaunchIo(e, BrowserStderr::new(stderr_bytes)),
-                    Ok(exit_status) => CdpError::LaunchExit(exit_status, BrowserStderr::new(stderr_bytes)),
-                })
-            },
             read_res = buf.read_until(b'\n', &mut stderr_bytes).fuse() => {
                 match read_res {
                     Err(e) => return Err(CdpError::LaunchIo(e, BrowserStderr::new(stderr_bytes))),
@@ -589,7 +587,13 @@ async fn ws_url_from_output(
                         }
                     }
                 }
-            }
+            },
+            exit_status = exit_status_fut => {
+                return Err(match exit_status {
+                    Err(e) => CdpError::LaunchIo(e, BrowserStderr::new(stderr_bytes)),
+                    Ok(exit_status) => CdpError::LaunchExit(exit_status, BrowserStderr::new(stderr_bytes)),
+                })
+            },
         }
     }
 }

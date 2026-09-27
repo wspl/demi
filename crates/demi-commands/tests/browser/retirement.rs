@@ -40,14 +40,22 @@ fn processes() -> Vec<Process> {
 /// Chrome refuses root on Linux with its sandbox, which Demi keeps: the
 /// browser's error says to run the runner as an ordinary user, rather than
 /// passing on Chrome's advice to drop the sandbox (`browser.md` § Native
-/// driver). The launcher refuses as Chrome does.
+/// driver). The launcher refuses as Chrome does, and says so and exits while
+/// this test holds the runtime's only thread, as a loaded Host may: the
+/// launch then finds the message and the exit at once. When it picked one of
+/// the two at random, it lost the message about every other time, so the
+/// launch runs eight times.
 #[tokio::test]
 async fn a_launch_as_root_says_to_run_the_runner_as_an_ordinary_user() {
     let directory = tempfile::tempdir().unwrap();
     let launcher = directory.path().join("root-chrome");
+    let started = directory.path().join("root-chrome.pid");
+    let go = directory.path().join("root-chrome.go");
     std::fs::write(
         &launcher,
         "#!/bin/sh
+echo $$ > \"$0.pid\"
+until [ -e \"$0.go\" ]; do :; done
 echo '[1:1:0927/010848.716678:ERROR:content/browser/zygote_host/zygote_host_impl_linux.cc:102] Running as root without --no-sandbox is not supported. See https://crbug.com/638180.' >&2
 exit 1
 ",
@@ -58,15 +66,41 @@ exit 1
         time_zone: "UTC".into(),
         languages: vec!["en-US".into()],
     };
-    let result = with_browser(
-        LaunchOptions::pinned(launcher, locale).unwrap(),
-        CancellationToken::new(),
-        |_| async { Ok(()) },
-    )
-    .await;
-    let error = result.expect_err("the launch fails");
-    assert!(matches!(error, BrowserError::Root), "{error:?}");
-    assert!(error.to_string().contains("run the runner as an ordinary user"), "{error}");
+    for _ in 0..8 {
+        let (result, ()) = tokio::join!(
+            with_browser(
+                LaunchOptions::pinned(launcher.clone(), locale.clone()).unwrap(),
+                CancellationToken::new(),
+                |_| async { Ok(()) },
+            ),
+            async {
+                let pid: libc::id_t = tokio::time::timeout(Duration::from_secs(5), async {
+                    loop {
+                        if let Ok(recorded) = tokio::fs::read_to_string(&started).await
+                            && let Ok(pid) = recorded.trim().parse()
+                        {
+                            break pid;
+                        }
+                        tokio::time::sleep(Duration::from_millis(5)).await;
+                    }
+                })
+                .await
+                .expect("the launcher starts");
+                std::fs::write(&go, "").unwrap();
+                // Until the launcher has exited, without reaping it.
+                let mut exited: libc::siginfo_t = unsafe { std::mem::zeroed() };
+                let waited = unsafe {
+                    libc::waitid(libc::P_PID, pid, &mut exited, libc::WEXITED | libc::WNOWAIT)
+                };
+                assert_eq!(waited, 0, "{}", std::io::Error::last_os_error());
+                std::fs::remove_file(&started).unwrap();
+                std::fs::remove_file(&go).unwrap();
+            }
+        );
+        let error = result.expect_err("the launch fails");
+        assert!(matches!(error, BrowserError::Root), "{error:?}");
+        assert!(error.to_string().contains("run the runner as an ordinary user"), "{error}");
+    }
 }
 
 /// About 1.5 s in the Linux container: the helper the launcher left is
