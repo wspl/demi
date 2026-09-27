@@ -1126,3 +1126,95 @@ async fn a_watched_tab_arrives_with_the_detail_of_the_viewers_ratio() {
     })
     .await;
 }
+
+/// The capture extension runs beside the pages as soon as the browser does,
+/// and the tab registry never lists it (`live-view.md` § Capture).
+#[cfg(feature = "testing")]
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn the_capture_extension_runs_beside_the_pages_and_is_never_a_tab() {
+    crate::fixture::with_fixture(|environment, _| async move {
+        let cancel = CancellationToken::new();
+        let timeout = Duration::from_secs(60);
+        let tab = environment.open("about:blank", &cancel, timeout).await?;
+        let prefix = format!(
+            "chrome-extension://{}/",
+            demi_commands::browser::CAPTURE_EXTENSION_ID
+        );
+        // The extension's worker starts on its own, some time after the browser.
+        tokio::time::timeout(timeout, async {
+            while !environment
+                .targets()
+                .await?
+                .iter()
+                .any(|target| target.url.starts_with(&prefix))
+            {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            Ok::<_, demi_commands::browser::BrowserError>(())
+        })
+        .await
+        .expect("the capture extension runs")?;
+        let tabs = environment.tabs(&cancel, timeout).await?;
+        let ids: Vec<_> = tabs.iter().map(|listed| listed.id().clone()).collect();
+        assert_eq!(ids, vec![tab.id().clone()]);
+        Ok(())
+    })
+    .await;
+}
+
+/// A reload of the capture extension, as Chrome may do, keeps the pages as
+/// they were and brings its worker back each time (`live-view.md` § Capture).
+#[cfg(feature = "testing")]
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn capture_extension_reload_preserves_pages_and_recreates_its_worker() {
+    crate::fixture::with_fixture(|environment, _| async move {
+        let cancel = CancellationToken::new();
+        let timeout = Duration::from_secs(30);
+        let tab = environment.open("about:blank", &cancel, timeout).await?;
+        let worker_url = format!(
+            "chrome-extension://{}/background.js",
+            demi_commands::browser::CAPTURE_EXTENSION_ID
+        );
+        let offscreen_url = worker_url.replace("background.js", "offscreen.html");
+        let mut previous = None;
+        for round in 0..4 {
+            let worker = tokio::time::timeout(timeout, async {
+                loop {
+                    let targets = environment.targets().await?;
+                    // Target discovery precedes the worker's start: the
+                    // offscreen document shows its startup code has run.
+                    let started = targets.iter().any(|target| target.url == offscreen_url);
+                    let worker = targets.into_iter().find(|target| {
+                        target.url == worker_url && previous.as_ref() != Some(&target.target_id)
+                    });
+                    if let Some(worker) = worker.filter(|_| started) {
+                        return Ok::<_, demi_commands::browser::BrowserError>(worker.target_id);
+                    }
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
+            })
+            .await
+            .expect("the capture worker returns after every reload")?;
+            assert_eq!(environment.tabs(&cancel, timeout).await?.len(), 1);
+            assert_eq!(
+                tab.read_only("document.URL", &cancel, timeout).await?,
+                json!("about:blank")
+            );
+            if round == 3 {
+                break;
+            }
+            let reloading = environment
+                .evaluate_in(
+                    worker.clone(),
+                    "setTimeout(() => chrome.runtime.reload(), 100); true",
+                )
+                .await?;
+            assert_eq!(reloading, json!(true));
+            previous = Some(worker);
+        }
+        Ok(())
+    })
+    .await;
+}

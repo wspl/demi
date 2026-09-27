@@ -625,7 +625,10 @@ Each crate implements the provider contract for one vendor family.
 - **Public boundary:** the executable. Behavior:
   [Commands](../execution/commands.md), [Conversation browser](../browser/browser.md),
   whose [catalog](../browser/browser.md#catalog) lists the browser commands, and
-  [Live view](../browser/live-view.md).
+  [Live view](../browser/live-view.md). Its `testing` feature adds, for the
+  Chrome tests, helpers that drive a page and Chrome's own view of its
+  targets, such as the live view's capture extension, which no command
+  addresses.
 - **Must not:** host a runner connection, define the agent's command tree, store
   conversations or be linked into the runner. Standard shell utilities belong
   to the runner.
