@@ -9,7 +9,6 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use demi_agent::testing::model_of;
 use demi_agent_protocol::{ClientFrame, ServerFrame};
 use demi_backend::FamilyRegistry;
 use demi_core::WireApi;
@@ -274,26 +273,35 @@ async fn on_a_shared_instance_only_the_master_configures_and_everyone_infers_wit
         (StatusCode::FORBIDDEN, ErrorCode::Forbidden)
     );
     // A user's conversation infers with the instance's entry.
-    let model = model_of(shared.id.as_str(), "m");
     conversations::create(&backend, &bob, FIRST).await;
+    conversations::choose(&backend, &bob, FIRST, shared.id.as_str(), "m").await;
     let mut socket = Socket::connect(&backend, &bob, FIRST).await;
-    socket.open(&model).await;
+    socket.open().await;
     let turn = socket.chat("m1", "hello").await;
     assert!(serde_json::to_string(&turn).unwrap().contains("\"ok\""), "{turn:?}");
     drop(socket);
     backend.close().await;
 
     // The entries stay the master's own under the other mode, and nobody
-    // else's: another user's conversation cannot select them.
+    // else's: another user's conversation cannot open with them, nor select
+    // them.
     let backend = harness.start_in_mode(InstanceMode::Isolated).await;
     let master = backend.login(MASTER_EMAIL, MASTER_PASSWORD).await;
     let bob = backend.login("bob@example.test", "bob-pass-1").await;
     let mut socket = Socket::connect(&backend, &bob, FIRST).await;
-    socket.send(&ClientFrame::Open { model }).await;
+    socket.send(&ClientFrame::Open {}).await;
     let ServerFrame::Error { code, .. } = socket.frame().await else {
-        panic!("another user's entry is not the user's to select");
+        panic!("another user's entry is not the user's to open with");
     };
     assert_eq!(code.as_deref(), Some("provider_not_found"));
+    let chosen = backend
+        .patch(
+            &format!("/api/conversations/{FIRST}"),
+            &bob,
+            json!({ "model": { "providerId": shared.id, "modelId": "m" } }),
+        )
+        .await;
+    assert_eq!(chosen.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ProviderNotFound));
     drop(socket);
     assert_eq!(
         backend

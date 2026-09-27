@@ -259,10 +259,10 @@ themselves can still be replaced by asking. The conversation summary carries bot
 `titleCurrent`, and `titleGenerating` while a request is in flight, which
 shows the Rename button busy, for the first request too.
 
-`POST /api/conversations/:id/title` with the conversation's provider and model
-selection starts the request and answers 202 at once; it answers 409
-`no_messages` when the user has sent no text. The browser learns the new title
-the way it learns a rename made elsewhere, from the next
+`POST /api/conversations/:id/title` starts the request with the model
+settings the conversation's record holds and answers 202 at once; it answers
+409 `no_messages` when the user has sent no text. The browser learns the new
+title the way it learns a rename made elsewhere, from the next
 [state snapshot](web-api.md#sidebar-mutations-read-state-and-page-synchronization);
 there is no title event.
 

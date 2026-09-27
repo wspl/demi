@@ -5,13 +5,15 @@
 //! read-only connection, so listing hundreds of conversations takes no
 //! writer from a running one.
 
-use demi_core::SessionPhase;
-use demi_web_api::conversations::{ConversationStatus, ConversationSummary};
+use demi_core::{ModelSelection, SessionPhase};
+use demi_web_api::conversations::{ConversationStatus, ConversationSummary, ModelSettings};
+use demi_web_api::ids::ProviderId;
 use futures_util::future::try_join_all;
 
 use super::root_of;
 use crate::shard::Shard;
 use crate::storage::StorageError;
+use crate::storage::columns::decode;
 use crate::storage::conversation_index::ConversationRecord;
 use crate::storage::tree::{self, SummaryFacts, Terminal};
 
@@ -41,10 +43,7 @@ impl Shard {
             .unwrap_or(SummaryFacts::EMPTY);
         let status = status(live, &facts);
         let cwd = self.resolve_target(&record).await?.path().to_owned();
-        let (provider_id, model_id) = match record.model {
-            Some(model) => (Some(model.provider), Some(model.model)),
-            None => (None, None),
-        };
+        let model = record.model.as_ref().map(settings).transpose()?;
         Ok(ConversationSummary {
             unread: facts.revision > record.read_revision,
             title_current: record.user_messages <= record.titled_messages,
@@ -56,8 +55,7 @@ impl Shard {
             read_revision: record.read_revision,
             target: record.target,
             context_version: record.context_version,
-            provider_id,
-            model_id,
+            model,
             created_at: record.created_at,
             updated_at: record.updated_at,
             cwd,
@@ -65,6 +63,17 @@ impl Shard {
             revision: facts.revision,
         })
     }
+}
+
+/// The model settings a conversation's selection shows (`models.md` § A
+/// conversation's model settings).
+fn settings(selection: &ModelSelection) -> Result<ModelSettings, StorageError> {
+    Ok(ModelSettings {
+        provider_id: decode("conversations", "model", ProviderId::try_from(selection.provider_id.as_str()))?,
+        model_id: selection.model.id.clone(),
+        thinking_effort: selection.thinking_effort().map(str::to_owned),
+        service_tier_id: selection.service_tier_id.clone(),
+    })
 }
 
 /// A conversation's status: running or compacting while its live tree will

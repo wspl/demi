@@ -1,14 +1,15 @@
 //! The conversation index of the control store (`storage.md` § Control
 //! records): each conversation's owner, title, archive and pin state, place
 //! in the sidebar, read revision, target, execution-context revision and
-//! model selection. The agent tree itself is in the conversation's own
+//! model selection, which is the conversation's model settings (`models.md`
+//! § A conversation's model settings). The agent tree itself is in the conversation's own
 //! database. A conversation's id is the one the browser chose, kept in the
 //! case it arrived in and compared without case, so an id another
 //! conversation holds in any spelling is taken.
 
-use demi_core::Timestamp;
+use demi_core::{ModelSelection, Timestamp};
 use demi_web_api::conversations::ConversationTarget;
-use demi_web_api::ids::{ConversationId, DeviceId, ProviderId, UserId, WorkspaceId};
+use demi_web_api::ids::{ConversationId, DeviceId, UserId, WorkspaceId};
 use garde::Validate;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use super::StorageError;
 use super::columns::{decode, instant, json, to_json};
 use super::control::ControlService;
+use crate::conversation::settings::SettingsChange;
 use crate::conversation::target::TargetSwitch;
 
 /// A conversation as the index holds it.
@@ -33,8 +35,9 @@ pub(crate) struct ConversationRecord {
     /// Advanced by every change of the conversation's execution context,
     /// such as a target switch or a Host attached.
     pub(crate) context_version: u64,
-    /// The provider entry and model the conversation last selected.
-    pub(crate) model: Option<ConversationModel>,
+    /// The conversation's model selection; none until its first model is
+    /// chosen.
+    pub(crate) model: Option<ModelSelection>,
     /// How many messages the user has sent, and how many of them the title
     /// has read (`product.md` § Conversation titles).
     pub(crate) user_messages: u64,
@@ -43,18 +46,14 @@ pub(crate) struct ConversationRecord {
     pub(crate) updated_at: Timestamp,
 }
 
-/// The provider entry and model a conversation selected.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ConversationModel {
-    pub(crate) provider: ProviderId,
-    pub(crate) model: String,
-}
-
 /// A change a user asks of a conversation, which `Shard::transition`
 /// applies.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ConversationChange {
     Record(RecordChange),
+    /// A change of the conversation's model settings, which the
+    /// conversation's settings order applies against the catalog.
+    Settings(SettingsChange),
     /// A switch of the main target (`sessions-and-targets.md` § Switch the
     /// main target), which the target compare-and-set commits.
     Target(ConversationTarget),
@@ -70,8 +69,8 @@ pub(crate) enum RecordChange {
     /// user's.
     Title(String),
     Pinned(bool),
-    /// The provider entry and model the conversation selects, or none.
-    Model(Option<ConversationModel>),
+    /// The conversation's new model selection.
+    Model(ModelSelection),
     /// A device of the user's attached (`sessions-and-targets.md` § Attached
     /// hosts); one attached already stays as it is.
     Attach(AttachedHostRecord),
@@ -112,7 +111,7 @@ pub(crate) enum Creation {
 const PLACEHOLDER_TITLE: &str = "New conversation";
 
 const CONVERSATION_COLUMNS: &str = "id, user_id, title, archived, pinned, read_revision, target_kind, target_device_id,
-     target_path, target_workspace_id, context_version, provider_id, model_id, user_messages, titled_messages,
+     target_path, target_workspace_id, context_version, model, user_messages, titled_messages,
      created_at, updated_at";
 
 /// A target as its typed columns: the kind and what the kind names.
@@ -255,27 +254,6 @@ impl ControlService {
         .await
     }
 
-    /// Records the provider entry and model the conversation selected, or
-    /// that it selects none.
-    pub(crate) async fn set_conversation_model(
-        &self,
-        id: ConversationId,
-        model: Option<ConversationModel>,
-    ) -> Result<(), StorageError> {
-        self.call(move |connection, _| {
-            let (provider, model) = match &model {
-                Some(selected) => (Some(selected.provider.as_str()), Some(selected.model.as_str())),
-                None => (None, None),
-            };
-            connection.execute(
-                "UPDATE conversations SET provider_id = ?2, model_id = ?3 WHERE id = ?1",
-                params![id.as_str(), provider, model],
-            )?;
-            Ok(())
-        })
-        .await
-    }
-
     /// Applies `change` in one transaction. An archived conversation takes
     /// nothing but its restore; a rename that repeats the current title
     /// changes nothing, so the title keeps its origin.
@@ -309,12 +287,8 @@ impl ControlService {
                     params![id.as_str(), pinned],
                 )?,
                 RecordChange::Model(model) => transaction.execute(
-                    "UPDATE conversations SET provider_id = ?2, model_id = ?3 WHERE id = ?1",
-                    params![
-                        id.as_str(),
-                        model.as_ref().map(|model| model.provider.as_str()),
-                        model.as_ref().map(|model| model.model.as_str())
-                    ],
+                    "UPDATE conversations SET model = ?2 WHERE id = ?1",
+                    params![id.as_str(), to_json(model)],
                 )?,
                 RecordChange::Attach(host) => {
                     if insert_attached_host(&transaction, &id, host, now)? {
@@ -454,7 +428,7 @@ pub(crate) struct NewConversation<'a> {
     pub(crate) title: &'a str,
     pub(crate) origin: TitleOrigin,
     pub(crate) target: &'a ConversationTarget,
-    pub(crate) model: Option<&'a ConversationModel>,
+    pub(crate) model: Option<&'a ModelSelection>,
     /// When it was created, and last active.
     pub(crate) at: Timestamp,
 }
@@ -467,10 +441,10 @@ pub(crate) fn insert_conversation(connection: &Connection, new: &NewConversation
     let inserted = connection.execute(
         "INSERT INTO conversations (id, user_id, title, title_origin, archived, pinned, sort_order,
            read_revision, target_kind, target_device_id, target_path, target_workspace_id, context_version,
-           provider_id, model_id, user_messages, titled_messages, created_at, updated_at)
+           model, user_messages, titled_messages, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, 0, 0,
            (SELECT COALESCE(MIN(sort_order), 0) - 1 FROM conversations WHERE user_id = ?2),
-           0, ?5, ?6, ?7, ?8, 0, ?9, ?10, 0, 0, ?11, ?11)
+           0, ?5, ?6, ?7, ?8, 0, ?9, 0, 0, ?10, ?10)
          ON CONFLICT (id) DO NOTHING",
         params![
             new.id.as_str(),
@@ -481,8 +455,7 @@ pub(crate) fn insert_conversation(connection: &Connection, new: &NewConversation
             target.device,
             target.path,
             target.workspace,
-            new.model.map(|model| model.provider.as_str()),
-            new.model.map(|model| model.model.as_str()),
+            new.model.map(to_json),
             new.at.as_millisecond()
         ],
     )?;
@@ -509,22 +482,8 @@ pub(crate) fn conversation_by_id(
 /// A `conversations` row, read from its columns in `CONVERSATION_COLUMNS`.
 fn conversation_row(row: &Row<'_>) -> Result<ConversationRecord, StorageError> {
     const TABLE: &str = "conversations";
-    let provider: Option<String> = row.get("provider_id")?;
-    let model: Option<String> = row.get("model_id")?;
-    let model = match (provider, model) {
-        (Some(provider), Some(model)) => Some(ConversationModel {
-            provider: decode(TABLE, "provider_id", ProviderId::try_from(provider))?,
-            model,
-        }),
-        (None, None) => None,
-        _ => {
-            return Err(StorageError::Corrupt {
-                table: TABLE,
-                column: "model_id",
-                reason: "a provider and a model are selected together or not at all".into(),
-            });
-        }
-    };
+    let model: Option<String> = row.get("model")?;
+    let model = model.map(|text| json(TABLE, "model", &text)).transpose()?;
     Ok(ConversationRecord {
         id: decode(TABLE, "id", ConversationId::try_from(row.get::<_, String>("id")?))?,
         owner: decode(TABLE, "user_id", UserId::try_from(row.get::<_, String>("user_id")?))?,
@@ -832,14 +791,12 @@ mod tests {
 
         control.mark_conversation_read(first.id.clone(), 5).await.unwrap();
         control.mark_conversation_read(first.id.clone(), 3).await.unwrap();
-        let model = ConversationModel {
-            provider: ProviderId::try_from("entry-1").unwrap(),
-            model: "claude-opus-4-8".into(),
-        };
-        control
-            .set_conversation_model(first.id.clone(), Some(model.clone()))
+        let model = demi_agent::testing::model_of("entry-1", "claude-opus-4-8");
+        let changed = control
+            .change_conversation(first.id.clone(), RecordChange::Model(model.clone()))
             .await
             .unwrap();
+        assert_eq!(changed, ChangeOutcome::Applied);
         control.touch_conversation(first.id.clone()).await.unwrap();
         let read = control.conversation(first.id.clone()).await.unwrap().unwrap();
         assert_eq!((read.read_revision, read.model), (5, Some(model)));
@@ -848,13 +805,13 @@ mod tests {
         // A row outside its type is refused, never repaired.
         testing::execute(
             &control,
-            "UPDATE conversations SET provider_id = NULL WHERE id = ?1",
+            r#"UPDATE conversations SET model = '{"providerId":""}' WHERE id = ?1"#,
             vec![first.id.as_str().to_owned()],
         )
         .await;
         let refused = control.conversation(first.id.clone()).await.unwrap_err();
         assert!(
-            matches!(refused, StorageError::Corrupt { table: "conversations", column: "model_id", .. }),
+            matches!(refused, StorageError::Corrupt { table: "conversations", column: "model", .. }),
             "{refused}"
         );
         control.close().await.unwrap();
