@@ -240,10 +240,25 @@ thinking setting.
 
 When the request offers tools, the provider first sends the CLI an `initialize`
 control request that declares one SDK MCP server, and waits for its success,
-answering the control requests the CLI sends meanwhile; a refusal, or an exit
-before the answer, fails the run. It then writes the history as the first
-messages: earlier tool calls and their results as assistant text, user
-messages with only the user's real input, and no earlier reasoning.
+answering the control requests the CLI sends meanwhile and keeping its other
+lines, such as the `system` line it prints first, for the run; a refusal, or
+an exit before the answer, fails the run.
+
+It then writes the transcript as one user message. The CLI keeps no order
+among the lines of a history: it adds an `assistant` line to its history at
+once, and merges every `user` line into the prompt of its next turn,
+`shouldQuery: false` included, so the lines `[user, assistant, user]` reach
+the vendor as `[assistant, user + user]` (Claude Code 2.1.283). The one
+message holds the transcript as text in order. Each speaker's part opens with
+`User:` or `Assistant:`, and a blank line separates the parts: the user's
+messages and steers with only the user's real input, their images and
+documents as blocks in their places; the model's text; its earlier tool calls
+and their results in its own words; and no earlier reasoning, whose signatures
+do not hold for a new process. The user's new input is the last part. For
+example, the process that starts after a Stop receives `User: Write a long
+answer.`, `Assistant: The long answer begins` and `User: Answer briefly
+instead.` as one text. A transcript of the user's input alone, as at a
+conversation's first request, is written as that input.
 
 **Continuing.** A kept process receives only what the transcript gained since
 its last request: the new user messages, steers included. The provider closes
@@ -266,7 +281,15 @@ calls, named without the `mcp__<server>__` prefix the CLI gives tools it
 reaches over MCP. The `result` line ends the request: the run ends with a
 response carrying the usage of the CLI's last API call (the result's own usage
 when it lists no calls), or with an error when the CLI reports one, shown as
-the CLI worded it. That error's usage is not recorded: a run that fails ends
+the CLI worded it. For a call the vendor refused, the CLI first prints a made-up
+`assistant` line that carries `error` and whose text repeats the failure; that
+line gives no events, so the failure shows once. When the `result` names the
+vendor's HTTP status (`api_error_status`), the failure's code comes from that
+status by the rules of an HTTP failure
+([Failures and recovery](../agent/failures-and-recovery.md)), because the CLI
+words every refused call `API Error: <status> …`, which its words alone would
+read as `overloaded`; otherwise its words decide. That error's usage is not
+recorded: a run that fails ends
 with its error and carries no usage, so the
 [usage ledger](usage-and-quota.md#usage-ledger) has no row for it, while the
 account's quota still shows what the vendor counted. An `error` line, a failure
@@ -337,7 +360,8 @@ no second MCP transport.
 The process is kept between turns ([Where it runs](#where-it-runs) says what
 that means for the Cloud). A run takes the process while it runs and hands it
 back to the runtime only where the conversation can continue in it; every other
-exit ends it.
+exit ends it. It hands the process back before the run's last event, because
+the agent stops reading a run at its failure.
 
 | Situation | What happens | The process |
 |---|---|---|
@@ -405,9 +429,13 @@ a failed installation. The routes are listed in
   with that account's token.
 - A conversation on a paired device infers through the user's Cloud, and the
   account's token never reaches the paired device.
-- A real CLI, driven by hand during acceptance, completes a two-tool batch and
-  its continuation, and its transcript shows every tool call arriving as an SDK
-  MCP `tools/call`. The same transcript shows how a new process takes the
-  replayed history, what a batch's results sent together with a steer make the
-  CLI print (one `result` or two), and which lines report rate limits, in which
-  units ([Vendor quota](usage-and-quota.md#claude-code)).
+- The real CLI, against a scripted vendor, does what the product relies on in
+  the Claude Code suite
+  ([Real machine acceptance](../delivery/scenarios.md#real-machine-acceptance)).
+- A real account, driven by hand during acceptance, runs against the vendor:
+  its setup token installs the CLI from the official distribution and passes
+  **Test connection**, a message and a two-tool batch complete, and the wire
+  trace shows what a batch's results sent together with a steer make the CLI
+  print (one `result` or two) and which lines report rate limits, in which
+  units ([Vendor quota](usage-and-quota.md#claude-code)); **Refresh usage**
+  probes the account's quota.

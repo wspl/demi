@@ -206,3 +206,34 @@ async fn the_clis_own_failures_are_worded_as_it_worded_them_and_classified_by_th
     .await;
     assert_eq!(failure(&events).message, "Claude Code returned an error");
 }
+
+#[tokio::test(flavor = "local")]
+async fn a_call_the_vendor_refused_fails_the_run_once_with_the_code_of_its_http_status() {
+    // The CLI makes up an assistant message for the refused call, which
+    // repeats what its result reports.
+    let refused = |status: u16, words: &str| {
+        let message = format!("API Error: {status} {words}");
+        vec![
+            json!({ "type": "assistant", "error": "unknown", "message": {
+                "model": "<synthetic>", "content": [{ "type": "text", "text": message }] } }),
+            json!({ "type": "result", "subtype": "success", "is_error": true, "result": message,
+                "api_error_status": status }),
+        ]
+    };
+    let (events, signals) = answer(refused(400, "The request is refused.")).await;
+    let failed = failure(&events);
+    assert_eq!(failed.message, "API Error: 400 The request is refused.");
+    assert_eq!(failed.code, None, "a refused request is not retried");
+    let status = failed.diagnostics.as_ref().and_then(|diagnostics| diagnostics.http_status);
+    assert_eq!(status, Some(400));
+    assert!(signals.is_empty());
+    for (status, words, code) in [
+        (400, "prompt is too long: 250000 tokens", ErrorCode::ContextLengthExceeded),
+        (401, "OAuth token has expired", ErrorCode::AuthExpired),
+        (429, "Too many requests", ErrorCode::RateLimit),
+        (529, "Overloaded", ErrorCode::Overloaded),
+    ] {
+        let (events, _) = answer(refused(status, words)).await;
+        assert_eq!(failure(&events).code, Some(code), "{status} {words}");
+    }
+}

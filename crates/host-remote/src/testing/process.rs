@@ -3,13 +3,13 @@
 //! URL. It prints its pairing codes when it waits to be paired, and keeps
 //! its device token in its state across restarts.
 
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use demi_command_service::testing::built_program;
+use demi_shell::SpawnEnv;
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::process::Child;
 use tokio::sync::watch;
@@ -40,8 +40,11 @@ pub fn native_fixture_binary() -> PathBuf {
 pub struct RunnerProcessOptions {
     /// The device name the runner reports.
     pub name: String,
-    /// Variables of the runner's own environment: the device's.
-    pub env: BTreeMap<String, String>,
+    /// The runner's own environment, the device's: the test process's
+    /// (`Inherit`), with changes (`Overlay`), or exactly these variables, as
+    /// a Cloud's image gives its runner (`Exactly`). The runner's home, state
+    /// and name are set on top.
+    pub env: SpawnEnv,
     /// A device token in its state, so it connects as that device instead
     /// of waiting to be paired.
     pub token: Option<String>,
@@ -54,7 +57,7 @@ impl Default for RunnerProcessOptions {
     fn default() -> Self {
         Self {
             name: "fixture".into(),
-            env: BTreeMap::new(),
+            env: SpawnEnv::Inherit,
             token: None,
             managed: false,
         }
@@ -254,10 +257,23 @@ fn write_token(state: &Path, token: &str) {
 /// backend.
 fn runner_command(home: &str, state: &Path, backend: &str, options: &RunnerProcessOptions) -> tokio::process::Command {
     let mut command = tokio::process::Command::new(runner_binary());
+    match &options.env {
+        SpawnEnv::Inherit => {}
+        SpawnEnv::Exactly(variables) => {
+            command.env_clear().envs(variables);
+        }
+        SpawnEnv::Overlay(changes) => {
+            for (name, value) in changes {
+                match value {
+                    Some(value) => command.env(name, value),
+                    None => command.env_remove(name),
+                };
+            }
+        }
+    }
     command
         .args(["run", "--backend", backend])
         .current_dir(home)
-        .envs(&options.env)
         .env("HOME", home)
         .env("USERPROFILE", home)
         .env("DEMI_HOME", state)

@@ -8,7 +8,9 @@ use bytes::Bytes;
 use demi_core::{B64Bytes, MediaSource, ThinkingConfig, TokenUsage, UserContentBlock};
 use demi_provider::credentials::MemoryCredentialPool;
 use demi_provider::quota::MemorySnapshots;
-use demi_provider::{ErrorCode, InferenceItem, InferenceRequest, ProviderEvent, ProviderFailure};
+use demi_provider::{
+    ErrorCode, InferenceItem, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun,
+};
 use demi_provider_claude_code::{ClaudeCodeConfig, ClaudeCodeProvider};
 use demi_shell::{ProcessEnd, Signal, SpawnEnv, SpawnRequest};
 use serde_json::{Value, json};
@@ -38,6 +40,20 @@ fn failure(event: &ProviderEvent) -> &ProviderFailure {
         ProviderEvent::Error(failure) => failure,
         other => panic!("expected a failure, got {other:?}"),
     }
+}
+
+/// The events of `run` to its first failure, read as the agent reads a run:
+/// it drops the run at the failure.
+async fn as_the_agent_reads(mut run: ProviderRun<'_>) -> Vec<ProviderEvent> {
+    let mut events = Vec::new();
+    while let Some(event) = next_event(&mut run).await {
+        let failed = matches!(event, ProviderEvent::Error(_));
+        events.push(event);
+        if failed {
+            break;
+        }
+    }
+    events
 }
 
 #[tokio::test(flavor = "local")]
@@ -161,6 +177,46 @@ async fn a_process_is_never_started_without_the_accounts_token_or_when_the_place
     assert_eq!(failed.code, None);
 }
 
+// 0.04 s. The run goes on its own thread and runtime: a
+// run that spun on the line it kept would never yield to a guard in its own
+// runtime, so the test waits for its answer from outside, and the deadline
+// only guards against that spin.
+#[test]
+fn a_line_the_cli_prints_before_answering_initialize_is_read_by_the_run_after_the_answer() {
+    let (answer, answered) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build_local(tokio::runtime::LocalOptions::default())
+            .expect("a runtime for the run");
+        let events = runtime.block_on(async {
+            let provider = provider().await;
+            let (placement, mut starts) = ScriptedPlacement::new();
+            let mut runtime = runtime_of(&provider, &placement);
+            let (events, ()) = tokio::join!(all_events(runtime.run(request(vec![user("hi")]))), async {
+                let mut cli = starts.next().await;
+                let initialize = cli.read().await;
+                // The CLI tells its commands before it answers.
+                cli.say(json!({ "type": "system", "subtype": "commands_changed", "commands": [] }));
+                cli.say(json!({
+                    "type": "control_response",
+                    "response": { "subtype": "success", "request_id": initialize["request_id"] },
+                }));
+                assert_eq!(cli.read().await, user_line("hi"));
+                cli.text("hello");
+                cli.result(1, 1);
+            });
+            events
+        });
+        // The test gave up waiting only when this run spun.
+        let _ = answer.send(events);
+    });
+    let events = answered
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("the run answered, instead of spinning on the line it kept");
+    assert_eq!(events, [text("hello"), usage(1, 1)]);
+}
+
 #[tokio::test(flavor = "local")]
 async fn a_kept_process_receives_only_what_the_transcript_gained_until_an_edit_another_model_or_new_tools_restart_it()
  {
@@ -208,22 +264,20 @@ async fn a_kept_process_receives_only_what_the_transcript_gained_until_an_edit_a
     assert!(cli.signals().is_empty());
 
     // An edit of the first message: the process is closed and a new one
-    // replays the transcript.
+    // receives the transcript as one message.
     let mut edited = second.clone();
     edited[0] = user("do other work");
-    let (events, replayed) = tokio::join!(all_events(runtime.run(request(edited))), async {
+    let (events, mut replayed) = tokio::join!(all_events(runtime.run(request(edited))), async {
         let mut replayed = starts.next().await;
         replayed.initialized().await;
-        assert_eq!(replayed.read().await, user_line("do other work"));
-        let assistant = replayed.read().await;
         assert_eq!(
-            assistant,
-            json!({ "type": "assistant", "message": { "role": "assistant", "content": [{ "type": "text", "text": "one" }] } })
+            replayed.read().await,
+            user_line("User: do other work\n\nAssistant: one\n\nUser: second question")
         );
-        assert_eq!(replayed.read().await, user_line("second question"));
         replayed.result(1, 1);
         replayed
     });
+    assert!(replayed.unread().is_empty());
     assert_eq!(events, [usage(1, 1)]);
     assert_eq!(cli.signals(), [Signal::Terminate]);
     assert_eq!(cli.end(), Some(ProcessEnd::Signalled("SIGTERM".into())));
@@ -244,9 +298,7 @@ async fn a_kept_process_receives_only_what_the_transcript_gained_until_an_edit_a
                     .windows(2)
                     .any(|pair| pair == ["--model", "claude-other"])
             );
-            for _ in 0..3 {
-                other.read().await;
-            }
+            other.read().await;
             other.result(1, 1);
             other
         }
@@ -259,9 +311,7 @@ async fn a_kept_process_receives_only_what_the_transcript_gained_until_an_edit_a
         async {
             let mut offered = starts.next().await;
             offered.initialized().await;
-            for _ in 0..3 {
-                offered.read().await;
-            }
+            offered.read().await;
             offered.result(1, 1);
         }
     );
@@ -271,7 +321,7 @@ async fn a_kept_process_receives_only_what_the_transcript_gained_until_an_edit_a
 }
 
 #[tokio::test(flavor = "local")]
-async fn a_new_process_replays_tool_calls_as_assistant_text_and_user_messages_as_the_users_input() {
+async fn a_new_process_receives_the_transcript_as_one_user_message_that_names_each_speaker() {
     let provider = provider().await;
     let (placement, mut starts) = ScriptedPlacement::new();
     let mut runtime = runtime_of(&provider, &placement);
@@ -299,26 +349,25 @@ async fn a_new_process_replays_tool_calls_as_assistant_text_and_user_messages_as
         tool_result("tool-1", "/tmp"),
         user("continue"),
     ];
-    let (events, ()) = tokio::join!(all_events(runtime.run(request(items))), async {
+    let (events, mut cli) = tokio::join!(all_events(runtime.run(request(items))), async {
         let mut cli = starts.next().await;
         cli.initialized().await;
-        let with_image = json!({ "type": "user", "message": { "role": "user", "content": [
-            { "type": "text", "text": "previous work" },
+        // The image stays in its place; the reasoning is left out; the tool
+        // call and its result are the model's own words.
+        let transcript = json!({ "type": "user", "message": { "role": "user", "content": [
+            { "type": "text", "text": "User: previous work" },
             { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "cG5n" } },
+            { "type": "text", "text": concat!(
+                "Assistant: [Earlier in this conversation I called the tool shell_exec with input: {\"script\":\"pwd\"}.",
+                "\n\nIt returned from shell_exec: /tmp]\n\nUser: continue",
+            ) },
         ] } });
-        assert_eq!(cli.read().await, with_image);
-        let narrative = json!({
-            "type": "assistant",
-            "message": { "role": "assistant", "content": [
-                { "type": "text", "text": "[Earlier in this conversation I called the tool shell_exec with input: {\"script\":\"pwd\"}." },
-                { "type": "text", "text": "It returned from shell_exec: /tmp]" },
-            ] },
-        });
-        assert_eq!(cli.read().await, narrative);
-        assert_eq!(cli.read().await, user_line("continue"));
+        assert_eq!(cli.read().await, transcript);
         cli.result(3, 1);
+        cli
     });
     assert_eq!(events, [usage(3, 1)]);
+    assert!(cli.unread().is_empty());
 }
 
 #[tokio::test(flavor = "local")]
@@ -520,7 +569,7 @@ async fn the_clis_error_ends_the_turn_and_keeps_the_process_while_a_broken_line_
         "usage": { "input_tokens": 200000, "output_tokens": 0 },
     });
     let (events, mut cli) = tokio::join!(
-        all_events(runtime.run(request_without_tools(vec![user("huge")]))),
+        as_the_agent_reads(runtime.run(request_without_tools(vec![user("huge")]))),
         async {
             let mut cli = starts.next().await;
             cli.read().await;

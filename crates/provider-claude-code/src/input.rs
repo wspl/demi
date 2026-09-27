@@ -1,8 +1,8 @@
 //! What Demi writes to the CLI's standard input (`claude-code.md` §
 //! Requests over stream-json): the `initialize` control request that
-//! declares the SDK MCP server, the history a new process starts from, the
-//! user messages a kept process gains, and the answers to the CLI's control
-//! requests. Each is one JSON line.
+//! declares the SDK MCP server, the transcript a new process starts from,
+//! the user messages a kept process gains, and the answers to the CLI's
+//! control requests. Each is one JSON line.
 
 use std::borrow::Cow;
 
@@ -20,9 +20,6 @@ pub(crate) const MCP_SERVER: &str = "main";
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(crate) enum Input<'a> {
     User {
-        message: Message<'a>,
-    },
-    Assistant {
         message: Message<'a>,
     },
     ControlRequest {
@@ -79,6 +76,17 @@ enum Role {
     Assistant,
 }
 
+impl Role {
+    /// How the transcript a new process starts from names the speaker of a
+    /// part.
+    fn speaker(self) -> &'static str {
+        match self {
+            Self::User => "User:",
+            Self::Assistant => "Assistant:",
+        }
+    }
+}
+
 /// A content block, as the Messages API spells it.
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -114,21 +122,42 @@ pub(crate) fn line(input: &Input<'_>) -> Vec<u8> {
     line
 }
 
-/// The history a new process starts from, as its first messages. Earlier
-/// tool calls and their results become assistant text, since replaying a
-/// structured tool call into a new SDK MCP session makes the vendor refuse
-/// the request; a user message holds only what the user sent; earlier
-/// reasoning is left out, since its signatures do not hold for a new
-/// process. Consecutive items of one role are one message.
-pub(crate) fn history(items: &[InferenceItem]) -> Result<Vec<u8>, UnloadedMedia> {
-    let mut messages: Vec<Message<'_>> = Vec::new();
+/// The transcript as the one user message a new process starts from
+/// (`claude-code.md` § Starting): the CLI keeps no order among the lines of
+/// a history, so the transcript is written as text in order, each speaker's
+/// part opening with `User:` or `Assistant:`. A user's part holds only the
+/// user's real input, with images and documents as blocks in their places;
+/// earlier tool calls and their results are the model's own words, since a
+/// structured tool call replayed into a new SDK MCP session makes the vendor
+/// refuse the request; earlier reasoning is left out, since its signatures do
+/// not hold for a new process. A transcript of the user's input alone is
+/// written as that input.
+pub(crate) fn transcript(items: &[InferenceItem]) -> Result<Vec<u8>, UnloadedMedia> {
+    let mut parts = parts(items)?;
+    let input_alone = matches!(parts.as_slice(), [only] if only.role == Role::User);
+    let content = if input_alone {
+        parts.pop().map(|part| part.content).unwrap_or_default()
+    } else {
+        spoken(parts)
+    };
+    let message = Message {
+        role: Role::User,
+        content,
+    };
+    Ok(line(&Input::User { message }))
+}
+
+/// The transcript's parts: the items of one speaker in a row, each as the
+/// content blocks it becomes, without the parts that become none.
+fn parts(items: &[InferenceItem]) -> Result<Vec<Message<'_>>, UnloadedMedia> {
+    let mut parts: Vec<Message<'_>> = Vec::new();
     for item in items {
         match item {
             InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content } => {
-                append(&mut messages, Role::User, user_content(content)?);
+                append(&mut parts, Role::User, user_content(content)?);
             }
             InferenceItem::AssistantText { text, .. } if !text.is_empty() => {
-                append(&mut messages, Role::Assistant, vec![text_block(text)]);
+                append(&mut parts, Role::Assistant, vec![text_block(text)]);
             }
             InferenceItem::ToolUse {
                 tool_name, input, ..
@@ -136,11 +165,7 @@ pub(crate) fn history(items: &[InferenceItem]) -> Result<Vec<u8>, UnloadedMedia>
                 let text = format!(
                     "[Earlier in this conversation I called the tool {tool_name} with input: {input}."
                 );
-                append(
-                    &mut messages,
-                    Role::Assistant,
-                    vec![Block::Text { text: text.into() }],
-                );
+                append(&mut parts, Role::Assistant, vec![Block::Text { text: text.into() }]);
             }
             InferenceItem::ToolResult {
                 tool_use_id,
@@ -156,26 +181,56 @@ pub(crate) fn history(items: &[InferenceItem]) -> Result<Vec<u8>, UnloadedMedia>
                 } else {
                     format!("It returned{from}: {body}]")
                 };
-                append(
-                    &mut messages,
-                    Role::Assistant,
-                    vec![Block::Text { text: text.into() }],
-                );
+                append(&mut parts, Role::Assistant, vec![Block::Text { text: text.into() }]);
             }
             InferenceItem::AssistantText { .. }
             | InferenceItem::AssistantThinking { .. }
             | InferenceItem::AssistantRedactedThinking { .. } => {}
         }
     }
-    let mut lines = Vec::new();
-    for message in messages {
-        let input = match message.role {
-            Role::User => Input::User { message },
-            Role::Assistant => Input::Assistant { message },
-        };
-        lines.extend(line(&input));
+    Ok(parts)
+}
+
+/// `parts` as the content of one message: their text in order, each part
+/// opening with its speaker, a blank line between parts and between the
+/// texts of a part; an image or a document stays a block in its place.
+fn spoken(parts: Vec<Message<'_>>) -> Vec<Block<'_>> {
+    let mut content = Vec::new();
+    let mut text = String::new();
+    for part in parts {
+        if !text.is_empty() {
+            text.push_str("\n\n");
+        }
+        text.push_str(part.role.speaker());
+        // Whether the text ends with the speaker's name, which the part's
+        // first text follows on its line.
+        let mut named = true;
+        for block in part.content {
+            let Block::Text { text: piece } = block else {
+                if !text.is_empty() {
+                    content.push(Block::Text {
+                        text: Cow::Owned(std::mem::take(&mut text)),
+                    });
+                }
+                content.push(block);
+                named = false;
+                continue;
+            };
+            if named {
+                text.push(' ');
+            } else if !text.is_empty() {
+                text.push_str("\n\n");
+            }
+            text.push_str(&piece);
+            named = false;
+        }
     }
-    Ok(lines)
+    if !text.is_empty() {
+        content.push(Block::Text {
+            text: Cow::Owned(text),
+        });
+    }
+    content
 }
 
 /// Adds `blocks` to the last message when it has `role`, else as a new
