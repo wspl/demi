@@ -95,7 +95,7 @@ export function applyConversationEvent(
       id: status.commandId,
       // The transcript names the command by its script; the shell id is the fallback.
       name: current?.name ?? callScript(blocks, status.toolUseId) ?? status.shellId,
-      phase: status.status === 'running' ? 'running' : 'exited',
+      phase: status.status,
       startedAt:
         current?.startedAt ?? new Date(Date.now() - status.runningMs).toISOString(),
       ...(status.status !== 'running'
