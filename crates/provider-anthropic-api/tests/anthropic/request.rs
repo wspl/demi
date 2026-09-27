@@ -160,7 +160,7 @@ async fn a_session_request_marks_its_shared_prefix_the_latest_answered_request_a
     let model = || "model-a".to_owned();
     let mut items = vec![
         InferenceItem::UserMessage { content: text("check every file") },
-        InferenceItem::AssistantThinking { model_id: model(), text: "plan".into(), signature: Some("anthropic:sig-1".into()) },
+        InferenceItem::AssistantThinking { model_id: model(), text: "plan".into(), signature: Some("anthropic:sig-1".into()), kept_past_summary: false },
         InferenceItem::AssistantText { model_id: model(), text: "Reading them all".into() },
     ];
     for call in 0..12 {
@@ -309,24 +309,31 @@ async fn thinking_maps_onto_a_budget_or_adaptive_thinking_at_an_effort() {
 }
 
 #[tokio::test]
-async fn thinking_is_sent_back_only_when_this_provider_received_it() {
+async fn thinking_is_sent_back_only_when_this_provider_received_it_and_no_summary_replaced_its_history() {
     let model = || "claude-opus-4-8".to_owned();
     let body = body(
         vec![
+            // Reasoning compaction kept after a summary would fail the
+            // vendor's check of the history before it.
+            InferenceItem::UserMessage { content: text("Previous conversation summary:\nthe user said hello") },
+            InferenceItem::AssistantThinking { model_id: model(), text: "kept".into(), signature: Some("anthropic:sig-0".into()), kept_past_summary: true },
+            InferenceItem::AssistantRedactedThinking { model_id: model(), data: "anthropic:kept-opaque".into(), kept_past_summary: true },
+            InferenceItem::AssistantText { model_id: model(), text: "hello".into() },
             InferenceItem::UserMessage { content: text("hi") },
-            InferenceItem::AssistantThinking { model_id: model(), text: "plan".into(), signature: Some("anthropic:sig-1".into()) },
-            InferenceItem::AssistantThinking { model_id: model(), text: "theirs".into(), signature: Some("google:sig-2".into()) },
-            InferenceItem::AssistantThinking { model_id: model(), text: "unsigned".into(), signature: None },
-            InferenceItem::AssistantRedactedThinking { model_id: model(), data: "anthropic:opaque".into() },
-            InferenceItem::AssistantRedactedThinking { model_id: model(), data: "opaque-elsewhere".into() },
+            InferenceItem::AssistantThinking { model_id: model(), text: "plan".into(), signature: Some("anthropic:sig-1".into()), kept_past_summary: false },
+            InferenceItem::AssistantThinking { model_id: model(), text: "theirs".into(), signature: Some("google:sig-2".into()), kept_past_summary: false },
+            InferenceItem::AssistantThinking { model_id: model(), text: "unsigned".into(), signature: None, kept_past_summary: false },
+            InferenceItem::AssistantRedactedThinking { model_id: model(), data: "anthropic:opaque".into(), kept_past_summary: false },
+            InferenceItem::AssistantRedactedThinking { model_id: model(), data: "opaque-elsewhere".into(), kept_past_summary: false },
             InferenceItem::ToolUse { model_id: model(), tool_use_id: "toolu-1".into(), tool_name: "ls".into(), input: json!({}) },
         ],
         None,
         None,
     )
     .await;
+    assert_eq!(body["messages"][1], json!({ "role": "assistant", "content": [{ "type": "text", "text": "hello" }] }));
     assert_eq!(
-        body["messages"][1],
+        body["messages"][3],
         json!({ "role": "assistant", "content": [
             { "type": "thinking", "thinking": "plan", "signature": "sig-1" },
             { "type": "redacted_thinking", "data": "opaque" },
