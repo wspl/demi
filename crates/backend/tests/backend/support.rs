@@ -315,17 +315,20 @@ impl Harness {
 
     /// Conversations whose user streams bind to the runner's native test
     /// fixture: `echo` answers what the page sends, `where` reports its
-    /// context and directory.
+    /// context and directory, `retain` makes the resident service hold the
+    /// conversation, as the browser service holds a conversation's Chrome
+    /// until its release, and `held` answers what the service holds.
     pub fn with_native_fixture(mut self) -> Self {
         let package = FIXTURE.descriptor.id.clone();
         let stream = |operation: &str| NativeOperation {
             package: package.clone(),
             operation: operation.into(),
         };
-        self.user_streams = Some(BTreeMap::from([
-            ("echo".to_owned(), stream("echo")),
-            ("where".to_owned(), stream("where")),
-        ]));
+        self.user_streams = Some(
+            ["echo", "where", "retain", "held"]
+                .map(|name| (name.to_owned(), stream(name)))
+                .into(),
+        );
         self.release = Some(&*FIXTURE);
         self
     }
