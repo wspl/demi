@@ -25,6 +25,8 @@ pub use config::{
     BackendConfig, CloudTuning, Config, ConfigError, ConversationTuning, ExposeTuning, LifecycleTuning, RunnerTuning,
 };
 pub use expose::{ExposeDomain, NotExposeDomain};
+#[cfg(feature = "testing")]
+pub use managed::client::{MachinesClient, MachinesError};
 pub use llm::families::{
     AccountBinding, ApiKeyArgs, FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily,
     SubscriptionArgs,

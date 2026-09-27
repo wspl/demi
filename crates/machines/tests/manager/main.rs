@@ -1,10 +1,10 @@
-//! The manager as a process (`managed-hosts.md` § Startup and recovery): the
-//! built executable, started the way its unit starts it, in a stand-in
-//! execution host. Root runs these with `--ignored`. They leave the machine
-//! as they found it: the host is PID 1 of new PID, mount and network
-//! namespaces with its own `/proc`, `/run` and cgroup root, so the managers'
-//! namespace handle, locks and firewall exist only there, and its end kills
-//! everything inside.
+//! The manager as a process (`managed-hosts.md` § Startup and recovery,
+//! § Resource limits): the built executable, started the way its unit starts
+//! it, in a stand-in execution host. Root runs these with `--ignored`. They
+//! leave the machine as they found it: the host is PID 1 of new PID, mount and
+//! network namespaces with its own `/proc`, `/run` and cgroup root, so the
+//! managers' namespace handle, locks, firewall and cgroups exist only there,
+//! and its end kills everything inside.
 #![cfg(target_os = "linux")]
 
 use std::{
@@ -37,15 +37,50 @@ const OWNER: &str = "mount-namespace-owner.json";
 const READY_DEADLINE: Duration = Duration::from_secs(60);
 
 /// The host's init: the host's mounts are shared, as systemd's are, and its
-/// `/run` is its own. Its cgroup root is a stand-in that offers the
-/// controllers the manager enables, since no sandbox runs here.
+/// `/run` is its own. So is its cgroup root, which `cgroups` prepares.
 const INIT: &str = "set -e
 mount --make-rshared /
 mount -t tmpfs -o mode=0755 tmpfs /run
-mount -t tmpfs tmpfs /sys/fs/cgroup
-echo 'cpu memory pids' > /sys/fs/cgroup/cgroup.controllers
+eval \"$1\"
 echo ready
 exec sleep infinity";
+
+/// The stand-in host's cgroup root.
+#[derive(Clone, Copy)]
+enum Cgroups {
+    /// One that offers the controllers the limits need; no sandbox runs, so
+    /// a stand-in that takes the manager's writes does.
+    Offered,
+    /// No cgroup hierarchy at all, and nothing can be created there.
+    Absent,
+}
+
+impl Cgroups {
+    fn mount(self) -> &'static str {
+        match self {
+            Self::Offered => {
+                "mount -t tmpfs tmpfs /sys/fs/cgroup && echo 'cpu memory pids' > /sys/fs/cgroup/cgroup.controllers"
+            }
+            Self::Absent => "mount -t tmpfs -o ro tmpfs /sys/fs/cgroup",
+        }
+    }
+}
+
+/// The CPU the stand-in host's mount namespace and every manager's are made
+/// on. Linux 6.18 numbers namespaces from per-CPU batches (`gen_cookie_next`
+/// in `kernel/nstree.c`), so a namespace made after the host's, but on
+/// another CPU, can get the lower number, and `mnt_ns_loop` in
+/// `fs/namespace.c` then refuses to bind it into the host's namespace, which
+/// fails the manager's pin at random. Namespaces made on one CPU are numbered
+/// in the order they are made. A real host's namespace is the initial one,
+/// numbered before all others (`managed-hosts.md` § Startup and recovery).
+fn namespace_cpu() -> String {
+    let allowed = rustix::thread::sched_getaffinity(None).unwrap();
+    (0..rustix::thread::CpuSet::MAX_CPU)
+        .find(|cpu| allowed.is_set(*cpu))
+        .expect("the test may run on some CPU")
+        .to_string()
+}
 
 /// A mount namespace's identity: its device and inode.
 type Namespace = (u64, u64);
@@ -104,10 +139,13 @@ struct Host {
 }
 
 impl Host {
-    fn start() -> Self {
-        let mut unshare = Command::new("unshare")
+    fn start(cgroups: Cgroups) -> Self {
+        // On one CPU with every manager's namespace, so the host's gets the
+        // lower number (`namespace_cpu`: kernel/nstree.c, mnt_ns_loop).
+        let mut unshare = Command::new("taskset")
+            .args(["--cpu-list", &namespace_cpu(), "unshare"])
             .args(["--mount", "--net", "--pid", "--fork", "--mount-proc", "--kill-child"])
-            .args(["--", "sh", "-c", INIT])
+            .args(["--", "sh", "-c", INIT, "init", cgroups.mount()])
             .stdout(Stdio::piped())
             .spawn()
             .expect("unshare from util-linux");
@@ -137,7 +175,11 @@ impl Host {
             .arg(format!("--mount=/proc/{unshare}/ns/mnt"))
             .arg(format!("--net=/proc/{unshare}/ns/net"))
             .arg(format!("--pid=/proc/{unshare}/ns/pid_for_children"))
-            .args(["--", "unshare", "--mount", "--propagation", "slave", "--", MANAGER])
+            // On the host's CPU, so this namespace gets the higher number and
+            // the manager can pin it (`namespace_cpu`: kernel/nstree.c,
+            // mnt_ns_loop).
+            .args(["--", "taskset", "--cpu-list", &namespace_cpu()])
+            .args(["unshare", "--mount", "--propagation", "slave", "--", MANAGER])
             .args(args)
             .env_clear()
             .envs(settings.variables.iter().map(|(name, value)| (name, value)))
@@ -189,9 +231,16 @@ struct Manager {
     pid: Pid,
 }
 
+/// How a start ended: in readiness, or in an exit before it.
+enum Start {
+    Ready,
+    Exited(std::process::ExitStatus, String),
+}
+
 impl Manager {
-    /// Waits for the readiness the unit's Type=notify waits for.
-    fn wait_ready(&mut self, notify: &UnixDatagram) {
+    /// Waits for the readiness the unit's Type=notify waits for, or for the
+    /// manager to exit first.
+    fn start(&mut self, notify: &UnixDatagram) -> Start {
         notify.set_read_timeout(Some(Duration::from_millis(100))).unwrap();
         let deadline = Instant::now() + READY_DEADLINE;
         let mut message = [0; 256];
@@ -200,17 +249,34 @@ impl Manager {
                 Ok(length) => {
                     let text = std::str::from_utf8(&message[..length]).unwrap();
                     if text.lines().any(|line| line == "READY=1") {
-                        return;
+                        return Start::Ready;
                     }
                 }
                 Err(error) if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {}
                 Err(error) => panic!("reading readiness: {error}"),
             }
             if let Some(status) = self.nsenter.try_wait().unwrap() {
-                panic!("the manager exited {status} before it was ready: {}", stderr(&mut self.nsenter));
+                return Start::Exited(status, stderr(&mut self.nsenter));
             }
-            assert!(Instant::now() < deadline, "the manager was not ready within {READY_DEADLINE:?}");
+            assert!(Instant::now() < deadline, "the manager neither became ready nor exited within {READY_DEADLINE:?}");
         }
+    }
+
+    /// Waits for readiness; an exit before it fails the test.
+    fn wait_ready(&mut self, notify: &UnixDatagram) {
+        if let Start::Exited(status, errors) = self.start(notify) {
+            panic!("the manager exited {status} before it was ready: {errors}");
+        }
+    }
+
+    /// Stops the manager as its unit does, with SIGTERM, and answers what it
+    /// wrote to its standard error.
+    fn stop(mut self) -> String {
+        kill_process(self.pid, Signal::TERM).unwrap();
+        let errors = stderr(&mut self.nsenter);
+        let status = self.nsenter.wait().unwrap();
+        assert!(status.success(), "the manager's stop exited {status}: {errors}");
+        errors
     }
 
     fn namespace(&self) -> Namespace {
@@ -242,7 +308,7 @@ fn the_next_start_recovers_and_releases_a_killed_managers_namespace() {
     let image = CloudImage::new(&entries(), &[RUNNER, TINI], Architecture::host().unwrap());
     let settings = Settings::new(directory.path(), image.path());
     let notify = UnixDatagram::bind(&settings.notify).unwrap();
-    let host = Host::start();
+    let host = Host::start(Cgroups::Offered);
 
     let mut first = host.manager(&settings, &[]);
     first.wait_ready(&notify);
@@ -264,4 +330,46 @@ fn the_next_start_recovers_and_releases_a_killed_managers_namespace() {
     assert!(status.success(), "the stop-post recovery exited {status}: {errors}");
     assert_eq!(host.handle(), None, "the stop-post recovery released the handle");
     assert!(!host.runtime_file(OWNER).exists());
+}
+
+/// With the resource limits on, as by default, a host without the cgroup v2
+/// controllers stops the start before readiness, with an error that names
+/// every controller it lacks.
+#[test]
+#[ignore = "needs root: run the Linux suite with --ignored as root"]
+fn a_start_with_the_limits_on_fails_naming_each_cgroup_controller_the_host_lacks() {
+    let directory = tempfile::tempdir().unwrap();
+    let image = CloudImage::new(&entries(), &[RUNNER, TINI], Architecture::host().unwrap());
+    let settings = Settings::new(directory.path(), image.path());
+    let notify = UnixDatagram::bind(&settings.notify).unwrap();
+    let host = Host::start(Cgroups::Absent);
+
+    let Start::Exited(status, errors) = host.manager(&settings, &[]).start(&notify) else {
+        panic!("the manager became ready without the cgroup controllers");
+    };
+    assert!(!status.success(), "{status}");
+    assert!(errors.contains("missing: cpu, memory, pids."), "{errors}");
+    assert!(errors.contains("DEMI_MANAGED_LIMITS=off"), "{errors}");
+}
+
+/// With the resource limits off, the manager starts on a host where no
+/// cgroup can be created, and its log says the Clouds run without limits.
+#[test]
+#[ignore = "needs root: run the Linux suite with --ignored as root"]
+fn a_start_with_the_limits_off_needs_no_cgroup_and_says_so() {
+    let directory = tempfile::tempdir().unwrap();
+    let image = CloudImage::new(&entries(), &[RUNNER, TINI], Architecture::host().unwrap());
+    let mut settings = Settings::new(directory.path(), image.path());
+    settings.variables.push(("DEMI_MANAGED_LIMITS", "off".to_owned()));
+    let notify = UnixDatagram::bind(&settings.notify).unwrap();
+    let host = Host::start(Cgroups::Absent);
+
+    let mut manager = host.manager(&settings, &[]);
+    manager.wait_ready(&notify);
+    let errors = manager.stop();
+    assert!(
+        errors.contains("DEMI_MANAGED_LIMITS=off: Clouds run without CPU, memory or PID limits"),
+        "{errors}"
+    );
+    assert!(errors.contains("resource limits off"), "{errors}");
 }

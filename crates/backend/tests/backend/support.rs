@@ -216,8 +216,16 @@ pub struct Harness {
     user_streams: Option<BTreeMap<String, NativeOperation>>,
     pub lifecycle: LifecycleTuning,
     pub cloud: CloudTuning,
-    /// Runs the Clouds of every backend this harness starts.
+    /// Runs the Clouds of every backend this harness starts, unless
+    /// `machines` names a real manager.
     pub manager: ScriptedManager,
+    /// A real machine manager's socket, which the backends use instead of
+    /// the scripted manager's (`scenarios.md` § Cloud suite).
+    pub machines: Option<PathBuf>,
+    /// A native configuration whose releases the backends load
+    /// (`native-runtime.md` § Backend deployment configuration), instead of
+    /// a package the workspace built.
+    pub native: Option<PathBuf>,
     expose_domain: Option<ExposeDomain>,
     pub exposes: ExposeTuning,
 }
@@ -256,6 +264,8 @@ impl Harness {
             lifecycle: LifecycleTuning::default(),
             cloud: CloudTuning::default(),
             manager: ScriptedManager::start(),
+            machines: None,
+            native: None,
             expose_domain: None,
             exposes: ExposeTuning::default(),
         }
@@ -406,7 +416,8 @@ impl Harness {
     }
 
     async fn launch(&self, address: SocketAddr, mode: InstanceMode) -> TestBackend {
-        let mut config = BackendConfig::new(self.data_dir(), address, mode, self.manager.socket().to_owned());
+        let machines = self.machines.clone().unwrap_or_else(|| self.manager.socket().to_owned());
+        let mut config = BackendConfig::new(self.data_dir(), address, mode, machines);
         config.lifecycle = self.lifecycle;
         config.cloud = self.cloud;
         config.clock = self.clock.clone();
@@ -419,8 +430,15 @@ impl Harness {
         config.runner_releases = self.runner_releases.clone();
         config.conversations = self.conversations;
         config.public_url = self.public_url.clone();
+        assert!(
+            self.release.is_none() || self.native.is_none(),
+            "a harness loads a workspace package or a native configuration, not both"
+        );
         if let Some(built) = self.release {
             config.native = built.catalog().await;
+        }
+        if let Some(native) = &self.native {
+            config.native = publish_native(native, &CancellationToken::new()).await.unwrap();
         }
         if let Some(streams) = &self.user_streams {
             config.user_streams = streams.clone();
