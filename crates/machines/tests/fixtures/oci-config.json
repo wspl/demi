@@ -6,7 +6,7 @@
   },
   "process": {
     "terminal": false,
-    "user": { "uid": 1000, "gid": 1000 },
+    "user": { "uid": 1000, "gid": 1000, "umask": 18 },
     "cwd": "/home/demi",
     "args": ["/usr/bin/tini", "--", "/usr/bin/demi-runner", "run", "--managed-boot", "/run/demi-boot.json"],
     "env": [
