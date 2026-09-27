@@ -33,15 +33,20 @@ use super::blobs::UserBlobs;
 use super::columns::{decode, json, to_json};
 use super::conversations::ConversationDb;
 
+/// What a tree store tells after each commit of a node's checkpoint, with
+/// the node: a conversation's summary reads its root's.
+pub(crate) type Saved = Rc<dyn Fn(&NodeId)>;
+
 /// One conversation's agent tree in its database, with its owner's blobs.
 pub(crate) struct SqliteTreeStore {
     db: ConversationDb,
     blobs: UserBlobs,
+    saved: Saved,
 }
 
 impl SqliteTreeStore {
-    pub(crate) fn new(db: ConversationDb, blobs: UserBlobs) -> Self {
-        Self { db, blobs }
+    pub(crate) fn new(db: ConversationDb, blobs: UserBlobs, saved: Saved) -> Self {
+        Self { db, blobs, saved }
     }
 }
 
@@ -50,6 +55,7 @@ struct SqliteSessionStore {
     db: ConversationDb,
     blobs: UserBlobs,
     node: NodeId,
+    saved: Saved,
 }
 
 /// A store failure as the agent sees it: corrupt data, or an operation that
@@ -91,6 +97,7 @@ impl AgentTreeStore for SqliteTreeStore {
             let completions = initial.carried_completions()?;
             let mut initial = initial;
             media::externalize_update(&mut initial, &self.blobs).await?;
+            let node = record.id.clone();
             self.db
                 .call(move |connection| {
                     let transaction = connection.transaction()?;
@@ -129,7 +136,9 @@ impl AgentTreeStore for SqliteTreeStore {
                     Ok(written)
                 })
                 .await
-                .map_err(store_error)?
+                .map_err(store_error)??;
+            (self.saved)(&node);
+            Ok(())
         })
     }
 
@@ -138,6 +147,7 @@ impl AgentTreeStore for SqliteTreeStore {
             db: self.db.clone(),
             blobs: self.blobs.clone(),
             node: id.clone(),
+            saved: self.saved.clone(),
         })
     }
 
@@ -267,7 +277,9 @@ impl SessionStore for SqliteSessionStore {
                     Ok(written)
                 })
                 .await
-                .map_err(store_error)?
+                .map_err(store_error)??;
+            (self.saved)(&self.node);
+            Ok(())
         })
     }
 
@@ -771,7 +783,8 @@ mod tests {
             .unwrap();
         let blobs = BlobStores::new(objects::open(data.path(), None).await.unwrap());
         let owner = demi_web_api::ids::UserId::try_from(OWNER).unwrap();
-        (SqliteTreeStore::new(stores.db(&conversation()), blobs.for_user(&owner)), stores, data)
+        let store = SqliteTreeStore::new(stores.db(&conversation()), blobs.for_user(&owner), Rc::new(|_: &NodeId| {}));
+        (store, stores, data)
     }
 
     fn conversation() -> ConversationId {
@@ -927,7 +940,7 @@ mod tests {
             .unwrap();
         let owner = demi_web_api::ids::UserId::try_from(OWNER).unwrap();
         let blobs = BlobStores::new(Arc::new(s3.client())).for_user(&owner);
-        let tree = SqliteTreeStore::new(stores.db(&conversation()), blobs);
+        let tree = SqliteTreeStore::new(stores.db(&conversation()), blobs, Rc::new(|_: &NodeId| {}));
         tree.create_node(record("root", None, 1), update(vec![(0, picture("u1", &[1, 2, 3]))], 1))
             .await
             .unwrap();

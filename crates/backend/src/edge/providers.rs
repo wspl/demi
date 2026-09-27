@@ -269,7 +269,7 @@ pub(super) async fn delete(
     configures(&services, &user)?;
     let entry = scoped(&services, &user, &id).await?;
     let _held = reserve(&services, &entry)?;
-    services.vault.delete(entry.id.clone()).await?;
+    services.vault.delete(&entry).await?;
     services.assembly.forget(&entry.id).await?;
     services.cli_installs.forget(&entry.id);
     Ok(StatusCode::NO_CONTENT)

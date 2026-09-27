@@ -12,14 +12,15 @@ use demi_provider::quota::QuotaSnapshotStore;
 use demi_web_api::ids::{CredentialId, ProviderId};
 use tokio_util::task::TaskTracker;
 
-use crate::storage::control::ControlService;
+use super::entries::Vault;
 use crate::storage::providers::CredentialRow;
 
 type Account = (ProviderId, CredentialId);
 
 /// The snapshots of every account this process uses.
 pub(crate) struct AccountQuotas {
-    control: ControlService,
+    /// Where the snapshots are stored, and whose pages see them change.
+    vault: Vault,
     /// The edge's runtime, which outlives the shards: the record writes run
     /// there, wherever the update came from.
     edge: tokio::runtime::Handle,
@@ -31,9 +32,9 @@ pub(crate) struct AccountQuotas {
 }
 
 impl AccountQuotas {
-    pub(crate) fn new(control: ControlService, edge: tokio::runtime::Handle) -> Arc<Self> {
+    pub(crate) fn new(vault: Vault, edge: tokio::runtime::Handle) -> Arc<Self> {
         Arc::new(Self {
-            control,
+            vault,
             edge,
             writes: TaskTracker::new(),
             held: Mutex::default(),
@@ -100,12 +101,19 @@ impl AccountQuotas {
                     return;
                 };
                 let (provider, id) = account;
-                if let Err(error) = quotas.control.set_credential_quota(provider, id, snapshot).await {
+                let stored = quotas
+                    .vault
+                    .control()
+                    .set_credential_quota(provider.clone(), id, snapshot)
+                    .await;
+                if let Err(error) = stored {
                     tracing::warn!(
                         error = &error as &dyn std::error::Error,
                         "an account's quota snapshot was not stored; the next probe reads it again"
                     );
+                    return;
                 }
+                quotas.vault.mark_entry_changed(&provider).await;
             },
             &self.edge,
         );

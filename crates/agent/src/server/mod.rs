@@ -108,6 +108,11 @@ pub struct ServerDeps<H: AgentHarness> {
     pub clock: Arc<dyn Clock>,
     pub ids: Rc<dyn IdSource>,
     pub config: ServerConfig,
+    /// Told the root of a live tree that started or stopped working, whose
+    /// root's phase changed, or that was disposed: a product that shows each
+    /// conversation's status reads it again (`runtime.md` § Connections and
+    /// the live tree).
+    pub status_changed: Rc<dyn Fn(&NodeId)>,
 }
 
 /// The agent server of one user shard.
@@ -303,9 +308,16 @@ impl<H: AgentHarness> AgentServer<H> {
     /// order.
     async fn dispose_tree(&self, root: &NodeId, tree: &Rc<Tree<H>>) {
         tree.dispose().await;
-        let mut trees = self.trees.borrow_mut();
-        if trees.get(root).is_some_and(|live| Rc::ptr_eq(live, tree)) {
-            trees.remove(root);
+        let removed = {
+            let mut trees = self.trees.borrow_mut();
+            let live = trees.get(root).is_some_and(|live| Rc::ptr_eq(live, tree));
+            if live {
+                trees.remove(root);
+            }
+            live
+        };
+        if removed {
+            (self.deps.status_changed)(root);
         }
     }
 

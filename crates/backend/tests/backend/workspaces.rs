@@ -60,10 +60,10 @@ async fn a_workspace_points_at_a_directory_of_the_users_device_and_stays_while_c
     let body = json!({ "kind": "device", "deviceId": laptop.id(), "path": format!("{home}/site"), "name": "site" });
     create_workspace(&backend, &master, body).await;
     assert_eq!(workspace_names(&backend, &master).await, ["notes", "site"]);
-    // The state carries them, in the same order.
-    let state: Value = backend.get("/api/state", Some(&master)).await.json();
-    assert_eq!(state["workspaces"][0]["id"], json!(notes));
-    assert_eq!(state["workspaces"][0]["path"], json!(home));
+    // The product state carries them, in the same order.
+    let state = backend.sync(&master).await.snapshot().await;
+    assert_eq!(state.workspaces[0].id.as_str(), notes);
+    assert_eq!(state.workspaces[0].path.as_str(), home);
 
     // What a creation names must be there and the user's.
     let refusals = [

@@ -41,6 +41,7 @@ use self::titles::Titles;
 use crate::backend::Services;
 use crate::shard::Shard;
 use crate::storage::tree::SqliteTreeStore;
+use crate::sync::Part;
 use crate::usage::rate_limit::RequestRateLimit;
 
 /// What a shard's conversations run on: the agent server and the title
@@ -62,13 +63,27 @@ pub(crate) fn conversation_parts(
     http: reqwest::Client,
     rate_limit: Rc<RefCell<RequestRateLimit>>,
 ) -> ConversationParts {
+    let marks = services.sync.of(&user);
     let stores: TreeStores = {
         let services = services.clone();
+        let marks = marks.clone();
         // The shard's user owns every conversation it hosts.
         let blobs = services.blobs.for_user(&user);
         Rc::new(move |root: &NodeId| {
-            let db = services.conversations.db(&conversation_of(root));
-            Rc::new(SqliteTreeStore::new(db, blobs.clone())) as Rc<dyn AgentTreeStore>
+            let conversation = conversation_of(root);
+            let db = services.conversations.db(&conversation);
+            // The summary reads the root's checkpoint, which each save of it
+            // changes.
+            let saved = {
+                let marks = marks.clone();
+                let root = root.clone();
+                Rc::new(move |node: &NodeId| {
+                    if *node == root {
+                        marks.mark(Part::Conversation(conversation.clone()));
+                    }
+                })
+            };
+            Rc::new(SqliteTreeStore::new(db, blobs.clone(), saved)) as Rc<dyn AgentTreeStore>
         })
     };
     let config = ServerConfig {
@@ -82,7 +97,12 @@ pub(crate) fn conversation_parts(
         http,
         rate_limit,
     ));
-    let titles = Titles::new(providers.clone(), services.control.clone(), services.conversation_tuning.titles);
+    let titles = Titles::new(
+        providers.clone(),
+        services.control.clone(),
+        marks.clone(),
+        services.conversation_tuning.titles,
+    );
     let agent = AgentServer::new(ServerDeps {
         harness: Rc::new(conversation_harness(shard.clone(), &services.native)),
         providers,
@@ -91,6 +111,7 @@ pub(crate) fn conversation_parts(
         clock: services.clock.clone(),
         ids: Rc::new(RandomIds),
         config,
+        status_changed: Rc::new(move |root: &NodeId| marks.mark(Part::Conversation(conversation_of(root)))),
     });
     ConversationParts { agent, titles }
 }

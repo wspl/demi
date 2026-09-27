@@ -24,7 +24,6 @@ use demi_web_api::auth::Role;
 use demi_web_api::cloud::ResetPhase;
 use demi_web_api::error::ErrorCode;
 use demi_web_api::exposes::{ExposeAnswer, ExposeDto, Exposes};
-use demi_web_api::state::ProductState;
 use futures_util::{SinkExt as _, StreamExt as _};
 use jiff::SignedDuration;
 use reqwest::StatusCode;
@@ -276,7 +275,7 @@ async fn an_expose_answers_anyone_for_an_hour_and_only_its_owner_lists_renews_or
     assert_eq!(exposed.address.as_str(), format!("127.0.0.1:{}", fixture.port));
     assert_eq!(exposed.created_at, harness.clock.now());
     assert_eq!(exposed.expires_at.as_millisecond() - exposed.created_at.as_millisecond(), 3_600_000);
-    let state: ProductState = backend.get("/api/state", Some(&master)).await.json();
+    let state = backend.sync(&master).await.snapshot().await;
     assert_eq!(state.exposes, [exposed.clone()]);
     assert_eq!(state.expose_domain.as_deref(), Some(DOMAIN));
     assert_eq!(list(&backend, &master).await, [exposed.clone()]);
@@ -494,7 +493,7 @@ async fn without_an_expose_domain_exposes_are_unavailable() {
     let body = json!({ "deviceId": laptop.id(), "address": "1234" });
     let refused = backend.post("/api/exposes", Some(&master), body).await;
     assert_eq!(refused.refusal(), (StatusCode::CONFLICT, ErrorCode::ExposeUnavailable));
-    let state: ProductState = backend.get("/api/state", Some(&master)).await.json();
+    let state = backend.sync(&master).await.snapshot().await;
     assert_eq!((state.exposes, state.expose_domain), (Vec::new(), None));
     assert!(list(&backend, &master).await.is_empty());
     backend.close().await;

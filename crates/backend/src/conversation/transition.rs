@@ -27,6 +27,7 @@ use crate::storage::StorageError;
 use crate::storage::conversation_index::{
     ChangeOutcome, ConversationChange, ConversationRecord, RecordChange, SwitchEnds,
 };
+use crate::sync::Part;
 
 /// Why a change was not applied.
 #[derive(Debug, thiserror::Error)]
@@ -115,8 +116,23 @@ struct Hold {
 }
 
 impl Shard {
-    /// Applies `change` to the user's conversation `id`.
+    /// Applies `change` to the user's conversation `id`, and shows it on the
+    /// user's pages: the conversation's summary, and the order after a pin
+    /// or an archive.
     pub(crate) async fn transition(&self, id: &ConversationId, change: ConversationChange) -> Result<(), ChangeRefusal> {
+        let reorders = matches!(
+            change,
+            ConversationChange::Record(RecordChange::Pinned(_) | RecordChange::Archived(_))
+        );
+        self.apply_change(id, change).await?;
+        self.mark(Part::Conversation(id.clone()));
+        if reorders {
+            self.mark(Part::ConversationOrder);
+        }
+        Ok(())
+    }
+
+    async fn apply_change(&self, id: &ConversationId, change: ConversationChange) -> Result<(), ChangeRefusal> {
         let services = self.services();
         let record = services.control.conversation(id.clone()).await?;
         let Some(record) = record.filter(|record| record.owner == *self.user()) else {
