@@ -447,7 +447,9 @@ Each crate implements the provider contract for one vendor family.
     hands it each decoded client frame, and its bounded outbox (`FrameRx`)
     carries every server frame back;
   - `AgentSession`, a handle over one session's `SessionCore`;
-  - the transcript and its estimates (`transcript::estimate`) and compaction;
+  - the transcript and its estimates (`transcript::estimate`), compaction, and
+    the rule that retires a tool result's expired images and videos, which the
+    backend applies to stored conversations (`transcript::retire`);
   - the standard tools (`StandardTool`: `shell_exec`, `shell_status`,
     `shell_write`, `shell_abort` and `yield`), with the durable dispatch of
     every tool call, over each node's shell environment per Host, which the
@@ -561,8 +563,8 @@ Each crate implements the provider contract for one vendor family.
   a process, its session runtime over a placement), the login timing
   (`LoginTiming`), the conversations' bounds (`ConversationTuning`), the
   times of a page's sockets (`PageTuning`), the
-  Cloud's and the idle clock's times and limits (`CloudTuning`,
-  `LifecycleTuning`), the native command packages their commands bind to
+  Cloud's and the idle clock's times and limits and the retention pass's
+  schedule (`CloudTuning`, `LifecycleTuning`), the native command packages their commands bind to
   (`NativeCatalog`, which the executable and the scenarios make with
   `publish_native` from a `DEMI_NATIVE_CONFIG` file) and the user stream
   declarations. Its `testing` feature adds `Backend::hold_commits`, which
@@ -571,7 +573,9 @@ Each crate implements the provider contract for one vendor family.
   ([Message editing](../agent/message-editing.md#durability-and-failure-boundaries)),
   `Backend::file_gate`, a conversation's file gate, whose lease is the
   conversation's work to the idle rules and whose waiting entrants show an
-  operation a transition holds, and two holds of a flow at one of its steps
+  operation a transition holds, `Backend::run_retention`, which runs one
+  user's retention pass at once and answers when it has ended, for the
+  scenarios of [Retention](../backend/storage.md#acceptance), and two holds of a flow at one of its steps
   until the test releases it (`StepHold`): `Backend::hold_hellos` holds
   runners' hellos (`HelloStep`: the token's lookup, or the shard's bind) for
   the scenarios that race a hello against its runner going away and against
@@ -726,9 +730,10 @@ packages under `packages/`.
   device pairing dialog over a host-provided claim adapter; the sign-in page;
   shared UI primitives, Markdown rendering and theme; the summary text of
   queued messages, derived from their content; and the liveness of a page's
-  WebSockets to the backend, the silence watch and the waits before connecting
-  again, which the synchronization channel and the conversation sockets share
-  (`transport/liveness.ts`,
+  WebSockets to the backend: the silence watch, which the synchronization
+  channel and the conversation sockets share, the waits before connecting
+  again, which live views share too, and the check of every socket when the
+  page comes back (`transport/liveness.ts`,
   [Liveness and reconnection](../product/web-application.md#liveness-and-reconnection)).
   It consumes an injected `AgentClient` and ships no control-plane transport
   of its own.

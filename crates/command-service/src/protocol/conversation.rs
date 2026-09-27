@@ -3,6 +3,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::invocation::conversation_name;
+
 /// Release a conversation's resources, or report which conversations hold
 /// any. `Status` is a struct variant so that unknown fields are refused: serde
 /// ignores them for a unit variant of an internally tagged enum.
@@ -10,7 +12,7 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "operation", rename_all = "lowercase", deny_unknown_fields)]
 pub enum ConversationRequest {
     Release {
-        #[garde(length(min = 1))]
+        #[garde(custom(conversation_name))]
         conversation: String,
     },
     Status {},

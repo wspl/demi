@@ -31,6 +31,7 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
         protocol,
         token,
         runner,
+        conversations,
     } = hello;
     if protocol != wire::VERSION {
         let reason = format!("unsupported protocol {protocol}; this backend speaks {}", wire::VERSION);
@@ -44,7 +45,7 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
             let reason = "a managed host presents its device token; it is never paired";
             refuse(socket, &runner, HelloErrorCode::UnknownDevice, reason).await;
         } else {
-            await_claim(&services, &shards, socket, runner).await;
+            await_claim(&services, &shards, socket, runner, conversations).await;
         }
         return;
     };
@@ -74,7 +75,7 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
     let owner = device.user.clone();
     let adopted = shards
         .of(&owner)
-        .adopt(move |shard| async move { shard.adopt_runner(device, runner, socket).await })
+        .adopt(move |shard| async move { shard.adopt_runner(device, runner, socket, conversations).await })
         .await;
     // A shard that is closing takes no runner: dropping the socket closes it
     // without a word, as shutdown does to every runner.
@@ -88,6 +89,8 @@ struct Hello {
     protocol: u32,
     token: Option<DeviceToken>,
     runner: RunnerInfo,
+    /// The conversations it holds job output for.
+    conversations: Vec<String>,
 }
 
 /// The first message, which must be a hello; none when the socket closed or
@@ -108,10 +111,12 @@ async fn hello(socket: &mut WebSocket) -> Option<Hello> {
                 protocol,
                 device_token,
                 runner,
+                conversations,
             }) => Some(Hello {
                 protocol,
                 token: device_token,
                 runner,
+                conversations,
             }),
             Ok(_) => {
                 tracing::info!("closing a runner connection whose first message is not a hello");
@@ -163,7 +168,13 @@ pub(super) async fn send(socket: &mut WebSocket, message: &Inbound) -> Result<()
 /// Waits for the runner's user to claim it, printing a new code every claim
 /// lifetime, and hands the socket to the user's shard once claimed. Frames
 /// the runner sends meanwhile are ignored; unclaimed runners are not pinged.
-async fn await_claim(services: &Services, shards: &Shards, mut socket: WebSocket, runner: RunnerInfo) {
+async fn await_claim(
+    services: &Services,
+    shards: &Shards,
+    mut socket: WebSocket,
+    runner: RunnerInfo,
+    conversations: Vec<String>,
+) {
     loop {
         let code = ClaimCode::generate();
         let Some(granted) = services.claims.wait(code, runner.clone()) else {
@@ -200,7 +211,7 @@ async fn await_claim(services: &Services, shards: &Shards, mut socket: WebSocket
             // The code expired: it is dead, and a new one goes out.
             None => services.claims.withdraw(&code),
             Some(grant) => {
-                hand_over(shards, socket, runner, grant).await;
+                hand_over(shards, socket, runner, conversations, grant).await;
                 return;
             }
         }
@@ -210,7 +221,13 @@ async fn await_claim(services: &Services, shards: &Shards, mut socket: WebSocket
 /// Gives the claimed runner its token and moves its socket into the shard
 /// of the user who claimed it. A runner lost on the way leaves the grant
 /// unanswered, and the claim then deletes the device it made.
-async fn hand_over(shards: &Shards, mut socket: WebSocket, runner: RunnerInfo, grant: ClaimGrant) {
+async fn hand_over(
+    shards: &Shards,
+    mut socket: WebSocket,
+    runner: RunnerInfo,
+    conversations: Vec<String>,
+    grant: ClaimGrant,
+) {
     let ClaimGrant { device, token, bound } = grant;
     let claimed = Inbound::Claimed { device_token: token };
     if send(&mut socket, &claimed).await.is_err() {
@@ -219,7 +236,7 @@ async fn hand_over(shards: &Shards, mut socket: WebSocket, runner: RunnerInfo, g
     let owner = device.user.clone();
     let adopted = shards
         .of(&owner)
-        .adopt(move |shard| async move { shard.adopt_claimed(device, runner, socket, bound).await })
+        .adopt(move |shard| async move { shard.adopt_claimed(device, runner, socket, conversations, bound).await })
         .await;
     if adopted.is_err() {
         tracing::info!("a claimed runner arrived while the backend shuts down");
