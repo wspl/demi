@@ -3,7 +3,7 @@ import { provideEditSelection, type EditSelectionHandler } from './edit-selectio
 import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
 import { computed, ref, watch } from 'vue'
-import { useElementSize } from '@vueuse/core'
+import { useResizeObserver } from '@vueuse/core'
 import { PanelRight, Play, Radar, TextCursorInput } from '@lucide/vue'
 import type { TranscriptVersion } from '@demicodes/protocol'
 import { beginMessageEdit, lastEditableUserMessageId, type MessageEditState } from './message-editing'
@@ -92,11 +92,23 @@ function beginRename(): void {
 }
 const titleCell = ref<HTMLElement | null>(null)
 const title = ref<HTMLElement | null>(null)
-const { width: titleCellWidth } = useElementSize(titleCell)
+/**
+ * The title cell's width, unknown until it is first laid out; its room is
+ * unknown until then, and every label shows. Taken for zero wide, the cell
+ * would hide the labels beside it and bring them back within its first
+ * measurement, resizing itself inside its own ResizeObserver callback.
+ */
+const titleCellWidth = ref<number>()
+useResizeObserver(titleCell, ([entry]) => {
+  titleCellWidth.value = entry?.contentRect.width
+})
 const titleRoom = ref<number>()
 watch(
   [titleCellWidth, () => props.conversation.title, title, renaming],
   () => {
+    if (titleCellWidth.value === undefined) {
+      return
+    }
     // The input a rename swaps in is as wide as a title gets, and leaves no button beside it.
     const need = title.value
       ? Math.min(title.value.scrollWidth, TITLE_MAX_PX) + TITLE_ACTION_PX

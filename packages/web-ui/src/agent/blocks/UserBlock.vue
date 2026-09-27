@@ -167,7 +167,9 @@ function measure(): void {
 }
 
 // Wrapping follows the width, so a narrower or wider column changes the cut.
-useResizeObserver([contentRef, bodyRef], measure)
+// The text alone is watched: it takes the box's width, while the box's height
+// is the cut itself, which would call the measure back for nothing.
+useResizeObserver(bodyRef, measure)
 </script>
 
 <template>
