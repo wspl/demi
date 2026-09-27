@@ -319,7 +319,7 @@ a real model.
 | A summary request, for each provider | Its body is the session's latest answered request, byte for byte, with the instruction after it, under the session's id; the blocks after that request are kept |
 | No request answered since the last boundary, then `resume` over the threshold | The window ends before the stopped message; the next request carries the summary, then the message, the stopped answer and the `resume` block as written |
 | Input too large for the model on its own | No summary request carries it; the request after the pass carries it after the summary, and the turn fails with `context_length_exceeded` when that request is refused |
-| Screenshots accumulate toward a request limit, for each provider | The request that would reach 80% of the limit compacts first; no request is refused |
+| Screenshots accumulate toward an image limit that the scripted provider sets, within a turn and before a switch to a vendor that takes fewer | The request that would reach 80% of the limit compacts first, a switch with the model before it; no request reaches the limit. The runtimes' own limits are constants ([Request limits](../providers/models.md#request-limits)), which no test restates |
 | A request refused as too large (HTTP 413, or too many images) | One pass, then the request is sent again; a second refusal fails the turn |
 | The latest answer's reasoning is kept past a summary | The Anthropic provider leaves it out of every later request; the other providers replay it |
 | The model calls a tool during a summary | The copy runs it through the ordinary tool loop; the session's transcript and command state do not change |
