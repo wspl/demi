@@ -28,9 +28,7 @@ registrations do not share their authorization context.
 A paired device stores its device token in private installation state. A managed
 guest receives a token at boot and keeps temporary state. The backend owns device
 claiming and user ownership. The runner opens an outbound WebSocket and sends its
-`hello` first, which names the conversations it holds job output for
-([A release the device missed](resource-lifecycle.md#a-release-the-device-missed));
-the backend closes a connection that has sent nothing within 30
+`hello` first; the backend closes a connection that has sent nothing within 30
 seconds of opening. The backend looks a hello's token up while it watches the
 connection, and lets a runner that goes away meanwhile go without adopting it.
 It answers a known token with `hello_ok` once it has bound the connection to
@@ -557,9 +555,9 @@ Reconnecting the network does not itself change the backend's command set.
 
 ## Pipes and output
 
-A job writes each of its streams whole to a file of its own on the device and
-sends the backend views of it in `job_output` messages, each naming its stream
-and where its bytes start in the stream (`offset`):
+A job keeps its output in its directory on the device and sends the backend
+views of it in `job_output` messages, each naming its stream and where its
+bytes start in the stream (`offset`):
 
 - The first 32 KiB of each stream (`JOB_VIEW_BYTES`), as the runner reads
   them. The model's view of a running command comes from these
@@ -577,48 +575,65 @@ and where its bytes start in the stream (`offset`):
   (`JOB_GROWTH_INTERVAL`), without bytes, whose `offset` is the stream's
   length. The model's idle time counts from it
   ([Results and previews](../agent/runtime.md#results-and-previews)).
-- `job_exit` gives each stream's length, its last 32 KiB and its file's path.
+- `job_exit` gives each stream's length and its last 32 KiB.
 
 What goes beyond the first 32 KiB never slows the job: a message that finds
 the connection's queue full waits for the stream's next interval, and then
 carries the newest bytes.
 
-The files live in the job's directory, which the runner makes when the job
-starts, private to its user, under the conversation that the job's
-[command context](native-runtime.md#command-context) names:
+The job's kept output is every read of its stdout and stderr, in the order
+the runner read them: one record per read, naming its stream and holding its
+bytes, in the runner wire's encoding, so the backend decodes it with the
+wire's types. It keeps the job's first 16 MiB of output (`JOB_KEPT_BYTES`)
+whole. Beyond that it keeps the first 8 MiB and the last 8 MiB, dropping the
+oldest reads of the last part as new ones come, with one record between the
+two parts that counts the bytes left out. A job that prints without end, such
+as `yes`, therefore holds at most 16 MiB of the device's disk.
+`job_read { jobId }` streams the kept output, as it stands, through a pipe.
+The backend reads it when the job ends and a stream went beyond its first
+32 KiB, and while the job runs, for `demi shell output`
+([The whole output](../agent/runtime.md#the-whole-output)).
+
+The runner makes the job's directory when the job starts, private to its
+user:
 
 ```text
 jobs/                               the job root
   edits.lock                        the installation's edit lock (Edit tracking)
-  <conversation>/                   one per conversation, its id in lowercase
-    job-<random>/
-      stdout.txt, stderr.txt        each stream, whole
-      changes/                      what the job's edits recorded
-      .work-<random>/               the scratch directory TMPDIR names; goes when the job ends
+  job-<random>/                     one per job
+    output                          the kept output
+    changes/                        what the job's edits recorded
+    .work-<random>/                 the scratch directory TMPDIR names; goes when the job ends
 ```
+
+A job's directory lasts until the backend has what it needs of the job:
+
+- Once it has read the job's end, the kept output when it needed it and the
+  edit copies ([Edit tracking](edit-tracking.md)), the backend sends
+  `job_release { jobId }`, and the runner removes the directory.
+- A connection loss cancels every job ([Command lifetime](#command-lifetime)),
+  and the backend reads nothing of them afterwards, so the runner removes
+  every job directory then.
+- A runner removes every job directory in its job root when it starts: what
+  a runner that ended without that cleanup left.
+
+The Host therefore keeps nothing of a command once it has ended: what Demi
+keeps of it, the backend has stored
+([The whole output](../agent/runtime.md#the-whole-output)).
 
 On a paired device the job root is `jobs/` in the installation state, which is
 `~/.demi/instances/<backend>/` or the directory `DEMI_HOME` names
 ([Connection and identity](#connection-and-identity)). A Cloud keeps its
 installation state in `/run/demi`, which every boot makes anew, and its job
-root at `/var/lib/demi/jobs/` on its system image, which a stop keeps
-([Images](../cloud/managed-hosts.md#images) says why there). A job's directory
-outlives the job, so that the backend reads what it needs when the command
-completes and a tool result can name a file for the model to read later
-(`raw bytes at <path>`). It goes with its conversation's Host resources: the
-[conversation release](resource-lifecycle.md#conversation-release) removes the
-conversation's directory on every Host, and a Cloud's
-[system reset](../cloud/managed-hosts.md#system-reset) removes the whole job
-root with the system. Keeping one directory per conversation lets a release
-remove that conversation's jobs and no other's, and lets the runner name,
-after a restart or a Cloud's wake, the conversations it still holds output for
-([A release the device missed](resource-lifecycle.md#a-release-the-device-missed)).
+root at `/var/lib/demi/jobs/` on its system image, since the kept output and
+scratch directories of a few busy jobs can outgrow `/run`'s memory
+([Images](../cloud/managed-hosts.md#images)).
 
 A job starts unfollowed. `job_follow { jobId, follow }` starts or stops the
 following; the backend follows a job while a page shows its conversation
 ([Live output](../agent/runtime.md#live-output)). The model's `shell_status`
-shows the output since its previous look; a caller that needs the whole
-output reads the files.
+shows the output since its previous look; `demi shell output` prints the whole
+output ([The whole output](../agent/runtime.md#the-whole-output)).
 
 The runner owns its HTTP pipe transfers; the backend's pipe broker owns their
 rendezvous and lifetime. Binary payloads remain bytes. EOF ends input, while

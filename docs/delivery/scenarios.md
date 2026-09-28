@@ -69,8 +69,8 @@ hibernate, checkpoint, reset, and growth calls. A test can hold or fail a
 reset, keep a wake's runner from connecting, fail a save, or kill a runner as
 a crash would. It does not start a sandbox, mount disk images, or implement
 filesystem isolation. A stop clears the runner's state but its log and its
-job directories, as a Cloud's `/run/demi` goes with a stop while its system
-image, which holds those two, stays; a reset clears them too; both keep home.
+job root, as a Cloud's `/run/demi` goes with a stop while its system image,
+which holds those two, stays; a reset clears them too; both keep home.
 A successful scripted reset does not demonstrate replacement of system
 packages.
 

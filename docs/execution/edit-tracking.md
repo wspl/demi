@@ -73,9 +73,9 @@ runner drains into the log.
 
 The shared recorder belongs to the command-service library, which the runner
 and the native command services both link, so both record through the same
-file interface. The runner creates the job's private `changes` directory next
-to its retained output, and provides that directory and the installation's lock
-file as an `EditContext`. The journal and the context are types of the command
+file interface. The runner creates the job's private `changes` directory in
+the job's directory, next to its kept output, and provides that directory and
+the installation's lock file as an `EditContext`. The journal and the context are types of the command
 wire; they are not another message stream and never appear on command stdout or
 stderr.
 
@@ -112,7 +112,8 @@ diff algorithm.
 At job completion, after all job-owned work has stopped, the runner reads the
 journal, omits absent paths and empty edits, and sends the report. It never uses
 the current file bytes as an edit's after contents. Journal and copies share the
-retained output directory's lifetime ([Pipes and output](runner.md#pipes-and-output)).
+job directory's lifetime: they go once the backend has read the job's end
+([Pipes and output](runner.md#pipes-and-output)).
 
 Uncooperative external writers do not take this lock. Their concurrent writes
 cannot be isolated by these hooks; they can affect a before/after capture.
@@ -140,7 +141,7 @@ When a command's exit reaches the backend, the backend reads each entry's
 copies from the target and writes them into the conversation's change store,
 then hands the tool its status with the list. The read is part of completing
 the command inside the tool call's host access, the same way the command's
-retained output is read back; it is not a separate operation on the Host from
+kept output is read back; it is not a separate operation on the Host from
 outside the agent ([Host operations](sessions-and-targets.md#host-operations)).
 A copy that cannot be read or stored leaves its entry in the list without
 contents; the list is never lost over the contents.

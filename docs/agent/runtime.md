@@ -394,7 +394,8 @@ The model has five tools, and only these:
 | `yield` | Ends the turn and schedules one wakeup after `durationMs` ([Yield wakeups](#yield-wakeups)). |
 
 Everything else the agent does runs as commands in the shell, such as
-`demi file`, `demi todo`, `demi agent`, `demi browser` and `demi host`
+`demi file`, `demi todo`, `demi agent`, `demi browser`, `demi host` and
+`demi shell`
 ([Commands](../execution/commands.md)). A tool call whose name is not one of
 the five completes as an error `Tool not found: <name>`.
 
@@ -434,14 +435,28 @@ the five completes as an error `Tool not found: <name>`.
 
 ### Results and previews
 
+For example, `npm test` prints 212,345 bytes and exits with status 1 within
+its call's window. Its result shows the start and the end of the output, and
+between them one line that says how much it leaves out and how to read it:
+
+```text
+status: exited
+exitCode: 1
+commandId: 3f2a9c1e-7b1d-4c55-9a0e-5d2f7c1b8e44
+output:
+<the first 7,900 characters>
+[... 196545 bytes not shown; the whole output: demi shell output 3f2a9c1e-7b1d-4c55-9a0e-5d2f7c1b8e44 ...]
+<the last 7,900 characters>
+```
+
 - The model keeps its own place in each command's output: a result shows the
   output since the model's last look at the command. What the pages are sent
   never moves it ([Live output](#live-output)). For example, a page shows a
   running command's new output; the model's next `shell_status` still shows
   all of it.
-- A result gives the command's status and exit code, its handle and timings
-  when the handle matters, a preview of the output, and a hint for the next
-  step.
+- A result gives the command's status, its exit code once it has exited, its
+  `commandId`, its `shellId` and timings while it runs, the output, and a hint
+  for the next step while it runs or once it was stopped.
 - A result's `idleMs` counts from the last time the command's output grew,
   also beyond the first 32 KiB of a stream, which the model's view does not
   hold: the runner reports such growth within 2 seconds even while no page
@@ -449,26 +464,111 @@ the five completes as an error `Tool not found: <name>`.
   ([Pipes and output](../execution/runner.md#pipes-and-output)). For example,
   a build that prints its 100th KiB of log lines a second ago shows an
   `idleMs` below 3,000, so the model does not take it for a hung one.
-- The preview is the start of the merged output, up to four characters per
-  budget token. The budget is 10,000 tokens when the request's model has a
-  context window below 800,000 tokens, and 100,000 tokens at or above it. It
-  applies to every node of the tree, with each request's current model.
-  Characters are Unicode scalar values
+- The output is the merged stdout and stderr since the model's last look, in
+  the order the runner read them. It is shown whole when the whole result fits
+  the replay bound of 16,000 characters
+  ([Text bounds](compaction.md#text-bounds)). Otherwise the result shows its
+  start and its end, and the line between them counts the bytes left out and
+  names the command that prints the whole output
+  ([The whole output](#the-whole-output)). The start and the end share
+  equally what the bound leaves after the result's other lines, the line
+  between them included, so a result is cut once, where it is made, and
+  replay sends it unchanged. The rule is the
+  same for every model. Characters are Unicode scalar values
   ([Token estimates](compaction.md#token-estimates)).
-- The result carries the command's handle, timings and output file paths when
-  the command still runs or its output did not fit: the preview was cut, the
-  output exceeded the budget, or the runner's own view of a stream was
-  truncated. Otherwise the call has shown everything, and the handle is
-  released.
-- When a command exits with binary stdout, the result attaches it as an image
-  or a video only when the stream is complete, its bytes are a media type of
-  the model-media table, and the model accepts that type. An image is attached
-  as it is fitted ([Images in the transcript](#images-in-the-transcript)). A
+- While a command runs, the backend holds the first 32 KiB of each of its
+  streams; what they print beyond them stays on the Host until the command
+  ends ([Pipes and output](../execution/runner.md#pipes-and-output)). The
+  result of a running command whose output has gone beyond them ends with the
+  same line, counting the bytes so far:
+  `[... 1048576 bytes not shown so far; the whole output: demi shell output <commandId> ...]`.
+  For example, `demi shell output <commandId> | tail -n 50` shows a dev
+  server's newest log lines.
+- The model's place moves past everything a result covers, the bytes it
+  leaves out included, so the next result goes on from there.
+- The handle serves `shell_status`, `shell_write` and `shell_abort` while the
+  command runs. A result that reports the command's end releases it;
+  `demi shell output` goes on reading the output by its `commandId`.
+- When a command exits with binary stdout, the output shows it as one line,
+  `<binary stdout: 412000 bytes>`, and the result attaches it as an image or a
+  video only when the command's output kept all of it
+  ([The whole output](#the-whole-output)), its bytes are a media type of the
+  model-media table, and the model accepts that type. An image is attached as
+  it is fitted ([Images in the transcript](#images-in-the-transcript)). A
   video is attached up to 16 MiB, and only when its base64 takes at most half
   of the model's request body limit
   ([Request limits](../providers/models.md#request-limits)), so that a request
   still has room for the history around it. Otherwise the result says why
-  nothing was attached and where the raw bytes remain readable.
+  nothing was attached and how to save the bytes:
+  `demi shell output <commandId> --stdout > <file>`. A stdout larger than the
+  output keeps is whole nowhere, so for it the result says to write it to a
+  file instead and run the command again.
+
+### The whole output
+
+A result shows the start and the end of a long output; `demi shell output`
+prints all of it. For example, after the `npm test` above, the model reads
+what it needs with the standard tools:
+
+```sh
+demi shell output 3f2a9c1e-7b1d-4c55-9a0e-5d2f7c1b8e44 | grep -n FAIL
+demi shell output 3f2a9c1e-7b1d-4c55-9a0e-5d2f7c1b8e44 | sed -n '1200,1300p'
+demi shell output 3f2a9c1e-7b1d-4c55-9a0e-5d2f7c1b8e44 --stdout > report.json
+```
+
+`demi shell output <commandId>` prints a command's whole output to its
+stdout: the command's stdout and stderr merged in the order the runner read
+them, the output whose start and end the result showed. `--stdout` or
+`--stderr` prints that stream alone, byte for byte, which is how a binary
+stdout the result did not attach is saved. The command has no options to
+search or page: the standard tools do that, and the model knows them. It is an
+`rpc` command ([Command declarations and execution](../execution/commands.md)):
+it runs in the backend, from any shell of the conversation, the root's or a
+subagent's, on any of the conversation's Hosts.
+
+- **Which commands.** Any command of the conversation, whichever node ran it.
+  A command of another conversation is unknown to it.
+- **A command that runs.** It prints what the command's Host has kept so far,
+  read through the conversation's host access
+  ([Host operations](../execution/sessions-and-targets.md#host-operations)).
+- **A command that ended.** It prints the output the backend stored, for 30
+  days after the command ended ([Retention](../backend/storage.md#retention)).
+- **What is kept.** A command's output up to 16 MiB, all of it; beyond that,
+  its first 8 MiB and its last 8 MiB. The merged output shows one line where
+  the rest was left out, `[... 734003200 bytes left out ...]`; with `--stdout`
+  or `--stderr`, that line goes to stderr, so the stream's bytes stay as they
+  were. A command that prints without end, such as `yes`, therefore keeps at
+  most 16 MiB, on its Host and in the backend alike.
+- **A binary stdout** shows in the merged output as the line the result
+  shows, `<binary stdout: 412000 bytes>`, and whole with `--stdout`.
+- **Failures** go to stderr with exit status 1:
+  - `demi shell output: no command <commandId> in this conversation`;
+  - `demi shell output: the output of <commandId> was removed on 2026-10-28, 30 days after the command ended`;
+  - `demi shell output: the output of <commandId> was not stored: <reason>`,
+    when the backend could not read the Host's kept output or could not store
+    it.
+- **A reader that stops early**, such as `| head -n 20`, ends the command
+  quietly ([Handle an rpc call](../execution/commands.md#handle-an-rpc-call)).
+
+Where the output is kept:
+
+- While the command runs, on its Host, in the job's directory, within the same
+  16 MiB ([Pipes and output](../execution/runner.md#pipes-and-output)).
+- When the command ends, the backend stores its output before any result
+  reports the end. When each stream stayed within its first 32 KiB, which is
+  most commands, the backend already holds the whole output, in the order the
+  runner read it, and stores that; otherwise it reads the Host's kept output
+  once, as it reads the command's edit copies
+  ([Edit tracking](../execution/edit-tracking.md)). The output becomes a blob
+  in the conversation owner's namespace, and the conversation records it by
+  its command ([Command outputs](../backend/storage.md#command-outputs)). The
+  Host then removes the job's directory.
+- A command that ended because its Host's connection was lost keeps what the
+  backend received, followed by the line
+  `[... 1048576 bytes lost with the Host's connection ...]` when there was
+  more.
+- The stored output is never part of a request, so storing it or removing it
+  changes no request ([Prompt cache](../providers/providers.md#prompt-cache)).
 
 ### Live output
 
@@ -574,7 +674,7 @@ Words used for session data:
 | transcript | A session's history: its ordered blocks |
 | status | A point-in-time answer an operation returns, such as a command's status; never stored as history |
 | checkpoint | The durable, restorable state of one session ([Tree store](#tree-store)) |
-| retained output | The complete output of one command, kept as files on the device that ran it ([Pipes and output](../execution/runner.md#pipes-and-output)) |
+| whole output | A command's output as kept: on its Host while it runs, in the backend for 30 days after it ends ([The whole output](#the-whole-output)) |
 | view | Bounded data a block carries for the user; never replayed to the model |
 | blob | Content-addressed bytes, such as media, in the conversation owner's blob namespace |
 
@@ -815,9 +915,10 @@ vendors read only its first frame. A fitted image carries no EXIF data, so its
 orientation is applied before it is scaled.
 
 The original stays where it came from: a tool's stdout in the command's
-retained output on the Host, whose path the result names, and an upload in its
-attachment file on the Host and in its upload blob, whose attachment record
-keeps the original's size and hash. Fitting decodes and encodes on the
+whole output, which `demi shell output <commandId> --stdout` prints
+([The whole output](#the-whole-output)), and an upload in its attachment file
+on the Host and in its upload blob, whose attachment record keeps the
+original's size and hash. Fitting decodes and encodes on the
 blocking pool ([Blocking work](../architecture/concurrency.md#blocking-work)).
 Videos and documents are not fitted; they count toward the request's size
 ([Request size](compaction.md#request-size)).
@@ -1292,7 +1393,16 @@ where a tool runs; no test calls a real model.
 | Frames of an open | The handshake order above; patch revisions increase by one; a stale patch after a reset is ignored; a gap triggers `sync_transcript` |
 | Scripted tool events | Each of the five tools renders with its own component and its `description` title; updates replace the block in place; an unknown tool name renders as a generic card |
 | A tool's result carries an image, a video, or a medium that is gone | The page shows each under the call's row, the media loaded from the blob route and a gone medium as what it was and why it is gone; a click on the image opens it large |
-| Tool calls | Input refusals, the repeat guard, preview budgets, handle release and binary stdout verdicts match [Tools](#tools) |
+| Tool calls | Input refusals, the repeat guard, the cut of a result, handle release and binary stdout verdicts match [Tools](#tools) |
+| A command prints 200 KB and exits | Its result shows the start, the end and the line naming `demi shell output`, and fits the replay bound, so every request carries it unchanged; `demi shell output` prints the 200 KB in the order the runner read them, and `--stderr` the stderr alone |
+| A command prints 25,000 characters, more than the replay bound and less than the first 32 KiB of its stream | The result's line names `demi shell output`, which prints the characters the result leaves out |
+| The same command for a model with a context window of a million tokens | The same result |
+| A running command's stdout goes beyond its first 32 KiB while no page is attached | Its result ends with the line counting the bytes so far; `demi shell output` prints them, the newest included, from the Host |
+| A command prints 20 MiB | The Host keeps 16 MiB of it while it runs, and the backend stores the same; `demi shell output` prints the first and last 8 MiB with the line where the rest was left out |
+| A binary stdout that the model does not accept | The result names `demi shell output <commandId> --stdout`, which prints the bytes unchanged |
+| `demi shell output <commandId> \| head -n 1` | The line, and nothing on stderr |
+| A command's output 30 days after the command ended, after the retention pass | `demi shell output` says the output was removed and on which day |
+| A subagent reads the output of a command its parent ran | The whole output |
 | A stored conversation with images is opened by two pages, and one asks for the transcript again after a gap | No blob is put: every frame carries the references its rows hold |
 | A restored conversation with images before and after its last `compaction_boundary` runs a turn of two requests | The first request reads the blob of each replayed medium once and none from before the boundary; the second reads none; both carry the replayed media's bytes |
 | A tool's medium cannot be stored | Its result holds the medium as gone, not stored, with the store's error; the model receives `[<kind> not stored: <reason>]`, and the turn goes on |
