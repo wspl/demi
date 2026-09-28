@@ -1,4 +1,6 @@
+import type { EditCopies } from '@demicodes/protocol'
 import type { BlobUrl } from '@demicodes/web-ui/agent/media-source'
+import type { ReadCallChange } from '@demicodes/web-ui/files/changes'
 
 /**
  * The gallery's stand-in for the backend's blob route: fixture files under
@@ -31,3 +33,36 @@ export const missingBlob = '0e'.repeat(32)
 
 /** Where a blob loads from in the gallery; one it does not hold fails to load at once. */
 export const galleryBlobUrl: BlobUrl = (ref) => blobs.get(ref) ?? 'data:,'
+
+/**
+ * The texts the gallery's blob route holds, such as an edit's two sides,
+ * each under one made-up name per text, as content addressing names bytes.
+ */
+const texts = new Map<string, string>()
+const textNames = new Map<string, string>()
+
+/** The made-up blob name of `text`, which the gallery holds from then on. */
+function textBlob(text: string): string {
+  const known = textNames.get(text)
+  if (known !== undefined)
+    return known
+  const name = (textNames.size + 1).toString(16).padStart(64, 'e')
+  textNames.set(text, name)
+  texts.set(name, text)
+  return name
+}
+
+/** The copies of an edit from `original` to `modified`, held by the gallery's blobs. */
+export function editCopies(original: string, modified: string): EditCopies {
+  return { original: textBlob(original), modified: textBlob(modified) }
+}
+
+/**
+ * Reads an edit's two sides as the product's change view reads them from
+ * the blob route; null when the gallery does not hold one of them.
+ */
+export const readGalleryEdit: ReadCallChange = async (copies) => {
+  const original = texts.get(copies.original)
+  const modified = texts.get(copies.modified)
+  return original === undefined || modified === undefined ? null : { original, modified }
+}

@@ -1,6 +1,6 @@
 import { reactive } from 'vue'
 import { defineStore } from 'pinia'
-import type { CallEditSelection, ChangeMode, ReadCallChange } from '@demicodes/web-ui/files/changes'
+import type { CallEditSelection, ChangeMode } from '@demicodes/web-ui/files/changes'
 import {
   workPanelTabs,
   goBackInTab,
@@ -22,7 +22,7 @@ import {
 import { loadPanel, savePanel } from '../api/panel'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { useResources } from '../state/resources'
-import { createCallChangeReader, createWorkingTreeSource, type WorkingTreeSource } from './changes'
+import { createWorkingTreeSource, type WorkingTreeSource } from './changes'
 
 /** One conversation's work panel: whether it is open, its fixed views, its saved selection and tabs, and its working tree. */
 export interface WorkState {
@@ -40,7 +40,6 @@ export interface WorkState {
   /** A save is on its way; `unsaved` says the panel changed again since it left. */
   saving: boolean
   unsaved: boolean
-  readCallChange: ReadCallChange
   changes: WorkingTreeSource
 }
 
@@ -71,7 +70,6 @@ export const useWorkPanel = defineStore('work-panel', () => {
         revision: 0,
         saving: false,
         unsaved: false,
-        readCallChange: createCallChangeReader(conversationId),
         changes: createWorkingTreeSource(conversationId),
       })
     }

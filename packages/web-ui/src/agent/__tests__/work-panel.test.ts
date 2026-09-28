@@ -5,7 +5,7 @@ import type { CallEditSelection } from '../../files/changes'
 
 const selection: CallEditSelection = {
   commandId: 'call-a',
-  file: { path: 'src/index.ts', kind: 'modified', added: 2, removed: 1, edits: [{ kept: true }, { kept: true }] },
+  file: { path: 'src/index.ts', kind: 'modified', added: 2, removed: 1, edits: [{}, {}] },
 }
 
 describe('fixed work panel sections', () => {

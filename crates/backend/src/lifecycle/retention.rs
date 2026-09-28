@@ -20,7 +20,7 @@ use jiff::SignedDuration;
 use crate::backend::Services;
 use crate::conversation::root_of;
 use crate::shard::{Shard, Shards};
-use crate::storage::{command_outputs, media};
+use crate::storage::{blob_refs, command_outputs};
 
 /// How long an unreferenced blob, and its last use, must be old before a
 /// collection deletes it: longer than a medium that was put waits for the
@@ -129,7 +129,7 @@ impl Shard {
             let retirement = self.retirement(id).await?;
             services
                 .conversations
-                .read(id, move |connection| media::retirable(connection, retirement))
+                .read(id, move |connection| blob_refs::retirable(connection, retirement))
                 .await
                 .map_err(|error| error.to_string())?
         };
@@ -153,7 +153,7 @@ impl Shard {
         services
             .conversations
             .db(id)
-            .call(move |connection| media::retire(connection, &blobs, retirement))
+            .call(move |connection| blob_refs::retire(connection, &blobs, retirement))
             .await
             .map_err(|error| error.to_string())?
             .map_err(|refused| refused.to_string())
@@ -305,7 +305,7 @@ impl Shard {
         for id in conversations {
             let named = services
                 .conversations
-                .read(&id, media::references)
+                .read(&id, blob_refs::references)
                 .await
                 .map_err(|error| format!("the database of conversation {id} cannot be read: {error}"))?;
             references.extend(named.into_iter().flatten());

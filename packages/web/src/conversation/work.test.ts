@@ -74,7 +74,7 @@ test('opening a retained edit persists the panel and account changes isolate cho
   const state = work.stateFor('a')
   work.selectEdit('a', {
     commandId: 'call',
-    file: { path: 'index.ts', kind: 'modified', added: 1, removed: 1, edits: [{ kept: true }] },
+    file: { path: 'index.ts', kind: 'modified', added: 1, removed: 1, edits: [{}] },
   })
   await nextTick()
   expect(readLocalState('one').workPanelOpen?.a).toBe(true)

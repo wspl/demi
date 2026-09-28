@@ -1,7 +1,7 @@
-import type { AgentMessage, Block, ModelSelection, TokenUsage, ToolResultContentBlock, UserContentBlock } from '@demicodes/protocol'
+import type { AgentMessage, Block, EditedFile, ModelSelection, TokenUsage, ToolResultContentBlock, UserContentBlock } from '@demicodes/protocol'
 import { encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { ShellToolView as ShellView, ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
-import { galleryBlobs, missingBlob } from './blobs'
+import { editCopies, galleryBlobs, missingBlob } from './blobs'
 
 export type { ShellView }
 
@@ -27,6 +27,24 @@ export function shellView(
   if (view.status === 'exited')
     view.exitCode = parts.exitCode ?? 0
   return view
+}
+
+/**
+ * A file a fixture command edited in `segments` segments, each segment's
+ * sides held by the gallery's blobs: the cookie renamed once more per
+ * segment, from the empty file when the command created it.
+ */
+export function editedFile(file: Omit<EditedFile, 'edits'>, segments = 1): EditedFile {
+  const version = (n: number) => `// ${file.path}\nconst cookie = '${n === 0 ? 'sid' : n === 1 ? 'session' : `session-v${n}`}'\n`
+  const edits = Array.from({ length: segments }, (_, n) => ({
+    copies: editCopies(file.kind === 'added' && n === 0 ? '' : version(n), version(n + 1)),
+  }))
+  return { ...file, edits }
+}
+
+/** A file a fixture command edited without copies, such as a binary one. */
+export function uncopiedFile(file: Omit<EditedFile, 'edits'>): EditedFile {
+  return { ...file, edits: [{}] }
 }
 
 export const demoModel: ModelSelection = {
@@ -181,8 +199,8 @@ export const editingShellTool = toolCall({
     commandId: 'cmd-edit',
     chunks: [{ stream: 'stdout', text: 'bun test v1.2\n 3 pass\n 0 fail\n' }],
     files: [
-      { path: 'packages/web/src/auth.test.ts', kind: 'modified', added: 12, removed: 3, edits: [{ kept: true }] },
-      { path: 'packages/web/src/cookie.ts', kind: 'modified', added: 1, removed: 1, edits: [{ kept: true }] },
+      editedFile({ path: 'packages/web/src/auth.test.ts', kind: 'modified', added: 12, removed: 3 }),
+      editedFile({ path: 'packages/web/src/cookie.ts', kind: 'modified', added: 1, removed: 1 }),
     ],
   }),
 })
@@ -356,57 +374,56 @@ export const fileChangeCases: { variant: string, block: ToolCallBlock }[] = [
   {
     variant: 'one edit',
     block: fileChangeCase('one', 'Fix the cookie assertion', [
-      { path: 'packages/web/src/auth.test.ts', kind: 'modified', added: 1, removed: 1, edits: [{ kept: true }] },
+      editedFile({ path: 'packages/web/src/auth.test.ts', kind: 'modified', added: 1, removed: 1 }),
     ]),
   },
   {
     variant: 'new file',
     block: fileChangeCase('new', 'Add the session helper', [
-      { path: 'packages/web/src/session.ts', kind: 'added', added: 40, removed: 0, edits: [{ kept: true }] },
+      editedFile({ path: 'packages/web/src/session.ts', kind: 'added', added: 40, removed: 0 }),
     ]),
   },
   {
     variant: 'append only, not new',
     block: fileChangeCase('append', 'Note the rename in the readme', [
-      { path: 'packages/web/README.md', kind: 'modified', added: 3, removed: 0, edits: [{ kept: true }] },
+      editedFile({ path: 'packages/web/README.md', kind: 'modified', added: 3, removed: 0 }),
     ]),
   },
   {
     variant: 'contents unavailable',
     block: fileChangeCase('unavailable', 'Update the binary asset', [
-      { path: 'assets/logo.png', kind: 'modified', added: 0, removed: 0, edits: [{ kept: false }] },
+      uncopiedFile({ path: 'assets/logo.png', kind: 'modified', added: 0, removed: 0 }),
     ]),
   },
   {
     variant: 'two edits to one file',
     block: fileChangeCase('segments', 'Update the cookie across interleaved writes', [
-      { path: 'packages/web/src/auth.test.ts', kind: 'modified', added: 2, removed: 2, edits: [{ kept: true }, { kept: true }] },
+      editedFile({ path: 'packages/web/src/auth.test.ts', kind: 'modified', added: 2, removed: 2 }, 2),
     ]),
   },
   {
     variant: 'a few, mixed',
     block: fileChangeCase('mixed', 'Move the cookie name into one module', [
-      { path: 'packages/web/src/auth.test.ts', kind: 'modified', added: 12, removed: 3, edits: [{ kept: true }] },
-      { path: 'packages/web/src/session.ts', kind: 'added', added: 40, removed: 0, edits: [{ kept: true }] },
-      { path: 'packages/web/package.json', kind: 'modified', added: 1, removed: 1, edits: [{ kept: true }] },
+      editedFile({ path: 'packages/web/src/auth.test.ts', kind: 'modified', added: 12, removed: 3 }),
+      editedFile({ path: 'packages/web/src/session.ts', kind: 'added', added: 40, removed: 0 }),
+      editedFile({ path: 'packages/web/package.json', kind: 'modified', added: 1, removed: 1 }),
     ]),
   },
   {
     variant: 'long names',
     block: fileChangeCase('long', 'Regenerate the snapshots', [
-      { path: 'packages/web/src/__snapshots__/auth.test.ts.snap', kind: 'modified', added: 2, removed: 2, edits: [{ kept: true }] },
-      { path: 'packages/web/src/components/ConversationListDropdownItemWithAVeryLongName.vue', kind: 'modified', added: 5, removed: 5, edits: [{ kept: true }] },
-      { path: 'packages/web/src/components/ConversationListDropdownItemWithAVeryLongName.test.ts', kind: 'added', added: 120, removed: 0, edits: [{ kept: true }] },
+      editedFile({ path: 'packages/web/src/__snapshots__/auth.test.ts.snap', kind: 'modified', added: 2, removed: 2 }),
+      editedFile({ path: 'packages/web/src/components/ConversationListDropdownItemWithAVeryLongName.vue', kind: 'modified', added: 5, removed: 5 }),
+      editedFile({ path: 'packages/web/src/components/ConversationListDropdownItemWithAVeryLongName.test.ts', kind: 'added', added: 120, removed: 0 }),
     ]),
   },
   {
     variant: 'more than three rows',
-    block: fileChangeCase('many', 'Rename the prop across every widget', Array.from({ length: 40 }, (_, i) => ({
+    block: fileChangeCase('many', 'Rename the prop across every widget', Array.from({ length: 40 }, (_, i) => editedFile({
       path: `packages/web/src/components/Widget${i + 1}.vue`,
       kind: i % 9 === 0 ? 'added' : 'modified',
       added: i + 1,
       removed: i % 3,
-      edits: [{ kept: true }],
     }))),
   },
   {
@@ -482,8 +499,8 @@ export function changesDemoBlocks(): Block[] {
       'image/png',
       blobImage(galleryBlobs.chart),
       [
-        { path: 'out/login-diff.png', kind: 'added', added: 0, removed: 0, edits: [{ kept: false }] },
-        { path: 'scripts/snapshot-diff.ts', kind: 'modified', added: 4, removed: 1, edits: [{ kept: true }] },
+        uncopiedFile({ path: 'out/login-diff.png', kind: 'added', added: 0, removed: 0 }),
+        editedFile({ path: 'scripts/snapshot-diff.ts', kind: 'modified', added: 4, removed: 1 }),
       ],
     ),
     caseBlock('still running'),

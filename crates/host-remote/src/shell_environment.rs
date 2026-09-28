@@ -19,7 +19,7 @@ use std::{
 
 use bytes::Bytes;
 use demi_command_service::protocol::{CommandContext, EditKind as JobEditKind};
-use demi_core::{CommandId, EditKind, EditedFile, KeptEdit, ShellId, StreamKind};
+use demi_core::{CommandId, EditCopies, EditKind, EditSegment, EditedFile, ShellId, StreamKind};
 use demi_runner_protocol::{
     manifest::ManifestError,
     wire::{self, JobFileChange},
@@ -56,15 +56,17 @@ pub trait HostAccess {
 }
 
 /// Keeps what a command leaves when it ends, before its command reads as
-/// ended: the copies of its edits (`edit-tracking.md`), and its whole
-/// output (`runtime.md` § The whole output). A failure to keep the output is
-/// the keeper's to record.
+/// ended: the copies of its edits (`edit-tracking.md` § Edit copies), and
+/// its whole output (`runtime.md` § The whole output). A failure to keep the
+/// output is the keeper's to record.
 pub trait CommandKeeper {
+    /// The list the command's view shows of `files`: every file, each
+    /// segment with its copies when they were stored.
     fn retain<'a>(
         &'a self,
         command: &'a CommandId,
         files: &'a [JobFileChange],
-    ) -> LocalBoxFuture<'a, Result<Vec<EditedFile>, String>>;
+    ) -> LocalBoxFuture<'a, Vec<EditedFile>>;
 
     fn keep_output<'a>(
         &'a self,
@@ -452,18 +454,9 @@ impl RemoteShellEnvironment {
         streams: [Received; 2],
     ) {
         if !end.files.is_empty() {
-            let unavailable = || end.files.iter().map(unkept).collect::<Vec<_>>();
             let files = match &self.0.options.keeper {
-                Some(keeper) => match keeper.retain(command, &end.files).await {
-                    Ok(files) => files,
-                    Err(error) => {
-                        // History publication is best effort; it must not
-                        // replace the exit status.
-                        tracing::warn!(%command, "could not retain the command's edits: {error}");
-                        unavailable()
-                    }
-                },
-                None => unavailable(),
+                Some(keeper) => keeper.retain(command, &end.files).await,
+                None => end.files.iter().map(unkept).collect(),
             };
             record.borrow_mut().set_files(EditedFiles {
                 files,
@@ -800,14 +793,14 @@ fn stream_index(stream: StreamKind) -> usize {
     }
 }
 
-/// A changed file whose contents were not kept.
+/// A changed file whose copies were not stored.
 fn unkept(file: &JobFileChange) -> EditedFile {
-    edited_file(file, |_| false)
+    edited_file(file, |_| None)
 }
 
 /// The record a view lists for a file a job changed: its line counts and,
-/// for each edit segment, whether `kept` says its contents were kept.
-pub fn edited_file(file: &JobFileChange, mut kept: impl FnMut(usize) -> bool) -> EditedFile {
+/// for each edit segment, the copies `copies` answers for its index.
+pub fn edited_file(file: &JobFileChange, mut copies: impl FnMut(usize) -> Option<EditCopies>) -> EditedFile {
     EditedFile {
         path: file.path.clone(),
         kind: match file.kind {
@@ -817,8 +810,8 @@ pub fn edited_file(file: &JobFileChange, mut kept: impl FnMut(usize) -> bool) ->
         added: u32::try_from(file.added).unwrap_or(u32::MAX),
         removed: u32::try_from(file.removed).unwrap_or(u32::MAX),
         edits: (0..file.edits.len())
-            .map(|segment| KeptEdit {
-                kept: kept(segment),
+            .map(|segment| EditSegment {
+                copies: copies(segment),
             })
             .collect(),
     }

@@ -140,7 +140,8 @@ async function read(): Promise<void> {
     state.value = { phase: 'idle' }
     return
   }
-  if (segments.value[edit.value]?.kept === false) {
+  // An edit without copies has no diff to show.
+  if (call.value && !segments.value[edit.value]?.copies) {
     state.value = { phase: 'unavailable' }
     return
   }

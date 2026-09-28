@@ -40,7 +40,6 @@ use crate::runner::claims::PendingClaims;
 use crate::runner::native::NativeCatalog;
 use crate::shard::ShardPool;
 use crate::storage::blobs::BlobStores;
-use crate::storage::changes::ChangeStore;
 use crate::storage::objects::{S3Config, S3ConfigError};
 use crate::storage::control::ControlService;
 use crate::storage::conversations::{self, ConversationStores};
@@ -64,8 +63,6 @@ pub(crate) struct Services {
     pub(crate) control: ControlService,
     pub(crate) conversations: ConversationStores,
     pub(crate) blobs: BlobStores,
-    /// The retained edits of every conversation's commands.
-    pub(crate) changes: ChangeStore,
     pub(crate) hasher: PasswordHasher,
     pub(crate) sessions: WebSessions,
     pub(crate) limiter: LoginLimiter,
@@ -167,7 +164,6 @@ struct Storage {
     control: ControlService,
     conversations: ConversationStores,
     blobs: BlobStores,
-    changes: ChangeStore,
 }
 
 impl Storage {
@@ -181,16 +177,15 @@ impl Storage {
         let rest = async {
             let conversations =
                 ConversationStores::open(data_dir.join(CONVERSATION_DATABASES), conversations::MAX_WRITERS).await?;
-            let blobs = BlobStores::new(objects.clone(), clock);
-            Ok::<_, StorageError>((conversations, blobs, ChangeStore::new(objects)))
+            let blobs = BlobStores::new(objects, clock);
+            Ok::<_, StorageError>((conversations, blobs))
         }
         .await;
         match rest {
-            Ok((conversations, blobs, changes)) => Ok(Self {
+            Ok((conversations, blobs)) => Ok(Self {
                 control,
                 conversations,
                 blobs,
-                changes,
             }),
             Err(error) => {
                 // Opening the rest left no connection open; the control
@@ -246,7 +241,6 @@ impl Services {
             control,
             conversations,
             blobs,
-            changes,
         } = storage;
         let hasher = PasswordHasher::new().await?;
         let clock = providers.clock.clone();
@@ -278,7 +272,6 @@ impl Services {
             control,
             conversations,
             blobs,
-            changes,
             vault,
             assembly,
             claude_releases,
@@ -380,8 +373,8 @@ pub enum StartError {
     Secret(#[from] SecretError),
     #[error("storage cannot be opened: {0}")]
     Storage(#[from] StorageError),
-    #[error("DEMI_CHANGE_STORE_CONFIG cannot be used: {0}")]
-    ChangeStore(S3ConfigError),
+    #[error("DEMI_OBJECT_STORE_CONFIG cannot be used: {0}")]
+    ObjectStore(S3ConfigError),
     #[error("password hashing cannot start: {0}")]
     Hashing(#[from] HashError),
     #[error("the HTTP client cannot start: {0}")]
@@ -439,8 +432,8 @@ impl Backend {
             Some(secret) => secret.clone(),
             None => InstanceSecret::load_or_create(&data_dir).await?,
         };
-        let s3 = match &config.change_store {
-            Some(path) => Some(S3Config::read(path).await.map_err(StartError::ChangeStore)?),
+        let s3 = match &config.object_store {
+            Some(path) => Some(S3Config::read(path).await.map_err(StartError::ObjectStore)?),
             None => None,
         };
         // The object store: the S3 bucket the configuration names, or the

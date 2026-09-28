@@ -133,14 +133,10 @@ impl Shard {
                     .ok_or(ForkRefusal::Unavailable)?
             }
         };
-        // The edits the retained shell calls kept are the destination's too,
-        // before its root commits; a retry copies them again.
-        services
-            .changes
-            .fork(&source.id, &destination, &seed.transcript)
-            .await?;
-        // So are the outputs of the commands its history names, which
-        // `demi shell output` reads there as in the source.
+        // The destination's blocks reference the same blobs as the source's,
+        // media and edit copies alike, so no bytes are copied. The outputs of
+        // the commands its history names are its too, which `demi shell
+        // output` reads there as in the source; a retry copies them again.
         let commands = command_outputs::commands_of(&seed.transcript);
         let rows = services
             .conversations

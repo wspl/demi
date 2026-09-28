@@ -7,7 +7,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
-use crate::{CommandId, MAX_SAFE_INTEGER, ShellId, WakeupId};
+use crate::{BlobRef, CommandId, MAX_SAFE_INTEGER, ShellId, WakeupId};
 
 /// A tool call's view.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
@@ -108,9 +108,9 @@ pub enum StreamKind {
 serde_plain::derive_display_from_serialize!(StreamKind);
 serde_plain::derive_fromstr_from_deserialize!(StreamKind);
 
-/// A file a command changed (`edit-tracking.md` § The change store): its line
-/// counts and, per edit segment, whether its contents were kept. The contents
-/// stay in the change store.
+/// A file a command changed (`edit-tracking.md` § Edit copies): its line
+/// counts and, per edit segment, the blobs of its two sides when they were
+/// stored.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EditedFile {
@@ -124,7 +124,7 @@ pub struct EditedFile {
     #[garde(skip)]
     pub removed: u32,
     #[garde(length(min = 1), dive)]
-    pub edits: Vec<KeptEdit>,
+    pub edits: Vec<EditSegment>,
 }
 
 /// Whether a command created a file or changed one that existed.
@@ -138,12 +138,29 @@ pub enum EditKind {
 serde_plain::derive_display_from_serialize!(EditKind);
 serde_plain::derive_fromstr_from_deserialize!(EditKind);
 
-/// One edit segment of a file: whether the change store kept its contents.
+/// One edit segment of a file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct KeptEdit {
+pub struct EditSegment {
+    /// The file's two sides; absent when they were not stored.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "EditCopies")]
     #[garde(skip)]
-    pub kept: bool,
+    pub copies: Option<EditCopies>,
+}
+
+/// The two sides of an edit segment, blobs of the conversation owner's
+/// namespace.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EditCopies {
+    /// The file before the segment; the empty blob when the segment created
+    /// it.
+    #[garde(skip)]
+    pub original: BlobRef,
+    /// The file after the segment.
+    #[garde(skip)]
+    pub modified: BlobRef,
 }
 
 /// One output stream of a command since the last look.

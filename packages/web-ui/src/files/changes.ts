@@ -1,4 +1,4 @@
-import type { EditedFile } from '@demicodes/protocol'
+import type { EditCopies, EditedFile } from '@demicodes/protocol'
 import { compareFileNames } from './file-browser-state'
 import { baseName } from './paths'
 import type { TreeRow } from './tree'
@@ -56,7 +56,11 @@ export interface ChangeSetSource {
 }
 
 export interface ChangeSides { original: string; modified: string }
-export type ReadCallChange = (commandId: string, path: string, edit: number, signal?: AbortSignal) => Promise<ChangeSides | null>
+/**
+ * Reads one edit segment's two sides by the blobs its copies name
+ * (`edit-tracking.md` § Edit copies); null when one of them is gone.
+ */
+export type ReadCallChange = (copies: EditCopies, signal?: AbortSignal) => Promise<ChangeSides | null>
 
 /** One file picked under a shell call, independent of the call's other files. */
 export interface CallEditSelection {
@@ -65,13 +69,17 @@ export interface CallEditSelection {
 }
 
 export interface CallChangeSource extends CallEditSelection {
+  /** The two sides of segment `edit`; null when it has no copies or one of them is gone. */
   read(edit: number, signal?: AbortSignal): Promise<ChangeSides | null>
 }
 
 export function callChangeSource(selection: CallEditSelection, read: ReadCallChange): CallChangeSource {
   return {
     ...selection,
-    read: (edit, signal) => read(selection.commandId, selection.file.path, edit, signal),
+    read: async (edit, signal) => {
+      const copies = selection.file.edits[edit]?.copies
+      return copies ? read(copies, signal) : null
+    },
   }
 }
 

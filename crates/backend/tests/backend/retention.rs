@@ -143,8 +143,10 @@ async fn a_collection_deletes_an_unreferenced_blob_past_the_grace_and_nothing_wh
     harness.clock.follow_system();
     let (backend, master) = harness.start_set_up().await;
     let (mut socket, root, _device) = open_on_device(&harness, &backend, &master, &vendor).await;
-    // A block references a tool's screenshot.
+    // A block references a tool's screenshot, and another the copies of a
+    // file its command created: the empty file before and the note after.
     std::fs::write(format!("{root}/shot.png"), png(1)).unwrap();
+    vendor.respond(shell("toolu_0", "printf 'noted\\n' > note.txt", 60_000));
     vendor.respond(shell("toolu_1", "cat shot.png", 60_000));
     vendor.respond(say("Seen."));
     socket.chat("m1", "Show me the shot").await;
@@ -161,7 +163,7 @@ async fn a_collection_deletes_an_unreferenced_blob_past_the_grace_and_nothing_wh
     harness.clock.advance(DAY + SignedDuration::from_hours(1));
     let left = orphan(&harness, &master, &png(4), DAY + SignedDuration::from_hours(1));
     let recent = orphan(&harness, &master, &png(5), SignedDuration::from_hours(1));
-    let kept: Vec<PathBuf> = [png(1), png(2), png(3)]
+    let kept: Vec<PathBuf> = [png(1), png(2), png(3), Vec::new(), b"noted\n".to_vec()]
         .iter()
         .map(|bytes| blob_path(&harness, &master, bytes))
         .chain([recent])
