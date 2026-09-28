@@ -146,6 +146,17 @@ impl Shard {
         Ok(())
     }
 
+    /// The id of the user's expose the model knows by `number`, expired or
+    /// not; none when the user has none of that number.
+    pub(crate) async fn numbered_expose(&self, number: u64) -> Result<Option<ExposeId>, StorageError> {
+        let record = self
+            .services()
+            .control
+            .numbered_expose(self.user().clone(), number)
+            .await?;
+        Ok(record.map(|record| record.id))
+    }
+
     /// The user's expose `id`, expired or not.
     pub(super) async fn owned_expose(&self, id: &ExposeId) -> Result<Option<ExposeRecord>, StorageError> {
         let record = self.services().control.expose(id.clone()).await?;
@@ -197,6 +208,7 @@ impl Shard {
         ExposeDto {
             url: expose_url(&record.id, domain, backend.url()),
             id: record.id,
+            number: record.number,
             device_id: record.device,
             address: record.address,
             created_at: record.created_at,
