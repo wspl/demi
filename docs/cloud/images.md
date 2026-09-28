@@ -42,7 +42,7 @@ Build amd64 and arm64 separately. Native executable targets are
 `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`, respectively. Use
 [native cross tools](../delivery/builds-and-releases.md) on the developer's
 machine and package only the targets of the Hosts in use. Assemble the Linux
-filesystem on a matching Linux builder, including Lima for Mac development. Do
+filesystem on a Linux builder of the image's architecture. Do
 not confuse cross-compiling a Rust executable with validating the complete
 image on another architecture.
 

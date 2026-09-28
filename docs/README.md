@@ -60,7 +60,7 @@ layout and interaction; these documents do not repeat it.
 
 - [Managed Cloud hosts](cloud/managed-hosts.md): provisioning, images, save and reset, lifecycle and capacity, isolation, networking and verification.
 - [Cloud images](cloud/images.md): the image artifacts, their contents, import and publication, and local refresh.
-- [Cloud setup](cloud/setup.md): deploying the machine manager on Linux or in Lima on a Mac, and acceptance before use.
+- [Cloud setup](cloud/setup.md): deploying the machine manager on Linux, and acceptance before use.
 
 ## How is Demi delivered, built and released?
 

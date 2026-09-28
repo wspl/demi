@@ -509,9 +509,9 @@ and an error names the variable. `demi-backend --help` lists the flags.
 
 A developer runs the backend on their own machine with the native programs
 they just built, as development releases that the backend serves its runners
-itself. For example, on an Apple silicon Mac whose Cloud runs in Lima, the
-Hosts in use are the Mac, `aarch64-apple-darwin`, and the Cloud guest,
-`aarch64-unknown-linux-musl`:
+itself. For example, on an x86_64 Linux machine that is also its own Cloud's
+execution host, the Hosts in use are the machine as a paired device and the
+Cloud guest, and both run `x86_64-unknown-linux-musl`:
 
 1. Build the runner and both command programs for those targets, and package
    a development release of each
@@ -520,15 +520,13 @@ Hosts in use are the Mac, `aarch64-apple-darwin`, and the Cloud guest,
    program again, remove its directory first.
 
    ```sh
-   cargo xtask native build \
-     --sdk /Library/Developer/CommandLineTools/SDKs/MacOSX<version>.sdk \
-     --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
+   cargo xtask native build --target x86_64-unknown-linux-musl
    cargo xtask native package --package demi-runner --output .cache/releases/runners \
-     --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
+     --target x86_64-unknown-linux-musl
    cargo xtask native package --package demi-commands --output .cache/releases/demi-builtin \
-     --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
+     --target x86_64-unknown-linux-musl
    cargo xtask native package --package demi-claude --output .cache/releases/demi-claude \
-     --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
+     --target x86_64-unknown-linux-musl
    ```
 
 2. Name the command releases in `.cache/releases/native.json`, with the
@@ -546,9 +544,11 @@ Hosts in use are the Mac, `aarch64-apple-darwin`, and the Cloud guest,
    }
    ```
 
-3. Run the machine manager in Lima; its script prints the Mac's address that
-   the Cloud guest reaches
-   ([Mac backend with local Lima](../cloud/setup.md#mac-backend-with-local-lima)).
+3. Install the machine manager on the same machine
+   ([Storage and service setup](../cloud/setup.md#storage-and-service-setup)).
+   Its `--backend-url` is the backend's URL at the machine's address that the
+   Cloud guest reaches, such as the address of the machine's route to the
+   internet; a loopback address does not reach the machine from the guest.
    The Cloud's runner comes from the Cloud image, so a runner change reaches
    the Cloud through a
    [Cloud image refresh](../delivery/builds-and-releases.md#cloud-image-refresh);
@@ -563,7 +563,7 @@ Hosts in use are the Mac, `aarch64-apple-darwin`, and the Cloud guest,
    DEMI_BACKEND_DATA=~/.demi/development \
    DEMI_INSTANCE_MODE=isolated \
    DEMI_BACKEND_PUBLIC_URL=http://<address the guest reaches>:3271 \
-   DEMI_MACHINES_SOCKET=~/.lima/demi-machines/sock/demi-machines.sock \
+   DEMI_MACHINES_SOCKET=/run/demi-cloud/machines.sock \
    DEMI_NATIVE_CONFIG=.cache/releases/native.json \
    DEMI_RUNNER_RELEASE_DIR=.cache/releases/runners \
    DEMI_EXPOSE_DOMAIN=expose.localhost \
@@ -572,7 +572,7 @@ Hosts in use are the Mac, `aarch64-apple-darwin`, and the Cloud guest,
 
 5. Run the web application
    ([Development and checks](../product/web-application.md#development-and-checks))
-   and create the first account. Pair the Mac with the installer, which
+   and create the first account. Pair the machine with the installer, which
    installs the runner from the runner release and prints a pairing code to
    claim in the page:
 

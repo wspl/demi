@@ -318,7 +318,6 @@ gives up and exits, taking the agent's tabs with it. The module checks the
 CPU's capabilities before capturing: on such a Host the view keeps its tabs,
 input and dialogs, shows no picture and says why, and the agent's browser
 keeps running. Booting the VM's kernel with `arm64.nosme` restores capture.
-Lima's `vz` VMs do not pass SME through.
 
 ### Delivery
 

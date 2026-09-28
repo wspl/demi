@@ -36,7 +36,7 @@ Contracts and crate boundaries
 | Browser automation | Conversation-owned browser, shell commands, observations, screenshots, and lifecycle satisfy their contracts on paired devices and Cloud | [Conversation browser](../browser/browser.md#acceptance) |
 | Live browser view | The user watches and operates the conversation's tabs in the work panel on paired devices and Cloud | [Live browser view](../browser/live-view.md#acceptance) |
 | Host expose | A device service gets a one-hour public URL; HTTP, streaming, and WebSocket relay byte-faithfully on paired devices and Cloud; expiry, removal, Cloud stop, and revocation destroy it | [Host expose](../execution/expose.md#acceptance) |
-| Packaging | The released runner, command programs, backend, and machine manager install and start on their targets; shipped images run under gVisor/systrap on supported Linux and Lima hosts | [Builds and releases](builds-and-releases.md), [Cloud setup](../cloud/setup.md) |
+| Packaging | The released runner, command programs, backend, and machine manager install and start on their targets; shipped images run under gVisor/systrap on supported Linux hosts | [Builds and releases](builds-and-releases.md), [Cloud setup](../cloud/setup.md) |
 | Distributed deployment | Ownership loss fences stale writers before reassignment; metadata and disk generations recover consistently | [Backend](../backend/backend.md#deployment-and-user-ownership), [Storage](../backend/storage.md#multi-worker-storage-placement) |
 
 ## Evidence required at a checkpoint

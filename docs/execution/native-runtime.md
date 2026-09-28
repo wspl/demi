@@ -698,8 +698,8 @@ a runner manifest name the targets they carry. Release packaging writes all six
 unless told otherwise, and the backend artifact module refuses to publish a
 release that lacks one to object storage. A development release, which a
 developer hands to a backend on their own machine, carries only the targets of
-the Hosts in use: on an Apple silicon Mac with the Cloud in Lima that is
-`aarch64-apple-darwin` and `aarch64-unknown-linux-musl`. Only the development
+the Hosts in use: on an x86_64 Linux machine that also hosts its own Cloud,
+that is `x86_64-unknown-linux-musl` alone. Only the development
 store loads a command package release of fewer targets
 ([Backend deployment configuration](#backend-deployment-configuration)). A Host
 whose target a release lacks fails the command with a catalog mismatch, and its
@@ -783,11 +783,12 @@ presigned GET requests required by publication.
 
 With `"provider": "local"`, a development store, the backend runs on a
 developer's own machine and serves the executables itself. For example, a
-backend at `http://192.168.5.2:3271` that loaded a development release of
+backend at `http://10.0.0.5:3271` that loaded a development release of
 `demi.builtin` answers the Cloud guest's request for the
-`aarch64-unknown-linux-musl` executable with
-`http://192.168.5.2:3271/native-artifacts/<sha256>`, and the guest's runner
-downloads and verifies it from there, as a paired Mac's runner does its own.
+`x86_64-unknown-linux-musl` executable with
+`http://10.0.0.5:3271/native-artifacts/<sha256>`, and the guest's runner
+downloads and verifies it from there, as the paired machine's runner does its
+own.
 The development store:
 
 - Verifies each release's descriptor and the executables of the targets it
