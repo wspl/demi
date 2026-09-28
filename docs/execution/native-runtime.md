@@ -659,7 +659,7 @@ lifecycle and execution-surface verification follow the
 
 The backend's artifact module owns S3 publication; S3 is the only
 object-storage protocol it supports for native artifacts. It uses the same
-object-storage library as the backend's blobs and change store, which provides
+object-storage library as the backend's blobs, which provides
 the conditional writes, SHA-256 checksums, and presigned URLs publication
 needs. Before the backend accepts requests, the module completes these steps:
 
