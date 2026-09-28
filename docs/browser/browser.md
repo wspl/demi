@@ -1992,12 +1992,12 @@ part of every acceptance that touches the browser, not an optional run.
     change or archive releases the old device.
 14. Deliver native changes to every required build target, paired device, and
     Cloud guest. Verify Chrome for Testing provisioning on every platform
-    offering the feature; success on the development Mac is insufficient.
-    Paired-device acceptance runs on both a macOS and a Linux runner. Cloud
-    acceptance checks the running runner's executable hash after boot and after wake,
+    offering the feature; success on the development machine is
+    insufficient. Paired-device acceptance runs on both a macOS and a Linux
+    runner. Cloud acceptance checks the running runner's executable hash after boot and after wake,
     as [Cloud images](../cloud/images.md#acceptance-and-local-refresh) requires.
 15. Retirement leaves no Chrome process, helper, profile or temporary directory behind,
-    on the development Mac, a Linux paired device, and the Cloud guest. The
+    on a macOS paired device, a Linux paired device, and the Cloud guest. The
     same holds after a service shutdown with several conversations' browsers
     open. After the service is killed, Chrome's main process ends with it on
     Linux, and the next service start removes the processes and profiles that

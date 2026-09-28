@@ -5,10 +5,10 @@ manifest for gVisor. [Cloud images](../../docs/cloud/images.md) defines the
 format, the build pipeline, import, and acceptance;
 [Cloud setup](../../docs/cloud/setup.md) describes deployment.
 
-A build runs as root on a Linux builder of the image's architecture, such as
-the `demi-machines` Lima VM on a Mac. `rootfs/build.sh` makes the Ubuntu tree,
-then runs `xtask cloud-image package`, which embeds the runner release, the
-command packages, Chrome for Testing, and uv, and publishes the release.
+A build runs as root on a Linux builder of the image's architecture.
+`rootfs/build.sh` makes the Ubuntu tree, then runs `xtask cloud-image package`,
+which embeds the runner release, the command packages, Chrome for Testing, and
+uv, and publishes the release.
 
 First, on the developer's machine, build and package the image's target with
 the [native cross tools](../../docs/delivery/builds-and-releases.md), and build
@@ -38,9 +38,6 @@ sudo bash packages/guest-image/rootfs/build.sh \
   --package .cache/releases/demi-claude-<build> \
   --output /opt/demi-cloud/releases/<build>
 ```
-
-In Lima, prefix the command with `limactl shell demi-machines --`: the VM sees
-the Mac's home directory at the same path.
 
 `--output` names a new directory on a Linux filesystem: a release is
 immutable, so every build publishes a new one. The script builds the tree in
