@@ -586,6 +586,10 @@ directory, the instance secret is generated there, and Vite serves the page,
 so `DEMI_WEB_DIRECTORY` is not needed. `DEMI_EXPOSE_DOMAIN` is optional;
 without it, exposes are off.
 
+On a Mac, the machine manager runs in a Lima VM instead; the optional
+[Develop on a Mac with Lima](../guides/mac-development.md) guide gives the
+differences.
+
 ## Deployment and user ownership
 
 The single-backend deployment runs one backend process that owns every user.

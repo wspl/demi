@@ -45,7 +45,7 @@ Each executable is built for the targets where it runs:
 | --- | --- | --- |
 | `demi-runner` | All six | Paired devices run macOS, Linux, or Windows on arm64 or x86_64, and the Cloud guest runs Linux |
 | `demi-commands`, `demi-claude` | All six | A published command package supplies its operations on every target ([Publish a complete release](../execution/native-runtime.md#publish-a-complete-release)) |
-| `demi-backend` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl` | Every deployment has Cloud, and the backend reaches the machine manager over a Unix socket on the same Linux host |
+| `demi-backend` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl`, `aarch64-apple-darwin`, `x86_64-apple-darwin` | Servers run Linux; a developer may also run the backend on a Mac, with the Cloud in a Lima VM ([Develop on a Mac with Lima](../guides/mac-development.md)) |
 | `demi-machines` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl` | The machine manager drives gVisor, Linux namespaces, cgroups, loop devices, and nftables, which exist only on Linux |
 
 Linux executables link musl statically, so one file runs on any distribution
@@ -318,7 +318,8 @@ refuses to start as root with its sandbox, which Demi keeps
 also skips the Cloud suite, which needs a machine manager, a Cloud image, and
 root. The machine manager builds only for Linux, and on Linux the one
 selection builds and runs its tests
-([Verification](../cloud/managed-hosts.md#verification)). The tests that need
+([Verification](../cloud/managed-hosts.md#verification)); on a Mac they run in
+a Lima VM ([Develop on a Mac with Lima](../guides/mac-development.md#machine-manager-tests)). The tests that need
 root are ignored in an ordinary run; as root, the manager's unit test
 executable with `--include-ignored` runs them, each in mount and network
 namespaces of its own:

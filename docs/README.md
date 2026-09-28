@@ -73,3 +73,4 @@ layout and interaction; these documents do not repeat it.
 ## How do I extend Demi?
 
 - [Add a provider](guides/add-a-provider.md): writing a provider crate for a new vendor.
+- [Develop on a Mac with Lima](guides/mac-development.md): an optional setup that runs the machine manager and Clouds in a Lima VM beside a backend on the Mac.

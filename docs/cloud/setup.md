@@ -2,7 +2,9 @@
 
 Cloud runs on a Linux execution host. The backend reaches the manager over a
 restricted Unix socket and the sandbox's runner connects to the configured
-backend endpoint.
+backend endpoint. For development on a Mac, the optional
+[Develop on a Mac with Lima](../guides/mac-development.md) guide runs the
+manager in a Lima VM.
 
 The authoritative runtime contract is [Managed hosts](managed-hosts.md); image
 artifacts are defined in [Cloud images](images.md).
