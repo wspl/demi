@@ -241,9 +241,9 @@ async fn run_on_host(
     port: &RpcPort,
 ) -> Result<u8, String> {
     let node = invocation
-        .context
         .caller
-        .node()
+        .as_ref()
+        .map(|caller| caller.node.as_str())
         .ok_or("host shell runs for an agent")?;
     let commands = shard.commands().selection_of(node, conversation);
     let relayed = invocation
@@ -427,10 +427,13 @@ mod tests {
             env: BTreeMap::new(),
             context: CommandContext {
                 conversation: ID.into(),
-                caller: CommandCaller::agent("node-1"),
+                caller: CommandCaller::agent(1),
                 locale: default_locale(),
             },
-            caller: None,
+            caller: Some(demi_shell::JobCaller {
+                node: demi_core::NodeId::try_from("node-1").unwrap(),
+                generation: 0,
+            }),
             stdin: false,
             pipes: None,
         }

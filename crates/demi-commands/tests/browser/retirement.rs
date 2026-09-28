@@ -2,7 +2,10 @@
 
 use std::{collections::HashSet, os::unix::fs::PermissionsExt, path::PathBuf, time::Duration};
 
-use demi_commands::browser::{BrowserError, DirectoryBases, LaunchOptions, with_browser};
+use demi_command_service::testing::counting_numbers;
+use demi_commands::browser::{
+    BrowserError, DirectoryBases, LaunchOptions, TabNumbers, with_browser,
+};
 use serde_json::json;
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 use tokio_util::sync::CancellationToken;
@@ -75,6 +78,7 @@ exit 1
         let (result, ()) = tokio::join!(
             with_browser(
                 LaunchOptions::pinned(launcher.clone(), locale.clone()).unwrap(),
+                TabNumbers::new(counting_numbers(), "conversation".into()),
                 CancellationToken::new(),
                 |_| async { Ok(()) },
             ),
@@ -134,6 +138,7 @@ async fn canceled_launch_reaps_helpers_before_removing_profile() {
                 }
             )
             .unwrap(),
+            TabNumbers::new(counting_numbers(), "conversation".into()),
             stop,
             |_| async {
                 Err::<(), _>(BrowserError::Configuration(
@@ -199,6 +204,7 @@ async fn chrome_process_tree_and_profile_retire_together() {
                 },
             )
             .unwrap(),
+            TabNumbers::new(counting_numbers(), "conversation".into()),
             stop,
             |browser| async move {
                 browser
@@ -457,19 +463,25 @@ async fn without_tmpdir_profiles_and_downloads_go_to_var_tmp() {
 }
 
 /// The service program as the runner starts it, with `home`, where it
-/// installs and finds the pinned Chrome, and `temporary` as its `TMPDIR`.
+/// installs and finds the pinned Chrome, and `temporary` as its `TMPDIR`;
+/// its numbers stream is answered as a runner answers it.
 async fn service_program(
     home: &std::path::Path,
     temporary: &str,
 ) -> demi_command_service::testing::ServiceProcess {
     crate::families::install_chrome(&home.join(".demi/browsers")).await;
-    demi_command_service::testing::ServiceProcess::start(
+    let service = demi_command_service::testing::ServiceProcess::start(
         env!("CARGO_BIN_EXE_demi-commands"),
         &["--command-service"],
         &[("HOME", home.to_str().unwrap()), ("TMPDIR", temporary)],
     )
     .await
-    .unwrap()
+    .unwrap();
+    // The answering task ends with the stream, as the service shuts down.
+    let _answering = demi_command_service::testing::answer_numbers(service.client())
+        .await
+        .unwrap();
+    service
 }
 
 /// The service program's conversation and caller.
@@ -477,7 +489,7 @@ fn service_context() -> demi_command_service::protocol::CommandContext {
     use demi_command_service::protocol::{CommandCaller, CommandContext, CommandLocale};
     CommandContext {
         conversation: "service-program".into(),
-        caller: CommandCaller::agent("agent-root"),
+        caller: CommandCaller::agent(1),
         locale: CommandLocale {
             time_zone: "UTC".into(),
             languages: vec!["en-US".into()],
@@ -665,6 +677,9 @@ async fn conversation_release_cancels_only_its_commands_and_retires_its_profile(
             first.call("browser.tabs", json!({})).await["tabs"],
             json!([])
         );
+        // A released conversation's next tab takes a number it has not given
+        // out before.
+        assert_ne!(first.open("fixture.html").await, first_tab);
         assert_eq!(first.lifecycle("release").await, json!({}));
         assert_eq!(second.lifecycle("release").await, json!({}));
         assert_eq!(
@@ -684,19 +699,22 @@ async fn browser_uses_trusted_conversation_and_caller_despite_script_environment
     crate::families::with_browser_fixture(|mut first| async move {
         let mut second = first.clone();
         second.conversation = "other-conversation".into();
-        second.caller = "other-agent".into();
+        second.caller = 2;
+        // Each conversation numbers its own tabs: the other's second tab has
+        // a number this conversation has not given out.
+        second.open("fixture.html").await;
         let second_tab = second.open("fixture.html").await;
         first
             .env
             .insert("DEMI_CONVERSATION_ID".into(), second.conversation.clone());
         first
             .env
-            .insert("DEMI_AGENT_NODE_ID".into(), second.caller.clone());
+            .insert("DEMI_AGENT_NODE_ID".into(), second.caller.to_string());
         let first_tab = first.open("fixture.html").await;
         let tabs = first.call("browser.tabs", json!({})).await;
         assert_eq!(tabs["tabs"].as_array().unwrap().len(), 1);
         assert_eq!(tabs["tabs"][0]["id"], first_tab);
-        assert_eq!(tabs["tabs"][0]["createdBy"]["nodeId"], first.caller);
+        assert_eq!(tabs["tabs"][0]["createdBy"], json!({"kind": "agent", "number": first.caller}));
         let (_, error) = first
             .result(
                 "browser.info",
@@ -706,7 +724,7 @@ async fn browser_uses_trusted_conversation_and_caller_despite_script_environment
             .await;
         assert_eq!(error["error"]["code"], "tab_not_found");
         assert_eq!(
-            second.call("browser.tabs", json!({})).await["tabs"][0]["id"],
+            second.call("browser.tabs", json!({})).await["tabs"][1]["id"],
             second_tab
         );
         first.call("browser.close", json!({"tab": first_tab})).await;
@@ -714,6 +732,8 @@ async fn browser_uses_trusted_conversation_and_caller_despite_script_environment
             first.lifecycle("status").await,
             json!({"conversations": [second.conversation]})
         );
+        // The next browser's tab takes the conversation's next number, never
+        // the one the closed tab had.
         let fresh = first.open("fixture.html").await;
         assert_ne!(fresh, first_tab);
         let (_, error) = first

@@ -154,8 +154,9 @@ next to the wire's types, so that a command program depends on one crate.
   SDK that speaks it:
   - invocation metadata (`Invocation`, `LocalInvocation`), the command context
     (`CommandContext`, `CommandCaller`, `CommandLocale`), completion
-    (`Completion`), service information (`ServiceInfo`) and the conversation
-    release and status requests;
+    (`Completion`), service information (`ServiceInfo`), the conversation
+    release and status requests, and the conversation numbers stream
+    (`NumbersRequest`, `NumbersAnswer`, the handler's `Numbers`);
   - package descriptors and their identities (`PackageDescriptor`), artifact
     locations and target triples (`TargetTriple`), and the one canonical
     digest of a JSON value (`canonical_digest`: the SHA-256 of its RFC 8785
@@ -171,7 +172,9 @@ next to the wire's types, so that a command program depends on one crate.
 - **Public boundary:** the protocol types, the client, the service entry point,
   the handler and IO traits, and the edit recorder; `command_service::testing`
   finds the programs a test starts beside it (`built_program`), starts a
-  service binary and drives it with a client (`ServiceProcess`), and counts
+  service binary and drives it with a client (`ServiceProcess`), gives a
+  handler numbers from counters that start at 1 (`counting_numbers`) or
+  answers a service's numbers stream from them (`answer_numbers`), and counts
   the process's pauses before trying an operation again (`pauses`), which
   show an operation waiting out a lack of open files. The runner and every
   command program use this one SDK; a command program depends on it without
@@ -252,8 +255,9 @@ next to the wire's types, so that a command program depends on one crate.
     runner starts in place of downloading them (`image::ARTIFACTS_PATH`).
 - **Conversation scope:** jobs and service streams carry the
   [command context](../execution/native-runtime.md#command-context);
-  `conversation_release` is the one generic release message; the wire carries
-  no browser policy.
+  `conversation_release` is the one generic release message, and
+  `numbers_reserve` the one generic request for a conversation's numbers; the
+  wire carries no browser policy.
 - **Public boundary:** the items above. The runner and the backend link it; the
   machine manager uses `ManagedBoot`, and `machines-protocol`'s image manifest
   check and `xtask`'s image build use `ARTIFACTS_PATH`. Behavior:

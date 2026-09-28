@@ -29,7 +29,8 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    ArtifactResolver, RuntimeError, cache::ArtifactCache, process::ResidentService, target,
+    ArtifactResolver, NumberSource, RuntimeError, cache::ArtifactCache, process::ResidentService,
+    target,
 };
 
 /// How long a service has to say which conversations it holds.
@@ -136,6 +137,7 @@ enum Request {
     Acquire {
         descriptor: PackageDescriptor,
         resolver: Arc<dyn ArtifactResolver>,
+        numbers: Arc<dyn NumberSource>,
         reply: oneshot::Sender<Result<Acquired, RuntimeError>>,
     },
     Release {
@@ -182,11 +184,13 @@ impl ServiceHandle {
     }
 
     /// The service of `descriptor`'s artifact for this host, started when
-    /// none runs. Callers asking at once share one start.
+    /// none runs, with its conversation numbers from `numbers`. Callers asking
+    /// at once share one start.
     pub async fn acquire(
         &self,
         descriptor: &PackageDescriptor,
         resolver: Arc<dyn ArtifactResolver>,
+        numbers: Arc<dyn NumberSource>,
         cancel: &CancellationToken,
     ) -> Result<Resident, Arc<RuntimeError>> {
         let (reply, answer) = oneshot::channel();
@@ -194,6 +198,7 @@ impl ServiceHandle {
             .send(Request::Acquire {
                 descriptor: descriptor.clone(),
                 resolver,
+                numbers,
                 reply,
             })
             .await
@@ -421,9 +426,10 @@ impl Owner {
             Request::Acquire {
                 descriptor,
                 resolver,
+                numbers,
                 reply,
             } => {
-                let acquired = self.acquire(descriptor, resolver);
+                let acquired = self.acquire(descriptor, resolver, numbers);
                 // A caller that gave up drops its lease with the answer.
                 let _gave_up = reply.send(acquired);
             }
@@ -448,6 +454,7 @@ impl Owner {
         &mut self,
         descriptor: PackageDescriptor,
         resolver: Arc<dyn ArtifactResolver>,
+        numbers: Arc<dyn NumberSource>,
     ) -> Result<Acquired, RuntimeError> {
         if self.stop.is_cancelled() {
             return Err(RuntimeError::Cancelled);
@@ -488,7 +495,15 @@ impl Owner {
         let cwd = self.cwd.clone();
         let env = self.env.clone();
         self.lifecycles.spawn(async move {
-            live(&cache, &artifact, &descriptor, resolver.as_ref(), &cwd, &env, stop, state).await;
+            let started = Start {
+                artifact: &artifact,
+                descriptor: &descriptor,
+                resolver: resolver.as_ref(),
+                numbers,
+                cwd: &cwd,
+                env: &env,
+            };
+            live(&cache, started, stop, state).await;
             (artifact.sha256, generation)
         });
         Ok(Acquired {
@@ -735,21 +750,38 @@ impl Owner {
     }
 }
 
+/// What a service starts from: its artifact and descriptor, where the
+/// artifact comes from, where its conversation numbers come from, and its
+/// working directory and environment.
+struct Start<'a> {
+    artifact: &'a demi_command_service::protocol::PackageArtifact,
+    descriptor: &'a PackageDescriptor,
+    resolver: &'a dyn ArtifactResolver,
+    numbers: Arc<dyn NumberSource>,
+    cwd: &'a std::path::Path,
+    env: &'a BTreeMap<String, String>,
+}
+
 /// One service's life: install its executable, start it, publish it ready,
 /// and publish how it ended.
 async fn live(
     cache: &ArtifactCache,
-    artifact: &demi_command_service::protocol::PackageArtifact,
-    descriptor: &PackageDescriptor,
-    resolver: &dyn ArtifactResolver,
-    cwd: &std::path::Path,
-    env: &BTreeMap<String, String>,
+    start: Start<'_>,
     stop: CancellationToken,
     state: watch::Sender<State>,
 ) {
+    let descriptor = start.descriptor;
     let started = async {
-        let executable = cache.install(artifact, resolver, &stop).await?;
-        ResidentService::start(&executable, descriptor, cwd, env, stop.clone()).await
+        let executable = cache.install(start.artifact, start.resolver, &stop).await?;
+        ResidentService::start(
+            &executable,
+            descriptor,
+            start.cwd,
+            start.env,
+            start.numbers,
+            stop.clone(),
+        )
+        .await
     }
     .await;
     let service = match started {

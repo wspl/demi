@@ -25,7 +25,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 /// The wire's version, which a runner's hello names.
-pub const VERSION: u32 = 23;
+pub const VERSION: u32 = 24;
 /// The largest frame either end sends.
 pub const MAX_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 /// How much of the start of each stream a job always sends: the model's view

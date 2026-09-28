@@ -21,6 +21,7 @@ mod launch;
 mod live;
 mod logs;
 mod navigation;
+mod numbers;
 mod observation;
 mod operation;
 mod output;
@@ -44,6 +45,7 @@ pub use environment::{
     BrowserEnvironment, DirectoryBases, LaunchOptions, sweep_orphans, with_browser,
 };
 pub use installation::{BrowserDirectories, pinned_archive};
+pub use numbers::TabNumbers;
 #[cfg(feature = "testing")]
 pub use launch::CAPTURE_EXTENSION_ID;
 pub use operation::{BrowserError, Result};

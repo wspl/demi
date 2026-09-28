@@ -12,8 +12,9 @@ use axum::{
     response::Html,
     routing::{any, get},
 };
+use demi_command_service::testing::counting_numbers;
 use demi_commands::browser::{
-    BrowserEnvironment, BrowserError, BrowserTab, LaunchOptions, Result, with_browser,
+    BrowserEnvironment, BrowserError, BrowserTab, LaunchOptions, Result, TabNumbers, with_browser,
 };
 use serde_json::json;
 use tokio::sync::Mutex;
@@ -63,6 +64,7 @@ async fn browser_contract_and_cleanup() {
             },
         )
         .unwrap(),
+        TabNumbers::new(counting_numbers(), "conversation".into()),
         CancellationToken::new(),
         |browser| exercise_browser(browser, url, requests, save_tab),
     )
@@ -84,6 +86,7 @@ async fn browser_contract_and_cleanup() {
             },
         )
         .unwrap(),
+        TabNumbers::new(counting_numbers(), "conversation".into()),
         CancellationToken::new(),
         |browser| async move {
             browser
@@ -108,6 +111,7 @@ async fn browser_contract_and_cleanup() {
             },
         )
         .unwrap(),
+        TabNumbers::new(counting_numbers(), "conversation".into()),
         stop,
         |browser| async move {
             browser

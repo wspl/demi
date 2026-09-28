@@ -258,6 +258,8 @@ Runner                                  Command service
   |                                           |
   |    Validate against pinned descriptor     |
   |                                           |
+  |--- POST /v1/numbers (stays open) -------->|
+  |                                           |
   |--- POST /v1/invoke ---------------------->|
   |                                           | Execute
   |<-- stdout / stderr records ---------------|
@@ -284,7 +286,8 @@ directly over stdin/stdout, with the runner as client and service as server.
 The transport needs no port listener, TLS, HTTP/1 upgrade, or gRPC.
 
 Before admitting calls, the runner checks `GET /v1/info` against the pinned wire
-version and operation set. The runner rejects startup on timeout, missing
+version and operation set, then opens the service's
+[numbers stream](#conversation-numbers). The runner rejects startup on timeout, missing
 operations, extra operations, or version mismatch. The verified file establishes
 executable identity, so the handshake does not require the service to report its
 own hash.
@@ -388,7 +391,7 @@ backend, the runner, and every native service link:
 | Field | Meaning |
 | --- | --- |
 | `conversation` | The conversation the work belongs to. Work that belongs to no conversation, such as installing the Claude Code CLI after an account is added, names the provider entry it serves instead. Either is a name of ASCII letters, digits, `-` and `_`, at most 64 characters, which the wire checks where it is decoded, as it checks the conversation a release names: the runner names a job's directory after it ([Pipes and output](runner.md#pipes-and-output)). |
-| `caller` | Who started the work: `agent`, with the agent `node`, or `user`, for a [user stream](#user-streams). |
+| `caller` | Who started the work: `agent`, with the agent's `number` as the model knows it ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)), or `user`, for a [user stream](#user-streams). |
 | `locale` | The time zone, an IANA name, and the languages, BCP 47 tags in preference order, that the conversation's user's browser last reported ([User preferences](../product/web-api.md#user-preferences)), or `UTC` and `en-US` until it reports them. |
 
 The backend is the context's only source, and nothing reads it from
@@ -466,6 +469,57 @@ cleanup retires the faulty service and reports it, rather than claiming a
 successful release. Which events lead the backend to send a release is defined
 in [Conversation idle and Host resource release](resource-lifecycle.md).
 
+### Conversation numbers
+
+Some state a service keeps is named with a number the model reads, and the
+conversation must never give that number twice
+([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)).
+For example, the conversation browser names a tab `t7`. After the browser
+restarts, the conversation is released or the Cloud stops, the next tab is
+`t8`, never a second `t7`. The service cannot keep that count itself, since
+its state ends with each of those events, so the backend keeps it: the
+conversation's `tab` sequence
+([Conversation state and transactions](../backend/storage.md#conversation-state-and-transactions)).
+The service asks for numbers through the runner, which forwards each request
+as it forwards an artifact's location request.
+
+```text
+Service                        Runner                          Backend
+  |<-- POST /v1/numbers ----------|  opened after GET /v1/info     |
+  |--- {id 3, c1, tab, count 4} ->|--- numbers_reserve ----------->|
+  |--- input pull --------------->|                                | 9 to 12 reserved
+  |<-- {id 3, first 9} -----------|<-- numbers_reserved -----------|
+```
+
+- Once it has checked a new service's catalog, and before it admits a call,
+  the runner opens one `POST /v1/numbers` request with the metadata `{}`. The
+  request stays open for the service's life. The SDK gives the handler its
+  numbers source when the service starts, and a request made before the
+  stream opens waits for it.
+- The service writes each request as one standard output record, JSON with
+  `id`, its own number for the request, unique among its requests in flight;
+  `conversation`, a conversation name it received in a
+  [command context](#command-context); `sequence`, which is `tab`, the only
+  sequence a service draws from; and `count`, from 1 to 16. It reads the
+  answers as input, one chunk per pull
+  ([Request body and input demand](#request-body-and-input-demand)).
+- The runner sends each request to the backend as `numbers_reserve` on its
+  connection and gives each answer back as one input chunk, in the order the
+  answers arrive: `{id, first}`, the first of `count` consecutive numbers that
+  now belong to the service, or `{id, error}`. It keeps at most 32 requests of
+  a service in flight and refuses one beyond that at once.
+- The backend answers only for a conversation of the device's user that
+  reaches the device, as its main Host or an attached one
+  ([Attached hosts](sessions-and-targets.md#attached-hosts)). It advances the
+  sequence by `count` in its own transaction before it answers, so a number it
+  gave out is never given again, whether or not the service uses it. A
+  service may therefore reserve a few ahead: a number it never uses is a gap,
+  never a repeat. At most 32 requests are answered at a time on a connection;
+  one beyond that, or one that repeats an id still in flight, is refused.
+- The stream ends with the service. Service shutdown ends it, and a request
+  still waiting fails. A lost backend connection stops the runner's services
+  in any case ([Command lifetime](runner.md#command-lifetime)).
+
 ### User streams
 
 An operation can also serve the conversation's user directly, for as long as
@@ -526,6 +580,8 @@ that tail.
 | --- | --- |
 | `GET /v1/info` | Return wire version and operation IDs before invocations. |
 | `POST /v1/invoke` | Run one invocation on one stream with concurrent request/response bodies. |
+| `POST /v1/conversation` | Release a conversation's state or report which conversations hold state ([Conversation-scoped state](#conversation-scoped-state)). |
+| `POST /v1/numbers` | Carry the service's requests for conversation numbers and their answers for the service's life ([Conversation numbers](#conversation-numbers)). |
 | `POST /v1/shutdown` | Stop admission and drain before process exit. |
 
 ### Request body and input demand

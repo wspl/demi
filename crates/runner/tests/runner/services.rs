@@ -11,6 +11,7 @@ use demi_command_service::protocol::{
     Record,
 };
 use demi_runner::host_log::{self, Query};
+use demi_runner::testing::NoNumbers;
 use demi_runner::services::{
     ArtifactResolver, ArtifactSource, Decision, Resident, RuntimeError, ServiceHandle,
     ServiceRegistry, target,
@@ -107,7 +108,7 @@ async fn call(resident: &Resident, operation: &str, conversation: &str) -> u8 {
         .invoke(&Invocation {
             context: CommandContext {
                 conversation: conversation.into(),
-                caller: CommandCaller::agent("node"),
+                caller: CommandCaller::agent(1),
                 locale: CommandLocale {
                     time_zone: "UTC".into(),
                     languages: vec!["en-US".into()],
@@ -156,7 +157,7 @@ async fn decided(decisions: &mut broadcast::Receiver<(String, Decision)>, digest
 
 async fn acquire(services: &ServiceHandle, descriptor: &PackageDescriptor, resolver: Arc<Local>) -> Resident {
     services
-        .acquire(descriptor, resolver, &CancellationToken::new())
+        .acquire(descriptor, resolver, Arc::new(NoNumbers), &CancellationToken::new())
         .await
         .unwrap()
 }
@@ -333,7 +334,7 @@ async fn a_service_that_dies_reports_its_status_and_standard_error() {
         let invocation = Invocation {
             context: CommandContext {
                 conversation: "c".into(),
-                caller: CommandCaller::agent("node"),
+                caller: CommandCaller::agent(1),
                 locale: CommandLocale {
                     time_zone: "UTC".into(),
                     languages: vec!["en-US".into()],
@@ -394,7 +395,7 @@ async fn a_caller_that_gives_up_leaves_the_shared_start_to_the_others() {
             let descriptor = descriptor.clone();
             let resolver = resolver.clone();
             let impatient = impatient.clone();
-            async move { services.acquire(&descriptor, resolver, &impatient).await.map(|_| ()) }
+            async move { services.acquire(&descriptor, resolver, Arc::new(NoNumbers), &impatient).await.map(|_| ()) }
         });
         let (started, proceed) = resolver.gate.as_ref().unwrap();
         started.notified().await;
@@ -404,7 +405,7 @@ async fn a_caller_that_gives_up_leaves_the_shared_start_to_the_others() {
             let resolver = resolver.clone();
             async move {
                 services
-                    .acquire(&descriptor, resolver, &CancellationToken::new())
+                    .acquire(&descriptor, resolver, Arc::new(NoNumbers), &CancellationToken::new())
                     .await
             }
         });
@@ -441,7 +442,7 @@ async fn a_start_nobody_waits_for_stops() {
             let descriptor = descriptor.clone();
             let resolver = resolver.clone();
             let impatient = impatient.clone();
-            async move { services.acquire(&descriptor, resolver, &impatient).await.map(|_| ()) }
+            async move { services.acquire(&descriptor, resolver, Arc::new(NoNumbers), &impatient).await.map(|_| ()) }
         });
         let (started, proceed) = resolver.gate.as_ref().unwrap();
         started.notified().await;
@@ -453,7 +454,7 @@ async fn a_start_nobody_waits_for_stops() {
             let resolver = resolver.clone();
             async move {
                 services
-                    .acquire(&descriptor, resolver, &CancellationToken::new())
+                    .acquire(&descriptor, resolver, Arc::new(NoNumbers), &CancellationToken::new())
                     .await
             }
         });
@@ -489,7 +490,7 @@ async fn stopping_all_services_ends_every_one_and_closing_ends_the_registry() {
         }
         registry.close().await;
         let (descriptor, path) = fixture(root.path(), 0).await;
-        assert!(services.acquire(&descriptor, local(path), &CancellationToken::new()).await.is_err());
+        assert!(services.acquire(&descriptor, local(path), Arc::new(NoNumbers), &CancellationToken::new()).await.is_err());
     })
     .await
     .unwrap();

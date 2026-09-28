@@ -6,13 +6,13 @@
 import {
   LIVE_CONTROL_FRAME,
   LIVE_VIDEO_CODEC,
-  LIVE_VIDEO_FRAME,
   type LiveControl,
   type LiveModuleMessage,
   type LiveTab,
   type LiveViewerMessage,
   type BrowserViewport,
 } from '@demicodes/protocol'
+import { encodeVideo } from '@demicodes/web-ui/browser/frames'
 import type { OpenLiveStream, LiveStreamHandlers } from '@demicodes/web-ui/browser/session'
 import { CONTROL, META } from '@demicodes/web-ui/browser/input'
 import { BrowserTabsError, type BrowserTabInfo, type BrowserTabsApi } from '@demicodes/web-ui/browser/tabs'
@@ -40,17 +40,18 @@ function picture(
   chunk: EncodedVideoChunk,
   size: { width: number; height: number },
 ): Uint8Array {
-  const payload = new Uint8Array(48 + chunk.byteLength)
-  const header = new DataView(payload.buffer)
-  payload.set(encoder.encode(tab).subarray(0, 24))
-  header.setUint32(24, generation)
-  header.setUint32(28, sequence)
-  header.setUint8(32, chunk.type === 'key' ? 1 : 0)
-  header.setFloat64(36, chunk.timestamp)
-  header.setUint16(44, size.width)
-  header.setUint16(46, size.height)
-  chunk.copyTo(payload.subarray(48))
-  return framed(LIVE_VIDEO_FRAME, payload)
+  const data = new Uint8Array(chunk.byteLength)
+  chunk.copyTo(data)
+  return encodeVideo({
+    tab,
+    generation,
+    sequence,
+    key: chunk.type === 'key',
+    timestamp: chunk.timestamp,
+    width: size.width,
+    height: size.height,
+    data,
+  })
 }
 
 const SELECT: LiveControl = {
@@ -71,18 +72,18 @@ const SELECT: LiveControl = {
 /** How long the gallery's browser takes over a request, as a Host takes a moment. */
 const REQUEST_DELAY_MS = 900
 
-/** Tab ids as the protocol spells them: `t_` and 22 characters. */
+/** Tab ids as the protocol spells them: `t` and the tab's number in the conversation. */
 function galleryTabs(): LiveTab[] {
   return [
     {
-      id: 't_galleryaaaaaaaaaaaaaaa',
+      id: 't1',
       title: 'Orders — Example',
       url: 'https://example.test/orders',
-      createdBy: { kind: 'agent', nodeId: 'root' },
+      createdBy: { kind: 'agent', number: 0 },
       viewport: { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' },
     },
     {
-      id: 't_gallerybbbbbbbbbbbbbbb',
+      id: 't2',
       title: 'Docs',
       url: 'https://example.test/docs',
       createdBy: { kind: 'user' },
@@ -355,6 +356,8 @@ class GalleryBrowser {
  */
 export function galleryBrowserTabs(tabs: LiveTab[] = galleryTabs()): BrowserTabsApi {
   const views = new Set<GalleryBrowser>()
+  // The next tab's number, as the conversation gives them: never one given before.
+  let next = Math.max(0, ...tabs.map((tab) => Number(tab.id.slice(1)))) + 1
   // Each request's timer removes itself when it answers; none outlives its 900 ms.
   const timers = new Set<ReturnType<typeof setTimeout>>()
 
@@ -406,7 +409,7 @@ export function galleryBrowserTabs(tabs: LiveTab[] = galleryTabs()): BrowserTabs
     list: () => later(() => ({ tabs: tabs.map(info) })),
     open: (url) => later(() => {
       const tab: LiveTab = {
-        id: `t_gallery${Math.random().toString(36).slice(2).padEnd(15, '0').slice(0, 15)}`,
+        id: `t${next++}`,
         title: url === 'about:blank' ? '' : URL.parse(url)?.host ?? url,
         url,
         createdBy: { kind: 'user' },

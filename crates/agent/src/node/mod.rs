@@ -212,6 +212,8 @@ pub(crate) struct NodeRuntime<H: AgentHarness> {
     feed: Rc<dyn PageFeed>,
     /// The conversation's command and shell numbers, from the tree store.
     numbers: Rc<dyn Numbers>,
+    /// The node's agent number.
+    agent: u64,
 }
 
 impl<H: AgentHarness> NodeRuntime<H> {
@@ -230,6 +232,7 @@ impl<H: AgentHarness> NodeRuntime<H> {
             shells: self.shells.as_ref(),
             environments: &self.environments,
             context: self.prompt_context(),
+            agent: self.agent,
             commands: &self.commands,
             feed: &self.feed,
             numbers: &self.numbers,
@@ -423,6 +426,7 @@ pub(crate) async fn assemble<H: AgentHarness>(
         admission,
         lifecycle: ActivityGate::new(),
         numbers: Rc::new(StoreNumbers(store.clone())),
+        agent: record.number,
         store: store.clone(),
         shells,
         environments: Environments::default(),

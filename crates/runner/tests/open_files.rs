@@ -23,7 +23,7 @@ use demi_runner::{
     process::{ChildProcess, OutputStream, ProcessInput, SpawnOptions},
     services::{ArtifactResolver, ArtifactSource, RuntimeError, ServiceRegistry, target},
     shell::{job::Job, scope::Scope},
-    testing::Dispatch,
+    testing::{Dispatch, NoNumbers},
 };
 use futures_util::{StreamExt, future::BoxFuture};
 use serde_json::json;
@@ -554,6 +554,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
                 .acquire(
                     &descriptor,
                     Arc::new(Local(path)),
+                    Arc::new(NoNumbers),
                     &CancellationToken::new(),
                 )
                 .await
@@ -678,7 +679,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
 fn command_context() -> CommandContext {
     CommandContext {
         conversation: "conversation".into(),
-        caller: CommandCaller::agent("session"),
+        caller: CommandCaller::agent(1),
         locale: CommandLocale {
             time_zone: "UTC".into(),
             languages: vec!["en-US".into()],

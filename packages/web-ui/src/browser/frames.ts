@@ -10,6 +10,7 @@ import {
   LIVE_MAX_FRAME_BYTES,
   LIVE_VIDEO_FRAME,
   LIVE_VIDEO_HEADER_BYTES,
+  LIVE_VIDEO_TAB_BYTES,
   liveModuleMessageSchema,
   type LiveModuleMessage,
   type LiveViewerMessage,
@@ -52,6 +53,25 @@ function framed(kind: number, payload: Uint8Array): LiveBytes {
 /** One of the viewer's messages, ready to send. */
 export function encodeMessage(message: LiveViewerMessage): LiveBytes {
   return framed(LIVE_CONTROL_FRAME, encoder.encode(JSON.stringify(message)))
+}
+
+/**
+ * A picture as the module frames it (`live-view.md` § The stream), for a
+ * view without a Host, such as the gallery's.
+ */
+export function encodeVideo(frame: LiveVideoFrame): LiveBytes {
+  const payload = new Uint8Array(LIVE_VIDEO_HEADER_BYTES + frame.data.length)
+  const header = new DataView(payload.buffer)
+  payload.set(encoder.encode(frame.tab).subarray(0, LIVE_VIDEO_TAB_BYTES))
+  const fields = LIVE_VIDEO_TAB_BYTES
+  header.setUint32(fields, frame.generation)
+  header.setUint32(fields + 4, frame.sequence)
+  header.setUint8(fields + 8, frame.key ? 1 : 0)
+  header.setFloat64(fields + 12, frame.timestamp)
+  header.setUint16(fields + 20, frame.width)
+  header.setUint16(fields + 22, frame.height)
+  payload.set(frame.data, LIVE_VIDEO_HEADER_BYTES)
+  return framed(LIVE_VIDEO_FRAME, payload)
 }
 
 /** Bytes of the `file`th file of `upload`. */
@@ -113,17 +133,18 @@ function decodeFrame(frame: Uint8Array): LiveFrame {
     throw new Error('the live stream sent a video frame shorter than its header')
   }
   const header = new DataView(payload.buffer, payload.byteOffset, LIVE_VIDEO_HEADER_BYTES)
-  const tab = decoder.decode(payload.subarray(0, 24)).replace(/\0+$/, '')
+  const tab = decoder.decode(payload.subarray(0, LIVE_VIDEO_TAB_BYTES)).replace(/\0+$/, '')
+  const fields = LIVE_VIDEO_TAB_BYTES
   return {
     kind: 'video',
     frame: {
       tab,
-      generation: header.getUint32(24),
-      sequence: header.getUint32(28),
-      key: (header.getUint8(32) & 1) === 1,
-      timestamp: header.getFloat64(36),
-      width: header.getUint16(44),
-      height: header.getUint16(46),
+      generation: header.getUint32(fields),
+      sequence: header.getUint32(fields + 4),
+      key: (header.getUint8(fields + 8) & 1) === 1,
+      timestamp: header.getFloat64(fields + 12),
+      width: header.getUint16(fields + 20),
+      height: header.getUint16(fields + 22),
       data: payload.subarray(LIVE_VIDEO_HEADER_BYTES),
     },
   }

@@ -17,7 +17,7 @@ async fn call(
         &Invocation {
             context: CommandContext {
                 conversation: "file-test-conversation".into(),
-                caller: CommandCaller::agent("file-test"),
+                caller: CommandCaller::agent(1),
                 locale: CommandLocale {
                     time_zone: "UTC".into(),
                     languages: vec!["en-US".into()],
@@ -115,6 +115,7 @@ async fn conversation_browser_commands_share_state_and_retire() {
         )));
         let (client, connection) = Client::connect(client_io).await.unwrap();
         let driver = AbortOnDropHandle::new(tokio::spawn(connection));
+        let _numbers = demi_command_service::testing::answer_numbers(&client).await.unwrap();
         let conversation = uuid::Uuid::new_v4().to_string();
         let request = |operation: &str, args: Value| Invocation {
             operation: operation.into(),
@@ -126,7 +127,7 @@ async fn conversation_browser_commands_share_state_and_retire() {
             json: Some(true),
             context: CommandContext {
                 conversation: conversation.clone(),
-                caller: CommandCaller::agent("agent-root"),
+                caller: CommandCaller::agent(1),
                 locale: CommandLocale {
                     time_zone: "UTC".into(),
                     languages: vec!["en-US".into()],
@@ -290,7 +291,7 @@ async fn conversation_browser_commands_share_state_and_retire() {
         }
         let (completion, _, stderr) = exchange(
             &client,
-            &request("browser.info", json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAA"})),
+            &request("browser.info", json!({"tab": "t999"})),
             false,
         )
         .await;

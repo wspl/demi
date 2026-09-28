@@ -272,10 +272,12 @@ where
             let context = &call.invocation.context;
             let root = NodeId::try_from(context.conversation.as_str())
                 .map_err(|error| RpcError::Failed(error.to_string()))?;
-            let caller = context
+            // The backend's record of the job names its node.
+            let caller = call
+                .invocation
                 .caller
-                .node()
-                .and_then(|node| NodeId::try_from(node).ok())
+                .as_ref()
+                .map(|caller| caller.node.clone())
                 .ok_or_else(|| RpcError::Failed("the command runs only in an agent's job".into()))?;
             let tree = server
                 .tree(&root)

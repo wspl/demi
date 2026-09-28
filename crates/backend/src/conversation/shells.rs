@@ -121,11 +121,11 @@ impl ShellEnvironmentFactory<RemoteHost> for ShardShellEnvironments {
             let context: ContextSource = {
                 let shard = self.shard.clone();
                 let conversation = conversation.clone();
-                let node = scope.node.to_string();
+                let caller = CommandCaller::agent(scope.agent);
                 Rc::new(move || {
                     let shard = shard.clone();
                     let conversation = conversation.clone();
-                    let caller = CommandCaller::agent(node.clone());
+                    let caller = caller.clone();
                     Box::pin(async move {
                         let shard = shard
                             .upgrade()

@@ -80,9 +80,9 @@ impl CommandRouter {
     /// node belongs to the job's conversation.
     fn node_of(&self, job: &JobOrigin) -> Result<Rc<Node>, String> {
         let node = job
-            .context
             .caller
-            .node()
+            .as_ref()
+            .map(|caller| caller.node.as_str())
             .ok_or_else(|| "rpc commands run for an agent's jobs".to_owned())?;
         let registered = self
             .nodes

@@ -56,6 +56,9 @@ pub struct EnvironmentScope<'a> {
     /// The conversation's root node.
     pub root: &'a NodeId,
     pub node: &'a NodeId,
+    /// The node's agent number, as the model and its commands' context know
+    /// it (`runtime.md` § Identifiers the model sees).
+    pub agent: u64,
     /// The commands the environment's shells offer: the node's.
     pub commands: &'a Rc<CommandSet>,
     /// Where the environment tells the pages of its commands, and learns
@@ -157,6 +160,8 @@ pub(crate) struct ShellAccess<'a, H: AgentHarness> {
     pub(crate) shells: &'a dyn ShellEnvironmentFactory<H::Host>,
     pub(crate) environments: &'a Environments,
     pub(crate) context: PromptContext<'a>,
+    /// The node's agent number.
+    pub(crate) agent: u64,
     pub(crate) commands: &'a Rc<CommandSet>,
     /// The node's feed, which its environments are made with.
     pub(crate) feed: &'a Rc<dyn PageFeed>,
@@ -179,6 +184,7 @@ impl<H: AgentHarness> ShellAccess<'_, H> {
         let scope = EnvironmentScope {
             root: self.context.root,
             node: self.context.node,
+            agent: self.agent,
             commands: self.commands,
             feed: self.feed,
             numbers: self.numbers,

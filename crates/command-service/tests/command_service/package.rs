@@ -84,7 +84,7 @@ fn invocation_decoding_checks_nested_values_and_optional_nulls() {
     use demi_command_service::protocol::Completion;
     let context = serde_json::json!({
         "conversation": "conversation",
-        "caller": {"kind": "agent", "node": "node"},
+        "caller": {"kind": "agent", "number": 1},
         "locale": {"timeZone": "UTC", "languages": ["en-US"]},
     });
     let valid = serde_json::json!({"operation":"read", "invocationId":"call", "context":context, "args":{}, "cwd":"/work", "env":{}});
@@ -105,11 +105,11 @@ fn invocation_decoding_checks_nested_values_and_optional_nulls() {
         ),
         (
             "context",
-            serde_json::json!({"conversation": "c", "caller": {"kind": "agent", "node": ""}, "locale": context["locale"]}),
+            serde_json::json!({"conversation": "c", "caller": {"kind": "agent", "number": -1}, "locale": context["locale"]}),
         ),
         (
             "context",
-            serde_json::json!({"conversation": "c", "caller": {"kind": "user", "node": "n"}, "locale": context["locale"]}),
+            serde_json::json!({"conversation": "c", "caller": {"kind": "user", "number": 1}, "locale": context["locale"]}),
         ),
         (
             "context",

@@ -52,7 +52,7 @@ async fn invoke(service: &ServiceProcess, operation: &str, input: Vec<u8>) -> (V
             invocation_id: "invocation".into(),
             context: CommandContext {
                 conversation: "conversation".into(),
-                caller: CommandCaller::agent("caller"),
+                caller: CommandCaller::agent(1),
                 locale: CommandLocale {
                     time_zone: "UTC".into(),
                     languages: vec!["en-US".into()],

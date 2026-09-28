@@ -28,6 +28,7 @@ use tokio_util::sync::CancellationToken;
 use crate::support::{
     CommandRun, Fixture, Gate, Model, TestHarness, agent, agent_call, command_storage, named_node,
     conversation, held, is_idle, is_pending_steers, open, request_text, send, texts, until,
+    until_answered,
 };
 
 fn said(text: &str) -> Turn {
@@ -910,9 +911,7 @@ async fn a_start_request_is_safe_to_retry_and_outlives_a_cancelled_call() {
             other => panic!("{other:?}"),
         }
     };
-    while reservation().await.is_none() {
-        tokio::task::yield_now().await;
-    }
+    until_answered(|| async { reservation().await.is_some() }).await;
     cancel.cancel();
     call.abort();
     root_gate.open();

@@ -10,7 +10,7 @@ use std::{
 use bytes::Bytes;
 use demi_command_service::protocol::{
     ArtifactLocation, ArtifactUrl, EditCopies, EditKind as FileEditKind, PackageArtifact,
-    PackageDescriptor, host_target,
+    PackageDescriptor, ServiceSequence, host_target,
 };
 use demi_command_tree::NativeOperation;
 use demi_core::{BlobRef, CommandId, EditKind, EditSegment, EditedFile, NodeId, StreamKind};
@@ -1345,6 +1345,15 @@ impl LinkPolicy for Refusing {
     }
 
     fn grow_volume(&self, _: VolumeName, _: u64) -> LocalBoxFuture<'static, Result<(), String>> {
+        Box::pin(async { Err("no".into()) })
+    }
+
+    fn reserve_numbers(
+        &self,
+        _: String,
+        _: ServiceSequence,
+        _: u32,
+    ) -> LocalBoxFuture<'static, Result<u64, String>> {
         Box::pin(async { Err("no".into()) })
     }
 }

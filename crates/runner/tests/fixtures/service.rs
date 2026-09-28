@@ -1,7 +1,7 @@
 //! Deliberately faulty operations available only in native integration tests.
 use bytes::Bytes;
-use demi_command_service::protocol::{Completion, ConversationRequest, Invocation};
-use demi_command_service::{ConversationContext, Handler, InvocationContext, ServiceError};
+use demi_command_service::protocol::{Completion, ConversationRequest, Invocation, ServiceSequence};
+use demi_command_service::{ConversationContext, Handler, InvocationContext, Numbers, ServiceError};
 use std::{
     collections::BTreeSet,
     future::Future,
@@ -20,6 +20,8 @@ struct Fixture {
     stalled: Arc<Notify>,
     /// Lets that status answer, with what it held when it was asked.
     proceed: Arc<Notify>,
+    /// The connection's numbers source.
+    numbers: Arc<Mutex<Option<Numbers>>>,
 }
 
 impl Handler for Fixture {
@@ -31,15 +33,38 @@ impl Handler for Fixture {
             .to_vec()
     }
 
+    fn numbers(&self, numbers: Numbers) {
+        *self.numbers.lock().unwrap() = Some(numbers);
+    }
+
     fn invoke(
         &self,
         mut context: InvocationContext,
     ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
         let (conversations, stalling) = (self.conversations.clone(), self.stalling.clone());
         let (stalled, proceed) = (self.stalled.clone(), self.proceed.clone());
+        let numbers = self.numbers.lock().unwrap().clone();
         Box::pin(async move {
             let mut exit_code = 0;
             match context.request.operation.as_str() {
+                // Draws `count` tab numbers of the invoking conversation, one
+                // by default, and prints the first.
+                "number" => {
+                    let numbers = numbers.ok_or_else(|| ServiceError::failed("no numbers source"))?;
+                    let count = context.request.args.get("count").and_then(|count| count.as_u64()).unwrap_or(1);
+                    let first = numbers
+                        .draw(
+                            &context.request.context.conversation,
+                            ServiceSequence::Tab,
+                            u32::try_from(count).map_err(ServiceError::failed)?,
+                        )
+                        .await?;
+                    let value = serde_json::json!({ "first": first });
+                    context
+                        .output
+                        .stdout(Bytes::from(value.to_string()))
+                        .await?;
+                }
                 // Ends once a status or a release waits to answer.
                 "stalled" => stalled.notified().await,
                 "proceed" => proceed.notify_one(),

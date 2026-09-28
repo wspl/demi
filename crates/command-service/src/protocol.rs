@@ -6,6 +6,7 @@ use thiserror::Error;
 mod conversation;
 mod edits;
 mod invocation;
+mod numbers;
 mod package;
 
 pub use conversation::{ConversationRequest, ConversationStatus};
@@ -17,6 +18,7 @@ pub use invocation::{
     COMMAND_LOCALE_LANGUAGES, CONVERSATION_NAME_CHARS, CommandCaller, CommandContext, CommandError,
     CommandLocale, Completion, Invocation, LocalInvocation, conversation_name, without_nul,
 };
+pub use numbers::{MAX_NUMBERS, NumbersAnswer, NumbersOpen, NumbersRequest, ServiceSequence};
 pub use package::{
     ArtifactLocation, ArtifactPath, ArtifactUrl, PackageArtifact, PackageDescriptor, ServiceInfo,
     TARGETS, VERSION, canonical_digest, digest, host_target, is_digest, is_target, target,
@@ -30,6 +32,7 @@ pub const MAX_RECORD_BYTES: usize = 64 * 1024;
 pub const INFO_PATH: &str = "/v1/info";
 pub const INVOKE_PATH: &str = "/v1/invoke";
 pub const CONVERSATION_PATH: &str = "/v1/conversation";
+pub const NUMBERS_PATH: &str = "/v1/numbers";
 pub const SHUTDOWN_PATH: &str = "/v1/shutdown";
 
 /// The metadata that opens an invocation stream: the native protocol's
@@ -66,6 +69,17 @@ impl Metadata for LocalInvocation {
 }
 
 impl ConversationRequest {
+    pub fn validate(&self) -> Result<(), ProtocolError> {
+        garde::Validate::validate(self).map_err(ProtocolError::from)
+    }
+
+    pub fn encode(&self) -> Result<Bytes, ProtocolError> {
+        self.validate()?;
+        encode_metadata(self)
+    }
+}
+
+impl NumbersOpen {
     pub fn validate(&self) -> Result<(), ProtocolError> {
         garde::Validate::validate(self).map_err(ProtocolError::from)
     }

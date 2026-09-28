@@ -252,7 +252,7 @@ async fn declared_shell_builtin_dispatches_without_a_local_endpoint() {
 fn command_context() -> CommandContext {
     CommandContext {
         conversation: "conversation".into(),
-        caller: CommandCaller::agent("session"),
+        caller: CommandCaller::agent(1),
         locale: CommandLocale {
             time_zone: "UTC".into(),
             languages: vec!["en-US".into()],

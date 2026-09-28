@@ -1247,7 +1247,7 @@ fn native_leaf(native: &NativeFixture, name: &str, operation: &str) -> LeafBuild
 fn native_root(native: &NativeFixture, name: &str) -> CommandSet {
     let mut root = GroupBuilder::new(name, "The native fixture.")
         .leaf(native_leaf(native, "where", "where").input::<WhereArgs>());
-    for operation in ["echo", "spin", "result"] {
+    for operation in ["echo", "spin", "result", "number"] {
         root = root.leaf(native_leaf(native, operation, operation));
     }
     let mut commands = CommandSet::new();
@@ -1271,8 +1271,9 @@ async fn client(cwd: &str, env: &[(&str, &str)]) -> Output {
         .unwrap()
 }
 
-/// About 3 s here: two runners, and seven jobs one after another, each a login
-/// shell that reads the machine's profile (about 0.4 s in the Linux container).
+/// About 3.5 s here: two runners, and eight jobs one after another, each a
+/// login shell that reads the machine's profile (about 0.4 s in the Linux
+/// container).
 #[tokio::test(flavor = "local")]
 async fn a_native_command_runs_in_its_service_with_the_jobs_context_on_its_own_runner() {
     let native = NativeFixture::load();
@@ -1321,6 +1322,12 @@ async fn a_native_command_runs_in_its_service_with_the_jobs_context_on_its_own_r
         "{}",
         failed.stderr.delta
     );
+    // The service draws its conversation's numbers through its runner from
+    // the backend, which gives each out once (`native-runtime.md`
+    // § Conversation numbers).
+    let numbered = run(&on_a, "demi number && demi number").await;
+    assert_eq!(exited(&numbered), 0, "{}", numbered.stderr.tail);
+    assert_eq!(numbered.stdout.delta, r#"{"first":1}{"first":2}"#);
 
     // A job's execution context lives on its own runner, and only while the
     // job runs.

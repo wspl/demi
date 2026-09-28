@@ -59,8 +59,9 @@ const RECORDING: usize = 64;
 /// The way to a tab's debugging owner.
 pub(super) struct DebugSessions {
     requests: mpsc::Sender<SessionsRequest>,
-    /// The callers with a connection open, for a timeout's diagnostics.
-    callers: watch::Receiver<Vec<String>>,
+    /// The numbers of the agents with a connection open, for a timeout's
+    /// diagnostics.
+    callers: watch::Receiver<Vec<u64>>,
     /// Where the next recorded event goes, so a waiting reader learns of new
     /// events.
     recorded: watch::Receiver<u64>,
@@ -71,12 +72,12 @@ pub(super) struct DebugSessions {
 enum SessionsRequest {
     /// The caller's connection, made if it has none.
     Connect {
-        caller: String,
+        caller: u64,
         reply: oneshot::Sender<Result<DebugHandle>>,
     },
     /// Closes the caller's connection.
     Detach {
-        caller: String,
+        caller: u64,
         reply: oneshot::Sender<Result<()>>,
     },
     Events {
@@ -148,16 +149,15 @@ impl DebugSessions {
         answer.await.map_err(|_| BrowserError::Closed)?
     }
 
-    /// `caller`'s connection to the tab, made if it has none.
-    async fn connect(&self, caller: &str) -> Result<DebugHandle> {
-        let caller = caller.to_owned();
+    /// The connection of the agent numbered `caller` to the tab, made if it
+    /// has none.
+    async fn connect(&self, caller: u64) -> Result<DebugHandle> {
         self.ask(|reply| SessionsRequest::Connect { caller, reply })
             .await
     }
 
     /// Closes `caller`'s connection and joins its cleanup.
-    pub async fn detach(&self, caller: &str) -> Result<()> {
-        let caller = caller.to_owned();
+    pub async fn detach(&self, caller: u64) -> Result<()> {
         self.ask(|reply| SessionsRequest::Detach { caller, reply })
             .await
     }
@@ -175,12 +175,12 @@ impl DebugSessions {
     }
 
     /// The other callers whose connections to the tab are open.
-    pub fn other_callers(&self, caller: Option<&str>) -> Vec<String> {
+    pub fn other_callers(&self, caller: Option<u64>) -> Vec<u64> {
         self.callers
             .borrow()
             .iter()
-            .filter(|owner| Some(owner.as_str()) != caller)
-            .cloned()
+            .filter(|owner| Some(**owner) != caller)
+            .copied()
             .collect()
     }
 
@@ -204,11 +204,12 @@ struct SessionsOwner {
     /// The tab's end.
     ended: CancellationToken,
     tasks: TaskTracker,
-    connections: HashMap<String, DebugConnection>,
+    /// Each calling agent's connection, by the agent's number.
+    connections: HashMap<u64, DebugConnection>,
     /// The tab's recorded events, while a connection is open.
     buffer: Option<Buffer<CdpEvent>>,
     recording: mpsc::Sender<Recorded>,
-    callers: watch::Sender<Vec<String>>,
+    callers: watch::Sender<Vec<u64>>,
     recorded: watch::Sender<u64>,
 }
 
@@ -275,7 +276,7 @@ impl SessionsOwner {
         }
     }
 
-    async fn connect(&mut self, caller: String) -> Result<DebugHandle> {
+    async fn connect(&mut self, caller: u64) -> Result<DebugHandle> {
         if let Some(connection) = self.connections.get(&caller) {
             if connection.ended.is_cancelled() {
                 return Err(BrowserError::Connection(
@@ -394,7 +395,7 @@ impl SessionsOwner {
             .connections
             .iter()
             .filter(|(_, connection)| !connection.ended.is_cancelled())
-            .map(|(caller, _)| caller.clone())
+            .map(|(caller, _)| *caller)
             .collect();
         callers.sort();
         self.callers.send_replace(callers);

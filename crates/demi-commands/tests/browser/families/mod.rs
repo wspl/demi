@@ -25,7 +25,8 @@ pub struct BrowserFixture {
     pub root: Arc<tempfile::TempDir>,
     pub conversation: String,
     pub env: BTreeMap<String, String>,
-    pub caller: String,
+    /// The number of the agent the fixture's commands run for.
+    pub caller: u64,
     /// The locale the invocations carry; the browser starts in the first one's.
     pub locale: CommandLocale,
     /// Whether invocations ask for JSON, as `--json` does; text arrives as
@@ -90,7 +91,7 @@ impl BrowserFixture {
         cancel: CancellationToken,
         bytes: Vec<u8>,
     ) -> (u8, Value) {
-        let caller = CommandCaller::agent(self.caller.clone());
+        let caller = CommandCaller::agent(self.caller);
         self.result_for(caller, operation, args, cancel, bytes)
             .await
     }
@@ -244,11 +245,13 @@ where
     W: Future<Output = BrowserFixture>,
 {
     let (chrome, directories) = installed_chrome().await;
+    let service = DemiCommands::new(directories);
+    service.numbers(demi_command_service::testing::counting_numbers());
     let fixture = BrowserFixture {
-        service: Arc::new(DemiCommands::new(directories)),
+        service: Arc::new(service),
         _chrome: Arc::new(chrome),
         root: Arc::new(tempfile::tempdir().unwrap()),
-        caller: "browser-family-test".into(),
+        caller: 1,
         conversation: uuid::Uuid::new_v4().to_string(),
         env: BTreeMap::new(),
         locale: CommandLocale {

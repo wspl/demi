@@ -232,15 +232,13 @@ impl Owner<'_> {
             Request::Call { id, events, ended } => {
                 self.relay.call(id, events, ended, &mut self.watches);
             }
-            Request::Locate {
-                owner,
-                sha256,
-                reply,
+            Request::Ask {
+                question,
                 abandoned,
             } => {
                 let frame = self
                     .relay
-                    .locate(owner, sha256, reply, abandoned, &mut self.watches)
+                    .ask(question, abandoned, &mut self.watches)
                     .map_err(io::Error::other)?;
                 self.send(frame).await?;
             }

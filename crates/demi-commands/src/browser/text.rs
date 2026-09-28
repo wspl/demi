@@ -217,9 +217,9 @@ fn open(result: &OpenResult) -> String {
 
 fn created_by(created_by: &BrowserCreatedBy) -> String {
     match created_by {
-        BrowserCreatedBy::Agent { node_id } => format!("agent {}", plain(node_id)),
+        BrowserCreatedBy::Agent { number } => format!("agent {number}"),
         BrowserCreatedBy::Page { opener } => format!("page {opener}"),
-        BrowserCreatedBy::Temporary { node_id } => format!("temporary {}", plain(node_id)),
+        BrowserCreatedBy::Temporary { number } => format!("temporary {number}"),
         BrowserCreatedBy::User {} => "user".to_owned(),
     }
 }
@@ -852,17 +852,17 @@ mod tests {
     /// result type, with the lines its reader looks for.
     #[test]
     fn every_result_renders_as_readable_lines() {
-        let tab = json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ"});
+        let tab = json!({"tab": "t1"});
         let viewport =
             json!({"width": 390, "height": 844, "devicePixelRatio": 1, "mode": "custom"});
-        let node = json!({"ref": "e_AAAAAAAAAAAAAAAAAAAAAw", "role": "button", "name": "Sign in", "depth": 0, "states": ["focused"]});
+        let node = json!({"ref": "e1", "role": "button", "name": "Sign in", "depth": 0, "states": ["focused"]});
         let cases: Vec<(&str, Value, Value, Vec<&str>)> = vec![
             (
                 "open",
                 json!({"url": "http://localhost:3000/login"}),
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "url": "http://localhost:3000/login", "title": "Sign in"}),
+                json!({"tab": "t1", "url": "http://localhost:3000/login", "title": "Sign in"}),
                 vec![
-                    "Tab: t_AAAAAAAAAAAAAAAAAAAAAQ\n",
+                    "Tab: t1\n",
                     "URL: http://localhost:3000/login\n",
                     "Title: Sign in\n",
                 ],
@@ -871,29 +871,29 @@ mod tests {
                 "tabs",
                 json!({}),
                 json!({"tabs": [
-                    {"id": "t_AAAAAAAAAAAAAAAAAAAAAQ", "title": "Sign in", "url": "http://localhost:3000/login", "createdBy": {"kind": "agent", "nodeId": "root"}},
-                    {"id": "t_AAAAAAAAAAAAAAAAAAAAAg", "title": "Admin", "url": "http://localhost:3000/admin", "createdBy": {"kind": "page", "opener": "t_AAAAAAAAAAAAAAAAAAAAAQ"}},
+                    {"id": "t1", "title": "Sign in", "url": "http://localhost:3000/login", "createdBy": {"kind": "agent", "number": 0}},
+                    {"id": "t2", "title": "Admin", "url": "http://localhost:3000/admin", "createdBy": {"kind": "page", "opener": "t1"}},
                 ], "truncated": false}),
                 vec![
                     "Tab  Title    Created by  URL\n",
-                    "t_AAAAAAAAAAAAAAAAAAAAAQ  Sign in  agent root  http://localhost:3000/login\n",
-                    "t_AAAAAAAAAAAAAAAAAAAAAg  Admin    page t_AAAAAAAAAAAAAAAAAAAAAQ    http://localhost:3000/admin\n",
+                    "t1  Sign in  agent 0  http://localhost:3000/login\n",
+                    "t2  Admin    page t1    http://localhost:3000/admin\n",
                 ],
             ),
             (
                 "info",
                 tab.clone(),
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "url": "http://localhost:3000/login", "title": "Sign in", "viewport": viewport}),
+                json!({"tab": "t1", "url": "http://localhost:3000/login", "title": "Sign in", "viewport": viewport}),
                 vec![
-                    "Tab: t_AAAAAAAAAAAAAAAAAAAAAQ · Sign in\n",
+                    "Tab: t1 · Sign in\n",
                     "Viewport: 390 × 844 CSS px, device pixel ratio 1, custom\n",
                     "Dialog: none\n",
                 ],
             ),
             (
                 "goto",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "url": "http://localhost:3000/products"}),
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "url": "http://localhost:3000/products", "title": "Products"}),
+                json!({"tab": "t1", "url": "http://localhost:3000/products"}),
+                json!({"tab": "t1", "url": "http://localhost:3000/products", "title": "Products"}),
                 vec![
                     "Navigated to http://localhost:3000/products.\n",
                     "Title: Products\n",
@@ -902,7 +902,7 @@ mod tests {
             (
                 "reload",
                 tab.clone(),
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "url": "http://localhost:3000/products"}),
+                json!({"tab": "t1", "url": "http://localhost:3000/products"}),
                 vec!["Reloaded http://localhost:3000/products.\n"],
             ),
             (
@@ -920,47 +920,47 @@ mod tests {
             (
                 "close",
                 tab.clone(),
-                json!({"closed": "t_AAAAAAAAAAAAAAAAAAAAAQ"}),
-                vec!["Closed t_AAAAAAAAAAAAAAAAAAAAAQ.\n"],
+                json!({"closed": "t1"}),
+                vec!["Closed t1.\n"],
             ),
             (
                 "inspect",
                 tab.clone(),
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "url": "http://localhost:3000/login", "title": "Sign in", "view": "accessibility", "truncated": false,
-                    "tree": [{"role": "main", "children": [{"ref": "e_AAAAAAAAAAAAAAAAAAAAAx", "role": "textbox", "name": "Password", "states": ["protected"], "value": "x"}]}]}),
+                json!({"tab": "t1", "url": "http://localhost:3000/login", "title": "Sign in", "view": "accessibility", "truncated": false,
+                    "tree": [{"role": "main", "children": [{"ref": "e2", "role": "textbox", "name": "Password", "states": ["protected"], "value": "x"}]}]}),
                 vec![
-                    "Tab: t_AAAAAAAAAAAAAAAAAAAAAQ · Sign in\nURL: http://localhost:3000/login\n\n",
+                    "Tab: t1 · Sign in\nURL: http://localhost:3000/login\n\n",
                     "- main:\n",
-                    "  - textbox \"Password\" [ref=e_AAAAAAAAAAAAAAAAAAAAAx] [protected] [value=\"x\"]\n",
+                    "  - textbox \"Password\" [ref=e2] [protected] [value=\"x\"]\n",
                 ],
             ),
             (
                 "find",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "role": "button"}),
+                json!({"tab": "t1", "role": "button"}),
                 json!({"matches": [node], "count": 1, "truncated": false}),
-                vec!["1 match:\n  [ref=e_AAAAAAAAAAAAAAAAAAAAAw] button \"Sign in\" [focused]\n"],
+                vec!["1 match:\n  [ref=e1] button \"Sign in\" [focused]\n"],
             ),
             (
                 "find",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "role": "link"}),
+                json!({"tab": "t1", "role": "link"}),
                 json!({"matches": [], "count": 0, "truncated": false}),
                 vec!["No matches.\n"],
             ),
             (
                 "read",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "ref": "e_AAAAAAAAAAAAAAAAAAAAIQ", "property": "text"}),
+                json!({"tab": "t1", "ref": "e3", "property": "text"}),
                 json!({"value": "Phone A"}),
                 vec!["Phone A\n"],
             ),
             (
                 "read",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "css": ".product", "property": "text", "all": true}),
+                json!({"tab": "t1", "css": ".product", "property": "text", "all": true}),
                 json!({"values": ["Phone A", "Phone B"], "truncated": false}),
                 vec!["[0] Phone A\n[1] Phone B\n"],
             ),
             (
                 "screenshot",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "output": "/tmp/login.png"}),
+                json!({"tab": "t1", "output": "/tmp/login.png"}),
                 json!({"path": "/tmp/login.png", "mimeType": "image/png", "width": 390, "height": 844, "viewport": viewport}),
                 vec![
                     "Screenshot saved: /tmp/login.png\n",
@@ -969,107 +969,107 @@ mod tests {
             ),
             (
                 "probe",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "xy": "420,300"}),
-                json!({"matches": [{"ref": "e_AAAAAAAAAAAAAAAAAAAAAw", "role": "button", "name": "Sign in", "depth": 0, "states": [],
+                json!({"tab": "t1", "xy": "420,300"}),
+                json!({"matches": [{"ref": "e1", "role": "button", "name": "Sign in", "depth": 0, "states": [],
                     "bounds": {"x": 360, "y": 280, "width": 120, "height": 40}}], "viewport": viewport, "truncated": false}),
                 vec![
-                    "[ref=e_AAAAAAAAAAAAAAAAAAAAAw] button \"Sign in\"\n",
+                    "[ref=e1] button \"Sign in\"\n",
                     "Bounds: x=360 y=280 width=120 height=40 CSS px\n",
                 ],
             ),
             (
                 "click",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "ref": "e_AAAAAAAAAAAAAAAAAAAAAw"}),
-                json!({"operation": "click", "result": "completed", "url": "http://localhost:3000/dashboard", "openedTabs": ["t_AAAAAAAAAAAAAAAAAAAAAg"]}),
+                json!({"tab": "t1", "ref": "e1"}),
+                json!({"operation": "click", "result": "completed", "url": "http://localhost:3000/dashboard", "openedTabs": ["t2"]}),
                 vec![
-                    "Clicked [ref=e_AAAAAAAAAAAAAAAAAAAAAw].\n",
+                    "Clicked [ref=e1].\n",
                     "URL: http://localhost:3000/dashboard\n",
-                    "Opened tab: t_AAAAAAAAAAAAAAAAAAAAAg\n",
+                    "Opened tab: t2\n",
                 ],
             ),
             (
                 "click",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "xy": "420,300", "count": 2}),
+                json!({"tab": "t1", "xy": "420,300", "count": 2}),
                 json!({"operation": "click", "result": "completed"}),
                 vec!["Double-clicked at 420,300.\n"],
             ),
             (
                 "click",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "role": "button", "name": "Sign in"}),
+                json!({"tab": "t1", "role": "button", "name": "Sign in"}),
                 json!({"operation": "click", "result": "completed"}),
                 vec!["Clicked button \"Sign in\".\n"],
             ),
             (
                 "drag",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "point": ["100,200", "300,250"]}),
+                json!({"tab": "t1", "point": ["100,200", "300,250"]}),
                 json!({"operation": "drag", "result": true}),
                 vec!["Dragged from 100,200 to 300,250.\n"],
             ),
             (
                 "scroll",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "dy": 600.0}),
+                json!({"tab": "t1", "dy": 600.0}),
                 json!({"operation": "scroll", "result": "completed"}),
                 vec!["Scroll input delivered: dy=600.\n"],
             ),
             (
                 "fill",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "ref": "e_AAAAAAAAAAAAAAAAAAAAAB", "text": "test@example.com"}),
+                json!({"tab": "t1", "ref": "e4", "text": "test@example.com"}),
                 json!({"operation": "fill", "result": "completed"}),
-                vec!["Filled [ref=e_AAAAAAAAAAAAAAAAAAAAAB].\n"],
+                vec!["Filled [ref=e4].\n"],
             ),
             (
                 "type",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "text": "hello"}),
-                json!({"operation": "type", "target": "e_AAAAAAAAAAAAAAAAAAAAAB", "result": "completed"}),
-                vec!["Typed into [ref=e_AAAAAAAAAAAAAAAAAAAAAB].\n"],
+                json!({"tab": "t1", "text": "hello"}),
+                json!({"operation": "type", "target": "e4", "result": "completed"}),
+                vec!["Typed into [ref=e4].\n"],
             ),
             (
                 "key",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "key": "Escape"}),
+                json!({"tab": "t1", "key": "Escape"}),
                 json!({"operation": "key", "target": "document", "result": "completed"}),
                 vec!["Pressed Escape in the document.\n"],
             ),
             (
                 "check",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "ref": "e_AAAAAAAAAAAAAAAAAAAABQ", "value": false}),
+                json!({"tab": "t1", "ref": "e5", "value": false}),
                 json!({"operation": "check", "result": "completed"}),
-                vec!["Checkbox [ref=e_AAAAAAAAAAAAAAAAAAAABQ]: unchecked.\n"],
+                vec!["Checkbox [ref=e5]: unchecked.\n"],
             ),
             (
                 "select",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "ref": "e_AAAAAAAAAAAAAAAAAAAABg", "value": ["SG", "JP"]}),
+                json!({"tab": "t1", "ref": "e6", "value": ["SG", "JP"]}),
                 json!({"operation": "select", "result": ["SG", "JP"]}),
                 vec!["Selected: SG, JP.\n"],
             ),
             (
                 "select-text",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "ref": "e_AAAAAAAAAAAAAAAAAAAABw", "text": "Replace", "cursor": "before"}),
+                json!({"tab": "t1", "ref": "e7", "text": "Replace", "cursor": "before"}),
                 json!({"operation": "select-text", "result": "before"}),
-                vec!["Cursor placed before the matching text in [ref=e_AAAAAAAAAAAAAAAAAAAABw].\n"],
+                vec!["Cursor placed before the matching text in [ref=e7].\n"],
             ),
             (
                 "wait",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "url": "**/dashboard"}),
+                json!({"tab": "t1", "url": "**/dashboard"}),
                 json!({"condition": "**/dashboard", "matched": true, "url": "http://localhost:3000/dashboard"}),
                 vec!["URL matched: http://localhost:3000/dashboard.\n"],
             ),
             (
                 "wait",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "ref": "e_AAAAAAAAAAAAAAAAAAAAMw", "state": "hidden"}),
-                json!({"condition": "hidden", "matched": true, "ref": "e_AAAAAAAAAAAAAAAAAAAAMw"}),
-                vec!["Element [ref=e_AAAAAAAAAAAAAAAAAAAAMw] is hidden.\n"],
+                json!({"tab": "t1", "ref": "e8", "state": "hidden"}),
+                json!({"condition": "hidden", "matched": true, "ref": "e8"}),
+                vec!["Element [ref=e8] is hidden.\n"],
             ),
             (
                 "upload",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "ref": "e_AAAAAAAAAAAAAAAAAAAAPA", "file": ["/tmp/avatar.png"]}),
+                json!({"tab": "t1", "ref": "e9", "file": ["/tmp/avatar.png"]}),
                 json!({"files": ["/tmp/avatar.png"], "attached": 1}),
                 vec![
-                    "Attached 1 file through [ref=e_AAAAAAAAAAAAAAAAAAAAPA].\n  /tmp/avatar.png\n",
+                    "Attached 1 file through [ref=e9].\n  /tmp/avatar.png\n",
                 ],
             ),
             (
                 "download",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "ref": "e_AAAAAAAAAAAAAAAAAAAAPQ", "output": "/tmp/report.pdf"}),
+                json!({"tab": "t1", "ref": "e10", "output": "/tmp/report.pdf"}),
                 json!({"path": "/tmp/report.pdf", "suggestedFilename": "report.pdf", "bytes": 48320, "mimeType": "application/pdf"}),
                 vec![
                     "Downloaded: /tmp/report.pdf\n",
@@ -1091,7 +1091,7 @@ mod tests {
             ),
             (
                 "eval",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "expression": "1"}),
+                json!({"tab": "t1", "expression": "1"}),
                 json!({"value": 12}),
                 vec!["12\n"],
             ),
@@ -1107,7 +1107,7 @@ mod tests {
             ),
             (
                 "viewport.set",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "width": 390, "height": 844}),
+                json!({"tab": "t1", "width": 390, "height": 844}),
                 json!({"viewport": viewport}),
                 vec!["Viewport: 390 × 844 CSS px, device pixel ratio 1, custom.\n"],
             ),
@@ -1141,12 +1141,12 @@ mod tests {
             (
                 "cdp.detach",
                 tab.clone(),
-                json!({"detached": "t_AAAAAAAAAAAAAAAAAAAAAQ"}),
-                vec!["Detached debugging from t_AAAAAAAAAAAAAAAAAAAAAQ.\n"],
+                json!({"detached": "t1"}),
+                vec!["Detached debugging from t1.\n"],
             ),
             (
                 "cdp.send",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "method": "Network.enable", "params": "{}"}),
+                json!({"tab": "t1", "method": "Network.enable", "params": "{}"}),
                 json!({"method": "Network.enable", "result": {}}),
                 vec!["CDP Network.enable completed.\nResult: {}\n"],
             ),
@@ -1183,7 +1183,7 @@ mod tests {
             ),
             (
                 "assets.export",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "inventory": "assets_1", "output-dir": "/tmp/assets"}),
+                json!({"tab": "t1", "inventory": "assets_1", "output-dir": "/tmp/assets"}),
                 json!({"directory": "/tmp/assets", "manifest": "/tmp/assets/manifest.json", "files": [{"id": "a1", "path": "/tmp/assets/logo.png", "bytes": 10, "mimeType": "image/png"}]}),
                 vec!["Exported 1 asset to /tmp/assets.\nManifest: /tmp/assets/manifest.json\n"],
             ),
@@ -1204,7 +1204,7 @@ mod tests {
             ),
             (
                 "webmcp.call",
-                json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "tool": "search", "tools": "tools_1", "arguments": "{}"}),
+                json!({"tab": "t1", "tool": "search", "tools": "tools_1", "arguments": "{}"}),
                 json!({"name": "search", "result": {"count": 2}}),
                 vec!["Called search.\nResult: {\"count\":2}\n"],
             ),
@@ -1232,7 +1232,7 @@ mod tests {
         let rendered = text(
             "open",
             json!({"url": "http://localhost:3000/"}),
-            json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ", "url": "http://localhost:3000/", "title": title}),
+            json!({"tab": "t1", "url": "http://localhost:3000/", "title": title}),
         );
         assert!(
             rendered.contains("Title: Sign in\\nError: forged\\r\\u{1b}[31m\n"),
@@ -1242,7 +1242,7 @@ mod tests {
         assert!(!rendered.contains('\u{1b}'));
         let content = text(
             "content.read",
-            json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ"}),
+            json!({"tab": "t1"}),
             json!({"url": "http://localhost:3000/", "title": "Page", "format": "text",
                 "content": "First line\nSecond\u{1b}[2J line", "truncated": false}),
         );

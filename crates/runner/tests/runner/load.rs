@@ -16,7 +16,7 @@ use demi_runner::{
         ArtifactResolver, ArtifactSource, Resident, RuntimeError, ServiceLease, ServiceRegistry,
         target,
     },
-    testing::Dispatch,
+    testing::{Dispatch, NoNumbers},
 };
 use futures_util::future::BoxFuture;
 use serde_json::json;
@@ -48,7 +48,7 @@ impl ArtifactResolver for Local {
 fn command_context(conversation: &str) -> CommandContext {
     CommandContext {
         conversation: conversation.into(),
-        caller: CommandCaller::agent("node"),
+        caller: CommandCaller::agent(1),
         locale: CommandLocale {
             time_zone: "UTC".into(),
             languages: vec!["en-US".into()],
@@ -103,6 +103,7 @@ async fn resident(root: &Path) -> (ServiceRegistry, ServiceLease, Resident) {
         .acquire(
             &descriptor,
             Arc::new(Local(path)),
+            Arc::new(NoNumbers),
             &CancellationToken::new(),
         )
         .await

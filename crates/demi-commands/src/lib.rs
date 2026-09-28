@@ -9,7 +9,7 @@ use std::{future::Future, pin::Pin, sync::Arc};
 
 use demi_builtin_protocol::{Operation, OperationError};
 use demi_command_service::protocol::{Completion, Invocation};
-use demi_command_service::{ConversationContext, Handler, InvocationContext, ServiceError};
+use demi_command_service::{ConversationContext, Handler, InvocationContext, Numbers, ServiceError};
 use demi_gates::SerialGate;
 
 pub struct DemiCommands {
@@ -43,6 +43,12 @@ impl Handler for DemiCommands {
     fn close(&self) -> Pin<Box<dyn Future<Output = Result<(), ServiceError>> + Send>> {
         let browsers = self.browsers.clone();
         Box::pin(async move { browsers.close().await })
+    }
+
+    /// The browsers number their tabs from the conversations' `tab`
+    /// sequences (`browser.md` § One tab registry).
+    fn numbers(&self, numbers: Numbers) {
+        self.browsers.attach_numbers(numbers);
     }
 
     fn operations(&self) -> Vec<String> {
