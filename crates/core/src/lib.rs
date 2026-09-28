@@ -67,7 +67,7 @@ pub use schema::Nullable;
 pub use session::{PendingSteer, QueuedMessage, SessionPhase};
 pub use time::{Clock, SystemClock, Timestamp, TimestampError};
 pub use view::{
-    BinaryStdout, EditKind, EditedFile, KeptEdit, OutputChunk, OutputView, ShellToolView,
+    BinaryStdout, EditCopies, EditKind, EditSegment, EditedFile, OutputChunk, OutputView, ShellToolView,
     ShellViewStatus, StreamKind, StreamView, ToolView,
 };
 

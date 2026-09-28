@@ -23,8 +23,8 @@ test('shell terminal output renders the view chunks', () => {
 
 test('the retained files come from the view, with their edits', () => {
   const files = [
-    { path: 'a.ts', kind: 'modified' as const, added: 1, removed: 2, edits: [{ kept: true }] },
-    { path: 'b.ts', kind: 'added' as const, added: 3, removed: 0, edits: [{ kept: false }, { kept: true }] },
+    { path: 'a.ts', kind: 'modified' as const, added: 1, removed: 2, edits: [{ copies: { original: 'a'.repeat(64), modified: 'b'.repeat(64) } }] },
+    { path: 'b.ts', kind: 'added' as const, added: 3, removed: 0, edits: [{}, { copies: { original: 'c'.repeat(64), modified: 'd'.repeat(64) } }] },
   ]
   const block = tool({ view: shellView({ files }) })
 

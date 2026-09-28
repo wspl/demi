@@ -1147,11 +1147,12 @@
           "removed": 1,
           "edits": [
             {
-              "kept": true
+              "copies": {
+                "original": "2c8b08da5ce60398e1f19af0e5dccc744df274b826abe585eaba68c525434806",
+                "modified": "c3f9c8c283a2b1f2f1896f27a01cbe3cddc0c9d93f752e4639035a0f5b36f6e8"
+              }
             },
-            {
-              "kept": false
-            }
+            {}
           ]
         },
         {
@@ -1161,7 +1162,10 @@
           "removed": 0,
           "edits": [
             {
-              "kept": true
+              "copies": {
+                "original": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "modified": "02db0d2659c9d48bc15f81a388594fc0e3cf4c780fdc27ea21e0671afc37de19"
+              }
             }
           ]
         }

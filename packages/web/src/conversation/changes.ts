@@ -103,21 +103,25 @@ function failureText(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-/** Reads published conversation history without contacting its execution host. */
-export function createCallChangeReader(conversationId: string): ReadCallChange {
-  return async (commandId, path, edit, signal) => {
-    try {
-      const query = new URLSearchParams({ path, edit: String(edit) })
-      const response = await apiRequest(
-        `/conversations/${encodeURIComponent(conversationId)}/commands/${encodeURIComponent(commandId)}/changes/file?${query}`,
-        { signal },
-      )
-      return readResponse(response, changeSidesSchema)
-    } catch (error) {
-      if (error instanceof ApiError && error.code === 'not_found') {
-        return null
-      }
-      throw error
+/**
+ * Reads both sides of a tool call's edit from the blob route, by the blobs
+ * its view names (`edit-tracking.md` § Edit copies), without the Host; null
+ * when the user's namespace no longer holds one of them. The copies are
+ * text, since only text is stored.
+ */
+export const readEditCopies: ReadCallChange = async (copies, signal) => {
+  try {
+    const [original, modified] = await Promise.all(
+      [copies.original, copies.modified].map(async (blob) => {
+        const response = await apiRequest(`/blobs/${encodeURIComponent(blob)}`, { signal })
+        return response.text()
+      }),
+    )
+    return { original, modified }
+  } catch (error) {
+    if (error instanceof ApiError && error.code === 'not_found') {
+      return null
     }
+    throw error
   }
 }

@@ -196,13 +196,6 @@ pub struct CommittedFileQuery {
     pub download: StrictBool,
 }
 
-/// `?path=&edit=` of one retained edit segment of a command.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct EditQuery {
-    pub path: NonEmptyPath,
-    pub edit: u32,
-}
-
 /// A nonempty query text, such as a path or an ETag.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
 #[serde(try_from = "String")]

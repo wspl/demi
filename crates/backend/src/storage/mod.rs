@@ -1,8 +1,8 @@
 //! The databases and the object store (`storage.md`).
 
 pub(crate) mod attachments;
+pub(crate) mod blob_refs;
 pub(crate) mod blobs;
-pub(crate) mod changes;
 pub(crate) mod columns;
 pub(crate) mod command_outputs;
 pub(crate) mod control;
@@ -13,7 +13,6 @@ pub(crate) mod drafts;
 pub(crate) mod exposes;
 pub(crate) mod forks;
 pub(crate) mod managed;
-pub(crate) mod media;
 pub(crate) mod objects;
 pub(crate) mod panels;
 pub(crate) mod providers;

@@ -10,9 +10,9 @@
 //! Blocks hold their media by reference, and a checkpoint that holds media
 //! bytes is refused; each node's session reaches the conversation owner's
 //! blob namespace through its store (`storage.md` § Attachment and
-//! transcript media). Every block written or removed changes the `media`
-//! index in the same transaction ([`media`](super::media)), and the commit
-//! records the uses of the blobs it names before it commits.
+//! transcript media). Every block written or removed changes the
+//! `blob_refs` index in the same transaction ([`blob_refs`](super::blob_refs)),
+//! and the commit records the uses of the blobs it names before it commits.
 //!
 //! The same readings serve what the browser reads without a live session: a
 //! conversation's summary facts and its history, on a read-only connection,
@@ -33,11 +33,11 @@ use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 use serde_json::Value;
 
 use super::StorageError;
+use super::blob_refs;
 use super::blobs::UserBlobs;
 use super::columns::{count, decode, json, to_json};
 use super::command_outputs::{self, OutputRow};
 use super::conversations::ConversationDb;
-use super::media;
 
 /// What a tree store tells after each commit of a node's checkpoint, with
 /// the node: a conversation's summary reads its root's.
@@ -251,7 +251,7 @@ impl AgentTreeStore for SqliteTreeStore {
             self.db
                 .call(move |connection| {
                     let transaction = connection.transaction()?;
-                    let removed = media::subtree(&transaction, &node)?;
+                    let removed = blob_refs::subtree(&transaction, &node)?;
                     if let Err(refused) = blobs.commit_uses(&removed) {
                         return Ok(Err(refused));
                     }
@@ -364,9 +364,9 @@ fn write_checkpoint(
 ) -> Result<Result<(), StoreError>, StorageError> {
     let mut touched = Vec::new();
     for (index, block) in &update.changed_blocks {
-        media::write_block(transaction, node, *index, block, &mut touched)?;
+        blob_refs::write_block(transaction, node, *index, block, &mut touched)?;
     }
-    media::truncate(transaction, node, update.block_count, &mut touched)?;
+    blob_refs::truncate(transaction, node, update.block_count, &mut touched)?;
     let block_count = count(update.block_count);
     let output = update.changed_blocks.iter().any(|(_, block)| is_output(block));
     let revision = update.command_state.as_ref().map(|state| millis(state.revision));
@@ -800,15 +800,15 @@ mod tests {
     use demi_agent::testing::{store_contract, test_model, text};
     use demi_agent::transcript::retire::Retirement;
     use demi_core::{
-        BlobRef, MediaSource, ResponseBlock, TextBlock, TokenUsage, ToolCallBlock, ToolCallStatus, ToolMediaSource,
-        ToolResultContentBlock, TurnId, UserBlock, UserContentBlock,
+        BlobRef, EditCopies, EditKind, EditSegment, EditedFile, MediaSource, ResponseBlock, ShellId, ShellToolView,
+        ShellViewStatus, TextBlock, TokenUsage, ToolCallBlock, ToolCallStatus, ToolMediaSource,
+        ToolResultContentBlock, ToolView, TurnId, UserBlock, UserContentBlock,
     };
     use demi_web_api::ids::ConversationId;
 
     use super::*;
     use crate::storage::blobs::BlobStores;
     use crate::storage::conversations::ConversationStores;
-    use crate::storage::media::MediaRow;
     use crate::storage::objects;
 
     /// The owner of the conversation the tests store.
@@ -1004,6 +1004,49 @@ mod tests {
         })
     }
 
+    /// A shell call written at `at` whose command edited one file in
+    /// segments, each side a blob that one of `sides` names: segment `n` goes
+    /// from side `n` to side `n + 1`.
+    fn edited(block: &str, at: Timestamp, sides: &[u8]) -> Block {
+        let edits = sides
+            .windows(2)
+            .map(|pair| EditSegment {
+                copies: Some(EditCopies {
+                    original: BlobRef::of(&[pair[0]]),
+                    modified: BlobRef::of(&[pair[1]]),
+                }),
+            })
+            .collect();
+        Block::ToolCall(ToolCallBlock {
+            id: block.try_into().unwrap(),
+            created_at: at,
+            model: test_model(),
+            tool_use_id: format!("toolu_{block}"),
+            tool_name: "shell_exec".into(),
+            input: "{}".into(),
+            status: ToolCallStatus::Completed,
+            output: Vec::new(),
+            view: Some(ToolView::Shell(ShellToolView {
+                status: ShellViewStatus::Exited,
+                shell_id: ShellId::try_from("shell-1").unwrap(),
+                command_id: CommandId::try_from(format!("command-{block}")).unwrap(),
+                exit_code: Some(0),
+                running_ms: 1,
+                idle_ms: 0,
+                chunks: Vec::new(),
+                view_truncated: false,
+                files: Some(vec![EditedFile {
+                    path: "/work/notes.md".into(),
+                    kind: EditKind::Modified,
+                    added: 1,
+                    removed: 1,
+                    edits,
+                }]),
+                files_truncated: Some(false),
+            })),
+        })
+    }
+
     /// A message written at `at` with the uploaded image `image` names.
     fn pasted(block: &str, at: Timestamp, image: u8) -> Block {
         Block::User(UserBlock {
@@ -1021,23 +1064,20 @@ mod tests {
         })
     }
 
-    type Indexed = Vec<(String, i64, MediaRow)>;
+    /// An index row as the `blob_refs` table holds it: the node, the block's
+    /// index, the reference's place, the blob, its holder and the block's
+    /// time.
+    type Indexed = Vec<(String, i64, i64, String, String, i64)>;
 
-    /// The rows the `media` table holds, and the rows the one derivation
+    /// The rows the `blob_refs` table holds, and the rows the one derivation
     /// makes of the blocks, in the same order.
     fn index(connection: &Connection) -> Result<(Indexed, Indexed), StorageError> {
         let mut held = Vec::new();
-        let mut statement =
-            connection.prepare("SELECT node_id, idx, part, blob, tool, at FROM media ORDER BY node_id, idx, part")?;
+        let mut statement = connection
+            .prepare("SELECT node_id, idx, part, blob, holder, at FROM blob_refs ORDER BY node_id, idx, part")?;
         let mut rows = statement.query([])?;
         while let Some(row) = rows.next()? {
-            let medium = MediaRow {
-                part: usize::try_from(row.get::<_, i64>(2)?).unwrap(),
-                blob: BlobRef::try_from(row.get::<_, String>(3)?).unwrap(),
-                tool: row.get(4)?,
-                at: Timestamp::from_millisecond(row.get(5)?).unwrap(),
-            };
-            held.push((row.get(0)?, row.get(1)?, medium));
+            held.push((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?));
         }
         let mut derived = Vec::new();
         let mut statement = connection.prepare("SELECT node_id, idx, block FROM blocks ORDER BY node_id, idx")?;
@@ -1045,13 +1085,22 @@ mod tests {
         while let Some(row) = rows.next()? {
             let (node, index): (String, i64) = (row.get(0)?, row.get(1)?);
             let block: Block = json("blocks", "block", &row.get::<_, String>(2)?)?;
-            derived.extend(media::rows(&block).into_iter().map(|medium| (node.clone(), index, medium)));
+            derived.extend(blob_refs::rows(&block).into_iter().map(|row| {
+                (
+                    node.clone(),
+                    index,
+                    count(row.part),
+                    row.blob.to_string(),
+                    blob_refs::holder_name(row.holder).to_owned(),
+                    row.at.as_millisecond(),
+                )
+            }));
         }
         Ok((held, derived))
     }
 
     #[tokio::test(flavor = "local")]
-    async fn every_write_of_a_block_keeps_the_media_index_what_the_blocks_derive() {
+    async fn every_write_of_a_block_keeps_the_blob_index_what_the_blocks_derive() {
         let (tree, stores, data) = store().await;
         let check = async |path: &str| {
             let (held, derived) = stores.read(&conversation(), index).await.unwrap().unwrap();
@@ -1075,7 +1124,9 @@ mod tests {
         // An edit replaces the message and drops everything after it.
         save(vec![(0, pasted("u2", written, 7))], 1).await;
         check("an edit").await;
-        save(vec![(1, shot("t4", written, &[8]))], 2).await;
+        // A command's edit copies: the middle side is both segments'.
+        save(vec![(1, shot("t4", written, &[8])), (2, edited("e1", written, &[10, 11, 12]))], 3).await;
+        check("a save of edit copies").await;
         let child = vec![(0, shot("c1", written, &[9]))];
         tree.create_node(record("child", Some("root"), 2), update(child, 1)).await.unwrap();
         tree.delete_node(&id("child")).await.unwrap();
@@ -1092,17 +1143,17 @@ mod tests {
             .for_user(&owner);
         let retired = stores
             .db(&conversation())
-            .call(move |connection| media::retire(connection, &blobs, retirement))
+            .call(move |connection| blob_refs::retire(connection, &blobs, retirement))
             .await
             .unwrap()
             .unwrap();
         assert_eq!(retired, 1);
         check("a retirement").await;
-        // The message's image stays; the retirement shows the page nothing
-        // new.
+        // The message's image and the edit copies stay; the retirement shows
+        // the page nothing new.
         let (held, _) = stores.read(&conversation(), index).await.unwrap().unwrap();
-        let kept: Vec<(i64, bool)> = held.iter().map(|(_, index, medium)| (*index, medium.tool)).collect();
-        assert_eq!(kept, [(0, false)]);
+        let kept: Vec<(i64, &str)> = held.iter().map(|row| (row.1, row.4.as_str())).collect();
+        assert_eq!(kept, [(0, "message"), (2, "edit_copy"), (2, "edit_copy"), (2, "edit_copy"), (2, "edit_copy")]);
         assert_eq!(facts(&stores).await, before);
     }
 
