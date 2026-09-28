@@ -11,7 +11,7 @@ use demi_core::{Clock, CommandId, ModelSelection, NodeId, QueuedMessage};
 use demi_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_provider::{ProviderRuntime, ToolDefinition};
 use demi_shell::{
-    CommandSet, JobCaller, PageFeed, PageState, PageView, ShellError, WholeOutput,
+    CommandSet, JobCaller, Numbers, PageFeed, PageState, PageView, ShellError, WholeOutput,
 };
 use futures_util::future::LocalBoxFuture;
 
@@ -22,7 +22,7 @@ use crate::{
         SessionRuntime, ToolFailure, ToolInvocation, ToolOutcome,
     },
     store::{AgentTreeStore, NodeRecord, StoreError},
-    tools::{self, CallError, Environments, ShellAccess},
+    tools::{self, CallError, Environments, ShellAccess, StoreNumbers},
 };
 
 /// A node's place in its tree, which sets its lifecycle policy: a child
@@ -210,6 +210,8 @@ pub(crate) struct NodeRuntime<H: AgentHarness> {
     environments: Environments,
     /// Where its environments tell the pages of its commands.
     feed: Rc<dyn PageFeed>,
+    /// The conversation's command and shell numbers, from the tree store.
+    numbers: Rc<dyn Numbers>,
 }
 
 impl<H: AgentHarness> NodeRuntime<H> {
@@ -230,6 +232,7 @@ impl<H: AgentHarness> NodeRuntime<H> {
             context: self.prompt_context(),
             commands: &self.commands,
             feed: &self.feed,
+            numbers: &self.numbers,
         }
     }
 }
@@ -419,6 +422,7 @@ pub(crate) async fn assemble<H: AgentHarness>(
         help,
         admission,
         lifecycle: ActivityGate::new(),
+        numbers: Rc::new(StoreNumbers(store.clone())),
         store: store.clone(),
         shells,
         environments: Environments::default(),

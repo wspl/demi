@@ -426,6 +426,7 @@ fn agent_message(id: &str) -> AgentMessage {
         id: BlockId::try_from(id).unwrap(),
         sender: Sender {
             id: NodeId::try_from("child").unwrap(),
+            number: 1,
             description: "UI implementation".into(),
             round: 1,
         },

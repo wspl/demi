@@ -9,8 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::{BlockId, MAX_SAFE_INTEGER, NodeId, Timestamp, is_blank};
 
 /// A message between agents. The supervisor supplies the sender from the
-/// invoking node, so a model cannot impersonate another sender. The field
-/// order is the order replay writes the message as JSON.
+/// invoking node, so a model cannot impersonate another sender.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AgentMessage {
@@ -39,12 +38,15 @@ pub struct AgentMessage {
 pub struct Sender {
     #[garde(skip)]
     pub id: NodeId,
+    /// The number the model knows the sender by: 0 for the root
+    /// (`runtime.md` § Identifiers the model sees).
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub number: u64,
     /// The sender's description; `root session` for the root.
     #[garde(skip)]
     pub description: String,
-    /// The sender node's persisted spawn time in milliseconds, which names
-    /// one execution round of it.
-    #[garde(range(max = MAX_SAFE_INTEGER))]
+    /// The sender's round: 1 for its first run, one more at each resume.
+    #[garde(range(min = 1, max = MAX_SAFE_INTEGER))]
     pub round: u64,
 }
 

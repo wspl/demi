@@ -104,9 +104,10 @@ polling or timed yields are required.
 Both start commands accept `--request-id <id>`. A caller that may retry an
 uncertain response supplies this ID on the first attempt and reuses it with
 identical arguments. The owning node's command storage keeps an immutable
-reservation at `agent.start.<id>`: the normalized arguments, the child ID, and
-the round's start time. The reservation is committed before the child is
-created or reopened.
+reservation at `agent.start.<id>`: the normalized arguments, the child's node
+ID, and the round it starts. The reservation is committed before the child is
+created or reopened; a spawn takes the child's number when it creates the
+child, so a retry answers the number the first attempt gave.
 
 - A retry finishes an uncommitted start, or returns the existing child without
   starting another round.
@@ -363,8 +364,8 @@ nearest second.
 
 Renders the session tree of this conversation from the root down, marking the
 caller's own position. Live agents show phase, elapsed and last-event ages,
-profile, description, execution, and activity, and are ordered by spawn time,
-and by the order they joined the tree when those are equal.
+profile, description, execution, and activity, and are in spawn order, the
+order of their numbers.
 Each node's archived children follow its live ones, newest first, with their
 closed phase and age:
 
@@ -545,10 +546,10 @@ creation command keeps exit code zero even if the child later fails.
 A session tree is stored as nodes in one store: the tree store the backend
 supplies for each conversation, over the conversation's database
 ([Storage](../backend/storage.md#conversation-state-and-transactions)). A node
-row carries identity and relationship: the ID, the parent ID (none for the
-root), the description, the profile, the spawn time (the round), the spawn
-restriction, and, once closed, its phase, time, bounded result or failure text,
-and whether its completion was delivered. Beside it is the node's checkpoint:
+row carries identity and relationship: the ID, the agent's number, the parent
+ID (none for the root), the description, the profile, the current round and
+when it started, the spawn restriction, and, once closed, its phase, time,
+bounded result or failure text, and whether its completion was delivered. Beside it is the node's checkpoint:
 its transcript rows, its state row, and its command state
 ([Tree store](runtime.md#tree-store)). Parent and child are related by a
 column, never by a key path. Nothing about a node depends on a Host: a Host
