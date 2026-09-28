@@ -17,6 +17,7 @@
 
 mod link;
 mod manifest;
+mod output_records;
 mod pipes;
 mod relay;
 mod remote_host;
@@ -29,6 +30,7 @@ pub use link::{
     OUTBOUND_FRAMES, PING_INTERVAL,
 };
 pub use manifest::{ArtifactResolver, CommandCatalog, CommandSelection};
+pub use output_records::{decode_output, encode_output};
 pub use pipes::{
     ARRIVAL, DeviceSink, DeviceSource, Pipe, PipeError, PipeFailure, PipeReader, PipeRefusal,
     PipeSink, PipeWriter, Pipes,
@@ -38,6 +40,6 @@ pub use remote_host::{
     ServiceRequest, ServiceStream, host_identity,
 };
 pub use shell_environment::{
-    ContextSource, EnvironmentOptions, HostAccess, RemoteShellEnvironment,
-    RemoteShellEnvironmentFactory, RetainEdits, edited_file,
+    CommandKeeper, ContextSource, EnvironmentOptions, HostAccess, RemoteShellEnvironment,
+    RemoteShellEnvironmentFactory, edited_file,
 };

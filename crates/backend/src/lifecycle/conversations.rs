@@ -6,21 +6,22 @@
 //! a won target switch starts it again, so a deadline of the old binding
 //! never releases the new one; an archive ends it. A release a Host did not
 //! take ends the watch as one it took does, since the Host hears it again
-//! (`resource-lifecycle.md` § A release that fails). A Cloud's idle stop
-//! sends the releases that fall due with it first (`managed`), and a Host
-//! that missed one hears it after its hello (`answer_held`).
+//! (`resource-lifecycle.md` § A release that fails). A Host that did not
+//! hear a release, because its runner was not connected or its Cloud
+//! stopped, is sent none later: the connection's loss or the stop ended
+//! what the release would have (`resource-lifecycle.md` § Conversation
+//! release).
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
-use demi_web_api::ids::{ConversationId, DeviceId};
+use demi_web_api::ids::ConversationId;
 use tokio_util::task::AbortOnDropHandle;
 
 use super::{Activity, IdlePolicy, Retirement};
 use crate::conversation::root_of;
 use crate::shard::Shard;
-use crate::storage::devices::DeviceRecord;
 
 /// The idle watch of each conversation that reached a Host.
 #[derive(Default)]
@@ -82,55 +83,6 @@ impl Shard {
     /// Ends every conversation's idle watch, for the shard's close.
     pub(crate) fn stop_idle_watches(&self) {
         self.idle_watches().watches.borrow_mut().clear();
-    }
-
-    /// Answers the conversations a runner holds job output for, a paired
-    /// device's or a Cloud's, as its hello names them
-    /// (`resource-lifecycle.md` § A release the device missed): the device
-    /// hears the release at once of a conversation its owner does not have,
-    /// or that is archived or no longer bound to the device; any other's idle
-    /// watch starts unless it runs, so an idle conversation hears the release
-    /// one window later.
-    pub(crate) async fn answer_held(&self, device: &DeviceRecord, conversations: Vec<String>) {
-        for name in conversations {
-            if let Err(error) = self.answer_held_conversation(&device.id, &name).await {
-                tracing::warn!(device = %device.id, conversation = %name, "held job output not answered: {error}");
-            }
-        }
-    }
-
-    async fn answer_held_conversation(&self, device: &DeviceId, name: &str) -> Result<(), String> {
-        let control = &self.services().control;
-        let record = match ConversationId::try_from(name) {
-            Ok(id) => control
-                .conversation(id)
-                .await
-                .map_err(|error| error.to_string())?
-                .filter(|record| record.owner == *self.user()),
-            Err(_) => None,
-        };
-        let Some(record) = record else {
-            // Nothing of a conversation its owner does not have runs on the
-            // device.
-            self.release_on(name, device).await;
-            return Ok(());
-        };
-        if !record.archived {
-            let target = self.resolve_target(&record).await.map_err(|error| error.to_string())?;
-            let hosts = self
-                .reachable_hosts(&record, &target)
-                .await
-                .map_err(|error| error.to_string())?;
-            if hosts.iter().any(|host| host.device == *device) {
-                self.track_idle(&record.id);
-                return Ok(());
-            }
-        }
-        // Held as a transition holds it: the release meets no job of the
-        // conversation.
-        let _held = self.conversations().slot(&record.id).files.reserve().await;
-        self.release_on(record.id.as_str(), device).await;
-        Ok(())
     }
 }
 

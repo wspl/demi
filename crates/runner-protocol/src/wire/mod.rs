@@ -2,14 +2,19 @@
 //! (`runner.md` § Connection and identity).
 
 mod encoding;
+mod kept;
 mod messages;
 mod replies;
 
 pub use encoding::{Timestamp, WireBytes};
+pub use kept::{
+    JOB_KEPT_BYTES, JOB_KEPT_PART_BYTES, JOB_KEPT_READ_BYTES, KeptRecord, decode_records,
+    encode_record,
+};
 pub use messages::{
     ArtifactOwner, ChangeKind, DirEntry, FileStat, GitChange, GitChanges, HelloErrorCode,
     HostIdentity, Inbound, JobArtifactOwner, JobFileChange, LogLine, NetErrorCode, Outbound,
-    OutputStream, PipeRef, RetainedOutput, RunnerInfo, RunnerPlatform, ServiceErrorCode,
+    OutputLengths, OutputStream, PipeRef, RunnerInfo, RunnerPlatform, ServiceErrorCode,
     Signal, SpawnError, SpawnErrorKind, StreamArtifactOwner, VolumeName,
 };
 pub use replies::{FsOk, FsResult, GitOk, GitResult};
@@ -20,7 +25,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 /// The wire's version, which a runner's hello names.
-pub const VERSION: u32 = 22;
+pub const VERSION: u32 = 23;
 /// The largest frame either end sends.
 pub const MAX_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 /// How much of the start of each stream a job always sends: the model's view

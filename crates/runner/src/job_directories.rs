@@ -1,59 +1,71 @@
 //! The installation's job directories (`runner.md` § Pipes and output): each
-//! shell job keeps its whole output, its recorded edits and its scratch
-//! directory in `<job root>/<conversation>/job-<random>/`, under the
-//! conversation its command context names, in lowercase. The job root is
-//! `jobs/` in a paired device's installation state, and `/var/lib/demi/jobs`
-//! on a Cloud's system image, which a stop keeps. A job's directory outlives
-//! the job, so a tool result can name a file in it, until the conversation's
-//! release removes the conversation's directories (`resource-lifecycle.md`
-//! § Conversation release). The runner's `hello` names the conversations it
-//! holds directories for.
+//! shell job keeps its kept output, its recorded edits and its scratch
+//! directory in `<job root>/job-<random>/`. The job root is `jobs/` in a
+//! paired device's installation state, and `/var/lib/demi/jobs` on a Cloud's
+//! system image. A job's directory lasts until the backend has what it needs
+//! of the job: its `job_release`, the connection's end, or, for what a
+//! runner that ended left, the next connection's start.
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use demi_command_service::protocol::conversation_name;
+use tokio_util::sync::CancellationToken;
 
-/// The job directories under one installation's job root.
+use crate::kept_output::{KeptOutput, KeptReader};
+
+/// The job directories under one installation's job root, for one
+/// connection.
 pub struct JobDirectories {
     root: PathBuf,
-    /// The directories of the jobs that run. A `std` mutex, held on a
-    /// blocking thread while a job makes its directory and while a release
-    /// chooses the directories it removes, so a release never removes one a
-    /// job is making or using; a job's end holds it only to drop its own.
-    running: Mutex<HashSet<PathBuf>>,
+    /// Each job's directory, from its start until its release or the
+    /// connection's end. A `std` mutex, never held across a wait.
+    jobs: Mutex<HashMap<String, Held>>,
 }
 
-/// A job's directory, for its logs and change records, and the scratch
-/// directory its `TMPDIR` names, which goes when the job ends. The directory
-/// counts as running until `running` drops.
+struct Held {
+    path: PathBuf,
+    output: KeptReader,
+    running: bool,
+}
+
+/// A job's directory, its kept output, and the scratch directory its
+/// `TMPDIR` names, which goes when the job ends. The directory counts as
+/// running until `running` drops.
 pub struct JobDirectory {
     pub path: PathBuf,
     pub scratch: tempfile::TempDir,
+    pub output: KeptOutput,
     pub running: Running,
 }
 
 /// A running job's hold on its directory, which a release keeps.
 pub struct Running {
     directories: Arc<JobDirectories>,
-    path: PathBuf,
+    job: String,
 }
 
 impl Drop for Running {
     fn drop(&mut self) {
-        self.directories.lock().remove(&self.path);
+        if let Some(held) = self.directories.lock().get_mut(&self.job) {
+            held.running = false;
+        }
     }
 }
 
 impl JobDirectories {
-    /// The directories under `root`, the installation's job root.
-    pub fn new(root: PathBuf) -> Arc<Self> {
-        Arc::new(Self {
+    /// The directories under `root`, the installation's job root, which
+    /// holds none when this returns: a directory there is what a connection
+    /// or a runner that ended without its cleanup left, and nothing reads it
+    /// any more.
+    pub async fn open(root: PathBuf) -> Arc<Self> {
+        let directories = Arc::new(Self {
             root,
-            running: Mutex::new(HashSet::new()),
-        })
+            jobs: Mutex::new(HashMap::new()),
+        });
+        directories.clear().await;
+        directories
     }
 
     /// The installation's job root, where the edit lock lives too.
@@ -61,20 +73,22 @@ impl JobDirectories {
         &self.root
     }
 
-    fn lock(&self) -> MutexGuard<'_, HashSet<PathBuf>> {
+    fn lock(&self) -> MutexGuard<'_, HashMap<String, Held>> {
         // No section panics while it holds the lock, so a poisoned one still
-        // holds a whole set.
-        self.running.lock().unwrap_or_else(PoisonError::into_inner)
+        // holds a whole table.
+        self.jobs.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Makes a job's directory, private to its user, under the directory of
-    /// `conversation`, which the wire checked is a conversation's name.
-    pub async fn create(self: &Arc<Self>, conversation: &str) -> io::Result<JobDirectory> {
-        let directories = self.clone();
-        let parent = self.root.join(conversation.to_ascii_lowercase());
-        tokio::task::spawn_blocking(move || {
-            let mut running = directories.lock();
-            std::fs::create_dir_all(&parent)?;
+    /// Makes `job`'s directory, private to its user, with its scratch
+    /// directory and its kept output.
+    pub async fn create(
+        self: &Arc<Self>,
+        job: &str,
+        cancel: &CancellationToken,
+    ) -> io::Result<JobDirectory> {
+        let root = self.root.clone();
+        let (path, scratch) = tokio::task::spawn_blocking(move || {
+            std::fs::create_dir_all(&root)?;
             let mut builder = tempfile::Builder::new();
             builder.prefix("job-");
             // For the owner alone; Windows directories take their access
@@ -84,115 +98,103 @@ impl JobDirectories {
                 use std::os::unix::fs::PermissionsExt;
                 builder.permissions(std::fs::Permissions::from_mode(0o700));
             }
-            let path = builder.tempdir_in(&parent)?.keep();
+            let path = builder.tempdir_in(&root)?.keep();
             let scratch = tempfile::Builder::new().prefix(".work-").tempdir_in(&path)?;
-            running.insert(path.clone());
-            drop(running);
-            Ok(JobDirectory {
-                running: Running {
-                    directories: directories.clone(),
-                    path: path.clone(),
-                },
-                path,
-                scratch,
-            })
+            Ok::<_, io::Error>((path, scratch))
         })
         .await
-        .map_err(io::Error::other)?
+        .map_err(io::Error::other)??;
+        let output = KeptOutput::create(path.join("output"), cancel).await?;
+        self.lock().insert(
+            job.to_owned(),
+            Held {
+                path: path.clone(),
+                output: output.reader(),
+                running: true,
+            },
+        );
+        Ok(JobDirectory {
+            running: Running {
+                directories: self.clone(),
+                job: job.to_owned(),
+            },
+            path,
+            scratch,
+            output,
+        })
     }
 
-    /// Removes the directories of `conversation`'s jobs, except those of the
-    /// jobs that run, and the conversation's directory once it is empty. A
-    /// directory that cannot be removed is logged with the reason and left
-    /// for the next release.
-    pub async fn release(self: &Arc<Self>, conversation: &str) {
-        let directories = self.clone();
-        let parent = self.root.join(conversation.to_ascii_lowercase());
-        let released = tokio::task::spawn_blocking(move || {
-            // Chosen under the lock: the directories of the jobs that ended,
-            // which no job uses any more. They are removed without it, so a
-            // large one holds up no job's start; a job that starts meanwhile
-            // makes a directory of its own.
-            let ended = match directories.ended(&parent) {
-                Ok(ended) => ended,
+    /// The kept output of `job`, while its directory lasts.
+    pub fn output(&self, job: &str) -> Option<KeptReader> {
+        self.lock().get(job).map(|held| held.output.clone())
+    }
+
+    /// Removes the directory of `job`, which ended. The directory of a job
+    /// that runs stays: the backend releases a job only after its end. A
+    /// directory that cannot be removed is logged with the reason.
+    pub async fn release(&self, job: &str) {
+        let path = {
+            let mut jobs = self.lock();
+            match jobs.get(job) {
+                Some(held) if !held.running => jobs.remove(job).map(|held| held.path),
+                Some(_) => {
+                    tracing::warn!(job, "a running job's directory was not released");
+                    None
+                }
+                None => None,
+            }
+        };
+        if let Some(path) = path {
+            remove(path).await;
+        }
+    }
+
+    /// Removes every directory under the root but those of the jobs that
+    /// run: at the connection's start, what an earlier one left, and at its
+    /// end, once its jobs ended, all of them.
+    pub async fn clear(&self) {
+        let running: Vec<PathBuf> = {
+            let mut jobs = self.lock();
+            jobs.retain(|_, held| held.running);
+            jobs.values().map(|held| held.path.clone()).collect()
+        };
+        let root = self.root.clone();
+        let cleared = tokio::task::spawn_blocking(move || {
+            let entries = match std::fs::read_dir(&root) {
+                Ok(entries) => entries,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => return,
                 Err(error) => {
-                    tracing::warn!(directory = %parent.display(), "job directories not released: {error}");
+                    tracing::warn!(directory = %root.display(), "the job directories could not be listed: {error}");
                     return;
                 }
             };
-            for path in ended {
-                if let Err(error) = std::fs::remove_dir_all(&path) {
-                    tracing::warn!(directory = %path.display(), "a job directory not released: {error}");
-                }
-            }
-            // Under the lock again, so a job that is making its directory
-            // finds its conversation's. One still holding a running job's
-            // directory stays.
-            let _running = directories.lock();
-            match std::fs::remove_dir(&parent) {
-                Ok(()) => {}
-                Err(error)
-                    if matches!(
-                        error.kind(),
-                        io::ErrorKind::DirectoryNotEmpty | io::ErrorKind::NotFound
-                    ) => {}
-                Err(error) => {
-                    tracing::warn!(directory = %parent.display(), "a conversation's job directory not released: {error}");
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if entry.file_type().is_ok_and(|kind| kind.is_dir())
+                    && !running.contains(&path)
+                    && let Err(error) = std::fs::remove_dir_all(&path)
+                {
+                    tracing::warn!(directory = %path.display(), "a job directory was not removed: {error}");
                 }
             }
         })
         .await;
-        if let Err(error) = released {
-            tracing::warn!("job directories not released: {error}");
+        if let Err(error) = cleared {
+            tracing::warn!("the job directories were not cleared: {error}");
         }
     }
+}
 
-    /// The directories under `parent` that no running job holds; none when
-    /// `parent` does not exist.
-    fn ended(&self, parent: &Path) -> io::Result<Vec<PathBuf>> {
-        let running = self.lock();
-        let entries = match std::fs::read_dir(parent) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(error) => return Err(error),
-        };
-        let mut ended = Vec::new();
-        for entry in entries {
-            let path = entry?.path();
-            if !running.contains(&path) {
-                ended.push(path);
-            }
+async fn remove(path: PathBuf) {
+    let removed = tokio::task::spawn_blocking(move || {
+        if let Err(error) = std::fs::remove_dir_all(&path)
+            && error.kind() != io::ErrorKind::NotFound
+        {
+            tracing::warn!(directory = %path.display(), "a job directory was not removed: {error}");
         }
-        Ok(ended)
-    }
-
-    /// The conversations the installation holds job directories for: each
-    /// directory under the root whose name is a conversation's.
-    pub async fn conversations(&self) -> io::Result<Vec<String>> {
-        let root = self.root.clone();
-        tokio::task::spawn_blocking(move || {
-            let entries = match std::fs::read_dir(&root) {
-                Ok(entries) => entries,
-                Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-                Err(error) => return Err(error),
-            };
-            let mut conversations = Vec::new();
-            for entry in entries {
-                let entry = entry?;
-                if !entry.file_type()?.is_dir() {
-                    continue;
-                }
-                let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
-                    continue;
-                };
-                if conversation_name(&name, &()).is_ok() {
-                    conversations.push(name);
-                }
-            }
-            conversations.sort();
-            Ok(conversations)
-        })
-        .await
-        .map_err(io::Error::other)?
+    })
+    .await;
+    if let Err(error) = removed {
+        tracing::warn!("a job directory was not removed: {error}");
     }
 }

@@ -22,6 +22,7 @@ mod builders;
 mod commands;
 mod environment;
 mod host;
+mod output;
 mod record;
 mod reserved;
 mod rpc;
@@ -33,7 +34,7 @@ pub use commands::{CommandSet, Declared, RegisterError};
 pub use environment::{
     BinaryOutput, CommandState, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES, DEFAULT_OBSERVATION,
     DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, ExecRequest, JobCaller, MAX_OBSERVATION,
-    ObservationWindow, PageFeed, ShellEnvironment, ShellError, ShellTarget,
+    ObservationWindow, PageFeed, ShellEnvironment, ShellError, ShellTarget, WholeView,
 };
 pub use host::{
     ByteRange, ByteStream, CpOptions, DirEntry, FileContents, FileKind, FileStat, Host, HostError,
@@ -41,9 +42,11 @@ pub use host::{
     ProcessControl, ProcessEnd, ProcessOutput, RmOptions, Signal, SpawnEnv, SpawnError,
     SpawnErrorKind, SpawnRequest, WriteOptions,
 };
-pub use record::{
-    CommandRecord, Ending, PageState, PageView, TAIL_CHARS, final_stdout_boundary,
+pub use output::{
+    Backward, Forward, Missing, OutputRecord, OutputText, Piece, Seen, Streams, WholeOutput,
+    binary_line,
 };
+pub use record::{CommandRecord, Ending, PageState, PageView, TAIL_CHARS};
 pub use reserved::{RESERVED_NAMES, is_reserved};
 pub use rpc::{
     PortError, PortRequest, PortResponse, PortTransport, RelayedPipes, Revision, RpcError,

@@ -364,7 +364,10 @@ async fn an_image_over_2000_px_enters_fitted_from_an_upload_and_a_tool_and_stays
     assert_eq!(first_image(&requests[1]), fitted);
     let result = requests[1]["messages"].to_string();
     assert_eq!(result.matches(&fitted).count(), 2, "the upload's and the tool's: {result}");
-    assert!(result.contains("fitted to what every model accepts; the raw bytes remain readable at"), "{result}");
+    assert!(
+        result.contains("fitted to what every model accepts; to keep the original, save it: demi shell output "),
+        "{result}"
+    );
     // The message's image is the fitted one's blob, which the page reads.
     let blocks = transcript(&backend, &master, FIRST).await.blocks;
     let Some(Block::User(user)) = blocks.first() else {

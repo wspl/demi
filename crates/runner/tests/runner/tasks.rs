@@ -1,14 +1,14 @@
 use demi_runner::connection::wire::{
-    JOB_LIVE_BYTES, JOB_LIVE_INTERVAL, JOB_VIEW_BYTES, RetainedOutput, Signal, WireBytes,
+    self, JOB_KEPT_BYTES, JOB_KEPT_PART_BYTES, JOB_LIVE_BYTES, JOB_LIVE_INTERVAL, JOB_VIEW_BYTES,
+    KeptRecord, OutputLengths, OutputStream, Signal, WireBytes,
 };
 use demi_runner::{
+    job_directories::JobDirectories,
     pipes::PipeClient,
     tasks::{JobConfig, JobTable, TaskCommand, TaskSpec, WorkId},
 };
-use std::{
-    path::{Path, PathBuf},
-    time::Duration,
-};
+use futures_util::StreamExt;
+use std::{path::Path, sync::Arc, time::Duration};
 use tokio::{sync::mpsc, time::Instant};
 
 #[derive(serde::Deserialize)]
@@ -26,30 +26,63 @@ enum Reply {
         exit_code: Option<f64>,
         signal: Option<String>,
         cwd: Option<String>,
-        output: Option<RetainedOutput>,
+        output: Option<OutputLengths>,
     },
 }
 
-fn table(
+/// A job table whose jobs keep their output in `root`'s job directories.
+async fn table(
     root: &Path,
     capacity: usize,
 ) -> (
     JobTable,
     mpsc::Receiver<demi_runner::connection::wire::Frame>,
+    Arc<JobDirectories>,
 ) {
     let (output, receiver) = mpsc::channel(capacity);
     let token = tokio::sync::watch::Sender::new(Some("test-token".parse().unwrap())).subscribe();
     let pipes = PipeClient::new(&"http://127.0.0.1:1".parse().unwrap(), token).unwrap();
+    let directories = JobDirectories::open(root.join("jobs")).await;
     (
         JobTable::new(JobConfig {
             output,
-            directories: demi_runner::job_directories::JobDirectories::new(root.join("logs")),
+            directories: directories.clone(),
             pipes,
             shell: demi_runner::shell::ShellRuntime::current(),
             commands: None,
         }),
         receiver,
+        directories,
     )
+}
+
+/// The job's kept output as it stands, decoded as the backend decodes what
+/// `job_read` streams.
+async fn kept(directories: &JobDirectories, job: &str) -> Vec<KeptRecord> {
+    let reader = directories.output(job).expect("the job's directory");
+    let snapshot = tokio::task::spawn_blocking(move || reader.snapshot())
+        .await
+        .unwrap()
+        .unwrap();
+    let mut bytes = Vec::new();
+    let mut stream = std::pin::pin!(snapshot.into_stream().unwrap());
+    while let Some(chunk) = stream.next().await {
+        bytes.extend(chunk.unwrap());
+    }
+    wire::decode_records(&bytes).unwrap()
+}
+
+/// The bytes of `stream` that `records` hold, in order.
+fn stream_bytes(records: &[KeptRecord], stream: OutputStream) -> Vec<u8> {
+    records
+        .iter()
+        .filter_map(|record| match record {
+            KeptRecord::Output(kind, bytes) if *kind == stream => Some(bytes.0.as_slice()),
+            _ => None,
+        })
+        .flatten()
+        .copied()
+        .collect()
 }
 
 /// Waits for a shell job's complete readiness marker across output frames.
@@ -66,17 +99,20 @@ async fn wait_for_job_ready(job: &mut demi_runner::shell::job::Job) {
     .unwrap();
 }
 
+/// A shell job keeps every read of its output, and sends the backend the
+/// first `JOB_VIEW_BYTES` of each stream and, unfollowed, only how long a
+/// stream grew beyond them; its end gives each stream's length, and its
+/// directory lasts until its release (`runner.md` § Pipes and output).
 #[tokio::test]
-async fn shell_job_keeps_full_logs_but_only_sends_head_and_tail_views() {
+async fn a_shell_job_keeps_every_read_and_sends_only_its_views() {
     let root = tempfile::tempdir().unwrap();
-    let (mut table, mut receiver) = table(root.path(), 8);
+    let (mut table, mut receiver, directories) = table(root.path(), 8).await;
     table
         .start(TaskSpec {
             id: "job".into(),
             cwd: root.path().into(),
             env: crate::home(root.path()),
             command: TaskCommand::Shell {
-                conversation: "conversation".into(),
                 script: "printf '%060000d' 0; printf '%040000d' 1 >&2; mkdir child; cd child"
                     .into(),
                 stdin: None,
@@ -131,16 +167,83 @@ async fn shell_job_keeps_full_logs_but_only_sends_head_and_tail_views() {
                 assert_eq!(stderr.len(), 32768);
                 assert_eq!(output.stdout_bytes, 60000);
                 assert_eq!(output.stderr_bytes, 40000);
-                assert_eq!(output.stdout_tail.0.len(), 32768);
-                assert_eq!(output.stderr_tail.0.last(), Some(&b'1'));
-                assert_eq!(std::fs::read(output.stdout_path).unwrap().len(), 60000);
-                assert_eq!(std::fs::read(output.stderr_path).unwrap().len(), 40000);
                 break;
             }
         }
     }
+    let records = kept(&directories, "job").await;
+    let mut printed = format!("{:060000}", 0).into_bytes();
+    assert_eq!(stream_bytes(&records, OutputStream::Stdout), printed);
+    printed = format!("{:040000}", 1).into_bytes();
+    assert_eq!(stream_bytes(&records, OutputStream::Stderr), printed);
     table.close().await;
     assert_eq!(table.len(), 0);
+    directories.release("job").await;
+    assert!(directories.output("job").is_none());
+    assert_eq!(job_directories(&directories).len(), 0, "the directory went");
+}
+
+/// The job directories under the job root, beside its edit lock.
+fn job_directories(directories: &JobDirectories) -> Vec<std::path::PathBuf> {
+    std::fs::read_dir(directories.root())
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.is_dir())
+        .collect()
+}
+
+/// A job that prints without end holds at most `JOB_KEPT_BYTES` of records:
+/// its first `JOB_KEPT_PART_BYTES` whole, its newest after one record that
+/// counts the bytes between. About a second: 24 MiB through the runner.
+#[tokio::test]
+async fn an_endless_job_keeps_its_first_and_last_output_within_the_bound() {
+    let root = tempfile::tempdir().unwrap();
+    let (mut table, mut receiver, directories) = table(root.path(), 64).await;
+    let total = 24 * 1024 * 1024;
+    table
+        .start(TaskSpec {
+            id: "job".into(),
+            cwd: root.path().into(),
+            env: crate::home(root.path()),
+            command: TaskCommand::Shell {
+                script: format!("yes 0123456789 | head -c {total}; printf END"),
+                stdin: None,
+                stdout: None,
+                commands: None,
+            },
+        })
+        .unwrap();
+    let lengths = loop {
+        if let Reply::Exit { output, .. } = reply(&mut receiver).await {
+            break output.unwrap();
+        }
+    };
+    assert_eq!(lengths.stdout_bytes, total + 3);
+    let directory = job_directories(&directories).pop().expect("the job's directory");
+    let on_disk: u64 = std::fs::read_dir(directory.join("output"))
+        .unwrap()
+        .map(|file| file.unwrap().metadata().unwrap().len())
+        .sum();
+    assert!(on_disk <= JOB_KEPT_BYTES as u64, "{on_disk} bytes on disk");
+    let records = kept(&directories, "job").await;
+    let gap = records
+        .iter()
+        .position(|record| matches!(record, KeptRecord::LeftOut(_)))
+        .expect("a record between the parts");
+    let KeptRecord::LeftOut(left_out) = records[gap] else {
+        unreachable!()
+    };
+    let first = stream_bytes(&records[..gap], OutputStream::Stdout);
+    let last = stream_bytes(&records[gap + 1..], OutputStream::Stdout);
+    assert!(first.starts_with(b"0123456789\n0123456789\n"));
+    assert!(last.ends_with(b"01END"));
+    assert_eq!(first.len() as u64 + left_out + last.len() as u64, total + 3);
+    let head = records[..gap]
+        .iter()
+        .map(|record| wire::encode_record(record).unwrap().len())
+        .sum::<usize>();
+    assert!(head <= JOB_KEPT_PART_BYTES && head > JOB_KEPT_PART_BYTES - 64 * 1024, "{head}");
+    table.close().await;
 }
 
 /// The next reply of the job's, within a hang guard.
@@ -171,22 +274,11 @@ async fn beyond(receiver: &mut mpsc::Receiver<demi_runner::connection::wire::Fra
     }
 }
 
-/// Waits until the job's stdout file holds `bytes`: the runner has read
-/// them.
-async fn written(logs: &Path, bytes: u64) {
+/// Waits until the job's kept output holds `bytes` of stdout: the runner
+/// has read them.
+async fn written(directories: &JobDirectories, bytes: usize) {
     tokio::time::timeout(Duration::from_secs(10), async {
-        loop {
-            let file = std::fs::read_dir(logs)
-                .ok()
-                .into_iter()
-                .flatten()
-                .map(|entry| entry.unwrap().path())
-                .find(|path| path.file_name().unwrap().to_string_lossy().starts_with("job-"))
-                .map(|directory: PathBuf| directory.join("stdout.txt"));
-            let length = file.and_then(|file| std::fs::metadata(file).ok()).map(|metadata| metadata.len());
-            if length == Some(bytes) {
-                return;
-            }
+        while stream_bytes(&kept(directories, "job").await, OutputStream::Stdout).len() != bytes {
             tokio::time::sleep(Duration::from_millis(1)).await;
         }
     })
@@ -204,9 +296,7 @@ async fn written(logs: &Path, bytes: u64) {
 #[tokio::test]
 async fn a_followed_job_sends_its_newest_output_beyond_the_view() {
     let root = tempfile::tempdir().unwrap();
-    // The job's directory is under its conversation's.
-    let logs = root.path().join("logs").join("conversation");
-    let (mut table, mut receiver) = table(root.path(), 64);
+    let (mut table, mut receiver, directories) = table(root.path(), 64).await;
     let job = WorkId::Job("job".into());
     table
         .start(TaskSpec {
@@ -214,7 +304,6 @@ async fn a_followed_job_sends_its_newest_output_beyond_the_view() {
             cwd: root.path().into(),
             env: crate::home(root.path()),
             command: TaskCommand::Shell {
-                conversation: "conversation".into(),
                 script: "printf '%060000d' 0; read a; i=0; while [ $i -lt 50 ]; do printf '%05d\n' $i; i=$((i+1)); sleep 0.01; done; read b; printf '%020000d' 1; read c; printf end".into(),
                 stdin: None,
                 stdout: None,
@@ -244,7 +333,7 @@ async fn a_followed_job_sends_its_newest_output_beyond_the_view() {
     }
 
     // Following starts with the newest bytes, at most `JOB_LIVE_BYTES`.
-    written(&logs, 60_000).await;
+    written(&directories, 60_000).await;
     table.follow(&job, true);
     assert_eq!(beyond(&mut receiver).await, (60_000 - live, vec![b'0'; JOB_LIVE_BYTES]));
 
@@ -270,7 +359,7 @@ async fn a_followed_job_sends_its_newest_output_beyond_the_view() {
     // Unfollowed, none of its bytes go.
     table.follow(&job, false);
     table.input(&job, "\n".into()).unwrap();
-    written(&logs, 80_300).await;
+    written(&directories, 80_300).await;
     while let Ok(message) = receiver.try_recv() {
         let Reply::Output { bytes, .. } = rmp_serde::from_slice(&message.into_bytes()).unwrap() else {
             panic!("the job ended");
@@ -307,14 +396,13 @@ async fn a_followed_job_sends_its_newest_output_beyond_the_view() {
 async fn functions_and_compound_pipelines_drain_large_output_and_here_documents() {
     let root = tempfile::tempdir().unwrap();
     std::fs::write(root.path().join("input"), vec![b'x'; 262_144]).unwrap();
-    let (mut table, mut receiver) = table(root.path(), 8);
+    let (mut table, mut receiver, _directories) = table(root.path(), 8).await;
     table
         .start(TaskSpec {
             id: "pipeline".into(),
             cwd: root.path().into(),
             env: crate::home(root.path()),
             command: TaskCommand::Shell {
-                conversation: "conversation".into(),
                 script: "producer() { cat input; }; value=$(producer | cat | cat); printf '%s\\n' \"${#value}\"; { producer; } | wc -c; (producer) | wc -c; cat <<EOF | wc -c\n$value\nEOF\ncat <<< \"$value\" | wc -c".into(),
                 stdin: None,
                 stdout: None,
@@ -352,14 +440,13 @@ async fn functions_and_compound_pipelines_drain_large_output_and_here_documents(
 #[tokio::test]
 async fn cancellation_terminates_a_blocking_native_builtin() {
     let root = tempfile::tempdir().unwrap();
-    let (mut table, mut receiver) = table(root.path(), 8);
+    let (mut table, mut receiver, _directories) = table(root.path(), 8).await;
     table
         .start(TaskSpec {
             id: "job".into(),
             cwd: root.path().into(),
             env: crate::home(root.path()),
             command: TaskCommand::Shell {
-                conversation: "conversation".into(),
                 script: "printf ready; sleep 60".into(),
                 stdin: None,
                 stdout: None,
@@ -446,14 +533,13 @@ async fn shell_cancellation_reports_the_requesting_signal() {
 #[tokio::test]
 async fn shutdown_does_not_wait_for_a_blocked_output_consumer() {
     let root = tempfile::tempdir().unwrap();
-    let (mut table, mut receiver) = table(root.path(), 1);
+    let (mut table, mut receiver, _directories) = table(root.path(), 1).await;
     table
         .start(TaskSpec {
             id: "spawn".into(),
             cwd: root.path().into(),
             env: crate::home(root.path()),
             command: TaskCommand::Shell {
-                conversation: "conversation".into(),
                 script: "while :; do printf '%04096d' 0; done".into(),
                 stdin: None,
                 stdout: None,

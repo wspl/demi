@@ -585,11 +585,15 @@ carries the newest bytes.
 The job's kept output is every read of its stdout and stderr, in the order
 the runner read them: one record per read, naming its stream and holding its
 bytes, in the runner wire's encoding, so the backend decodes it with the
-wire's types. It keeps the job's first 16 MiB of output (`JOB_KEPT_BYTES`)
-whole. Beyond that it keeps the first 8 MiB and the last 8 MiB, dropping the
-oldest reads of the last part as new ones come, with one record between the
-two parts that counts the bytes left out. A job that prints without end, such
-as `yes`, therefore holds at most 16 MiB of the device's disk.
+wire's types. Its bound counts the records' bytes, so it bounds the disk the
+output takes exactly: up to 16 MiB of records (`JOB_KEPT_BYTES`), every read
+is kept. Beyond that it keeps the first 8 MiB of records whole, a read that
+does not fit there split at the bound, and at most the last 8 MiB, in
+segments of 1 MiB of which the oldest goes as new reads come, with one record
+between the two parts that counts the bytes of output left out. A job that
+prints without end, such as `yes`, therefore holds at most 16 MiB of the
+device's disk. A record adds about 20 bytes to its read, which the runner
+makes up to 64 KiB at a time, so the bound holds nearly 16 MiB of output.
 `job_read { jobId }` streams the kept output, as it stands, through a pipe.
 The backend reads it when the job ends and a stream went beyond its first
 32 KiB, and while the job runs, for `demi shell output`
@@ -602,7 +606,9 @@ user:
 jobs/                               the job root
   edits.lock                        the installation's edit lock (Edit tracking)
   job-<random>/                     one per job
-    output                          the kept output
+    output/                         the kept output
+      head                          its first part
+      end-<n>                       the segments of its last part
     changes/                        what the job's edits recorded
     .work-<random>/                 the scratch directory TMPDIR names; goes when the job ends
 ```

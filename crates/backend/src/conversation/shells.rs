@@ -8,18 +8,20 @@
 //! commands answer its jobs' rpc calls.
 
 use std::rc::{Rc, Weak};
+use std::sync::Arc;
 
 use bytes::Bytes;
 use demi_agent::{EnvironmentScope, ShellEnvironmentFactory};
 use demi_command_service::protocol::CommandCaller;
 use demi_host_remote::{
-    CommandCatalog, ContextSource, EnvironmentOptions, HostAccess, RemoteHost, RemoteShellEnvironment, RetainEdits,
+    CommandCatalog, CommandKeeper, ContextSource, EnvironmentOptions, HostAccess, RemoteHost, RemoteShellEnvironment,
+    encode_output,
 };
 use demi_runner_protocol::wire::JobFileChange;
-use demi_core::{CommandId, EditedFile, ShellId};
+use demi_core::{Clock, CommandId, EditedFile, ShellId};
 use demi_shell::{
     CommandStatus, ExecRequest, Host, HostError, HostErrorKind, HostFs, HostKey, PageView, ShellEnvironment,
-    ShellError,
+    ShellError, WholeOutput,
 };
 use demi_web_api::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
@@ -31,7 +33,10 @@ use crate::runner::command_context::command_context;
 use crate::runner::device_of;
 use crate::runner::router::CommandRegistration;
 use crate::shard::Shard;
+use crate::storage::blobs::UserBlobs;
 use crate::storage::changes::ChangeStore;
+use crate::storage::command_outputs::{self, CommandOutput, OutputRow};
+use crate::storage::conversations::ConversationDb;
 
 impl Shard {
     /// A node's Host: the conversation's current main Host. The host access
@@ -136,10 +141,14 @@ impl ShellEnvironmentFactory<RemoteHost> for ShardShellEnvironments {
                 shard: self.shard.clone(),
                 conversation: conversation.clone(),
             }));
-            options.retain = Some(Rc::new(KeptEdits {
-                changes: shard.services().changes.clone(),
+            let services = shard.services();
+            options.keeper = Some(Rc::new(Keeper {
+                changes: services.changes.clone(),
                 conversation: conversation.clone(),
                 host: host.clone(),
+                db: services.conversations.db(&conversation),
+                blobs: services.blobs.for_user(shard.user()),
+                clock: services.clock.clone(),
             }));
             let selection = self
                 .catalog
@@ -182,16 +191,38 @@ impl HostAccess for JobAccess {
     }
 }
 
-/// Keeps the edits of each job's commands in the change store
-/// (`edit-tracking.md` § The change store), reading their copies from the
-/// job's Host inside its host access, before the command reads as ended.
-struct KeptEdits {
+/// Keeps what each job's commands leave when they end, before they read as
+/// ended: the copies of their edits in the change store (`edit-tracking.md`
+/// § The change store), read from the job's Host inside its host access,
+/// and their whole outputs, each a blob of the conversation owner's with
+/// its record in the conversation's database (`storage.md` § Command
+/// outputs).
+struct Keeper {
     changes: ChangeStore,
     conversation: ConversationId,
     host: Rc<RemoteHost>,
+    db: ConversationDb,
+    blobs: UserBlobs,
+    clock: Arc<dyn Clock>,
 }
 
-impl RetainEdits for KeptEdits {
+impl Keeper {
+    /// Stores `output` as a blob, in the kept output's records.
+    async fn put(&self, output: &WholeOutput) -> Result<demi_core::BlobRef, String> {
+        let output = output.clone();
+        // Encoding 16 MiB would hold the shard's thread.
+        let encoded = tokio::task::spawn_blocking(move || encode_output(&output))
+            .await
+            .map_err(|error| error.to_string())?
+            .map_err(|error| error.to_string())?;
+        self.blobs
+            .put(Bytes::from(encoded))
+            .await
+            .map_err(|error| error.to_string())
+    }
+}
+
+impl CommandKeeper for Keeper {
     fn retain<'a>(
         &'a self,
         command: &'a CommandId,
@@ -200,6 +231,43 @@ impl RetainEdits for KeptEdits {
         Box::pin(async move {
             let read = async |path: &str| HostFs::read_file(&*self.host, path).await;
             Ok(self.changes.retain(&self.conversation, command, read, files).await)
+        })
+    }
+
+    fn keep_output<'a>(&'a self, command: &'a CommandId, output: &'a WholeOutput) -> LocalBoxFuture<'a, ()> {
+        Box::pin(async move {
+            let ended = self.clock.now();
+            let stored = match self.put(output).await {
+                Ok(blob) => OutputRow::Stored {
+                    blob,
+                    missing: output.missing().cloned(),
+                },
+                Err(reason) => {
+                    tracing::warn!(conversation = %self.conversation, %command, "a command's output was not stored: {reason}");
+                    OutputRow::NotStored(reason)
+                }
+            };
+            let row = CommandOutput {
+                command: command.clone(),
+                ended,
+                output: stored,
+            };
+            let blobs = self.blobs.clone();
+            let recorded = self
+                .db
+                .call(move |connection| command_outputs::insert(connection, &blobs, &[row]))
+                .await;
+            // The command ends all the same; `demi shell output` then finds
+            // no record of it.
+            match recorded {
+                Ok(Ok(())) => {}
+                Ok(Err(refused)) => {
+                    tracing::warn!(conversation = %self.conversation, %command, "a command's output was not recorded: {refused}");
+                }
+                Err(error) => {
+                    tracing::warn!(conversation = %self.conversation, %command, error = &error as &dyn std::error::Error, "a command's output was not recorded");
+                }
+            }
         })
     }
 }
@@ -222,6 +290,10 @@ impl ShellEnvironment for Registered {
 
     fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
         self.environment.status(command)
+    }
+
+    fn read_output<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<WholeOutput, ShellError>> {
+        self.environment.read_output(command)
     }
 
     fn write<'a>(&'a self, command: &'a CommandId, stdin: Bytes) -> LocalBoxFuture<'a, Result<(), ShellError>> {

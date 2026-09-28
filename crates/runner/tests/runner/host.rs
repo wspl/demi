@@ -1,7 +1,7 @@
 //! Host requests through a connection's owner: filesystem work and kills stay
 //! available while a job runs, jobs and raw processes get the environment
-//! `runner.md` § Host operations gives them, and a conversation's release
-//! removes the output its jobs kept.
+//! `runner.md` § Host operations gives them, and a job's directory lasts
+//! until the backend has what it needs of the job.
 
 use std::{collections::BTreeMap, time::Duration};
 
@@ -228,16 +228,11 @@ async fn raw_spawn_inherits_environment_only_when_requested() {
     host.close().await;
 }
 
-/// Runs `script` as job `job` of `conversation` and answers the file its
-/// whole standard output is kept in, once the job has exited; a job that
-/// does not exit answers none.
-async fn job_of(host: &mut Host, conversation: &str, job: &str, script: &str, exits: bool) -> Option<std::path::PathBuf> {
+/// Starts `script` as job `job`; for one that `exits`, waits for its end.
+async fn job_of(host: &mut Host, job: &str, script: &str, exits: bool) {
     host.send(Inbound::JobStart {
         manifest_hash: None,
-        context: CommandContext {
-            conversation: conversation.into(),
-            ..context()
-        },
+        context: context(),
         job_id: job.into(),
         script: script.into(),
         cwd: host.root.to_string_lossy().into_owned(),
@@ -246,55 +241,55 @@ async fn job_of(host: &mut Host, conversation: &str, job: &str, script: &str, ex
         stdout: None,
     })
     .await;
-    if !exits {
-        return None;
-    }
-    loop {
-        if let Outbound::JobExit { job_id, output, .. } = host.frame().await
+    while exits {
+        if let Outbound::JobExit { job_id, .. } = host.frame().await
             && job_id == job
         {
-            return Some(output.expect("a shell job keeps its output").stdout_path.into());
+            return;
         }
     }
 }
 
-// About a second: three shell jobs start a login shell each.
+/// The job directories under the Host's job root.
+fn directories(root: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut found: Vec<_> = std::fs::read_dir(root.join("state/jobs"))
+        .map(|entries| entries.map(|entry| entry.unwrap().path()).collect())
+        .unwrap_or_default();
+    found.retain(|path| path.is_dir());
+    found.sort();
+    found
+}
+
+/// Waits until the Host holds `count` job directories.
+async fn directories_become(root: &std::path::Path, count: usize) {
+    while directories(root).len() != count {
+        tokio::time::sleep(Duration::from_millis(1)).await;
+    }
+}
+
+/// A job's directory lasts until the backend releases the job, which keeps
+/// a running job's; the connection's end removes every one, and a runner
+/// that starts removes what an earlier one left (`runner.md` § Pipes and
+/// output). About a second: two shell jobs start a login shell each.
 #[tokio::test]
-async fn a_release_removes_its_conversations_job_output_and_keeps_the_rest() {
+async fn job_directories_go_with_their_release_the_connection_and_the_next_start() {
     tokio::time::timeout(Duration::from_secs(60), async {
         let root = tempfile::tempdir().unwrap();
+        let left = root.path().join("state/jobs/job-left/output");
+        std::fs::create_dir_all(&left).unwrap();
+        std::fs::write(left.join("head"), b"what a runner that ended left").unwrap();
         let mut host = Host::start(root.path(), BTreeMap::new()).await.online().await;
-        let released = job_of(&mut host, "Released-1", "one", "printf done", true).await.unwrap();
-        let kept = job_of(&mut host, "kept", "two", "printf kept", true).await.unwrap();
-        // A job of the released conversation still runs: nothing of it goes.
-        job_of(&mut host, "released-1", "live", "sleep 60", false).await;
-        let jobs = root.path().join("state/jobs");
-        // Every job's directory is under its conversation's, in lowercase.
-        assert!(released.starts_with(jobs.join("released-1")), "{}", released.display());
-        assert!(kept.starts_with(jobs.join("kept")), "{}", kept.display());
+        assert_eq!(directories(root.path()), Vec::<std::path::PathBuf>::new());
 
-        host.send(Inbound::ConversationRelease {
-            id: "release".into(),
-            conversation_id: "Released-1".into(),
-        })
-        .await;
-        loop {
-            if let Outbound::ConversationReleased { id, error } = host.frame().await {
-                assert_eq!((id.as_str(), error), ("release", None));
-                break;
-            }
-        }
-        assert!(!released.parent().unwrap().exists(), "the finished job's directory is gone");
-        let left: Vec<_> = std::fs::read_dir(jobs.join("released-1")).unwrap().collect();
-        assert_eq!(left.len(), 1, "the running job keeps its directory");
-        assert_eq!(std::fs::read_to_string(&kept).unwrap(), "kept");
+        job_of(&mut host, "one", "printf done", true).await;
+        job_of(&mut host, "live", "sleep 60", false).await;
+        directories_become(root.path(), 2).await;
+        host.send(Inbound::JobRelease { job_id: "one".into() }).await;
+        host.send(Inbound::JobRelease { job_id: "live".into() }).await;
+        directories_become(root.path(), 1).await;
 
-        host.send(Inbound::JobKill {
-            job_id: "live".into(),
-            signal: Some(Signal::Kill),
-        })
-        .await;
         host.close().await;
+        assert_eq!(directories(root.path()), Vec::<std::path::PathBuf>::new());
     })
     .await
     .unwrap();

@@ -27,7 +27,7 @@ use super::Tree;
 use crate::{
     AgentHarness, AgentSession, Node,
     node::{self, NodeRole, NodeSpec, Prompt},
-    server::commands::with_agent_group,
+    server::commands::with_runtime_groups,
     session::{AgentMessageError, Execution, SessionEvent, Settle, Subscription},
     store::{ClosePhase, NodeClose, NodeRecord},
 };
@@ -448,7 +448,7 @@ impl<H: AgentHarness> Tree<H> {
             None => owner.inherited_commands().clone(),
         };
         let can_spawn = record.can_spawn_subagents;
-        let commands = with_agent_group(&inherited, &server, can_spawn, &self.profiles)
+        let commands = with_runtime_groups(&inherited, &server, can_spawn, &self.profiles)
             .map_err(|error| error.to_string())?;
         let preamble = subagent_preamble(&record.id, owner.id(), can_spawn);
         let feed = self.live.feed(Some(record.id.clone()));

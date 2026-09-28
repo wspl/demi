@@ -21,7 +21,7 @@ use demi_command_service::protocol::{ArtifactLocation, CommandContext, PackageDe
 use demi_core::StreamKind;
 use demi_gates::{GateLease, SerialGate};
 use demi_runner_protocol::wire::{
-    self, ArtifactOwner, FsResult, GitResult, Inbound, LogLine, Outbound, OutputStream, VolumeName,
+    self, ArtifactOwner, FsResult, GitResult, Inbound, LogLine, Outbound, VolumeName,
 };
 use demi_shell::{
     HostError, HostErrorKind, HostIdentity, HostKey, JobCaller, PortError, ProcessEnd,
@@ -34,6 +34,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
     manifest::CommandSelection,
+    output_records::stream_kind,
     pipes::Pipes,
     relay::{CallEntry, Stop},
 };
@@ -187,6 +188,7 @@ pub(crate) enum Expected {
     Sync,
     Net,
     Service,
+    JobRead,
 }
 
 pub(crate) enum Answer {
@@ -330,7 +332,8 @@ pub struct JobEnd {
     pub status: ProcessEnd,
     /// The directory the script ended in; none when bash never ran it.
     pub cwd: Option<String>,
-    pub output: Option<wire::RetainedOutput>,
+    /// Each stream's length; none when bash never ran the script.
+    pub output: Option<wire::OutputLengths>,
     pub files: Vec<wire::JobFileChange>,
     pub files_truncated: bool,
 }
@@ -590,6 +593,10 @@ impl Link {
         match message {
             Outbound::ConversationReleased { id, error } => match error {
                 None => self.answer(&id, Expected::Release, Answer::Done),
+                Some(error) => self.refuse(&id, HostError::failed(None, error)),
+            },
+            Outbound::JobRead { id, error } => match error {
+                None => self.answer(&id, Expected::JobRead, Answer::Done),
                 Some(error) => self.refuse(&id, HostError::failed(None, error)),
             },
             Outbound::SyncDone { id, error } => match error {
@@ -1217,13 +1224,6 @@ pub(crate) fn process_end(
 
 /// An fs failure the runner reports: `too_large` fails the request alone;
 /// any other code is the operating system's.
-fn stream_kind(stream: OutputStream) -> StreamKind {
-    match stream {
-        OutputStream::Stdout => StreamKind::Stdout,
-        OutputStream::Stderr => StreamKind::Stderr,
-    }
-}
-
 pub(crate) fn fs_error(code: Option<String>, message: String) -> HostError {
     match code.as_deref() {
         Some("too_large") => HostError::new(HostErrorKind::TooLarge, message),

@@ -4,6 +4,7 @@ pub(crate) mod attachments;
 pub(crate) mod blobs;
 pub(crate) mod changes;
 pub(crate) mod columns;
+pub(crate) mod command_outputs;
 pub(crate) mod control;
 pub(crate) mod conversation_index;
 pub(crate) mod conversations;

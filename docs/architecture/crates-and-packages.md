@@ -436,10 +436,12 @@ Each crate implements the provider contract for one vendor family.
     environment reports that view's changes and learns whether a page
     watches (`PageFeed`,
     [Live output](../agent/runtime.md#live-output)); the reading of a
-    running command's kept output; and the keeper to which an environment
-    hands what a command leaves when it ends, its whole output and its edit
-    copies, which the product implements over its storage
-    ([The whole output](../agent/runtime.md#the-whole-output)).
+    running command's kept output; a command's whole output
+    (`WholeOutput`) and its lines of text (`OutputText`), which the result
+    that reports a command's end and `demi shell output` read alike; and the
+    keeper to which an environment hands what a command leaves when it ends,
+    its whole output and its edit copies, which the product implements over
+    its storage ([The whole output](../agent/runtime.md#the-whole-output)).
 - **Public boundary:** the items above; `shell::testing` supplies the Host
   conformance cases and an in-memory port for rpc handler tests
   (`MemoryPort`). The Host rules are in
@@ -544,6 +546,8 @@ Each crate implements the provider contract for one vendor family.
     runner jobs, and its factory: at a job's end it reads what the backend
     does not hold of the command's output and its edit copies, hands them to
     the product's keeper, and releases the job's directory;
+  - a whole output as the runner wire's kept-output records, in which the
+    backend stores it (`encode_output`, `decode_output`);
   - building manifests from a command set.
 - **Public boundary:** the items above; `host_remote::testing` supplies a real
   runner process for a backend at any address, with a home and state of its
