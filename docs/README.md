@@ -22,7 +22,7 @@ layout and interaction; these documents do not repeat it.
 ## How does the backend serve requests and keep data?
 
 - [Backend](backend/backend.md): the backend binary's modules and runtime model, authentication and ownership, browser synchronization, media by reference, failure facts, startup and shutdown, configuration, a development backend with the native programs a developer built, and deployment and user placement.
-- [Storage](backend/storage.md): the data directory, control and conversation databases, encodings and digests, passwords and credentials at rest, the object store for blobs and the change store, [retention](backend/storage.md#retention) of tool media and blobs, multi-worker placement, and open durability decisions.
+- [Storage](backend/storage.md): the data directory, control and conversation databases, encodings and digests, passwords and credentials at rest, the object store for blobs, [retention](backend/storage.md#retention) of tool media and blobs, multi-worker placement, and open durability decisions.
 
 ## How does the agent run a conversation?
 
@@ -41,7 +41,7 @@ layout and interaction; these documents do not repeat it.
 - [Runner](execution/runner.md): registration, Host operations, the Host log, [load](execution/runner.md#load), shell jobs, pipes and managed guests.
 - [Commands](execution/commands.md): declarations, input and help, dispatch surfaces and manifests, rpc calls, [external command clients](execution/commands.md#external-command-clients), IO, and the file commands.
 - [Native command execution](execution/native-runtime.md): native packages, installation, resident services, the command context, conversation-scoped state, user streams, the invocation protocol and publication.
-- [Edit tracking](execution/edit-tracking.md): recording what a job edited, the report, the change store and delivery to the conversation.
+- [Edit tracking](execution/edit-tracking.md): recording what a job edited, the report, its copies as blobs and delivery to the conversation.
 - [Host expose](execution/expose.md): public URLs for services on a Host, their lifetime, relay and commands.
 
 ## How does the agent use a web browser?
