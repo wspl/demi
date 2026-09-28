@@ -84,8 +84,12 @@ demi agent list
 ```
 
 `demi agent spawn` reads a task brief from stdin, creates a persisted child, and
-returns immediately. Stdout is `subagentId: <id>`; `--json` returns
-`{ "subagentId": "<id>" }`. Success confirms creation, not completion. The
+returns immediately. Stdout is `subagentId: 2`, the child's number in the
+conversation: the root is `0` and every agent spawned in the conversation takes
+the next number, which no other agent of the conversation ever has
+([Identifiers the model sees](runtime.md#identifiers-the-model-sees)); `--json`
+returns `{ "subagentId": 2 }`. The `<id>` the other commands take is such a
+number. Success confirms creation, not completion. The
 parent's supervisor owns the child after creation, independently of the
 invoking shell job, its stdout pipe, and its cancellation
 ([Creation command ownership](#creation-command-ownership)). `resume` has the
@@ -192,7 +196,7 @@ sender by writing an identifier into the message body.
 | Field | Meaning |
 | --- | --- |
 | `id` | The stable message ID |
-| `sender` | The sender's node ID; its description (`root session` for the root); and its round, the sender node's persisted spawn time in milliseconds |
+| `sender` | The sender's node; its description (`root session` for the root); and its round, `1` for its first run and one more at each resume |
 | `recipientId` | The recipient's node ID |
 | `timestamp` | When the message was sent; for a completion, when the child closed |
 | `content` | The body |
@@ -202,6 +206,13 @@ A completion carries the child's result for `completed`, and otherwise its
 failure text, which can be empty. Its ID is `subagent:<child id>:<round>`, so
 it identifies exactly one execution round of one child; reopening a child
 starts a different round. An explicit message must not be empty.
+
+The model receives a message as its envelope: an instruction on how to take
+it, then the message as JSON with `sender`, `event`, `timestamp`, `content`
+and, for a completion, `outcome`. The envelope names the sender by its agent
+number and its round, such as `{"agent": 2, "description": "refactor auth",
+"round": 1}`; the message's `id` and `recipientId` serve delivery and stay out
+of it ([Identifiers the model sees](runtime.md#identifiers-the-model-sees)).
 
 The source is structured data, independent of presentation text: neither replay
 nor the browser parses a bracketed text prefix to find it. The recipient's
@@ -316,9 +327,8 @@ at its next continuation boundary. The creation command carries no completion
 result. A child with a scheduled wakeup or live descendants stays live.
 
 Each execution round has a distinct completion message ID that contains the
-child ID and the round, the child's persisted spawn time in milliseconds.
-Resume chooses a round strictly newer than the previous one: the current time,
-or the previous round plus one when the clock has not moved past it. A parent
+child ID and the round. A child's first run is round 1, and resume starts the
+previous round plus one, which the child's record keeps. A parent
 checkpoint marks only the matching round delivered; an older completion cannot
 acknowledge a newer round. Restore retries an undelivered completion with the
 same message ID, and admission deduplicates it against pending inputs and
@@ -359,11 +369,11 @@ Each node's archived children follow its live ones, newest first, with their
 closed phase and age:
 
 ```text
-● c1  (root session)
-├─● ag_x7f9k2  running  up 4m  last-event 8s ago  profile=(inherit)  "refactor auth"  execution=provider_streaming  activity=streaming
-│ ├─● ag_m3n8  running  up 1m  last-event 5s ago  profile=(inherit)  "search call sites"  execution=tool_executing  activity=grep call sites ← you
-│ └─○ ag_q5w2  archived (completed 3m ago)  "update tests"
-└─● ag_z4r6t0  running  up 2m  last-event 40s ago  profile=(inherit)  "write docs"  execution=pending_yield  activity=pending_yield
+● 0  (root session)
+├─● 1  running  up 4m  last-event 8s ago  profile=(inherit)  "refactor auth"  execution=provider_streaming  activity=streaming
+│ ├─● 3  running  up 1m  last-event 5s ago  profile=(inherit)  "search call sites"  execution=tool_executing  activity=grep call sites ← you
+│ └─○ 4  archived (completed 3m ago)  "update tests"
+└─● 2  running  up 2m  last-event 40s ago  profile=(inherit)  "write docs"  execution=pending_yield  activity=pending_yield
 ```
 
 The root renders its identity only: it is not a `demi agent` job and has no
@@ -402,8 +412,8 @@ It returns only:
   long ago it was produced.
 
 ```text
-id: ag_h2c5
-parent: ag_x7f9k2
+id: 5
+parent: 1
 description: check the token parser
 profile: (inherit)
 phase: running
@@ -472,7 +482,8 @@ against the same harness profile list.
 
 A child's jobs carry a
 [command context](../execution/native-runtime.md#command-context) whose
-`caller` is `agent` with the child's node, the same ID as `subagentId`. There
+`caller` is `agent` with the child's node; the model knows that node by its
+number, `subagentId`. There
 is no depth marker: depth has no behavioral meaning.
 
 ## Child context

@@ -143,7 +143,10 @@ copies alike ([Edit copies](../execution/edit-tracking.md#edit-copies)), while
 its transcript rows stay independent, so a Fork copies no bytes. It copies the
 `command_outputs` rows of the commands its copied blocks name, so
 `demi shell output` reads their output in the destination too
-([Command outputs](../backend/storage.md#command-outputs)). Fork does not need
+([Command outputs](../backend/storage.md#command-outputs)), and starts each of
+the destination's sequences at its source's next number, so a number its
+history names is never given to something new
+([Identifiers the model sees](runtime.md#identifiers-the-model-sees)). Fork does not need
 a model call or a device wakeup to copy conversation data.
 
 ## Execution environment and auxiliary state
