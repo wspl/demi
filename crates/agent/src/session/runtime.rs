@@ -108,7 +108,7 @@ impl ToolOutcome {
 pub(crate) enum ToolEffect {
     /// `yield`: schedule one wakeup `duration_ms` after the action ends, and
     /// end the turn after this round of tools unless input arrived during
-    /// it. The call's result says `yield scheduled` with the wakeup's id.
+    /// it. The call's result says `yield scheduled` with the duration.
     ScheduleYield { duration_ms: u32 },
 }
 

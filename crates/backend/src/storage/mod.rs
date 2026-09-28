@@ -17,6 +17,7 @@ pub(crate) mod objects;
 pub(crate) mod panels;
 pub(crate) mod providers;
 mod schema;
+pub(crate) mod sequences;
 pub(crate) mod sidebar;
 mod sqlite;
 pub(crate) mod tree;

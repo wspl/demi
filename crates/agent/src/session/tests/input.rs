@@ -681,12 +681,8 @@ async fn yield_ends_the_turn_and_its_wakeup_opens_a_continuation_once_the_action
     else {
         panic!("{call:?}");
     };
-    assert_eq!(
-        call.output,
-        texts(&[&format!(
-            "yield scheduled\nwakeupId: {wakeup_id}\ndurationMs: 120000"
-        )])
-    );
+    // The result names no wakeup: no tool takes one.
+    assert_eq!(call.output, texts(&["yield scheduled\ndurationMs: 120000"]));
     // The wait started when the action ended, and the checkpoint keeps it.
     let scheduled = store.checkpoint(&root()).unwrap().state.wakeups;
     let [

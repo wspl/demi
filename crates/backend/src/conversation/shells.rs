@@ -136,7 +136,7 @@ impl ShellEnvironmentFactory<RemoteHost> for ShardShellEnvironments {
                     })
                 })
             };
-            let mut options = EnvironmentOptions::new((*host).clone(), context, scope.feed.clone());
+            let mut options = EnvironmentOptions::new((*host).clone(), context, scope.feed.clone(), scope.numbers.clone());
             options.access = Some(Rc::new(JobAccess {
                 shard: self.shard.clone(),
                 conversation: conversation.clone(),

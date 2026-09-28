@@ -37,8 +37,8 @@ use demi_agent_protocol::MediaRef;
 use crate::{
     subagents::{checkpoint, child_record},
     support::{
-        CommandRun, Fixture, Gate, Model, TestHarness, agent, command_storage, conversation,
-        held, is_idle, kinds, open, send, session_of, switch, until,
+        Fixture, Gate, Model, TestHarness, agent, command_storage, conversation,
+        held, is_idle, kinds, named_node, open, send, session_of, switch, until,
     },
 };
 
@@ -851,10 +851,7 @@ async fn command_storage_writes_compare_the_revision_and_a_rewrite_ends_older_jo
             revision: Revision(2)
         }
     );
-    assert_eq!(
-        listed.stdout,
-        format!("● {}  (root session) ← you\n", conversation())
-    );
+    assert_eq!(listed.stdout, "● 0  (root session) ← you\n");
     // A commit that failed leaves the head as it was.
     assert_eq!(
         failed,
@@ -867,16 +864,6 @@ async fn command_storage_writes_compare_the_revision_and_a_rewrite_ends_older_jo
             revision: Revision(2)
         }
     );
-}
-
-/// The child a `spawn` named on stdout.
-fn spawned(run: &CommandRun) -> NodeId {
-    let id = run
-        .stdout
-        .strip_prefix("subagentId: ")
-        .and_then(|rest| rest.strip_suffix('\n'))
-        .unwrap_or_else(|| panic!("{run:?} names no child"));
-    NodeId::try_from(id).unwrap()
 }
 
 #[tokio::test(flavor = "local")]
@@ -911,7 +898,7 @@ async fn an_edit_waits_for_no_child_and_an_edit_and_a_child_start_refuse_each_ot
     let spawn = |prompt: &str| agent(&fixture.server, &root, "spawn", json!({ "prompt": prompt }));
 
     // A live child refuses the edit and keeps its record.
-    let child = spawned(&spawn("Read notes.md").await);
+    let child = named_node(&fixture.store, &spawn("Read notes.md").await);
     let live = fixture.store.record(&child).unwrap();
     let version = session_of(&fixture).transcript().version;
     client
@@ -1000,7 +987,7 @@ async fn a_completion_whose_saves_failed_refuses_an_edit_until_a_later_save_deli
     let child = NodeId::try_from("child").unwrap();
     store
         .create_node(
-            child_record("child", "conversation", None),
+            child_record("child", 1, "conversation", None),
             checkpoint(Vec::new(), Vec::new()),
         )
         .await

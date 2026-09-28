@@ -26,7 +26,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::support::{
-    CommandRun, Fixture, Gate, Model, TestHarness, agent, agent_call, command_storage,
+    CommandRun, Fixture, Gate, Model, TestHarness, agent, agent_call, command_storage, named_node,
     conversation, held, is_idle, is_pending_steers, open, request_text, send, texts, until,
 };
 
@@ -51,31 +51,22 @@ fn fixture(model: &Model, harness: TestHarness) -> Fixture {
     )
 }
 
-/// The child a `spawn` or `resume` named on stdout.
-fn child_id(run: &CommandRun) -> NodeId {
-    let id = run
-        .stdout
-        .strip_prefix("subagentId: ")
-        .and_then(|rest| rest.strip_suffix('\n'))
-        .unwrap_or_else(|| panic!("{run:?} names no child"));
-    NodeId::try_from(id).unwrap()
-}
-
 async fn spawn(fixture: &Fixture, caller: &NodeId, args: Value) -> NodeId {
     let run = agent(&fixture.server, caller, "spawn", args).await;
     assert_eq!(run.code, 0, "{run:?}");
-    child_id(&run)
+    named_node(&fixture.store, &run)
 }
 
 /// A spawn as a job of `caller`, in a task of its own: a start waits for its
 /// parent's provider runtime, which the parent's running turn holds.
 fn spawn_during_turn(fixture: &Fixture, caller: &NodeId, args: Value) -> JoinHandle<NodeId> {
     let server = fixture.server.clone();
+    let store = fixture.store.clone();
     let caller = caller.clone();
     tokio::task::spawn_local(async move {
         let run = agent(&server, &caller, "spawn", args).await;
         assert_eq!(run.code, 0, "{run:?}");
-        child_id(&run)
+        named_node(&store, &run)
     })
 }
 
@@ -158,15 +149,16 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
         json!({ "prompt": brief, "description": "reader" }),
     )
     .await;
-    let child = child_id(&spawned);
+    let child = named_node(&fixture.store, &spawned);
     let frames = client.next_until(is_idle).await;
 
     assert_eq!(
         refused(&empty),
         "demi agent spawn: prompt must not be empty\n"
     );
-    // Creation, not the child's work, is what the call reports.
-    assert_eq!(spawned.stdout, format!("subagentId: {child}\n"));
+    // Creation, not the child's work, is what the call reports: the
+    // conversation's first subagent is agent 1.
+    assert_eq!(spawned.stdout, "subagentId: 1\n");
     let started = frames
         .iter()
         .find_map(|frame| match frame {
@@ -228,10 +220,9 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
     let [UserPart::Text(preamble), UserPart::Text(first)] = content.as_slice() else {
         panic!("{content:?}")
     };
-    assert!(preamble.starts_with(&format!(
-        "You are a subagent: a child agent session (id {child}) spawned by parent agent session {}.",
-        root()
-    )));
+    assert!(preamble.starts_with(
+        "You are a subagent: agent 1 of this conversation, spawned by agent 0."
+    ));
     assert!(preamble.contains("`demi agent spawn` spawns your own children."));
     assert_eq!(first, brief);
     assert!(
@@ -349,7 +340,7 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
         }
     });
     alpha_gate.open();
-    let gamma = child_id(&gamma_start.await.unwrap());
+    let gamma = named_node(&fixture.store, &gamma_start.await.unwrap());
     let alpha_node = fixture.server.node(&root(), &alpha).unwrap();
     until(|| alpha_node.session().is_settled()).await;
 
@@ -357,7 +348,7 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
         &fixture.server,
         &gamma,
         "send",
-        json!({ "id": beta.as_str(), "message": "hello from gamma" }),
+        json!({ "id": "3", "message": "hello from gamma" }),
     )
     .await;
     let to_parent = agent(
@@ -373,7 +364,7 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
         &fixture.server,
         &gamma,
         "send",
-        json!({ "id": gamma.as_str(), "message": "me" }),
+        json!({ "id": "4", "message": "me" }),
     )
     .await;
     let from_root = agent(
@@ -387,21 +378,21 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
         &fixture.server,
         &gamma,
         "send",
-        json!({ "id": delta.as_str(), "message": "late" }),
+        json!({ "id": "1", "message": "late" }),
     )
     .await;
     let abort_sibling = agent(
         &fixture.server,
         &alpha,
         "abort",
-        json!({ "id": beta.as_str() }),
+        json!({ "id": 3 }),
     )
     .await;
     let resume_foreign = agent(
         &fixture.server,
         &alpha,
         "resume",
-        json!({ "id": delta.as_str(), "message": "again" }),
+        json!({ "id": 1, "message": "again" }),
     )
     .await;
     let listed = agent(&fixture.server, &gamma, "list", json!({})).await;
@@ -419,32 +410,42 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
         &fixture.server,
         &alpha,
         "show",
-        json!({ "id": beta.as_str() }),
+        json!({ "id": 3 }),
     )
     .await;
     let show_root = agent(
         &fixture.server,
         &alpha,
         "show",
-        json!({ "id": root().as_str() }),
+        json!({ "id": 0 }),
     )
     .await;
     let show_archived = agent(
         &fixture.server,
         &alpha,
         "show",
-        json!({ "id": delta.as_str() }),
+        json!({ "id": 1 }),
     )
     .await;
 
-    assert_eq!(across.stdout, format!("sent to {beta}\n"));
-    assert_eq!(to_parent.stdout, format!("sent to {alpha}\n"));
+    // Agents are numbered in spawn order: delta 1, alpha 2, beta 3, and
+    // gamma, which alpha spawned, 4.
+    let numbers: Vec<u64> = [&delta, &alpha, &beta, &gamma]
+        .into_iter()
+        .map(|node| fixture.number(node))
+        .collect();
+    assert_eq!(numbers, [1, 2, 3, 4]);
+    assert_eq!(across.stdout, "sent to 3\n");
+    assert_eq!(to_parent.stdout, "sent to 2\n");
+    // The model reads the sender by its number and round, and no id of the
+    // message's delivery.
     let alpha_heard = request_text(&model.requests_of("task alpha")[1]);
-    assert!(alpha_heard.contains("gamma status"), "{alpha_heard}");
     assert!(
-        alpha_heard.contains(&format!("\"id\":\"{gamma}\"")),
+        alpha_heard.contains(r#"{"sender":{"agent":4,"description":"gamma","round":1},"event":"message","#),
         "{alpha_heard}"
     );
+    assert!(alpha_heard.contains("gamma status"), "{alpha_heard}");
+    assert!(!alpha_heard.contains("recipientId"), "{alpha_heard}");
     assert_eq!(
         refused(&to_self),
         "demi agent send: cannot message your own session\n"
@@ -455,48 +456,48 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
     );
     assert_eq!(
         refused(&to_archived),
-        format!(
-            "demi agent send: no live agent \"{delta}\" (see `demi agent list`; an archived child is revived only by its parent via resume)\n"
-        )
+        "demi agent send: no live agent \"1\" (see `demi agent list`; an archived child is revived only by its parent via resume)\n"
     );
     assert_eq!(
         refused(&abort_sibling),
-        format!("demi agent abort: \"{beta}\" is not one of your running children\n")
+        "demi agent abort: 3 is not one of your running children\n"
     );
+    // Agent 1 is the root's child, not alpha's.
     assert_eq!(
         refused(&resume_foreign),
-        "demi agent resume: request-id references an agent owned by another session\n"
+        "demi agent resume: no archived subagent 1 (see `demi agent list`)\n"
     );
-    let live = |id: &NodeId, name: &str, execution: &str, activity: &str| {
+    let live = |number: u64, name: &str, execution: &str, activity: &str| {
         format!(
-            "{id}  running  up 0s  last-event 0s ago  profile=(inherit)  \"{name}\"  execution={execution}  activity={activity}"
+            "{number}  running  up 0s  last-event 0s ago  profile=(inherit)  \"{name}\"  execution={execution}  activity={activity}"
         )
     };
     assert_eq!(
         listed.stdout,
         [
-            format!("● {}  (root session)", root()),
-            format!("├─● {}", live(&alpha, "alpha", "idle", "idle")),
+            "● 0  (root session)".to_owned(),
+            format!("├─● {}", live(2, "alpha", "idle", "idle")),
             format!(
                 "│ └─● {} ← you",
-                live(&gamma, "gamma", "provider_streaming", "streaming")
+                live(4, "gamma", "provider_streaming", "streaming")
             ),
             format!(
                 "├─● {}",
-                live(&beta, "beta", "provider_streaming", "streaming")
+                live(3, "beta", "provider_streaming", "streaming")
             ),
-            format!("└─○ {delta}  archived (completed 0s ago)  \"delta\""),
+            "└─○ 1  archived (completed 0s ago)  \"delta\"".to_owned(),
         ]
         .join("\n")
             + "\n"
     );
     let entries: Value = serde_json::from_str(&listed_json.stdout).unwrap();
     let entries = entries["tree"].as_array().unwrap();
-    let flat: Vec<(&str, &str, bool)> = entries
+    let flat: Vec<(u64, Option<u64>, &str, bool)> = entries
         .iter()
         .map(|entry| {
             (
-                entry["subagentId"].as_str().unwrap(),
+                entry["subagentId"].as_u64().unwrap(),
+                entry["parentSessionId"].as_u64(),
                 entry["kind"].as_str().unwrap(),
                 entry["self"].as_bool().unwrap(),
             )
@@ -505,11 +506,11 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
     assert_eq!(
         flat,
         [
-            (root().as_str(), "root", false),
-            (alpha.as_str(), "live", false),
-            (gamma.as_str(), "live", true),
-            (beta.as_str(), "live", false),
-            (delta.as_str(), "archived", false),
+            (0, None, "root", false),
+            (2, Some(0), "live", false),
+            (4, Some(2), "live", true),
+            (3, Some(0), "live", false),
+            (1, Some(0), "archived", false),
         ]
     );
     assert_eq!(entries[4]["phase"], "completed");
@@ -517,8 +518,8 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
     assert_eq!(
         shown.stdout,
         [
-            format!("id: {beta}"),
-            format!("parent: {}", root()),
+            "id: 3".to_owned(),
+            "parent: 0".into(),
             "description: beta".into(),
             "profile: (inherit)".into(),
             "phase: running".into(),
@@ -531,14 +532,8 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
         .join("\n")
             + "\n"
     );
-    assert_eq!(
-        refused(&show_root),
-        format!("demi agent show: no live agent \"{}\"\n", root())
-    );
-    assert_eq!(
-        refused(&show_archived),
-        format!("demi agent show: no live agent \"{delta}\"\n")
-    );
+    assert_eq!(refused(&show_root), "demi agent show: no live agent 0\n");
+    assert_eq!(refused(&show_archived), "demi agent show: no live agent 1\n");
 
     // A child with a message waiting does not close before it reads it.
     beta_gate.open();
@@ -583,18 +578,18 @@ async fn abort_closes_the_subtree_and_dispose_detaches_it_for_the_next_open() {
         async move { agent(&server, &alpha, "spawn", json!({ "prompt": "task gamma" })).await }
     });
     alpha_gate.open();
-    let gamma = child_id(&gamma_start.await.unwrap());
+    let gamma = named_node(&fixture.store, &gamma_start.await.unwrap());
 
     let aborted = agent(
         &fixture.server,
         &root(),
         "abort",
-        json!({ "id": alpha.as_str() }),
+        json!({ "id": fixture.number(&alpha) }),
     )
     .await;
     let frames = client.next_until(is_idle).await;
 
-    assert_eq!(aborted.stdout, format!("aborted {alpha}\n"));
+    assert_eq!(aborted.stdout, format!("aborted {}\n", fixture.number(&alpha)));
     let closes: Vec<(NodeId, JobPhase)> = lifecycle(&frames)
         .into_iter()
         .filter(|(event, ..)| *event == SubagentEvent::Closed)
@@ -684,13 +679,16 @@ pub(crate) fn checkpoint(queue: Vec<QueuedMessage>, blocks: Vec<Block>) -> Check
     }
 }
 
-pub(crate) fn child_record(id: &str, parent: &str, profile: Option<&str>) -> NodeRecord {
+/// A child in its first round, agent `number` of the conversation.
+pub(crate) fn child_record(id: &str, number: u64, parent: &str, profile: Option<&str>) -> NodeRecord {
     NodeRecord {
         id: NodeId::try_from(id).unwrap(),
+        number,
         parent: Some(NodeId::try_from(parent).unwrap()),
         description: id.into(),
         profile: profile.map(str::to_owned),
         round: 1,
+        started_at: Timestamp::UNIX_EPOCH,
         can_spawn_subagents: true,
         closed: None,
         delivered: false,
@@ -733,7 +731,7 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
     };
     store
         .create_node(
-            child_record("lost", "conversation", None),
+            child_record("lost", 1, "conversation", None),
             checkpoint(vec![brief], Vec::new()),
         )
         .await
@@ -741,7 +739,7 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
     // Its final checkpoint saved, its close not yet.
     store
         .create_node(
-            child_record("quiet", "conversation", None),
+            child_record("quiet", 2, "conversation", None),
             checkpoint(
                 Vec::new(),
                 vec![user("q1", "task quiet"), answer("q2", "quiet result")],
@@ -752,7 +750,7 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
     // Closed, its completion not in the parent's checkpoint.
     store
         .create_node(
-            child_record("closed", "conversation", None),
+            child_record("closed", 3, "conversation", None),
             checkpoint(Vec::new(), Vec::new()),
         )
         .await
@@ -768,7 +766,7 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
     // A profile the harness no longer declares: gone with its subtree.
     store
         .create_node(
-            child_record("orphan", "conversation", Some("retired")),
+            child_record("orphan", 4, "conversation", Some("retired")),
             checkpoint(Vec::new(), Vec::new()),
         )
         .await
@@ -777,7 +775,7 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
     let archived = NodeId::try_from("archived").unwrap();
     store
         .create_node(
-            child_record("archived", "conversation", Some("retired")),
+            child_record("archived", 5, "conversation", Some("retired")),
             checkpoint(Vec::new(), Vec::new()),
         )
         .await
@@ -795,7 +793,7 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
     store.mark_delivered(&archived, 1).await.unwrap();
     store
         .create_node(
-            child_record("orphan-child", "orphan", None),
+            child_record("orphan-child", 6, "orphan", None),
             checkpoint(Vec::new(), Vec::new()),
         )
         .await
@@ -848,7 +846,7 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
         &fixture.server,
         &root(),
         "resume",
-        json!({ "id": "archived", "message": "again" }),
+        json!({ "id": 5, "message": "again" }),
     )
     .await;
     assert_eq!(
@@ -957,7 +955,7 @@ async fn a_start_request_is_safe_to_retry_and_outlives_a_cancelled_call() {
         &fixture.server,
         &root(),
         "resume",
-        json!({ "id": child.as_str(), "message": "second task", "request-id": "r2" }),
+        json!({ "id": fixture.number(&child), "message": "second task", "request-id": "r2" }),
     )
     .await;
     client.next_until(is_closed(&child)).await;
@@ -967,14 +965,14 @@ async fn a_start_request_is_safe_to_retry_and_outlives_a_cancelled_call() {
         &fixture.server,
         &root(),
         "resume",
-        json!({ "id": child.as_str(), "message": "second task", "request-id": "r2" }),
+        json!({ "id": fixture.number(&child), "message": "second task", "request-id": "r2" }),
     )
     .await;
     let third = agent(
         &fixture.server,
         &root(),
         "resume",
-        json!({ "id": child.as_str(), "message": "third task", "request-id": "r3" }),
+        json!({ "id": fixture.number(&child), "message": "third task", "request-id": "r3" }),
     )
     .await;
     client.next_until(is_closed(&child)).await;
@@ -983,12 +981,12 @@ async fn a_start_request_is_safe_to_retry_and_outlives_a_cancelled_call() {
         &fixture.server,
         &root(),
         "resume",
-        json!({ "id": child.as_str(), "message": "second task", "request-id": "r2" }),
+        json!({ "id": fixture.number(&child), "message": "second task", "request-id": "r2" }),
     )
     .await;
 
     for run in [&retried, &resumed, &resumed_again, &third] {
-        assert_eq!(child_id(run), child, "{run:?}");
+        assert_eq!(named_node(&fixture.store, run), child, "{run:?}");
     }
     assert_eq!(
         refused(&conflicting),
@@ -1122,7 +1120,7 @@ async fn profiles_and_the_spawn_restriction_shape_a_childs_prompt_and_commands()
         &fixture.server,
         &root(),
         "resume",
-        json!({ "id": restricted.as_str(), "message": "more" }),
+        json!({ "id": fixture.number(&restricted), "message": "more" }),
     )
     .await;
     let after_resume = agent_call(
@@ -1214,7 +1212,7 @@ async fn a_detached_tree_with_a_live_child_is_not_evicted_and_one_without_is() {
     model.child("task long", [held_said(&gate, "long result")]);
     let fixture = fixture(&model, TestHarness::default());
     let client = fixture.opened().await;
-    let child = spawn(&fixture, &root(), json!({ "prompt": "task long" })).await;
+    spawn(&fixture, &root(), json!({ "prompt": "task long" })).await;
     drop(client);
 
     tokio::time::sleep(std::time::Duration::from_secs(700)).await;
@@ -1229,10 +1227,7 @@ async fn a_detached_tree_with_a_live_child_is_not_evicted_and_one_without_is() {
     let listed = agent(&fixture.server, &root(), "list", json!({})).await;
     assert_eq!(
         listed.stdout,
-        format!(
-            "● {}  (root session) ← you\n└─○ {child}  archived (completed 0s ago)  (no description)\n",
-            root()
-        )
+        "● 0  (root session) ← you\n└─○ 1  archived (completed 0s ago)  (no description)\n"
     );
     assert_eq!(root_receipts(&fixture).len(), 1);
 }
@@ -1328,7 +1323,7 @@ async fn a_grandchild_completes_into_its_parent_which_then_completes_into_the_wo
     let frames = client.next_until(is_closed(&parent)).await;
     until(|| root_receipts(&fixture).len() == 2).await;
 
-    assert_eq!(status.stdout, format!("sent to {}\n", root()));
+    assert_eq!(status.stdout, "sent to 0\n");
     let closes: Vec<(NodeId, NodeId, JobPhase)> = frames
         .iter()
         .filter_map(|frame| match frame {

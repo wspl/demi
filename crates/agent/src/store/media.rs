@@ -134,10 +134,10 @@ impl ModelView {
 }
 
 /// The text a medium whose blob is missing becomes in a request, and in
-/// the estimate: `[missing <kind> blob <ref>]`, where the kind is `image`,
-/// `video` or `document`.
-pub(crate) fn missing_text(kind: &str, blob: &BlobRef) -> String {
-    format!("[missing {kind} blob {blob}]")
+/// the estimate: `[missing <kind>]`, where the kind is `image`, `video` or
+/// `document`; the model has no use for the blob's name.
+pub(crate) fn missing_text(kind: &str) -> String {
+    format!("[missing {kind}]")
 }
 
 /// Where one medium of a block is.

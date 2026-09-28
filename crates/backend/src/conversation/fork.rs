@@ -17,7 +17,7 @@ use demi_web_api::ids::ConversationId;
 use super::root_of;
 use crate::shard::Shard;
 use crate::storage::StorageError;
-use crate::storage::command_outputs;
+use crate::storage::{command_outputs, sequences};
 use crate::storage::control::ControlService;
 use crate::storage::conversation_index::ConversationRecord;
 use crate::storage::conversations::ConversationStores;
@@ -152,6 +152,18 @@ impl Shard {
                 .await?
                 .map_err(|refused| ForkRefusal::Failed(refused.to_string()))?;
         }
+        // Its sequences go on from the source's, read after the seed, so a
+        // number its history names is never given to something new.
+        let numbers = services
+            .conversations
+            .read(&source.id, sequences::all)
+            .await?
+            .unwrap_or_default();
+        services
+            .conversations
+            .db(&destination)
+            .call(move |connection| sequences::continue_from(connection, &numbers))
+            .await?;
         // The destination's root starts with the selection its record will
         // hold, the one the attempt recorded, which a retry repeats; a source
         // without one leaves the seed its own.
