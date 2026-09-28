@@ -29,7 +29,7 @@ For example, the agent starts the user's application at
 - The user picks Mobile in the menu beside the address bar. The page lays out
   at 390 × 844 with a phone user agent and touch, and the user's clicks become
   taps.
-- The agent runs `demi browser viewport set tab-1 --width 1440 --height 900 --scale 2`.
+- The agent runs `demi browser viewport set t1 --width 1440 --height 900 --scale 2`.
   The menu gains Custom 1440 × 900 @2 and selects it, and the view scales the
   page to fit the panel.
 - The user picks Web. The Custom entry disappears and the page takes the

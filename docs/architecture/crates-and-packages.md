@@ -476,7 +476,9 @@ Each crate implements the provider contract for one vendor family.
     or stopped working or was disposed (`ServerDeps::status_changed`), and
     the tree store contract (`AgentTreeStore`, `SessionStore`, with the node
     records and checkpoints they carry in `store`), which also reads the
-    records of commands' outputs for `demi shell output`;
+    records of commands' outputs for `demi shell output` and gives out the
+    numbers of the conversation's sequences that the model sees
+    ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees));
   - the resolution of the files a frame's content refers to, which the
     backend answers (`ContentResolver`);
   - the media rules (`store::media`): a medium stored once when it enters a

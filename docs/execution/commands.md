@@ -344,7 +344,7 @@ A handler ends with an exit status. A handler error writes `<root>: <message>`
 to stderr and exits 1. A call the runner cancels ends with 130. A call whose
 calling process closed its stdout, as `head` does once it has read its lines,
 ends with 141 and nothing on stderr, as a program that writes to a closed pipe
-ends in a shell; so `demi shell output <commandId> | head -n 20` prints its
+ends in a shell; so `demi shell output 17 --raw | head -n 20` prints its
 lines and no error. A call stopped for another reason, such as its job
 exiting, a relayed pipe failing, or the backend shutting down, ends with 1 and
 its cause on stderr. When several causes stop a call, the first is the one

@@ -50,6 +50,7 @@ An expose belongs to a user and a device, not to a conversation. It records:
 | Field | Meaning |
 | --- | --- |
 | `id` | 128 random bits as 26 lowercase base32 characters; a DNS label. It is the only credential: whoever knows it reaches the service. |
+| `number` | The expose's number among the user's exposes, `1`, `2`, … in order and never given twice. The commands take and print it, so the model never copies the credential ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)). |
 | `userId` | The owner. Only the owner lists, renews or removes it. |
 | `deviceId` | The paired device or the user's Cloud device the traffic goes to. |
 | `address` | The `host:port` the runner connects to, exactly as given. A bare port means `127.0.0.1:<port>`. Any host name or address the device can resolve and reach is accepted; the device's own network is the boundary, not Demi. |
@@ -82,7 +83,7 @@ The record is destroyed by exactly these events:
 | Event | Result |
 | --- | --- |
 | `expiresAt` passes | Destroyed. A request that arrives after it is refused as unknown. |
-| `demi host expose remove <id>`, or the product's remove | Destroyed at once. |
+| `demi host expose remove <number>`, or the product's remove | Destroyed at once. |
 | The Cloud device leaves the running state: idle stop, lifetime cap, reset, runtime loss, backend shutdown | Every expose on that device is destroyed with the machine. A checkpoint keeps the machine running, and its exposes with it. |
 | The paired device is revoked | Every expose on it is destroyed with its attachments. |
 
@@ -217,34 +218,35 @@ the backend owns the records.
 ```text
 $ demi host expose add 5173
 Exposed 127.0.0.1:5173 on laptop as https://k7x2….expose.demi.example/
-Expires in 60 minutes (expose k7x2…).
+Expires in 60 minutes (expose 1).
 
 $ demi host expose add 127.0.0.1:8080 --host ci
 Exposed 127.0.0.1:8080 on ci as https://m3n5….expose.demi.example/
-Expires in 60 minutes (expose m3n5…).
+Expires in 60 minutes (expose 2).
 
 $ demi host expose list
-Expose   Device  Address         Expires  URL
-k7x2…    laptop  127.0.0.1:5173  58 min   https://k7x2….expose.demi.example/
-m3n5…    ci      127.0.0.1:8080  60 min   https://m3n5….expose.demi.example/
+Expose  Device  Address         Expires  URL
+1       laptop  127.0.0.1:5173  58 min   https://k7x2….expose.demi.example/
+2       ci      127.0.0.1:8080  60 min   https://m3n5….expose.demi.example/
 
-$ demi host expose renew k7x2…
-Expose k7x2… expires in 60 minutes.
+$ demi host expose renew 1
+Expose 1 expires in 60 minutes.
 
-$ demi host expose remove k7x2…
-Removed expose k7x2…; its URL no longer works.
+$ demi host expose remove 1
+Removed expose 1; its URL no longer works.
 ```
 
 | Leaf | Input | Behavior |
 | --- | --- | --- |
 | `add <address> [--host <name\|id>]` | `address` is `host:port` or a port; `--host` names a main or attached Host as `demi host list` shows it | Creates the record for that device. The device must be connected, and a Cloud running: an expose for a stopped Cloud would already be destroyed. Prints the URL, the device, and the expiry, `--json` available. |
 | `list` | none | Every expose of the user across devices, soonest expiry first, `--json` available. A Cloud that has stopped has none. |
-| `renew <id>` | an expose id | Sets the expiry to one hour from now, `--json` available. |
-| `remove <id>` | an expose id | Destroys it. |
+| `renew <number>` | an expose's number | Sets the expiry to one hour from now, `--json` available. |
+| `remove <number>` | an expose's number | Destroys it. |
 
-An id that is not the user's, or that has expired, answers `expose_not_found`
-on every leaf. An `add` without a configured expose domain answers
-`expose_unavailable`. The commands print full ids; the examples abbreviate.
+A number that names none of the user's live exposes answers
+`expose_not_found` on every leaf. An `add` without a configured expose domain
+answers `expose_unavailable`. The URLs carry the whole label; the examples
+abbreviate it.
 
 ## Product surface
 

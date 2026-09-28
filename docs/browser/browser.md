@@ -111,11 +111,20 @@ Cloud conversations of the same user already share files and application service
 
 ### One tab registry
 
-A tab ID is an opaque handle. An actual tab ID is `t_` followed by 22
-base64url characters encoding a fresh 128-bit random value; a node reference is
-`e_` with the same encoding. Examples abbreviate them to `tab-1` and `e3` for
-readability. IDs are never reused across browser generations. An old ID must
-never refer to a newly created tab. A display index is not an authorization token.
+A tab ID is `t` and the tab's number in the conversation, such as `t7`
+([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)).
+The backend gives the numbers out in order and never gives one twice, across
+browser generations, releases, runner restarts and Cloud stops alike, so an
+old ID never refers to a newly created tab. Before it registers a tab, the
+service asks the backend for its number through the runner, which forwards the
+request as it forwards an artifact's location request
+([Install the selected executable](../execution/native-runtime.md#install-the-selected-executable));
+it may reserve a few numbers ahead, and a reserved number it does not use is a
+gap. A node reference is `e` and a number, such as `e37`, unique within its
+tab: the tab numbers its references in order and never reuses one, so a
+reference from an earlier document of the tab is recognized as stale.
+Commands name the tab with every reference. A display index is not an
+authorization token.
 
 Each browser environment has one canonical live tab registry, kept by one
 owner ([Owners inside the service](#owners-inside-the-service)); `demi browser tabs`
@@ -123,8 +132,9 @@ reads it. All top-level pages appear, including pages opened by agents, sites,
 and temporary content operations. Root and child agents share this registry.
 Commands always name a tab explicitly; there is no globally selected tab.
 
-Creation metadata is a discriminated value: `agent` with node ID, `page` with
-opener tab ID, `temporary` with invoking node ID, or `user` for a tab the user
+Creation metadata is a discriminated value: `agent` with the agent's number,
+`page` with the opener's tab ID, `temporary` with the invoking agent's number,
+or `user` for a tab the user
 opens in the [live view](live-view.md). This is diagnostic metadata,
 not authorization. An iframe remains part of its top-level tab. A site-created
 top-level tab is registered before it can be operated; the triggering action
@@ -146,7 +156,7 @@ Only one agent command executes against a tab at a time. Its operation lock
 covers targeting, input, associated waits, and result collection. Conflicting
 agent calls return `tab_busy`, without queuing a click for an unknown later page.
 Commands on different tabs run in parallel: for example, a `wait` that holds
-`tab-1` for ten seconds does not delay an `inspect` of `tab-2`.
+`t1` for ten seconds does not delay an `inspect` of `t2`.
 
 A shell script is not a transaction. Another agent can act between commands.
 Agents needing independent sequences should use separate tabs; shared browser
@@ -637,7 +647,7 @@ cancellation remove partial files. File effects use
 Default UTF-8 output is concise and readable, with page hierarchy preserved:
 
 ```text
-Tab: tab-1 · Sign in
+Tab: t1 · Sign in
 URL: http://localhost:3000/login
 
 - main:
@@ -667,7 +677,7 @@ one validated JSON value. Text and JSON are renderings of the same typed result;
 neither is obtained by parsing the other.
 
 ```text
-$ demi browser find tab-1 --role button --name 'Sign in' --json
+$ demi browser find t1 --role button --name 'Sign in' --json
 {"matches":[{"ref":"e3","role":"button","name":"Sign in"}],"count":1,"truncated":false}
 ```
 
@@ -699,14 +709,14 @@ cannot accept the image, keep the adapter's explicit diagnostic; do not
 claim that the agent saw it.
 
 ```bash
-demi browser screenshot tab-1
+demi browser screenshot t1
 ```
 
 With `--output`, save the file and return file information instead. To show the
 saved image, use the file command:
 
 ```bash
-demi browser screenshot tab-1 --output /tmp/login.png
+demi browser screenshot t1 --output /tmp/login.png
 demi file read /tmp/login.png
 ```
 
@@ -856,7 +866,7 @@ at all, so it neither counts toward ambiguity nor toward `--nth`.
 For composed locators, `find <tab> --query` reads a declarative tree from stdin:
 
 ```bash
-demi browser find tab-1 --query <<'JSON'
+demi browser find t1 --query <<'JSON'
 {
   "within": {"match": {"role": "row"}, "hasText": "Order A"},
   "match": {"role": "button", "name": "Delete", "exact": true},
@@ -953,8 +963,8 @@ shows only the declared arguments.
 
 The `$` below is a prompt, not part of command input. Omitted long content is
 illustrative; actual truncation follows the explicit contract. Tab IDs and node
-references appear as `tab-1` and `e3`; real ones are `t_` and `e_` with 22
-characters ([One tab registry](#one-tab-registry)). Commands share the target,
+references appear as they are, such as `t1` and `e3`
+([One tab registry](#one-tab-registry)). Commands share the target,
 timeout, output-file, and JSON rules above. The text below is each command's
 default output; an action names the element its input targeted, or where the
 input went when it named none.
@@ -963,40 +973,40 @@ input went when it named none.
 
 ```text
 $ demi browser open http://localhost:3000/login
-Tab: tab-1
+Tab: t1
 URL: http://localhost:3000/login
 Title: Sign in
 
 $ demi browser tabs
 Tab     Title     Created by   URL
-tab-1   Sign in   agent root   http://localhost:3000/login
-tab-2   Admin     agent child  http://localhost:3000/admin
+t1   Sign in   agent root   http://localhost:3000/login
+t2   Admin     agent child  http://localhost:3000/admin
 
-$ demi browser info tab-1
-Tab: tab-1 · Sign in
+$ demi browser info t1
+Tab: t1 · Sign in
 URL: http://localhost:3000/login
 Viewport: 1280 × 720 CSS px, device pixel ratio 1, web
 Dialog: none
 
-$ demi browser goto tab-1 http://localhost:3000/products
+$ demi browser goto t1 http://localhost:3000/products
 Navigated to http://localhost:3000/products.
 Title: Products
 
-$ demi browser back tab-1
+$ demi browser back t1
 Navigated to http://localhost:3000/login.
 
-$ demi browser forward tab-1
+$ demi browser forward t1
 Navigated to http://localhost:3000/products.
 
-$ demi browser reload tab-1
+$ demi browser reload t1
 Reloaded http://localhost:3000/products.
 
-$ demi browser history tab-1
+$ demi browser history t1
   0  Sign in   http://localhost:3000/login
 * 1  Products  http://localhost:3000/products
 
-$ demi browser close tab-2
-Closed tab-2.
+$ demi browser close t2
+Closed t2.
 ```
 
 `open` returns the tab it created, never another concurrent caller's latest tab.
@@ -1026,8 +1036,8 @@ released. An invalid or already closed handle returns `tab_not_found`.
 ### Inspect, find, and read
 
 ```text
-$ demi browser inspect tab-1
-Tab: tab-1 · Sign in
+$ demi browser inspect t1
+Tab: t1 · Sign in
 URL: http://localhost:3000/login
 
 - main:
@@ -1036,32 +1046,32 @@ URL: http://localhost:3000/login
   - textbox "Password" [ref=e2] [protected]
   - button "Sign in" [ref=e3]
 
-$ demi browser inspect tab-1 --view dom --within e10
+$ demi browser inspect t1 --view dom --within e10
 - form [ref=e10]:
   - input type=email label="Email" [ref=e11]
   - button "Submit" [ref=e12]
 
-$ demi browser find tab-1 --role button --name 'Sign in' --exact
+$ demi browser find t1 --role button --name 'Sign in' --exact
 1 match:
   [ref=e3] button "Sign in"
 
-$ demi browser find tab-1 --text-match 'Missing product'
+$ demi browser find t1 --text-match 'Missing product'
 No matches.
 
-$ demi browser find tab-1 --frame e30 --label Email
+$ demi browser find t1 --frame e30 --label Email
 1 match:
   [ref=e31] textbox "Email"
 
-$ demi browser read tab-1 --ref e21 --property text
+$ demi browser read t1 --ref e21 --property text
 Phone A
 
-$ demi browser read tab-1 --ref e21 --attribute href
+$ demi browser read t1 --ref e21 --attribute href
 /products/a
 
-$ demi browser read tab-1 --ref e3 --property enabled
+$ demi browser read t1 --ref e3 --property enabled
 true
 
-$ demi browser read tab-1 --css '.product' --property text --all
+$ demi browser read t1 --css '.product' --property text --all
 [0] Phone A
 [1] Phone B
 ```
@@ -1077,29 +1087,29 @@ A missing attribute returns null. Reading a protected input's value fails with
 ### Screenshot and probe
 
 ```text
-$ demi browser screenshot tab-1
+$ demi browser screenshot t1
 <PNG bytes; the shell media adapter displays an image>
 
-$ demi browser screenshot tab-1 --output /tmp/login.png
+$ demi browser screenshot t1 --output /tmp/login.png
 Screenshot saved: /tmp/login.png
 Image: 1280 × 720 px, one pixel per CSS pixel
 Viewport: 1280 × 720 CSS px, device pixel ratio 2, web
 
-$ demi browser screenshot tab-1 --full-page --output /tmp/page.png
+$ demi browser screenshot t1 --full-page --output /tmp/page.png
 Screenshot saved: /tmp/page.png
 Image: 1280 × 2400 px, one pixel per CSS pixel
 Viewport: 1280 × 720 CSS px, device pixel ratio 2, web
 
-$ demi browser screenshot tab-1 --clip 100,200,600,400 --output /tmp/region.png
+$ demi browser screenshot t1 --clip 100,200,600,400 --output /tmp/region.png
 Screenshot saved: /tmp/region.png
 Image: 600 × 400 px, one pixel per CSS pixel
 Viewport: 1280 × 720 CSS px, device pixel ratio 2, web
 
-$ demi browser probe tab-1 --xy 420,300
+$ demi browser probe t1 --xy 420,300
 [ref=e3] button "Sign in"
 Bounds: x=360 y=280 width=120 height=40 CSS px
 
-$ demi browser probe tab-1 --xy 420,300 --output /tmp/annotated.png
+$ demi browser probe t1 --xy 420,300 --output /tmp/annotated.png
 [ref=e3] button "Sign in"
 Bounds: x=360 y=280 width=120 height=40 CSS px
 Annotated screenshot saved: /tmp/annotated.png
@@ -1122,31 +1132,31 @@ candidate elements, roles, names, bounds, and available locator information.
 ### Pointer actions
 
 ```text
-$ demi browser click tab-1 --ref e3
+$ demi browser click t1 --ref e3
 Clicked [ref=e3].
 
-$ demi browser click tab-1 --role button --name 'Sign in'
+$ demi browser click t1 --role button --name 'Sign in'
 Clicked button "Sign in".
 
-$ demi browser click tab-1 --xy 420,300
+$ demi browser click t1 --xy 420,300
 Clicked at 420,300.
 
-$ demi browser click tab-1 --ref e21 --count 2
+$ demi browser click t1 --ref e21 --count 2
 Double-clicked [ref=e21].
 
-$ demi browser click tab-1 --ref e21 --button right
+$ demi browser click t1 --ref e21 --button right
 Right-clicked [ref=e21].
 
-$ demi browser move tab-1 --xy 420,300
+$ demi browser move t1 --xy 420,300
 Pointer moved to 420,300.
 
-$ demi browser drag tab-1 --point 100,200 --point 150,220 --point 300,250
+$ demi browser drag t1 --point 100,200 --point 150,220 --point 300,250
 Dragged from 100,200 to 300,250.
 
-$ demi browser scroll tab-1 --dy 600
+$ demi browser scroll t1 --dy 600
 Scroll input delivered: dy=600.
 
-$ demi browser scroll tab-1 --ref e40 --dy 300
+$ demi browser scroll t1 --ref e40 --dy 300
 Scroll input delivered to [ref=e40]: dy=300.
 ```
 
@@ -1168,40 +1178,40 @@ page moved: it may already be at a boundary. Observe again when that matters.
 ### Input and forms
 
 ```text
-$ demi browser fill tab-1 --ref e1 --text test@example.com
+$ demi browser fill t1 --ref e1 --text test@example.com
 Filled [ref=e1].
 
-$ demi browser type tab-1 --text hello
+$ demi browser type t1 --text hello
 Typed into [ref=e1].
 
-$ demi browser key tab-1 --key Escape
+$ demi browser key t1 --key Escape
 Pressed Escape in [ref=e1].
 
-$ demi browser type tab-1 --ref e1 --text '.test'
+$ demi browser type t1 --ref e1 --text '.test'
 Typed into [ref=e1].
 
-$ demi browser key tab-1 --ref e1 --key Enter
+$ demi browser key t1 --ref e1 --key Enter
 Pressed Enter in [ref=e1].
 
-$ demi browser key tab-1 --ref e1 --key ControlOrMeta+A
+$ demi browser key t1 --ref e1 --key ControlOrMeta+A
 Pressed ControlOrMeta+A in [ref=e1].
 
-$ demi browser check tab-1 --ref e5 --value true
+$ demi browser check t1 --ref e5 --value true
 Checkbox [ref=e5]: checked.
 
-$ demi browser check tab-1 --ref e5 --value false
+$ demi browser check t1 --ref e5 --value false
 Checkbox [ref=e5]: unchecked.
 
-$ demi browser select tab-1 --ref e6 --option-label Singapore
+$ demi browser select t1 --ref e6 --option-label Singapore
 Selected: SG.
 
-$ demi browser select tab-1 --ref e6 --value SG --value JP
+$ demi browser select t1 --ref e6 --value SG --value JP
 Selected: SG, JP.
 
-$ demi browser select-text tab-1 --ref e7 --text 'Replace this'
+$ demi browser select-text t1 --ref e7 --text 'Replace this'
 Selected text in [ref=e7].
 
-$ demi browser select-text tab-1 --ref e7 --text 'Replace this' --cursor before
+$ demi browser select-text t1 --ref e7 --text 'Replace this' --cursor before
 Cursor placed before the matching text in [ref=e7].
 ```
 
@@ -1262,19 +1272,19 @@ a control is done with the pointer and keyboard commands.
 ### Waiting
 
 ```text
-$ demi browser wait tab-1 --role heading --name 'Welcome back' --state visible --timeout 10000
+$ demi browser wait t1 --role heading --name 'Welcome back' --state visible --timeout 10000
 Element [ref=e50] is visible.
 
-$ demi browser wait tab-1 --ref e51 --state hidden --timeout 5000
+$ demi browser wait t1 --ref e51 --state hidden --timeout 5000
 Element [ref=e51] is hidden.
 
-$ demi browser wait tab-1 --url '**/dashboard' --timeout 10000
+$ demi browser wait t1 --url '**/dashboard' --timeout 10000
 URL matched: http://localhost:3000/dashboard.
 
-$ demi browser wait tab-1 --load domcontentloaded
+$ demi browser wait t1 --load domcontentloaded
 Load state reached: domcontentloaded.
 
-$ demi browser click tab-1 --ref e3 --wait-url '**/dashboard' --timeout 10000
+$ demi browser click t1 --ref e3 --wait-url '**/dashboard' --timeout 10000
 Clicked [ref=e3].
 URL: http://localhost:3000/dashboard
 ```
@@ -1315,20 +1325,20 @@ Fixed delays use the shell's `sleep` command.
 ### JavaScript dialogs
 
 ```text
-$ demi browser dialog inspect tab-1
+$ demi browser dialog inspect t1
 Dialog: confirm
 Message: "Delete this record?"
 
-$ demi browser dialog accept tab-1
+$ demi browser dialog accept t1
 Accepted confirm dialog.
 
-$ demi browser dialog dismiss tab-1
+$ demi browser dialog dismiss t1
 Dismissed confirm dialog.
 
-$ demi browser dialog accept tab-1 --text 'New filename'
+$ demi browser dialog accept t1 --text 'New filename'
 Accepted prompt dialog.
 
-$ demi browser dialog inspect tab-1
+$ demi browser dialog inspect t1
 No dialog.
 ```
 
@@ -1345,36 +1355,36 @@ whole resource and does not wait for a beforeunload confirmation.
 ### Upload, download, and clipboard
 
 ```text
-$ demi browser upload tab-1 --ref e60 --file /tmp/avatar.png
+$ demi browser upload t1 --ref e60 --file /tmp/avatar.png
 Attached 1 file through [ref=e60].
   /tmp/avatar.png
 
-$ demi browser upload tab-1 --ref e60 --file /tmp/a.pdf --file /tmp/b.pdf
+$ demi browser upload t1 --ref e60 --file /tmp/a.pdf --file /tmp/b.pdf
 Attached 2 files through [ref=e60].
   /tmp/a.pdf
   /tmp/b.pdf
 
-$ demi browser download tab-1 --ref e61 --output /tmp/report.pdf
+$ demi browser download t1 --ref e61 --output /tmp/report.pdf
 Downloaded: /tmp/report.pdf
 Suggested filename: report.pdf
 Bytes: 48320
 
-$ demi browser download tab-1 --xy 500,300 --output /tmp/image.png
+$ demi browser download t1 --xy 500,300 --output /tmp/image.png
 Downloaded: /tmp/image.png
 Bytes: 20480
 
-$ demi browser clipboard write tab-1 <<'TEXT'
+$ demi browser clipboard write t1 <<'TEXT'
 Hello
 TEXT
 Clipboard written: text/plain, 6 bytes.
 
-$ demi browser clipboard read tab-1 --format text
+$ demi browser clipboard read t1 --format text
 Hello
 
-$ demi browser clipboard write tab-1 --mime image/png < /tmp/image.png
+$ demi browser clipboard write t1 --mime image/png < /tmp/image.png
 Clipboard written: image/png, 20480 bytes.
 
-$ demi browser clipboard read tab-1 --output-dir /tmp/clipboard
+$ demi browser clipboard read t1 --output-dir /tmp/clipboard
 Clipboard exported:
   text/plain: /tmp/clipboard/item-0.txt
   image/png: /tmp/clipboard/item-1.png
@@ -1417,28 +1427,28 @@ with `unsupported_capability`.
 ### Evaluation, console, and viewport
 
 ```text
-$ demi browser eval tab-1 <<'JS'
+$ demi browser eval t1 <<'JS'
 document.querySelectorAll('.product').length
 JS
 12
 
-$ demi browser eval tab-1 --ref e21 <<'JS'
+$ demi browser eval t1 --ref e21 <<'JS'
 element.textContent
 JS
 "Phone A"
 
-$ demi browser logs tab-1 --level error --limit 20
+$ demi browser logs t1 --level error --limit 20
 [error] Failed to load orders
   http://localhost:3000/orders
 Cursor: logs-1:4
 
-$ demi browser viewport set tab-1 --width 390 --height 844
+$ demi browser viewport set t1 --width 390 --height 844
 Viewport: 390 × 844 CSS px, device pixel ratio 1, custom.
 
-$ demi browser viewport set tab-1 --width 1440 --height 900 --scale 2
+$ demi browser viewport set t1 --width 1440 --height 900 --scale 2
 Viewport: 1440 × 900 CSS px, device pixel ratio 2, custom.
 
-$ demi browser viewport reset tab-1
+$ demi browser viewport reset t1
 Viewport: 1280 × 720 CSS px, device pixel ratio 1, web.
 ```
 
@@ -1475,26 +1485,26 @@ Screenshots must not silently change viewport settings.
 ### CDP commands and events
 
 ```text
-$ demi browser cdp targets tab-1
+$ demi browser cdp targets t1
 Target    Kind     URL
 main      page     http://localhost:3000/orders
 frame-1   iframe   https://example.com/widget
 worker-1  worker   http://localhost:3000/worker.js
 
-$ demi browser cdp send tab-1 Network.enable <<'JSON'
+$ demi browser cdp send t1 Network.enable <<'JSON'
 {}
 JSON
 CDP Network.enable completed.
 Result: {}
 
-$ demi browser cdp events tab-1 --method Network.responseReceived
+$ demi browser cdp events t1 --method Network.responseReceived
 Cursor: 120
 No events. Use --after 120 to read subsequent events.
 
-$ demi browser reload tab-1
+$ demi browser reload t1
 Reloaded http://localhost:3000/orders.
 
-$ demi browser cdp events tab-1 --method Network.responseReceived --after 120 --timeout 5000
+$ demi browser cdp events t1 --method Network.responseReceived --after 120 --timeout 5000
 [124] Network.responseReceived
   requestId: r1
   url: http://localhost:3000/api/orders
@@ -1503,14 +1513,14 @@ Cursor: 124
 Has more: false
 Truncated: false
 
-$ demi browser cdp send tab-1 Network.getResponseBody <<'JSON'
+$ demi browser cdp send t1 Network.getResponseBody <<'JSON'
 {"requestId":"r1"}
 JSON
 CDP Network.getResponseBody completed.
 Result: {"body":"{\"error\":\"database unavailable\"}","base64Encoded":false}
 
-$ demi browser cdp detach tab-1
-Detached debugging from tab-1.
+$ demi browser cdp detach t1
+Detached debugging from t1.
 ```
 
 CDP exposes tab debugging through the
@@ -1578,13 +1588,13 @@ automatic detach on behalf of another caller.
 ### Content and assets
 
 ```text
-$ demi browser content read tab-1 --format text
+$ demi browser content read t1 --format text
 Title: Products
 URL: http://localhost:3000/products
 
 Welcome to the sample store.
 
-$ demi browser content read tab-1 --format html --output /tmp/page.html
+$ demi browser content read t1 --format html --output /tmp/page.html
 Content saved: /tmp/page.html
 Format: html
 
@@ -1597,13 +1607,13 @@ URL: https://example.com/b
 Title: Page B
 Page B content.
 
-$ demi browser assets list tab-1
+$ demi browser assets list t1
 Inventory: assets-1
  a1  image       http://localhost:3000/logo.png
  a2  font        http://localhost:3000/font.woff2
  a3  stylesheet  http://localhost:3000/style.css
 
-$ demi browser assets export tab-1 --inventory assets-1 --kind image --output-dir /tmp/assets
+$ demi browser assets export t1 --inventory assets-1 --kind image --output-dir /tmp/assets
 Exported 1 asset to /tmp/assets.
 Manifest: /tmp/assets/manifest.json
 ```
@@ -1627,7 +1637,7 @@ completed files and returns `partial_failure` with the manifest, exit code 1.
 ### Capabilities and WebMCP
 
 ```text
-$ demi browser capabilities tab-1
+$ demi browser capabilities t1
 Available:
   dom
   accessibility
@@ -1645,13 +1655,13 @@ Usage: demi browser click <tab> [options]
 Target: --ref, --role + --name, --label, --text-match, --css, or --xy
 Options: --count, --button, --modifier, --wait-url, --timeout, --json
 
-$ demi browser webmcp list tab-1
+$ demi browser webmcp list t1
 Tools: tools-1
  search_products
    Search products by query.
    Input: {"query": string}
 
-$ demi browser webmcp call tab-1 search_products --tools tools-1 <<'JSON'
+$ demi browser webmcp call t1 search_products --tools tools-1 <<'JSON'
 {"query":"phone"}
 JSON
 Tool: search_products
@@ -1728,19 +1738,19 @@ match count, even if offset/limit restricts the returned matches.
 ### Errors
 
 ```text
-$ demi browser click tab-1 --ref e3
+$ demi browser click t1 --ref e3
 Error: stale_ref
 Element [ref=e3] belongs to an expired document. Inspect the page again.
 Action: not_started.
 
-$ demi browser click tab-1 --role button --name Delete
+$ demi browser click t1 --role button --name Delete
 Error: ambiguous_target
 Found 2 matching buttons:
   [ref=e10] inside row "Order A"
   [ref=e20] inside row "Order B"
 Action: not_started.
 
-$ demi browser click tab-1 --ref e3 --wait-url '**/dashboard' --timeout 5000
+$ demi browser click t1 --ref e3 --wait-url '**/dashboard' --timeout 5000
 Error: timeout
 The click completed, but the expected navigation was not observed.
 Action: completed.
@@ -1756,7 +1766,7 @@ The last failure has this JSON representation on stderr:
     "message": "The click completed, but the expected navigation was not observed.",
     "details": {
       "action": "completed",
-      "tab": "tab-1",
+      "tab": "t1",
       "url": "http://localhost:3000/login"
     }
   }
@@ -1836,7 +1846,7 @@ current-page marker has test IDs `current-page-1`, `current-page-2`, and so on:
 ```bash
 set -euo pipefail
 
-tab='tab-1'
+tab='t1'
 
 for attempt in {1..20}; do
   matches=$(demi browser find "$tab" --role link --name 'Pending order' --exact --json)
@@ -1893,9 +1903,9 @@ Extract needed values directly from complete JSON with jq instead of using
 ```bash
 set -euo pipefail
 
-demi browser viewport set tab-1 --width 390 --height 844
-demi browser screenshot tab-1 --output /tmp/mobile.png
-demi browser viewport reset tab-1
+demi browser viewport set t1 --width 390 --height 844
+demi browser screenshot t1 --output /tmp/mobile.png
+demi browser viewport reset t1
 ```
 
 A script needing restoration on every exit should use a shell trap and surface
