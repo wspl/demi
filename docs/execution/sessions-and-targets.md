@@ -325,9 +325,9 @@ binding remains authoritative until commit.
 The release is a runner message, not Host IO: it needs no file gate, and it is
 skipped for a device whose runner is not connected, a stopped Cloud among
 them, because the connection loss or the stop has already ended the
-conversation's services there. The device hears the release for the job
-output it still holds once its runner connects again
-([A release the device missed](resource-lifecycle.md#a-release-the-device-missed)).
+conversation's services there, and the device holds no files of the
+conversation for a release to remove
+([Conversation release](resource-lifecycle.md#conversation-release)).
 
 If the database commit fails after the release, the old selection remains and
 its next browser open starts fresh; page state cannot be rolled back. Device

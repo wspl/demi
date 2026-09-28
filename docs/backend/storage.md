@@ -14,7 +14,7 @@ Backend data directory (DEMI_BACKEND_DATA)
 |
 +-- control.sqlite                 deployment-wide product records
 +-- conversations/<id>.sqlite      one agent tree per conversation
-+-- blobs/<userId>/<sha256>        user-owned attachment and media bytes (object store)
++-- blobs/<userId>/<sha256>        user-owned bytes: uploads, media, commands' outputs (object store)
 +-- changes/<conversationId>/      edited-file contents per command (object store)
 +-- instance-secret                seals credentials, unless configured
 ```
@@ -33,8 +33,8 @@ conversation's host access; they are not conversation database content.
 | Store | Owns | Writer |
 |---|---|---|
 | `control.sqlite` | Accounts, auth sessions, preferences, devices, workspaces, exposes, conversation index, providers, model catalogs, usage, attachment metadata, operation records | The control service, on its database thread |
-| Conversation database | Root and subagent nodes, checkpoint state, transcript blocks, command history | The shard of the user who owns the conversation |
-| User blob namespace | Uploaded bytes and transcript media addressed by content hash | The upload route, the conversation socket when an uploaded image enters fitted, and a session when a tool's medium enters its transcript |
+| Conversation database | Root and subagent nodes, checkpoint state, transcript blocks, command history, the records of commands' outputs | The shard of the user who owns the conversation |
+| User blob namespace | Uploaded bytes, transcript media and commands' whole outputs, addressed by content hash | The upload route, the conversation socket when an uploaded image enters fitted, a session when a tool's medium enters its transcript, and the backend when a command ends |
 | Change store | Both sides of every file a command edited, bound to the conversation ([Edit tracking](../execution/edit-tracking.md#the-change-store)) | Command completion |
 
 Both kinds of database are SQLite, reached through rusqlite with SQLite
@@ -168,6 +168,7 @@ Host. The node lifecycle and its commits are defined in
 | `nodes` | Parent relationship, description and profile, spawn time and whether the node may spawn children, close result or failure, completion-delivery state, checkpoint state, block count, command and output revisions |
 | `blocks` | One transcript block per node and block index |
 | `media` | An index of the blobs the blocks reference, for the [retention pass](#retention): one row per reference, with the node, the block index, the medium's place among the block's media, the blob, whether a tool result holds it, and the block's time. The rows are derived from the blocks, never written on their own: one function derives a block's rows, and every path of the tree store that writes a block, a save, a history rewrite, an edit, a Fork's seed and a retirement, replaces that block's rows with it in the same transaction. It indexes what SQLite cannot index inside a block's JSON |
+| `command_outputs` | The record of each ended command's whole output, by command id ([Command outputs](#command-outputs)) |
 | `command_snapshots` | Immutable complete command-state maps indexed by node and revision ([Command state history](../agent/command-state-history.md)) |
 | `session_boundaries` | History cutoffs linked to a command revision |
 
@@ -242,6 +243,28 @@ bytes. There is no transaction spanning SQLite and the object store. The
 retention pass deletes a blob that nothing references
 ([Retention](#retention)).
 
+## Command outputs
+
+When a command ends, the backend stores its whole output, as its Host kept it
+within 16 MiB, as a blob in the conversation owner's namespace
+([The whole output](../agent/runtime.md#the-whole-output)), and records it in
+the conversation's `command_outputs` table, one row per command, keyed by the
+command's id. The row holds when the command ended and one of three states:
+
+| State | Holds | `demi shell output` prints |
+|---|---|---|
+| Stored | The blob, its length, and how many bytes of the output were left out between the kept first and last 8 MiB | The output |
+| Not stored | Why: the Host's kept output could not be read, or the put failed | The reason |
+| Removed | The day the retention pass removed it | That it was removed, and when |
+
+The put comes first and the row after it, as for every blob
+([Attachment and transcript media](#attachment-and-transcript-media)): a
+stored row never names an unpublished blob, and a crash between the two leaves
+an unreferenced blob that the collector deletes. A row is written once when
+its command ends, and changes only when the retention pass removes its
+output. No session holds the rows: `demi shell output` reads a row, then its
+blob, on the conversation's read-only connection.
+
 ## The object store
 
 Blobs and the change store share one object store, in two key namespaces:
@@ -286,8 +309,8 @@ Demi keeps what a user made for as long as the account exists: uploads,
 conversations and their messages; a conversation can be archived but not
 deleted ([Conversations and projects](../product/product.md#conversations-and-projects)).
 What goes by itself is what tools produced: a tool result's images and videos
-after 30 days, the blobs nothing references any more, and a conversation's
-job output on a Host once its Host resources are released.
+after 30 days, a command's whole output 30 days after the command ended, and
+the blobs nothing references any more.
 
 For example, on 1 September an agent takes a screenshot with a shell command,
 and the tool result references it as the blob `blobs/<user>/ab12…`. The
@@ -310,7 +333,8 @@ retention pass does the rest:
 | A tool result's image or video | 30 days, and longer while a request could still send it | Retired: a part that says it was removed takes its place ([Retired tool media](../agent/runtime.md#retired-tool-media)); then its blob is collected |
 | Any other blob, such as a tool's screenshot in history an edit removed | While a block, a queued message or a pending steer references it, and 24 hours after its last use | Collected ([Collecting blobs](#collecting-blobs)) |
 | A conversation, its rows and its change objects | For as long as the account exists | Removed with the account |
-| A shell job's output on a Host | Until the conversation's Host resources are released | Removed by the conversation release, or with a Cloud's system at a reset ([Conversation release](../execution/resource-lifecycle.md#conversation-release)) |
+| A command's whole output | 30 days after the command ended | Removed: its record says on which day ([Removing command outputs](#removing-command-outputs)); then its blob is collected |
+| A running command's output on its Host | Until the backend has read the command's end | Removed with the job's directory ([Pipes and output](../execution/runner.md#pipes-and-output)) |
 
 ### The retention pass
 
@@ -320,9 +344,9 @@ and startup recovery has published each
 Fork destination whose root committed
 ([Backend creation and retries](../agent/conversation-fork.md#backend-creation-and-retries)),
 then every 24 hours. It hands the users' passes to their shards one after
-another, and a user's pass takes two steps in the user's shard: it retires
-the expired tool media of the user's conversations, then collects the user's
-blobs. The pass runs in the shard because the conversations' live trees, file
+another, and a user's pass takes three steps in the user's shard: it retires
+the expired tool media of the user's conversations, removes their expired
+command outputs, then collects the user's blobs. The pass runs in the shard because the conversations' live trees, file
 gates and holds are there ([The user shard](../architecture/concurrency.md#the-user-shard)):
 it can tell a live tree from a stored one and hold a conversation as a
 transition does. It waits on the databases and the object store, never
@@ -341,10 +365,14 @@ much history as the conversations hold. Per user and day:
   tool media older than 30 days. A node's blocks are read only when it has
   some, and the conversation's writer connection is opened only when there is
   something to retire.
+- **Removing outputs:** one read-only query per conversation on its
+  `command_outputs` rows for outputs whose command ended more than 30 days
+  ago, and a write only when it finds some.
 - **Collecting:** one listing of `blobs/<user>/`, which on S3 is one LIST
   request per 1,000 blobs; one query of the user's upload records; per
-  conversation, one read-only read of its `media` rows and its nodes' state
-  rows; and one delete per blob it removes.
+  conversation, one read-only read of its `media` rows, its stored
+  `command_outputs` rows and its nodes' state rows; and one delete per blob
+  it removes.
 
 ### Retiring tool media
 
@@ -397,6 +425,18 @@ After a crash there was no disposal, and the last request can be up to a day
 later than `live_at`: the idle rule then applies 29 days after the last
 request at the earliest, still far beyond any vendor's cache.
 
+### Removing command outputs
+
+For each conversation of the user, archived ones included, the pass marks
+the stored outputs whose command ended more than 30 days ago removed, with the
+day, in one transaction on the conversation's writer connection. It needs
+neither the conversation's file gate nor a stored tree: no session holds these
+rows, and no request carries a command's output
+([The whole output](../agent/runtime.md#the-whole-output)). The commit records
+a use of each blob it lets go of, as every change of a reference does
+([Collecting blobs](#collecting-blobs)), so a `demi shell output` that read the
+row just before still finds the blob, and a later pass deletes it.
+
 ### Collecting blobs
 
 The collector deletes a blob only when nothing can reach it. It reads two
@@ -407,8 +447,8 @@ kinds of evidence:
   files on devices ([Conversation drafts](../product/web-api.md#conversation-drafts));
   and, for every conversation of the user, archived ones included, and for
   the destination of each of the user's Forks that is not published yet, its
-  `media` rows, which cover every block of every node, and the media of each
-  node's queued messages.
+  `media` rows, which cover every block of every node, the media of each
+  node's queued messages, and its `command_outputs` rows that hold a blob.
 - **Uses:** what no row shows yet, such as a medium that was put but whose
   block is not saved, or a pending steer, which lives only in its session
   ([Pending steers](../agent/runtime.md#pending-steers)). Each backend
@@ -456,6 +496,9 @@ No crash leaves a block that names a deleted blob:
   read the references, every reference source included, and that nothing used
   for 24 hours. A crash between two deletions leaves blobs that the next pass
   deletes.
+- A command's output is put before its row is written, and its removal is
+  one transaction. A crash leaves either a row that names a stored blob or an
+  unreferenced blob, which a later pass deletes.
 - The use record is lost with the process, and so is everything it protected:
   a session's unsaved blocks, an upload in flight, a Fork's capture. Startup
   recovery publishes a committed Fork destination before the first pass reads
@@ -487,6 +530,8 @@ time on the test clock; none waits for a day to pass.
 | The same conversations while a page has them open | Nothing is retired until their trees are disposed |
 | A message's image, 31 days old | Never retired |
 | One of the user's conversation databases does not open | The collection deletes nothing for that user and logs which database failed |
+| A command's output whose command ended 31 days ago, in a conversation a page has open | The pass marks it removed with the day; its blob goes at a later pass; `demi shell output` says when it was removed |
+| A command's output whose command ended 29 days ago | It stays, and so does its blob |
 | After a save, a history rewrite, an edit, a Fork's seed and a retirement | Each conversation's `media` rows equal the rows derived from its blocks; the check fails when any of these paths skips the one function |
 
 ## Encodings and digests

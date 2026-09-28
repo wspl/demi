@@ -176,8 +176,7 @@ open, and a click opens it large:
   files the call changed. Every medium takes the preview's height before its
   bytes arrive, so the transcript does not move when they load. The fold
   still shows the command's own output, whose line
-  `<binary stdout: 412000 bytes; raw bytes at ...>` says where the original
-  bytes are.
+  `<binary stdout: 412000 bytes>` stands for the original bytes.
 - **An image** is scaled down to fit the preview's height, its proportions
   kept, and never enlarged or cropped. It is smaller than a message's image:
   it is a step of the work, not something the agent chose to show. A click
@@ -214,8 +213,9 @@ open, and a click opens it large:
   model saw: the image as it was fitted when it entered the transcript
   ([Images in the transcript](../agent/runtime.md#images-in-the-transcript)),
   and a blob is named by the hash of its bytes, and nothing changes them. The
-  original bytes stay in the command's retained output on the Host, at the
-  path the `<binary stdout: ...>` line names.
+  original bytes stay in the command's whole output, which the model reads
+  with `demi shell output`
+  ([The whole output](../agent/runtime.md#the-whole-output)).
 
 The bytes come from the blob route
 ([Media by reference](../backend/backend.md#media-by-reference)). The browser
