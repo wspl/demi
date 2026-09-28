@@ -169,15 +169,8 @@ impl Devices {
 }
 
 impl Shard {
-    /// Takes the socket of a runner that presented `device`'s token, and
-    /// answers the conversations its hello says it holds job output for.
-    pub(crate) async fn adopt_runner(
-        self: Rc<Self>,
-        device: DeviceRecord,
-        runner: RunnerInfo,
-        mut socket: WebSocket,
-        conversations: Vec<String>,
-    ) {
+    /// Takes the socket of a runner that presented `device`'s token.
+    pub(crate) async fn adopt_runner(self: Rc<Self>, device: DeviceRecord, runner: RunnerInfo, mut socket: WebSocket) {
         #[cfg(feature = "testing")]
         self.services().hellos.pass(crate::HelloStep::Bind).await;
         let slot = self.devices().slot(&device.id);
@@ -210,22 +203,11 @@ impl Shard {
         let Some(serving) = self.bind(&slot, &device.id, identity) else {
             return;
         };
-        self.answer_held_later(device, conversations);
         // A runner that went away before its welcome ends its connection at
         // once, as the connection reads its socket. What the connection
         // queued meanwhile leaves after the welcome.
         let _ = send(&mut socket, &welcome).await;
         serving.serve(socket).await;
-    }
-
-    /// Answers a bound runner's held conversations beside its connection.
-    fn answer_held_later(self: &Rc<Self>, device: DeviceRecord, conversations: Vec<String>) {
-        if conversations.is_empty() {
-            return;
-        }
-        let shard = self.clone();
-        self.tasks()
-            .spawn_local(async move { shard.answer_held(&device, conversations).await });
     }
 
     /// Takes the socket of a runner a claim just paired with `device`, and
@@ -235,7 +217,6 @@ impl Shard {
         device: DeviceRecord,
         runner: RunnerInfo,
         socket: WebSocket,
-        conversations: Vec<String>,
         bound: oneshot::Sender<DeviceDto>,
     ) {
         let slot = self.devices().slot(&device.id);
@@ -244,7 +225,6 @@ impl Shard {
         let Some(serving) = self.bind(&slot, &device.id, host_identity(&runner.identity)) else {
             return;
         };
-        self.answer_held_later(device.clone(), conversations);
         // The claim that waits for this answer may have gone; the runner is
         // paired all the same.
         let _ = bound.send(self.devices().dto(device));

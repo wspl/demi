@@ -9,7 +9,7 @@ use std::{cell::RefCell, rc::Rc, time::Duration, time::Instant};
 
 use demi_agent::{
     ServerConfig,
-    testing::{TestClient, preview},
+    testing::{TestClient, shown_output},
 };
 use demi_agent_protocol::{ClientFrame, ServerFrame, ShellStatus, TranscriptPatch};
 use demi_core::{Block, CommandId, ToolCallStatus};
@@ -310,7 +310,7 @@ async fn what_a_page_sees_of_a_running_command_is_left_to_the_model() {
         // The model's look still shows all of it.
         turn(&mut client, "message-2", "Check it.").await;
         let result = checked.borrow().clone();
-        assert!(preview(&result).contains("later"), "{result}");
+        assert!(shown_output(&result).contains("later"), "{result}");
 
         client
             .send(ClientFrame::ShellAbort {

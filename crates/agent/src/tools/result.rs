@@ -3,182 +3,306 @@
 //! the user sees, all from one command status.
 
 use demi_core::{
-    B64Bytes, Model, ModelMediaKind, OutputChunk, ShellToolView, ShellViewStatus, StreamView,
+    B64Bytes, CommandId, Model, ModelMediaKind, OutputChunk, ShellToolView, ShellViewStatus,
     ToolView, model_accepts_media_type, sniff_model_media_type,
 };
 use demi_provider::{MediaBytes, RequestLimits, ResultPart};
-use demi_shell::{BinaryOutput, CommandState, CommandStatus};
+use demi_shell::{BinaryOutput, CommandState, CommandStatus, OutputText, Piece, Streams};
 
-use crate::{images, session::ToolOutcome};
+use crate::{images, server::PAGE_CHARS, session::ToolOutcome, transcript::REPLAY_CHARS};
 
-/// The preview budget below a context window of this many tokens.
-const SMALL_CONTEXT_PREVIEW_TOKENS: u32 = 10_000;
-/// The preview budget at or above it.
-const LARGE_CONTEXT_PREVIEW_TOKENS: u32 = 100_000;
-const LARGE_CONTEXT_THRESHOLD_TOKENS: u32 = 800_000;
-/// The characters a budget token buys.
-const CHARS_PER_TOKEN: usize = 4;
 /// The characters of merged output a shell view keeps, from the end.
 pub(super) const VIEW_CHARS: usize = 32_768;
 /// The largest video: about ten minutes at a viewing-grade encoding, under
 /// the inline payload ceiling the major APIs enforce. An image is fitted
 /// instead (`runtime.md` § Images in the transcript).
 const VIDEO_CAP_BYTES: u64 = 16 * 1024 * 1024;
+/// How many of a running command's newest lines its result points to.
+const NEWEST_LINES: u64 = 50;
 
-/// The preview budget, in tokens, of a request whose model has
-/// `context_window` tokens.
-pub(super) fn preview_budget_tokens(context_window: u32) -> u32 {
-    if context_window >= LARGE_CONTEXT_THRESHOLD_TOKENS {
-        LARGE_CONTEXT_PREVIEW_TOKENS
-    } else {
-        SMALL_CONTEXT_PREVIEW_TOKENS
-    }
-}
-
-fn budget_chars(budget_tokens: u32) -> usize {
-    budget_tokens as usize * CHARS_PER_TOKEN
-}
-
-/// The start of `text` within the budget, and whether it was cut.
-/// Characters are Unicode scalar values, so a cut never splits one.
-fn bounded_preview(text: &str, budget_tokens: u32) -> (&str, bool) {
-    let max = budget_chars(budget_tokens);
-    match text.char_indices().nth(max) {
-        Some((end, _)) => (&text[..end], true),
-        None => (text, false),
-    }
-}
-
-/// Whether a result must carry the command's handle: the command still runs,
-/// or the result could not show all of its output.
-pub(super) fn handle_required(status: &CommandStatus, budget_tokens: u32) -> bool {
-    if matches!(status.state, CommandState::Running { .. }) {
-        return true;
-    }
-    let (_, cut) = bounded_preview(&status.output.text, budget_tokens);
-    cut || status.output.truncated
-        || status.output.bytes > budget_chars(budget_tokens) as u64
-        || status.stdout.truncated
-        || status.stderr.truncated
-}
+const RUNNING_NEXT: &str = "next: command is still running; check again with shell_status, or call yield to end this turn and be woken later, or shell_abort to stop it.";
 
 /// A shell tool's outcome for `status`: its text, a binary stdout's media or
 /// the reason there is none, and its view. `model` is the call's, and its
 /// vendor takes requests within `limits`.
 pub(super) async fn shell_outcome(
     status: &CommandStatus,
-    budget_tokens: u32,
-    expose_handle: bool,
     model: &Model,
     limits: RequestLimits,
 ) -> ToolOutcome {
-    let mut output = vec![ResultPart::Text(result_text(
-        status,
-        budget_tokens,
-        expose_handle,
-    ))];
+    let text = unseen_output(status);
+    let mut output = vec![ResultPart::Text(result_text(status, &text))];
     if let CommandState::Exited {
         binary_stdout: Some(binary),
         ..
     } = &status.state
     {
-        let (medium, note) =
-            binary_verdict(binary, status.stdout.path.as_deref(), model, limits).await;
+        let (medium, note) = binary_verdict(binary, &status.command_id, model, limits).await;
         output.extend(medium);
         output.push(ResultPart::Text(note));
     }
     ToolOutcome {
         output,
         is_error: false,
-        view: Some(ToolView::Shell(shell_view(status))),
+        view: Some(ToolView::Shell(shell_view(status, &text))),
         effect: None,
     }
 }
 
-/// The lines the model reads: the status, the handle and timings when they
-/// matter, the preview, and the next step.
-fn result_text(status: &CommandStatus, budget_tokens: u32, expose_handle: bool) -> String {
-    let mut lines = vec![format!("status: {}", view_status(&status.state))];
+/// The output the model has not seen: once the command ended, the rest of
+/// its whole output; while it runs, what the backend received since the
+/// model's last look.
+fn unseen_output(status: &CommandStatus) -> OutputText {
+    match &status.whole {
+        Some(whole) => whole
+            .output
+            .text(Streams::Both, binary_length(status), whole.seen),
+        None => OutputText::received(&status.output.text, status.output.line),
+    }
+}
+
+/// The lines the model reads: the status, the handles and timings that
+/// matter, the output since the model's last look within the replay bound,
+/// and the next step.
+fn result_text(status: &CommandStatus, text: &OutputText) -> String {
+    let command = &status.command_id;
+    let running = matches!(status.state, CommandState::Running { .. });
+    let mut before = vec![format!("status: {}", view_status(&status.state))];
     if let CommandState::Exited { exit_code, .. } = status.state {
-        lines.push(format!("exitCode: {exit_code}"));
+        before.push(format!("exitCode: {exit_code}"));
     }
-    if expose_handle {
-        lines.push(format!("shellId: {}", status.shell_id));
-        lines.push(format!("commandId: {}", status.command_id));
-        lines.push(format!("runningMs: {}", status.running_ms));
-        lines.push(format!("idleMs: {}", status.idle_ms));
-        stream_lines(&mut lines, "stdout", &status.stdout);
-        stream_lines(&mut lines, "stderr", &status.stderr);
+    before.push(format!("commandId: {command}"));
+    if running {
+        before.push(format!("shellId: {}", status.shell_id));
+        before.push(format!("runningMs: {}", status.running_ms));
+        before.push(format!("idleMs: {}", status.idle_ms));
     }
-    preview_lines(&mut lines, status, budget_tokens);
+    let mut after = Vec::new();
+    if running && status.unreceived > 0 {
+        after.push(format!(
+            "[... {} bytes not shown so far; the newest: demi shell output {command} --tail {NEWEST_LINES} ...]",
+            status.unreceived
+        ));
+    }
     match &status.state {
-        CommandState::Running { hint } => lines.push(hint.clone().unwrap_or_else(|| {
-            "next: command is still running; check again with shell_status, or call yield to end this turn and be woken later, or shell_abort to stop it.".to_owned()
-        })),
-        CommandState::Aborted => lines.push("next: command was intentionally stopped.".to_owned()),
-        CommandState::Exited { .. } if expose_handle => lines.push(
-            if status.stdout.path.is_some() {
-                "next: command is complete; read the output files on the target only if the preview is insufficient."
-            } else {
-                "next: command is complete."
-            }
-            .to_owned(),
-        ),
+        CommandState::Running { hint } => {
+            after.push(hint.clone().unwrap_or_else(|| RUNNING_NEXT.to_owned()));
+        }
+        CommandState::Aborted => after.push("next: command was intentionally stopped.".to_owned()),
         CommandState::Exited { .. } => {}
     }
+    // The other lines, the output's label among them, each with its newline.
+    let others: usize = before
+        .iter()
+        .chain(&after)
+        .map(|line| line.chars().count() + 1)
+        .sum::<usize>()
+        + "output:\n".len();
+    let shown = text.unseen_line().map_or_else(Vec::new, |from| {
+        cut(text, from, command, REPLAY_CHARS.saturating_sub(others))
+    });
+    let mut lines = before;
+    if shown.is_empty() {
+        lines.push("output: (empty)".to_owned());
+    } else {
+        lines.push("output:".to_owned());
+        lines.extend(shown);
+    }
+    lines.extend(after);
     lines.join("\n")
 }
 
-fn stream_lines(lines: &mut Vec<String>, label: &str, stream: &StreamView) {
-    if let Some(path) = &stream.path {
-        lines.push(format!("{label}Path: {path}"));
+/// The length of a binary stdout, which the output shows as one line.
+fn binary_length(status: &CommandStatus) -> Option<u64> {
+    match &status.state {
+        CommandState::Exited {
+            binary_stdout: Some(binary),
+            ..
+        } => Some(binary.info.total_bytes),
+        _ => None,
     }
-    lines.push(format!("{label}Bytes: {}", stream.bytes));
 }
 
-fn preview_lines(lines: &mut Vec<String>, status: &CommandStatus, budget_tokens: u32) {
-    let (preview, cut) = bounded_preview(&status.output.text, budget_tokens);
-    lines.push(format!("previewBudgetTokens: {budget_tokens}"));
-    if preview.is_empty() {
-        lines.push("preview: (empty)".to_owned());
-        return;
+/// A piece of the output as a result shows it: its text, and for a line
+/// where its bytes start and how many there are.
+struct Shown {
+    text: String,
+    chars: usize,
+    line: Option<(usize, usize)>,
+}
+
+impl Shown {
+    fn new(piece: &Piece<'_>) -> Self {
+        let text = piece.text();
+        let line = match piece {
+            Piece::Line { offset, bytes, .. } => Some((*offset, bytes.len())),
+            Piece::Note(_) => None,
+        };
+        Self {
+            chars: text.chars().count(),
+            text,
+            line,
+        }
     }
-    lines.push("preview:".to_owned());
-    lines.push(preview.to_owned());
-    if cut || status.output.truncated {
-        lines.push(match (&status.stdout.path, &status.stderr.path) {
-            (Some(stdout), Some(stderr)) => format!(
-                "previewTruncated: true; read {stdout} or {stderr} on the target for more."
-            ),
-            _ => "previewTruncated: true; nothing beyond this view was kept — re-run with a narrower command.".to_owned(),
-        });
+}
+
+/// The lines of `text` from line `from` on within `budget` characters, each
+/// with its newline: all of them when they fit; otherwise as many whole lines
+/// from the start and from the end as fit in half each of what the budget
+/// leaves after the line between them, which names what it leaves out and
+/// the command that prints it. A single line too long for its half shows in
+/// part.
+fn cut(text: &OutputText, from: u64, command: &CommandId, budget: usize) -> Vec<String> {
+    let mut all = Vec::new();
+    let mut used = 0;
+    for piece in text.forward(from) {
+        let shown = Shown::new(&piece);
+        used += shown.chars + 1;
+        if used > budget {
+            return cut_middle(text, from, command, budget);
+        }
+        all.push(shown.text);
     }
+    all
+}
+
+fn cut_middle(text: &OutputText, from: u64, command: &CommandId, budget: usize) -> Vec<String> {
+    // Room for the line between, with the largest numbers it could name.
+    let length = text.bytes().len();
+    let widest = [
+        lines_marker(command, text.last_line(), text.last_line(), length),
+        chars_marker(command, text.last_line(), length, length),
+    ]
+    .iter()
+    .map(|marker| marker.chars().count() + 1)
+    .max()
+    .unwrap_or(0);
+    let half = budget.saturating_sub(widest) / 2;
+    let (head, hidden_start) = take_start(text, from, half);
+    let (tail, hidden_end) = take_end(text, half);
+    let marker = marker(text, command, hidden_start, hidden_end.max(hidden_start));
+    head.into_iter().chain([marker]).chain(tail).collect()
+}
+
+/// The pieces from line `from` on that fit in `half` characters, whole, or
+/// the start of the first when it alone is too long; and where the bytes
+/// they leave out start.
+fn take_start(text: &OutputText, from: u64, half: usize) -> (Vec<String>, usize) {
+    let mut lines = Vec::new();
+    let mut used = 0;
+    let mut end = text.line_offset(from);
+    let mut whole_lines = 0;
+    for piece in text.forward(from) {
+        let shown = Shown::new(&piece);
+        if used + shown.chars < half {
+            used += shown.chars + 1;
+            if let Some((offset, bytes)) = shown.line {
+                whole_lines += 1;
+                end = offset + bytes;
+                if text.bytes().get(end) == Some(&b'\n') {
+                    end += 1;
+                }
+            }
+            lines.push(shown.text);
+            continue;
+        }
+        if whole_lines == 0
+            && let Some((offset, bytes)) = shown.line
+        {
+            let part: String = shown.text.chars().take(half.saturating_sub(1)).collect();
+            end = offset + part.len().min(bytes);
+            lines.push(part);
+        }
+        break;
+    }
+    (lines, end)
+}
+
+/// The pieces from the end that fit in `half` characters, whole, or the end
+/// of the last when it alone is too long; and where the bytes they show
+/// start.
+fn take_end(text: &OutputText, half: usize) -> (Vec<String>, usize) {
+    let mut lines = Vec::new();
+    let mut used = 0;
+    let mut start = text.bytes().len();
+    let mut whole_lines = 0;
+    for piece in text.backward() {
+        let shown = Shown::new(&piece);
+        if used + shown.chars < half {
+            used += shown.chars + 1;
+            if let Some((offset, _)) = shown.line {
+                whole_lines += 1;
+                start = offset;
+            }
+            lines.push(shown.text);
+            continue;
+        }
+        if whole_lines == 0
+            && let Some((offset, bytes)) = shown.line
+        {
+            let skip = shown.chars.saturating_sub(half.saturating_sub(1));
+            let part: String = shown.text.chars().skip(skip).collect();
+            start = offset + bytes - part.len().min(bytes);
+            lines.push(part);
+        }
+        break;
+    }
+    lines.reverse();
+    (lines, start)
+}
+
+/// The line between the start and the end a result shows of an output,
+/// for the bytes from `start` to `end` it leaves out: the lines they fall
+/// in, or, within one line, its characters.
+fn marker(text: &OutputText, command: &CommandId, start: usize, end: usize) -> String {
+    let first = text.line_of(start);
+    let last = text.line_of(end.saturating_sub(1).max(start));
+    let whole = text.is_line_start(start) && text.is_line_start(end);
+    if first != last || whole {
+        return lines_marker(command, first, last, end - start);
+    }
+    // Up to the line's end when the bytes left out end with its newline.
+    let through = if end > start && text.is_line_start(end) {
+        text.column(end - 1)
+    } else {
+        text.column(end)
+    };
+    chars_marker(command, first, text.column(start) + 1, through)
+}
+
+fn lines_marker(command: &CommandId, first: u64, last: u64, bytes: usize) -> String {
+    format!(
+        "[... lines {first}-{last} not shown ({bytes} bytes); read them: demi shell output {command} --lines {first}-{last} ...]"
+    )
+}
+
+fn chars_marker(command: &CommandId, line: u64, from: usize, to: usize) -> String {
+    let part_end = to.min(from + PAGE_CHARS - 1);
+    format!(
+        "[... characters {from}-{to} of line {line} not shown; read them: demi shell output {command} --raw | sed -n {line}p | cut -c {from}-{part_end} ...]"
+    )
 }
 
 /// What a binary final stdout becomes (`runtime.md` § Results and previews):
-/// attached as an image or a video only when it is whole, its bytes are a
-/// type of the model-media table and the model accepts that type; an image
-/// as it is fitted, and a video within its cap and when its base64 takes at
-/// most half of the body `limits` allow. Otherwise a note says why not and
-/// where the bytes are.
+/// attached as an image or a video only when the output kept all of it, its
+/// bytes are a type of the model-media table and the model accepts that
+/// type; an image as it is fitted, and a video within its cap and when its
+/// base64 takes at most half of the body `limits` allow. Otherwise a note
+/// says why not and how to save the bytes.
 async fn binary_verdict(
     binary: &BinaryOutput,
-    raw_path: Option<&str>,
+    command: &CommandId,
     model: &Model,
     limits: RequestLimits,
 ) -> (Option<ResultPart>, String) {
     let media = sniff_model_media_type(&binary.bytes);
     let total = binary.info.total_bytes;
-    let place = match raw_path {
-        Some(path) => format!("the raw bytes remain readable at {path}"),
-        None => "the raw bytes were not kept beyond this view".to_owned(),
-    };
+    let save = format!("save it: demi shell output {command} --raw --stdout > <file>");
     if binary.info.truncated {
-        let kind = media.map_or(String::new(), |media| format!(", {}", media.media_type));
         return (
             None,
             format!(
-                "Binary stdout ({total} bytes{kind}) exceeded the shell's {}-byte binary limit (maxBinaryBytes) and was not attached; {place}. Produce a smaller version and re-run.",
+                "Binary stdout ({total} bytes) is more than the {} bytes a command's output keeps whole, so it was not attached and is kept whole nowhere; write it to a file instead and run the command again.",
                 binary.info.limit_bytes
             ),
         );
@@ -186,14 +310,14 @@ async fn binary_verdict(
     let Some(media) = media else {
         return (
             None,
-            format!("Binary stdout does not match any model-viewable media type; {place}."),
+            format!("Binary stdout does not match any model-viewable media type; {save}."),
         );
     };
     if !model_accepts_media_type(model, media.media_type) {
         return (
             None,
             format!(
-                "Binary stdout is {}, which this model does not accept natively; {place}.",
+                "Binary stdout is {}, which this model does not accept natively; {save}.",
                 media.media_type
             ),
         );
@@ -204,7 +328,7 @@ async fn binary_verdict(
             Ok(fitted) => {
                 let note = if fitted.reencoded {
                     format!(
-                        "Attached stdout, {} of {}x{} px ({total} bytes), as {} of {}x{} px ({} bytes), fitted to what every model accepts; {place}.",
+                        "Attached stdout, {} of {}x{} px ({total} bytes), as {} of {}x{} px ({} bytes), fitted to what every model accepts; to keep the original, {save}.",
                         media.media_type,
                         fitted.came.0,
                         fitted.came.1,
@@ -225,7 +349,7 @@ async fn binary_verdict(
             Err(unfit) => (
                 None,
                 format!(
-                    "Binary stdout is {} ({total} bytes), which was not attached because {unfit}; {place}.",
+                    "Binary stdout is {} ({total} bytes), which was not attached because {unfit}; {save}.",
                     media.media_type
                 ),
             ),
@@ -235,7 +359,7 @@ async fn binary_verdict(
         return (
             None,
             format!(
-                "Binary stdout is {} ({total} bytes), over the {VIDEO_CAP_BYTES}-byte video cap; it was not attached and {place}. Produce a smaller version, with fewer frames or a lower resolution, and re-run.",
+                "Binary stdout is {} ({total} bytes), over the {VIDEO_CAP_BYTES}-byte video cap, so it was not attached; {save}, or produce a smaller version, with fewer frames or a lower resolution, and run it again.",
                 media.media_type
             ),
         );
@@ -245,7 +369,7 @@ async fn binary_verdict(
         return (
             None,
             format!(
-                "Binary stdout is {} ({total} bytes), whose base64 takes more than {half} bytes, half of what this model's requests may carry; it was not attached and {place}. Produce a smaller version, with fewer frames or a lower resolution, and re-run.",
+                "Binary stdout is {} ({total} bytes), whose base64 takes more than {half} bytes, half of what this model's requests may carry, so it was not attached; {save}, or produce a smaller version, with fewer frames or a lower resolution, and run it again.",
                 media.media_type
             ),
         );
@@ -268,10 +392,20 @@ fn view_status(state: &CommandState) -> ShellViewStatus {
     }
 }
 
-/// The view the user sees: the status, the end of the merged output, and
-/// once the command exited the files it changed.
-pub(super) fn shell_view(status: &CommandStatus) -> ShellToolView {
-    let (chunks, cut) = tail_window(&status.output.chunks, VIEW_CHARS);
+/// The view the user sees: the status, the end of the output the model had
+/// not seen, `text`, by stream, and once the command exited the files it
+/// changed.
+fn shell_view(status: &CommandStatus, text: &OutputText) -> ShellToolView {
+    let (chunks, cut) = match &status.whole {
+        Some(_) => {
+            let chunks = text.unseen().map_or_else(Vec::new, |from| text.chunks(from));
+            tail_window(&chunks, VIEW_CHARS)
+        }
+        None => {
+            let (chunks, cut) = tail_window(&status.output.chunks, VIEW_CHARS);
+            (chunks, cut || status.output.truncated)
+        }
+    };
     ShellToolView {
         status: view_status(&status.state),
         shell_id: status.shell_id.clone(),
@@ -283,7 +417,7 @@ pub(super) fn shell_view(status: &CommandStatus) -> ShellToolView {
         running_ms: status.running_ms,
         idle_ms: status.idle_ms,
         chunks,
-        view_truncated: cut || status.output.truncated,
+        view_truncated: cut,
         files: status.files.as_ref().map(|files| files.files.clone()),
         files_truncated: status.files.as_ref().map(|files| files.truncated),
     }
@@ -328,59 +462,58 @@ fn tail_window(chunks: &[OutputChunk], max: usize) -> (Vec<OutputChunk>, bool) {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use bytes::Bytes;
-    use demi_core::{BinaryStdout, FileExtension, OutputView, StreamKind};
-    use demi_shell::EditedFiles;
+    use demi_core::{BinaryStdout, FileExtension, OutputView, StreamKind, StreamView};
+    use demi_shell::{OutputRecord, Seen, WholeOutput, WholeView};
 
     use super::*;
     use crate::testing::test_model;
 
-    fn chunk(stream: StreamKind, text: &str) -> OutputChunk {
-        OutputChunk {
-            stream,
-            text: text.to_owned(),
-        }
-    }
-
-    fn stream(text: &str) -> StreamView {
+    fn stream() -> StreamView {
         StreamView {
-            path: Some(format!(
-                "/out/cmd-1/{}",
-                if text.is_empty() {
-                    "stderr.txt"
-                } else {
-                    "stdout.txt"
-                }
-            )),
-            offset: text.len() as u64,
-            delta: text.to_owned(),
-            tail: text.to_owned(),
-            bytes: text.len() as u64,
+            offset: 0,
+            delta: String::new(),
+            tail: String::new(),
+            bytes: 0,
             truncated: false,
         }
     }
 
-    /// An exited command whose stdout was `text`.
+    /// Command 17, which exited printing `text`, which the model had not
+    /// seen.
     fn exited(text: &str) -> CommandStatus {
+        let output = WholeOutput::new(
+            vec![OutputRecord::Output(
+                StreamKind::Stdout,
+                Bytes::from(text.to_owned()),
+            )],
+            None,
+        );
         CommandStatus {
-            shell_id: "shell-1".try_into().unwrap(),
-            command_id: "cmd-1".try_into().unwrap(),
-            output_dir: Some("/out/cmd-1".into()),
-            stdout: stream(text),
-            stderr: stream(""),
+            shell_id: "3".try_into().unwrap(),
+            command_id: "17".try_into().unwrap(),
+            stdout: stream(),
+            stderr: stream(),
             output: OutputView {
-                path: Some("/out/cmd-1".into()),
-                offset: text.len() as u64,
-                text: text.to_owned(),
-                tail: text.to_owned(),
-                chunks: vec![chunk(StreamKind::Stdout, text)],
-                bytes: text.len() as u64,
+                offset: 0,
+                line: 1,
+                text: String::new(),
+                tail: String::new(),
+                chunks: Vec::new(),
+                bytes: 0,
                 truncated: false,
             },
+            unreceived: 0,
+            whole: Some(WholeView {
+                output: Arc::new(output),
+                seen: Seen::default(),
+            }),
             running_ms: 5,
             idle_ms: 1,
             state: CommandState::Exited {
-                exit_code: 0,
+                exit_code: 1,
                 binary_stdout: None,
             },
             files: None,
@@ -399,79 +532,102 @@ mod tests {
             .collect()
     }
 
-    #[test]
-    fn the_budget_follows_the_models_context_window() {
-        assert_eq!(preview_budget_tokens(0), 10_000);
-        assert_eq!(preview_budget_tokens(799_999), 10_000);
-        assert_eq!(preview_budget_tokens(800_000), 100_000);
+    async fn result(status: &CommandStatus) -> String {
+        let outcome =
+            shell_outcome(status, &test_model().model, RequestLimits::default()).await;
+        text_of(&outcome)[0].to_owned()
     }
 
     #[tokio::test]
-    async fn a_short_result_shows_everything_and_a_long_one_its_handle_and_paths() {
-        let short = exited("done\n");
-        assert!(!handle_required(&short, 1_000));
-        let mut edited = short.clone();
-        edited.files = Some(EditedFiles {
-            files: Vec::new(),
-            truncated: true,
-        });
-        let limits = RequestLimits::default();
-        let outcome = shell_outcome(&edited, 1_000, false, &test_model().model, limits).await;
+    async fn an_output_within_the_bound_shows_whole_with_the_command_to_read_it() {
         assert_eq!(
-            text_of(&outcome),
-            ["status: exited\nexitCode: 0\npreviewBudgetTokens: 1000\npreview:\ndone\n"]
+            result(&exited("one\ntwo\n")).await,
+            "status: exited\nexitCode: 1\ncommandId: 17\noutput:\none\ntwo"
         );
-        let Some(ToolView::Shell(view)) = &outcome.view else {
-            panic!("a shell view")
-        };
-        assert_eq!(
-            (view.exit_code, view.files_truncated),
-            (Some(0), Some(true))
-        );
+    }
 
-        let long = exited(&format!("{}tail", "x".repeat(4_200)));
-        assert!(handle_required(&long, 1_000));
-        let outcome = shell_outcome(&long, 1_000, true, &test_model().model, limits).await;
-        let text = text_of(&outcome)[0].to_owned();
-        for line in [
-            "shellId: shell-1",
-            "commandId: cmd-1",
-            "stdoutPath: /out/cmd-1/stdout.txt",
-            "stdoutBytes: 4204",
-            "stderrPath: /out/cmd-1/stderr.txt",
-            "previewTruncated: true; read /out/cmd-1/stdout.txt or /out/cmd-1/stderr.txt on the target for more.",
-            "next: command is complete; read the output files on the target only if the preview is insufficient.",
-        ] {
-            assert!(
-                text.lines().any(|candidate| candidate == line),
-                "{line} in {text}"
-            );
-        }
-        assert!(!text.contains("tail"));
+    /// `seq 1 5000`: the result shows whole lines from both ends within the
+    /// replay bound, and the line between names the lines it leaves out,
+    /// their bytes, and the command that prints exactly them.
+    #[tokio::test]
+    async fn a_long_output_shows_its_first_and_last_lines_and_names_the_rest() {
+        let numbers: String = (1..=5000).map(|number| format!("{number}\n")).collect();
+        let text = result(&exited(&numbers)).await;
+        assert!(text.chars().count() <= REPLAY_CHARS, "{}", text.len());
+        let lines: Vec<&str> = text.lines().collect();
+        let marker = lines
+            .iter()
+            .position(|line| line.starts_with("[... lines "))
+            .expect("a marker");
+        let before: u64 = lines[marker - 1].parse().unwrap();
+        let after: u64 = lines[marker + 1].parse().unwrap();
+        assert_eq!(lines[4], "1");
+        assert_eq!(*lines.last().unwrap(), "5000");
+        let (first, last) = (before + 1, after - 1);
+        let bytes: usize = (first..=last).map(|number| format!("{number}\n").len()).sum();
+        assert_eq!(
+            lines[marker],
+            format!(
+                "[... lines {first}-{last} not shown ({bytes} bytes); read them: demi shell output 17 --lines {first}-{last} ...]"
+            )
+        );
+        // Each half is within a line of the other.
+        assert!(before.abs_diff(5000 - after) < 1000, "{before} {after}");
+    }
+
+    /// One line longer than the bound, such as minified JSON, shows its
+    /// start and its end, and the line between names its characters left
+    /// out and a command that prints them a page at a time.
+    #[tokio::test]
+    async fn a_single_long_line_shows_in_part_with_its_characters_named() {
+        let line = "x".repeat(40_000);
+        let text = result(&exited(&line)).await;
+        assert!(text.chars().count() <= REPLAY_CHARS);
+        let lines: Vec<&str> = text.lines().collect();
+        let (head, marker, tail) = (lines[4], lines[5], lines[6]);
+        let from = head.len() + 1;
+        let to = 40_000 - tail.len();
+        assert_eq!(
+            marker,
+            format!(
+                "[... characters {from}-{to} of line 1 not shown; read them: demi shell output 17 --raw | sed -n 1p | cut -c {from}-{} ...]",
+                from + PAGE_CHARS - 1
+            )
+        );
     }
 
     #[tokio::test]
-    async fn a_running_command_names_its_hint_or_the_generic_next_step() {
-        let model = test_model().model;
-        let limits = RequestLimits::default();
+    async fn a_running_command_names_its_handles_and_the_newest_output_it_has_not_received() {
         let mut running = exited("");
+        running.whole = None;
         running.state = CommandState::Running { hint: None };
-        assert!(handle_required(&running, 1_000));
-        let outcome = shell_outcome(&running, 1_000, true, &model, limits).await;
-        let text = text_of(&outcome)[0].to_owned();
-        assert!(text.contains("preview: (empty)"));
-        assert!(text.ends_with("next: command is still running; check again with shell_status, or call yield to end this turn and be woken later, or shell_abort to stop it."));
+        running.output.text = "building\n".into();
+        running.unreceived = 1_048_576;
+        assert_eq!(
+            result(&running).await,
+            [
+                "status: running",
+                "commandId: 17",
+                "shellId: 3",
+                "runningMs: 5",
+                "idleMs: 1",
+                "output:",
+                "building",
+                "[... 1048576 bytes not shown so far; the newest: demi shell output 17 --tail 50 ...]",
+                RUNNING_NEXT,
+            ]
+            .join("\n")
+        );
         running.state = CommandState::Running {
             hint: Some("waiting for input: answer with shell_write".into()),
         };
-        let outcome = shell_outcome(&running, 1_000, true, &model, limits).await;
-        let text = text_of(&outcome)[0].to_owned();
-        assert!(text.ends_with("\nwaiting for input: answer with shell_write"));
+        assert!(result(&running).await.ends_with("\nwaiting for input: answer with shell_write"));
         let mut aborted = exited("");
         aborted.state = CommandState::Aborted;
-        let outcome = shell_outcome(&aborted, 1_000, true, &model, limits).await;
-        let text = text_of(&outcome)[0].to_owned();
-        assert!(text.ends_with("next: command was intentionally stopped."));
+        assert_eq!(
+            result(&aborted).await,
+            "status: aborted\ncommandId: 17\noutput: (empty)\nnext: command was intentionally stopped."
+        );
     }
 
     /// The notes, and a placeholder for each medium, of the result of a
@@ -483,7 +639,7 @@ mod tests {
         truncated: bool,
         total: u64,
     ) -> String {
-        let mut status = exited("<binary stdout>\n");
+        let mut status = exited("");
         status.state = CommandState::Exited {
             exit_code: 0,
             binary_stdout: Some(BinaryOutput {
@@ -495,7 +651,7 @@ mod tests {
                 },
             }),
         };
-        let outcome = shell_outcome(&status, 1_000, true, model, limits).await;
+        let outcome = shell_outcome(&status, model, limits).await;
         text_of(&outcome)[1..].join(" | ")
     }
 
@@ -511,7 +667,7 @@ mod tests {
         let mut video_model = test_model().model;
         video_model.accepted_extensions = Some(vec![FileExtension::Mp4]);
         let limits = RequestLimits::default();
-        let place = "the raw bytes remain readable at /out/cmd-1/stdout.txt";
+        let save = "save it: demi shell output 17 --raw --stdout > <file>";
         let size = |bytes: &Bytes| bytes.len() as u64;
         assert_eq!(
             verdict(&model, limits, &png, false, size(&png)).await,
@@ -525,7 +681,9 @@ mod tests {
         );
         assert!(fitted.starts_with(&prefix), "{fitted}");
         assert!(
-            fitted.ends_with(&format!(" bytes), fitted to what every model accepts; {place}.")),
+            fitted.ends_with(&format!(
+                " bytes), fitted to what every model accepts; to keep the original, {save}."
+            )),
             "{fitted}"
         );
         let unread = verdict(&model, limits, &broken, false, 12).await;
@@ -533,12 +691,10 @@ mod tests {
             unread.starts_with("Binary stdout is image/png (12 bytes), which was not attached because it could not be decoded"),
             "{unread}"
         );
-        assert!(unread.ends_with(&format!("; {place}.")), "{unread}");
+        assert!(unread.ends_with(&format!("; {save}.")), "{unread}");
         assert_eq!(
             verdict(&model, limits, &mp4, false, 14).await,
-            format!(
-                "Binary stdout is video/mp4, which this model does not accept natively; {place}."
-            )
+            format!("Binary stdout is video/mp4, which this model does not accept natively; {save}.")
         );
         // A video within the cap is attached while its base64 takes at most
         // half of the body limit: its 14 bytes are 20 as base64.
@@ -553,39 +709,31 @@ mod tests {
         assert_eq!(
             verdict(&video_model, body(39), &mp4, false, 14).await,
             format!(
-                "Binary stdout is video/mp4 (14 bytes), whose base64 takes more than 19 bytes, half of what this model's requests may carry; it was not attached and {place}. Produce a smaller version, with fewer frames or a lower resolution, and re-run."
+                "Binary stdout is video/mp4 (14 bytes), whose base64 takes more than 19 bytes, half of what this model's requests may carry, so it was not attached; {save}, or produce a smaller version, with fewer frames or a lower resolution, and run it again."
             )
         );
         assert_eq!(
             verdict(&video_model, limits, &mp4, false, 17 * 1024 * 1024).await,
             format!(
-                "Binary stdout is video/mp4 (17825792 bytes), over the 16777216-byte video cap; it was not attached and {place}. Produce a smaller version, with fewer frames or a lower resolution, and re-run."
+                "Binary stdout is video/mp4 (17825792 bytes), over the 16777216-byte video cap, so it was not attached; {save}, or produce a smaller version, with fewer frames or a lower resolution, and run it again."
             )
         );
         assert_eq!(
             verdict(&model, limits, &opaque, false, 12).await,
-            format!("Binary stdout does not match any model-viewable media type; {place}.")
+            format!("Binary stdout does not match any model-viewable media type; {save}.")
         );
         assert_eq!(
             verdict(&model, limits, &png, true, 20_000_000).await,
-            format!(
-                "Binary stdout (20000000 bytes, image/png) exceeded the shell's 16777216-byte binary limit (maxBinaryBytes) and was not attached; {place}. Produce a smaller version and re-run."
-            )
+            "Binary stdout (20000000 bytes) is more than the 16777216 bytes a command's output keeps whole, so it was not attached and is kept whole nowhere; write it to a file instead and run the command again."
         );
-    }
-
-    #[test]
-    fn a_preview_cut_keeps_whole_characters() {
-        let text = format!("{}🙂{}", "x".repeat(3_999), "y".repeat(100));
-        let (preview, cut) = bounded_preview(&text, 1_000);
-        assert!(cut);
-        assert_eq!(preview.chars().count(), 4_000);
-        assert!(preview.ends_with('🙂'));
-        assert_eq!(bounded_preview("short", 1_000), ("short", false));
     }
 
     #[test]
     fn the_view_window_keeps_the_newest_characters_of_the_merged_output() {
+        let chunk = |stream, text: &str| OutputChunk {
+            stream,
+            text: text.to_owned(),
+        };
         let chunks = [
             chunk(StreamKind::Stdout, "ab"),
             chunk(StreamKind::Stderr, ""),

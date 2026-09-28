@@ -40,11 +40,6 @@ impl Role {
         matches!(self, Self::Target | Self::Provider { .. })
     }
 
-    /// Whether the Cloud is one of the conversation's Hosts, main or
-    /// attached, where its jobs run and its services hold its state.
-    pub(super) fn is_host(self) -> bool {
-        matches!(self, Self::Target | Self::Attached | Self::Provider { attached: true })
-    }
 }
 
 /// A conversation a reset holds: its file gate reserved, its transfers and

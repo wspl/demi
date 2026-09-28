@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     AgentServer,
+    shell_output::shell_group,
     tree::{AgentSnapshot, StartInput, Tree, TreeEntry},
 };
 use crate::{AgentHarness, Profile};
@@ -132,23 +133,31 @@ struct Shown {
     agent: AgentSnapshot,
 }
 
-/// A node's commands: its harness's, with the `demi agent` group grafted
-/// under a `demi` group, replacing any `agent` child the harness declared,
-/// or under a new `demi` root.
-pub(crate) fn with_agent_group<H: AgentHarness>(
+/// A node's commands: its harness's, with the `demi agent` and `demi shell`
+/// groups grafted under a `demi` group, replacing any `agent` or `shell`
+/// child the harness declared, or under a new `demi` root.
+pub(crate) fn with_runtime_groups<H: AgentHarness>(
     harness_commands: &CommandSet,
     server: &Rc<AgentServer<H>>,
     can_spawn: bool,
     profiles: &[Profile],
 ) -> Result<CommandSet, RegisterError> {
     let mut commands = harness_commands.clone();
-    let group = agent_group(Rc::downgrade(server), can_spawn, profiles);
+    let groups = [
+        agent_group(Rc::downgrade(server), can_spawn, profiles),
+        shell_group(Rc::downgrade(server)),
+    ];
     let has_demi = commands.declarations().any(|root| root.name() == "demi");
     if has_demi {
-        commands.graft(&["demi"], group)?;
+        for group in groups {
+            commands.graft(&["demi"], group)?;
+        }
     } else {
-        commands
-            .register(GroupBuilder::new("demi", "Demi agent runtime commands.").group(group))?;
+        let demi = groups.into_iter().fold(
+            GroupBuilder::new("demi", "Demi agent runtime commands."),
+            GroupBuilder::group,
+        );
+        commands.register(demi)?;
     }
     Ok(commands)
 }
@@ -234,17 +243,17 @@ fn agent_group<H: AgentHarness>(
 
 /// A verb's call against the live tree of the invoking job's conversation,
 /// on behalf of the job's node.
-struct Invoked<H: AgentHarness, A> {
-    tree: Rc<Tree<H>>,
+pub(super) struct Invoked<H: AgentHarness, A> {
+    pub(super) tree: Rc<Tree<H>>,
     server: Rc<AgentServer<H>>,
     caller: NodeId,
     json: bool,
-    args: A,
+    pub(super) args: A,
 }
 
 /// Binds `run` to the tree and node a call names. A call from a job whose
 /// tree is not live fails.
-fn verb<H, A, F, Fut>(
+pub(super) fn verb<H, A, F, Fut>(
     server: Weak<AgentServer<H>>,
     run: F,
 ) -> impl Fn(Call<A>, RpcPort) -> futures_util::future::LocalBoxFuture<'static, Result<u8, RpcError>>
@@ -267,7 +276,7 @@ where
                 .caller
                 .node()
                 .and_then(|node| NodeId::try_from(node).ok())
-                .ok_or_else(|| RpcError::Failed("demi agent runs only in an agent's job".into()))?;
+                .ok_or_else(|| RpcError::Failed("the command runs only in an agent's job".into()))?;
             let tree = server
                 .tree(&root)
                 .ok_or_else(|| RpcError::Failed(format!("the conversation {root} is not open")))?;

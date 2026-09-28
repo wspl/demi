@@ -29,8 +29,8 @@ use demi_runner_protocol::wire::{
 use demi_shell::{
     ByteRange, Call, CommandSet, CommandState, CommandStatus, ExecRequest, FileContents,
     GroupBuilder, Host, HostError, HostErrorKind, JobCaller, LeafBuilder, ObservationWindow,
-    Process, ProcessEnd, ProcessOutput, RpcError, RpcPort, ShellEnvironment, ShellTarget, Signal,
-    SpawnEnv, SpawnRequest, StorageOp, StorageReply, TypedRpc, WriteOptions,
+    Process, ProcessEnd, ProcessOutput, RpcError, RpcPort, Seen, ShellEnvironment, ShellTarget,
+    Signal, SpawnEnv, SpawnRequest, StorageOp, StorageReply, Streams, TypedRpc, WriteOptions,
     testing::{TestPages, host_conformance_cases, test_command_context},
 };
 use futures_util::{Stream, StreamExt};
@@ -396,16 +396,6 @@ async fn a_job_runs_on_the_runner_with_its_streams_its_files_and_the_device_envi
             .collect();
         assert_eq!(merged, text);
     }
-    let directory = result
-        .output_dir
-        .clone()
-        .expect("the runner keeps the output");
-    assert_eq!(result.stdout.path, Some(format!("{directory}/stdout.txt")));
-    assert_eq!(
-        std::fs::read_to_string(format!("{directory}/stdout.txt")).unwrap(),
-        "hello\n"
-    );
-    assert!(!Path::new(&format!("{directory}/cwd")).exists());
     assert_eq!(fixture.link().await.running_jobs(), 0);
 
     // The device's variables are beneath the shell's; no identity rides in
@@ -518,25 +508,50 @@ async fn a_job_outliving_its_window_runs_takes_input_and_can_be_aborted() {
     fixture.stop().await;
 }
 
+/// A command whose stream goes beyond what the backend receives while it
+/// runs ends with its whole output, which the backend reads once from the
+/// Host, and the Host then keeps nothing of it; while it runs, its output
+/// reads as the Host keeps it so far (`runtime.md` § The whole output).
+/// About a second: two jobs, each a login shell.
 #[tokio::test(flavor = "local")]
-async fn output_beyond_the_view_is_its_head_a_gap_note_and_its_true_tail() {
+async fn a_command_beyond_its_views_ends_with_its_whole_output_and_leaves_nothing_on_its_host() {
     let fixture = RunnerFixture::start(FixtureOptions::default()).await;
     let shell = shell_on(fixture.host(), &[], None);
     let total = 100_000;
     let last = total / 10 - 1;
-    let result = run(&shell, &format!("seq -f '%09g' 0 {last}")).await;
+    let printed: String = (0..=last).map(|number| format!("{number:09}\n")).collect();
+    let stream = |status: &CommandStatus, stream| {
+        let whole = status.whole.as_ref().expect("the whole output");
+        whole.output.text(Streams::Only(stream), None, Seen::default()).bytes().to_vec()
+    };
+
+    let result = run(&shell, &format!("seq -f '%09g' 0 {last}; echo done >&2")).await;
     assert_eq!(exited(&result), 0);
-    let text = &result.stdout.delta;
-    assert!(text.starts_with("000000000\n000000001\n"));
-    assert!(text.ends_with(&format!("{last:09}\n")));
-    let path = format!("{}/stdout.txt", result.output_dir.clone().unwrap());
-    assert!(
-        text.contains(&format!("bytes not shown; the full stream is at {path}")),
-        "{text}"
-    );
-    assert!(text.len() < 2 * JOB_VIEW_BYTES + 200);
     assert_eq!(result.stdout.bytes, total as u64);
-    assert_eq!(std::fs::metadata(&path).unwrap().len(), total as u64);
+    assert_eq!(stream(&result, StreamKind::Stdout), printed.as_bytes());
+    assert_eq!(stream(&result, StreamKind::Stderr), b"done\n");
+    until("the job's directory to go", || fixture.job_directories().is_empty().then_some(())).await;
+
+    let running = shell
+        .exec(
+            exec(&format!("seq -f '%09g' 0 {last}; sleep 30"), 200),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    let kept = loop {
+        let output = shell.read_output(&running.command_id).await.unwrap();
+        let stdout = output
+            .text(Streams::Only(StreamKind::Stdout), None, Seen::default())
+            .bytes()
+            .to_vec();
+        if stdout.len() == total {
+            break stdout;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    };
+    assert_eq!(kept, printed.as_bytes());
+    shell.abort(&running.command_id).await.unwrap();
     fixture.stop().await;
 }
 
@@ -564,11 +579,12 @@ async fn a_lost_connection_ends_the_job_on_both_sides_and_the_next_connection_se
     fixture.link().await.disconnect("the connection was lost");
     let lost = settled(&shell, &running).await;
     assert_eq!(exited(&lost), 127);
-    assert!(
-        lost.stderr.tail.contains("the connection was lost"),
-        "{}",
-        lost.stderr.tail
-    );
+    let whole = lost.whole.expect("the whole output");
+    let stderr = whole
+        .output
+        .text(Streams::Only(StreamKind::Stderr), None, Seen::default());
+    let stderr = String::from_utf8_lossy(stderr.bytes()).into_owned();
+    assert!(stderr.contains("the connection was lost"), "{stderr}");
     // The runner stopped the job's process and came back: the same shell
     // serves again.
     fixture.link().await;
@@ -878,12 +894,12 @@ async fn a_jobs_pipes_carry_its_stdin_and_stdout_and_a_refused_end_stops_nothing
         .start_job(job("wc -c", Some(missing), None))
         .await
         .unwrap();
-    let end = count.end().await;
-    let tail = end
-        .output
-        .map(|output| output.stdout_tail.0)
-        .unwrap_or_default();
-    assert_eq!(String::from_utf8_lossy(&tail).trim(), "0");
+    let mut counted = Vec::new();
+    while let Some(chunk) = count.next_output().await {
+        counted.extend_from_slice(&chunk.bytes);
+    }
+    count.end().await;
+    assert_eq!(String::from_utf8_lossy(&counted).trim(), "0");
     assert!(!tap.pipe_done("missing").await.0);
     fixture.stop().await;
 }
@@ -960,7 +976,18 @@ async fn first_line(call: Call<Map<String, Value>>, port: RpcPort) -> Result<u8,
     Ok(0)
 }
 
-/// About 2.5 s here: five jobs one after another on one shell, each a login
+/// Prints 100,000 numbered lines, more than a pipe holds.
+async fn spew(_: Call<Map<String, Value>>, port: RpcPort) -> Result<u8, RpcError> {
+    for block in 0..100 {
+        let lines: String = (1..=1000)
+            .map(|line| format!("line {}\n", block * 1000 + line))
+            .collect();
+        port.stdout(lines).await?;
+    }
+    Ok(0)
+}
+
+/// About 3 s here: six jobs one after another on one shell, each a login
 /// shell that reads the machine's profile (about 0.4 s in the Linux container).
 #[tokio::test(flavor = "local")]
 async fn declared_commands_call_back_with_storage_input_and_cancellation() {
@@ -1014,7 +1041,8 @@ async fn declared_commands_call_back_with_storage_input_and_cancellation() {
                 .leaf(
                     LeafBuilder::rpc("line", "Answer the first line typed.")
                         .bind(TypedRpc::new(first_line)),
-                ),
+                )
+                .leaf(LeafBuilder::rpc("spew", "Print many lines.").bind(TypedRpc::new(spew))),
         )
         .unwrap();
     let native = NativeFixture::load();
@@ -1039,6 +1067,14 @@ async fn declared_commands_call_back_with_storage_input_and_cancellation() {
     // A body from finite standard input.
     let noted = run(&shell, "printf 'from stdin' | todo note").await;
     assert_eq!(noted.stdout.delta, "noted: from stdin");
+    // A reader that stops early ends the call as a closed pipe ends a
+    // program: 141, and nothing on stderr, whether the job's shell runs it
+    // or another program does through its alias.
+    let script = "probe spew | head -n 1; echo \"status=${PIPESTATUS[0]}\"";
+    let headed = run(&shell, &format!("{script}; bash -c '{script}'")).await;
+    assert_eq!(exited(&headed), 0);
+    assert_eq!(headed.stdout.delta, "line 1\nstatus=141\nline 1\nstatus=141\n");
+    assert_eq!(headed.stderr.delta, "");
     // Live input reaches the handler as it is written, with the job's
     // context.
     let typing = shell

@@ -397,6 +397,11 @@ fn main() {
     };
     let code = match result {
         Ok(code) => code,
+        // The reader of a command's output went away, as `head` does once it
+        // has read its lines: the command ends as a program that writes into
+        // a closed pipe ends in a shell, with 141 and nothing on stderr
+        // (`commands.md` § Handle an rpc call).
+        Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => 141,
         Err(error) => {
             eprintln!("demi-runner: {error}");
             1

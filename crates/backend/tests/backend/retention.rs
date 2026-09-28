@@ -1,19 +1,19 @@
 //! Retention (`storage.md` § Retention, `runtime.md` § Retired tool media,
-//! `resource-lifecycle.md` § A release the device missed, § A release that
-//! fails): a collection deletes only a blob nothing references once it and
-//! its last use are past the grace, and nothing while a reference source
-//! cannot be read; a tool result's image goes after 30 days once no request
-//! can send it from a vendor's cache, never while a page has its conversation
-//! open and never a message's; a device that missed a release hears it when
-//! its runner connects again; and an archive succeeds though its device goes
-//! away in the middle of the release, which the device hears when it connects
-//! again. Times of a day and more pass on the test's clock; the objects are
+//! `resource-lifecycle.md` § A release that fails): a collection deletes only
+//! a blob nothing references once it and its last use are past the grace,
+//! and nothing while a reference source cannot be read; a tool result's
+//! image goes after 30 days once no request can send it from a vendor's
+//! cache, never while a page has its conversation open and never a
+//! message's; a command's output is removed 30 days after the command ended;
+//! and an archive succeeds though its device goes away in the middle of the
+//! release. Times of a day and more pass on the test's clock; the objects are
 //! counted at the object store. The devices are real runners, and the model
 //! is an Anthropic endpoint the test scripts.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
+use demi_agent::testing::field;
 use demi_agent_protocol::{ClientFrame, ServerFrame};
 use demi_backend::ObjectCounts;
 use demi_core::{
@@ -25,7 +25,9 @@ use reqwest::StatusCode;
 use serde_json::json;
 use sha2::{Digest as _, Sha256};
 
-use crate::conversations::{FIRST, SECOND, Socket, anthropic, answer, choose, create, on_device, transcript};
+use crate::conversations::{
+    FIRST, SECOND, Socket, anthropic, answer, choose, create, on_device, tool_result, transcript,
+};
 use crate::streams::{self, received};
 use crate::support::{Harness, MASTER_EMAIL, MASTER_PASSWORD, Paired, Session, TestBackend, eventually};
 use crate::uploads::{png, upload, with_upload};
@@ -245,11 +247,13 @@ async fn a_tool_image_summarized_a_day_before_goes_after_30_days_once_its_page_l
         "{message:?}"
     );
 
-    // The retirement used the blob; a day later nothing did, and it goes.
+    // The retirement used the blob; a day later nothing did, and it goes,
+    // with the outputs of the two commands, which the same pass removed
+    // 30 days after their commands ended.
     harness.clock.advance(DAY + SignedDuration::from_hours(1));
     let before = counts.tally();
     backend.run_retention(&master).await;
-    assert_eq!(counts.tally().since(&before).deletes, 1);
+    assert_eq!(counts.tally().since(&before).deletes, 3);
     assert!(!blob_path(&harness, &master, &png(1)).exists());
     for kept in [png(2), png(3)] {
         assert!(blob_path(&harness, &master, &kept).exists());
@@ -291,54 +295,10 @@ async fn a_conversation_idle_for_30_days_loses_its_tool_images_and_its_next_requ
     backend.close().await;
 }
 
-/// The job directories a paired device's runner holds for `conversation`.
-fn job_output(state: &Path, conversation: &str) -> PathBuf {
-    state.join("jobs").join(conversation.to_ascii_lowercase())
-}
-
-// About two seconds: a real device runs a shell command and restarts.
+// Under a second: a real device installs the fixture package, and is killed
+// in the middle of a release.
 #[tokio::test]
-async fn a_device_offline_at_a_release_hears_it_when_its_runner_connects_again() {
-    let vendor = MockVendor::start().await;
-    let harness = Harness::new();
-    let (backend, master) = harness.start_set_up().await;
-    let provider = anthropic(&backend, &master, &vendor).await;
-    create(&backend, &master, FIRST).await;
-    let (mut paired, _root) = on_device(&harness, &backend, &master, FIRST).await;
-    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
-    let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.open().await;
-    vendor.respond(shell("toolu_1", "printf done", 60_000));
-    vendor.respond(say("Done."));
-    socket.chat("m1", "Do it").await;
-    let state = paired.runner.state_dir().to_owned();
-    assert!(job_output(&state, FIRST).exists());
-    // A leftover of a conversation the device's owner does not have.
-    let stranger = "9f8e7d6c-5b4a-4c3d-8e2f-1a0b9c8d7e6f";
-    std::fs::create_dir_all(job_output(&state, stranger).join("job-left")).unwrap();
-
-    // The device is offline when the conversation is archived, so it hears
-    // no release then.
-    close(&mut socket).await;
-    paired.runner.stop().await;
-    eventually("the device is offline", || async { !backend.online(&master, paired.id()).await }).await;
-    let archived = backend.patch(&format!("/api/conversations/{FIRST}"), &master, json!({ "archived": true })).await;
-    assert_eq!(archived.status, StatusCode::OK, "{}", String::from_utf8_lossy(&archived.body));
-    assert!(job_output(&state, FIRST).exists());
-
-    // Its hello names both, and each is released at once.
-    paired.runner.start_again();
-    eventually("the released job output is gone", || async {
-        !job_output(&state, FIRST).exists() && !job_output(&state, stranger).exists()
-    })
-    .await;
-    backend.close().await;
-}
-
-// Under a second: a real device installs the fixture package, is killed in
-// the middle of a release, and starts again.
-#[tokio::test]
-async fn an_archive_succeeds_though_its_device_goes_away_during_the_release_which_the_device_hears_when_it_connects_again() {
+async fn an_archive_succeeds_though_its_device_goes_away_during_the_release() {
     let harness = Harness::new().with_native_fixture();
     let (backend, master) = harness.start_set_up().await;
     let mut laptop = backend.pair(&master, "laptop").await;
@@ -346,11 +306,8 @@ async fn an_archive_succeeds_though_its_device_goes_away_during_the_release_whic
         create(&backend, &master, id).await;
         switch(&backend, &master, id, &laptop, laptop.runner.home_dir()).await;
     }
-    // The first conversation's job output, as its shell jobs leave it; the
-    // fixture service holds the conversation, and its release of it never
-    // ends by itself.
-    let state = laptop.runner.state_dir().to_owned();
-    std::fs::create_dir_all(job_output(&state, FIRST).join("job-left")).unwrap();
+    // The fixture service holds the conversation, and its release of it
+    // never ends by itself.
     let (_, code, reason) = received(&mut streams::socket(&backend, &master, FIRST, "stall_release").await).await;
     assert_eq!((code, reason.as_str()), (1000, "completed"));
 
@@ -365,14 +322,40 @@ async fn an_archive_succeeds_though_its_device_goes_away_during_the_release_whic
     };
     let (archived, ()) = tokio::join!(archiving, going_away);
     assert_eq!(archived.status, StatusCode::OK, "{}", String::from_utf8_lossy(&archived.body));
-    assert!(job_output(&state, FIRST).exists());
+    backend.close().await;
+}
 
-    // Its hello names the conversation, archived now, which hears the
-    // release at once.
-    laptop.runner.start_again();
-    eventually("the archived conversation's job output is gone", || async {
-        !job_output(&state, FIRST).exists()
-    })
-    .await;
+// About two seconds: a real device runs three shell commands.
+#[tokio::test]
+async fn a_commands_output_is_removed_30_days_after_it_ended() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    harness.clock.follow_system();
+    let (backend, master) = harness.start_set_up().await;
+    let (mut socket, _root, _device) = open_on_device(&harness, &backend, &master, &vendor).await;
+    vendor.respond(shell("toolu_1", "echo kept", 60_000));
+    vendor.respond(say("Said."));
+    socket.chat("m1", "Say it").await;
+    let command = field(&tool_result(&vendor.requests()[1].json(), "toolu_1"), "commandId").to_owned();
+    let read = |id: &str| shell(id, &format!("demi shell output {command} --raw"), 60_000);
+    vendor.respond(read("toolu_2"));
+    vendor.respond(say("Read."));
+    socket.chat("m2", "Read it").await;
+    let requests = vendor.requests().len();
+    assert!(tool_result(&vendor.requests()[requests - 1].json(), "toolu_2").contains("kept"));
+
+    // Thirty-one days later, the retention pass removes it, with the day.
+    harness.clock.advance(DAY * 31);
+    let master = backend.login(MASTER_EMAIL, MASTER_PASSWORD).await;
+    backend.run_retention(&master).await;
+    vendor.respond(read("toolu_3"));
+    vendor.respond(say("Gone."));
+    socket.chat("m3", "Read it again").await;
+    let day = utc_day(demi_core::Clock::now(&*harness.clock));
+    let gone = tool_result(&vendor.requests().last().unwrap().json(), "toolu_3");
+    let removed = format!(
+        "demi shell output: the output of {command} was removed on {day}, 30 days after the command ended"
+    );
+    assert!(gone.contains(&removed), "{gone}");
     backend.close().await;
 }

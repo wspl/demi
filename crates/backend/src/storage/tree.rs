@@ -25,8 +25,9 @@ use demi_agent::store::{
     BoundaryEdge, Checkpoint, CheckpointState, CheckpointUpdate, ClosePhase, CommandStateSnapshot, CommandStorageKey,
     CommandVersion, CommitGuard, NodeClose, NodeRecord, SessionBoundary, StoreError, media::BlobStore,
 };
-use demi_agent::{AgentTreeStore, SessionStore};
-use demi_core::{Block, BlockId, CompletionId, NodeId, QueuedMessage, SessionPhase, Timestamp};
+use demi_agent::{AgentTreeStore, SessionStore, StoredOutput};
+use demi_core::{Block, BlockId, CommandId, CompletionId, NodeId, QueuedMessage, SessionPhase, Timestamp};
+use demi_host_remote::decode_output;
 use futures_util::future::LocalBoxFuture;
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 use serde_json::Value;
@@ -34,6 +35,7 @@ use serde_json::Value;
 use super::StorageError;
 use super::blobs::UserBlobs;
 use super::columns::{count, decode, json, to_json};
+use super::command_outputs::{self, OutputRow};
 use super::conversations::ConversationDb;
 use super::media;
 
@@ -259,6 +261,43 @@ impl AgentTreeStore for SqliteTreeStore {
                 })
                 .await
                 .map_err(store_error)?
+        })
+    }
+
+    /// Reads the command's row on a read-only connection, then its blob,
+    /// which it decodes on the blocking pool: a stored output takes up to
+    /// 16 MiB.
+    fn command_output<'a>(
+        &'a self,
+        command: &'a CommandId,
+    ) -> LocalBoxFuture<'a, Result<Option<StoredOutput>, StoreError>> {
+        Box::pin(async move {
+            let wanted = command.clone();
+            let row = self
+                .db
+                .read(move |connection| command_outputs::read(connection, &wanted))
+                .await
+                .map_err(store_error)?
+                .flatten();
+            let Some(row) = row else {
+                return Ok(None);
+            };
+            let (blob, missing) = match row.output {
+                OutputRow::Stored { blob, missing } => (blob, missing),
+                OutputRow::NotStored(reason) => return Ok(Some(StoredOutput::NotStored(reason))),
+                OutputRow::Removed(at) => return Ok(Some(StoredOutput::Removed(at))),
+            };
+            let bytes = self
+                .blobs
+                .get(&blob)
+                .await
+                .map_err(store_error)?
+                .ok_or_else(|| StoreError::Failed(format!("the blob {blob} of the output of {command} is missing")))?;
+            let output = tokio::task::spawn_blocking(move || decode_output(&bytes, missing))
+                .await
+                .map_err(|error| StoreError::Failed(error.to_string()))?
+                .map_err(|error| StoreError::Corrupt(format!("the output of {command} does not decode: {error}")))?;
+            Ok(Some(StoredOutput::Stored(output)))
         })
     }
 }

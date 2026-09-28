@@ -23,6 +23,7 @@ use rusqlite::{Connection, Transaction, params};
 
 use super::StorageError;
 use super::blobs::UserBlobs;
+use super::command_outputs;
 use super::columns::{count, decode, json, to_json};
 use super::tree::blocks_of;
 
@@ -210,10 +211,11 @@ pub(crate) fn retire(
     Ok(Ok(changed))
 }
 
-/// Every blob the tree `connection` holds a reference to: its blocks', as
-/// the index names them, and its nodes' queued messages'.
+/// Every blob the conversation `connection` holds a reference to: its
+/// blocks', as the index names them, its nodes' queued messages', and its
+/// commands' outputs'.
 pub(crate) fn references(connection: &Connection) -> Result<BTreeSet<BlobRef>, StorageError> {
-    let mut references = BTreeSet::new();
+    let mut references: BTreeSet<BlobRef> = command_outputs::references(connection)?.into_iter().collect();
     let mut statement = connection.prepare("SELECT DISTINCT blob FROM media")?;
     let mut rows = statement.query([])?;
     while let Some(row) = rows.next()? {

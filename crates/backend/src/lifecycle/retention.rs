@@ -1,7 +1,7 @@
 //! The retention pass (`storage.md` § Retention): once a day, each user's
-//! shard retires the expired tool media of the user's conversations whose
-//! trees are not live, then collects the user's blobs that nothing
-//! references. A tree that is disposed has its conversation retired at once.
+//! shard removes the expired command outputs of the user's conversations
+//! and retires the expired tool media of those whose trees are not live,
+//! then collects the user's blobs that nothing references. A tree that is disposed has its conversation retired at once.
 //! The agent owns the rule (`runtime.md` § Retired tool media); the store
 //! applies it in one transaction per conversation, under the conversation's
 //! file gate, so no tree opens meanwhile.
@@ -10,6 +10,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::time::Duration;
 
+use demi_agent::store::COMMAND_OUTPUT_DAYS;
 use demi_agent::transcript::retire::{KEPT, Retirement};
 use demi_core::{BlobRef, Timestamp};
 use demi_gates::Reservation;
@@ -19,7 +20,7 @@ use jiff::SignedDuration;
 use crate::backend::Services;
 use crate::conversation::root_of;
 use crate::shard::{Shard, Shards};
-use crate::storage::media;
+use crate::storage::{command_outputs, media};
 
 /// How long an unreferenced blob, and its last use, must be old before a
 /// collection deletes it: longer than a medium that was put waits for the
@@ -74,6 +75,9 @@ impl Shard {
             // does what is left.
             if self.is_closing() {
                 return;
+            }
+            if let Err(error) = self.remove_command_outputs(&id).await {
+                tracing::warn!(conversation = %id, "command outputs not removed: {error}");
             }
             let retired = if self.agent().tree(&root_of(&id)).is_some() {
                 let now = self.services().clock.now();
@@ -150,6 +154,39 @@ impl Shard {
             .conversations
             .db(id)
             .call(move |connection| media::retire(connection, &blobs, retirement))
+            .await
+            .map_err(|error| error.to_string())?
+            .map_err(|refused| refused.to_string())
+    }
+
+    /// Marks removed the conversation's command outputs whose command ended
+    /// more than [`COMMAND_OUTPUT_DAYS`] days ago (`storage.md` § Removing
+    /// command outputs). No session holds these rows, so it needs neither
+    /// the conversation's file gate nor a stored tree. The database is read
+    /// first, and written only when some are due. Answers how many it
+    /// removed.
+    async fn remove_command_outputs(&self, id: &ConversationId) -> Result<usize, String> {
+        let services = self.services();
+        let now = services.clock.now();
+        // Thirty days before any time a clock gives is a time too.
+        let expired = now
+            .to_jiff()
+            .checked_sub(SignedDuration::from_hours(24 * COMMAND_OUTPUT_DAYS))
+            .map_err(|error| error.to_string())?;
+        let expired = Timestamp::truncate(expired);
+        let due = services
+            .conversations
+            .read(id, move |connection| command_outputs::expired(connection, expired))
+            .await
+            .map_err(|error| error.to_string())?;
+        if due != Some(true) {
+            return Ok(0);
+        }
+        let blobs = services.blobs.for_user(self.user());
+        services
+            .conversations
+            .db(id)
+            .call(move |connection| command_outputs::remove_expired(connection, &blobs, expired, now))
             .await
             .map_err(|error| error.to_string())?
             .map_err(|refused| refused.to_string())

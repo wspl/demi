@@ -150,12 +150,6 @@ pub struct KeptEdit {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct StreamView {
-    /// Where the whole stream is on the Host; absent when nothing beyond the
-    /// view is kept.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-    #[schemars(with = "String")]
-    #[garde(skip)]
-    pub path: Option<String>,
     /// Where the next look starts, in bytes: just after `delta`.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub offset: u64,
@@ -176,15 +170,12 @@ pub struct StreamView {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct OutputView {
-    /// The directory on the Host that holds the output files; absent when
-    /// none is kept.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-    #[schemars(with = "String")]
-    #[garde(skip)]
-    pub path: Option<String>,
     /// Where the next look starts, in bytes: just after `text`.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub offset: u64,
+    /// The line of the merged output that `text` starts in, from 1.
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub line: u64,
     /// The merged text since the last look.
     #[garde(skip)]
     pub text: String,

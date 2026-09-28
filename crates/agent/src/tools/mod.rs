@@ -19,8 +19,8 @@ use bytes::Bytes;
 use demi_core::{CommandId, ModelSelection, NodeId};
 use demi_provider::{RequestLimits, ToolDefinition};
 use demi_shell::{
-    CommandSet, CommandStatus, ExecRequest, Host, HostError, JobCaller, ObservationWindow,
-    PageFeed, ShellEnvironment, ShellError, ShellTarget,
+    CommandSet, CommandState, CommandStatus, ExecRequest, Host, HostError, JobCaller,
+    ObservationWindow, PageFeed, ShellEnvironment, ShellError, ShellTarget,
 };
 use futures_util::future::LocalBoxFuture;
 
@@ -320,18 +320,15 @@ struct Called<'a> {
     limits: RequestLimits,
 }
 
-/// A shell tool's outcome, with the preview budget of the call's model; a
-/// command whose result showed everything has its handle released.
+/// A shell tool's outcome. A result that reports the command's end releases
+/// its handle; `demi shell output` reads its output from then on.
 async fn finish(
     environment: &dyn ShellEnvironment,
     status: CommandStatus,
     called: Called<'_>,
 ) -> ToolOutcome {
-    let model = &called.model.model;
-    let budget = result::preview_budget_tokens(model.context_window);
-    let expose = result::handle_required(&status, budget);
-    let outcome = result::shell_outcome(&status, budget, expose, model, called.limits).await;
-    if !expose {
+    let outcome = result::shell_outcome(&status, &called.model.model, called.limits).await;
+    if !matches!(status.state, CommandState::Running { .. }) {
         // A command the environment already forgot has nothing to release.
         environment.release_command(&status.command_id).await;
     }

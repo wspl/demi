@@ -34,6 +34,7 @@ mod install;
 mod isolation;
 mod machines;
 mod native;
+mod outputs;
 mod panel;
 mod providers;
 mod real_cloud;

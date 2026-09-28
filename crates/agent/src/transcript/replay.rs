@@ -22,6 +22,9 @@ use crate::store::media::{Held, ModelView, missing_text};
 const HEAD_CHARS: usize = 8_000;
 const TAIL_CHARS: usize = 8_000;
 
+/// The longest text replay sends unchanged.
+pub(crate) const REPLAY_CHARS: usize = HEAD_CHARS + TAIL_CHARS;
+
 /// What a request carries of a transcript.
 pub(crate) struct Replay {
     /// The inference items of the blocks, in order.
@@ -356,7 +359,7 @@ pub(crate) fn agent_message_envelope(message: &AgentMessage) -> String {
 /// counts the scalar values left out.
 pub(crate) fn bound_text(text: &str) -> Cow<'_, str> {
     let total = text.chars().count();
-    if total <= HEAD_CHARS + TAIL_CHARS {
+    if total <= REPLAY_CHARS {
         return Cow::Borrowed(text);
     }
     let head_end = char_offset(text, HEAD_CHARS);
