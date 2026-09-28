@@ -39,5 +39,5 @@ pub use session::{
     AgentSession, CompactionConfig, ForkError, ModelSwitch, RetryPolicy, SessionConfig,
     TranscriptSnapshot,
 };
-pub use store::{AgentTreeStore, SessionStore};
+pub use store::{AgentTreeStore, SessionStore, StoredOutput};
 pub use tools::{EnvironmentScope, ShellEnvironmentFactory};

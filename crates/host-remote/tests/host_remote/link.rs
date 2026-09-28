@@ -13,22 +13,23 @@ use demi_command_service::protocol::{
     PackageDescriptor, host_target,
 };
 use demi_command_tree::NativeOperation;
-use demi_core::{CommandId, EditKind, EditedFile, KeptEdit, NodeId};
+use demi_core::{CommandId, EditKind, EditedFile, KeptEdit, NodeId, StreamKind};
 use demi_gates::{ActivityGate, Purpose};
 use demi_host_remote::{
     Admission, ArtifactResolver, CommandCatalog, EnvironmentOptions, JobOrigin, JobStart, LinkEnd,
-    LinkPolicy, RemoteHost, RemoteShellEnvironment, RetainEdits,
+    CommandKeeper, LinkPolicy, RemoteHost, RemoteShellEnvironment,
     testing::{CommandPolicy, TEST_DEVICE, TestDevice, TestLink},
 };
 use demi_runner_protocol::wire::{
     ArtifactOwner, FsOk, FsResult, Inbound, JOB_VIEW_BYTES, JobArtifactOwner, JobFileChange,
-    Outbound, OutputStream, STDIN_CHUNK_BYTES, Signal, VolumeName, WireBytes,
+    KeptRecord, Outbound, OutputLengths, OutputStream, STDIN_CHUNK_BYTES, Signal, VolumeName,
+    WireBytes, encode_record,
 };
 use demi_shell::{
     Call, CommandSet, CommandState, ExecRequest, GroupBuilder, HostError, HostErrorKind,
     HostProcess, JobCaller, LeafBuilder, ObservationWindow, PageState, PortError, Process,
-    ProcessEnd, RpcError, RpcInvocation, RpcPort, ShellEnvironment, ShellTarget, SpawnEnv,
-    SpawnRequest, StorageOp, StorageReply, TypedRpc,
+    OutputRecord, ProcessEnd, RpcError, RpcInvocation, RpcPort, Seen, ShellEnvironment,
+    ShellTarget, SpawnEnv, SpawnRequest, StorageOp, StorageReply, Streams, TypedRpc, WholeOutput,
     testing::{TestPages, test_command_context},
 };
 use futures_util::future::LocalBoxFuture;
@@ -88,6 +89,25 @@ fn exec(script: &str) -> ExecRequest {
         caller: caller(),
         tool_use_id: "call".into(),
     }
+}
+
+/// Answers the backend's read of `job`'s kept output with `kept`, as a
+/// runner streams it through the read's pipe.
+async fn answer_read(device: &TestDevice, link: &mut TestLink, job: &str, kept: Vec<u8>) {
+    let (id, output) = loop {
+        let message = tokio::time::timeout(Duration::from_secs(10), link.next())
+            .await
+            .expect("a read within the hang guard");
+        if let Inbound::JobRead { id, job_id, output } = message
+            && job_id == job
+        {
+            break (id, output);
+        }
+    };
+    link.send(Outbound::JobRead { id, error: None }).await;
+    let source = device.pipes().claim_source(&output.id, TEST_DEVICE).unwrap();
+    let body = futures_util::stream::iter([Ok::<_, std::io::Error>(bytes::Bytes::from(kept))]);
+    source.pump(body).await.unwrap();
 }
 
 /// Everything the backend sent that the driver passed on by now.
@@ -781,7 +801,7 @@ async fn a_watched_command_is_followed_and_its_pages_view_holds_what_the_runner_
     // The model's view holds only the stream's first bytes.
     let status = shell.status(&started.command_id).unwrap();
     assert!(status.stdout.tail.ends_with('x'));
-    assert_eq!(status.stdout.bytes, view_end);
+    assert_eq!((status.stdout.bytes, status.unreceived), (view_end + 17, 17));
 
     // A page that leaves makes the job unfollowed.
     pages.watch(false);
@@ -790,33 +810,40 @@ async fn a_watched_command_is_followed_and_its_pages_view_holds_what_the_runner_
         Inbound::JobFollow { follow: false, .. }
     ));
 
-    // The end adds the rest of each stream from its tail, once.
+    // The stream went beyond what the backend received: the end reads the
+    // Host's kept output once, shows its end anew, and lets the job go.
     let mut stream = b"first\n".to_vec();
     stream.extend(vec![b'x'; JOB_VIEW_BYTES - 6]);
     stream.extend(b"yyyyyyyyyynewest\nlast\n");
-    let tail = stream[stream.len() - JOB_VIEW_BYTES..].to_vec();
     link.send(Outbound::JobExit {
         job_id: job_id.clone(),
         exit_code: Some(0),
         signal: None,
         spawn_error: None,
         cwd: None,
-        output: Some(demi_runner_protocol::wire::RetainedOutput {
-            stdout_path: "/out/stdout.txt".into(),
-            stderr_path: "/out/stderr.txt".into(),
+        output: Some(OutputLengths {
             stdout_bytes: stream.len() as u64,
             stderr_bytes: 0,
-            stdout_tail: WireBytes(tail),
-            stderr_tail: WireBytes(Vec::new()),
         }),
         files: Vec::new(),
         files_truncated: false,
     })
     .await;
+    let record = KeptRecord::Output(OutputStream::Stdout, WireBytes(stream.clone()));
+    answer_read(&device, &mut link, &job_id, encode_record(&record).unwrap()).await;
     let end = pages.next().await;
     assert_eq!(end.state, PageState::Exited { exit_code: 0 });
     assert!(end.tail.ends_with("newest\nlast\n"), "{:?}", end.tail);
-    drain(&mut link).await;
+    let status = shell.status(&started.command_id).unwrap();
+    let whole = status.whole.expect("the whole output");
+    assert_eq!(whole.output.records(), [OutputRecord::Output(StreamKind::Stdout, stream.into())]);
+    assert!(
+        drain(&mut link)
+            .await
+            .iter()
+            .any(|message| matches!(message, Inbound::JobRelease { job_id: released } if *released == job_id)),
+        "the job is released once its output is read"
+    );
     assert_eq!(pages.drain(), []);
 
     // A command that starts while a page watches is followed at once.
@@ -866,7 +893,10 @@ async fn a_stream_that_grows_beyond_its_view_keeps_its_command_from_idling() {
     let status = shell.status(&started.command_id).unwrap();
     assert_eq!(status.idle_ms, 0);
     assert_eq!(status.stdout.tail.len(), 4096);
-    assert_eq!(status.stdout.bytes, JOB_VIEW_BYTES as u64);
+    assert_eq!(
+        (status.stdout.bytes, status.unreceived),
+        (JOB_VIEW_BYTES as u64 + 100, 100)
+    );
 }
 
 #[tokio::test(flavor = "local")]
@@ -908,10 +938,11 @@ async fn a_job_the_runner_could_not_run_ends_127_with_the_runners_reason() {
         "{:?}",
         status.state
     );
-    assert_eq!(
-        status.stderr.tail,
-        "the job was cancelled before it started\n"
-    );
+    let whole = status.whole.expect("the whole output");
+    let stderr = whole
+        .output
+        .text(Streams::Only(StreamKind::Stderr), None, Seen::default());
+    assert_eq!(stderr.bytes(), b"the job was cancelled before it started\n");
 }
 
 #[tokio::test(flavor = "local")]
@@ -966,7 +997,7 @@ struct Publisher {
     file: EditedFile,
 }
 
-impl RetainEdits for Publisher {
+impl CommandKeeper for Publisher {
     fn retain<'a>(
         &'a self,
         _: &'a CommandId,
@@ -979,6 +1010,10 @@ impl RetainEdits for Publisher {
             }
             Ok(vec![self.file.clone()])
         })
+    }
+
+    fn keep_output<'a>(&'a self, _: &'a CommandId, _: &'a WholeOutput) -> LocalBoxFuture<'a, ()> {
+        Box::pin(async {})
     }
 }
 
@@ -998,7 +1033,7 @@ async fn a_command_ends_once_its_edits_are_published_and_keeps_them() {
     let context: demi_host_remote::ContextSource =
         Rc::new(|| Box::pin(async { Ok(test_command_context()) }));
     let mut options = EnvironmentOptions::new(host, context, TestPages::new(false));
-    options.retain = Some(Rc::new(Publisher {
+    options.keeper = Some(Rc::new(Publisher {
         barrier: RefCell::new(Some(barrier)),
         file: file.clone(),
     }));

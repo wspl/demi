@@ -3,7 +3,7 @@
 //! (`runtime.md` § Tools), and the pages' view of each, which the
 //! environment reports to the node's feed (`runtime.md` § Live output).
 
-use std::{cell::RefCell, rc::Rc, time::Duration};
+use std::{cell::RefCell, rc::Rc, sync::Arc, time::Duration};
 
 use bytes::Bytes;
 use demi_core::{BinaryStdout, CommandId, EditedFile, NodeId, OutputView, ShellId, StreamView};
@@ -11,7 +11,7 @@ use futures_util::future::LocalBoxFuture;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
-use crate::{CommandRecord, HostError, PageView};
+use crate::{CommandRecord, HostError, PageView, Seen, WholeOutput};
 
 /// The longest an exec waits for its command before it returns the running
 /// command's handle.
@@ -44,6 +44,13 @@ pub trait ShellEnvironment {
 
     /// The command's status, with its output since the model last looked.
     fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError>;
+
+    /// The kept output of a command that runs, as its Host holds it now
+    /// (`runtime.md` § The whole output).
+    fn read_output<'a>(
+        &'a self,
+        command: &'a CommandId,
+    ) -> LocalBoxFuture<'a, Result<WholeOutput, ShellError>>;
 
     /// Writes to a running command's standard input.
     fn write<'a>(
@@ -153,12 +160,15 @@ pub struct JobCaller {
 pub struct CommandStatus {
     pub shell_id: ShellId,
     pub command_id: CommandId,
-    /// The directory on the Host that holds the command's output files;
-    /// none when nothing beyond the view is kept.
-    pub output_dir: Option<String>,
+    /// While the command runs: each stream's start, which the backend holds.
     pub stdout: StreamView,
     pub stderr: StreamView,
     pub output: OutputView,
+    /// While the command runs, the bytes its Host holds beyond what the
+    /// views hold (`runtime.md` § Results and previews).
+    pub unreceived: u64,
+    /// Once the command ended, its whole output.
+    pub whole: Option<WholeView>,
     pub running_ms: u64,
     pub idle_ms: u64,
     pub state: CommandState,
@@ -181,8 +191,17 @@ pub enum CommandState {
     Aborted,
 }
 
-/// A final stdout that was not text: its bytes, within the binary limit, and
-/// their description, which is what leaves the process.
+/// The whole output of a command that ended, and how many bytes of each
+/// stream the model had seen before this look; everything when a look gave
+/// the whole output already.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WholeView {
+    pub output: Arc<WholeOutput>,
+    pub seen: Seen,
+}
+
+/// A final stdout that was not text: its bytes when the output kept all of
+/// them within the binary limit, and their description.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BinaryOutput {
     pub bytes: Bytes,

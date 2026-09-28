@@ -11,6 +11,7 @@ pub mod connection;
 pub mod host;
 pub mod host_log;
 pub mod job_directories;
+pub mod kept_output;
 pub mod management;
 pub mod registration;
 pub mod net;

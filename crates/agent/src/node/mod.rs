@@ -10,7 +10,9 @@ use std::{rc::Rc, sync::Arc};
 use demi_core::{Clock, CommandId, ModelSelection, NodeId, QueuedMessage};
 use demi_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_provider::{ProviderRuntime, ToolDefinition};
-use demi_shell::{CommandSet, JobCaller, PageFeed, PageState, PageView};
+use demi_shell::{
+    CommandSet, JobCaller, PageFeed, PageState, PageView, ShellError, WholeOutput,
+};
 use futures_util::future::LocalBoxFuture;
 
 use crate::{
@@ -95,6 +97,17 @@ impl<H: AgentHarness> Node<H> {
     /// Whether one of the node's environments holds `command`.
     pub(crate) fn holds(&self, command: &CommandId) -> bool {
         self.runtime.environments.owning(command).is_some()
+    }
+
+    /// What the Host of `command`, which one of the node's environments
+    /// runs, has kept of its output so far.
+    pub(crate) async fn read_output(&self, command: &CommandId) -> Result<WholeOutput, ShellError> {
+        let environment = self
+            .runtime
+            .environments
+            .owning(command)
+            .ok_or_else(|| ShellError::UnknownCommand(command.clone()))?;
+        environment.read_output(command).await
     }
 
     /// The pages' view of each live command of the node (`runtime.md`

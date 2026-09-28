@@ -63,9 +63,8 @@ pub(crate) struct ToolInvocation {
     /// The input as the JSON value the provider supplied, or its text when
     /// that is not valid JSON; the tool validates it.
     pub(crate) input: Value,
-    /// The model of the request that asked for the call: its context window
-    /// sets a shell result's preview budget, and the media it accepts what a
-    /// result may attach.
+    /// The model of the request that asked for the call: the media it
+    /// accepts are what a result may attach.
     pub(crate) model: ModelSelection,
     /// What that model's vendor takes in one request, which bounds the video
     /// a result may attach.

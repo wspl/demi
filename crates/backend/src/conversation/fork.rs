@@ -17,6 +17,7 @@ use demi_web_api::ids::ConversationId;
 use super::root_of;
 use crate::shard::Shard;
 use crate::storage::StorageError;
+use crate::storage::command_outputs;
 use crate::storage::control::ControlService;
 use crate::storage::conversation_index::ConversationRecord;
 use crate::storage::conversations::ConversationStores;
@@ -138,6 +139,23 @@ impl Shard {
             .changes
             .fork(&source.id, &destination, &seed.transcript)
             .await?;
+        // So are the outputs of the commands its history names, which
+        // `demi shell output` reads there as in the source.
+        let commands = command_outputs::commands_of(&seed.transcript);
+        let rows = services
+            .conversations
+            .read(&source.id, move |connection| command_outputs::rows(connection, &commands))
+            .await?
+            .unwrap_or_default();
+        if !rows.is_empty() {
+            let blobs = services.blobs.for_user(self.user());
+            services
+                .conversations
+                .db(&destination)
+                .call(move |connection| command_outputs::insert(connection, &blobs, &rows))
+                .await?
+                .map_err(|refused| ForkRefusal::Failed(refused.to_string()))?;
+        }
         // The destination's root starts with the selection its record will
         // hold, the one the attempt recorded, which a retry repeats; a source
         // without one leaves the seed its own.

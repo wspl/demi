@@ -3,7 +3,7 @@
 //! whose `file` commands run in the `demi.builtin` package the workspace
 //! built.
 
-use demi_agent::testing::{field, preview};
+use demi_agent::testing::{field, shown_output};
 use demi_provider::testing::ScriptedRuntime;
 
 use crate::support::{Fixture, scripts, turn, within};
@@ -29,7 +29,7 @@ fn assert_exit(result: &str, code: &str) {
 fn assert_shows(result: &str, texts: &[&str]) {
     for text in texts {
         assert!(
-            preview(result).contains(text),
+            shown_output(result).contains(text),
             "{text:?} is not in:\n{result}"
         );
     }
@@ -61,25 +61,25 @@ async fn demi_file_reads_and_creates_files_in_and_beyond_the_workspace() {
         )
         .await;
         assert_exit(&results[0], "0");
-        assert_eq!(preview(&results[0]), "Created note.txt\n");
-        assert_eq!(preview(&results[1]), "hello world\n");
+        assert_eq!(shown_output(&results[0]), "Created note.txt\n");
+        assert_eq!(shown_output(&results[1]), "hello world\n");
         // An existing file stays as it is.
         assert_exit(&results[2], "1");
-        assert_eq!(preview(&results[3]), "Created src/foo.txt\nhello\n");
+        assert_eq!(shown_output(&results[3]), "Created src/foo.txt\nhello\n");
         for result in &results[4..6] {
             assert_exit(result, "0");
         }
-        // Binary stdout reaches the model as its size and where its bytes
-        // are, and pipes as bytes.
+        // Binary stdout reaches the model as its size and the command that
+        // saves its bytes, and pipes as bytes.
         assert_exit(&results[6], "0");
         assert_shows(
             &results[6],
             &[
-                "<binary stdout: 11 bytes; raw bytes at ",
-                "the raw bytes remain readable at ",
+                "<binary stdout: 11 bytes>\n",
+                "save it: demi shell output ",
             ],
         );
-        assert_eq!(preview(&results[7]).trim(), "11");
+        assert_eq!(shown_output(&results[7]).trim(), "11");
         assert_shows(
             &results[8],
             &[
@@ -141,32 +141,32 @@ async fn demi_file_edit_and_patch_change_what_they_name_whole_or_not_at_all() {
         let read = |name: &str| std::fs::read_to_string(format!("{}/{name}", fixture.workspace)).unwrap();
         assert_exit(&results[0], "1");
         assert_shows(&results[0], &["Multiple matches in file.txt; specify --occurrence or --context"]);
-        assert_eq!(preview(&results[1]), "Edited file.txt\none\ntwo\nchanged\n");
+        assert_eq!(shown_output(&results[1]), "Edited file.txt\none\ntwo\nchanged\n");
         assert_exit(&results[2], "1");
         assert_shows(
             &results[2],
             &["Context line 2 is ambiguous", "occurrence 1 at line 1", "occurrence 2 at line 3"],
         );
         assert_eq!(
-            preview(&results[3]),
+            shown_output(&results[3]),
             "target\nmiddle\ntarget\nEdited context.txt\ntarget\nmiddle\nchanged\n"
         );
         assert_exit(&results[4], "1");
         assert_shows(&results[4], &["Invalid command arguments: \"old\" is shorter than 1 character"]);
         assert_eq!(read("empty-old.txt"), "content\n");
 
-        assert_eq!(preview(&results[5]), "Created patch.txt\nPatched 1 file(s)\none\nthree\n");
-        assert_eq!(preview(&results[6]), "Created timed.txt\nPatched 1 file(s)\nnew\n");
+        assert_eq!(shown_output(&results[5]), "Created patch.txt\nPatched 1 file(s)\none\nthree\n");
+        assert_eq!(shown_output(&results[6]), "Created timed.txt\nPatched 1 file(s)\nnew\n");
         assert_eq!(
-            preview(&results[7]),
+            shown_output(&results[7]),
             "Created existing.txt\nPatched 2 file(s)\nchanged\nnew\nfile\n"
         );
-        assert_eq!(preview(&results[8]), "Created doomed.txt\nPatched 1 file(s)\ngone\n");
+        assert_eq!(shown_output(&results[8]), "Created doomed.txt\nPatched 1 file(s)\ngone\n");
         // One file that does not apply leaves every file as it was.
         assert_exit(&results[9], "1");
         assert_shows(&results[9], &["Patch does not apply to second.txt"]);
         assert_eq!(read("first.txt"), "first\n");
-        assert_eq!(preview(&results[10]), "Created inside.txt\nPatched 2 file(s)\nchanged\n");
+        assert_eq!(shown_output(&results[10]), "Created inside.txt\nPatched 2 file(s)\nchanged\n");
         assert_eq!(
             std::fs::read_to_string(format!("{}/outside.txt", fixture.runner.home())).unwrap(),
             "outside\n"

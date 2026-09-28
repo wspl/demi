@@ -3,7 +3,7 @@
 //! Host it used, and a command's handle answers only on the Host that runs
 //! it.
 
-use demi_agent::testing::preview;
+use demi_agent::testing::shown_output;
 use demi_agent_protocol::{ClientFrame, ServerFrame};
 use demi_provider::testing::{ScriptedRuntime, Turn};
 
@@ -31,7 +31,7 @@ async fn a_node_keeps_each_hosts_shell_and_a_handle_answers_only_on_its_host() {
         fixture.work_in("alice");
         turn(&mut client, "message-3", "Where is Alice's shell?").await;
         let results = recorded.borrow().clone();
-        let places: Vec<&str> = results.iter().map(|result| preview(result)).collect();
+        let places: Vec<String> = results.iter().map(|result| shown_output(result)).collect();
         assert_eq!(
             places,
             [

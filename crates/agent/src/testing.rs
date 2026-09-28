@@ -13,8 +13,8 @@ use std::{
 
 use demi_agent_protocol::{ClientContent, ClientFrame, ServerFrame};
 use demi_core::{
-    B64Bytes, BlobRef, Block, Clock, FileExtension, Model, ModelSelection, NodeId, QueuedMessage,
-    Timestamp, UserContentBlock,
+    B64Bytes, BlobRef, Block, Clock, CommandId, FileExtension, Model, ModelSelection, NodeId,
+    QueuedMessage, Timestamp, UserContentBlock,
 };
 use demi_provider::{ProviderRuntime, UserPart, testing::ScriptedRuntime};
 use futures_util::future::LocalBoxFuture;
@@ -24,7 +24,7 @@ use demi_shell::{Host, HostError, HostFs, HostIdentity, HostKey, HostProcess, Sh
 use crate::{
     AgentHarness, AgentServer, AgentTreeStore, Connection, ContentError, ContentResolver,
     EnvironmentScope, FileReference, FrameRx, IdSource, Outgoing, ProviderResolver, ResolveError,
-    ResolvedFiles, SessionStore, ShellEnvironmentFactory,
+    ResolvedFiles, SessionStore, ShellEnvironmentFactory, StoredOutput,
     store::{
         Checkpoint, CheckpointState, CheckpointUpdate, CommandStateSnapshot, CommitGuard,
         NodeClose, NodeRecord, StoreError,
@@ -172,12 +172,19 @@ pub fn field<'a>(result: &'a str, name: &str) -> &'a str {
 }
 
 /// The output a shell tool result shows, what the command wrote since the
-/// model's last look; empty when it shows none.
-pub fn preview(result: &str) -> &str {
-    let Some((_, preview)) = result.split_once("\npreview:\n") else {
-        return "";
+/// model's last look, each line with its newline; empty when it shows none.
+/// A running command's lines after it, its newest output's line and its
+/// next step, are not part of it.
+pub fn shown_output(result: &str) -> String {
+    let Some((_, output)) = result.split_once("\noutput:\n") else {
+        return String::new();
     };
-    preview.split("\nnext: ").next().unwrap_or(preview)
+    let output = output.split("\nnext: ").next().unwrap_or(output);
+    let output = match output.find(" bytes not shown so far; the newest: ") {
+        Some(at) => output[..at].rsplit_once("\n[... ").map_or("", |(shown, _)| shown),
+        None => output,
+    };
+    format!("{output}\n")
 }
 
 /// Makes one provider's runtimes.
@@ -341,6 +348,8 @@ struct Stored {
     save_hold: Option<Rc<Hold>>,
     /// The holds on reads of a node's children, by the node.
     children_holds: BTreeMap<NodeId, Rc<Hold>>,
+    /// What the product's keeper stored of each ended command's output.
+    outputs: BTreeMap<CommandId, StoredOutput>,
 }
 
 /// Calls waiting until a test lets them through.
@@ -416,6 +425,12 @@ impl MemoryTreeStore {
             stored: Rc::new(RefCell::new(self.stored.borrow().clone())),
             blobs: self.blobs.clone(),
         })
+    }
+
+    /// Records what the conversation holds of `command`'s output, as the
+    /// product's keeper does when the command ends.
+    pub fn keep_output(&self, command: CommandId, output: StoredOutput) {
+        self.stored.borrow_mut().outputs.insert(command, output);
     }
 
     /// Every save so far, in order, with the node it was for.
@@ -699,6 +714,13 @@ impl AgentTreeStore for MemoryTreeStore {
             }
             Ok(())
         })
+    }
+
+    fn command_output<'a>(
+        &'a self,
+        command: &'a CommandId,
+    ) -> LocalBoxFuture<'a, Result<Option<StoredOutput>, StoreError>> {
+        Box::pin(async move { Ok(self.stored.borrow().outputs.get(command).cloned()) })
     }
 }
 
