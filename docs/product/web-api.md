@@ -425,8 +425,10 @@ and its log is read when it runs again, since the log outlives a restart.
 
 ## Exposes
 
-An expose record carries `id`, `deviceId`, `address`, `url`, `createdAt`
-and `expiresAt`. `GET /api/exposes` returns `{ exposes }`, the caller's
+An expose record carries `id`, `number` (its number among the caller's
+exposes, which the commands use; the routes take the `id`), `deviceId`,
+`address`, `url`, `createdAt` and `expiresAt`. `GET /api/exposes` returns
+`{ exposes }`, the caller's
 exposes soonest expiry first. `POST /api/exposes` takes `{ deviceId, address }`
 for a caller-owned, connected device and returns 201 with `{ expose }`; a
 device that is not the caller's answers 404 `device_not_found`, a device that
