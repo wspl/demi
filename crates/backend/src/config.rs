@@ -57,8 +57,8 @@ pub struct Config {
     #[arg(long, env = "DEMI_NATIVE_CONFIG", value_name = "DEMI_NATIVE_CONFIG")]
     pub native_config: PathBuf,
     /// A JSON file that puts the object store in an S3 bucket
-    #[arg(long, env = "DEMI_CHANGE_STORE_CONFIG", value_name = "DEMI_CHANGE_STORE_CONFIG")]
-    pub change_store_config: Option<PathBuf>,
+    #[arg(long, env = "DEMI_OBJECT_STORE_CONFIG", value_name = "DEMI_OBJECT_STORE_CONFIG")]
+    pub object_store_config: Option<PathBuf>,
     /// The instance secret as 64 hexadecimal digits [default: generated into the data directory]
     #[arg(
         long,
@@ -130,7 +130,7 @@ impl Config {
         let public_url = crate::runner::install::backend_url(&self.public_url).map_err(|_| ConfigError::PublicUrl)?;
         config.public_url = Some(public_url);
         config.runner_releases = self.runner_release_dir.clone();
-        config.change_store = self.change_store_config.clone();
+        config.object_store = self.object_store_config.clone();
         config.claude_releases = self.claude_releases_url.clone();
         Ok(config)
     }
@@ -161,7 +161,7 @@ pub struct BackendConfig {
     pub runner_releases: Option<PathBuf>,
     /// The JSON file that puts the object store in an S3 bucket; without it,
     /// the data directory holds it.
-    pub change_store: Option<PathBuf>,
+    pub object_store: Option<PathBuf>,
     /// The instance secret; without it, the one in the data directory, which
     /// the first start creates.
     pub instance_secret: Option<InstanceSecret>,
@@ -389,7 +389,7 @@ impl BackendConfig {
             public_url: None,
             expose_domain: None,
             runner_releases: None,
-            change_store: None,
+            object_store: None,
             instance_secret: None,
             account_mail: None,
             clock: Arc::new(SystemClock),

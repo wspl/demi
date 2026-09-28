@@ -3,7 +3,8 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Play } from '@lucide/vue'
 import ThinkingBlock from '@demicodes/web-ui/agent/blocks/ThinkingBlock.vue'
 import AgentReceiptBlock from '@demicodes/web-ui/agent/blocks/AgentReceiptBlock.vue'
-import { agentReceiptMessages } from '../fixtures/blocks'
+import { agentReceiptMessages, editedFile } from '../fixtures/blocks'
+import { readGalleryEdit } from '../fixtures/blobs'
 import ErrorBlock from '@demicodes/web-ui/agent/blocks/ErrorBlock.vue'
 import ToolShellBlock from '@demicodes/web-ui/agent/blocks/ToolShellBlock.vue'
 import ToolCallBlock from '@demicodes/web-ui/agent/blocks/ToolCallBlock.vue'
@@ -294,26 +295,20 @@ const editWork = useWorkTabs('change')
 // The gallery's own browser stands behind every specimen's `browser` kind; this one lists its tabs.
 void editWork.browser.refresh()
 provideEditSelection(editWork.selectEdit)
-async function readCallChange(commandId: string, path: string, edit: number) {
-  return {
-    original: `// ${path}\nconst cookie = '${edit === 0 ? 'sid' : 'session'}'\n`,
-    modified: `// ${path}\nconst cookie = '${edit === 0 ? 'session' : 'session-v2'}' // ${commandId}\n`,
-  }
-}
 const changeUncommitted = useChangeTab('uncommitted', 'src/auth/cookie.ts', { uncommitted: workspace.changes, conversation: null })
 const changePicked = useChangeTab('conversation', 'src/auth/cookie.ts', {
   uncommitted: workspace.changes,
   conversation: callChangeSource({
     commandId: 'gallery-cookie-edit',
-    file: { path: 'src/auth/cookie.ts', kind: 'modified', added: 1, removed: 1, edits: [{ kept: true }] },
-  }, readCallChange),
+    file: editedFile({ path: 'src/auth/cookie.ts', kind: 'modified', added: 1, removed: 1 }),
+  }, readGalleryEdit),
 })
 const changeDocument = useChangeTab('conversation', 'README.md', {
   uncommitted: workspace.changes,
   conversation: callChangeSource({
     commandId: 'gallery-readme-edit',
-    file: { path: 'README.md', kind: 'modified', added: 0, removed: 1, edits: [{ kept: true }] },
-  }, (_commandId, path, _edit, signal) => workspace.changes.read(path, signal)),
+    file: editedFile({ path: 'README.md', kind: 'modified', added: 0, removed: 1 }),
+  }, (_copies, signal) => workspace.changes.read('README.md', signal)),
 })
 const changeEmpty = useChangeTab('conversation', null, { conversation: null, uncommitted: workspace.changes })
 const changeNoRepository = useChangeTab('uncommitted', null, {
@@ -1367,7 +1362,7 @@ onBeforeUnmount(() => {
       <div class="h-[480px] overflow-hidden rounded-lg border border-line">
         <WorkPanel
           :views="editWork.views.value" :panel="editWork.panel.value" :kinds="editWork.kinds"
-          :workspace="workspace" :read-call-change="readCallChange"
+          :workspace="workspace" :read-call-change="readGalleryEdit"
           @select="editWork.select" @add-tab="editWork.add" @update-tab="editWork.update" @close-tabs="editWork.closeTabs" @show-change="editWork.showChange" @open="editWork.open"
           @back="editWork.back" @forward="editWork.forward"
         />
@@ -1740,7 +1735,7 @@ onBeforeUnmount(() => {
               </ChatSession>
               <template #aside>
                 <WorkPanel
-                  :read-call-change="readCallChange"
+                  :read-call-change="readGalleryEdit"
                   :views="panelWork.views.value" :panel="panelWork.panel.value" :kinds="panelWork.kinds"
                   :workspace="workspace"
                   @select="panelWork.select"

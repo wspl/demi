@@ -15,10 +15,10 @@ use demi_agent::{EnvironmentScope, ShellEnvironmentFactory};
 use demi_command_service::protocol::CommandCaller;
 use demi_host_remote::{
     CommandCatalog, CommandKeeper, ContextSource, EnvironmentOptions, HostAccess, RemoteHost, RemoteShellEnvironment,
-    encode_output,
+    edited_file, encode_output,
 };
 use demi_runner_protocol::wire::JobFileChange;
-use demi_core::{Clock, CommandId, EditedFile, ShellId};
+use demi_core::{Clock, CommandId, EditCopies, EditedFile, ShellId};
 use demi_shell::{
     CommandStatus, ExecRequest, Host, HostError, HostErrorKind, HostFs, HostKey, PageView, ShellEnvironment,
     ShellError, WholeOutput,
@@ -31,10 +31,10 @@ use super::conversation_of;
 use super::host_access::{HostAccessError, Refusal};
 use crate::runner::command_context::command_context;
 use crate::runner::device_of;
+use crate::runner::files::text_of;
 use crate::runner::router::CommandRegistration;
 use crate::shard::Shard;
 use crate::storage::blobs::UserBlobs;
-use crate::storage::changes::ChangeStore;
 use crate::storage::command_outputs::{self, CommandOutput, OutputRow};
 use crate::storage::conversations::ConversationDb;
 
@@ -143,7 +143,6 @@ impl ShellEnvironmentFactory<RemoteHost> for ShardShellEnvironments {
             }));
             let services = shard.services();
             options.keeper = Some(Rc::new(Keeper {
-                changes: services.changes.clone(),
                 conversation: conversation.clone(),
                 host: host.clone(),
                 db: services.conversations.db(&conversation),
@@ -192,13 +191,11 @@ impl HostAccess for JobAccess {
 }
 
 /// Keeps what each job's commands leave when they end, before they read as
-/// ended: the copies of their edits in the change store (`edit-tracking.md`
-/// § The change store), read from the job's Host inside its host access,
-/// and their whole outputs, each a blob of the conversation owner's with
-/// its record in the conversation's database (`storage.md` § Command
-/// outputs).
+/// ended, as blobs of the conversation owner's: the copies of their edits
+/// (`edit-tracking.md` § Edit copies), read from the job's Host inside its
+/// host access, and their whole outputs, each with its record in the
+/// conversation's database (`storage.md` § Command outputs).
 struct Keeper {
-    changes: ChangeStore,
     conversation: ConversationId,
     host: Rc<RemoteHost>,
     db: ConversationDb,
@@ -220,17 +217,55 @@ impl Keeper {
             .await
             .map_err(|error| error.to_string())
     }
+
+    /// Stores an edit segment's two sides as blobs: the Host's copy before
+    /// it, empty for a segment that created the file, and its copy after
+    /// it. Both must be text the change view can show.
+    async fn store_copies(&self, original: Option<&str>, modified: &str) -> Result<EditCopies, String> {
+        let before = match original {
+            Some(path) => self.text_copy(path).await?,
+            None => String::new(),
+        };
+        let after = self.text_copy(modified).await?;
+        let put = async |text: String| self.blobs.put(Bytes::from(text)).await.map_err(|error| error.to_string());
+        Ok(EditCopies {
+            original: put(before).await?,
+            modified: put(after).await?,
+        })
+    }
+
+    /// The Host's copy at `path`, when it is text within the edit limits;
+    /// the runner already keeps no other.
+    async fn text_copy(&self, path: &str) -> Result<String, String> {
+        let bytes = HostFs::read_file(&*self.host, path)
+            .await
+            .map_err(|error| error.to_string())?;
+        text_of(bytes).map_err(|refusal| refusal.to_string())
+    }
 }
 
 impl CommandKeeper for Keeper {
-    fn retain<'a>(
-        &'a self,
-        command: &'a CommandId,
-        files: &'a [JobFileChange],
-    ) -> LocalBoxFuture<'a, Result<Vec<EditedFile>, String>> {
+    fn retain<'a>(&'a self, command: &'a CommandId, files: &'a [JobFileChange]) -> LocalBoxFuture<'a, Vec<EditedFile>> {
         Box::pin(async move {
-            let read = async |path: &str| HostFs::read_file(&*self.host, path).await;
-            Ok(self.changes.retain(&self.conversation, command, read, files).await)
+            let mut retained = Vec::with_capacity(files.len());
+            for file in files {
+                let mut copies = Vec::with_capacity(file.edits.len());
+                for segment in &file.edits {
+                    let Some(modified) = &segment.modified else {
+                        copies.push(None);
+                        continue;
+                    };
+                    let stored = self.store_copies(segment.original.as_deref(), modified).await;
+                    if let Err(error) = &stored {
+                        // The file's record stays in the list without this
+                        // segment's copies.
+                        tracing::warn!(conversation = %self.conversation, %command, path = %file.path, "an edit's copies were not stored: {error}");
+                    }
+                    copies.push(stored.ok());
+                }
+                retained.push(edited_file(file, |segment| copies[segment].take()));
+            }
+            retained
         })
     }
 

@@ -24,7 +24,6 @@ use crate::support::{Harness, Paired, Session, TestBackend};
 /// The conversation ids the scenarios create.
 const FIRST: &str = "1e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a01";
 const SECOND: &str = "2e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a02";
-const FORKED: &str = "3e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a03";
 
 /// What opens each context block the model reads once the conversation's
 /// execution context changed.
@@ -387,6 +386,23 @@ async fn kept_files(backend: &TestBackend, master: &Session, id: &str) -> Vec<(S
         .collect()
 }
 
+/// The two sides of `file`'s first edit segment, read from the blob route
+/// as the change view reads them.
+pub(crate) async fn edit_sides(backend: &TestBackend, master: &Session, file: &EditedFile) -> (String, String) {
+    let copies = file.edits[0]
+        .copies
+        .as_ref()
+        .unwrap_or_else(|| panic!("the edit has no copies: {file:?}"));
+    let mut sides = Vec::new();
+    for blob in [&copies.original, &copies.modified] {
+        let answer = backend.get(&format!("/api/blobs/{blob}"), Some(master)).await;
+        assert_eq!(answer.status, StatusCode::OK, "{}", String::from_utf8_lossy(&answer.body));
+        sides.push(String::from_utf8(answer.body).unwrap());
+    }
+    let modified = sides.pop().unwrap();
+    (sides.pop().unwrap(), modified)
+}
+
 // Several seconds: a real device installs the builtin package and runs the
 // commands whose edits are kept, and its runner stops.
 #[tokio::test]
@@ -405,8 +421,10 @@ async fn a_commands_edits_are_kept_as_its_call_history_and_outlive_its_runner() 
     let first = kept_files(&backend, &master, FIRST).await.remove(0);
     let names: Vec<&str> = first.1.iter().map(|file| file.path.rsplit('/').next().unwrap()).collect();
     assert_eq!(names, ["note.txt", "native.txt", "asset.bin"]);
-    // A binary file's edit is listed and not kept.
-    assert!(!first.1[2].edits[0].kept);
+    // A binary file's edit is listed without copies.
+    assert_eq!(first.1[2].edits[0].copies, None);
+    let note = edit_sides(&backend, &master, &first.1[0]).await;
+    assert_eq!(note, (String::new(), "before\n".to_owned()));
 
     let patch = "demi file patch <<'PATCH'\n--- a/note.txt\n+++ b/note.txt\n@@ -1 +1 @@\n-before\n+after\n--- a/native.txt\n+++ b/native.txt\n@@ -1 +1 @@\n-created\n+patched\nPATCH";
     work.turn(vec![shell("patch", patch, 10_000), say("Patched both files.")]).await;
@@ -414,53 +432,17 @@ async fn a_commands_edits_are_kept_as_its_call_history_and_outlive_its_runner() 
     let second = calls.last().unwrap().clone();
     let kinds: Vec<String> = second.1.iter().map(|file| serde_json::to_value(file.kind).unwrap().as_str().unwrap().to_owned()).collect();
     assert_eq!(kinds, ["modified", "modified"]);
-    let read = |conversation: &str, command: &str, path: &str| {
-        let query = url::form_urlencoded::Serializer::new(String::new())
-            .append_pair("path", path)
-            .append_pair("edit", "0")
-            .finish();
-        let route = format!("/api/conversations/{conversation}/commands/{command}/changes/file?{query}");
-        let backend = &backend;
-        let master = &master;
-        async move { backend.get(&route, Some(master)).await }
-    };
-    let sides = |answer: crate::support::Answer| {
-        assert_eq!(answer.status, StatusCode::OK, "{}", String::from_utf8_lossy(&answer.body));
-        let sides: Value = answer.json();
-        (sides["original"].as_str().unwrap().to_owned(), sides["modified"].as_str().unwrap().to_owned())
-    };
-    let note = sides(read(FIRST, &first.0, &first.1[0].path).await);
-    assert_eq!(note, (String::new(), "before\n".to_owned()));
-    let patched = sides(read(FIRST, &second.0, &second.1[0].path).await);
+    let patched = edit_sides(&backend, &master, &second.1[0]).await;
     assert_eq!(patched, ("before\n".to_owned(), "after\n".to_owned()));
 
-    // A Fork keeps them under its own id.
-    let last_text = transcript(&backend, &master, FIRST)
-        .await
-        .blocks
-        .into_iter()
-        .rev()
-        .find_map(|block| match block {
-            Block::Text(text) => Some(text.id.to_string()),
-            _ => None,
-        })
-        .unwrap();
-    let forked = backend
-        .post(&format!("/api/conversations/{FIRST}/fork"), Some(&master), json!({ "id": FORKED, "blockId": last_text }))
-        .await;
-    assert_eq!(forked.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&forked.body));
-    assert_eq!(sides(read(FORKED, &first.0, &first.1[0].path).await), note);
-
-    // Neither the archive nor the runner's absence takes them away; a binary
-    // edit has none to show.
+    // Neither the archive nor the runner's absence takes them away.
     let archived = backend
         .patch(&format!("/api/conversations/{FIRST}"), &master, json!({ "archived": true }))
         .await;
     assert_eq!(archived.status, StatusCode::OK, "{}", String::from_utf8_lossy(&archived.body));
     paired.runner.kill().await;
-    let native = sides(read(FIRST, &second.0, &second.1[1].path).await);
+    let native = edit_sides(&backend, &master, &second.1[1]).await;
     assert_eq!(native, ("created\n".to_owned(), "patched\n".to_owned()));
-    assert_eq!(read(FIRST, &first.0, &first.1[2].path).await.status, StatusCode::NOT_FOUND);
     backend.close().await;
 }
 

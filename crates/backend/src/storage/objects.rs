@@ -1,8 +1,7 @@
-//! The object store blobs and the change store share (`storage.md` § The
-//! object store): the data directory of a single-backend deployment, or the
-//! S3 bucket `DEMI_CHANGE_STORE_CONFIG` names, reached through
-//! `object_store` either way, so a blob is the object `blobs/<user>/<sha256>`
-//! and the change store's objects are under `changes/`. S3's credentials
+//! The object store that holds the blobs (`storage.md` § The object store):
+//! the data directory of a single-backend deployment, or the S3 bucket
+//! `DEMI_OBJECT_STORE_CONFIG` names, reached through `object_store` either
+//! way, so a blob is the object `blobs/<user>/<sha256>`. S3's credentials
 //! come from the standard AWS environment variables, a web identity token,
 //! or container or instance metadata; no profile file is read.
 
@@ -17,7 +16,7 @@ use url::Url;
 
 use super::StorageError;
 
-/// Where `DEMI_CHANGE_STORE_CONFIG` puts the object store: an S3 bucket.
+/// Where `DEMI_OBJECT_STORE_CONFIG` puts the object store: an S3 bucket.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct S3Config {
@@ -363,13 +362,6 @@ pub(crate) mod fake_s3 {
                 .unwrap()
         }
 
-        /// The keys the bucket holds, sorted.
-        pub(crate) fn keys(&self) -> Vec<String> {
-            let mut keys: Vec<String> = self.objects.lock().unwrap().objects.keys().cloned().collect();
-            keys.sort();
-            keys
-        }
-
         /// The keys of the objects put, in the order they were put.
         pub(crate) fn written(&self) -> Vec<String> {
             self.objects.lock().unwrap().written.clone()
@@ -444,52 +436,25 @@ mod tests {
     use std::sync::Arc;
 
     use bytes::Bytes;
-    use demi_core::CommandId;
-    use demi_web_api::ids::{ConversationId, UserId};
+    use demi_web_api::ids::UserId;
 
     use super::fake_s3::FakeS3;
     use object_store::ObjectStore;
 
     use super::*;
     use crate::storage::blobs::BlobStores;
-    use crate::storage::changes::ChangeStore;
 
     #[tokio::test]
-    async fn an_s3_bucket_holds_the_blobs_once_and_the_change_store_like_the_data_directory() {
+    async fn an_s3_bucket_holds_each_blob_once_under_its_users_namespace() {
         let fake = FakeS3::start().await;
         let objects: Arc<dyn ObjectStore> = Arc::new(fake.client());
-        let blobs = BlobStores::new(objects.clone(), Arc::new(demi_core::SystemClock)).for_user(&UserId::try_from("ana").unwrap());
+        let blobs = BlobStores::new(objects, Arc::new(demi_core::SystemClock)).for_user(&UserId::try_from("ana").unwrap());
         let first = blobs.put(Bytes::from_static(b"picture")).await.unwrap();
         // The same bytes again are the same blob, created once.
         let again = blobs.put(Bytes::from_static(b"picture")).await.unwrap();
         assert_eq!(first, again);
         assert_eq!(blobs.get(&first).await.unwrap(), Some(Bytes::from_static(b"picture")));
-
-        let changes = ChangeStore::new(objects);
-        let conversation = ConversationId::try_from("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01").unwrap();
-        let command = CommandId::try_from("command-1").unwrap();
-        let change = demi_runner_protocol::wire::JobFileChange {
-            path: "/work/notes.md".into(),
-            kind: demi_command_service::protocol::EditKind::Added,
-            edits: vec![demi_command_service::protocol::EditCopies {
-                original: None,
-                modified: Some("copy".into()),
-            }],
-            added: 1,
-            removed: 0,
-        };
-        let read = async |_: &str| Ok(Bytes::from_static(b"fresh\n"));
-        let files = changes.retain(&conversation, &command, read, &[change]).await;
-        assert!(files[0].edits[0].kept);
-        let sides = changes
-            .read(&conversation, &command, &files, "/work/notes.md", 0)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!((sides.original.as_str(), sides.modified.as_str()), ("", "fresh\n"));
-        let keys = fake.keys();
-        assert!(keys.iter().any(|key| key.starts_with("blobs/ana/")), "{keys:?}");
-        assert!(keys.contains(&format!("changes/{conversation}/command-1/0/0.modified")), "{keys:?}");
+        assert_eq!(fake.written(), [format!("blobs/ana/{first}")]);
     }
 
     #[tokio::test]

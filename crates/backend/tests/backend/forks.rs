@@ -1,12 +1,13 @@
 //! Conversation Fork (`conversation-fork.md` § Backend creation and retries;
 //! `web-api.md` § Conversation creation and Fork): a new conversation with the
 //! source's history through one of its completed assistant texts, and the
-//! command storage and edits of that history, created once per destination
-//! id, while the source runs on and after the backend no longer holds the
-//! source. No test calls a real model.
+//! command storage, edits and command outputs of that history, created once
+//! per destination id, while the source runs on and after the backend no
+//! longer holds the source. The edits' blobs are the source's: a Fork copies
+//! no bytes. No test calls a real model.
 
+use demi_backend::ObjectCounts;
 use demi_core::{Block, BlockId, ToolView};
-use demi_web_api::files::ChangeSides;
 use demi_provider::testing::{MockResponse, MockVendor};
 use demi_web_api::conversations::{ConversationStatus, ForkAnswer};
 use demi_web_api::error::ErrorCode;
@@ -18,6 +19,7 @@ use crate::conversations::{
     tool_result, tool_use, transcript,
 };
 use crate::support::{Harness, MASTER_EMAIL, MASTER_PASSWORD};
+use crate::work::edit_sides;
 
 /// A destination id no test takes otherwise.
 const FOURTH: &str = "9e8d7c6b-5a49-4382-a716-f5e4d3c2b1a0";
@@ -172,9 +174,10 @@ async fn a_fork_of_a_conversation_the_backend_no_longer_holds_reads_its_stored_h
 // Several seconds: a real device installs the builtin package for the command
 // whose edits the Fork keeps.
 #[tokio::test]
-async fn a_fork_keeps_the_edits_its_history_made_in_a_copy_of_its_own() {
+async fn a_fork_reads_the_edits_its_history_made_from_the_same_blobs_and_writes_no_object() {
+    let counts = ObjectCounts::default();
     let vendor = MockVendor::start().await;
-    let harness = Harness::new().with_builtin_package();
+    let harness = Harness::new().with_builtin_package().with_object_counts(&counts);
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
@@ -192,35 +195,26 @@ async fn a_fork_keeps_the_edits_its_history_made_in_a_copy_of_its_own() {
     vendor.respond(answer(&["Written."], 1, 1));
     source.chat("m1", "Write the notes").await;
     let blocks = transcript(&backend, &master, FIRST).await.blocks;
-    let Some(Block::ToolCall(call)) = blocks.get(1) else {
-        panic!("{blocks:?}");
+    let files = |blocks: &[Block]| match blocks.get(1) {
+        Some(Block::ToolCall(call)) => match &call.view {
+            Some(ToolView::Shell(view)) => view.files.clone(),
+            view => panic!("{view:?}"),
+        },
+        block => panic!("{block:?}"),
     };
-    let Some(ToolView::Shell(view)) = &call.view else {
-        panic!("{call:?}");
-    };
-    let files = view.files.clone().unwrap_or_else(|| panic!("the command lists what it changed: {view:?}"));
-    assert!(files[0].edits[0].kept, "{files:?}");
-    let query = url::form_urlencoded::Serializer::new(String::new())
-        .extend_pairs([("path", files[0].path.as_str()), ("edit", "0")])
-        .finish();
-    let edit = |id: &str| format!("/api/conversations/{id}/commands/{}/changes/file?{query}", view.command_id);
-    let kept = backend.get(&edit(FIRST), Some(&master)).await;
-    assert_eq!(kept.status, StatusCode::OK, "{}", String::from_utf8_lossy(&kept.body));
-    let sides = kept.json::<ChangeSides>();
-    assert_eq!((sides.original.as_str(), sides.modified.as_str()), ("", "hello\n"));
+    let edited = files(&blocks).expect("the command lists what it changed");
+    assert_eq!(edit_sides(&backend, &master, &edited[0]).await, (String::new(), "hello\n".to_owned()));
 
     let text = texts(&blocks).last().unwrap().clone();
+    let before = counts.tally();
     let created = backend
         .post(&format!("/api/conversations/{FIRST}/fork"), Some(&master), fork(SECOND, &text))
         .await;
     assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
-    // The destination reads the edit from its own copy, which outlives the
-    // source's objects.
-    std::fs::remove_dir_all(harness.data_dir().join("changes").join(FIRST)).unwrap();
-    assert_eq!(backend.get(&edit(FIRST), Some(&master)).await.status, StatusCode::NOT_FOUND);
-    let copied = backend.get(&edit(SECOND), Some(&master)).await;
-    assert_eq!(copied.status, StatusCode::OK, "{}", String::from_utf8_lossy(&copied.body));
-    assert_eq!(copied.json::<ChangeSides>(), sides);
+    // The destination's call names the same blobs, and the Fork put none.
+    assert_eq!(counts.tally().since(&before).puts, 0);
+    let copied = transcript(&backend, &master, SECOND).await.blocks;
+    assert_eq!(files(&copied), Some(edited));
     backend.close().await;
 }
 

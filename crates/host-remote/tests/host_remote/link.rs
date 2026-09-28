@@ -13,7 +13,7 @@ use demi_command_service::protocol::{
     PackageDescriptor, host_target,
 };
 use demi_command_tree::NativeOperation;
-use demi_core::{CommandId, EditKind, EditedFile, KeptEdit, NodeId, StreamKind};
+use demi_core::{BlobRef, CommandId, EditKind, EditSegment, EditedFile, NodeId, StreamKind};
 use demi_gates::{ActivityGate, Purpose};
 use demi_host_remote::{
     Admission, ArtifactResolver, CommandCatalog, EnvironmentOptions, JobOrigin, JobStart, LinkEnd,
@@ -998,17 +998,13 @@ struct Publisher {
 }
 
 impl CommandKeeper for Publisher {
-    fn retain<'a>(
-        &'a self,
-        _: &'a CommandId,
-        _: &'a [JobFileChange],
-    ) -> LocalBoxFuture<'a, Result<Vec<EditedFile>, String>> {
+    fn retain<'a>(&'a self, _: &'a CommandId, _: &'a [JobFileChange]) -> LocalBoxFuture<'a, Vec<EditedFile>> {
         let barrier = self.barrier.borrow_mut().take();
         Box::pin(async move {
             if let Some(barrier) = barrier {
                 let _ = barrier.await;
             }
-            Ok(vec![self.file.clone()])
+            vec![self.file.clone()]
         })
     }
 
@@ -1027,7 +1023,12 @@ async fn a_command_ends_once_its_edits_are_published_and_keeps_them() {
         kind: EditKind::Modified,
         added: 1,
         removed: 1,
-        edits: vec![KeptEdit { kept: true }],
+        edits: vec![EditSegment {
+            copies: Some(demi_core::EditCopies {
+                original: BlobRef::of(b"before\n"),
+                modified: BlobRef::of(b"after\n"),
+            }),
+        }],
     };
     let (publish, barrier) = tokio::sync::oneshot::channel();
     let context: demi_host_remote::ContextSource =

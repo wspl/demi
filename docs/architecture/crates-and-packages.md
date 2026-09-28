@@ -485,7 +485,9 @@ Each crate implements the provider contract for one vendor family.
     backend answers (`ContentResolver`);
   - the media rules (`store::media`): a medium stored once when it enters a
     transcript, the bytes a session holds for its requests and the model's
-    view of them, over the `BlobStore` its tree store gives it; the fitting of
+    view of them, over the `BlobStore` its tree store gives it, and the blobs
+    each block references, media and edit copies, which a store indexes for
+    [retention](../backend/storage.md#retention); the fitting of
     an image as it enters, with the `image` crate (`images`,
     [Images in the transcript](../agent/runtime.md#images-in-the-transcript));
     the blocks an upload becomes with its recorded media type and opening
