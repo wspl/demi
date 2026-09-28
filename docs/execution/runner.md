@@ -575,7 +575,8 @@ bytes start in the stream (`offset`):
   (`JOB_GROWTH_INTERVAL`), without bytes, whose `offset` is the stream's
   length. The model's idle time counts from it
   ([Results and previews](../agent/runtime.md#results-and-previews)).
-- `job_exit` gives each stream's length and its last 32 KiB.
+- `job_exit` gives each stream's length. When a stream went beyond what the
+  backend received, the backend reads the rest from the kept output, below.
 
 What goes beyond the first 32 KiB never slows the job: a message that finds
 the connection's queue full waits for the stream's next interval, and then
