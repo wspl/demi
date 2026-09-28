@@ -59,7 +59,7 @@ over the manager's Unix socket.
 | `managed` | Cloud policy and capacity, machine transitions, reset and recovery, the machine manager's client | [Managed hosts](../cloud/managed-hosts.md) |
 | `expose` | Expose records and their lifetime, live relay connections, the `demi host expose` leaves | [Host expose](../execution/expose.md) |
 | `llm`, `vault`, `usage` | Provider assembly and model catalogs; credential records, scope and login flows; metering and the request rate limit | [Providers](../providers/providers.md), [Models](../providers/models.md), [Usage and quota](../providers/usage-and-quota.md) |
-| `storage` | The control service, conversation databases and the tree store with its `media` index and its records of commands' outputs, the object store with its record of blob uses | [Storage](storage.md) |
+| `storage` | The control service, conversation databases and the tree store with its `blob_refs` index and its records of commands' outputs, the object store with its record of blob uses | [Storage](storage.md) |
 
 These are modules of one backend, not independently deployed services.
 [Crates and packages](../architecture/crates-and-packages.md#crates) names the
@@ -497,7 +497,7 @@ and an error names the variable. `demi-backend --help` lists the flags.
 | `DEMI_BACKEND_PUBLIC_URL` | The URL runners and Cloud guests connect to; installers embed it, the page's install command fetches them from it, expose URLs take their scheme and port from it, and a development store's downloads are on it. Required. | [Cloud setup](../cloud/setup.md#configuration) |
 | `DEMI_MACHINES_SOCKET` | The machine manager's Unix socket. Required: every deployment has Cloud. | [Cloud setup](../cloud/setup.md#configuration) |
 | `DEMI_NATIVE_CONFIG` | The native command releases, and the object storage they are published to or the development store that serves them. Required. | [Native runtime](../execution/native-runtime.md#backend-deployment-configuration) |
-| `DEMI_CHANGE_STORE_CONFIG` | Puts the object store in an S3 bucket. Optional: the data directory holds it otherwise. | [Storage](storage.md#the-object-store) |
+| `DEMI_OBJECT_STORE_CONFIG` | Puts the object store in an S3 bucket. Optional: the data directory holds it otherwise. | [Storage](storage.md#the-object-store) |
 | `DEMI_INSTANCE_SECRET` | The instance secret as 64 hexadecimal digits. Optional: generated into the data directory otherwise. | [Storage](storage.md#passwords-and-credentials-at-rest) |
 | `DEMI_EXPOSE_DOMAIN` | The domain of expose hostnames. Optional: without it, exposes are unavailable. | [Host expose](../execution/expose.md#deployment) |
 | `DEMI_WEB_DIRECTORY` | A built browser directory to serve beside the API. Optional. | [Web API](../product/web-api.md#serving-the-browser-build) |

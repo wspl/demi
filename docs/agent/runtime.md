@@ -676,7 +676,7 @@ Words used for session data:
 | checkpoint | The durable, restorable state of one session ([Tree store](#tree-store)) |
 | whole output | A command's output as kept: on its Host while it runs, in the backend for 30 days after it ends ([The whole output](#the-whole-output)) |
 | view | Bounded data a block carries for the user; never replayed to the model |
-| blob | Content-addressed bytes, such as media, in the conversation owner's blob namespace |
+| blob | Content-addressed bytes, such as media, edit copies and commands' outputs, in the conversation owner's blob namespace |
 
 ### Block types
 
@@ -937,8 +937,8 @@ file bodies or raw bytes, and its type is fixed per tool by `kind`:
 
 The shell view's characters are Unicode scalar values, counted from the end so
 the newest output stays. `files` lists one entry per changed path with its line
-counts and, for each edit segment, whether its contents were kept; the contents
-stay in the change store ([Edit tracking](../execution/edit-tracking.md#the-change-store)).
+counts and, for each edit segment, the blobs of its two sides when they were
+stored ([Edit copies](../execution/edit-tracking.md#edit-copies)).
 The model's result and the view come from the same command status; the view
 shows nothing the model could not read from the command, except `files`, which
 exists only for the user.

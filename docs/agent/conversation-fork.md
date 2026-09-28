@@ -137,12 +137,14 @@ root; failures do not publish an empty or partial conversation.
   exists; uncommitted operations stay hidden until the same request is retried.
 - Ordinary conversation creation cannot use a UUID reserved for Fork.
 
-Attachments keep their original content and timestamps. The backend can reuse
-immutable blobs in the same user's blob namespace while keeping transcript rows
-independent. It copies the change-store objects of the retained blocks into the
-destination's namespace before the destination root is checkpointed
-([The change store](../execution/edit-tracking.md#the-change-store)). Fork does
-not need a model call or a device wakeup to copy conversation data.
+Attachments keep their original content and timestamps. The destination's
+blocks reference the same blobs of the same user's namespace, media and edit
+copies alike ([Edit copies](../execution/edit-tracking.md#edit-copies)), while
+its transcript rows stay independent, so a Fork copies no bytes. It copies the
+`command_outputs` rows of the commands its copied blocks name, so
+`demi shell output` reads their output in the destination too
+([Command outputs](../backend/storage.md#command-outputs)). Fork does not need
+a model call or a device wakeup to copy conversation data.
 
 ## Execution environment and auxiliary state
 
