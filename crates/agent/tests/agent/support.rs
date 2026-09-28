@@ -275,6 +275,20 @@ pub struct CommandRun {
     pub stderr: String,
 }
 
+/// The node of the agent a `spawn` or `resume` named on stdout by its
+/// number.
+pub fn named_node(store: &MemoryTreeStore, run: &CommandRun) -> NodeId {
+    let number: u64 = run
+        .stdout
+        .strip_prefix("subagentId: ")
+        .and_then(|rest| rest.strip_suffix('\n'))
+        .and_then(|number| number.parse().ok())
+        .unwrap_or_else(|| panic!("{run:?} names no child"));
+    store
+        .numbered(number)
+        .unwrap_or_else(|| panic!("no agent {number} in the store"))
+}
+
 /// A job's port: its output kept, and its command storage the node's at
 /// the generation the job recorded, while its call lives.
 struct NodePort {
@@ -398,6 +412,14 @@ pub struct Fixture {
 }
 
 impl Fixture {
+    /// The number the model knows the agent `node` by.
+    pub fn number(&self, node: &NodeId) -> u64 {
+        self.store
+            .record(node)
+            .unwrap_or_else(|| panic!("no node {node} in the store"))
+            .number
+    }
+
     /// A server of the provider `stub` playing `script`.
     pub fn new(script: &ScriptedRuntime) -> Self {
         Self::with(script, MemoryTreeStore::new(), ServerConfig::default())

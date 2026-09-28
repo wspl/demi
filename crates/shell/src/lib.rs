@@ -33,7 +33,7 @@ pub use builders::{Call, GroupBuilder, LeafBuilder, TypedRpc};
 pub use commands::{CommandSet, Declared, RegisterError};
 pub use environment::{
     BinaryOutput, CommandState, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES, DEFAULT_OBSERVATION,
-    DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, ExecRequest, JobCaller, MAX_OBSERVATION,
+    DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, ExecRequest, JobCaller, MAX_OBSERVATION, Numbers,
     ObservationWindow, PageFeed, ShellEnvironment, ShellError, ShellTarget, WholeView,
 };
 pub use host::{
