@@ -170,7 +170,7 @@ impl PageFeed for NodeFeed {
 mod tests {
     use demi_agent_protocol::{ServerFrame, ShellStatus};
     use demi_core::{ShellId, StreamKind};
-    use demi_shell::Ending;
+    use demi_shell::{Ending, WholeOutput};
     use tokio_util::task::AbortOnDropHandle;
 
     use super::*;
@@ -289,8 +289,7 @@ mod tests {
         root.changed(&a);
         let ended = a.borrow_mut().settle(
             Ending::Exited(0),
-            String::new(),
-            String::new(),
+            std::sync::Arc::new(WholeOutput::default()),
             None,
             "end\n",
         );

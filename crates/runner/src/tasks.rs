@@ -1,10 +1,11 @@
 //! Jobs and raw processes (`runner.md` § Command lifetime): the connection
 //! owns its job table and routes each job's input, signals, following and end
-//! to it. Every job keeps full output logs and sends bounded views
-//! (`runner.md` § Pipes and output).
+//! to it. Every job keeps its output within `JOB_KEPT_BYTES` and sends
+//! bounded views of it (`runner.md` § Pipes and output).
 
 use crate::connection::wire;
 use crate::job_directories::{JobDirectories, JobDirectory};
+use crate::kept_output::KeptOutput;
 use crate::{
     commands::{
         contexts::{self, ContextPaths, ExecutionContext, Installation},
@@ -26,7 +27,6 @@ use std::{
     sync::Arc,
 };
 use tokio::{
-    io::AsyncWriteExt,
     sync::{mpsc, watch},
     task::JoinSet,
     time::Instant,
@@ -61,7 +61,7 @@ pub struct JobTable {
 /// What every task of one connection shares.
 pub struct JobConfig {
     pub output: mpsc::Sender<wire::Frame>,
-    /// Where each job gets its own directory, under its conversation's.
+    /// Where each job gets its own directory.
     pub directories: Arc<JobDirectories>,
     pub pipes: PipeClient,
     pub shell: ShellRuntime,
@@ -106,9 +106,6 @@ struct Controls {
 
 pub enum TaskCommand {
     Shell {
-        /// The conversation its command context names, whose directory holds
-        /// the job's.
-        conversation: String,
         script: String,
         stdin: Option<wire::PipeRef>,
         stdout: Option<wire::PipeRef>,
@@ -389,7 +386,6 @@ impl JobConfig {
                 (Execution::process(child), None, None)
             }
             TaskCommand::Shell {
-                conversation,
                 script,
                 stdin,
                 stdout,
@@ -398,8 +394,9 @@ impl JobConfig {
                 let JobDirectory {
                     path,
                     scratch,
+                    output,
                     running,
-                } = self.directories.create(&conversation).await?;
+                } = self.directories.create(&id, &cancel).await?;
                 env.insert(
                     "TMPDIR".into(),
                     scratch.path().to_string_lossy().into_owned(),
@@ -428,8 +425,7 @@ impl JobConfig {
                         None
                     }
                 };
-                let logs = Logs::new(path, &cancel).await?;
-                job = Some((logs, scratch, recorder.clone(), running));
+                job = Some((Logs::new(output), scratch, recorder.clone(), running));
                 let commands = match commands {
                     Some((manifest_hash, command)) => {
                         let setup = self.context(&id, &manifest_hash, command, edit_context, &mut env);
@@ -649,9 +645,10 @@ impl JobConfig {
             None => None,
         };
         match job {
-            // The job's directory stays running until its exit is built.
+            // The job's directory stays running until its exit is built, and
+            // then lasts until the backend releases it.
             Some((logs, scratch, recorder, _running)) => {
-                let output = logs.finish().await?;
+                let output = logs.lengths();
                 let (files, files_truncated) = tokio::task::spawn_blocking(move || {
                     scratch.close()?;
                     Ok::<_, io::Error>(crate::shell::edit_report::finish(recorder.as_ref()))
@@ -790,12 +787,10 @@ pub(crate) async fn report_pipe(
     }
 }
 
-/// One stream of a job: its file, its length and last bytes, and what the
-/// backend was sent beyond its first `JOB_VIEW_BYTES`.
+/// One stream of a job: its length and last bytes, and what the backend
+/// was sent beyond its first `JOB_VIEW_BYTES`.
 struct Log {
     stream: OutputStream,
-    path: PathBuf,
-    file: tokio::fs::File,
     /// The stream's length.
     bytes: u64,
     /// Its last `JOB_VIEW_BYTES` bytes.
@@ -820,32 +815,21 @@ enum Due {
 }
 
 impl Log {
-    async fn new(
-        stream: OutputStream,
-        path: PathBuf,
-        cancel: &CancellationToken,
-    ) -> io::Result<Self> {
-        // Out of open files, the log waits for one (`runner.md` § Load).
-        let file =
-            demi_command_service::descriptors::retry(cancel, || tokio::fs::File::create(&path))
-                .await?;
-        Ok(Self {
+    fn new(stream: OutputStream) -> Self {
+        Self {
             stream,
-            path,
-            file,
             bytes: 0,
             tail: Vec::new(),
             held: 0,
             reported: 0,
             reported_at: None,
-        })
+        }
     }
 
-    /// Writes `bytes` to the file, and returns where they start in the
-    /// stream and their part within its first `JOB_VIEW_BYTES`, which the
-    /// backend always receives.
-    async fn write(&mut self, bytes: &Bytes) -> io::Result<(u64, Bytes)> {
-        self.file.write_all(bytes).await?;
+    /// Counts `bytes`, and returns where they start in the stream and their
+    /// part within its first `JOB_VIEW_BYTES`, which the backend always
+    /// receives.
+    fn write(&mut self, bytes: &Bytes) -> (u64, Bytes) {
         let offset = self.bytes;
         let remaining = wire::JOB_VIEW_BYTES.saturating_sub(self.bytes as usize);
         self.bytes += bytes.len() as u64;
@@ -860,7 +844,7 @@ impl Log {
         }
         let head = bytes.slice(..remaining.min(bytes.len()));
         self.held += head.len() as u64;
-        Ok((offset, head))
+        (offset, head)
     }
 
     /// When the stream's next message beyond its first `JOB_VIEW_BYTES` is
@@ -939,23 +923,30 @@ impl Log {
     }
 }
 
+/// A job's output: what it keeps, and each stream's views.
 struct Logs {
+    kept: KeptOutput,
     stdout: Log,
     stderr: Log,
 }
+
 impl Logs {
-    async fn new(path: PathBuf, cancel: &CancellationToken) -> io::Result<Self> {
-        Ok(Self {
-            stdout: Log::new(OutputStream::Stdout, path.join("stdout.txt"), cancel).await?,
-            stderr: Log::new(OutputStream::Stderr, path.join("stderr.txt"), cancel).await?,
-        })
+    fn new(kept: KeptOutput) -> Self {
+        Self {
+            kept,
+            stdout: Log::new(OutputStream::Stdout),
+            stderr: Log::new(OutputStream::Stderr),
+        }
     }
 
+    /// Keeps one read, and returns where it starts in its stream and its
+    /// part within the stream's first `JOB_VIEW_BYTES`.
     async fn write(&mut self, stream: OutputStream, bytes: &Bytes) -> io::Result<(u64, Bytes)> {
-        match stream {
-            OutputStream::Stdout => self.stdout.write(bytes).await,
-            OutputStream::Stderr => self.stderr.write(bytes).await,
-        }
+        self.kept.write(stream, bytes).await?;
+        Ok(match stream {
+            OutputStream::Stdout => self.stdout.write(bytes),
+            OutputStream::Stderr => self.stderr.write(bytes),
+        })
     }
 
     /// When the next message beyond a stream's first `JOB_VIEW_BYTES` is
@@ -1001,16 +992,12 @@ impl Logs {
         }
         Ok(())
     }
-    async fn finish(mut self) -> io::Result<wire::RetainedOutput> {
-        self.stdout.file.flush().await?;
-        self.stderr.file.flush().await?;
-        Ok(wire::RetainedOutput {
-            stdout_path: self.stdout.path.to_string_lossy().into_owned(),
-            stderr_path: self.stderr.path.to_string_lossy().into_owned(),
+
+    /// Each stream's length, which the job's exit gives.
+    fn lengths(&self) -> wire::OutputLengths {
+        wire::OutputLengths {
             stdout_bytes: self.stdout.bytes,
             stderr_bytes: self.stderr.bytes,
-            stdout_tail: wire::WireBytes(self.stdout.tail),
-            stderr_tail: wire::WireBytes(self.stderr.tail),
-        })
+        }
     }
 }

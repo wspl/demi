@@ -15,6 +15,7 @@ use tokio::{
     sync::{mpsc, watch},
     task::JoinSet,
 };
+use tokio_util::sync::CancellationToken;
 
 use super::{ConnectionHandle, Ended, Relay, Request, Transport, wire};
 use crate::{
@@ -26,12 +27,13 @@ use crate::{
     host::HostServer,
     host_log::{self, HostLogReader},
     job_directories::JobDirectories,
+    kept_output::KeptReader,
     management::{Management, Phase},
     pipes::PipeClient,
     services::ServiceHandle,
     shell::ShellRuntime,
     state::{RunnerConfig, RunnerState},
-    tasks::{Commands, JobConfig, JobTable, TaskCommand, TaskSpec, WorkId, failure_exit},
+    tasks::{Commands, JobConfig, JobTable, TaskCommand, TaskSpec, WorkId, failure_exit, report_pipe},
     volumes::{ManagedVolume, Volumes},
 };
 use demi_runner_protocol::values::{BackendUrl, DeviceToken};
@@ -85,7 +87,7 @@ struct Owner<'r> {
     registered: &'r Registered,
     handle: ConnectionHandle,
     jobs: JobTable,
-    /// Where the jobs keep their output, by conversation.
+    /// Where the jobs keep their output until the backend releases them.
     directories: Arc<JobDirectories>,
     contexts: ContextTable,
     /// The manifest jobs see, and the leases of the one installed.
@@ -106,7 +108,7 @@ pub async fn serve(registered: &Registered, mut transport: Transport) -> io::Res
     let (handle, mut requests) =
         ConnectionHandle::new(transport.control.clone(), transport.cancellation());
     let (installation, installations) = watch::channel(Installation::Absent);
-    let directories = JobDirectories::new(registered.jobs.clone());
+    let directories = JobDirectories::open(registered.jobs.clone()).await;
     let mut owner = Owner {
         registered,
         directories: directories.clone(),
@@ -168,12 +170,10 @@ impl Owner<'_> {
         transport: &mut Transport,
         requests: &mut mpsc::Receiver<Request>,
     ) -> io::Result<End> {
-        let conversations = self.held_conversations().await;
         let hello = wire::encode(&wire::Outbound::Hello {
             protocol: wire::VERSION,
             device_token: self.registered.token.borrow().clone(),
             runner: self.registered.runner.clone(),
-            conversations,
         })
         .map_err(io::Error::other)?;
         self.send(hello).await?;
@@ -214,20 +214,6 @@ impl Owner<'_> {
                     }
                     None => return Ok(End::Disconnected),
                 },
-            }
-        }
-    }
-
-    /// The conversations whose job output this runner holds, for its hello
-    /// (`resource-lifecycle.md` § A release the device missed), on a Cloud
-    /// as on a paired device. One that cannot read its directories names
-    /// none this time, and connects all the same.
-    async fn held_conversations(&self) -> Vec<String> {
-        match self.directories.conversations().await {
-            Ok(conversations) => conversations,
-            Err(error) => {
-                tracing::warn!("the job directories could not be listed: {error}");
-                Vec::new()
             }
         }
     }
@@ -371,21 +357,15 @@ impl Owner<'_> {
                 conversation_id,
             } => {
                 let services = self.registered.services.clone();
-                let directories = self.directories.clone();
                 let control = self.handle.control.clone();
                 let closed = self.handle.closed().clone();
                 self.work.spawn(async move {
-                    // The services end what they hold, then the conversation's
-                    // job directories go; a directory that stays is logged
-                    // and the release succeeds, since nothing of the
-                    // conversation runs here any more.
+                    // The services end what they hold; the runner holds no
+                    // files of the conversation (`resource-lifecycle.md`
+                    // § Conversation release).
                     let result = tokio::select! {
                         _ = closed.cancelled() => return Work::Done,
-                        result = async {
-                            let released = services.release_conversation(&conversation_id).await;
-                            directories.release(&conversation_id).await;
-                            released
-                        } => result,
+                        result = services.release_conversation(&conversation_id) => result,
                     };
                     match wire::encode(&wire::Outbound::ConversationReleased {
                         id,
@@ -412,6 +392,23 @@ impl Owner<'_> {
                         installation,
                         result,
                     }
+                });
+            }
+            Inbound::JobRead { id, job_id, output } => {
+                let output_of = self.directories.output(&job_id);
+                let pipes = self.registered.pipes.clone();
+                let control = self.handle.control.clone();
+                let closed = self.handle.closed().clone();
+                self.work.spawn(async move {
+                    read_job(output_of, id, output, pipes, control, closed).await;
+                    Work::Done
+                });
+            }
+            Inbound::JobRelease { job_id } => {
+                let directories = self.directories.clone();
+                self.work.spawn(async move {
+                    directories.release(&job_id).await;
+                    Work::Done
                 });
             }
             Inbound::Sync { id } => self.volumes.sync(id)?,
@@ -563,7 +560,6 @@ impl Owner<'_> {
                     cwd: PathBuf::from(cwd),
                     env: values,
                     command: TaskCommand::Shell {
-                        conversation: context.conversation.clone(),
                         script: script.clone(),
                         stdin: stdin.clone(),
                         stdout: stdout.clone(),
@@ -616,10 +612,54 @@ impl Owner<'_> {
         // State writes finish, since a claimed token must not be lost; the
         // other work sees the connection closed and ends at once.
         while self.work.join_next().await.is_some() {}
+        // The connection's jobs ended, and nothing reads their directories
+        // any more.
+        self.directories.clear().await;
         self.watches.shutdown().await;
         self.installation.send_replace(Installation::Absent);
         self.installed = None;
         self.registered.management.set_jobs(0);
         self.registered.services.stop_all().await;
     }
+}
+
+/// Answers a `job_read` and streams the job's kept output, as it stands, into
+/// its pipe; a job whose directory is gone answers that nothing flows.
+async fn read_job(
+    output_of: Option<KeptReader>,
+    id: String,
+    pipe: wire::PipeRef,
+    pipes: PipeClient,
+    control: mpsc::Sender<wire::Frame>,
+    closed: CancellationToken,
+) {
+    let snapshot = match output_of {
+        Some(reader) => tokio::task::spawn_blocking(move || reader.snapshot())
+            .await
+            .map_err(io::Error::other)
+            .and_then(|snapshot| snapshot)
+            .and_then(|snapshot| snapshot.into_stream()),
+        None => Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "the job keeps no output: it is unknown or released",
+        )),
+    };
+    let reply = wire::encode(&wire::Outbound::JobRead {
+        id,
+        error: snapshot.as_ref().err().map(ToString::to_string),
+    });
+    match reply {
+        Ok(reply) => {
+            tokio::select! {
+                _ = closed.cancelled() => return,
+                _ = control.send(reply) => {},
+            }
+        }
+        Err(error) => tracing::warn!("job read reply encoding failed: {error}"),
+    }
+    let result = match snapshot {
+        Ok(stream) => pipes.put(&pipe.url, stream, &closed).await,
+        Err(error) => Err(error),
+    };
+    report_pipe(&control, pipe.id, result, &closed).await;
 }

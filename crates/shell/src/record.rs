@@ -7,13 +7,12 @@
 //! stream's cursor advances by the bytes a view delivered, and a view never
 //! splits a character. Tails are the last [`TAIL_CHARS`] characters.
 
-use bytes::Bytes;
-use demi_core::{
-    BinaryStdout, CommandId, OutputChunk, OutputView, ShellId, StreamKind, StreamView,
-};
+use std::sync::Arc;
+
+use demi_core::{CommandId, OutputChunk, OutputView, ShellId, StreamKind, StreamView};
 use tokio::time::Instant;
 
-use crate::{BinaryOutput, CommandState, CommandStatus, EditedFiles};
+use crate::{BinaryOutput, CommandState, CommandStatus, EditedFiles, Seen, WholeOutput, WholeView};
 
 /// How much of a stream's end a view carries.
 pub const TAIL_CHARS: usize = 4096;
@@ -26,7 +25,6 @@ pub struct CommandRecord {
     command_id: CommandId,
     /// The `shell_exec` call that started the command.
     tool_use_id: String,
-    output_dir: Option<String>,
     started: Instant,
     last_output: Instant,
     phase: Phase,
@@ -38,6 +36,8 @@ pub struct CommandRecord {
     model: Positions,
     page: PageText,
     files: Option<EditedFiles>,
+    /// The whole output, once the command ended.
+    whole: Option<Arc<WholeOutput>>,
 }
 
 /// Where the model's next view of each stream, and of the merged output,
@@ -47,6 +47,8 @@ struct Positions {
     stdout: usize,
     stderr: usize,
     output: usize,
+    /// Whether a view gave the whole output, once the command ended.
+    whole: bool,
 }
 
 /// The pages' view of a command's output (`runtime.md` § Live output): its
@@ -104,8 +106,8 @@ enum Phase {
 #[derive(Debug, Default)]
 struct Stream {
     text: String,
-    /// The stream's length on the Host when the record holds only a view of
-    /// it, such as a runner's head and tail.
+    /// The stream's length on the Host, which the runner reports while the
+    /// record holds only the stream's start.
     host_bytes: Option<u64>,
 }
 
@@ -133,7 +135,6 @@ impl CommandRecord {
             shell_id,
             command_id,
             tool_use_id,
-            output_dir: None,
             started: now,
             last_output: now,
             phase: Phase::Running,
@@ -143,6 +144,7 @@ impl CommandRecord {
             model: Positions::default(),
             page: PageText::default(),
             files: None,
+            whole: None,
         }
     }
 
@@ -180,10 +182,12 @@ impl CommandRecord {
         self.append_page(text)
     }
 
-    /// The command's output grew beyond what the record holds, such as a
-    /// stream past the runner's view of it: the command is not idle
+    /// `stream` grew to `length` bytes on the Host, beyond what the record
+    /// holds, such as past the runner's view of it: the command is not idle
     /// (`runtime.md` § Results and previews).
-    pub fn grew(&mut self) {
+    pub fn grew(&mut self, stream: StreamKind, length: u64) {
+        let host = &mut self.stream_mut(stream).host_bytes;
+        *host = Some(host.map_or(length, |known| known.max(length)));
         self.last_output = Instant::now();
     }
 
@@ -195,59 +199,26 @@ impl CommandRecord {
         true
     }
 
-    /// Where the command's output files are on the Host.
-    pub fn set_output_dir(&mut self, directory: String) {
-        self.output_dir = Some(directory);
-    }
-
-    /// The lengths of the streams on the Host, when the record holds only a
-    /// view of them.
-    pub fn set_host_bytes(&mut self, stdout: u64, stderr: u64) {
-        self.stdout.host_bytes = Some(stdout);
-        self.stderr.host_bytes = Some(stderr);
-    }
-
     pub fn set_files(&mut self, files: EditedFiles) {
         self.files = Some(files);
     }
 
-    /// Ends the command with its final streams, and adds `page_end`, what
-    /// the end adds to the pages' view. What the end adds to a stream that
-    /// was streamed follows the chunks the model's views showed, so its
-    /// merged position stays valid; a binary stdout is presented anew, from
-    /// its placeholder. True when the pages' view changed: a command that
-    /// had ended already keeps the end the pages were shown.
+    /// Ends the command with its whole output; `page` is what the end adds
+    /// to the pages' view (`runtime.md` § Live output). True when the pages'
+    /// view changed: a command that had ended already keeps the end the
+    /// pages were shown.
     pub fn settle(
         &mut self,
         ending: Ending,
-        stdout: String,
-        stderr: String,
+        whole: Arc<WholeOutput>,
         binary_stdout: Option<BinaryOutput>,
-        page_end: &str,
+        page: &str,
     ) -> bool {
         let running = self.is_running();
         if running {
-            self.page.push(page_end);
+            self.page.push(page);
         }
-        if binary_stdout.is_some() {
-            self.chunks.clear();
-            self.model.output = 0;
-            self.model.stdout = 0;
-        } else {
-            for (stream, text) in [(StreamKind::Stdout, &stdout), (StreamKind::Stderr, &stderr)] {
-                if let Some(rest) = text.strip_prefix(self.stream(stream).text.as_str()) {
-                    let rest = rest.to_owned();
-                    self.push_chunk(stream, &rest);
-                }
-            }
-        }
-        self.stdout.text = stdout;
-        self.stderr.text = stderr;
-        if self.chunks.is_empty() {
-            self.push_chunk(StreamKind::Stdout, &self.stdout.text.clone());
-            self.push_chunk(StreamKind::Stderr, &self.stderr.text.clone());
-        }
-        self.cover();
+        self.whole = Some(whole);
         self.last_output = Instant::now();
         self.phase = match ending {
             Ending::Exited(exit_code) => Phase::Exited {
@@ -271,25 +242,41 @@ impl CommandRecord {
     }
 
     /// The model's status: each stream's output since the model's last view,
-    /// at most `max_output_bytes` of it (all of it when zero), and its tail.
-    /// The view moves only the model's positions.
+    /// at most `max_output_bytes` of it (all of it when zero), and its tail;
+    /// once the command ended, its whole output and how much of each stream
+    /// the model had seen. The view moves only the model's positions.
     pub fn status(&mut self, max_output_bytes: usize, hint: Option<String>) -> CommandStatus {
+        let whole = self.whole.clone().map(|output| {
+            let seen = if self.model.whole {
+                Seen {
+                    stdout: u64::MAX,
+                    stderr: u64::MAX,
+                }
+            } else {
+                Seen {
+                    stdout: self.model.stdout as u64,
+                    stderr: self.model.stderr as u64,
+                }
+            };
+            self.model.whole = true;
+            WholeView { output, seen }
+        });
+        let unreceived = match whole {
+            Some(_) => 0,
+            None => [&self.stdout, &self.stderr]
+                .iter()
+                .map(|stream| {
+                    stream
+                        .host_bytes
+                        .unwrap_or(0)
+                        .saturating_sub(stream.text.len() as u64)
+                })
+                .sum(),
+        };
         let positions = &mut self.model;
-        let stdout = stream_view(
-            &self.stdout,
-            &mut positions.stdout,
-            &self.output_dir,
-            "stdout",
-            max_output_bytes,
-        );
-        let stderr = stream_view(
-            &self.stderr,
-            &mut positions.stderr,
-            &self.output_dir,
-            "stderr",
-            max_output_bytes,
-        );
-        let output = merged_view(&self.chunks, &mut positions.output, &self.output_dir, max_output_bytes);
+        let stdout = stream_view(&self.stdout, &mut positions.stdout, max_output_bytes);
+        let stderr = stream_view(&self.stderr, &mut positions.stderr, max_output_bytes);
+        let output = merged_view(&self.chunks, &mut positions.output, max_output_bytes);
         let now = Instant::now();
         let state = match &self.phase {
             Phase::Running => CommandState::Running { hint },
@@ -305,10 +292,11 @@ impl CommandRecord {
         CommandStatus {
             shell_id: self.shell_id.clone(),
             command_id: self.command_id.clone(),
-            output_dir: self.output_dir.clone(),
             stdout,
             stderr,
             output,
+            unreceived,
+            whole,
             running_ms: millis(now - self.started),
             idle_ms: millis(now - self.last_output),
             state,
@@ -360,27 +348,6 @@ impl CommandRecord {
             offset,
         });
     }
-
-    /// Rebuilds the chunks, and the readers' merged positions with them, when
-    /// they no longer describe the streams' texts.
-    fn cover(&mut self) {
-        let covered = |stream: StreamKind| -> usize {
-            self.chunks
-                .iter()
-                .filter(|chunk| chunk.stream == stream)
-                .map(|chunk| chunk.text.len())
-                .sum()
-        };
-        if covered(StreamKind::Stdout) == self.stdout.text.len()
-            && covered(StreamKind::Stderr) == self.stderr.text.len()
-        {
-            return;
-        }
-        self.chunks.clear();
-        self.model.output = 0;
-        self.push_chunk(StreamKind::Stdout, &self.stdout.text.clone());
-        self.push_chunk(StreamKind::Stderr, &self.stderr.text.clone());
-    }
 }
 
 /// The merged output's length, in bytes.
@@ -391,12 +358,7 @@ fn merged_len(chunks: &[Chunk]) -> usize {
 }
 
 /// A reader's view of the merged output from `position`, which it moves.
-fn merged_view(
-    chunks: &[Chunk],
-    position: &mut usize,
-    output_dir: &Option<String>,
-    max_output_bytes: usize,
-) -> OutputView {
+fn merged_view(chunks: &[Chunk], position: &mut usize, max_output_bytes: usize) -> OutputView {
     let total = merged_len(chunks);
     let start = (*position).min(total);
     let mut remaining = budget(total - start, max_output_bytes);
@@ -426,6 +388,16 @@ fn merged_view(
     let next = start + delivered;
     *position = next;
     let text: String = views.iter().map(|chunk| chunk.text.as_str()).collect();
+    let line = 1 + chunks
+        .iter()
+        .map(|chunk| {
+            let before = start.saturating_sub(chunk.offset).min(chunk.text.len());
+            chunk.text.as_bytes()[..before]
+                .iter()
+                .filter(|byte| **byte == b'\n')
+                .count() as u64
+        })
+        .sum::<u64>();
     let mut tail = String::new();
     for chunk in chunks.iter().rev() {
         if tail.chars().count() >= TAIL_CHARS {
@@ -434,8 +406,8 @@ fn merged_view(
         tail.insert_str(0, &chunk.text);
     }
     OutputView {
-        path: output_dir.clone(),
         offset: next as u64,
+        line,
         text,
         tail: tail_chars(&tail).to_owned(),
         chunks: views,
@@ -445,22 +417,13 @@ fn merged_view(
 }
 
 /// A reader's view of one stream from `position`, which it moves.
-fn stream_view(
-    stream: &Stream,
-    position: &mut usize,
-    output_dir: &Option<String>,
-    name: &str,
-    max_output_bytes: usize,
-) -> StreamView {
+fn stream_view(stream: &Stream, position: &mut usize, max_output_bytes: usize) -> StreamView {
     let total = stream.text.len();
     let start = stream.text.floor_char_boundary((*position).min(total));
     let delta = cut(&stream.text, start, budget(total - start, max_output_bytes)).to_owned();
     let next = start + delta.len();
     *position = next;
     StreamView {
-        path: output_dir
-            .as_ref()
-            .map(|directory| format!("{directory}/{name}.txt")),
         offset: next as u64,
         delta,
         tail: tail_chars(&stream.text).to_owned(),
@@ -506,41 +469,4 @@ fn tail_chars(text: &str) -> &str {
 
 fn millis(duration: std::time::Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
-}
-
-/// A final stdout at the boundary above the shell: valid UTF-8 is its text;
-/// anything else stays bytes, at most `limit` of them, with a placeholder in
-/// the text, so raw binary never enters a text view. `raw_path` is where the
-/// whole stream is on the Host, when it is kept.
-pub fn final_stdout_boundary(
-    bytes: Bytes,
-    limit: usize,
-    raw_path: Option<&str>,
-) -> (String, Option<BinaryOutput>) {
-    if let Ok(text) = std::str::from_utf8(&bytes) {
-        return (text.to_owned(), None);
-    }
-    let total = bytes.len();
-    let truncated = total > limit;
-    let exceeds = if truncated {
-        format!(", exceeds the {limit}-byte binary limit")
-    } else {
-        String::new()
-    };
-    let kept = match raw_path {
-        Some(path) => format!("; raw bytes at {path}"),
-        None => "; not kept beyond this view".into(),
-    };
-    let text = format!("<binary stdout: {total} bytes{exceeds}{kept}>\n");
-    let bytes = if truncated {
-        bytes.slice(..limit)
-    } else {
-        bytes
-    };
-    let info = BinaryStdout {
-        truncated,
-        total_bytes: total as u64,
-        limit_bytes: limit as u64,
-    };
-    (text, Some(BinaryOutput { bytes, info }))
 }

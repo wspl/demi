@@ -268,3 +268,66 @@ async fn a_fork_keeps_the_todos_its_history_had() {
     }
     backend.close().await;
 }
+
+/// The command of each shell call of the history, in order.
+fn commands(blocks: &[Block]) -> Vec<String> {
+    blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::ToolCall(call) => match &call.view {
+                Some(ToolView::Shell(view)) => Some(view.command_id.to_string()),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect()
+}
+
+// Several seconds: four turns run a shell job each on a real device.
+#[tokio::test]
+async fn a_fork_reads_the_outputs_of_the_commands_its_history_names() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    let (_paired, _root) = on_device(&harness, &backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    let mut source = Socket::connect(&backend, &master, FIRST).await;
+    source.open().await;
+    let shell = |id: &str, script: &str| {
+        tool_use(id, "shell_exec", &json!({ "description": id, "script": script, "timeoutMs": 60_000 }))
+    };
+    vendor.respond(shell("toolu_before", "seq 1 3"));
+    vendor.respond(answer(&["Counted."], 1, 1));
+    source.chat("m1", "Count").await;
+    vendor.respond(shell("toolu_after", "echo later"));
+    vendor.respond(answer(&["Said."], 1, 1));
+    source.chat("m2", "Say something").await;
+    let blocks = transcript(&backend, &master, FIRST).await.blocks;
+    let Ok([before, after]) = <[String; 2]>::try_from(commands(&blocks)) else {
+        panic!("two commands: {blocks:?}");
+    };
+    let counted = texts(&blocks)[0].clone();
+
+    // The destination's history names the first command, whose output
+    // `demi shell output` reads there as in the source; the second is not
+    // the destination's.
+    let created = backend
+        .post(&format!("/api/conversations/{FIRST}/fork"), Some(&master), fork(SECOND, &counted))
+        .await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
+    let mut socket = Socket::connect(&backend, &master, SECOND).await;
+    socket.open().await;
+    let requests = vendor.requests().len();
+    let script = format!("demi shell output {before} --raw; demi shell output {after}");
+    vendor.respond(shell("toolu_read", &script));
+    vendor.respond(answer(&["Read."], 1, 1));
+    socket.chat("m3", "What did it count?").await;
+    let read = tool_result(&vendor.requests()[requests + 1].json(), "toolu_read");
+    assert!(
+        read.contains(&format!("1\n2\n3\ndemi shell output: no command {after} in this conversation")),
+        "{read}"
+    );
+    backend.close().await;
+}

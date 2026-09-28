@@ -311,6 +311,23 @@ CREATE TABLE command_snapshots (
   PRIMARY KEY (node_id, revision)
 ) STRICT;
 
+-- Each ended command's whole output: stored as a blob, with the bytes at
+-- its end the backend does not have and why; not stored, and why; or
+-- removed by the retention pass, and when.
+CREATE TABLE command_outputs (
+  command_id     TEXT PRIMARY KEY,
+  ended_at       INTEGER NOT NULL,
+  blob           TEXT,
+  missing_bytes  INTEGER CHECK (missing_bytes >= 0),
+  missing_reason TEXT,
+  not_stored     TEXT,
+  removed_at     INTEGER,
+  CHECK ((blob IS NOT NULL) + (not_stored IS NOT NULL) + (removed_at IS NOT NULL) = 1),
+  CHECK ((missing_bytes IS NULL) = (missing_reason IS NULL)),
+  CHECK (missing_bytes IS NULL OR blob IS NOT NULL)
+) STRICT;
+CREATE INDEX command_outputs_expiry ON command_outputs (ended_at) WHERE blob IS NOT NULL;
+
 -- A boundary names the version that was current at its edge of a block; a
 -- version a boundary names cannot go.
 CREATE TABLE session_boundaries (

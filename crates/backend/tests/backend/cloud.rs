@@ -1,17 +1,15 @@
 //! The Cloud through the backend (`managed-hosts.md`,
 //! `sessions-and-targets.md` § Resolve a target, § How a conversation uses a
 //! device, `resource-lifecycle.md`): the first uses of two conversations
-//! boot one Cloud, an idle Cloud releases its conversations and then stops,
-//! and the next operation wakes it, a conversation that idles on a Cloud
-//! another keeps running hears its release there, one archived while the
-//! Cloud is stopped hears it through the Cloud's hello after the wake, a
-//! Cloud the manager stopped without a word boots again, a conversation that
-//! left the Cloud still reaches it, one whose model's process runs on the
-//! Cloud it has attached hears its release there before the idle stop, a
-//! reset keeps home and identity and tells the model, a failed reset
-//! resumes, a reset holds the conversations that need the Cloud and leaves
-//! the ones that only have it attached, capacity counts across users, a
-//! Cloud that keeps dying stops booting until a reset, a boot whose runner
+//! boot one Cloud, which keeps nothing of an ended command, an idle Cloud
+//! stops, and the next operation wakes it, a conversation that idles on a
+//! Cloud another keeps running hears its release there, one archived while
+//! the Cloud is stopped does not wake it, a Cloud the manager stopped
+//! without a word boots again, a conversation that left the Cloud still
+//! reaches it, a reset keeps home and identity and tells the model, a failed
+//! reset resumes, a reset holds the conversations that need the Cloud and
+//! leaves the ones that only have it attached, capacity counts across users,
+//! a Cloud that keeps dying stops booting until a reset, a boot whose runner
 //! never connects fails, and a shutdown saves the Cloud. The machine manager
 //! is the scripted one; each Cloud's runner is real, and the model is an
 //! Anthropic endpoint the test scripts.
@@ -126,6 +124,19 @@ async fn process_entry(backend: &TestBackend, master: &Session) -> String {
     created.json::<demi_web_api::providers::ProviderAnswer>().provider.id.as_str().to_owned()
 }
 
+/// Waits until the Cloud's runner holds no job directory: it keeps nothing
+/// of a command once the backend has what it needs of it.
+async fn keeps_no_job(harness: &Harness, device: &str) {
+    let jobs = harness.manager.state(device).join("jobs");
+    eventually("the Cloud keeps no job directory", || {
+        let held = std::fs::read_dir(&jobs)
+            .map(|entries| entries.filter_map(Result::ok).any(|entry| entry.path().is_dir()))
+            .unwrap_or(false);
+        async move { !held }
+    })
+    .await;
+}
+
 /// Short idle windows, read often, and no retention pass by itself.
 pub(crate) fn idle_after(window: Duration) -> LifecycleTuning {
     LifecycleTuning {
@@ -138,13 +149,12 @@ pub(crate) fn idle_after(window: Duration) -> LifecycleTuning {
 // Several seconds: the Cloud boots for the first uses and installs the builtin
 // package, stops after an idle window, and boots again.
 #[tokio::test]
-async fn the_first_uses_of_two_conversations_boot_one_cloud_which_releases_them_stops_when_idle_and_wakes_for_the_next_operation() {
+async fn the_first_uses_of_two_conversations_boot_one_cloud_which_stops_when_idle_and_wakes_for_the_next_operation() {
     let vendor = MockVendor::start().await;
     let mut harness = Harness::new().with_builtin_package();
     harness.lifecycle = idle_after(Duration::from_millis(600));
     // The conversations' own idle watches read their activity once an hour
-    // here, so they release nothing before the Cloud's stop: a release the
-    // test sees before the stop is the stop's.
+    // here, so the Cloud's own idle watch is what stops it.
     harness.lifecycle.idle_poll = Duration::from_secs(3600);
     harness.cloud.sweep = Duration::from_millis(50);
     let (backend, master) = harness.start_set_up().await;
@@ -173,12 +183,7 @@ async fn the_first_uses_of_two_conversations_boot_one_cloud_which_releases_them_
     let home = harness.manager.home(&device);
     assert_eq!(std::fs::read_to_string(format!("{home}/sessions/{FIRST}/note")).unwrap(), "0\n");
     assert_eq!(std::fs::read_to_string(format!("{home}/sessions/{SECOND}/note")).unwrap(), "1\n");
-    // Each command's whole output stays in the Cloud's job directories while
-    // it runs.
-    let jobs = harness.manager.state(&device).join("jobs");
-    for id in [FIRST, SECOND] {
-        assert!(jobs.join(id).exists(), "{}", jobs.join(id).display());
-    }
+    keeps_no_job(&harness, &device).await;
     let running = status(&backend, &master).await;
     assert_eq!(running.state, CloudState::Running);
     assert_eq!(running.device.map(|device| device.id.as_str().to_owned()), Some(device.clone()));
@@ -188,9 +193,7 @@ async fn the_first_uses_of_two_conversations_boot_one_cloud_which_releases_them_
     assert_eq!(listed.path, format!("{home}/sessions/{FIRST}"));
     assert!(listed.entries.iter().any(|entry| entry.name == "note"), "{listed:?}");
 
-    // Idle, the Cloud releases both conversations, then is saved and stops
-    // once: the job output of the commands before the stop is gone from what
-    // it saved, though a stop keeps the job directories.
+    // Idle, the Cloud is saved and stops once.
     drop(working);
     let hibernate = format!("hibernate:{device}");
     eventually("the idle Cloud stops", || async {
@@ -198,9 +201,6 @@ async fn the_first_uses_of_two_conversations_boot_one_cloud_which_releases_them_
     })
     .await;
     until_status(&backend, &master, "the Cloud is off", |status| status.state == CloudState::Off).await;
-    for id in [FIRST, SECOND] {
-        assert!(!jobs.join(id).exists(), "{}", jobs.join(id).display());
-    }
 
     // A file read wakes it, and the next command runs on the awake Cloud.
     let path = format!("{home}/sessions/{FIRST}/note");
@@ -248,19 +248,15 @@ async fn a_conversation_that_idles_on_a_cloud_another_keeps_running_hears_its_re
         assert_eq!((code, reason.as_str()), (1000, "completed"));
     }
     let device = the_cloud(&harness);
-    let jobs = harness.manager.state(&device).join("jobs");
-    for id in [FIRST, SECOND] {
-        assert!(jobs.join(id).exists(), "{}", jobs.join(id).display());
-    }
 
     // A window after its last activity, the first conversation hears its
-    // release on the running Cloud: its job output goes, the service lets
-    // it go, and what the second left stays.
-    eventually("the idle conversation's job output is gone", || async { !jobs.join(FIRST).exists() }).await;
-    let (held, _, _) = received(&mut streams::socket(&backend, &master, SECOND, "held").await).await;
-    let held: serde_json::Value = serde_json::from_slice(&held).unwrap();
-    assert_eq!(held, json!({ "conversations": [SECOND] }));
-    assert!(jobs.join(SECOND).exists(), "{}", jobs.join(SECOND).display());
+    // release on the running Cloud: the service lets it go, and keeps the
+    // second.
+    eventually("the idle conversation's release reaches the service", || async {
+        let (held, _, _) = received(&mut streams::socket(&backend, &master, SECOND, "held").await).await;
+        serde_json::from_slice::<serde_json::Value>(&held).unwrap() == json!({ "conversations": [SECOND] })
+    })
+    .await;
     // The machine runs on: it booted once and never stopped.
     assert_eq!(harness.manager.count(&format!("wake:{device}")), 1);
     assert_eq!(harness.manager.count(&format!("hibernate:{device}")), 0);
@@ -269,43 +265,29 @@ async fn a_conversation_that_idles_on_a_cloud_another_keeps_running_hears_its_re
     backend.close().await;
 }
 
-// About a second: the Cloud boots, the backend restarts, and the Cloud boots
-// again for the next operation.
+// About a second: the Cloud boots, and the backend restarts.
 #[tokio::test]
-async fn a_conversation_archived_while_its_cloud_is_stopped_hears_its_release_through_the_clouds_hello_after_the_wake() {
+async fn a_conversation_archived_while_its_cloud_is_stopped_does_not_wake_it() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic_at(&backend, &master, &vendor, "/a").await;
-    for id in [FIRST, SECOND] {
-        create(&backend, &master, id).await;
-    }
+    create(&backend, &master, FIRST).await;
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/a").await;
     let ran = work.turn(vec![shell("t1", "echo ran", 20_000), say("ran")]).await;
     assert!(ran.received[0].contains("exitCode: 0"), "{}", ran.received[0]);
     let device = the_cloud(&harness);
-    let first_output = harness.manager.state(&device).join("jobs").join(FIRST);
-    assert!(first_output.exists(), "{}", first_output.display());
 
-    // The backend's close stops the Cloud and sends no release: the job
-    // output stays on the Cloud's system image.
+    // The backend's close stops the Cloud. Archived while the Cloud is
+    // stopped, the conversation's release does not wake it: the stop ended
+    // what a release would.
     let address = backend.address();
     backend.close().await;
     let backend = harness.start_at(address).await;
-    // Archived while the Cloud is stopped, the conversation's release does
-    // not wake it.
     let archived = backend.patch(&format!("/api/conversations/{FIRST}"), &master, json!({ "archived": true })).await;
     assert_eq!(archived.status, StatusCode::OK, "{}", String::from_utf8_lossy(&archived.body));
     assert_eq!(harness.manager.count(&format!("wake:{device}")), 1);
     assert_eq!(status(&backend, &master).await.state, CloudState::Off);
-    assert!(first_output.exists(), "{}", first_output.display());
-
-    // The second conversation's next operation wakes the Cloud, whose hello
-    // names the first: archived, it hears its release at once.
-    let listed = backend.get(&format!("/api/conversations/{SECOND}/fs"), Some(&master)).await;
-    assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
-    assert_eq!(harness.manager.count(&format!("wake:{device}")), 2);
-    eventually("the archived conversation's job output is gone", || async { !first_output.exists() }).await;
     backend.close().await;
 }
 
@@ -348,8 +330,7 @@ async fn a_conversation_that_left_the_cloud_reaches_it_as_an_attached_host_which
     let mut harness = Harness::new().with_builtin_package();
     harness.lifecycle = idle_after(Duration::from_millis(800));
     // The conversation's own idle watch reads its activity once an hour
-    // while it works here, so the last command's output on the Cloud goes
-    // with the Cloud's stop alone.
+    // while it works here, so the Cloud's own idle watch is what stops it.
     harness.lifecycle.idle_poll = Duration::from_secs(3600);
     harness.cloud.sweep = Duration::from_millis(50);
     let (backend, master) = harness.start_set_up().await;
@@ -369,13 +350,9 @@ async fn a_conversation_that_left_the_cloud_reaches_it_as_an_attached_host_which
     assert!(from_cloud.received[0].contains("on alpha"), "{}", from_cloud.received[0]);
     let device = the_cloud(&harness);
     let session = format!("{}/sessions/{FIRST}", harness.manager.home(&device));
-    let job_output = harness.manager.state(&device).join("jobs").join(FIRST);
-    assert!(job_output.exists(), "{}", job_output.display());
 
-    // Leaving the Cloud releases the conversation there, and keeps the Cloud
-    // attached where the conversation worked.
+    // Leaving the Cloud keeps it attached where the conversation worked.
     crate::work::switch(&backend, &master, FIRST, &alpha, alpha.runner.home_dir()).await;
-    assert!(!job_output.exists(), "{}", job_output.display());
     let hosts: AttachedHosts = backend.get(&format!("/api/conversations/{FIRST}/hosts"), Some(&master)).await.json();
     let cloud = hosts
         .hosts
@@ -400,58 +377,7 @@ async fn a_conversation_that_left_the_cloud_reaches_it_as_an_attached_host_which
     assert!(back.first_request().contains("[Execution target switched]"), "{}", back.first_request());
     assert!(back.received[0].contains("report"), "{}", back.received[0]);
     assert_eq!(harness.manager.count(&format!("wake:{device}")), 3);
-    // Idle, the Cloud releases the conversation that has it attached before
-    // it stops: the output of that command is not saved with it.
     eventually("the idle Cloud stops a third time", || async { !harness.manager.running(&device) }).await;
-    assert!(!job_output.exists(), "{}", job_output.display());
-    backend.close().await;
-}
-
-// Several seconds: the Cloud boots, it and a paired device each install the
-// builtin package, and the Cloud's idle window passes in real time. The
-// conversation uses the Cloud as `provider` and has it attached. Its own idle
-// release reaches the Cloud as any attached Host's does, since the Hosts that
-// hear it come from its binding, not its provider. The idle stop is where the
-// role shows: the stop holds a `provider` conversation, as one on the Cloud,
-// instead of reserving it for its release as one that only has the Cloud
-// attached, and must still release it there.
-#[tokio::test]
-async fn a_conversation_whose_model_runs_on_the_cloud_it_has_attached_hears_its_release_there_before_the_idle_stop() {
-    let vendor = MockVendor::start().await;
-    let mut harness = with_process_family(Harness::new().with_builtin_package());
-    harness.lifecycle = idle_after(Duration::from_millis(800));
-    // The conversation's own idle watch reads its activity once an hour
-    // while it works here, so its output on the Cloud goes with the Cloud's
-    // stop alone.
-    harness.lifecycle.idle_poll = Duration::from_secs(3600);
-    harness.cloud.sweep = Duration::from_millis(50);
-    let (backend, master) = harness.start_set_up().await;
-    let alpha = backend.pair(&master, "alpha").await;
-    let anthropic = anthropic_at(&backend, &master, &vendor, "/work").await;
-    let process = process_entry(&backend, &master).await;
-    create(&backend, &master, FIRST).await;
-
-    // Its first use boots the Cloud, which a switch to alpha leaves attached.
-    let listed = backend.get(&format!("/api/conversations/{FIRST}/fs"), Some(&master)).await;
-    assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
-    let device = the_cloud(&harness);
-    crate::work::switch(&backend, &master, FIRST, &alpha, alpha.runner.home_dir()).await;
-    // A lease of its file gate is its work, until the test lets it rest.
-    let working = backend.file_gate(&master, FIRST).await.enter(Purpose::Demand).await;
-    let mut work = Driven::open(&backend, &master, &vendor, FIRST, &anthropic, "/work").await;
-    let ran = work.turn(vec![shell("t1", "demi host shell --host Cloud pwd", 30_000), say("ran")]).await;
-    let session = format!("{}/sessions/{FIRST}", harness.manager.home(&device));
-    assert!(ran.received[0].contains(&session), "{}", ran.received[0]);
-    let job_output = harness.manager.state(&device).join("jobs").join(FIRST);
-    assert!(job_output.exists(), "{}", job_output.display());
-
-    // Its model's process runs on the Cloud from now on: it uses the Cloud
-    // as `provider`, and has it attached. At rest, the Cloud hears its
-    // release before it stops, and saves no output of that command.
-    choose(&backend, &master, FIRST, &process, "m").await;
-    drop(working);
-    eventually("the idle Cloud stops", || async { !harness.manager.running(&device) }).await;
-    assert!(!job_output.exists(), "{}", job_output.display());
     backend.close().await;
 }
 

@@ -6,7 +6,9 @@ use std::path::Path;
 use demi_command_service::protocol::PackageDescriptor;
 use demi_command_tree::{NativeOperation, Node};
 use demi_runner_protocol::manifest::Manifest;
-use demi_runner_protocol::wire::{self, Inbound, LogLine, Outbound, Timestamp};
+use demi_runner_protocol::wire::{
+    self, Inbound, KeptRecord, LogLine, Outbound, OutputStream, Timestamp, WireBytes,
+};
 use serde_json::{Value, json};
 
 /// The frames of one direction, recorded with the backend's codec, by name.
@@ -43,7 +45,7 @@ fn msgpack(value: &Value) -> Vec<u8> {
 #[test]
 fn every_backend_frame_decodes_and_encodes_to_the_same_bytes() {
     let frames = corpus("backend-to-runner");
-    assert_eq!(frames.len(), 55);
+    assert_eq!(frames.len(), 57);
     for (name, bytes) in frames {
         let message: Inbound =
             wire::decode(&bytes).unwrap_or_else(|error| panic!("{name}: {error}"));
@@ -54,7 +56,7 @@ fn every_backend_frame_decodes_and_encodes_to_the_same_bytes() {
 #[test]
 fn every_runner_frame_decodes_and_encodes_to_the_same_bytes() {
     let frames = corpus("runner-to-backend");
-    assert_eq!(frames.len(), 53);
+    assert_eq!(frames.len(), 55);
     for (name, bytes) in frames {
         let message: Outbound =
             wire::decode(&bytes).unwrap_or_else(|error| panic!("{name}: {error}"));
@@ -169,9 +171,6 @@ fn a_conversation_name_is_letters_digits_dashes_and_underscores() {
         for message in [job, release] {
             assert_eq!(wire::decode::<Inbound>(&msgpack(&message)).is_ok(), valid, "{message}");
         }
-        let mut hello: Value = rmp_serde::from_slice(&frame("runner-to-backend", "hello")).unwrap();
-        hello["conversations"] = json!([name]);
-        assert_eq!(wire::decode::<Outbound>(&msgpack(&hello)).is_ok(), valid, "{hello}");
     }
 }
 
@@ -350,4 +349,27 @@ fn a_built_manifest_pins_its_native_commands_and_hashes_as_the_recorded_one() {
     let mut released = packages();
     released[0].version = "next".into();
     assert_ne!(hash(vec![rpc()], released), hash(vec![rpc()], packages()));
+}
+
+
+/// A command's output as a runner kept it and the backend stores it for 30
+/// days: records written by one version decode in the next.
+#[test]
+fn a_kept_output_decodes_from_its_recorded_bytes() {
+    let bytes = std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/kept/output.msgpack")).unwrap();
+    let records = wire::decode_records(&bytes).unwrap();
+    assert_eq!(
+        records,
+        [
+            KeptRecord::Output(OutputStream::Stdout, WireBytes(b"first\n".to_vec())),
+            KeptRecord::Output(OutputStream::Stderr, WireBytes(vec![0, 255, 10])),
+            KeptRecord::LeftOut(734_003_200),
+            KeptRecord::Output(OutputStream::Stdout, WireBytes(b"last\n".to_vec())),
+        ]
+    );
+    let encoded: Vec<u8> = records
+        .iter()
+        .flat_map(|record| wire::encode_record(record).unwrap())
+        .collect();
+    assert_eq!(encoded, bytes);
 }

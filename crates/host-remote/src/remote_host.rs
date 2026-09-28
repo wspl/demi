@@ -18,7 +18,7 @@ use demi_shell::{
     ByteRange, ByteStream, CpOptions, DirEntry, FileContents, FileKind, FileStat, Host, HostError,
     HostErrorKind, HostFs, HostIdentity, HostKey, HostProcess, JobCaller, MkdirOptions, Process,
     ProcessControl, ProcessEnd, ProcessOutput, RmOptions, Signal, SpawnEnv, SpawnRequest,
-    WriteOptions,
+    WholeOutput, WriteOptions,
 };
 use futures_util::{StreamExt, future::LocalBoxFuture};
 use serde_json::{Map, Value};
@@ -31,6 +31,7 @@ use crate::{
         Answer, Expected, JobEnd, JobEntry, JobOrigin, JobOutput, ServiceEntry, Shared, SpawnEntry,
     },
     manifest::CommandSelection,
+    output_records::decode_output,
     pipes::{Pipe, PipeError, PipeReader},
 };
 
@@ -254,7 +255,7 @@ impl RemoteHost {
             }
         })
         .await?;
-        collect(reader).await
+        collect(reader, usize::MAX).await
     }
 
     /// Up to `limit` lines of the Host's log after `since`, oldest first, of
@@ -575,6 +576,40 @@ impl RemoteJob {
         }
     }
 
+    /// The job's kept output as it stands (`runner.md` § Pipes and output):
+    /// while the job runs, and after it ended until its release.
+    pub async fn read_output(&self) -> Result<WholeOutput, HostError> {
+        let link = self
+            .link
+            .as_ref()
+            .ok_or_else(|| HostError::offline("the job's runner is not connected"))?;
+        let reader = filled(link, Expected::JobRead, |id, output| Inbound::JobRead {
+            id,
+            job_id: self.id.clone(),
+            output,
+        })
+        .await?;
+        let bytes = collect(reader, wire::JOB_KEPT_READ_BYTES).await?;
+        decode_output(&bytes, None)
+            .map_err(|error| protocol(&format!("the job's kept output does not decode: {error}")))
+    }
+
+    /// Tells the runner that the backend has what it needs of the ended job,
+    /// so its directory goes. A runner that is gone removed it already.
+    pub async fn release(&self) {
+        let Some(link) = &self.link else {
+            return;
+        };
+        if let Err(error) = link
+            .send(&Inbound::JobRelease {
+                job_id: self.id.clone(),
+            })
+            .await
+        {
+            tracing::debug!(job = %self.id, "job release not sent: {error}");
+        }
+    }
+
     pub async fn kill(&self, signal: wire::Signal) -> Result<(), HostError> {
         match live(&self.link, &self.shared) {
             Some(link) => {
@@ -720,7 +755,9 @@ impl Host for RemoteHost {
 
 impl HostFs for RemoteHost {
     fn read_file<'a>(&'a self, path: &'a str) -> LocalBoxFuture<'a, Result<Bytes, HostError>> {
-        Box::pin(async move { collect(self.read_pipe(path, ByteRange::default()).await?).await })
+        Box::pin(async move {
+            collect(self.read_pipe(path, ByteRange::default()).await?, usize::MAX).await
+        })
     }
 
     fn read_stream<'a>(
@@ -1162,13 +1199,15 @@ async fn filled(
     }
 }
 
-/// Reads a pipe to its end.
-async fn collect(mut reader: PipeReader) -> Result<Bytes, HostError> {
+/// Reads a pipe to its end, which comes within `limit` bytes.
+async fn collect(mut reader: PipeReader, limit: usize) -> Result<Bytes, HostError> {
     let mut bytes = BytesMut::new();
     while let Some(chunk) = reader.next().await {
-        bytes.extend_from_slice(
-            &chunk.map_err(|failure| HostError::interrupted(failure.to_string()))?,
-        );
+        let chunk = chunk.map_err(|failure| HostError::interrupted(failure.to_string()))?;
+        if bytes.len() + chunk.len() > limit {
+            return Err(protocol(&format!("the runner sent more than {limit} bytes")));
+        }
+        bytes.extend_from_slice(&chunk);
     }
     Ok(bytes.freeze())
 }

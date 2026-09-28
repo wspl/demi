@@ -217,7 +217,7 @@ impl<H: AgentHarness> Tree<H> {
             return Err(OpenError::ReservedProfile);
         }
         let inherited = deps.harness.commands();
-        let commands = Rc::new(commands::with_agent_group(
+        let commands = Rc::new(commands::with_runtime_groups(
             &inherited, server, true, &profiles,
         )?);
         let store = (deps.stores)(root);
@@ -367,14 +367,24 @@ impl<H: AgentHarness> Tree<H> {
     /// The node whose shells hold `command`: the root or a live child; the
     /// root when none does, whose shells then refuse the handle.
     pub(crate) fn shells_of(&self, command: &CommandId) -> Rc<Node<H>> {
+        self.holder(command).unwrap_or_else(|| self.root.clone())
+    }
+
+    /// The node whose shells hold `command`, the root or a live child.
+    pub(crate) fn holder(&self, command: &CommandId) -> Option<Rc<Node<H>>> {
         if self.root.holds(command) {
-            return self.root.clone();
+            return Some(self.root.clone());
         }
         self.children
             .borrow()
             .values()
             .find(|child| child.node().holds(command))
-            .map_or_else(|| self.root.clone(), |child| child.node().clone())
+            .map(|child| child.node().clone())
+    }
+
+    /// The conversation's store.
+    pub(crate) fn store(&self) -> &Rc<dyn AgentTreeStore> {
+        &self.store
     }
 
     pub(crate) fn sink(&self) -> &FrameSink {

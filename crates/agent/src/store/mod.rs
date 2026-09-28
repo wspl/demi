@@ -15,9 +15,10 @@ use std::rc::Rc;
 
 use demi_agent_protocol::{JobPhase, SubagentJob};
 use demi_core::{
-    AgentMessage, AgentMessageEvent, Block, CompletionId, ModelSelection, NodeId, OperationId,
-    QueuedMessage, SessionPhase, Timestamp, TurnId, WakeupId,
+    AgentMessage, AgentMessageEvent, Block, CommandId, CompletionId, ModelSelection, NodeId,
+    OperationId, QueuedMessage, SessionPhase, Timestamp, TurnId, WakeupId,
 };
+use demi_shell::WholeOutput;
 use futures_util::future::LocalBoxFuture;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
@@ -105,6 +106,28 @@ pub trait AgentTreeStore {
 
     /// Deletes the node and every descendant with all their rows.
     fn delete_node<'a>(&'a self, id: &'a NodeId) -> LocalBoxFuture<'a, Result<(), StoreError>>;
+
+    /// What the conversation holds of the output of its command `command`,
+    /// which ended (`storage.md` § Command outputs); none for a command it
+    /// does not have.
+    fn command_output<'a>(
+        &'a self,
+        command: &'a CommandId,
+    ) -> LocalBoxFuture<'a, Result<Option<StoredOutput>, StoreError>>;
+}
+
+/// How many days a conversation keeps an ended command's output
+/// (`storage.md` § Retention).
+pub const COMMAND_OUTPUT_DAYS: i64 = 30;
+
+/// What a conversation holds of an ended command's output.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StoredOutput {
+    Stored(WholeOutput),
+    /// Why the backend could not store it.
+    NotStored(String),
+    /// When the retention pass removed it.
+    Removed(Timestamp),
 }
 
 /// Why a store operation failed.

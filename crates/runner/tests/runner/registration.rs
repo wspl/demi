@@ -1,6 +1,6 @@
 use demi_command_service::protocol::LocalInvocation;
 use demi_runner::connection::wire::{
-    RunnerInfo, RunnerPlatform, HostIdentity, RetainedOutput, LogLine, WireBytes,
+    RunnerInfo, RunnerPlatform, HostIdentity, OutputLengths, LogLine, WireBytes,
 };
 use demi_runner::{
     commands::command_client::{Stdio, forward},
@@ -28,7 +28,7 @@ enum Reply {
     Exit {
         #[serde(rename = "exitCode")]
         code: Option<f64>,
-        output: Option<RetainedOutput>,
+        output: Option<OutputLengths>,
     },
     #[serde(rename = "log_lines")]
     LogLines {
@@ -167,7 +167,7 @@ async fn backend_job_invokes_same_binary_alias_and_drain_releases_installation()
                         "stderr={}",
                         String::from_utf8_lossy(&stderr)
                     );
-                    assert_eq!(std::fs::read(output.unwrap().stdout_path).unwrap(), stdout);
+                    assert_eq!(output.unwrap().stdout_bytes, stdout.len() as u64);
                     break;
                 }
                 _ => panic!("unexpected runner reply"),

@@ -103,11 +103,7 @@ impl ConversationStores {
         conversation: &ConversationId,
         work: impl FnOnce(&Connection) -> Result<T, StorageError> + Send + 'static,
     ) -> Result<Option<T>, StorageError> {
-        if self.0.lock().closed {
-            return Err(StorageError::Closed);
-        }
-        let path = DatabaseFile::of(conversation).path(&self.0.directory);
-        tokio::task::spawn_blocking(move || read_cold(&path, work)).await?
+        self.db(conversation).read(work).await
     }
 
     /// Closes every writer and waits for each to close its database; a call
@@ -190,6 +186,20 @@ impl ConversationDb {
         // writer opened again.
         writers.open.insert(self.file.clone(), writer.clone());
         Ok(writer)
+    }
+
+    /// Runs `work` on a read-only connection of the database, in one read
+    /// transaction, so its statements see one state of the database. A
+    /// conversation with no database yet answers `None`.
+    pub(crate) async fn read<T: Send + 'static>(
+        &self,
+        work: impl FnOnce(&Connection) -> Result<T, StorageError> + Send + 'static,
+    ) -> Result<Option<T>, StorageError> {
+        if self.stores.lock().closed {
+            return Err(StorageError::Closed);
+        }
+        let path = self.file.path(&self.stores.directory);
+        tokio::task::spawn_blocking(move || read_cold(&path, work)).await?
     }
 
     /// Where a save's transaction commits.

@@ -18,7 +18,7 @@ pub(crate) use log::TranscriptLog;
 #[cfg(test)]
 pub(crate) use replay::agent_message_envelope;
 pub use replay::RequestView;
-pub(crate) use replay::{char_offset, replay, tool_input};
+pub(crate) use replay::{REPLAY_CHARS, char_offset, replay, tool_input};
 
 use demi_core::{Block, GoneCause, ModelMediaKind, WakeupPlacement};
 use jiff::tz::TimeZone;

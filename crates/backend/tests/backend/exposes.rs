@@ -17,6 +17,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
+use demi_agent::testing::shown_output;
 use demi_core::Clock as _;
 use demi_gates::Purpose;
 use demi_provider::testing::MockVendor;
@@ -449,7 +450,7 @@ async fn the_agent_exposes_a_service_and_lists_renews_and_removes_exposes_with_d
         "Exposed 127.0.0.1:{} on laptop as {}\nExpires in 60 minutes (expose {}).\n",
         fixture.port, exposed.url, exposed.id
     );
-    assert!(added.received[0].contains(&printed), "{}", added.received[0]);
+    assert!(shown_output(&added.received[0]).contains(&printed), "{}", added.received[0]);
     assert_eq!(fetch(&backend, &host_of(exposed), "/hello").await, (200, "hello".to_owned()));
 
     // `list` shows every expose of the user under a header, or as JSON.

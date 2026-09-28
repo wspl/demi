@@ -12,7 +12,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use demi_agent::testing::{field, preview};
+use demi_agent::testing::{field, shown_output};
 use demi_core::{Block, EditedFile, ToolView};
 use demi_provider::testing::{MockResponse, MockVendor};
 use reqwest::StatusCode;
@@ -611,7 +611,7 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
     // the one before, until `ready` is there. The far job's start (a login
     // shell on alpha) may outlast the window above, and its shell's printf
     // writes a byte at a time, so `ready` may come split between reads.
-    let mut output = preview(result).to_owned();
+    let mut output = shown_output(result);
     let deadline = tokio::time::Instant::now() + crate::support::PATIENCE;
     let mut reads = 0;
     while !output.contains("ready") {
@@ -627,7 +627,7 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
             .await;
         let result = read.received.first().expect("the read reaches the model");
         assert!(result.starts_with("status: running"), "{result}");
-        output.push_str(preview(result));
+        output.push_str(&shown_output(result));
     }
 
     let write = json!({ "commandId": command, "stdin": "hello\n" });

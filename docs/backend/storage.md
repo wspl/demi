@@ -256,9 +256,9 @@ command's id. The row holds when the command ended and one of three states:
 
 | State | Holds | `demi shell output` prints |
 |---|---|---|
-| Stored | The blob, its length, and how many bytes of the output were left out between the kept first and last 8 MiB | The output |
-| Not stored | Why: the Host's kept output could not be read, or the put failed | The reason |
-| Removed | The day the retention pass removed it | That it was removed, and when |
+| Stored | The blob, and the bytes at the output's end that the backend does not have with why, when there are some: lost with the Host's connection, or not read from the Host | The output |
+| Not stored | Why the put failed | The reason |
+| Removed | When the retention pass removed it | That it was removed, and on which day |
 
 The put comes first and the row after it, as for every blob
 ([Attachment and transcript media](#attachment-and-transcript-media)): a

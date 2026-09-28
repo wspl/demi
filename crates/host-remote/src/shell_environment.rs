@@ -1,16 +1,19 @@
 //! `RemoteShellEnvironment`: the shell behind the `shell_*` tools on a Host
 //! reached through its runner (`runner.md` § Shell jobs). Every exec is one
 //! job; the record holds the model's view of its output, the head while it
-//! runs and the tail at its end, and the pages' view, which also holds the
-//! newest output the runner sends while a page watches and the job is
-//! therefore followed (`runtime.md` § Live output). The whole output stays in
-//! the files the runner wrote. The directory a script ends in carries into
-//! the shell's next exec; nothing else of the shell's state does.
+//! runs and the whole output once it ended, and the pages' view, which also
+//! holds the newest output the runner sends while a page watches and the job
+//! is therefore followed (`runtime.md` § Live output). At the job's end the
+//! product's keeper stores the whole output, and the runner lets the job's
+//! directory go (`runtime.md` § The whole output). The directory a script
+//! ends in carries into the shell's next exec; nothing else of the shell's
+//! state does.
 
 use std::{
     cell::{Cell, RefCell},
     collections::{BTreeMap, HashMap},
     rc::Rc,
+    sync::Arc,
     time::Duration,
 };
 
@@ -22,10 +25,10 @@ use demi_runner_protocol::{
     wire::{self, JobFileChange},
 };
 use demi_shell::{
-    CommandRecord, CommandSet, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES,
+    BinaryOutput, CommandRecord, CommandSet, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES,
     DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, Ending, ExecRequest, Host, HostError, HostKey,
-    JobCaller, PageFeed, PageView, ProcessEnd, ShellEnvironment, ShellError, ShellTarget,
-    SpawnErrorKind, final_stdout_boundary,
+    JobCaller, Missing, OutputRecord, PageFeed, PageView, ProcessEnd, Seen, ShellEnvironment,
+    ShellError, ShellTarget, SpawnErrorKind, Streams, WholeOutput, binary_line,
 };
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::watch;
@@ -52,14 +55,22 @@ pub trait HostAccess {
     ) -> LocalBoxFuture<'a, Result<(), HostError>>;
 }
 
-/// Publishes a job's edits (`edit-tracking.md`) before its command reads as
-/// ended.
-pub trait RetainEdits {
+/// Keeps what a command leaves when it ends, before its command reads as
+/// ended: the copies of its edits (`edit-tracking.md`), and its whole
+/// output (`runtime.md` § The whole output). A failure to keep the output is
+/// the keeper's to record.
+pub trait CommandKeeper {
     fn retain<'a>(
         &'a self,
         command: &'a CommandId,
         files: &'a [JobFileChange],
     ) -> LocalBoxFuture<'a, Result<Vec<EditedFile>, String>>;
+
+    fn keep_output<'a>(
+        &'a self,
+        command: &'a CommandId,
+        output: &'a WholeOutput,
+    ) -> LocalBoxFuture<'a, ()>;
 }
 
 /// Builds each job's command context (`native-runtime.md` § Command
@@ -77,7 +88,7 @@ pub struct EnvironmentOptions {
     /// watches, which its jobs follow.
     pub feed: Rc<dyn PageFeed>,
     pub access: Option<Rc<dyn HostAccess>>,
-    pub retain: Option<Rc<dyn RetainEdits>>,
+    pub keeper: Option<Rc<dyn CommandKeeper>>,
     /// The variables every shell starts with, above the device's own.
     pub initial_env: BTreeMap<String, String>,
     /// The budget of one status view's new output, per stream.
@@ -94,7 +105,7 @@ impl EnvironmentOptions {
             context,
             feed,
             access: None,
-            retain: None,
+            keeper: None,
             initial_env: BTreeMap::new(),
             output_limit: DEFAULT_OUTPUT_LIMIT_BYTES,
             binary_limit: DEFAULT_BINARY_LIMIT_BYTES,
@@ -154,6 +165,9 @@ struct Running {
     stop: CancellationToken,
     /// Its job, once started.
     job: RefCell<Option<RemoteJob>>,
+    /// The output the backend received within the streams' views, in the
+    /// order it came: the whole output when neither stream went beyond.
+    received: RefCell<Vec<OutputRecord>>,
     /// Set by an abort: the end that follows is the stop, not the
     /// command's own.
     aborted: Cell<bool>,
@@ -226,6 +240,7 @@ impl RemoteShellEnvironment {
         let running = Rc::new(Running {
             stop: cancel.child_token(),
             job: RefCell::new(None),
+            received: RefCell::new(Vec::new()),
             aborted: Cell::new(false),
             settled: watch::Sender::new(false),
         });
@@ -309,21 +324,18 @@ impl RemoteShellEnvironment {
             }
         };
         let failure = access.err().or_else(|| failure.into_inner());
-        if let Some(message) = failure {
-            let ended = if running.stop.is_cancelled() {
-                record.borrow_mut().mark_aborted()
-            } else if record.borrow().is_running() {
-                let mut record = record.borrow_mut();
-                let stdout = record.text(StreamKind::Stdout).to_owned();
-                let reason = format!("{message}\n");
-                let stderr = format!("{}{reason}", record.text(StreamKind::Stderr));
-                record.settle(Ending::Exited(127), stdout, stderr, None, &reason)
+        if let Some(reason) = failure
+            && record.borrow().is_running()
+        {
+            let mut output = running.received.take();
+            let (ending, page) = if running.stop.is_cancelled() {
+                (Ending::Aborted, String::new())
             } else {
-                false
+                (Ending::Exited(127), push_reason(&mut output, &reason))
             };
-            if ended {
-                self.report(&record);
-            }
+            let output = WholeOutput::new(output, None);
+            self.end(&command, &record, ending, output, None, &page, None)
+                .await;
         }
         let mut state = self.0.state.borrow_mut();
         state.running.remove(&command);
@@ -402,7 +414,7 @@ impl RemoteShellEnvironment {
                         break;
                     };
                     let stream = &mut streams[stream_index(chunk.stream)];
-                    if stream.receive(record, chunk) {
+                    if stream.receive(record, chunk, &running.received) {
                         self.report(record);
                     }
                 }
@@ -421,27 +433,28 @@ impl RemoteShellEnvironment {
             }
         }
         let end = job.end().await;
-        self.finish(shell, command, running, record, end, streams)
+        self.finish(shell, command, running, record, &job, end, streams)
             .await;
         Ok(())
     }
 
-    /// Settles the record from the job's end: its edits, its directory, its
-    /// streams as the model sees them, and what the end adds to the pages'
-    /// view.
+    /// Settles the record from the job's end: its edits, its directory, and
+    /// its whole output, which the backend received or reads from the Host
+    /// now; the runner then lets the job's directory go.
     async fn finish(
         &self,
         shell: &ShellId,
         command: &CommandId,
         running: &Running,
         record: &Rc<RefCell<CommandRecord>>,
+        job: &RemoteJob,
         end: JobEnd,
         streams: [Received; 2],
     ) {
         if !end.files.is_empty() {
             let unavailable = || end.files.iter().map(unkept).collect::<Vec<_>>();
-            let files = match &self.0.options.retain {
-                Some(retain) => match retain.retain(command, &end.files).await {
+            let files = match &self.0.options.keeper {
+                Some(keeper) => match keeper.retain(command, &end.files).await {
                     Ok(files) => files,
                     Err(error) => {
                         // History publication is best effort; it must not
@@ -462,29 +475,40 @@ impl RemoteShellEnvironment {
         {
             shell.cwd = cwd;
         }
-        let [stdout_received, stderr_received] = streams;
+        let mut received = running.received.take();
         let exit_code = match &end.status {
+            // A job the runner could not run names why; any other kind is
+            // bash's own.
             ProcessEnd::NotStarted(error) => {
-                // A job the runner could not run names why; any other kind is
-                // bash's own.
                 let reason = match (&error.kind, &error.detail) {
                     (SpawnErrorKind::Other, Some(detail)) => detail.clone(),
                     _ => format!("bash: {}", error.kind),
                 };
-                return self.never_ran(
-                    record,
-                    &stdout_received.head,
-                    &stderr_received.head,
-                    &reason,
-                );
+                let page = push_reason(&mut received, &reason);
+                let output = WholeOutput::new(received, None);
+                let ending = Ending::Exited(127);
+                return self
+                    .end(command, record, ending, output, None, &page, Some(job))
+                    .await;
             }
             ProcessEnd::Lost(reason) => {
-                return self.never_ran(
-                    record,
-                    &stdout_received.head,
-                    &stderr_received.head,
-                    reason,
-                );
+                // What the Host held beyond what the backend received went
+                // with the connection.
+                let missing = Some(Missing {
+                    bytes: streams.iter().map(Received::unreceived).sum(),
+                    reason: "lost with the Host's connection".into(),
+                })
+                .filter(|missing| missing.bytes > 0);
+                let mut page = push_reason(&mut received, reason);
+                if let Some(missing) = &missing {
+                    page.push_str(&missing.line());
+                    page.push('\n');
+                }
+                let output = WholeOutput::new(received, missing);
+                let ending = Ending::Exited(127);
+                return self
+                    .end(command, record, ending, output, None, &page, Some(job))
+                    .await;
             }
             ProcessEnd::Exited(code) => *code,
             ProcessEnd::Signalled(signal) if matches!(signal.as_str(), "SIGTERM" | "SIGKILL") => {
@@ -492,102 +516,77 @@ impl RemoteShellEnvironment {
             }
             ProcessEnd::Signalled(_) => 128,
         };
-        let output = end.output;
-        let stdout = stream_text(
-            &stdout_received.head,
-            output.as_ref().map(|output| {
-                (
-                    output.stdout_bytes,
-                    &output.stdout_tail.0,
-                    output.stdout_path.as_str(),
-                )
-            }),
-        );
-        let stderr = stream_text(
-            &stderr_received.head,
-            output.as_ref().map(|output| {
-                (
-                    output.stderr_bytes,
-                    &output.stderr_tail.0,
-                    output.stderr_path.as_str(),
-                )
-            }),
-        );
-        // A binary final stream is on the target whole: read back within the
-        // binary limit, so the tools can look at it.
-        let mut stdout_text = stdout.text;
-        let mut binary = None;
-        if let Some(output) = &output
-            && stdout.binary
-            && output.stdout_bytes <= self.0.options.binary_limit as u64
-            && let Ok(bytes) = self
-                .0
-                .options
-                .host
-                .fs()
-                .read_file(&output.stdout_path)
-                .await
-        {
-            let (text, bytes) = final_stdout_boundary(
-                bytes,
-                self.0.options.binary_limit,
-                Some(&output.stdout_path),
-            );
-            stdout_text = text;
-            binary = bytes;
+        let lengths = end.output.unwrap_or(wire::OutputLengths {
+            stdout_bytes: streams[0].received(),
+            stderr_bytes: streams[1].received(),
+        });
+        let unreceived = lengths.stdout_bytes.saturating_sub(streams[0].received())
+            + lengths.stderr_bytes.saturating_sub(streams[1].received());
+        // What the end adds to the pages' view: the whole output when the
+        // view lacks some of it, which shows its end anew; otherwise only a
+        // line that stands for a binary stdout.
+        let (output, mut page, read) = if unreceived == 0 {
+            (WholeOutput::new(received, None), String::new(), false)
+        } else {
+            match job.read_output().await {
+                Ok(output) => (output, String::new(), true),
+                Err(error) => {
+                    tracing::warn!(%command, "could not read the command's kept output: {error}");
+                    let missing = Missing {
+                        bytes: unreceived,
+                        reason: format!("not read from the Host: {}", error.message),
+                    };
+                    let page = format!("{}\n", missing.line());
+                    (WholeOutput::new(received, Some(missing)), page, false)
+                }
+            }
+        };
+        let binary = output.binary_stdout(lengths.stdout_bytes, self.0.options.binary_limit);
+        let binary_length = binary.as_ref().map(|binary| binary.info.total_bytes);
+        if read {
+            page = output
+                .text(Streams::Both, binary_length, Seen::default())
+                .display();
+        } else if let Some(length) = binary_length {
+            page.insert_str(0, &format!("{}\n", binary_line(length)));
         }
         let ending = if running.aborted.get() {
             Ending::Aborted
         } else {
             Ending::Exited(exit_code)
         };
-        // The pages' view gets the end of each stream it had not received,
-        // or a binary stdout's description.
-        let retained = |stream: StreamKind| {
-            output.as_ref().map(|output| match stream {
-                StreamKind::Stdout => (output.stdout_bytes, output.stdout_tail.0.as_slice()),
-                StreamKind::Stderr => (output.stderr_bytes, output.stderr_tail.0.as_slice()),
-            })
-        };
-        let mut page_end = match &binary {
-            Some(_) => stdout_text.clone(),
-            None => stdout_received.rest(StreamKind::Stdout, retained(StreamKind::Stdout)),
-        };
-        page_end.push_str(&stderr_received.rest(StreamKind::Stderr, retained(StreamKind::Stderr)));
-        let ended = {
+        {
             let mut record = record.borrow_mut();
-            if let Some(output) = &output {
-                // The runner names where its tee wrote: the output files are
-                // the target's.
-                if let Some((directory, _)) = output.stdout_path.rsplit_once('/') {
-                    record.set_output_dir(directory.to_owned());
-                }
-            }
-            let ended = record.settle(ending, stdout_text, stderr.text, binary, &page_end);
-            if let Some(output) = &output {
-                record.set_host_bytes(output.stdout_bytes, output.stderr_bytes);
-            }
-            ended
-        };
-        if ended {
-            self.report(record);
+            record.grew(StreamKind::Stdout, lengths.stdout_bytes);
+            record.grew(StreamKind::Stderr, lengths.stderr_bytes);
         }
+        self.end(command, record, ending, output, binary, &page, Some(job))
+            .await;
     }
 
-    /// A job that never ran its script: exit 127, and why, on stderr.
-    fn never_ran(
+    /// Ends the command with its whole output: the keeper stores it, the
+    /// runner lets the job's directory go, since the backend now has what it
+    /// needs of the job, and the record settles, the pages' view with
+    /// `page` added.
+    async fn end(
         &self,
+        command: &CommandId,
         record: &Rc<RefCell<CommandRecord>>,
-        stdout: &[u8],
-        stderr: &[u8],
-        reason: &str,
+        ending: Ending,
+        output: WholeOutput,
+        binary_stdout: Option<BinaryOutput>,
+        page: &str,
+        job: Option<&RemoteJob>,
     ) {
-        let stdout = String::from_utf8_lossy(stdout).into_owned();
-        let reason = format!("{reason}\n");
-        let stderr = format!("{}{reason}", String::from_utf8_lossy(stderr));
+        if let Some(keeper) = &self.0.options.keeper {
+            keeper.keep_output(command, &output).await;
+        }
+        if let Some(job) = job {
+            job.release().await;
+        }
         let ended = record
             .borrow_mut()
-            .settle(Ending::Exited(127), stdout, stderr, None, &reason);
+            .settle(ending, Arc::new(output), binary_stdout, page);
         if ended {
             self.report(record);
         }
@@ -688,6 +687,25 @@ impl ShellEnvironment for RemoteShellEnvironment {
         self.view(command)
     }
 
+    fn read_output<'a>(
+        &'a self,
+        command: &'a CommandId,
+    ) -> LocalBoxFuture<'a, Result<WholeOutput, ShellError>> {
+        Box::pin(async move {
+            let record = self.record(command)?;
+            let running = self.0.state.borrow().running.get(command).cloned();
+            let Some(running) = running.filter(|_| record.borrow().is_running()) else {
+                return Err(ShellError::NotRunning(command.clone()));
+            };
+            let job = running
+                .job
+                .borrow()
+                .clone()
+                .ok_or_else(|| ShellError::Starting(command.clone()))?;
+            Ok(job.read_output().await?)
+        })
+    }
+
     fn write<'a>(
         &'a self,
         command: &'a CommandId,
@@ -735,8 +753,8 @@ impl ShellEnvironment for RemoteShellEnvironment {
             if running && let Err(error) = self.stop_command(command).await {
                 tracing::debug!(%command, "could not abort the released command: {error}");
             }
-            // The output files are the runner's; they stay on the target
-            // with the rest of the command's history.
+            // A command that ran keeps its output when its job ends, and
+            // its Host lets the job's directory go then.
             self.0.state.borrow_mut().records.remove(command);
             true
         })
@@ -806,68 +824,66 @@ pub fn edited_file(file: &JobFileChange, mut kept: impl FnMut(usize) -> bool) ->
     }
 }
 
-/// One stream's text as the model sees it.
-struct StreamText {
-    text: String,
-    binary: bool,
-}
-
-/// The head that streamed, and, when the stream outgrew the view, a gap note
-/// and the tail the runner read from the output file at the end. `retained`
-/// is the stream's length on the target, its tail and its file.
-fn stream_text(head: &[u8], retained: Option<(u64, &Vec<u8>, &str)>) -> StreamText {
-    let whole = |bytes: &[u8]| StreamText {
-        text: String::from_utf8_lossy(bytes).into_owned(),
-        binary: std::str::from_utf8(bytes).is_err(),
+/// Adds why a command ended without running to its end to its output: a
+/// line on stderr, after the output's last line. Returns the text it added.
+fn push_reason(output: &mut Vec<OutputRecord>, reason: &str) -> String {
+    let last = output.iter().rev().find_map(|record| match record {
+        OutputRecord::Output(_, bytes) => bytes.last().copied(),
+        OutputRecord::LeftOut(_) => None,
+    });
+    let separator = if last.is_none_or(|byte| byte == b'\n') {
+        ""
+    } else {
+        "\n"
     };
-    let Some((total, tail, path)) = retained else {
-        return whole(head);
-    };
-    let total = usize::try_from(total).unwrap_or(usize::MAX);
-    if total <= head.len() {
-        return whole(head);
-    }
-    if head.len() + tail.len() >= total {
-        let overlap = head.len() + tail.len() - total;
-        return whole(&[head, &tail[overlap..]].concat());
-    }
-    let hidden = total - head.len() - tail.len();
-    let shown = [head, tail.as_slice()].concat();
-    StreamText {
-        text: format!(
-            "{}\n[... {hidden} bytes not shown; the full stream is at {path} ...]\n{}",
-            String::from_utf8_lossy(head),
-            String::from_utf8_lossy(tail)
-        ),
-        binary: std::str::from_utf8(&shown).is_err(),
-    }
+    let text = format!("{separator}{reason}\n");
+    output.push(OutputRecord::Output(
+        StreamKind::Stderr,
+        Bytes::from(text.clone()),
+    ));
+    text
 }
 
 /// What the backend received of one stream of a job (`runner.md` § Pipes
 /// and output).
 #[derive(Default)]
 struct Received {
-    /// The stream's first bytes, the model's view of it.
-    head: Vec<u8>,
-    /// Where the stream's next bytes start.
+    /// How many of the stream's first `JOB_VIEW_BYTES` it received: the
+    /// stream's part of the output it holds.
+    head: u64,
+    /// The stream's length on the Host, as its messages told it.
+    host: u64,
+    /// Where the pages' view of the stream's next bytes starts.
     next: u64,
     text: Utf8Stream,
 }
 
 impl Received {
-    /// Adds one message of the job's output to `record`: a stream's first
-    /// bytes to both views, its newest bytes beyond them to the pages' view,
-    /// and a message without bytes as growth alone. True when the pages'
-    /// view changed.
-    fn receive(&mut self, record: &RefCell<CommandRecord>, chunk: JobOutput) -> bool {
+    /// Adds one message of the job's output: a stream's first bytes to both
+    /// views of `record` and to the `received` output, its newest bytes
+    /// beyond them to the pages' view, and a message without bytes as
+    /// growth alone. True when the pages' view changed.
+    fn receive(
+        &mut self,
+        record: &RefCell<CommandRecord>,
+        chunk: JobOutput,
+        received: &RefCell<Vec<OutputRecord>>,
+    ) -> bool {
+        let end = chunk.offset + chunk.bytes.len() as u64;
+        self.host = self.host.max(end);
         if chunk.offset < wire::JOB_VIEW_BYTES as u64 {
-            self.head.extend_from_slice(&chunk.bytes);
-            self.next = chunk.offset + chunk.bytes.len() as u64;
+            self.head = end;
+            self.next = end;
             let text = self.text.decode(&chunk.bytes);
+            if !chunk.bytes.is_empty() {
+                received
+                    .borrow_mut()
+                    .push(OutputRecord::Output(chunk.stream, chunk.bytes));
+            }
             return record.borrow_mut().append_output(chunk.stream, &text);
         }
+        record.borrow_mut().grew(chunk.stream, end);
         if chunk.bytes.is_empty() {
-            record.borrow_mut().grew();
             return false;
         }
         let mut text = String::new();
@@ -878,31 +894,19 @@ impl Received {
             text.push_str(&left_out_note(chunk.stream, left_out));
         }
         text.push_str(&self.text.decode(&chunk.bytes));
-        self.next = chunk.offset + chunk.bytes.len() as u64;
+        self.next = end;
         record.borrow_mut().append_page_output(&text)
     }
 
-    /// What the job's end adds to the pages' view of the stream: its bytes
-    /// past those received, from `retained`, the stream's length and last
-    /// bytes, and the rest of a character the last bytes split.
-    fn rest(mut self, stream: StreamKind, retained: Option<(u64, &[u8])>) -> String {
-        let mut text = String::new();
-        if let Some((length, tail)) = retained
-            && length > self.next
-        {
-            let missing = length - self.next;
-            let kept = tail.len() as u64;
-            if missing <= kept {
-                let from = usize::try_from(kept - missing).expect("within the tail");
-                text.push_str(&self.text.decode(&tail[from..]));
-            } else {
-                text.push_str(&self.text.finish());
-                text.push_str(&left_out_note(stream, missing - kept));
-                text.push_str(&self.text.decode(tail));
-            }
-        }
-        text.push_str(&self.text.finish());
-        text
+    /// The bytes of the stream in the output the backend holds.
+    fn received(&self) -> u64 {
+        self.head
+    }
+
+    /// The bytes of the stream the Host held beyond those, as far as its
+    /// messages told.
+    fn unreceived(&self) -> u64 {
+        self.host.saturating_sub(self.head)
     }
 }
 
@@ -964,7 +968,7 @@ impl Utf8Stream {
 
 #[cfg(test)]
 mod tests {
-    use super::{Utf8Stream, stream_text};
+    use super::Utf8Stream;
 
     #[test]
     fn a_character_split_across_chunks_decodes_once_whole() {
@@ -973,21 +977,5 @@ mod tests {
         let decoded: String = bytes.iter().map(|byte| stream.decode(&[*byte])).collect();
         assert_eq!(decoded, "aé€😀");
         assert_eq!(stream.decode(b"\xff!"), "\u{fffd}!");
-    }
-
-    #[test]
-    fn a_stream_beyond_the_view_is_its_head_a_gap_note_and_its_tail() {
-        let head = b"0123".as_slice();
-        let tail = b"6789".to_vec();
-        let gap = stream_text(head, Some((10, &tail, "/out/stdout.txt")));
-        assert_eq!(
-            gap.text,
-            "0123\n[... 2 bytes not shown; the full stream is at /out/stdout.txt ...]\n6789"
-        );
-        let overlap = stream_text(head, Some((6, &tail, "/out/stdout.txt")));
-        assert_eq!(overlap.text, "012389");
-        assert!(!overlap.binary);
-        assert_eq!(stream_text(b"\xffx", None).text, "\u{fffd}x");
-        assert!(stream_text(b"\xffx", None).binary);
     }
 }

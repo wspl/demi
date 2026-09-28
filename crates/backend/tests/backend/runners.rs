@@ -150,7 +150,6 @@ fn hello(protocol: u32, token: Option<&str>, managed: Option<bool>) -> Outbound 
             },
             managed,
         },
-        conversations: Vec::new(),
     }
 }
 

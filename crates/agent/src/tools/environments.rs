@@ -246,7 +246,7 @@ mod tests {
     use std::cell::Cell;
 
     use bytes::Bytes;
-    use demi_shell::{CommandStatus, ExecRequest, ShellError};
+    use demi_shell::{CommandStatus, ExecRequest, ShellError, WholeOutput};
     use futures_util::future::{LocalBoxFuture, join};
     use tokio_util::sync::CancellationToken;
 
@@ -271,6 +271,13 @@ mod tests {
 
         fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
             Err(ShellError::UnknownCommand(command.clone()))
+        }
+
+        fn read_output<'a>(
+            &'a self,
+            command: &'a CommandId,
+        ) -> LocalBoxFuture<'a, Result<WholeOutput, ShellError>> {
+            Box::pin(async move { Err(ShellError::UnknownCommand(command.clone())) })
         }
 
         fn write<'a>(

@@ -25,9 +25,8 @@ use crate::values::DeviceToken;
 )]
 #[garde(allow_unvalidated)]
 pub enum Inbound {
-    /// Ends what the runner and its services hold for the conversation, its
-    /// job directories included (`resource-lifecycle.md` § Conversation
-    /// release).
+    /// Ends what the runner's services hold for the conversation
+    /// (`resource-lifecycle.md` § Conversation release).
     ConversationRelease {
         id: String,
         #[garde(custom(conversation_name))]
@@ -125,6 +124,18 @@ pub enum Inbound {
     JobFollow {
         job_id: String,
         follow: bool,
+    },
+    /// Streams the job's kept output, as it stands, into `output`; the
+    /// runner answers with `job_read` (`runner.md` § Pipes and output).
+    JobRead {
+        id: String,
+        job_id: String,
+        output: PipeRef,
+    },
+    /// The backend has read what it needs of an ended job: its directory
+    /// goes.
+    JobRelease {
+        job_id: String,
     },
     RpcStdinPull {
         call_id: String,
@@ -406,11 +417,6 @@ pub enum Outbound {
         device_token: Option<DeviceToken>,
         #[garde(dive)]
         runner: RunnerInfo,
-        /// The conversations the runner holds job directories for, which the
-        /// backend releases or watches (`resource-lifecycle.md` § A release
-        /// the device missed); none from a Cloud's runner.
-        #[garde(inner(custom(conversation_name)))]
-        conversations: Vec<String>,
     },
     /// Liveness, with the count of running jobs the idle rule reads.
     Pong {
@@ -491,11 +497,19 @@ pub enum Outbound {
         /// The directory the script ended in; absent when bash never ran it.
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         cwd: Option<String>,
+        /// Absent when bash never ran the script.
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-        output: Option<RetainedOutput>,
+        output: Option<OutputLengths>,
         #[garde(length(max = demi_command_service::protocol::EDIT_JOB_FILES), dive)]
         files: Vec<JobFileChange>,
         files_truncated: bool,
+    },
+    /// The answer to `job_read`: the kept output flows through the pipe; an
+    /// error says why none does.
+    JobRead {
+        id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        error: Option<String>,
     },
     /// An `rpc` command invoked on the target. It names only its job; `stdin`
     /// says whether the process has a pipe on fd 0.
@@ -819,17 +833,14 @@ pub enum SpawnErrorKind {
     Other,
 }
 
-/// Where a job's full output lives on the target, and the last bytes of each
-/// stream.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// Each stream's length when a job ended. The backend reads what it did not
+/// receive of them from the job's kept output (`runner.md` § Pipes and
+/// output).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct RetainedOutput {
-    pub stdout_path: String,
-    pub stderr_path: String,
+pub struct OutputLengths {
     pub stdout_bytes: u64,
     pub stderr_bytes: u64,
-    pub stdout_tail: WireBytes,
-    pub stderr_tail: WireBytes,
 }
 
 /// A file a job changed: its edit record entry and its line counts.

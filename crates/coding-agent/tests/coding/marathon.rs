@@ -4,7 +4,7 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use demi_agent::testing::{field, preview};
+use demi_agent::testing::{field, shown_output};
 use demi_agent_protocol::{ClientFrame, ServerFrame, ShellStatus};
 use demi_core::CommandId;
 use demi_provider::{
@@ -46,15 +46,15 @@ async fn a_coding_workflow_edits_files_tracks_todos_and_keeps_its_shell_across_m
             assert!(result.starts_with("status: exited\n"), "{result}");
         }
         assert_eq!(field(&results[0], "exitCode"), "0");
-        assert_eq!(preview(&results[0]), "Created src/app.ts\n");
+        assert_eq!(shown_output(&results[0]), "Created src/app.ts\n");
         assert_eq!(
-            serde_json::from_str::<serde_json::Value>(preview(&results[1])).unwrap(),
+            serde_json::from_str::<serde_json::Value>(&shown_output(&results[1])).unwrap(),
             json!({"todo": {"id": "T1", "text": "Run tests", "status": "pending"}})
         );
         // The failing check, then the fix and the passing one.
         assert_eq!(field(&results[2], "exitCode"), "1");
-        assert_eq!(preview(&results[3]), "Edited src/app.ts\n");
-        assert_eq!(preview(&results[4]), "passed\n");
+        assert_eq!(shown_output(&results[3]), "Edited src/app.ts\n");
+        assert_eq!(shown_output(&results[4]), "passed\n");
         assert_eq!(
             fixture.kinds(),
             [
@@ -88,7 +88,7 @@ async fn a_coding_workflow_edits_files_tracks_todos_and_keeps_its_shell_across_m
         turn(&mut client, "message-2", "Mark the test done.").await;
         let last = recorded.borrow()[5].clone();
         assert_eq!(
-            preview(&last),
+            shown_output(&last),
             format!("[x] T1 Run tests\n{}/src\n", fixture.workspace)
         );
         assert_eq!(
@@ -197,7 +197,7 @@ impl Model {
                 if result.starts_with("yield scheduled") {
                     return vec![self.call("shell_status", json!({"commandId": self.reader}))];
                 }
-                self.reader_output.push_str(preview(&result));
+                self.reader_output.push_str(&shown_output(&result));
                 if field(&result, "status") == "running" {
                     return vec![self.call("yield", json!({"durationMs": 20}))];
                 }

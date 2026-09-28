@@ -572,7 +572,7 @@ model:
   - `demi shell output: no command 17 in this conversation`;
   - `demi shell output: the output of 17 was removed on 2026-10-28, 30 days after the command ended`;
   - `demi shell output: the output of 17 was not stored: <reason>`, when the
-    backend could not read the Host's kept output or could not store it;
+    backend could not store it;
   - `demi shell output: lines 5000-5100 are past the end: the output has 4720 lines`.
 - **A reader that stops early**, such as `| head -n 20`, ends the command
   quietly ([Handle an rpc call](../execution/commands.md#handle-an-rpc-call)).
@@ -594,7 +594,9 @@ Where the output is kept:
 - A command that ended because its Host's connection was lost keeps what the
   backend received, followed by the line
   `[... 1048576 bytes lost with the Host's connection ...]` when there was
-  more.
+  more. So does a command whose kept output the backend could not read from
+  its Host, with the line
+  `[... 1048576 bytes not read from the Host: <reason> ...]`.
 - The stored output is never part of a request, so storing it or removing it
   changes no request ([Prompt cache](../providers/providers.md#prompt-cache)).
 
@@ -634,9 +636,10 @@ the tree: shell_output to every attached page,
   held since the command started (`chars`); characters are Unicode scalar
   values. The view is the same for every page, whatever any page or the model
   read, and no read changes it. When the command ends, the view gets what the
-  end adds: the end of the output that the backend had not received, from the
-  whole output it stores ([The whole output](#the-whole-output)), why the
-  command could not run, or a binary stdout's description.
+  end adds: when the backend had not received all of the output, the whole
+  output it stores ([The whole output](#the-whole-output)), whose end the
+  pages then show anew; why the command could not run; or a binary stdout's
+  description.
 - **Which commands.** Every command of the tree, the root's and each live
   subagent's, several at once, on a Cloud and on a paired device alike: both
   are Hosts behind a runner.
@@ -999,7 +1002,7 @@ file bodies or raw bytes, and its type is fixed per tool by `kind`:
 
 | `kind` | Fields |
 | --- | --- |
-| `shell` | `status` (`running`, `exited` or `aborted`); `shellId`; `commandId`; `exitCode`, once exited; `runningMs`; `idleMs`; `chunks`, the last 32,768 characters of the merged stdout and stderr, each chunk tagged with its stream; `viewTruncated`, true when that window or the output itself was cut; `files` and `filesTruncated`, once the command has exited and changed files |
+| `shell` | `status` (`running`, `exited` or `aborted`); `shellId`; `commandId`; `exitCode`, once exited; `runningMs`; `idleMs`; `chunks`, the last 32,768 characters of the output the result covers, stdout and stderr merged, each chunk tagged with its stream, a line that stands for bytes the output does not hold tagged as stderr; `viewTruncated`, true when that window or the output itself was cut; `files` and `filesTruncated`, once the command has exited and changed files |
 | `repeated_shell_exec` | `script`, `count` |
 | `yield_wakeup` | `wakeupId`, `durationMs` |
 

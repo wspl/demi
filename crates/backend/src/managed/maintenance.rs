@@ -1,9 +1,9 @@
 //! The schedules of a running Cloud (`managed-hosts.md` § Lifecycle and
 //! capacity): its idle watch, which stops it once no conversation using it
-//! has been active for the idle window, after sending the conversation
-//! releases that fall due with the stop (`resource-lifecycle.md` § A Cloud's
-//! idle stop), and its maintenance loop, which saves it every checkpoint
-//! interval and stops it at its lifetime cap. Both belong to the running
+//! has been active for the idle window, with no releases, since the stop
+//! ends what they would (`resource-lifecycle.md` § A Cloud's idle stop),
+//! and its maintenance loop, which saves it every checkpoint interval and
+//! stops it at its lifetime cap. Both belong to the running
 //! phase and end with it. Maintenance holds the Cloud's gate for
 //! maintenance, not demand, so it never restarts the idle clock; an idle
 //! stop that finds maintenance holding the gate waits for it to let go.
@@ -12,13 +12,10 @@ use std::rc::{Rc, Weak};
 
 use demi_gates::{GateLease, Purpose};
 use demi_machines_protocol::CheckpointParams;
-use demi_web_api::ids::{ConversationId, DeviceId};
-use futures_util::future::join_all;
 use tokio::time::Instant;
 use tokio_util::task::AbortOnDropHandle;
 
 use super::machine::Machine;
-use super::uses::Role;
 use crate::conversation::root_of;
 use crate::lifecycle::{self, Activity, IdlePolicy, Retirement};
 use crate::shard::Shard;
@@ -49,33 +46,6 @@ impl Shard {
         Ok(uses
             .iter()
             .fold(Activity::default(), |activity, (id, _)| activity.and(self.conversation_activity(id))))
-    }
-
-    /// Sends, before an idle stop saves and stops the Cloud, the release of
-    /// each conversation that has the Cloud as its main or attached Host and
-    /// whose idle watch has not released it yet (`resource-lifecycle.md`
-    /// § A Cloud's idle stop). Every conversation using the Cloud has been
-    /// idle for the window by then, so their releases fall due with the
-    /// stop, which would otherwise cut them off and save their output with
-    /// the machine. Each is sent under the conversation's file gate: the stop
-    /// holds the conversations that cannot work without the Cloud, and one
-    /// that only has it attached is reserved for its release, or passed over
-    /// while work or a transition holds it. A release that fails is logged
-    /// and the stop goes on (`release_on`): the Cloud's next hello names what
-    /// it left.
-    async fn release_before_idle_stop(&self, device: &DeviceId, uses: &[(ConversationId, Role)]) {
-        let due = uses.iter().filter(|(id, role)| role.is_host() && self.tracks_idle(id));
-        let releases = due.filter_map(|(id, role)| {
-            let attached = match role {
-                Role::Attached => Some(self.conversations().slot(id).files.try_reserve()?),
-                Role::Target | Role::Provider { .. } => None,
-            };
-            Some(async move {
-                let _held = attached;
-                self.release_on(id.as_str(), device).await;
-            })
-        });
-        join_all(releases).await;
     }
 
     /// One maintenance round of a running machine: the lifetime cap, else a
@@ -232,7 +202,6 @@ impl IdlePolicy for CloudIdle {
         let machine = self.machine.clone();
         Ok(Some(Box::pin(async move {
             let _held = (gate, held);
-            shard.release_before_idle_stop(&machine.device.id, &uses).await;
             shard.hibernate_reserved(&machine).await.map_err(|error| error.to_string())
         })))
     }

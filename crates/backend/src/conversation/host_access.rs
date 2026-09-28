@@ -510,10 +510,10 @@ impl Shard {
     /// is connected, a paired device's or a running Cloud's. It takes no file
     /// gate and wakes nothing: a device whose runner is not connected, a
     /// stopped Cloud among them, lost the conversation's services with its
-    /// connection, and its next hello names the job output it still holds
-    /// (`resource-lifecycle.md` § A release the device missed). A release
-    /// that fails is logged with the Host and the reason, and fails nothing
-    /// that sent it, since the Host hears it again (§ A release that fails).
+    /// connection, and holds no files of it (`resource-lifecycle.md`
+    /// § Conversation release). A release that fails is logged with the Host
+    /// and the reason, and fails nothing that sent it, since nothing is left
+    /// for it (`resource-lifecycle.md` § A release that fails).
     pub(crate) async fn release_on(&self, conversation: &str, device: &DeviceId) {
         let Some(link) = self.devices().link(device) else {
             return;

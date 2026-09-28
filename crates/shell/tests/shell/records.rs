@@ -1,7 +1,10 @@
+use std::sync::Arc;
+
 use bytes::Bytes;
-use demi_core::{CommandId, ShellId, StreamKind};
+use demi_core::{BinaryStdout, CommandId, ShellId, StreamKind};
 use demi_shell::{
-    CommandRecord, CommandState, Ending, PageState, TAIL_CHARS, final_stdout_boundary,
+    BinaryOutput, CommandRecord, CommandState, Ending, OutputRecord, PageState, Seen, TAIL_CHARS,
+    WholeOutput,
 };
 
 fn new_record() -> CommandRecord {
@@ -58,88 +61,64 @@ async fn views_deliver_each_stream_once_within_the_budget_between_characters() {
     assert_eq!(empty.stdout.delta, "");
     assert_eq!(empty.output.chunks, []);
     assert_eq!(empty.idle_ms, 250);
+
+    // A view names the line of the merged output its text starts in.
+    record.append_output(StreamKind::Stdout, "next\n");
+    let more = record.status(0, None);
+    assert_eq!((more.output.text.as_str(), more.output.line), ("next\n", 3));
 }
 
-#[tokio::test(flavor = "current_thread")]
-async fn an_exit_appends_what_it_adds_and_a_binary_stdout_is_presented_anew() {
+/// Once the command ended, the model's next look gives its whole output,
+/// with how much of each stream the model had seen, and every look after it
+/// gives nothing new.
+#[test]
+fn the_end_gives_the_whole_output_once_with_what_the_model_had_seen() {
     let mut record = new_record();
     record.append_output(StreamKind::Stdout, "head\n");
-    let seen = record.status(0, None);
-    assert_eq!(seen.output.text, "head\n");
-    record.settle(
-        Ending::Exited(3),
-        "head\n[gap]\ntail\n".into(),
-        "oops\n".into(),
+    assert_eq!(record.status(0, None).output.text, "head\n");
+    let whole = Arc::new(WholeOutput::new(
+        vec![
+            OutputRecord::Output(StreamKind::Stdout, Bytes::from_static(b"head\nmore\n")),
+            OutputRecord::Output(StreamKind::Stderr, Bytes::from_static(b"oops\n")),
+        ],
         None,
-        "",
-    );
+    ));
+    let binary = BinaryOutput {
+        bytes: Bytes::from_static(b"\x89PNG"),
+        info: BinaryStdout {
+            truncated: false,
+            total_bytes: 4,
+            limit_bytes: 16,
+        },
+    };
+    assert!(record.settle(Ending::Exited(3), whole.clone(), Some(binary.clone()), ""));
     let exited = record.status(0, None);
-    assert_eq!(exited.output.text, "[gap]\ntail\noops\n");
-    assert_eq!(exited.stdout.delta, "[gap]\ntail\n");
-    assert!(matches!(
+    let view = exited.whole.expect("the whole output");
+    assert_eq!(view.output, whole);
+    assert_eq!(view.seen, Seen { stdout: 5, stderr: 0 });
+    assert_eq!(
         exited.state,
         CommandState::Exited {
             exit_code: 3,
-            binary_stdout: None
+            binary_stdout: Some(binary)
         }
-    ));
-
-    let mut binary = new_record();
-    binary.append_output(StreamKind::Stdout, "\u{fffd}PNG");
-    binary.status(0, None);
-    let (text, bytes) = final_stdout_boundary(
-        Bytes::from_static(b"\x89PNG\r\n"),
-        4,
-        Some("/out/stdout.txt"),
     );
+    let again = record.status(0, None).whole.expect("the whole output");
     assert_eq!(
-        text,
-        "<binary stdout: 6 bytes, exceeds the 4-byte binary limit; raw bytes at /out/stdout.txt>\n"
-    );
-    binary.settle(Ending::Exited(0), text.clone(), String::new(), bytes, "");
-    let status = binary.status(0, None);
-    assert_eq!(status.stdout.delta, text);
-    assert_eq!(status.output.text, text);
-    let CommandState::Exited {
-        binary_stdout: Some(stdout),
-        ..
-    } = status.state
-    else {
-        panic!("a binary stdout")
-    };
-    assert_eq!(&stdout.bytes[..], b"\x89PNG");
-    assert!(stdout.info.truncated);
-    assert_eq!((stdout.info.total_bytes, stdout.info.limit_bytes), (6, 4));
-
-    let (text, bytes) = final_stdout_boundary(Bytes::from_static(b"\xff"), 16, None);
-    assert_eq!(
-        text,
-        "<binary stdout: 1 bytes; not kept beyond this view>\n"
-    );
-    assert!(!bytes.unwrap().info.truncated);
-    assert_eq!(
-        final_stdout_boundary(Bytes::from_static(b"text"), 16, None),
-        ("text".into(), None)
+        again.seen,
+        Seen {
+            stdout: u64::MAX,
+            stderr: u64::MAX
+        }
     );
 }
 
 #[test]
-fn a_stop_after_the_streams_end_is_aborted_and_the_merged_view_follows_the_streams() {
+fn a_stop_ends_the_command_aborted_and_one_whose_streams_never_ended_keeps_its_views() {
     let mut record = new_record();
     record.append_output(StreamKind::Stderr, "partial");
-    // An error the environment adds to stderr, not a continuation of it,
-    // rebuilds the merged view from the streams.
-    record.settle(
-        Ending::Aborted,
-        String::new(),
-        "different\n".into(),
-        None,
-        "",
-    );
-    let status = record.status(0, None);
-    assert!(matches!(status.state, CommandState::Aborted));
-    assert_eq!(status.output.text, "different\n");
-    assert_eq!(status.output.offset, "different\n".len() as u64);
+    assert!(record.settle(Ending::Aborted, Arc::new(WholeOutput::default()), None, ""));
+    assert!(matches!(record.status(0, None).state, CommandState::Aborted));
 
     let long = "x".repeat(TAIL_CHARS) + "é";
     let mut record = new_record();
@@ -147,6 +126,7 @@ fn a_stop_after_the_streams_end_is_aborted_and_the_merged_view_follows_the_strea
     record.mark_aborted();
     let status = record.status(1, None);
     assert!(matches!(status.state, CommandState::Aborted));
+    assert!(status.whole.is_none());
     assert_eq!(status.stdout.tail.chars().count(), TAIL_CHARS);
     assert!(status.stdout.tail.ends_with('é'));
     assert_eq!(status.output.tail.chars().count(), TAIL_CHARS);
@@ -176,7 +156,7 @@ async fn the_pages_view_keeps_the_newest_characters_and_their_count_until_the_en
     assert_eq!(record.status(0, None).output.text, "");
 
     // The end adds what it brings, once; nothing changes the view after it.
-    assert!(record.settle(Ending::Exited(2), "é".into(), String::new(), None, "end\n"));
+    assert!(record.settle(Ending::Exited(2), Arc::new(WholeOutput::default()), None, "end\n"));
     assert!(!record.append_output(StreamKind::Stderr, "late"));
     assert!(!record.mark_aborted());
     let view = record.page_view();

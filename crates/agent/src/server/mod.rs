@@ -8,6 +8,7 @@
 mod commands;
 mod connection;
 mod content;
+mod shell_output;
 mod tree;
 
 use std::{
@@ -27,6 +28,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 pub use connection::{Connection, FrameRx, Outgoing};
 pub use content::{ContentError, ContentResolver, FileReference, ResolvedFiles};
+pub(crate) use shell_output::PAGE_CHARS;
 pub use tree::Tree;
 
 use crate::{

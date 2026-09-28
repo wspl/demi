@@ -156,6 +156,24 @@ impl RunnerFixture {
         self.process.home_dir()
     }
 
+    /// The runner's job root, where each job's directory lives until the
+    /// backend has what it needs of the job.
+    pub fn job_root(&self) -> std::path::PathBuf {
+        self.process.state_dir().join("jobs")
+    }
+
+    /// The job directories the runner holds now.
+    pub fn job_directories(&self) -> Vec<std::path::PathBuf> {
+        std::fs::read_dir(self.job_root())
+            .map(|entries| {
+                entries
+                    .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+                    .filter(|path| path.is_dir())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     /// The device's Host, starting work in its home.
     pub fn host(&self) -> RemoteHost {
         self.host_at(&self.home().to_owned())
