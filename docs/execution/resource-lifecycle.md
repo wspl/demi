@@ -58,7 +58,7 @@ never retires work that won admission first.
 
 | Resource | Idle predicate | Consequence |
 | --- | --- | --- |
-| Cloud device | No conversation [using this device](sessions-and-targets.md#how-a-conversation-uses-a-device), in any role, has been active within the window, and no running job | Send the conversation releases that fall due with the stop ([A Cloud's idle stop](#a-clouds-idle-stop)), then save persistent volumes and stop the sandbox; everything inside it ends with the machine, and the device's exposes are destroyed |
+| Cloud device | No conversation [using this device](sessions-and-targets.md#how-a-conversation-uses-a-device), in any role, has been active within the window, and no running job | Save persistent volumes and stop the sandbox; everything inside it ends with the machine, and the device's exposes are destroyed ([A Cloud's idle stop](#a-clouds-idle-stop)) |
 | Conversation on a Host | This conversation has not been active within the window | Send the conversation release to each of its Hosts whose runner is connected: a paired device or a running Cloud |
 
 Idle retirement never interrupts active work. A retirement that loses the race
@@ -75,128 +75,62 @@ runs. The backend sends it to:
 - every connected Host of the conversation when its idle window expires;
 - a Host the conversation stops using: the old main device on a target
   switch, an attached device when it is detached;
-- every connected Host of the conversation when it is archived;
-- a running Cloud, for each conversation that has it as a Host, before the
-  Cloud's idle stop ([A Cloud's idle stop](#a-clouds-idle-stop));
-- a runner whose `hello` names a conversation that is archived, no longer
-  bound to its device, or not its owner's
-  ([A release the device missed](#a-release-the-device-missed)).
+- every connected Host of the conversation when it is archived.
 
 None of them fails because a Host did not take the release
-([A release that fails](#a-release-that-fails)).
-
-A release never wakes a stopped Cloud. A Cloud hears the release while it
-runs, as a paired device does while it is connected; a release that falls due
-while the Cloud is stopped reaches it after its next wake
-([A release the device missed](#a-release-the-device-missed)).
+([A release that fails](#a-release-that-fails)). A release never wakes a
+stopped Cloud: the stop has already ended everything a release ends.
 
 The runner forwards the release to every resident native service on that device
 as the generic [conversation release operation](native-runtime.md#conversation-scoped-state);
 each service ends whatever it holds for that conversation and acknowledges. The
 browser is one such holder: it closes that conversation's Chrome and removes its
-profile. The runner itself holds the conversation's job directories: each shell
-job of the conversation keeps its whole output there, and a tool result names
-such a file, for example `<binary stdout: 412000 bytes; raw bytes at <path>>`
-([Pipes and output](runner.md#pipes-and-output)). The directories are on the
-Host's disk: in a paired device's installation state, and on a Cloud's system
-image, which a stop keeps and a
-[system reset](../cloud/managed-hosts.md#system-reset) replaces
-([Images](../cloud/managed-hosts.md#images) says why there). The release
-removes that conversation's directories and no other's, so a path a transcript
-names there is invalid afterwards. The runner acknowledges once the services
-have answered and the directories are gone. A directory it cannot remove goes
-to the [Host log](runner.md#host-log) with the reason, and the next release of
-the conversation tries again; the release still succeeds, since nothing of the
-conversation runs there any more.
+profile. The runner acknowledges once the services have answered. It holds no
+files of the conversation for a release to remove: a job's directory goes as
+soon as the backend has read the job's end, and what Demi keeps of a command's
+output, the backend has stored ([Pipes and output](runner.md#pipes-and-output)).
 
 No job of the conversation runs when its release arrives: the backend sends a
 release of a conversation of the device's owner only while it holds the
 conversation's file gate, and every job runs inside a lease of that gate
 ([Host operations](sessions-and-targets.md#host-operations)); a conversation
-of anyone else runs nothing on the device. The runner still keeps the
-directory of any job it runs, whatever the release names.
+of anyone else runs nothing on the device.
 
 Repeating a release is harmless. A release never starts a service that is not
 running. When the device is offline or the Cloud is stopped, the connection
-loss or the stop has already ended the services' state, but not the job
-directories, which stay on the Host's disk until it hears the release after it
-connects again ([A release the device missed](#a-release-the-device-missed)).
+loss or the stop has already ended the services' state, so a release the
+device did not hear leaves nothing behind, and none is sent when it connects
+again.
 
 Forking a conversation creates a new conversation and releases nothing. A runner
 shutdown or connection loss ends every conversation's service state on that
-device through the native service shutdown contract; the job directories stay.
+device through the native service shutdown contract.
 
 ### A Cloud's idle stop
 
 A Cloud stops as a whole once no conversation using it has been active within
-the window ([Idle window](#idle-window)). So when the last conversations using
-it go idle, their releases and the stop fall due together. For example, a user
-works in one conversation on the Cloud until noon and then leaves. At 13:00
-both the conversation's window and the Cloud's have passed: the conversation's
-idle watch is due to send the release, and the Cloud's idle watch is due to
-stop the machine. Which of the two acts first would be chance. A stop that
-came first would cut the release off: the conversation's output would stay on
-the Cloud's disk and go into the generation the stop saves, and its release
-would wait for the Cloud's next wake.
-
-So the idle stop sends those releases first. Before it saves and stops the
-machine, it sends the release of each conversation that has the Cloud as its
-main or attached Host and whose idle watch has not released it yet; every
-conversation using the Cloud has been idle for the window by then. Each
-release is sent under the conversation's file gate, as every release is: the
-stop already holds the conversations that cannot work without the Cloud, and
-it reserves the gate of one that only has the Cloud attached for its release,
-passing over one that work or a transition holds at that moment. A release
-that fails does not stop it ([A release that fails](#a-release-that-fails)).
-In the example, the stop closes the conversation's Chrome and removes its job
-directories, then saves the machine without them and stops it. The
-conversation's own idle watch finds the Cloud stopped and releases the
-conversation on its other Hosts, if it has any.
-
-A conversation whose model's process runs on the Cloud, in the
-[`provider` role](sessions-and-targets.md#how-a-conversation-uses-a-device),
-holds nothing there that a release ends: the process is not a shell job, so
-it leaves no job output, and no service holds state for the conversation. So
-the stop sends its release only when the Cloud is one of its Hosts too.
-
-Only the idle stop sends releases. A Cloud that stops for another reason sends
-none: at its lifetime cap or at the backend's shutdown, the conversations using
-it have not all been idle for the window; a reset removes every job directory
-with the system image anyway; and a sandbox that died hears nothing. The job
-output such a stop leaves on the system image is released after the next wake,
-as a paired device's missed release is.
-
-### A release the device missed
-
-A laptop that sleeps through a conversation's idle deadline misses the
-release, since the backend sends a release only to a connected runner, and so
-does a Cloud that is stopped when a release falls due, such as when a
-conversation is archived. Without a second chance, that conversation's job
-output would stay on the device for good. So the runner's `hello`, a Cloud's
-as a paired device's, names every conversation it holds job directories for,
-and the backend, once it has bound the connection, answers for each:
-
-- a conversation the device's owner does not have, or one that is archived or
-  no longer bound to the device: the release, at once, under the
-  conversation's file gate when it is the owner's;
-- any other: the conversation's idle watch starts unless it runs
-  ([Idle window](#idle-window)), so an idle conversation hears the release one
-  window later.
+the window ([Idle window](#idle-window)). The stop sends no releases: what a
+release would end, such as a conversation's Chrome, ends with the machine, and
+no command's output is left on its disk to save with it
+([Pipes and output](runner.md#pipes-and-output)). The conversations' own idle
+watches find the Cloud stopped and release the conversations on their other
+Hosts, if they have any. A Cloud that stops for another reason, at its
+lifetime cap, for a reset, at the backend's shutdown or because it died, is
+the same.
 
 ### A release that fails
 
 A user archives a conversation, and the laptop it ran on loses its network in
-the middle of the release. The archive succeeds. When the laptop connects
-again, its runner's `hello` names the conversation, which is archived now, so
-the laptop hears the release at once and the conversation's job output goes.
+the middle of the release. The archive succeeds: the lost connection has ended
+the conversation's Chrome on the laptop, as every connection loss ends the
+services' state.
 
 A release fails when the Host's runner loses its connection before it
 answers, when it answers that a service could not end what it held, or when
 it does not answer within six minutes. A paired device loses its connection
-when it sleeps or its network drops, and a Cloud when it stops for another
-reason than idleness: at its lifetime cap, for a reset, or when it dies. The
-backend logs a failed release with the Host and the reason, and whatever sent
-it goes on as if the Host had taken it:
+when it sleeps or its network drops, and a Cloud when it stops. The backend
+logs a failed release with the Host and the reason, and whatever sent it goes
+on as if the Host had taken it:
 
 | Sender | After a failed release |
 | --- | --- |
@@ -204,23 +138,16 @@ it goes on as if the Host had taken it:
 | Target switch | The conversation moves; the device it left stays attached |
 | Detach | The device is detached |
 | The conversation's idle watch | The watch ends, as after a release |
-| A Cloud's idle stop | The Cloud is saved and stops |
-| The answer to a `hello` | The answer goes on to the next conversation the `hello` names |
 
-None of them fails or sends the release again, because the Host hears it
-again without them. A runner that lost its connection names the
-conversation's job output in its next `hello`
-([A release the device missed](#a-release-the-device-missed)): an archived
-conversation, or one no longer bound to the device, hears the release at
-once, and one still bound to it when its idle window next expires. A runner
-that answered that a service failed has retired that service, which ends what
-it held
-([Conversation-scoped state](native-runtime.md#conversation-scoped-state)),
-and has removed the conversation's job directories. A runner that answers too
-late finishes the release all the same. An archive, a target switch and a
-detach are the user's changes to their own conversation: failing one because
-a Host's cleanup failed would leave the user a refusal to retry that changes
-nothing on the Host.
+None of them fails or sends the release again, because nothing is left for
+it. A runner that lost its connection has ended every service's state. A
+runner that answered that a service failed has retired that service, which
+ends what it held
+([Conversation-scoped state](native-runtime.md#conversation-scoped-state)).
+A runner that answers too late finishes the release all the same. An archive,
+a target switch and a detach are the user's changes to their own
+conversation: failing one because a Host's cleanup failed would leave the user
+a refusal to retry that changes nothing on the Host.
 
 ## Acceptance
 
@@ -233,13 +160,12 @@ database, in real time with a short window
 | --- | --- |
 | Activity arrives just before the deadline | Exactly one of activity or retirement wins; no live work is stopped as idle |
 | A conversation with open browser tabs idles for the window on a paired device | The device receives one release; its Chrome and profile are gone; the device and runner remain available |
-| Two conversations ran shell jobs on one paired device, and one of them is released | That conversation's job directories are gone and the other's remain |
-| A paired device was offline at a conversation's idle deadline and connects again | Its `hello` names the conversation, which hears the release one window later, or at once when it is archived or no longer bound to the device |
-| Two conversations used a running Cloud, and one idles for the window while the other stays active | The idle one's job directories are gone, and so are its Chrome and profile; the machine keeps running |
-| The last conversations using a Cloud idle for the window | The Cloud hears their releases, then stops; their job directories are gone from the generation it saved |
-| A conversation is archived while its Cloud is stopped, and the Cloud wakes later | The archive does not wake the Cloud; the Cloud's `hello` after the wake names the conversation, which hears the release at once |
-| A paired device loses its connection while an archive's release waits for its answer | The archive succeeds; once the device connects again, its `hello` names the conversation, which hears the release at once, and its job output is gone |
-| The last conversation using a Cloud works on a paired device, has the Cloud attached, and its model's process runs on the Cloud; it idles for the window | The Cloud hears its release, then stops; its job directories are gone from the generation it saved |
+| Commands of two conversations end on one paired device | Each job's directory is gone once the backend has read the job's end; nothing of either conversation's commands stays on the device |
+| A paired device loses its connection while a command runs | Its runner removes the job's directory; the command's stored output is what the backend received |
+| Two conversations used a running Cloud, and one idles for the window while the other stays active | The idle one's Chrome and profile are gone; the machine keeps running |
+| The last conversations using a Cloud idle for the window | The Cloud stops without a release; the generation it saved holds no job directory |
+| A conversation is archived while its Cloud is stopped, and the Cloud wakes later | The archive does not wake the Cloud; after the wake the Cloud holds nothing of the conversation |
+| A paired device loses its connection while an archive's release waits for its answer | The archive succeeds; its Chrome for the conversation ended with the connection, and no release is sent when it connects again |
 | A running job or a waiting child turn exists at the deadline | Nothing is retired; the window restarts when the activity ends |
 | A live browser view stays open with no agent activity, while the page lists the browser's tabs | Nothing is retired while the view is open, and the window starts when it closes; the listings restart nothing |
 | Target switch or archive while a timer is pending | One release to the old device; a stale timer cannot release the new binding |

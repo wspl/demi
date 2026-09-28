@@ -254,7 +254,7 @@ the manager never repairs it.
 | Storage | Contents | Stop and wake | System reset |
 | --- | --- | --- | --- |
 | Pinned read-only base directory | OS, shipped tools, runner, and init | Keep the exact base | Select the reset base |
-| System image | Host OverlayFS upper/work directories; changes outside the separate mounts, the runner's job output and Host log among them | Preserve | Replace with an empty layer |
+| System image | Host OverlayFS upper/work directories; changes outside the separate mounts, the runner's job root and Host log among them | Preserve | Replace with an empty layer |
 | Home image | `/home`, including projects and user tools | Preserve | Preserve |
 | Runtime mounts | `/run`, `/tmp`, `/dev/shm`, boot credential, resolver configuration; the runner's installation state in `/run/demi` | Recreate | Recreate |
 
@@ -262,23 +262,23 @@ The runner keeps its installation state in `/run/demi`: its lock, the record
 of its backend, its command contexts and the command cache, which every boot
 makes anew
 ([Preinstalled executables](../execution/native-runtime.md#preinstalled-executables)
-says why refilling the cache costs little). Two things of the runner's must
-outlive a stop, so they are on the system image instead, in directories the
-image makes for the `demi` user
+says why refilling the cache costs little). Two things of the runner's are on
+the system image instead, in directories the image makes for the `demi` user
 ([Root filesystem contents](images.md#root-filesystem-contents)):
 
-- `/var/lib/demi/jobs/`, the job directories, which keep each shell job's whole
-  output until the conversation's release removes them
-  ([Pipes and output](../execution/runner.md#pipes-and-output)). A result the
-  model reads later may name a file there, so a stop that came before the
-  conversation's release must keep it.
-- `/var/log/demi/`, the [Host log](../execution/runner.md#host-log).
+- `/var/lib/demi/jobs/`, the job root: the directory of each running job,
+  with its kept output of up to 16 MiB and its scratch directory
+  ([Pipes and output](../execution/runner.md#pipes-and-output)). It goes once
+  the backend has read the job's end, so it holds nothing after a stop, and the
+  runner removes any job directory it finds there when it starts.
+- `/var/log/demi/`, the [Host log](../execution/runner.md#host-log), which
+  outlives a stop.
 
-Neither belongs in `/run`, 256 MiB of memory that a stop empties: a busy
-Cloud's job output alone can fill it, since a screenshot's bytes are its job's
-output and a day of them is about 80 MB. Neither belongs under `/home`
-either: home is the user's volume and survives a reset, while these are
-Demi's working files, which a reset removes with the rest of the system.
+Neither belongs in `/run`, 256 MiB of memory: a few busy jobs' kept output and
+scratch directories alone can fill it, and the Host log must outlive the stop
+that empties `/run`. Neither belongs under `/home` either: home is the user's
+volume and survives a reset, while these are Demi's working files, which a
+reset removes with the rest of the system.
 
 The manager keeps bases, generations, and working pairs under its state
 directory, `DEMI_MACHINES_DATA`, which must be one filesystem
@@ -483,10 +483,10 @@ every conversation using this device. Tabs, resident services, attachments, and
 a look at what runs there, such as a tab listing, do not keep it active.
 Maintenance does not restart the idle clock. Stopping Cloud ends all in-sandbox
 browser/native state and its [exposes](../execution/expose.md#lifetime). A
-running Cloud hears each conversation's release as a paired device does, and an
-idle stop sends the releases that fall due with it before it saves the machine
-([A Cloud's idle stop](../execution/resource-lifecycle.md#a-clouds-idle-stop));
-cleanup never wakes a stopped Cloud.
+running Cloud hears each conversation's release as a paired device does; a
+stop needs none, since it ends everything a release would
+([A Cloud's idle stop](../execution/resource-lifecycle.md#a-clouds-idle-stop)),
+and cleanup never wakes a stopped Cloud.
 
 The hard lifetime cap can stop unattended jobs only after reserving admission
 and rechecking active turns and other demand. A turn in flight on a
@@ -721,7 +721,8 @@ fields, and requires the backend URL to equal its configured backend URL. It
 then supplies the record as a private read-only credential file on a temporary
 mount. The runner accepts `--managed-boot <path>`, reads and validates the
 record before connecting, keeps its installation state under `/run/demi`, and
-keeps its job output and Host log on the system image ([Images](#images)).
+keeps its running jobs' directories and its Host log on the system image
+([Images](#images)).
 The token never appears in process arguments, image layers, persistent working
 files, OCI environment, logs, or stored generations. Only the non-secret file
 path is part of the OCI process arguments. Runtime metadata containing sensitive
@@ -763,7 +764,7 @@ suite runs; a run must show the following:
 | Area | Required observation |
 | --- | --- |
 | Identity and files | Jobs and Host file operations run as UID 1000; every conversation of a user reaches the same device; sudo works. |
-| Persistence | A system package and home files survive stop and wake, and so does the output of a job whose conversation no release reached; an idle stop leaves no job output of the conversations it released; home survives a reset; reset succeeds with a broken runner and with a broken system, such as disabled bash. |
+| Persistence | A system package and home files survive stop and wake; a stop leaves no job directory in the generation it saves; home survives a reset; reset succeeds with a broken runner and with a broken system, such as disabled bash. |
 | Tools | Installers run in the login shell (rustup, nvm), and later jobs find the tools they installed (cargo, node). |
 | Browser | Chrome opens with its own sandbox, and closes at the release of its conversation while the Cloud runs on; the live view receives frames and delivers input. |
 | Checkpoint | A live checkpoint with a running browser publishes both images; the saved image contains pages a live process wrote through a writable mapping and never flushed. |

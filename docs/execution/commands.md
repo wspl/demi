@@ -9,8 +9,9 @@ The `demi browser` command family, including readable output, optional
 JSON, image bytes, targeting, and examples, is specified in
 [Browser automation](../browser/browser.md#command-contract). It uses this
 command contract rather than a separate shell or model tool loop. The
-`demi host expose` group is specified in [Host expose](expose.md#commands), and
-the `demi agent` group in [Subagents](../agent/subagents.md).
+`demi host expose` group is specified in [Host expose](expose.md#commands),
+the `demi agent` group in [Subagents](../agent/subagents.md), and the
+`demi shell` group in [The whole output](../agent/runtime.md#the-whole-output).
 
 ## Declare a command
 
@@ -340,10 +341,14 @@ reads again, so two `demi todo add` calls at once keep both todos.
 defines the storage messages, their revisions, and the versions they create.
 
 A handler ends with an exit status. A handler error writes `<root>: <message>`
-to stderr and exits 1. A call the runner cancels ends with 130. A call stopped
-for another reason, such as its job exiting, a relayed pipe failing, or the
-backend shutting down, ends with 1 and its cause on stderr. When several causes
-stop a call, the first is the one reported.
+to stderr and exits 1. A call the runner cancels ends with 130. A call whose
+calling process closed its stdout, as `head` does once it has read its lines,
+ends with 141 and nothing on stderr, as a program that writes to a closed pipe
+ends in a shell; so `demi shell output <commandId> | head -n 20` prints its
+lines and no error. A call stopped for another reason, such as its job
+exiting, a relayed pipe failing, or the backend shutting down, ends with 1 and
+its cause on stderr. When several causes stop a call, the first is the one
+reported.
 
 ## External command clients
 

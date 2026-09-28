@@ -435,7 +435,11 @@ Each crate implements the provider contract for one vendor family.
     pages' view of it (`PageView`), and the feed through which an
     environment reports that view's changes and learns whether a page
     watches (`PageFeed`,
-    [Live output](../agent/runtime.md#live-output)).
+    [Live output](../agent/runtime.md#live-output)); the reading of a
+    running command's kept output; and the keeper to which an environment
+    hands what a command leaves when it ends, its whole output and its edit
+    copies, which the product implements over its storage
+    ([The whole output](../agent/runtime.md#the-whole-output)).
 - **Public boundary:** the items above; `shell::testing` supplies the Host
   conformance cases and an in-memory port for rpc handler tests
   (`MemoryPort`). The Host rules are in
@@ -464,14 +468,15 @@ Each crate implements the provider contract for one vendor family.
   - each node's command storage as a job's rpc calls reach it
     (`AgentServer::command_storage`), at the history generation the job
     started in ([Mutation API and concurrency](../agent/command-state-history.md#mutation-api-and-concurrency));
-  - the `demi agent` command group;
+  - the `demi agent` and `demi shell` command groups;
   - the harness trait (`AgentHarness`) with its subagent profiles
     (`Profile`) and the Host its nodes' shell tools reach
     (`AgentHarness::Host`), where a session's provider runtimes come from
     (`ProviderResolver`), the notice to the product that a live tree started
     or stopped working or was disposed (`ServerDeps::status_changed`), and
     the tree store contract (`AgentTreeStore`, `SessionStore`, with the node
-    records and checkpoints they carry in `store`);
+    records and checkpoints they carry in `store`), which also reads the
+    records of commands' outputs for `demi shell output`;
   - the resolution of the files a frame's content refers to, which the
     backend answers (`ContentResolver`);
   - the media rules (`store::media`): a medium stored once when it enters a
@@ -534,7 +539,9 @@ Each crate implements the provider contract for one vendor family.
     through pipes, with job, working-tree, network, log and service facets;
   - pipe records (`Pipes`) and their `Send` ends;
   - `RemoteShellEnvironment`, the production `ShellEnvironment` over real
-    runner jobs, and its factory;
+    runner jobs, and its factory: at a job's end it reads what the backend
+    does not hold of the command's output and its edit copies, hands them to
+    the product's keeper, and releases the job's directory;
   - building manifests from a command set.
 - **Public boundary:** the items above; `host_remote::testing` supplies a real
   runner process for a backend at any address, with a home and state of its

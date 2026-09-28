@@ -635,8 +635,10 @@ root leaves both to its client. The role is a node option, not a depth.
 - Each node has at most 8 live children. The limit is the same for every node
   in the tree, and no command changes it. `spawn` and `resume` fail when it is
   reached.
-- The shell preview budget ([Tools](runtime.md#tools)) applies to every node,
-  measured against that node's current model's context window.
+- A shell result is cut by the same rule in every node, whatever its model
+  ([Results and previews](runtime.md#results-and-previews)), and every node
+  reads any command's whole output of the conversation
+  ([The whole output](runtime.md#the-whole-output)).
 - Dispose detaches the subtree without closing it: checkpoints are saved, and
   the next open restores the subtree. Abort closes it.
 
@@ -839,7 +841,7 @@ The tree and its commands:
    `abort`, and `resume`, keeps communication and reads, and survives archive,
    reopen, and resume.
 9. Descendants inherit the prompt and the model after command narrowing, and
-   the shell preview budget reaches every descendant.
+   a descendant reads the whole output of a command its ancestor ran.
 10. `resume` continues the preserved transcript. A request ID retried with the
     same arguments returns the same child without a new round; different
     arguments and a superseded round are refused.
