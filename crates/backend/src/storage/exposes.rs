@@ -1,8 +1,9 @@
 //! Expose records (`storage.md` § Control records; `expose.md` § The expose
 //! record): a service on one of the user's devices, reachable under its
-//! public hostname until it expires. A record is expired once its expiry is
-//! not after the operation's time; expiry, removal, a Cloud stop and a
-//! device revocation delete rows, and nothing updates a row except renewal.
+//! public hostname until it expires, and known to the model by its number
+//! among the user's exposes. A record is expired once its expiry is not
+//! after the operation's time; expiry, removal, a Cloud stop and a device
+//! revocation delete rows, and nothing updates a row except renewal.
 
 use demi_core::Timestamp;
 use demi_web_api::exposes::ExposeAddress;
@@ -14,12 +15,13 @@ use super::StorageError;
 use super::columns::{decode, instant};
 use super::control::{ControlService, later};
 
-const EXPOSE_COLUMNS: &str = "id, user_id, device_id, address, created_at, expires_at";
+const EXPOSE_COLUMNS: &str = "id, number, user_id, device_id, address, created_at, expires_at";
 
 /// An `exposes` row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ExposeRecord {
     pub(crate) id: ExposeId,
+    pub(crate) number: u64,
     pub(crate) user: UserId,
     pub(crate) device: DeviceId,
     pub(crate) address: ExposeAddress,
@@ -37,7 +39,8 @@ pub(crate) struct UserExposes {
 
 impl ControlService {
     /// A new expose `id` of `user` on `device`, from now until `lifetime`
-    /// from now.
+    /// from now, with the user's next expose number, which the same
+    /// transaction advances.
     pub(crate) async fn create_expose(
         &self,
         id: ExposeId,
@@ -48,11 +51,18 @@ impl ControlService {
     ) -> Result<ExposeRecord, StorageError> {
         self.call(move |connection, now| {
             let expires_at = later(now, lifetime)?;
-            connection.execute(
-                "INSERT INTO exposes (id, user_id, device_id, address, created_at, expires_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            let transaction = connection.transaction()?;
+            let number: i64 = transaction.query_row(
+                "UPDATE users SET next_expose = next_expose + 1 WHERE id = ?1 RETURNING next_expose - 1",
+                [user.as_str()],
+                |row| row.get(0),
+            )?;
+            transaction.execute(
+                "INSERT INTO exposes (id, number, user_id, device_id, address, created_at, expires_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 params![
                     id.as_str(),
+                    number,
                     user.as_str(),
                     device.as_str(),
                     address.as_str(),
@@ -60,8 +70,10 @@ impl ControlService {
                     expires_at.as_millisecond()
                 ],
             )?;
+            transaction.commit()?;
             Ok(ExposeRecord {
                 id,
+                number: decode("users", "next_expose", u64::try_from(number))?,
                 user,
                 device,
                 address,
@@ -79,6 +91,21 @@ impl ControlService {
                 connection.prepare_cached(&format!("SELECT {EXPOSE_COLUMNS} FROM exposes WHERE id = ?1"))?;
             statement
                 .query_row([id.as_str()], |row| Ok(expose_row(row)))
+                .optional()?
+                .transpose()
+        })
+        .await
+    }
+
+    /// The expose of `user` the model knows by `number`, expired or not.
+    pub(crate) async fn numbered_expose(&self, user: UserId, number: u64) -> Result<Option<ExposeRecord>, StorageError> {
+        self.call(move |connection, _| {
+            let number = i64::try_from(number).unwrap_or(i64::MAX);
+            let mut statement = connection.prepare_cached(&format!(
+                "SELECT {EXPOSE_COLUMNS} FROM exposes WHERE user_id = ?1 AND number = ?2"
+            ))?;
+            statement
+                .query_row(params![user.as_str(), number], |row| Ok(expose_row(row)))
                 .optional()?
                 .transpose()
         })
@@ -181,6 +208,7 @@ fn expose_row(row: &Row<'_>) -> Result<ExposeRecord, StorageError> {
     const TABLE: &str = "exposes";
     Ok(ExposeRecord {
         id: decode(TABLE, "id", ExposeId::try_from(row.get::<_, String>("id")?))?,
+        number: decode(TABLE, "number", u64::try_from(row.get::<_, i64>("number")?))?,
         user: decode(TABLE, "user_id", UserId::try_from(row.get::<_, String>("user_id")?))?,
         device: decode(TABLE, "device_id", DeviceId::try_from(row.get::<_, String>("device_id")?))?,
         address: decode(TABLE, "address", ExposeAddress::try_from(row.get::<_, String>("address")?))?,

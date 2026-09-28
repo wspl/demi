@@ -27,6 +27,7 @@ const devices = [
 function expose(id: string, deviceId: string) {
   return {
     id,
+    number: 1,
     deviceId,
     address: '127.0.0.1:5173',
     url: `https://${id}.expose.demi.example/`,
