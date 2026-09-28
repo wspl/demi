@@ -634,8 +634,8 @@ the tree: shell_output to every attached page,
   held since the command started (`chars`); characters are Unicode scalar
   values. The view is the same for every page, whatever any page or the model
   read, and no read changes it. When the command ends, the view gets what the
-  end adds: the end of each stream that the backend had not received
-  ([Pipes and output](../execution/runner.md#pipes-and-output)), why the
+  end adds: the end of the output that the backend had not received, from the
+  whole output it stores ([The whole output](#the-whole-output)), why the
   command could not run, or a binary stdout's description.
 - **Which commands.** Every command of the tree, the root's and each live
   subagent's, several at once, on a Cloud and on a paired device alike: both
