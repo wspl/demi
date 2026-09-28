@@ -631,7 +631,8 @@ Each crate implements the provider contract for one vendor family.
   machine-image store (paired generations, working recovery, pinned bases,
   publication and collection) and the socket server. The crate also holds the
   host install script, the Lima configuration and the pinned `runsc` build
-  inputs; they implement [Cloud setup](../cloud/setup.md), not another
+  inputs; they implement [Cloud setup](../cloud/setup.md) and
+  [Develop on a Mac with Lima](../guides/mac-development.md), not another
   lifecycle.
 - **Process boundary:** `runsc`, `mke2fs`, `e2fsck`, `resize2fs`, `bsdtar` and
   `nft` are its only external programs, an intentional infrastructure
