@@ -16,7 +16,7 @@ answers a different question, "what is uncommitted?", for the whole directory.
 The two share the file entry shape and the diff view and nothing else.
 
 The list travels with the transcript block. The file contents behind the diff
-do not: they live in the conversation's change store, described below, and the
+do not: they are blobs the list names ([Edit copies](#edit-copies)), and the
 browser fetches them when a file is opened.
 
 ## Scope
@@ -135,48 +135,36 @@ The common file fields are the working tree's
 ([Runner](runner.md#working-tree)) without `deleted`, `renamed`, and `from`.
 The edit sequence belongs only to the call's history.
 
-## The change store
+## Edit copies
 
 When a command's exit reaches the backend, the backend reads each entry's
-copies from the target and writes them into the conversation's change store,
-then hands the tool its status with the list. The read is part of completing
-the command inside the tool call's host access, the same way the command's
-kept output is read back; it is not a separate operation on the Host from
-outside the agent ([Host operations](sessions-and-targets.md#host-operations)).
+copies from the target and stores each as a blob in the conversation owner's
+namespace, then hands the tool its status with the list. The read is part of
+completing the command inside the tool call's host access, the same way the
+command's kept output is read back; it is not a separate operation on the Host
+from outside the agent ([Host operations](sessions-and-targets.md#host-operations)).
 A copy that cannot be read or stored leaves its entry in the list without
-contents; the list is never lost over the contents.
+copies; the list is never lost over the copies.
 
-The change store is one namespace of the backend's object store, beside the
-blobs: a directory in the backend data directory locally, and the S3 bucket that
-`DEMI_CHANGE_STORE_CONFIG` names in deployment
-([The object store](../backend/storage.md#the-object-store)). Its objects are
-bound to the conversation, not addressed by content:
+The shell call's view in the transcript block carries the list, in its `files`
+field ([Transcript](../agent/runtime.md#transcript)): `path`, `kind`, `added`,
+`removed`, and `edits`. Each edit has `copies`, the blobs of the file's two
+sides, `original` before the edit and `modified` after it, or none when they
+were not stored. An added segment's original is the empty blob. For example, a
+command that edits `main.rs` in two segments stores three blobs: the file
+before the first segment, between the two, and after the second, since the
+first segment's modified side is the second's original.
 
-```text
-changes/<conversationId>/<commandId>/<n>/<edit>.original
-changes/<conversationId>/<commandId>/<n>/<edit>.modified
-```
+A block references its copies as it references its media, so the blob rules
+of [Storage](../backend/storage.md#attachment-and-transcript-media) hold for
+them: a copy is stored before the block that lists it is checkpointed, stays
+while a block references it, which is as long as the conversation, archived
+or not, and is collected once nothing does. A Fork copies no bytes: its blocks
+reference the same blobs of the same namespace.
 
-`n` is the file's index and `edit` is its segment index. The objects belong to the
-conversation's owner and live as long as the conversation; an archived
-conversation keeps them. They are written before the block that lists them is
-checkpointed, under the blob rule that a committed block never points at
-unpublished bytes
-([Attachment and transcript media](../backend/storage.md#attachment-and-transcript-media)).
-
-The shell call's view in the transcript block carries the list only, in its
-`files` field ([Transcript](../agent/runtime.md#transcript)): `path`, `kind`,
-`added`, `removed`, and `edits`. Each edit has `kept`, true when both sides are
-in the store. An added segment stores an empty original side. A Fork copies the
-retained objects for its blocks into its own namespace before checkpointing; a
-missing source object remains unavailable.
-
-The browser reads one segment's two sides with
-`GET /api/conversations/:id/commands/:commandId/changes/file?path=...&edit=0`,
-from the store and without involving the Host; `original` is empty when that
-segment created the file.
-[File text and working tree changes](../product/web-api.md#file-text-and-working-tree-changes)
-defines the route's answers.
+The browser reads one segment's two sides from the blob route
+([Uploads and media](../product/web-api.md#uploads-and-media)) by the hashes in
+the view, without involving the Host; an added segment's original is empty.
 
 ## Delivery to the conversation
 
@@ -186,11 +174,11 @@ pill opens the work panel's change view in Conversation mode on that call, with
 the picked file selected. Selecting the fixed Change section returns to
 Uncommitted, including when Change is already selected. Its header counts always
 describe the uncommitted working tree, not the retained edit. This mode receives only that file's metadata, command ID and
-edit segments, not the call's file list. Its two sides, fetched through the
-route above, show in the same diff editor the Uncommitted mode uses. If the file
+edit segments, not the call's file list. Its two sides, fetched from the blob
+route, show in the same diff editor the Uncommitted mode uses. If the file
 has several edit segments, a shared control selects one in order, initially the
 first. The selection identifies the command, file and segment, so opening another call for the same path replaces its diff.
-An edit that is not `kept` has no diff; the interface silently omits the diff
+An edit without copies has no diff; the interface silently omits the diff
 without a message or explanation. Its file pill remains under the call.
 Conversation mode has no file sidebar, list source or refresh operation. Picking
 another pill replaces the selected edit; Back and Forward revisit selections.
@@ -205,7 +193,7 @@ Only Uncommitted mode lists files and offers a changed-file tree.
 | `crates/demi-commands` | Record create, edit, patch publication and rollback using the invocation's recorder. |
 | `crates/runner` | Create job recording contexts, associate descriptors with paths, forward redirected external output, finalize reports and share line counting with the working tree. |
 | `crates/runner-protocol`, `crates/shell`, `crates/host-remote` | Carry the report through command completion. |
-| `crates/backend` | Publish snapshots before tool completion, retain conversation history, authorize reads and serve individual edit segments. |
+| `crates/backend` | Store the copies as blobs before tool completion; the blob route serves them. |
 | `crates/core`, `crates/agent` | Define the shell tool view with its small file and segment list, and carry it in the transcript, exclusively for the user. |
 | `packages/web-ui` | Shared file selection, segment selection and diff behavior. |
 | `packages/web`, `packages/web-gallery` | Product data adapters and matching specimens. |
@@ -221,16 +209,17 @@ path; their edits still appear in the working tree view, unattributed.
 
 The list is in the block because it is small and is read every time the
 conversation is shown. The contents are not, because a transcript is loaded
-whole and a file is up to 8 MiB: they are read only when a file is opened, so
-they live in a store that is fetched by entry. They are bound to the
-conversation rather than content-addressed because they are the conversation's
-history and go with it, and because two sides of one edit are only meaningful
-together.
+whole and a file is up to 8 MiB: they are read only when a file is opened.
+They are blobs, addressed by their content like every other byte a
+conversation keeps. The block's references still bind them to the
+conversation's history and pair an edit's two sides; the collector removes
+them with the last reference, as it removes media; and a version of a file is
+stored once, however many segments and Forks name it.
 
 Only creations and modifications are reported because the conversation shows
 what the model wrote, not the state of the directory.
 
 Binary contents are never retained, whatever their size: copies of images and
-media would fill the change store for little use, since the change view's
+media would fill the blob store for little use, since the change view's
 history is about text. The work panel shows a binary file only as it exists
 on the Host ([File previews](../product/file-previews.md)).

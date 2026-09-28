@@ -41,7 +41,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id }`, `PATCH /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }`, `POST /conversations/:id/title` requests a [generated title](product.md#conversation-titles) |
 | Conversation history | `GET /conversations/:id/transcript` returns root blocks and subagent histories, each with the [failure facts](../backend/backend.md#failure-facts) of its error blocks; `WS /conversations/:id/stream` carries the [agent frames](../agent/runtime.md#frame-protocol) of that one conversation |
 | Conversation files | `GET/POST /conversations/:id/fs`, `DELETE /conversations/:id/fs?path=...`, `GET /conversations/:id/fs/file?path=...`, `GET /conversations/:id/fs/raw?path=...&version=...&download=true\|false`, `PUT /conversations/:id/fs/raw?path=...&replace=true\|false` with raw bytes, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
-| Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...`, `GET /conversations/:id/changes/raw?path=...&download=true\|false`, `GET /conversations/:id/commands/:commandId/changes/file?path=...&edit=...` |
+| Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...`, `GET /conversations/:id/changes/raw?path=...&download=true\|false` |
 | User streams | `WS /conversations/:id/streams/:name` opens a declared [user stream](#user-streams) |
 | Work panel | `GET/PUT /conversations/:id/panel` reads and saves the [work panel's state](#work-panel-state) |
 | Conversation draft | `GET/PUT /conversations/:id/draft` reads and saves the [draft](#conversation-drafts); `POST /conversations/:id/draft/replaced { action, revision }` restores or dismisses the version a save replaced |
@@ -193,6 +193,8 @@ that name. Byte ranges are answered as `fs/raw` answers them: one range in
 `Range` answers 206 with that range, several answer the whole blob with 200,
 and a range that starts past the end answers 416, so a player can play and
 seek a video ([Media a tool returned](file-previews.md#media-a-tool-returned)).
+The change view reads the two sides of a tool call's edit from it, by the
+hashes the call's view holds ([Edit copies](../execution/edit-tracking.md#edit-copies)).
 
 Uploading alone stores a backend blob and the upload's record, which keeps
 the media type and the snippet the answer carried. A send, steer or edit frame
@@ -1020,14 +1022,6 @@ working-tree side comes from the raw file route. A path the last commit does
 not have answers 404, and a file over 8 MiB answers 413 `file_too_large`,
 since git's copy is decoded whole before it is sent
 ([Runner](../execution/runner.md#working-tree)).
-
-`GET /api/conversations/:id/commands/:commandId/changes/file?path=...&edit=0` returns
-the same shape for one retained edit segment of a tool call, from the
-conversation's change store, without touching the host
-([Edit tracking](../execution/edit-tracking.md#the-change-store)). A
-conversation the caller does not own answers 404 `conversation_not_found`, as
-every conversation route does; a segment the change store does not keep
-answers 404 `not_found`.
 
 The browser lists the working tree again when its change view is shown, after each of the
 conversation's tool calls finishes while it shows (a call that finishes while
