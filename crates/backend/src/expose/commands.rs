@@ -30,7 +30,7 @@ const RENEW_SUMMARY: &str = "Set an expose's expiry to one hour from now.";
 const REMOVE_SUMMARY: &str = "Destroy an expose at once; its URL no longer works.";
 
 const NOT_FOUND_OUTPUT: &str =
-    "expose_not_found when the id is not this user's or has expired; writes the reason to stderr and exits non-zero";
+    "expose_not_found when the number names none of this user's live exposes; writes the reason to stderr and exits non-zero";
 
 /// The input of `demi host expose add`.
 #[derive(Deserialize, JsonSchema)]
@@ -46,8 +46,8 @@ struct AddArgs {
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct ExposeArgs {
-    /// Expose id
-    id: String,
+    /// Expose number, as add and list print it
+    number: u64,
 }
 
 /// The `expose` group of `demi host`, whose handlers act in `shard`.
@@ -73,7 +73,7 @@ pub(crate) fn expose_group(shard: &Weak<Shard>) -> GroupBuilder {
         .leaf(
             LeafBuilder::rpc("renew", RENEW_SUMMARY)
                 .input::<ExposeArgs>()
-                .positionals(["id"])
+                .positionals(["number"])
                 .json_output::<ExposeAnswer>()
                 .success_output("the new expiry, or JSON matching { expose } when --json is passed")
                 .failure_output(NOT_FOUND_OUTPUT)
@@ -82,7 +82,7 @@ pub(crate) fn expose_group(shard: &Weak<Shard>) -> GroupBuilder {
         .leaf(
             LeafBuilder::rpc("remove", REMOVE_SUMMARY)
                 .input::<ExposeArgs>()
-                .positionals(["id"])
+                .positionals(["number"])
                 .success_output("confirms the removal")
                 .failure_output(NOT_FOUND_OUTPUT)
                 .bind(TypedRpc::new(verb(shard.clone(), remove))),
@@ -128,7 +128,7 @@ async fn add(shard: Rc<Shard>, call: Call<AddArgs>, port: RpcPort) -> Result<u8,
             target.name,
             expose.url,
             LIFETIME.as_mins(),
-            expose.id
+            expose.number
         )
     };
     port.stdout(text).await?;
@@ -164,7 +164,7 @@ async fn list(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u8,
     for expose in &exposes {
         let left = expose.expires_at.as_millisecond().saturating_sub(now.as_millisecond()).max(0);
         rows.push([
-            expose.id.to_string(),
+            expose.number.to_string(),
             names[&expose.device_id].clone(),
             expose.address.as_str().to_owned(),
             format!("{} min", (left + 30_000) / 60_000),
@@ -176,9 +176,10 @@ async fn list(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u8,
 }
 
 async fn renew(shard: Rc<Shard>, call: Call<ExposeArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let renewed = match ExposeId::try_from(call.args.id.as_str()) {
-        Ok(id) => shard.renew_expose(&id).await,
-        Err(_) => Err(ExposeError::NotFound(call.args.id)),
+    let number = call.args.number;
+    let renewed = match numbered(&shard, number).await {
+        Ok(id) => shard.renew_expose(&id).await.map_err(|error| named(error, number)),
+        Err(error) => Err(error),
     };
     let expose = match renewed {
         Ok(expose) => expose,
@@ -187,23 +188,42 @@ async fn renew(shard: Rc<Shard>, call: Call<ExposeArgs>, port: RpcPort) -> Resul
     let text = if call.invocation.json {
         json(&ExposeAnswer { expose })?
     } else {
-        format!("Expose {} expires in {} minutes.\n", expose.id, LIFETIME.as_mins())
+        format!("Expose {number} expires in {} minutes.\n", LIFETIME.as_mins())
     };
     port.stdout(text).await?;
     Ok(0)
 }
 
 async fn remove(shard: Rc<Shard>, call: Call<ExposeArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let removed = match ExposeId::try_from(call.args.id.as_str()) {
-        Ok(id) => shard.remove_expose(&id).await.map(|()| id),
-        Err(_) => Err(ExposeError::NotFound(call.args.id)),
+    let number = call.args.number;
+    let removed = match numbered(&shard, number).await {
+        Ok(id) => shard.remove_expose(&id).await.map_err(|error| named(error, number)),
+        Err(error) => Err(error),
     };
     match removed {
-        Ok(id) => {
-            port.stdout(format!("Removed expose {id}; its URL no longer works.\n")).await?;
+        Ok(()) => {
+            port.stdout(format!("Removed expose {number}; its URL no longer works.\n")).await?;
             Ok(0)
         }
         Err(error) => refused(&port, "remove", error).await,
+    }
+}
+
+/// The id of the user's expose `number`; not found when there is none.
+async fn numbered(shard: &Shard, number: u64) -> Result<ExposeId, ExposeError> {
+    shard
+        .numbered_expose(number)
+        .await?
+        .ok_or_else(|| ExposeError::NotFound(number.to_string()))
+}
+
+/// `error` naming the expose by `number`: an expose found by its number
+/// that expired meanwhile is not found by that number, and its id, the
+/// credential, stays out of the model's text.
+fn named(error: ExposeError, number: u64) -> ExposeError {
+    match error {
+        ExposeError::NotFound(_) => ExposeError::NotFound(number.to_string()),
+        other => other,
     }
 }
 

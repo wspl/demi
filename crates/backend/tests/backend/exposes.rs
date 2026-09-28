@@ -439,50 +439,73 @@ async fn the_agent_exposes_a_service_and_lists_renews_and_removes_exposes_with_d
     let (_laptop, _) = on_device(&harness, &backend, &master, CONVERSATION).await;
     let mut work = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/work").await;
 
-    // `add` exposes a service on the conversation's main Host.
+    // `add` exposes a service on the conversation's main Host; each of the
+    // user's exposes takes the user's next number.
     let add = format!("demi host expose add {}", fixture.port);
-    let added = work.turn(vec![shell("t1", &add, 20_000), say("exposed")]).await;
+    let added = work
+        .turn(vec![shell("t1", &format!("{add} && {add}"), 20_000), say("exposed")])
+        .await;
     let exposed = list(&backend, &master).await;
-    let [exposed] = exposed.as_slice() else {
-        panic!("one expose: {exposed:?}");
+    let numbered = |number: u64| {
+        exposed
+            .iter()
+            .find(|expose| expose.number == number)
+            .unwrap_or_else(|| panic!("no expose {number}: {exposed:?}"))
+            .clone()
     };
-    let printed = format!(
-        "Exposed 127.0.0.1:{} on laptop as {}\nExpires in 60 minutes (expose {}).\n",
-        fixture.port, exposed.url, exposed.id
-    );
-    assert!(shown_output(&added.received[0]).contains(&printed), "{}", added.received[0]);
-    assert_eq!(fetch(&backend, &host_of(exposed), "/hello").await, (200, "hello".to_owned()));
+    let (first, second) = (numbered(1), numbered(2));
+    for expose in [&first, &second] {
+        let printed = format!(
+            "Exposed 127.0.0.1:{} on laptop as {}\nExpires in 60 minutes (expose {}).\n",
+            fixture.port, expose.url, expose.number
+        );
+        assert!(shown_output(&added.received[0]).contains(&printed), "{}", added.received[0]);
+    }
+    assert_eq!(fetch(&backend, &host_of(&first), "/hello").await, (200, "hello".to_owned()));
 
     // `list` shows every expose of the user under a header, or as JSON.
     let listed = work
         .turn(vec![shell("t2", "demi host expose list && demi host expose list --json", 20_000), say("listed")])
         .await;
-    let address = exposed.address.as_str();
-    let header = format!("{:<26}  Device  {:<width$}  Expires  URL\n", "Expose", "Address", width = address.len());
-    let row = format!("{}  laptop  {address}  60 min   {}\n", exposed.id, exposed.url);
-    assert!(listed.received[0].contains(&format!("{header}{row}")), "{}", listed.received[0]);
-    let json = serde_json::to_string(&Exposes { exposes: vec![exposed.clone()] }).unwrap();
+    let address = first.address.as_str();
+    let header = format!("Expose  Device  {:<width$}  Expires  URL\n", "Address", width = address.len());
+    assert!(listed.received[0].contains(&header), "{}", listed.received[0]);
+    for expose in [&first, &second] {
+        let row = format!("{:<6}  laptop  {address}  60 min   {}\n", expose.number, expose.url);
+        assert!(listed.received[0].contains(&row), "{}", listed.received[0]);
+    }
+    let json = serde_json::to_string(&Exposes { exposes: exposed.clone() }).unwrap();
     assert!(listed.received[0].contains(&json), "{}", listed.received[0]);
 
-    // `renew` and `remove` take its id; one that is gone is not found, and
-    // a host the conversation does not reach is refused.
-    let id = &exposed.id;
+    // Another user's exposes are numbered apart: theirs is 1 too.
+    harness.add_user(OTHER_EMAIL, OTHER_PASSWORD, Role::User);
+    let other = backend.login(OTHER_EMAIL, OTHER_PASSWORD).await;
+    let desk = backend.pair(&other, "desk").await;
+    let theirs = expose(&backend, &other, desk.id(), fixture.port).await;
+    assert_eq!(theirs.number, 1);
+
+    // `renew` and `remove` take the number; a number the user has no live
+    // expose of is not found, though another user's expose has it; the next
+    // add takes a number never given; a host the conversation does not
+    // reach is refused.
     let changes = format!(
-        "demi host expose renew {id} && demi host expose remove {id} && demi host expose renew {id}; echo exit=$?; \
-         demi host expose add 8080 --host nope; echo exit=$?"
+        "demi host expose renew 1 && demi host expose remove 1 && demi host expose renew 1; echo exit=$?; \
+         {add}; demi host expose add 8080 --host nope; echo exit=$?"
     );
     let changed = work.turn(vec![shell("t3", &changes, 20_000), say("changed")]).await;
     let received = &changed.received[0];
     for expected in [
-        format!("Expose {id} expires in 60 minutes.\n"),
-        format!("Removed expose {id}; its URL no longer works.\n"),
-        format!("expose renew: No expose {id} (expose_not_found)\n"),
-        "host nope is not reachable from this conversation".to_owned(),
+        "Expose 1 expires in 60 minutes.\n",
+        "Removed expose 1; its URL no longer works.\n",
+        "expose renew: No expose 1 (expose_not_found)\n",
+        "Expires in 60 minutes (expose 3).\n",
+        "host nope is not reachable from this conversation",
     ] {
-        assert!(received.contains(&expected), "{expected:?} in {received}");
+        assert!(received.contains(expected), "{expected:?} in {received}");
     }
     assert_eq!(received.matches("exit=1").count(), 2, "{received}");
-    assert_eq!(fetch(&backend, &host_of(exposed), "/hello").await.0, 404);
+    assert_eq!(fetch(&backend, &host_of(&first), "/hello").await.0, 404);
+    assert_eq!(list(&backend, &other).await, [theirs]);
     backend.close().await;
 }
 
@@ -607,8 +630,8 @@ async fn a_clouds_exposes_end_when_it_dies_resets_or_is_found_stopped_and_before
     harness
         .control_database()
         .execute(
-            "INSERT INTO exposes (id, user_id, device_id, address, created_at, expires_at)
-             VALUES ('k7x2maqw4p3s6tavaw2y4z6aab', ?1, ?2, '127.0.0.1:1', ?3, ?4)",
+            "INSERT INTO exposes (id, number, user_id, device_id, address, created_at, expires_at)
+             VALUES ('k7x2maqw4p3s6tavaw2y4z6aab', 9, ?1, ?2, '127.0.0.1:1', ?3, ?4)",
             rusqlite::params![master.user.id.as_str(), device, now, now + 3_600_000],
         )
         .unwrap();

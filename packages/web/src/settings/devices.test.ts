@@ -41,6 +41,7 @@ beforeEach(async () => {
     exposes: [
       {
         id: 'k7x2maqw4p3s6tavaw2y4z6aab',
+        number: 1,
         deviceId: 'laptop',
         address: '127.0.0.1:5173',
         url: 'https://k7x2maqw4p3s6tavaw2y4z6aab.expose.demi.example/',
@@ -49,6 +50,7 @@ beforeEach(async () => {
       },
       {
         id: 'm3n5p7rgtxv3w5x7yez4a3c5ek',
+        number: 2,
         deviceId: 'cloud',
         address: '127.0.0.1:8080',
         url: 'https://m3n5p7rgtxv3w5x7yez4a3c5ek.expose.demi.example/',

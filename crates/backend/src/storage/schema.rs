@@ -22,7 +22,10 @@ CREATE TABLE users (
   nickname      TEXT NOT NULL,
   password_hash TEXT NOT NULL,
   role          TEXT NOT NULL CHECK (role IN ('master', 'admin', 'user')),
-  created_at    INTEGER NOT NULL
+  created_at    INTEGER NOT NULL,
+  -- The number the user's next expose takes: an add takes it and advances
+  -- it in one transaction, so no number is given twice.
+  next_expose   INTEGER NOT NULL DEFAULT 1 CHECK (next_expose >= 1)
 ) STRICT;
 CREATE UNIQUE INDEX users_one_master ON users (role) WHERE role = 'master';
 
@@ -77,11 +80,13 @@ CREATE INDEX workspaces_order ON workspaces (user_id, sort_order);
 
 CREATE TABLE exposes (
   id         TEXT PRIMARY KEY,
+  number     INTEGER NOT NULL CHECK (number >= 1),
   user_id    TEXT NOT NULL REFERENCES users (id),
   device_id  TEXT NOT NULL REFERENCES devices (id) ON DELETE CASCADE,
   address    TEXT NOT NULL,
   created_at INTEGER NOT NULL,
-  expires_at INTEGER NOT NULL
+  expires_at INTEGER NOT NULL,
+  UNIQUE (user_id, number)
 ) STRICT;
 CREATE INDEX exposes_expiry ON exposes (expires_at);
 CREATE INDEX exposes_owner ON exposes (user_id, expires_at);

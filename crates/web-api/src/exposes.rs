@@ -1,7 +1,7 @@
 //! Exposes (`web-api.md` § Exposes, `expose.md` § The expose record): a
 //! service on one of the user's devices under a public URL for an hour.
 
-use demi_core::Timestamp;
+use demi_core::{MAX_SAFE_INTEGER, Timestamp};
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -83,6 +83,10 @@ fn port(text: &str) -> Option<u16> {
 #[serde(rename_all = "camelCase")]
 pub struct ExposeDto {
     pub id: ExposeId,
+    /// Its number among the user's exposes, which the commands take and
+    /// print (`expose.md` § The expose record).
+    #[garde(range(min = 1, max = MAX_SAFE_INTEGER))]
+    pub number: u64,
     pub device_id: DeviceId,
     pub address: ExposeAddress,
     pub url: String,
