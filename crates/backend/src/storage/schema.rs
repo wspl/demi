@@ -287,21 +287,21 @@ CREATE TABLE blocks (
   PRIMARY KEY (node_id, idx)
 ) STRICT;
 
--- An index of the media the blocks reference, one row per medium: derived
--- from each block in the transaction that writes it, never written on its
--- own. The retention pass finds expired tool media and referenced blobs
--- here, which SQLite cannot index inside a block's JSON.
-CREATE TABLE media (
+-- An index of the blobs the blocks reference, one row per reference, media
+-- and edit copies: derived from each block in the transaction that writes
+-- it, never written on its own. The retention pass finds expired tool media
+-- and referenced blobs here, which SQLite cannot index inside a block's JSON.
+CREATE TABLE blob_refs (
   node_id TEXT NOT NULL,
   idx     INTEGER NOT NULL,
   part    INTEGER NOT NULL CHECK (part >= 0),
   blob    TEXT NOT NULL,
-  tool    INTEGER NOT NULL CHECK (tool IN (0, 1)),
+  holder  TEXT NOT NULL CHECK (holder IN ('message', 'tool_result', 'edit_copy')),
   at      INTEGER NOT NULL,
   PRIMARY KEY (node_id, idx, part),
   FOREIGN KEY (node_id, idx) REFERENCES blocks (node_id, idx) ON DELETE CASCADE
 ) STRICT;
-CREATE INDEX media_expiry ON media (tool, at);
+CREATE INDEX blob_refs_expiry ON blob_refs (holder, at);
 
 -- Each version holds the node's complete command-storage map.
 CREATE TABLE command_snapshots (

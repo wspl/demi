@@ -9,6 +9,7 @@ import { browserTabsApi } from '../api/browser-tabs'
 import { conversationFileRoutes, fileSource } from '../api/files'
 import { useResources } from '../state/resources'
 import { executionFor } from '../targets/execution'
+import { readEditCopies } from './changes'
 import { useConversations } from './store'
 import { useWorkPanel } from './work'
 
@@ -137,7 +138,7 @@ onBeforeUnmount(() => {
     :panel="state.panel"
     :kinds="kinds"
     :workspace="workspace"
-    :read-call-change="state.readCallChange"
+    :read-call-change="readEditCopies"
     :history-root="conversation ? executionFor(conversation).path ?? undefined : undefined"
     @select="work.select(conversationId, $event)"
     @add-tab="(kind, data) => work.add(conversationId, kind, data)"

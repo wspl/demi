@@ -1,7 +1,8 @@
-//! The `media` index of a conversation's database (`storage.md`
+//! The `blob_refs` index of a conversation's database (`storage.md`
 //! § Conversation state and transactions, § Retention): one row for each
-//! medium a block references, with its node, its block's index, its place
-//! among the block's media, its blob, whether a tool result holds it, and the
+//! blob a block references, with its node, its block's index, the
+//! reference's place in the block, its blob, what in the block holds it (a
+//! message's medium, a tool result's medium or an edit copy), and the
 //! block's time. The rows are derived from the blocks by [`rows`]: every
 //! write of a block goes through [`write_block`], and every removal through
 //! [`truncate`] or a node's deletion, in the transaction that changes the
@@ -15,7 +16,7 @@
 
 use std::collections::BTreeSet;
 
-use demi_agent::store::media::{self, BlockMedium};
+use demi_agent::store::media::{self, BlockReference, Holder};
 use demi_agent::store::{CheckpointState, StoreError};
 use demi_agent::transcript::retire::{self as rule, KEPT, Retirement};
 use demi_core::{BlobRef, Block, NodeId, Timestamp};
@@ -27,31 +28,39 @@ use super::command_outputs;
 use super::columns::{count, decode, json, to_json};
 use super::tree::blocks_of;
 
-/// One row of the index: a medium one block references.
+/// One row of the index: a blob one block references.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct MediaRow {
-    /// The medium's place among the block's media.
+pub(crate) struct BlobRefRow {
+    /// The reference's place among the block's references.
     pub(crate) part: usize,
     pub(crate) blob: BlobRef,
-    /// Whether a tool result holds it.
-    pub(crate) tool: bool,
+    pub(crate) holder: Holder,
     /// The block's time.
     pub(crate) at: Timestamp,
 }
 
 /// The index rows of `block`: the one derivation of them.
-pub(crate) fn rows(block: &Block) -> Vec<MediaRow> {
+pub(crate) fn rows(block: &Block) -> Vec<BlobRefRow> {
     let at = block.created_at();
-    media::block_media(block)
+    media::block_references(block)
         .into_iter()
         .enumerate()
-        .map(|(part, BlockMedium { blob, tool })| MediaRow {
+        .map(|(part, BlockReference { blob, holder })| BlobRefRow {
             part,
             blob: blob.clone(),
-            tool,
+            holder,
             at,
         })
         .collect()
+}
+
+/// The `holder` column's value for `holder`.
+pub(crate) fn holder_name(holder: Holder) -> &'static str {
+    match holder {
+        Holder::Message => "message",
+        Holder::ToolResult => "tool_result",
+        Holder::EditCopy => "edit_copy",
+    }
 }
 
 /// Writes `block` at `index` of `node` with its index rows, in place of
@@ -73,13 +82,13 @@ pub(crate) fn write_block(
         .execute(params![node.as_str(), index, to_json(block)])?;
     removed(
         transaction,
-        "DELETE FROM media WHERE node_id = ?1 AND idx = ?2 RETURNING blob",
+        "DELETE FROM blob_refs WHERE node_id = ?1 AND idx = ?2 RETURNING blob",
         node,
         index,
         touched,
     )?;
     let mut insert = transaction.prepare_cached(
-        "INSERT INTO media (node_id, idx, part, blob, tool, at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        "INSERT INTO blob_refs (node_id, idx, part, blob, holder, at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
     )?;
     for row in rows(block) {
         insert.execute(params![
@@ -87,7 +96,7 @@ pub(crate) fn write_block(
             index,
             count(row.part),
             row.blob.as_str(),
-            row.tool,
+            holder_name(row.holder),
             row.at.as_millisecond()
         ])?;
         touched.push(row.blob);
@@ -106,7 +115,7 @@ pub(crate) fn truncate(
     let index = count(index);
     removed(
         transaction,
-        "DELETE FROM media WHERE node_id = ?1 AND idx >= ?2 RETURNING blob",
+        "DELETE FROM blob_refs WHERE node_id = ?1 AND idx >= ?2 RETURNING blob",
         node,
         index,
         touched,
@@ -124,7 +133,7 @@ pub(crate) fn subtree(transaction: &Transaction<'_>, node: &NodeId) -> Result<Ve
         "WITH RECURSIVE subtree (id) AS (
            SELECT ?1 UNION SELECT nodes.id FROM nodes JOIN subtree ON nodes.parent_id = subtree.id
          )
-         SELECT blob FROM media WHERE node_id IN subtree",
+         SELECT blob FROM blob_refs WHERE node_id IN subtree",
     )?;
     let mut rows = statement.query([node.as_str()])?;
     let mut blobs = Vec::new();
@@ -153,7 +162,7 @@ fn removed(
 
 /// The blocks the agent's rule retires in the tree `connection` holds, by
 /// node (`runtime.md` § Retired tool media): only the nodes whose index
-/// holds a tool medium older than [`KEPT`] are read.
+/// holds a tool result's medium older than [`KEPT`] are read.
 pub(crate) fn retirable(
     connection: &Connection,
     retirement: Retirement,
@@ -166,10 +175,10 @@ pub(crate) fn retirable(
         .map_or(i64::MIN, |time| time.as_millisecond());
     let mut statement = connection.prepare(
         "SELECT id, block_count FROM nodes
-         WHERE id IN (SELECT node_id FROM media WHERE tool = 1 AND at < ?1)
+         WHERE id IN (SELECT node_id FROM blob_refs WHERE holder = ?1 AND at < ?2)
          ORDER BY id",
     )?;
-    let mut nodes = statement.query([expired])?;
+    let mut nodes = statement.query(params![holder_name(Holder::ToolResult), expired])?;
     let mut retired = Vec::new();
     while let Some(row) = nodes.next()? {
         let node = decode("nodes", "id", NodeId::try_from(row.get::<_, String>(0)?))?;
@@ -212,11 +221,11 @@ pub(crate) fn retire(
 }
 
 /// Every blob the conversation `connection` holds a reference to: its
-/// blocks', as the index names them, its nodes' queued messages', and its
-/// commands' outputs'.
+/// blocks' media and edit copies, as the index names them, its nodes' queued
+/// messages', and its commands' outputs'.
 pub(crate) fn references(connection: &Connection) -> Result<BTreeSet<BlobRef>, StorageError> {
     let mut references: BTreeSet<BlobRef> = command_outputs::references(connection)?.into_iter().collect();
-    let mut statement = connection.prepare("SELECT DISTINCT blob FROM media")?;
+    let mut statement = connection.prepare("SELECT DISTINCT blob FROM blob_refs")?;
     let mut rows = statement.query([])?;
     while let Some(row) = rows.next()? {
         references.insert(blob(row.get(0)?)?);
@@ -233,5 +242,5 @@ pub(crate) fn references(connection: &Connection) -> Result<BTreeSet<BlobRef>, S
 }
 
 fn blob(text: String) -> Result<BlobRef, StorageError> {
-    decode("media", "blob", BlobRef::try_from(text))
+    decode("blob_refs", "blob", BlobRef::try_from(text))
 }
