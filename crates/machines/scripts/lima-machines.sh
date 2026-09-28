@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Installs the Cloud manager in the local Lima VM (`setup.md` § Mac backend
-# with local Lima): starts or creates the VM, copies the manager built for its
+# Installs the Cloud manager in the local Lima VM
+# (`docs/guides/mac-development.md`): starts or creates the VM, copies the manager built for its
 # Linux target into it, and runs the host install script there.
 #
 # With --root DIR the install script only writes the unit and configuration
