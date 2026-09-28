@@ -55,10 +55,11 @@ pub const CAPTURE_FAILED: &str = "capture_failed";
 const TEXT_BYTES: usize = 1_000_000;
 const HTML_BYTES: usize = 4_000_000;
 
-/// A video frame's header, big-endian: the tab ID (24 ASCII bytes), the
-/// stream generation (u32), the sequence number (u32), flags (u8, 1 = key
-/// frame), three reserved bytes, the timestamp in microseconds (f64), and
-/// the picture's width and height in pixels (u16 each).
+/// A video frame's header, big-endian: the tab ID (ASCII, padded with zero
+/// bytes to 16), the stream generation (u32), the sequence number (u32),
+/// flags (u8, 1 = key frame), three reserved bytes, the timestamp in
+/// microseconds (f64), and the picture's width and height in pixels (u16
+/// each).
 #[derive(Debug, Clone, PartialEq)]
 pub struct VideoHeader {
     pub tab: TabId,
@@ -71,11 +72,15 @@ pub struct VideoHeader {
 }
 
 impl VideoHeader {
-    pub const BYTES: usize = 48;
+    pub const BYTES: usize = 40;
+    /// The tab ID's field: the longest tab ID, `t` and 15 digits.
+    pub const TAB_BYTES: usize = 16;
 
     /// Appends the header to `bytes`.
     pub fn write(&self, bytes: &mut Vec<u8>) {
-        bytes.extend_from_slice(self.tab.as_str().as_bytes());
+        let tab = self.tab.as_str().as_bytes();
+        bytes.extend_from_slice(tab);
+        bytes.resize(bytes.len() + Self::TAB_BYTES - tab.len(), 0);
         bytes.extend_from_slice(&self.generation.to_be_bytes());
         bytes.extend_from_slice(&self.sequence.to_be_bytes());
         bytes.push(u8::from(self.key));
@@ -83,6 +88,30 @@ impl VideoHeader {
         bytes.extend_from_slice(&self.timestamp.to_be_bytes());
         bytes.extend_from_slice(&self.width.to_be_bytes());
         bytes.extend_from_slice(&self.height.to_be_bytes());
+    }
+
+    /// Splits a video frame's payload into its header and data.
+    pub fn split(payload: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
+        let Some((header, data)) = payload.split_first_chunk::<{ Self::BYTES }>() else {
+            return Err(DecodeError::Invalid("a video frame is shorter than its header".into()));
+        };
+        let (tab, fields) = header.split_at(Self::TAB_BYTES);
+        let length = tab.iter().position(|byte| *byte == 0).unwrap_or(tab.len());
+        let tab = std::str::from_utf8(&tab[..length])
+            .map_err(|error| DecodeError::Invalid(error.to_string()))?
+            .parse::<TabId>()
+            .map_err(DecodeError::Invalid)?;
+        let bytes = |at: usize, count: usize| &fields[at..at + count];
+        let header = Self {
+            tab,
+            generation: u32::from_be_bytes(bytes(0, 4).try_into().expect("four bytes")),
+            sequence: u32::from_be_bytes(bytes(4, 4).try_into().expect("four bytes")),
+            key: fields[8] & 1 == 1,
+            timestamp: f64::from_be_bytes(bytes(12, 8).try_into().expect("eight bytes")),
+            width: u16::from_be_bytes(bytes(20, 2).try_into().expect("two bytes")),
+            height: u16::from_be_bytes(bytes(22, 2).try_into().expect("two bytes")),
+        };
+        Ok((header, data))
     }
 }
 

@@ -10,7 +10,7 @@ use std::{collections::HashMap, sync::Arc};
 use bytes::Bytes;
 use demi_builtin_protocol::DecodeError;
 use demi_command_service::{
-    ConversationContext, InvocationContext, ServiceError,
+    ConversationContext, InvocationContext, Numbers, ServiceError,
     protocol::{CommandLocale, Completion, ConversationRequest, ConversationStatus},
 };
 use tokio::{
@@ -26,6 +26,7 @@ use super::{
     BrowserEnvironment, BrowserError, LaunchOptions, Result,
     actions::TabResult,
     installation::{BrowserDirectories, Installation},
+    numbers::TabNumbers,
     output,
     protocol::{
         self, ActionProgress, BrowserErrorCode, BrowserFailure, BrowserOperation, CloseResult,
@@ -89,13 +90,16 @@ enum Request {
 }
 
 impl ConversationBrowser {
-    fn start(tasks: &TaskTracker, installation: Arc<Installation>) -> Arc<Self> {
+    /// The browser of a conversation whose tabs take their numbers from
+    /// `numbers`, across every browser it starts.
+    fn start(tasks: &TaskTracker, installation: Arc<Installation>, numbers: TabNumbers) -> Arc<Self> {
         let (requests, receiver) = mpsc::channel(REQUESTS);
         let (published, lifecycle) = watch::channel(Lifecycle::Absent);
         let cancellation = CancellationToken::new();
         let owner = Owner {
             state: State::Absent,
             installation,
+            numbers,
             published,
             released: cancellation.clone(),
             tasks: tasks.clone(),
@@ -202,7 +206,7 @@ impl ConversationBrowser {
     }
 
     /// Inspect retained debug owners without starting or querying Chrome after a timeout.
-    async fn debugging_callers(&self, tab: &str, caller: Option<&str>) -> Vec<String> {
+    async fn debugging_callers(&self, tab: &str, caller: Option<u64>) -> Vec<u64> {
         match self.environment(None, &CancellationToken::new()).await {
             Ok(Some(environment)) => environment.debugging_callers(tab, caller),
             Ok(None) | Err(_) => Vec::new(),
@@ -214,6 +218,8 @@ impl ConversationBrowser {
 struct Owner {
     state: State,
     installation: Arc<Installation>,
+    /// The conversation's tab numbers, which outlast each browser.
+    numbers: TabNumbers,
     published: watch::Sender<Lifecycle>,
     /// Cancelled when the conversation's release begins: no browser starts
     /// after it.
@@ -404,6 +410,7 @@ impl Owner {
         let stop = CancellationToken::new();
         let (publish, ready) = watch::channel(None);
         let installation = self.installation.clone();
+        let numbers = self.numbers.clone();
         let owner_stop = stop.clone();
         let task = self.tasks.spawn(async move {
             let publisher = publish.clone();
@@ -412,6 +419,7 @@ impl Owner {
                 let executable = installation.executable(&owner_stop).await?;
                 with_browser(
                     LaunchOptions::pinned(executable, locale)?,
+                    numbers,
                     owner_stop.clone(),
                     move |environment| async move {
                         publisher.send_replace(Some(Ok(environment.clone())));
@@ -501,14 +509,15 @@ impl Owner {
     }
 }
 
-/// The agent node a browser command acts for: tabs, debugging sessions and
-/// temporary tabs belong to it (`native-runtime.md` § Command context).
-pub(super) fn agent(context: &InvocationContext) -> Result<&str> {
+/// The number of the agent a browser command acts for: tabs, debugging
+/// sessions and temporary tabs belong to it (`native-runtime.md` § Command
+/// context).
+pub(super) fn agent(context: &InvocationContext) -> Result<u64> {
     context
         .request
         .context
         .caller
-        .node()
+        .agent_number()
         .ok_or_else(|| BrowserError::Configuration("browser commands act for an agent".into()))
 }
 
@@ -543,12 +552,20 @@ pub(crate) struct Conversations {
     requests: mpsc::Sender<Find>,
     /// The owner, every conversation browser's owner and their Chromes.
     tasks: TaskTracker,
+    /// Where the conversations' tab numbers come from, once the service has
+    /// its numbers source.
+    numbers: watch::Sender<Option<Numbers>>,
 }
 
 /// The conversations' owner: it maps each conversation to its browser. It
 /// answers every request at once, so the runner's `status` never waits for
 /// a browser's start or retirement.
-async fn serve(mut requests: mpsc::Receiver<Find>, tasks: TaskTracker, installation: Arc<Installation>) {
+async fn serve(
+    mut requests: mpsc::Receiver<Find>,
+    tasks: TaskTracker,
+    installation: Arc<Installation>,
+    numbers: watch::Receiver<Option<Numbers>>,
+) {
     let mut browsers: HashMap<String, Arc<ConversationBrowser>> = HashMap::new();
     // A requester that left needs no answer.
     while let Some(request) = requests.recv().await {
@@ -558,8 +575,11 @@ async fn serve(mut requests: mpsc::Receiver<Find>, tasks: TaskTracker, installat
                 reply,
             } => {
                 let browser = browsers
-                    .entry(conversation)
-                    .or_insert_with(|| ConversationBrowser::start(&tasks, installation.clone()))
+                    .entry(conversation.clone())
+                    .or_insert_with(|| {
+                        let tabs = TabNumbers::from_source(numbers.borrow().clone(), conversation);
+                        ConversationBrowser::start(&tasks, installation.clone(), tabs)
+                    })
                     .clone();
                 let _gone = reply.send(browser);
             }
@@ -603,12 +623,24 @@ impl Conversations {
     pub(crate) fn new(directories: BrowserDirectories) -> Self {
         let (requests, receiver) = mpsc::channel(REQUESTS);
         let tasks = TaskTracker::new();
+        let (numbers, source) = watch::channel(None);
         tasks.spawn(serve(
             receiver,
             tasks.clone(),
             Arc::new(Installation::new(directories)),
+            source,
         ));
-        Self { requests, tasks }
+        Self {
+            requests,
+            tasks,
+            numbers,
+        }
+    }
+
+    /// Takes the service's numbers source: browsers made from now on number
+    /// their tabs from it.
+    pub(crate) fn attach_numbers(&self, numbers: Numbers) {
+        self.numbers.send_replace(Some(numbers));
     }
 
     /// Asks the owner; none once the service has shut down.
@@ -739,7 +771,7 @@ impl Conversations {
                     && let Some(tab) = details.tab.as_deref()
                 {
                     let callers = browser
-                        .debugging_callers(tab, context.request.context.caller.node())
+                        .debugging_callers(tab, context.request.context.caller.agent_number())
                         .await;
                     if !callers.is_empty() {
                         details.debugging_callers = Some(callers);
@@ -797,7 +829,7 @@ impl Conversations {
             return Err(BrowserError::TabNotFound);
         };
         if let BrowserOperation::Open(input) = command
-            && context.request.context.caller.node().is_none()
+            && context.request.context.caller.agent_number().is_none()
         {
             // The user's new tab (`web-api.md` § Conversation browser tabs): the
             // work panel shows its loading, so opening does not wait for the page.
@@ -881,7 +913,7 @@ impl Conversations {
         let tab = &environment
             .tab(id, cancellation, command.timeout())
             .await?;
-        if context.request.context.caller.node().is_none()
+        if context.request.context.caller.agent_number().is_none()
             && matches!(
                 command,
                 BrowserOperation::Goto(_)

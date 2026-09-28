@@ -1,9 +1,9 @@
 //! A conversation's sequences (`storage.md` § Conversation state and
 //! transactions, `runtime.md` § Identifiers the model sees): the next number
-//! of each sequence the model sees, commands, shells and agents. A number is
-//! advanced past in its own statement before it is given out, so a crash
-//! leaves a gap and never gives a number twice; a Fork's destination goes on
-//! from its source's next numbers.
+//! of each sequence the model sees, commands, shells, agents and browser
+//! tabs. A number is advanced past in its own statement before it is given
+//! out, so a crash leaves a gap and never gives a number twice; a Fork's
+//! destination goes on from its source's next numbers.
 
 use demi_core::Sequence;
 use rusqlite::{Connection, params};
@@ -14,13 +14,20 @@ use super::columns::decode;
 /// The next number of `sequence`, from 1, which the database has advanced
 /// past when it answers.
 pub(crate) fn next(connection: &Connection, sequence: Sequence) -> Result<u64, StorageError> {
+    reserve(connection, sequence, 1)
+}
+
+/// The first of the next `count` numbers of `sequence`, which the database
+/// has advanced past when it answers (`native-runtime.md` § Conversation
+/// numbers).
+pub(crate) fn reserve(connection: &Connection, sequence: Sequence, count: u32) -> Result<u64, StorageError> {
     let number: i64 = connection
         .prepare_cached(
-            "INSERT INTO sequences (name, next) VALUES (?1, 2)
-             ON CONFLICT (name) DO UPDATE SET next = next + 1
-             RETURNING next - 1",
+            "INSERT INTO sequences (name, next) VALUES (?1, 1 + ?2)
+             ON CONFLICT (name) DO UPDATE SET next = next + ?2
+             RETURNING next - ?2",
         )?
-        .query_row([sequence.to_string()], |row| row.get(0))?;
+        .query_row(params![sequence.to_string(), count], |row| row.get(0))?;
     decode("sequences", "next", u64::try_from(number))
 }
 

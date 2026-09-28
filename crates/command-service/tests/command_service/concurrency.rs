@@ -192,7 +192,7 @@ async fn abandoning_a_burst_of_calls_keeps_the_connection() {
 fn context() -> CommandContext {
     CommandContext {
         conversation: "conversation".into(),
-        caller: CommandCaller::agent("node"),
+        caller: CommandCaller::agent(1),
         locale: CommandLocale {
             time_zone: "UTC".into(),
             languages: vec!["en-US".into()],

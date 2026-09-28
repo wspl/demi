@@ -32,6 +32,10 @@ pub enum ServiceError {
     /// The handler's task panicked or was aborted.
     #[error("command handler failed: {0}")]
     Task(#[from] tokio::task::JoinError),
+    /// The service could not draw conversation numbers
+    /// (`native-runtime.md` § Conversation numbers).
+    #[error("conversation numbers: {0}")]
+    Numbers(String),
     #[error("conversation cleanup failed; retire the service process: {0}")]
     ConversationCleanup(String),
     #[error("handler exceeded cancellation deadline; retire the service process")]

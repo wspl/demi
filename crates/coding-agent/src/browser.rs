@@ -179,7 +179,7 @@ mod tests {
 
     use crate::command_line::{demi, help, parse};
 
-    const TAB: &str = "t_aaaaaaaaaaaaaaaaaaaaaa";
+    const TAB: &str = "t1";
 
     #[test]
     fn every_operation_has_a_command_that_takes_each_operand_from_one_source() {

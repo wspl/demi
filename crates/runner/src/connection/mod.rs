@@ -7,8 +7,8 @@
 //!
 //! Work that runs apart from the owner reaches it through a
 //! [`ConnectionHandle`]: a callback call registers where its events go, an
-//! artifact download asks where its artifact is, and a job makes its
-//! execution context live.
+//! artifact download asks where its artifact is, a service asks for its
+//! conversation numbers, and a job makes its execution context live.
 
 mod owner;
 pub mod transport;
@@ -19,7 +19,8 @@ pub use transport::{Transport, socket_url};
 
 use std::{collections::HashMap, io, sync::Arc, time::Duration};
 
-use demi_command_service::protocol::ArtifactLocation;
+use demi_command_service::protocol::{ArtifactLocation, ServiceSequence};
+use futures_util::future::BoxFuture;
 use tokio::{
     sync::{mpsc, oneshot},
     task::JoinSet,
@@ -28,14 +29,15 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     commands::{contexts::ExecutionContext, rpc::CallEvent},
-    services::{RuntimeError, ServiceLease},
+    services::{NumberSource, RuntimeError, ServiceLease},
 };
 use wire::Inbound;
 
 /// Requests waiting for a connection's owner; a sender waits for room.
 const REQUESTS: usize = 64;
-/// How long the backend has to say where an artifact is.
-const LOCATE_TIMEOUT: Duration = Duration::from_secs(15);
+/// How long the backend has to answer a question: where an artifact is, or
+/// which numbers a service may use.
+const ANSWER_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// How work running under a connection reaches the backend and the
 /// connection's owner.
@@ -55,12 +57,10 @@ pub enum Request {
         events: mpsc::Sender<CallEvent>,
         ended: CancellationToken,
     },
-    /// Where an artifact is, on behalf of `owner`; the asker cancels
-    /// `abandoned` when it no longer waits.
-    Locate {
-        owner: wire::ArtifactOwner,
-        sha256: String,
-        reply: oneshot::Sender<Result<ArtifactLocation, String>>,
+    /// A question to the backend; the asker cancels `abandoned` when it no
+    /// longer waits for the answer.
+    Ask {
+        question: Question,
         abandoned: CancellationToken,
     },
     /// Makes a job's execution context live.
@@ -122,22 +122,38 @@ impl ConnectionHandle {
         owner: wire::ArtifactOwner,
         sha256: String,
     ) -> Result<ArtifactLocation, RuntimeError> {
+        self.ask(
+            |reply| Question::Locate {
+                owner,
+                sha256,
+                reply,
+            },
+            "artifact location",
+        )
+        .await?
+        .map_err(RuntimeError::Location)
+    }
+
+    /// Asks the backend a question and waits for its answer, for at most
+    /// `ANSWER_TIMEOUT` and while the connection lasts.
+    async fn ask<T>(
+        &self,
+        question: impl FnOnce(oneshot::Sender<Result<T, String>>) -> Question,
+        what: &'static str,
+    ) -> Result<Result<T, String>, RuntimeError> {
         let (reply, answer) = oneshot::channel();
         let abandoned = CancellationToken::new();
         let _abandon = abandoned.clone().drop_guard();
-        self.request(Request::Locate {
-            owner,
-            sha256,
-            reply,
+        self.request(Request::Ask {
+            question: question(reply),
             abandoned,
         })
         .await?;
         tokio::select! {
             _ = self.closed.cancelled() => Err(RuntimeError::Cancelled),
-            answer = tokio::time::timeout(LOCATE_TIMEOUT, answer) => answer
-                .map_err(|_| RuntimeError::Deadline("artifact location"))?
-                .map_err(|_| RuntimeError::Cancelled)?
-                .map_err(RuntimeError::Location),
+            answer = tokio::time::timeout(ANSWER_TIMEOUT, answer) => answer
+                .map_err(|_| RuntimeError::Deadline(what))?
+                .map_err(|_| RuntimeError::Cancelled),
         }
     }
 
@@ -164,18 +180,66 @@ impl ConnectionHandle {
     }
 }
 
+/// A service's conversation numbers come from the connection it started
+/// under (`native-runtime.md` § Conversation numbers).
+impl NumberSource for ConnectionHandle {
+    fn reserve(
+        &self,
+        conversation: String,
+        sequence: ServiceSequence,
+        count: u32,
+    ) -> BoxFuture<'_, Result<u64, String>> {
+        Box::pin(async move {
+            self.ask(
+                |reply| Question::Reserve {
+                    conversation,
+                    sequence,
+                    count,
+                    reply,
+                },
+                "conversation numbers",
+            )
+            .await
+            .map_err(|error| error.to_string())?
+        })
+    }
+}
+
+/// What work asks the backend, with where the answer goes.
+pub enum Question {
+    /// Where an artifact is, on behalf of `owner`.
+    Locate {
+        owner: wire::ArtifactOwner,
+        sha256: String,
+        reply: oneshot::Sender<Result<ArtifactLocation, String>>,
+    },
+    /// Numbers of a conversation's sequence for a service.
+    Reserve {
+        conversation: String,
+        sequence: ServiceSequence,
+        count: u32,
+        reply: oneshot::Sender<Result<u64, String>>,
+    },
+}
+
+/// Where the answer to a question goes.
+enum Reply {
+    Location(oneshot::Sender<Result<ArtifactLocation, String>>),
+    Numbers(oneshot::Sender<Result<u64, String>>),
+}
+
 /// When an entry of the relay no longer needs keeping.
 pub enum Ended {
     Call(String),
-    Locate(String),
+    Ask(String),
 }
 
-/// The owner's routing of callback events and artifact locations: each
-/// entry stays until its inbound message arrives or its asker leaves.
+/// The owner's routing of callback events and the answers to questions:
+/// each entry stays until its inbound message arrives or its asker leaves.
 #[derive(Default)]
 pub struct Relay {
     calls: HashMap<String, Call>,
-    locates: HashMap<String, oneshot::Sender<Result<ArtifactLocation, String>>>,
+    asks: HashMap<String, Reply>,
 }
 
 struct Call {
@@ -200,28 +264,50 @@ impl Relay {
         self.calls.insert(id, Call { events, ended });
     }
 
-    /// Registers a location request and returns the frame that asks for it.
-    pub fn locate(
+    /// Registers a question and returns the frame that asks it.
+    pub fn ask(
         &mut self,
-        owner: wire::ArtifactOwner,
-        sha256: String,
-        reply: oneshot::Sender<Result<ArtifactLocation, String>>,
+        question: Question,
         abandoned: CancellationToken,
         watches: &mut JoinSet<Ended>,
     ) -> Result<wire::Frame, wire::WireError> {
         let id = uuid::Uuid::new_v4().simple().to_string();
-        let frame = wire::encode(&wire::Outbound::ArtifactResolve {
-            id: id.clone(),
-            owner,
-            sha256,
-            target: crate::services::target().into(),
-        })?;
+        let (message, reply) = match question {
+            Question::Locate {
+                owner,
+                sha256,
+                reply,
+            } => (
+                wire::Outbound::ArtifactResolve {
+                    id: id.clone(),
+                    owner,
+                    sha256,
+                    target: crate::services::target().into(),
+                },
+                Reply::Location(reply),
+            ),
+            Question::Reserve {
+                conversation,
+                sequence,
+                count,
+                reply,
+            } => (
+                wire::Outbound::NumbersReserve {
+                    id: id.clone(),
+                    conversation_id: conversation,
+                    sequence,
+                    count,
+                },
+                Reply::Numbers(reply),
+            ),
+        };
+        let frame = wire::encode(&message)?;
         let key = id.clone();
         watches.spawn(async move {
             abandoned.cancelled().await;
-            Ended::Locate(key)
+            Ended::Ask(key)
         });
-        self.locates.insert(id, reply);
+        self.asks.insert(id, reply);
         Ok(frame)
     }
 
@@ -230,13 +316,13 @@ impl Relay {
             Ended::Call(id) => {
                 self.calls.remove(&id);
             }
-            Ended::Locate(id) => {
-                self.locates.remove(&id);
+            Ended::Ask(id) => {
+                self.asks.remove(&id);
             }
         }
     }
 
-    /// Delivers `message` when it answers a call or a location; false for
+    /// Delivers `message` when it answers a call or a question; false for
     /// any other message.
     pub fn route(&mut self, message: &Inbound) -> bool {
         let (id, event) = match message {
@@ -261,11 +347,23 @@ impl Relay {
                 location,
                 error,
             } => {
-                if let Some(reply) = self.locates.remove(id) {
+                if let Some(Reply::Location(reply)) = self.asks.remove(id) {
                     let answer = match (location, error) {
                         (Some(location), None) => Ok(location.clone()),
                         (None, Some(error)) => Err(error.clone()),
                         _ => Err("invalid artifact location response".into()),
+                    };
+                    // An asker that left no longer needs the answer.
+                    let _left = reply.send(answer);
+                }
+                return true;
+            }
+            Inbound::NumbersReserved { id, first, error } => {
+                if let Some(Reply::Numbers(reply)) = self.asks.remove(id) {
+                    let answer = match (first, error) {
+                        (Some(first), None) => Ok(*first),
+                        (None, Some(error)) => Err(error.clone()),
+                        _ => Err("invalid numbers response".into()),
                     };
                     // An asker that left no longer needs the answer.
                     let _left = reply.send(answer);

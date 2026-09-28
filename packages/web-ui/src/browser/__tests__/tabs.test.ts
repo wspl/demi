@@ -15,12 +15,12 @@ import {
 } from '../tabs'
 
 const AGENT_TAB: BrowserTabInfo = {
-  id: 't_agentaaaaaaaaaaaaaaaaa',
+  id: 't1',
   title: 'Login',
   url: 'http://localhost:3000/login',
-  createdBy: { kind: 'agent', nodeId: 'root' },
+  createdBy: { kind: 'agent', number: 0 },
 }
-const USER_TAB: BrowserTabInfo = { id: 't_useraaaaaaaaaaaaaaaaaa', title: '', url: 'about:blank', createdBy: { kind: 'user' } }
+const USER_TAB: BrowserTabInfo = { id: 't2', title: '', url: 'about:blank', createdBy: { kind: 'user' } }
 
 function harness(api: Partial<BrowserTabsApi>, options: BrowserTabsOptions = {}) {
   const panel: BrowserTabData[] = []

@@ -10,7 +10,9 @@
 //!
 //! The owner keeps its bookkeeping in a [`Book`], which knows nothing of
 //! Chrome, and does the calls to Chrome itself or in tasks of the
-//! environment.
+//! environment. A page's public ID is `t` and a number of the conversation's
+//! `tab` sequence: before each step the owner makes sure the numbers the step
+//! may give out are at hand.
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -39,6 +41,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use super::{
     BrowserError, BrowserTab, Result,
     environment::BrowserHandle,
+    numbers::TabNumbers,
     operation::{CONTROL_TIMEOUT, after_cleanup},
     protocol::{BrowserCreatedBy, TabId},
     tab::TabState,
@@ -53,6 +56,9 @@ const REQUESTS: usize = 64;
 /// of its own, so a page's creation can reach the owner after its
 /// destruction; remembering the destruction keeps that page out.
 const DESTROYED: usize = 1024;
+/// The most public IDs one step of the owner gives out: a page, its opener,
+/// and the opener Chrome names only when it attaches a popup.
+const STEP_IDS: usize = 3;
 
 /// A tab as the registry lists it.
 #[derive(Clone)]
@@ -301,6 +307,8 @@ impl<'a> Sighting<'a> {
 /// Chrome: their public IDs, openers and stages, the creations in flight,
 /// and whether the last tab has closed. `T` is the tab a live page has.
 struct Book<T> {
+    /// Where the public IDs' numbers come from.
+    numbers: TabNumbers,
     entries: HashMap<TargetId, Entry<T>>,
     /// Each top-level page's public ID and creation order, kept for the
     /// generation, closed tabs included.
@@ -333,8 +341,9 @@ enum Stage<T> {
 }
 
 impl<T: Clone> Book<T> {
-    fn new() -> Self {
+    fn new(numbers: TabNumbers) -> Self {
         Self {
+            numbers,
             entries: HashMap::new(),
             public_ids: HashMap::new(),
             openers: HashMap::new(),
@@ -625,16 +634,18 @@ impl<T: Clone> Book<T> {
             .collect()
     }
 
-    /// The public ID of `target`, kept for the browser's generation.
+    /// The public ID of `target`, kept for the browser's generation: a new
+    /// page takes the next number at hand.
     fn public_id(&mut self, target: &TargetId) -> TabId {
         if let Some((id, _)) = self.public_ids.get(target) {
             return id.clone();
         }
         let order = self.public_ids.len();
-        // The system's random source does not fail on a working system.
-        let id = TabId::from_random(
-            super::handles::random().expect("the system's random source works"),
-        );
+        let number = self
+            .numbers
+            .take()
+            .expect("the owner stocks the numbers a step gives out");
+        let id = TabId::numbered(number);
         self.public_ids.insert(target.clone(), (id.clone(), order));
         id
     }
@@ -701,10 +712,12 @@ struct Events {
     destroyed: EventStream<EventTargetDestroyed>,
 }
 
-/// Starts the registry of the environment `browser` connects to. It
-/// subscribes before it returns, so it sees every tab created after.
+/// Starts the registry of the environment `browser` connects to, which
+/// numbers its tabs from `numbers`. It subscribes before it returns, so it
+/// sees every tab created after.
 pub(super) async fn start(
     browser: BrowserHandle,
+    numbers: TabNumbers,
     ended: CancellationToken,
     tasks: &TaskTracker,
     failure: watch::Sender<Option<String>>,
@@ -738,7 +751,7 @@ pub(super) async fn start(
             failure,
             changes,
         },
-        book: Book::new(),
+        book: Book::new(numbers),
         closing: HashMap::new(),
         popups: Vec::new(),
         holds: watch::channel(0).0,
@@ -765,6 +778,9 @@ impl Owner {
         let ended = self.context.ended.clone();
         let mut holds = self.holds.subscribe();
         loop {
+            if !self.stock().await {
+                break;
+            }
             // Earlier kinds of a target's events go first, so its creation
             // is usually handled before its destruction; the book's
             // destroyed list covers the rest.
@@ -804,6 +820,25 @@ impl Owner {
                 },
             }
             self.answer_popups();
+        }
+    }
+
+    /// Makes sure the numbers of the next step's public IDs are at hand;
+    /// false once the environment has ended. A tab without a number cannot
+    /// be named, so an environment that cannot have them ends with why.
+    async fn stock(&mut self) -> bool {
+        let stocked = tokio::select! {
+            _ = self.context.ended.cancelled() => return false,
+            stocked = self.book.numbers.stock(STEP_IDS) => stocked,
+        };
+        match stocked {
+            Ok(()) => true,
+            Err(error) => {
+                tracing::warn!("the browser's tabs cannot be numbered: {error}");
+                self.context.failure.send_replace(Some(error.to_string()));
+                self.context.ended.cancel();
+                false
+            }
         }
     }
 
@@ -1126,24 +1161,35 @@ impl Owner {
         }
         .await;
         match targets {
-            Ok(targets) => {
-                let mut present = HashSet::new();
-                for seen in targets.iter().filter_map(Sighting::of) {
-                    present.insert(seen.target.clone());
-                    self.book.found(&seen);
-                }
-                for target in self.book.vanished(&present) {
-                    self.gone(&target);
-                }
-                for target in self.book.pending() {
-                    self.adopt(&target).await;
-                }
-            }
+            Ok(targets) => self.register(&targets).await,
             // Only an ending browser has no target list; its end follows.
             Err(error) => tracing::debug!("the browser tab registry could not reconcile: {error}"),
         }
         self.book.reconciling = false;
         self.publish();
+    }
+
+    /// Takes Chrome's target list as the pages there are: records each,
+    /// forgets the pages it lacks, and sets up the popups waiting. It stops
+    /// when the environment ends, which leaves nothing to register.
+    async fn register(&mut self, targets: &[TargetInfo]) {
+        let mut present = HashSet::new();
+        for seen in targets.iter().filter_map(Sighting::of) {
+            present.insert(seen.target.clone());
+            if !self.stock().await {
+                return;
+            }
+            self.book.found(&seen);
+        }
+        for target in self.book.vanished(&present) {
+            self.gone(&target);
+        }
+        for target in self.book.pending() {
+            if !self.stock().await {
+                return;
+            }
+            self.adopt(&target).await;
+        }
     }
 
     /// Seals the registry once it has no tab left, none being created and no
@@ -1214,9 +1260,14 @@ mod tests {
         }
     }
 
+    /// A book whose tabs take their numbers from 1.
+    fn book() -> Book<&'static str> {
+        Book::new(TabNumbers::preset(1..=64))
+    }
+
     /// A book with `names` as live tabs, as the registry's own creations.
     fn live(names: &[&'static str]) -> Book<&'static str> {
-        let mut book = Book::new();
+        let mut book = book();
         for name in names {
             assert!(book.admit());
             book.set_up(&target(name));

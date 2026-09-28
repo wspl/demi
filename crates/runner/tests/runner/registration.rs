@@ -145,7 +145,7 @@ async fn backend_job_invokes_same_binary_alias_and_drain_releases_installation()
         send(
             &mut socket,
             json!({"type":"job_start", "jobId":"job", "manifestHash":hash,
-            "context":{"conversation":"conversation", "caller":{"kind":"agent", "node":"node"}, "locale":{"timeZone":"UTC", "languages":["en-US"]}},
+            "context":{"conversation":"conversation", "caller":{"kind":"agent", "number":1}, "locale":{"timeZone":"UTC", "languages":["en-US"]}},
             "script":"fixture --help && printf done", "cwd":home, "env":{}}),
         )
         .await;

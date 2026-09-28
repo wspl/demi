@@ -18,6 +18,7 @@ use tokio_util::{
 
 use super::{
     BrowserError, BrowserTab, Result,
+    numbers::TabNumbers,
     operation::{CONTROL_TIMEOUT, Operation, after_cleanup},
     process::ChromeProcess,
     protocol::{BrowserCreatedBy, Load, TabId},
@@ -336,12 +337,14 @@ pub struct BrowserEnvironment {
     pub(super) live: Arc<super::live::Hub>,
 }
 
-/// Own Chrome, its event task and its directories until the conversation work ends.
+/// Own Chrome, its event task and its directories until the conversation work ends;
+/// the tabs take their public IDs from `numbers`.
 /// Completion, failure and owner cancellation share the same joined cleanup path.
 /// Cancel through `stop` and await this owner. On abrupt future disposal the child
 /// has kill-on-drop protection; weak session handles cannot keep Chrome alive.
 pub async fn with_browser<T, F, W>(
     options: LaunchOptions,
+    numbers: TabNumbers,
     stop: CancellationToken,
     work: F,
 ) -> Result<T>
@@ -463,6 +466,7 @@ where
             // the opener closed.
             let tabs = registry::start(
                 handle.clone(),
+                numbers,
                 ended.clone(),
                 &observers,
                 failure.clone(),
@@ -614,6 +618,7 @@ async fn remove_present(directory: &Path) -> Result<()> {
 }
 
 impl BrowserEnvironment {
+    /// Opens `url` in a new tab, as the conversation's root agent does.
     pub async fn open(
         &self,
         url: &str,
@@ -622,7 +627,7 @@ impl BrowserEnvironment {
     ) -> Result<BrowserTab> {
         self.open_for(
             url,
-            "native",
+            0,
             Load::DomContentLoaded,
             cancellation,
             tokio::time::Instant::now() + timeout,
@@ -634,7 +639,7 @@ impl BrowserEnvironment {
     pub(super) async fn open_for(
         &self,
         url: &str,
-        caller: &str,
+        caller: u64,
         load: Load,
         cancellation: &CancellationToken,
         deadline: tokio::time::Instant,
@@ -643,9 +648,7 @@ impl BrowserEnvironment {
         let operation = Operation::until(&self.ended, cancellation, deadline);
         let tab = self
             .create(
-                BrowserCreatedBy::Agent {
-                    node_id: caller.to_owned(),
-                },
+                BrowserCreatedBy::Agent { number: caller },
                 &operation,
             )
             .await?;
@@ -685,7 +688,7 @@ impl BrowserEnvironment {
     /// retiring until the batch is closed.
     pub(super) async fn temporary_tabs(
         &self,
-        caller: &str,
+        caller: u64,
         count: usize,
         cancel: &CancellationToken,
         deadline: tokio::time::Instant,
@@ -699,9 +702,7 @@ impl BrowserEnvironment {
         };
         let result = async {
             for _ in 0..count {
-                let created_by = BrowserCreatedBy::Temporary {
-                    node_id: caller.to_owned(),
-                };
+                let created_by = BrowserCreatedBy::Temporary { number: caller };
                 batch.tabs.push(self.create(created_by, &operation).await?);
             }
             Ok(())
@@ -734,7 +735,7 @@ impl BrowserEnvironment {
     }
 
     /// Snapshot another caller's debug ownership without issuing browser commands.
-    pub(super) fn debugging_callers(&self, id: &str, caller: Option<&str>) -> Vec<String> {
+    pub(super) fn debugging_callers(&self, id: &str, caller: Option<u64>) -> Vec<u64> {
         self.tabs
             .latest()
             .tabs

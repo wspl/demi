@@ -340,7 +340,7 @@ pub async fn agent_call(
     let live = server
         .node(&conversation(), node)
         .expect("the calling node is live");
-    let invocation: RpcInvocation = serde_json::from_value(json!({
+    let mut invocation: RpcInvocation = serde_json::from_value(json!({
         "path": ["demi", "agent", verb],
         "argv": [],
         "args": args,
@@ -349,12 +349,14 @@ pub async fn agent_call(
         "env": {},
         "context": {
             "conversation": conversation(),
-            "caller": { "kind": "agent", "node": node },
+            "caller": { "kind": "agent", "number": live.record().number },
             "locale": { "timeZone": "UTC", "languages": ["en"] },
         },
         "stdin": true,
     }))
     .expect("the invocation is well formed");
+    // The backend's record of the job names the node that started it.
+    invocation.caller = Some(live.job_caller());
     let port = Rc::new(NodePort {
         server: server.clone(),
         caller: live.job_caller(),
@@ -521,8 +523,14 @@ impl Fixture {
 /// Lets the other tasks run until `done` holds, such as a worker reaching
 /// its provider request.
 pub async fn until(done: impl Fn() -> bool) {
+    until_answered(|| std::future::ready(done())).await;
+}
+
+/// [`until`] for a condition that is read by asking, such as a value in the
+/// command storage.
+pub async fn until_answered<F: Future<Output = bool>>(done: impl Fn() -> F) {
     for _ in 0..1_000 {
-        if done() {
+        if done().await {
             return;
         }
         tokio::task::yield_now().await;

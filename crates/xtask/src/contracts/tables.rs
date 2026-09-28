@@ -57,6 +57,7 @@ pub fn module(header: &str) -> String {
         ("LIVE_MAX_FRAME_BYTES", "The largest frame after its length.", count(live::MAX_FRAME_BYTES)),
         ("LIVE_FILE_CHUNK_BYTES", "A file frame's largest data.", count(live::FILE_CHUNK_BYTES)),
         ("LIVE_VIDEO_HEADER_BYTES", "A video frame's header.", count(live::VideoHeader::BYTES)),
+        ("LIVE_VIDEO_TAB_BYTES", "A video frame header's tab ID, padded with zero bytes.", count(live::VideoHeader::TAB_BYTES)),
         ("LIVE_FILE_HEADER_BYTES", "A file frame's header.", count(live::FileHeader::BYTES)),
         ("LIVE_HEARTBEAT_MS", "How often the module speaks at least.", live::HEARTBEAT_MS),
         ("LIVE_STALL_MS", "Silence after which the page shows the stream as stalled.", live::STALL_MS),
