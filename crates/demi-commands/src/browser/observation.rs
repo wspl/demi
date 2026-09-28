@@ -30,10 +30,15 @@ struct Reference {
     loader: LoaderId,
 }
 
+/// A tab's node references (`browser.md` § Page trees and references): each
+/// is `e` and the tab's next number, never given twice in the tab, so a
+/// reference to an earlier document is recognized as stale.
 #[derive(Default)]
 pub(super) struct References {
     by_id: HashMap<NodeRef, Reference>,
     by_node: HashMap<Reference, NodeRef>,
+    /// The number the tab gave out last.
+    last: u64,
 }
 
 struct Node {
@@ -834,6 +839,8 @@ enum SerializedNode {
 }
 
 impl References {
+    /// Forgets the references of the document the tab left; their numbers
+    /// are not given out again.
     pub fn invalidate(&mut self) {
         self.by_id.clear();
         self.by_node.clear();
@@ -848,7 +855,8 @@ impl References {
                 "browser reference limit reached for this document".into(),
             ));
         }
-        let id = NodeRef::from_random(super::handles::random()?);
+        self.last += 1;
+        let id = NodeRef::numbered(self.last);
         self.by_id.insert(id.clone(), reference.clone());
         self.by_node.insert(reference, id.clone());
         Ok(id)

@@ -19,7 +19,7 @@ use crate::cloud::{idle_after, the_cloud};
 use crate::support::{Harness, PATIENCE, Session, TestBackend};
 
 /// A tab id the browser never gave out.
-const ABSENT: &str = "t_nosuchtabnosuchtabnosu";
+const ABSENT: &str = "t999999";
 
 async fn conversation(backend: &TestBackend, master: &Session) -> String {
     let id = uuid::Uuid::new_v4().to_string();

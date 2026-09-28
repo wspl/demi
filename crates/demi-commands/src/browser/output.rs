@@ -203,7 +203,7 @@ mod tests {
     #[test]
     fn stream_output_truncation_does_not_skip_the_omitted_entries() {
         let entries: Vec<_> = (0..3).map(|sequence| json!({"sequence":sequence,"level":"info","text":"x".repeat(30_000),"timestamp":0})).collect();
-        let logs = BrowserOperation::parse("logs", json!({"tab": "t_AAAAAAAAAAAAAAAAAAAAAQ"})).unwrap();
+        let logs = BrowserOperation::parse("logs", json!({"tab": "t1"})).unwrap();
         let bytes = render(
             &logs,
             json!({"entries":entries,"cursor":"logs_test:3","hasMore":false,"truncated":false}),
@@ -225,7 +225,7 @@ mod tests {
             "The button is covered.",
             &ErrorDetails {
                 action: Some(ActionProgress::NotStarted),
-                tab: Some("t_test".into()),
+                tab: Some("t1".into()),
                 url: Some("https://example.test/".into()),
                 interceptor: Some("<div id=overlay>".into()),
                 delivered: Some(0),
@@ -238,7 +238,7 @@ mod tests {
             )
         );
         for line in [
-            "Tab: t_test\n",
+            "Tab: t1\n",
             "Current URL: https://example.test/\n",
             "Interceptor: <div id=overlay>\n",
             "Delivered: 0\n",

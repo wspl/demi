@@ -4,6 +4,7 @@
 pub use failure::{ActionProgress, BrowserErrorCode, BrowserFailure, ErrorDetails, FailureDocument};
 pub use operations::*;
 
+use demi_core::MAX_SAFE_INTEGER;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
@@ -57,9 +58,11 @@ pub fn handle(prefix: &str, random: [u8; 16]) -> String {
     format!("{prefix}_{}", base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(random))
 }
 
-/// Declares a [`handle`] with a fixed prefix as a checked newtype. Its
-/// pattern is both its check and its schema, which the browser reads.
-macro_rules! handle {
+/// Declares an identifier the model reads and writes, a fixed prefix and a
+/// number from 1 such as `t7` (`runtime.md` § Identifiers the model sees), as
+/// a checked newtype. Its pattern is both its check and its schema, which the
+/// browser reads.
+macro_rules! numbered {
     ($(#[$meta:meta])* $name:ident, $prefix:literal, $what:literal) => {
         $(#[$meta])*
         #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
@@ -68,13 +71,14 @@ macro_rules! handle {
         pub struct $name(String);
 
         impl $name {
-            /// What a handle with this prefix looks like: the prefix, an
-            /// underscore and 22 characters of URL-safe base64.
-            pub const PATTERN: &str = concat!("^", $prefix, "_[A-Za-z0-9_-]{22}$");
+            /// What an identifier with this prefix looks like: the prefix and
+            /// a number from 1, which JavaScript holds exactly.
+            pub const PATTERN: &str = concat!("^", $prefix, "[1-9][0-9]{0,14}$");
 
-            /// The handle of 16 random bytes.
-            pub fn from_random(random: [u8; 16]) -> Self {
-                Self(handle($prefix, random))
+            /// The identifier of `number`, which is from 1.
+            pub fn numbered(number: u64) -> Self {
+                debug_assert_ne!(number, 0, "identifiers are numbered from 1");
+                Self(format!(concat!($prefix, "{}"), number))
             }
 
             pub fn as_str(&self) -> &str {
@@ -87,7 +91,7 @@ macro_rules! handle {
 
             fn try_from(value: String) -> Result<Self, Self::Error> {
                 static PATTERN: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-                    regex::Regex::new($name::PATTERN).expect("the handle pattern compiles")
+                    regex::Regex::new($name::PATTERN).expect("the identifier pattern compiles")
                 });
                 if PATTERN.is_match(&value) {
                     Ok(Self(value))
@@ -119,15 +123,17 @@ macro_rules! handle {
     };
 }
 
-handle!(
-    /// A tab's public identity, which `open` and `tabs` return.
+numbered!(
+    /// A tab's public identity, which `open` and `tabs` return: `t` and the
+    /// tab's number in the conversation (`browser.md` § One tab registry).
     TabId,
     "t",
     "tab ID"
 );
-handle!(
-    /// A node reference, which `inspect`, `find` and `probe` return; it
-    /// stays valid while its document does.
+numbered!(
+    /// A node reference, which `inspect`, `find` and `probe` return: `e` and
+    /// a number unique within its tab. It stays valid while its document
+    /// does.
     NodeRef,
     "e",
     "node reference"
@@ -594,24 +600,24 @@ pub struct BrowserTreeNode {
     pub children: Option<Vec<BrowserTreeNode>>,
 }
 
-/// Who opened a tab: an agent node, a page's `window.open`, a temporary
-/// command such as `content.fetch`, or the user.
+/// Who opened a tab: an agent, a page's `window.open`, a temporary command
+/// such as `content.fetch`, or the user.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
 pub enum BrowserCreatedBy {
+    /// An agent, by its number in the conversation.
     Agent {
-        #[serde(rename = "nodeId")]
-        #[garde(skip)]
-        node_id: String,
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        number: u64,
     },
     Page {
         #[garde(skip)]
         opener: TabId,
     },
+    /// A temporary command of the agent with this number.
     Temporary {
-        #[serde(rename = "nodeId")]
-        #[garde(skip)]
-        node_id: String,
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        number: u64,
     },
     User {},
 }

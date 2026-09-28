@@ -1,13 +1,16 @@
 //! One resident service process (`native-runtime.md` § Invoke and retire a
 //! service): the runner starts the executable, speaks HTTP/2 to it over its
-//! standard input and output, drains its standard error into the Host log,
-//! and reaps it. One owner task holds the process from its start to its end
-//! and returns how it ended, with the end of its standard error.
+//! standard input and output, relays its numbers stream, drains its standard
+//! error into the Host log, and reaps it. One owner task holds the process
+//! from its start to its end and returns how it ended, with the end of its
+//! standard error.
 
-use std::{collections::BTreeMap, future::Future, path::Path, process::Stdio, time::Duration};
+use std::{
+    collections::BTreeMap, future::Future, path::Path, process::Stdio, sync::Arc, time::Duration,
+};
 
 use demi_command_service::{
-    Client, ServiceError,
+    Client, NumbersStream, ServiceError,
     protocol::{PackageDescriptor, ServiceInfo},
 };
 use process_wrap::tokio::ChildWrapper;
@@ -17,9 +20,9 @@ use tokio::{
     sync::oneshot,
     task::JoinHandle,
 };
-use tokio_util::sync::CancellationToken;
+use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
-use super::{ExitReason, RuntimeError, ServiceExit};
+use super::{ExitReason, NumberSource, RuntimeError, ServiceExit};
 use crate::{
     connection::wire,
     host_log::LineSplitter,
@@ -43,6 +46,8 @@ pub struct ResidentService {
     info: ServiceInfo,
     pid: u32,
     owner: JoinHandle<Ended>,
+    /// Relays the service's numbers stream until the service ends it.
+    _numbers: AbortOnDropHandle<()>,
 }
 
 /// How a service process ended.
@@ -54,13 +59,15 @@ pub struct Ended {
 }
 
 impl ResidentService {
-    /// Starts `executable` and checks that it serves `descriptor`.
-    /// Cancelling `stop` asks the service to shut down, also while it starts.
+    /// Starts `executable`, checks that it serves `descriptor`, and opens its
+    /// numbers stream, whose requests go to `numbers`. Cancelling `stop` asks
+    /// the service to shut down, also while it starts.
     pub async fn start(
         executable: &Path,
         descriptor: &PackageDescriptor,
         cwd: &Path,
         env: &BTreeMap<String, String>,
+        numbers: Arc<dyn NumberSource>,
         stop: CancellationToken,
     ) -> Result<Self, RuntimeError> {
         let mut command = Command::new(executable);
@@ -102,17 +109,24 @@ impl ResidentService {
                 Err(_) => return Ok(None),
             };
             let info = client.info().await?;
-            Ok::<_, ServiceError>(Some((client, info)))
+            // The numbers stream opens before any call, and only for a
+            // service that serves its descriptor.
+            let stream = if descriptor.serves(&info) {
+                Some(client.numbers().await?)
+            } else {
+                None
+            };
+            Ok::<_, ServiceError>(Some((client, info, stream)))
         };
         let started = tokio::time::timeout(START_TIMEOUT, started).await;
-        if let Ok(Ok(Some((client, info)))) = &started
-            && descriptor.serves(info)
-        {
+        if let Ok(Ok(Some((client, info, Some(stream))))) = started {
+            let relay = relay(descriptor.id.clone(), stream, numbers);
             return Ok(Self {
-                client: client.clone(),
-                info: info.clone(),
+                client,
+                info,
                 pid,
                 owner,
+                _numbers: AbortOnDropHandle::new(tokio::spawn(relay)),
             });
         }
         owner_stop.cancel();
@@ -151,6 +165,19 @@ impl ResidentService {
     /// Ends when the process does, on its own or after `stop`.
     pub async fn ended(self) -> Ended {
         self.owner.await.expect("the service owner does not panic")
+    }
+}
+
+/// Answers the service's numbers stream from `numbers`, the backend
+/// connection the service started under (`native-runtime.md`
+/// § Conversation numbers), until the service ends it. A stream that broke
+/// is logged: the service's own calls fail with it.
+async fn relay(service: String, stream: NumbersStream, numbers: Arc<dyn NumberSource>) {
+    let answered = stream
+        .answer(|request| numbers.reserve(request.conversation, request.sequence, request.count))
+        .await;
+    if let Err(error) = answered {
+        tracing::warn!("service {service}'s numbers stream broke: {error}");
     }
 }
 

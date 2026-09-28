@@ -87,7 +87,7 @@ Conversation
         +-- child
 ```
 
-Commands obtain the conversation and invoking agent node from the invocation's
+Commands obtain the conversation and the invoking agent's number from the invocation's
 [command context](../execution/native-runtime.md#command-context), which the runner fills
 from the job the backend started. A script cannot change it. Commands have no
 `--conversation`, `--session`, `--profile`, `--cdp-url`, or browser-process
@@ -115,16 +115,16 @@ A tab ID is `t` and the tab's number in the conversation, such as `t7`
 ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)).
 The backend gives the numbers out in order and never gives one twice, across
 browser generations, releases, runner restarts and Cloud stops alike, so an
-old ID never refers to a newly created tab. Before it registers a tab, the
-service asks the backend for its number through the runner, which forwards the
-request as it forwards an artifact's location request
-([Install the selected executable](../execution/native-runtime.md#install-the-selected-executable));
-it may reserve a few numbers ahead, and a reserved number it does not use is a
-gap. A node reference is `e` and a number, such as `e37`, unique within its
-tab: the tab numbers its references in order and never reuses one, so a
-reference from an earlier document of the tab is recognized as stale.
-Commands name the tab with every reference. A display index is not an
-authorization token.
+old ID never refers to a newly created tab. The service takes each tab's
+number from the conversation's `tab` sequence in the backend
+([Conversation numbers](../execution/native-runtime.md#conversation-numbers)).
+It reserves a few numbers ahead for the conversation, so most tabs take one
+without waiting, and a reserved number it never uses is a gap.
+
+A node reference is `e` and a number, such as `e37`, unique within its tab:
+the tab numbers its references in order and never reuses one, so a reference
+from an earlier document of the tab is recognized as stale. Commands name the
+tab with every reference. A display index is not an authorization token.
 
 Each browser environment has one canonical live tab registry, kept by one
 owner ([Owners inside the service](#owners-inside-the-service)); `demi browser tabs`
@@ -1561,7 +1561,7 @@ change page state, such as installing a breakpoint. Do not report such a command
 as read-only inspection.
 
 Debug state lives in a debugging connection that the browser owns per tab and
-per calling agent node; Chrome discards every domain subscription, breakpoint,
+per calling agent; Chrome discards every domain subscription, breakpoint,
 pause, and interception installed through a connection when that connection
 closes, so the browser tracks connections, not methods. A connection lasts
 until one of three events the browser itself observes: the same caller runs
@@ -1581,7 +1581,7 @@ actor or retire Chrome and its profile still fails cleanup.
 A caller that leaves interception or a pause behind blocks the page for every
 caller until it detaches. When a command on that tab times out while another
 caller's connection is open, the timeout error names that caller and the tab in
-`details.tab` and `details.debuggingCallers` (an array of calling node IDs), so the
+`details.tab` and `details.debuggingCallers` (an array of the calling agents' numbers), so the
 agent can ask for the detach rather than guess. There is no
 automatic detach on behalf of another caller.
 

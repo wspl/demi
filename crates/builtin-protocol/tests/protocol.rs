@@ -15,8 +15,8 @@ use demi_builtin_protocol::{
 };
 use serde_json::{Value, json};
 
-const TAB: &str = "t_AAAAAAAAAAAAAAAAAAAAAA";
-const REF: &str = "e_BBBBBBBBBBBBBBBBBBBBBB";
+const TAB: &str = "t1";
+const REF: &str = "e2";
 
 fn parse(operation: &str, args: Value) -> Result<BrowserOperation, DecodeError> {
     BrowserOperation::parse(operation, args)
@@ -63,7 +63,7 @@ fn inputs_refuse_unknown_fields_nulls_and_values_outside_their_bounds() {
         ("info", json!({"tab": TAB, "timeout": 0})),
         ("info", json!({"tab": TAB, "timeout": 300_001})),
         ("info", json!({"tab": "t_short"})),
-        ("click", json!({"tab": TAB, "ref": "t_AAAAAAAAAAAAAAAAAAAAAA"})),
+        ("click", json!({"tab": TAB, "ref": "t1"})),
         ("click", json!({"tab": TAB, "count": 3})),
         ("click", json!({"tab": TAB, "button": "back"})),
         ("click", json!({"tab": TAB, "modifier": ["Hyper"]})),
@@ -235,7 +235,7 @@ fn results_and_failures_print_the_documented_names() {
         details: Some(ErrorDetails {
             action: Some(demi_builtin_protocol::browser::ActionProgress::NotStarted),
             tab: Some(TAB.into()),
-            debugging_callers: Some(vec!["node".into()]),
+            debugging_callers: Some(vec![1]),
             export: Some(export),
             ..ErrorDetails::default()
         }),
@@ -244,7 +244,7 @@ fn results_and_failures_print_the_documented_names() {
     assert_eq!(
         printed,
         json!({"code": "partial_failure", "message": "some browser items failed", "details": {
-            "action": "not_started", "tab": TAB, "debuggingCallers": ["node"],
+            "action": "not_started", "tab": TAB, "debuggingCallers": [1],
             "directory": "/out", "manifest": "/out/manifest.json",
             "files": [{"id": "a", "path": "/out/a.png", "bytes": 3, "mimeType": "image/png"}],
         }}),
@@ -304,9 +304,12 @@ fn frame_headers_have_their_documented_layout() {
     let mut bytes = Vec::new();
     header.write(&mut bytes);
     assert_eq!(bytes.len(), VideoHeader::BYTES);
-    assert_eq!(&bytes[..24], TAB.as_bytes());
-    assert_eq!(&bytes[24..33], [0, 0, 0, 2, 0, 0, 0, 9, 1]);
-    assert_eq!(&bytes[44..], [5, 0, 2, 208]);
+    assert_eq!(&bytes[..16], b"t1\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
+    assert_eq!(&bytes[16..25], [0, 0, 0, 2, 0, 0, 0, 9, 1]);
+    assert_eq!(&bytes[36..], [5, 0, 2, 208]);
+    bytes.extend_from_slice(b"data");
+    assert_eq!(VideoHeader::split(&bytes).unwrap(), (header, &b"data"[..]));
+    assert!(VideoHeader::split(&bytes[..39]).is_err());
     let (file, data) = FileHeader::split(&[0, 0, 0, 7, 0, 0, 0, 1, b'a']).unwrap();
     assert_eq!((file.upload, file.file, data), (7, 1, &b"a"[..]));
     assert!(FileHeader::split(&[0; 7]).is_err());
@@ -355,12 +358,14 @@ fn release_records_are_checked() {
 }
 
 #[test]
-fn handles_are_checked_and_made_from_random_bytes() {
-    let tab = TabId::from_random([7; 16]);
-    assert_eq!(tab.as_str().len(), 24);
-    assert_eq!(tab.as_str().parse::<TabId>().unwrap(), tab);
-    for invalid in ["t_", "e_AAAAAAAAAAAAAAAAAAAAAA", "t_AAAAAAAAAAAAAAAAAAAAA!", "t_AAAAAAAAAAAAAAAAAAAAAAA"] {
+fn tab_ids_and_references_are_a_letter_and_a_number_from_one() {
+    let tab = TabId::numbered(7);
+    assert_eq!(tab.as_str(), "t7");
+    assert_eq!("t7".parse::<TabId>().unwrap(), tab);
+    assert_eq!(NodeRef::numbered(37).as_str(), "e37");
+    for invalid in ["t", "t0", "t07", "e7", "t7a", "t-1", "t1234567890123456", "t_AAAAAAAAAAAAAAAAAAAAAA"] {
         assert!(invalid.parse::<TabId>().is_err(), "{invalid}");
     }
-    assert_eq!(serde_json::to_value(&tab).unwrap(), json!(tab.as_str()));
+    assert!("t7".parse::<NodeRef>().is_err());
+    assert_eq!(serde_json::to_value(&tab).unwrap(), json!("t7"));
 }

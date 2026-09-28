@@ -104,7 +104,7 @@ impl Numbers for CountingNumbers {
 pub fn test_command_context() -> CommandContext {
     CommandContext {
         conversation: "test-conversation".into(),
-        caller: CommandCaller::agent("test-session"),
+        caller: CommandCaller::agent(1),
         locale: CommandLocale {
             time_zone: "Asia/Shanghai".into(),
             languages: vec!["zh-CN".into(), "en".into()],

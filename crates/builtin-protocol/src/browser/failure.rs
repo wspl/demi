@@ -84,11 +84,11 @@ pub struct ErrorDetails {
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "usize")]
     pub delivered: Option<usize>,
-    /// The agent nodes whose debugging connections hold the tab when a
-    /// command on it times out.
+    /// The numbers of the agents whose debugging connections hold the tab
+    /// when a command on it times out.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-    #[schemars(with = "Vec<String>")]
-    pub debugging_callers: Option<Vec<String>>,
+    #[schemars(with = "Vec<u64>")]
+    pub debugging_callers: Option<Vec<u64>>,
     /// What an export wrote before it failed or was interrupted.
     #[serde(flatten)]
     pub export: Option<AssetsExportResult>,

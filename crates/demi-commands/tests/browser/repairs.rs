@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
 use tokio_util::sync::CancellationToken;
 
-use crate::fixture::with_fixture;
+use crate::fixture::{with_fixture, with_numbered_fixture};
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -923,13 +923,18 @@ async fn url_observation_delivers_input_and_observes_transient_matches() {
 #[ignore = "round two: requires DEMI_TEST_CHROME; launches a real browser"]
 async fn inspect_keeps_false_values_and_protects_passwords_and_handles_expire() {
     let retained = Arc::new(std::sync::Mutex::new(None));
+    // Both browsers are one conversation's, one after the other.
+    let numbers = demi_commands::browser::TabNumbers::new(
+        demi_command_service::testing::counting_numbers(),
+        "conversation".into(),
+    );
     let saved = retained.clone();
-    with_fixture(|browser, base| async move {
+    with_numbered_fixture(numbers.clone(), |browser, base| async move {
         let tab = browser
             .open(&base, &CancellationToken::new(), TIMEOUT)
             .await?;
         assert!(
-            regex::Regex::new(r"^t_[A-Za-z0-9_-]{22}$")
+            regex::Regex::new(r"^t[1-9][0-9]*$")
                 .unwrap()
                 .is_match(tab.id().as_str())
         );
@@ -976,7 +981,7 @@ async fn inspect_keeps_false_values_and_protects_passwords_and_handles_expire() 
         );
         let reference = text["ref"].as_str().unwrap().to_owned();
         assert!(
-            regex::Regex::new(r"^e_[A-Za-z0-9_-]{22}$")
+            regex::Regex::new(r"^e[1-9][0-9]*$")
                 .unwrap()
                 .is_match(&reference)
         );
@@ -990,6 +995,10 @@ async fn inspect_keeps_false_values_and_protects_passwords_and_handles_expire() 
         )
         .await?;
         command(&tab, "reload", json!({})).await?;
+        // The new document's node takes a new number, and the old reference
+        // names nothing.
+        let renewed = command(&tab, "find", json!({"css": "#text"})).await?;
+        assert_ne!(renewed["matches"][0]["ref"], reference);
         error(
             command(&tab, "fill", json!({"ref": reference, "text": "stale"})).await,
             "stale_ref",
@@ -1005,7 +1014,7 @@ async fn inspect_keeps_false_values_and_protects_passwords_and_handles_expire() 
     })
     .await;
     let (old_tab, old_ref) = retained.lock().unwrap().take().unwrap();
-    with_fixture(|browser, base| async move {
+    with_numbered_fixture(numbers.clone(), |browser, base| async move {
         let tab = browser
             .open(&base, &CancellationToken::new(), TIMEOUT)
             .await?;
@@ -1167,7 +1176,7 @@ async fn catalog_untargeted_keys_selection_drag_and_console_cursors() {
         let tab = browser.open(&base, &CancellationToken::new(), TIMEOUT).await?;
         click(&tab,"#select-middle").await?;
         let typed = command(&tab,"type",json!({"text":"XY"})).await?;
-        assert!(typed["target"].as_str().unwrap().starts_with("e_"));
+        assert!(typed["target"].as_str().unwrap().starts_with('e'));
         assert_eq!(value(&tab,"#text").await?, json!("heXYo"));
         command(&tab,"key",json!({"key":"ControlOrMeta+A"})).await?;
         command(&tab,"type",json!({"text":"hello"})).await?;
@@ -1185,7 +1194,7 @@ async fn catalog_untargeted_keys_selection_drag_and_console_cursors() {
         command(&tab, "key", json!({"css":"#key-navigate","key":"Shift"})).await?;
         let navigation = command(&tab, "key", json!({"key":"Enter","wait-url":"**/#key-focus"})).await?;
         assert!(navigation["url"].as_str().unwrap().ends_with("/#key-focus"));
-        assert!(navigation["target"].as_str().unwrap().starts_with("e_"));
+        assert!(navigation["target"].as_str().unwrap().starts_with('e'));
         command(&tab,"move",json!({"css":"#drag-area"})).await?;
         let rect = command(&tab,"eval",json!({"css":"#drag-area","expression":"({x:element.getBoundingClientRect().x,y:element.getBoundingClientRect().y})"})).await?["value"].clone();
         let x=rect["x"].as_f64().unwrap()+10.0;

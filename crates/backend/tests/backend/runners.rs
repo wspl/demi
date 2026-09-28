@@ -10,6 +10,7 @@ use demi_agent_protocol::ClientFrame;
 use demi_backend::HelloStep;
 use demi_host_remote::testing::{RunnerProcess, RunnerProcessOptions};
 use demi_runner_protocol::values::DeviceToken;
+use demi_command_service::protocol::ServiceSequence;
 use demi_runner_protocol::wire::{
     self, ArtifactOwner, HelloErrorCode, HostIdentity, Inbound, Outbound, RunnerInfo, RunnerPlatform, StreamArtifactOwner,
 };
@@ -272,6 +273,64 @@ async fn hellos_with_one_token_at_once_bind_one_socket_and_a_repeated_hello_chan
     assert!(backend.online(&master, laptop.id()).await);
     drop(bound);
     backend.until_online(&master, laptop.id(), false).await;
+    backend.close().await;
+}
+
+/// A native service's numbers come from its conversation's `tab` sequence,
+/// each once, and only for a conversation of the device's user that reaches
+/// the device (`native-runtime.md` § Conversation numbers).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_runner_reserves_numbers_only_of_its_users_conversations_that_reach_it() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let mut laptop = backend.pair(&master, "laptop").await;
+    let token = laptop.token().await;
+    let here = uuid::Uuid::new_v4().to_string();
+    create(&backend, &master, &here).await;
+    let home = laptop.runner.home_dir().to_str().unwrap().to_owned();
+    let target = json!({ "target": { "kind": "device", "deviceId": laptop.id(), "path": home } });
+    let moved = backend.patch(&format!("/api/conversations/{here}"), &master, target).await;
+    assert_eq!(moved.status, StatusCode::OK, "{}", String::from_utf8_lossy(&moved.body));
+    // A conversation on the Cloud does not reach the laptop.
+    let elsewhere = uuid::Uuid::new_v4().to_string();
+    create(&backend, &master, &elsewhere).await;
+    laptop.runner.stop().await;
+    backend.until_online(&master, laptop.id(), false).await;
+
+    let mut runner = RawRunner::connect(&backend).await;
+    runner.send(&hello(wire::VERSION, Some(&token), None)).await;
+    assert!(matches!(runner.next().await, Some(Inbound::HelloOk { .. })));
+    let mut reserve = async |conversation: &str, count: u32| {
+        let id = uuid::Uuid::new_v4().to_string();
+        runner
+            .send(&Outbound::NumbersReserve {
+                id: id.clone(),
+                conversation_id: conversation.into(),
+                sequence: ServiceSequence::Tab,
+                count,
+            })
+            .await;
+        loop {
+            match runner.next().await {
+                Some(Inbound::NumbersReserved { id: answered, first, error }) if answered == id => {
+                    break match (first, error) {
+                        (Some(first), None) => Ok(first),
+                        (None, Some(error)) => Err(error),
+                        answer => panic!("an answer carries its first number or its error: {answer:?}"),
+                    };
+                }
+                Some(_) => {}
+                None => panic!("the backend closed the socket"),
+            }
+        }
+    };
+    assert_eq!(reserve(&here, 4).await, Ok(1));
+    assert_eq!(reserve(&here, 1).await, Ok(5));
+    assert!(reserve(&elsewhere, 1).await.is_err());
+    assert!(reserve("no-such-conversation", 1).await.is_err());
+    // A refused request takes no number.
+    assert_eq!(reserve(&here, 2).await, Ok(6));
+    drop(runner);
     backend.close().await;
 }
 

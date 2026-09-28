@@ -19,7 +19,8 @@ use std::{
 };
 
 use demi_command_service::protocol::{
-    ArtifactLocation, ArtifactPath, PackageArtifact, PackageDescriptor, host_target,
+    ArtifactLocation, ArtifactPath, PackageArtifact, PackageDescriptor, ServiceSequence,
+    host_target,
 };
 use demi_runner_protocol::wire::{self, Inbound, Outbound, VolumeName};
 use demi_shell::{
@@ -44,6 +45,8 @@ pub const TEST_DEVICE: &str = "test-device";
 pub struct CommandPolicy {
     commands: Rc<CommandSet>,
     storage: RefCell<HashMap<String, Rc<MemoryStorage>>>,
+    /// The next number of each conversation's sequence.
+    sequences: RefCell<HashMap<(String, ServiceSequence), u64>>,
 }
 
 impl CommandPolicy {
@@ -51,6 +54,7 @@ impl CommandPolicy {
         Rc::new(Self {
             commands: Rc::new(commands),
             storage: RefCell::default(),
+            sequences: RefCell::default(),
         })
     }
 
@@ -102,6 +106,21 @@ impl LinkPolicy for CommandPolicy {
 
     fn grow_volume(&self, _: VolumeName, _: u64) -> LocalBoxFuture<'static, Result<(), String>> {
         Box::pin(async { Err("volume growth is not available".into()) })
+    }
+
+    /// Counts each conversation's sequence from 1, as the backend's
+    /// sequences do for a new conversation.
+    fn reserve_numbers(
+        &self,
+        conversation: String,
+        sequence: ServiceSequence,
+        count: u32,
+    ) -> LocalBoxFuture<'static, Result<u64, String>> {
+        let mut sequences = self.sequences.borrow_mut();
+        let next = sequences.entry((conversation, sequence)).or_insert(1);
+        let first = *next;
+        *next += u64::from(count);
+        Box::pin(async move { Ok(first) })
     }
 }
 

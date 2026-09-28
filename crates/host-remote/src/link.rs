@@ -17,7 +17,9 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_command_service::protocol::{ArtifactLocation, CommandContext, PackageDescriptor};
+use demi_command_service::protocol::{
+    ArtifactLocation, CommandContext, PackageDescriptor, ServiceSequence,
+};
 use demi_core::StreamKind;
 use demi_gates::{GateLease, SerialGate};
 use demi_runner_protocol::wire::{
@@ -47,6 +49,8 @@ pub const OUTBOUND_FRAMES: usize = 64;
 
 /// The artifact requests a connection answers at a time.
 const ARTIFACT_REQUESTS: usize = 32;
+/// The numbers requests a connection answers at a time.
+const NUMBERS_REQUESTS: usize = 32;
 
 /// How long a conversation release may take on the runner.
 const RELEASE_TIMEOUT: Duration = Duration::from_secs(360);
@@ -82,6 +86,16 @@ pub trait LinkPolicy {
         volume: VolumeName,
         bytes: u64,
     ) -> LocalBoxFuture<'static, Result<(), String>>;
+
+    /// A native service on the device asks for `count` numbers of
+    /// `conversation`'s `sequence` (`native-runtime.md` § Conversation
+    /// numbers): the first of them, reserved, or why there are none.
+    fn reserve_numbers(
+        &self,
+        conversation: String,
+        sequence: ServiceSequence,
+        count: u32,
+    ) -> LocalBoxFuture<'static, Result<u64, String>>;
 }
 
 /// Whose a job is, recorded when it starts and read by its calls.
@@ -162,6 +176,7 @@ struct State {
     services: HashMap<String, ServiceEntry>,
     calls: HashMap<String, Rc<CallEntry>>,
     artifact_requests: HashSet<String>,
+    numbers_requests: HashSet<String>,
     /// The manifest this connection last carried, which later jobs share.
     manifest: Option<String>,
     /// The runner's own count of its jobs, from its last pong.
@@ -805,6 +820,12 @@ impl Link {
                 sha256,
                 target,
             } => self.resolve_artifact(id, owner, sha256, target),
+            Outbound::NumbersReserve {
+                id,
+                conversation_id,
+                sequence,
+                count,
+            } => self.reserve_numbers(id, conversation_id, sequence, count),
         }
     }
 
@@ -920,6 +941,43 @@ impl Link {
             // The answer goes only while the work it serves is live.
             if !grant.cancel.is_cancelled() {
                 link.answer_artifact(id, location).await;
+            }
+        });
+    }
+
+    /// Answers a native service's request for conversation numbers, which
+    /// the policy decides (`native-runtime.md` § Conversation numbers).
+    fn reserve_numbers(
+        &self,
+        id: String,
+        conversation: String,
+        sequence: ServiceSequence,
+        count: u32,
+    ) {
+        let admitted = {
+            let mut state = self.0.state.borrow_mut();
+            state.numbers_requests.len() < NUMBERS_REQUESTS
+                && state.numbers_requests.insert(id.clone())
+        };
+        let reserved =
+            admitted.then(|| self.0.policy.reserve_numbers(conversation, sequence, count));
+        let link = self.clone();
+        self.0.tasks.spawn_local(async move {
+            let first = match reserved {
+                None => Err("Numbers request limit or duplicate id".to_owned()),
+                Some(reserved) => {
+                    let first = reserved.await;
+                    link.0.state.borrow_mut().numbers_requests.remove(&id);
+                    first
+                }
+            };
+            let (first, error) = match first {
+                Ok(first) => (Some(first), None),
+                Err(error) => (None, Some(error)),
+            };
+            let answer = Inbound::NumbersReserved { id, first, error };
+            if let Err(error) = link.send(&answer).await {
+                tracing::warn!(device = %link.0.device, "numbers answer not sent: {error}");
             }
         });
     }

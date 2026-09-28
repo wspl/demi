@@ -189,6 +189,9 @@ pub enum Sequence {
     Shell,
     /// Subagents, from 1; the root is agent 0.
     Agent,
+    /// Browser tabs, from 1: `t7`. The browser service reserves them a few
+    /// at a time (`native-runtime.md` § Conversation numbers).
+    Tab,
 }
 
 serde_plain::derive_display_from_serialize!(Sequence);
