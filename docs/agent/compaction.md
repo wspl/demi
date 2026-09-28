@@ -276,10 +276,14 @@ The replay bound keeps one long text from filling a request:
 - Signed thinking and redacted data are replayed whole, because the vendor
   verifies them as they were sent.
 - The transcript keeps the full text; only what the model receives is cut.
+- A shell tool's result is made to fit the bound where it is made, with a line
+  that names the command printing the whole output
+  ([Results and previews](runtime.md#results-and-previews)), so replay sends it
+  unchanged.
 
-For example, a tool result of 50,000 characters reaches the model as its first
-8,000 characters, the line `[... truncated 34000 characters ...]`, and its
-last 8,000.
+For example, a user message that pastes a log of 50,000 characters reaches the
+model as its first 8,000 characters, the line
+`[... truncated 34000 characters ...]`, and its last 8,000.
 
 ## Session copy
 
