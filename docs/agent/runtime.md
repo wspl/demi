@@ -352,8 +352,9 @@ with `shell_status`.
 
 - `yield` returns an effect for the session to apply: schedule one wakeup and
   end the turn after this round of tools. The tool result says
-  `yield scheduled` with the wakeup id and the duration, and its view is
-  `yield_wakeup`.
+  `yield scheduled` with the duration, and its view is `yield_wakeup`. It
+  names no wakeup, since no tool takes one
+  ([Identifiers the model sees](#identifiers-the-model-sees)).
 - The wait starts when the action ends, not when `yield` is called.
 - When a wakeup fires during a turn that accepts steers, it joins that turn at
   the next continuation boundary as a `wakeup` block with the placement
@@ -435,18 +436,19 @@ the five completes as an error `Tool not found: <name>`.
 
 ### Results and previews
 
-For example, `npm test` prints 212,345 bytes and exits with status 1 within
-its call's window. Its result shows the start and the end of the output, and
-between them one line that says how much it leaves out and how to read it:
+For example, `npm test` prints 4,720 lines, 212,345 bytes, and exits with
+status 1 within its call's window. Its result shows the first and the last
+lines of the output, and between them one line that says which lines it
+leaves out and how to read them:
 
 ```text
 status: exited
 exitCode: 1
-commandId: 3f2a9c1e-7b1d-4c55-9a0e-5d2f7c1b8e44
+commandId: 17
 output:
-<the first 7,900 characters>
-[... 196545 bytes not shown; the whole output: demi shell output 3f2a9c1e-7b1d-4c55-9a0e-5d2f7c1b8e44 ...]
-<the last 7,900 characters>
+<lines 1-158>
+[... lines 159-4562 not shown (196545 bytes); read them: demi shell output 17 --lines 159-4562 ...]
+<lines 4563-4720>
 ```
 
 - The model keeps its own place in each command's output: a result shows the
@@ -467,24 +469,24 @@ output:
 - The output is the merged stdout and stderr since the model's last look, in
   the order the runner read them. It is shown whole when the whole result fits
   the replay bound of 16,000 characters
-  ([Text bounds](compaction.md#text-bounds)). Otherwise the result shows its
-  start and its end, and the line between them counts the bytes left out and
-  names the command that prints the whole output
-  ([The whole output](#the-whole-output)). The start and the end share
-  equally what the bound leaves after the result's other lines, the line
-  between them included, so a result is cut once, where it is made, and
-  replay sends it unchanged. The rule is the
-  same for every model. Characters are Unicode scalar values
+  ([Text bounds](compaction.md#text-bounds)). Otherwise the result shows as
+  many whole lines from the start and from the end as fit in half each of what
+  the bound leaves after the result's other lines, the line between them
+  included, and that line names the lines left out, their bytes, and the
+  command that prints them ([The whole output](#the-whole-output)). A single
+  line too long for its half is shown in part, and the line between names the
+  characters left out and how to read them a part at a time:
+  `[... characters 7901-40311 of line 1 not shown; read them: demi shell output 17 --raw | sed -n 1p | cut -c 7901-19900 ...]`.
+  So a result is cut once, where it is made, and replay sends it unchanged.
+  The rule is the same for every model. Characters are Unicode scalar values
   ([Token estimates](compaction.md#token-estimates)).
 - While a command runs, the backend holds the first 32 KiB of each of its
   streams; what they print beyond them stays on the Host until the command
   ends ([Pipes and output](../execution/runner.md#pipes-and-output)). The
-  result of a running command whose output has gone beyond them ends with the
-  same line, counting the bytes so far:
-  `[... 1048576 bytes not shown so far; the whole output: demi shell output <commandId> ...]`.
-  For example, `demi shell output <commandId> | tail -n 50` shows a dev
-  server's newest log lines.
-- The model's place moves past everything a result covers, the bytes it
+  result of a running command whose output has gone beyond them ends with a
+  line that counts those bytes and names the command that shows the newest:
+  `[... 1048576 bytes not shown so far; the newest: demi shell output 17 --tail 50 ...]`.
+- The model's place moves past everything a result covers, the lines it
   leaves out included, so the next result goes on from there.
 - The handle serves `shell_status`, `shell_write` and `shell_abort` while the
   command runs. A result that reports the command's end releases it;
@@ -500,53 +502,78 @@ output:
   ([Request limits](../providers/models.md#request-limits)), so that a request
   still has room for the history around it. Otherwise the result says why
   nothing was attached and how to save the bytes:
-  `demi shell output <commandId> --stdout > <file>`. A stdout larger than the
+  `demi shell output 17 --raw --stdout > <file>`. A stdout larger than the
   output keeps is whole nowhere, so for it the result says to write it to a
   file instead and run the command again.
 
 ### The whole output
 
-A result shows the start and the end of a long output; `demi shell output`
-prints all of it. For example, after the `npm test` above, the model reads
-what it needs with the standard tools:
+A result shows the first and the last lines of a long output;
+`demi shell output` reads all of it, a page at a time, the way a file is
+read. For example, after the `npm test` above, the model finds the failures
+and reads around one:
 
-```sh
-demi shell output 3f2a9c1e-7b1d-4c55-9a0e-5d2f7c1b8e44 | grep -n FAIL
-demi shell output 3f2a9c1e-7b1d-4c55-9a0e-5d2f7c1b8e44 | sed -n '1200,1300p'
-demi shell output 3f2a9c1e-7b1d-4c55-9a0e-5d2f7c1b8e44 --stdout > report.json
+```text
+$ demi shell output 17 --raw | grep -n 'FAIL'
+2301:FAIL src/parse.test.ts
+$ demi shell output 17 --lines 2295-2310
+[command 17: lines 2295-2310 of 4720, stdout and stderr]
+  2295	  ✓ parses an empty file (3 ms)
+  ...
+  2301	FAIL src/parse.test.ts
+  ...
+  2310	    at Object.<anonymous> (src/parse.test.ts:88:5)
 ```
 
-`demi shell output <commandId>` prints a command's whole output to its
-stdout: the command's stdout and stderr merged in the order the runner read
-them, the output whose start and end the result showed. `--stdout` or
-`--stderr` prints that stream alone, byte for byte, which is how a binary
-stdout the result did not attach is saved. The command has no options to
-search or page: the standard tools do that, and the model knows them. It is an
-`rpc` command ([Command declarations and execution](../execution/commands.md)):
-it runs in the backend, from any shell of the conversation, the root's or a
-subagent's, on any of the conversation's Hosts.
+`demi shell output <commandId>` is an `rpc` command
+([Command declarations and execution](../execution/commands.md)): it runs in
+the backend, from any shell of the conversation, the root's or a subagent's,
+on any of the conversation's Hosts. Everything it prints is sized for the
+model:
 
-- **Which commands.** Any command of the conversation, whichever node ran it.
+- **A page.** It prints numbered lines, as `cat -n` does: from the first line,
+  or the lines `--lines <from>-<to>` names, as many whole lines as fit in
+  12,000 characters, so its own result is never cut. A first line in brackets
+  says what the page holds; when lines follow, a last line gives the command
+  for the next page: `[next: demi shell output 17 --lines 2311-4720]`.
+- **The newest lines.** `--tail <n>` prints the last `n` lines, or as many of
+  them as fit; of a running command, the newest so far.
+- **One stream.** `--stdout` or `--stderr` takes that stream alone, with line
+  numbers of its own. Without either, the page holds both, merged in the
+  order the runner read them, as the result showed them.
+- **The bytes.** `--raw` prints the output as it is: unnumbered, unpaged,
+  byte for byte, for pipes and files. Its lines are the pages' lines, so
+  `grep -n` on it gives the numbers `--lines` takes, and
+  `demi shell output 17 --raw --stdout > shot.png` saves a binary stdout the
+  result did not attach. Printed into a result as it is, raw output is cut as
+  any output is. Searching is the standard tools' work on `--raw`; the command
+  has no search of its own.
+- **A long line.** A page shows a line of more than 2,000 characters as its
+  first 2,000 and a note after it:
+  `[line 2301 is 48212 characters; whole: demi shell output 17 --raw | sed -n 2301p]`,
+  so one line cannot fill a page.
+- **Which commands.** Any command of the conversation, whichever agent ran it.
   A command of another conversation is unknown to it.
-- **A command that runs.** It prints what the command's Host has kept so far,
-  read through the conversation's host access
+- **A command that runs.** It reads what the command's Host has kept so far,
+  through the conversation's host access
   ([Host operations](../execution/sessions-and-targets.md#host-operations)).
-- **A command that ended.** It prints the output the backend stored, for 30
+- **A command that ended.** It reads the output the backend stored, for 30
   days after the command ended ([Retention](../backend/storage.md#retention)).
 - **What is kept.** A command's output up to 16 MiB, all of it; beyond that,
-  its first 8 MiB and its last 8 MiB. The merged output shows one line where
-  the rest was left out, `[... 734003200 bytes left out ...]`; with `--stdout`
-  or `--stderr`, that line goes to stderr, so the stream's bytes stay as they
-  were. A command that prints without end, such as `yes`, therefore keeps at
-  most 16 MiB, on its Host and in the backend alike.
-- **A binary stdout** shows in the merged output as the line the result
-  shows, `<binary stdout: 412000 bytes>`, and whole with `--stdout`.
+  its first 8 MiB and its last 8 MiB. Lines are numbered as kept, and the
+  merged pages show an unnumbered line where the rest was left out,
+  `[... 734003200 bytes left out ...]`; `--raw` writes that line to stderr, so
+  the bytes stay as they were. A command that prints without end, such as
+  `yes`, therefore keeps at most 16 MiB, on its Host and in the backend alike.
+- **A binary stdout** shows in the merged pages as the line the result shows,
+  `<binary stdout: 412000 bytes>`; `--stdout` without `--raw` answers that the
+  stream is binary and names `--raw`.
 - **Failures** go to stderr with exit status 1:
-  - `demi shell output: no command <commandId> in this conversation`;
-  - `demi shell output: the output of <commandId> was removed on 2026-10-28, 30 days after the command ended`;
-  - `demi shell output: the output of <commandId> was not stored: <reason>`,
-    when the backend could not read the Host's kept output or could not store
-    it.
+  - `demi shell output: no command 17 in this conversation`;
+  - `demi shell output: the output of 17 was removed on 2026-10-28, 30 days after the command ended`;
+  - `demi shell output: the output of 17 was not stored: <reason>`, when the
+    backend could not read the Host's kept output or could not store it;
+  - `demi shell output: lines 5000-5100 are past the end: the output has 4720 lines`.
 - **A reader that stops early**, such as `| head -n 20`, ends the command
   quietly ([Handle an rpc call](../execution/commands.md#handle-an-rpc-call)).
 
@@ -562,7 +589,8 @@ Where the output is kept:
   ([Edit tracking](../execution/edit-tracking.md)). The output becomes a blob
   in the conversation owner's namespace, and the conversation records it by
   its command ([Command outputs](../backend/storage.md#command-outputs)). The
-  Host then removes the job's directory.
+  Host then removes the job's directory. The result that reports the end is
+  made from the stored output, so the lines it names are the pages' lines.
 - A command that ended because its Host's connection was lost keeps what the
   backend received, followed by the line
   `[... 1048576 bytes lost with the Host's connection ...]` when there was
@@ -664,6 +692,46 @@ What keeps the output coming, and where each part is released:
   does, so the next request replays no call without a result.
 - A tool never reaches into its session. It returns its result and, for
   `yield`, an effect that the session applies.
+
+## Identifiers the model sees
+
+Every identifier the model reads or writes is short: a number, or a letter
+and a number, given in order within the scope the model uses it in, and never
+given twice there. For example, the seventeenth command of a conversation is
+`17`, whichever agent ran it, and `demi shell output 17` reads it. A random
+UUID in its place costs about 20 tokens in every result and every request
+that replays it, and a short number is copied without a slip.
+
+| Identifier | Looks like | Unique within | Given out by |
+|---|---|---|---|
+| A command (`commandId`) | `17` | The conversation | The backend, when the command starts |
+| A shell (`shellId`) | `3` | The conversation | The backend, when the shell starts |
+| An agent | `0` for the root, then `1`, `2`, … in spawn order | The conversation | The backend, when the agent is spawned ([Model-facing surface](subagents.md#model-facing-surface)) |
+| An agent's round | `1` for its first run, one more at each resume | The agent | The agent's supervisor |
+| A browser tab | `t7` | The conversation | The backend, when the tab is registered ([One tab registry](../browser/browser.md#one-tab-registry)) |
+| An element reference | `e37` | Its tab | The browser, as it observes the tab |
+| A todo | `T3` | The agent's todo list | The todo command |
+| An expose | `2` | The user | The backend, when the expose is added ([Commands](../execution/expose.md#commands)) |
+| A host | Its name, as `demi host list` shows it | The conversation's hosts | The user ([Attached hosts](../execution/sessions-and-targets.md#attached-hosts)) |
+
+- **Never twice.** A number is not given again after a crash, a restore or a
+  Fork either: the backend stores the next number of each sequence before it
+  gives one out, so a crash can only leave a gap, and a Fork's destination
+  goes on from its source's numbers, since its history names them
+  ([Storage](../backend/storage.md#conversation-state-and-transactions)).
+- **Only what the model uses.** The model's text carries no identifier it has
+  no use for: a yield's result names no wakeup, an agent message names no
+  message id, and a missing medium is named by its kind, not by its blob's
+  hash.
+- **Credentials stay long.** An identifier that is also a credential stays
+  unguessable, and the model names the thing by a short number: an expose's
+  host label is its URL's secret, and `demi host expose remove 2` names it.
+- **Paths stay whole.** A path keeps the identifiers it is made of, since
+  several backends and users can share one machine: an attachment's path on a
+  Host names its conversation's full id
+  ([Attachments](../product/product.md#attachments)).
+- **Inside Demi**, an identity keeps the form its storage and its wire need;
+  this rule is about the text the model reads and writes.
 
 ## Transcript
 
@@ -868,7 +936,7 @@ a block cannot hold bytes and a provider cannot receive a reference:
   read.
 - **Requests.** Replay puts each medium's held bytes into the request's
   items, and a medium whose blob is missing becomes the text
-  `[missing <kind> blob <ref>]` there, so the turn goes on; the transcript
+  `[missing <kind>]` there, so the turn goes on; the transcript
   keeps the reference. A provider request is the only place a medium carries
   its bytes, and it carries no reference, so a provider never has one to
   refuse.
@@ -915,7 +983,7 @@ vendors read only its first frame. A fitted image carries no EXIF data, so its
 orientation is applied before it is scaled.
 
 The original stays where it came from: a tool's stdout in the command's
-whole output, which `demi shell output <commandId> --stdout` prints
+whole output, which `demi shell output <commandId> --raw --stdout` prints
 ([The whole output](#the-whole-output)), and an upload in its attachment file
 on the Host and in its upload blob, whose attachment record keeps the
 original's size and hash. Fitting decodes and encodes on the
@@ -1394,19 +1462,21 @@ where a tool runs; no test calls a real model.
 | Scripted tool events | Each of the five tools renders with its own component and its `description` title; updates replace the block in place; an unknown tool name renders as a generic card |
 | A tool's result carries an image, a video, or a medium that is gone | The page shows each under the call's row, the media loaded from the blob route and a gone medium as what it was and why it is gone; a click on the image opens it large |
 | Tool calls | Input refusals, the repeat guard, the cut of a result, handle release and binary stdout verdicts match [Tools](#tools) |
-| A command prints 200 KB and exits | Its result shows the start, the end and the line naming `demi shell output`, and fits the replay bound, so every request carries it unchanged; `demi shell output` prints the 200 KB in the order the runner read them, and `--stderr` the stderr alone |
+| A command prints 200 KB of lines and exits | Its result shows whole lines from the start and the end and the line naming the lines between and `demi shell output 17 --lines`, and fits the replay bound, so every request carries it unchanged; the pages that command prints hold those lines, numbered, with the next page's command, and `--raw` prints the 200 KB in the order the runner read them |
+| A page of a command's output | At most 12,000 characters of whole lines, so the result that holds it is not cut; a line over 2,000 characters shows its start and how to read it whole |
+| `--raw \| grep -n` on a command's output | The numbers it prints select the same lines with `--lines` |
 | A command prints 25,000 characters, more than the replay bound and less than the first 32 KiB of its stream | The result's line names `demi shell output`, which prints the characters the result leaves out |
 | The same command for a model with a context window of a million tokens | The same result |
-| A running command's stdout goes beyond its first 32 KiB while no page is attached | Its result ends with the line counting the bytes so far; `demi shell output` prints them, the newest included, from the Host |
+| A running command's stdout goes beyond its first 32 KiB while no page is attached | Its result ends with the line counting the bytes so far; `demi shell output --tail 50` prints the newest lines from the Host |
 | A command prints 20 MiB | The Host keeps 16 MiB of it while it runs, and the backend stores the same; `demi shell output` prints the first and last 8 MiB with the line where the rest was left out |
-| A binary stdout that the model does not accept | The result names `demi shell output <commandId> --stdout`, which prints the bytes unchanged |
-| `demi shell output <commandId> \| head -n 1` | The line, and nothing on stderr |
+| A binary stdout that the model does not accept | The result names `demi shell output 17 --raw --stdout`, which prints the bytes unchanged |
+| `demi shell output 17 --raw \| head -n 1` | The line, and nothing on stderr |
 | A command's output 30 days after the command ended, after the retention pass | `demi shell output` says the output was removed and on which day |
 | A subagent reads the output of a command its parent ran | The whole output |
 | A stored conversation with images is opened by two pages, and one asks for the transcript again after a gap | No blob is put: every frame carries the references its rows hold |
 | A restored conversation with images before and after its last `compaction_boundary` runs a turn of two requests | The first request reads the blob of each replayed medium once and none from before the boundary; the second reads none; both carry the replayed media's bytes |
 | A tool's medium cannot be stored | Its result holds the medium as gone, not stored, with the store's error; the model receives `[<kind> not stored: <reason>]`, and the turn goes on |
-| A replayed medium's blob is missing | The model receives `[missing <kind> blob <ref>]` in its place, in every request of the live tree, and the turn goes on |
+| A replayed medium's blob is missing | The model receives `[missing <kind>]` in its place, in every request of the live tree, and the turn goes on |
 | One scripted conversation with tools, images, thinking, a steer, a subagent's result and a yield, for each provider, Codex over each of its transports | Each request's body begins with the previous request's body, byte for byte apart from the Anthropic cache marks, which the vendor does not count as content; each exception of [The rule](../providers/providers.md#the-rule) changes only what that rule names; Codex's WebSocket message is its server-sent events body, byte for byte, after the message's type |
 | A switch to a model that does not accept video | Every request to it carries the history's videos as the same text |
 | A video whose base64 is over half of a model's request body limit | A tool result does not attach it, and replay sends one already in the history as the same text in every request to that model |
