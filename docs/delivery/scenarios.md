@@ -236,9 +236,9 @@ providers. It reaches the Cloud through normal Host access, as a conversation
 does; no test calls a real model.
 [Managed hosts — Verification](../cloud/managed-hosts.md#verification) owns the
 full persistence, isolation, failure, and platform matrix that a run must
-show. Linux amd64, Linux arm64, and local Lima execution are separate
-acceptance environments. Record startup phases, memory, and checkpoint I/O
-separately from functional assertions. A fake machine manager does not certify
+show. Linux amd64 and Linux arm64 are separate acceptance environments.
+Record startup phases, memory, and checkpoint I/O separately from functional
+assertions. A fake machine manager does not certify
 filesystem durability, sandbox isolation, or distributed writer fencing.
 
 Each real-machine suite runs only when environment variables supply what it

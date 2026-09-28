@@ -35,7 +35,7 @@ sandbox processes, mounts, networking, resource enforcement, and stored
 generations. It has no users, conversations, transcripts, or control database.
 
 ```text
-Backend (Linux or the developer's Mac)
+Backend (Linux)
     | requests over a restricted Unix socket
     v
 Machine manager (Linux)
@@ -57,11 +57,9 @@ starts. See the upstream
 [OCI interface](https://gvisor.dev/docs/user_guide/quick_start/oci/).
 
 A Linux execution host can be a VPS without KVM. It must still support the Linux
-facilities listed in [setup](setup.md#linux-requirements). On a Mac, the manager
-and sandboxes run inside one Lima Linux VM with the Mac's native CPU
-architecture. systrap needs no nested virtualization. Backend storage and the
-web application can stay on the Mac. gVisor itself does not run on macOS. See
-the upstream [platform guide](https://gvisor.dev/docs/architecture_guide/platforms/).
+facilities listed in [setup](setup.md#linux-requirements). systrap needs no
+nested virtualization. gVisor runs only on Linux. See the upstream [platform
+guide](https://gvisor.dev/docs/architecture_guide/platforms/).
 
 ### Linux control
 
@@ -745,21 +743,19 @@ Backend scenarios with scripted providers and a scripted machine manager
 races, admission, identity, token rotation, crash loops, capacity across users,
 idle policy, the lifetime cap, recovery at startup, and reset failures.
 
-The manager runs only on Linux. Its automated tests are built with the
-developer machine's own cross tools and run on Linux: inside the Lima VM on a
-Mac. Tests that need root create throwaway mount and network namespaces and run
-only when explicitly enabled. Tests of the manager as a process, such as a
-start after a crash or a start whose cgroup controllers are missing, run the
-built executable in a stand-in execution host: the init of a throwaway PID
-namespace with its own `/run` and cgroup root, so the namespace handle they
-recover through and the cgroups they look at are never the machine's.
+The manager runs only on Linux, and so do its automated tests. Tests that need
+root create throwaway mount and network namespaces and run only when explicitly
+enabled. Tests of the manager as a process, such as a start after a crash or a
+start whose cgroup controllers are missing, run the built executable in a
+stand-in execution host: the init of a throwaway PID namespace with its own
+`/run` and cgroup root, so the namespace handle they recover through and the
+cgroups they look at are never the machine's.
 
 Real-machine acceptance runs the exact shipped runtime, image, storage, and
-network profile on Linux amd64 and arm64 without KVM, and on arm64 Lima, against
-a backend with scripted models. Compilation or a Docker container cannot
-substitute for these checks.
-[Scenarios](../delivery/scenarios.md#real-machine-acceptance) describes how the
-suite runs; a run must show the following:
+network profile on Linux amd64 and arm64 without KVM, against a backend with
+scripted models. Compilation or a Docker container cannot substitute for these
+checks. [Scenarios](../delivery/scenarios.md#real-machine-acceptance) describes
+how the suite runs; a run must show the following:
 
 | Area | Required observation |
 | --- | --- |
@@ -794,7 +790,7 @@ does not have. Release acceptance checks those by hand:
   setup, runsc start, runner authentication, and checkpoint pause), which the
   manager does not report.
 
-Linux arm64 and arm64 Lima are acceptance environments of their own. How a
+Linux amd64 and Linux arm64 are acceptance environments of their own. How a
 start without the controllers fails, and what the log says with the limits off,
 are process tests of the manager (above).
 

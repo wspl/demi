@@ -1,8 +1,8 @@
 # Set up managed Cloud hosts
 
-Cloud runs on a Linux execution host, or inside one Linux VM for local macOS
-development. The backend reaches the manager over a restricted Unix socket and
-the sandbox's runner connects to the configured backend endpoint.
+Cloud runs on a Linux execution host. The backend reaches the manager over a
+restricted Unix socket and the sandbox's runner connects to the configured
+backend endpoint.
 
 The authoritative runtime contract is [Managed hosts](managed-hosts.md); image
 artifacts are defined in [Cloud images](images.md).
@@ -72,7 +72,7 @@ configuration is a startup error.
 
 | Variable | Owner and meaning |
 | --- | --- |
-| `DEMI_MACHINES_SOCKET` | Manager listen path; backend connect path. Different paths are expected when forwarded. |
+| `DEMI_MACHINES_SOCKET` | Manager listen path; backend connect path. |
 | `DEMI_MACHINES_DATA` | Manager's persistent state, on one filesystem; default `/var/lib/demi-machines`. |
 | `DEMI_MANAGED_RUNSC` | Required absolute path to the pinned runsc executable. |
 | `DEMI_MANAGED_IMAGE` | Required directory containing the Cloud image manifest and archive. |
@@ -138,8 +138,8 @@ copying them; set its copy-on-write extent hint to the filesystem block size for
 the state directory. btrfs can clone image files too. On ext4, a wake and a
 checkpoint copy the used ranges of both images, with higher latency and space
 cost for populated volumes. Hibernation and reset copy no image data on any
-filesystem. Never put working images on a Mac shared directory or a container
-engine's temporary layer.
+filesystem. Never put working images on a shared or network directory or a
+container engine's temporary layer.
 
 The installer checks the existing mount and reports an unsuitable configuration;
 it never formats a device containing data. Provision a new data volume
@@ -198,57 +198,15 @@ Publish a new image, restart the manager, and explicitly reset a device when it
 should use the new base. Restart alone does not upgrade pinned devices. A new
 runtime starts only after prior writers have stopped.
 
-## Mac backend with local Lima
-
-Use one native-architecture Linux VM. On Apple silicon, select arm64 Linux and
-arm64 image/native artifacts. The VM runs the same privileged manager and runsc
-profile as Linux deployment. It has no nested virtualization requirement.
-
-`crates/machines/lima/demi-machines.yaml` and
-`crates/machines/scripts/lima-machines.sh` provision Linux dependencies, a
-separate persistent data disk, manager service, network policy, and Unix socket
-forwarding. The service runs the manager built for the VM's architecture, which
-the Mac cross-compiles with its own tools
-([Builds and releases](../delivery/builds-and-releases.md)); the script copies
-that build into the VM under its SHA-256, so a later build never replaces the
-executable of a running manager. The Mac backend connects at
-`~/.lima/demi-machines/sock/demi-machines.sock`; the script prints the
-guest-reachable Mac URL to configure. Verify the connection by starting a
-managed device through the backend. Do not assume a particular Lima gateway
-address works on every installation.
-
-With an image already built inside Lima
-([guest image build](../../packages/guest-image/README.md)):
-
-```sh
-cargo xtask native build --package demi-machines --target aarch64-unknown-linux-musl
-cargo xtask native package --package demi-machines \
-  --target aarch64-unknown-linux-musl --output .cache/releases/demi-machines-<build>
-bash crates/machines/scripts/lima-machines.sh \
-  --manager .cache/releases/demi-machines-<build>/aarch64-unknown-linux-musl/demi-machines \
-  --image /opt/demi-cloud/releases/build-id --dns 1.1.1.1
-```
-
-`--root <directory>` passes on to the installer, which then only writes the unit
-and settings beneath that directory inside the VM.
-
-The script prepares its default state directory on the Lima data disk. To use
-another one, pass `--data` with a prepared Linux state directory.
-
-Data stays on the Linux disk. Stopping or recreating the Lima instance preserves
-that disk; deleting the data disk is a separate explicit action. Lima formats
-the data disk only while it is blank, and the scripts never reformat storage or
-reuse another deployment's state directory to make a start succeed.
-
 ## Acceptance before use
 
 Check that the proxy in front of the backend passes `Origin`: a request that
-names another origin answers 403 `forbidden_origin`
-([Authentication and ownership](../backend/backend.md#authentication-and-ownership)).
-Start a real managed device through the backend, not the paired-device claim
-endpoint. Verify runner readiness, shell/native/browser operations, persistent
-package and home files across stop/wake, and reset with a broken system. Check
-network refusal and failure cleanup using the full
-[acceptance contract](managed-hosts.md#verification). Measure local Lima and VPS
+names another origin answers 403 `forbidden_origin` ([Authentication and
+ownership](../backend/backend.md#authentication-and-ownership)). Start a real
+managed device through the backend, not the paired-device claim endpoint. Verify
+runner readiness, shell/native/browser operations, persistent package and home
+files across stop/wake, and reset with a broken system. Check network refusal
+and failure cleanup using the full [acceptance
+contract](managed-hosts.md#verification). Measure each execution host's
 performance separately. Results on one host do not certify a different host,
 image, runtime, or concurrent-user capacity.

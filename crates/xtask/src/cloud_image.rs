@@ -710,8 +710,7 @@ mod tests {
 
     use super::*;
 
-    /// The tests build an arm64 image, as for the Lima VM of an Apple
-    /// silicon Mac.
+    /// The tests build an arm64 image, as for an arm64 execution host.
     const ARCHITECTURE: Architecture = Architecture::Arm64;
     const TARGET: &str = "aarch64-unknown-linux-musl";
     /// Chrome's executable in its archive.

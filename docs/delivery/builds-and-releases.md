@@ -9,11 +9,12 @@ Testing release, and assembles the Cloud image.
 crates; this document covers the executables, their targets, and their
 releases.
 
-For example, trying a runner change on an Apple silicon Mac whose Cloud runs in
-Lima needs two targets: `aarch64-apple-darwin` for the Mac as a paired device,
-and `aarch64-unknown-linux-musl` for the Cloud guest. The developer builds and
-packages those two, refreshes the local Cloud image, and accepts the change on
-both Hosts. A published release carries every target.
+For example, trying a runner change on an x86_64 Linux machine that is also
+its own Cloud's execution host needs one target, `x86_64-unknown-linux-musl`:
+the machine runs it as a paired device, and so does the Cloud guest. The
+developer builds and packages that target, refreshes the local Cloud image,
+and accepts the change on both Hosts. A published release carries every
+target.
 
 ```text
 cargo xtask native build     compiles each executable for its targets
@@ -24,7 +25,7 @@ cargo xtask native package   one release directory per executable
         +-- runner release ---------> backend: installers, runner downloads
         +-- command packages -------> backend: object storage, or its own route in development
         +-- Linux runner, packages -> cargo xtask cloud-image package: Cloud image
-        +-- backend ----------------> a Linux server, or a developer's Mac
+        +-- backend ----------------> a Linux server
         +-- machine manager --------> the Cloud host's service
 ```
 
@@ -44,7 +45,7 @@ Each executable is built for the targets where it runs:
 | --- | --- | --- |
 | `demi-runner` | All six | Paired devices run macOS, Linux, or Windows on arm64 or x86_64, and the Cloud guest runs Linux |
 | `demi-commands`, `demi-claude` | All six | A published command package supplies its operations on every target ([Publish a complete release](../execution/native-runtime.md#publish-a-complete-release)) |
-| `demi-backend` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl`, `aarch64-apple-darwin`, `x86_64-apple-darwin` | Servers run Linux; a developer also runs the backend on a Mac, with the Cloud in a Lima VM |
+| `demi-backend` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl` | Every deployment has Cloud, and the backend reaches the machine manager over a Unix socket on the same Linux host |
 | `demi-machines` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl` | The machine manager drives gVisor, Linux namespaces, cgroups, loop devices, and nftables, which exist only on Linux |
 
 Linux executables link musl statically, so one file runs on any distribution
@@ -315,17 +316,16 @@ does. On Linux the Chrome tests need an ordinary user: Chrome for Testing
 refuses to start as root with its sandbox, which Demi keeps
 ([Native driver](../browser/browser.md#native-driver)). An ordinary test run
 also skips the Cloud suite, which needs a machine manager, a Cloud image, and
-root. The machine manager builds only for Linux, so
-on a Mac its tests are cross-built with cargo-zigbuild and run in the Lima VM
+root. The machine manager builds only for Linux, and on Linux the one
+selection builds and runs its tests
 ([Verification](../cloud/managed-hosts.md#verification)). The tests that need
-root are ignored in an ordinary run; as root, `--include-ignored` runs them,
-each in mount and network namespaces of its own:
+root are ignored in an ordinary run; as root, the manager's unit test
+executable with `--include-ignored` runs them, each in mount and network
+namespaces of its own:
 
 ```sh
-cargo zigbuild --tests --target aarch64-unknown-linux-musl \
-  -p demi-machines -p demi-machines-protocol --target-dir .cache/linux-target
-limactl shell demi-machines -- <test executable>
-limactl shell demi-machines -- sudo <test executable> --include-ignored
+cargo test --workspace --features demi-runner/test-fixtures --no-run
+sudo target/debug/deps/demi_machines-<hash> --include-ignored
 ```
 
 The Claude Code suite runs as an ordinary user, as the Cloud's runner does:
@@ -358,10 +358,9 @@ It never calls a model.
 
 ## Cloud image refresh
 
-The Cloud runs the Linux target that matches its execution host, including
-arm64 inside Lima on Apple silicon. Build and package that target together with
-the paired-device target used for acceptance. The
-[Cloud image contract](../cloud/images.md#acceptance-and-local-refresh) owns
+The Cloud runs the Linux target that matches its execution host. Build and
+package that target together with the paired-device target used for acceptance.
+The [Cloud image contract](../cloud/images.md#acceptance-and-local-refresh) owns
 embedding, manager restart, local reset, and checking the identities of the
 running artifacts; rebuilding a native release alone does not refresh a pinned
 Cloud. A change to the machine manager itself is built for its host's Linux
