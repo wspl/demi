@@ -30,7 +30,7 @@ use demi_shell::{
     HostProcess, JobCaller, LeafBuilder, ObservationWindow, PageState, PortError, Process,
     OutputRecord, ProcessEnd, RpcError, RpcInvocation, RpcPort, Seen, ShellEnvironment,
     ShellTarget, SpawnEnv, SpawnRequest, StorageOp, StorageReply, Streams, TypedRpc, WholeOutput,
-    testing::{TestPages, test_command_context},
+    testing::{CountingNumbers, TestPages, test_command_context},
 };
 use futures_util::future::LocalBoxFuture;
 use serde_json::{Map, Value};
@@ -78,7 +78,7 @@ fn environment(host: RemoteHost) -> RemoteShellEnvironment {
 fn watched_environment(host: RemoteHost, pages: Rc<TestPages>) -> RemoteShellEnvironment {
     let context: demi_host_remote::ContextSource =
         Rc::new(|| Box::pin(async { Ok(test_command_context()) }));
-    RemoteShellEnvironment::new(EnvironmentOptions::new(host, context, pages))
+    RemoteShellEnvironment::new(EnvironmentOptions::new(host, context, pages, Rc::new(CountingNumbers::default())))
 }
 
 fn exec(script: &str) -> ExecRequest {
@@ -1033,7 +1033,7 @@ async fn a_command_ends_once_its_edits_are_published_and_keeps_them() {
     let (publish, barrier) = tokio::sync::oneshot::channel();
     let context: demi_host_remote::ContextSource =
         Rc::new(|| Box::pin(async { Ok(test_command_context()) }));
-    let mut options = EnvironmentOptions::new(host, context, TestPages::new(false));
+    let mut options = EnvironmentOptions::new(host, context, TestPages::new(false), Rc::new(CountingNumbers::default()));
     options.keeper = Some(Rc::new(Publisher {
         barrier: RefCell::new(Some(barrier)),
         file: file.clone(),

@@ -438,13 +438,16 @@ Each crate implements the provider contract for one vendor family.
     [Live output](../agent/runtime.md#live-output)); the reading of a
     running command's kept output; a command's whole output
     (`WholeOutput`) and its lines of text (`OutputText`), which the result
-    that reports a command's end and `demi shell output` read alike; and the
-    keeper to which an environment hands what a command leaves when it ends,
+    that reports a command's end and `demi shell output` read alike; where an
+    environment takes the numbers of its commands and shells, the
+    conversation's sequences (`Numbers`,
+    [Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees));
+    and the keeper to which an environment hands what a command leaves when it ends,
     its whole output and its edit copies, which the product implements over
     its storage ([The whole output](../agent/runtime.md#the-whole-output)).
 - **Public boundary:** the items above; `shell::testing` supplies the Host
-  conformance cases and an in-memory port for rpc handler tests
-  (`MemoryPort`). The Host rules are in
+  conformance cases, an in-memory port for rpc handler tests
+  (`MemoryPort`) and sequences that count from 1 (`CountingNumbers`). The Host rules are in
   [Host operations](../execution/runner.md#host-operations); the handler
   interface is [the TypeScript boundary](contracts.md#the-typescript-boundary).
 - **Must not:** depend on `agent`, `provider`, a concrete provider,

@@ -26,7 +26,7 @@ use demi_agent::store::{
     CommandVersion, CommitGuard, NodeClose, NodeRecord, SessionBoundary, StoreError, media::BlobStore,
 };
 use demi_agent::{AgentTreeStore, SessionStore, StoredOutput};
-use demi_core::{Block, BlockId, CommandId, CompletionId, NodeId, QueuedMessage, SessionPhase, Timestamp};
+use demi_core::{Block, BlockId, CommandId, CompletionId, NodeId, QueuedMessage, Sequence, SessionPhase, Timestamp};
 use demi_host_remote::decode_output;
 use futures_util::future::LocalBoxFuture;
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
@@ -35,9 +35,10 @@ use serde_json::Value;
 use super::StorageError;
 use super::blob_refs;
 use super::blobs::UserBlobs;
-use super::columns::{count, decode, json, to_json};
+use super::columns::{count, decode, instant, json, to_json};
 use super::command_outputs::{self, OutputRow};
 use super::conversations::ConversationDb;
+use super::sequences;
 
 /// What a tree store tells after each commit of a node's checkpoint, with
 /// the node: a conversation's summary reads its root's.
@@ -111,15 +112,18 @@ impl AgentTreeStore for SqliteTreeStore {
                     }
                     let (phase, closed_at, result, failure) = close_columns(record.closed.as_ref());
                     transaction.execute(
-                        "INSERT INTO nodes (id, parent_id, description, profile, spawned_at, can_spawn, closed_phase,
-                           closed_at, result, failure, delivered, state, block_count, command_revision, output_revision)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 0, 0, 0)",
+                        "INSERT INTO nodes (id, number, parent_id, description, profile, round, started_at, can_spawn,
+                           closed_phase, closed_at, result, failure, delivered, state, block_count, command_revision,
+                           output_revision)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, 0, 0, 0)",
                         params![
                             record.id.as_str(),
+                            integer(record.number),
                             record.parent.as_ref().map(NodeId::as_str),
                             record.description,
                             record.profile,
-                            millis(record.round),
+                            integer(record.round),
+                            record.started_at.as_millisecond(),
                             record.can_spawn_subagents,
                             phase,
                             closed_at,
@@ -183,6 +187,7 @@ impl AgentTreeStore for SqliteTreeStore {
         &'a self,
         id: &'a NodeId,
         round: u64,
+        started_at: Timestamp,
         message: QueuedMessage,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
         let node = id.clone();
@@ -199,10 +204,10 @@ impl AgentTreeStore for SqliteTreeStore {
                         ..state
                     };
                     transaction.execute(
-                        "UPDATE nodes SET spawned_at = ?2, closed_phase = NULL, closed_at = NULL, result = NULL,
-                           failure = NULL, delivered = 0, state = ?3
+                        "UPDATE nodes SET round = ?2, started_at = ?3, closed_phase = NULL, closed_at = NULL,
+                           result = NULL, failure = NULL, delivered = 0, state = ?4
                          WHERE id = ?1",
-                        params![node.as_str(), millis(round), to_json(&state)],
+                        params![node.as_str(), integer(round), started_at.as_millisecond(), to_json(&state)],
                     )?;
                     transaction.commit()?;
                     Ok(true)
@@ -227,8 +232,8 @@ impl AgentTreeStore for SqliteTreeStore {
                         return Ok(false);
                     }
                     transaction.execute(
-                        "UPDATE nodes SET delivered = 1 WHERE id = ?1 AND spawned_at = ?2",
-                        params![node.as_str(), millis(round)],
+                        "UPDATE nodes SET delivered = 1 WHERE id = ?1 AND round = ?2",
+                        params![node.as_str(), integer(round)],
                     )?;
                     transaction.commit()?;
                     Ok(true)
@@ -261,6 +266,15 @@ impl AgentTreeStore for SqliteTreeStore {
                 })
                 .await
                 .map_err(store_error)?
+        })
+    }
+
+    fn next_number(&self, sequence: Sequence) -> LocalBoxFuture<'_, Result<u64, StoreError>> {
+        Box::pin(async move {
+            self.db
+                .call(move |connection| sequences::next(connection, sequence))
+                .await
+                .map_err(store_error)
         })
     }
 
@@ -369,7 +383,7 @@ fn write_checkpoint(
     blob_refs::truncate(transaction, node, update.block_count, &mut touched)?;
     let block_count = count(update.block_count);
     let output = update.changed_blocks.iter().any(|(_, block)| is_output(block));
-    let revision = update.command_state.as_ref().map(|state| millis(state.revision));
+    let revision = update.command_state.as_ref().map(|state| integer(state.revision));
     // The old block count is the column's value before the update: rows
     // gone are a rewrite of the output.
     let changed = transaction.execute(
@@ -388,8 +402,8 @@ fn write_checkpoint(
     }
     for round in completions {
         transaction.execute(
-            "UPDATE nodes SET delivered = 1 WHERE id = ?1 AND parent_id = ?2 AND spawned_at = ?3",
-            params![round.child.as_str(), node.as_str(), millis(round.round)],
+            "UPDATE nodes SET delivered = 1 WHERE id = ?1 AND parent_id = ?2 AND round = ?3",
+            params![round.child.as_str(), node.as_str(), integer(round.round)],
         )?;
     }
     Ok(blobs.commit_uses(&touched))
@@ -417,7 +431,7 @@ fn write_command_state(
         let stored: Option<String> = transaction
             .query_row(
                 "SELECT entries FROM command_snapshots WHERE node_id = ?1 AND revision = ?2",
-                params![node.as_str(), millis(version.revision)],
+                params![node.as_str(), integer(version.revision)],
                 |row| row.get(0),
             )
             .optional()?;
@@ -433,7 +447,7 @@ fn write_command_state(
             None => {
                 transaction.execute(
                     "INSERT INTO command_snapshots (node_id, revision, entries) VALUES (?1, ?2, ?3)",
-                    params![node.as_str(), millis(version.revision), to_json(&version.values)],
+                    params![node.as_str(), integer(version.revision), to_json(&version.values)],
                 )?;
             }
         }
@@ -451,7 +465,7 @@ fn write_command_state(
                 node.as_str(),
                 boundary.block_id.as_str(),
                 edge_name(boundary.edge),
-                millis(boundary.command_revision)
+                integer(boundary.command_revision)
             ],
         )?;
     }
@@ -564,8 +578,8 @@ fn node_state(connection: &Connection, node: &NodeId) -> Result<Option<Checkpoin
     state.map(|state| json("nodes", "state", &state)).transpose()
 }
 
-const NODE_COLUMNS: &str =
-    "id, parent_id, description, profile, spawned_at, can_spawn, closed_phase, closed_at, result, failure, delivered";
+const NODE_COLUMNS: &str = "id, number, parent_id, description, profile, round, started_at, can_spawn, closed_phase,
+     closed_at, result, failure, delivered";
 
 fn node_by_id(connection: &Connection, id: &NodeId) -> Result<Option<NodeRecord>, StorageError> {
     let mut statement = connection.prepare(&format!("SELECT {NODE_COLUMNS} FROM nodes WHERE id = ?1"))?;
@@ -573,11 +587,10 @@ fn node_by_id(connection: &Connection, id: &NodeId) -> Result<Option<NodeRecord>
     rows.next()?.map(node_row).transpose()
 }
 
-/// A node's direct children in spawn order: by round, then as they were
-/// created.
+/// A node's direct children in spawn order, the order of their numbers.
 fn children_of(connection: &Connection, parent: &NodeId) -> Result<Vec<NodeRecord>, StorageError> {
     let mut statement =
-        connection.prepare(&format!("SELECT {NODE_COLUMNS} FROM nodes WHERE parent_id = ?1 ORDER BY spawned_at, rowid"))?;
+        connection.prepare(&format!("SELECT {NODE_COLUMNS} FROM nodes WHERE parent_id = ?1 ORDER BY number"))?;
     let mut rows = statement.query([parent.as_str()])?;
     let mut children = Vec::new();
     while let Some(row) = rows.next()? {
@@ -624,22 +637,16 @@ fn node_row(row: &Row<'_>) -> Result<NodeRecord, StorageError> {
     };
     Ok(NodeRecord {
         id: decode(TABLE, "id", NodeId::try_from(row.get::<_, String>("id")?))?,
+        number: decode(TABLE, "number", u64::try_from(row.get::<_, i64>("number")?))?,
         parent: parent.map(|parent| decode(TABLE, "parent_id", NodeId::try_from(parent))).transpose()?,
         description: row.get("description")?,
         profile: row.get("profile")?,
-        round: round(row)?,
+        round: decode(TABLE, "round", u64::try_from(row.get::<_, i64>("round")?))?,
+        started_at: instant(row, TABLE, "started_at")?,
         can_spawn_subagents: row.get("can_spawn")?,
         closed,
         delivered: row.get("delivered")?,
     })
-}
-
-/// A node's round: when it started, in milliseconds since the Unix epoch,
-/// which must be a time.
-fn round(row: &Row<'_>) -> Result<u64, StorageError> {
-    let millisecond: i64 = row.get("spawned_at")?;
-    decode("nodes", "spawned_at", Timestamp::from_millisecond(millisecond))?;
-    decode("nodes", "spawned_at", u64::try_from(millisecond))
 }
 
 /// A text column its row's close phase requires.
@@ -667,11 +674,10 @@ fn close_columns(close: Option<&NodeClose>) -> (Option<&'static str>, Option<i64
 }
 
 
-/// A round or revision as the INTEGER column holds it: rounds are
-/// milliseconds since the Unix epoch and revisions count saves, so neither
-/// comes near `i64::MAX`.
-fn millis(value: u64) -> i64 {
-    i64::try_from(value).expect("a round or revision fits the column")
+/// A count as the INTEGER column holds it: an agent's number counts spawns,
+/// a round resumes and a revision saves, so none comes near `i64::MAX`.
+fn integer(value: u64) -> i64 {
+    i64::try_from(value).expect("a count fits the column")
 }
 
 /// What a conversation's summary is built from (`storage.md` § Conversation
@@ -772,7 +778,7 @@ pub(crate) fn history(connection: &Connection) -> Result<History, StorageError> 
     let blocks = blocks_of(connection, &root, block_count)?;
     let mut children: HashMap<NodeId, Vec<NodeRecord>> = HashMap::new();
     let mut statement =
-        connection.prepare(&format!("SELECT {NODE_COLUMNS} FROM nodes WHERE parent_id IS NOT NULL ORDER BY spawned_at, rowid"))?;
+        connection.prepare(&format!("SELECT {NODE_COLUMNS} FROM nodes WHERE parent_id IS NOT NULL ORDER BY number"))?;
     let mut rows = statement.query([])?;
     while let Some(row) = rows.next()? {
         let node = node_row(row)?;
@@ -835,13 +841,16 @@ mod tests {
         NodeId::try_from(value).unwrap()
     }
 
-    fn record(node: &str, parent: Option<&str>, round: u64) -> NodeRecord {
+    /// A node in its first round, agent `number` of the conversation.
+    fn record(node: &str, parent: Option<&str>, number: u64) -> NodeRecord {
         NodeRecord {
             id: id(node),
+            number,
             parent: parent.map(id),
             description: format!("{node} task"),
             profile: None,
-            round,
+            round: 1,
+            started_at: Timestamp::UNIX_EPOCH,
             can_spawn_subagents: true,
             closed: None,
             delivered: false,
@@ -908,7 +917,7 @@ mod tests {
     async fn output_advances_the_revision_and_input_alone_does_not() {
         let (tree, stores, _data) = store().await;
         assert_eq!(stores.read(&conversation(), summary).await.unwrap(), None);
-        tree.create_node(record("root", None, 1), update(Vec::new(), 0)).await.unwrap();
+        tree.create_node(record("root", None, 0), update(Vec::new(), 0)).await.unwrap();
         let root = tree.session_store(&id("root"));
         assert_eq!(facts(&stores).await, SummaryFacts::EMPTY);
 
@@ -928,7 +937,7 @@ mod tests {
     #[tokio::test(flavor = "local")]
     async fn a_refused_save_leaves_the_whole_checkpoint_as_it_was() {
         let (tree, _stores, _data) = store().await;
-        tree.create_node(record("root", None, 1), update(Vec::new(), 0)).await.unwrap();
+        tree.create_node(record("root", None, 0), update(Vec::new(), 0)).await.unwrap();
         let root = tree.session_store(&id("root"));
         let before = root.load().await.unwrap().unwrap();
 
@@ -959,7 +968,7 @@ mod tests {
     #[tokio::test(flavor = "local")]
     async fn the_history_is_the_root_then_each_subagent_depth_first_in_spawn_order() {
         let (tree, stores, _data) = store().await;
-        tree.create_node(record("root", None, 1), update(vec![(0, user("u1"))], 1)).await.unwrap();
+        tree.create_node(record("root", None, 0), update(vec![(0, user("u1"))], 1)).await.unwrap();
         for (node, parent, round) in [("b", "root", 5), ("a", "root", 3), ("a1", "a", 4)] {
             let blocks = vec![(0, reply(&format!("{node}-text")))];
             tree.create_node(record(node, Some(parent), round), update(blocks, 1)).await.unwrap();
@@ -1110,7 +1119,7 @@ mod tests {
         let written = Timestamp::UNIX_EPOCH;
         // A Fork's seed is the first checkpoint of its root, with a history.
         let seed = vec![(0, pasted("u1", written, 1)), (1, shot("t1", written, &[2, 3]))];
-        tree.create_node(record("root", None, 1), update(seed, 2)).await.unwrap();
+        tree.create_node(record("root", None, 0), update(seed, 2)).await.unwrap();
         check("a Fork's seed").await;
         let root = tree.session_store(&id("root"));
         let save = async |blocks: Vec<(usize, Block)>, count: usize| {
@@ -1173,5 +1182,7 @@ mod tests {
         store_contract::children_list_in_spawn_order_and_a_close_keeps_its_result(&tree).await;
         let (tree, _stores, _data) = store().await;
         store_contract::the_blob_namespace_names_bytes_by_their_sha256(&tree).await;
+        let (tree, _stores, _data) = store().await;
+        store_contract::each_sequence_gives_its_numbers_once_in_order(&tree).await;
     }
 }

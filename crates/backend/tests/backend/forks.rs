@@ -4,8 +4,10 @@
 //! command storage, edits and command outputs of that history, created once
 //! per destination id, while the source runs on and after the backend no
 //! longer holds the source. The edits' blobs are the source's: a Fork copies
-//! no bytes. No test calls a real model.
+//! no bytes; and the destination's numbers go on from the source's. No test
+//! calls a real model.
 
+use demi_agent::testing::field;
 use demi_backend::ObjectCounts;
 use demi_core::{Block, BlockId, ToolView};
 use demi_provider::testing::{MockResponse, MockVendor};
@@ -302,6 +304,7 @@ async fn a_fork_reads_the_outputs_of_the_commands_its_history_names() {
     let Ok([before, after]) = <[String; 2]>::try_from(commands(&blocks)) else {
         panic!("two commands: {blocks:?}");
     };
+    assert_eq!((before.as_str(), after.as_str()), ("1", "2"));
     let counted = texts(&blocks)[0].clone();
 
     // The destination's history names the first command, whose output
@@ -323,5 +326,7 @@ async fn a_fork_reads_the_outputs_of_the_commands_its_history_names() {
         read.contains(&format!("1\n2\n3\ndemi shell output: no command {after} in this conversation")),
         "{read}"
     );
+    // The destination goes on from its source's numbers.
+    assert_eq!(field(&read, "commandId"), "3");
     backend.close().await;
 }

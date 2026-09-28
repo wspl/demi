@@ -4,9 +4,56 @@
 
 use demi_core::{CommandId, ShellId};
 use schemars::{JsonSchema, generate::SchemaSettings};
-use serde::{Deserialize, de::DeserializeOwned};
+use serde::de::{self, DeserializeOwned, Unexpected, Visitor};
+use serde::{Deserialize, Deserializer};
 use serde_json::{Map, Value};
 use serde_with::rust::unwrap_or_skip;
+
+/// Reads a command's or a shell's number as the model writes it: an
+/// integer, or its digits as a string (`runtime.md` § Identifiers the model
+/// sees). serde_with's `PickFirst` does this behind features the workspace
+/// leaves off, which would rebuild every crate that uses it.
+struct NumberVisitor;
+
+impl Visitor<'_> for NumberVisitor {
+    type Value = u64;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("a number such as 17")
+    }
+
+    fn visit_u64<E: de::Error>(self, value: u64) -> Result<u64, E> {
+        Ok(value)
+    }
+
+    fn visit_str<E: de::Error>(self, value: &str) -> Result<u64, E> {
+        value
+            .parse()
+            .map_err(|_| E::invalid_value(Unexpected::Str(value), &self))
+    }
+}
+
+/// The identity a number names.
+fn numbered<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: TryFrom<String>,
+    T::Error: std::fmt::Display,
+{
+    let number = deserializer.deserialize_any(NumberVisitor)?;
+    T::try_from(number.to_string()).map_err(de::Error::custom)
+}
+
+/// The identity a number names, of an optional field that is absent or a
+/// number, never null.
+fn some_numbered<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: TryFrom<String>,
+    T::Error: std::fmt::Display,
+{
+    numbered(deserializer).map(Some)
+}
 
 /// The longest window a shell tool watches, and the longest yield.
 const MAX_DELAY_MS: u32 = 600_000;
@@ -29,12 +76,8 @@ pub(super) struct ShellExecInput {
         reason = "the call's title, which the renderer reads from its input"
     )]
     description: Option<String>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "unwrap_or_skip"
-    )]
-    #[schemars(with = "ShellId")]
+    #[serde(default, deserialize_with = "some_numbered")]
+    #[schemars(with = "u64")]
     pub(super) shell_id: Option<ShellId>,
     #[schemars(range(min = 1, max = MAX_DELAY_MS))]
     pub(super) timeout_ms: DelayMs,
@@ -43,6 +86,8 @@ pub(super) struct ShellExecInput {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct CommandInput {
+    #[serde(deserialize_with = "numbered")]
+    #[schemars(with = "u64")]
     pub(super) command_id: CommandId,
     #[serde(
         default,
@@ -60,6 +105,8 @@ pub(super) struct CommandInput {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct ShellWriteInput {
+    #[serde(deserialize_with = "numbered")]
+    #[schemars(with = "u64")]
     pub(super) command_id: CommandId,
     #[serde(
         default,
@@ -179,7 +226,7 @@ mod tests {
         assert_eq!(properties["timeoutMs"]["type"], "integer");
         assert_eq!(properties["timeoutMs"]["minimum"], 1);
         assert_eq!(properties["timeoutMs"]["maximum"], 600_000);
-        assert_eq!(properties["shellId"]["type"], "string");
+        assert_eq!(properties["shellId"]["type"], "integer");
         assert_eq!(
             properties["description"],
             json!({"type": "string", "description": DESCRIPTION})
@@ -196,8 +243,12 @@ mod tests {
         let refusal = |input: Value| parse::<ShellExecInput>("shell_exec", input).unwrap_err();
         for (input, field) in [
             (
-                json!({"script": "true", "timeoutMs": 1, "shellId": 42}),
-                "shellId: invalid type",
+                json!({"script": "true", "timeoutMs": 1, "shellId": "main"}),
+                "shellId: ",
+            ),
+            (
+                json!({"script": "true", "timeoutMs": 1, "shellId": null}),
+                "shellId: ",
             ),
             (
                 json!({"script": "true", "timeoutMs": 1, "maxOutputBytes": 10}),
@@ -225,7 +276,7 @@ mod tests {
             assert!(text.starts_with("shell_exec input is invalid:\n"), "{text}");
             assert!(text.contains(field), "{text}");
         }
-        let empty = parse::<ShellWriteInput>("shell_write", json!({"commandId": "c", "stdin": ""}));
+        let empty = parse::<ShellWriteInput>("shell_write", json!({"commandId": 7, "stdin": ""}));
         assert!(
             empty
                 .unwrap_err()

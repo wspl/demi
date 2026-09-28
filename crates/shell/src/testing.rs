@@ -1,16 +1,17 @@
 //! Test support: the Host conformance cases every [`Host`] passes, the
 //! command context test work carries, an in-memory port for `rpc`
-//! handlers, and a page feed that keeps what it is told.
+//! handlers, a page feed that keeps what it is told, and sequences that
+//! count from 1.
 
 use std::{
     cell::{Cell, RefCell},
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, HashMap, VecDeque},
     rc::Rc,
 };
 
 use bytes::Bytes;
 use demi_command_service::protocol::{CommandCaller, CommandContext, CommandLocale};
-use demi_core::{B64Bytes, StreamKind, Timestamp};
+use demi_core::{B64Bytes, Sequence, StreamKind, Timestamp};
 use futures_util::{StreamExt, future::LocalBoxFuture, stream};
 use serde_json::Value;
 use tokio::sync::{Notify, watch};
@@ -18,7 +19,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     ByteRange, CommandRecord, CpOptions, FileContents, FileKind, Host, HostError, MkdirOptions,
-    PageFeed, PageView, PortError, PortRequest, PortResponse, PortTransport, Process, ProcessEnd,
+    Numbers, PageFeed, PageView, PortError, PortRequest, PortResponse, PortTransport, Process, ProcessEnd,
     Revision, RmOptions, RpcPort, Signal, SpawnEnv, SpawnErrorKind, SpawnRequest, StorageOp,
     StorageReply, WriteOptions,
 };
@@ -78,6 +79,22 @@ impl PageFeed for TestPages {
 
     fn watching(&self) -> watch::Receiver<bool> {
         self.watching.subscribe()
+    }
+}
+
+/// A conversation's sequences for a test: each gives its numbers from 1.
+#[derive(Debug, Default)]
+pub struct CountingNumbers {
+    next: RefCell<HashMap<Sequence, u64>>,
+}
+
+impl Numbers for CountingNumbers {
+    fn next(&self, sequence: Sequence) -> LocalBoxFuture<'_, Result<u64, HostError>> {
+        let mut next = self.next.borrow_mut();
+        let slot = next.entry(sequence).or_insert(1);
+        let number = *slot;
+        *slot += 1;
+        Box::pin(async move { Ok(number) })
     }
 }
 

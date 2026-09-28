@@ -16,10 +16,10 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_core::{CommandId, ModelSelection, NodeId};
+use demi_core::{CommandId, ModelSelection, NodeId, Sequence};
 use demi_provider::{RequestLimits, ToolDefinition};
 use demi_shell::{
-    CommandSet, CommandState, CommandStatus, ExecRequest, Host, HostError, JobCaller,
+    CommandSet, CommandState, CommandStatus, ExecRequest, Host, HostError, JobCaller, Numbers,
     ObservationWindow, PageFeed, ShellEnvironment, ShellError, ShellTarget,
 };
 use futures_util::future::LocalBoxFuture;
@@ -32,7 +32,23 @@ use input::{CommandInput, ShellExecInput, ShellWriteInput, YieldInput, parse};
 use crate::{
     AgentHarness, PromptContext,
     session::{ToolEffect, ToolFailure, ToolInvocation, ToolOutcome},
+    store::AgentTreeStore,
 };
+
+/// The conversation's command and shell numbers, as its tree store gives
+/// them out.
+pub(crate) struct StoreNumbers(pub(crate) Rc<dyn AgentTreeStore>);
+
+impl Numbers for StoreNumbers {
+    fn next(&self, sequence: Sequence) -> LocalBoxFuture<'_, Result<u64, HostError>> {
+        Box::pin(async move {
+            self.0
+                .next_number(sequence)
+                .await
+                .map_err(|error| HostError::failed(None, error.to_string()))
+        })
+    }
+}
 
 /// The node an environment is made for.
 #[derive(Clone, Copy)]
@@ -46,6 +62,9 @@ pub struct EnvironmentScope<'a> {
     /// whether a page watches: the node's feed of its tree
     /// (`runtime.md` § Live output).
     pub feed: &'a Rc<dyn PageFeed>,
+    /// Where the environment's command and shell numbers come from: the
+    /// conversation's sequences, which the tree store gives out.
+    pub numbers: &'a Rc<dyn Numbers>,
 }
 
 /// Where a node's shell environments come from. The product makes the
@@ -141,6 +160,8 @@ pub(crate) struct ShellAccess<'a, H: AgentHarness> {
     pub(crate) commands: &'a Rc<CommandSet>,
     /// The node's feed, which its environments are made with.
     pub(crate) feed: &'a Rc<dyn PageFeed>,
+    /// The conversation's numbers, which its environments are made with.
+    pub(crate) numbers: &'a Rc<dyn Numbers>,
 }
 
 impl<H: AgentHarness> ShellAccess<'_, H> {
@@ -160,6 +181,7 @@ impl<H: AgentHarness> ShellAccess<'_, H> {
             node: self.context.node,
             commands: self.commands,
             feed: self.feed,
+            numbers: self.numbers,
         };
         let key = host.key();
         self.environments

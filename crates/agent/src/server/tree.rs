@@ -49,9 +49,6 @@ pub struct Tree<H: AgentHarness> {
     /// Bumped whenever a child starts or closes, which every supervision
     /// and the eviction watch.
     changes: watch::Sender<u64>,
-    /// How many children have joined the tree, which orders siblings of one
-    /// spawn time.
-    joined: Cell<u64>,
     /// Serializes the starts of each node's children.
     starts: KeyedSerialGate<NodeId>,
     /// The starts under way past their owner's check, by owner: a node
@@ -293,7 +290,6 @@ impl<H: AgentHarness> Tree<H> {
                 root: Rc::new(assembled.node),
                 children: RefCell::new(HashMap::new()),
                 changes,
-                joined: Cell::new(0),
                 starts: KeyedSerialGate::new(),
                 starting: RefCell::new(HashMap::new()),
                 lifecycle: TaskTracker::new(),

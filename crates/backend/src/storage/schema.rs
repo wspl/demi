@@ -258,10 +258,12 @@ CREATE TABLE attachments (
 const CONVERSATION_V1: &str = r"
 CREATE TABLE nodes (
   id               TEXT PRIMARY KEY,
+  number           INTEGER NOT NULL UNIQUE CHECK (number >= 0),
   parent_id        TEXT REFERENCES nodes (id) ON DELETE CASCADE,
   description      TEXT NOT NULL,
   profile          TEXT,
-  spawned_at       INTEGER NOT NULL,
+  round            INTEGER NOT NULL CHECK (round >= 1),
+  started_at       INTEGER NOT NULL,
   can_spawn        INTEGER NOT NULL CHECK (can_spawn IN (0, 1)),
   closed_phase     TEXT CHECK (closed_phase IN ('completed', 'aborted', 'error')),
   closed_at        INTEGER,
@@ -278,7 +280,15 @@ CREATE TABLE nodes (
 ) STRICT;
 -- One root per tree.
 CREATE UNIQUE INDEX nodes_root ON nodes ((parent_id IS NULL)) WHERE parent_id IS NULL;
-CREATE INDEX nodes_children ON nodes (parent_id, spawned_at);
+CREATE INDEX nodes_children ON nodes (parent_id, number);
+
+-- The next number of each sequence the model sees in the conversation: a
+-- number is advanced past in its own transaction before it is given out,
+-- so a crash leaves a gap and never gives a number twice.
+CREATE TABLE sequences (
+  name TEXT PRIMARY KEY CHECK (name IN ('command', 'shell', 'agent')),
+  next INTEGER NOT NULL CHECK (next >= 1)
+) STRICT;
 
 CREATE TABLE blocks (
   node_id TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,

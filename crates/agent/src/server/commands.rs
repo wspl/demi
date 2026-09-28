@@ -57,7 +57,7 @@ struct SpawnArgs {
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct SendArgs {
-    /// Target agent id from the tree, or "parent" for the session that
+    /// Target agent number from the tree, or "parent" for the session that
     /// spawned this one
     id: String,
     /// Message body.
@@ -69,7 +69,7 @@ struct SendArgs {
 #[serde(deny_unknown_fields)]
 struct AbortArgs {
     /// subagentId from spawn stdout
-    id: String,
+    id: u64,
 }
 
 /// The input of `demi agent resume`.
@@ -77,7 +77,7 @@ struct AbortArgs {
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 struct ResumeArgs {
     /// subagentId of an archived child
-    id: String,
+    id: u64,
     /// Stable id for this creation or resume request. Supply the same id and
     /// arguments to retry safely after an uncertain response; otherwise a new
     /// id is generated.
@@ -96,28 +96,28 @@ struct ListArgs {}
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct ShowArgs {
-    /// Agent id from the tree
-    id: String,
+    /// Agent number from the tree
+    id: u64,
 }
 
 /// `demi agent spawn --json` and `resume --json`.
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 struct Started {
-    subagent_id: NodeId,
+    subagent_id: u64,
 }
 
 /// `demi agent send --json`.
 #[derive(Serialize, JsonSchema)]
 struct Sent {
-    id: NodeId,
+    id: u64,
     accepted: bool,
 }
 
 /// `demi agent abort --json`.
 #[derive(Serialize, JsonSchema)]
 struct Aborted {
-    id: NodeId,
+    id: u64,
     aborted: bool,
 }
 
@@ -321,9 +321,14 @@ async fn resume<H: AgentHarness>(
     if message.is_empty() {
         return fail(&port, "resume", "message must not be empty").await;
     }
-    let id = match NodeId::try_from(call.args.id.as_str()) {
-        Ok(id) => id,
-        Err(error) => return fail(&port, "resume", &error.to_string()).await,
+    let number = call.args.id;
+    let id = match call.tree.child_of(&call.caller, number).await {
+        Ok(Some(id)) => id,
+        Ok(None) => {
+            let reason = format!("no archived subagent {number} (see `demi agent list`)");
+            return fail(&port, "resume", &reason).await;
+        }
+        Err(error) => return fail(&port, "resume", &error).await,
     };
     let input = StartInput::Resume {
         id,
@@ -365,15 +370,12 @@ async fn abort<H: AgentHarness>(
     call: Invoked<H, AbortArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
-    let id = call.args.id;
-    let Some(child) = NodeId::try_from(id.as_str())
-        .ok()
-        .filter(|child| call.tree.is_child_of(child, &call.caller))
-    else {
+    let number = call.args.id;
+    let Some(child) = call.tree.live_child_of(&call.caller, number) else {
         return fail(
             &port,
             "abort",
-            &format!("\"{id}\" is not one of your running children"),
+            &format!("{number} is not one of your running children"),
         )
         .await;
     };
@@ -382,13 +384,13 @@ async fn abort<H: AgentHarness>(
         return json(
             &port,
             &Aborted {
-                id: child,
+                id: number,
                 aborted: true,
             },
         )
         .await;
     }
-    out(&port, format!("aborted {child}\n")).await
+    out(&port, format!("aborted {number}\n")).await
 }
 
 async fn list<H: AgentHarness>(call: Invoked<H, ListArgs>, port: RpcPort) -> Result<u8, RpcError> {
@@ -409,12 +411,9 @@ async fn list<H: AgentHarness>(call: Invoked<H, ListArgs>, port: RpcPort) -> Res
 }
 
 async fn show<H: AgentHarness>(call: Invoked<H, ShowArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let id = call.args.id;
-    let Some((snapshot, text)) = NodeId::try_from(id.as_str())
-        .ok()
-        .and_then(|child| call.tree.show(&child))
-    else {
-        return fail(&port, "show", &format!("no live agent \"{id}\"")).await;
+    let number = call.args.id;
+    let Some((snapshot, text)) = call.tree.show(number) else {
+        return fail(&port, "show", &format!("no live agent {number}")).await;
     };
     if call.json {
         return json(&port, &Shown { agent: snapshot }).await;
@@ -422,7 +421,7 @@ async fn show<H: AgentHarness>(call: Invoked<H, ShowArgs>, port: RpcPort) -> Res
     out(&port, text).await
 }
 
-async fn started(port: &RpcPort, json_output: bool, child: NodeId) -> Result<u8, RpcError> {
+async fn started(port: &RpcPort, json_output: bool, child: u64) -> Result<u8, RpcError> {
     if json_output {
         return json(port, &Started { subagent_id: child }).await;
     }

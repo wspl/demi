@@ -16,7 +16,7 @@ use std::rc::Rc;
 use demi_agent_protocol::{JobPhase, SubagentJob};
 use demi_core::{
     AgentMessage, AgentMessageEvent, Block, CommandId, CompletionId, ModelSelection, NodeId,
-    OperationId, QueuedMessage, SessionPhase, Timestamp, TurnId, WakeupId,
+    OperationId, QueuedMessage, Sequence, SessionPhase, Timestamp, TurnId, WakeupId,
 };
 use demi_shell::WholeOutput;
 use futures_util::future::LocalBoxFuture;
@@ -58,7 +58,8 @@ pub trait AgentTreeStore {
         id: &'a NodeId,
     ) -> LocalBoxFuture<'a, Result<Option<NodeRecord>, StoreError>>;
 
-    /// A node's direct children in spawn order, live and archived alike.
+    /// A node's direct children in spawn order, which is the order of their
+    /// numbers, live and archived alike.
     fn children<'a>(
         &'a self,
         parent: &'a NodeId,
@@ -86,12 +87,14 @@ pub trait AgentTreeStore {
         close: NodeClose,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>>;
 
-    /// Makes a closed node live again in one commit: a new round, and the
-    /// reviving message queued in its checkpoint.
+    /// Makes a closed node live again in one commit: a new round, which
+    /// starts at `started_at`, and the reviving message queued in its
+    /// checkpoint.
     fn reopen_node<'a>(
         &'a self,
         id: &'a NodeId,
         round: u64,
+        started_at: Timestamp,
         message: QueuedMessage,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>>;
 
@@ -106,6 +109,12 @@ pub trait AgentTreeStore {
 
     /// Deletes the node and every descendant with all their rows.
     fn delete_node<'a>(&'a self, id: &'a NodeId) -> LocalBoxFuture<'a, Result<(), StoreError>>;
+
+    /// The conversation's next number of `sequence` (`runtime.md`
+    /// § Identifiers the model sees). The store records the number after it
+    /// before it answers, so no number is given twice and a crash can only
+    /// leave a gap.
+    fn next_number(&self, sequence: Sequence) -> LocalBoxFuture<'_, Result<u64, StoreError>>;
 
     /// What the conversation holds of the output of its command `command`,
     /// which ended (`storage.md` § Command outputs); none for a command it
@@ -172,17 +181,21 @@ impl CommitGuard {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeRecord {
     pub id: NodeId,
+    /// The number the model knows the agent by: 0 for the root, then the
+    /// conversation's agent sequence in spawn order (`runtime.md`
+    /// § Identifiers the model sees).
+    pub number: u64,
     pub parent: Option<NodeId>,
     /// A short title; empty for the root.
     pub description: String,
     /// The profile the node was spawned with; none for the root and for a
     /// node that inherits its parent's setup.
     pub profile: Option<String>,
-    /// When the node's current round started, in milliseconds since the Unix
-    /// epoch; it names one execution round of the node. The tree gives every
-    /// round from its clock, and a store refuses a record whose round is not
-    /// a [`Timestamp`].
+    /// The node's current round: 1 for its first run, one more at each
+    /// resume.
     pub round: u64,
+    /// When the current round started.
+    pub started_at: Timestamp,
     pub can_spawn_subagents: bool,
     /// How the node closed; none while it is live.
     pub closed: Option<NodeClose>,
@@ -191,14 +204,6 @@ pub struct NodeRecord {
 }
 
 impl NodeRecord {
-    /// When the node's current round started.
-    pub fn started_at(&self) -> Timestamp {
-        i64::try_from(self.round)
-            .ok()
-            .and_then(|millisecond| Timestamp::from_millisecond(millisecond).ok())
-            .expect("a store refuses a round that is not a time")
-    }
-
     /// A child as the `subagent` frames and the conversation's transcript
     /// route describe it (`subagents.md` § Protocol): running while it is
     /// live, else as it closed, with the result of a completed round. The
@@ -218,20 +223,23 @@ impl NodeRecord {
                 .closed
                 .as_ref()
                 .map_or(JobPhase::Running, |close| close.phase.job_phase()),
-            started_at: self.started_at(),
+            started_at: self.started_at,
             ended_at: self.closed.as_ref().map(|close| close.at),
             result,
         })
     }
 
-    /// The record of a conversation's root, whose id is the conversation's.
+    /// The record of a conversation's root, whose id is the conversation's:
+    /// agent 0, in its first round.
     pub fn root(id: NodeId, now: Timestamp) -> Self {
         Self {
             id,
+            number: 0,
             parent: None,
             description: String::new(),
             profile: None,
-            round: u64::try_from(now.as_millisecond()).unwrap_or(0),
+            round: 1,
+            started_at: now,
             can_spawn_subagents: true,
             closed: None,
             delivered: false,

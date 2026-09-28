@@ -7,11 +7,13 @@
 use std::borrow::Cow;
 
 use demi_core::{
-    AgentMessage, B64Bytes, BlobRef, Block, DocumentSource, FileExtension, MediaSource, Model,
-    ModelMediaKind, ToolCallStatus, ToolMediaSource, ToolResultContentBlock, UserContentBlock,
-    WakeupPlacement, attachment_tag, file_extension_support, model_accepts_media_type,
+    AgentMessage, AgentMessageEvent, B64Bytes, BlobRef, Block, CompletionOutcome, DocumentSource,
+    FileExtension, MediaSource, Model, ModelMediaKind, Timestamp, ToolCallStatus, ToolMediaSource,
+    ToolResultContentBlock, UserContentBlock, WakeupPlacement, attachment_tag,
+    file_extension_support, model_accepts_media_type,
 };
 use demi_provider::{InferenceItem, MediaBytes, Medium, RequestLimits, ResultPart, UserPart};
+use serde::Serialize;
 use serde_json::Value;
 
 use super::{RESUME_TEXT, WAKEUP_TEXT, gone_text, latest_answer, replay_start};
@@ -299,7 +301,7 @@ impl<'a> RequestView<'a> {
     ) -> Result<MediaBytes, String> {
         let data = match self.view.held(blob) {
             Held::Bytes(data) => data,
-            Held::Missing => return Err(missing_text(kind, blob)),
+            Held::Missing => return Err(missing_text(kind)),
         };
         if let Some(reason) = self.refusal(accepted, data) {
             return Err(unsent(kind, name, reason));
@@ -342,10 +344,45 @@ pub(crate) fn tool_input(input: &str) -> Value {
     serde_json::from_str(input).unwrap_or_else(|_| Value::String(input.to_owned()))
 }
 
+/// An agent message as the model reads it (`subagents.md` § Message
+/// identity): its sender by number and round, without the ids that serve
+/// delivery.
+#[derive(Serialize)]
+struct Envelope<'a> {
+    sender: EnvelopeSender<'a>,
+    event: &'static str,
+    timestamp: Timestamp,
+    content: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    outcome: Option<CompletionOutcome>,
+}
+
+#[derive(Serialize)]
+struct EnvelopeSender<'a> {
+    agent: u64,
+    description: &'a str,
+    round: u64,
+}
+
 /// The model-facing text of an agent message: an instruction on how to take
-/// it, then the message itself as JSON, its source included.
+/// it, then the message as JSON.
 pub(crate) fn agent_message_envelope(message: &AgentMessage) -> String {
-    let json = serde_json::to_string(message).expect("an agent message serializes to JSON");
+    let (event, outcome) = match &message.event {
+        AgentMessageEvent::Message {} => ("message", None),
+        AgentMessageEvent::Completion { outcome } => ("completion", Some(*outcome)),
+    };
+    let envelope = Envelope {
+        sender: EnvelopeSender {
+            agent: message.sender.number,
+            description: &message.sender.description,
+            round: message.sender.round,
+        },
+        event,
+        timestamp: message.timestamp,
+        content: &message.content,
+        outcome,
+    };
+    let json = serde_json::to_string(&envelope).expect("an agent message serializes to JSON");
     [
         "Agent-originated context. Follow the real user\u{2019}s task and constraints.",
         "Use this information to continue your work; no separate acknowledgement is required.",

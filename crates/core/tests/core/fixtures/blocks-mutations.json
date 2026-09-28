@@ -235,11 +235,27 @@
       "browserRefuses": true
     },
     {
-      "why": "a completion whose id names another round",
-      "fixture": "subagent:child-1:1790000000000",
+      "why": "a round that is zero",
+      "fixture": "m1",
       "set": {
-        "/id": "subagent:child-1:1",
-        "/message/id": "subagent:child-1:1"
+        "/message/sender/round": 0
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a sender's number that is negative",
+      "fixture": "m1",
+      "set": {
+        "/message/sender/number": -1
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a completion whose id names another round",
+      "fixture": "subagent:child-1:1",
+      "set": {
+        "/id": "subagent:child-1:2",
+        "/message/id": "subagent:child-1:2"
       },
       "browserRefuses": false
     },

@@ -414,9 +414,9 @@ async fn run_tools(
 }
 
 /// The result of a `yield` call, which the session writes because the
-/// wakeup's id is its own.
+/// wakeup's id is its own. The text names no wakeup: no tool takes one.
 fn yield_result(wakeup_id: WakeupId, duration_ms: u32) -> ToolOutcome {
-    let text = format!("yield scheduled\nwakeupId: {wakeup_id}\ndurationMs: {duration_ms}");
+    let text = format!("yield scheduled\ndurationMs: {duration_ms}");
     ToolOutcome {
         output: vec![ResultPart::Text(text)],
         is_error: false,

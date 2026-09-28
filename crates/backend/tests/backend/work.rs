@@ -463,6 +463,8 @@ async fn after_a_backend_restart_the_runner_comes_back_and_the_conversation_goes
         .turn(vec![shell("t1", "echo -n kept > kept.txt && cat kept.txt", 10_000), say("remember me")])
         .await;
     assert!(kept.received[0].contains("kept"), "{}", kept.received[0]);
+    // The conversation's first command is command 1.
+    assert_eq!(field(&kept.received[0], "commandId"), "1");
 
     // The backend stops under a running command: the call ends as an error
     // and the turn as interrupted, with nothing left dangling.
@@ -494,6 +496,8 @@ async fn after_a_backend_restart_the_runner_comes_back_and_the_conversation_goes
     assert!(after.received[0].contains("Tool call aborted"), "{}", after.received[0]);
     assert!(after.received[1].contains("kept"), "{}", after.received[1]);
     assert!(after.received[1].contains("host: machine \"alpha\""), "{}", after.received[1]);
+    // The cut command was 2; the restarted backend gives no number twice.
+    assert_eq!(field(&after.received[1], "commandId"), "3");
     backend.close().await;
 }
 

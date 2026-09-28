@@ -68,8 +68,8 @@ export const agentReceiptMessages: AgentMessage[] = [
   { type: 'completion' as const, outcome: 'failed' as const },
   { type: 'completion' as const, outcome: 'aborted' as const },
 ].map((event, index) => ({
-  id: event.type === 'completion' ? `subagent:agent-ui-${index}:${1789224000000 + index}` : `receipt-${index}`,
-  sender: { id: `agent-ui-${index}`, description: 'UI implementation', round: 1789224000000 + index },
+  id: event.type === 'completion' ? `subagent:agent-ui-${index}:1` : `receipt-${index}`,
+  sender: { id: `agent-ui-${index}`, number: index + 1, description: 'UI implementation', round: 1 },
   recipientId: 'gallery-parent',
   timestamp: '2026-09-12T12:00:00.000Z',
   content: index === 0

@@ -14,7 +14,7 @@ use std::{
 use demi_agent_protocol::{ClientContent, ClientFrame, ServerFrame};
 use demi_core::{
     B64Bytes, BlobRef, Block, Clock, CommandId, FileExtension, Model, ModelSelection, NodeId,
-    QueuedMessage, Timestamp, UserContentBlock,
+    QueuedMessage, Sequence, Timestamp, UserContentBlock,
 };
 use demi_provider::{ProviderRuntime, UserPart, testing::ScriptedRuntime};
 use futures_util::future::LocalBoxFuture;
@@ -335,15 +335,14 @@ struct StoredNode {
     command_state: CommandStateSnapshot,
     blocks: BTreeMap<usize, Block>,
     block_count: usize,
-    /// Its place in creation order, which breaks ties of equal rounds.
-    created: u64,
 }
 
 #[derive(Debug, Default, Clone)]
 struct Stored {
     nodes: BTreeMap<NodeId, StoredNode>,
     saves: Vec<(NodeId, CheckpointUpdate)>,
-    created: u64,
+    /// The next number of each sequence that gave one out.
+    sequences: BTreeMap<Sequence, u64>,
     failing_saves: usize,
     save_hold: Option<Rc<Hold>>,
     /// The holds on reads of a node's children, by the node.
@@ -449,6 +448,16 @@ impl MemoryTreeStore {
             .nodes
             .get(id)
             .map(|node| node.record.clone())
+    }
+
+    /// The node of the agent the model knows by `number`.
+    pub fn numbered(&self, number: u64) -> Option<NodeId> {
+        self.stored
+            .borrow()
+            .nodes
+            .values()
+            .find(|node| node.record.number == number)
+            .map(|node| node.record.id.clone())
     }
 
     /// Refuses the next `count` saves, as a failing database would.
@@ -601,7 +610,7 @@ impl AgentTreeStore for MemoryTreeStore {
                 .values()
                 .filter(|node| node.record.parent.as_ref() == Some(parent))
                 .collect();
-            children.sort_by_key(|node| (node.record.round, node.created));
+            children.sort_by_key(|node| node.record.number);
             Ok(children
                 .into_iter()
                 .map(|node| node.record.clone())
@@ -622,8 +631,6 @@ impl AgentTreeStore for MemoryTreeStore {
                     record.id
                 )));
             }
-            let created = stored.created;
-            stored.created += 1;
             let id = record.id.clone();
             stored.nodes.insert(
                 id.clone(),
@@ -633,7 +640,6 @@ impl AgentTreeStore for MemoryTreeStore {
                     command_state: CommandStateSnapshot::initial(),
                     blocks: BTreeMap::new(),
                     block_count: 0,
-                    created,
                 },
             );
             apply_save(&mut stored, &id, initial)
@@ -666,6 +672,7 @@ impl AgentTreeStore for MemoryTreeStore {
         &'a self,
         id: &'a NodeId,
         round: u64,
+        started_at: Timestamp,
         message: QueuedMessage,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
         Box::pin(async move {
@@ -674,6 +681,7 @@ impl AgentTreeStore for MemoryTreeStore {
             node.record.closed = None;
             node.record.delivered = false;
             node.record.round = round;
+            node.record.started_at = started_at;
             node.state.queue = vec![message];
             Ok(())
         })
@@ -713,6 +721,16 @@ impl AgentTreeStore for MemoryTreeStore {
                 stored.nodes.remove(&doomed);
             }
             Ok(())
+        })
+    }
+
+    fn next_number(&self, sequence: Sequence) -> LocalBoxFuture<'_, Result<u64, StoreError>> {
+        Box::pin(async move {
+            let mut stored = self.stored.borrow_mut();
+            let next = stored.sequences.entry(sequence).or_insert(1);
+            let number = *next;
+            *next += 1;
+            Ok(number)
         })
     }
 
@@ -885,8 +903,8 @@ pub fn waiting_frames(outbox: &mut FrameRx) -> Vec<ServerFrame> {
 pub mod store_contract {
     use demi_core::{
         AgentMessage, AgentMessageBlock, AgentMessageEvent, B64Bytes, BlobRef, Block, CompletionId,
-        CompletionOutcome, NodeId, QueuedMessage, Sender, SessionPhase, Timestamp, TurnId,
-        UserBlock,
+        CompletionOutcome, NodeId, QueuedMessage, Sender, Sequence, SessionPhase, Timestamp,
+        TurnId, UserBlock,
     };
 
     use sha2::{Digest, Sha256};
@@ -904,13 +922,16 @@ pub mod store_contract {
         NodeId::try_from(value).expect("a test node id is not empty")
     }
 
-    fn record(node: &str, parent: Option<&str>, round: u64) -> NodeRecord {
+    /// A node in its first round, agent `number` of the conversation.
+    fn record(node: &str, parent: Option<&str>, number: u64) -> NodeRecord {
         NodeRecord {
             id: id(node),
+            number,
             parent: parent.map(id),
             description: String::new(),
             profile: None,
-            round,
+            round: 1,
+            started_at: Timestamp::UNIX_EPOCH,
             can_spawn_subagents: true,
             closed: None,
             delivered: false,
@@ -952,6 +973,7 @@ pub mod store_contract {
             id: completion.block_id(),
             sender: Sender {
                 id: id(child),
+                number: 1,
                 description: child.into(),
                 round,
             },
@@ -1017,13 +1039,13 @@ pub mod store_contract {
     ) {
         create(
             store,
-            record("root", None, 1),
+            record("root", None, 0),
             update(Vec::new(), Vec::new()),
         )
         .await;
         create(
             store,
-            record("child", Some("root"), 2),
+            record("child", Some("root"), 1),
             update(vec![message("m1")], Vec::new()),
         )
         .await;
@@ -1059,7 +1081,7 @@ pub mod store_contract {
         assert_eq!(loaded.transcript.len(), 1);
         let again = store
             .create_node(
-                record("child", Some("root"), 3),
+                record("child", Some("root"), 2),
                 update(Vec::new(), Vec::new()),
             )
             .await;
@@ -1071,14 +1093,14 @@ pub mod store_contract {
     ) {
         create(
             store,
-            record("root", None, 1),
+            record("root", None, 0),
             update(Vec::new(), Vec::new()),
         )
         .await;
-        for child in ["a", "b"] {
+        for (child, number) in [("a", 1), ("b", 2)] {
             create(
                 store,
-                record(child, Some("root"), 1),
+                record(child, Some("root"), number),
                 update(Vec::new(), Vec::new()),
             )
             .await;
@@ -1117,7 +1139,7 @@ pub mod store_contract {
     ) {
         create(
             store,
-            record("root", None, 1),
+            record("root", None, 0),
             update(Vec::new(), Vec::new()),
         )
         .await;
@@ -1129,7 +1151,7 @@ pub mod store_contract {
         .await;
         create(
             store,
-            record("grandchild", Some("child"), 1),
+            record("grandchild", Some("child"), 2),
             update(Vec::new(), Vec::new()),
         )
         .await;
@@ -1151,14 +1173,15 @@ pub mod store_contract {
             Some(failed)
         );
 
+        let resumed = Timestamp::from_millisecond(60_000).expect("the time is in range");
         store
-            .reopen_node(&id("child"), 9, message("m2"))
+            .reopen_node(&id("child"), 2, resumed, message("m2"))
             .await
             .expect("the node reopens");
         let reopened = stored(store, "child").await.expect("the node exists");
         assert_eq!(
-            (reopened.closed, reopened.round, reopened.delivered),
-            (None, 9, false)
+            (reopened.closed, reopened.round, reopened.started_at, reopened.delivered),
+            (None, 2, resumed, false)
         );
         assert_eq!(queue(store, "child").await, [message("m2")]);
 
@@ -1176,7 +1199,7 @@ pub mod store_contract {
     ) {
         create(
             store,
-            record("root", None, 1),
+            record("root", None, 0),
             update(Vec::new(), Vec::new()),
         )
         .await;
@@ -1191,7 +1214,7 @@ pub mod store_contract {
             .await
             .expect("the node closes");
         store
-            .reopen_node(&id("child"), 3, message("again"))
+            .reopen_node(&id("child"), 2, Timestamp::UNIX_EPOCH, message("again"))
             .await
             .expect("the node reopens");
         store
@@ -1210,11 +1233,42 @@ pub mod store_contract {
             .expect("an earlier round marks nothing");
         assert!(!delivered(store, "child").await);
 
-        let current = update(Vec::new(), vec![receipt("child", 1), receipt("child", 3)]);
+        let current = update(Vec::new(), vec![receipt("child", 1), receipt("child", 2)]);
         root.save(current, &Default::default())
             .await
             .expect("the save commits");
         assert!(delivered(store, "child").await);
+    }
+
+    /// Each sequence gives its numbers from 1, once each and in order, apart
+    /// from the others.
+    pub async fn each_sequence_gives_its_numbers_once_in_order(store: &dyn AgentTreeStore) {
+        let mut given = Vec::new();
+        for sequence in [
+            Sequence::Command,
+            Sequence::Command,
+            Sequence::Shell,
+            Sequence::Agent,
+            Sequence::Command,
+            Sequence::Shell,
+        ] {
+            let number = store
+                .next_number(sequence)
+                .await
+                .expect("the store gives a number");
+            given.push((sequence, number));
+        }
+        assert_eq!(
+            given,
+            [
+                (Sequence::Command, 1),
+                (Sequence::Command, 2),
+                (Sequence::Shell, 1),
+                (Sequence::Agent, 1),
+                (Sequence::Command, 3),
+                (Sequence::Shell, 2),
+            ]
+        );
     }
 
     /// A node's blob namespace names bytes by their SHA-256 and gives them
@@ -1244,13 +1298,13 @@ pub mod store_contract {
     ) {
         create(
             store,
-            record("root", None, 1),
+            record("root", None, 0),
             update(Vec::new(), Vec::new()),
         )
         .await;
         create(
             store,
-            record("child", Some("root"), 4),
+            record("child", Some("root"), 1),
             update(Vec::new(), Vec::new()),
         )
         .await;
@@ -1258,7 +1312,7 @@ pub mod store_contract {
             .close_node(&id("child"), completed("child done"))
             .await
             .expect("the node closes");
-        let Block::AgentMessage(receipt) = receipt("child", 4) else {
+        let Block::AgentMessage(receipt) = receipt("child", 1) else {
             unreachable!("a receipt is an agent message")
         };
         let mut save = update(Vec::new(), Vec::new());
@@ -1275,26 +1329,27 @@ pub mod store_contract {
         assert!(delivered(store, "child").await);
     }
 
-    /// A node's children list in spawn order, and in creation order for one
-    /// spawn time; a close keeps its phase, time and result.
+    /// A node's children list in spawn order, the order of their numbers,
+    /// whatever order the store received them in; a close keeps its phase,
+    /// time and result.
     pub async fn children_list_in_spawn_order_and_a_close_keeps_its_result(
         store: &dyn AgentTreeStore,
     ) {
         create(
             store,
-            record("root", None, 1),
+            record("root", None, 0),
             update(Vec::new(), Vec::new()),
         )
         .await;
-        for (child, round) in [
-            ("late", 3),
+        for (child, number) in [
+            ("late", 4),
             ("early", 1),
-            ("first-of-two", 2),
-            ("second-of-two", 2),
+            ("second", 3),
+            ("first", 2),
         ] {
             create(
                 store,
-                record(child, Some("root"), round),
+                record(child, Some("root"), number),
                 update(Vec::new(), Vec::new()),
             )
             .await;
@@ -1317,7 +1372,7 @@ pub mod store_contract {
             .into_iter()
             .map(|node| node.id.to_string())
             .collect();
-        assert_eq!(children, ["early", "first-of-two", "second-of-two", "late"]);
+        assert_eq!(children, ["early", "first", "second", "late"]);
         let early = stored(store, "early").await.expect("the node exists");
         assert_eq!((early.closed, early.delivered), (Some(close), false));
     }

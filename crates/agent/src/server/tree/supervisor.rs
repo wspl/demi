@@ -13,7 +13,7 @@ use std::{
 use demi_agent_protocol::{JobPhase, ServerFrame, SubagentEvent, TranscriptPatch};
 use demi_core::{
     AgentMessage, AgentMessageEvent, Block, BlockId, CompletionId, CompletionOutcome, NodeId,
-    QueuedMessage, Sender, ToolCallBlock, ToolCallStatus, TurnId, UserContentBlock,
+    QueuedMessage, Sender, Sequence, ToolCallBlock, ToolCallStatus, TurnId, UserContentBlock,
 };
 use demi_gates::Purpose;
 use demi_shell::{RpcError, RpcPort};
@@ -47,8 +47,6 @@ const OWNER_CLOSING: &str = "owner session is closing";
 /// A live child: its node, and what its supervision keeps about it.
 pub(crate) struct Child<H: AgentHarness> {
     node: Rc<Node<H>>,
-    /// When it joined the tree, which orders children of one round.
-    order: u64,
     /// Set in the one step that decides the child closes; a message sent to
     /// it after that step is refused.
     closing: Cell<bool>,
@@ -81,9 +79,9 @@ impl<H: AgentHarness> Child<H> {
             .expect("a child's record names its parent")
     }
 
-    /// Its place among its siblings: by spawn time, then as it joined.
-    fn rank(&self) -> (u64, u64) {
-        (self.node.record().round, self.order)
+    /// Its place among its siblings: spawn order, its number's.
+    fn rank(&self) -> u64 {
+        self.node.record().number
     }
 
     pub(super) fn stop_supervision(&self) {
@@ -120,8 +118,9 @@ pub(crate) enum StartInput {
 struct StartReceipt {
     input: StartInput,
     node_id: NodeId,
-    /// The round the start begins.
-    spawned_at: u64,
+    /// The round the start begins: 1 for a spawn, one more than the child's
+    /// last for a resume.
+    round: u64,
 }
 
 /// How a child closes.
@@ -214,24 +213,20 @@ impl<H: AgentHarness> Tree<H> {
         Ok(())
     }
 
-    fn now_ms(&self) -> u64 {
-        u64::try_from(self.clock.now().as_millisecond()).unwrap_or(0)
-    }
-
     /// Starts a child of `caller` for `demi agent spawn` or `resume`
     /// (`subagents.md` § Creation command ownership): reserves the request
     /// in the caller's command storage through `port`, then creates or
     /// reopens the child. The start runs in a task of the tree, so once its
     /// reservation is committed it runs to its end even when the call is
     /// cancelled; a reservation the cancelled call could not commit starts
-    /// nothing. Starts of one owner take turns.
+    /// nothing. Starts of one owner take turns. Answers the child's number.
     pub(crate) async fn start(
         self: &Rc<Self>,
         caller: &NodeId,
         input: StartInput,
         request: String,
         port: &RpcPort,
-    ) -> Result<NodeId, String> {
+    ) -> Result<u64, String> {
         let tree = self.clone();
         let caller = caller.clone();
         let port = port.clone();
@@ -265,7 +260,7 @@ impl<H: AgentHarness> Tree<H> {
             StartInput::Spawn { .. } => StartReceipt {
                 input: input.clone(),
                 node_id: self.new_node_id(),
-                spawned_at: self.now_ms(),
+                round: 1,
             },
             StartInput::Resume { id, .. } => {
                 let previous = self
@@ -276,10 +271,7 @@ impl<H: AgentHarness> Tree<H> {
                 StartReceipt {
                     input: input.clone(),
                     node_id: id.clone(),
-                    // A round strictly newer than the previous one.
-                    spawned_at: self
-                        .now_ms()
-                        .max(previous.map_or(0, |record| record.round) + 1),
+                    round: previous.map_or(1, |record| record.round + 1),
                 }
             }
         };
@@ -297,12 +289,13 @@ impl<H: AgentHarness> Tree<H> {
 
     /// Finishes a reserved start: a retry returns the child the reservation
     /// made, restoring it when it is live in the store but not in the tree;
-    /// otherwise the child is spawned or reopened.
+    /// otherwise the child is spawned, with the next agent number, or
+    /// reopened. Answers the child's number.
     async fn finish_start(
         self: &Rc<Self>,
         owner: &Rc<Node<H>>,
         receipt: StartReceipt,
-    ) -> Result<NodeId, String> {
+    ) -> Result<u64, String> {
         if self.disposing.get() {
             return Err(OWNER_CLOSING.to_owned());
         }
@@ -316,14 +309,14 @@ impl<H: AgentHarness> Tree<H> {
                 return Err("request-id references an agent owned by another session".to_owned());
             }
             let spawn = matches!(receipt.input, StartInput::Spawn { .. });
-            if spawn || record.round == receipt.spawned_at {
-                let id = record.id.clone();
-                if record.closed.is_none() && !self.is_live(&id) {
+            if spawn || record.round == receipt.round {
+                let number = record.number;
+                if record.closed.is_none() && !self.is_live(&record.id) {
                     self.start_child(owner, record, None).await?;
                 }
-                return Ok(id);
+                return Ok(number);
             }
-            if record.round > receipt.spawned_at {
+            if record.round > receipt.round {
                 return Err("resume request has been superseded by a later round".to_owned());
             }
         }
@@ -341,69 +334,83 @@ impl<H: AgentHarness> Tree<H> {
                 let profile = self.profile(profile_name.as_deref())?;
                 let can_spawn = !is_spawn_forbidden
                     && profile.is_none_or(|profile| profile.can_spawn_subagents);
+                let number = self
+                    .store
+                    .next_number(Sequence::Agent)
+                    .await
+                    .map_err(|error| error.to_string())?;
                 let record = NodeRecord {
                     id: receipt.node_id,
+                    number,
                     parent: Some(owner.id().clone()),
                     description,
                     profile: profile_name,
-                    round: receipt.spawned_at,
+                    round: receipt.round,
+                    started_at: self.clock.now(),
                     can_spawn_subagents: can_spawn,
                     closed: None,
                     delivered: false,
                 };
                 let brief = self.text_message(prompt);
-                self.start_child(owner, record, Some(brief)).await
+                self.start_child(owner, record, Some(brief)).await?;
+                Ok(number)
             }
             StartInput::Resume { id, message } => {
-                self.reopen(owner, id, message, receipt.spawned_at).await
+                self.reopen(owner, id, message, receipt.round).await
             }
         }
     }
 
     /// Revives an archived child of `owner` in one commit, a new round with
     /// the message queued, and restores it from its preserved transcript.
+    /// Answers its number.
     async fn reopen(
         self: &Rc<Self>,
         owner: &Rc<Node<H>>,
         id: NodeId,
         message: String,
         round: u64,
-    ) -> Result<NodeId, String> {
-        if self.is_live(&id) {
-            return Err(format!(
-                "subagent \"{id}\" is still running; send it a message instead"
-            ));
-        }
-        self.check_capacity(owner.id())?;
+    ) -> Result<u64, String> {
         let stored = self
             .store
             .node(&id)
             .await
             .map_err(|error| error.to_string())?;
-        let Some(record) = stored
-            .filter(|record| record.closed.is_some() && record.parent.as_ref() == Some(owner.id()))
-        else {
-            return Err(format!(
-                "no archived subagent \"{id}\" (see `demi agent list`)"
-            ));
+        let Some(record) = stored.filter(|record| record.parent.as_ref() == Some(owner.id())) else {
+            return Err("no such subagent of yours (see `demi agent list`)".to_owned());
         };
+        let number = record.number;
+        if self.is_live(&id) {
+            return Err(format!(
+                "subagent {number} is still running; send it a message instead"
+            ));
+        }
+        if record.closed.is_none() {
+            return Err(format!(
+                "no archived subagent {number} (see `demi agent list`)"
+            ));
+        }
+        self.check_capacity(owner.id())?;
         if !record.delivered {
             return Err("The previous completion is not saved by the parent yet; retry resume after receiving it".to_owned());
         }
         // A profile the harness no longer declares leaves the archive as it
         // is.
         self.profile(record.profile.as_deref())?;
+        let started_at = self.clock.now();
         self.store
-            .reopen_node(&id, round, self.text_message(message))
+            .reopen_node(&id, round, started_at, self.text_message(message))
             .await
             .map_err(|error| error.to_string())?;
         let live = NodeRecord {
             round,
+            started_at,
             closed: None,
             delivered: false,
             ..record
         };
-        self.start_child(owner, live, None).await
+        self.start_child(owner, live, None).await?;
+        Ok(number)
     }
 
     fn new_node_id(&self) -> NodeId {
@@ -450,7 +457,7 @@ impl<H: AgentHarness> Tree<H> {
         let can_spawn = record.can_spawn_subagents;
         let commands = with_runtime_groups(&inherited, &server, can_spawn, &self.profiles)
             .map_err(|error| error.to_string())?;
-        let preamble = subagent_preamble(&record.id, owner.id(), can_spawn);
+        let preamble = subagent_preamble(record.number, owner.record().number, can_spawn);
         let feed = self.live.feed(Some(record.id.clone()));
         let assembled = node::assemble(NodeSpec {
             record,
@@ -530,7 +537,6 @@ impl<H: AgentHarness> Tree<H> {
             });
             Child {
                 node: node.clone(),
-                order: self.joined.get(),
                 closing: Cell::new(false),
                 failure: RefCell::new(None),
                 wake: Rc::new(Notify::new()),
@@ -540,7 +546,6 @@ impl<H: AgentHarness> Tree<H> {
                 supervision: RefCell::new(None),
             }
         });
-        self.joined.set(self.joined.get() + 1);
         self.children
             .borrow_mut()
             .insert(child.id().clone(), child.clone());
@@ -740,21 +745,22 @@ impl<H: AgentHarness> Tree<H> {
         }
     }
 
-    /// Sends a message from `caller` to any live agent of the tree, or to
-    /// its parent (`subagents.md` § One communication operation); returns
-    /// the recipient once the message is accepted durably.
+    /// Sends a message from `caller` to any live agent of the tree, which
+    /// `target` names by its number, or to its parent (`subagents.md` § One
+    /// communication operation); returns the recipient's number once the
+    /// message is accepted durably.
     pub(crate) async fn send_message(
         &self,
         caller: &NodeId,
         target: &str,
         content: String,
-    ) -> Result<NodeId, String> {
+    ) -> Result<u64, String> {
         let sender = self
             .node(caller)
             .ok_or("this session is not in the agent directory")?;
-        let no_live = |id: &str| {
+        let no_live = || {
             format!(
-                "no live agent \"{id}\" (see `demi agent list`; an archived child is revived only by its parent via resume)"
+                "no live agent \"{target}\" (see `demi agent list`; an archived child is revived only by its parent via resume)"
             )
         };
         let recipient_id = if target == "parent" {
@@ -764,7 +770,12 @@ impl<H: AgentHarness> Tree<H> {
                 .clone()
                 .ok_or("the root session has no parent")?
         } else {
-            NodeId::try_from(target).map_err(|_| no_live(target))?
+            let number: u64 = target.parse().map_err(|_| no_live())?;
+            if number == self.root.record().number {
+                self.root.id().clone()
+            } else {
+                self.child_numbered(number).ok_or_else(no_live)?.id().clone()
+            }
         };
         if &recipient_id == caller {
             return Err("cannot message your own session".to_owned());
@@ -774,7 +785,7 @@ impl<H: AgentHarness> Tree<H> {
         } else {
             match self.child(&recipient_id) {
                 Some(child) if !child.closing.get() => child.node.clone(),
-                _ => return Err(no_live(recipient_id.as_str())),
+                _ => return Err(no_live()),
             }
         };
         let description = if sender.record().parent.is_none() {
@@ -787,6 +798,7 @@ impl<H: AgentHarness> Tree<H> {
                 .expect("an id source never gives an empty id"),
             sender: Sender {
                 id: caller.clone(),
+                number: sender.record().number,
                 description,
                 round: sender.record().round,
             },
@@ -800,7 +812,7 @@ impl<H: AgentHarness> Tree<H> {
             .accept_agent_message(message)
             .await
             .map_err(|error| error.to_string())?;
-        Ok(recipient_id)
+        Ok(recipient.record().number)
     }
 
     /// Each live child's `started` frame and transcript, depth first in
@@ -835,17 +847,23 @@ impl<H: AgentHarness> Tree<H> {
         Ok(Listing { root })
     }
 
+    /// The node `id` with its children: the root when `child` is none, else
+    /// that live child with its parent's number.
     fn list_node(
         &self,
         id: NodeId,
-        child: Option<Rc<Child<H>>>,
+        child: Option<(Rc<Child<H>>, u64)>,
         now: i64,
     ) -> LocalBoxFuture<'_, Result<ListNode, String>> {
         Box::pin(async move {
+            let number = match &child {
+                Some((child, _)) => child.node.record().number,
+                None => self.root.record().number,
+            };
             let mut children = Vec::new();
             for live in self.children_of(&id) {
                 let live_id = live.id().clone();
-                children.push(self.list_node(live_id, Some(live), now).await?);
+                children.push(self.list_node(live_id, Some((live, number)), now).await?);
             }
             let mut archived: Vec<NodeRecord> = self
                 .store
@@ -866,29 +884,32 @@ impl<H: AgentHarness> Tree<H> {
                     closed_ago_ms: Some(age(now, close.at.as_millisecond())),
                     line: None,
                     children: Vec::new(),
-                    parent: record.parent.clone(),
+                    number: record.number,
+                    parent: Some(number),
                     description: record.description.clone(),
                     profile: record.profile.clone(),
                     id: record.id,
                 });
             }
             Ok(match child {
-                Some(child) => {
+                Some((child, parent)) => {
                     let record = child.node.record();
                     ListNode {
                         id,
-                        parent: record.parent.clone(),
+                        number,
+                        parent: Some(parent),
                         kind: EntryKind::Live,
                         description: record.description.clone(),
                         profile: record.profile.clone(),
                         phase: JobPhase::Running,
                         closed_ago_ms: None,
-                        line: Some(list_line(&child, now)),
+                        line: Some(list_line(&snapshot(&child, parent, now))),
                         children,
                     }
                 }
                 None => ListNode {
                     id,
+                    number,
                     parent: None,
                     kind: EntryKind::Root,
                     description: String::new(),
@@ -902,15 +923,46 @@ impl<H: AgentHarness> Tree<H> {
         })
     }
 
-    /// A bounded snapshot of a live child, as JSON and as text
-    /// (`subagents.md` § `demi agent show`); none for the root and for an id
-    /// that is not live.
-    pub(crate) fn show(&self, id: &NodeId) -> Option<(AgentSnapshot, String)> {
-        let child = self.child(id)?;
+    /// A bounded snapshot of the live child the model knows by `number`, as
+    /// JSON and as text (`subagents.md` § `demi agent show`); none for the
+    /// root and for a number no live child has.
+    pub(crate) fn show(&self, number: u64) -> Option<(AgentSnapshot, String)> {
+        let child = self.child_numbered(number)?;
+        let parent = self.node(child.parent())?.record().number;
         let now = self.clock.now().as_millisecond();
-        let snapshot = snapshot(&child, now);
+        let snapshot = snapshot(&child, parent, now);
         let text = show_text(&snapshot);
         Some((snapshot, text))
+    }
+
+    /// The live child of `owner` the model knows by `number`.
+    pub(crate) fn live_child_of(&self, owner: &NodeId, number: u64) -> Option<NodeId> {
+        self.child_numbered(number)
+            .filter(|child| child.parent() == owner)
+            .map(|child| child.id().clone())
+    }
+
+    /// The live child the model knows by `number`.
+    fn child_numbered(&self, number: u64) -> Option<Rc<Child<H>>> {
+        self.children
+            .borrow()
+            .values()
+            .find(|child| child.node.record().number == number)
+            .cloned()
+    }
+
+    /// The child of `owner` the model knows by `number`, live or archived;
+    /// none when `owner` has no such child.
+    pub(crate) async fn child_of(&self, owner: &NodeId, number: u64) -> Result<Option<NodeId>, String> {
+        let children = self
+            .store
+            .children(owner)
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(children
+            .into_iter()
+            .find(|record| record.number == number)
+            .map(|record| record.id))
     }
 }
 
@@ -1027,6 +1079,7 @@ fn completion(record: &NodeRecord, close: &NodeClose) -> AgentMessage {
         id: round.block_id(),
         sender: Sender {
             id: record.id.clone(),
+            number: record.number,
             description: record.description.clone(),
             round: record.round,
         },
@@ -1047,14 +1100,14 @@ fn bounded(text: &str) -> &str {
 
 /// The child's preamble, after the one it inherits (`subagents.md` § Child
 /// context).
-fn subagent_preamble(child: &NodeId, parent: &NodeId, can_spawn: bool) -> String {
+fn subagent_preamble(child: u64, parent: u64, can_spawn: bool) -> String {
     let spawning = if can_spawn {
         "`demi agent spawn` spawns your own children."
     } else {
         "This session may not spawn subagents."
     };
     [
-        format!("You are a subagent: a child agent session (id {child}) spawned by parent agent session {parent}. Your transcript starts empty; the task brief in the first user message is your entire context."),
+        format!("You are a subagent: agent {child} of this conversation, spawned by agent {parent}. Your transcript starts empty; the task brief in the first user message is your entire context."),
         "When you end your turn with nothing pending — no queued messages, no scheduled wakeups, no running children of your own — the session ends and your last assistant text is returned to the parent as the result. Write it for the parent agent, in the shape the task brief asked for.".to_owned(),
         spawning.to_owned(),
         "`demi agent send <id|parent>` delivers useful interim information, questions, or blockers through internal steering or an idle wakeup. It reads the message only from stdin (use a quoted heredoc). Your final answer is delivered automatically; do not send a duplicate final result. `demi agent list` renders the whole agent tree with your position.".to_owned(),
@@ -1206,7 +1259,9 @@ fn duration(ms: u64) -> String {
 /// One node of `demi agent list`.
 struct ListNode {
     id: NodeId,
-    parent: Option<NodeId>,
+    number: u64,
+    /// The parent's number; none for the root.
+    parent: Option<u64>,
     kind: EntryKind,
     description: String,
     profile: Option<String>,
@@ -1234,8 +1289,8 @@ pub(crate) struct Listing {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct TreeEntry {
-    subagent_id: NodeId,
-    parent_session_id: Option<NodeId>,
+    subagent_id: u64,
+    parent_session_id: Option<u64>,
     kind: EntryKind,
     description: String,
     profile: Option<String>,
@@ -1259,8 +1314,8 @@ impl Listing {
         let mut stack = vec![&self.root];
         while let Some(node) = stack.pop() {
             entries.push(TreeEntry {
-                subagent_id: node.id.clone(),
-                parent_session_id: node.parent.clone(),
+                subagent_id: node.number,
+                parent_session_id: node.parent,
                 kind: node.kind,
                 description: node.description.clone(),
                 profile: node.profile.clone(),
@@ -1283,7 +1338,7 @@ fn render_node(
 ) {
     let marker = if &node.id == caller { " ← you" } else { "" };
     let body = match node.kind {
-        EntryKind::Root => format!("● {}  (root session){marker}", node.id),
+        EntryKind::Root => format!("● {}  (root session){marker}", node.number),
         EntryKind::Archived => {
             let ago = node
                 .closed_ago_ms
@@ -1291,7 +1346,7 @@ fn render_node(
                 .unwrap_or_default();
             format!(
                 "○ {}  archived ({}{ago})  {}",
-                node.id,
+                node.number,
                 node.phase,
                 quoted(&node.description)
             )
@@ -1331,9 +1386,8 @@ fn quoted(description: &str) -> String {
     }
 }
 
-/// A live child's line in `demi agent list`.
-fn list_line<H: AgentHarness>(child: &Child<H>, now: i64) -> String {
-    let snapshot = snapshot(child, now);
+/// A live child's line in `demi agent list`, from its snapshot.
+fn list_line(snapshot: &AgentSnapshot) -> String {
     [
         snapshot.subagent_id.to_string(),
         snapshot.phase.to_string(),
@@ -1355,8 +1409,8 @@ fn list_line<H: AgentHarness>(child: &Child<H>, now: i64) -> String {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AgentSnapshot {
-    subagent_id: NodeId,
-    parent_session_id: NodeId,
+    subagent_id: u64,
+    parent_session_id: u64,
     description: String,
     profile: Option<String>,
     phase: JobPhase,
@@ -1380,7 +1434,8 @@ struct ToolSnapshot {
     ended_ago_ms: Option<u64>,
 }
 
-fn snapshot<H: AgentHarness>(child: &Child<H>, now: i64) -> AgentSnapshot {
+/// `child`'s snapshot; `parent` is its parent's number.
+fn snapshot<H: AgentHarness>(child: &Child<H>, parent: u64, now: i64) -> AgentSnapshot {
     let record = child.node.record();
     let session = child.node.session();
     let telemetry = child.telemetry.borrow();
@@ -1396,12 +1451,12 @@ fn snapshot<H: AgentHarness>(child: &Child<H>, now: i64) -> AgentSnapshot {
         _ => telemetry.last_event_at,
     };
     AgentSnapshot {
-        subagent_id: record.id.clone(),
-        parent_session_id: child.parent().clone(),
+        subagent_id: record.number,
+        parent_session_id: parent,
         description: record.description.clone(),
         profile: record.profile.clone(),
         phase: JobPhase::Running,
-        elapsed_ms: age(now, record.started_at().as_millisecond()),
+        elapsed_ms: age(now, record.started_at.as_millisecond()),
         last_event_ms: age(now, telemetry.last_event_at),
         execution,
         activity,

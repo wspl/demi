@@ -318,7 +318,7 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
         data: png.clone(),
         media_type: "image/png".into(),
     }));
-    let missing = UserPart::Text(format!("[missing image blob {uploaded}]"));
+    let missing = UserPart::Text("[missing image]".to_owned());
     let tag = UserPart::Text(attachment_tag(attachment));
     let first_messages: Vec<Option<InferenceItem>> = script
         .requests()

@@ -31,7 +31,7 @@ use demi_shell::{
     GroupBuilder, Host, HostError, HostErrorKind, JobCaller, LeafBuilder, ObservationWindow,
     Process, ProcessEnd, ProcessOutput, RpcError, RpcPort, Seen, ShellEnvironment, ShellTarget,
     Signal, SpawnEnv, SpawnRequest, StorageOp, StorageReply, Streams, TypedRpc, WriteOptions,
-    testing::{TestPages, host_conformance_cases, test_command_context},
+    testing::{CountingNumbers, TestPages, host_conformance_cases, test_command_context},
 };
 use futures_util::{Stream, StreamExt};
 use schemars::JsonSchema;
@@ -71,7 +71,7 @@ fn shell_on(
     commands: Option<CommandSelection>,
 ) -> RemoteShellEnvironment {
     let context: ContextSource = Rc::new(|| Box::pin(async { Ok(test_command_context()) }));
-    let mut options = EnvironmentOptions::new(host, context, TestPages::new(false));
+    let mut options = EnvironmentOptions::new(host, context, TestPages::new(false), Rc::new(CountingNumbers::default()));
     options.initial_env = [("PATH", "/usr/bin:/bin")]
         .iter()
         .chain(env)

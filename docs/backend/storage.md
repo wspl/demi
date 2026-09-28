@@ -165,7 +165,7 @@ Host. The node lifecycle and its commits are defined in
 
 | Table | Meaning |
 |---|---|
-| `nodes` | Parent relationship, the agent's number and its current round ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)), description and profile, spawn time and whether the node may spawn children, close result or failure, completion-delivery state, checkpoint state, block count, command and output revisions |
+| `nodes` | Parent relationship, the agent's number and its current round ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)) with the round's start time, description and profile, whether the node may spawn children, close result or failure, completion-delivery state, checkpoint state, block count, command and output revisions |
 | `sequences` | The next number of each sequence the model sees in the conversation: commands, shells, agents and browser tabs. The backend advances a sequence in its own transaction before it gives the number out, so a crash leaves a gap and never gives a number twice |
 | `blocks` | One transcript block per node and block index |
 | `blob_refs` | An index of the blobs the blocks reference, for the [retention pass](#retention): one row per reference, with the node, the block index, the reference's place in the block, the blob, what refers to it (a message's medium, a tool result's medium or an edit copy), and the block's time. The rows are derived from the blocks, never written on their own: one function derives a block's rows, and every path of the tree store that writes a block, a save, a history rewrite, an edit, a Fork's seed and a retirement, replaces that block's rows with it in the same transaction. It indexes what SQLite cannot index inside a block's JSON |

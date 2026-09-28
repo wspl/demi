@@ -6,7 +6,7 @@
 use std::{cell::RefCell, rc::Rc, sync::Arc, time::Duration};
 
 use bytes::Bytes;
-use demi_core::{BinaryStdout, CommandId, EditedFile, NodeId, OutputView, ShellId, StreamView};
+use demi_core::{BinaryStdout, CommandId, EditedFile, NodeId, OutputView, Sequence, ShellId, StreamView};
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
@@ -79,6 +79,14 @@ pub trait ShellEnvironment {
     fn owns_shell(&self, shell: &ShellId) -> bool;
 
     fn owns_command(&self, command: &CommandId) -> bool;
+}
+
+/// Where an environment's command and shell numbers come from: the
+/// conversation's sequences, which give each number once, in order
+/// (`runtime.md` § Identifiers the model sees).
+pub trait Numbers {
+    /// The conversation's next number of `sequence`.
+    fn next(&self, sequence: Sequence) -> LocalBoxFuture<'_, Result<u64, HostError>>;
 }
 
 /// Where a node's shell environments tell the pages of their commands

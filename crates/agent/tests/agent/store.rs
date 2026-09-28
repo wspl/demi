@@ -54,3 +54,8 @@ async fn children_list_in_spawn_order_and_a_close_keeps_its_result() {
     )
     .await;
 }
+
+#[tokio::test(flavor = "local")]
+async fn each_sequence_gives_its_numbers_once_in_order() {
+    store_contract::each_sequence_gives_its_numbers_once_in_order(&*MemoryTreeStore::new()).await;
+}

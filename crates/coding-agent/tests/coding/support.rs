@@ -59,7 +59,7 @@ impl ShellEnvironmentFactory<RemoteHost> for RunnerShells {
     ) -> LocalBoxFuture<'a, Result<Rc<dyn ShellEnvironment>, HostError>> {
         let context: ContextSource = Rc::new(|| Box::pin(async { Ok(test_command_context()) }));
         let mut options =
-            EnvironmentOptions::new(RemoteHost::clone(&host), context, scope.feed.clone());
+            EnvironmentOptions::new(RemoteHost::clone(&host), context, scope.feed.clone(), scope.numbers.clone());
         options.initial_env = BTreeMap::from([("PATH".to_owned(), "/usr/bin:/bin".to_owned())]);
         let made = self
             .0

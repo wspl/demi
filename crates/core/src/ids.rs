@@ -176,3 +176,20 @@ crate::id!(
     /// is recognized.
     OperationId
 );
+
+/// A sequence of the numbers the model knows a conversation's things by
+/// (`runtime.md` § Identifiers the model sees): each is given once, in order,
+/// across crashes, restores and Forks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Sequence {
+    /// Commands, from 1: `17`.
+    Command,
+    /// Shells, from 1: `3`.
+    Shell,
+    /// Subagents, from 1; the root is agent 0.
+    Agent,
+}
+
+serde_plain::derive_display_from_serialize!(Sequence);
+serde_plain::derive_fromstr_from_deserialize!(Sequence);

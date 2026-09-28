@@ -424,8 +424,9 @@
       "id": "m1",
       "sender": {
         "id": "child-1",
+        "number": 1,
         "description": "Runs the tests",
-        "round": 1790000000000
+        "round": 1
       },
       "recipientId": "root",
       "timestamp": "2026-09-21T14:13:20.000Z",
@@ -437,7 +438,7 @@
   },
   {
     "type": "agent_message",
-    "id": "subagent:child-1:1790000000000",
+    "id": "subagent:child-1:1",
     "createdAt": "2026-09-21T14:13:20.000Z",
     "model": {
       "providerId": "anthropic",
@@ -497,11 +498,12 @@
     },
     "turnId": "turn-4",
     "message": {
-      "id": "subagent:child-1:1790000000000",
+      "id": "subagent:child-1:1",
       "sender": {
         "id": "child-1",
+        "number": 1,
         "description": "Runs the tests",
-        "round": 1790000000000
+        "round": 1
       },
       "recipientId": "root",
       "timestamp": "2026-09-21T14:13:20.000Z",
