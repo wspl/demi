@@ -2,10 +2,14 @@
 //! (`sessions-and-targets.md` § Bind jobs to their caller): a call runs only
 //! for a live job on the connection whose command context names the
 //! conversation of the Host that started it, and it reaches that job's agent
-//! node's commands and storage.
+//! node's commands and storage. A native service's conversation numbers come
+//! only from a conversation of the user that reaches the device
+//! (`native-runtime.md` § Conversation numbers).
 
 use std::rc::{Rc, Weak};
 
+use demi_command_service::protocol::ServiceSequence;
+use demi_core::Sequence;
 use demi_host_remote::{JobOrigin, LinkPolicy};
 use demi_runner_protocol::wire::VolumeName;
 use demi_shell::{PortError, RpcError, RpcInvocation, RpcPort, StorageOp, StorageReply};
@@ -14,8 +18,10 @@ use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 
 use super::conversation_of;
+use super::host_commands::reachable;
 use crate::conversation::root_of;
 use crate::shard::Shard;
+use crate::storage::sequences;
 
 /// The rules of one device's connection, in its user's shard.
 pub(crate) struct ShardPolicy {
@@ -91,6 +97,40 @@ impl LinkPolicy for ShardPolicy {
                 tracing::warn!(device = %device, %volume, bytes, "volume growth refused: {error}");
             }
             grown
+        })
+    }
+
+    /// Reserves the numbers in the conversation's sequence, for a
+    /// conversation of the user that reaches this device as its main Host or
+    /// an attached one.
+    fn reserve_numbers(
+        &self,
+        conversation: String,
+        sequence: ServiceSequence,
+        count: u32,
+    ) -> LocalBoxFuture<'static, Result<u64, String>> {
+        let shard = self.shard();
+        let device = self.device.clone();
+        Box::pin(async move {
+            let shard = shard?;
+            let conversation = ConversationId::try_from(conversation.as_str())
+                .map_err(|_| format!("no conversation {conversation}"))?;
+            let hosts = reachable(&shard, &conversation)
+                .await
+                .map_err(|error| error.to_string())?;
+            if !hosts.iter().any(|host| host.device == device) {
+                return Err("the conversation does not reach this device".into());
+            }
+            let sequence = match sequence {
+                ServiceSequence::Tab => Sequence::Tab,
+            };
+            shard
+                .services()
+                .conversations
+                .db(&conversation)
+                .call(move |connection| sequences::reserve(connection, sequence, count))
+                .await
+                .map_err(|error| error.to_string())
         })
     }
 }

@@ -4,10 +4,11 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::protocol::{
     CONVERSATION_PATH, ConversationRequest, INFO_PATH, INVOKE_PATH, MAX_METADATA_BYTES,
-    MAX_RECORD_BYTES, Metadata, ProtocolError, Record, RecordDecoder, SHUTDOWN_PATH, ServiceInfo,
+    MAX_RECORD_BYTES, Metadata, NUMBERS_PATH, NumbersOpen, ProtocolError, Record, RecordDecoder,
+    SHUTDOWN_PATH, ServiceInfo,
 };
 use crate::{
-    ServiceError,
+    NumbersStream, ServiceError,
     stream::{CONNECTION_WINDOW, send_bytes},
 };
 
@@ -67,6 +68,13 @@ impl Client {
         request: &ConversationRequest,
     ) -> Result<(CommandInput, CommandOutput), ServiceError> {
         self.invoke_at(CONVERSATION_PATH, request.encode()?).await
+    }
+
+    /// Opens the service's numbers stream (`native-runtime.md`
+    /// § Conversation numbers), which the caller answers.
+    pub async fn numbers(&self) -> Result<NumbersStream, ServiceError> {
+        let (input, output) = self.invoke_at(NUMBERS_PATH, NumbersOpen {}.encode()?).await?;
+        Ok(NumbersStream { input, output })
     }
 
     async fn invoke_at(

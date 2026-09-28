@@ -230,7 +230,7 @@ async fn main() -> Result<(), Error> {
 fn context() -> CommandContext {
     CommandContext {
         conversation: "conversation".into(),
-        caller: CommandCaller::agent("node"),
+        caller: CommandCaller::agent(1),
         locale: CommandLocale {
             time_zone: "UTC".into(),
             languages: vec!["en-US".into()],

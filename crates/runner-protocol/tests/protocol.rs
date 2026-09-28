@@ -45,7 +45,7 @@ fn msgpack(value: &Value) -> Vec<u8> {
 #[test]
 fn every_backend_frame_decodes_and_encodes_to_the_same_bytes() {
     let frames = corpus("backend-to-runner");
-    assert_eq!(frames.len(), 57);
+    assert_eq!(frames.len(), 59);
     for (name, bytes) in frames {
         let message: Inbound =
             wire::decode(&bytes).unwrap_or_else(|error| panic!("{name}: {error}"));
@@ -56,7 +56,7 @@ fn every_backend_frame_decodes_and_encodes_to_the_same_bytes() {
 #[test]
 fn every_runner_frame_decodes_and_encodes_to_the_same_bytes() {
     let frames = corpus("runner-to-backend");
-    assert_eq!(frames.len(), 55);
+    assert_eq!(frames.len(), 56);
     for (name, bytes) in frames {
         let message: Outbound =
             wire::decode(&bytes).unwrap_or_else(|error| panic!("{name}: {error}"));
@@ -83,7 +83,7 @@ fn binary_times_and_contexts_decode_to_their_values() {
     match wire::decode(&frame("backend-to-runner", "job_start")).unwrap() {
         Inbound::JobStart { context, .. } => {
             assert_eq!(context.conversation, "conversation-1");
-            assert_eq!(context.caller.node(), Some("node-1"));
+            assert_eq!(context.caller.agent_number(), Some(1));
             assert_eq!(context.locale.time_zone, "Asia/Shanghai");
             assert_eq!(context.locale.languages, ["zh-CN", "en"]);
         }
@@ -123,7 +123,7 @@ fn refuses_disguised_binary_unknown_fields_trailing_data_and_optional_nulls() {
 #[test]
 fn nested_values_are_validated_where_the_message_enters() {
     let mut context = json!({
-        "conversation": "", "caller": {"kind": "agent", "node": "node"},
+        "conversation": "", "caller": {"kind": "agent", "number": 1},
         "locale": {"timeZone": "UTC", "languages": ["en"]},
     });
     let job = |context: &Value| {
@@ -133,7 +133,7 @@ fn nested_values_are_validated_where_the_message_enters() {
     assert!(wire::decode::<Inbound>(&msgpack(&job(&context))).is_err());
     context["conversation"] = json!("conversation");
     assert!(wire::decode::<Inbound>(&msgpack(&job(&context))).is_ok());
-    context["caller"] = json!({"kind": "user", "node": "node"});
+    context["caller"] = json!({"kind": "user", "number": 1});
     assert!(wire::decode::<Inbound>(&msgpack(&job(&context))).is_err());
     let mut hashed = job(&json!({
         "conversation": "c", "caller": {"kind": "user"},
@@ -192,6 +192,27 @@ fn log_reads_bound_their_limit_and_log_lines_name_their_source() {
         next: 42,
     };
     assert!(wire::encode(&reply).is_err());
+}
+
+#[test]
+fn a_numbers_request_asks_for_one_to_sixteen_numbers_of_a_named_sequence() {
+    let request = |count: u64, sequence: &str| {
+        json!({"type": "numbers_reserve", "id": "numbers", "conversationId": "c",
+            "sequence": sequence, "count": count})
+    };
+    for (count, sequence, valid) in [
+        (1, "tab", true),
+        (16, "tab", true),
+        (0, "tab", false),
+        (17, "tab", false),
+        (1, "command", false),
+    ] {
+        let decoded = wire::decode::<Outbound>(&msgpack(&request(count, sequence)));
+        assert_eq!(decoded.is_ok(), valid, "{count} {sequence}");
+    }
+    let answer = |first: u64| json!({"type": "numbers_reserved", "id": "numbers", "first": first});
+    assert!(wire::decode::<Inbound>(&msgpack(&answer(1))).is_ok());
+    assert!(wire::decode::<Inbound>(&msgpack(&answer(0))).is_err());
 }
 
 #[test]

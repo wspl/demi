@@ -5,8 +5,8 @@
 use std::collections::BTreeMap;
 
 use demi_command_service::protocol::{
-    ArtifactLocation, CommandContext, EditCopies, EditKind, PackageDescriptor, conversation_name, digest,
-    without_nul,
+    ArtifactLocation, CommandContext, EditCopies, EditKind, MAX_NUMBERS, PackageDescriptor,
+    ServiceSequence, conversation_name, digest, without_nul,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -212,6 +212,17 @@ pub enum Inbound {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         error: Option<String>,
     },
+    /// The numbers a `numbers_reserve` asked for: the first of them, or why
+    /// there are none (`native-runtime.md` § Conversation numbers).
+    NumbersReserved {
+        id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[garde(inner(range(min = 1)))]
+        first: Option<u64>,
+        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[garde(inner(length(min = 1)))]
+        error: Option<String>,
+    },
     /// Stream `length` bytes from `offset`, or to the end, into `output`.
     #[serde(rename = "fs_readFile")]
     FsReadFile {
@@ -398,6 +409,16 @@ pub enum Outbound {
         id: String,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         error: Option<String>,
+    },
+    /// Reserves `count` numbers of the conversation's `sequence` for a
+    /// native service (`native-runtime.md` § Conversation numbers).
+    NumbersReserve {
+        id: String,
+        #[garde(custom(conversation_name))]
+        conversation_id: String,
+        sequence: ServiceSequence,
+        #[garde(range(min = 1, max = MAX_NUMBERS))]
+        count: u32,
     },
     /// Where to fetch an artifact, for the live work it serves.
     ArtifactResolve {

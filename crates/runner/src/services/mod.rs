@@ -8,7 +8,7 @@ pub mod registry;
 
 use std::{fmt, path::PathBuf, time::SystemTime};
 
-use demi_command_service::protocol::{ArtifactLocation, PackageArtifact};
+use demi_command_service::protocol::{ArtifactLocation, PackageArtifact, ServiceSequence};
 use futures_util::future::BoxFuture;
 use tokio_util::sync::CancellationToken;
 
@@ -135,4 +135,19 @@ pub trait ArtifactResolver: Send + Sync + 'static {
         artifact: &'a PackageArtifact,
         cancel: &'a CancellationToken,
     ) -> BoxFuture<'a, Result<ArtifactSource, RuntimeError>>;
+}
+
+/// Where a service's requests for conversation numbers go
+/// (`native-runtime.md` § Conversation numbers): the backend connection the
+/// service started under, which a lost connection ends together with the
+/// service.
+pub trait NumberSource: Send + Sync + 'static {
+    /// The first of `count` numbers of `conversation`'s `sequence`, or why
+    /// the backend gave none.
+    fn reserve(
+        &self,
+        conversation: String,
+        sequence: ServiceSequence,
+        count: u32,
+    ) -> BoxFuture<'_, Result<u64, String>>;
 }

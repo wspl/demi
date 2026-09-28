@@ -14,11 +14,12 @@ use tokio_util::task::AbortOnDropHandle;
 
 use crate::protocol::{
     CONVERSATION_PATH, CommandError, Completion, ConversationRequest, INFO_PATH, INVOKE_PATH,
-    Invocation, MAX_METADATA_BYTES, MAX_RECORD_BYTES, Metadata, ProtocolError, Record, SHUTDOWN_PATH,
-    ServiceInfo, VERSION,
+    Invocation, MAX_METADATA_BYTES, MAX_RECORD_BYTES, Metadata, NUMBERS_PATH, NumbersOpen,
+    ProtocolError, Record, SHUTDOWN_PATH, ServiceInfo, VERSION,
 };
 use crate::{
     Input, ServiceError,
+    numbers::{self, Draw, Numbers},
     stream::{CONNECTION_WINDOW, HttpInput, send_bytes},
 };
 
@@ -74,6 +75,14 @@ pub trait Handler: Send + Sync + 'static {
     /// Invocations have stopped before the service releases conversation state.
     fn close(&self) -> Pin<Box<dyn Future<Output = Result<(), ServiceError>> + Send>> {
         Box::pin(async { Ok(()) })
+    }
+
+    /// Takes the connection's numbers source before the first call
+    /// (`native-runtime.md` § Conversation numbers); the runner's numbers
+    /// stream answers its draws.
+    fn numbers(&self, numbers: Numbers) {
+        // A service that names nothing with conversation numbers draws none.
+        drop(numbers);
     }
 }
 
@@ -176,6 +185,12 @@ where
         result = tokio::time::timeout(METADATA_TIMEOUT, builder.handshake(io)) => result.map_err(|_| ServiceError::HandshakeTimeout)??,
     };
     let cancellation = owner.child_token();
+    let (numbers, draws) = Numbers::channel();
+    handler.numbers(numbers);
+    // The runner opens the numbers stream once. Shutdown finishes it, since
+    // it would otherwise hold the draining connection open.
+    let mut draws = Some(draws);
+    let finish_numbers = CancellationToken::new();
     let mut tasks = JoinSet::new();
     let mut draining = false;
     let _cancel_on_drop = cancellation.drop_guard_ref();
@@ -209,14 +224,28 @@ where
                         }
                         (&Method::POST, SHUTDOWN_PATH) => {
                             draining = true;
+                            finish_numbers.cancel();
                             response.send_response(Response::new(()), true)?;
                             connection.graceful_shutdown();
                         }
                         (&Method::POST, INVOKE_PATH | CONVERSATION_PATH) if !draining => {
-                            let conversation = request.uri().path() == CONVERSATION_PATH;
+                            let kind = if request.uri().path() == CONVERSATION_PATH {
+                                Kind::Conversation
+                            } else {
+                                Kind::Invocation
+                            };
                             tasks.spawn(invoke(
                                 request, response, handler.clone(), operations.clone(),
-                                cancellation.child_token(), conversation,
+                                cancellation.child_token(), kind,
+                            ));
+                        }
+                        (&Method::POST, NUMBERS_PATH) if !draining => {
+                            // Only the first opens the stream; a later one is
+                            // refused once its metadata is read.
+                            tasks.spawn(invoke(
+                                request, response, handler.clone(), operations.clone(),
+                                cancellation.child_token(),
+                                Kind::Numbers { draws: draws.take(), finish: finish_numbers.clone() },
                             ));
                         }
                         _ => {
@@ -265,29 +294,51 @@ fn reject(response: &mut SendResponse<Bytes>, status: StatusCode) -> Result<(), 
     Ok(())
 }
 
+/// What a request to run something opens.
+enum Kind {
+    Invocation,
+    Conversation,
+    /// The numbers stream, which answers these draws until `finish`; none
+    /// when the stream is open already.
+    Numbers {
+        draws: Option<mpsc::Receiver<Draw>>,
+        finish: CancellationToken,
+    },
+}
+
 async fn invoke<H: Handler + ?Sized>(
     request: Request<h2::RecvStream>,
     mut response: SendResponse<Bytes>,
     handler: Arc<H>,
     operations: Vec<String>,
     cancellation: CancellationToken,
-    conversation: bool,
+    kind: Kind,
 ) -> Result<(), ServiceError> {
     let _cancel_on_drop = cancellation.drop_guard_ref();
     let mut body = HttpInput::new(request.into_body());
     enum Call<M> {
         Invocation(Box<M>),
         Conversation(ConversationRequest),
+        Numbers(mpsc::Receiver<Draw>, CancellationToken),
     }
     let metadata = async {
-        if conversation {
-            let request: ConversationRequest = body.metadata().await?;
-            request.validate()?;
-            Ok::<_, ServiceError>(Call::Conversation(request))
-        } else {
-            let request: H::Metadata = body.metadata().await?;
-            request.validate()?;
-            Ok(Call::Invocation(Box::new(request)))
+        match kind {
+            Kind::Conversation => {
+                let request: ConversationRequest = body.metadata().await?;
+                request.validate()?;
+                Ok::<_, ServiceError>(Call::Conversation(request))
+            }
+            Kind::Invocation => {
+                let request: H::Metadata = body.metadata().await?;
+                request.validate()?;
+                Ok(Call::Invocation(Box::new(request)))
+            }
+            Kind::Numbers { draws, finish } => {
+                let open: NumbersOpen = body.metadata().await?;
+                open.validate()?;
+                let draws = draws.ok_or(ServiceError::Rejected(StatusCode::CONFLICT.as_u16()))?;
+                Ok(Call::Numbers(draws, finish))
+            }
         }
     };
     let metadata = tokio::select! {
@@ -296,6 +347,10 @@ async fn invoke<H: Handler + ?Sized>(
     };
     let call = match metadata {
         Ok(Ok(value)) => value,
+        Ok(Err(ServiceError::Rejected(status))) => {
+            let status = StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_REQUEST);
+            return reject(&mut response, status);
+        }
         _ => return reject(&mut response, StatusCode::BAD_REQUEST),
     };
     if let Call::Invocation(request) = &call
@@ -325,6 +380,10 @@ async fn invoke<H: Handler + ?Sized>(
                 output,
                 cancellation: cancellation.clone(),
             })
+        }
+        Call::Numbers(draws, finish) => {
+            body.set_output(output.clone());
+            Box::pin(numbers::relay(draws, Input::http(body), output, finish))
         }
     };
     let mut task = AbortOnDropHandle::new(tokio::spawn(work));

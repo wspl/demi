@@ -12,28 +12,31 @@ use super::edits::EditContext;
 /// The most language tags a [`CommandLocale`] carries.
 pub const COMMAND_LOCALE_LANGUAGES: usize = 16;
 
-/// Who started the work: an agent node, or the conversation's user through a
-/// user stream. `User` is a struct variant so that unknown fields are refused:
-/// serde ignores them for a unit variant of an internally tagged enum.
+/// Who started the work: an agent, by its number in the conversation as the
+/// model knows it (`runtime.md` § Identifiers the model sees), or the
+/// conversation's user through a user stream. `User` is a struct variant so
+/// that unknown fields are refused: serde ignores them for a unit variant of
+/// an internally tagged enum.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
 pub enum CommandCaller {
     Agent {
-        #[garde(length(min = 1))]
-        node: String,
+        #[garde(skip)]
+        number: u64,
     },
     User {},
 }
 
 impl CommandCaller {
-    pub fn agent(node: impl Into<String>) -> Self {
-        Self::Agent { node: node.into() }
+    pub fn agent(number: u64) -> Self {
+        Self::Agent { number }
     }
 
-    /// The agent node that started the work; none when the user did.
-    pub fn node(&self) -> Option<&str> {
+    /// The number of the agent that started the work; none when the user
+    /// did.
+    pub fn agent_number(&self) -> Option<u64> {
         match self {
-            Self::Agent { node } => Some(node),
+            Self::Agent { number } => Some(*number),
             Self::User {} => None,
         }
     }

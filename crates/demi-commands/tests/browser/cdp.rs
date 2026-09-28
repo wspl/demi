@@ -175,9 +175,9 @@ async fn cdp_detach_releases_only_its_caller_and_timeouts_identify_other_debug_o
     let server = crate::server::Server::start("<!doctype html><title>Unblocked</title>").await;
     let url = server.base.clone();
     with_browser_fixture(|mut first| async move {
-        first.caller = "caller-one".into();
+        first.caller = 1;
         let mut second = first.clone();
-        second.caller = "caller-two".into();
+        second.caller = 2;
         let tab = first.open("cdp.html").await;
         first.call("browser.cdp.send", json!({"tab":tab,"method":"Fetch.enable","params":"{}"})).await;
         second.call("browser.cdp.send", json!({"tab":tab,"method":"Runtime.enable","params":"{}"})).await;
@@ -185,7 +185,7 @@ async fn cdp_detach_releases_only_its_caller_and_timeouts_identify_other_debug_o
         let (_, timeout) = second.result("browser.goto", json!({"tab":tab,"url":url,"timeout":300}), CancellationToken::new()).await;
         assert_eq!(timeout["error"]["code"], "timeout", "{timeout}");
         assert_eq!(timeout["error"]["details"]["tab"], tab);
-        assert_eq!(timeout["error"]["details"]["debuggingCallers"], json!(["caller-one"]));
+        assert_eq!(timeout["error"]["details"]["debuggingCallers"], json!([1]));
         let detached = first.call("browser.cdp.detach", json!({"tab":tab})).await;
         assert_eq!(detached["detached"], tab);
         assert_eq!(first.call("browser.cdp.detach", json!({"tab":tab})).await, detached);

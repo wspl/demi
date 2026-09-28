@@ -483,9 +483,8 @@ against the same harness profile list.
 
 A child's jobs carry a
 [command context](../execution/native-runtime.md#command-context) whose
-`caller` is `agent` with the child's node; the model knows that node by its
-number, `subagentId`. There
-is no depth marker: depth has no behavioral meaning.
+`caller` is `agent` with the child's number, the one the model knows as its
+`subagentId`. There is no depth marker: depth has no behavioral meaning.
 
 ## Child context
 

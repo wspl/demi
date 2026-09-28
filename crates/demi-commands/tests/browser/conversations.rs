@@ -29,7 +29,7 @@ async fn release_cancels_a_browser_command_blocked_on_output() {
             invocation_id: "blocked-output".into(),
             context: CommandContext {
                 conversation: "conversation".into(),
-                caller: CommandCaller::agent("caller"),
+                caller: CommandCaller::agent(1),
                 locale: CommandLocale {
                     time_zone: "UTC".into(),
                     languages: vec!["en-US".into()],

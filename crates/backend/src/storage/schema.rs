@@ -291,7 +291,7 @@ CREATE INDEX nodes_children ON nodes (parent_id, number);
 -- number is advanced past in its own transaction before it is given out,
 -- so a crash leaves a gap and never gives a number twice.
 CREATE TABLE sequences (
-  name TEXT PRIMARY KEY CHECK (name IN ('command', 'shell', 'agent')),
+  name TEXT PRIMARY KEY CHECK (name IN ('command', 'shell', 'agent', 'tab')),
   next INTEGER NOT NULL CHECK (next >= 1)
 ) STRICT;
 

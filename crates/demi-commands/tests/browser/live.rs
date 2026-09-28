@@ -16,6 +16,7 @@ use axum::{
 };
 use crate::families::{BrowserFixture, with_browser_fixture};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
+use demi_builtin_protocol::live::VideoHeader;
 use demi_command_service::{
     Input, ServiceError,
     protocol::{CommandCaller, Completion, Record},
@@ -153,21 +154,15 @@ impl View {
                     let parsed = match frame.get_u8() {
                         1 => Frame::Control(serde_json::from_slice(&frame).unwrap()),
                         2 => {
-                            let tab = String::from_utf8(frame.split_to(24).to_vec()).unwrap();
-                            let generation = frame.get_u32();
-                            let sequence = frame.get_u32();
-                            let key = frame.get_u8() == 1;
-                            frame.advance(3 + 8);
-                            let width = frame.get_u16();
-                            let height = frame.get_u16();
+                            let (header, _) = VideoHeader::split(&frame).unwrap();
                             Frame::Video {
-                                tab,
-                                generation,
-                                sequence,
-                                key,
-                                width,
-                                height,
-                                data: frame,
+                                tab: header.tab.to_string(),
+                                generation: header.generation,
+                                sequence: header.sequence,
+                                key: header.key,
+                                width: header.width,
+                                height: header.height,
+                                data: frame.slice(VideoHeader::BYTES..),
                             }
                         }
                         kind => panic!("unknown frame kind {kind}"),
@@ -862,7 +857,7 @@ async fn the_users_requests_answer_without_waiting_for_a_page() {
         assert!(started.elapsed() < prompt, "goto waited for its page");
         assert_eq!(went, json!({"tab": tab, "url": slow}));
 
-        let missing = "t_0000000000000000000000";
+        let missing = "t999";
         let (code, refused) = user_result(&fixture, "browser.close", json!({"tab": missing})).await;
         assert_eq!(
             (code, &refused["error"]["code"]),

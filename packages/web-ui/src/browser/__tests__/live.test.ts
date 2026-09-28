@@ -1,6 +1,6 @@
 import { expect, jest, spyOn, test } from 'bun:test'
 import type { LiveControl, LiveModuleMessage, LiveTab, LiveViewerMessage } from '@demicodes/protocol'
-import { LiveFrameReader, encodeFile, encodeMessage, type LiveFrame } from '../frames'
+import { LiveFrameReader, encodeFile, encodeMessage, encodeVideo, type LiveFrame } from '../frames'
 import { keyMessage, localKey, modifiers, pointerMessage, viewerPlatform, wheelMessage } from '../input'
 import { pageReturned } from '../../transport/liveness'
 import { LiveSession, REFUSED_FRAME, SILENT_STREAM, type LiveSessionOptions, type LiveStreamHandlers, type PictureSink } from '../session'
@@ -11,21 +11,16 @@ const PHONE = { width: 390, height: 844, devicePixelRatio: 2, mode: 'mobile' } a
 
 /** A module frame as the Host writes it. */
 function video(tab: string, generation: number, sequence: number, key: boolean, data: number[]): Uint8Array {
-  const payload = new Uint8Array(48 + data.length)
-  const header = new DataView(payload.buffer)
-  payload.set(new TextEncoder().encode(tab))
-  header.setUint32(24, generation)
-  header.setUint32(28, sequence)
-  header.setUint8(32, key ? 1 : 0)
-  header.setFloat64(36, 1234)
-  header.setUint16(44, 1600)
-  header.setUint16(46, 1200)
-  payload.set(data, 48)
-  const frame = new Uint8Array(5 + payload.length)
-  new DataView(frame.buffer).setUint32(0, 1 + payload.length)
-  frame[4] = 2
-  frame.set(payload, 5)
-  return frame
+  return encodeVideo({
+    tab,
+    generation,
+    sequence,
+    key,
+    timestamp: 1234,
+    width: 1600,
+    height: 1200,
+    data: new Uint8Array(data),
+  })
 }
 
 /** A frame of any kind and payload, as a module that breaks the protocol might write it. */
@@ -45,7 +40,7 @@ test('frames split across chunks and join within one', () => {
   const reader = new LiveFrameReader()
   const bytes = new Uint8Array([
     ...moduleFrame({ type: 'heartbeat' }),
-    ...video('t_aaaaaaaaaaaaaaaaaaaaaa', 3, 7, true, [0, 0, 0, 1, 9]),
+    ...video('t1', 3, 7, true, [0, 0, 0, 1, 9]),
   ])
   const oneByOne: LiveFrame[] = []
   for (const byte of bytes) {
@@ -57,7 +52,7 @@ test('frames split across chunks and join within one', () => {
     expect(frames[0]).toEqual({ kind: 'message', message: { type: 'heartbeat' } })
     expect(frames[1]!.kind).toBe('video')
     const frame = frames[1]!.kind === 'video' ? frames[1]!.frame : null
-    expect(frame).toMatchObject({ tab: 't_aaaaaaaaaaaaaaaaaaaaaa', generation: 3, sequence: 7, key: true, width: 1600, height: 1200 })
+    expect(frame).toMatchObject({ tab: 't1', generation: 3, sequence: 7, key: true, width: 1600, height: 1200 })
     expect([...frame!.data]).toEqual([0, 0, 0, 1, 9])
   }
 })
@@ -223,10 +218,10 @@ function session(options: Partial<LiveSessionOptions> = {}) {
 }
 
 const TAB: LiveTab = {
-  id: 't_aaaaaaaaaaaaaaaaaaaaaa',
+  id: 't1',
   title: 'Example',
   url: 'https://example.test/',
-  createdBy: { kind: 'agent', nodeId: 'node' },
+  createdBy: { kind: 'agent', number: 0 },
   viewport: { ...WEB },
 }
 
@@ -488,7 +483,7 @@ test('a message the protocol refuses is never sent, so the module does not end t
 })
 
 test('the page decides what it watches: a tab that is still there is asked for again, a tab that went is let go', () => {
-  const OTHER: LiveTab = { ...TAB, id: 't_dddddddddddddddddddddd' }
+  const OTHER: LiveTab = { ...TAB, id: 't4' }
   const view = session()
   view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB, OTHER], watched: null }))
   view.live.watch(OTHER.id)

@@ -95,6 +95,7 @@ impl ServiceStreams {
             self.connection.clone(),
             stream_id.clone(),
         ));
+        let numbers = Arc::new(self.connection.clone());
         let digest = package
             .targets
             .get(crate::services::target())
@@ -135,7 +136,7 @@ impl ServiceStreams {
             };
             let opened = async {
                 let mut resident = services
-                    .acquire(&package, resolver, &stream)
+                    .acquire(&package, resolver, numbers, &stream)
                     .await
                     .map_err(|error| error.to_string())?;
                 let invocation = Invocation {

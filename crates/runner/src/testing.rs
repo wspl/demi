@@ -22,11 +22,27 @@ use crate::{
     connection::{ConnectionHandle, Relay, Request, wire},
     management::Management,
     pipes::PipeClient,
-    services::ServiceRegistry,
+    services::{NumberSource, ServiceRegistry},
 };
 
+/// A number source for services that draw no conversation numbers: it
+/// refuses every request, as a backend does for a conversation that is not
+/// the device's.
+pub struct NoNumbers;
+
+impl NumberSource for NoNumbers {
+    fn reserve(
+        &self,
+        _: String,
+        _: demi_command_service::protocol::ServiceSequence,
+        _: u32,
+    ) -> futures_util::future::BoxFuture<'_, Result<u64, String>> {
+        Box::pin(async { Err("this test gives out no conversation numbers".to_owned()) })
+    }
+}
+
 /// A dispatcher, its local endpoint and a connection owner for callbacks,
-/// artifact locations and contexts, fed by channels.
+/// questions and contexts, fed by channels.
 pub struct Dispatch {
     pub services: ServiceRegistry,
     pub dispatcher: Arc<Dispatcher>,
@@ -154,7 +170,7 @@ impl Drop for ContextGuard {
     }
 }
 
-/// A connection owner for callbacks, locations and contexts alone, until
+/// A connection owner for callbacks, questions and contexts alone, until
 /// `closed`.
 async fn serve(
     control: mpsc::Sender<wire::Frame>,
@@ -176,10 +192,10 @@ async fn serve(
             _ = closed.cancelled() => return,
             request = requests.recv() => match request {
                 Some(Request::Call { id, events, ended }) => relay.call(id, events, ended, &mut watches),
-                Some(Request::Locate { owner, sha256, reply, abandoned }) => {
+                Some(Request::Ask { question, abandoned }) => {
                     let frame = relay
-                        .locate(owner, sha256, reply, abandoned, &mut watches)
-                        .expect("location request frame");
+                        .ask(question, abandoned, &mut watches)
+                        .expect("question frame");
                     let _closed = control.send(frame).await;
                 }
                 Some(Request::Context { context, leases, reply }) => {

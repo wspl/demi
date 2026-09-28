@@ -139,7 +139,12 @@ impl Dispatcher {
                 let resolver = Arc::new(JobArtifacts::new(self.contexts.clone()));
                 let mut resident = self
                     .services
-                    .acquire(descriptor, resolver, &invocation.cancellation)
+                    .acquire(
+                        descriptor,
+                        resolver,
+                        Arc::new(context.connection.clone()),
+                        &invocation.cancellation,
+                    )
                     .await
                     .map_err(ServiceError::failed)?;
                 let request = Invocation {
