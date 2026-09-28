@@ -91,16 +91,10 @@ impl Executable {
     fn targets(self) -> &'static [&'static str] {
         match self {
             Self::Runner | Self::Commands | Self::Claude => TARGETS,
-            // Servers run Linux; a developer also runs the backend on a Mac.
-            Self::Backend => &[
-                "aarch64-apple-darwin",
-                "x86_64-apple-darwin",
-                "aarch64-unknown-linux-musl",
-                "x86_64-unknown-linux-musl",
-            ],
             // gVisor, namespaces, cgroups, loop devices and nftables exist
-            // only on Linux.
-            Self::Machines => &["aarch64-unknown-linux-musl", "x86_64-unknown-linux-musl"],
+            // only on Linux, and the backend reaches the machine manager over
+            // a Unix socket on the same host.
+            Self::Backend | Self::Machines => &["aarch64-unknown-linux-musl", "x86_64-unknown-linux-musl"],
         }
     }
 
