@@ -64,7 +64,7 @@ impl Recorder {
             !file.edits.is_empty()
                 && match fs::metadata(&file.path) {
                     Ok(metadata) => metadata.is_file(),
-                    Err(error) => error.kind() != io::ErrorKind::NotFound,
+                    Err(error) => !absent(&error),
                 }
         });
         Ok(recording.journal.clone())
@@ -140,7 +140,7 @@ impl Recording {
         let memory: u64 = self.before.iter().map(|(_, contents)| contents.len()).sum();
         let contents = if memory + self.journal.bytes_copied >= EDIT_JOB_BYTES {
             match fs::metadata(&path) {
-                Err(error) if error.kind() == io::ErrorKind::NotFound => Contents::Missing,
+                Err(error) if absent(&error) => Contents::Missing,
                 Ok(metadata) if !metadata.is_file() => Contents::NotFile,
                 Ok(metadata) => Contents::Unavailable(FileStamp::read(&metadata)),
                 Err(_) => Contents::Unavailable(None),
@@ -329,6 +329,15 @@ impl FileStamp {
     }
 }
 
+/// Whether a lookup failed because nothing is at the path: a path below a
+/// file names nothing either (`edit-tracking.md` § Recording actual writes).
+fn absent(error: &io::Error) -> bool {
+    matches!(
+        error.kind(),
+        io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+    )
+}
+
 impl Contents {
     fn read(path: &Path) -> Self {
         let stamp = match fs::metadata(path) {
@@ -336,7 +345,7 @@ impl Contents {
             Ok(metadata) if metadata.len() > EDIT_FILE_BYTES as u64 => {
                 return Self::Unavailable(FileStamp::read(&metadata));
             }
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return Self::Missing,
+            Err(error) if absent(&error) => return Self::Missing,
             Err(_) => return Self::Unavailable(None),
             Ok(metadata) => FileStamp::read(&metadata),
         };
@@ -499,6 +508,18 @@ mod tests {
         let report = recorder.report().unwrap();
         assert_eq!(report.files.len(), 1);
         assert!(report.files[0].edits[0].modified.is_none());
+    }
+
+    #[test]
+    fn a_failed_write_below_a_file_is_not_an_edit() {
+        let root = tempfile::tempdir().unwrap();
+        let recorder = recorder(root.path(), "job");
+        let file = root.path().join("file");
+        fs::write(&file, "plain").unwrap();
+        let below = file.join("child");
+        let result = recorder.record(&below, || fs::write(&below, "never"));
+        assert!(result.is_err());
+        assert!(recorder.report().unwrap().files.is_empty());
     }
 
     #[test]
