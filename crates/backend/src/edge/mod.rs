@@ -59,6 +59,8 @@ use tower_http::trace::TraceLayer;
 
 use self::error::ApiError;
 pub(crate) use self::install::Site;
+#[cfg(feature = "testing")]
+pub(crate) use self::users::create_account;
 use self::listener::{EdgeListener, Peer};
 use crate::backend::Services;
 use crate::runner::local_store;

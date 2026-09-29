@@ -300,17 +300,17 @@ async fn an_expose_answers_anyone_for_an_hour_and_only_its_owner_lists_renews_or
     assert_eq!(refused.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody));
 
     // Renewed before its hour, it lives an hour from the renewal.
-    harness.clock.advance(SignedDuration::from_mins(50));
+    harness.clock.advance(SignedDuration::from_mins(50)).unwrap();
     let renewal = backend.post(&format!("/api/exposes/{}/renew", exposed.id), Some(&master), json!({})).await;
     assert_eq!(renewal.status, StatusCode::OK, "{}", String::from_utf8_lossy(&renewal.body));
     let renewed = renewal.json::<ExposeAnswer>().expose;
     assert_eq!(renewed.expires_at.as_millisecond(), harness.clock.now().as_millisecond() + 3_600_000);
-    harness.clock.advance(SignedDuration::from_mins(50));
+    harness.clock.advance(SignedDuration::from_mins(50)).unwrap();
     assert_eq!(fetch(&backend, &host, "/hello").await.0, 200);
 
     // A second after its expiry the URL answers as unknown, and the visit
     // destroyed the record.
-    harness.clock.advance(SignedDuration::from_mins(10) + SignedDuration::from_secs(1));
+    harness.clock.advance(SignedDuration::from_mins(10) + SignedDuration::from_secs(1)).unwrap();
     let (status, page) = fetch(&backend, &host, "/hello").await;
     assert_eq!(status, 404);
     assert!(page.contains("does not exist"), "{page}");
@@ -349,9 +349,9 @@ async fn open_connections_end_with_their_expose_and_an_offline_device_keeps_its_
 
     // Held open across its expiry, likewise at the expiry.
     let expiring = expose(&backend, &master, laptop.id(), fixture.port).await;
-    harness.clock.advance(SignedDuration::from_mins(60) - SignedDuration::from_secs(1));
+    harness.clock.advance(SignedDuration::from_mins(60) - SignedDuration::from_secs(1)).unwrap();
     let held = hold(&backend, &host_of(&expiring)).await;
-    harness.clock.advance(SignedDuration::from_secs(2));
+    harness.clock.advance(SignedDuration::from_secs(2)).unwrap();
     held.ended().await;
     assert_eq!(fixture.next().await, Seen::Released);
     assert_eq!(stored_exposes(&harness), 0);

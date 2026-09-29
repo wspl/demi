@@ -160,7 +160,7 @@ async fn a_collection_deletes_an_unreferenced_blob_past_the_grace_and_nothing_wh
     let saved = backend.put(&format!("/api/conversations/{SECOND}/draft"), &master, body).await;
     assert_eq!(saved.status, StatusCode::OK, "{}", String::from_utf8_lossy(&saved.body));
     // What a failed save left a day ago, and what one left an hour ago.
-    harness.clock.advance(DAY + SignedDuration::from_hours(1));
+    harness.clock.advance(DAY + SignedDuration::from_hours(1)).unwrap();
     let left = orphan(&harness, &master, &png(4), DAY + SignedDuration::from_hours(1));
     let recent = orphan(&harness, &master, &png(5), SignedDuration::from_hours(1));
     let kept: Vec<PathBuf> = [png(1), png(2), png(3), Vec::new(), b"noted\n".to_vec()]
@@ -225,7 +225,7 @@ async fn a_tool_image_summarized_a_day_before_goes_after_30_days_once_its_page_l
     // Thirty-one days later, a page still has the conversation open: its
     // tree holds the history, so nothing is retired. The web session of a
     // month ago has expired.
-    harness.clock.advance(DAY * 31);
+    harness.clock.advance(DAY * 31).unwrap();
     let master = backend.login(MASTER_EMAIL, MASTER_PASSWORD).await;
     backend.run_retention(&master).await;
     assert_eq!(result_media(&backend, &master, "toolu_1").await, [shot.clone()]);
@@ -252,7 +252,7 @@ async fn a_tool_image_summarized_a_day_before_goes_after_30_days_once_its_page_l
     // The retirement used the blob; a day later nothing did, and it goes,
     // with the outputs of the two commands, which the same pass removed
     // 30 days after their commands ended.
-    harness.clock.advance(DAY + SignedDuration::from_hours(1));
+    harness.clock.advance(DAY + SignedDuration::from_hours(1)).unwrap();
     let before = counts.tally();
     backend.run_retention(&master).await;
     assert_eq!(counts.tally().since(&before).deletes, 3);
@@ -277,7 +277,7 @@ async fn a_conversation_idle_for_30_days_loses_its_tool_images_and_its_next_requ
     socket.chat("m1", "Show me the shot").await;
     close(&mut socket).await;
 
-    harness.clock.advance(DAY * 31);
+    harness.clock.advance(DAY * 31).unwrap();
     let master = backend.login(MASTER_EMAIL, MASTER_PASSWORD).await;
     backend.run_retention(&master).await;
     assert_eq!(result_media(&backend, &master, "toolu_1").await, [retired_on(&harness)]);
@@ -347,7 +347,7 @@ async fn a_commands_output_is_removed_30_days_after_it_ended() {
     assert!(tool_result(&vendor.requests()[requests - 1].json(), "toolu_2").contains("kept"));
 
     // Thirty-one days later, the retention pass removes it, with the day.
-    harness.clock.advance(DAY * 31);
+    harness.clock.advance(DAY * 31).unwrap();
     let master = backend.login(MASTER_EMAIL, MASTER_PASSWORD).await;
     backend.run_retention(&master).await;
     vendor.respond(read("toolu_3"));

@@ -343,12 +343,12 @@ async fn the_channel_opens_for_a_signed_in_page_of_the_product_and_ends_with_its
     // tablet's page opens 20 days after its sign-in, when a request would
     // renew the session, and closes as the session ends 30 days after the
     // sign-in. The laptop's requests renew the laptop's.
-    harness.clock.advance(days(20));
+    harness.clock.advance(days(20)).unwrap();
     theme(&backend, &laptop, "dark").await;
     assert!(themed(&laptop_page.next().await, Theme::Dark));
     let mut tablet_page = backend.sync(&tablet).await;
     tablet_page.snapshot().await;
-    harness.clock.advance(days(11));
+    harness.clock.advance(days(11)).unwrap();
     theme(&backend, &laptop, "light").await;
     assert!(themed(&laptop_page.next().await, Theme::Light));
     assert_eq!(tablet_page.closed().await, (4002, "session_ended".to_owned()));

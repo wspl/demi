@@ -21,6 +21,7 @@ mod browser;
 mod claude;
 mod claude_code;
 mod cloud;
+mod control;
 mod conversations;
 mod drafts;
 mod edge;

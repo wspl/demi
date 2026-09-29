@@ -3,8 +3,6 @@
 //! (`backend.md` § Authentication and ownership, `web-api.md`
 //! § Authentication, § Account API).
 
-use std::sync::atomic::Ordering;
-
 use demi_web_api::auth::{EmailChangeStarted, Identity, Role, SetupStatus};
 use demi_web_api::error::ErrorCode;
 use demi_web_api::users::Users;
@@ -323,13 +321,13 @@ async fn a_session_slides_while_used_and_expires_when_silent() {
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
 
-    harness.clock.advance(days(10));
+    harness.clock.advance(days(10)).unwrap();
     let early = backend.get("/api/auth/me", Some(&master)).await;
     assert_eq!(early.status, StatusCode::OK);
     assert!(early.session_cookies().is_empty());
 
     // 16 days in, less than 15 remain: the session renews to 30 days from now.
-    harness.clock.advance(days(6));
+    harness.clock.advance(days(6)).unwrap();
     let renewed = backend.get("/api/auth/me", Some(&master)).await;
     assert_eq!(renewed.status, StatusCode::OK);
     let cookie = cookie_attributes(&renewed.session_cookies()[0]);
@@ -337,10 +335,10 @@ async fn a_session_slides_while_used_and_expires_when_silent() {
     assert!(cookie.contains(&"expires=mon, 09 nov 2026 08:00:00 gmt".to_owned()), "{cookie:?}");
 
     // Past the first expiry, inside the renewed one.
-    harness.clock.advance(days(20));
+    harness.clock.advance(days(20)).unwrap();
     assert_eq!(backend.get("/api/auth/me", Some(&master)).await.status, StatusCode::OK);
 
-    harness.clock.advance(days(31));
+    harness.clock.advance(days(31)).unwrap();
     let expired = backend.get("/api/auth/me", Some(&master)).await;
     assert_eq!(expired.refusal(), (StatusCode::UNAUTHORIZED, ErrorCode::Unauthenticated));
     assert!(cookie_attributes(&expired.session_cookies()[0]).contains(&"max-age=0".to_owned()));
@@ -420,10 +418,10 @@ async fn an_email_change_needs_a_delivered_unexpired_single_use_code_and_survive
     assert_eq!(backend.login("next@example.test", MASTER_PASSWORD).await.user.id, master.user.id);
 
     // After the cooldown a new code goes out; ten minutes later it is dead.
-    harness.clock.advance(SignedDuration::from_mins(1));
+    harness.clock.advance(SignedDuration::from_mins(1)).unwrap();
     let later = start_email_change(&backend, &master, "later@example.test").await;
     let challenge = later.json::<EmailChangeStarted>().challenge;
-    harness.clock.advance(SignedDuration::from_mins(10));
+    harness.clock.advance(SignedDuration::from_mins(10)).unwrap();
     let code = harness.mailbox.sent()[1].code.clone();
     let expired = backend
         .post("/api/auth/email/confirm", Some(&master), json!({ "id": challenge.id, "code": code }))
@@ -438,10 +436,10 @@ async fn a_failed_delivery_allows_a_retry_and_wrong_codes_or_a_new_password_end_
     let (backend, master) = harness.start_set_up().await;
     let start = || backend.post("/api/auth/email", Some(&master), json!({ "email": "new@example.test", "password": MASTER_PASSWORD }));
 
-    harness.mailbox.failing.store(true, Ordering::SeqCst);
+    harness.mailbox.fail(true);
     assert_eq!(start().await.refusal(), (StatusCode::SERVICE_UNAVAILABLE, ErrorCode::MailFailed));
     // The failed code holds back no retry.
-    harness.mailbox.failing.store(false, Ordering::SeqCst);
+    harness.mailbox.fail(false);
     let challenge = start().await.json::<EmailChangeStarted>().challenge;
     let code = harness.mailbox.sent()[0].code.clone();
     let wrong = if code == "000000" { "111111" } else { "000000" };
@@ -456,7 +454,7 @@ async fn a_failed_delivery_allows_a_retry_and_wrong_codes_or_a_new_password_end_
         .await;
     assert_eq!(used_up.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidCode));
 
-    harness.clock.advance(SignedDuration::from_mins(1));
+    harness.clock.advance(SignedDuration::from_mins(1)).unwrap();
     let challenge = start().await.json::<EmailChangeStarted>().challenge;
     let code = harness.mailbox.sent()[1].code.clone();
     let changed = put(&backend, "/api/auth/password", &master, json!({ "current": MASTER_PASSWORD, "next": "new-password-2" })).await;

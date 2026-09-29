@@ -8,15 +8,13 @@ use std::collections::BTreeMap;
 use std::future::Future;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
-use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use demi_backend::{
-    AccountMail, Backend, BackendConfig, CloudTuning, ConversationTuning, ExposeDomain, ExposeTuning, FamilyRegistry,
-    LifecycleTuning, LoginTiming, MailError, NativeCatalog, ObjectCounts, PageTuning, RunnerTuning,
-    VerificationMail, publish_native,
+    Backend, BackendConfig, CloudTuning, ConversationTuning, ExposeDomain, ExposeTuning, FamilyRegistry,
+    LifecycleTuning, LoginTiming, Mailbox, ManualClock, NativeCatalog, ObjectCounts, PageTuning, RunnerTuning,
+    publish_native,
 };
 use demi_builtin_protocol::{Operation, PACKAGE as BUILTIN_PACKAGE};
 use demi_command_service::protocol::{PackageDescriptor, host_target};
@@ -30,7 +28,6 @@ use demi_web_api::error::{ErrorBody, ErrorCode};
 use demi_web_api::settings::InstanceMode;
 use demi_web_api::state::{ProductState, SyncEvent};
 use futures_util::{SinkExt as _, StreamExt as _};
-use jiff::{SignedDuration, Timestamp};
 use reqwest::header::{COOKIE, HeaderMap, SET_COOKIE};
 use reqwest::{Method, StatusCode};
 use serde::de::DeserializeOwned;
@@ -154,56 +151,6 @@ pub static FIXTURE: LazyLock<Built> = LazyLock::new(|| Built {
     published: OnceCell::new(),
 });
 
-/// Wall-clock time the test sets.
-pub struct ManualClock(Mutex<Timestamp>);
-
-impl Clock for ManualClock {
-    fn now(&self) -> demi_core::Timestamp {
-        demi_core::Timestamp::truncate(*self.0.lock().unwrap())
-    }
-}
-
-impl ManualClock {
-    pub fn advance(&self, by: SignedDuration) {
-        let mut now = self.0.lock().unwrap();
-        *now = now.checked_add(by).unwrap();
-    }
-
-    /// Sets the time to the system's, for a test that compares the backend's
-    /// times with those the file system gives the objects it writes.
-    pub fn follow_system(&self) {
-        *self.0.lock().unwrap() = jiff::Timestamp::now();
-    }
-}
-
-/// Captures verification mail, or refuses it while `failing` is set.
-#[derive(Default)]
-pub struct Mailbox {
-    sent: Mutex<Vec<VerificationMail>>,
-    pub failing: AtomicBool,
-}
-
-impl AccountMail for Mailbox {
-    fn send_verification(
-        &self,
-        mail: VerificationMail,
-    ) -> Pin<Box<dyn Future<Output = Result<(), MailError>> + Send>> {
-        let delivered = if self.failing.load(Ordering::SeqCst) {
-            Err(MailError("the mail transport failed".to_owned()))
-        } else {
-            self.sent.lock().unwrap().push(mail);
-            Ok(())
-        };
-        Box::pin(std::future::ready(delivered))
-    }
-}
-
-impl Mailbox {
-    pub fn sent(&self) -> Vec<VerificationMail> {
-        self.sent.lock().unwrap().clone()
-    }
-}
-
 /// What a test backend starts from; it can start several times over the
 /// same data directory.
 pub struct Harness {
@@ -249,9 +196,7 @@ impl Harness {
     pub fn new() -> Self {
         Self {
             data: tempfile::Builder::new().prefix("demi-backend-").tempdir().unwrap(),
-            clock: Arc::new(ManualClock(Mutex::new(
-                "2026-09-24T08:00:00Z".parse::<Timestamp>().unwrap(),
-            ))),
+            clock: Arc::new(ManualClock::new()),
             mailbox: Arc::new(Mailbox::default()),
             mail: false,
             web_directory: None,

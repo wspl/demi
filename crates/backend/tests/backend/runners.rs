@@ -519,7 +519,7 @@ async fn after_a_backend_restart_the_devices_are_kept_and_their_runners_come_bac
     let (backend, master) = harness.start_set_up().await;
     let laptop = backend.pair(&master, "laptop").await;
     // Devices list oldest first, by the time they were paired.
-    harness.clock.advance(jiff::SignedDuration::from_secs(1));
+    harness.clock.advance(jiff::SignedDuration::from_secs(1)).unwrap();
     let desktop = backend.pair(&master, "desktop").await;
     let address = backend.address();
     backend.close().await;

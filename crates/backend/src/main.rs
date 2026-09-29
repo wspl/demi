@@ -42,6 +42,16 @@ async fn run(config: Config) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    #[cfg(feature = "testing")]
+    let control = match demi_backend::TestControl::from_environment(&mut settings) {
+        Ok(control) => control,
+        Err(error) => {
+            eprintln!("demi-backend: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    #[cfg(not(feature = "testing"))]
+    let control = ();
     let data = settings.data_dir.clone();
     let backend = match Backend::start(settings).await {
         Ok(backend) => backend,
@@ -56,15 +66,52 @@ async fn run(config: Config) -> ExitCode {
         mode = %config.mode,
         "demi-backend is listening"
     );
-    if let Err(error) = stopped().await {
-        tracing::error!(error = &error as &dyn std::error::Error, "the stop signals cannot be watched");
-    }
+    let Some(backend) = until_stopped(backend, control).await else {
+        return ExitCode::FAILURE;
+    };
     match backend.close().await {
         Ok(()) => ExitCode::SUCCESS,
         Err(errors) => {
             eprintln!("demi-backend: {errors}");
             ExitCode::FAILURE
         }
+    }
+}
+
+/// Serves until a stop signal, and answers the backend for its shutdown.
+#[cfg(not(feature = "testing"))]
+async fn until_stopped(backend: Backend, _control: ()) -> Option<Backend> {
+    watch_stop().await;
+    Some(backend)
+}
+
+/// Serves until a stop signal, and answers the backend for its shutdown. A
+/// test build serves its control socket meanwhile (`testing.rs`); one that
+/// cannot bind it stops the backend and answers none.
+#[cfg(feature = "testing")]
+async fn until_stopped(backend: Backend, control: Option<demi_backend::TestControl>) -> Option<Backend> {
+    let Some(control) = control else {
+        watch_stop().await;
+        return Some(backend);
+    };
+    let listener = match control.bind() {
+        Ok(listener) => listener,
+        Err(error) => {
+            eprintln!("demi-backend: {error}");
+            if let Err(errors) = backend.close().await {
+                eprintln!("demi-backend: {errors}");
+            }
+            return None;
+        }
+    };
+    let served = control.serve(listener, backend);
+    watch_stop().await;
+    Some(served.stop().await)
+}
+
+async fn watch_stop() {
+    if let Err(error) = stopped().await {
+        tracing::error!(error = &error as &dyn std::error::Error, "the stop signals cannot be watched");
     }
 }
 

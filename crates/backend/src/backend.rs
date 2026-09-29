@@ -607,6 +607,21 @@ impl Backend {
             .expect("the user's shard serves while the backend runs");
     }
 
+    /// Adds an account without a route of the API, for the control of a test
+    /// build (`testing.rs`); answers its id.
+    #[cfg(feature = "testing")]
+    pub(crate) async fn add_user(
+        &self,
+        email: demi_web_api::text::EmailAddress,
+        password: demi_web_api::auth::Password,
+        role: demi_web_api::auth::Role,
+    ) -> Result<demi_web_api::ids::UserId, String> {
+        crate::edge::create_account(&self.services, email, password, role)
+            .await
+            .map(|user| user.id)
+            .map_err(|error| error.message().to_owned())
+    }
+
     /// Shuts the backend down. The listener closes first, so no new work
     /// starts and a new request on an open connection answers 503
     /// `backend_closing`; every step runs even when an earlier one fails, and

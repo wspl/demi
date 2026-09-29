@@ -18,6 +18,8 @@ mod settings;
 mod shard;
 mod storage;
 mod sync;
+#[cfg(feature = "testing")]
+mod testing;
 mod usage;
 mod vault;
 
@@ -45,6 +47,8 @@ pub use shard::ShardPlacement;
 pub use storage::conversations::CommitHold;
 #[cfg(feature = "testing")]
 pub use sync::SyncStep;
+#[cfg(feature = "testing")]
+pub use testing::{ControlServer, Mailbox, ManualClock, TestControl, TestControlError};
 #[cfg(feature = "testing")]
 pub use storage::objects::counting::{ObjectCounts, ObjectTally};
 pub use storage::objects::S3ConfigError;

@@ -38,6 +38,12 @@ impl ApiError {
         }
     }
 
+    /// What the answer tells its reader.
+    #[cfg(feature = "testing")]
+    pub(crate) fn message(&self) -> &str {
+        &self.body.message
+    }
+
     pub(crate) fn unauthenticated() -> Self {
         Self::new(StatusCode::UNAUTHORIZED, ErrorCode::Unauthenticated, "Sign in first")
     }

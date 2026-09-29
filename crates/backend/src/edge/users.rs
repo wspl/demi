@@ -8,9 +8,10 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_web_api::auth::Role;
+use demi_web_api::auth::{Password, Role, UserDto};
 use demi_web_api::error::ErrorCode;
 use demi_web_api::ids::UserId;
+use demi_web_api::text::EmailAddress;
 use demi_web_api::users::{CreateUser, CreatedUser, PasswordReset, Users};
 
 use super::body::JsonBody;
@@ -33,13 +34,24 @@ pub(super) async fn create(
     if !caller.role.outranks(role) {
         return Err(ApiError::forbidden("Only the master creates admins"));
     }
-    let password_hash = services.hasher.hash(request.password).await?;
-    let user = services
-        .control
-        .create_user(request.email, password_hash, role)
-        .await?
-        .ok_or_else(|| ApiError::new(StatusCode::CONFLICT, ErrorCode::EmailTaken, "An account has that email"))?;
+    let user = create_account(&services, request.email, request.password, role).await?;
     Ok((StatusCode::CREATED, Json(CreatedUser { user })))
+}
+
+/// Stores an account with `password` hashed; the address must be free. The
+/// caller has checked that its role may create `role`.
+pub(crate) async fn create_account(
+    services: &Services,
+    email: EmailAddress,
+    password: Password,
+    role: Role,
+) -> Result<UserDto, ApiError> {
+    let password_hash = services.hasher.hash(password).await?;
+    services
+        .control
+        .create_user(email, password_hash, role)
+        .await?
+        .ok_or_else(|| ApiError::new(StatusCode::CONFLICT, ErrorCode::EmailTaken, "An account has that email"))
 }
 
 /// Resets the password of an account the caller outranks. Who the account

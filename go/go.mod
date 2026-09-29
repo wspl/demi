@@ -3,6 +3,7 @@ module github.com/wspl/demi/go
 go 1.27
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/coreos/go-systemd/v22 v22.7.0
 	github.com/klauspost/compress v1.20.1
 	github.com/opencontainers/runtime-spec v1.3.0

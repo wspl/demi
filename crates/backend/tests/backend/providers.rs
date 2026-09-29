@@ -524,7 +524,7 @@ async fn a_directory_catalog_is_cached_refreshed_on_demand_and_kept_after_a_fail
     assert_eq!((ids(&restored).len(), directory.reads()), (3, 3));
 
     // Expired: the record at once, marked stale, while one refresh runs.
-    harness.clock.advance(SignedDuration::from_mins(16));
+    harness.clock.advance(SignedDuration::from_mins(16)).unwrap();
     directory.answer(Ok(catalog(&["d"])));
     let expired = catalog_of(&backend, &master, "").await;
     assert_eq!((ids(&expired).len(), expired.providers[0].stale), (3, true));
