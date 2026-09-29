@@ -4,8 +4,6 @@ package featuretest
 
 import (
 	"encoding/json/jsontext"
-	"maps"
-	"slices"
 	"unicode/utf8"
 
 	"github.com/tinylib/msgp/msgp"
@@ -218,10 +216,7 @@ func (v *Reasoning) UnmarshalMsgpack(data []byte) error {
 			if err != nil {
 				return wire.In(field.Name, err)
 			}
-			if v.Extra == nil {
-				v.Extra = make(map[string]jsontext.Value)
-			}
-			v.Extra[field.Name] = raw
+			v.Extra = append(v.Extra, wire.Member{Name: field.Name, Value: raw})
 		}
 	}
 	if !seen["id"] {
@@ -263,11 +258,11 @@ func (v Reasoning) MarshalMsgpack() ([]byte, error) {
 			data = msgp.AppendBool(data, bool(v.Hidden))
 		}
 	}
-	for _, key := range slices.Sorted(maps.Keys(v.Extra)) {
-		data = msgp.AppendString(data, key)
-		raw, err := wire.JSONMsgpack(v.Extra[key])
+	for _, member := range v.Extra {
+		data = msgp.AppendString(data, member.Name)
+		raw, err := wire.JSONMsgpack(member.Value)
 		if err != nil {
-			return nil, wire.In(key, err)
+			return nil, wire.In(member.Name, err)
 		}
 		data = append(data, raw...)
 	}
@@ -509,10 +504,7 @@ func (v *ReplayReasoning) unmarshalMsgpackContent(data []byte) error {
 			if err != nil {
 				return wire.In(field.Name, err)
 			}
-			if v.Extra == nil {
-				v.Extra = make(map[string]jsontext.Value)
-			}
-			v.Extra[field.Name] = raw
+			v.Extra = append(v.Extra, wire.Member{Name: field.Name, Value: raw})
 		}
 	}
 	if !seen["id"] {
@@ -545,11 +537,11 @@ func (v ReplayReasoning) MarshalMsgpack() ([]byte, error) {
 		}
 		data = msgp.AppendString(data, string(v.ID))
 	}
-	for _, key := range slices.Sorted(maps.Keys(v.Extra)) {
-		data = msgp.AppendString(data, key)
-		raw, err := wire.JSONMsgpack(v.Extra[key])
+	for _, member := range v.Extra {
+		data = msgp.AppendString(data, member.Name)
+		raw, err := wire.JSONMsgpack(member.Value)
 		if err != nil {
-			return nil, wire.In(key, err)
+			return nil, wire.In(member.Name, err)
 		}
 		data = append(data, raw...)
 	}

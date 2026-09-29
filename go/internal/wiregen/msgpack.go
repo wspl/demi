@@ -187,11 +187,9 @@ func (g *mpGen) structureMP(s *Struct) error {
 	}
 	g.p("default:")
 	if s.Unknown != nil {
-		g.imports["encoding/json/jsontext"] = true
 		g.p("raw,err:=wire.MPJSON(field.Data)")
 		g.p("if err!=nil{return wire.In(field.Name,err)}")
-		g.p("if v.%s==nil {v.%s=make(map[string]jsontext.Value)}", s.Unknown.Name, s.Unknown.Name)
-		g.p("v.%s[field.Name]=raw", s.Unknown.Name)
+		g.p("v.%s=append(v.%s,wire.Member{Name:field.Name,Value:raw})", s.Unknown.Name, s.Unknown.Name)
 	} else if !s.Open {
 		g.p("return wire.Unknown(field.Name)")
 	}
@@ -279,12 +277,10 @@ func (g *mpGen) structureMP(s *Struct) error {
 		}
 	}
 	if s.Unknown != nil {
-		g.imports["maps"] = true
-		g.imports["slices"] = true
-		g.p("for _,key:=range slices.Sorted(maps.Keys(v.%s)) {", s.Unknown.Name)
-		g.p("data=msgp.AppendString(data,key)")
-		g.p("raw,err:=wire.JSONMsgpack(v.%s[key])", s.Unknown.Name)
-		g.p("if err!=nil{return nil,wire.In(key,err)}")
+		g.p("for _,member:=range v.%s {", s.Unknown.Name)
+		g.p("data=msgp.AppendString(data,member.Name)")
+		g.p("raw,err:=wire.JSONMsgpack(member.Value)")
+		g.p("if err!=nil{return nil,wire.In(member.Name,err)}")
 		g.p("data=append(data,raw...)")
 		g.p("}")
 	}

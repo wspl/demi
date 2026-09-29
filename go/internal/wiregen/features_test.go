@@ -75,7 +75,7 @@ func TestOptionalNullsAndFalseOmission(t *testing.T) {
 }
 
 func TestRetainedMembersReplayAndCannotShadow(t *testing.T) {
-	raw := `{"id":"r","encrypted_content":"opaque-secret","nested":{"more":[1,null,true]}}`
+	raw := `{"id":"r","z":"last","encrypted_content":"opaque-secret","nested":{"more":[1,null,true]},"a":"first"}`
 	for _, packed := range []bool{false, true} {
 		var value featuretest.Reasoning
 		var encoded []byte
@@ -88,7 +88,10 @@ func TestRetainedMembersReplayAndCannotShadow(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if string(value.Extra["encrypted_content"]) != `"opaque-secret"` || string(value.Extra["nested"]) != `{"more":[1,null,true]}` {
+		if len(value.Extra) != 4 {
+			t.Fatalf("lost members: %v", value.Extra)
+		}
+		if string(value.Extra[1].Value) != `"opaque-secret"` || string(value.Extra[2].Value) != `{"more":[1,null,true]}` {
 			t.Fatalf("lost unknown members: %v", value.Extra)
 		}
 		if packed {
@@ -102,14 +105,17 @@ func TestRetainedMembersReplayAndCannotShadow(t *testing.T) {
 		if err != nil || string(encoded) != raw {
 			t.Fatalf("packed=%v: %s %v", packed, encoded, err)
 		}
-		value.Extra["hidden"] = jsontext.Value(`true`)
-		if packed {
-			_, err = value.MarshalMsgpack()
-		} else {
-			_, err = featuretest.EncodeReasoningJSON(value)
-		}
-		if err == nil || !strings.Contains(err.Error(), "hidden") {
-			t.Fatalf("shadowed an omitted known field: %v", err)
+		for _, bad := range []wire.Member{{Name: "hidden", Value: jsontext.Value(`true`)}, value.Extra[0]} {
+			value.Extra = append(value.Extra, bad)
+			if packed {
+				_, err = value.MarshalMsgpack()
+			} else {
+				_, err = featuretest.EncodeReasoningJSON(value)
+			}
+			if err == nil || !strings.Contains(err.Error(), bad.Name) {
+				t.Fatalf("accepted conflicting retained member: %v", err)
+			}
+			value.Extra = value.Extra[:len(value.Extra)-1]
 		}
 	}
 	if _, err := featuretest.DecodeReasoningJSON([]byte(`{"id":"r","x":1,"x":2}`)); err == nil {
@@ -197,14 +203,35 @@ func TestStandaloneAndForeignOwnerEntryPoints(t *testing.T) {
 }
 
 func TestNestedSyntaxKeepsTypedCauseAndPath(t *testing.T) {
-	_, err := featuretest.DecodePatchJSON([]byte(`{"usage":{"tokens":1e+SECRET}}`))
-	var syntax *jsontext.SyntacticError
-	var invalid *wire.InvalidError
-	if !errors.As(err, &syntax) || !errors.As(err, &invalid) {
-		t.Fatalf("lost syntax cause: %v", err)
-	}
-	if invalid.Path != "usage.tokens" || strings.Contains(err.Error(), "SECRET") {
-		t.Fatalf("wrong path or leaked value: %v", err)
+	for _, scenario := range []struct{ kind, raw, path string }{
+		{"patch", `{"usage":{"tokens":1e+SECRET}}`, "usage.tokens"},
+		{"foreign", `{"mode":"read","choice":{"kind":"limited","count":1e+SECRET}}`, "choice.count"},
+		{"reasoning", `{"id":"r","nested":{"more":[1,1e+SECRET]}}`, "nested.more[1]"},
+		{"reasoning", `{"id":"r","nested":{"nested":{"more":[1,1e+SECRET]}}}`, "nested.nested.more[1]"},
+		{"event", `{"event":{"type":"changed","low":1e+SECRET}}`, "event.low"},
+		{"event", `{"events":[{"type":"changed","low":1e+SECRET}]}`, "events[0].low"},
+	} {
+		t.Run(scenario.path, func(t *testing.T) {
+			var err error
+			switch scenario.kind {
+			case "patch":
+				_, err = featuretest.DecodePatchJSON([]byte(scenario.raw))
+			case "foreign":
+				_, err = featuretest.DecodeForeignJSON([]byte(scenario.raw))
+			case "reasoning":
+				_, err = featuretest.DecodeReasoningJSON([]byte(scenario.raw))
+			case "event":
+				_, err = featuretest.DecodeSyntaxEnvelopeJSON([]byte(scenario.raw))
+			}
+			var syntax *jsontext.SyntacticError
+			var invalid *wire.InvalidError
+			if !errors.As(err, &syntax) || !errors.As(err, &invalid) {
+				t.Fatalf("lost syntax cause: %v", err)
+			}
+			if invalid.Path != scenario.path || strings.Contains(err.Error(), "SECRET") {
+				t.Fatalf("path=%s want %s: %v", invalid.Path, scenario.path, err)
+			}
+		})
 	}
 }
 
@@ -270,13 +297,15 @@ func TestBackendFeatureDeclarationRefusals(t *testing.T) {
 		"//demi:wire\ntype T struct{A *string `json:\"a\" check:\"nullabsent\"`}",
 		"//demi:wire\ntype T struct{A **string `json:\"a,omitzero\"`}",
 		"//demi:wire\ntype T struct{A ***string `json:\"a,omitzero\" check:\"nullable\"`}",
-		"//demi:wire open\ntype T struct{Extra map[string]jsontext.Value `json:\",inline\"`}",
-		"//demi:wire\ntype T struct{A map[string]jsontext.Value `json:\",inline\"`; B map[string]jsontext.Value `json:\",inline\"`}",
+		"//demi:wire open\ntype T struct{Extra wire.Members `json:\",inline\"`}",
+		"//demi:wire\ntype T struct{A wire.Members `json:\",inline\"`; B wire.Members `json:\",inline\"`}",
+		"//demi:wire\ntype T struct{Extra map[string]jsontext.Value `json:\",inline\"`}",
+		"//demi:wire\ntype T struct{Extra wire.Members `json:\"extra\"`}",
 		"//demi:opaque number\ntype T struct{}",
 		"//demi:opaque string format=\ntype T struct{}",
 		"//demi:wire\n//demi:export bad\ntype T struct{}",
 	} {
-		if _, err := LoadSource(map[string][]byte{"p.go": []byte("package p\nimport \"encoding/json/jsontext\"\n" + body)}); err == nil {
+		if _, err := LoadSource(map[string][]byte{"p.go": []byte("package p\nimport (\"encoding/json/jsontext\"; \"github.com/wspl/demi/go/internal/wire\")\n" + body)}); err == nil {
 			t.Fatalf("accepted %s", body)
 		}
 	}

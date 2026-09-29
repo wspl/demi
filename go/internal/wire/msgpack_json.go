@@ -123,7 +123,7 @@ func jsonMP(dec *jsontext.Decoder) ([]byte, error) {
 		if n, err := strconv.ParseUint(text, 10, 64); err == nil {
 			return msgp.AppendUint64(nil, n), nil
 		}
-		if n, err := strconv.ParseInt(text, 10, 64); err == nil {
+		if n, err := strconv.ParseInt(text, 10, 64); err == nil && text != "-0" {
 			return msgp.AppendInt64(nil, n), nil
 		}
 		f, err := strconv.ParseFloat(text, 64)

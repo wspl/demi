@@ -183,6 +183,33 @@ func EncodeReplayJSON(value Replay) ([]byte, error) {
 	return data, nil
 }
 
+// ValidateSyntaxEnvelope checks a SyntaxEnvelope using its owner's rules.
+func ValidateSyntaxEnvelope(value SyntaxEnvelope) error {
+	return value.validate()
+}
+
+// DecodeSyntaxEnvelopeJSON reads and validates one complete JSON value.
+func DecodeSyntaxEnvelopeJSON(data []byte) (SyntaxEnvelope, error) {
+	var value SyntaxEnvelope
+	err := json.Unmarshal(data, &value)
+	if err != nil {
+		return value, wire.Refusal(err)
+	}
+	return value, ValidateSyntaxEnvelope(value)
+}
+
+// EncodeSyntaxEnvelopeJSON validates and encodes a SyntaxEnvelope.
+func EncodeSyntaxEnvelopeJSON(value SyntaxEnvelope) ([]byte, error) {
+	if err := ValidateSyntaxEnvelope(value); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(value, json.Deterministic(true))
+	if err != nil {
+		return nil, wire.Refusal(err)
+	}
+	return data, nil
+}
+
 // ValidateTimed checks a Timed using its owner's rules.
 func ValidateTimed(value Timed) error {
 	return value.validate()

@@ -127,6 +127,8 @@ const (
 	KindPointer
 	// KindRaw is a jsontext.Value: JSON that the contract declares opaque.
 	KindRaw
+	// KindMembers is wire.Members, an ordered retained-member collection.
+	KindMembers
 )
 
 // A Type is the type of a field, as far as the wire cares.

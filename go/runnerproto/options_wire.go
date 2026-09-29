@@ -17,14 +17,6 @@ import (
 var wireOptions = json.JoinOptions(
 	json.Deterministic(true),
 	json.WithUnmarshalers(json.JoinUnmarshalers(
-		json.UnmarshalFromFunc(func(dec *jsontext.Decoder, v *KeptRecord) error {
-			value, err := decodeKeptRecord(dec)
-			if err != nil {
-				return err
-			}
-			*v = value
-			return nil
-		}),
 		json.UnmarshalFromFunc(func(dec *jsontext.Decoder, v *Inbound) error {
 			value, err := decodeInbound(dec)
 			if err != nil {

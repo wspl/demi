@@ -3,6 +3,7 @@ package runnerproto
 import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"errors"
 	"github.com/tinylib/msgp/msgp"
 	"github.com/wspl/demi/go/internal/wire"
 	"unicode/utf8"
@@ -253,10 +254,11 @@ func (v *OutboundFSOk) read(data []byte, packed bool) error {
 	}
 	decoded, err := decodeFSResult(op, result, packed)
 	if err != nil {
-		if err != nil {
-			return wire.In("result", err)
+		var invalid *InvalidError
+		if errors.As(err, &invalid) && invalid.Path == "op" {
+			return err
 		}
-		return nil
+		return wire.In("result", err)
 	}
 	*v = OutboundFSOk{ID: id, Result: decoded}
 	return nil
@@ -279,10 +281,7 @@ func (v OutboundFSOk) MarshalMsgpack() ([]byte, error) {
 func (v OutboundFSOk) MarshalJSONTo(enc *jsontext.Encoder) error {
 	op, result, err := encodeFSResult(v.Result, false)
 	if err != nil {
-		if err != nil {
-			return wire.In("result", err)
-		}
-		return nil
+		return wire.In("result", err)
 	}
 	data, err := encodeReply("fs_ok", v.ID, op, result, false)
 	if err != nil {
@@ -590,10 +589,11 @@ func (v *OutboundGitOk) read(data []byte, packed bool) error {
 	}
 	decoded, err := decodeGitResult(op, result, packed)
 	if err != nil {
-		if err != nil {
-			return wire.In("result", err)
+		var invalid *InvalidError
+		if errors.As(err, &invalid) && invalid.Path == "op" {
+			return err
 		}
-		return nil
+		return wire.In("result", err)
 	}
 	*v = OutboundGitOk{ID: id, Result: decoded}
 	return nil
@@ -616,10 +616,7 @@ func (v OutboundGitOk) MarshalMsgpack() ([]byte, error) {
 func (v OutboundGitOk) MarshalJSONTo(enc *jsontext.Encoder) error {
 	op, result, err := encodeGitResult(v.Result, false)
 	if err != nil {
-		if err != nil {
-			return wire.In("result", err)
-		}
-		return nil
+		return wire.In("result", err)
 	}
 	data, err := encodeReply("git_ok", v.ID, op, result, false)
 	if err != nil {

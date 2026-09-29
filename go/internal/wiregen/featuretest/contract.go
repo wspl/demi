@@ -7,6 +7,7 @@ import (
 	"encoding/json/jsontext"
 	"errors"
 	"github.com/wspl/demi/go/builtinproto"
+	"github.com/wspl/demi/go/internal/wire"
 	"github.com/wspl/demi/go/internal/wiregen/exporttest"
 )
 
@@ -28,9 +29,9 @@ type Usage struct {
 //demi:export
 //demi:msgpack
 type Reasoning struct {
-	ID     string                    `json:"id" check:"chars=1.."`
-	Hidden bool                      `json:"hidden,omitzero"`
-	Extra  map[string]jsontext.Value `json:",inline"`
+	ID     string       `json:"id" check:"chars=1.."`
+	Hidden bool         `json:"hidden,omitzero"`
+	Extra  wire.Members `json:",inline"`
 }
 
 //demi:wire
@@ -98,8 +99,8 @@ type Replay interface{ replay() }
 
 //demi:variant reasoning
 type ReplayReasoning struct {
-	ID    string                    `json:"id" check:"chars=1.."`
-	Extra map[string]jsontext.Value `json:",inline"`
+	ID    string       `json:"id" check:"chars=1.."`
+	Extra wire.Members `json:",inline"`
 }
 
 func (ReplayReasoning) replay() {}
@@ -109,4 +110,11 @@ func (ReplayReasoning) replay() {}
 type Envelope struct {
 	Replay   Replay `json:",inline"`
 	Forkable bool   `json:"forkable,omitzero"`
+}
+
+//demi:wire
+//demi:export
+type SyntaxEnvelope struct {
+	Event  Event   `json:"event"`
+	Events []Event `json:"events"`
 }

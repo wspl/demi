@@ -40,7 +40,7 @@ func (r *Report) Nest(elem string, err error) {
 	for _, leaf := range leaves(err) {
 		var invalid *InvalidError
 		if errors.As(leaf, &invalid) {
-			r.errs = append(r.errs, &InvalidError{Path: Prefix(elem, invalid.Path), Rule: invalid.Rule, Cause: invalid.Cause})
+			r.errs = append(r.errs, In(elem, invalid))
 			continue
 		}
 		r.Add(elem, leaf.Error())

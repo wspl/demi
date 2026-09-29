@@ -343,8 +343,7 @@ func (g *goGen) decoder(s *Struct, members []member) {
 	if s.Unknown != nil {
 		g.p("raw,err := wire.ReadRaw(dec)")
 		g.p("if err!=nil{return wire.In(name,err)}")
-		g.p("if v.%s==nil {v.%s=make(map[string]jsontext.Value)}", s.Unknown.Name, s.Unknown.Name)
-		g.p("v.%s[name]=raw", s.Unknown.Name)
+		g.p("v.%s=append(v.%s,wire.Member{Name:name,Value:raw})", s.Unknown.Name, s.Unknown.Name)
 	} else if s.Open {
 		g.p("if err := dec.SkipValue(); err != nil {")
 		g.p("return err")
@@ -399,6 +398,8 @@ func (g *goGen) encoder(s *Struct) {
 	g.p("func (v %s) MarshalJSONTo(enc *jsontext.Encoder) error {", s.Name)
 	if s.Unknown != nil {
 		g.p("if err:=wire.CheckUnknown(v.%s,%s);err!=nil{return err}", s.Unknown.Name, quoted(structMemberNames(s)))
+		g.p("extra,err:=v.%s.JSON()", s.Unknown.Name)
+		g.p("if err!=nil{return err}")
 	}
 	g.p("return json.MarshalEncode(enc, struct {")
 	var values []string
@@ -415,8 +416,8 @@ func (g *goGen) encoder(s *Struct) {
 		values = append(values, "v."+f.Name)
 	}
 	if s.Unknown != nil {
-		g.p("%s map[string]jsontext.Value `json:\",embed\"`", s.Unknown.Name)
-		values = append(values, "v."+s.Unknown.Name)
+		g.p("%s jsontext.Value `json:\",embed\"`", s.Unknown.Name)
+		values = append(values, "extra")
 	}
 	g.p("}{%s})", strings.Join(values, ", "))
 	g.p("}")
@@ -1057,6 +1058,8 @@ func (g *goGen) adjacentEncoder(s *Struct) {
 	g.p("func (v %s) MarshalJSONTo(enc *jsontext.Encoder) error {", s.Name)
 	if s.Unknown != nil {
 		g.p("if err:=wire.CheckUnknown(v.%s,%s);err!=nil{return err}", s.Unknown.Name, quoted(structMemberNames(s)))
+		g.p("extra,err:=v.%s.JSON()", s.Unknown.Name)
+		g.p("if err!=nil{return err}")
 	}
 	g.p("type content struct {")
 	values := make([]string, len(s.Fields))
@@ -1065,8 +1068,8 @@ func (g *goGen) adjacentEncoder(s *Struct) {
 		values[i] = "v." + f.Name
 	}
 	if s.Unknown != nil {
-		g.p("%s map[string]jsontext.Value `json:%s`", s.Unknown.Name, strconv.Quote(",embed"))
-		values = append(values, "v."+s.Unknown.Name)
+		g.p("%s jsontext.Value `json:%s`", s.Unknown.Name, strconv.Quote(",embed"))
+		values = append(values, "extra")
 	}
 	g.p("}")
 	g.p("return json.MarshalEncode(enc, struct {")

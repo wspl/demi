@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"errors"
 	"github.com/wspl/demi/go/commandservice"
 	"github.com/wspl/demi/go/internal/wire"
 	"github.com/wspl/demi/go/runnerproto"
@@ -237,6 +238,63 @@ func TestReplyJSONUsesTheSameResultKinds(t *testing.T) {
 		data := []byte(`{"type":"fs_ok","id":"f","op":"` + op + `","result":null}`)
 		if err := json.Unmarshal(data, &reply); err == nil {
 			t.Fatalf("accepted null for %s", op)
+		}
+	}
+}
+
+// These boundary checks are in-memory and have no timers or external resources.
+func TestRunnerPlatformRefusesMacOS(t *testing.T) {
+	raw, err := os.ReadFile("testdata/runner-to-backend/hello.msgpack")
+	if err != nil {
+		t.Fatal(err)
+	}
+	message, err := runnerproto.DecodeOutboundMsgpack(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hello := message.(runnerproto.OutboundHello)
+	hello.Runner.Platform = "macos"
+	raw, err = json.Marshal(hello)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packed, err := wire.JSONMsgpack(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runnerproto.DecodeOutboundMsgpack(packed); err == nil || !strings.Contains(err.Error(), "runner.platform") {
+		t.Fatalf("accepted invalid platform on decoding: %v", err)
+	}
+	if _, err := runnerproto.EncodeOutboundMsgpack(hello); err == nil {
+		t.Fatal("encoded macos")
+	}
+	if _, err := runnerproto.ParseRunnerPlatform("macos"); err == nil {
+		t.Fatal("parsed macos")
+	}
+}
+
+func TestReplyOperationErrorsNameTheTopLevelMember(t *testing.T) {
+	for _, kind := range []string{"fs_ok", "git_ok"} {
+		raw := []byte(`{"type":"` + kind + `","id":"r","op":"unknown","result":null}`)
+		for _, packed := range []bool{false, true} {
+			var err error
+			if packed {
+				data, packErr := wire.JSONMsgpack(raw)
+				if packErr != nil {
+					t.Fatal(packErr)
+				}
+				_, err = runnerproto.DecodeOutboundMsgpack(data)
+			} else if kind == "fs_ok" {
+				var reply runnerproto.OutboundFSOk
+				err = json.Unmarshal(raw, &reply)
+			} else {
+				var reply runnerproto.OutboundGitOk
+				err = json.Unmarshal(raw, &reply)
+			}
+			var invalid *wire.InvalidError
+			if !errors.As(err, &invalid) || invalid.Path != "op" {
+				t.Fatalf("%s packed=%v: %v", kind, packed, err)
+			}
 		}
 	}
 }
