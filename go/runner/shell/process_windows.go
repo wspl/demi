@@ -22,3 +22,18 @@ func duplicateInput(file *os.File) (*os.File, error) {
 }
 
 func processStatus(err *exec.ExitError) uint8 { return uint8(err.ExitCode()) }
+
+// inputWake ends a read of a call's stdin copy by closing the copy.
+type inputWake struct{}
+
+func newInputWake() (*inputWake, error) { return &inputWake{}, nil }
+
+func (*inputWake) read(file *os.File, p []byte) (int, error) { return file.Read(p) }
+
+func (*inputWake) interrupt(file *os.File) {
+	// Closing an already failed pipe releases it too; there is no buffered
+	// write to flush or close error that can change the command's outcome.
+	_ = file.Close()
+}
+
+func (*inputWake) release(*os.File) {}

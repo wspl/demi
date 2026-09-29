@@ -61,7 +61,7 @@ func Run(parent context.Context, script string, options Options) Result {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	if options.Stdin == nil {
-		input, err := os.Open(os.DevNull)
+		input, err := openWaiting(ctx, os.DevNull)
 		if err != nil {
 			return Result{Err: err}
 		}
@@ -150,11 +150,15 @@ func login(ctx context.Context, r *interp.Runner, options Options) error {
 	home := options.Env["HOME"]
 	for _, name := range []string{".bash_profile", ".bash_login", ".profile"} {
 		path := filepath.Join(home, name)
-		f, err := os.Open(path)
+		f, err := openWaiting(ctx, path)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if err != nil {
 			continue
 		}
-		f.Close()
+		// Only the open answers whether the profile is readable.
+		_ = f.Close()
 		paths = append(paths, path)
 		break
 	}

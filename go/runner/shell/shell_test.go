@@ -257,6 +257,71 @@ func TestCancellationIsIsolated(t *testing.T) {
 	}
 }
 
+// Two jobs run side by side; cancelling one leaves the other running, and it
+// finishes with its own input and output.
+// Cost: two jobs on loopback pipes; a five-second guard bounds the waits.
+func TestSiblingJobKeepsRunningWhileAnotherIsCancelled(t *testing.T) {
+	unix(t)
+	ctx, stop := context.WithTimeout(t.Context(), 5*time.Second)
+	defer stop()
+	type job struct {
+		writer *os.File
+		sink   eventSink
+		first  []byte
+		done   chan shell.Result
+		cancel context.CancelCauseFunc
+	}
+	start := func() job {
+		opts := options(t)
+		reader, writer, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { writer.Close() })
+		opts.Stdin = reader
+		j := job{writer: writer, sink: eventSink{make(chan []byte, 16)}, done: make(chan shell.Result, 1)}
+		opts.Output = j.sink
+		run, cancel := context.WithCancelCause(ctx)
+		j.cancel = cancel
+		go func() { j.done <- shell.Run(run, "echo ready; read value; echo \"got $value\"", opts) }()
+		select {
+		case j.first = <-j.sink.received:
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+		return j
+	}
+	cancelled, sibling := start(), start()
+	cancelled.cancel(shell.CancelCause("SIGTERM"))
+	select {
+	case result := <-cancelled.done:
+		if result.Signal != "SIGTERM" {
+			t.Fatal(result)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	if _, err := sibling.writer.Write([]byte("more\n")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case result := <-sibling.done:
+		if result.Code == nil || *result.Code != 0 {
+			t.Fatal(result)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	// The job has ended, so all it wrote is in the sink.
+	written := string(sibling.first)
+	for len(sibling.sink.received) > 0 {
+		written += string(<-sibling.sink.received)
+	}
+	if written != "ready\ngot more\n" {
+		t.Fatalf("sibling wrote %q", written)
+	}
+}
+
 // A blocked sink proves that cancellation releases backpressure, with no timer
 // used to decide when to cancel the job.
 type blockedSink struct {

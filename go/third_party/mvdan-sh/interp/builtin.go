@@ -1148,6 +1148,7 @@ func absPath(dir, path string) string {
 	if path == "" {
 		return ""
 	}
+	path = DrivePath(path)
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(dir, path)
 	}

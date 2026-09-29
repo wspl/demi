@@ -109,3 +109,27 @@ func TestWindowsDrivePaths(t *testing.T) {
 		t.Fatalf("%+v %q %q", result, out.stdout.String(), out.stderr.String())
 	}
 }
+
+// The Rust's windows_drive_paths_work_for_cd_redirection_utilities_and_executables:
+// /dev/null and drive paths (/c/...) work for redirections, cd and programs.
+// The Rust's cat is a builtin here only through read.
+// Cost: one job and one cmd.exe run.
+func TestWindowsDrivePathsForRedirectionsCdAndPrograms(t *testing.T) {
+	drive := func(path string) string {
+		native := filepath.ToSlash(path)
+		if native[1:3] != ":/" {
+			t.Fatalf("not a drive path: %s", path)
+		}
+		return "/" + native[:1] + "/" + native[3:]
+	}
+	opts := options(t)
+	if err := os.Mkdir(filepath.Join(opts.Dir, "sub"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	opts.Env["DRIVE_ROOT"] = drive(opts.Dir)
+	opts.Env["DRIVE_EXE"] = drive(filepath.Join(os.Getenv("SystemRoot"), "System32", "cmd.exe"))
+	result, out := execute(t, opts, `printf discarded > /dev/null && printf discarded &> /dev/null && printf payload > "$DRIVE_ROOT/file" && cd "$DRIVE_ROOT/sub" && { IFS= read -r line < "$DRIVE_ROOT/file" || true; } && printf '%s' "$line" && "$DRIVE_EXE" /c "echo external"`)
+	if *result.Code != 0 || result.Dir != filepath.Join(opts.Dir, "sub") || out.stdout.String() != "payloadexternal\r\n" {
+		t.Fatalf("%+v %q %q", result, out.stdout.String(), out.stderr.String())
+	}
+}

@@ -18,16 +18,48 @@ type Descriptor struct {
 func (r *Runner) descriptor(fd int) Descriptor {
 	switch fd {
 	case 0:
-		return Descriptor{Reader: r.stdin}
+		return r.standard(fd, Descriptor{Reader: r.stdin})
 	case 1:
-		return Descriptor{Writer: r.stdout}
+		return r.standard(fd, Descriptor{Writer: r.stdout})
 	case 2:
-		return Descriptor{Writer: r.stderr}
+		return r.standard(fd, Descriptor{Writer: r.stderr})
 	default:
 		return r.fds[fd]
 	}
 }
+
+// standard returns a standard descriptor's sides. Its stream is one side; a
+// read/write redirection keeps both sides in fds, and they hold while their
+// file is still the stream's (a pipeline or another redirection replaces the
+// stream without touching fds).
+func (r *Runner) standard(fd int, current Descriptor) Descriptor {
+	both, ok := r.fds[fd]
+	if !ok {
+		return current
+	}
+	if fd == 0 {
+		if file := descriptorFile(current.Reader); file != nil && file == descriptorFile(both.Reader) {
+			return Descriptor{Reader: current.Reader, Writer: both.Writer}
+		}
+		return current
+	}
+	if file := descriptorFile(current.Writer); file != nil && file == descriptorFile(both.Writer) {
+		return Descriptor{Reader: both.Reader, Writer: current.Writer}
+	}
+	return current
+}
+
 func (r *Runner) setDescriptor(fd int, value Descriptor) error {
+	if fd <= 2 {
+		if value.Reader != nil && value.Writer != nil {
+			if r.fds == nil {
+				r.fds = make(map[int]Descriptor)
+			}
+			r.fds[fd] = value
+		} else {
+			delete(r.fds, fd)
+		}
+	}
 	switch fd {
 	case 0:
 		if value.Reader == nil {

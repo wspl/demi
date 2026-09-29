@@ -5,9 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"mvdan.cc/sh/v3/interp"
 	"mvdan.cc/sh/v3/syntax"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -144,6 +147,27 @@ func TestExtraDescriptors(t *testing.T) {
 	}
 }
 
+// A standard descriptor opened with <> keeps both sides: fd 0 is written and
+// fd 2 read, while a pipeline's own stdin still stands for fd 0 inside it.
+func TestStandardDescriptorsKeepBothSides(t *testing.T) {
+	var out bytes.Buffer
+	r, err := interp.New(interp.Dir(t.TempDir()), interp.StdIO(nil, &out, &out))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := syntax.NewParser().Parse(strings.NewReader(`exec 0<>data; printf hello >&0; printf ' piped' | cat <&0; cat data; printf abc > more; { cat <&2; } 2<>more`), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Run(t.Context(), f); err != nil {
+		t.Fatal(err)
+	}
+	r.WaitBackground()
+	if got := out.String(); got != " pipedhelloabc" {
+		t.Fatal(got)
+	}
+}
+
 func TestReadCancellationAfterChild(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -276,5 +300,49 @@ func TestPipeOwnershipHook(t *testing.T) {
 			t.Fatalf("executed without an owned pipe: %s", script)
 		}
 		r.WaitBackground()
+	}
+}
+
+// recordedFile stands for a recorder's wrapper: not an *os.File itself, it
+// exposes the file it wraps (patch 6).
+type recordedFile struct{ file *os.File }
+
+func (f recordedFile) Read(p []byte) (int, error)  { return f.file.Read(p) }
+func (f recordedFile) Write(p []byte) (int, error) { return f.file.Write(p) }
+func (f recordedFile) Close() error                { return f.file.Close() }
+func (f recordedFile) FileHandle() *os.File        { return f.file }
+
+// A recorded file redirected to a program's input reaches it as the file
+// itself, not as a copy through a pipe (patch 6).
+func TestRecordedFileInputIsNative(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("reads the child's descriptor through /proc")
+	}
+	dir := t.TempDir()
+	data := filepath.Join(dir, "data")
+	if err := os.WriteFile(data, []byte("input"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	r, err := interp.New(interp.Dir(dir), interp.StdIO(nil, &out, &out), interp.OpenHandler(func(ctx context.Context, path string, flag int, perm os.FileMode) (io.ReadWriteCloser, error) {
+		file, err := os.OpenFile(filepath.Join(dir, path), flag, perm)
+		if err != nil {
+			return nil, err
+		}
+		return recordedFile{file}, nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := syntax.NewParser().Parse(strings.NewReader(`/bin/sh -c 'readlink /proc/self/fd/0' < data`), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Run(t.Context(), f); err != nil {
+		t.Fatal(err)
+	}
+	r.WaitBackground()
+	if got := strings.TrimSpace(out.String()); got != data {
+		t.Fatalf("the program's input is %q, not the file %q", got, data)
 	}
 }
