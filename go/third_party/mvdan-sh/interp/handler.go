@@ -347,7 +347,7 @@ func lookPathDir(cwd string, env expand.Environ, file string, find findAny) (str
 	}
 	exts := pathExts(env)
 	if strings.ContainsAny(file, chars) {
-		return find(cwd, file, exts)
+		return find(cwd, DrivePath(file), exts)
 	}
 	for _, elem := range pathList {
 		var path string

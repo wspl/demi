@@ -165,7 +165,7 @@ func (commands *Commands) dispatch(parent context.Context, root commandtree.Node
 	}
 	inputFile := call.Stdin
 	if inputFile == nil {
-		file, err := os.Open(os.DevNull)
+		file, err := openWaiting(ctx, os.DevNull)
 		if err != nil {
 			return err
 		}
@@ -181,7 +181,10 @@ func (commands *Commands) dispatch(parent context.Context, root commandtree.Node
 	if err != nil {
 		return err
 	}
-	inputOwner := &invocationInput{file: inputCopy}
+	inputOwner, err := newInvocationInput(ctx, inputCopy)
+	if err != nil {
+		return err
+	}
 	stopInput := context.AfterFunc(ctx, inputOwner.close)
 	defer func() {
 		stopInput()
@@ -299,12 +302,34 @@ func (b *limitedOutput) Write(p []byte) (int, error) {
 }
 
 // invocationInput closes a call's copy of stdin on every outcome. Reads that
-// the service SDK started must release that file before dispatch returns.
+// the service SDK started end when the call does and return before dispatch
+// does: the copy may be blocking (an external command the shell ran switched
+// the shared pipe to blocking mode), so a read waits through inputWake, which
+// the end of the call wakes, rather than in a read that closing cannot end.
 type invocationInput struct {
 	file    *os.File
+	wake    *inputWake
 	mu      sync.Mutex
 	closed  bool
 	reading sync.WaitGroup
+	once    sync.Once
+}
+
+// newInvocationInput owns file, the call's copy of stdin; its wake waits out a
+// lack of descriptors until ctx ends, as the copy did.
+func newInvocationInput(ctx context.Context, file *os.File) (*invocationInput, error) {
+	wake, err := commandservice.RetryBlocking(func() (*inputWake, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return newInputWake()
+	})
+	if err != nil {
+		// Closing the unused copy cannot change the command's outcome.
+		_ = file.Close()
+		return nil, err
+	}
+	return &invocationInput{file: file, wake: wake}, nil
 }
 
 func (r *invocationInput) Read(p []byte) (int, error) {
@@ -316,16 +341,18 @@ func (r *invocationInput) Read(p []byte) (int, error) {
 	r.reading.Add(1)
 	r.mu.Unlock()
 	defer r.reading.Done()
-	return r.file.Read(p)
+	return r.wake.read(r.file, p)
 }
+
+// close ends the reads, waits for them to return and releases the copy; a
+// second call waits for the first.
 func (r *invocationInput) close() {
-	r.mu.Lock()
-	if !r.closed {
+	r.once.Do(func() {
+		r.mu.Lock()
 		r.closed = true
-		// Closing an already failed pipe releases it too; there is no buffered
-		// write to flush or close error that can change the command's outcome.
-		_ = r.file.Close()
-	}
-	r.mu.Unlock()
-	r.reading.Wait()
+		r.mu.Unlock()
+		r.wake.interrupt(r.file)
+		r.reading.Wait()
+		r.wake.release(r.file)
+	})
 }

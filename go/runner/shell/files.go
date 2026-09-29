@@ -35,11 +35,16 @@ func (s *scope) open(ctx context.Context, path string, flag int, mode os.FileMod
 		})
 		return err
 	}
-	resolved, err := commandservice.ResolvePath(interp.HandlerCtx(ctx).Dir, path)
-	if err != nil {
-		return nil, err
+	// The null device keeps the name the interpreter's opener knows on every
+	// system; any other path converts a Windows drive path first, as cd and
+	// program lookup do (the Rust's scope.rs resolve_path).
+	if path != "/dev/null" {
+		resolved, err := commandservice.ResolvePath(interp.HandlerCtx(ctx).Dir, interp.DrivePath(path))
+		if err != nil {
+			return nil, err
+		}
+		path = resolved
 	}
-	path = resolved
 	writing := flag&(os.O_WRONLY|os.O_RDWR|os.O_TRUNC|os.O_APPEND) != 0
 	if s.options.Recorder == nil || !writing {
 		err := operation()
@@ -120,4 +125,16 @@ func retryIO(ctx context.Context, attempt func() error) error {
 		return struct{}{}, attempt()
 	})
 	return err
+}
+
+// openWaiting opens name for reading, waiting out a lack of descriptors until
+// ctx ends (runner.md § Load): a missing file fails at once, a full descriptor
+// table does not.
+func openWaiting(ctx context.Context, name string) (*os.File, error) {
+	return commandservice.RetryBlocking(func() (*os.File, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return os.Open(name)
+	})
 }

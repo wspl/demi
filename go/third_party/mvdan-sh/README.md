@@ -54,6 +54,20 @@ Local interpreter patches:
    `TestFIFOCancellationUsesHostPolicy`, and
    `TestCanceledFIFOOpenerNeedsNoCleanupDescriptor`.
 
+9. Standard descriptors 0, 1 and 2 keep both sides after `<>`: the table
+   holds the redirection's reader and writer while its file is still the
+   stream's, so `exec 0<>data; echo >&0` writes and a pipeline's own stdin
+   still stands for fd 0 inside it. Regression:
+   `TestStandardDescriptorsKeepBothSides`.
+10. `DrivePath` converts a Windows drive path (`/c/rest` to `c:/rest`), as
+    the Rust runner's `resolve_path` does, for `cd` and program lookup; the
+    runner's opener uses it too. Regression: `TestDrivePath`; the runner's
+    `TestWindowsDrivePathsForRedirectionsCdAndPrograms` on Windows.
+
+Upstream's `cmd/` (`shfmt`, `gosh`) is not kept: nothing here builds them,
+and their deprecated upstream calls would fail the module's checks.
+Patch 6's regression is `TestRecordedFileInputIsNative`.
+
 These extensions are for the runner's lifecycle; they do not add bash parsing
 or embedded utility implementations. The runner supplies cancellation-aware
 process and output handlers. Upstream compatibility checks should run as an
