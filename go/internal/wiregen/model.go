@@ -4,6 +4,7 @@
 package wiregen
 
 import (
+	"go/ast"
 	"go/constant"
 )
 
@@ -28,7 +29,10 @@ type Package struct {
 
 	// named are the types the wire types use that are named after a basic type:
 	// closed sets and strings with rules (see [Type]).
-	named map[string]*Type
+	named            map[string]*Type
+	containers       map[string]ast.Expr
+	resolveContainer func(string) (*Type, error)
+	sourceImports    map[string]map[string]string
 	// consts are the values of the package's constants, by name.
 	consts map[string]constant.Value
 	// patterns are the sources of the package's regular expressions, by the
@@ -77,6 +81,8 @@ type Struct struct {
 	// Embeds are the structs whose members the struct's Fields include, in
 	// the order it embeds them.
 	Embeds []string
+	// ForeignEmbeds delegate flattened members to their owner codecs.
+	ForeignEmbeds []*Type
 	// EmbedChecks are Go selector paths of inherited cross-field checks.
 	EmbedChecks []string
 	// Unknown keeps undeclared JSON-valued members for replay.
@@ -87,6 +93,8 @@ type Struct struct {
 
 // A Field is a member of a wire struct.
 type Field struct {
+	// Owner is the foreign embedding responsible for decoding and checks.
+	Owner *Type
 	// Name is the Go name and JSON is the member's name on the wire.
 	Name string
 	JSON string
@@ -127,11 +135,27 @@ const (
 	KindPointer
 	// KindRaw is a jsontext.Value: JSON that the contract declares opaque.
 	KindRaw
+	// KindMembers is wire.Members, an ordered retained-member collection.
+	KindMembers
 )
 
 // A Type is the type of a field, as far as the wire cares.
 type Type struct {
 	Kind Kind
+	// CustomDecode preserves a named scalar's own JSON decoder.
+	CustomDecode bool
+	// CustomCheck invokes its owner-defined validate method.
+	CustomCheck bool
+	// Validator is the exported check used for a foreign embedding.
+	Validator string
+	// Schema is an inline JSON Schema; SchemaRef names another schema declaration.
+	Schema       []byte
+	SchemaRef    string
+	SchemaInline bool
+	// SchemaRules constrain the representation, never the opaque Go storage.
+	SchemaRules []Rule
+	// Representation describes an opaque value independently of its Go storage.
+	Representation *Type
 	// Src is the type as Go source.
 	Src string
 	// Name is the name of a named type: a struct, a union, or a type named
@@ -149,6 +173,8 @@ type Type struct {
 	// (`other.Name`); empty for one of this package. Its package's generated code
 	// decodes it, and the field names a func rule that runs its checks.
 	Qualifier string
+	// ImportPath identifies the owner independently of a source file alias.
+	ImportPath string
 	// Description and Rules belong to a type named after a basic type: a
 	// closed set of strings (//demi:enum) or a string with rules (//demi:value).
 	// The rules of a type apply to every field of it.

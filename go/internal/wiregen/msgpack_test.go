@@ -83,10 +83,20 @@ func TestMessagePackContracts(t *testing.T) {
 			}
 		})
 	}
-	for _, raw := range [][]byte{append(bytes.Clone(data), 0), {0x82, 0xa4, 'n', 'a', 'm', 'e', 0xa1, 'a', 0xa4, 'n', 'a', 'm', 'e', 0xa1, 'b'}, {0xdf, 255, 255, 255, 255}} {
+	for _, raw := range [][]byte{append(bytes.Clone(data), 0), {0xdf, 255, 255, 255, 255}} {
 		if _, err := packtest.DecodeRecordMsgpack(raw); err == nil {
 			t.Fatalf("accepted malformed map %x", raw)
 		}
+	}
+	duplicate := msgp.AppendMapHeader(nil, uint32(len(fields)+1))
+	for _, field := range fields {
+		duplicate = msgp.AppendString(duplicate, field.Name)
+		duplicate = append(duplicate, field.Data...)
+	}
+	duplicate = msgp.AppendString(duplicate, "name")
+	duplicate = msgp.AppendString(duplicate, "other-valid-name")
+	if _, err := packtest.DecodeRecordMsgpack(duplicate); err == nil || !strings.Contains(err.Error(), "name: duplicate member") {
+		t.Fatalf("duplicate in otherwise valid record: %v", err)
 	}
 	record.Name = ""
 	if _, err := record.MarshalMsgpack(); err == nil {

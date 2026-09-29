@@ -72,6 +72,9 @@ type mpGen struct{ goGen }
 func (g *mpGen) decoder(t *Type, encoding string) string {
 	body := ""
 	switch {
+	case t.CustomDecode:
+		g.imports["encoding/json/v2"] = true
+		body = fmt.Sprintf("var v %s; raw,err:=wire.MPJSON(data); if err!=nil{return v,err}; err=json.Unmarshal(raw,&v); if err!=nil{return v,wire.Refusal(err)}; return v,nil", t.Src)
 	case t.Qualifier != "" && (t.Kind == KindUnion || t.Kind == KindString):
 		body = fmt.Sprintf("return %s.Decode%sMsgpack(data)", t.Qualifier, t.Name)
 	case t.Kind == KindPointer:
@@ -146,6 +149,9 @@ func (g *mpGen) structureMP(s *Struct) error {
 	if len(s.Fields) > 0 {
 		g.p("seen := map[string]bool{}")
 	}
+	for _, owner := range s.ForeignEmbeds {
+		g.p("var embed%s []wire.MPMember", owner.Name)
+	}
 	if hasInline(s) {
 		g.p("var inlineFields []wire.MPMember")
 	}
@@ -171,6 +177,10 @@ func (g *mpGen) structureMP(s *Struct) error {
 		}
 		g.p("case %q:", f.JSON)
 		g.p("seen[field.Name] = true")
+		if f.Owner != nil {
+			g.p("embed%s=append(embed%s,field)", f.Owner.Name, f.Owner.Name)
+			continue
+		}
 		t := f.Type
 		if f.NullAsAbsent {
 			g.p("if msgp.IsNil(field.Data) {continue}")
@@ -187,11 +197,9 @@ func (g *mpGen) structureMP(s *Struct) error {
 	}
 	g.p("default:")
 	if s.Unknown != nil {
-		g.imports["encoding/json/jsontext"] = true
 		g.p("raw,err:=wire.MPJSON(field.Data)")
 		g.p("if err!=nil{return wire.In(field.Name,err)}")
-		g.p("if v.%s==nil {v.%s=make(map[string]jsontext.Value)}", s.Unknown.Name, s.Unknown.Name)
-		g.p("v.%s[field.Name]=raw", s.Unknown.Name)
+		g.p("v.%s=append(v.%s,wire.Member{Name:field.Name,Value:raw})", s.Unknown.Name, s.Unknown.Name)
 	} else if !s.Open {
 		g.p("return wire.Unknown(field.Name)")
 	}
@@ -213,6 +221,11 @@ func (g *mpGen) structureMP(s *Struct) error {
 			g.p("if err != nil {return err}")
 		}
 	}
+	for _, owner := range s.ForeignEmbeds {
+		g.p("{ raw:=msgp.AppendMapHeader(nil,uint32(len(embed%s)))", owner.Name)
+		g.p("for _,field:=range embed%s {raw=msgp.AppendString(raw,field.Name);raw=append(raw,field.Data...)}", owner.Name)
+		g.p("if err:=v.%s.UnmarshalMsgpack(raw);err!=nil{return err} }", owner.Name)
+	}
 	g.p("return nil")
 	g.p("}")
 	g.p("// Decode%sMsgpack reads and validates one complete value.", s.Name)
@@ -227,7 +240,12 @@ func (g *mpGen) structureMP(s *Struct) error {
 		g.p("var err error; v,err = v.normalizeWire(); if err != nil {return nil,err}")
 	}
 	g.p("if err := v.validate(); err != nil {return nil,err}")
-	n := len(s.Fields)
+	n := 0
+	for _, f := range s.Fields {
+		if f.Owner == nil {
+			n++
+		}
+	}
 	if hasInline(s) {
 		n++
 	}
@@ -238,7 +256,19 @@ func (g *mpGen) structureMP(s *Struct) error {
 	if s.Unknown != nil {
 		g.p("count += uint32(len(v.%s))", s.Unknown.Name)
 	}
+	// An embedded foreign struct is written by its owner's encoder, as the
+	// owner writes it alone; its members join the map at its place.
+	for _, owner := range s.ForeignEmbeds {
+		g.p("embedded%s,err := v.%s.MarshalMsgpack()", owner.Name, owner.Name)
+		g.p("if err != nil {return nil,err}")
+		g.p("embeddedCount%s,embedded%s,err := msgp.ReadMapHeaderBytes(embedded%s)", owner.Name, owner.Name, owner.Name)
+		g.p("if err != nil {return nil,err}")
+		g.p("count += embeddedCount%s", owner.Name)
+	}
 	for _, f := range s.Fields {
+		if f.Owner != nil {
+			continue
+		}
 		if !f.Required {
 			if f.Type.Kind == KindBool {
 				g.p("if !v.%s {count--}", f.Name)
@@ -252,7 +282,15 @@ func (g *mpGen) structureMP(s *Struct) error {
 		g.p("data = msgp.AppendString(data,%q)", s.Union.TagName)
 		g.p("data = msgp.AppendString(data,%q)", s.Tag)
 	}
+	written := map[*Type]bool{}
 	for _, f := range s.Fields {
+		if f.Owner != nil {
+			if !written[f.Owner] {
+				written[f.Owner] = true
+				g.p("data = append(data,embedded%s...)", f.Owner.Name)
+			}
+			continue
+		}
 		if f.Inline {
 			g.p("{")
 			g.p("encoded,err := Encode%sMsgpack(v.%s)", f.Type.Name, f.Name)
@@ -279,12 +317,10 @@ func (g *mpGen) structureMP(s *Struct) error {
 		}
 	}
 	if s.Unknown != nil {
-		g.imports["maps"] = true
-		g.imports["slices"] = true
-		g.p("for _,key:=range slices.Sorted(maps.Keys(v.%s)) {", s.Unknown.Name)
-		g.p("data=msgp.AppendString(data,key)")
-		g.p("raw,err:=wire.JSONMsgpack(v.%s[key])", s.Unknown.Name)
-		g.p("if err!=nil{return nil,wire.In(key,err)}")
+		g.p("for _,member:=range v.%s {", s.Unknown.Name)
+		g.p("data=msgp.AppendString(data,member.Name)")
+		g.p("raw,err:=wire.JSONMsgpack(member.Value)")
+		g.p("if err!=nil{return nil,wire.In(member.Name,err)}")
 		g.p("data=append(data,raw...)")
 		g.p("}")
 	}
@@ -312,7 +348,7 @@ func (g *mpGen) appendMP(t *Type, expr, encoding, path string) {
 		g.p("data = msgp.AppendBytes(data,%s)", expr)
 	case encoding == "timestamp":
 		g.p("data = wire.MPAppendTimestamp(data,int64(%s))", expr)
-	case t.Kind == KindString && t.Qualifier != "":
+	case t.Kind == KindString && t.Qualifier != "" && !t.CustomDecode:
 		g.p("encoded,err := %s.Encode%sMsgpack(%s)", t.Qualifier, t.Name, expr)
 		g.p("if err != nil {return nil,wire.In(%s,err)}", path)
 		g.p("data=append(data,encoded...)")
@@ -463,7 +499,7 @@ func (p *Package) messagePackTypes() map[string]bool {
 	field = func(t *Type) {
 		switch t.Kind {
 		case KindStruct, KindUnion, KindString:
-			if t.Qualifier == "" && !t.Opaque && t.Name != "" {
+			if t.Qualifier == "" && !t.Opaque && t.Name != "" && !t.CustomDecode {
 				visit(t.Name)
 			}
 		case KindPointer, KindSlice, KindMap:

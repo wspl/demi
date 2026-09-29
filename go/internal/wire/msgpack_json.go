@@ -93,12 +93,19 @@ func mpJSONValue(data []byte, depth int) ([]byte, error) {
 	return raw, nil
 }
 
+// independentJSONError marks a pointer relative to a separately decoded wire value.
+// Keeping this provenance in the cause lets outer encoders prepend their paths
+// without losing the original typed syntax error.
+type independentJSONError struct{ error }
+
+func (e *independentJSONError) Unwrap() error { return e.error }
+
 // JSONMsgpack writes an opaque JSON value with insertion-ordered map keys, as serde_json with preserve_order does.
 func JSONMsgpack(value jsontext.Value) ([]byte, error) {
 	dec := jsontext.NewDecoder(bytes.NewReader(value))
 	data, err := jsonMP(dec)
 	if err != nil {
-		return nil, Refusal(err)
+		return nil, Refusal(&independentJSONError{err})
 	}
 	if _, err := dec.ReadToken(); err != io.EOF {
 		return nil, &InvalidError{Rule: "trailing JSON data"}
@@ -123,7 +130,7 @@ func jsonMP(dec *jsontext.Decoder) ([]byte, error) {
 		if n, err := strconv.ParseUint(text, 10, 64); err == nil {
 			return msgp.AppendUint64(nil, n), nil
 		}
-		if n, err := strconv.ParseInt(text, 10, 64); err == nil {
+		if n, err := strconv.ParseInt(text, 10, 64); err == nil && text != "-0" {
 			return msgp.AppendInt64(nil, n), nil
 		}
 		f, err := strconv.ParseFloat(text, 64)

@@ -1,0 +1,84 @@
+{
+  "alias": "Email",
+  "configured": {
+    "bounds": [
+      {
+        "Kind": "items",
+        "Min": {
+          "Src": "1",
+          "Value": 1,
+          "Float": 1,
+          "Fraction": false
+        },
+        "Max": {
+          "Src": "1000",
+          "Value": 1000,
+          "Float": 1000,
+          "Fraction": false
+        },
+        "Value": "",
+        "Values": [],
+        "Inner": []
+      }
+    ],
+    "element": "Usage",
+    "kind": 8
+  },
+  "email": {
+    "bounds": [
+      {
+        "Kind": "chars",
+        "Min": {
+          "Src": "1",
+          "Value": 1,
+          "Float": 1,
+          "Fraction": false
+        },
+        "Max": {
+          "Src": "254",
+          "Value": 254,
+          "Float": 254,
+          "Fraction": false
+        },
+        "Value": "",
+        "Values": [],
+        "Inner": []
+      }
+    ],
+    "format": "email",
+    "inline": true,
+    "schema": {
+      "type": "string",
+      "maxLength": 254
+    }
+  },
+  "percent": {
+    "bounds": [
+      {
+        "Kind": "range",
+        "Min": {
+          "Src": "0",
+          "Value": 0,
+          "Float": 0,
+          "Fraction": false
+        },
+        "Max": {
+          "Src": "100",
+          "Value": 100,
+          "Float": 100,
+          "Fraction": false
+        },
+        "Value": "",
+        "Values": [],
+        "Inner": []
+      }
+    ],
+    "inline": false,
+    "kind": 5,
+    "schema": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    }
+  }
+}

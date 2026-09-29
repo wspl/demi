@@ -46,6 +46,33 @@ func EncodeChoiceJSON(value Choice) ([]byte, error) {
 	}
 	return data, nil
 }
+
+// ValidateInterval checks a Interval using its owner's rules.
+func ValidateInterval(value Interval) error {
+	return value.validate()
+}
+
+// DecodeIntervalJSON reads and validates one complete JSON value.
+func DecodeIntervalJSON(data []byte) (Interval, error) {
+	var value Interval
+	err := json.Unmarshal(data, &value)
+	if err != nil {
+		return value, wire.Refusal(err)
+	}
+	return value, ValidateInterval(value)
+}
+
+// EncodeIntervalJSON validates and encodes a Interval.
+func EncodeIntervalJSON(value Interval) ([]byte, error) {
+	if err := ValidateInterval(value); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(value, json.Deterministic(true))
+	if err != nil {
+		return nil, wire.Refusal(err)
+	}
+	return data, nil
+}
 func (v Mode) validate() error {
 	var r wire.Report
 	r.OneOf("", string(v), "read", "write")
@@ -86,6 +113,33 @@ func DecodeModeJSON(data []byte) (Mode, error) {
 // EncodeModeJSON validates and encodes a Mode.
 func EncodeModeJSON(value Mode) ([]byte, error) {
 	if err := ValidateMode(value); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(value, json.Deterministic(true))
+	if err != nil {
+		return nil, wire.Refusal(err)
+	}
+	return data, nil
+}
+
+// ValidateRounded checks a Rounded using its owner's rules.
+func ValidateRounded(value Rounded) error {
+	return value.validate()
+}
+
+// DecodeRoundedJSON reads and validates one complete JSON value.
+func DecodeRoundedJSON(data []byte) (Rounded, error) {
+	var value Rounded
+	err := json.Unmarshal(data, &value)
+	if err != nil {
+		return value, wire.Refusal(err)
+	}
+	return value, ValidateRounded(value)
+}
+
+// EncodeRoundedJSON validates and encodes a Rounded.
+func EncodeRoundedJSON(value Rounded) ([]byte, error) {
+	if err := ValidateRounded(value); err != nil {
 		return nil, err
 	}
 	data, err := json.Marshal(value, json.Deterministic(true))

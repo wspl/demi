@@ -9,6 +9,60 @@ import (
 	"github.com/wspl/demi/go/internal/wire"
 )
 
+// ValidateContainers checks a Containers using its owner's rules.
+func ValidateContainers(value Containers) error {
+	return value.validate()
+}
+
+// DecodeContainersJSON reads and validates one complete JSON value.
+func DecodeContainersJSON(data []byte) (Containers, error) {
+	var value Containers
+	err := json.Unmarshal(data, &value)
+	if err != nil {
+		return value, wire.Refusal(err)
+	}
+	return value, ValidateContainers(value)
+}
+
+// EncodeContainersJSON validates and encodes a Containers.
+func EncodeContainersJSON(value Containers) ([]byte, error) {
+	if err := ValidateContainers(value); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(value, json.Deterministic(true))
+	if err != nil {
+		return nil, wire.Refusal(err)
+	}
+	return data, nil
+}
+
+// ValidateEmbedded checks a Embedded using its owner's rules.
+func ValidateEmbedded(value Embedded) error {
+	return value.validate()
+}
+
+// DecodeEmbeddedJSON reads and validates one complete JSON value.
+func DecodeEmbeddedJSON(data []byte) (Embedded, error) {
+	var value Embedded
+	err := json.Unmarshal(data, &value)
+	if err != nil {
+		return value, wire.Refusal(err)
+	}
+	return value, ValidateEmbedded(value)
+}
+
+// EncodeEmbeddedJSON validates and encodes a Embedded.
+func EncodeEmbeddedJSON(value Embedded) ([]byte, error) {
+	if err := ValidateEmbedded(value); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(value, json.Deterministic(true))
+	if err != nil {
+		return nil, wire.Refusal(err)
+	}
+	return data, nil
+}
+
 // ValidateEnvelope checks a Envelope using its owner's rules.
 func ValidateEnvelope(value Envelope) error {
 	return value.validate()
@@ -87,6 +141,33 @@ func DecodeForeignJSON(data []byte) (Foreign, error) {
 // EncodeForeignJSON validates and encodes a Foreign.
 func EncodeForeignJSON(value Foreign) ([]byte, error) {
 	if err := ValidateForeign(value); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(value, json.Deterministic(true))
+	if err != nil {
+		return nil, wire.Refusal(err)
+	}
+	return data, nil
+}
+
+// ValidateMeasured checks a Measured using its owner's rules.
+func ValidateMeasured(value Measured) error {
+	return value.validate()
+}
+
+// DecodeMeasuredJSON reads and validates one complete JSON value.
+func DecodeMeasuredJSON(data []byte) (Measured, error) {
+	var value Measured
+	err := json.Unmarshal(data, &value)
+	if err != nil {
+		return value, wire.Refusal(err)
+	}
+	return value, ValidateMeasured(value)
+}
+
+// EncodeMeasuredJSON validates and encodes a Measured.
+func EncodeMeasuredJSON(value Measured) ([]byte, error) {
+	if err := ValidateMeasured(value); err != nil {
 		return nil, err
 	}
 	data, err := json.Marshal(value, json.Deterministic(true))
@@ -183,6 +264,33 @@ func EncodeReplayJSON(value Replay) ([]byte, error) {
 	return data, nil
 }
 
+// ValidateSyntaxEnvelope checks a SyntaxEnvelope using its owner's rules.
+func ValidateSyntaxEnvelope(value SyntaxEnvelope) error {
+	return value.validate()
+}
+
+// DecodeSyntaxEnvelopeJSON reads and validates one complete JSON value.
+func DecodeSyntaxEnvelopeJSON(data []byte) (SyntaxEnvelope, error) {
+	var value SyntaxEnvelope
+	err := json.Unmarshal(data, &value)
+	if err != nil {
+		return value, wire.Refusal(err)
+	}
+	return value, ValidateSyntaxEnvelope(value)
+}
+
+// EncodeSyntaxEnvelopeJSON validates and encodes a SyntaxEnvelope.
+func EncodeSyntaxEnvelopeJSON(value SyntaxEnvelope) ([]byte, error) {
+	if err := ValidateSyntaxEnvelope(value); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(value, json.Deterministic(true))
+	if err != nil {
+		return nil, wire.Refusal(err)
+	}
+	return data, nil
+}
+
 // ValidateTimed checks a Timed using its owner's rules.
 func ValidateTimed(value Timed) error {
 	return value.validate()
@@ -201,6 +309,51 @@ func DecodeTimedJSON(data []byte) (Timed, error) {
 // EncodeTimedJSON validates and encodes a Timed.
 func EncodeTimedJSON(value Timed) ([]byte, error) {
 	if err := ValidateTimed(value); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(value, json.Deterministic(true))
+	if err != nil {
+		return nil, wire.Refusal(err)
+	}
+	return data, nil
+}
+
+// DecodeTrimmedJSONFrom reads a Trimmed with its owner's codec.
+func DecodeTrimmedJSONFrom(dec *jsontext.Decoder) (Trimmed, error) {
+	var value Trimmed
+	if err := value.UnmarshalJSONFrom(dec); err != nil {
+		return value, err
+	}
+	return value, ValidateTrimmed(value)
+}
+
+// ValidateTrimmed checks a Trimmed using its owner's rules.
+func ValidateTrimmed(value Trimmed) error {
+	var r wire.Report
+	r.Nest("", value.validate())
+	r.NoNUL("", string(value))
+	return r.Err()
+}
+
+// DecodeTrimmedJSON reads and validates one complete JSON value.
+func DecodeTrimmedJSON(data []byte) (Trimmed, error) {
+	var value Trimmed
+	err := json.Unmarshal(data, &value, json.WithUnmarshalers(json.UnmarshalFromFunc(func(dec *jsontext.Decoder, v *Trimmed) error {
+		decoded, err := DecodeTrimmedJSONFrom(dec)
+		if err == nil {
+			*v = decoded
+		}
+		return err
+	})))
+	if err != nil {
+		return value, wire.Refusal(err)
+	}
+	return value, ValidateTrimmed(value)
+}
+
+// EncodeTrimmedJSON validates and encodes a Trimmed.
+func EncodeTrimmedJSON(value Trimmed) ([]byte, error) {
+	if err := ValidateTrimmed(value); err != nil {
 		return nil, err
 	}
 	data, err := json.Marshal(value, json.Deterministic(true))

@@ -4,6 +4,7 @@
 package wire
 
 import (
+	"encoding/json/jsontext"
 	"errors"
 	"strconv"
 )
@@ -58,8 +59,19 @@ func Prefix(elem, path string) string {
 
 // In returns err, which refused the field elem of a value, as a refusal of the
 // value: an *InvalidError gets elem in front of its path, and an error of the
-// JSON decoder becomes a refusal at elem.
+// shared JSON decoder keeps its complete path without prefixing it again.
+// Independently decoded JSON values carry relative paths and are prefixed.
 func In(elem string, err error) error {
+	// A shared decoder's syntax pointer already includes every outer member.
+	// A standalone JSON-to-MessagePack decoder starts at the retained value;
+	// its cause records that subsequent wrappers must prepend their paths.
+	var independent *independentJSONError
+	if !errors.As(err, &independent) {
+		var syntax *jsontext.SyntacticError
+		if errors.As(err, &syntax) {
+			return &InvalidError{Path: pathOf(syntax.JSONPointer), Rule: syntaxRule(err), Cause: err}
+		}
+	}
 	var invalid *InvalidError
 	if errors.As(err, &invalid) {
 		return &InvalidError{Path: Prefix(elem, invalid.Path), Rule: invalid.Rule, Cause: invalid.Cause}

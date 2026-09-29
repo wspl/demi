@@ -10,12 +10,12 @@ import (
 	"fmt"
 	"io"
 	"net/netip"
-	"net/url"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 
+	whatwg "github.com/nlnwa/whatwg-url/url"
 	"github.com/wspl/demi/go/runnerproto"
 )
 
@@ -60,7 +60,7 @@ type Config struct {
 	Data       string
 	Runsc      string
 	Image      string
-	BackendURL *url.URL
+	BackendURL *whatwg.Url
 	// Limits are each sandbox's cgroup limits; nil with DEMI_MANAGED_LIMITS=off,
 	// which runs sandboxes without cgroups.
 	Limits    *Limits
@@ -334,7 +334,7 @@ func absolute(target *string) func(string) error {
 	}
 }
 
-func backendURL(target **url.URL) func(string) error {
+func backendURL(target **whatwg.Url) func(string) error {
 	return func(value string) error {
 		// The URL parser reads a bare "#" as no fragment at all.
 		if strings.Contains(value, "#") {
@@ -344,7 +344,7 @@ func backendURL(target **url.URL) func(string) error {
 		if err != nil {
 			return err
 		}
-		if address.Scheme != "http" && address.Scheme != "https" {
+		if address.Scheme() != "http" && address.Scheme() != "https" {
 			return errors.New("must be an http or https URL")
 		}
 		if address.Hostname() == "" {

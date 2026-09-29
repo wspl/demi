@@ -17,7 +17,7 @@ func (p *Package) exports() ([]byte, error) {
 	for _, name := range slices.Sorted(maps.Keys(p.Exported)) {
 		union := p.Unions[name]
 		named := p.named[name]
-		if named != nil && !packed[name] {
+		if named != nil && !packed[name] && !named.CustomCheck {
 			g.p("func(v %s) validate() error {", name)
 			g.p("var r wire.Report")
 			g.value(named, "v", named.Rules, `""`, "r", 0)
@@ -32,10 +32,19 @@ func (p *Package) exports() ([]byte, error) {
 				if union != nil {
 					g.p("return decode%s(dec)", name)
 				} else {
-					g.p("text,err:=wire.ReadString(dec)")
-					g.p("if err!=nil{return \"\",err}")
-					g.p("value:=%s(text)", name)
-					g.p("return value,value.validate()")
+					if named.CustomDecode {
+						g.p("var value %s", name)
+						g.p("if err:=value.UnmarshalJSONFrom(dec);err!=nil{return value,err}")
+					} else {
+						g.p("text,err:=wire.ReadString(dec)")
+						g.p("if err!=nil{return \"\",err}")
+						g.p("value:=%s(text)", name)
+					}
+					if named.CustomCheck {
+						g.p("return value,Validate%s(value)", name)
+					} else {
+						g.p("return value,value.validate()")
+					}
 				}
 				g.p("}")
 			}
@@ -44,6 +53,10 @@ func (p *Package) exports() ([]byte, error) {
 		g.p("func Validate%s(value %s) error {", name, name)
 		if union != nil {
 			g.p("return validate%s(value)", name)
+		} else if named != nil && named.CustomCheck {
+			g.p("var r wire.Report")
+			g.value(named, "value", named.Rules, `""`, "r", 0)
+			g.p("return r.Err()")
 		} else {
 			g.p("return value.validate()")
 		}

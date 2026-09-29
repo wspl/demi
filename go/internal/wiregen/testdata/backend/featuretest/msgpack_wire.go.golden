@@ -4,12 +4,14 @@ package featuretest
 
 import (
 	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"maps"
 	"slices"
 	"unicode/utf8"
 
 	"github.com/tinylib/msgp/msgp"
 	"github.com/wspl/demi/go/internal/wire"
+	exporttest "github.com/wspl/demi/go/internal/wiregen/exporttest"
 )
 
 // UnmarshalMsgpack reads the structure of one complete Patch value.
@@ -218,10 +220,7 @@ func (v *Reasoning) UnmarshalMsgpack(data []byte) error {
 			if err != nil {
 				return wire.In(field.Name, err)
 			}
-			if v.Extra == nil {
-				v.Extra = make(map[string]jsontext.Value)
-			}
-			v.Extra[field.Name] = raw
+			v.Extra = append(v.Extra, wire.Member{Name: field.Name, Value: raw})
 		}
 	}
 	if !seen["id"] {
@@ -263,11 +262,11 @@ func (v Reasoning) MarshalMsgpack() ([]byte, error) {
 			data = msgp.AppendBool(data, bool(v.Hidden))
 		}
 	}
-	for _, key := range slices.Sorted(maps.Keys(v.Extra)) {
-		data = msgp.AppendString(data, key)
-		raw, err := wire.JSONMsgpack(v.Extra[key])
+	for _, member := range v.Extra {
+		data = msgp.AppendString(data, member.Name)
+		raw, err := wire.JSONMsgpack(member.Value)
 		if err != nil {
-			return nil, wire.In(key, err)
+			return nil, wire.In(member.Name, err)
 		}
 		data = append(data, raw...)
 	}
@@ -509,10 +508,7 @@ func (v *ReplayReasoning) unmarshalMsgpackContent(data []byte) error {
 			if err != nil {
 				return wire.In(field.Name, err)
 			}
-			if v.Extra == nil {
-				v.Extra = make(map[string]jsontext.Value)
-			}
-			v.Extra[field.Name] = raw
+			v.Extra = append(v.Extra, wire.Member{Name: field.Name, Value: raw})
 		}
 	}
 	if !seen["id"] {
@@ -545,11 +541,11 @@ func (v ReplayReasoning) MarshalMsgpack() ([]byte, error) {
 		}
 		data = msgp.AppendString(data, string(v.ID))
 	}
-	for _, key := range slices.Sorted(maps.Keys(v.Extra)) {
-		data = msgp.AppendString(data, key)
-		raw, err := wire.JSONMsgpack(v.Extra[key])
+	for _, member := range v.Extra {
+		data = msgp.AppendString(data, member.Name)
+		raw, err := wire.JSONMsgpack(member.Value)
 		if err != nil {
-			return nil, wire.In(key, err)
+			return nil, wire.In(member.Name, err)
 		}
 		data = append(data, raw...)
 	}
@@ -558,4 +554,283 @@ func (v ReplayReasoning) MarshalMsgpack() ([]byte, error) {
 	envelope = msgp.AppendString(envelope, "reasoning")
 	envelope = msgp.AppendString(envelope, "data")
 	return append(envelope, data...), nil
+}
+
+// UnmarshalMsgpack reads the structure of one complete Embedded value.
+func (v *Embedded) UnmarshalMsgpack(data []byte) error {
+	*v = Embedded{}
+	fields, err := wire.MPObject(data)
+	if err != nil {
+		return err
+	}
+	seen := map[string]bool{}
+	var embedInterval []wire.MPMember
+	for _, field := range fields {
+		switch field.Name {
+		case "low":
+			seen[field.Name] = true
+			embedInterval = append(embedInterval, field)
+		case "high":
+			seen[field.Name] = true
+			embedInterval = append(embedInterval, field)
+		case "label":
+			seen[field.Name] = true
+			value, err := (func(data []byte) (Trimmed, error) {
+				var v Trimmed
+				raw, err := wire.MPJSON(data)
+				if err != nil {
+					return v, err
+				}
+				err = json.Unmarshal(raw, &v)
+				if err != nil {
+					return v, wire.Refusal(err)
+				}
+				return v, nil
+			})(field.Data)
+			if err != nil {
+				return wire.In(field.Name, err)
+			}
+			v.Label = value
+		default:
+			return wire.Unknown(field.Name)
+		}
+	}
+	if !seen["low"] {
+		return wire.Required("low")
+	}
+	if !seen["high"] {
+		return wire.Required("high")
+	}
+	if !seen["label"] {
+		return wire.Required("label")
+	}
+	{
+		raw := msgp.AppendMapHeader(nil, uint32(len(embedInterval)))
+		for _, field := range embedInterval {
+			raw = msgp.AppendString(raw, field.Name)
+			raw = append(raw, field.Data...)
+		}
+		if err := v.Interval.UnmarshalMsgpack(raw); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// DecodeEmbeddedMsgpack reads and validates one complete value.
+func DecodeEmbeddedMsgpack(data []byte) (Embedded, error) {
+	var value Embedded
+	if err := value.UnmarshalMsgpack(data); err != nil {
+		return value, err
+	}
+	return value, value.validate()
+}
+
+// MarshalMsgpack encodes Embedded as a map in declaration order.
+func (v Embedded) MarshalMsgpack() ([]byte, error) {
+	if err := v.validate(); err != nil {
+		return nil, err
+	}
+	count := uint32(1)
+	embeddedInterval, err := v.Interval.MarshalMsgpack()
+	if err != nil {
+		return nil, err
+	}
+	embeddedCountInterval, embeddedInterval, err := msgp.ReadMapHeaderBytes(embeddedInterval)
+	if err != nil {
+		return nil, err
+	}
+	count += embeddedCountInterval
+	data := msgp.AppendMapHeader(nil, count)
+	data = append(data, embeddedInterval...)
+	data = msgp.AppendString(data, "label")
+	{
+		if !utf8.ValidString(string(v.Label)) {
+			return nil, &wire.InvalidError{Path: "label", Rule: "invalid UTF-8"}
+		}
+		data = msgp.AppendString(data, string(v.Label))
+	}
+	return data, nil
+}
+
+// UnmarshalMsgpack reads the structure of one complete Measured value.
+func (v *Measured) UnmarshalMsgpack(data []byte) error {
+	*v = Measured{}
+	fields, err := wire.MPObject(data)
+	if err != nil {
+		return err
+	}
+	seen := map[string]bool{}
+	var embedRounded []wire.MPMember
+	for _, field := range fields {
+		switch field.Name {
+		case "value":
+			seen[field.Name] = true
+			embedRounded = append(embedRounded, field)
+		case "unit":
+			seen[field.Name] = true
+			value, err := (func(data []byte) (string, error) {
+				value, err := wire.MPString(data)
+				return string(value), err
+			})(field.Data)
+			if err != nil {
+				return wire.In(field.Name, err)
+			}
+			v.Unit = value
+		default:
+			return wire.Unknown(field.Name)
+		}
+	}
+	if !seen["value"] {
+		return wire.Required("value")
+	}
+	if !seen["unit"] {
+		return wire.Required("unit")
+	}
+	{
+		raw := msgp.AppendMapHeader(nil, uint32(len(embedRounded)))
+		for _, field := range embedRounded {
+			raw = msgp.AppendString(raw, field.Name)
+			raw = append(raw, field.Data...)
+		}
+		if err := v.Rounded.UnmarshalMsgpack(raw); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// DecodeMeasuredMsgpack reads and validates one complete value.
+func DecodeMeasuredMsgpack(data []byte) (Measured, error) {
+	var value Measured
+	if err := value.UnmarshalMsgpack(data); err != nil {
+		return value, err
+	}
+	return value, value.validate()
+}
+
+// MarshalMsgpack encodes Measured as a map in declaration order.
+func (v Measured) MarshalMsgpack() ([]byte, error) {
+	if err := v.validate(); err != nil {
+		return nil, err
+	}
+	count := uint32(1)
+	embeddedRounded, err := v.Rounded.MarshalMsgpack()
+	if err != nil {
+		return nil, err
+	}
+	embeddedCountRounded, embeddedRounded, err := msgp.ReadMapHeaderBytes(embeddedRounded)
+	if err != nil {
+		return nil, err
+	}
+	count += embeddedCountRounded
+	data := msgp.AppendMapHeader(nil, count)
+	data = append(data, embeddedRounded...)
+	data = msgp.AppendString(data, "unit")
+	{
+		if !utf8.ValidString(string(v.Unit)) {
+			return nil, &wire.InvalidError{Path: "unit", Rule: "invalid UTF-8"}
+		}
+		data = msgp.AppendString(data, string(v.Unit))
+	}
+	return data, nil
+}
+
+// UnmarshalMsgpack reads the structure of one complete Containers value.
+func (v *Containers) UnmarshalMsgpack(data []byte) error {
+	*v = Containers{}
+	fields, err := wire.MPObject(data)
+	if err != nil {
+		return err
+	}
+	seen := map[string]bool{}
+	for _, field := range fields {
+		switch field.Name {
+		case "map":
+			seen[field.Name] = true
+			value, err := (func(data []byte) (exporttest.Intervals, error) {
+				return wire.MPMap[string](data, func(data []byte) (exporttest.Interval, error) {
+					var v exporttest.Interval
+					err := v.UnmarshalMsgpack(data)
+					return v, err
+				})
+			})(field.Data)
+			if err != nil {
+				return wire.In(field.Name, err)
+			}
+			v.Map = value
+		case "list":
+			seen[field.Name] = true
+			value, err := (func(data []byte) (exporttest.IntervalList, error) {
+				return wire.MPArray(data, func(data []byte) (exporttest.Interval, error) {
+					var v exporttest.Interval
+					err := v.UnmarshalMsgpack(data)
+					return v, err
+				})
+			})(field.Data)
+			if err != nil {
+				return wire.In(field.Name, err)
+			}
+			v.List = value
+		default:
+			return wire.Unknown(field.Name)
+		}
+	}
+	if !seen["map"] {
+		return wire.Required("map")
+	}
+	if !seen["list"] {
+		return wire.Required("list")
+	}
+	return nil
+}
+
+// DecodeContainersMsgpack reads and validates one complete value.
+func DecodeContainersMsgpack(data []byte) (Containers, error) {
+	var value Containers
+	if err := value.UnmarshalMsgpack(data); err != nil {
+		return value, err
+	}
+	return value, value.validate()
+}
+
+// MarshalMsgpack encodes Containers as a map in declaration order.
+func (v Containers) MarshalMsgpack() ([]byte, error) {
+	if err := v.validate(); err != nil {
+		return nil, err
+	}
+	count := uint32(2)
+	data := msgp.AppendMapHeader(nil, count)
+	data = msgp.AppendString(data, "map")
+	{
+		data = msgp.AppendMapHeader(data, uint32(len(v.Map)))
+		for _, key := range slices.Sorted(maps.Keys(v.Map)) {
+			if !utf8.ValidString(string(key)) {
+				return nil, &wire.InvalidError{Path: "map", Rule: "invalid UTF-8 map key"}
+			}
+			data = msgp.AppendString(data, string(key))
+			item := v.Map[key]
+			itemPath := wire.Prefix("map", wire.Key(string(key)))
+			_ = itemPath
+			encoded, err := item.MarshalMsgpack()
+			if err != nil {
+				return nil, wire.In(itemPath, err)
+			}
+			data = append(data, encoded...)
+		}
+	}
+	data = msgp.AppendString(data, "list")
+	{
+		data = msgp.AppendArrayHeader(data, uint32(len(v.List)))
+		for index, item := range v.List {
+			itemPath := wire.Prefix("list", wire.Index(index))
+			_ = itemPath
+			encoded, err := item.MarshalMsgpack()
+			if err != nil {
+				return nil, wire.In(itemPath, err)
+			}
+			data = append(data, encoded...)
+		}
+	}
+	return data, nil
 }

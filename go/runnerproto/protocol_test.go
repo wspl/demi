@@ -2,15 +2,21 @@ package runnerproto_test
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/wspl/demi/go/commandservice"
 	"github.com/wspl/demi/go/commandtree"
+	"github.com/wspl/demi/go/internal/wire"
 	"github.com/wspl/demi/go/runnerproto"
 )
 
@@ -26,7 +32,11 @@ func TestManifestVerifiesAndBuildsTheRustCorpus(t *testing.T) {
 	}
 	roots := []commandtree.Node{}
 	for _, root := range manifest.Roots {
-		roots = append(roots, root.Tree)
+		declaration, err := commandtree.Pin(root.Tree, func(commandtree.NativeOperation) (string, error) { return "", nil })
+		if err != nil {
+			t.Fatal(err)
+		}
+		roots = append(roots, declaration)
 	}
 	packages := slices.Collect(maps.Values(manifest.Packages))
 	built, err := runnerproto.BuildManifest(roots, packages)
@@ -113,7 +123,7 @@ func TestReleaseChecksEveryField(t *testing.T) {
 	exportCorpus(t, "release.json", encoded)
 }
 
-func TestKeptRecordsNamedFormAndRefuseBrokenFiles(t *testing.T) {
+func TestKeptRecordsRustFormAndRefuseBrokenFiles(t *testing.T) {
 	data, err := os.ReadFile("testdata/kept/output.msgpack")
 	if err != nil {
 		t.Fatal(err)
@@ -121,6 +131,14 @@ func TestKeptRecordsNamedFormAndRefuseBrokenFiles(t *testing.T) {
 	records, err := runnerproto.DecodeRecords(data)
 	if err != nil {
 		t.Fatal(err)
+	}
+	want := []runnerproto.KeptRecord{
+		runnerproto.KeptOutput{Stream: runnerproto.OutputStreamStdout, Bytes: []byte{0, 255, 13, 10}},
+		runnerproto.KeptLeftOut{Bytes: ^uint64(0)},
+		runnerproto.KeptOutput{Stream: runnerproto.OutputStreamStderr, Bytes: []byte("tail")},
+	}
+	if !reflect.DeepEqual(records, want) {
+		t.Fatalf("kept records: %#v", records)
 	}
 	var encoded []byte
 	for _, record := range records {
@@ -131,7 +149,7 @@ func TestKeptRecordsNamedFormAndRefuseBrokenFiles(t *testing.T) {
 		encoded = append(encoded, raw...)
 	}
 	if !bytes.Equal(encoded, data) {
-		t.Fatal("kept record bytes differ from named corpus")
+		t.Fatal("kept record bytes differ from Rust corpus")
 	}
 	gap, err := runnerproto.EncodeRecord(runnerproto.KeptLeftOut{Bytes: ^uint64(0)})
 	if err != nil {
@@ -241,5 +259,107 @@ func TestBootCorpusMatchesRustInBothFormats(t *testing.T) {
 			t.Fatalf("boot %s differs from Rust", format)
 		}
 		exportCorpus(t, "boot."+format, encoded)
+	}
+}
+
+// The attacker recomputes the hash, so binding refusals cannot pass on a hash mismatch.
+func TestManifestResolvesBindingsWithAValidHash(t *testing.T) {
+	data, err := os.ReadFile("testdata/manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, change := range [][2]string{
+		{`"descriptorHash":"7d320ed041df0a3277ce2946c2893522cac021e30c3876dc2cb58ac29bfbe636"`, `"descriptorHash":"missing"`},
+		{`"package":"demicodes.fixture"`, `"package":"demicodes.other"`},
+		{`"operation":"file.read"`, `"operation":"file.gone"`},
+	} {
+		changed := bytes.Replace(data, []byte(change[0]), []byte(change[1]), 1)
+		if bytes.Equal(changed, data) {
+			t.Fatal("mutation did not apply")
+		}
+		changed = rehashManifest(t, changed)
+		if _, err := runnerproto.DecodeManifest(changed); err == nil || !strings.Contains(err.Error(), "unresolved native command binding") {
+			t.Fatalf("binding resolution: %v", err)
+		}
+	}
+}
+
+// rehashManifest gives a structurally edited manifest its correct canonical identity.
+func rehashManifest(t *testing.T, data []byte) []byte {
+	t.Helper()
+	var fields map[string]jsontext.Value
+	if err := json.Unmarshal(data, &fields); err != nil {
+		t.Fatal(err)
+	}
+	delete(fields, "hash")
+	raw, err := json.Marshal(fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonical := jsontext.Value(raw)
+	if err := canonical.Canonicalize(); err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(canonical)
+	fields["hash"], err = json.Marshal(hex.EncodeToString(digest[:]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err = json.Marshal(fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+func TestOpaqueNegativeZeroMatchesRust(t *testing.T) {
+	input, err := os.ReadFile("testdata/negative-zero.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected, err := os.ReadFile("testdata/negative-zero.msgpack")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := wire.JSONMsgpack(jsontext.Value(input))
+	if err != nil || !bytes.Equal(encoded, expected) {
+		t.Fatalf("negative zero: %x, %v; want %x", encoded, err, expected)
+	}
+	decoded, err := wire.MPJSON(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := wire.JSONMsgpack(decoded)
+	if err != nil || !bytes.Equal(again, expected) {
+		t.Fatalf("negative zero round trip: %x %v", again, err)
+	}
+	exportCorpus(t, "negative-zero.msgpack", encoded)
+}
+
+// These alternate representations were probed with Rust's actual decode_records.
+func TestKeptRecordVariantRepresentations(t *testing.T) {
+	for _, scenario := range []struct {
+		hex   string
+		valid bool
+	}{
+		{"81009200c40141", true},
+		{"81d0009200c40141", false},
+		{"81c4066f75747075749200c40141", true},
+		{"81a66f75747075749281a67374646f7574c0c40141", true},
+		{"81a66f75747075749281a67374646f757490c40141", false},
+		{"81a66f757470757492a67374646f7574a141", false},
+		{"83a474797065a66f7574707574a673747265616da67374646f7574a56279746573c40141", false},
+	} {
+		raw, err := hex.DecodeString(scenario.hex)
+		if err != nil {
+			t.Fatal(err)
+		}
+		records, err := runnerproto.DecodeRecords(raw)
+		if (err == nil) != scenario.valid {
+			t.Fatalf("%s: %v", scenario.hex, err)
+		}
+		if scenario.valid && !reflect.DeepEqual(records, []runnerproto.KeptRecord{runnerproto.KeptOutput{Stream: runnerproto.OutputStreamStdout, Bytes: []byte("A")}}) {
+			t.Fatalf("lost record: %#v", records)
+		}
 	}
 }
