@@ -137,12 +137,14 @@ func loadSource(sources map[string][]byte, foreign func(string) (*Package, error
 		files:   files,
 		methods: map[string]map[string]bool{},
 		pkg: &Package{
-			MessagePack: map[string]bool{},
-			Structs:     map[string]*Struct{},
-			Unions:      map[string]*Union{},
-			Opaque:      map[string]bool{},
-			named:       map[string]*Type{},
-			patterns:    map[string]string{},
+			MessagePack:   map[string]bool{},
+			Exported:      map[string]bool{},
+			OpaqueScalars: map[string]*Type{},
+			Structs:       map[string]*Struct{},
+			Unions:        map[string]*Union{},
+			Opaque:        map[string]bool{},
+			named:         map[string]*Type{},
+			patterns:      map[string]string{},
 		},
 		specs:     map[string]*ast.StructType{},
 		imports:   map[string]map[string]string{},
@@ -250,7 +252,7 @@ func (m marked) kind() (string, []string, error) {
 				return "", nil, fmt.Errorf("%s: a declaration has one directive", m.name)
 			}
 			kind, arguments = fields[0], fields[1:]
-		case directiveDescribe, directiveCheck, directiveSchema, "//demi:msgpack":
+		case directiveDescribe, directiveCheck, directiveSchema, "//demi:msgpack", "//demi:export":
 		default:
 			return "", nil, fmt.Errorf("%s: unknown directive %s", m.name, fields[0])
 		}
@@ -345,6 +347,15 @@ func (p *reader) declare(m *marked, byFile map[string]*File) error {
 		return p.errorf(m.spec.Pos(), "%v", err)
 	}
 	p.declFile[m.name] = m.file
+	if m.has("//demi:export") {
+		if kind != directiveWire && kind != directiveUnion && kind != directiveEnum && kind != directiveValue {
+			return p.errorf(m.spec.Pos(), "%s: export marks a struct, union, enum or value", m.name)
+		}
+		if lines := m.lines("//demi:export"); len(lines) != 1 || lines[0] != "" {
+			return p.errorf(m.spec.Pos(), "%s: export takes no arguments", m.name)
+		}
+		p.pkg.Exported[m.name] = true
+	}
 	if m.has("//demi:msgpack") {
 		if kind != directiveWire && kind != directiveUnion && kind != directiveEnum {
 			return p.errorf(m.spec.Pos(), "%s: //demi:msgpack marks a wire struct, union or enum", m.name)
@@ -371,7 +382,7 @@ func (p *reader) declare(m *marked, byFile map[string]*File) error {
 		}
 		return nil
 	}
-	if len(arguments) > 0 && !(kind == directiveWire && len(arguments) == 1 && arguments[0] == "open") && kind != directiveUnion && kind != directiveVariant {
+	if len(arguments) > 0 && !(kind == directiveWire && len(arguments) == 1 && arguments[0] == "open") && kind != directiveUnion && kind != directiveVariant && kind != directiveOpaque {
 		return p.errorf(m.spec.Pos(), "%s: %s takes no argument here", m.name, kind)
 	}
 	if kind == directiveEnum && m.has(directiveCheck) {
@@ -390,6 +401,20 @@ func (p *reader) declare(m *marked, byFile map[string]*File) error {
 	case directiveOpaque:
 		if _, ok := m.spec.Type.(*ast.StructType); !ok {
 			return p.errorf(m.spec.Pos(), "%s: %s marks a struct", m.name, kind)
+		}
+		if len(arguments) > 0 {
+			if arguments[0] != "string" || len(arguments) > 2 {
+				return p.errorf(m.spec.Pos(), "%s: opaque scalar is string with an optional format=NAME", m.name)
+			}
+			typ := &Type{Kind: KindStruct, Name: m.name, Src: m.name, Opaque: true, WireKind: KindString}
+			if len(arguments) == 2 {
+				format, ok := strings.CutPrefix(arguments[1], "format=")
+				if !ok || format == "" {
+					return p.errorf(m.spec.Pos(), "%s: opaque scalar format is format=NAME", m.name)
+				}
+				typ.Format = format
+			}
+			p.pkg.OpaqueScalars[m.name] = typ
 		}
 		// An opaque type has no generated code, so it has no file to write.
 		p.pkg.Opaque[m.name] = true
@@ -706,6 +731,13 @@ func (p *reader) resolve(name string) error {
 		if err != nil {
 			return err
 		}
+		if f.Inline && f.Type.Kind == KindMap {
+			if s.Unknown != nil || s.Open {
+				return p.errorf(field.Pos(), "%s: one unknown-member map replaces open", name)
+			}
+			s.Unknown = f
+			continue
+		}
 		if f.Inline {
 			switch {
 			case s.variant:
@@ -715,6 +747,9 @@ func (p *reader) resolve(name string) error {
 			}
 		}
 		s.Fields = append(s.Fields, f)
+	}
+	if s.Unknown != nil && slices.ContainsFunc(s.Fields, func(f *Field) bool { return f.Inline }) {
+		return fmt.Errorf("%s: unknown members and an inline union cannot share a struct", name)
 	}
 	names := map[string]bool{}
 	for _, f := range s.Fields {
@@ -737,19 +772,23 @@ func (p *reader) embed(s *Struct, field *ast.Field) error {
 	switch {
 	case embedded == nil || embedded.Scalar != nil || embedded.variant:
 		return p.errorf(field.Pos(), "%s: a wire struct embeds a wire struct that is not a variant", s.Name)
-	case s.variant:
-		return p.errorf(field.Pos(), "%s: a variant embeds nothing", s.Name)
 	case field.Tag != nil:
 		return p.errorf(field.Pos(), "%s: an embedded struct has no tag: its members are the struct's own", s.Name)
 	}
 	if err := p.resolve(embedded.Name); err != nil {
 		return err
 	}
+	if embedded.Unknown != nil {
+		return p.errorf(field.Pos(), "%s: an embedded struct cannot retain unknown members", s.Name)
+	}
 	if slices.ContainsFunc(embedded.Fields, func(f *Field) bool { return f.Inline }) {
 		return p.errorf(field.Pos(), "%s: %s has an inline union, which an embedding struct does not have", s.Name, embedded.Name)
 	}
 	if embedded.Check {
-		return p.errorf(field.Pos(), "%s: %s has a rule across its fields, which an embedding struct does not run", s.Name, embedded.Name)
+		s.EmbedChecks = append(s.EmbedChecks, embedded.Name)
+	}
+	for _, check := range embedded.EmbedChecks {
+		s.EmbedChecks = append(s.EmbedChecks, embedded.Name+"."+check)
 	}
 	s.Embeds = append(s.Embeds, embedded.Name)
 	s.Fields = append(s.Fields, embedded.Fields...)
@@ -794,27 +833,57 @@ func (p *reader) field(structName string, field *ast.Field) (*Field, error) {
 	if err != nil {
 		return nil, p.errorf(field.Pos(), "%s: %v", where, err)
 	}
+	if inline && t.Kind == KindMap && t.Key.Src == "string" && t.Elem.Kind == KindRaw {
+		if omitzero || tag.Get("check") != "" || tag.Get("msgpack") != "" {
+			return nil, p.errorf(field.Pos(), "%s: an unknown-member map has only json:\",inline\"", where)
+		}
+		return &Field{Name: name, Type: t, Inline: true}, nil
+	}
 	if inline {
 		switch {
-		case t.Kind != KindUnion || p.pkg.Unions[t.Name].ContentName == "":
+		case t.Kind != KindUnion || p.pkg.Unions[t.Name] == nil || p.pkg.Unions[t.Name].ContentName == "":
 			return nil, p.errorf(field.Pos(), "%s: an inline field is an adjacently tagged union", where)
 		case omitzero:
 			return nil, p.errorf(field.Pos(), "%s: an inline field is required", where)
 		}
 	}
 	var rules []Rule
+	nullAsAbsent := false
 	if check, ok := tag.Lookup("check"); ok {
-		rules, err = p.parseRules(check)
+		parts, err := splitTop(check)
+		if err != nil {
+			return nil, p.errorf(field.Pos(), "%s: %v", where, err)
+		}
+		kept := parts[:0]
+		for _, part := range parts {
+			if strings.TrimSpace(part) == "nullabsent" {
+				if nullAsAbsent {
+					return nil, p.errorf(field.Pos(), "%s: repeated nullabsent", where)
+				}
+				nullAsAbsent = true
+			} else {
+				kept = append(kept, part)
+			}
+		}
+		check = strings.Join(kept, ",")
+		if len(kept) > 0 {
+			rules, err = p.parseRules(check)
+		}
 		if err != nil {
 			return nil, p.errorf(field.Pos(), "%s: %v", where, err)
 		}
 	}
 	nullable := slices.ContainsFunc(rules, func(rule Rule) bool { return rule.Kind == RuleNullable })
 	rules = slices.DeleteFunc(rules, func(rule Rule) bool { return rule.Kind == RuleNullable })
+	triState := nullable && omitzero && t.Kind == KindPointer && t.Elem.Kind == KindPointer
 	switch {
-	case nullable && (t.Kind != KindPointer || omitzero):
+	case nullAsAbsent && (nullable || t.Kind != KindPointer || !omitzero || t.Elem.Kind == KindPointer):
+		return nil, p.errorf(field.Pos(), "%s: nullabsent requires an optional single pointer", where)
+	case t.Kind == KindPointer && t.Elem.Kind == KindPointer && !triState:
+		return nil, p.errorf(field.Pos(), "%s: a double pointer requires omitzero and nullable", where)
+	case nullable && !triState && (t.Kind != KindPointer || omitzero):
 		return nil, p.errorf(field.Pos(), "%s: a nullable field is a required pointer, without omitzero", where)
-	case omitzero && t.Kind != KindPointer:
+	case omitzero && t.Kind != KindPointer && t.Kind != KindBool:
 		return nil, p.errorf(field.Pos(), "%s: an optional field is a pointer with omitzero", where)
 	case t.Kind == KindPointer && !omitzero && !nullable:
 		return nil, p.errorf(field.Pos(), "%s: a pointer field is optional and has omitzero", where)
@@ -827,15 +896,17 @@ func (p *reader) field(structName string, field *ast.Field) (*Field, error) {
 		return nil, p.errorf(field.Pos(), "%s: %v", where, err)
 	}
 	return &Field{
-		Name:     name,
-		JSON:     jsonName,
-		Doc:      strings.TrimSpace(field.Doc.Text()),
-		Type:     t,
-		Required: !omitzero,
-		Nullable: nullable,
-		Encoding: tag.Get("msgpack"),
-		Inline:   inline,
-		Rules:    rules,
+		Name:         name,
+		JSON:         jsonName,
+		Doc:          strings.TrimSpace(field.Doc.Text()),
+		Type:         t,
+		Required:     !omitzero,
+		Nullable:     nullable,
+		NullAsAbsent: nullAsAbsent,
+		TriState:     triState,
+		Encoding:     tag.Get("msgpack"),
+		Inline:       inline,
+		Rules:        rules,
 	}, nil
 }
 
@@ -898,6 +969,9 @@ func (p *reader) typeOf(expr ast.Expr) (*Type, error) {
 		if _, ok := p.pkg.Structs[expr.Name]; ok {
 			return &Type{Kind: KindStruct, Name: expr.Name, Src: src}, nil
 		}
+		if scalar := p.pkg.OpaqueScalars[expr.Name]; scalar != nil {
+			return scalar, nil
+		}
 		if p.pkg.Opaque[expr.Name] {
 			return &Type{Kind: KindStruct, Name: expr.Name, Src: src, Opaque: true}, nil
 		}
@@ -913,8 +987,8 @@ func (p *reader) typeOf(expr ast.Expr) (*Type, error) {
 		if err != nil {
 			return nil, err
 		}
-		if elem.Kind == KindPointer {
-			return nil, fmt.Errorf("a pointer to %s", elem.Src)
+		if elem.Kind == KindPointer && elem.Elem.Kind == KindPointer {
+			return nil, fmt.Errorf("more than two pointer levels")
 		}
 		return &Type{Kind: KindPointer, Elem: elem, Src: src}, nil
 	case *ast.ArrayType:
@@ -954,6 +1028,12 @@ func (p *reader) typeOf(expr ast.Expr) (*Type, error) {
 				owner, err := p.foreign(p.imports[p.file][x.Name])
 				if err != nil {
 					return nil, err
+				}
+				if opaque := owner.OpaqueScalars[expr.Sel.Name]; opaque != nil {
+					typ := *opaque
+					typ.Src = src
+					typ.Qualifier = x.Name
+					return &typ, nil
 				}
 				if owner.Unions[expr.Sel.Name] != nil {
 					return &Type{Kind: KindUnion, Name: expr.Sel.Name, Src: src, Opaque: true, Qualifier: x.Name}, nil

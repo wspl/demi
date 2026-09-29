@@ -11,6 +11,10 @@ import (
 type Package struct {
 	// Name is the package's name.
 	Name string
+	// Exported selects standalone owner entry points, in a separate file.
+	Exported map[string]bool
+	// OpaqueScalars describes opaque types to schema emitters.
+	OpaqueScalars map[string]*Type
 	// MessagePack selects additional codecs without changing JSON output.
 	MessagePack map[string]bool
 	// Files are the source files that declare wire types, by name.
@@ -73,6 +77,10 @@ type Struct struct {
 	// Embeds are the structs whose members the struct's Fields include, in
 	// the order it embeds them.
 	Embeds []string
+	// EmbedChecks are Go selector paths of inherited cross-field checks.
+	EmbedChecks []string
+	// Unknown keeps undeclared JSON-valued members for replay.
+	Unknown *Field
 	// variant is whether the struct is marked //demi:variant.
 	variant bool
 }
@@ -86,8 +94,12 @@ type Field struct {
 	Type *Type
 	// Required is whether the member must be present: it has no omitzero.
 	Required bool
-	// Nullable is whether a required member may be null; its type is a pointer.
+	// Nullable is whether a member may be null; its type is a pointer.
 	Nullable bool
+	// NullAsAbsent accepts null as the omitted optional value.
+	NullAsAbsent bool
+	// TriState keeps absent, null and a value apart using **T.
+	TriState bool
 	// Encoding overrides the MessagePack representation: bin or timestamp.
 	Encoding string
 	// Inline is whether the field holds an adjacently tagged union whose two
@@ -142,6 +154,9 @@ type Type struct {
 	// The rules of a type apply to every field of it.
 	Description string
 	Rules       []Rule
+	// WireKind and Format describe the representation of an opaque scalar.
+	WireKind Kind
+	Format   string
 }
 
 // A Union is a sealed interface, Go's sum type.
