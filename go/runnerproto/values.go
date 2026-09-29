@@ -17,7 +17,9 @@ const (
 	SignalContinue  Signal = "SIGCONT"
 )
 
-// RunnerPlatform names the operating system as Node process.platform does.
+// The operating system a runner runs on, named as Node's
+// `process.platform` names it. A device keeps its runner's, and the browser
+// receives it with the device.
 //
 //demi:enum
 type RunnerPlatform string

@@ -277,6 +277,7 @@ func TestDecodeCategoriesAndFieldPaths(t *testing.T) {
 		{`{"type":"text","id":`, core.DecodeSyntax},
 		{`{"type":"text","id":7}`, core.DecodeShape},
 		{`{"type":"missing"}`, core.DecodeShape},
+		{`{"type":"text","type":"text"}`, core.DecodeShape},
 		{`{"inputTokens":9007199254740992,"outputTokens":0,"cacheReadTokens":0,"cacheWriteTokens":0}`, core.DecodeInvalid},
 	} {
 		var err error

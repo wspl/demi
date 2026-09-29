@@ -765,21 +765,27 @@ type DirEntry struct {
 //demi:wire
 //demi:msgpack
 type GitChanges struct {
-	Repository bool        `json:"repository"`
-	Head       *string     `json:"head" check:"nullable"`
-	Files      []GitChange `json:"files"`
-	Truncated  bool        `json:"truncated"`
-	Watched    bool        `json:"watched"`
+	Repository bool `json:"repository"`
+	// Always written, null before the first commit.
+	Head      *string     `json:"head" check:"nullable"`
+	Files     []GitChange `json:"files"`
+	Truncated bool        `json:"truncated"`
+	Watched   bool        `json:"watched"`
 }
 
+// One path `git status` lists in a working tree.
+//
 //demi:wire
 type GitChange struct {
-	Path    string     `json:"path"`
-	Status  string     `json:"status" check:"pattern=gitStatusPattern"`
-	Kind    ChangeKind `json:"kind"`
-	From    *string    `json:"from,omitzero"`
-	Added   uint64     `json:"added" check:"range=..9007199254740991"`
-	Removed uint64     `json:"removed" check:"range=..9007199254740991"`
+	Path string `json:"path"`
+	// git's two status letters: the index against HEAD, then the working
+	// tree against the index; `??` for an untracked file.
+	Status string     `json:"status" check:"pattern=gitStatusPattern"`
+	Kind   ChangeKind `json:"kind"`
+	// The path before a rename.
+	From    *string `json:"from,omitzero"`
+	Added   uint64  `json:"added" check:"range=..9007199254740991"`
+	Removed uint64  `json:"removed" check:"range=..9007199254740991"`
 }
 
 //demi:wire

@@ -5,7 +5,7 @@ import (
 	"slices"
 )
 
-// UnavailableSetting names the catalog setting that the model does not offer.
+// A part of a conversation's model settings that its model does not offer.
 type UnavailableSetting struct {
 	Kind  string
 	Value string

@@ -113,7 +113,7 @@ func (v *ProviderErrorDiagnostics) UnmarshalJSONFrom(dec *jsontext.Decoder) erro
 // is broken.
 func (v ProviderErrorDiagnostics) validate() error {
 	var r wire.Report
-	r.OneOf("source", string(v.Source), "http", "stream", "transport", "unknown")
+	r.OneOf("source", string(v.Source), "unknown", "http", "stream", "transport")
 	return r.Err()
 }
 

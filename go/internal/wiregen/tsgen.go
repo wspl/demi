@@ -1,9 +1,11 @@
 package wiregen
 
 import (
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
 	"go/constant"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -82,6 +84,9 @@ func (p *Package) dependencies(name string) []string {
 		}
 		return found
 	}
+	if p.Structs[name] == nil {
+		return found
+	}
 	for _, f := range p.Structs[name].Fields {
 		walk(f.Type)
 	}
@@ -99,6 +104,9 @@ func (p *Package) definition(name string) (string, error) {
 	out.WriteByte('\n')
 	var code, doc string
 	if u, ok := p.Unions[name]; ok {
+		if u.ContentName != "" {
+			return "", fmt.Errorf("%s: adjacent union has no TypeScript schema", name)
+		}
 		doc = u.Doc
 		var refs []string
 		for _, v := range u.Variants {
@@ -109,7 +117,14 @@ func (p *Package) definition(name string) (string, error) {
 		} else {
 			code = fmt.Sprintf("z.union([%s])", strings.Join(refs, ", "))
 		}
-	} else if s := p.Structs[name]; s.Scalar != nil {
+	} else if named := p.named[name]; named != nil {
+		var err error
+		code, err = p.schema(named, named.Rules)
+		if err != nil {
+			return "", err
+		}
+		doc = named.Description
+	} else if s := p.Structs[name]; s != nil && s.Scalar != nil {
 		doc = s.Doc
 		scalar, err := p.schema(s.Scalar, nil)
 		if err != nil {
@@ -117,6 +132,9 @@ func (p *Package) definition(name string) (string, error) {
 		}
 		code = scalar
 	} else {
+		if s == nil {
+			return "", fmt.Errorf("%s: missing schema declaration", name)
+		}
 		doc = s.Doc
 		object, err := p.object(s)
 		if err != nil {
@@ -133,6 +151,9 @@ func (p *Package) definition(name string) (string, error) {
 // object returns the strict object of a struct, whose members are written on
 // lines of their own.
 func (p *Package) object(s *Struct) (string, error) {
+	if hasInline(s) {
+		return "", fmt.Errorf("%s: inline union has no TypeScript schema", s.Name)
+	}
 	var lines []string
 	if s.Union != nil && s.Union.TagName != "" {
 		lines = append(lines, fmt.Sprintf("  %s: z.literal(%s),\n", key(s.Union.TagName), quote(s.Tag)))
@@ -142,7 +163,7 @@ func (p *Package) object(s *Struct) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("%s.%s: %w", s.Name, f.Name, err)
 		}
-		if f.Nullable {
+		if f.Nullable || f.NullAsAbsent {
 			schema += ".nullable()"
 		}
 		if !f.Required {
@@ -159,13 +180,27 @@ func (p *Package) object(s *Struct) (string, error) {
 		function = "z.object"
 	}
 	if len(lines) == 0 {
+		if s.Unknown != nil {
+			return function + "({}).catchall(z.json())", nil
+		}
 		return function + "({})", nil
 	}
-	return function + "({\n" + strings.Join(lines, "") + "})", nil
+	code := function + "({\n" + strings.Join(lines, "") + "})"
+	if s.Unknown != nil {
+		code += ".catchall(z.json())"
+	}
+	return code, nil
 }
 
 // schema returns the Zod schema of a value of type t under rules.
 func (p *Package) schema(t *Type, rules []Rule) (string, error) {
+	if t.WireKind == KindString {
+		b := browserEmitter{packages: map[string]*Package{p.Name: p}}
+		return b.scalar(p.Name, BrowserScalarSchema{Type: "string", Format: t.Format}, rules)
+	}
+	if t.Qualifier != "" && t.Kind == KindString {
+		return "", fmt.Errorf("%s: foreign enum requires GenerateBrowserTypeScript with its owner", t.Src)
+	}
 	switch t.Kind {
 	case KindPointer:
 		return p.schema(t.Elem, rules)
@@ -215,6 +250,9 @@ func (p *Package) schema(t *Type, rules []Rule) (string, error) {
 		element, err := p.schema(t.Elem, eachRules(rules))
 		if err != nil {
 			return "", err
+		}
+		if t.Elem.Kind == KindPointer {
+			element += ".nullable()"
 		}
 		keys := keyRules(rules)
 		code := "z.record(z.string(), " + element + ")"
@@ -418,3 +456,521 @@ func pushDoc(out *strings.Builder, description string, indent int) {
 	}
 	fmt.Fprintf(out, "%s */\n", pad)
 }
+
+// BrowserType identifies a declaration in its owning Go package.
+type BrowserType struct {
+	Package string
+	Name    string
+}
+
+// BrowserRoot states whether the browser receives this root. Every dependency
+// of a received root is tolerant, even when a sent root also refers to it.
+type BrowserRoot struct {
+	Type     BrowserType
+	Receives bool
+}
+
+// BrowserOptions holds temporary scalar metadata while the declaration parser
+// gains opaque scalar schemas. Names and Docs preserve the public browser API.
+type BrowserOptions struct {
+	Scalars       map[BrowserType]string
+	ScalarSchemas map[BrowserType]BrowserScalarSchema
+	Aliases       map[BrowserType]*Type
+	Extends       map[BrowserType]BrowserType
+	External      map[BrowserType]string
+	Names         map[BrowserType]string
+	Docs          map[BrowserType]string
+}
+
+// GenerateBrowserTypeScript follows the browser roots across owning packages.
+// It emits named enums, inline tagged variants and dependencies before users.
+func GenerateBrowserTypeScript(packages map[string]*Package, roots []BrowserRoot, options BrowserOptions) ([]byte, error) {
+	b := browserEmitter{packages: packages, options: options, received: map[BrowserType]bool{}, included: map[BrowserType]bool{}, done: map[BrowserType]bool{}, visiting: map[BrowserType]bool{}}
+	if err := b.include(roots); err != nil {
+		return nil, err
+	}
+	var names []BrowserType
+	for ref := range b.included {
+		names = append(names, ref)
+	}
+	slices.SortFunc(names, func(a, c BrowserType) int { return strings.Compare(b.name(a), b.name(c)) })
+	var out strings.Builder
+	// Retain the existing generated header during the browser identity checkpoint.
+	out.WriteString("// Generated by `bun run contracts` (`xtask contracts`) from the Rust contract types. Do not edit.\nimport { z } from \"zod\"\n")
+	imports := map[string][]string{}
+	for ref := range b.included {
+		if module := options.External[ref]; module != "" {
+			imports[module] = append(imports[module], schemaName(b.name(ref)))
+		}
+	}
+	var modules []string
+	for module := range imports {
+		modules = append(modules, module)
+	}
+	slices.Sort(modules)
+	for _, module := range modules {
+		slices.Sort(imports[module])
+		fmt.Fprintf(&out, "import { %s } from %s\n", strings.Join(imports[module], ", "), quote(module))
+	}
+	var emit func(BrowserType) error
+	emit = func(ref BrowserType) error {
+		if options.External[ref] != "" {
+			return nil
+		}
+		if b.done[ref] {
+			return nil
+		}
+		if b.visiting[ref] {
+			return fmt.Errorf("%s.%s: recursive browser declaration", ref.Package, ref.Name)
+		}
+		b.visiting[ref] = true
+		dependencies, err := b.dependencies(ref)
+		if err != nil {
+			return err
+		}
+		for _, dependency := range dependencies {
+			if err := emit(dependency); err != nil {
+				return err
+			}
+		}
+		code, doc, err := b.definition(ref)
+		if err != nil {
+			return err
+		}
+		if override, ok := options.Docs[ref]; ok {
+			doc = override
+		}
+		out.WriteByte('\n')
+		pushDoc(&out, doc, 0)
+		name := b.name(ref)
+		fmt.Fprintf(&out, "export const %s = %s\nexport type %s = z.infer<typeof %s>\n", schemaName(name), code, name, schemaName(name))
+		b.done[ref] = true
+		delete(b.visiting, ref)
+		return nil
+	}
+	for _, ref := range names {
+		if err := emit(ref); err != nil {
+			return nil, err
+		}
+	}
+	return []byte(out.String()), nil
+}
+
+type browserEmitter struct {
+	packages                           map[string]*Package
+	options                            BrowserOptions
+	received, included, done, visiting map[BrowserType]bool
+}
+
+func (b *browserEmitter) name(ref BrowserType) string {
+	if name := b.options.Names[ref]; name != "" {
+		return name
+	}
+	return ref.Name
+}
+func (b *browserEmitter) reference(pkg string, t *Type) BrowserType {
+	if t.Qualifier != "" {
+		pkg = t.Qualifier
+	}
+	return BrowserType{Package: pkg, Name: t.Name}
+}
+
+// dependencies follows fields directly: variant structs are not browser names.
+func (b *browserEmitter) dependencies(ref BrowserType) ([]BrowserType, error) {
+	if b.options.External[ref] != "" {
+		return nil, nil
+	}
+	if _, ok := b.options.ScalarSchemas[ref]; ok {
+		return nil, nil
+	}
+	p := b.packages[ref.Package]
+	if p == nil {
+		return nil, fmt.Errorf("browser contract owner %s is unavailable", ref.Package)
+	}
+	var result []BrowserType
+	var fields []*Field
+	if u := p.Unions[ref.Name]; u != nil {
+		for _, v := range u.Variants {
+			if base, ok := b.options.Extends[BrowserType{Package: ref.Package, Name: v.Name}]; ok {
+				result = append(result, base)
+			} else {
+				fields = append(fields, v.Fields...)
+			}
+		}
+	} else if s := p.Structs[ref.Name]; s != nil {
+		fields = s.Fields
+	} else if p.named[ref.Name] != nil {
+		return nil, nil
+	} else {
+		return nil, fmt.Errorf("browser declaration %s.%s is unavailable", ref.Package, ref.Name)
+	}
+	var walk func(string, *Type)
+	walk = func(pkg string, t *Type) {
+		if t.Elem != nil {
+			walk(pkg, t.Elem)
+			return
+		}
+		if t.Name == "" {
+			return
+		}
+		target := b.reference(pkg, t)
+		if t.WireKind != 0 {
+			if scalar, ok := b.options.ScalarSchemas[target]; !ok || scalar.Inline {
+				return
+			}
+		}
+		if alias := b.options.Aliases[target]; alias != nil {
+			walk(target.Package, alias)
+			return
+		}
+		if _, scalar := b.options.Scalars[target]; scalar {
+			return
+		}
+		if scalar, ok := b.options.ScalarSchemas[target]; ok && scalar.Inline {
+			return
+		}
+		owner := b.packages[target.Package]
+		_, scalar := b.options.ScalarSchemas[target]
+		if scalar || t.Kind == KindStruct || t.Kind == KindUnion || owner != nil && owner.named[target.Name] != nil {
+			if !slices.Contains(result, target) {
+				result = append(result, target)
+			}
+		}
+	}
+	for _, field := range fields {
+		walk(ref.Package, field.Type)
+	}
+	if structure := p.Structs[ref.Name]; structure != nil && structure.Scalar != nil {
+		walk(ref.Package, structure.Scalar)
+	}
+	return result, nil
+}
+func (b *browserEmitter) definition(ref BrowserType) (string, string, error) {
+	if scalar, ok := b.options.ScalarSchemas[ref]; ok {
+		code, err := b.scalar(ref.Package, scalar, nil)
+		return code, b.options.Docs[ref], err
+	}
+	p := b.packages[ref.Package]
+	if u := p.Unions[ref.Name]; u != nil {
+		if u.ContentName != "" {
+			return "", "", fmt.Errorf("%s: browser TypeScript does not support adjacent unions", ref.Name)
+		}
+		var out strings.Builder
+		if u.TagName != "" {
+			fmt.Fprintf(&out, "z.discriminatedUnion(%s, [\n", quote(u.TagName))
+		} else {
+			out.WriteString("z.union([\n")
+		}
+		for _, variant := range u.Variants {
+			if base, ok := b.options.Extends[BrowserType{Package: ref.Package, Name: variant.Name}]; ok {
+				fmt.Fprintf(&out, "  %s.extend({\n    %s: z.literal(%s),\n  }),\n", schemaName(b.name(base)), key(u.TagName), quote(variant.Tag))
+				continue
+			}
+			doc := variant.Doc
+			if doc == "" && len(variant.Embeds) == 1 {
+				if embedded := p.Structs[variant.Embeds[0]]; embedded != nil {
+					doc = embedded.Doc
+				}
+			}
+			pushDoc(&out, doc, 1)
+			code, err := b.object(ref, variant, 1)
+			if err != nil {
+				return "", "", err
+			}
+			out.WriteString("  " + code + ",\n")
+		}
+		out.WriteString("])")
+		return out.String(), u.Doc, nil
+	}
+	if s := p.Structs[ref.Name]; s != nil {
+		code, err := b.object(ref, s, 0)
+		return code, s.Doc, err
+	}
+	if t := p.named[ref.Name]; t != nil {
+		code, err := p.schema(t, t.Rules)
+		return code, t.Description, err
+	}
+	return "", "", fmt.Errorf("missing browser type %s.%s", ref.Package, ref.Name)
+}
+func (b *browserEmitter) object(ref BrowserType, s *Struct, indent int) (string, error) {
+	if s.Scalar != nil {
+		return b.schema(ref.Package, s.Scalar, s.Scalar.Rules)
+	}
+	var out strings.Builder
+	function := "z.strictObject"
+	if b.received[ref] {
+		function = "z.object"
+	}
+	out.WriteString(function + "({\n")
+	pad := strings.Repeat("  ", indent+1)
+	if s.Union != nil && s.Union.TagName != "" {
+		fmt.Fprintf(&out, "%s%s: z.literal(%s),\n", pad, key(s.Union.TagName), quote(s.Tag))
+	}
+	for _, field := range s.Fields {
+		if field.Inline {
+			return "", fmt.Errorf("%s.%s: browser TypeScript does not support inline unions", s.Name, field.Name)
+		}
+		code, err := b.schema(ref.Package, field.Type, field.Rules)
+		if err != nil {
+			return "", fmt.Errorf("%s.%s: %w", s.Name, field.Name, err)
+		}
+		if field.Nullable || field.NullAsAbsent {
+			code += ".nullable()"
+		}
+		if !field.Required {
+			code += ".optional()"
+		}
+		pushDoc(&out, field.Doc, indent+1)
+		fmt.Fprintf(&out, "%s%s: %s,\n", pad, key(field.JSON), code)
+	}
+	out.WriteString(strings.Repeat("  ", indent) + "})")
+	if s.Unknown != nil {
+		out.WriteString(".catchall(z.json())")
+	}
+	return out.String(), nil
+}
+func (b *browserEmitter) schema(pkg string, t *Type, rules []Rule) (string, error) {
+	if t.Kind == KindPointer {
+		return b.schema(pkg, t.Elem, rules)
+	}
+	ref := b.reference(pkg, t)
+	if alias := b.options.Aliases[ref]; alias != nil {
+		return b.schema(ref.Package, alias, rules)
+	}
+	if scalar, ok := b.options.ScalarSchemas[ref]; ok {
+		if scalar.Inline {
+			return b.scalar(pkg, scalar, rules)
+		}
+		return schemaName(b.name(ref)), nil
+	}
+	if t.WireKind == KindString {
+		return b.scalar(pkg, BrowserScalarSchema{Type: "string", Format: t.Format}, rules)
+	}
+	if code, ok := b.options.Scalars[ref]; ok {
+		return code, nil
+	}
+	owner := b.packages[ref.Package]
+	if t.Name != "" && (t.Kind == KindStruct || t.Kind == KindUnion || owner != nil && owner.named[t.Name] != nil) {
+		return schemaName(b.name(ref)), nil
+	}
+	p := b.packages[pkg]
+	switch t.Kind {
+	case KindSlice, KindMap:
+		inner, err := b.schema(pkg, t.Elem, eachRules(rules))
+		if err != nil {
+			return "", err
+		}
+		if t.Kind == KindMap {
+			if t.Elem.Kind == KindPointer {
+				inner += ".nullable()"
+			}
+			return "z.record(z.string(), " + inner + ")", nil
+		}
+		code := "z.array(" + inner + ")"
+		for _, rule := range rules {
+			if rule.Kind == RuleItems {
+				code += lengthBounds(rule)
+			}
+		}
+		return code, nil
+	case KindFloat:
+		code := "z.number()"
+		for _, rule := range rules {
+			if rule.Kind != RuleRange {
+				continue
+			}
+			for _, bound := range []struct {
+				name  string
+				value *Bound
+			}{{"min", rule.Min}, {"max", rule.Max}} {
+				if bound.value != nil {
+					value := strconv.FormatFloat(bound.value.Float, 'g', -1, 64)
+					if !strings.ContainsAny(value, ".eE") {
+						value += ".0"
+					}
+					code += "." + bound.name + "(" + value + ")"
+				}
+			}
+		}
+		return code, nil
+	case KindString:
+		adjusted := slices.Clone(rules)
+		for i := range adjusted {
+			if adjusted[i].Kind == RuleBytes {
+				adjusted[i].Kind = RuleChars
+			}
+		}
+		return p.stringSchema(adjusted)
+	default:
+		return p.schema(t, rules)
+	}
+}
+
+// BrowserDefinitions lists the declarations owned by a browser module's roots.
+func BrowserDefinitions(packages map[string]*Package, roots []BrowserRoot, options BrowserOptions) ([]BrowserType, error) {
+	b := browserEmitter{packages: packages, options: options, included: map[BrowserType]bool{}, received: map[BrowserType]bool{}}
+	if err := b.include(roots); err != nil {
+		return nil, err
+	}
+	var refs []BrowserType
+	for ref := range b.included {
+		refs = append(refs, ref)
+	}
+	slices.SortFunc(refs, func(a, c BrowserType) int { return strings.Compare(b.name(a), b.name(c)) })
+	return refs, nil
+}
+func (b *browserEmitter) include(roots []BrowserRoot) error {
+	var visit func(BrowserType, bool) error
+	visit = func(ref BrowserType, received bool) error {
+		if b.included[ref] && (!received || b.received[ref]) {
+			return nil
+		}
+		b.included[ref] = true
+		b.received[ref] = b.received[ref] || received
+		dependencies, err := b.dependencies(ref)
+		if err != nil {
+			return err
+		}
+		for _, dependency := range dependencies {
+			if err := visit(dependency, received); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	for _, root := range roots {
+		if err := visit(root.Type, root.Receives); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (b *browserEmitter) scalar(pkg string, scalar BrowserScalarSchema, rules []Rule) (string, error) {
+	if err := scalar.check(); err != nil {
+		return "", err
+	}
+	code := "z.string()"
+	switch scalar.Format {
+	case "trimmed":
+		code += ".trim()"
+	case "email":
+		code = "z.email()"
+	case "http-url":
+		code = "z.url({ protocol: z.regexes.httpProtocol })"
+	case "date-time":
+		code = "z.iso.datetime({ precision: 3 })"
+	}
+	lo, hi := scalar.MinLength, scalar.MaxLength
+	for _, rule := range rules {
+		if rule.Kind != RuleChars && rule.Kind != RuleBytes {
+			continue
+		}
+		if rule.Min != nil && (lo == nil || uint64(rule.Min.Value) > *lo) {
+			v := uint64(rule.Min.Value)
+			lo = &v
+		}
+		if rule.Max != nil && (hi == nil || uint64(rule.Max.Value) < *hi) {
+			v := uint64(rule.Max.Value)
+			hi = &v
+		}
+	}
+	if lo != nil {
+		code += fmt.Sprintf(".min(%d)", *lo)
+	}
+	if hi != nil {
+		code += fmt.Sprintf(".max(%d)", *hi)
+	}
+	if scalar.Pattern != "" {
+		code += fmt.Sprintf(".regex(new RegExp(%s, \"u\"))", quote(scalar.Pattern))
+	}
+	return code, nil
+}
+
+// GenerateBrowserTables emits the core tables and lookups and the available
+// live-view constants. Missing constants are reported rather than redeclared.
+func GenerateBrowserTables(previews, attachments, videos any, live *Package) ([]byte, []string, error) {
+	var out strings.Builder
+	out.WriteString("// Generated by `bun run contracts` (`xtask contracts`) from the Rust contract types. Do not edit.\nimport type { FileExtension, PreviewType } from \"./contracts\"\n\n")
+	pushDoc(&out, "The file-type table (`file-previews.md` § Choosing a view): the media type\nthe product knows a file by, from its extension, and whether the page shows\nit in place. The backend serves files by the same table.", 0)
+	table, err := json.Marshal(previews, jsontext.WithIndent("  "))
+	if err != nil {
+		return nil, nil, err
+	}
+	fmt.Fprintf(&out, "export const PREVIEW_TYPES: readonly PreviewType[] = %s\n", table)
+	out.WriteString(browserTableLookups)
+	for _, entry := range []struct {
+		name, doc string
+		value     any
+	}{
+		{"ATTACHMENT_FILE_EXTENSIONS", "The image and document types a model known to read attachments accepts.", attachments},
+		{"VIDEO_FILE_EXTENSIONS", "The video types, which only a model known to read video accepts.", videos},
+	} {
+		value, err := json.Marshal(entry.value)
+		if err != nil {
+			return nil, nil, err
+		}
+		out.WriteByte('\n')
+		pushDoc(&out, entry.doc, 0)
+		fmt.Fprintf(&out, "export const %s: readonly FileExtension[] = %s\n", entry.name, value)
+	}
+	out.WriteString("\n// The live view's stream (`live-view.md` § The stream).\n")
+	var missing []string
+	for _, entry := range []struct{ source, name, doc string }{
+		{"ControlFrame", "LIVE_CONTROL_FRAME", "A control frame's kind: UTF-8 JSON of one message."},
+		{"VideoFrame", "LIVE_VIDEO_FRAME", "A video frame's kind: its header, then H.264 Annex B data."},
+		{"FileFrame", "LIVE_FILE_FRAME", "A file frame's kind: its header, then a chosen file's bytes."},
+		{"MaxFrameBytes", "LIVE_MAX_FRAME_BYTES", "The largest frame after its length."},
+		{"FileChunkBytes", "LIVE_FILE_CHUNK_BYTES", "A file frame's largest data."},
+		{"VideoHeaderBytes", "LIVE_VIDEO_HEADER_BYTES", "A video frame's header."},
+		{"VideoTabBytes", "LIVE_VIDEO_TAB_BYTES", "A video frame header's tab ID, padded with zero bytes."},
+		{"FileHeaderBytes", "LIVE_FILE_HEADER_BYTES", "A file frame's header."},
+		{"HeartbeatMS", "LIVE_HEARTBEAT_MS", "How often the module speaks at least."},
+		{"StallMS", "LIVE_STALL_MS", "Silence after which the page shows the stream as stalled."},
+		{"VideoCodec", "LIVE_VIDEO_CODEC", "The video frames' codec, as WebCodecs names it."},
+		{"CaptureUnavailable", "LIVE_CAPTURE_UNAVAILABLE", "A notice's code when the Host cannot capture the watched tab."},
+		{"CaptureFailed", "LIVE_CAPTURE_FAILED", "A notice's code when the watched tab's capture failed."},
+	} {
+		if live == nil || live.consts[entry.source] == nil {
+			missing = append(missing, entry.source)
+			continue
+		}
+		value := live.consts[entry.source]
+		var text string
+		switch value.Kind() {
+		case constant.String:
+			text = quote(constant.StringVal(value))
+		case constant.Int:
+			text = value.ExactString()
+		default:
+			return nil, nil, fmt.Errorf("live constant %s must be an integer or string", entry.source)
+		}
+		pushDoc(&out, entry.doc, 0)
+		fmt.Fprintf(&out, "export const %s = %s\n", entry.name, text)
+	}
+	return []byte(out.String()), missing, nil
+}
+
+const browserTableLookups = `
+/**
+ * The media type the product knows the file at ` + "`" + `path` + "`" + ` by, from its extension
+ * whatever its ASCII case, or null for a file the table does not name. Either
+ * separator ends a directory, since a paired Windows device names its paths
+ * with ` + "`" + `\` + "`" + `, and a name that starts with its only dot, such as ` + "`" + `.png` + "`" + `, has no
+ * extension.
+ */
+export function previewMediaType(path: string): string | null {
+  const name = path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1)
+  const dot = name.lastIndexOf(".")
+  if (dot <= 0) {
+    return null
+  }
+  const extension = name.slice(dot + 1).replace(/[A-Z]/g, (letter) => letter.toLowerCase())
+  return PREVIEW_TYPES.find((entry) => entry.extensions.includes(extension))?.mediaType ?? null
+}
+
+/** Whether the page shows ` + "`" + `mediaType` + "`" + ` in place instead of downloading it. */
+export function showsInPlace(mediaType: string): boolean {
+  return PREVIEW_TYPES.some((entry) => entry.inPlace && entry.mediaType === mediaType)
+}
+`

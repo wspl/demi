@@ -93,8 +93,9 @@ export const commandCallerSchema = z.discriminatedUnion("kind", [agentCallerSche
 export type CommandCaller = z.infer<typeof commandCallerSchema>
 
 /**
- * CommandLocale is an IANA time zone and BCP 47 language tags in preference
- * order, as the conversation's user's browser last reported them.
+ * An IANA time zone and BCP 47 language tags in preference order. The
+ * browser reports it as a user preference (web-api), so its schema is part
+ * of the browser's contract too.
  */
 export const commandLocaleSchema = z.strictObject({
   timeZone: z.string().min(1).max(64),

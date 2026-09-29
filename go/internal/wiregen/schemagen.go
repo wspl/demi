@@ -123,7 +123,9 @@ func writeSchema(out *bytes.Buffer, value any) error {
 
 // A schemer builds the JSON Schema of one root.
 type schemer struct {
-	p *Package
+	p              *Package
+	owners         map[string]*Package
+	foreignPending map[string]bool
 	// pending are the structs being expanded, which a member that refers to one
 	// of them refers to by $ref.
 	pending map[string]bool
@@ -133,7 +135,26 @@ type schemer struct {
 
 // schemaOf returns the JSON Schema of the struct or union name.
 func (p *Package) schemaOf(name string) (schemaObject, error) {
-	b := &schemer{p: p, pending: map[string]bool{}}
+	return p.schemaWithOwners(name, nil, map[string]bool{})
+}
+
+// GenerateJSONSchema emits a root with the declarations of its foreign owners.
+func (p *Package) GenerateJSONSchema(name string, owners map[string]*Package) ([]byte, error) {
+	document, err := p.schemaWithOwners(name, owners, map[string]bool{})
+	if err != nil {
+		return nil, err
+	}
+	return document.marshal()
+}
+
+func (p *Package) schemaWithOwners(name string, owners map[string]*Package, active map[string]bool) (schemaObject, error) {
+	key := p.Name + "." + name
+	if active[key] {
+		return nil, fmt.Errorf("%s: recursive foreign schema is unsupported", key)
+	}
+	active[key] = true
+	defer delete(active, key)
+	b := &schemer{p: p, pending: map[string]bool{}, owners: owners, foreignPending: active}
 	var document schemaObject
 	var err error
 	if s, ok := p.Structs[name]; ok {
@@ -141,8 +162,23 @@ func (p *Package) schemaOf(name string) (schemaObject, error) {
 		if err == nil && s.Description != "" {
 			document.add("description", s.Description)
 		}
+	} else if t := p.named[name]; t != nil {
+		var value any
+		value, err = b.value(t, t.Rules, t.Description)
+		if err == nil {
+			document = value.(schemaObject)
+		}
+	} else if t := p.OpaqueScalars[name]; t != nil {
+		var value any
+		value, err = b.value(t, nil, "")
+		if err == nil {
+			document = value.(schemaObject)
+		}
 	} else {
 		u := p.Unions[name]
+		if u == nil {
+			return nil, fmt.Errorf("%s: missing schema declaration", name)
+		}
 		document, err = b.union(u)
 		if err == nil && u.Description != "" {
 			document.add("description", u.Description)
@@ -194,7 +230,7 @@ func (b *schemer) structure(s *Struct) (schemaObject, error) {
 	defer delete(b.pending, s.Name)
 	var schema schemaObject
 	schema.add("type", "object")
-	if !s.Open {
+	if !s.Open && s.Unknown == nil {
 		schema.add("additionalProperties", false)
 	}
 	var properties schemaObject
@@ -228,7 +264,7 @@ func (b *schemer) field(f *Field) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if f.Nullable {
+	if f.Nullable || f.NullAsAbsent {
 		object, ok := schema.(schemaObject)
 		if !ok {
 			return nil, fmt.Errorf("a nullable member has an object schema")
@@ -240,12 +276,18 @@ func (b *schemer) field(f *Field) (any, error) {
 
 // nullable makes a schema with a type allow null.
 func nullable(schema schemaObject) schemaObject {
+	for _, member := range schema {
+		if member.key == "enum" || member.key == "const" {
+			return schemaObject{{"anyOf", []any{schema, schemaObject{{"type", "null"}}}}}
+		}
+	}
 	for i, member := range schema {
 		if member.key == "type" {
 			schema[i].value = []any{member.value, "null"}
+			return schema
 		}
 	}
-	return schema
+	return schemaObject{{"anyOf", []any{schema, schemaObject{{"type", "null"}}}}}
 }
 
 // value returns the schema of a value of type t under rules. The description
@@ -253,6 +295,56 @@ func nullable(schema schemaObject) schemaObject {
 func (b *schemer) value(t *Type, rules []Rule, description string) (any, error) {
 	if t.Kind == KindPointer {
 		return b.value(t.Elem, rules, description)
+	}
+	if t.WireKind == KindString {
+		scalar := BrowserScalarSchema{Type: "string", Format: t.Format}
+		if err := scalar.check(); err != nil {
+			return nil, err
+		}
+		schema := stringSchema(b.p, rules)
+		if t.Format != "" {
+			schema.add("format", t.Format)
+		}
+		if description != "" {
+			schema.add("description", description)
+		}
+		return schema, nil
+	}
+	if t.Qualifier != "" {
+		owner := b.owners[t.Qualifier]
+		if owner == nil {
+			for _, file := range b.p.Files {
+				if path := file.Imports[t.Qualifier]; path != "" {
+					var err error
+					owner, err = foreignLoader(".")(path)
+					if err != nil {
+						return nil, fmt.Errorf("%s: %w", t.Src, err)
+					}
+					break
+				}
+			}
+			if owner == nil {
+				return nil, fmt.Errorf("%s: schema needs its owner's declaration", t.Src)
+			}
+			if b.owners == nil {
+				b.owners = map[string]*Package{}
+			}
+			b.owners[t.Qualifier] = owner
+		}
+		if named := owner.named[t.Name]; named != nil {
+			child := &schemer{p: owner, owners: b.owners, pending: map[string]bool{}, foreignPending: b.foreignPending}
+			return child.value(named, append(slices.Clone(named.Rules), rules...), description)
+		}
+		foreign, err := owner.schemaWithOwners(t.Name, b.owners, b.foreignPending)
+		if err != nil {
+			return nil, err
+		}
+		for _, member := range foreign {
+			if member.key == "$defs" {
+				return nil, fmt.Errorf("%s: recursive foreign schema is unsupported", t.Src)
+			}
+		}
+		return foreign, nil
 	}
 	if description == "" {
 		description = b.describe(t)
@@ -291,6 +383,13 @@ func (b *schemer) value(t *Type, rules []Rule, description string) (any, error) 
 		values, err := b.value(t.Elem, innerRules(rules, RuleEach), "")
 		if err != nil {
 			return nil, err
+		}
+		if t.Elem.Kind == KindPointer {
+			if object, ok := values.(schemaObject); ok {
+				values = nullable(object)
+			} else if values != true {
+				return nil, fmt.Errorf("nullable map value %s has no object schema", t.Elem.Src)
+			}
 		}
 		schema.add("type", "object")
 		schema.add("additionalProperties", values)
@@ -464,4 +563,38 @@ func floatSchema(rules []Rule) schemaObject {
 		}
 	}
 	return schema
+}
+
+// BrowserScalarSchema adds bounds and naming to the native opaque string format.
+// Both browser emitters consume the same value;
+// Inline determines whether fields embed the schema or reference a definition.
+type BrowserScalarSchema struct {
+	Type      string  `json:"type"`
+	Format    string  `json:"format,omitzero"`
+	Pattern   string  `json:"pattern,omitzero"`
+	MinLength *uint64 `json:"minLength,omitzero"`
+	MaxLength *uint64 `json:"maxLength,omitzero"`
+	Inline    bool    `json:"-"`
+}
+
+// JSONSchema emits the browser scalar's JSON Schema without losing its format.
+func (s BrowserScalarSchema) JSONSchema() ([]byte, error) {
+	if err := s.check(); err != nil {
+		return nil, err
+	}
+	return json.Marshal(s)
+}
+func (s BrowserScalarSchema) check() error {
+	if s.Type != "string" {
+		return fmt.Errorf("browser opaque scalar: unsupported type %q", s.Type)
+	}
+	switch s.Format {
+	case "", "email", "trimmed", "http-url", "date-time":
+	default:
+		return fmt.Errorf("browser opaque scalar: unsupported format %q", s.Format)
+	}
+	if s.MinLength != nil && s.MaxLength != nil && *s.MinLength > *s.MaxLength {
+		return fmt.Errorf("browser opaque scalar: minimum length exceeds maximum")
+	}
+	return nil
 }

@@ -359,7 +359,7 @@ func (v QuotaWindow) validate() error {
 		r.Float("usedPercent", float64((*v.UsedPercent)), wire.FloatBetween(0, 100))
 	}
 	if v.Unit != nil {
-		r.OneOf("unit", string((*v.Unit)), "percent", "credits", "usd_minor", "requests", "tokens")
+		r.OneOf("unit", string((*v.Unit)), "percent", "credits", "requests", "tokens", "usd_minor")
 	}
 	if v.ResetsAt != nil {
 		r.Check("resetsAt", Validate((*v.ResetsAt)))

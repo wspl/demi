@@ -1,0 +1,170 @@
+[
+  {
+    "input": "",
+    "want": false
+  },
+  {
+    "input": "/",
+    "want": true
+  },
+  {
+    "input": "/tmp/a",
+    "want": true
+  },
+  {
+    "input": "relative",
+    "want": false
+  },
+  {
+    "input": "./a",
+    "want": false
+  },
+  {
+    "input": "../a",
+    "want": false
+  },
+  {
+    "input": "C:\\",
+    "want": true
+  },
+  {
+    "input": "c:/work",
+    "want": true
+  },
+  {
+    "input": "C:work",
+    "want": false
+  },
+  {
+    "input": "C:",
+    "want": false
+  },
+  {
+    "input": "\\work",
+    "want": false
+  },
+  {
+    "input": "\\\\",
+    "want": false
+  },
+  {
+    "input": "\\\\server",
+    "want": false
+  },
+  {
+    "input": "\\\\server\\share",
+    "want": false
+  },
+  {
+    "input": "\\\\server\\share\\",
+    "want": true
+  },
+  {
+    "input": "\\\\server\\share\\file",
+    "want": true
+  },
+  {
+    "input": "//server/share",
+    "want": false
+  },
+  {
+    "input": "//server/share/",
+    "want": true
+  },
+  {
+    "input": "//server/share/file",
+    "want": true
+  },
+  {
+    "input": "///tmp/a",
+    "want": true
+  },
+  {
+    "input": "\\\\?\\C:\\",
+    "want": true
+  },
+  {
+    "input": "\\\\?\\C:work",
+    "want": false
+  },
+  {
+    "input": "\\\\?\\C:/work",
+    "want": false
+  },
+  {
+    "input": "\\\\?\\UNC\\server\\share",
+    "want": false
+  },
+  {
+    "input": "\\\\?\\UNC\\server\\share\\",
+    "want": true
+  },
+  {
+    "input": "\\\\?\\UNC\\server\\share\\file",
+    "want": true
+  },
+  {
+    "input": "\\\\.\\PIPE",
+    "want": false
+  },
+  {
+    "input": "\\\\.\\PIPE\\name",
+    "want": true
+  },
+  {
+    "input": "\\\\?\\Volume{abc}\\",
+    "want": true
+  },
+  {
+    "input": "\\\\?\\pictures",
+    "want": false
+  },
+  {
+    "input": "\\\\?\\pictures\\file",
+    "want": true
+  },
+  {
+    "input": "//?/C:/work",
+    "want": true
+  },
+  {
+    "input": "//./PIPE/name",
+    "want": true
+  },
+  {
+    "input": "\\\\?\\\\hello",
+    "want": true
+  },
+  {
+    "input": "C:\\a\\..\\b",
+    "want": true
+  },
+  {
+    "input": "1:/a",
+    "want": false
+  },
+  {
+    "input": "é:/a",
+    "want": false
+  },
+  {
+    "input": " /a",
+    "want": false
+  },
+  {
+    "input": "/a\\b",
+    "want": true
+  },
+  {
+    "input": "\\\\server\\",
+    "want": false
+  },
+  {
+    "input": "\\\\?\\",
+    "want": false
+  },
+  {
+    "input": "\\\\.\\",
+    "want": false
+  }
+]

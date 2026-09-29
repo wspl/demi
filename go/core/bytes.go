@@ -11,7 +11,8 @@ import (
 
 // B64Bytes owns bytes encoded as padded, standard RFC 4648 base64.
 //
-//demi:opaque
+//demi:opaque string
+//wiregen:browser inline {"type":"string"}
 type B64Bytes struct{ data string }
 
 func NewB64Bytes(data []byte) B64Bytes { return B64Bytes{data: string(data)} }
