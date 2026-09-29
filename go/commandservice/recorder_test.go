@@ -364,6 +364,8 @@ func TestEditsThatUndoEachOtherLeaveNoRecordButAFileChangedInBetweenKeepsBoth(t 
 	}
 }
 
+// Cost: 0.1 s. The limit is 500 files, so the test tracks 502 in one recording;
+// no smaller record reaches it.
 func TestARecordThatIsFullOfFilesSaysSoAndListsNoMore(t *testing.T) {
 	root := t.TempDir()
 	recorder := recorder(t, root, "job")
@@ -391,6 +393,9 @@ func TestARecordThatIsFullOfFilesSaysSoAndListsNoMore(t *testing.T) {
 	}
 }
 
+// Cost: 0.6 s (1.3 s under -race). The limit is 1,000 segments, and a segment
+// needs a change nobody recorded between two recorded ones, so the test makes
+// three rounds of 500 files; no smaller record reaches the limit.
 func TestARecordThatIsFullOfSegmentsKeepsMetadataForTheFilesThatNoLongerFit(t *testing.T) {
 	root := t.TempDir()
 	recorder := recorder(t, root, "job")
@@ -475,3 +480,120 @@ func TestARecordThatIsFullOfBytesStopsCopyingContents(t *testing.T) {
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
+
+func TestAWriteBelowAFileIsNotAnEdit(t *testing.T) {
+	root := t.TempDir()
+	recorder := recorder(t, root, "job")
+	file := filepath.Join(root, "file")
+	if err := os.WriteFile(file, []byte("text"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// The write fails, since a file is not a directory, and writes nothing: a path
+	// below a file names nothing, so it is absent before and after.
+	path := filepath.Join(file, "below.txt")
+	if err := recorder.Record(path, write(path, "x")); err == nil {
+		t.Fatal("a write below a file succeeded")
+	}
+	report, err := recorder.Report()
+	if err != nil || len(report.Files) != 0 {
+		t.Errorf("the report = %+v, %v; want no file", report, err)
+	}
+}
+
+// A file over the snapshot limit has no contents to compare, so two states of it
+// are told apart by their size and times; one replaced by another of the same
+// size and modification time differs by the time it was created.
+func TestAFileReplacedByAnotherOfTheSameSizeAndModificationTimeIsAChange(t *testing.T) {
+	root := t.TempDir()
+	recorder := recorder(t, root, "job")
+	path := filepath.Join(root, "large")
+	modified := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	create := func() {
+		file, err := os.Create(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := file.Truncate(commandservice.EditFileBytes + 1); err != nil {
+			t.Fatal(err)
+		}
+		file.Close()
+		if err := os.Chtimes(path, modified, modified); err != nil {
+			t.Fatal(err)
+		}
+	}
+	create()
+	born, known := commandservice.BirthTime(path)
+	if !known {
+		t.Skip("this file system does not tell when a file was created")
+	}
+	recording := recorder.Begin()
+	recording.Track(path)
+	// Files made in the same clock tick have one creation time; make another until
+	// its time differs.
+	for {
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+		create()
+		if again, _ := commandservice.BirthTime(path); !again.Equal(born) {
+			break
+		}
+	}
+	recording.Close()
+	report, err := recorder.Report()
+	if err != nil || len(report.Files) != 1 || report.Files[0].Kind != commandservice.EditModified {
+		t.Errorf("the report = %+v, %v; want one modified file", report, err)
+	}
+}
+
+// Cost: about a second (three under -race): eight files of 8 MiB, which the record's 64 MiB holds to
+// the byte.
+func TestARecordHoldsExactlyItsLimitOfBytes(t *testing.T) {
+	root := t.TempDir()
+	recorder := recorder(t, root, "job")
+	text := strings.Repeat("a", commandservice.EditFileBytes)
+	recording := recorder.Begin()
+	var paths []string
+	for i := range commandservice.EditJobBytes / commandservice.EditFileBytes {
+		path := filepath.Join(root, "new"+itoa(i))
+		paths = append(paths, path)
+		recording.Track(path)
+	}
+	for _, path := range paths {
+		if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	recording.Close()
+	report, err := recorder.Report()
+	if err != nil || len(report.Files) != len(paths) {
+		t.Fatalf("the report = %v files, %v", len(report.Files), err)
+	}
+	for _, file := range report.Files {
+		if file.Edits[0].Modified == nil {
+			t.Errorf("%s has no contents, and the copies just fit", file.Path)
+		}
+	}
+	if report.BytesCopied != commandservice.EditJobBytes {
+		t.Errorf("%d bytes were copied, want the limit %d", report.BytesCopied, commandservice.EditJobBytes)
+	}
+}
+
+func TestAPathThatBecameADirectoryIsLeftOutOfTheReport(t *testing.T) {
+	root := t.TempDir()
+	recorder := recorder(t, root, "job")
+	path := filepath.Join(root, "file")
+	if err := recorder.Record(path, write(path, "text")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	report, err := recorder.Report()
+	if err != nil || len(report.Files) != 0 {
+		t.Errorf("the report = %+v, %v; want no file", report, err)
+	}
+}

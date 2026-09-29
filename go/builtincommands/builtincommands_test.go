@@ -364,6 +364,10 @@ func TestAPatchThatIsNotOneIsRefusedInTheWordsOfTheRust(t *testing.T) {
 	j.write("b.txt", "1\n2\n3\n4\n5\n")
 	j.write("binary.bin", "a\xffb")
 	j.write("other.txt", "other\n")
+	// A link that leads nowhere is still something at the destination.
+	if err := os.Symlink("nowhere", filepath.Join(j.dir, "dangling")); err != nil {
+		t.Skipf("no symbolic links here: %v", err)
+	}
 	const header = "--- a/a.txt\n+++ b/a.txt\n"
 	for _, test := range []struct{ name, patch, want string }{
 		{"nothing", "", "Invalid patch: missing file headers or hunks"},
@@ -383,6 +387,7 @@ func TestAPatchThatIsNotOneIsRefusedInTheWordsOfTheRust(t *testing.T) {
 			"--- a/b.txt\n+++ b/b.txt\n@@ -3,3 +3,0 @@\n-3\n-4\n-5\n@@ -1 +1 @@\n-1\n+x\n",
 			"Patch does not apply to b.txt: Patch hunk starts before file"},
 		{"a delete that leaves content", "--- a/a.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-one\n", "Delete patch leaves file content"},
+		{"a destination that is a link to nothing", "--- /dev/null\n+++ b/dangling\n@@ -0,0 +1 @@\n+new\n", "Patch destination already exists"},
 		{"a destination that exists", "--- a/a.txt\n+++ b/other.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+2\n", "Patch destination already exists"},
 		{"a path changed twice",
 			"--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-one\n+1\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-one\n+uno\n",

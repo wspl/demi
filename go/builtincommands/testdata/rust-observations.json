@@ -1,0 +1,198 @@
+{
+	"the tie rule of --context: the nearest occurrence wins unless another is as near": {
+		"Steps": [
+			{
+				"ExitCode": 0,
+				"ErrorCode": "",
+				"Message": "",
+				"Stdout": "Edited lines.txt\n",
+				"Stderr": ""
+			},
+			{
+				"ExitCode": 0,
+				"ErrorCode": "",
+				"Message": "",
+				"Stdout": "Edited lines.txt\n",
+				"Stderr": ""
+			},
+			{
+				"ExitCode": 0,
+				"ErrorCode": "",
+				"Message": "",
+				"Stdout": "Edited lines.txt\n",
+				"Stderr": ""
+			},
+			{
+				"ExitCode": 0,
+				"ErrorCode": "",
+				"Message": "",
+				"Stdout": "Edited lines.txt\n",
+				"Stderr": ""
+			},
+			{
+				"ExitCode": 0,
+				"ErrorCode": "",
+				"Message": "",
+				"Stdout": "x\ny\ny\ny\ny\n",
+				"Stderr": ""
+			},
+			{
+				"ExitCode": 1,
+				"ErrorCode": "command_failed",
+				"Message": "Context line 2 is ambiguous: occurrence 1 at line 1; occurrence 2 at line 3",
+				"Stdout": "",
+				"Stderr": ""
+			},
+			{
+				"ExitCode": 0,
+				"ErrorCode": "",
+				"Message": "",
+				"Stdout": "Edited pair.txt\n",
+				"Stderr": ""
+			},
+			{
+				"ExitCode": 0,
+				"ErrorCode": "",
+				"Message": "",
+				"Stdout": "T\nm\nt\n",
+				"Stderr": ""
+			},
+			{
+				"ExitCode": 1,
+				"ErrorCode": "command_failed",
+				"Message": "Context line 3 is ambiguous: occurrence 1 at line 1; occurrence 2 at line 5",
+				"Stdout": "",
+				"Stderr": ""
+			},
+			{
+				"ExitCode": 0,
+				"ErrorCode": "",
+				"Message": "",
+				"Stdout": "Edited far.txt\n",
+				"Stderr": ""
+			},
+			{
+				"ExitCode": 0,
+				"ErrorCode": "",
+				"Message": "",
+				"Stdout": "T\nm\nm\nm\nt\n",
+				"Stderr": ""
+			}
+		],
+		"Tree": {
+			"{dir}": "directory -rwxr-xr-x",
+			"{dir}/far.txt": "file -rw-r--r-- \"T\\nm\\nm\\nm\\nt\\n\"",
+			"{dir}/lines.txt": "file -rw-r--r-- \"x\\ny\\ny\\ny\\ny\\n\"",
+			"{dir}/pair.txt": "file -rw-r--r-- \"T\\nm\\nt\\n\""
+		},
+		"Journal": [
+			"{dir}/lines.txt modified",
+			"  from \"x\\nx\\nx\\nx\\nx\\n\" to \"x\\ny\\ny\\ny\\ny\\n\"",
+			"{dir}/pair.txt modified",
+			"  from \"t\\nm\\nt\\n\" to \"T\\nm\\nt\\n\"",
+			"{dir}/far.txt modified",
+			"  from \"t\\nm\\nm\\nm\\nt\\n\" to \"T\\nm\\nm\\nm\\nt\\n\"",
+			"truncated false, 82 bytes copied, 3 segments"
+		]
+	},
+	"the upper bound of --occurrence is the number of matches": {
+		"Steps": [
+			{
+				"ExitCode": 0,
+				"ErrorCode": "",
+				"Message": "",
+				"Stdout": "Edited two.txt\n",
+				"Stderr": ""
+			},
+			{
+				"ExitCode": 1,
+				"ErrorCode": "command_failed",
+				"Message": "Occurrence 2 is out of range",
+				"Stdout": "",
+				"Stderr": ""
+			},
+			{
+				"ExitCode": 1,
+				"ErrorCode": "command_failed",
+				"Message": "Occurrence 2 is out of range",
+				"Stdout": "",
+				"Stderr": ""
+			},
+			{
+				"ExitCode": 1,
+				"ErrorCode": "command_failed",
+				"Message": "Occurrence 3 is out of range",
+				"Stdout": "",
+				"Stderr": ""
+			},
+			{
+				"ExitCode": 1,
+				"ErrorCode": "command_failed",
+				"Message": "Occurrence 2 is out of range",
+				"Stdout": "",
+				"Stderr": ""
+			},
+			{
+				"ExitCode": 0,
+				"ErrorCode": "",
+				"Message": "",
+				"Stdout": "Edited one.txt\n",
+				"Stderr": ""
+			},
+			{
+				"ExitCode": 0,
+				"ErrorCode": "",
+				"Message": "",
+				"Stdout": "a\nb\n",
+				"Stderr": ""
+			},
+			{
+				"ExitCode": 0,
+				"ErrorCode": "",
+				"Message": "",
+				"Stdout": "b\n",
+				"Stderr": ""
+			}
+		],
+		"Tree": {
+			"{dir}": "directory -rwxr-xr-x",
+			"{dir}/one.txt": "file -rw-r--r-- \"b\\n\"",
+			"{dir}/two.txt": "file -rw-r--r-- \"a\\nb\\n\""
+		},
+		"Journal": [
+			"{dir}/two.txt modified",
+			"  from \"a\\na\\n\" to \"a\\nb\\n\"",
+			"{dir}/one.txt modified",
+			"  from \"a\\n\" to \"b\\n\"",
+			"truncated false, 12 bytes copied, 2 segments"
+		]
+	},
+	"a rollback restores the contents and the permissions of the files it wrote and the one it deleted": {
+		"Steps": [
+			{
+				"ExitCode": 1,
+				"ErrorCode": "command_failed",
+				"Message": "File exists (os error 17)",
+				"Stdout": "",
+				"Stderr": ""
+			},
+			{
+				"ExitCode": 0,
+				"ErrorCode": "",
+				"Message": "",
+				"Stdout": "echo\n",
+				"Stderr": ""
+			}
+		],
+		"Tree": {
+			"{dir}/gone.sh": "file -rwx------ \"gone\\n\"",
+			"{dir}/linkdir": "link to nowhere",
+			"{dir}/secret": "file -rw------- \"secret\\n\"",
+			"{dir}": "directory -rwxr-xr-x",
+			"{dir}/exec.sh": "file -rwxr-xr-x \"echo\\n\""
+		},
+		"Journal": [
+			"truncated false, 0 bytes copied, 0 segments"
+		]
+	}
+}

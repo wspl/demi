@@ -33,7 +33,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 	"testing"
 
@@ -42,73 +41,8 @@ import (
 	"github.com/wspl/demi/go/commandservice/servicetest"
 )
 
-// A step is one invocation of the table: an operation and its arguments, in
-// which {dir} and {root} stand for the run's directories.
-type step struct {
-	operation, args string
-	// noEdits leaves out the edit context, as an invocation of a job that
-	// records no edits does.
-	noEdits bool
-	// messageDiffers says why the error message of a refused argument is not
-	// compared: the Go program words it as the wire contract does (which names
-	// the field and the rule), where the Rust's words are serde's and garde's.
-	// The exit code and the error code are still compared.
-	messageDiffers string
-}
-
-// A scenario is a working directory that starts with files, and the invocations
-// run in it in order.
-type scenario struct {
-	name string
-	// files are the files the directory starts with, by path in the directory;
-	// a name that ends in / is an empty directory, and a value that starts with
-	// "->" is a symbolic link to the rest.
-	files map[string]string
-	// modes are the permissions of files the directory starts with, when they
-	// are not the default.
-	modes map[string]fs.FileMode
-	steps []step
-}
-
-// An observation is what a program answered to one invocation.
-type observation struct {
-	exitCode  int
-	errorCode string
-	message   string
-	stdout    string
-	stderr    string
-}
-
-// A run is what a program did with a scenario.
-type run struct {
-	steps   []observation
-	tree    map[string]string
-	journal []string
-}
-
-// quote returns text as a JSON string.
-func quote(text string) string {
-	quoted, err := json.Marshal(text)
-	if err != nil {
-		panic(err)
-	}
-	return string(quoted)
-}
-
-func read(path string) step {
-	return step{operation: "file.read", args: `{"path":` + quote(path) + `}`}
-}
-
 func create(path, content string) step {
 	return step{operation: "file.create", args: `{"path":` + quote(path) + `,"content":` + quote(content) + `}`}
-}
-
-func edit(path, old, replacement string, extra string) step {
-	return step{operation: "file.edit", args: `{"path":` + quote(path) + `,"old":` + quote(old) + `,"new":` + quote(replacement) + extra + `}`}
-}
-
-func patch(text string) step {
-	return step{operation: "file.patch", args: `{"patch":` + quote(text) + `}`}
 }
 
 // table is the invocation table of the file operations. Each scenario is a
@@ -132,7 +66,8 @@ var table = []scenario{
 	},
 	{
 		// demi_file_reads_and_creates_files_in_and_beyond_the_workspace
-		name: "create and read, in and beyond the working directory",
+		name:           "create and read, in and beyond the working directory",
+		journalDiffers: "the Rust program of the judge tree records a write below a file (1484ef93)",
 		files: map[string]string{
 			"shot.png": "\x89PNG\r\n\x1a\n\x00\xff\xfe",
 		},
@@ -287,7 +222,8 @@ var table = []scenario{
 		},
 	},
 	{
-		name: "patches that are refused",
+		name:           "patches that are refused",
+		journalDiffers: "the Rust program of the judge tree records a write below a file (1484ef93)",
 		files: map[string]string{
 			"a.txt":      "one\ntwo\n",
 			"b.txt":      "1\n2\n3\n4\n5\n",
@@ -298,9 +234,11 @@ var table = []scenario{
 			"first.txt":  "first\n",
 			"second.txt": "second\n",
 			"blocked":    "a file",
+			"dangling":   "->nowhere",
 		},
 		steps: []step{
 			patch(""),
+			patch("--- /dev/null\n+++ b/dangling\n@@ -0,0 +1 @@\n+new\n"),
 			patch("\n"),
 			patch("--- a/a.txt\n+++ b/a.txt\n"),
 			patch("--- a/a.txt\n"),
@@ -337,7 +275,8 @@ var table = []scenario{
 		},
 	},
 	{
-		name: "permissions are kept by edits and patches, and restored by a rollback",
+		name:           "permissions are kept by edits and patches, and restored by a rollback",
+		journalDiffers: "the Rust program of the judge tree records a write below a file (1484ef93)",
 		files: map[string]string{
 			"exec.sh":     "echo\n",
 			"private.txt": "secret\n",
@@ -440,10 +379,10 @@ func TestDifferentialTheFileOperationsAnswerAsTheRustProgramDoes(t *testing.T) {
 			t.Fatalf("building the Go program: %v\n%s", err, output)
 		}
 	}
-	for _, s := range table {
+	for _, s := range append(slices.Clone(table), pinned...) {
 		t.Run(s.name, func(t *testing.T) {
-			rustRun := play(t, rust, s)
-			goRun := play(t, goProgram, s)
+			rustRun := playProgram(t, rust, s)
+			goRun := playProgram(t, goProgram, s)
 			compareRuns(t, s, rustRun, goRun)
 		})
 	}
@@ -495,217 +434,31 @@ func TestDifferentialAProgramStartedWithoutItsFlagSaysHowToStartItAndExitsWith2(
 	}
 }
 
-// play starts the program, and runs the scenario in a directory of its own.
-func play(t *testing.T, program string, s scenario) run {
+// playProgram starts the program, and runs the scenario through its client.
+func playProgram(t *testing.T, program string, s scenario) run {
 	t.Helper()
-	root, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := filepath.Join(root, "work")
-	if err := os.Mkdir(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for name, content := range s.files {
-		path := filepath.Join(dir, name)
-		switch {
-		case strings.HasSuffix(name, "/"):
-			err = os.MkdirAll(path, 0o755)
-		case strings.HasPrefix(content, "->"):
-			err = os.Symlink(strings.TrimPrefix(content, "->"), path)
-		default:
-			if err = os.MkdirAll(filepath.Dir(path), 0o755); err == nil {
-				err = os.WriteFile(path, []byte(content), 0o644)
-			}
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	for name, mode := range s.modes {
-		if err := os.Chmod(filepath.Join(dir, name), mode); err != nil {
-			t.Fatal(err)
-		}
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), hang)
 	defer cancel()
 	process := servicetest.StartProcess(ctx, t, program, []string{"--command-service"}, nil)
-	edits := commandservice.EditContext{Directory: filepath.Join(root, "changes"), Lock: filepath.Join(root, "edits.lock")}
-	substitute := func(text string) string {
-		return strings.NewReplacer("{dir}", dir, "{root}", root).Replace(text)
-	}
-	normalize := func(text string) string {
-		return strings.NewReplacer(dir, "{dir}", root, "{root}").Replace(text)
-	}
-	var result run
-	for _, st := range s.steps {
-		invocation := commandservice.Invocation{
-			Operation:    st.operation,
-			InvocationID: st.operation,
-			Context: commandservice.CommandContext{
-				Conversation: "file-test-conversation",
-				Caller:       commandservice.AgentCaller{Number: 1},
-				Locale:       commandservice.CommandLocale{TimeZone: "UTC", Languages: []string{"en-US"}},
-			},
-			Args: jsontext.Value(substitute(st.args)),
-			Cwd:  dir,
-			Env:  map[string]string{},
-		}
-		if !st.noEdits {
-			invocation.Edits = &edits
-		}
-		stream, err := process.Client.Invoke(ctx, invocation)
-		if err != nil {
-			t.Fatalf("%s: %v", st.operation, err)
-		}
-		var stdout, stderr bytes.Buffer
-		completion, err := commandservice.Exchange(ctx, stream, bytes.NewReader(nil), &stdout, &stderr)
-		if err != nil {
-			t.Fatalf("%s %s: %v", st.operation, st.args, err)
-		}
-		observed := observation{exitCode: int(completion.ExitCode), stdout: normalize(stdout.String()), stderr: normalize(stderr.String())}
-		if completion.Error != nil {
-			observed.errorCode = completion.Error.Code
-			observed.message = normalize(completion.Error.Message)
-		}
-		result.steps = append(result.steps, observed)
-	}
-	result.tree = snapshot(t, root, dir, normalize)
-	result.journal = journal(t, edits, normalize)
-	return result
+	return play(t, process.Client, s)
 }
 
-// snapshot describes every file under root, except the record of edits, which
-// journal compares by what it means: its kind, its permissions and its content,
-// or where a link leads.
-func snapshot(t *testing.T, root, dir string, normalize func(string) string) map[string]string {
-	t.Helper()
-	tree := map[string]string{}
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		relative := normalize(path)
-		if path == root || path == filepath.Join(root, "changes") || path == filepath.Join(root, "edits.lock") || strings.HasPrefix(path, filepath.Join(root, "changes")+string(filepath.Separator)) {
-			return nil
-		}
-		info, err := os.Lstat(path)
-		if err != nil {
-			return err
-		}
-		switch {
-		case info.Mode()&fs.ModeSymlink != 0:
-			target, err := os.Readlink(path)
-			if err != nil {
-				return err
-			}
-			tree[relative] = "link to " + target
-		case info.IsDir():
-			tree[relative] = fmt.Sprintf("directory %v", info.Mode().Perm())
-		default:
-			data, err := os.ReadFile(path)
-			if err != nil {
-				return err
-			}
-			tree[relative] = fmt.Sprintf("file %v %q", info.Mode().Perm(), data)
-		}
-		return nil
-	})
+// The pinned behaviors are recorded from the Rust program when DEMI_DIFFTEST_RECORD
+// names the file to write.
+func TestDifferentialRecordThePinnedBehaviors(t *testing.T) {
+	rust, path := os.Getenv("DEMI_DIFFTEST_RUST"), os.Getenv("DEMI_DIFFTEST_RECORD")
+	if rust == "" || path == "" {
+		t.Skip("DEMI_DIFFTEST_RUST and DEMI_DIFFTEST_RECORD name the Rust demi-commands and the file to write")
+	}
+	recorded := map[string]run{}
+	for _, s := range pinned {
+		recorded[s.name] = playProgram(t, rust, s)
+	}
+	data, err := json.Marshal(recorded, jsontext.Multiline(true))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = dir
-	return tree
-}
-
-// journal reads the record of the edits a program left, and describes what it
-// means, the copies' contents included.
-func journal(t *testing.T, edits commandservice.EditContext, normalize func(string) string) []string {
-	t.Helper()
-	if _, err := os.Stat(edits.Directory); err != nil {
-		return []string{"no record"}
-	}
-	recorder, err := commandservice.NewRecorder(edits)
-	if err != nil {
+	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	report, err := recorder.Report()
-	if err != nil {
-		t.Fatalf("the record cannot be read: %v", err)
-	}
-	var lines []string
-	for _, file := range report.Files {
-		lines = append(lines, fmt.Sprintf("%s %s", normalize(file.Path), file.Kind))
-		for _, segment := range file.Edits {
-			original, modified := "none", "unavailable"
-			if segment.Original != nil {
-				data, err := os.ReadFile(*segment.Original)
-				if err != nil {
-					t.Fatal(err)
-				}
-				original = fmt.Sprintf("%q", data)
-			}
-			if segment.Modified != nil {
-				data, err := os.ReadFile(*segment.Modified)
-				if err != nil {
-					t.Fatal(err)
-				}
-				modified = fmt.Sprintf("%q", data)
-			}
-			lines = append(lines, fmt.Sprintf("  from %s to %s", original, modified))
-		}
-	}
-	lines = append(lines, fmt.Sprintf("truncated %v, %d bytes copied, %d segments", report.FilesTruncated, report.BytesCopied, report.NextSegment))
-	return lines
-}
-
-func compareRuns(t *testing.T, s scenario, rust, goRun run) {
-	t.Helper()
-	for i, st := range s.steps {
-		want, got := rust.steps[i], goRun.steps[i]
-		if st.messageDiffers != "" {
-			want.message, got.message = "", ""
-		}
-		if want != got {
-			t.Errorf("step %d, %s %s\n  Rust: %+v\n  Go:   %+v", i+1, st.operation, abbreviate(st.args), want, got)
-		}
-		if testing.Verbose() {
-			t.Logf("step %d, %s %s: exit %d %s %q, stdout %q", i+1, st.operation, abbreviate(st.args), got.exitCode, got.errorCode, got.message, abbreviate(got.stdout))
-		}
-	}
-	names := map[string]bool{}
-	for name := range rust.tree {
-		names[name] = true
-	}
-	for name := range goRun.tree {
-		names[name] = true
-	}
-	var sorted []string
-	for name := range names {
-		sorted = append(sorted, name)
-	}
-	sort.Strings(sorted)
-	for _, name := range sorted {
-		if rust.tree[name] != goRun.tree[name] {
-			t.Errorf("%s\n  Rust: %s\n  Go:   %s", name, abbreviate(rust.tree[name]), abbreviate(goRun.tree[name]))
-		}
-	}
-	if testing.Verbose() {
-		for i, line := range goRun.journal {
-			if i < 40 || i >= len(goRun.journal)-1 {
-				t.Logf("journal: %s", abbreviate(line))
-			}
-		}
-	}
-	if !slices.Equal(rust.journal, goRun.journal) {
-		t.Errorf("the record of edits differs\n  Rust: %q\n  Go:   %q", rust.journal, goRun.journal)
-	}
-}
-
-// abbreviate shortens a long text for a report of a difference.
-func abbreviate(text string) string {
-	if len(text) > 240 {
-		return text[:240] + "..."
-	}
-	return text
 }
