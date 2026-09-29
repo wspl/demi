@@ -8,8 +8,8 @@ import (
 
 // Services is what the users share, safe from any goroutine: the program
 // (package edge's start) builds it once and hands it to the shards
-// (g7-backend.md § Services). The vault, the model access, the managed
-// Clouds and the synchronization registry join it with their parts.
+// (g7-backend.md § Services). The model access and the managed Clouds join
+// it with their parts.
 type Services struct {
 	// Clock is the wall clock the backend reads times from.
 	Clock core.Clock
@@ -28,4 +28,8 @@ type Services struct {
 	Limiter *auth.LoginLimiter
 	// Email changes a user's address through a mailed code.
 	Email *auth.EmailChanges
+	// Sync is the registry of the pages' open synchronization channels.
+	Sync *SyncRegistry
+	// Vault holds the provider entries and their accounts.
+	Vault *Vault
 }
