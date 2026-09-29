@@ -50,6 +50,7 @@ const (
 // backend is its only source; nothing reads it from the environment.
 //
 //demi:wire
+//demi:msgpack
 type CommandContext struct {
 	// Conversation names the conversation the work belongs to, or the
 	// provider entry that work outside any conversation serves.

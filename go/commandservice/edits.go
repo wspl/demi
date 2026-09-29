@@ -26,12 +26,16 @@ type EditContext struct {
 // it.
 //
 //demi:wire
+//demi:msgpack
 type EditCopies struct {
 	Original *string `json:"original,omitzero" check:"chars=1..,nonul"`
 	Modified *string `json:"modified,omitzero" check:"chars=1..,nonul"`
 }
 
 // An EditKind says whether an edited file existed before the job.
+//
+//demi:enum
+//demi:msgpack
 type EditKind string
 
 // The kinds of edited file.

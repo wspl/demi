@@ -37,7 +37,7 @@ func (p *Package) GenerateGo() (map[string][]byte, error) {
 			}
 		}
 		for _, name := range file.Types {
-			if s, ok := p.Structs[name]; ok && s.Scalar == nil {
+			if s, ok := p.Structs[name]; ok && s.Scalar == nil && !s.Opaque {
 				if err := g.structure(s); err != nil {
 					return nil, err
 				}
@@ -45,6 +45,9 @@ func (p *Package) GenerateGo() (map[string][]byte, error) {
 			if u, ok := p.Unions[name]; ok {
 				g.union(u)
 			}
+		}
+		if g.buf.Len() == 0 {
+			continue
 		}
 		out, err := g.finish(p.Name)
 		if err != nil {
@@ -65,6 +68,13 @@ func (p *Package) GenerateGo() (map[string][]byte, error) {
 	}
 	if schemas != nil {
 		files[schemasFile] = schemas
+	}
+	packed, err := p.messagePack()
+	if err != nil {
+		return nil, err
+	}
+	if packed != nil {
+		files["msgpack_wire.go"] = packed
 	}
 	return files, nil
 }
@@ -451,7 +461,22 @@ func wrapError(elems []string, err string) string {
 // decode writes the statements that read one JSON value of type t into target.
 func (g *goGen) decode(t *Type, target string, wraps []string, depth int) {
 	fail := "return " + wrapError(wraps, "err")
+	if t.Qualifier != "" && (t.Kind == KindUnion || t.Kind == KindString) {
+		g.p("u,err := %s.Decode%sJSONFrom(dec)", t.Qualifier, t.Name)
+		g.check(fail)
+		g.p("%s = u", target)
+		return
+	}
 	switch t.Kind {
+	case KindPointer:
+		g.p("if dec.PeekKind() == 'n' {")
+		g.p("if _, err := dec.ReadToken(); err != nil { %s }", fail)
+		g.p("%s = nil", target)
+		g.p("} else {")
+		g.p("var pointed %s", t.Elem.Src)
+		g.decode(t.Elem, "pointed", wraps, depth+1)
+		g.p("%s = &pointed", target)
+		g.p("}")
 	case KindString:
 		g.p("s, err := wire.ReadString(dec)")
 		g.check(fail)
@@ -613,10 +638,17 @@ func (g *goGen) fieldRules(f *Field) {
 // value writes the checks of the value expr of type t: its rules, and, for a
 // struct or a union, its own checks.
 func (g *goGen) value(t *Type, expr string, rules []Rule, path, report string, depth int) {
+	if t.Kind == KindPointer {
+		g.p("if %s != nil {", expr)
+		g.value(t.Elem, "(*"+expr+")", rules, path, report, depth+1)
+		g.p("}")
+		return
+	}
+
 	switch {
 	case t.Kind == KindStruct && !t.Opaque:
 		g.p("%s.Nest(%s, %s.validate())", report, path, expr)
-	case t.Kind == KindUnion:
+	case t.Kind == KindUnion && t.Qualifier == "":
 		g.p("%s.Nest(%s, validate%s(%s))", report, path, t.Name, expr)
 	}
 	var each, keys *Rule

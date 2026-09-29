@@ -65,7 +65,7 @@ func Load(dir string) (*Package, error) {
 		}
 		sources[name] = data
 	}
-	return LoadSource(sources)
+	return loadSource(sources, foreignLoader(dir))
 }
 
 // refuseConstrainedDeclarations refuses a file that declares wire types and
@@ -113,6 +113,10 @@ func buildsDifferently(dir, name string) bool {
 // LoadSource reads the wire declarations of the package that the source files,
 // by name, make up.
 func LoadSource(sources map[string][]byte) (*Package, error) {
+	return loadSource(sources, nil)
+}
+
+func loadSource(sources map[string][]byte, foreign func(string) (*Package, error)) (*Package, error) {
 	fset := token.NewFileSet()
 	var names []string
 	for name := range sources {
@@ -128,15 +132,17 @@ func LoadSource(sources map[string][]byte) (*Package, error) {
 		files = append(files, file)
 	}
 	p := &reader{
+		foreign: foreign,
 		fset:    fset,
 		files:   files,
 		methods: map[string]map[string]bool{},
 		pkg: &Package{
-			Structs:  map[string]*Struct{},
-			Unions:   map[string]*Union{},
-			Opaque:   map[string]bool{},
-			named:    map[string]*Type{},
-			patterns: map[string]string{},
+			MessagePack: map[string]bool{},
+			Structs:     map[string]*Struct{},
+			Unions:      map[string]*Union{},
+			Opaque:      map[string]bool{},
+			named:       map[string]*Type{},
+			patterns:    map[string]string{},
 		},
 		specs:     map[string]*ast.StructType{},
 		imports:   map[string]map[string]string{},
@@ -160,9 +166,10 @@ func LoadSource(sources map[string][]byte) (*Package, error) {
 
 // A reader is the state of reading one package.
 type reader struct {
-	fset  *token.FileSet
-	files []*ast.File
-	pkg   *Package
+	foreign func(string) (*Package, error)
+	fset    *token.FileSet
+	files   []*ast.File
+	pkg     *Package
 	// methods are the names of the methods of each type.
 	methods map[string]map[string]bool
 	// specs are the struct declarations of the marked structs.
@@ -243,7 +250,7 @@ func (m marked) kind() (string, []string, error) {
 				return "", nil, fmt.Errorf("%s: a declaration has one directive", m.name)
 			}
 			kind, arguments = fields[0], fields[1:]
-		case directiveDescribe, directiveCheck, directiveSchema:
+		case directiveDescribe, directiveCheck, directiveSchema, "//demi:msgpack":
 		default:
 			return "", nil, fmt.Errorf("%s: unknown directive %s", m.name, fields[0])
 		}
@@ -338,6 +345,15 @@ func (p *reader) declare(m *marked, byFile map[string]*File) error {
 		return p.errorf(m.spec.Pos(), "%v", err)
 	}
 	p.declFile[m.name] = m.file
+	if m.has("//demi:msgpack") {
+		if kind != directiveWire && kind != directiveUnion && kind != directiveEnum {
+			return p.errorf(m.spec.Pos(), "%s: //demi:msgpack marks a wire struct, union or enum", m.name)
+		}
+		if lines := m.lines("//demi:msgpack"); len(lines) != 1 || lines[0] != "" {
+			return p.errorf(m.spec.Pos(), "%s: //demi:msgpack takes no arguments", m.name)
+		}
+		p.pkg.MessagePack[m.name] = true
+	}
 	description := strings.Join(m.lines(directiveDescribe), "\n")
 	if kind == "" {
 		if m.has(directiveCheck) || m.has(directiveDescribe) || m.has(directiveSchema) {
@@ -411,13 +427,14 @@ func (p *reader) declare(m *marked, byFile map[string]*File) error {
 		s := &Struct{Name: m.name, Doc: m.doc, Description: description, variant: true}
 		switch typ := m.spec.Type.(type) {
 		case *ast.StructType:
-			if len(arguments) > 2 || len(arguments) == 2 && arguments[1] != "open" {
-				return p.errorf(m.spec.Pos(), "%s: %s takes at most a tag, and `open` after it", m.name, kind)
+			if len(arguments) > 2 || len(arguments) == 2 && arguments[1] != "open" && arguments[1] != "opaque" {
+				return p.errorf(m.spec.Pos(), "%s: %s takes at most a tag, and `open` or `opaque` after it", m.name, kind)
 			}
 			if len(arguments) > 0 {
 				s.Tag = arguments[0]
 			}
-			s.Open = len(arguments) == 2
+			s.Open = len(arguments) == 2 && arguments[1] == "open"
+			s.Opaque = len(arguments) == 2 && arguments[1] == "opaque"
 			p.specs[m.name] = typ
 		case *ast.Ident:
 			basic := basicType(typ.Name)
@@ -488,7 +505,7 @@ func basicType(name string) *Type {
 		return &Type{Kind: KindInt, Src: name, Bits: 64}
 	case "uint":
 		return &Type{Kind: KindUint, Src: name}
-	case "uint8":
+	case "uint8", "byte":
 		return &Type{Kind: KindUint, Src: name, Bits: 8}
 	case "uint16":
 		return &Type{Kind: KindUint, Src: name, Bits: 16}
@@ -661,7 +678,7 @@ func (p *reader) resolveValue(m marked) error {
 // embeds are its own, as serde's flatten makes them, so they are read first.
 func (p *reader) resolve(name string) error {
 	s, ok := p.pkg.Structs[name]
-	if !ok || s.Scalar != nil || p.resolved[name] {
+	if !ok || s.Scalar != nil || s.Opaque || p.resolved[name] {
 		return nil
 	}
 	if p.resolving[name] {
@@ -674,6 +691,7 @@ func (p *reader) resolve(name string) error {
 	defer func() { p.file = outer }()
 	spec := p.specs[name]
 	s.Check = p.methods[name]["check"]
+	s.Normalize = p.methods[name]["normalizeWire"]
 	for _, field := range spec.Fields.List {
 		if len(field.Names) == 0 {
 			if err := p.embed(s, field); err != nil {
@@ -815,6 +833,7 @@ func (p *reader) field(structName string, field *ast.Field) (*Field, error) {
 		Type:     t,
 		Required: !omitzero,
 		Nullable: nullable,
+		Encoding: tag.Get("msgpack"),
 		Inline:   inline,
 		Rules:    rules,
 	}, nil
@@ -833,7 +852,13 @@ func expandTypeRules(t *Type, rules []Rule) []Rule {
 		rules = withInner(rules, RuleEach, expandTypeRules(t.Elem, innerRules(rules, RuleEach)))
 		return withInner(rules, RuleKeys, expandTypeRules(t.Key, innerRules(rules, RuleKeys)))
 	}
-	return slices.Concat(t.Rules, rules)
+	combined := slices.Clone(t.Rules)
+	for _, rule := range rules {
+		if !slices.ContainsFunc(combined, func(existing Rule) bool { return reflect.DeepEqual(existing, rule) }) {
+			combined = append(combined, rule)
+		}
+	}
+	return combined
 }
 
 // innerRules returns the rules inside the rule of kind in rules, if it has one.
@@ -916,9 +941,6 @@ func (p *reader) typeOf(expr ast.Expr) (*Type, error) {
 		if err != nil {
 			return nil, err
 		}
-		if elem.Kind == KindPointer {
-			return nil, fmt.Errorf("a map of %s", elem.Src)
-		}
 		return &Type{Kind: KindMap, Key: key, Elem: elem, Src: src}, nil
 	case *ast.SelectorExpr:
 		x, ok := expr.X.(*ast.Ident)
@@ -928,6 +950,24 @@ func (p *reader) typeOf(expr ast.Expr) (*Type, error) {
 		// A wire struct of another package: its own generated code decodes it,
 		// so it is opaque here.
 		if ok && p.use(x.Name) {
+			if p.foreign != nil {
+				owner, err := p.foreign(p.imports[p.file][x.Name])
+				if err != nil {
+					return nil, err
+				}
+				if owner.Unions[expr.Sel.Name] != nil {
+					return &Type{Kind: KindUnion, Name: expr.Sel.Name, Src: src, Opaque: true, Qualifier: x.Name}, nil
+				}
+				if named := owner.named[expr.Sel.Name]; named != nil {
+					typ := *named
+					typ.Name = expr.Sel.Name
+					typ.Src = src
+					typ.Qualifier = x.Name
+					typ.Opaque = true
+					typ.Rules = nil
+					return &typ, nil
+				}
+			}
 			return &Type{Kind: KindStruct, Name: expr.Sel.Name, Src: src, Opaque: true, Qualifier: x.Name}, nil
 		}
 	}
