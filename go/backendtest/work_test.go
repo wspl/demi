@@ -72,29 +72,29 @@ func TestTheModelCreatesReadsEditsAndListsItsFilesWhereTheConversationWorks(t *t
 
 	heredoc := "mkdir src && cd src && demi file create notes.md <<'EOF'\nalpha\nbeta\ngamma\nEOF"
 	created := work.Turn(backendtest.ShellCall("t1", heredoc, 10*time.Second), backendtest.Say("created"))
-	contains(t, created.Received[0], "exitCode: 0", "Created notes.md")
+	contains(t, created.Result(t, 0), "exitCode: 0", "Created notes.md")
 	if got := readFile(t, filepath.Join(home, "src/notes.md")); got != "alpha\nbeta\ngamma\n" {
 		t.Fatalf("notes.md holds %q", got)
 	}
 	// The model is offered the demi.builtin package's commands beside the
 	// backend's own.
-	system := string(backendtest.Marshal(backendtest.At(created.Requests[0], "system")))
+	system := string(backendtest.Marshal(backendtest.At(scenarioItem(t, created.Requests, 0), "system")))
 	contains(t, system, "demi file create", "demi host")
 
 	// The shell keeps its directory between turns.
 	script := "pwd && demi file read notes.md | grep -n a | sort -r"
 	read := work.Turn(backendtest.ShellCall("t2", script, 10*time.Second), backendtest.Say("read"))
-	contains(t, read.Received[0], "/src\n3:gamma\n2:beta\n1:alpha")
+	contains(t, read.Result(t, 0), "/src\n3:gamma\n2:beta\n1:alpha")
 
 	script = "demi file edit notes.md --old beta --new delta && cat notes.md"
 	edited := work.Turn(backendtest.ShellCall("t3", script, 10*time.Second), backendtest.Say("edited"))
-	contains(t, edited.Received[0], "Edited notes.md\nalpha\ndelta\ngamma")
+	contains(t, edited.Result(t, 0), "Edited notes.md\nalpha\ndelta\ngamma")
 	if got := readFile(t, filepath.Join(home, "src/notes.md")); got != "alpha\ndelta\ngamma\n" {
 		t.Fatalf("notes.md holds %q", got)
 	}
 
 	listed := work.Turn(backendtest.ShellCall("t4", "ls && demi host current", 10*time.Second), backendtest.Say("listed"))
-	contains(t, listed.Received[0], "notes.md", `host: machine "alpha"`)
+	contains(t, listed.Result(t, 0), "notes.md", `host: machine "alpha"`)
 	b.Stop()
 }
 
@@ -123,7 +123,7 @@ func TestASwitchMovesTheWorkAndTheDepartedDeviceKeepsItsFilesWithinReach(t *test
 	work := b.Open(master, vendor, workFirst, provider, "/work")
 	notes := "demi file create notes.md <<'EOF'\nalpha\nbeta\ngamma\nEOF"
 	created := work.Turn(backendtest.ShellCall("t1", notes, 10*time.Second), backendtest.Say("created"))
-	contains(t, created.Received[0], "Created notes.md")
+	contains(t, created.Result(t, 0), "Created notes.md")
 
 	// On the other device, the next turn opens with the switch; the file stayed
 	// where it was made.
@@ -137,11 +137,11 @@ func TestASwitchMovesTheWorkAndTheDepartedDeviceKeepsItsFilesWithinReach(t *test
 	told := strings.Count(request, contextBlock)
 	switches := strings.Count(request, targetSwitched)
 	contains(t, request, "[Execution target switched]", `Previous target: the machine \"alpha\"`, `stays attached as \"alpha\"`)
-	contains(t, moved.Received[0], "No such file or directory", "exit=1")
-	contains(t, moved.Received[1], "Created notes.md")
+	contains(t, moved.Result(t, 0), "No such file or directory", "exit=1")
+	contains(t, moved.Result(t, 1), "Created notes.md")
 	script := "demi file edit notes.md --old beta --new delta && cat notes.md"
 	edited := work.Turn(backendtest.ShellCall("t4", script, 10*time.Second), backendtest.Say("edited"))
-	contains(t, edited.Received[0], "alpha\ndelta\ngamma")
+	contains(t, edited.Result(t, 0), "alpha\ndelta\ngamma")
 	if got := readFile(t, filepath.Join(onBeta, "notes.md")); got != "alpha\ndelta\ngamma\n" {
 		t.Fatalf("beta's notes.md holds %q", got)
 	}
@@ -169,7 +169,7 @@ func TestASwitchMovesTheWorkAndTheDepartedDeviceKeepsItsFilesWithinReach(t *test
 	script = `cat notes.md && demi host shell --host beta "cat notes.md"`
 	back := work.Turn(backendtest.ShellCall("t5", script, 20*time.Second), backendtest.Say("back"))
 	contains(t, back.FirstRequest(), "[Execution target switched]")
-	contains(t, back.Received[0], "alpha\nbeta\ngamma\nalpha\ndelta\ngamma")
+	contains(t, back.Result(t, 0), "alpha\nbeta\ngamma\nalpha\ndelta\ngamma")
 	b.Stop()
 }
 
@@ -204,16 +204,16 @@ func TestTwoConversationsOnOneDeviceKeepTheirDirectoriesShellsAndTodosApart(t *t
 	}
 	first, other := bothTurns(moving, staying, "a moved", "b stayed", "1")
 	sub := filepath.Join(home, "sub")
-	contains(t, first.Received[0], fmt.Sprintf("a: %s from-a", sub))
-	contains(t, other.Received[0], fmt.Sprintf("b: %s mark=unset", home))
+	contains(t, first.Result(t, 0), fmt.Sprintf("a: %s from-a", sub))
+	contains(t, other.Result(t, 0), fmt.Sprintf("b: %s mark=unset", home))
 
 	// A's shell carries its directory to the next turn and nothing else; B's
 	// never moved. The todos last across turns, and stay with the conversation
 	// that wrote them.
 	todos := `echo "a: $(pwd) mark=${MARK:-unset}" && demi todo list --json`
 	third, fourth := bothTurns(todos, staying+" && demi todo list --json", "a again", "b again", "2")
-	contains(t, third.Received[0], fmt.Sprintf("a: %s mark=unset", sub), "draft the outline", "run the suite")
-	contains(t, fourth.Received[0], fmt.Sprintf("b: %s mark=unset", home), `{"todos":[]}`)
+	contains(t, third.Result(t, 0), fmt.Sprintf("a: %s mark=unset", sub), "draft the outline", "run the suite")
+	contains(t, fourth.Result(t, 0), fmt.Sprintf("b: %s mark=unset", home), `{"todos":[]}`)
 	b.Stop()
 }
 
@@ -230,7 +230,7 @@ func TestARunnerLostInTheMiddleOfACommandEndsItAndTheReturnedRunnerServesTheNext
 	b.SwitchTo(master, workFirst, alpha, home)
 	work := b.Open(master, vendor, workFirst, provider, "/alpha")
 	written := work.Turn(backendtest.ShellCall("t1", "echo -n before > before.txt", 10*time.Second), backendtest.Say("written"))
-	contains(t, written.Received[0], "exitCode: 0")
+	contains(t, written.Result(t, 0), "exitCode: 0")
 
 	// The command is running on the device when its runner goes.
 	before := work.Start(
@@ -241,14 +241,14 @@ func TestARunnerLostInTheMiddleOfACommandEndsItAndTheReturnedRunnerServesTheNext
 	alpha.Runner.Kill()
 	work.Socket.UntilIdle()
 	lost := work.Observe(before)
-	contains(t, lost.Received[0], "exitCode: 127", "runner disconnected")
+	contains(t, lost.Result(t, 0), "exitCode: 127", "runner disconnected")
 
 	if err := alpha.Runner.StartAgain(); err != nil {
 		t.Fatal(err)
 	}
 	b.UntilOnline(master, alpha.ID(), true)
 	back := work.Turn(backendtest.ShellCall("t3", "cat before.txt", 10*time.Second), backendtest.Say("back"))
-	contains(t, back.Received[0], "before")
+	contains(t, back.Result(t, 0), "before")
 	b.Stop()
 }
 
@@ -310,7 +310,7 @@ func TestACommandsEditsAreKeptAsItsCallHistoryAndOutliveItsRunner(t *testing.T) 
 	work := b.Open(master, vendor, workFirst, provider, "/paired")
 	createFiles := "set -e\nprintf 'before\\n' > note.txt\nprintf 'created\\n' | demi file create native.txt\nprintf '\\0binary' > asset.bin\nprintf 'temporary' > removed.txt\nrm removed.txt"
 	work.Turn(backendtest.ShellCall("create", createFiles, 10*time.Second), backendtest.Say("Created the files."))
-	first := keptFiles(b, master, workFirst)[0]
+	first := scenarioItem(t, keptFiles(b, master, workFirst), 0)
 	if names := baseNames(first); !slices.Equal(names, []string{"note.txt", "native.txt", "asset.bin"}) {
 		t.Fatalf("the kept files are %v", names)
 	}
@@ -325,7 +325,7 @@ func TestACommandsEditsAreKeptAsItsCallHistoryAndOutliveItsRunner(t *testing.T) 
 	patch := "demi file patch <<'PATCH'\n--- a/note.txt\n+++ b/note.txt\n@@ -1 +1 @@\n-before\n+after\n--- a/native.txt\n+++ b/native.txt\n@@ -1 +1 @@\n-created\n+patched\nPATCH"
 	work.Turn(backendtest.ShellCall("patch", patch, 10*time.Second), backendtest.Say("Patched both files."))
 	calls := keptFiles(b, master, workFirst)
-	second := calls[len(calls)-1]
+	second := scenarioItem(t, calls, len(calls)-1)
 	var kinds []string
 	for _, file := range second {
 		kinds = append(kinds, file["kind"].(string))
@@ -361,9 +361,9 @@ func TestAfterABackendRestartTheRunnerComesBackAndTheConversationGoesOnThere(t *
 	b.SwitchTo(master, workFirst, alpha, home)
 	work := b.Open(master, vendor, workFirst, provider, "/alpha")
 	kept := work.Turn(backendtest.ShellCall("t1", "echo -n kept > kept.txt && cat kept.txt", 10*time.Second), backendtest.Say("remember me"))
-	contains(t, kept.Received[0], "kept")
+	contains(t, kept.Result(t, 0), "kept")
 	// The conversation's first command is command 1.
-	if id := backendtest.Field(t, kept.Received[0], "commandId"); id != "1" {
+	if id := backendtest.Field(t, kept.Result(t, 0), "commandId"); id != "1" {
 		t.Fatalf("the first command is %s", id)
 	}
 
@@ -383,6 +383,9 @@ func TestAfterABackendRestartTheRunnerComesBackAndTheConversationGoesOnThere(t *
 			turn = index
 		}
 	}
+	if turn < 0 {
+		t.Fatalf("the interrupted history has no user block: %v", kinds)
+	}
 	if !slices.Equal(kinds[turn:], []string{"user", "tool_call", "response", "error"}) {
 		t.Fatalf("the interrupted turn is %v", kinds[turn:])
 	}
@@ -397,10 +400,10 @@ func TestAfterABackendRestartTheRunnerComesBackAndTheConversationGoesOnThere(t *
 	work.Reconnect(b, master, workFirst, provider)
 	script := "cat kept.txt && demi host current"
 	after := work.Turn(backendtest.ShellCall("t3", script, 10*time.Second), backendtest.Say("and again"))
-	contains(t, after.Received[0], "Tool call aborted")
-	contains(t, after.Received[1], "kept", `host: machine "alpha"`)
+	contains(t, after.Result(t, 0), "Tool call aborted")
+	contains(t, after.Result(t, 1), "kept", `host: machine "alpha"`)
 	// The cut command was 2; the restarted backend gives no number twice.
-	if id := backendtest.Field(t, after.Received[1], "commandId"); id != "3" {
+	if id := backendtest.Field(t, after.Result(t, 1), "commandId"); id != "3" {
 		t.Fatalf("the next command is %s", id)
 	}
 	b.Stop()
@@ -441,7 +444,7 @@ func TestDemiHostShellCarriesBytesBothWaysThroughPipesAndKeepsTheFarHostsDirecto
 
 	pull := fmt.Sprintf(`demi host list && demi host shell --host alpha "tar c -C %s notes.bin" | tar x && cmp notes.bin %s/notes.bin && echo copied`, a, a)
 	pulled := work.Turn(backendtest.ShellCall("t1", pull, 30*time.Second), backendtest.Say("one"))
-	result := pulled.Received[0]
+	result := pulled.Result(t, 0)
 	contains(t, result,
 		fmt.Sprintf("beta  %s  online  %s  (main)", beta.ID(), bDir),
 		fmt.Sprintf("alpha  %s  online  %s  (attached)", aID, a),
@@ -454,7 +457,7 @@ func TestDemiHostShellCarriesBytesBothWaysThroughPipesAndKeepsTheFarHostsDirecto
 	// The other way: the caller's pipe is the far job's standard input.
 	push := fmt.Sprintf(`head -c 250000 notes.bin > push.bin && tar c push.bin | demi host shell --host alpha "tar x -C %s" && cmp push.bin %s/push.bin && echo pushed`, a, a)
 	pushed := work.Turn(backendtest.ShellCall("t2", push, 30*time.Second), backendtest.Say("two"))
-	contains(t, pushed.Received[0], "pushed")
+	contains(t, pushed.Result(t, 0), "pushed")
 	if got, err := os.ReadFile(filepath.Join(a, "push.bin")); err != nil || string(got) != string(payload[:250_000]) {
 		t.Fatalf("the pushed file differs: %v", err)
 	}
@@ -464,10 +467,10 @@ func TestDemiHostShellCarriesBytesBothWaysThroughPipesAndKeepsTheFarHostsDirecto
 	wander := fmt.Sprintf(`demi host shell --host alpha "mkdir -p sub && cd sub && pwd" && demi host shell --host %s "pwd" && demi host list`, aID)
 	wandered := work.Turn(backendtest.ShellCall("t3", wander, 30*time.Second), backendtest.Say("three"))
 	sub := a + "/sub"
-	contains(t, wandered.Received[0], sub+"\n"+sub+"\n", fmt.Sprintf("alpha  %s  online  %s  (attached)", aID, sub))
+	contains(t, wandered.Result(t, 0), sub+"\n"+sub+"\n", fmt.Sprintf("alpha  %s  online  %s  (attached)", aID, sub))
 
 	stranger := work.Turn(backendtest.ShellCall("t4", `demi host shell --host nope "echo hi"; echo exit=$?`, 10*time.Second), backendtest.Say("four"))
-	contains(t, stranger.Received[0], "host nope is not reachable", "exit=1")
+	contains(t, stranger.Result(t, 0), "host nope is not reachable", "exit=1")
 	b.Stop()
 }
 
@@ -489,7 +492,7 @@ func TestDemiHostShellShowsTheFarJobsErrorsAsTheyComeTakesItsInputAndIsStoppedWi
 	far := `printf "ready\n" >&2; read line; printf "%s" "$line" > got.txt; sh -c "echo \$\$ > far.pid; exec /bin/sleep 30"`
 	script := "demi host shell --host alpha '" + far + "'"
 	started := work.Turn(backendtest.ShellCall("t1", script, 500*time.Millisecond), backendtest.Say("waiting"))
-	result := started.Received[0]
+	result := started.Result(t, 0)
 	if !strings.HasPrefix(result, "status: running") {
 		t.Fatalf("the far job's first result is %s", result)
 	}
@@ -513,10 +516,10 @@ func TestDemiHostShellShowsTheFarJobsErrorsAsTheyComeTakesItsInputAndIsStoppedWi
 		if len(read.Received) == 0 {
 			t.Fatal("the read does not reach the model")
 		}
-		if !strings.HasPrefix(read.Received[0], "status: running") {
-			t.Fatalf("the far job stopped: %s", read.Received[0])
+		if !strings.HasPrefix(read.Result(t, 0), "status: running") {
+			t.Fatalf("the far job stopped: %s", read.Result(t, 0))
 		}
-		output += backendtest.ShownOutput(read.Received[0])
+		output += backendtest.ShownOutput(read.Result(t, 0))
 	}
 
 	work.Turn(scripted.ToolUse("t2", "shell_write", backendtest.Map{"commandId": command, "stdin": "hello\n"}), backendtest.Say("fed"))
@@ -538,8 +541,8 @@ func TestDemiHostShellShowsTheFarJobsErrorsAsTheyComeTakesItsInputAndIsStoppedWi
 		t.Fatal("the far job is not running")
 	}
 	stopped := work.Turn(scripted.ToolUse("t3", "shell_abort", backendtest.Map{"commandId": command}), backendtest.Say("stopped"))
-	if !strings.HasPrefix(stopped.Received[0], "status: aborted") {
-		t.Fatalf("the abort answers %s", stopped.Received[0])
+	if !strings.HasPrefix(stopped.Result(t, 0), "status: aborted") {
+		t.Fatalf("the abort answers %s", stopped.Result(t, 0))
 	}
 	backendtest.Eventually(t, "the far job ended", func() bool { return !alive() })
 	b.Stop()

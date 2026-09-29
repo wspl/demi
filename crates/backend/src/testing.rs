@@ -34,13 +34,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::mpsc;
+use tokio::sync::{RwLock, RwLockReadGuard, mpsc};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 use crate::auth::email_change::{AccountMail, MailError, VerificationMail};
 use crate::config::BackendConfig;
+use crate::llm::families::{CodexEndpoints, FamilyRegistry};
 use crate::storage::objects::counting::ObjectCounts;
 use crate::{Backend, CommitHold, HelloStep, StepHold, SyncStep};
 
@@ -81,9 +82,30 @@ struct Tuning {
     models_dev_url: Option<url::Url>,
     /// The user streams a page may open, replacing the default one.
     user_streams: Option<BTreeMap<String, NativeOperation>>,
+    /// Where the subscription families reach their vendors: the suite's
+    /// scripted servers, in place of the vendors' own.
+    families: Option<FamiliesTuning>,
+    /// Where the manual clock starts, in Unix milliseconds; the suite's
+    /// shared start without it.
+    clock_start_ms: Option<i64>,
     /// Whether the backend has a mail sender: one that keeps what it sends
     /// for `mail.list`. Without one an email change answers `mail_unavailable`.
     mail: Option<bool>,
+}
+
+/// The vendor endpoints of the subscription families; a family left out
+/// keeps its vendor's.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct FamiliesTuning {
+    codex: Option<CodexTuning>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct CodexTuning {
+    backend_url: url::Url,
+    auth_url: url::Url,
 }
 
 /// `RunnerTuning`; durations are milliseconds.
@@ -268,6 +290,10 @@ impl Tuning {
                 tuning.retention = millis(value);
             }
         }
+        if let Some(codex) = self.families.and_then(|families| families.codex) {
+            config.families =
+                FamilyRegistry::builtin_with_codex(CodexEndpoints { backend_url: codex.backend_url, auth_url: codex.auth_url });
+        }
         if let Some(url) = self.models_dev_url {
             config.models_dev_url = url;
         }
@@ -379,6 +405,7 @@ impl TestControl {
             None => Tuning::default(),
         };
         let mail = tuning.mail.unwrap_or(false);
+        let clock_start = tuning.clock_start_ms;
         tuning.apply(config);
         let Some(socket) = std::env::var_os(CONTROL_VARIABLE) else {
             return Ok(None);
@@ -389,6 +416,13 @@ impl TestControl {
             mail: Arc::default(),
             counts: ObjectCounts::default(),
         };
+        if let Some(start) = clock_start {
+            let start = Timestamp::from_millisecond(start).map_err(|error| TestControlError::Tuning {
+                path: PathBuf::from(TUNING_VARIABLE),
+                reason: error.to_string(),
+            })?;
+            control.clock.set(start);
+        }
         config.clock = control.clock.clone();
         if mail {
             config.account_mail = Some(control.mail.clone());
@@ -408,52 +442,85 @@ impl TestControl {
     /// Serves the control socket, bound by [`bind`](Self::bind), over
     /// `backend`.
     pub fn serve(self, listener: UnixListener, backend: Backend) -> ControlServer {
-        let shared = Arc::new(Shared { backend, clock: self.clock, mail: self.mail, counts: self.counts });
-        let stop = CancellationToken::new();
-        let accepting = tokio::spawn(accept(listener, shared.clone(), stop.clone()));
-        ControlServer { shared, stop, accepting, socket: self.socket }
+        let shared = Arc::new(Shared {
+            backend: RwLock::new(Some(backend)),
+            clock: self.clock,
+            mail: self.mail,
+            counts: self.counts,
+        });
+        let accepting_stop = CancellationToken::new();
+        let ending = CancellationToken::new();
+        let accepting = tokio::spawn(accept(listener, shared.clone(), accepting_stop.clone(), ending.clone()));
+        ControlServer { shared, accepting_stop, ending, accepting, socket: self.socket }
     }
 }
 
 /// The control socket while it serves.
 pub struct ControlServer {
     shared: Arc<Shared>,
-    stop: CancellationToken,
-    accepting: tokio::task::JoinHandle<()>,
+    accepting_stop: CancellationToken,
+    ending: CancellationToken,
+    accepting: tokio::task::JoinHandle<JoinSet<()>>,
     socket: PathBuf,
 }
 
+/// The connections of a control that no longer accepts, with the holds and
+/// leases they took. The backend's shutdown runs under them, so that a test
+/// can hold a flow at the moment the backend closes; [`end`](Self::end) then
+/// closes them.
+pub struct ControlConnections {
+    ending: CancellationToken,
+    connections: JoinSet<()>,
+}
+
 impl ControlServer {
-    /// Closes the socket and every connection, which releases their holds
-    /// and leases, and answers the backend for its shutdown.
-    pub async fn stop(self) -> Backend {
-        self.stop.cancel();
-        // The accepting task ends after its connections did, and none of
-        // them panics.
-        let _ = self.accepting.await;
+    /// Closes the socket to new connections and answers the backend for its
+    /// shutdown. What the connections hold stays held: a request that needs
+    /// the backend now answers that it is closing.
+    pub async fn stop(self) -> (Backend, ControlConnections) {
+        self.accepting_stop.cancel();
+        let connections = self.accepting.await.expect("the accepting task does not panic");
         let _ = std::fs::remove_file(&self.socket);
-        match Arc::try_unwrap(self.shared) {
-            Ok(shared) => shared.backend,
-            Err(_) => unreachable!("every connection ended with the accepting task"),
-        }
+        let backend = self.shared.backend.write().await.take().expect("the backend is taken once");
+        (backend, ControlConnections { ending: self.ending, connections })
+    }
+}
+
+impl ControlConnections {
+    /// Closes every connection, which releases their holds and leases.
+    pub async fn end(mut self) {
+        self.ending.cancel();
+        while self.connections.join_next().await.is_some() {}
     }
 }
 
 struct Shared {
-    backend: Backend,
+    backend: RwLock<Option<Backend>>,
     clock: Arc<ManualClock>,
     mail: Arc<Mailbox>,
     counts: ObjectCounts,
 }
 
-async fn accept(listener: UnixListener, shared: Arc<Shared>, stop: CancellationToken) {
+/// The backend for one request, or why there is none.
+async fn backend(shared: &Shared) -> Result<RwLockReadGuard<'_, Backend>, String> {
+    RwLockReadGuard::try_map(shared.backend.read().await, Option::as_ref)
+        .map_err(|_| "the backend is closing".to_owned())
+}
+
+/// Accepts connections until told to stop, and answers them still running.
+async fn accept(
+    listener: UnixListener,
+    shared: Arc<Shared>,
+    stop: CancellationToken,
+    ending: CancellationToken,
+) -> JoinSet<()> {
     let mut connections = JoinSet::new();
     loop {
         tokio::select! {
             () = stop.cancelled() => break,
             accepted = listener.accept() => match accepted {
                 Ok((stream, _)) => {
-                    connections.spawn(connection(stream, shared.clone(), stop.clone()));
+                    connections.spawn(connection(stream, shared.clone(), ending.clone()));
                 }
                 Err(error) => {
                     tracing::error!(error = &error as &dyn std::error::Error, "the test control cannot accept");
@@ -462,9 +529,7 @@ async fn accept(listener: UnixListener, shared: Arc<Shared>, stop: CancellationT
             },
         }
     }
-    // Every connection ends on the stop, or ended already.
-    stop.cancel();
-    while connections.join_next().await.is_some() {}
+    connections
 }
 
 /// A request: an id the client chooses, which its reply names, and the
@@ -767,11 +832,13 @@ fn run<'a>(shared: &'a Shared, holdings: &'a Holdings, call: Call) -> Outcome<'a
             }
             Call::Hold(Hold { target }) => {
                 let held = match target {
-                    HoldTarget::Commits => Held::Commits(shared.backend.hold_commits()),
-                    HoldTarget::HelloTokenLookup => Held::Step(shared.backend.hold_hellos(HelloStep::TokenLookup)),
-                    HoldTarget::HelloBind => Held::Step(shared.backend.hold_hellos(HelloStep::Bind)),
-                    HoldTarget::SyncSnapshot => Held::Step(shared.backend.hold_sync(SyncStep::Snapshot)),
-                    HoldTarget::SyncChanges => Held::Step(shared.backend.hold_sync(SyncStep::Changes)),
+                    HoldTarget::Commits => Held::Commits(backend(shared).await?.hold_commits()),
+                    HoldTarget::HelloTokenLookup => {
+                        Held::Step(backend(shared).await?.hold_hellos(HelloStep::TokenLookup))
+                    }
+                    HoldTarget::HelloBind => Held::Step(backend(shared).await?.hold_hellos(HelloStep::Bind)),
+                    HoldTarget::SyncSnapshot => Held::Step(backend(shared).await?.hold_sync(SyncStep::Snapshot)),
+                    HoldTarget::SyncChanges => Held::Step(backend(shared).await?.hold_sync(SyncStep::Changes)),
                 };
                 Ok(json!({ "id": holdings.keep(held) }))
             }
@@ -786,7 +853,7 @@ fn run<'a>(shared: &'a Shared, holdings: &'a Holdings, call: Call) -> Outcome<'a
             }
             Call::RetentionRun(RetentionRun { user }) => {
                 let user = UserId::try_from(user).map_err(|error| error.to_string())?;
-                shared.backend.run_retention(&user).await;
+                backend(shared).await?.run_retention(&user).await;
                 Ok(json!({}))
             }
             Call::ObjectsCount(Empty {}) => {
@@ -827,12 +894,12 @@ fn run<'a>(shared: &'a Shared, holdings: &'a Holdings, call: Call) -> Outcome<'a
 async fn file_gate(shared: &Shared, user: &str, conversation: &str) -> Result<demi_gates::ActivityGate, String> {
     let user = UserId::try_from(user).map_err(|error| error.to_string())?;
     let conversation = ConversationId::try_from(conversation).map_err(|error| error.to_string())?;
-    Ok(shared.backend.file_gate(&user, &conversation).await)
+    Ok(backend(shared).await?.file_gate(&user, &conversation).await)
 }
 
 async fn add_user(shared: &Shared, add: UsersAdd) -> Result<Value, String> {
     let email = EmailAddress::try_from(add.email).map_err(|error| error.to_string())?;
-    let created = shared.backend.add_user(email, Password::from(add.password), add.role).await?;
+    let created = backend(shared).await?.add_user(email, Password::from(add.password), add.role).await?;
     Ok(json!({ "id": created.as_str() }))
 }
 
@@ -868,6 +935,20 @@ mod tests {
         assert!(!config.conversations.titles);
         assert_eq!(config.pages.heartbeat, Duration::from_millis(50));
         assert_eq!(config.pages.close_wait, Duration::from_secs(1));
+    }
+
+    #[test]
+    fn the_tuning_file_points_the_families_at_the_suites_servers_and_starts_the_clock() {
+        let config = tuned(
+            r#"{ "clockStartMs": 1893456000000,
+                 "families": { "codex": { "backendUrl": "http://127.0.0.1:1/backend", "authUrl": "http://127.0.0.1:1/auth" } } }"#,
+        );
+        assert!(config.families.get("codex").is_some());
+        let refused = std::env::temp_dir().join(format!("demi-tuning-families-{}.json", std::process::id()));
+        std::fs::write(&refused, r#"{ "families": { "codex": { "backendUrl": "http://127.0.0.1:1" } } }"#).unwrap();
+        let error = Tuning::read(&refused).unwrap_err();
+        std::fs::remove_file(&refused).unwrap();
+        assert!(error.to_string().contains("authUrl"), "{error}");
     }
 
     #[test]

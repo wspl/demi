@@ -162,7 +162,7 @@ func TestAChildWorksInItsParentsFilesKeepsItsOwnTodosAndRunsOnAfterItsSpawn(t *t
 	socket.UntilIdle()
 
 	children := tr.askedBy("child:" + task)
-	read := children[len(children)-1]
+	read := scenarioItem(t, children, len(children)-1)
 	contains(t, read, "the answer is 42", "child-only")
 	if strings.Contains(read, "root-only") {
 		t.Fatalf("the child's todos are its own: %s", read)
@@ -174,7 +174,7 @@ func TestAChildWorksInItsParentsFilesKeepsItsOwnTodosAndRunsOnAfterItsSpawn(t *t
 	tr.root("first", shellAnswer("t3", "cat reply.md && demi todo list"), backendtest.Say("checked"))
 	socket.Chat("m3", "Check")
 	asked := tr.askedBy("first")
-	checked := asked[len(asked)-1]
+	checked := scenarioItem(t, asked, len(asked)-1)
 	contains(t, checked, "from the child", "root-only")
 	if strings.Contains(checked, "child-only") {
 		t.Fatalf("the parent's todos are its own: %s", checked)
@@ -188,7 +188,7 @@ func TestAChildWorksInItsParentsFilesKeepsItsOwnTodosAndRunsOnAfterItsSpawn(t *t
 	b.Stop()
 }
 
-// Cost: one backend, a scripted vendor and a real runner, over two seconds: the
+// Cost: one backend, a scripted vendor and a real runner, about two seconds: the
 // parent's and the child's shell jobs run on a real device, the child's until
 // the Fork is taken.
 func TestAForkTakenWhileAChildRunsLeavesTheChildWithItsSource(t *testing.T) {
@@ -243,7 +243,7 @@ func TestAForkTakenWhileAChildRunsLeavesTheChildWithItsSource(t *testing.T) {
 	tr.root("second", shellAnswer("f1", "demi agent list"), backendtest.Say("an empty tree"))
 	fork.Chat("m2", "Who works for you?")
 	asked := tr.askedBy("second")
-	last := asked[len(asked)-1]
+	last := scenarioItem(t, asked, len(asked)-1)
 	var request any
 	if err := json.Unmarshal([]byte(last), &request); err != nil {
 		t.Fatal(err)

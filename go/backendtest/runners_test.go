@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/wspl/demi/go/backendtest"
+	"github.com/wspl/demi/go/backendtest/controlproto"
 	"github.com/wspl/demi/go/backendtest/runnerproc"
 )
 
@@ -451,5 +452,97 @@ func TestAPairedDeviceIsBrowsedAndItsLogReadThroughDeviceAccess(t *testing.T) {
 	b.UntilOnline(master, laptop.ID(), false)
 	wantRefusal(t, b.Get(path, master), http.StatusConflict, "device_offline", "the log of an offline device")
 	wantRefusal(t, b.Get("/api/devices/"+laptop.ID()+"/fs", master), http.StatusConflict, "device_offline", "the listing of an offline device")
+	b.Stop()
+}
+
+// Cost: one backend and a real runner, about a second.
+func TestARunnerThatGoesAwayWhileItsTokenIsLookedUpIsLetGoAndNeverComesOnline(t *testing.T) {
+	t.Parallel()
+	b, master := backendtest.New(t).StartSetUp()
+	laptop := b.Pair(master, "laptop")
+	token := laptop.Token()
+	laptop.Runner.Stop()
+	b.UntilOnline(master, laptop.ID(), false)
+
+	lookups := b.Control.Hold(controlproto.HoldHelloTokenLookup)
+	runner := b.ConnectRawRunner()
+	runner.Send(backendtest.RunnerHello(backendtest.RunnerVersion, token, nil))
+	lookups.Wait(1)
+	// The runner ends the connection while the lookup still waits.
+	runner.Close()
+	if message := runner.Next(); message != nil {
+		t.Fatalf("the backend answers a runner that left: %v", message)
+	}
+	lookups.Release()
+	// A runner that left while its token was looked up is never bound: the
+	// device stays offline, and the backend stops cleanly.
+	if b.Online(master, laptop.ID()) {
+		t.Fatal("a runner that left came online")
+	}
+	b.Stop()
+}
+
+// Cost: one backend and a real runner, about a second.
+func TestARunnerWhoseHelloMeetsTheShutdownIsNeverWelcomed(t *testing.T) {
+	t.Parallel()
+	b, master := backendtest.New(t).StartSetUp()
+	laptop := b.Pair(master, "laptop")
+	token := laptop.Token()
+	laptop.Runner.Stop()
+	b.UntilOnline(master, laptop.ID(), false)
+	// A page's conversation socket, which the shard closes early in its own close,
+	// before its runners' connections; the answer to a frame shows that the shard
+	// serves it.
+	b.CreateConversation(master, convFirst)
+	page := b.Connect(master, convFirst)
+	page.Send(backendtest.Frame{"type": "abort"})
+	page.Frame()
+
+	binds := b.Control.Hold(controlproto.HoldHelloBind)
+	runner := b.ConnectRawRunner()
+	runner.Send(backendtest.RunnerHello(backendtest.RunnerVersion, token, nil))
+	binds.Wait(1)
+	// What the control holds stays held through the shutdown.
+	stopped := b.Terminate()
+	if code := page.Closed(); code != 1001 {
+		t.Fatalf("the page's socket closes with %d, not 1001 (going away)", code)
+	}
+	binds.Release()
+	answer := runner.Next()
+	// A welcomed runner would keep the shutdown waiting for it.
+	runner.Close()
+	if answer != nil {
+		t.Fatalf("the backend welcomed a runner while it shut down: %v", answer)
+	}
+	if code := stopped(); code != 0 {
+		t.Fatalf("the backend exited with %d", code)
+	}
+}
+
+// Cost: one backend started twice and two real runners, about two seconds.
+func TestAfterABackendRestartTheDevicesAreKeptAndTheirRunnersComeBack(t *testing.T) {
+	t.Parallel()
+	h := backendtest.New(t)
+	b, master := h.StartSetUp()
+	laptop := b.Pair(master, "laptop")
+	// Devices list oldest first, by the time they were paired.
+	b.Control.AdvanceClock(time.Second)
+	desktop := b.Pair(master, "desktop")
+	b.Stop()
+
+	// The session and the devices are records: both outlive the process. The
+	// backend comes back at its address, where the runners reconnect.
+	b = h.Start()
+	for _, device := range []*backendtest.Paired{laptop, desktop} {
+		b.UntilOnline(master, device.ID(), true)
+	}
+	var names []any
+	for _, device := range b.Devices(master) {
+		if device["lastSeenAt"] == nil {
+			t.Fatalf("a device that came back was never seen: %v", device)
+		}
+		names = append(names, device["name"])
+	}
+	backendtest.AssertJSON(t, names, []any{"laptop", "desktop"})
 	b.Stop()
 }

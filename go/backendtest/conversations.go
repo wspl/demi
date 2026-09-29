@@ -141,6 +141,16 @@ type Turn struct {
 	Requests []any
 }
 
+// Result is the index'th tool result the model received, or fails the test when
+// it received fewer.
+func (t Turn) Result(tb testing.TB, index int) string {
+	tb.Helper()
+	if index >= len(t.Received) {
+		tb.Fatalf("the model received %d tool results, not %d", len(t.Received), index+1)
+	}
+	return t.Received[index]
+}
+
 // FirstRequest is the text of the turn's first request's messages, context
 // blocks included.
 func (t Turn) FirstRequest() string {
@@ -218,10 +228,10 @@ func Field(t testing.TB, result, name string) string {
 	return ""
 }
 
-// ShownOutput is the output a shell tool result shows: what the command wrote
-// since the model's last look, each line with its newline; empty when it shows
-// none. A running command's lines after it, its newest output's line and its
-// next step, are not part of it.
+// ShownOutput returns the lines a shell tool result shows, each with a newline;
+// empty when it shows none. An unfinished line may repeat on successive looks:
+// these are displayed lines, not a reconstruction of the command's raw bytes.
+// A running command's newest-output line and next step are not part of it.
 func ShownOutput(result string) string {
 	_, output, found := strings.Cut(result, "\noutput:\n")
 	if !found {

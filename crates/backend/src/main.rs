@@ -66,10 +66,12 @@ async fn run(config: Config) -> ExitCode {
         mode = %config.mode,
         "demi-backend is listening"
     );
-    let Some(backend) = until_stopped(backend, control).await else {
+    let Some((backend, connections)) = until_stopped(backend, control).await else {
         return ExitCode::FAILURE;
     };
-    match backend.close().await {
+    let closed = backend.close().await;
+    end_connections(connections).await;
+    match closed {
         Ok(()) => ExitCode::SUCCESS,
         Err(errors) => {
             eprintln!("demi-backend: {errors}");
@@ -80,19 +82,25 @@ async fn run(config: Config) -> ExitCode {
 
 /// Serves until a stop signal, and answers the backend for its shutdown.
 #[cfg(not(feature = "testing"))]
-async fn until_stopped(backend: Backend, _control: ()) -> Option<Backend> {
+async fn until_stopped(backend: Backend, _control: ()) -> Option<(Backend, ())> {
     watch_stop().await;
-    Some(backend)
+    Some((backend, ()))
 }
+
+#[cfg(not(feature = "testing"))]
+async fn end_connections(_connections: ()) {}
 
 /// Serves until a stop signal, and answers the backend for its shutdown. A
 /// test build serves its control socket meanwhile (`testing.rs`); one that
 /// cannot bind it stops the backend and answers none.
 #[cfg(feature = "testing")]
-async fn until_stopped(backend: Backend, control: Option<demi_backend::TestControl>) -> Option<Backend> {
+async fn until_stopped(
+    backend: Backend,
+    control: Option<demi_backend::TestControl>,
+) -> Option<(Backend, Option<demi_backend::ControlConnections>)> {
     let Some(control) = control else {
         watch_stop().await;
-        return Some(backend);
+        return Some((backend, None));
     };
     let listener = match control.bind() {
         Ok(listener) => listener,
@@ -106,7 +114,18 @@ async fn until_stopped(backend: Backend, control: Option<demi_backend::TestContr
     };
     let served = control.serve(listener, backend);
     watch_stop().await;
-    Some(served.stop().await)
+    let (backend, connections) = served.stop().await;
+    Some((backend, Some(connections)))
+}
+
+/// Closes the control's connections once the backend is closed: what they
+/// hold stays held through the shutdown, so that a test can hold a flow at
+/// the moment the backend closes.
+#[cfg(feature = "testing")]
+async fn end_connections(connections: Option<demi_backend::ControlConnections>) {
+    if let Some(connections) = connections {
+        connections.end().await;
+    }
 }
 
 async fn watch_stop() {

@@ -3,7 +3,6 @@ package backendtest_test
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/binary"
 	"image"
 	"image/color"
 	"image/png"
@@ -131,7 +130,7 @@ func TestAnUploadReachesTheModelThroughTheConversationsHostAndThePageByReference
 	// The model reads the image and each file's record, and learns the other
 	// user's upload is not available.
 	encoded := base64.StdEncoding.EncodeToString(shot)
-	sent := jsonText(backendtest.At(vendor.Requests()[0].JSON(t), "messages"))
+	sent := jsonText(backendtest.At(scenarioItem(t, vendor.Requests(), 0).JSON(t), "messages"))
 	contains(t, sent, encoded, directory+"/shot.png", directory+"/notes.log", "[attachment "+hers["id"].(string)+" is not available]")
 	// The page receives the image by reference, never its bytes, and reads them
 	// from its blobs.
@@ -140,7 +139,7 @@ func TestAnUploadReachesTheModelThroughTheConversationsHostAndThePageByReference
 		t.Fatal("the page does not receive the image by reference")
 	}
 	blocks := b.Transcript(master, convFirst)
-	user := blocks[0]
+	user := scenarioItem(t, blocks, 0)
 	var kinds []string
 	content, _ := backendtest.At(user, "content").([]any)
 	for _, part := range content {
@@ -183,7 +182,7 @@ func TestAnUploadReachesTheModelThroughTheConversationsHostAndThePageByReference
 	if got, err := os.ReadFile(filepath.Join(directory, "shot-3.png")); err != nil || !bytes.Equal(got, shot) {
 		t.Fatalf("shot-3.png on the Host: %v", err)
 	}
-	continued := jsonText(backendtest.At(vendor.Requests()[3].JSON(t), "messages"))
+	continued := jsonText(backendtest.At(scenarioItem(t, vendor.Requests(), 3).JSON(t), "messages"))
 	contains(t, continued, "And this one", encoded, directory+"/shot-3.png")
 
 	// An edit of the first message keeps its image by the reference the page
@@ -278,17 +277,12 @@ func TestAToolMediumThatCannotBeStoredIsGoneFromItsResultAndTheTurnGoesOn(t *tes
 	if !strings.Contains(frames, "No picture.") || strings.Contains(frames, encoded) {
 		t.Fatal("the turn did not go on, or carries the picture's bytes")
 	}
-	continued := jsonText(backendtest.At(vendor.Requests()[1].JSON(t), "messages"))
+	continued := jsonText(backendtest.At(scenarioItem(t, vendor.Requests(), 1).JSON(t), "messages"))
 	text := jsonText("[image not stored: " + backendtest.At(part, "cause.error").(string) + "]")
 	if !strings.Contains(continued, text) || strings.Contains(continued, encoded) {
 		t.Fatalf("the model reads %s", continued)
 	}
 	b.Stop()
-}
-
-// pngSize is the width and height a PNG's header states.
-func pngSize(content []byte) (uint32, uint32) {
-	return binary.BigEndian.Uint32(content[16:]), binary.BigEndian.Uint32(content[20:])
 }
 
 // firstImage is the base64 of the first image a Messages API request carries,
@@ -302,8 +296,11 @@ func firstImage(t *testing.T, request any) string {
 		t.Fatal("the request carries no image")
 	}
 	start += len(marker)
-	end := start + strings.Index(text[start:], `"`)
-	return text[start:end]
+	encoded, _, found := strings.Cut(text[start:], `"`)
+	if !found {
+		t.Fatal("the image data has no closing quote")
+	}
+	return encoded
 }
 
 // Cost: one backend, a scripted vendor and a real runner, about a second: an
@@ -337,13 +334,18 @@ func TestAnImageOver2000PxEntersFittedFromAnUploadAndAToolAndStaysWholeOnTheHost
 		t.Fatalf("wide.png on the Host: %v", err)
 	}
 	requests := vendor.Requests()
-	first, second := requests[0].JSON(t), requests[1].JSON(t)
+	first := scenarioItem(t, requests, 0).JSON(t)
+	second := scenarioItem(t, requests, 1).JSON(t)
 	fitted := firstImage(t, first)
 	fittedBytes, err := base64.StdEncoding.DecodeString(fitted)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if width, height := pngSize(fittedBytes); width != 2_000 || height != 8 {
+	size, err := png.DecodeConfig(bytes.NewReader(fittedBytes))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if width, height := size.Width, size.Height; width != 2_000 || height != 8 {
 		t.Fatalf("the model reads an image of %d by %d", width, height)
 	}
 	if strings.Contains(jsonText(backendtest.At(first, "messages")), base64.StdEncoding.EncodeToString(wide)) {
@@ -358,13 +360,160 @@ func TestAnImageOver2000PxEntersFittedFromAnUploadAndAToolAndStaysWholeOnTheHost
 	}
 	contains(t, result, "fitted to what every model accepts; to keep the original, save it: demi shell output ")
 	// The message's image is the fitted one's blob, which the page reads.
-	user := b.Transcript(master, convFirst)[0]
+	user := scenarioItem(t, b.Transcript(master, convFirst), 0)
 	ref := backendtest.At(user, "content.1.source.ref")
 	if ref == nil || ref == wideUpload["sha256"] {
 		t.Fatalf("the message's image is %v", backendtest.At(user, "content.1"))
 	}
 	if got := b.Get("/api/blobs/"+ref.(string), master).Expect(http.StatusOK).Body; !bytes.Equal(got, fittedBytes) {
 		t.Fatal("the blob is not the fitted image")
+	}
+	b.Stop()
+}
+
+// Cost: one backend, about a second.
+func TestARepeatedUploadSendsTheObjectStoreNoBytes(t *testing.T) {
+	t.Parallel()
+	b, master := backendtest.New(t).StartSetUp()
+	shot := pngOf(t, 4, 3, 0)
+	before := b.Control.ObjectCounts()
+	first := upload(t, b, master, "shot.png", "image/png", shot)
+	stored := b.Control.ObjectCounts().Since(before)
+	if stored.Puts != 1 || stored.BytesPut != uint64(len(shot)) {
+		t.Fatalf("the first upload put %d objects of %d bytes", stored.Puts, stored.BytesPut)
+	}
+
+	// The same bytes under another name are the same blob: the object store is
+	// asked whether it holds it, and receives none of its bytes again.
+	before = b.Control.ObjectCounts()
+	again := upload(t, b, master, "copy.png", "image/png", shot)
+	repeated := b.Control.ObjectCounts().Since(before)
+	if again["sha256"] != first["sha256"] {
+		t.Fatalf("the same bytes are %v and %v", again["sha256"], first["sha256"])
+	}
+	if repeated.Puts != 0 || repeated.BytesPut != 0 || repeated.Heads != 1 {
+		t.Fatalf("the repeated upload put %d objects of %d bytes after %d heads", repeated.Puts, repeated.BytesPut, repeated.Heads)
+	}
+	b.Stop()
+}
+
+// Cost: one backend, a scripted vendor and a real runner, about a second.
+func TestOpeningAStoredConversationWithImagesOnTwoPagesAndSyncingItPutsNoBlob(t *testing.T) {
+	t.Parallel()
+	vendor := scripted.StartVendor(t)
+	b, master := backendtest.New(t).StartSetUp()
+	provider := b.Anthropic(master, vendor, "")
+	b.CreateConversation(master, convFirst)
+	// The uploads are written to the conversation's Host.
+	onDeviceConversation(t, b, master, convFirst)
+	b.Choose(master, convFirst, provider, "claude-opus-4-8")
+	shots := []map[string]any{
+		upload(t, b, master, "a.png", "image/png", pngOf(t, 4, 3, 1)),
+		upload(t, b, master, "b.png", "image/png", pngOf(t, 4, 3, 2)),
+	}
+	first := b.Connect(master, convFirst)
+	first.Open()
+	vendor.Respond(scripted.Answer([]string{"Two shots."}, 1, 1))
+	first.Send(withUpload("m1", "Look", [2]any{shots[0], "a.png"}, [2]any{shots[1], "b.png"}))
+	first.UntilIdle()
+	// Closing the tree leaves the conversation stored; the next open restores it.
+	first.Send(backendtest.Frame{"type": "close"})
+	first.UntilType("closed")
+
+	before := b.Control.ObjectCounts()
+	first.Open()
+	second := b.Connect(master, convFirst)
+	second.Open()
+	synced := second.Live()
+	// Nothing is stored again, and the object store is not even asked whether it
+	// holds the images.
+	after := b.Control.ObjectCounts().Since(before)
+	if after.Puts != 0 || after.BytesPut != 0 || after.Heads != 0 {
+		t.Fatalf("the opens put %d objects and asked %d heads", after.Puts, after.Heads)
+	}
+	// Every frame named the images by the references the rows hold.
+	images := 0
+	content, _ := backendtest.At(scenarioItem(t, synced, 0), "content").([]any)
+	for _, part := range content {
+		if backendtest.At(part, "type") == "image" && backendtest.At(part, "source.type") == "ref" {
+			images++
+		}
+	}
+	if images != 2 {
+		t.Fatalf("the first message has %d images by reference: %v", images, scenarioItem(t, synced, 0))
+	}
+	b.Stop()
+}
+
+// Cost: one backend, a scripted vendor and a real runner, about two seconds.
+func TestARestoredConversationReadsEachReplayedBlobOnceAndNoneBeforeItsLastCompaction(t *testing.T) {
+	t.Parallel()
+	vendor := scripted.StartVendor(t)
+	b, master := backendtest.New(t).StartSetUp()
+	provider := b.Anthropic(master, vendor, "")
+	b.CreateConversation(master, convFirst)
+	onDeviceConversation(t, b, master, convFirst)
+	b.Choose(master, convFirst, provider, "claude-opus-4-8")
+	old := upload(t, b, master, "old.png", "image/png", pngOf(t, 4, 3, 0))
+	var shots [][2]any
+	for shot := byte(1); shot <= 9; shot++ {
+		shots = append(shots, [2]any{upload(t, b, master, "shot.png", "image/png", pngOf(t, 4, 3, shot)), "shot.png"})
+	}
+	socket := b.Connect(master, convFirst)
+	socket.Open()
+	vendor.Respond(scripted.Answer([]string{"An old shot."}, 1, 1))
+	socket.Send(withUpload("m1", "Look", [2]any{old, "old.png"}))
+	socket.UntilIdle()
+	// The vendor refuses the nine shots' request, so the latest answered request
+	// is the first: the pass summarizes what it carried, the old shot, and keeps
+	// what came after it, the nine shots (compaction.md § One pass).
+	refusal := backendtest.Map{"type": "error", "error": backendtest.Map{"type": "invalid_request_error", "message": "try later"}}
+	vendor.Respond(scripted.Status(400).Chunk(backendtest.Marshal(refusal)))
+	socket.Send(withUpload("m2", "Look at these", shots...))
+	socket.UntilIdle()
+	vendor.Respond(scripted.Answer([]string{"The user showed an old shot."}, 1, 1))
+	socket.Send(backendtest.Frame{"type": "compact"})
+	socket.UntilIdle()
+	closeTree(socket)
+
+	// The restored conversation's turn asks the model twice: an unknown tool's
+	// error goes back to it.
+	before := b.Control.ObjectCounts()
+	socket.Open()
+	if gets := b.Control.ObjectCounts().Since(before).Gets; gets != 0 {
+		t.Fatalf("an open read %d blobs", gets)
+	}
+	vendor.Respond(scripted.ToolUse("toolu_1", "no_such_tool", backendtest.Map{}))
+	vendor.Respond(scripted.Answer([]string{"Still nine."}, 1, 1))
+	requests := len(vendor.Requests())
+	socket.Send(backendtest.SendMessage("m3", "And now?"))
+	vendor.Received(t, requests+1)
+	first := b.Control.ObjectCounts().Since(before)
+	socket.UntilIdle()
+	both := b.Control.ObjectCounts().Since(before)
+
+	// The first request read each replayed shot once, a few at a time, and the old
+	// shot not at all; the second read nothing.
+	if first.Gets != 9 || both.Gets != 9 {
+		t.Fatalf("the requests read %d and %d blobs, not 9 and 9", first.Gets, both.Gets)
+	}
+	if both.MostGetsAtOnce <= 1 || both.MostGetsAtOnce > 8 {
+		t.Fatalf("the most reads at once is %d", both.MostGetsAtOnce)
+	}
+	observed := vendor.Requests()
+	if len(observed) < requests {
+		t.Fatalf("the vendor lost recorded requests: %d, previously %d", len(observed), requests)
+	}
+	for _, request := range observed[requests:] {
+		sent := jsonText(backendtest.At(request.JSON(t), "messages"))
+		for shot := byte(1); shot <= 9; shot++ {
+			if !strings.Contains(sent, base64.StdEncoding.EncodeToString(pngOf(t, 4, 3, shot))) {
+				t.Fatalf("a request lacks shot %d", shot)
+			}
+		}
+		if strings.Contains(sent, base64.StdEncoding.EncodeToString(pngOf(t, 4, 3, 0))) {
+			t.Fatal("a request carries the old shot")
+		}
 	}
 	b.Stop()
 }
