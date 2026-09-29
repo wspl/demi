@@ -486,8 +486,12 @@ output:
   result of a running command whose output has gone beyond them ends with a
   line that counts those bytes and names the command that shows the newest:
   `[... 1048576 bytes not shown so far; the newest: demi shell output 17 --tail 50 ...]`.
-- The model's place moves past everything a result covers, the lines it
-  leaves out included, so the next result goes on from there.
+- The model's place moves past the whole lines a result covers, the lines
+  it leaves out included. An unterminated line is shown at once, and the
+  next look shows it again from its start, as far as it has grown: a command
+  that prints `rea`, then `dy` and a newline, shows `rea`, then `ready`.
+  Once the command ends, its last line counts as whole even without a
+  newline.
 - The handle serves `shell_status`, `shell_write` and `shell_abort` while the
   command runs. A result that reports the command's end releases it;
   `demi shell output` goes on reading the output by its `commandId`.
