@@ -486,8 +486,7 @@ func (PageCreator) createdBy()      {}
 func (TemporaryCreator) createdBy() {}
 func (UserCreator) createdBy()      {}
 
-// A BrowserTab is a tab as tabs lists it and the conversation browser tab routes
-// return it.
+// A tab as `tabs` lists it and the conversation browser tab routes return it.
 //
 //demi:wire
 //demi:describe A tab as `tabs` lists it and the conversation browser tab routes return it.

@@ -28,8 +28,9 @@ type UserCaller struct{}
 func (AgentCaller) commandCaller() {}
 func (UserCaller) commandCaller()  {}
 
-// CommandLocale is an IANA time zone and BCP 47 language tags in preference
-// order, as the conversation's user's browser last reported them.
+// An IANA time zone and BCP 47 language tags in preference order. The
+// browser reports it as a user preference (web-api), so its schema is part
+// of the browser's contract too.
 //
 //demi:wire
 type CommandLocale struct {

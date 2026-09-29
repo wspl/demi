@@ -2,7 +2,10 @@ package core
 
 import "bytes"
 
+// Whether a model reads a medium as an image or as a video.
+//
 //demi:enum
+//demi:export
 type ModelMediaKind string
 
 const (
@@ -12,6 +15,8 @@ const (
 
 func (k ModelMediaKind) Name() string { return string(k) }
 
+// A media type a model can receive, with the extension a model's catalog
+// accepts it by.
 type ModelMediaType struct {
 	MediaType string
 	Kind      ModelMediaKind

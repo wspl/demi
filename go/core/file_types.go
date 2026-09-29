@@ -5,11 +5,17 @@ import (
 	"strings"
 )
 
+// One media type the product knows files by. Its schema types the table
+// the page receives in `@demicodes/protocol`.
+//
 //demi:wire open
 type PreviewType struct {
-	MediaType  string   `json:"mediaType"`
+	MediaType string `json:"mediaType"`
+	// Lowercase, without the dot.
 	Extensions []string `json:"extensions"`
-	InPlace    bool     `json:"inPlace"`
+	// Served as itself for the page to show in place; otherwise the page
+	// downloads it or renders it from its text.
+	InPlace bool `json:"inPlace"`
 }
 
 var PreviewTypes = []PreviewType{

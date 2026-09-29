@@ -7,6 +7,9 @@ import (
 	"strings"
 )
 
+// The id of a child's completion receipt, `subagent:<child id>:<round>`: it
+// names exactly one execution round of one child, so reopening the child
+// starts a receipt of its own.
 type CompletionID struct {
 	Child NodeID
 	Round uint64
@@ -64,4 +67,3 @@ func (b AgentMessageBlock) check() error {
 	}
 	return nil
 }
-func (b BlockAgentMessage) check() error { return b.AgentMessageBlock.check() }

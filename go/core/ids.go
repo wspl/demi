@@ -8,7 +8,8 @@ import (
 
 // BlockID identifies a block; its zero value is invalid.
 //
-//demi:opaque
+//demi:opaque string
+//wiregen:browser inline {"type":"string","minLength":1}
 type BlockID struct{ Identity[BlockIDKind] }
 type BlockIDKind struct{ NonemptyIdentity }
 
@@ -19,7 +20,8 @@ func ParseBlockID(text string) (BlockID, error) {
 
 // TurnID identifies a turn; its zero value is invalid.
 //
-//demi:opaque
+//demi:opaque string
+//wiregen:browser inline {"type":"string","minLength":1}
 type TurnID struct{ Identity[TurnIDKind] }
 type TurnIDKind struct{ NonemptyIdentity }
 
@@ -30,7 +32,8 @@ func ParseTurnID(text string) (TurnID, error) {
 
 // NodeID identifies a node; its zero value is invalid.
 //
-//demi:opaque
+//demi:opaque string
+//wiregen:browser inline {"type":"string","minLength":1}
 type NodeID struct{ Identity[NodeIDKind] }
 type NodeIDKind struct{ NonemptyIdentity }
 
@@ -41,7 +44,8 @@ func ParseNodeID(text string) (NodeID, error) {
 
 // WakeupID identifies a wakeup; its zero value is invalid.
 //
-//demi:opaque
+//demi:opaque string
+//wiregen:browser inline {"type":"string","minLength":1}
 type WakeupID struct{ Identity[WakeupIDKind] }
 type WakeupIDKind struct{ NonemptyIdentity }
 
@@ -52,7 +56,8 @@ func ParseWakeupID(text string) (WakeupID, error) {
 
 // ShellID identifies a shell; its zero value is invalid.
 //
-//demi:opaque
+//demi:opaque string
+//wiregen:browser inline {"type":"string","minLength":1}
 type ShellID struct{ Identity[ShellIDKind] }
 type ShellIDKind struct{ NonemptyIdentity }
 
@@ -63,7 +68,8 @@ func ParseShellID(text string) (ShellID, error) {
 
 // CommandID identifies a command; its zero value is invalid.
 //
-//demi:opaque
+//demi:opaque string
+//wiregen:browser inline {"type":"string","minLength":1}
 type CommandID struct{ Identity[CommandIDKind] }
 type CommandIDKind struct{ NonemptyIdentity }
 
@@ -74,7 +80,8 @@ func ParseCommandID(text string) (CommandID, error) {
 
 // OperationID identifies a operation; its zero value is invalid.
 //
-//demi:opaque
+//demi:opaque string
+//wiregen:browser inline {"type":"string","minLength":1}
 type OperationID struct{ Identity[OperationIDKind] }
 type OperationIDKind struct{ NonemptyIdentity }
 
@@ -85,7 +92,8 @@ func ParseOperationID(text string) (OperationID, error) {
 
 // BlobRef names bytes by their lowercase SHA-256 digest.
 //
-//demi:opaque
+//demi:opaque string
+//wiregen:browser inline {"type":"string","pattern":"^[0-9a-f]{64}$"}
 type BlobRef struct{ Identity[BlobRefKind] }
 type BlobRefKind struct{}
 
@@ -110,7 +118,12 @@ func BlobRefOf(data []byte) BlobRef {
 	return BlobRef{Identity: Identity[BlobRefKind]{text: hex.EncodeToString(digest[:])}}
 }
 
+// A sequence of the numbers the model knows a conversation's things by
+// (`runtime.md` § Identifiers the model sees): each is given once, in order,
+// across crashes, restores and Forks.
+//
 //demi:enum
+//demi:export
 type Sequence string
 
 const (

@@ -2,7 +2,7 @@
 // agent and backend. Its wire conventions follow docs/architecture/contracts.md.
 package core
 
-//go:generate go run ./internal/generate
+//go:generate go run github.com/wspl/demi/go/cmd/wiregen
 
 import (
 	"encoding/json/jsontext"
@@ -21,10 +21,8 @@ func Decode[T any](data []byte) (T, error) {
 	var value T
 	if err := json.Unmarshal(data, &value, wireOptions); err != nil {
 		kind := DecodeShape
-		// The shared generator prefixes field failures after discarding their
-		// syntax cause. Only on failure, inspect JSON syntax to recover Rust's
-		// syntax/shape distinction without parsing error messages.
-		if !jsontext.Value(data).IsValid(jsontext.AllowDuplicateNames(true)) {
+		var syntax *jsontext.SyntacticError
+		if errors.As(err, &syntax) && !errors.Is(err, jsontext.ErrDuplicateName) {
 			kind = DecodeSyntax
 		}
 		var zero T
@@ -48,7 +46,7 @@ func Validate[T any](value T) error { return check(value) }
 
 var ErrEmptyID = errors.New("an identity must not be empty")
 
-// DecodeError distinguishes malformed JSON, a wrong shape and broken rules.
+// Why a value that entered the process was refused.
 type DecodeError struct {
 	Kind DecodeErrorKind
 	Err  error

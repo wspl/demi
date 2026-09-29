@@ -14,7 +14,8 @@ import (
 
 // Timestamp stores whole milliseconds since the Unix epoch.
 //
-//demi:opaque
+//demi:opaque string format=date-time
+//wiregen:browser inline {"type":"string"}
 type Timestamp struct{ millisecond int64 }
 
 var UnixEpoch = Timestamp{}

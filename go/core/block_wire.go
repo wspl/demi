@@ -979,7 +979,7 @@ func (v ToolCallBlock) validate() error {
 	r.Check("id", Validate(v.ID))
 	r.Check("createdAt", Validate(v.CreatedAt))
 	r.Nest("model", v.Model.validate())
-	r.OneOf("status", string(v.Status), "executing", "completed", "error")
+	r.OneOf("status", string(v.Status), "completed", "error", "executing")
 	{
 		var group0 wire.Report
 		for i, e := range v.Output {
@@ -2114,7 +2114,7 @@ func (v BlockAgentMessage) validate() error {
 	r.Check("createdAt", Validate(v.CreatedAt))
 	r.Nest("model", v.Model.validate())
 	r.Nest("message", v.Message.validate())
-	r.Check("", v.check())
+	r.Check("", v.AgentMessageBlock.check())
 	return r.Err()
 }
 
@@ -2773,7 +2773,7 @@ func (v BlockToolCall) validate() error {
 	r.Check("id", Validate(v.ID))
 	r.Check("createdAt", Validate(v.CreatedAt))
 	r.Nest("model", v.Model.validate())
-	r.OneOf("status", string(v.Status), "executing", "completed", "error")
+	r.OneOf("status", string(v.Status), "completed", "error", "executing")
 	{
 		var group0 wire.Report
 		for i, e := range v.Output {
