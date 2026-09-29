@@ -14,11 +14,15 @@ require (
 	golang.org/x/sync v0.23.0
 	golang.org/x/sys v0.48.0
 	golang.org/x/tools v0.43.0
+	mvdan.cc/sh/v3 v3.14.1
 )
 
 require (
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/vishvananda/netns v0.0.5 // indirect
 	golang.org/x/mod v0.34.0 // indirect
+	golang.org/x/term v0.45.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 )
+
+replace mvdan.cc/sh/v3 => ./third_party/mvdan-sh

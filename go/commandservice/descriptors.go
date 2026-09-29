@@ -23,17 +23,30 @@ func Exhausted(err error) bool {
 	return errors.Is(err, errNoDescriptor)
 }
 
+// Backoff spaces descriptor and process-start retries. Its zero value is ready
+// to use; callers own the wait and its cancellation.
+type Backoff struct{ pause time.Duration }
+
+// Pause returns the next delay, from 5 ms doubling to at most 100 ms.
+func (b *Backoff) Pause() time.Duration {
+	if b.pause == 0 {
+		b.pause = firstPause
+	}
+	pause := b.pause
+	b.pause = min(pause*2, lastPause)
+	return pause
+}
+
 // RetryBlocking runs attempt until it succeeds or fails for another reason than
 // a lack of open files, sleeping between attempts. It runs on a goroutine that
 // may block.
 func RetryBlocking[T any](attempt func() (T, error)) (T, error) {
-	pause := firstPause
+	var backoff Backoff
 	for {
 		value, err := attempt()
 		if err == nil || !Exhausted(err) {
 			return value, err
 		}
-		time.Sleep(pause)
-		pause = min(pause*2, lastPause)
+		time.Sleep(backoff.Pause())
 	}
 }
