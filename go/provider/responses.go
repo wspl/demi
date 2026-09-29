@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/wspl/demi/go/core"
+	"github.com/wspl/demi/go/internal/rustfmt"
 	"github.com/wspl/demi/go/internal/wire"
 )
 
@@ -171,6 +172,13 @@ func (m *ResponsesMapper) item(event ResponsesItemEvent, done bool) ([]ProviderE
 		encoded, err := json.Marshal(item, json.Deterministic(true))
 		if err != nil {
 			return nil, err
+		}
+		// The Rust writes the item from the values it read, so its members
+		// keep their order and their numbers and strings are spelled as
+		// serde_json prints them (1e0 is 1.0).
+		encoded, err = rustfmt.NormalizeJSON(encoded)
+		if err != nil {
+			return nil, wire.In("item", err)
 		}
 		events = append(events, ThinkingSignature{Signature: m.signatureTag + string(encoded)})
 		m.reasoningStreamed = false

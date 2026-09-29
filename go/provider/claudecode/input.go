@@ -9,8 +9,6 @@ import (
 	"github.com/wspl/demi/go/provider"
 )
 
-const mcpServer = "main"
-
 //demi:wire
 type userInput struct {
 	Type    string       `json:"type" check:"eq=user"`

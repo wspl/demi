@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"reflect"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -77,7 +80,7 @@ func TestSSERefreshAndRequest(t *testing.T) {
 	if len(requests) != 3 || requests[1].URI != "/oauth/token" || requests[2].Headers.Get("Authorization") != "Bearer renewed" {
 		t.Fatalf("requests: %#v", requests)
 	}
-	if requests[0].URI != "/codex/responses" || requests[0].Headers.Get("Chatgpt-Account-Id") != "account" || requests[0].Headers.Get("Session-Id") != "session-1" {
+	if requests[0].URI != "/codex/responses" || requests[0].Headers.Get("Chatgpt-Account-Id") != "account" || requests[0].Headers.Get("Session-Id") != "session-1" || requests[0].Headers.Get("X-Client-Request-Id") != "request-1" {
 		t.Fatal("subscription headers or endpoint missing")
 	}
 	var body map[string]jsontext.Value
@@ -387,26 +390,37 @@ func TestTransportTimeoutsOnFakeClock(t *testing.T) {
 		})
 	}
 }
+
+// A device login ends ten minutes after its code is shown, whatever the
+// vendor's interval, and a poll still unanswered then ends with it.
+// Cost: fake time only.
 func TestDeviceLoginExpiresOnFakeClock(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		vendor := providertest.NewPipeMockVendor(t, providertest.MockResponse{Chunks: []string{`{"device_auth_id":"device","user_code":"AB-CD","interval":600}`}}, providertest.MockResponse{Status: 403}, providertest.MockResponse{Status: 403})
-		_, pool := fixture(t, vendor.Server.URL, codex.TransportSSE)
-		config := codex.NewConfig(nil)
-		base, err := url.Parse(vendor.Server.URL)
-		if err != nil {
-			t.Fatal(err)
-		}
-		config.AuthURL = *base
-		p, err := codex.New(config, pool, &provider.MemorySnapshots{}, vendor.Server.Client(), providertest.FixedClock{Time: core.UnixEpoch})
-		if err != nil {
-			t.Fatal(err)
-		}
-		started := time.Now()
-		_, err = p.Accounts().Login(t.Context(), func(core.LoginPending) {})
-		if err == nil || !strings.Contains(err.Error(), "timed out") || time.Since(started) != 10*time.Minute || len(pool.Entries()) != 1 {
-			t.Fatalf("expiry %v %s", err, time.Since(started))
-		}
-	})
+	for name, polls := range map[string][]providertest.MockResponse{
+		"long interval": {{Chunks: []string{`{"device_auth_id":"device","user_code":"AB-CD","interval":3600}`}}, {Status: 403}},
+		"unanswered":    {{Chunks: []string{`{"device_auth_id":"device","user_code":"AB-CD","interval":1}`}}, {Ending: providertest.Silent}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				vendor := providertest.NewPipeMockVendor(t, polls...)
+				_, pool := fixture(t, vendor.Server.URL, codex.TransportSSE)
+				config := codex.NewConfig(nil)
+				base, err := url.Parse(vendor.Server.URL)
+				if err != nil {
+					t.Fatal(err)
+				}
+				config.AuthURL = *base
+				p, err := codex.New(config, pool, &provider.MemorySnapshots{}, vendor.Server.Client(), providertest.FixedClock{Time: core.UnixEpoch})
+				if err != nil {
+					t.Fatal(err)
+				}
+				var shown time.Time
+				_, err = p.Accounts().Login(t.Context(), func(core.LoginPending) { shown = time.Now() })
+				if err == nil || err.Error() != "Device-code login timed out after 10 minutes" || time.Since(shown) != 10*time.Minute || len(pool.Entries()) != 1 {
+					t.Fatalf("expiry %v %s", err, time.Since(shown))
+				}
+			})
+		})
+	}
 }
 
 func TestWebSocketIdleAndCancellationCloseReasons(t *testing.T) {
@@ -549,6 +563,104 @@ func TestCatalogCapabilityPresence(t *testing.T) {
 		got := catalog.Models[0].SupportsTools
 		if (got == nil) != (tc.tools == nil) || got != nil && *got != *tc.tools {
 			t.Fatalf("capability for %s: %v", tc.field, got)
+		}
+	}
+}
+
+// secretDocument is the stored sign-in with the access token access.
+func secretDocument(t *testing.T, access string) string {
+	t.Helper()
+	token, err := provider.NewSecret(access)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := codex.SecretDocument{AccessToken: token, RefreshToken: token, IDToken: token, AccountID: "account", LastRefresh: core.UnixEpoch}.JSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+// Another refresher holds the account's turn and stores new tokens once the
+// request with the old ones has gone out: the refused run takes them instead
+// of refreshing again.
+// Cost: two loopback requests; a two-minute context guards the run.
+func TestRefusedTokenReplacedMeanwhileIsNotRefreshedAgain(t *testing.T) {
+	vendor := providertest.NewMockVendor(t,
+		providertest.MockResponse{Status: 401},
+		providertest.MockResponse{Chunks: []string{providertest.SSEBody(jsontext.Value(`{"type":"response.completed","response":{}}`))}},
+	)
+	p, pool := fixture(t, vendor.Server.URL, codex.TransportSSE)
+	document := pool.Document("one")
+	turn, err := document.RefreshTurn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := p.Runtime(provider.RuntimeEnv{HTTP: http.DefaultClient})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	defer cancel()
+	ran := make(chan []provider.ProviderEvent, 1)
+	go func() { ran <- slices.Collect(runtime.Run(ctx, providertest.InferenceRequest())) }()
+	vendor.WaitRequests(t, 1)
+	revision, err := document.Read(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kept, err := document.Replace(t.Context(), secretDocument(t, "rotated-access"), revision.Version); err != nil || !kept {
+		t.Fatalf("replace %v %v", kept, err)
+	}
+	turn.Release()
+	events := <-ran
+	if len(events) != 1 || events[0] != (provider.Response{}) {
+		t.Fatalf("events %#v", events)
+	}
+	requests := vendor.Requests()
+	if len(requests) != 2 || requests[1].URI != "/codex/responses" || requests[1].Headers.Get("Authorization") != "Bearer rotated-access" {
+		t.Fatalf("requests %#v", requests)
+	}
+}
+
+// The usage status is read for free: a refusal fails the probe, and the
+// sign-in is not refreshed for it.
+// Cost: one loopback request.
+func TestRefusedUsageFailsTheProbeWithoutARefresh(t *testing.T) {
+	vendor := providertest.NewMockVendor(t)
+	vendor.Route("/wham/usage", providertest.MockResponse{Status: 401, Chunks: []string{"expired"}})
+	p, _ := fixture(t, vendor.Server.URL, codex.TransportSSE)
+	_, err := p.Quota().Probe(t.Context())
+	var failure *provider.QuotaError
+	if !errors.As(err, &failure) || failure.Kind != provider.QuotaUnavailable || failure.Message != "Codex usage request failed with HTTP 401" {
+		t.Fatalf("probe %v", err)
+	}
+	if requests := vendor.Requests(); len(requests) != 1 {
+		t.Fatalf("requests %#v", requests)
+	}
+	if p.Quota().Latest() != nil {
+		t.Fatal("a refused probe left a reading")
+	}
+}
+
+// A connection that fails names the failure, never the configured endpoint.
+// Cost: one refused loopback dial.
+func TestWebSocketConnectFailureNamesNoEndpoint(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := listener.Addr().String()
+	listener.Close()
+	p, _ := fixture(t, "http://"+address+"/backend?key=hidden", codex.TransportWebSocket)
+	events := run(t, p)
+	failure, ok := events[0].(provider.FailureEvent)
+	if len(events) != 1 || !ok || !strings.HasPrefix(failure.Failure.Message, "Codex WebSocket connect failed: ") || !strings.HasSuffix(failure.Failure.Message, "connection refused") {
+		t.Fatalf("events %#v", events)
+	}
+	for _, endpoint := range []string{"hidden", address, "backend"} {
+		if strings.Contains(failure.Failure.Message, endpoint) {
+			t.Fatalf("%q names %q", failure.Failure.Message, endpoint)
 		}
 	}
 }

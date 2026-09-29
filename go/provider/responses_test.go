@@ -158,3 +158,20 @@ func TestReasoningRetainsUnknownMemberOrderAndRejectsDuplicates(t *testing.T) {
 		}
 	}
 }
+
+// The signature holds the item as the Rust writes the values it read, so a
+// transcript's bytes do not depend on which backend saved it: numbers and
+// strings are spelled as serde_json prints them, members keep their order.
+func TestReasoningSignatureSpellsNumbersAndStringsAsSerde(t *testing.T) {
+	events := responseEvents(t, jsontext.Value(`{"type":"response.output_item.done","item":{"type":"reasoning","z":1e0,"a":2,"big":1E2,"text":"\u00e9\/"}}`))
+	want := `codex:{"type":"reasoning","z":1.0,"a":2,"big":100.0,"text":"é/"}`
+	for _, event := range events {
+		if signature, ok := event.(provider.ThinkingSignature); ok {
+			if signature.Signature != want {
+				t.Fatalf("signature %s, want %s", signature.Signature, want)
+			}
+			return
+		}
+	}
+	t.Fatalf("missing signature: %#v", events)
+}
