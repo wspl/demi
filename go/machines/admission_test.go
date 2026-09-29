@@ -27,8 +27,8 @@ func TestExclusiveEntryWaitsForSharedWorkAndHoldsBackLaterEntrants(t *testing.T)
 				return
 			}
 			record("exclusive")
-			whole.Release()
 			record("exclusive done")
+			whole.Release()
 		}()
 		synctest.Wait()
 		go func() {
