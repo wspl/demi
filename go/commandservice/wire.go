@@ -4,12 +4,9 @@ package commandservice
 
 import (
 	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"errors"
-	"fmt"
 	"net/url"
 	"path/filepath"
-	"reflect"
 	"regexp"
 
 	"github.com/wspl/demi/go/internal/wire"
@@ -36,50 +33,25 @@ type InvalidError = wire.InvalidError
 // rules of the fields are broken. The error names the field and the rule, never
 // the value: a value may be a secret.
 func Decode[T any](data []byte) (T, error) {
-	var value T
 	if len(data) > MaxMetadataBytes {
-		return value, ErrTooLarge
+		var none T
+		return none, ErrTooLarge
 	}
-	if err := json.Unmarshal(data, &value, wireOptions); err != nil {
-		return value, wire.Refusal(err)
-	}
-	if err := check(value); err != nil {
-		return value, err
-	}
-	return value, nil
+	return decode[T](data)
 }
 
 // Encode returns the JSON of value, one of the wire's types, after checking it
-// as [Decode] would, so the SDK never sends what its peer would refuse.
+// as [Decode] would, so the SDK never sends what its peer would refuse. It
+// refuses a document over [MaxMetadataBytes] with [ErrTooLarge].
 func Encode[T any](value T) ([]byte, error) {
-	if err := check(value); err != nil {
-		return nil, err
-	}
-	data, err := json.Marshal(value, wireOptions)
+	data, err := encode(value)
 	if err != nil {
-		return nil, wire.Refusal(err)
+		return nil, err
 	}
 	if len(data) > MaxMetadataBytes {
 		return nil, ErrTooLarge
 	}
 	return data, nil
-}
-
-// check runs the generated rule check of a wire type. A value that is absent
-// (a nil interface, or a nil pointer) is refused as required.
-func check(value any) error {
-	if value == nil {
-		return wire.Required("")
-	}
-	// A nil pointer to a wire type has methods, and calling them would panic.
-	if pointer := reflect.ValueOf(value); pointer.Kind() == reflect.Pointer && pointer.IsNil() {
-		return wire.Required("")
-	}
-	checked, ok := value.(interface{ validate() error })
-	if !ok {
-		return fmt.Errorf("commandservice: %T is not a type of the wire", value)
-	}
-	return checked.validate()
 }
 
 // The patterns of the rules of the wire's fields.

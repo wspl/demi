@@ -1,12 +1,16 @@
 package commandservice_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/wspl/demi/go/commandservice"
@@ -238,30 +242,31 @@ func serveRigged(t *testing.T, failure error) (conn *riggedConn, held *commandse
 // ends the connection; after an answered shutdown that is no failure, and
 // before one it is. What the platform says of a write into a closed pipe is
 // closedPipeErrors; a pipe made in memory and a stream that ends in the middle
-// of a frame say it the same way on every platform.
+// of a frame say it the same way on every platform. Each case runs in a fake
+// clock, so the service's waits (the one second after its GOAWAY, the five of
+// the cancellation grace) cost no time, and a call that the service waited for
+// in vain would show as a Serve that never returns, not as a slow test.
 func TestAPeerThatClosesItsTransportIsNoFailureOnlyAfterAnAnsweredShutdown(t *testing.T) {
 	for _, closed := range append([]error{io.ErrClosedPipe, io.ErrUnexpectedEOF}, closedPipeErrors...) {
 		for _, shutdown := range []bool{true, false} {
-			conn, held, client, served := serveRigged(t, closed)
-			if shutdown {
-				if err := client.Shutdown(testContext(t)); err != nil {
-					t.Fatal(err)
+			synctest.Test(t, func(t *testing.T) {
+				conn, held, client, served := serveRigged(t, closed)
+				if shutdown {
+					if err := client.Shutdown(testContext(t)); err != nil {
+						t.Fatal(err)
+					}
 				}
-			}
-			// The held call completes into a closed pipe.
-			conn.failWrites.Store(true)
-			_ = held.End()
-			select {
-			case err := <-served:
+				// The held call completes into a closed pipe.
+				conn.failWrites.Store(true)
+				_ = held.End()
+				err := <-served
 				if shutdown && err != nil {
 					t.Errorf("%v: after an answered shutdown, Serve returned %v", closed, err)
 				}
 				if !shutdown && !errors.Is(err, closed) {
 					t.Errorf("%v: without a shutdown, Serve returned %v, want the failure of the pipe", closed, err)
 				}
-			case <-time.After(hang):
-				t.Fatal("Serve did not return")
-			}
+			})
 		}
 	}
 }
@@ -321,4 +326,46 @@ func TestAReadThatEndsBecauseThePeerClosedIsThePeersEnd(t *testing.T) {
 	if err := conn.Failure(); err != nil {
 		t.Errorf("the end of the peer's input was taken for a failure: %v", err)
 	}
+}
+
+// brokenResponse is the response of a caller that is gone: its headers go out,
+// and nothing after them is written.
+type brokenResponse struct{ header http.Header }
+
+func (b *brokenResponse) Header() http.Header {
+	if b.header == nil {
+		b.header = http.Header{}
+	}
+	return b.header
+}
+func (b *brokenResponse) WriteHeader(int)           {}
+func (b *brokenResponse) Flush()                    {}
+func (b *brokenResponse) Write([]byte) (int, error) { return 0, io.ErrClosedPipe }
+
+// A handler that returns while the caller has gone is joined at once: its
+// result was taken by the service, so there is nothing to wait for, and waiting
+// out the cancellation grace would retire a service whose handler did nothing
+// wrong. The service takes the result or the last records first, whichever it
+// meets, so the call is made many times.
+func TestAHandlerThatReturnedIsNotWaitedForWhenItsAnswerCannotBeWritten(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		service, fault, err := commandservice.ServiceHandler(operations{"write": func(call *commandservice.Call) (commandservice.Completion, error) {
+			_, err := call.Stdout.Write([]byte("output"))
+			return commandservice.Completion{}, err
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := metadataBodyFor(t, invocation("write"))
+		start := time.Now()
+		for range 40 {
+			service.ServeHTTP(&brokenResponse{}, httptest.NewRequest(http.MethodPost, commandservice.InvokePath, bytes.NewReader(body)))
+		}
+		if elapsed := time.Since(start); elapsed != 0 {
+			t.Errorf("the service waited %v for handlers that had returned", elapsed)
+		}
+		if err := fault(); err != nil {
+			t.Errorf("the service faulted: %v", err)
+		}
+	})
 }

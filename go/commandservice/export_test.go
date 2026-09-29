@@ -45,3 +45,14 @@ func (c *ServiceConn) PeerEnded() bool { return c.peerEnded() }
 
 // Failure returns the error that broke the connection, if the peer did.
 func (c *ServiceConn) Failure() error { return c.failure() }
+
+// ServiceHandler returns the HTTP handler of a service of handler that is not
+// served over a connection, and the function that tells whether the service
+// faulted.
+func ServiceHandler(handler Handler) (http.Handler, func() error, error) {
+	s, err := newService(context.Background(), handler)
+	if err != nil {
+		return nil, nil, err
+	}
+	return s, s.fault, nil
+}

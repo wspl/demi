@@ -390,12 +390,18 @@ func (s *service) serveCall(w http.ResponseWriter, r *http.Request, kind callKin
 	done := make(chan result, 1)
 	go func() { done <- runHandler(pending.run) }()
 
-	res, finished := s.pump(w, controller, state, done)
-	if !finished {
+	res, ended := s.pump(w, controller, state, done)
+	switch ended {
+	case pumpAbandoned:
 		s.cancelled(cancel, state, done, pending.release)
-		return
+	case pumpAbandonedAfterReturn:
+		// The handler has returned; only its answer had nowhere to go.
+		cancel()
+		state.abort()
+		s.joined(res, pending.release)
+	default:
+		s.complete(w, controller, res, pending.release)
 	}
-	s.complete(w, controller, res, pending.release)
 }
 
 // accept reads the metadata of a request within the metadata timeout and
@@ -462,18 +468,32 @@ func (s *service) acceptNumbers(document []byte, state *callState) (pendingCall,
 	}}, 0
 }
 
-// pump writes the call's records until its handler returns, when it returns the
-// handler's result and true, or the call is cancelled: the caller reset the
-// stream, the response failed, or the service is stopping.
-func (s *service) pump(w http.ResponseWriter, controller *http.ResponseController, state *callState, done <-chan result) (result, bool) {
+// How pump ended.
+type pumped int
+
+const (
+	// pumpReturned: the handler returned, and its records were written; its
+	// result is to be completed.
+	pumpReturned pumped = iota
+	// pumpAbandoned: the call was cancelled while its handler runs: the caller
+	// reset the stream, the response failed, or the service is stopping.
+	pumpAbandoned
+	// pumpAbandonedAfterReturn: the handler returned, and the response failed
+	// while its last records were written. Its result is still to be joined.
+	pumpAbandonedAfterReturn
+)
+
+// pump writes the call's records until its handler returns, or the call is
+// cancelled. It returns the handler's result when the handler returned.
+func (s *service) pump(w http.ResponseWriter, controller *http.ResponseController, state *callState, done <-chan result) (result, pumped) {
 	for {
 		if state.ctx.Err() != nil {
-			return result{}, false
+			return result{}, pumpAbandoned
 		}
 		select {
 		case record := <-state.records:
 			if err := writeRecord(w, controller, record); err != nil {
-				return result{}, false
+				return result{}, pumpAbandoned
 			}
 		case res := <-done:
 			// The handler queued its records before it returned; they go
@@ -482,14 +502,14 @@ func (s *service) pump(w http.ResponseWriter, controller *http.ResponseControlle
 				select {
 				case record := <-state.records:
 					if err := writeRecord(w, controller, record); err != nil {
-						return result{}, false
+						return res, pumpAbandonedAfterReturn
 					}
 				default:
-					return res, true
+					return res, pumpReturned
 				}
 			}
 		case <-state.ctx.Done():
-			return result{}, false
+			return result{}, pumpAbandoned
 		}
 	}
 }
@@ -511,6 +531,17 @@ func writeBytes(w http.ResponseWriter, controller *http.ResponseController, data
 	return controller.Flush()
 }
 
+// joined faults the service when the handler of a call that was cancelled was a
+// conversation release that failed.
+func (s *service) joined(res result, release bool) {
+	if !release {
+		return
+	}
+	if err := releaseFailure(res); err != nil {
+		s.fail(err)
+	}
+}
+
 // cancelled joins the handler of a call that was cancelled: the service stops
 // reading its output, wakes it if it waits for input, and waits for it to
 // return, at most the cancellation grace. A handler that does not return in
@@ -525,11 +556,7 @@ func (s *service) cancelled(cancel context.CancelFunc, state *callState, done <-
 	defer timer.Stop()
 	select {
 	case res := <-done:
-		if release {
-			if err := releaseFailure(res); err != nil {
-				s.fail(err)
-			}
-		}
+		s.joined(res, release)
 	case <-timer.C:
 		s.fail(ErrCancellationDeadline)
 	}

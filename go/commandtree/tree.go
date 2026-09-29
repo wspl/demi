@@ -3,7 +3,6 @@ package commandtree
 //go:generate go run github.com/wspl/demi/go/cmd/wiregen
 
 import (
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -121,27 +120,13 @@ type Binding struct {
 // compiles every schema in it. It does not check the tree's rules: that is
 // [Validate].
 func DecodeNode(data []byte) (Node, error) {
-	var node Node
-	if err := json.Unmarshal(data, &node, wireOptions); err != nil {
-		return nil, wire.Refusal(err)
-	}
-	if err := validateNode(node); err != nil {
-		return nil, err
-	}
-	return node, nil
+	return decode[Node](data)
 }
 
 // EncodeNode returns the JSON of a node, after checking it as [DecodeNode]
 // would.
 func EncodeNode(node Node) ([]byte, error) {
-	if err := validateNode(node); err != nil {
-		return nil, err
-	}
-	data, err := json.Marshal(node, wireOptions)
-	if err != nil {
-		return nil, wire.Refusal(err)
-	}
-	return data, nil
+	return encode(node)
 }
 
 // Name returns the name of a node.

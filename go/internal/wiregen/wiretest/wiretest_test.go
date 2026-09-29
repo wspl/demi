@@ -12,24 +12,10 @@ import (
 // secret stands for a value that must never appear in an error.
 const secret = "s3cr3t-token"
 
-// decode does what a package's decode function does: it decodes the document
-// into a T with the package's options, then checks the rules of the value.
-func decode[T any](document string) (T, error) {
-	var value T
-	if err := json.Unmarshal([]byte(document), &value, wireOptions); err != nil {
-		return value, wire.Refusal(err)
-	}
-	checked, ok := any(value).(interface{ validate() error })
-	if !ok {
-		panic("not a wire type")
-	}
-	return value, checked.validate()
-}
-
 // failure decodes document as a T and returns its error's message, which is
 // empty when the document is accepted.
 func failure[T any](document string) string {
-	if _, err := decode[T](document); err != nil {
+	if _, err := decode[T]([]byte(document)); err != nil {
 		return err.Error()
 	}
 	return ""
@@ -139,7 +125,7 @@ func TestAStringThatIsNotUTF8IsRefusedNamingItsFieldOnBothSides(t *testing.T) {
 }
 
 func TestAUnionAtTheTopOfADocumentIsDecodedByItsOwnDecoder(t *testing.T) {
-	shape, err := decode[Shape](`{"radius":2,"kind":"circle"}`)
+	shape, err := decode[Shape]([]byte(`{"radius":2,"kind":"circle"}`))
 	if err != nil || !reflect.DeepEqual(shape, Circle{Radius: 2}) {
 		t.Errorf("shape = %#v, %v; the tag may come after the members", shape, err)
 	}
@@ -231,7 +217,7 @@ func TestEveryRuleRefusesWhatItForbidsNamingTheFieldAndNeverTheValue(t *testing.
 
 func TestADecodedValueKeepsNothingOfItsInput(t *testing.T) {
 	input := []byte(rules(map[string]string{"object": `{"a":1}`, "chars": `"ab"`}))
-	value, err := decode[Rules](string(input))
+	value, err := decode[Rules](input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +279,7 @@ func TestAWireValueEncodesWhatItDecodesAndChecksItsRulesFirst(t *testing.T) {
 	if string(data) != want {
 		t.Errorf("encoded:\n%s\nwant:\n%s", data, want)
 	}
-	back, err := decode[Shapes](string(data))
+	back, err := decode[Shapes](data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -312,5 +298,21 @@ func TestAWireValueEncodesWhatItDecodesAndChecksItsRulesFirst(t *testing.T) {
 	}
 	if got := (Shapes{Loose: Named{Name: "n"}, Leaf: Leaf{Name: "n"}}).validate().Error(); got != "invalid: shape: required" {
 		t.Errorf("an unset union: %q", got)
+	}
+}
+
+func TestTheGeneratedHelpersRefuseWhatIsNotAWireValue(t *testing.T) {
+	var leaf *Leaf
+	if _, err := encode(leaf); err == nil || err.Error() != "invalid: required" {
+		t.Errorf("encoding a nil pointer: %v", err)
+	}
+	if _, err := encode[Shape](nil); err == nil || err.Error() != "invalid: required" {
+		t.Errorf("encoding a nil union: %v", err)
+	}
+	if _, err := decode[map[string]string]([]byte(`{}`)); err == nil || err.Error() != "wiretest: map[string]string is not a type of the wire" {
+		t.Errorf("decoding a type that is not the wire's: %v", err)
+	}
+	if data, err := encode(Leaf{Name: "n"}); err != nil || string(data) != `{"name":"n"}` {
+		t.Errorf("encoding a leaf: %s, %v", data, err)
 	}
 }

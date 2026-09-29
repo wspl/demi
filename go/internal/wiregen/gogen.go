@@ -86,7 +86,61 @@ func (p *Package) options() ([]byte, error) {
 		g.p("\t)),")
 	}
 	g.p(")")
+	g.p("")
+	g.helpers(p.Name)
 	return g.finish(p.Name)
+}
+
+// helpers writes the package's one decode, encode and check of a wire type, which
+// a package's exported decode and encode functions call, adding what is their
+// own (a size limit, say).
+func (g *goGen) helpers(pkgName string) {
+	g.imports[wireImport] = true
+	g.imports["fmt"] = true
+	g.imports["reflect"] = true
+	g.p("// decode decodes data, one JSON document, as a T, one of the package's wire")
+	g.p("// types, and checks its rules. A failure is an *wire.InvalidError that names the")
+	g.p("// field and the rule, never the value.")
+	g.p("func decode[T any](data []byte) (T, error) {")
+	g.p("var value T")
+	g.p("if err := json.Unmarshal(data, &value, wireOptions); err != nil {")
+	g.p("return value, wire.Refusal(err)")
+	g.p("}")
+	g.p("if err := check(value); err != nil {")
+	g.p("return value, err")
+	g.p("}")
+	g.p("return value, nil")
+	g.p("}")
+	g.p("")
+	g.p("// encode returns the JSON of value, one of the package's wire types, after")
+	g.p("// checking it as decode would.")
+	g.p("func encode[T any](value T) ([]byte, error) {")
+	g.p("if err := check(value); err != nil {")
+	g.p("return nil, err")
+	g.p("}")
+	g.p("data, err := json.Marshal(value, wireOptions)")
+	g.p("if err != nil {")
+	g.p("return nil, wire.Refusal(err)")
+	g.p("}")
+	g.p("return data, nil")
+	g.p("}")
+	g.p("")
+	g.p("// check runs the rule check of a wire type. A value that is absent (a nil")
+	g.p("// interface, or a nil pointer) is refused as required.")
+	g.p("func check(value any) error {")
+	g.p("if value == nil {")
+	g.p("return wire.Required(\"\")")
+	g.p("}")
+	g.p("// A nil pointer to a wire type has methods, and calling them would panic.")
+	g.p("if pointer := reflect.ValueOf(value); pointer.Kind() == reflect.Pointer && pointer.IsNil() {")
+	g.p("return wire.Required(\"\")")
+	g.p("}")
+	g.p("checked, ok := value.(interface{ validate() error })")
+	g.p("if !ok {")
+	g.p("return fmt.Errorf(\"%s: %%T is not a type of the wire\", value)", pkgName)
+	g.p("}")
+	g.p("return checked.validate()")
+	g.p("}")
 }
 
 // A goGen writes one generated Go file.
