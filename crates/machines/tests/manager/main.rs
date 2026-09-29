@@ -186,25 +186,7 @@ impl Host {
             .stderr(Stdio::piped())
             .spawn()
             .expect("nsenter from util-linux");
-        // nsenter forks the child that enters the PID namespace, and that
-        // child becomes the manager.
-        let children = format!("/proc/{0}/task/{0}/children", nsenter.id());
-        let deadline = Instant::now() + READY_DEADLINE;
-        let pid = loop {
-            let listed = std::fs::read_to_string(&children).unwrap_or_default();
-            if let Some(pid) = listed.split_whitespace().next() {
-                break pid.parse().unwrap();
-            }
-            if let Some(status) = nsenter.try_wait().unwrap() {
-                panic!("nsenter exited {status}: {}", stderr(&mut nsenter));
-            }
-            assert!(Instant::now() < deadline, "nsenter started no manager");
-            std::thread::sleep(Duration::from_millis(10));
-        };
-        Manager {
-            nsenter,
-            pid: Pid::from_raw(pid).expect("a process id"),
-        }
+        Manager { nsenter }
     }
 }
 
@@ -228,7 +210,6 @@ fn stderr(child: &mut Child) -> String {
 
 struct Manager {
     nsenter: Child,
-    pid: Pid,
 }
 
 /// How a start ended: in readiness, or in an exit before it.
@@ -238,6 +219,26 @@ enum Start {
 }
 
 impl Manager {
+    /// The manager's process: nsenter forks the child that enters the PID
+    /// namespace, and that child becomes the manager. Looked up only once a
+    /// test needs it, since a manager that fails its start may have exited
+    /// before anyone looks.
+    fn pid(&mut self) -> Pid {
+        let children = format!("/proc/{0}/task/{0}/children", self.nsenter.id());
+        let deadline = Instant::now() + READY_DEADLINE;
+        loop {
+            let listed = std::fs::read_to_string(&children).unwrap_or_default();
+            if let Some(pid) = listed.split_whitespace().next() {
+                return Pid::from_raw(pid.parse().unwrap()).expect("a process id");
+            }
+            if let Some(status) = self.nsenter.try_wait().unwrap() {
+                panic!("nsenter exited {status}: {}", stderr(&mut self.nsenter));
+            }
+            assert!(Instant::now() < deadline, "nsenter started no manager");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
     /// Waits for the readiness the unit's Type=notify waits for, or for the
     /// manager to exit first.
     fn start(&mut self, notify: &UnixDatagram) -> Start {
@@ -272,20 +273,20 @@ impl Manager {
     /// Stops the manager as its unit does, with SIGTERM, and answers what it
     /// wrote to its standard error.
     fn stop(mut self) -> String {
-        kill_process(self.pid, Signal::TERM).unwrap();
+        kill_process(self.pid(), Signal::TERM).unwrap();
         let errors = stderr(&mut self.nsenter);
         let status = self.nsenter.wait().unwrap();
         assert!(status.success(), "the manager's stop exited {status}: {errors}");
         errors
     }
 
-    fn namespace(&self) -> Namespace {
-        identity(Path::new(&format!("/proc/{}/ns/mnt", self.pid))).expect("a running manager")
+    fn namespace(&mut self) -> Namespace {
+        identity(Path::new(&format!("/proc/{}/ns/mnt", self.pid()))).expect("a running manager")
     }
 
     /// Ends the manager as a crash does: no drain and no stop-post recovery.
     fn kill(&mut self) {
-        kill_process(self.pid, Signal::KILL).unwrap();
+        kill_process(self.pid(), Signal::KILL).unwrap();
         let status = self.nsenter.wait().unwrap();
         assert!(!status.success(), "{status}");
     }
