@@ -8,7 +8,8 @@ import (
 
 // Services is what the users share, safe from any goroutine: the program
 // (package edge's start) builds it once and hands it to the shards
-// (g7-backend.md § Services). The managed Clouds join it with their part.
+// (g7-backend.md § Services). The Clouds' settings join it with the Cloud's
+// machine.
 type Services struct {
 	// Clock is the wall clock the backend reads times from.
 	Clock core.Clock
@@ -41,4 +42,9 @@ type Services struct {
 	Operations *ProviderOperations
 	// Logins are the device logins under way.
 	Logins *LoginFlows
+	// Machines is the machine manager's client, which every Cloud's
+	// operations go through.
+	Machines *MachinesClient
+	// CloudCapacity bounds the Clouds that are not stopped, across users.
+	CloudCapacity *CloudCapacity
 }
