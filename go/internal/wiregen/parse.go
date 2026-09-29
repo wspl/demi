@@ -731,9 +731,9 @@ func (p *reader) resolve(name string) error {
 		if err != nil {
 			return err
 		}
-		if f.Inline && f.Type.Kind == KindMap {
+		if f.Inline && f.Type.Kind == KindMembers {
 			if s.Unknown != nil || s.Open {
-				return p.errorf(field.Pos(), "%s: one unknown-member map replaces open", name)
+				return p.errorf(field.Pos(), "%s: one retained-member collection replaces open", name)
 			}
 			s.Unknown = f
 			continue
@@ -833,11 +833,14 @@ func (p *reader) field(structName string, field *ast.Field) (*Field, error) {
 	if err != nil {
 		return nil, p.errorf(field.Pos(), "%s: %v", where, err)
 	}
-	if inline && t.Kind == KindMap && t.Key.Src == "string" && t.Elem.Kind == KindRaw {
+	if inline && t.Kind == KindMembers {
 		if omitzero || tag.Get("check") != "" || tag.Get("msgpack") != "" {
-			return nil, p.errorf(field.Pos(), "%s: an unknown-member map has only json:\",inline\"", where)
+			return nil, p.errorf(field.Pos(), "%s: a retained-member collection has only json:\",inline\"", where)
 		}
 		return &Field{Name: name, Type: t, Inline: true}, nil
+	}
+	if t.Kind == KindMembers && !inline {
+		return nil, p.errorf(field.Pos(), "%s: wire.Members requires json:\",inline\"", where)
 	}
 	if inline {
 		switch {
@@ -1020,6 +1023,10 @@ func (p *reader) typeOf(expr ast.Expr) (*Type, error) {
 		x, ok := expr.X.(*ast.Ident)
 		if ok && x.Name == "jsontext" && expr.Sel.Name == "Value" {
 			return &Type{Kind: KindRaw, Src: src}, nil
+		}
+		if ok && expr.Sel.Name == "Members" && p.imports[p.file][x.Name] == wireImport {
+			// Generated retained-member code uses the runtime's own import.
+			return &Type{Kind: KindMembers, Src: src}, nil
 		}
 		// A wire struct of another package: its own generated code decodes it,
 		// so it is opaque here.

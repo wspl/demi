@@ -12,20 +12,24 @@ Go rebuilds it from its declarations and package descriptors and checks the same
 hash. The release and managed boot records were encoded by Rust; boot has both
 JSON and MessagePack fixtures.
 
-`kept/output.msgpack` uses the generated named Go form authorized by the G5a
-ruling: `type=output` with `stream` and binary `bytes`, or `type=left_out` with
-an unsigned `bytes` count. It contains stdout bytes, a maximum-u64 gap, and
-stderr bytes. This intentionally replaces Rust's positional kept-file format.
-The scratch Rust program used a serde internally tagged enum to independently
-write and verify this new form.
+`kept/output.msgpack` uses the Rust crate's `wire::encode_record`, which
+calls `rmp_serde::to_vec`: an externally tagged `output` with a positional
+stream/binary tuple, or `left_out` with an unsigned count. The records contain
+stdout bytes, a maximum-u64 gap, and stderr bytes. Go uses only this codec;
+there is no generated named form or Rust serde mirror.
+
+`negative-zero.json` is parsed by Rust's `serde_json` and encoded with
+`rmp_serde::to_vec_named` into `negative-zero.msgpack`. It includes lexical
+`-0` as well as `-0.0`, integer zero, and floating-point zero.
 
 `TestMessageCorpus` decodes and re-encodes every frame byte-for-byte.
 `protocol_test.go` checks the other records. No test builds or invokes Rust.
 For the reverse check, these tests export Go-encoded records when
 `DEMI_RUNNER_CORPUS_OUTPUT` names a directory. The scratch Rust program decoded
 all those exported frames with `wire::decode`, verified the manifest, and
-re-encoded them to identical bytes. Its serde mirror likewise checked kept
-records. Both directions passed.
+re-encoded them to identical bytes. Its actual `wire::decode_records` and `wire::encode_record` likewise
+checked kept records; opaque negative zero was checked through `serde_json::Value`.
+Both directions passed.
 
 Rust builds ran through `heavy.sh`, with the isolated
 `CARGO_TARGET_DIR=/tmp/astra-l5/target`. The Go checks used the repository's

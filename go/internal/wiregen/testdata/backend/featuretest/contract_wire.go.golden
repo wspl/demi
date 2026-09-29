@@ -165,10 +165,7 @@ func (v *Reasoning) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 			if err != nil {
 				return wire.In(name, err)
 			}
-			if v.Extra == nil {
-				v.Extra = make(map[string]jsontext.Value)
-			}
-			v.Extra[name] = raw
+			v.Extra = append(v.Extra, wire.Member{Name: name, Value: raw})
 		}
 	}
 	if seen&(1<<0) == 0 {
@@ -183,11 +180,15 @@ func (v Reasoning) MarshalJSONTo(enc *jsontext.Encoder) error {
 	if err := wire.CheckUnknown(v.Extra, "id", "hidden"); err != nil {
 		return err
 	}
+	extra, err := v.Extra.JSON()
+	if err != nil {
+		return err
+	}
 	return json.MarshalEncode(enc, struct {
-		ID     string                    `json:"id"`
-		Hidden bool                      `json:"hidden,omitzero"`
-		Extra  map[string]jsontext.Value `json:",embed"`
-	}{v.ID, v.Hidden, v.Extra})
+		ID     string         `json:"id"`
+		Hidden bool           `json:"hidden,omitzero"`
+		Extra  jsontext.Value `json:",embed"`
+	}{v.ID, v.Hidden, extra})
 }
 
 // validate checks the rules of the fields of Reasoning, and reports every one that
@@ -599,10 +600,7 @@ func (v *ReplayReasoning) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 			if err != nil {
 				return wire.In(name, err)
 			}
-			if v.Extra == nil {
-				v.Extra = make(map[string]jsontext.Value)
-			}
-			v.Extra[name] = raw
+			v.Extra = append(v.Extra, wire.Member{Name: name, Value: raw})
 		}
 	}
 	if seen&(1<<0) == 0 {
@@ -617,14 +615,18 @@ func (v ReplayReasoning) MarshalJSONTo(enc *jsontext.Encoder) error {
 	if err := wire.CheckUnknown(v.Extra, "id"); err != nil {
 		return err
 	}
+	extra, err := v.Extra.JSON()
+	if err != nil {
+		return err
+	}
 	type content struct {
-		ID    string                    `json:"id"`
-		Extra map[string]jsontext.Value `json:",embed"`
+		ID    string         `json:"id"`
+		Extra jsontext.Value `json:",embed"`
 	}
 	return json.MarshalEncode(enc, struct {
 		Tag     string  `json:"kind"`
 		Content content `json:"data"`
-	}{"reasoning", content{v.ID, v.Extra}})
+	}{"reasoning", content{v.ID, extra}})
 }
 
 // validate checks the rules of the fields of ReplayReasoning, and reports every one that
@@ -717,5 +719,83 @@ func (v Envelope) MarshalJSONTo(enc *jsontext.Encoder) error {
 func (v Envelope) validate() error {
 	var r wire.Report
 	r.Nest("", validateReplay(v.Replay))
+	return r.Err()
+}
+
+// UnmarshalJSONFrom decodes the JSON object of SyntaxEnvelope: it refuses a member that
+// the type does not have, a required member that is missing, a null, and a
+// value of another JSON kind than the member's, naming the member.
+func (v *SyntaxEnvelope) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	*v = SyntaxEnvelope{}
+	if err := wire.BeginObject(dec); err != nil {
+		return err
+	}
+	var seen uint64
+	for {
+		name, more, err := wire.NextMember(dec)
+		if err != nil {
+			return err
+		}
+		if !more {
+			break
+		}
+		switch name {
+		case "event":
+			seen |= 1 << 0
+			u, err := decodeEvent(dec)
+			if err != nil {
+				return wire.In("event", err)
+			}
+			v.Event = u
+		case "events":
+			seen |= 1 << 1
+			if err := wire.BeginArray(dec); err != nil {
+				return wire.In("events", err)
+			}
+			items0 := []Event{}
+			for {
+				more, err := wire.NextElement(dec)
+				if err != nil {
+					return wire.In("events", err)
+				}
+				if !more {
+					break
+				}
+				var element0 Event
+				{
+					u, err := decodeEvent(dec)
+					if err != nil {
+						return wire.In("events", wire.In(wire.Index(len(items0)), err))
+					}
+					element0 = u
+				}
+				items0 = append(items0, element0)
+			}
+			v.Events = items0
+		default:
+			return wire.Unknown(name)
+		}
+	}
+	if seen&(1<<0) == 0 {
+		return wire.Required("event")
+	}
+	if seen&(1<<1) == 0 {
+		return wire.Required("events")
+	}
+	return nil
+}
+
+// validate checks the rules of the fields of SyntaxEnvelope, and reports every one that
+// is broken.
+func (v SyntaxEnvelope) validate() error {
+	var r wire.Report
+	r.Nest("event", validateEvent(v.Event))
+	{
+		var group0 wire.Report
+		for i, e := range v.Events {
+			group0.Nest(wire.Index(i), validateEvent(e))
+		}
+		r.Nest("events", group0.Err())
+	}
 	return r.Err()
 }
