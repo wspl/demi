@@ -3,8 +3,10 @@
   "emailCodeKey": "d02e61f8c078484c43cdfbf10bb81f1742a335a7871526b189ce947e202103ca",
   "provider": "3f1c9a52-7d4e-4b8a-9c0f-2e6d5b7a8c91",
   "account": "cred-0a1b2c3d4e5f6071",
-  "config": "{\"apiKey\":\"sk-fixture-not-a-key\",\"baseUrl\":\"https://api.example.test/v1\",\"wireApi\":\"responses\",\"vendorId\":\"example\"}",
-  "sealedConfig": "d0dcb05483d178e178f6fb3741432f75222c12cd9faf036b375dc754fc9a13d50c1334cbb216a33f6d872e97280f9d00edcdaa299e695b0281b7e2302219aa42d7370cf83bc239ff9bd46b61ddb05fe68b2b536c53c6d4cde3de7ea60f9c00dd7a29822bac136747b70555055d9b4c9ca697552ed04acdbfd5b2f840a4b7844e08d841a33cf7b68439e5903ea64d3490",
+  "config": "{\"apiKey\":\"sk-fixture-not-a-key\",\"baseUrl\":\"https://api.example.test/v1\",\"wireApi\":\"responses\",\"vendorId\":\"example\",\"models\":[{\"id\":\"gpt-5.5\",\"displayName\":\"GPT-5.5 \\u201cFast\\u201d \\u2713\",\"contextWindow\":272000,\"outputLimit\":128000,\"thinkingEfforts\":[\"low\",\"high\"],\"acceptedExtensions\":[\"png\",\"pdf\"],\"fastTier\":\"priority\"}]}",
+  "sealedConfig": "4304ca9e2335a5ff51144967d1f6fbf9f42d4c764dd6d672555b910cede8203a050503ca16e5c39975cdeb5741aceb6fa792be89688be9c6753e833994f377c9c8a1563dd1900410c6f3abf52f670f8c500a085fe2eb812e191ae8bddbeb7545a258121bf38c118cdaa6bdd7ed8abef06f4e89f480db48e18e60d490e01bde0994da7def5c05b8b7f9b05c48539f6997dca3ce1187827b7947cfc445773158a71e2d2dc58321a8a5a25bad1e3ba1eef2d12ab6f1a3ce68c6e5bd8e4ac9a52ae477d9e4ae70862732b7b3faa29abc9f268468a20070015b1816cdc7618e7f0ce44851b9d2f42bc4a643732b8b12841269c750459139ce604d142d820c25f7e44fb0666b7d2ef328f7602f02c74c9bd19d5826efccb998300296b26815d25bcd6007f3889984436fcdb0907a1719ff7c22e3d3d22c349ef20c7f464defadd08e4a76b05b27415068a1d2bd60c2cddc8c0146be572bd39453515a535912c5aee3452374",
   "secret": "{\"refresh\":\"fixture-refresh-token\"}",
-  "sealedSecret": "470d9f41afd9d933d408ab03cb89472f3d489e646f93deec7bc16e0dedcba69455b531e6865cb20ec5279c1762443c5664610888f585930fe3ec6b8f662503"
+  "sealedSecret": "5263e810dcc56238d9662d06e52b86344d7a661996ece215f40109b306b1374264dddd0d67eafe6634c565d7d0f7a564b4f308e0ed17c4bc47c394a2446c0f",
+  "apiKeyCatalogKey": "9d053792671d96e564b1cf0fb5ece90a0a537a8a9ccc1f1a5ede7f08d40b0bb9",
+  "subscriptionCatalogKey": "f8f230ed490b59072bc239728da5133d066423c69508e379db7ed37126da8377"
 }

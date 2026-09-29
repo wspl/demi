@@ -16,12 +16,29 @@ import (
 // meanwhile.
 var errEntryGone = errors.New("the provider entry no longer exists")
 
+// poolStoreError is a failure of the pool's store, the Rust's
+// PoolError::Store: an operation over the pool that fails with it failed
+// for the backend, not for what its caller gave it. Its message names
+// tables and columns, never a secret.
+type poolStoreError struct{ err error }
+
+func (e *poolStoreError) Error() string { return e.err.Error() }
+func (e *poolStoreError) Unwrap() error { return e.err }
+
+// storeFailure is err as a failure of the pool's store, or nil.
+func storeFailure(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &poolStoreError{err}
+}
+
 // vaultPool is the vault's credential pool (providers.md § The credential
 // pool contract): one entry's accounts as records of the control store, each
 // secret sealed to its row and versioned by every write, with the vault's
 // refresh turns. A pool is bound to its entry, so a provider given it cannot
-// reach another entry's accounts. A store failure names tables and columns,
-// never a secret.
+// reach another entry's accounts. Every failure of its store is a
+// poolStoreError.
 type vaultPool struct {
 	vault    *Vault
 	provider webapi.ProviderID
@@ -42,7 +59,7 @@ func accountMeta(row storage.CredentialRow) provider.AccountMeta {
 func (p *vaultPool) List(ctx context.Context) ([]provider.AccountMeta, error) {
 	rows, err := p.vault.Accounts(ctx, p.provider)
 	if err != nil {
-		return nil, err
+		return nil, storeFailure(err)
 	}
 	accounts := make([]provider.AccountMeta, 0, len(rows))
 	for _, row := range rows {
@@ -59,7 +76,7 @@ func (p *vaultPool) Meta(ctx context.Context, id string) (*provider.AccountMeta,
 	}
 	row, err := p.vault.Account(ctx, p.provider, account)
 	if err != nil || row == nil {
-		return nil, err
+		return nil, storeFailure(err)
 	}
 	meta := accountMeta(*row)
 	return &meta, nil
@@ -68,7 +85,7 @@ func (p *vaultPool) Meta(ctx context.Context, id string) (*provider.AccountMeta,
 func (p *vaultPool) Active(ctx context.Context) (*string, error) {
 	row, err := p.vault.control.Provider(ctx, p.provider)
 	if err != nil || row == nil || row.Active == nil {
-		return nil, err
+		return nil, storeFailure(err)
 	}
 	active := row.Active.String()
 	return &active, nil
@@ -81,7 +98,7 @@ func (p *vaultPool) SetActive(ctx context.Context, id string) error {
 	}
 	selected, err := p.vault.control.SetActiveCredential(ctx, p.provider, account)
 	if err != nil {
-		return err
+		return storeFailure(err)
 	}
 	if !selected {
 		return provider.PoolNotFound{ID: id}
@@ -95,7 +112,7 @@ func (p *vaultPool) SetActive(ctx context.Context, id string) error {
 func (p *vaultPool) Write(ctx context.Context, meta provider.AccountMeta, secret string) error {
 	account, err := webapi.ParseCredentialID(meta.ID)
 	if err != nil {
-		return err
+		return storeFailure(err)
 	}
 	stored, err := p.vault.control.WriteCredential(ctx, p.provider, storage.CredentialWrite{
 		ID:          account,
@@ -106,10 +123,10 @@ func (p *vaultPool) Write(ctx context.Context, meta provider.AccountMeta, secret
 		Secret:      p.vault.sealSecret(p.provider, account, secret),
 	})
 	if err != nil {
-		return err
+		return storeFailure(err)
 	}
 	if !stored {
-		return errEntryGone
+		return storeFailure(errEntryGone)
 	}
 	p.vault.markEntryChanged(ctx, p.provider)
 	return nil
@@ -130,7 +147,7 @@ func (p *vaultPool) Remove(ctx context.Context, id string) error {
 		return nil
 	}
 	if err := p.vault.control.RemoveCredential(ctx, p.provider, account); err != nil {
-		return err
+		return storeFailure(err)
 	}
 	p.vault.markEntryChanged(ctx, p.provider)
 	return nil
@@ -157,14 +174,14 @@ func (d *vaultDocument) Read(ctx context.Context) (*provider.Revision, error) {
 	}
 	row, err := d.vault.Account(ctx, d.provider, *d.account)
 	if err != nil || row == nil {
-		return nil, err
+		return nil, storeFailure(err)
 	}
 	document, err := d.vault.key.Open(SecretRow(d.provider, *d.account), row.Secret)
 	if err != nil {
-		return nil, fmt.Errorf("the secret of %s does not open", d.name)
+		return nil, storeFailure(fmt.Errorf("the secret of %s does not open", d.name))
 	}
 	if !utf8.Valid(document) {
-		return nil, fmt.Errorf("the secret of %s is not UTF-8", d.name)
+		return nil, storeFailure(fmt.Errorf("the secret of %s is not UTF-8", d.name))
 	}
 	return &provider.Revision{Text: string(document), Version: row.Version}, nil
 }
@@ -176,7 +193,7 @@ func (d *vaultDocument) Replace(ctx context.Context, text string, version uint64
 	sealed := d.vault.sealSecret(d.provider, *d.account, text)
 	replaced, err := d.vault.control.ReplaceCredentialSecret(ctx, d.provider, *d.account, sealed, version)
 	if err != nil {
-		return false, err
+		return false, storeFailure(err)
 	}
 	if replaced {
 		d.vault.markEntryChanged(ctx, d.provider)
