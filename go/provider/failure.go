@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -31,11 +32,26 @@ func NoAnswer(message string) ProviderFailure {
 	return ProviderFailure{Message: message, Code: Overloaded, Diagnostics: &core.ProviderErrorDiagnostics{Source: core.FailureSourceTransport}}
 }
 func TransportFailure(label string, err error) ProviderFailure {
-	var endpoint *url.Error
-	if errors.As(err, &endpoint) {
-		err = endpoint.Err
+	return NoAnswer(fmt.Sprintf("%s API request failed: %v", label, WithoutEndpoint(err)))
+}
+
+// WithoutEndpoint returns err without the endpoint it names, which stays
+// inside the provider: a request's URL, the address it dialed and the host it
+// looked up give way to their causes.
+func WithoutEndpoint(err error) error {
+	var request *url.Error
+	if errors.As(err, &request) {
+		err = request.Err
 	}
-	return NoAnswer(fmt.Sprintf("%s API request failed: %v", label, err))
+	var dial *net.OpError
+	if errors.As(err, &dial) {
+		err = dial.Err
+	}
+	var lookup *net.DNSError
+	if errors.As(err, &lookup) {
+		err = errors.New(lookup.Err)
+	}
+	return err
 }
 func EventStreamFailure(label string, err error) ProviderFailure {
 	if errors.Is(err, ErrSSEUTF8) {

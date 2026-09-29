@@ -103,9 +103,31 @@ func (k *accountKit) Login(ctx context.Context, pending func(core.LoginPending))
 	if uri == nil {
 		return provider.NewAccount{}, fmt.Errorf("Grok device code failed: the response names no verification_uri")
 	}
-	deadline := time.Now().Add(provider.DeviceLoginLifetime)
 	expires, _ := core.TimestampFromMillisecond(k.p.clock.Now().Millisecond() + 600000)
 	pending(core.LoginPending{VerificationURL: *uri, UserCode: &device.UserCode, ExpiresAt: &expires})
+	confirmed, err := k.awaitTokens(ctx, device)
+	if err != nil {
+		return provider.NewAccount{}, err
+	}
+	secret := k.secret(ctx, confirmed)
+	if ctx.Err() != nil {
+		return provider.NewAccount{}, ctx.Err()
+	}
+	raw, err := secret.JSON()
+	return provider.NewAccount{Secret: string(raw), Label: secret.label()}, err
+}
+
+// awaitTokens polls until the user confirms the device code, at the server's
+// interval and at least a second apart, for at most the login's lifetime.
+func (k *accountKit) awaitTokens(ctx context.Context, device deviceCode) (tokens, error) {
+	wait, stop := provider.DeviceLoginWait(ctx)
+	defer stop()
+	ended := func(err error) (tokens, error) {
+		if provider.DeviceLoginExpired(wait) {
+			return tokens{}, fmt.Errorf("Grok device login timed out before the user confirmed")
+		}
+		return tokens{}, err
+	}
 	seconds := 5.0
 	if device.Interval != nil {
 		seconds = device.Interval.Seconds()
@@ -118,41 +140,34 @@ func (k *accountKit) Login(ctx context.Context, pending func(core.LoginPending))
 		}
 		timer := time.NewTimer(interval)
 		select {
-		case <-ctx.Done():
+		case <-wait.Done():
 			timer.Stop()
-			return provider.NewAccount{}, ctx.Err()
+			return ended(ctx.Err())
 		case <-timer.C:
 		}
-		if !time.Now().Before(deadline) {
-			return provider.NewAccount{}, fmt.Errorf("Grok device login timed out before the user confirmed")
-		}
-		response, err := k.oauth(ctx, "/oauth2/token", url.Values{"grant_type": {"urn:ietf:params:oauth:grant-type:device_code"}, "device_code": {device.DeviceCode.Expose()}, "client_id": {ClientID}})
+		response, err := k.oauth(wait, "/oauth2/token", url.Values{"grant_type": {"urn:ietf:params:oauth:grant-type:device_code"}, "device_code": {device.DeviceCode.Expose()}, "client_id": {ClientID}})
 		if err != nil {
-			return provider.NewAccount{}, err
+			return ended(err)
 		}
 		if response.StatusCode >= 200 && response.StatusCode < 300 {
-			tokens, err := provider.DecodeOAuthResponse(response, decode[tokens])
+			confirmed, err := provider.DecodeOAuthResponse(response, decode[tokens])
 			if err != nil {
-				return provider.NewAccount{}, err
+				return ended(err)
 			}
-			secret := k.secret(ctx, tokens)
-			if ctx.Err() != nil {
-				return provider.NewAccount{}, ctx.Err()
-			}
-			raw, err := secret.JSON()
-			return provider.NewAccount{Secret: string(raw), Label: secret.label()}, err
+			return confirmed, nil
 		}
 		refusal, _ := provider.DecodeOAuthResponse(response, decode[tokenRefusal])
 		reason := reported(refusal.Error)
 		if reason == nil {
-			return provider.NewAccount{}, fmt.Errorf("Grok device login failed: HTTP %d", response.StatusCode)
+			// A refusal cut off by the lifetime reads as the lifetime's end.
+			return ended(fmt.Errorf("Grok device login failed: HTTP %d", response.StatusCode))
 		}
 		switch *reason {
 		case "slow_down":
 			seconds += 5
 		case "authorization_pending":
 		default:
-			return provider.NewAccount{}, fmt.Errorf("Grok device login failed: %s", *reason)
+			return tokens{}, fmt.Errorf("Grok device login failed: %s", *reason)
 		}
 	}
 }

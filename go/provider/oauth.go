@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
@@ -15,7 +16,27 @@ import (
 	"time"
 )
 
+// DeviceLoginLifetime is how long a device login waits for its user to
+// confirm, from the moment its code is shown, whatever the vendor's code
+// allows (providers.md § Subscription accounts).
 const DeviceLoginLifetime = 10 * time.Minute
+
+// errDeviceLoginExpired is the cause of a device login's wait once its
+// lifetime has passed.
+var errDeviceLoginExpired = errors.New("device login expired")
+
+// DeviceLoginWait returns ctx limited to DeviceLoginLifetime from now, for
+// the polls and the pauses of a device login whose code was just shown: a poll
+// in flight or a vendor's long interval ends when the lifetime does.
+func DeviceLoginWait(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeoutCause(ctx, DeviceLoginLifetime, errDeviceLoginExpired)
+}
+
+// DeviceLoginExpired reports whether wait, from DeviceLoginWait, ended because
+// the login's lifetime passed rather than because its caller cancelled it.
+func DeviceLoginExpired(wait context.Context) bool {
+	return errors.Is(context.Cause(wait), errDeviceLoginExpired)
+}
 
 var oauthDigits = regexp.MustCompile(`^[0-9]+(\.[0-9]+)?$`)
 

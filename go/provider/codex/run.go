@@ -299,7 +299,7 @@ func (r *runtimeProvider) websocket(ctx context.Context, headers http.Header, bo
 		if response != nil && response.StatusCode != 101 {
 			return nil, capture.refusal, nil
 		}
-		failure := provider.NoAnswer(fmt.Sprintf("Codex WebSocket connect failed: %v", err))
+		failure := provider.NoAnswer(fmt.Sprintf("Codex WebSocket connect failed: %v", provider.WithoutEndpoint(err)))
 		if timedOut {
 			failure = provider.NoAnswer(fmt.Sprintf("Codex WebSocket connect timed out after %dms", r.shared.config.ConnectTimeout.Milliseconds()))
 		}

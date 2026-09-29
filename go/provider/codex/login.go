@@ -67,7 +67,6 @@ type loginTokens struct {
 // RFC 8628, it polls JSON with vendor ids, treats 403/404 as pending, and uses
 // a server-issued PKCE verifier in a separate authorization-code exchange.
 func (k *accountKit) Login(ctx context.Context, pending func(core.LoginPending)) (provider.NewAccount, error) {
-	started := time.Now()
 	response, err := post(ctx, k.http, k.endpoint("/api/accounts/deviceauth/usercode"), "application/json", provider.JSONBody(deviceCodeRequest{ClientID: ClientID}))
 	if err != nil {
 		return provider.NewAccount{}, err
@@ -97,39 +96,9 @@ func (k *accountKit) Login(ctx context.Context, pending func(core.LoginPending))
 		expiresAt = &expires
 	}
 	pending(core.LoginPending{VerificationURL: k.endpoint("/codex/device"), UserCode: userCode, ExpiresAt: expiresAt})
-	interval := 5.0
-	if code.Interval != nil {
-		interval = code.Interval.Seconds()
-	}
-	var authorization authorizationAnswer
-	for {
-		response, err := post(ctx, k.http, k.endpoint("/api/accounts/deviceauth/token"), "application/json", provider.JSONBody(authorizationRequest{DeviceAuthID: code.DeviceAuthID, UserCode: *userCode}))
-		if err != nil {
-			return provider.NewAccount{}, err
-		}
-		if response.StatusCode >= 200 && response.StatusCode < 300 {
-			authorization, err = provider.DecodeOAuthResponse(response, decode[authorizationAnswer])
-			if err != nil {
-				return provider.NewAccount{}, fmt.Errorf("Device authorization failed: %w", err)
-			}
-			break
-		}
-		response.Body.Close()
-		if response.StatusCode != 403 && response.StatusCode != 404 {
-			return provider.NewAccount{}, fmt.Errorf("Device authorization failed with HTTP %d", response.StatusCode)
-		}
-		if time.Since(started) >= provider.DeviceLoginLifetime {
-			return provider.NewAccount{}, fmt.Errorf("Device-code login timed out after 10 minutes")
-		}
-		// A very large vendor interval remains cancellable without overflowing Duration.
-		seconds := min(interval, float64((1<<63-1)/int64(time.Second)))
-		timer := time.NewTimer(time.Duration(seconds * float64(time.Second)))
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return provider.NewAccount{}, ctx.Err()
-		case <-timer.C:
-		}
+	authorization, err := k.awaitAuthorization(ctx, code, *userCode)
+	if err != nil {
+		return provider.NewAccount{}, err
 	}
 	form := url.Values{"grant_type": {"authorization_code"}, "code": {authorization.AuthorizationCode.Expose()}, "redirect_uri": {k.endpoint("/deviceauth/callback")}, "client_id": {ClientID}, "code_verifier": {authorization.CodeVerifier.Expose()}}
 	response, err = post(ctx, k.http, k.endpoint("/oauth/token"), "application/x-www-form-urlencoded", []byte(form.Encode()))
@@ -157,4 +126,47 @@ func (k *accountKit) Login(ctx context.Context, pending func(core.LoginPending))
 		return provider.NewAccount{}, err
 	}
 	return provider.NewAccount{Secret: string(encoded), Label: secret.label()}, nil
+}
+
+// awaitAuthorization polls until the user confirms the code, at the interval
+// the server names, for at most the login's lifetime.
+func (k *accountKit) awaitAuthorization(ctx context.Context, code deviceCodeAnswer, userCode string) (authorizationAnswer, error) {
+	wait, stop := provider.DeviceLoginWait(ctx)
+	defer stop()
+	ended := func(err error) (authorizationAnswer, error) {
+		if provider.DeviceLoginExpired(wait) {
+			return authorizationAnswer{}, fmt.Errorf("Device-code login timed out after 10 minutes")
+		}
+		return authorizationAnswer{}, err
+	}
+	interval := 5.0
+	if code.Interval != nil {
+		interval = code.Interval.Seconds()
+	}
+	for {
+		response, err := post(wait, k.http, k.endpoint("/api/accounts/deviceauth/token"), "application/json", provider.JSONBody(authorizationRequest{DeviceAuthID: code.DeviceAuthID, UserCode: userCode}))
+		if err != nil {
+			return ended(err)
+		}
+		if response.StatusCode >= 200 && response.StatusCode < 300 {
+			authorization, err := provider.DecodeOAuthResponse(response, decode[authorizationAnswer])
+			if err != nil {
+				return ended(fmt.Errorf("Device authorization failed: %w", err))
+			}
+			return authorization, nil
+		}
+		response.Body.Close()
+		if response.StatusCode != 403 && response.StatusCode != 404 {
+			return authorizationAnswer{}, fmt.Errorf("Device authorization failed with HTTP %d", response.StatusCode)
+		}
+		// A very large vendor interval remains cancellable without overflowing Duration.
+		seconds := min(interval, float64((1<<63-1)/int64(time.Second)))
+		timer := time.NewTimer(time.Duration(seconds * float64(time.Second)))
+		select {
+		case <-wait.Done():
+			timer.Stop()
+			return ended(ctx.Err())
+		case <-timer.C:
+		}
+	}
 }

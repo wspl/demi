@@ -2,6 +2,7 @@ package provider_test
 
 import (
 	"errors"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -60,5 +61,38 @@ func TestFailureRecordsAndRetryWait(t *testing.T) {
 	}, now)
 	if failure.RetryAfter == nil || *failure.RetryAfter != 0 {
 		t.Fatal(failure)
+	}
+}
+
+// A failure names what went wrong but never the endpoint: the URL of the
+// request, the address it dialed or the host it looked up.
+// Cost: one refused loopback dial.
+func TestTransportFailureNamesNoEndpoint(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := listener.Addr().String()
+	listener.Close()
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+address+"/v1?key=hidden", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, refused := http.DefaultClient.Do(request)
+	if refused == nil {
+		response.Body.Close()
+		t.Fatal("a closed port answered")
+	}
+	lookup := &url.Error{Op: "Get", URL: "https://vendor.invalid/v1?key=hidden", Err: &net.OpError{Op: "dial", Net: "tcp", Err: &net.DNSError{Err: "no such host", Name: "vendor.invalid"}}}
+	for err, cause := range map[error]string{refused: "connection refused", lookup: "no such host"} {
+		failure := provider.TransportFailure("Vendor", err)
+		if failure.Code != provider.Overloaded || !strings.HasSuffix(failure.Message, cause) {
+			t.Fatalf("failure %#v", failure)
+		}
+		for _, endpoint := range []string{"hidden", address, "vendor.invalid"} {
+			if strings.Contains(failure.Message, endpoint) {
+				t.Fatalf("%q names %q", failure.Message, endpoint)
+			}
+		}
 	}
 }

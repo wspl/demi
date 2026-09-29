@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -120,7 +121,7 @@ func TestRequestRefreshStreamAndQuota(t *testing.T) {
 }
 func TestCatalogAndCreditProbe(t *testing.T) {
 	vendor := providertest.NewMockVendor(t)
-	vendor.Route("/models", providertest.MockResponse{Chunks: []string{`{"data":[{"id":"model","name":"Model","context_window":100,"reasoning_efforts":[{"id":"low"},{"value":"high","default":true}]},{}]}`}}, providertest.MockResponse{Chunks: []string{`[{"model":"bare"}]`}}, providertest.MockResponse{Chunks: []string{`{"data":[{"id":""}]}`}})
+	vendor.Route("/models", providertest.MockResponse{Chunks: []string{`{"data":[{"id":"model","name":"Model","context_window":100,"reasoning_efforts":[{"id":"low"},{"value":"high","default":true}]},{}]}`}}, providertest.MockResponse{Chunks: []string{`[{"model":"bare"}]`}}, providertest.MockResponse{Chunks: []string{`{"data":[{"id":""}]}`}}, providertest.MockResponse{Chunks: []string{`[{"model":"bare"},{"id":""}]`}}, providertest.MockResponse{Chunks: []string{`[{"model":"bare","context_window":0}]`}})
 	vendor.Route("/user", providertest.MockResponse{Chunks: []string{`{"subscriptionTier":"pro","email":"server@example.test"}`}})
 	vendor.Route("/billing", providertest.MockResponse{Chunks: []string{`{"config":{"monthlyLimit":{"val":20},"used":15,"onDemandCap":10,"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","end":"2030-01-01T00:00:00Z"}}}`}})
 	p, _ := fixture(t, vendor, false)
@@ -132,8 +133,13 @@ func TestCatalogAndCreditProbe(t *testing.T) {
 	if err != nil || *catalog.DefaultModelID != "bare" {
 		t.Fatalf("bare %#v %v", catalog, err)
 	}
-	if _, err := p.ListModels(t.Context()); err == nil {
-		t.Fatal("malformed model accepted")
+	// A model breaks its rules alike in the envelope and in the bare list.
+	for range 3 {
+		_, err := p.ListModels(t.Context())
+		var refused *provider.CatalogError
+		if !errors.As(err, &refused) || refused.Kind != provider.CatalogInvalid {
+			t.Fatalf("malformed model accepted: %v", err)
+		}
 	}
 	snapshot, err := p.Quota().Probe(t.Context())
 	if err != nil {
@@ -264,7 +270,9 @@ func TestDeviceLoginRefusalExpiryCancellationAndTeam(t *testing.T) {
 				code := `{"device_code":"device","user_code":"AB-CD","verification_uri":"https://example.test/verify","interval":1}`
 				switch scenario {
 				case "expiry":
-					code = `{"device_code":"device","user_code":"AB-CD","verification_uri":"https://example.test/verify","interval":600}`
+					// The vendor's interval outlasts the login, which still ends
+					// ten minutes after its code is shown.
+					code = `{"device_code":"device","user_code":"AB-CD","verification_uri":"https://example.test/verify","interval":3600}`
 				case "unsafe-uri":
 					code = `{"device_code":"device","user_code":"AB-CD","verification_uri":"javascript:alert(1)"}`
 				}
@@ -310,5 +318,56 @@ func TestDeviceLoginRefusalExpiryCancellationAndTeam(t *testing.T) {
 				}
 			})
 		})
+	}
+}
+
+// Another refresher holds the account's turn and stores new tokens once the
+// request with the old ones has gone out: the refused run takes them instead
+// of refreshing again.
+// Cost: two loopback requests; a two-minute context guards the run.
+func TestRefusedTokenReplacedMeanwhileIsNotRefreshedAgain(t *testing.T) {
+	vendor := providertest.NewMockVendor(t,
+		providertest.MockResponse{Status: 401},
+		providertest.MockResponse{Chunks: []string{providertest.SSEBody(jsontext.Value(`{"choices":[{"delta":{},"finish_reason":"stop"}]}`))}},
+	)
+	p, pool := fixture(t, vendor, true)
+	document := pool.Document("one")
+	turn, err := document.RefreshTurn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	defer cancel()
+	running := runtime(t, p)
+	ran := make(chan []provider.ProviderEvent, 1)
+	go func() { ran <- slices.Collect(running.Run(ctx, providertest.InferenceRequest())) }()
+	vendor.WaitRequests(t, 1)
+	revision, err := document.Read(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	access, err := provider.NewSecret("rotated-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	refresh, err := provider.NewSecret("refresh-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rotated, err := grokbuild.SecretDocument{AccessToken: access, RefreshToken: &refresh, Issuer: vendor.Server.URL, ClientID: "test-client", UserID: new("user"), Email: new("stored@example.test"), Principal: &grokbuild.Principal{Kind: "Team", ID: "team"}}.JSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kept, err := document.Replace(t.Context(), string(rotated), revision.Version); err != nil || !kept {
+		t.Fatalf("replace %v %v", kept, err)
+	}
+	turn.Release()
+	events := <-ran
+	if len(events) != 1 || !reflect.DeepEqual(events[0], provider.Response{}) {
+		t.Fatalf("events %#v", events)
+	}
+	requests := vendor.Requests()
+	if len(requests) != 2 || requests[1].URI != "/chat/completions" || requests[1].Headers.Get("Authorization") != "Bearer rotated-token" {
+		t.Fatalf("requests %#v", requests)
 	}
 }

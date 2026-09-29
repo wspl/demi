@@ -2,11 +2,13 @@ package grokbuild
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
 	"net/http"
 
 	"github.com/wspl/demi/go/core"
+	"github.com/wspl/demi/go/internal/wire"
 	"github.com/wspl/demi/go/provider"
 )
 
@@ -53,17 +55,7 @@ func (p *Provider) ListModels(ctx context.Context) (core.ProviderModelList, erro
 	if err != nil {
 		return core.ProviderModelList{}, &provider.CatalogError{Kind: provider.CatalogUnavailable, Message: "Grok Build models response could not be read"}
 	}
-	var listed []model
-	// Both catalog envelopes are vendor contracts; each model uses its generated decoder.
-	if len(raw) > 0 {
-		var envelope modelsEnvelope
-		if err = json.Unmarshal(raw, &listed); err != nil {
-			envelope, err = decode[modelsEnvelope](raw)
-			if envelope.Data != nil {
-				listed = *envelope.Data
-			}
-		}
-	}
+	listed, err := catalogModels(raw)
 	if err != nil {
 		return core.ProviderModelList{}, &provider.CatalogError{Kind: provider.CatalogInvalid, Message: fmt.Sprintf("Grok Build models answer cannot be read: %v", err)}
 	}
@@ -117,4 +109,27 @@ func (p *Provider) ListModels(ctx context.Context) (core.ProviderModelList, erro
 	}
 	result.DefaultModelID = &result.Models[0].ID
 	return result, nil
+}
+
+// catalogModels reads a models answer: an OpenAI-style data envelope or the
+// bare list, each model checked by the rules of its declaration. The generator
+// declares no list as a document of its own, so the bare list's models are
+// checked here, each at its index, as the envelope's decoder checks its own.
+func catalogModels(raw []byte) ([]model, error) {
+	if jsontext.Value(raw).Kind() != '[' {
+		envelope, err := decode[modelsEnvelope](raw)
+		if err != nil || envelope.Data == nil {
+			return nil, err
+		}
+		return *envelope.Data, nil
+	}
+	var listed []model
+	if err := json.Unmarshal(raw, &listed, wireOptions); err != nil {
+		return nil, wire.Refusal(err)
+	}
+	var report wire.Report
+	for i, m := range listed {
+		report.Nest(wire.Index(i), check(m))
+	}
+	return listed, report.Err()
 }
