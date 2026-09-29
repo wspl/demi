@@ -146,7 +146,7 @@ func (p *reader) number(text string) (int64, error) {
 
 // checkRules refuses a rule that does not apply to the type it is written on.
 func (p *reader) checkRules(t *Type, rules []Rule) error {
-	if t.Kind == KindPointer {
+	for t.Kind == KindPointer {
 		t = t.Elem
 	}
 	for _, rule := range rules {

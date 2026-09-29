@@ -13,38 +13,7 @@ const msgpImport = "github.com/tinylib/msgp/msgp"
 // messagePack writes additional codecs for explicitly selected roots and their
 // local dependencies. Existing JSON outputs do not depend on that selection.
 func (p *Package) messagePack() ([]byte, error) {
-	selected := map[string]bool{}
-	var visit func(string)
-	var field func(*Type)
-	field = func(t *Type) {
-		switch t.Kind {
-		case KindStruct, KindUnion, KindString:
-			if t.Qualifier == "" && !t.Opaque && t.Name != "" {
-				visit(t.Name)
-			}
-		case KindPointer, KindSlice, KindMap:
-			field(t.Elem)
-		}
-	}
-	visit = func(name string) {
-		if selected[name] {
-			return
-		}
-		selected[name] = true
-		if s := p.Structs[name]; s != nil {
-			for _, f := range s.Fields {
-				field(f.Type)
-			}
-		}
-		if u := p.Unions[name]; u != nil {
-			for _, s := range u.Variants {
-				visit(s.Name)
-			}
-		}
-	}
-	for name := range p.MessagePack {
-		visit(name)
-	}
+	selected := p.messagePackTypes()
 	if len(selected) == 0 {
 		return nil, nil
 	}
@@ -57,7 +26,7 @@ func (p *Package) messagePack() ([]byte, error) {
 			if s := p.Structs[name]; s != nil && !s.Opaque {
 				for _, f := range s.Fields {
 					typ := f.Type
-					if typ.Kind == KindPointer {
+					for typ.Kind == KindPointer {
 						typ = typ.Elem
 					}
 					if f.Encoding == "bin" && (typ.Kind != KindSlice || typ.Elem.Kind != KindUint || typ.Elem.Bits != 8) {
@@ -203,7 +172,10 @@ func (g *mpGen) structureMP(s *Struct) error {
 		g.p("case %q:", f.JSON)
 		g.p("seen[field.Name] = true")
 		t := f.Type
-		if t.Kind == KindPointer && !f.Nullable {
+		if f.NullAsAbsent {
+			g.p("if msgp.IsNil(field.Data) {continue}")
+		}
+		if t.Kind == KindPointer && (!f.Nullable || f.TriState) {
 			g.p("value,err := (%s)(field.Data)", g.decoder(t.Elem, f.Encoding))
 			g.p("if err != nil { return wire.In(field.Name,err) }")
 			g.p("v.%s = &value", f.Name)
@@ -214,7 +186,13 @@ func (g *mpGen) structureMP(s *Struct) error {
 		}
 	}
 	g.p("default:")
-	if !s.Open {
+	if s.Unknown != nil {
+		g.imports["encoding/json/jsontext"] = true
+		g.p("raw,err:=wire.MPJSON(field.Data)")
+		g.p("if err!=nil{return wire.In(field.Name,err)}")
+		g.p("if v.%s==nil {v.%s=make(map[string]jsontext.Value)}", s.Unknown.Name, s.Unknown.Name)
+		g.p("v.%s[field.Name]=raw", s.Unknown.Name)
+	} else if !s.Open {
 		g.p("return wire.Unknown(field.Name)")
 	}
 	g.p("}")
@@ -257,9 +235,16 @@ func (g *mpGen) structureMP(s *Struct) error {
 		n++
 	}
 	g.p("count := uint32(%d)", n)
+	if s.Unknown != nil {
+		g.p("count += uint32(len(v.%s))", s.Unknown.Name)
+	}
 	for _, f := range s.Fields {
 		if !f.Required {
-			g.p("if v.%s == nil {count--}", f.Name)
+			if f.Type.Kind == KindBool {
+				g.p("if !v.%s {count--}", f.Name)
+			} else {
+				g.p("if v.%s == nil {count--}", f.Name)
+			}
 		}
 	}
 	g.p("data := msgp.AppendMapHeader(nil,count)")
@@ -279,7 +264,11 @@ func (g *mpGen) structureMP(s *Struct) error {
 			continue
 		}
 		if !f.Required {
-			g.p("if v.%s != nil {", f.Name)
+			if f.Type.Kind == KindBool {
+				g.p("if v.%s {", f.Name)
+			} else {
+				g.p("if v.%s != nil {", f.Name)
+			}
 		}
 		g.p("data = msgp.AppendString(data,%q)", f.JSON)
 		g.p("{")
@@ -288,6 +277,16 @@ func (g *mpGen) structureMP(s *Struct) error {
 		if !f.Required {
 			g.p("}")
 		}
+	}
+	if s.Unknown != nil {
+		g.imports["maps"] = true
+		g.imports["slices"] = true
+		g.p("for _,key:=range slices.Sorted(maps.Keys(v.%s)) {", s.Unknown.Name)
+		g.p("data=msgp.AppendString(data,key)")
+		g.p("raw,err:=wire.JSONMsgpack(v.%s[key])", s.Unknown.Name)
+		g.p("if err!=nil{return nil,wire.In(key,err)}")
+		g.p("data=append(data,raw...)")
+		g.p("}")
 	}
 	if adjacent {
 		g.p("envelope := msgp.AppendMapHeader(nil,2)")
@@ -454,4 +453,41 @@ func (g *mpGen) enumMP(t *Type) {
 	g.p("if err:=v.validate();err!=nil{return nil,err}")
 	g.p("return msgp.AppendString(nil,string(v)),nil")
 	g.p("}")
+}
+
+// messagePackTypes follows the local dependencies of opted-in roots.
+func (p *Package) messagePackTypes() map[string]bool {
+	selected := map[string]bool{}
+	var visit func(string)
+	var field func(*Type)
+	field = func(t *Type) {
+		switch t.Kind {
+		case KindStruct, KindUnion, KindString:
+			if t.Qualifier == "" && !t.Opaque && t.Name != "" {
+				visit(t.Name)
+			}
+		case KindPointer, KindSlice, KindMap:
+			field(t.Elem)
+		}
+	}
+	visit = func(name string) {
+		if selected[name] {
+			return
+		}
+		selected[name] = true
+		if s := p.Structs[name]; s != nil {
+			for _, f := range s.Fields {
+				field(f.Type)
+			}
+		}
+		if u := p.Unions[name]; u != nil {
+			for _, s := range u.Variants {
+				visit(s.Name)
+			}
+		}
+	}
+	for name := range p.MessagePack {
+		visit(name)
+	}
+	return selected
 }

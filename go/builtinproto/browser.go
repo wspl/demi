@@ -491,6 +491,7 @@ func (UserCreator) createdBy()      {}
 //
 //demi:wire
 //demi:describe A tab as `tabs` lists it and the conversation browser tab routes return it.
+//demi:export
 type BrowserTab struct {
 	ID        TabID            `json:"id"`
 	Title     string           `json:"title"`

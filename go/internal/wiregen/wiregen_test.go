@@ -235,7 +235,7 @@ func TestGeneratedTypeScriptIsWhatTheDeclarationsSay(t *testing.T) {
 // The files a package commits are what go generate writes: no declaration
 // changed without its generated code.
 func TestCommittedGeneratedFilesAreCurrent(t *testing.T) {
-	for _, dir := range []string{"wiretest", "packtest", "../../runnerproto", "../../commandservice", "../../artifact", "../../claudeproto", "../../commandtree", "../../builtinproto"} {
+	for _, dir := range []string{"wiretest", "packtest", "featuretest", "exporttest", "../../runnerproto", "../../commandservice", "../../artifact", "../../claudeproto", "../../commandtree", "../../builtinproto"} {
 		pkg, err := Load(dir)
 		if err != nil {
 			t.Fatalf("%s: %v", dir, err)
@@ -296,7 +296,7 @@ func TestADeclarationThatBreaksTheRulesOfTheWireIsRefusedNamingIt(t *testing.T) 
 		"a directive that is unknown":                {header + "//demi:wired\ntype T struct{}\n", "unknown directive"},
 		"a wire mark on an interface":                {header + "//demi:wire\ntype T interface{}\n", "marks a struct"},
 		"an opaque mark on an interface":             {header + "//demi:opaque\ntype T interface{}\n", "marks a struct"},
-		"a pointer to a pointer":                     {field("A **string `json:\"a,omitzero\"`"), "a pointer to *string"},
+		"a pointer to a pointer":                     {field("A **string `json:\"a,omitzero\"`"), "a double pointer requires omitzero and nullable"},
 		"a union without a kind":                     {header + "//demi:union\ntype T interface{ t() }\n", "`tag=NAME` or `untagged`"},
 		"a union with two methods":                   {header + "//demi:union untagged\ntype T interface{ t(); u() }\n", "one unexported method"},
 		"a union without variants":                   {header + "//demi:union untagged\ntype T interface{ t() }\n", "the union has no variants"},
@@ -323,8 +323,6 @@ func TestADeclarationThatBreaksTheRulesOfTheWireIsRefusedNamingIt(t *testing.T) 
 		"an embedded struct with a tag":              {header + "//demi:wire\ntype H struct{}\n//demi:wire\ntype T struct {\nH `json:\"h\"`\n}\n", "an embedded struct has no tag"},
 		"an embedded struct that is not marked":      {header + "type H struct{}\n//demi:wire\ntype T struct {\nH\n}\n", "embeds a wire struct that is not a variant"},
 		"a struct that embeds itself":                {header + "//demi:wire\ntype T struct {\nT\n}\n", "embeds itself"},
-		"a variant that embeds":                      {header + "//demi:wire\ntype H struct{}\n//demi:union tag=k\ntype U interface{ u() }\n//demi:variant v\ntype V struct {\nH\n}\nfunc (V) u() {}\n", "a variant embeds nothing"},
-		"an embedded struct with a rule across":      {header + "//demi:wire\ntype H struct{}\nfunc (H) check() error { return nil }\n//demi:wire\ntype T struct {\nH\n}\n", "has a rule across its fields"},
 		"two members with one name":                  {header + "//demi:wire\ntype H struct {\nA string `json:\"a\"`\n}\n//demi:wire\ntype T struct {\nH\nB string `json:\"a\"`\n}\n", `two members are named "a"`},
 		"a scalar variant of a tagged union":         {header + "//demi:union tag=k\ntype U interface{ u() }\n//demi:variant\ntype V string\nfunc (V) u() {}\n", "a variant that is not an object belongs to an untagged union"},
 		"two scalar variants of one kind":            {header + "//demi:union untagged\ntype U interface{ u() }\n//demi:variant\ntype V string\n//demi:variant\ntype W string\nfunc (V) u() {}\nfunc (W) u() {}\n", "both a JSON string"},

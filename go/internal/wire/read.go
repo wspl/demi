@@ -274,13 +274,13 @@ func Refusal(err error) error {
 	}
 	var syntactic *jsontext.SyntacticError
 	if errors.As(err, &syntactic) {
-		return &InvalidError{Path: pathOf(syntactic.JSONPointer), Rule: syntaxRule(err)}
+		return &InvalidError{Path: pathOf(syntactic.JSONPointer), Rule: syntaxRule(err), Cause: err}
 	}
 	var semantic *json.SemanticError
 	if errors.As(err, &semantic) {
-		return &InvalidError{Path: pathOf(semantic.JSONPointer), Rule: ruleNoFit}
+		return &InvalidError{Path: pathOf(semantic.JSONPointer), Rule: ruleNoFit, Cause: err}
 	}
-	return &InvalidError{Rule: ruleNotJSON}
+	return &InvalidError{Rule: ruleNotJSON, Cause: err}
 }
 
 // pathOf writes a JSON pointer as a path: a token of digits is an index.
