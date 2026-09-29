@@ -4,32 +4,11 @@ package shell
 
 import (
 	"errors"
-	"log/slog"
 	"os"
 	"os/exec"
 	"syscall"
 )
 
-func contain(cmd *exec.Cmd) (func(), error) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error {
-		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		if errors.Is(err, syscall.ESRCH) {
-			return os.ErrProcessDone
-		}
-		return err
-	}
-	return func() {
-		if cmd.Process != nil {
-			// The reaped leader no longer owns any descendants that remain.
-			// ESRCH is normal when its process group has already emptied.
-			err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-			if err != nil && !errors.Is(err, syscall.ESRCH) {
-				slog.Warn("shell descendant cleanup failed", "error", err)
-			}
-		}
-	}, nil
-}
 func brokenPipe(err error) bool { return errors.Is(err, syscall.EPIPE) }
 
 // duplicateInput preserves nonblocking pipe flags and prevents fork from

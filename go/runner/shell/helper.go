@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+
+	"github.com/wspl/demi/go/runner/process"
 )
 
 const helperFlag = "--demi-shell-exec"
@@ -14,12 +16,11 @@ type childLimit struct {
 	Soft, Hard uint64
 }
 type childSetup struct {
-	JobHandle uintptr
-	Path      string
-	Args      []string
-	Mask      *uint32
-	Limits    []childLimit
-	Mode      string
+	Path   string
+	Args   []string
+	Mask   *uint32
+	Limits []childLimit
+	Mode   string
 }
 
 // ExecHelper must be called at the start of the runner's main, before serving
@@ -27,6 +28,7 @@ type childSetup struct {
 // validate their arguments, set process attributes, and replace themselves.
 // Tests use the same entry point from TestMain.
 func ExecHelper() {
+	process.ExecHelper()
 	if len(os.Args) < 2 || os.Args[1] != helperFlag {
 		return
 	}
