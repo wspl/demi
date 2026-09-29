@@ -1056,6 +1056,7 @@ func (v *AccountDTO) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 		return err
 	}
 	var seen uint64
+	var embedAccountInfo wire.Members
 	for {
 		name, more, err := wire.NextMember(dec)
 		if err != nil {
@@ -1067,46 +1068,32 @@ func (v *AccountDTO) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 		switch name {
 		case "id":
 			seen |= 1 << 0
-			s, err := wire.ReadString(dec)
+			raw, err := wire.ReadRaw(dec)
 			if err != nil {
-				return wire.In("id", err)
+				return wire.In(name, err)
 			}
-			v.ID = s
+			embedAccountInfo = append(embedAccountInfo, wire.Member{Name: name, Value: raw})
 		case "label":
 			seen |= 1 << 1
-			s, err := wire.ReadString(dec)
+			raw, err := wire.ReadRaw(dec)
 			if err != nil {
-				return wire.In("label", err)
+				return wire.In(name, err)
 			}
-			v.Label = s
+			embedAccountInfo = append(embedAccountInfo, wire.Member{Name: name, Value: raw})
 		case "detail":
 			seen |= 1 << 2
-			if wire.IsNull(dec) {
-				if _, err := dec.ReadToken(); err != nil {
-					return wire.In("detail", err)
-				}
-			} else {
-				var value string
-				s, err := wire.ReadString(dec)
-				if err != nil {
-					return wire.In("detail", err)
-				}
-				value = s
-				v.Detail = &value
+			raw, err := wire.ReadRaw(dec)
+			if err != nil {
+				return wire.In(name, err)
 			}
+			embedAccountInfo = append(embedAccountInfo, wire.Member{Name: name, Value: raw})
 		case "updatedAt":
 			seen |= 1 << 3
-			if wire.IsNull(dec) {
-				if _, err := dec.ReadToken(); err != nil {
-					return wire.In("updatedAt", err)
-				}
-			} else {
-				var value core.Timestamp
-				if err := value.UnmarshalJSONFrom(dec); err != nil {
-					return wire.In("updatedAt", err)
-				}
-				v.UpdatedAt = &value
+			raw, err := wire.ReadRaw(dec)
+			if err != nil {
+				return wire.In(name, err)
 			}
+			embedAccountInfo = append(embedAccountInfo, wire.Member{Name: name, Value: raw})
 		case "quota":
 			seen |= 1 << 4
 			if wire.IsNull(dec) {
@@ -1141,19 +1128,44 @@ func (v *AccountDTO) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	if seen&(1<<4) == 0 {
 		return wire.Required("quota")
 	}
+	{
+		raw, err := embedAccountInfo.JSON()
+		if err != nil {
+			return err
+		}
+		if err := json.Unmarshal(raw, &v.AccountInfo); err != nil {
+			return wire.Refusal(err)
+		}
+	}
 	return nil
+}
+
+// MarshalJSONTo encodes AccountDTO as a JSON object whose members include those of
+// the foreign structs it embeds, each written by its owner's encoder.
+func (v AccountDTO) MarshalJSONTo(enc *jsontext.Encoder) error {
+	if err := enc.WriteToken(jsontext.BeginObject); err != nil {
+		return err
+	}
+	if err := wire.WriteMembers(enc, v.AccountInfo, wireOptions); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.String("quota")); err != nil {
+		return err
+	}
+	if err := json.MarshalEncode(enc, v.Quota); err != nil {
+		return err
+	}
+	return enc.WriteToken(jsontext.EndObject)
 }
 
 // validate checks the rules of the fields of AccountDTO, and reports every one that
 // is broken.
 func (v AccountDTO) validate() error {
 	var r wire.Report
-	if v.UpdatedAt != nil {
-		r.Check("updatedAt", core.Validate((*v.UpdatedAt)))
-	}
 	if v.Quota != nil {
 		r.Check("quota", core.Validate((*v.Quota)))
 	}
+	r.Nest("", core.Validate(v.AccountInfo))
 	return r.Err()
 }
 
@@ -3463,6 +3475,7 @@ func (v *CatalogModel) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 		return err
 	}
 	var seen uint64
+	var embedProviderModel wire.Members
 	for {
 		name, more, err := wire.NextMember(dec)
 		if err != nil {
@@ -3474,271 +3487,116 @@ func (v *CatalogModel) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 		switch name {
 		case "id":
 			seen |= 1 << 0
-			s, err := wire.ReadString(dec)
+			raw, err := wire.ReadRaw(dec)
 			if err != nil {
-				return wire.In("id", err)
+				return wire.In(name, err)
 			}
-			v.ID = s
+			embedProviderModel = append(embedProviderModel, wire.Member{Name: name, Value: raw})
 		case "displayName":
 			seen |= 1 << 1
-			s, err := wire.ReadString(dec)
+			raw, err := wire.ReadRaw(dec)
 			if err != nil {
-				return wire.In("displayName", err)
+				return wire.In(name, err)
 			}
-			v.DisplayName = s
+			embedProviderModel = append(embedProviderModel, wire.Member{Name: name, Value: raw})
 		case "description":
 			seen |= 1 << 2
-			if wire.IsNull(dec) {
-				if _, err := dec.ReadToken(); err != nil {
-					return wire.In("description", err)
-				}
-			} else {
-				var value string
-				s, err := wire.ReadString(dec)
-				if err != nil {
-					return wire.In("description", err)
-				}
-				value = s
-				v.Description = &value
+			raw, err := wire.ReadRaw(dec)
+			if err != nil {
+				return wire.In(name, err)
 			}
+			embedProviderModel = append(embedProviderModel, wire.Member{Name: name, Value: raw})
 		case "contextWindow":
 			seen |= 1 << 3
-			if wire.IsNull(dec) {
-				if _, err := dec.ReadToken(); err != nil {
-					return wire.In("contextWindow", err)
-				}
-			} else {
-				var value uint32
-				n, err := wire.ReadUint(dec, 32)
-				if err != nil {
-					return wire.In("contextWindow", err)
-				}
-				value = uint32(n)
-				v.ContextWindow = &value
+			raw, err := wire.ReadRaw(dec)
+			if err != nil {
+				return wire.In(name, err)
 			}
+			embedProviderModel = append(embedProviderModel, wire.Member{Name: name, Value: raw})
 		case "outputLimit":
 			seen |= 1 << 4
-			if wire.IsNull(dec) {
-				if _, err := dec.ReadToken(); err != nil {
-					return wire.In("outputLimit", err)
-				}
-			} else {
-				var value uint32
-				n, err := wire.ReadUint(dec, 32)
-				if err != nil {
-					return wire.In("outputLimit", err)
-				}
-				value = uint32(n)
-				v.OutputLimit = &value
+			raw, err := wire.ReadRaw(dec)
+			if err != nil {
+				return wire.In(name, err)
 			}
+			embedProviderModel = append(embedProviderModel, wire.Member{Name: name, Value: raw})
 		case "supportsTools":
 			seen |= 1 << 5
-			if wire.IsNull(dec) {
-				if _, err := dec.ReadToken(); err != nil {
-					return wire.In("supportsTools", err)
-				}
-			} else {
-				var value bool
-				b, err := wire.ReadBool(dec)
-				if err != nil {
-					return wire.In("supportsTools", err)
-				}
-				value = b
-				v.SupportsTools = &value
+			raw, err := wire.ReadRaw(dec)
+			if err != nil {
+				return wire.In(name, err)
 			}
+			embedProviderModel = append(embedProviderModel, wire.Member{Name: name, Value: raw})
 		case "supportsAttachments":
 			seen |= 1 << 6
-			if wire.IsNull(dec) {
-				if _, err := dec.ReadToken(); err != nil {
-					return wire.In("supportsAttachments", err)
-				}
-			} else {
-				var value bool
-				b, err := wire.ReadBool(dec)
-				if err != nil {
-					return wire.In("supportsAttachments", err)
-				}
-				value = b
-				v.SupportsAttachments = &value
+			raw, err := wire.ReadRaw(dec)
+			if err != nil {
+				return wire.In(name, err)
 			}
+			embedProviderModel = append(embedProviderModel, wire.Member{Name: name, Value: raw})
 		case "supportsVideo":
 			seen |= 1 << 7
-			if wire.IsNull(dec) {
-				if _, err := dec.ReadToken(); err != nil {
-					return wire.In("supportsVideo", err)
-				}
-			} else {
-				var value bool
-				b, err := wire.ReadBool(dec)
-				if err != nil {
-					return wire.In("supportsVideo", err)
-				}
-				value = b
-				v.SupportsVideo = &value
+			raw, err := wire.ReadRaw(dec)
+			if err != nil {
+				return wire.In(name, err)
 			}
+			embedProviderModel = append(embedProviderModel, wire.Member{Name: name, Value: raw})
 		case "acceptedExtensions":
 			seen |= 1 << 8
-			if wire.IsNull(dec) {
-				if _, err := dec.ReadToken(); err != nil {
-					return wire.In("acceptedExtensions", err)
-				}
-			} else {
-				var value []core.FileExtension
-				if err := wire.BeginArray(dec); err != nil {
-					return wire.In("acceptedExtensions", err)
-				}
-				items0 := []core.FileExtension{}
-				for {
-					more, err := wire.NextElement(dec)
-					if err != nil {
-						return wire.In("acceptedExtensions", err)
-					}
-					if !more {
-						break
-					}
-					var element0 core.FileExtension
-					{
-						u, err := core.DecodeFileExtensionJSONFrom(dec)
-						if err != nil {
-							return wire.In("acceptedExtensions", wire.In(wire.Index(len(items0)), err))
-						}
-						element0 = u
-					}
-					items0 = append(items0, element0)
-				}
-				value = items0
-				v.AcceptedExtensions = &value
+			raw, err := wire.ReadRaw(dec)
+			if err != nil {
+				return wire.In(name, err)
 			}
+			embedProviderModel = append(embedProviderModel, wire.Member{Name: name, Value: raw})
 		case "supportsReasoning":
 			seen |= 1 << 9
-			if wire.IsNull(dec) {
-				if _, err := dec.ReadToken(); err != nil {
-					return wire.In("supportsReasoning", err)
-				}
-			} else {
-				var value bool
-				b, err := wire.ReadBool(dec)
-				if err != nil {
-					return wire.In("supportsReasoning", err)
-				}
-				value = b
-				v.SupportsReasoning = &value
+			raw, err := wire.ReadRaw(dec)
+			if err != nil {
+				return wire.In(name, err)
 			}
+			embedProviderModel = append(embedProviderModel, wire.Member{Name: name, Value: raw})
 		case "supportedThinkingEfforts":
 			seen |= 1 << 10
-			if wire.IsNull(dec) {
-				if _, err := dec.ReadToken(); err != nil {
-					return wire.In("supportedThinkingEfforts", err)
-				}
-			} else {
-				var value []string
-				if err := wire.BeginArray(dec); err != nil {
-					return wire.In("supportedThinkingEfforts", err)
-				}
-				items0 := []string{}
-				for {
-					more, err := wire.NextElement(dec)
-					if err != nil {
-						return wire.In("supportedThinkingEfforts", err)
-					}
-					if !more {
-						break
-					}
-					var element0 string
-					{
-						s, err := wire.ReadString(dec)
-						if err != nil {
-							return wire.In("supportedThinkingEfforts", wire.In(wire.Index(len(items0)), err))
-						}
-						element0 = s
-					}
-					items0 = append(items0, element0)
-				}
-				value = items0
-				v.SupportedThinkingEfforts = &value
+			raw, err := wire.ReadRaw(dec)
+			if err != nil {
+				return wire.In(name, err)
 			}
+			embedProviderModel = append(embedProviderModel, wire.Member{Name: name, Value: raw})
 		case "defaultThinkingEffort":
 			seen |= 1 << 11
-			if wire.IsNull(dec) {
-				if _, err := dec.ReadToken(); err != nil {
-					return wire.In("defaultThinkingEffort", err)
-				}
-			} else {
-				var value string
-				s, err := wire.ReadString(dec)
-				if err != nil {
-					return wire.In("defaultThinkingEffort", err)
-				}
-				value = s
-				v.DefaultThinkingEffort = &value
+			raw, err := wire.ReadRaw(dec)
+			if err != nil {
+				return wire.In(name, err)
 			}
+			embedProviderModel = append(embedProviderModel, wire.Member{Name: name, Value: raw})
 		case "canDisableThinking":
 			seen |= 1 << 12
-			if wire.IsNull(dec) {
-				if _, err := dec.ReadToken(); err != nil {
-					return wire.In("canDisableThinking", err)
-				}
-			} else {
-				var value bool
-				b, err := wire.ReadBool(dec)
-				if err != nil {
-					return wire.In("canDisableThinking", err)
-				}
-				value = b
-				v.CanDisableThinking = &value
+			raw, err := wire.ReadRaw(dec)
+			if err != nil {
+				return wire.In(name, err)
 			}
+			embedProviderModel = append(embedProviderModel, wire.Member{Name: name, Value: raw})
 		case "serviceTiers":
 			seen |= 1 << 13
-			if err := wire.BeginArray(dec); err != nil {
-				return wire.In("serviceTiers", err)
+			raw, err := wire.ReadRaw(dec)
+			if err != nil {
+				return wire.In(name, err)
 			}
-			items0 := []core.ServiceTier{}
-			for {
-				more, err := wire.NextElement(dec)
-				if err != nil {
-					return wire.In("serviceTiers", err)
-				}
-				if !more {
-					break
-				}
-				var element0 core.ServiceTier
-				{
-					if err := element0.UnmarshalJSONFrom(dec); err != nil {
-						return wire.In("serviceTiers", wire.In(wire.Index(len(items0)), err))
-					}
-				}
-				items0 = append(items0, element0)
-			}
-			v.ServiceTiers = items0
+			embedProviderModel = append(embedProviderModel, wire.Member{Name: name, Value: raw})
 		case "defaultServiceTierId":
 			seen |= 1 << 14
-			if wire.IsNull(dec) {
-				if _, err := dec.ReadToken(); err != nil {
-					return wire.In("defaultServiceTierId", err)
-				}
-			} else {
-				var value string
-				s, err := wire.ReadString(dec)
-				if err != nil {
-					return wire.In("defaultServiceTierId", err)
-				}
-				value = s
-				v.DefaultServiceTierID = &value
+			raw, err := wire.ReadRaw(dec)
+			if err != nil {
+				return wire.In(name, err)
 			}
+			embedProviderModel = append(embedProviderModel, wire.Member{Name: name, Value: raw})
 		case "cost":
 			seen |= 1 << 15
-			if wire.IsNull(dec) {
-				if _, err := dec.ReadToken(); err != nil {
-					return wire.In("cost", err)
-				}
-			} else {
-				var value core.
-					ModelCost
-				if err := value.UnmarshalJSONFrom(dec); err != nil {
-					return wire.In("cost", err)
-				}
-				v.Cost = &value
+			raw, err := wire.ReadRaw(dec)
+			if err != nil {
+				return wire.In(name, err)
 			}
+			embedProviderModel = append(embedProviderModel, wire.Member{Name: name, Value: raw})
 		case "selection":
 			seen |= 1 << 16
 			if err := v.Selection.UnmarshalJSONFrom(dec); err != nil {
@@ -3819,41 +3677,48 @@ func (v *CatalogModel) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	if seen&(1<<17) == 0 {
 		return wire.Required("unnamedEffort")
 	}
+	{
+		raw, err := embedProviderModel.JSON()
+		if err != nil {
+			return err
+		}
+		if err := json.Unmarshal(raw, &v.ProviderModel); err != nil {
+			return wire.Refusal(err)
+		}
+	}
 	return nil
+}
+
+// MarshalJSONTo encodes CatalogModel as a JSON object whose members include those of
+// the foreign structs it embeds, each written by its owner's encoder.
+func (v CatalogModel) MarshalJSONTo(enc *jsontext.Encoder) error {
+	if err := enc.WriteToken(jsontext.BeginObject); err != nil {
+		return err
+	}
+	if err := wire.WriteMembers(enc, v.ProviderModel, wireOptions); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.String("selection")); err != nil {
+		return err
+	}
+	if err := json.MarshalEncode(enc, v.Selection); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.String("unnamedEffort")); err != nil {
+		return err
+	}
+	if err := json.MarshalEncode(enc, v.UnnamedEffort); err != nil {
+		return err
+	}
+	return enc.WriteToken(jsontext.EndObject)
 }
 
 // validate checks the rules of the fields of CatalogModel, and reports every one that
 // is broken.
 func (v CatalogModel) validate() error {
 	var r wire.Report
-	r.Chars("id", v.ID, wire.AtLeast(1))
-	if v.OutputLimit != nil {
-		r.Uint("outputLimit", uint64((*v.OutputLimit)), wire.AtLeast(1))
-	}
-	if v.AcceptedExtensions != nil {
-		{
-			var group0 wire.Report
-			for i, e := range *v.AcceptedExtensions {
-				var item0 wire.Report
-				item0.Check("", core.Validate(e))
-				group0.Nest(wire.Index(i), item0.Err())
-			}
-			r.Nest("acceptedExtensions", group0.Err())
-		}
-	}
-	{
-		var group0 wire.Report
-		for i, e := range v.ServiceTiers {
-			var item0 wire.Report
-			item0.Check("", core.Validate(e))
-			group0.Nest(wire.Index(i), item0.Err())
-		}
-		r.Nest("serviceTiers", group0.Err())
-	}
-	if v.Cost != nil {
-		r.Check("cost", core.Validate((*v.Cost)))
-	}
 	r.Check("selection", core.Validate(v.Selection))
+	r.Nest("", core.Validate(v.ProviderModel))
 	return r.Err()
 }
 

@@ -58,7 +58,7 @@ func (SyncEventConversation) isSyncEvent() {}
 //
 //demi:variant conversation_order open
 type SyncEventConversationOrder struct {
-	Ids []ConversationID `json:"ids" check:"func=Validate"`
+	Ids []ConversationID `json:"ids" check:"each(func=Validate)"`
 }
 
 func (SyncEventConversationOrder) isSyncEvent() {}

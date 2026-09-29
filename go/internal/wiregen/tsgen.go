@@ -698,8 +698,13 @@ func (b *browserEmitter) object(ref BrowserType, s *Struct, indent int) (string,
 	}
 	var out strings.Builder
 	function := "z.strictObject"
-	if b.received[ref] {
+	switch {
+	case b.received[ref]:
 		function = "z.object"
+	case s.Open:
+		// A strict schema would refuse what the backend accepts, as the Rust
+		// emitter says.
+		return "", fmt.Errorf("%s: only the browser sends this object, but it accepts unknown fields; a type the backend receives refuses them", s.Name)
 	}
 	out.WriteString(function + "({\n")
 	pad := strings.Repeat("  ", indent+1)

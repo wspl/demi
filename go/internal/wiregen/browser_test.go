@@ -239,3 +239,26 @@ type Envelope struct {
 		}
 	}
 }
+
+// An object only the browser sends is strict, so one that accepts unknown
+// fields is refused, as the Rust emitter refuses it; received, it is tolerant.
+// Cost: in-memory generation only.
+func TestSenderOnlyOpenObjectIsRefused(t *testing.T) {
+	source := `package p
+//demi:wire open
+type Request struct {
+ ID bool ` + "`json:\"id\"`" + `
+}`
+	pkg, err := LoadSource(map[string][]byte{"request.go": []byte(source)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := BrowserType{Package: "p", Name: "Request"}
+	if _, err := GenerateBrowserTypeScript(map[string]*Package{"p": pkg}, []BrowserRoot{{Type: root}}, BrowserOptions{}); err == nil || !strings.Contains(err.Error(), "only the browser sends this object") {
+		t.Fatalf("accepted an open object only the browser sends: %v", err)
+	}
+	received, err := GenerateBrowserTypeScript(map[string]*Package{"p": pkg}, []BrowserRoot{{Type: root, Receives: true}}, BrowserOptions{})
+	if err != nil || !strings.Contains(string(received), "z.object(") {
+		t.Fatalf("received open object: %s %v", received, err)
+	}
+}
