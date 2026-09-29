@@ -187,13 +187,14 @@ pub struct StreamView {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct OutputView {
-    /// Where the next look starts, in bytes: just after `text`.
+    /// Where the next model look starts, in bytes: after the whole lines in
+    /// `text`, or at the start of its unfinished last line while it runs.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub offset: u64,
     /// The line of the merged output that `text` starts in, from 1.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub line: u64,
-    /// The merged text since the last look.
+    /// The merged text since the last look, repeating an unfinished line.
     #[garde(skip)]
     pub text: String,
     #[garde(skip)]

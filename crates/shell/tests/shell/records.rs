@@ -16,7 +16,7 @@ fn new_record() -> CommandRecord {
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
-async fn views_deliver_each_stream_once_within_the_budget_between_characters() {
+async fn byte_views_deliver_each_stream_once_and_model_looks_repeat_unfinished_lines() {
     let mut record = new_record();
     record.append_output(StreamKind::Stdout, "héllo ");
     record.append_output(StreamKind::Stderr, "warn\n");
@@ -30,6 +30,7 @@ async fn views_deliver_each_stream_once_within_the_budget_between_characters() {
     assert!(first.stdout.truncated);
     assert_eq!(first.stderr.delta, "wa");
     assert_eq!(first.output.text, "h");
+    assert_eq!(first.output.offset, 0);
     assert_eq!(first.running_ms, 250);
     assert!(matches!(first.state, CommandState::Running { hint: None }));
 
@@ -48,7 +49,7 @@ async fn views_deliver_each_stream_once_within_the_budget_between_characters() {
     assert_eq!(
         chunks,
         [
-            (StreamKind::Stdout, "éllo "),
+            (StreamKind::Stdout, "héllo "),
             (StreamKind::Stderr, "warn\n"),
             (StreamKind::Stdout, "wörld\n"),
         ]
@@ -152,8 +153,9 @@ async fn the_pages_view_keeps_the_newest_characters_and_their_count_until_the_en
         (view.state, view.running_ms, view.tool_use_id.as_str()),
         (PageState::Running, 40, "call")
     );
-    // Output only the pages' view holds is not the model's.
-    assert_eq!(record.status(0, None).output.text, "");
+    // Output only the pages' view holds is not the model's. The model still
+    // sees its unfinished line from the previous look.
+    assert_eq!(record.status(0, None).output.text, "é");
 
     // The end adds what it brings, once; nothing changes the view after it.
     assert!(record.settle(Ending::Exited(2), Arc::new(WholeOutput::default()), None, "end\n"));
