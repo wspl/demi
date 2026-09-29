@@ -1,0 +1,53 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "operation": {
+      "type": "string"
+    },
+    "target": {
+      "type": "string"
+    },
+    "result": true,
+    "url": {
+      "type": "string"
+    },
+    "openedTabs": {
+      "type": "array",
+      "items": {
+        "description": "A tab's public identity, which `open` and `tabs` return: `t` and the\ntab's number in the conversation (`browser.md` § One tab registry).",
+        "type": "string",
+        "pattern": "^t[1-9][0-9]{0,14}$"
+      }
+    },
+    "dialog": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "alert",
+            "confirm",
+            "prompt",
+            "beforeunload"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "message"
+      ],
+      "description": "A JavaScript dialog a tab shows."
+    }
+  },
+  "required": [
+    "operation",
+    "result"
+  ],
+  "description": "What a pointer or form action answers: the operation and the target it\nacted on, its own result, and what it observed after: the URL, tabs the\npage opened, and a dialog.",
+  "title": "ActionResult"
+}

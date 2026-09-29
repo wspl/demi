@@ -1,0 +1,70 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "inventory": {
+      "type": "string"
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "font",
+              "image",
+              "stylesheet",
+              "video"
+            ]
+          },
+          "url": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "url"
+        ]
+      }
+    },
+    "inlineSvgs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "html": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "html"
+        ]
+      }
+    },
+    "truncated": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "inventory",
+    "assets",
+    "inlineSvgs",
+    "truncated"
+  ],
+  "title": "AssetsListResult"
+}

@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "Target file path"
+    },
+    "content": {
+      "type": "string",
+      "description": "File content"
+    }
+  },
+  "required": [
+    "path",
+    "content"
+  ],
+  "description": "`file.create`: creates a new file; an existing file is left as it is.",
+  "title": "CreateArgs"
+}

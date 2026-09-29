@@ -1,0 +1,132 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "tab": {
+      "type": "string",
+      "description": "A tab's public identity, which `open` and `tabs` return: `t` and the\ntab's number in the conversation (`browser.md` § One tab registry).",
+      "pattern": "^t[1-9][0-9]{0,14}$"
+    },
+    "url": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "view": {
+      "type": "string",
+      "enum": [
+        "accessibility",
+        "dom"
+      ],
+      "description": "Which tree `inspect` returns."
+    },
+    "tree": {
+      "type": "array",
+      "items": {
+        "description": "One node of the tree `inspect` returns: an accessibility node, or a DOM\nelement with its tag.",
+        "type": "object",
+        "properties": {
+          "ref": {
+            "description": "A node reference, which `inspect`, `find` and `probe` return: `e` and\na number unique within its tab. It stays valid while its document\ndoes.",
+            "type": "string",
+            "pattern": "^e[1-9][0-9]{0,14}$"
+          },
+          "role": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "description": "A node's value: an input's text, or a range or progress number.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number",
+                "format": "double"
+              }
+            ]
+          },
+          "tag": {
+            "type": "string"
+          },
+          "states": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/BrowserTreeNode"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "truncated": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "tab",
+    "url",
+    "title",
+    "view",
+    "tree",
+    "truncated"
+  ],
+  "title": "InspectResult",
+  "$defs": {
+    "BrowserTreeNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ref": {
+          "type": "string",
+          "description": "A node reference, which `inspect`, `find` and `probe` return: `e` and\na number unique within its tab. It stays valid while its document\ndoes.",
+          "pattern": "^e[1-9][0-9]{0,14}$"
+        },
+        "role": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number",
+              "format": "double"
+            }
+          ],
+          "description": "A node's value: an input's text, or a range or progress number."
+        },
+        "tag": {
+          "type": "string"
+        },
+        "states": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BrowserTreeNode"
+          }
+        }
+      },
+      "description": "One node of the tree `inspect` returns: an accessibility node, or a DOM\nelement with its tag."
+    }
+  }
+}

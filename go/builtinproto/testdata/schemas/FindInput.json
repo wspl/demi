@@ -1,0 +1,126 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "tab": {
+      "type": "string",
+      "description": "Browser tab ID returned by open or tabs",
+      "pattern": "^t[1-9][0-9]{0,14}$"
+    },
+    "ref": {
+      "type": "string",
+      "description": "A node reference returned by inspect or find",
+      "pattern": "^e[1-9][0-9]{0,14}$"
+    },
+    "role": {
+      "type": "string",
+      "description": "Accessible role, ASCII case-insensitive, such as button, textbox, or date",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "name": {
+      "type": "string",
+      "description": "Accessible name, with --role",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "name-pattern": {
+      "type": "string",
+      "description": "Accessible-name regular expression, with --role",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "text-pattern": {
+      "type": "string",
+      "description": "Rendered-text regular expression",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "label": {
+      "type": "string",
+      "description": "Associated label text (label for, wrapping label, or aria-labelledby)",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "placeholder": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "text-match": {
+      "type": "string",
+      "description": "Visible text to match",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "test-id": {
+      "type": "string",
+      "description": "data-testid attribute",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "css": {
+      "type": "string",
+      "description": "CSS selector",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "exact": {
+      "type": "boolean",
+      "description": "Match the complete name or text"
+    },
+    "frame": {
+      "type": "array",
+      "items": {
+        "description": "A node reference, which `inspect`, `find` and `probe` return: `e` and\na number unique within its tab. It stays valid while its document\ndoes.",
+        "type": "string",
+        "pattern": "^e[1-9][0-9]{0,14}$"
+      },
+      "description": "Frame references, outermost to innermost"
+    },
+    "nth": {
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0,
+      "description": "Explicit zero-based match index",
+      "maximum": 999
+    },
+    "within": {
+      "type": "string",
+      "description": "Container node reference",
+      "pattern": "^e[1-9][0-9]{0,14}$"
+    },
+    "offset": {
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0
+    },
+    "limit": {
+      "type": "integer",
+      "format": "uint",
+      "minimum": 1,
+      "maximum": 1000
+    },
+    "query": {
+      "type": "boolean",
+      "description": "Read a declarative query tree from stdin"
+    },
+    "body": {
+      "type": "string",
+      "description": "JSON query tree when --query is supplied",
+      "maxLength": 1048576
+    },
+    "timeout": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 1,
+      "description": "Whole operation deadline in milliseconds",
+      "maximum": 300000
+    }
+  },
+  "required": [
+    "tab"
+  ],
+  "description": "`find`: lists the elements a target or a query tree matches.",
+  "title": "FindInput"
+}

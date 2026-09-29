@@ -1,0 +1,49 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "method": {
+            "type": "string"
+          },
+          "params": true,
+          "target": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "sequence",
+          "method",
+          "params",
+          "target"
+        ]
+      }
+    },
+    "cursor": {
+      "type": "string"
+    },
+    "hasMore": {
+      "type": "boolean"
+    },
+    "truncated": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "events",
+    "cursor",
+    "hasMore",
+    "truncated"
+  ],
+  "title": "CdpEventsResult"
+}

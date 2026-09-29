@@ -1,0 +1,39 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "tab": {
+      "type": "string",
+      "description": "Browser tab ID returned by open or tabs",
+      "pattern": "^t[1-9][0-9]{0,14}$"
+    },
+    "method": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "params": {
+      "type": "string",
+      "maxLength": 1048576
+    },
+    "target": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "timeout": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 1,
+      "description": "Whole operation deadline in milliseconds",
+      "maximum": 300000
+    }
+  },
+  "required": [
+    "tab",
+    "method",
+    "params"
+  ],
+  "description": "`cdp.send`: sends one CDP command with JSON parameters.",
+  "title": "CdpSendInput"
+}

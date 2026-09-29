@@ -1,0 +1,43 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "url": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "current": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "index",
+          "url",
+          "title",
+          "current"
+        ]
+      }
+    },
+    "truncated": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "entries",
+    "truncated"
+  ],
+  "title": "HistoryResult"
+}

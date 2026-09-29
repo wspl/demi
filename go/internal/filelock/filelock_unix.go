@@ -1,6 +1,6 @@
 //go:build unix
 
-package artifact
+package filelock
 
 import (
 	"errors"
@@ -9,9 +9,20 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// tryLock tries to take an exclusive lock on file without waiting. It reports
-// whether another holds the lock. The lock belongs to the open file, so a second
-// open of the same file in one process finds it held.
+func lock(file *os.File) error {
+	for {
+		err := unix.Flock(int(file.Fd()), unix.LOCK_EX)
+		switch {
+		case err == nil:
+			return nil
+		case errors.Is(err, unix.EINTR):
+			continue
+		default:
+			return os.NewSyscallError("flock", err)
+		}
+	}
+}
+
 func tryLock(file *os.File) (held bool, err error) {
 	for {
 		err := unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB)

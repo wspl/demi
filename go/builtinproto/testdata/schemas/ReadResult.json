@@ -1,0 +1,33 @@
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "value": true
+      },
+      "required": [
+        "value"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "values": {
+          "type": "array",
+          "items": true
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "values",
+        "truncated"
+      ]
+    }
+  ],
+  "description": "What `read` answers: one value, or every match's with `--all`.",
+  "title": "ReadResult"
+}

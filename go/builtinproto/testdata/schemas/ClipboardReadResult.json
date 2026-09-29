@@ -1,0 +1,58 @@
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "description": "A clipboard item `clipboard.read` wrote to a file.",
+            "type": "object",
+            "properties": {
+              "mimeType": {
+                "description": "A clipboard item's media type.",
+                "type": "string",
+                "enum": [
+                  "text/plain",
+                  "text/html",
+                  "image/png"
+                ]
+              },
+              "path": {
+                "type": "string"
+              },
+              "bytes": {
+                "type": "integer",
+                "format": "uint",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "mimeType",
+              "path",
+              "bytes"
+            ]
+          }
+        }
+      },
+      "required": [
+        "items"
+      ]
+    }
+  ],
+  "title": "ClipboardReadResult"
+}

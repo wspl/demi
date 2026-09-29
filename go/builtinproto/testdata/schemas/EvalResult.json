@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "value": true
+  },
+  "required": [
+    "value"
+  ],
+  "title": "EvalResult"
+}

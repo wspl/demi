@@ -1,0 +1,41 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "tab": {
+      "type": "string",
+      "description": "Browser tab ID returned by open or tabs",
+      "pattern": "^t[1-9][0-9]{0,14}$"
+    },
+    "format": {
+      "type": "string",
+      "enum": [
+        "text",
+        "html",
+        "dom"
+      ],
+      "description": "The form a page's content takes: rendered text, HTML, or the DOM tree\nserialized."
+    },
+    "output": {
+      "type": "string",
+      "description": "New output file on this Host",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "overwrite": {
+      "type": "boolean"
+    },
+    "timeout": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 1,
+      "description": "Whole operation deadline in milliseconds",
+      "maximum": 300000
+    }
+  },
+  "required": [
+    "tab"
+  ],
+  "description": "`content.read`: reads a tab's content as text, HTML or DOM, inline or\ninto a file.",
+  "title": "ContentReadInput"
+}

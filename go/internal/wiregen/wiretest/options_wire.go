@@ -41,6 +41,14 @@ var wireOptions = json.JoinOptions(
 			*v = value
 			return nil
 		}),
+		json.UnmarshalFromFunc(func(dec *jsontext.Decoder, v *Reading) error {
+			value, err := decodeReading(dec)
+			if err != nil {
+				return err
+			}
+			*v = value
+			return nil
+		}),
 	)),
 )
 

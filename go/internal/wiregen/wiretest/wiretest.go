@@ -185,3 +185,81 @@ func (s Span) check() error {
 //
 //demi:wire
 type Empty struct{}
+
+// A Level is a closed set of strings: the constants of its type.
+//
+//demi:enum
+//demi:describe How loud.
+type Level string
+
+// The values of a [Level].
+const (
+	LevelLow  Level = "low"
+	LevelHigh Level = "high"
+)
+
+// A Code is a string with the rules of its type: three lowercase letters.
+//
+//demi:value
+//demi:check pattern=lowercase,chars=3..3
+type Code string
+
+// A Header is what a [Message] starts with.
+//
+//demi:wire
+type Header struct {
+	ID string `json:"id" check:"chars=1.."`
+}
+
+// A Message embeds a struct: its members are the Header's and its own, as
+// serde's flatten makes them.
+//
+//demi:wire
+type Message struct {
+	Header
+	Body string `json:"body"`
+}
+
+// A Tolerant ignores the members it does not have.
+//
+//demi:wire open
+type Tolerant struct {
+	Kept string `json:"kept"`
+}
+
+// A Reading is a temperature or a label: a JSON number or a JSON string.
+//
+//demi:union untagged
+//demi:describe A temperature or a label.
+type Reading interface {
+	reading()
+}
+
+// A Celsius is a temperature.
+//
+//demi:variant
+type Celsius float64
+
+// A Label is a name.
+//
+//demi:variant
+type Label string
+
+func (Celsius) reading() {}
+func (Label) reading()   {}
+
+// Extras has one field for each thing the wire has beyond the rest: a float, a
+// closed set, a value with rules, a member that may be null, a union of
+// scalars, an embedded struct and an open one.
+//
+//demi:wire
+type Extras struct {
+	Ratio    float64  `json:"ratio" check:"range=0.5..4"`
+	Level    Level    `json:"level"`
+	Levels   []Level  `json:"levels"`
+	Code     Code     `json:"code"`
+	Note     *string  `json:"note" check:"nullable,chars=1..3"`
+	Reading  Reading  `json:"reading"`
+	Message  Message  `json:"message"`
+	Tolerant Tolerant `json:"tolerant"`
+}

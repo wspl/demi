@@ -1,0 +1,37 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "dialog": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "alert",
+            "confirm",
+            "prompt",
+            "beforeunload"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "message"
+      ],
+      "description": "A JavaScript dialog a tab shows."
+    }
+  },
+  "required": [
+    "dialog"
+  ],
+  "description": "What `dialog.inspect` answers: the dialog, or `null` when none is open.",
+  "title": "DialogInspectResult"
+}

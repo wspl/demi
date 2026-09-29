@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "tab": {
+      "type": "string",
+      "description": "A tab's public identity, which `open` and `tabs` return: `t` and the\ntab's number in the conversation (`browser.md` § One tab registry).",
+      "pattern": "^t[1-9][0-9]{0,14}$"
+    },
+    "url": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "tab",
+    "url"
+  ],
+  "description": "What a navigation answers: the URL it observed, with the title when the\nsame document reported it in time.",
+  "title": "NavigationResult"
+}

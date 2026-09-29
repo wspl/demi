@@ -1,0 +1,120 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "tabs": {
+      "type": "array",
+      "items": {
+        "description": "A tab as `tabs` lists it and the conversation browser tab routes return it.",
+        "type": "object",
+        "properties": {
+          "id": {
+            "description": "A tab's public identity, which `open` and `tabs` return: `t` and the\ntab's number in the conversation (`browser.md` § One tab registry).",
+            "type": "string",
+            "pattern": "^t[1-9][0-9]{0,14}$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "createdBy": {
+            "description": "Who opened a tab: an agent, a page's `window.open`, a temporary command\nsuch as `content.fetch`, or the user.",
+            "oneOf": [
+              {
+                "description": "An agent, by its number in the conversation.",
+                "type": "object",
+                "properties": {
+                  "number": {
+                    "type": "integer",
+                    "format": "uint64",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "kind": {
+                    "type": "string",
+                    "const": "agent"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "kind",
+                  "number"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "opener": {
+                    "description": "A tab's public identity, which `open` and `tabs` return: `t` and the\ntab's number in the conversation (`browser.md` § One tab registry).",
+                    "type": "string",
+                    "pattern": "^t[1-9][0-9]{0,14}$"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "const": "page"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "kind",
+                  "opener"
+                ]
+              },
+              {
+                "description": "A temporary command of the agent with this number.",
+                "type": "object",
+                "properties": {
+                  "number": {
+                    "type": "integer",
+                    "format": "uint64",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "kind": {
+                    "type": "string",
+                    "const": "temporary"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "kind",
+                  "number"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "user"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "kind"
+                ]
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "url",
+          "createdBy"
+        ]
+      }
+    },
+    "truncated": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "tabs",
+    "truncated"
+  ],
+  "title": "TabsResult"
+}

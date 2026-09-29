@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "tab": {
+      "type": "string",
+      "description": "Browser tab ID returned by open or tabs",
+      "pattern": "^t[1-9][0-9]{0,14}$"
+    },
+    "timeout": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 1,
+      "description": "Whole operation deadline in milliseconds",
+      "maximum": 300000
+    }
+  },
+  "required": [
+    "tab"
+  ],
+  "description": "`cdp.detach`: ends this caller's debugging connection to a tab.",
+  "title": "CdpDetachInput"
+}

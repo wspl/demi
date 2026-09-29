@@ -1,0 +1,27 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "alert",
+        "confirm",
+        "prompt",
+        "beforeunload"
+      ]
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "dismissed"
+      ]
+    }
+  },
+  "required": [
+    "type",
+    "outcome"
+  ],
+  "title": "DialogResult"
+}

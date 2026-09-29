@@ -1,0 +1,42 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "tab": {
+      "type": "string",
+      "description": "Browser tab ID returned by open or tabs",
+      "pattern": "^t[1-9][0-9]{0,14}$"
+    },
+    "xy": {
+      "type": "string",
+      "description": "Viewport CSS coordinates: x,y",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "include-non-interactable": {
+      "type": "boolean"
+    },
+    "output": {
+      "type": "string",
+      "description": "New output file on this Host",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "overwrite": {
+      "type": "boolean"
+    },
+    "timeout": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 1,
+      "description": "Whole operation deadline in milliseconds",
+      "maximum": 300000
+    }
+  },
+  "required": [
+    "tab",
+    "xy"
+  ],
+  "description": "`probe`: lists the nodes under a viewport point.",
+  "title": "ProbeInput"
+}

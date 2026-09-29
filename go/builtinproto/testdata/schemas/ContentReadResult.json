@@ -1,0 +1,69 @@
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "text",
+            "html",
+            "dom"
+          ],
+          "description": "The form a page's content takes: rendered text, HTML, or the DOM tree\nserialized."
+        },
+        "content": {
+          "type": "string"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "url",
+        "title",
+        "format",
+        "content",
+        "truncated"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "text",
+            "html",
+            "dom"
+          ],
+          "description": "The form a page's content takes: rendered text, HTML, or the DOM tree\nserialized."
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "title",
+        "format",
+        "path"
+      ]
+    }
+  ],
+  "title": "ContentReadResult"
+}

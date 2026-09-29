@@ -1,0 +1,38 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "Target file path"
+    },
+    "old": {
+      "type": "string",
+      "description": "Exact text to replace",
+      "minLength": 1
+    },
+    "new": {
+      "type": "string",
+      "description": "Replacement text"
+    },
+    "occurrence": {
+      "type": "integer",
+      "format": "uint",
+      "minimum": 1,
+      "description": "1-based occurrence to replace"
+    },
+    "context": {
+      "type": "integer",
+      "format": "uint",
+      "minimum": 1,
+      "description": "Line number used to choose the nearest occurrence"
+    }
+  },
+  "required": [
+    "path",
+    "old",
+    "new"
+  ],
+  "description": "`file.edit`: replaces one occurrence of exact text in an existing file.",
+  "title": "EditArgs"
+}

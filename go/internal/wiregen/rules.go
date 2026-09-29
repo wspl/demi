@@ -69,7 +69,7 @@ func (p *reader) parseRule(item string) (Rule, error) {
 	name, value, hasValue := strings.Cut(item, "=")
 	kind := RuleKind(name)
 	switch kind {
-	case RuleNoNUL, RuleUnique:
+	case RuleNoNUL, RuleUnique, RuleNullable:
 		if hasValue {
 			return Rule{}, fmt.Errorf("check %q: %s takes no value", item, name)
 		}
@@ -106,16 +106,19 @@ func (p *reader) parseRule(item string) (Rule, error) {
 }
 
 // bound reads one end of a range: a number or the name of a constant; nothing
-// leaves the end open.
+// leaves the end open. A number with a fraction bounds a float.
 func (p *reader) bound(text string) (*Bound, error) {
 	if text == "" {
 		return nil, nil
 	}
 	value, err := p.number(text)
-	if err != nil {
-		return nil, err
+	if err == nil {
+		return &Bound{Src: text, Value: value, Float: float64(value)}, nil
 	}
-	return &Bound{Src: text, Value: value}, nil
+	if number, floatErr := strconv.ParseFloat(text, 64); floatErr == nil {
+		return &Bound{Src: text, Value: int64(number), Float: number, Fraction: true}, nil
+	}
+	return nil, err
 }
 
 // number evaluates a literal or the name of a constant to an integer.
@@ -176,7 +179,16 @@ func (p *reader) checkRule(t *Type, rule Rule) error {
 			return fmt.Errorf("unique applies to a slice of strings, numbers or booleans")
 		}
 	case RuleRange:
-		return on(KindInt, KindUint)
+		if err := on(KindInt, KindUint, KindFloat); err != nil {
+			return err
+		}
+		if t.Kind != KindFloat {
+			for _, b := range []*Bound{rule.Min, rule.Max} {
+				if b != nil && b.Fraction {
+					return fmt.Errorf("the bound %s of %s has a fraction", b.Src, t.Src)
+				}
+			}
+		}
 	case RuleEq:
 		if err := on(KindString, KindInt, KindUint); err != nil {
 			return err

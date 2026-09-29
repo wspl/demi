@@ -1,4 +1,4 @@
-package artifact
+package filelock
 
 import (
 	"errors"
@@ -7,9 +7,14 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// tryLock tries to take an exclusive lock on file without waiting. It reports
-// whether another holds the lock. The lock belongs to the open file, so a second
-// open of the same file in one process finds it held.
+func lock(file *os.File) error {
+	overlapped := new(windows.Overlapped)
+	if err := windows.LockFileEx(windows.Handle(file.Fd()), windows.LOCKFILE_EXCLUSIVE_LOCK, 0, 1, 0, overlapped); err != nil {
+		return os.NewSyscallError("LockFileEx", err)
+	}
+	return nil
+}
+
 func tryLock(file *os.File) (held bool, err error) {
 	overlapped := new(windows.Overlapped)
 	err = windows.LockFileEx(windows.Handle(file.Fd()), windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, overlapped)

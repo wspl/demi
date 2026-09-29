@@ -1,0 +1,72 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "path": {
+      "type": "string"
+    },
+    "mimeType": {
+      "type": "string",
+      "enum": [
+        "image/png"
+      ],
+      "description": "The media type of a screenshot."
+    },
+    "width": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "height": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "viewport": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "width": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 1
+        },
+        "devicePixelRatio": {
+          "type": "number",
+          "format": "double",
+          "minimum": 2.2250738585072014e-308
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "web",
+            "mobile",
+            "custom"
+          ],
+          "description": "Who decides a tab's viewport (`live-view.md` § Modes): the user's\npanel, a phone, or the agent."
+        }
+      },
+      "required": [
+        "width",
+        "height",
+        "devicePixelRatio",
+        "mode"
+      ],
+      "description": "A tab's viewport (`live-view.md` § Modes): its CSS size, the pixel ratio\nit renders at, and who decides them."
+    }
+  },
+  "required": [
+    "path",
+    "mimeType",
+    "width",
+    "height",
+    "viewport"
+  ],
+  "description": "What `screenshot` answers when it writes a file; `width` and `height` are\nin CSS pixels.",
+  "title": "ScreenshotResult"
+}

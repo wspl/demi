@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "method": {
+      "type": "string"
+    },
+    "result": true
+  },
+  "required": [
+    "method",
+    "result"
+  ],
+  "title": "CdpSendResult"
+}
