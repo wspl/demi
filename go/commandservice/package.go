@@ -24,6 +24,7 @@ type PackageArtifact struct {
 // Publication requires every target; a development release may carry fewer.
 //
 //demi:wire
+//demi:msgpack
 type PackageDescriptor struct {
 	ID              string                           `json:"id" check:"pattern=packageID"`
 	Version         string                           `json:"version" check:"chars=1.."`
@@ -87,6 +88,7 @@ type ServiceInfo struct {
 // download against the size and SHA-256 its pinned descriptor declares.
 //
 //demi:union untagged
+//demi:msgpack
 type ArtifactLocation interface {
 	artifactLocation()
 }

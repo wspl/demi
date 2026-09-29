@@ -1,8 +1,4 @@
-// Package runnerproto is the contract between the runner and what starts it.
-// It holds only the managed boot record so far (docs/cloud/managed-hosts.md
-// § Managed boot credential): the machine manager writes it into a sandbox and
-// the runner reads it before it connects. The rest of the runner protocol joins
-// this package with the runner's port.
+// Package runnerproto holds the contracts shared by a runner and its backend.
 package runnerproto
 
 //go:generate go run github.com/wspl/demi/go/cmd/wiregen
@@ -45,6 +41,7 @@ func (t DeviceToken) Expose() string { return string(t) }
 // is and the token of this boot. It refuses unknown fields.
 //
 //demi:wire
+//demi:msgpack
 type ManagedBoot struct {
 	BackendURL  BackendURL  `json:"backendUrl" check:"func=backendURL"`
 	DeviceToken DeviceToken `json:"deviceToken" check:"func=deviceToken"`
@@ -61,7 +58,8 @@ func backendURL(value BackendURL) error {
 	default:
 		return errors.New("is not a backend URL")
 	}
-	if address.Hostname() == "" || address.User != nil || address.Fragment != "" {
+	// net/url loses a bare fragment delimiter, so check the original text.
+	if address.Hostname() == "" || address.User != nil || strings.ContainsRune(string(value), '#') {
 		return errors.New("is not a backend URL")
 	}
 	return nil
@@ -134,12 +132,20 @@ func DecodeManagedBoot(data []byte) (ManagedBoot, error) {
 
 // Encode returns the boot file's JSON, with the URL in its normal form.
 func (b ManagedBoot) Encode() ([]byte, error) {
+	b, err := b.normalizeWire()
+	if err != nil {
+		return nil, err
+	}
+	return encode(b)
+}
+
+func (b ManagedBoot) normalizeWire() (ManagedBoot, error) {
 	normal, err := b.BackendURL.Normal()
 	if err != nil {
-		return nil, &InvalidError{Path: "backendUrl", Rule: "is not a backend URL"}
+		return b, &InvalidError{Path: "backendUrl", Rule: "is not a backend URL"}
 	}
 	b.BackendURL = BackendURL(normal)
-	return encode(b)
+	return b, nil
 }
 
 // Validate checks value, one of the package's wire types, against the rules of

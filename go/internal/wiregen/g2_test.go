@@ -120,7 +120,7 @@ func TestADeclarationOfTheSerdeFeaturesThatBreaksTheirRulesIsRefusedNamingIt(t *
 		return header + "//demi:wire\ntype T struct {\n" + declaration + "\n}\n"
 	}
 	for name, test := range map[string]struct{ source, want string }{
-		"a variant that is open in another word":     {header + union + "//demi:variant w closed\ntype W struct{}\nfunc (W) u() {}\n", "takes at most a tag, and `open` after it"},
+		"a variant that is open in another word":     {header + union + "//demi:variant w closed\ntype W struct{}\nfunc (W) u() {}\n", "takes at most a tag, and `open` or `opaque` after it"},
 		"content without a tag":                      {header + "//demi:union content=params\ntype T interface{ t() }\n", "`tag=NAME` may be followed by `content=NAME`"},
 		"content after untagged":                     {header + "//demi:union untagged content=params\ntype T interface{ t() }\n", "`tag=NAME` may be followed by `content=NAME`"},
 		"a content that is the tag":                  {header + "//demi:union tag=op content=op\ntype T interface{ t() }\n", "names its tag and its content, apart"},

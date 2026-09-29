@@ -4,6 +4,9 @@ import "errors"
 
 // A Sequence names a sequence of a conversation that a service draws numbers
 // from.
+//
+//demi:enum
+//demi:msgpack
 type Sequence string
 
 // SequenceTab is the conversation's browser tabs, the only sequence a service

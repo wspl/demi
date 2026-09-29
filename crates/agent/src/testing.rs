@@ -171,8 +171,9 @@ pub fn field<'a>(result: &'a str, name: &str) -> &'a str {
         .unwrap_or_else(|| panic!("the result has no {name}:\n{result}"))
 }
 
-/// The output a shell tool result shows, what the command wrote since the
-/// model's last look, each line with its newline; empty when it shows none.
+/// The lines a shell tool result shows, each with a newline; empty when it
+/// shows none. An unfinished line may repeat on successive looks: these
+/// are displayed lines, not a reconstruction of the command's raw bytes.
 /// A running command's lines after it, its newest output's line and its
 /// next step, are not part of it.
 pub fn shown_output(result: &str) -> String {

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/wspl/demi/go/machines/internal/network"
 	"github.com/wspl/demi/go/machinesproto"
@@ -258,7 +259,7 @@ func TestASandboxThatExitsByItselfIsReportedAndItsDeviceIsSavedAndStopped(t *tes
 		t.Fatal(err)
 	}
 	stub.die()
-	if dead := <-f.deaths; dead != "dev-1" {
+	if dead := f.waitDeath(); dead != "dev-1" {
 		t.Fatalf("the death of %q", dead)
 	}
 	if state := f.runtimeState("dev-1"); state != machinesproto.Stopped {
@@ -318,7 +319,7 @@ func TestACheckpointThatCannotResumeStopsTheSandboxAndReportsItsDeath(t *testing
 	if _, err := f.call(machinesproto.CheckpointParams{DeviceID: "dev-1"}); err == nil {
 		t.Fatal("the checkpoint succeeded")
 	}
-	if dead := <-f.deaths; dead != "dev-1" {
+	if dead := f.waitDeath(); dead != "dev-1" {
 		t.Fatalf("the death of %q", dead)
 	}
 	if state := f.runtimeState("dev-1"); state != machinesproto.Stopped {
@@ -373,5 +374,22 @@ func TestAGrowthNeverShrinksAVolumeOrTouchesItsRecord(t *testing.T) {
 	after, err := os.ReadFile(manifest)
 	if err != nil || !bytes.Equal(before, after) || inode(t, manifest) != identity {
 		t.Errorf("the record of the working pair changed: %s, %v", after, err)
+	}
+}
+
+// waitDeath bounds the manager's death notification without polling.
+func (f *fixture) waitDeath() machinesproto.DeviceID {
+	f.t.Helper()
+	ctx, cancel := context.WithTimeout(f.t.Context(), 10*time.Second)
+	defer cancel()
+	select {
+	case dead, open := <-f.deaths:
+		if !open {
+			f.t.Fatal("manager closed death reports before reporting the device")
+		}
+		return dead
+	case <-ctx.Done():
+		f.t.Fatalf("manager did not report the device's death: %v", ctx.Err())
+		return ""
 	}
 }

@@ -3,9 +3,9 @@
 //! Every shell environment keeps its commands in these; a record does not
 //! know what ran the script.
 //!
-//! The model's views count bytes and cut text only between characters: a
-//! stream's cursor advances by the bytes a view delivered, and a view never
-//! splits a character. Tails are the last [`TAIL_CHARS`] characters.
+//! Stream byte views cut only between characters. The model's merged view
+//! advances past whole lines, repeating an unfinished line until its newline
+//! or the command's end. Tails are the last [`TAIL_CHARS`] characters.
 
 use std::sync::Arc;
 
@@ -40,8 +40,8 @@ pub struct CommandRecord {
     whole: Option<Arc<WholeOutput>>,
 }
 
-/// Where the model's next view of each stream, and of the merged output,
-/// starts, in bytes.
+/// Where the next byte view of each stream and the model's next merged
+/// view start, in bytes.
 #[derive(Debug, Default, Clone, Copy)]
 struct Positions {
     stdout: usize,
@@ -253,10 +253,21 @@ impl CommandRecord {
                     stderr: u64::MAX,
                 }
             } else {
-                Seen {
-                    stdout: self.model.stdout as u64,
-                    stderr: self.model.stderr as u64,
+                // Project the model's merged line boundary onto each stream.
+                // The byte views may have delivered part of the next line.
+                let mut seen = Seen::default();
+                for chunk in &self.chunks {
+                    let bytes = self
+                        .model
+                        .output
+                        .saturating_sub(chunk.offset)
+                        .min(chunk.text.len()) as u64;
+                    match chunk.stream {
+                        StreamKind::Stdout => seen.stdout += bytes,
+                        StreamKind::Stderr => seen.stderr += bytes,
+                    }
                 }
+                seen
             };
             self.model.whole = true;
             WholeView { output, seen }
@@ -273,10 +284,16 @@ impl CommandRecord {
                 })
                 .sum(),
         };
+        let running = self.is_running();
         let positions = &mut self.model;
         let stdout = stream_view(&self.stdout, &mut positions.stdout, max_output_bytes);
         let stderr = stream_view(&self.stderr, &mut positions.stderr, max_output_bytes);
-        let output = merged_view(&self.chunks, &mut positions.output, max_output_bytes);
+        let output = merged_view(
+            &self.chunks,
+            &mut positions.output,
+            max_output_bytes,
+            running,
+        );
         let now = Instant::now();
         let state = match &self.phase {
             Phase::Running => CommandState::Running { hint },
@@ -358,7 +375,12 @@ fn merged_len(chunks: &[Chunk]) -> usize {
 }
 
 /// A reader's view of the merged output from `position`, which it moves.
-fn merged_view(chunks: &[Chunk], position: &mut usize, max_output_bytes: usize) -> OutputView {
+fn merged_view(
+    chunks: &[Chunk],
+    position: &mut usize,
+    max_output_bytes: usize,
+    running: bool,
+) -> OutputView {
     let total = merged_len(chunks);
     let start = (*position).min(total);
     let mut remaining = budget(total - start, max_output_bytes);
@@ -386,8 +408,12 @@ fn merged_view(chunks: &[Chunk], position: &mut usize, max_output_bytes: usize) 
         }
     }
     let next = start + delivered;
-    *position = next;
     let text: String = views.iter().map(|chunk| chunk.text.as_str()).collect();
+    *position = if running {
+        start + text.rfind('\n').map_or(0, |at| at + 1)
+    } else {
+        next
+    };
     let line = 1 + chunks
         .iter()
         .map(|chunk| {
@@ -406,7 +432,7 @@ fn merged_view(chunks: &[Chunk], position: &mut usize, max_output_bytes: usize) 
         tail.insert_str(0, &chunk.text);
     }
     OutputView {
-        offset: next as u64,
+        offset: *position as u64,
         line,
         text,
         tail: tail_chars(&tail).to_owned(),

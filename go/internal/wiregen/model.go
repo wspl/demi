@@ -11,6 +11,8 @@ import (
 type Package struct {
 	// Name is the package's name.
 	Name string
+	// MessagePack selects additional codecs without changing JSON output.
+	MessagePack map[string]bool
 	// Files are the source files that declare wire types, by name.
 	Files []*File
 	// Structs and Unions are the marked declarations by name.
@@ -53,6 +55,10 @@ type Struct struct {
 	// Check is whether the struct has a method check() error for the rules
 	// across its fields.
 	Check bool
+	// Normalize calls normalizeWire before MessagePack encoding.
+	Normalize bool
+	// Opaque variants own their codecs, including tag and validation.
+	Opaque bool
 	// Description is what a JSON Schema says about the struct: the lines of its
 	// //demi:describe directives, joined by newlines.
 	Description string
@@ -82,6 +88,8 @@ type Field struct {
 	Required bool
 	// Nullable is whether a required member may be null; its type is a pointer.
 	Nullable bool
+	// Encoding overrides the MessagePack representation: bin or timestamp.
+	Encoding string
 	// Inline is whether the field holds an adjacently tagged union whose two
 	// members, the tag and the content, are members of the field's struct, as
 	// serde's flatten makes them.

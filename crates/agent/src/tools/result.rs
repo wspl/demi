@@ -546,6 +546,47 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn a_look_repeats_an_unfinished_line_until_its_newline_or_the_command_ends() {
+        use demi_shell::{CommandRecord, Ending};
+
+        let mut record = CommandRecord::new(
+            "3".try_into().unwrap(),
+            "17".try_into().unwrap(),
+            "call".into(),
+        );
+        record.append_output(StreamKind::Stdout, "done\nre");
+        record.append_output(StreamKind::Stderr, "a");
+        for expected in ["done\nrea", "rea"] {
+            let shown = result(&record.status(0, None)).await;
+            assert!(
+                shown.ends_with(&format!("\noutput:\n{expected}\n{RUNNING_NEXT}")),
+                "{shown}"
+            );
+        }
+        record.append_output(StreamKind::Stdout, "dy\nprompt");
+        for expected in ["ready\nprompt", "prompt"] {
+            let shown = result(&record.status(0, None)).await;
+            assert!(
+                shown.ends_with(&format!("\noutput:\n{expected}\n{RUNNING_NEXT}")),
+                "{shown}"
+            );
+        }
+        let whole = WholeOutput::new(
+            vec![
+                OutputRecord::Output(StreamKind::Stdout, Bytes::from_static(b"done\nre")),
+                OutputRecord::Output(StreamKind::Stderr, Bytes::from_static(b"a")),
+                OutputRecord::Output(StreamKind::Stdout, Bytes::from_static(b"dy\nprompt")),
+            ],
+            None,
+        );
+        record.settle(Ending::Exited(0), Arc::new(whole), None, "");
+        let final_look = result(&record.status(0, None)).await;
+        assert!(final_look.ends_with("\noutput:\nprompt"), "{final_look}");
+        let read_again = result(&record.status(0, None)).await;
+        assert!(read_again.ends_with("\noutput: (empty)"), "{read_again}");
+    }
+
     /// `seq 1 5000`: the result shows whole lines from both ends within the
     /// replay bound, and the line between names the lines it leaves out,
     /// their bytes, and the command that prints exactly them.
