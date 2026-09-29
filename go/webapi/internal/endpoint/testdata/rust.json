@@ -166,5 +166,25 @@
   {
     "input": "https://example.com/é?é=é#é",
     "want": "https://example.com/%C3%A9?%C3%A9=%C3%A9#%C3%A9"
+  },
+  {
+    "input": "http://ẞ.test/",
+    "want": "http://xn--zca.test/"
+  },
+  {
+    "input": "http://xn--a-/",
+    "want": null
+  },
+  {
+    "input": "http://xn--.test/",
+    "want": null
+  },
+  {
+    "input": "http://XN--.test/",
+    "want": null
+  },
+  {
+    "input": "http://a.xn--.b/",
+    "want": null
   }
 ]

@@ -4,6 +4,7 @@ package webapi
 
 import (
 	"encoding/json/jsontext"
+	"encoding/json/v2"
 
 	"github.com/wspl/demi/go/core"
 	"github.com/wspl/demi/go/internal/wire"
@@ -378,6 +379,7 @@ func (v *WorkingTreeChanges) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 		return err
 	}
 	var seen uint64
+	var embedGitChanges wire.Members
 	for {
 		name, more, err := wire.NextMember(dec)
 		if err != nil {
@@ -396,63 +398,39 @@ func (v *WorkingTreeChanges) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 			v.Root = s
 		case "repository":
 			seen |= 1 << 1
-			b, err := wire.ReadBool(dec)
+			raw, err := wire.ReadRaw(dec)
 			if err != nil {
-				return wire.In("repository", err)
+				return wire.In(name, err)
 			}
-			v.Repository = b
+			embedGitChanges = append(embedGitChanges, wire.Member{Name: name, Value: raw})
 		case "head":
 			seen |= 1 << 2
-			if wire.IsNull(dec) {
-				if _, err := dec.ReadToken(); err != nil {
-					return wire.In("head", err)
-				}
-			} else {
-				var value string
-				s, err := wire.ReadString(dec)
-				if err != nil {
-					return wire.In("head", err)
-				}
-				value = s
-				v.Head = &value
+			raw, err := wire.ReadRaw(dec)
+			if err != nil {
+				return wire.In(name, err)
 			}
+			embedGitChanges = append(embedGitChanges, wire.Member{Name: name, Value: raw})
 		case "files":
 			seen |= 1 << 3
-			if err := wire.BeginArray(dec); err != nil {
-				return wire.In("files", err)
+			raw, err := wire.ReadRaw(dec)
+			if err != nil {
+				return wire.In(name, err)
 			}
-			items0 := []runnerproto.GitChange{}
-			for {
-				more, err := wire.NextElement(dec)
-				if err != nil {
-					return wire.In("files", err)
-				}
-				if !more {
-					break
-				}
-				var element0 runnerproto.GitChange
-				{
-					if err := element0.UnmarshalJSONFrom(dec); err != nil {
-						return wire.In("files", wire.In(wire.Index(len(items0)), err))
-					}
-				}
-				items0 = append(items0, element0)
-			}
-			v.Files = items0
+			embedGitChanges = append(embedGitChanges, wire.Member{Name: name, Value: raw})
 		case "truncated":
 			seen |= 1 << 4
-			b, err := wire.ReadBool(dec)
+			raw, err := wire.ReadRaw(dec)
 			if err != nil {
-				return wire.In("truncated", err)
+				return wire.In(name, err)
 			}
-			v.Truncated = b
+			embedGitChanges = append(embedGitChanges, wire.Member{Name: name, Value: raw})
 		case "watched":
 			seen |= 1 << 5
-			b, err := wire.ReadBool(dec)
+			raw, err := wire.ReadRaw(dec)
 			if err != nil {
-				return wire.In("watched", err)
+				return wire.In(name, err)
 			}
-			v.Watched = b
+			embedGitChanges = append(embedGitChanges, wire.Member{Name: name, Value: raw})
 		default:
 			if err := dec.SkipValue(); err != nil {
 				return err
@@ -477,22 +455,41 @@ func (v *WorkingTreeChanges) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	if seen&(1<<5) == 0 {
 		return wire.Required("watched")
 	}
+	{
+		raw, err := embedGitChanges.JSON()
+		if err != nil {
+			return err
+		}
+		if err := json.Unmarshal(raw, &v.GitChanges); err != nil {
+			return wire.Refusal(err)
+		}
+	}
 	return nil
+}
+
+// MarshalJSONTo encodes WorkingTreeChanges as a JSON object whose members include those of
+// the foreign structs it embeds, each written by its owner's encoder.
+func (v WorkingTreeChanges) MarshalJSONTo(enc *jsontext.Encoder) error {
+	if err := enc.WriteToken(jsontext.BeginObject); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.String("root")); err != nil {
+		return err
+	}
+	if err := json.MarshalEncode(enc, v.Root); err != nil {
+		return err
+	}
+	if err := wire.WriteMembers(enc, v.GitChanges, wireOptions); err != nil {
+		return err
+	}
+	return enc.WriteToken(jsontext.EndObject)
 }
 
 // validate checks the rules of the fields of WorkingTreeChanges, and reports every one that
 // is broken.
 func (v WorkingTreeChanges) validate() error {
 	var r wire.Report
-	{
-		var group0 wire.Report
-		for i, e := range v.Files {
-			var item0 wire.Report
-			item0.Check("", runnerproto.Validate(e))
-			group0.Nest(wire.Index(i), item0.Err())
-		}
-		r.Nest("files", group0.Err())
-	}
+	r.Nest("", runnerproto.Validate(v.GitChanges))
 	return r.Err()
 }
 

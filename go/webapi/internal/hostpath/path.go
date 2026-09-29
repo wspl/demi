@@ -3,86 +3,136 @@ package hostpath
 
 import "strings"
 
-// Absolute follows typed_path::Utf8TypedPath::derive(...).is_absolute().
-// Windows requires a parsed prefix followed by a root separator; a bare UNC
-// share is therefore not absolute, even though the Windows API may treat it so.
+// Absolute follows typed_path::Utf8TypedPath::derive(text).is_absolute(). A
+// path is a Windows one when it starts with a backslash or a Windows prefix
+// parses, and is then absolute when the prefix is followed by a root
+// separator; so a bare UNC share is not absolute, even though the Windows API
+// may treat it so. Any other path is a Unix one, absolute when it starts with
+// "/".
 func Absolute(text string) bool {
-	rest, prefix := windowsPrefix(text)
-	if prefix {
-		separators := `\/`
-		if strings.HasPrefix(text, `\\?\`) {
-			separators = `\`
-		}
-		return rest != "" && strings.ContainsRune(separators, rune(rest[0]))
+	rest, ok := prefix(text)
+	if !ok {
+		return !strings.HasPrefix(text, `\`) && strings.HasPrefix(text, "/")
 	}
-	return strings.HasPrefix(text, "/")
+	// A path that starts with exactly \\?\ is verbatim: only "\" separates.
+	normalize := !strings.HasPrefix(text, `\\?\`)
+	return rest != "" && separator(rest[0], normalize)
 }
 
-// windowsPrefix consumes a typed-path Windows prefix, leaving its root intact.
-func windowsPrefix(text string) (string, bool) {
-	if drivePrefix(text) {
-		return text[2:], true
-	}
-	if len(text) < 2 || !strings.ContainsRune(`\/`, rune(text[0])) || !strings.ContainsRune(`\/`, rune(text[1])) {
-		return "", false
-	}
-	if len(text) >= 4 && text[2] == '?' && strings.ContainsRune(`\/`, rune(text[3])) {
-		rest := text[4:]
-		separators := `\/`
-		if strings.HasPrefix(text, `\\?\`) {
-			separators = `\`
-		}
-		if len(rest) >= 4 && rest[:3] == "UNC" && strings.ContainsRune(separators, rune(rest[3])) {
-			if tail, ok := uncPrefix(rest[4:], separators); ok {
-				return tail, true
-			}
-		}
-		if drivePrefix(rest) {
-			return rest[2:], true
-		}
-		if rest == "" {
-			return "", false
-		}
-		end := strings.IndexAny(rest, separators)
-		if end < 0 {
-			return "", true
-		}
-		return rest[end:], true
-	}
-	if len(text) >= 4 && text[2] == '.' && strings.ContainsRune(`\/`, rune(text[3])) {
-		rest := text[4:]
-		end := strings.IndexAny(rest, `\/`)
-		if rest != "" && end != 0 {
-			if end < 0 {
-				return "", true
-			}
-			return rest[end:], true
-		}
-	}
-	return uncPrefix(text[2:], `\/`)
+// separator reports whether b separates components: "\", and "/" too when the
+// path is normalized.
+func separator(b byte, normalize bool) bool {
+	return b == '\\' || normalize && b == '/'
 }
 
-// uncPrefix consumes the server and optional share of a Host's UNC prefix.
-func uncPrefix(text, separators string) (string, bool) {
-	if text == "" {
-		return "", false
+// prefix parses a Windows prefix as typed_path does, trying its forms in its
+// order, and returns what follows it.
+func prefix(text string) (string, bool) {
+	for _, form := range []func(string) (string, bool){verbatimUNC, verbatimDisk, verbatim, deviceNS, unc, disk} {
+		if rest, ok := form(text); ok {
+			return rest, true
+		}
 	}
-	end := strings.IndexAny(text, separators)
-	if end == 0 {
-		return "", false
-	}
-	if end < 0 {
-		return "", true
-	}
-	rest := text[end+1:]
-	end = strings.IndexAny(rest, separators)
-	if end < 0 {
-		return "", true
-	}
-	return rest[end:], true
+	return "", false
 }
 
-// drivePrefix recognizes the ASCII drive letters typed-path recognizes.
-func drivePrefix(text string) bool {
-	return len(text) >= 2 && text[1] == ':' && (text[0] >= 'a' && text[0] <= 'z' || text[0] >= 'A' && text[0] <= 'Z')
+// verbatimUNC is \\?\UNC\SERVER\SHARE, the share optional.
+func verbatimUNC(text string) (string, bool) {
+	normalize := !strings.HasPrefix(text, `\\?\`)
+	rest, ok := verbatimStart(text)
+	if !ok || !strings.HasPrefix(rest, "UNC") {
+		return "", false
+	}
+	rest = rest[3:]
+	if rest == "" || !separator(rest[0], normalize) {
+		return "", false
+	}
+	rest, ok = component(rest[1:], normalize)
+	if !ok {
+		return "", false
+	}
+	return optionalShare(rest, normalize), true
+}
+
+// verbatimDisk is \\?\C:.
+func verbatimDisk(text string) (string, bool) {
+	rest, ok := verbatimStart(text)
+	if !ok {
+		return "", false
+	}
+	return disk(rest)
+}
+
+// verbatim is \\?\NAME, or \\?\ before a separator (a blank name). The two
+// verbatim forms above are tried first, as typed_path excludes them here.
+func verbatim(text string) (string, bool) {
+	normalize := !strings.HasPrefix(text, `\\?\`)
+	rest, ok := verbatimStart(text)
+	if !ok {
+		return "", false
+	}
+	if name, ok := component(rest, normalize); ok {
+		return name, true
+	}
+	if rest != "" && separator(rest[0], normalize) {
+		return rest, true
+	}
+	return "", false
+}
+
+// deviceNS is \\.\DEVICE.
+func deviceNS(text string) (string, bool) {
+	if len(text) < 4 || !separator(text[0], true) || !separator(text[1], true) || text[2] != '.' || !separator(text[3], true) {
+		return "", false
+	}
+	return component(text[4:], true)
+}
+
+// unc is \\SERVER\SHARE, the share optional.
+func unc(text string) (string, bool) {
+	if len(text) < 2 || !separator(text[0], true) || !separator(text[1], true) {
+		return "", false
+	}
+	rest, ok := component(text[2:], true)
+	if !ok {
+		return "", false
+	}
+	return optionalShare(rest, true), true
+}
+
+// disk is C:, the drive an ASCII letter: a string's other letters are longer
+// than a byte, and typed_path takes the drive as one.
+func disk(text string) (string, bool) {
+	if len(text) < 2 || text[1] != ':' || !(text[0] >= 'a' && text[0] <= 'z' || text[0] >= 'A' && text[0] <= 'Z') {
+		return "", false
+	}
+	return text[2:], true
+}
+
+// verbatimStart consumes \\?\, each separator either slash.
+func verbatimStart(text string) (string, bool) {
+	if len(text) < 4 || !separator(text[0], true) || !separator(text[1], true) || text[2] != '?' || !separator(text[3], true) {
+		return "", false
+	}
+	return text[4:], true
+}
+
+// component consumes the bytes up to the next separator, at least one.
+func component(text string, normalize bool) (string, bool) {
+	end := 0
+	for end < len(text) && !separator(text[end], normalize) {
+		end++
+	}
+	return text[end:], end > 0
+}
+
+// optionalShare consumes the separator and the share that may follow a server.
+func optionalShare(rest string, normalize bool) string {
+	if rest != "" && separator(rest[0], normalize) {
+		rest = rest[1:]
+	}
+	if tail, ok := component(rest, normalize); ok {
+		return tail
+	}
+	return rest
 }

@@ -166,5 +166,21 @@
   {
     "input": "\\\\.\\",
     "want": false
+  },
+  {
+    "input": "//?/",
+    "want": false
+  },
+  {
+    "input": "//?\\",
+    "want": false
+  },
+  {
+    "input": "/\\?/",
+    "want": false
+  },
+  {
+    "input": "/\\?\\",
+    "want": false
   }
 ]

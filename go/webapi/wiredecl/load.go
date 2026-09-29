@@ -1,5 +1,6 @@
 // Package wiredecl temporarily bridges web-only declaration gaps remaining
-// after a826cb18: foreign embeddings, custom array schemas and trimmed strings.
+// after a826cb18: custom array schemas and trimmed strings. Foreign embedded
+// structs are the generator's own (fe342af4).
 package wiredecl
 
 import (
@@ -17,7 +18,7 @@ import (
 	"github.com/wspl/demi/go/internal/wiregen"
 )
 
-// Load uses native declarations except for foreign embedded structs. Its
+// Load uses native declarations, foreign embedded structs included. Its
 // temporary directory stays inside the module so foreign owners resolve.
 func Load(dir string, browser bool) (result *wiregen.Package, failure error) {
 	parsed, err := Declarations(dir)
@@ -69,26 +70,8 @@ func Load(dir string, browser bool) (result *wiregen.Package, failure error) {
 					if !marked {
 						continue
 					}
-					var fields []*ast.Field
-					for _, field := range structure.Fields.List {
-						selector, foreign := field.Type.(*ast.SelectorExpr)
-						if len(field.Names) == 0 && foreign {
-							qualifier, ok := selector.X.(*ast.Ident)
-							if !ok {
-								return nil, fmt.Errorf("%s: invalid foreign embedding", ts.Name.Name)
-							}
-							imported, err := foreignFields(filepath.Join(dir, "..", qualifier.Name), qualifier.Name, selector.Sel.Name)
-							if err != nil {
-								return nil, err
-							}
-							fields = append(fields, imported...)
-						} else {
-							fields = append(fields, field)
-						}
-					}
-					structure.Fields.List = fields
 					docs[ts.Name.Name] = map[string]string{}
-					for _, field := range fields {
+					for _, field := range structure.Fields.List {
 						if len(field.Names) == 1 && field.Doc != nil {
 							docs[ts.Name.Name][field.Names[0].Name] = strings.TrimSpace(field.Doc.Text())
 						}

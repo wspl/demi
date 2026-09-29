@@ -645,7 +645,15 @@ func (v SyncEventConversationOrder) MarshalJSONTo(enc *jsontext.Encoder) error {
 // is broken.
 func (v SyncEventConversationOrder) validate() error {
 	var r wire.Report
-	r.Check("ids", Validate(v.Ids))
+	{
+		var group0 wire.Report
+		for i, e := range v.Ids {
+			var item0 wire.Report
+			item0.Check("", Validate(e))
+			group0.Nest(wire.Index(i), item0.Err())
+		}
+		r.Nest("ids", group0.Err())
+	}
 	return r.Err()
 }
 
