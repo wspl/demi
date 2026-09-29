@@ -144,6 +144,7 @@ func loadSource(sources map[string][]byte, foreign func(string) (*Package, error
 			Unions:        map[string]*Union{},
 			Opaque:        map[string]bool{},
 			named:         map[string]*Type{},
+			containers:    map[string]ast.Expr{},
 			patterns:      map[string]string{},
 		},
 		specs:     map[string]*ast.StructType{},
@@ -168,10 +169,11 @@ func loadSource(sources map[string][]byte, foreign func(string) (*Package, error
 
 // A reader is the state of reading one package.
 type reader struct {
-	foreign func(string) (*Package, error)
-	fset    *token.FileSet
-	files   []*ast.File
-	pkg     *Package
+	opaqueDecls []marked
+	foreign     func(string) (*Package, error)
+	fset        *token.FileSet
+	files       []*ast.File
+	pkg         *Package
 	// methods are the names of the methods of each type.
 	methods map[string]map[string]bool
 	// specs are the struct declarations of the marked structs.
@@ -252,7 +254,7 @@ func (m marked) kind() (string, []string, error) {
 				return "", nil, fmt.Errorf("%s: a declaration has one directive", m.name)
 			}
 			kind, arguments = fields[0], fields[1:]
-		case directiveDescribe, directiveCheck, directiveSchema, "//demi:msgpack", "//demi:export":
+		case "//demi:jsonschema", "//demi:representation", "//demi:decode", directiveDescribe, directiveCheck, directiveSchema, "//demi:msgpack", "//demi:export":
 		default:
 			return "", nil, fmt.Errorf("%s: unknown directive %s", m.name, fields[0])
 		}
@@ -317,6 +319,15 @@ func (p *reader) load() error {
 			}
 		}
 	}
+	for name, typ := range p.pkg.named {
+		if !typ.CustomDecode {
+			continue
+		}
+		if !p.methods[name]["UnmarshalJSONFrom"] {
+			return fmt.Errorf("%s: demi:decode requires UnmarshalJSONFrom", name)
+		}
+		typ.CustomCheck = p.methods[name]["validate"]
+	}
 	for _, m := range p.values {
 		if err := p.resolveValue(m); err != nil {
 			return err
@@ -326,6 +337,19 @@ func (p *reader) load() error {
 		if err := p.resolve(m.name); err != nil {
 			return err
 		}
+	}
+	if err := p.resolveRepresentations(); err != nil {
+		return err
+	}
+	p.pkg.sourceImports = p.imports
+	p.pkg.resolveContainer = func(name string) (*Type, error) {
+		if p.pkg.containers[name] == nil {
+			return nil, nil
+		}
+		outer := p.file
+		p.file = p.declFile[name]
+		defer func() { p.file = outer }()
+		return p.typeOf(ast.NewIdent(name))
 	}
 	if err := p.link(); err != nil {
 		return err
@@ -347,6 +371,22 @@ func (p *reader) declare(m *marked, byFile map[string]*File) error {
 		return p.errorf(m.spec.Pos(), "%v", err)
 	}
 	p.declFile[m.name] = m.file
+	if lines := m.lines("//demi:decode"); len(lines) > 0 {
+		ident, ok := m.spec.Type.(*ast.Ident)
+		if len(lines) != 1 || lines[0] != "" || !ok || ident.Name != "string" || m.spec.Assign.IsValid() {
+			return p.errorf(m.spec.Pos(), "decode marks a named string and takes no arguments")
+		}
+	}
+	if m.has("//demi:jsonschema") && kind != directiveOpaque {
+		ident, ok := m.spec.Type.(*ast.Ident)
+		if !ok || basicType(ident.Name) == nil {
+			return p.errorf(m.spec.Pos(), "jsonschema marks an opaque or named scalar")
+		}
+	}
+
+	if m.has("//demi:representation") && kind != directiveOpaque {
+		return p.errorf(m.spec.Pos(), "representation requires an opaque struct")
+	}
 	if m.has("//demi:export") {
 		if kind != directiveWire && kind != directiveUnion && kind != directiveEnum && kind != directiveValue {
 			return p.errorf(m.spec.Pos(), "%s: export marks a struct, union, enum or value", m.name)
@@ -370,6 +410,10 @@ func (p *reader) declare(m *marked, byFile map[string]*File) error {
 		if m.has(directiveCheck) || m.has(directiveDescribe) || m.has(directiveSchema) {
 			return p.errorf(m.spec.Pos(), "%s: a declaration with %s, %s or %s is a wire declaration", m.name, directiveCheck, directiveDescribe, directiveSchema)
 		}
+		switch m.spec.Type.(type) {
+		case *ast.MapType, *ast.ArrayType:
+			p.pkg.containers[m.name] = m.spec.Type
+		}
 		// A type named after a basic type is not a wire type, but its fields
 		// name it.
 		if ident, ok := m.spec.Type.(*ast.Ident); ok && !m.spec.Assign.IsValid() {
@@ -377,7 +421,11 @@ func (p *reader) declare(m *marked, byFile map[string]*File) error {
 				named := *t
 				named.Name = m.name
 				named.Src = m.name
+				named.CustomDecode = m.has("//demi:decode")
 				p.pkg.named[m.name] = &named
+				if err := p.namedSchema(*m, &named); err != nil {
+					return err
+				}
 			}
 		}
 		return nil
@@ -402,20 +450,10 @@ func (p *reader) declare(m *marked, byFile map[string]*File) error {
 		if _, ok := m.spec.Type.(*ast.StructType); !ok {
 			return p.errorf(m.spec.Pos(), "%s: %s marks a struct", m.name, kind)
 		}
-		if len(arguments) > 0 {
-			if arguments[0] != "string" || len(arguments) > 2 {
-				return p.errorf(m.spec.Pos(), "%s: opaque scalar is string with an optional format=NAME", m.name)
-			}
-			typ := &Type{Kind: KindStruct, Name: m.name, Src: m.name, Opaque: true, WireKind: KindString}
-			if len(arguments) == 2 {
-				format, ok := strings.CutPrefix(arguments[1], "format=")
-				if !ok || format == "" {
-					return p.errorf(m.spec.Pos(), "%s: opaque scalar format is format=NAME", m.name)
-				}
-				typ.Format = format
-			}
-			p.pkg.OpaqueScalars[m.name] = typ
+		if err := p.opaqueRepresentation(*m, arguments); err != nil {
+			return p.errorf(m.spec.Pos(), "%v", err)
 		}
+		p.opaqueDecls = append(p.opaqueDecls, *m)
 		// An opaque type has no generated code, so it has no file to write.
 		p.pkg.Opaque[m.name] = true
 		return nil
@@ -431,8 +469,12 @@ func (p *reader) declare(m *marked, byFile map[string]*File) error {
 		named := *basic
 		named.Name = m.name
 		named.Src = m.name
+		named.CustomDecode = m.has("//demi:decode")
 		named.Description = description
 		p.pkg.named[m.name] = &named
+		if err := p.namedSchema(*m, &named); err != nil {
+			return err
+		}
 		// A value type has no generated code, so it has no file to write.
 		p.values = append(p.values, *m)
 		return nil
@@ -764,6 +806,9 @@ func (p *reader) resolve(name string) error {
 
 // embed adds the members of the wire struct that field embeds to s.
 func (p *reader) embed(s *Struct, field *ast.Field) error {
+	if selector, ok := field.Type.(*ast.SelectorExpr); ok {
+		return p.embedForeign(s, field, selector)
+	}
 	ident, _ := field.Type.(*ast.Ident)
 	var embedded *Struct
 	if ident != nil {
@@ -791,6 +836,7 @@ func (p *reader) embed(s *Struct, field *ast.Field) error {
 		s.EmbedChecks = append(s.EmbedChecks, embedded.Name+"."+check)
 	}
 	s.Embeds = append(s.Embeds, embedded.Name)
+	s.ForeignEmbeds = append(s.ForeignEmbeds, embedded.ForeignEmbeds...)
 	s.Fields = append(s.Fields, embedded.Fields...)
 	return nil
 }
@@ -981,6 +1027,21 @@ func (p *reader) typeOf(expr ast.Expr) (*Type, error) {
 		if _, ok := p.pkg.Unions[expr.Name]; ok {
 			return &Type{Kind: KindUnion, Name: expr.Name, Src: src}, nil
 		}
+		if container := p.pkg.containers[expr.Name]; container != nil {
+			delete(p.pkg.containers, expr.Name)
+			outer := p.file
+			p.file = p.declFile[expr.Name]
+			typ, err := p.typeOf(container)
+			p.file = outer
+			p.pkg.containers[expr.Name] = container
+			if err != nil {
+				return nil, err
+			}
+			typ.Name = expr.Name
+			typ.Src = expr.Name
+			p.pkg.named[expr.Name] = typ
+			return typ, nil
+		}
 		if t, ok := p.pkg.named[expr.Name]; ok {
 			return t, nil
 		}
@@ -1040,22 +1101,36 @@ func (p *reader) typeOf(expr ast.Expr) (*Type, error) {
 					typ := *opaque
 					typ.Src = src
 					typ.Qualifier = x.Name
+					typ.ImportPath = p.imports[p.file][x.Name]
+					if typ.Kind != KindStruct {
+						typ.Rules = nil
+					}
 					return &typ, nil
 				}
 				if owner.Unions[expr.Sel.Name] != nil {
-					return &Type{Kind: KindUnion, Name: expr.Sel.Name, Src: src, Opaque: true, Qualifier: x.Name}, nil
+					return &Type{Kind: KindUnion, Name: expr.Sel.Name, Src: src, Opaque: true, Qualifier: x.Name, ImportPath: p.imports[p.file][x.Name]}, nil
+				}
+				if owner.resolveContainer != nil {
+					if _, err := owner.resolveContainer(expr.Sel.Name); err != nil {
+						return nil, err
+					}
 				}
 				if named := owner.named[expr.Sel.Name]; named != nil {
+					if named.Kind == KindMap || named.Kind == KindSlice {
+						typ, err := p.qualifyType(named, owner, x.Name)
+						return typ, err
+					}
 					typ := *named
 					typ.Name = expr.Sel.Name
 					typ.Src = src
 					typ.Qualifier = x.Name
+					typ.ImportPath = p.imports[p.file][x.Name]
 					typ.Opaque = true
 					typ.Rules = nil
 					return &typ, nil
 				}
 			}
-			return &Type{Kind: KindStruct, Name: expr.Sel.Name, Src: src, Opaque: true, Qualifier: x.Name}, nil
+			return &Type{Kind: KindStruct, Name: expr.Sel.Name, Src: src, Opaque: true, Qualifier: x.Name, ImportPath: p.imports[p.file][x.Name]}, nil
 		}
 	}
 	return nil, fmt.Errorf("the type %s is not one the wire holds", src)

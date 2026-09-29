@@ -4,6 +4,7 @@ package packtest
 
 import (
 	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"maps"
 	"math"
 	"slices"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/tinylib/msgp/msgp"
 	"github.com/wspl/demi/go/internal/wire"
+	featuretest "github.com/wspl/demi/go/internal/wiregen/featuretest"
 )
 
 // UnmarshalMsgpack reads the structure of one complete Record value.
@@ -896,6 +898,70 @@ func (v Envelope) MarshalMsgpack() ([]byte, error) {
 			return nil, err
 		}
 		data = append(data, members...)
+	}
+	return data, nil
+}
+
+// UnmarshalMsgpack reads the structure of one complete Normalized value.
+func (v *Normalized) UnmarshalMsgpack(data []byte) error {
+	*v = Normalized{}
+	fields, err := wire.MPObject(data)
+	if err != nil {
+		return err
+	}
+	seen := map[string]bool{}
+	for _, field := range fields {
+		switch field.Name {
+		case "label":
+			seen[field.Name] = true
+			value, err := (func(data []byte) (featuretest.Trimmed, error) {
+				var v featuretest.Trimmed
+				raw, err := wire.MPJSON(data)
+				if err != nil {
+					return v, err
+				}
+				err = json.Unmarshal(raw, &v)
+				if err != nil {
+					return v, wire.Refusal(err)
+				}
+				return v, nil
+			})(field.Data)
+			if err != nil {
+				return wire.In(field.Name, err)
+			}
+			v.Label = value
+		default:
+			return wire.Unknown(field.Name)
+		}
+	}
+	if !seen["label"] {
+		return wire.Required("label")
+	}
+	return nil
+}
+
+// DecodeNormalizedMsgpack reads and validates one complete value.
+func DecodeNormalizedMsgpack(data []byte) (Normalized, error) {
+	var value Normalized
+	if err := value.UnmarshalMsgpack(data); err != nil {
+		return value, err
+	}
+	return value, value.validate()
+}
+
+// MarshalMsgpack encodes Normalized as a map in declaration order.
+func (v Normalized) MarshalMsgpack() ([]byte, error) {
+	if err := v.validate(); err != nil {
+		return nil, err
+	}
+	count := uint32(1)
+	data := msgp.AppendMapHeader(nil, count)
+	data = msgp.AppendString(data, "label")
+	{
+		if !utf8.ValidString(string(v.Label)) {
+			return nil, &wire.InvalidError{Path: "label", Rule: "invalid UTF-8"}
+		}
+		data = msgp.AppendString(data, string(v.Label))
 	}
 	return data, nil
 }
