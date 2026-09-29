@@ -3,12 +3,18 @@
 package linux_test
 
 import (
+	"bufio"
+	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/wspl/demi/go/machines/internal/linux"
 	"github.com/wspl/demi/go/machines/internal/roottest"
@@ -229,5 +235,64 @@ func TestAJobInAnotherNamespaceNeverLeavesItsThreadInTheProcess(t *testing.T) {
 	})
 	if !errors.Is(err, fs.ErrNotExist) || ran {
 		t.Errorf("entering an absent namespace: %v, ran %v", err, ran)
+	}
+}
+
+// This root scenario takes less than a second: a pipe holds the target process
+// alive, and a context bounds child I/O only as a hang guard. No cgroup is used.
+func TestARecoveryChildInheritsTheSavedMountNamespace(t *testing.T) {
+	roottest.Require(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	holder := exec.CommandContext(ctx, "sh", "-c", "readlink /proc/self/ns/mnt; read -r _ || true")
+	holder.SysProcAttr = &syscall.SysProcAttr{Cloneflags: syscall.CLONE_NEWNS}
+	input, err := holder.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		// EOF releases the holder; after failed startup exec may have closed the pipe.
+		input.Close()
+		if holder.Process != nil {
+			if err := holder.Wait(); err != nil {
+				t.Errorf("namespace holder: %v", err)
+			}
+		}
+	}()
+	output, err := holder.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := holder.Start(); err != nil {
+		t.Fatal(err)
+	}
+	target, err := bufio.NewReader(output).ReadString('\n')
+	if err != nil {
+		t.Fatalf("namespace holder did not report readiness: %v", err)
+	}
+	target = strings.TrimSpace(target)
+	own, err := os.Readlink("/proc/self/ns/mnt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target == own {
+		t.Fatal("namespace holder did not enter another mount namespace")
+	}
+	namespace, err := os.Open(fmt.Sprintf("/proc/%d/ns/mnt", holder.Process.Pid))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer namespace.Close()
+	var child []byte
+	err = linux.InMountNamespaceFile(namespace, func() error {
+		var err error
+		child, err = exec.CommandContext(ctx, "readlink", "/proc/self/ns/mnt").Output()
+		return err
+	})
+	if err != nil {
+		t.Fatalf("starting recovery child: %v", err)
+	}
+	if got := strings.TrimSpace(string(child)); got != target {
+		t.Fatalf("recovery child ran in %q, want saved namespace %q (parent %q)", got, target, own)
 	}
 }

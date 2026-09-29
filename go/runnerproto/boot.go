@@ -61,7 +61,8 @@ func backendURL(value BackendURL) error {
 	default:
 		return errors.New("is not a backend URL")
 	}
-	if address.Hostname() == "" || address.User != nil || address.Fragment != "" {
+	// net/url loses a bare fragment delimiter, so check the original text.
+	if address.Hostname() == "" || address.User != nil || strings.ContainsRune(string(value), '#') {
 		return errors.New("is not a backend URL")
 	}
 	return nil

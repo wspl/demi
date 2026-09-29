@@ -21,6 +21,7 @@ func TestABootRecordIsCheckedWhereItIsRead(t *testing.T) {
 		`{"backendUrl":"http://b","deviceToken":"t","command":"x"}`: "invalid: command: unknown member",
 		`{"backendUrl":"ftp://b","deviceToken":"t"}`:                "invalid: backendUrl: is not a backend URL",
 		`{"backendUrl":"http://u:p@b","deviceToken":"t"}`:           "invalid: backendUrl: is not a backend URL",
+		`{"backendUrl":"http://b/#","deviceToken":"t"}`:             "invalid: backendUrl: is not a backend URL",
 		`{"backendUrl":"http://b/#f","deviceToken":"t"}`:            "invalid: backendUrl: is not a backend URL",
 		`{"backendUrl":"http://b:65536","deviceToken":"t"}`:         "invalid: backendUrl: is not a URL",
 		`{"backendUrl":"http://b","deviceToken":"two words"}`:       "invalid: deviceToken: is not a device token",
