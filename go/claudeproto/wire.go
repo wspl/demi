@@ -199,3 +199,6 @@ func Decode[T any](data []byte) (T, error) {
 func Encode[T any](value T) ([]byte, error) {
 	return encode(value)
 }
+
+// Validate checks value, one of the package's wire types, as [Decode] would.
+func Validate[T any](value T) error { return check(value) }

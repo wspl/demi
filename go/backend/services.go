@@ -8,8 +8,7 @@ import (
 
 // Services is what the users share, safe from any goroutine: the program
 // (package edge's start) builds it once and hands it to the shards
-// (g7-backend.md § Services). The model access and the managed Clouds join
-// it with their parts.
+// (g7-backend.md § Services). The managed Clouds join it with their part.
 type Services struct {
 	// Clock is the wall clock the backend reads times from.
 	Clock core.Clock
@@ -32,4 +31,14 @@ type Services struct {
 	Sync *SyncRegistry
 	// Vault holds the provider entries and their accounts.
 	Vault *Vault
+	// Assembly builds the providers of the entries and reads their
+	// catalogs.
+	Assembly *ProviderAssembly
+	// ClaudeReleases are the vendor's Claude Code releases, which the CLI
+	// on each Cloud follows.
+	ClaudeReleases *ClaudeReleases
+	// Operations let one change of an entry run at a time.
+	Operations *ProviderOperations
+	// Logins are the device logins under way.
+	Logins *LoginFlows
 }
