@@ -1,0 +1,41 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "tools": {
+      "type": "string"
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "inputSchema": true,
+          "outputSchema": true
+        },
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "description",
+          "inputSchema"
+        ]
+      }
+    },
+    "truncated": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "tools",
+    "entries",
+    "truncated"
+  ],
+  "description": "What `webmcp.list` answers: the declarations' generation, which\n`webmcp.call` names, and the tools.",
+  "title": "WebmcpListResult"
+}

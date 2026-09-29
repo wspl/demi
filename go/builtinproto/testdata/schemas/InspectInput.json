@@ -1,0 +1,51 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "tab": {
+      "type": "string",
+      "description": "Browser tab ID returned by open or tabs",
+      "pattern": "^t[1-9][0-9]{0,14}$"
+    },
+    "view": {
+      "type": "string",
+      "enum": [
+        "accessibility",
+        "dom"
+      ],
+      "description": "Which tree `inspect` returns."
+    },
+    "within": {
+      "type": "string",
+      "description": "Container node reference",
+      "pattern": "^e[1-9][0-9]{0,14}$"
+    },
+    "frame": {
+      "type": "array",
+      "items": {
+        "description": "A node reference, which `inspect`, `find` and `probe` return: `e` and\na number unique within its tab. It stays valid while its document\ndoes.",
+        "type": "string",
+        "pattern": "^e[1-9][0-9]{0,14}$"
+      },
+      "description": "Frame references, outermost to innermost"
+    },
+    "limit": {
+      "type": "integer",
+      "format": "uint",
+      "minimum": 1,
+      "maximum": 1000
+    },
+    "timeout": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 1,
+      "description": "Whole operation deadline in milliseconds",
+      "maximum": 300000
+    }
+  },
+  "required": [
+    "tab"
+  ],
+  "description": "`inspect`: reads a tab's accessibility or DOM tree.",
+  "title": "InspectInput"
+}

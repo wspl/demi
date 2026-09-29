@@ -316,3 +316,139 @@ func TestTheGeneratedHelpersRefuseWhatIsNotAWireValue(t *testing.T) {
 		t.Errorf("encoding a leaf: %s, %v", data, err)
 	}
 }
+
+// extras is a document of an Extras that decodes, with one member changed.
+func extras(member, value string) string {
+	base := map[string]string{
+		"ratio": `1.5`, "level": `"low"`, "levels": `["low","high"]`, "code": `"abc"`, "note": `null`,
+		"reading": `20.5`, "message": `{"id":"m","body":"b"}`, "tolerant": `{"kept":"k","other":1}`,
+	}
+	order := []string{"ratio", "level", "levels", "code", "note", "reading", "message", "tolerant"}
+	var out []string
+	for _, name := range order {
+		v := base[name]
+		if name == member {
+			v = value
+		}
+		if v != "" {
+			out = append(out, `"`+name+`":`+v)
+		}
+	}
+	return "{" + strings.Join(out, ",") + "}"
+}
+
+func TestAFloatAClosedSetAndAValueWithRulesAreCheckedNamingTheField(t *testing.T) {
+	if got := failure[Extras](extras("ratio", `1.5`)); got != "" {
+		t.Fatalf("the base document was refused: %s", got)
+	}
+	for name, test := range map[string]struct{ document, want string }{
+		"a float below its range":           {extras("ratio", `0.25`), "invalid: ratio: must be from 0.5 to 4"},
+		"a float above its range":           {extras("ratio", `4.5`), "invalid: ratio: must be from 0.5 to 4"},
+		"an integer for a float":            {extras("ratio", `2`), ""},
+		"a float at its limit":              {extras("ratio", `4`), ""},
+		"a string for a float":              {extras("ratio", `"1"`), "invalid: ratio: must be a number"},
+		"a float out of the range of one":   {extras("ratio", `1e999`), "invalid: ratio: must be a number of a float64"},
+		"a value outside its closed set":    {extras("level", `"medium"`), "invalid: level: must be one of: low, high"},
+		"an element outside its closed set": {extras("levels", `["low","medium"]`), "invalid: levels[1]: must be one of: low, high"},
+		"a value that breaks its pattern":   {extras("code", `"ABC"`), "invalid: code: must match ^[a-z]+$"},
+		"a value that breaks its length":    {extras("code", `"abcd"`), "invalid: code: must have 3 to 3 characters"},
+		"every broken rule of one value":    {extras("code", `"AB"`), "invalid: code: must match ^[a-z]+$\ninvalid: code: must have 3 to 3 characters"},
+	} {
+		if got := failure[Extras](test.document); got != test.want {
+			t.Errorf("%s: %q, want %q", name, got, test.want)
+		}
+	}
+}
+
+func TestAMemberThatMayBeNullIsRequiredAndHoldsNullOrAValue(t *testing.T) {
+	for name, test := range map[string]struct{ document, want string }{
+		"null":                {extras("note", `null`), ""},
+		"a value":             {extras("note", `"abc"`), ""},
+		"absent":              {extras("note", ``), "invalid: note: required"},
+		"a value of a kind":   {extras("note", `1`), "invalid: note: must be a string"},
+		"a value that breaks": {extras("note", `"abcd"`), "invalid: note: must have 1 to 3 characters"},
+	} {
+		if got := failure[Extras](test.document); got != test.want {
+			t.Errorf("%s: %q, want %q", name, got, test.want)
+		}
+	}
+	empty, err := decode[Extras]([]byte(extras("note", `null`)))
+	if err != nil || empty.Note != nil {
+		t.Fatalf("null decodes to a nil pointer: %v, %v", empty.Note, err)
+	}
+	encoded, err := encode(empty)
+	if err != nil || !strings.Contains(string(encoded), `"note":null`) {
+		t.Errorf("a nil nullable member encodes as null: %s, %v", encoded, err)
+	}
+}
+
+func TestAUnionOfScalarsIsToldApartByTheKindOfTheJSONValue(t *testing.T) {
+	for name, test := range map[string]struct {
+		document string
+		want     Reading
+	}{
+		"a number": {extras("reading", `20.5`), Celsius(20.5)},
+		"a string": {extras("reading", `"warm"`), Label("warm")},
+	} {
+		got, err := decode[Extras]([]byte(test.document))
+		if err != nil || !reflect.DeepEqual(got.Reading, test.want) {
+			t.Errorf("%s: %#v, %v, want %#v", name, got.Reading, err, test.want)
+		}
+	}
+	for name, test := range map[string]struct{ document, want string }{
+		"a boolean": {extras("reading", `true`), "invalid: reading: matches none of: Celsius, Label"},
+		"an object": {extras("reading", `{}`), "invalid: reading: matches none of: Celsius, Label"},
+		"null":      {extras("reading", `null`), "invalid: reading: matches none of: Celsius, Label"},
+	} {
+		if got := failure[Extras](test.document); got != test.want {
+			t.Errorf("%s: %q, want %q", name, got, test.want)
+		}
+	}
+	for _, reading := range []Reading{Celsius(1.5), Label("x")} {
+		encoded, err := encode(Extras{Ratio: 1, Level: LevelLow, Levels: []Level{}, Code: "abc", Reading: reading, Message: Message{Header: Header{ID: "m"}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		again, err := decode[Extras](encoded)
+		if err != nil || !reflect.DeepEqual(again.Reading, reading) {
+			t.Errorf("%#v round trips as %#v, %v", reading, again.Reading, err)
+		}
+	}
+}
+
+func TestAStructThatEmbedsAnotherHasItsMembersAsItsOwn(t *testing.T) {
+	for name, test := range map[string]struct{ document, want string }{
+		"an embedded member missing": {extras("message", `{"body":"b"}`), "invalid: message.id: required"},
+		"an embedded member's rule":  {extras("message", `{"id":"","body":"b"}`), "invalid: message.id: must have at least 1 character"},
+		"an own member missing":      {extras("message", `{"id":"m"}`), "invalid: message.body: required"},
+		"a member that is neither":   {extras("message", `{"id":"m","body":"b","x":1}`), "invalid: message.x: unknown member"},
+	} {
+		if got := failure[Extras](test.document); got != test.want {
+			t.Errorf("%s: %q, want %q", name, got, test.want)
+		}
+	}
+	message, err := decode[Message]([]byte(`{"body":"b","id":"m"}`))
+	if err != nil || message.ID != "m" || message.Body != "b" {
+		t.Fatalf("the members of both decode into one value: %+v, %v", message, err)
+	}
+	encoded, err := encode(message)
+	if want := `{"id":"m","body":"b"}`; err != nil || string(encoded) != want {
+		t.Errorf("the members of both encode as one object: %s, %v, want %s", encoded, err, want)
+	}
+}
+
+func TestAnOpenStructIgnoresWhatItDoesNotHaveButRefusesWhatIsWrongWithWhatItHas(t *testing.T) {
+	got, err := decode[Tolerant]([]byte(`{"other":{"a":[1,2]},"kept":"k","more":null}`))
+	if err != nil || got.Kept != "k" {
+		t.Fatalf("an unknown member is ignored: %+v, %v", got, err)
+	}
+	for name, test := range map[string]struct{ document, want string }{
+		"a member missing": {`{"other":1}`, "invalid: kept: required"},
+		"a wrong kind":     {`{"kept":1}`, "invalid: kept: must be a string"},
+		"a duplicate":      {`{"other":1,"other":2,"kept":"k"}`, "invalid: other: has a duplicate member"},
+	} {
+		if got := failure[Tolerant](test.document); got != test.want {
+			t.Errorf("%s: %q, want %q", name, got, test.want)
+		}
+	}
+}

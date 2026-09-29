@@ -1,0 +1,65 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "entries": {
+      "type": "array",
+      "items": {
+        "description": "One console entry, numbered in the tab's order.",
+        "type": "object",
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "level": {
+            "description": "A console entry's level.",
+            "type": "string",
+            "enum": [
+              "debug",
+              "info",
+              "log",
+              "warning",
+              "error"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "timestamp": {
+            "description": "Milliseconds since the Unix epoch.",
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "sequence",
+          "level",
+          "text",
+          "timestamp"
+        ]
+      }
+    },
+    "cursor": {
+      "type": "string"
+    },
+    "hasMore": {
+      "type": "boolean"
+    },
+    "truncated": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "entries",
+    "cursor",
+    "hasMore",
+    "truncated"
+  ],
+  "title": "LogsResult"
+}

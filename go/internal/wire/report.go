@@ -166,6 +166,41 @@ func (b Bounds) numberRule() string {
 	}
 }
 
+// FloatBounds are the limits of a float; a limit that is not set is open.
+type FloatBounds struct {
+	Min, Max       float64
+	HasMin, HasMax bool
+}
+
+// FloatAtLeast returns bounds with a lower limit only.
+func FloatAtLeast(min float64) FloatBounds { return FloatBounds{Min: min, HasMin: true} }
+
+// FloatAtMost returns bounds with an upper limit only.
+func FloatAtMost(max float64) FloatBounds { return FloatBounds{Max: max, HasMax: true} }
+
+// FloatBetween returns bounds with both limits.
+func FloatBetween(min, max float64) FloatBounds {
+	return FloatBounds{Min: min, Max: max, HasMin: true, HasMax: true}
+}
+
+// Float checks a float against its bounds.
+func (r *Report) Float(path string, n float64, b FloatBounds) {
+	if b.HasMin && n < b.Min || b.HasMax && n > b.Max {
+		r.Add(path, b.rule())
+	}
+}
+
+func (b FloatBounds) rule() string {
+	switch {
+	case b.HasMin && b.HasMax:
+		return fmt.Sprintf("must be from %g to %g", b.Min, b.Max)
+	case b.HasMin:
+		return fmt.Sprintf("must be at least %g", b.Min)
+	default:
+		return fmt.Sprintf("must be at most %g", b.Max)
+	}
+}
+
 // EqInt checks that a number is the one allowed value.
 func (r *Report) EqInt(path string, n, want int64) {
 	if n != want {

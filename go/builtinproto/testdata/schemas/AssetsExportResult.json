@@ -1,0 +1,48 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "directory": {
+      "type": "string"
+    },
+    "manifest": {
+      "type": "string"
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "description": "An asset `assets.export` saved.",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "mimeType": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "path",
+          "bytes",
+          "mimeType"
+        ]
+      }
+    }
+  },
+  "required": [
+    "directory",
+    "manifest",
+    "files"
+  ],
+  "title": "AssetsExportResult"
+}

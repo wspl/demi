@@ -1,5 +1,7 @@
 package machinesproto
 
+import "github.com/wspl/demi/go/internal/wire"
+
 // A Volume is one of a device's two writable filesystems.
 type Volume string
 
@@ -72,4 +74,16 @@ func DecodeImageState(data []byte) (ImageState, error) {
 // written.
 func EncodeImageState(state ImageState) ([]byte, error) {
 	return encode(state)
+}
+
+// DecodeImageStateResult decodes the result of image_state: a generation record,
+// or nil when the device has none, which the reply writes as null.
+func DecodeImageStateResult(data []byte) (*ImageState, error) {
+	return wire.DecodeNullable(data, DecodeImageState)
+}
+
+// EncodeImageStateResult returns the JSON of the result of image_state: the
+// record, or null for nil.
+func EncodeImageStateResult(state *ImageState) ([]byte, error) {
+	return wire.EncodeNullable(state, EncodeImageState)
 }

@@ -11,35 +11,12 @@ import (
 // The declarations of what serde gave the Rust, whose generated code the golden
 // files hold: one case for each feature of the contract of a socket.
 var serdeGoldenCases = map[string]string{
-	"open": `package p
-
-// A Note tolerates members it does not have.
-//
-//demi:wire
-//demi:open
-type Note struct {
-	Title string  ` + "`json:\"title\"`" + `
-	Later *int    ` + "`json:\"later,omitzero\"`" + `
-}
-`,
-	"nullable": `package p
-
-// A Slot has a member that is required and may be null.
-//
-//demi:wire
-type Slot struct {
-	Reset *string          ` + "`json:\"reset\" check:\"nullable\"`" + `
-	Ids   *[]string        ` + "`json:\"ids\" check:\"nullable,each(nonul)\"`" + `
-	Size  *uint16          ` + "`json:\"size\" check:\"nullable,range=1..\"`" + `
-}
-`,
 	"adjacent": `package p
 
 //demi:union tag=op content=params
 type Command interface{ command() }
 
-//demi:variant stop
-//demi:open
+//demi:variant stop open
 type Stop struct{}
 
 //demi:variant resize
@@ -69,8 +46,7 @@ func (Stop) command() {}
 
 // A Request has an id and the members of a command.
 //
-//demi:wire
-//demi:open
+//demi:wire open
 type Request struct {
 	ID   string  ` + "`json:\"id\" check:\"chars=1..\"`" + `
 	Call Command ` + "`json:\",inline\"`" + `
@@ -144,17 +120,11 @@ func TestADeclarationOfTheSerdeFeaturesThatBreaksTheirRulesIsRefusedNamingIt(t *
 		return header + "//demi:wire\ntype T struct {\n" + declaration + "\n}\n"
 	}
 	for name, test := range map[string]struct{ source, want string }{
-		"open with an argument":                      {header + "//demi:wire\n//demi:open all\ntype T struct{}\n", "demi:open takes no argument"},
-		"open on a union":                            {header + "//demi:open\n//demi:union untagged\ntype T interface{ t() }\n", "demi:open marks a wire struct or a variant"},
-		"open on an opaque struct":                   {header + "//demi:open\n//demi:opaque\ntype T struct{}\n", "demi:open marks a wire struct or a variant"},
-		"open on a struct that is not marked":        {header + "//demi:open\ntype T struct{}\n", "demi:open marks a wire struct or a variant"},
+		"a variant that is open in another word":     {header + union + "//demi:variant w closed\ntype W struct{}\nfunc (W) u() {}\n", "takes at most a tag, and `open` after it"},
 		"content without a tag":                      {header + "//demi:union content=params\ntype T interface{ t() }\n", "`tag=NAME` may be followed by `content=NAME`"},
 		"content after untagged":                     {header + "//demi:union untagged content=params\ntype T interface{ t() }\n", "`tag=NAME` may be followed by `content=NAME`"},
 		"a content that is the tag":                  {header + "//demi:union tag=op content=op\ntype T interface{ t() }\n", "names its tag and its content, apart"},
 		"an empty content":                           {header + "//demi:union tag=op content=\ntype T interface{ t() }\n", "names its tag and its content, apart"},
-		"a nullable value":                           {field("A string `json:\"a\" check:\"nullable\"`"), "a nullable field is a required pointer, without omitzero"},
-		"a nullable optional pointer":                {field("A *string `json:\"a,omitzero\" check:\"nullable\"`"), "a nullable field is a required pointer, without omitzero"},
-		"a nullable that takes a value":              {field("A *string `json:\"a\" check:\"nullable=1\"`"), "nullable takes no value"},
 		"an inline field that is not a union":        {field("A string `json:\",inline\"`"), "an inline field is an adjacently tagged union"},
 		"an inline field of a tagged union":          {header + tagged + "//demi:wire\ntype T struct {\nA U `json:\",inline\"`\n}\n", "an inline field is an adjacently tagged union"},
 		"an inline field with a name":                {header + union + "//demi:wire\ntype T struct {\nA U `json:\"a,inline\"`\n}\n", "an inline field has no json name"},
@@ -184,6 +154,25 @@ func TestAnAdjacentUnionOrAnInlineFieldHasNoTypeScriptSchema(t *testing.T) {
 		}
 		if err := pkg.refuseTypeScript(); err == nil {
 			t.Errorf("%s: a package with it is written as TypeScript", name)
+		}
+	}
+}
+
+func TestAnAdjacentUnionOrAnInlineFieldHasNoJSONSchema(t *testing.T) {
+	for name, want := range map[string]string{
+		"adjacent": "an adjacently tagged union has no JSON Schema",
+		"inline":   "a struct with an inline union has no JSON Schema",
+	} {
+		source := strings.Replace(serdeGoldenCases[name], "//demi:wire", "//demi:schema\n//demi:wire", 1)
+		if name == "adjacent" {
+			source = strings.Replace(source, "//demi:union", "//demi:schema\n//demi:union", 1)
+		}
+		pkg, err := LoadSource(map[string][]byte{name + ".go": []byte(source)})
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if _, err := pkg.GenerateGo(); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: error = %v, want it to contain %q", name, err, want)
 		}
 	}
 }

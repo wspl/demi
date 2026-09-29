@@ -1,0 +1,25 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "mimeType": {
+      "type": "string",
+      "enum": [
+        "text/plain",
+        "text/html",
+        "image/png"
+      ],
+      "description": "A clipboard item's media type."
+    },
+    "bytes": {
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "mimeType",
+    "bytes"
+  ],
+  "title": "ClipboardWriteResult"
+}

@@ -159,6 +159,23 @@ func ReadInt(dec *jsontext.Decoder, bits int) (int64, error) {
 	return n, nil
 }
 
+// ReadFloat reads a number as a float64. A number that is out of the range of
+// a float64 is refused.
+func ReadFloat(dec *jsontext.Decoder) (float64, error) {
+	token, err := dec.ReadToken()
+	if err != nil {
+		return 0, err
+	}
+	if token.Kind() != '0' {
+		return 0, mustBe("a number")
+	}
+	n, err := token.Float()
+	if err != nil {
+		return 0, mustBe("a number of a float64")
+	}
+	return n, nil
+}
+
 // ReadRaw reads a value of any kind and returns a copy of its JSON, for a field
 // the contract declares opaque.
 func ReadRaw(dec *jsontext.Decoder) (jsontext.Value, error) {

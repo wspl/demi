@@ -2,6 +2,8 @@ package commandservice
 
 // The limits of a job's edit record that its journal states.
 const (
+	// EditFileBytes is the most bytes of one file the record copies.
+	EditFileBytes = 8 * 1024 * 1024
 	// EditJobBytes is the most bytes the record copies in total.
 	EditJobBytes = 64 * 1024 * 1024
 	// EditJobFiles is the most files the record lists.

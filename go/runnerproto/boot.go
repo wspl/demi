@@ -138,8 +138,9 @@ func (b ManagedBoot) Encode() ([]byte, error) {
 	return encode(b)
 }
 
-// ValidateManagedBoot checks the rules of a boot record that another package's
-// wire type holds: its URL and its token.
-func ValidateManagedBoot(boot ManagedBoot) error {
-	return boot.validate()
+// Validate checks value, one of the package's wire types, against the rules of
+// its fields, as decoding does. A wire type of another package holds one of
+// these values and names this function in a func rule to run its rules.
+func Validate[T any](value T) error {
+	return check(value)
 }

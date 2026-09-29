@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "schema": true
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "available"
+        ]
+      }
+    }
+  },
+  "required": [
+    "capabilities"
+  ],
+  "title": "CapabilitiesResult"
+}

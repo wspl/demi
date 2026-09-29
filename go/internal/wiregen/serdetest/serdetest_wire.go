@@ -270,7 +270,7 @@ func (v Start) MarshalJSONTo(enc *jsontext.Encoder) error {
 func (v Start) validate() error {
 	var r wire.Report
 	r.Chars("device", v.Device, wire.AtLeast(1))
-	r.Check("boot", runnerproto.ValidateManagedBoot(v.Boot))
+	r.Check("boot", runnerproto.Validate(v.Boot))
 	return r.Err()
 }
 
@@ -575,7 +575,7 @@ func (v Fleet) validate() error {
 		var group0 wire.Report
 		for i, e := range v.Boots {
 			var item0 wire.Report
-			item0.Check("", runnerproto.ValidateManagedBoot(e))
+			item0.Check("", runnerproto.Validate(e))
 			group0.Nest(wire.Index(i), item0.Err())
 		}
 		r.Nest("boots", group0.Err())

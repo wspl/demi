@@ -56,3 +56,7 @@ func ServiceHandler(handler Handler) (http.Handler, func() error, error) {
 	}
 	return s, s.fault, nil
 }
+
+// ErrNoDescriptor is the error of a process that has no descriptor left, on
+// this platform.
+var ErrNoDescriptor = errNoDescriptor

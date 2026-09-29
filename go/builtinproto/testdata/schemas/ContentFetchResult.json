@@ -1,0 +1,179 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "pages": {
+      "type": "array",
+      "items": {
+        "description": "One URL `content.fetch` read, or its failure.",
+        "type": "object",
+        "properties": {
+          "requestedUrl": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "error": {
+            "description": "A failed operation, or a failed item of a batch such as a page of\n`content.fetch`.",
+            "type": "object",
+            "properties": {
+              "code": {
+                "description": "Why an operation failed. Each cause keeps its own code.",
+                "type": "string",
+                "enum": [
+                  "invalid_input",
+                  "tab_not_found",
+                  "tab_busy",
+                  "stale_ref",
+                  "stale_cursor",
+                  "stale_inventory",
+                  "stale_tools",
+                  "target_not_found",
+                  "ambiguous_target",
+                  "not_actionable",
+                  "timeout",
+                  "dialog_blocked",
+                  "dialog_not_found",
+                  "invalid_dialog_action",
+                  "history_boundary",
+                  "navigation_failed",
+                  "protected_value",
+                  "side_effect_rejected",
+                  "unsupported_result",
+                  "unsupported_capability",
+                  "cdp_method_denied",
+                  "output_exists",
+                  "io_error",
+                  "result_too_large",
+                  "partial_failure",
+                  "driver_error",
+                  "browser_unavailable",
+                  "browser_lost",
+                  "cancelled",
+                  "outcome_unknown"
+                ]
+              },
+              "message": {
+                "type": "string"
+              },
+              "details": {
+                "description": "What a failure knows beyond its code and message.",
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "description": "How far an action's input got when it failed: not delivered, delivered\nwith a later wait failing, or lost with the connection after delivery\nbegan.",
+                    "type": "string",
+                    "enum": [
+                      "not_started",
+                      "completed",
+                      "unknown"
+                    ]
+                  },
+                  "tab": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "description": "The tab's URL when the action failed.",
+                    "type": "string"
+                  },
+                  "condition": {
+                    "description": "The element condition that was not met.",
+                    "type": "string"
+                  },
+                  "interceptor": {
+                    "description": "What intercepted the pointer instead of the target.",
+                    "type": "string"
+                  },
+                  "count": {
+                    "description": "How many elements an ambiguous target matched.",
+                    "type": "integer",
+                    "format": "uint",
+                    "minimum": 0
+                  },
+                  "delivered": {
+                    "description": "How many characters `type` delivered before it failed.",
+                    "type": "integer",
+                    "format": "uint",
+                    "minimum": 0
+                  },
+                  "debuggingCallers": {
+                    "description": "The numbers of the agents whose debugging connections hold the tab\nwhen a command on it times out.",
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "format": "uint64",
+                      "minimum": 0
+                    }
+                  },
+                  "directory": {
+                    "type": "string"
+                  },
+                  "manifest": {
+                    "type": "string"
+                  },
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "description": "An asset `assets.export` saved.",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "path": {
+                          "type": "string"
+                        },
+                        "bytes": {
+                          "type": "integer",
+                          "format": "uint",
+                          "minimum": 0
+                        },
+                        "mimeType": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "id",
+                        "path",
+                        "bytes",
+                        "mimeType"
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "requestedUrl",
+          "url",
+          "title",
+          "content"
+        ]
+      }
+    },
+    "truncated": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "pages",
+    "truncated"
+  ],
+  "title": "ContentFetchResult"
+}

@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "offset": {
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0
+    },
+    "limit": {
+      "type": "integer",
+      "format": "uint",
+      "minimum": 1,
+      "maximum": 1000
+    },
+    "timeout": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 1,
+      "description": "Whole operation deadline in milliseconds",
+      "maximum": 300000
+    }
+  },
+  "description": "`tabs`: lists the browser's tabs.",
+  "title": "TabsInput"
+}

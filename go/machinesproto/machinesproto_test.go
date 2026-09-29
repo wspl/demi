@@ -92,8 +92,16 @@ func TestOkRepliesCarryTheirOperationsResults(t *testing.T) {
 	if err != nil || reset.ResetID == nil || *reset.ResetID != "reset-4f1e" {
 		t.Errorf("a reset generation: %+v, %v", reset, err)
 	}
-	if string(result(t, "ok.image_state.none")) != "null" {
-		t.Errorf("no image state is null")
+	// A device without a generation has a null result, which is not an error.
+	none, err := machinesproto.DecodeImageStateResult(result(t, "ok.image_state.none"))
+	if err != nil || none != nil {
+		t.Errorf("no image state: %+v, %v", none, err)
+	}
+	if encoded, err := machinesproto.EncodeImageStateResult(nil); err != nil || string(encoded) != "null" {
+		t.Errorf("no image state is encoded as %s, %v", encoded, err)
+	}
+	if some, err := machinesproto.DecodeImageStateResult(result(t, "ok.image_state")); err != nil || some == nil || *some != want {
+		t.Errorf("an image state result: %+v, %v", some, err)
 	}
 	var running machinesproto.RuntimeState
 	if err := json.Unmarshal(result(t, "ok.runtime_state"), &running); err != nil || running != machinesproto.Running {

@@ -20,7 +20,8 @@ type Package struct {
 	// code calls their UnmarshalJSONFrom and generates nothing for them.
 	Opaque map[string]bool
 
-	// named are the types the wire types use that are named after a basic type.
+	// named are the types the wire types use that are named after a basic type:
+	// closed sets and strings with rules (see [Type]).
 	named map[string]*Type
 	// consts are the values of the package's constants, by name.
 	consts map[string]constant.Value
@@ -35,7 +36,8 @@ type File struct {
 	Name  string
 	Types []string
 	// Imports are the packages of the file that the wire types name, by the name
-	// the file gives them: the generated code needs them too.
+	// the file gives them: those of a wire struct of another package and of a
+	// func rule of one.
 	Imports map[string]string
 }
 
@@ -51,10 +53,22 @@ type Struct struct {
 	// Check is whether the struct has a method check() error for the rules
 	// across its fields.
 	Check bool
-	// Open is whether the struct ignores the members it does not have, as a
-	// serde struct without deny_unknown_fields does, where the others refuse
-	// them (//demi:open).
+	// Description is what a JSON Schema says about the struct: the lines of its
+	// //demi:describe directives, joined by newlines.
+	Description string
+	// Schema is whether the package emits the struct's JSON Schema.
+	Schema bool
+	// Open is whether the struct ignores members it does not have, as a serde
+	// struct without deny_unknown_fields does, where the others refuse them.
 	Open bool
+	// Scalar is the basic type of a variant that is not an object but a JSON
+	// string, number or boolean; such a variant has no fields.
+	Scalar *Type
+	// Embeds are the structs whose members the struct's Fields include, in
+	// the order it embeds them.
+	Embeds []string
+	// variant is whether the struct is marked //demi:variant.
+	variant bool
 }
 
 // A Field is a member of a wire struct.
@@ -68,10 +82,12 @@ type Field struct {
 	Required bool
 	// Nullable is whether a required member may be null; its type is a pointer.
 	Nullable bool
-	// Inline is whether the field is a union whose members are the struct's own,
-	// as serde's flatten makes them; its json name is empty.
+	// Inline is whether the field holds an adjacently tagged union whose two
+	// members, the tag and the content, are members of the field's struct, as
+	// serde's flatten makes them.
 	Inline bool
-	Rules  []Rule
+	// Rules are the rules of the field's check tag, after those of its type.
+	Rules []Rule
 }
 
 // A Kind says what a wire type holds.
@@ -83,6 +99,7 @@ const (
 	KindBool
 	KindInt
 	KindUint
+	KindFloat
 	KindStruct
 	KindUnion
 	KindSlice
@@ -108,10 +125,15 @@ type Type struct {
 	Key *Type
 	// Opaque is whether a struct is one the package decodes itself.
 	Opaque bool
-	// Qualifier is the name of the package of a wire struct of another package,
-	// which is opaque here: its own generated code decodes it and its own rules
-	// are run by a func rule of the field that holds it.
+	// Qualifier is the package of an opaque struct that another package declares
+	// (`other.Name`); empty for one of this package. Its package's generated code
+	// decodes it, and the field names a func rule that runs its checks.
 	Qualifier string
+	// Description and Rules belong to a type named after a basic type: a
+	// closed set of strings (//demi:enum) or a string with rules (//demi:value).
+	// The rules of a type apply to every field of it.
+	Description string
+	Rules       []Rule
 }
 
 // A Union is a sealed interface, Go's sum type.
@@ -122,11 +144,15 @@ type Union struct {
 	// told apart by its members.
 	TagName string
 	// ContentName is, for an adjacently tagged union, the member that holds the
-	// variant's members; empty for the other unions.
+	// variant's members (serde's `content`): the variant is the object
+	// {TagName: tag, ContentName: {members}}.
 	ContentName string
 	// Sealed is the interface's unexported method.
 	Sealed   string
 	Variants []*Struct
+	// Description and Schema are a struct's.
+	Description string
+	Schema      bool
 }
 
 // A RuleKind is the name of a rule in a check tag.
@@ -168,6 +194,23 @@ type Rule struct {
 type Bound struct {
 	// Src is the bound as Go source.
 	Src string
-	// Value is the bound's number.
+	// Value is the bound's number; Float is the same number when the bound of
+	// a float has a fraction.
 	Value int64
+	Float float64
+	// Fraction is whether the bound has a fraction, and so Float is exact and
+	// Value is not.
+	Fraction bool
+}
+
+// jsonKind names the JSON kind that a value of a basic type is written as.
+func (t *Type) jsonKind() string {
+	switch t.Kind {
+	case KindString:
+		return "string"
+	case KindBool:
+		return "boolean"
+	default:
+		return "number"
+	}
 }

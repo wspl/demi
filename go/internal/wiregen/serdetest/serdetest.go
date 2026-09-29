@@ -15,8 +15,7 @@ import (
 // A Note tolerates members it does not have, and has a member that is required
 // and may be null.
 //
-//demi:wire
-//demi:open
+//demi:wire open
 type Note struct {
 	Title string  `json:"title" check:"chars=1.."`
 	Reset *string `json:"reset" check:"nullable"`
@@ -31,17 +30,15 @@ type Command interface{ command() }
 
 // Stop takes no parameters, and ignores members it does not know.
 //
-//demi:variant stop
-//demi:open
+//demi:variant stop open
 type Stop struct{}
 
 // Start names a device and, once it is up, its boot record.
 //
-//demi:variant start
-//demi:open
+//demi:variant start open
 type Start struct {
 	Device string                  `json:"device" check:"chars=1.."`
-	Boot   runnerproto.ManagedBoot `json:"boot" check:"func=runnerproto.ValidateManagedBoot"`
+	Boot   runnerproto.ManagedBoot `json:"boot" check:"func=runnerproto.Validate"`
 	Limit  *uint8                  `json:"limit,omitzero"`
 }
 
@@ -58,8 +55,7 @@ func (Resize) command() {}
 
 // A Request has an id and the members of a command, as one JSON object.
 //
-//demi:wire
-//demi:open
+//demi:wire open
 type Request struct {
 	ID   string  `json:"id" check:"chars=1.."`
 	Call Command `json:",inline"`
@@ -77,7 +73,7 @@ type Holder struct {
 //
 //demi:wire
 type Fleet struct {
-	Boots []runnerproto.ManagedBoot          `json:"boots" check:"each(func=runnerproto.ValidateManagedBoot)"`
+	Boots []runnerproto.ManagedBoot          `json:"boots" check:"each(func=runnerproto.Validate)"`
 	ByID  map[string]runnerproto.ManagedBoot `json:"byId" check:"each(func=bootIsLocal)"`
 	Raw   jsontext.Value                     `json:"raw"`
 }
@@ -85,5 +81,5 @@ type Fleet struct {
 // bootIsLocal is a rule of this package that a value of another package's type
 // has.
 func bootIsLocal(boot runnerproto.ManagedBoot) error {
-	return runnerproto.ValidateManagedBoot(boot)
+	return runnerproto.Validate(boot)
 }

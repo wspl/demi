@@ -79,27 +79,3 @@ func check(value any) error {
 	}
 	return checked.validate()
 }
-
-// decodeNullable decodes data, one JSON document, as a T, or as nil when it is
-// a JSON null, and checks the rules of a T.
-func decodeNullable[T any](data []byte) (*T, error) {
-	var value *T
-	if err := json.Unmarshal(data, &value, wireOptions); err != nil {
-		return nil, wire.Refusal(err)
-	}
-	if value == nil {
-		return nil, nil
-	}
-	if err := check(*value); err != nil {
-		return nil, err
-	}
-	return value, nil
-}
-
-// encodeNullable returns the JSON of value, or a null for nil.
-func encodeNullable[T any](value *T) ([]byte, error) {
-	if value == nil {
-		return []byte("null"), nil
-	}
-	return encode(*value)
-}

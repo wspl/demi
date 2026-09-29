@@ -1,0 +1,37 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "url": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+      },
+      "minItems": 1,
+      "maxItems": 10
+    },
+    "format": {
+      "type": "string",
+      "enum": [
+        "text",
+        "html",
+        "dom"
+      ],
+      "description": "The form a page's content takes: rendered text, HTML, or the DOM tree\nserialized."
+    },
+    "timeout": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 1,
+      "description": "Whole operation deadline in milliseconds",
+      "maximum": 300000
+    }
+  },
+  "required": [
+    "url"
+  ],
+  "description": "`content.fetch`: loads URLs in temporary tabs and reads their content.",
+  "title": "ContentFetchInput"
+}

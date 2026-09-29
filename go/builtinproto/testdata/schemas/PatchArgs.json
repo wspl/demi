@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "patch": {
+      "type": "string",
+      "description": "Unified diff content"
+    }
+  },
+  "required": [
+    "patch"
+  ],
+  "description": "`file.patch`: applies a unified diff to one or more files.",
+  "title": "PatchArgs"
+}

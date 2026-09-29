@@ -1,0 +1,32 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "tab": {
+      "type": "string",
+      "description": "Browser tab ID returned by open or tabs",
+      "pattern": "^t[1-9][0-9]{0,14}$"
+    },
+    "mime": {
+      "type": "string",
+      "enum": [
+        "text/plain",
+        "text/html",
+        "image/png"
+      ],
+      "description": "A clipboard item's media type."
+    },
+    "timeout": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 1,
+      "description": "Whole operation deadline in milliseconds",
+      "maximum": 300000
+    }
+  },
+  "required": [
+    "tab"
+  ],
+  "description": "`clipboard.write`: writes stdin to the tab's clipboard.",
+  "title": "ClipboardWriteInput"
+}

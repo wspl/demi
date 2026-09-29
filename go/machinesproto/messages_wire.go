@@ -506,7 +506,7 @@ func (v WakeParams) MarshalJSONTo(enc *jsontext.Encoder) error {
 func (v WakeParams) validate() error {
 	var r wire.Report
 	r.Chars("deviceId", v.DeviceID, wire.AtLeast(1))
-	r.Check("boot", runnerproto.ValidateManagedBoot(v.Boot))
+	r.Check("boot", runnerproto.Validate(v.Boot))
 	return r.Err()
 }
 

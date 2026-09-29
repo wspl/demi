@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "closed": {
+      "type": "string",
+      "description": "A tab's public identity, which `open` and `tabs` return: `t` and the\ntab's number in the conversation (`browser.md` § One tab registry).",
+      "pattern": "^t[1-9][0-9]{0,14}$"
+    }
+  },
+  "required": [
+    "closed"
+  ],
+  "title": "CloseResult"
+}

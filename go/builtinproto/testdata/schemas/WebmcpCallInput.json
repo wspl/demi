@@ -1,0 +1,41 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "tab": {
+      "type": "string",
+      "description": "Browser tab ID returned by open or tabs",
+      "pattern": "^t[1-9][0-9]{0,14}$"
+    },
+    "tool": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "tools": {
+      "type": "string",
+      "description": "The generation `webmcp.list` returned",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "arguments": {
+      "type": "string",
+      "maxLength": 1048576
+    },
+    "timeout": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 1,
+      "description": "Whole operation deadline in milliseconds",
+      "maximum": 300000
+    }
+  },
+  "required": [
+    "tab",
+    "tool",
+    "tools",
+    "arguments"
+  ],
+  "description": "`webmcp.call`: calls one of the page's WebMCP tools with JSON arguments.",
+  "title": "WebmcpCallInput"
+}

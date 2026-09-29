@@ -1,0 +1,84 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "tab": {
+      "type": "string",
+      "description": "A tab's public identity, which `open` and `tabs` return: `t` and the\ntab's number in the conversation (`browser.md` § One tab registry).",
+      "pattern": "^t[1-9][0-9]{0,14}$"
+    },
+    "url": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "viewport": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "width": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 1
+        },
+        "devicePixelRatio": {
+          "type": "number",
+          "format": "double",
+          "minimum": 2.2250738585072014e-308
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "web",
+            "mobile",
+            "custom"
+          ],
+          "description": "Who decides a tab's viewport (`live-view.md` § Modes): the user's\npanel, a phone, or the agent."
+        }
+      },
+      "required": [
+        "width",
+        "height",
+        "devicePixelRatio",
+        "mode"
+      ],
+      "description": "A tab's viewport (`live-view.md` § Modes): its CSS size, the pixel ratio\nit renders at, and who decides them."
+    },
+    "dialog": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "alert",
+            "confirm",
+            "prompt",
+            "beforeunload"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "message"
+      ],
+      "description": "A JavaScript dialog a tab shows."
+    }
+  },
+  "required": [
+    "tab",
+    "url",
+    "title",
+    "viewport"
+  ],
+  "title": "InfoResult"
+}

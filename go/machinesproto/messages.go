@@ -23,8 +23,7 @@ type InvalidError = wire.InvalidError
 // names, and the call, whose members (op and params) are the request's own. A
 // member the request does not declare is ignored.
 //
-//demi:wire
-//demi:open
+//demi:wire open
 type Request struct {
 	ID   string `json:"id" check:"chars=1.."`
 	Call Call   `json:",inline"`
@@ -42,20 +41,17 @@ type Call interface{ call() }
 // ReconcileParams stops and saves every device, recovers incomplete operations
 // and installs the network policy again.
 //
-//demi:variant reconcile
-//demi:open
+//demi:variant reconcile open
 type ReconcileParams struct{}
 
 // CurrentBaseVersionParams reads the configured base.
 //
-//demi:variant current_base_version
-//demi:open
+//demi:variant current_base_version open
 type CurrentBaseVersionParams struct{}
 
 // ImageStateParams reads a device's committed generation.
 //
-//demi:variant image_state
-//demi:open
+//demi:variant image_state open
 type ImageStateParams struct {
 	DeviceID string `json:"deviceId" check:"chars=1.."`
 }
@@ -63,8 +59,7 @@ type ImageStateParams struct {
 // RuntimeStateParams reads whether the manager runs a sandbox for a device,
 // after the device's earlier operations.
 //
-//demi:variant runtime_state
-//demi:open
+//demi:variant runtime_state open
 type RuntimeStateParams struct {
 	DeviceID string `json:"deviceId" check:"chars=1.."`
 }
@@ -72,18 +67,16 @@ type RuntimeStateParams struct {
 // WakeParams creates first-use storage or recovers existing storage, then starts
 // one sandbox with the boot credential.
 //
-//demi:variant wake
-//demi:open
+//demi:variant wake open
 type WakeParams struct {
 	DeviceID string                  `json:"deviceId" check:"chars=1.."`
-	Boot     runnerproto.ManagedBoot `json:"boot" check:"func=runnerproto.ValidateManagedBoot"`
+	Boot     runnerproto.ManagedBoot `json:"boot" check:"func=runnerproto.Validate"`
 }
 
 // HibernateParams stops execution, saves storage and releases runtime
 // resources.
 //
-//demi:variant hibernate
-//demi:open
+//demi:variant hibernate open
 type HibernateParams struct {
 	DeviceID string `json:"deviceId" check:"chars=1.."`
 }
@@ -91,8 +84,7 @@ type HibernateParams struct {
 // CheckpointParams publishes the running device's storage while preserving its
 // processes.
 //
-//demi:variant checkpoint
-//demi:open
+//demi:variant checkpoint open
 type CheckpointParams struct {
 	DeviceID string `json:"deviceId" check:"chars=1.."`
 }
@@ -100,8 +92,7 @@ type CheckpointParams struct {
 // GrowVolumeParams grows one of the running device's filesystems to at least
 // Bytes.
 //
-//demi:variant grow_volume
-//demi:open
+//demi:variant grow_volume open
 type GrowVolumeParams struct {
 	DeviceID string `json:"deviceId" check:"chars=1.."`
 	Volume   Volume `json:"volume" check:"oneof=system|home"`
@@ -111,8 +102,7 @@ type GrowVolumeParams struct {
 // ResetParams publishes a clean system on BaseVersion with the retained home,
 // once per OperationID; it does not boot.
 //
-//demi:variant reset
-//demi:open
+//demi:variant reset open
 type ResetParams struct {
 	DeviceID    string `json:"deviceId" check:"chars=1.."`
 	OperationID string `json:"operationId" check:"chars=1.."`
@@ -140,8 +130,7 @@ type Response interface{ response() }
 // result as JSON: null, a base version, an [ImageState] or null, a
 // [RuntimeState]. It is always written.
 //
-//demi:variant ok
-//demi:open
+//demi:variant ok open
 type OK struct {
 	ID     string         `json:"id" check:"chars=1.."`
 	Result jsontext.Value `json:"result"`
@@ -149,8 +138,7 @@ type OK struct {
 
 // Failure is the reply of an operation that failed.
 //
-//demi:variant error
-//demi:open
+//demi:variant error open
 type Failure struct {
 	ID      string `json:"id" check:"chars=1.."`
 	Message string `json:"message"`
@@ -158,8 +146,7 @@ type Failure struct {
 
 // Death says a device's sandbox exited without being asked to stop.
 //
-//demi:variant death
-//demi:open
+//demi:variant death open
 type Death struct {
 	DeviceID string `json:"deviceId" check:"chars=1.."`
 }

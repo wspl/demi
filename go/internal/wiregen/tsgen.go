@@ -109,8 +109,14 @@ func (p *Package) definition(name string) (string, error) {
 		} else {
 			code = fmt.Sprintf("z.union([%s])", strings.Join(refs, ", "))
 		}
+	} else if s := p.Structs[name]; s.Scalar != nil {
+		doc = s.Doc
+		scalar, err := p.schema(s.Scalar, nil)
+		if err != nil {
+			return "", err
+		}
+		code = scalar
 	} else {
-		s := p.Structs[name]
 		doc = s.Doc
 		object, err := p.object(s)
 		if err != nil {
@@ -136,6 +142,9 @@ func (p *Package) object(s *Struct) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("%s.%s: %w", s.Name, f.Name, err)
 		}
+		if f.Nullable {
+			schema += ".nullable()"
+		}
 		if !f.Required {
 			schema += ".optional()"
 		}
@@ -144,10 +153,15 @@ func (p *Package) object(s *Struct) (string, error) {
 		fmt.Fprintf(&line, "  %s: %s,\n", key(f.JSON), schema)
 		lines = append(lines, line.String())
 	}
-	if len(lines) == 0 {
-		return "z.strictObject({})", nil
+	function := "z.strictObject"
+	if s.Open {
+		// Zod's object ignores the members it does not have.
+		function = "z.object"
 	}
-	return "z.strictObject({\n" + strings.Join(lines, "") + "})", nil
+	if len(lines) == 0 {
+		return function + "({})", nil
+	}
+	return function + "({\n" + strings.Join(lines, "") + "})", nil
 }
 
 // schema returns the Zod schema of a value of type t under rules.
@@ -168,6 +182,20 @@ func (p *Package) schema(t *Type, rules []Rule) (string, error) {
 		return p.stringSchema(rules)
 	case KindInt, KindUint:
 		return p.integerSchema(t, rules)
+	case KindFloat:
+		code := "z.number()"
+		for _, rule := range rules {
+			if rule.Kind != RuleRange {
+				continue
+			}
+			if rule.Min != nil {
+				code += fmt.Sprintf(".min(%s)", strconv.FormatFloat(rule.Min.Float, 'g', -1, 64))
+			}
+			if rule.Max != nil {
+				code += fmt.Sprintf(".max(%s)", strconv.FormatFloat(rule.Max.Float, 'g', -1, 64))
+			}
+		}
+		return code, nil
 	case KindSlice:
 		element, err := p.schema(t.Elem, eachRules(rules))
 		if err != nil {

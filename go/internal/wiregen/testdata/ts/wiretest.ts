@@ -117,3 +117,54 @@ export type Vague = z.infer<typeof vagueSchema>
 /** An Empty has no field. */
 export const emptySchema = z.strictObject({})
 export type Empty = z.infer<typeof emptySchema>
+
+/** A Header is what a [Message] starts with. */
+export const headerSchema = z.strictObject({
+  id: z.string().min(1),
+})
+export type Header = z.infer<typeof headerSchema>
+
+/**
+ * A Message embeds a struct: its members are the Header's and its own, as
+ * serde's flatten makes them.
+ */
+export const messageSchema = z.strictObject({
+  id: z.string().min(1),
+  body: z.string(),
+})
+export type Message = z.infer<typeof messageSchema>
+
+/** A Tolerant ignores the members it does not have. */
+export const tolerantSchema = z.object({
+  kept: z.string(),
+})
+export type Tolerant = z.infer<typeof tolerantSchema>
+
+/** A Celsius is a temperature. */
+export const celsiusSchema = z.number()
+export type Celsius = z.infer<typeof celsiusSchema>
+
+/** A Label is a name. */
+export const labelSchema = z.string()
+export type Label = z.infer<typeof labelSchema>
+
+/** A Reading is a temperature or a label: a JSON number or a JSON string. */
+export const readingSchema = z.union([celsiusSchema, labelSchema])
+export type Reading = z.infer<typeof readingSchema>
+
+/**
+ * Extras has one field for each thing the wire has beyond the rest: a float, a
+ * closed set, a value with rules, a member that may be null, a union of
+ * scalars, an embedded struct and an open one.
+ */
+export const extrasSchema = z.strictObject({
+  ratio: z.number().min(0.5).max(4),
+  level: z.enum(["low", "high"]),
+  levels: z.array(z.enum(["low", "high"])),
+  code: z.string().regex(new RegExp("^[a-z]+$", "u")).min(3).max(3),
+  note: z.string().min(1).max(3).nullable(),
+  reading: readingSchema,
+  message: messageSchema,
+  tolerant: tolerantSchema,
+})
+export type Extras = z.infer<typeof extrasSchema>

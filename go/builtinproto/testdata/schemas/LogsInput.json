@@ -1,0 +1,53 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "tab": {
+      "type": "string",
+      "description": "Browser tab ID returned by open or tabs",
+      "pattern": "^t[1-9][0-9]{0,14}$"
+    },
+    "level": {
+      "type": "array",
+      "items": {
+        "description": "A console entry's level.",
+        "type": "string",
+        "enum": [
+          "debug",
+          "info",
+          "log",
+          "warning",
+          "error"
+        ]
+      }
+    },
+    "filter": {
+      "type": "string",
+      "maxLength": 1048576
+    },
+    "after": {
+      "type": "string",
+      "description": "Cursor returned by a previous read",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "limit": {
+      "type": "integer",
+      "format": "uint",
+      "minimum": 1,
+      "maximum": 1000
+    },
+    "timeout": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 1,
+      "description": "Whole operation deadline in milliseconds",
+      "maximum": 300000
+    }
+  },
+  "required": [
+    "tab"
+  ],
+  "description": "`logs`: reads a tab's console entries after a cursor.",
+  "title": "LogsInput"
+}

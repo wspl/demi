@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"time"
+
+	"github.com/wspl/demi/go/internal/filelock"
 )
 
 // lockRetry is how often a waiting installer tries the lock again.
@@ -37,7 +39,7 @@ func AcquireInstallLock(ctx context.Context, path string) (*InstallLock, error) 
 	}
 	waiting := false
 	for {
-		held, err := tryLock(file)
+		held, err := filelock.TryLock(file)
 		if err != nil {
 			file.Close()
 			return nil, err

@@ -1295,3 +1295,346 @@ func (v *Empty) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 func (Empty) validate() error {
 	return nil
 }
+
+// UnmarshalJSONFrom decodes the JSON object of Header: it refuses a member that
+// the type does not have, a required member that is missing, a null, and a
+// value of another JSON kind than the member's, naming the member.
+func (v *Header) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	*v = Header{}
+	if err := wire.BeginObject(dec); err != nil {
+		return err
+	}
+	var seen uint64
+	for {
+		name, more, err := wire.NextMember(dec)
+		if err != nil {
+			return err
+		}
+		if !more {
+			break
+		}
+		switch name {
+		case "id":
+			seen |= 1 << 0
+			s, err := wire.ReadString(dec)
+			if err != nil {
+				return wire.In("id", err)
+			}
+			v.ID = s
+		default:
+			return wire.Unknown(name)
+		}
+	}
+	if seen&(1<<0) == 0 {
+		return wire.Required("id")
+	}
+	return nil
+}
+
+// validate checks the rules of the fields of Header, and reports every one that
+// is broken.
+func (v Header) validate() error {
+	var r wire.Report
+	r.Chars("id", v.ID, wire.AtLeast(1))
+	return r.Err()
+}
+
+// UnmarshalJSONFrom decodes the JSON object of Message: it refuses a member that
+// the type does not have, a required member that is missing, a null, and a
+// value of another JSON kind than the member's, naming the member.
+func (v *Message) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	*v = Message{}
+	if err := wire.BeginObject(dec); err != nil {
+		return err
+	}
+	var seen uint64
+	for {
+		name, more, err := wire.NextMember(dec)
+		if err != nil {
+			return err
+		}
+		if !more {
+			break
+		}
+		switch name {
+		case "id":
+			seen |= 1 << 0
+			s, err := wire.ReadString(dec)
+			if err != nil {
+				return wire.In("id", err)
+			}
+			v.ID = s
+		case "body":
+			seen |= 1 << 1
+			s, err := wire.ReadString(dec)
+			if err != nil {
+				return wire.In("body", err)
+			}
+			v.Body = s
+		default:
+			return wire.Unknown(name)
+		}
+	}
+	if seen&(1<<0) == 0 {
+		return wire.Required("id")
+	}
+	if seen&(1<<1) == 0 {
+		return wire.Required("body")
+	}
+	return nil
+}
+
+// MarshalJSONTo encodes Message as a JSON object with the members of the structs
+// it embeds among its own.
+func (v Message) MarshalJSONTo(enc *jsontext.Encoder) error {
+	return json.MarshalEncode(enc, struct {
+		ID   string `json:"id"`
+		Body string `json:"body"`
+	}{v.ID, v.Body})
+}
+
+// validate checks the rules of the fields of Message, and reports every one that
+// is broken.
+func (v Message) validate() error {
+	var r wire.Report
+	r.Chars("id", v.ID, wire.AtLeast(1))
+	return r.Err()
+}
+
+// UnmarshalJSONFrom decodes the JSON object of Tolerant: it ignores a member that
+// the type does not have, and refuses a required member that is missing, a
+// null, and a value of another JSON kind than the member's, naming the member.
+func (v *Tolerant) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	*v = Tolerant{}
+	if err := wire.BeginObject(dec); err != nil {
+		return err
+	}
+	var seen uint64
+	for {
+		name, more, err := wire.NextMember(dec)
+		if err != nil {
+			return err
+		}
+		if !more {
+			break
+		}
+		switch name {
+		case "kept":
+			seen |= 1 << 0
+			s, err := wire.ReadString(dec)
+			if err != nil {
+				return wire.In("kept", err)
+			}
+			v.Kept = s
+		default:
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
+		}
+	}
+	if seen&(1<<0) == 0 {
+		return wire.Required("kept")
+	}
+	return nil
+}
+
+// validate checks the rules of the fields of Tolerant, and reports every one that
+// is broken.
+func (Tolerant) validate() error {
+	return nil
+}
+
+// decodeReading decodes the JSON value of a Reading, whichever variant it is.
+func decodeReading(dec *jsontext.Decoder) (Reading, error) {
+	switch dec.PeekKind() {
+	case '0':
+		f, err := wire.ReadFloat(dec)
+		if err != nil {
+			return nil, err
+		}
+		return Celsius(f), nil
+	case '"':
+		s, err := wire.ReadString(dec)
+		if err != nil {
+			return nil, err
+		}
+		return Label(s), nil
+	}
+	return nil, wire.NoVariant("Celsius", "Label")
+}
+
+// validateReading checks the rules of the variant that v is.
+func validateReading(v Reading) error {
+	switch v := v.(type) {
+	case nil:
+		return wire.Required("")
+	case Celsius:
+		return nil
+	case *Celsius:
+		if v == nil {
+			return fmt.Errorf("a nil %T is not a variant of Reading", v)
+		}
+		return nil
+	case Label:
+		return nil
+	case *Label:
+		if v == nil {
+			return fmt.Errorf("a nil %T is not a variant of Reading", v)
+		}
+		return nil
+	}
+	return fmt.Errorf("%T is not a variant of Reading", v)
+}
+
+// UnmarshalJSONFrom decodes the JSON object of Extras: it refuses a member that
+// the type does not have, a required member that is missing, a null, and a
+// value of another JSON kind than the member's, naming the member.
+func (v *Extras) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	*v = Extras{}
+	if err := wire.BeginObject(dec); err != nil {
+		return err
+	}
+	var seen uint64
+	for {
+		name, more, err := wire.NextMember(dec)
+		if err != nil {
+			return err
+		}
+		if !more {
+			break
+		}
+		switch name {
+		case "ratio":
+			seen |= 1 << 0
+			f, err := wire.ReadFloat(dec)
+			if err != nil {
+				return wire.In("ratio", err)
+			}
+			v.Ratio = f
+		case "level":
+			seen |= 1 << 1
+			s, err := wire.ReadString(dec)
+			if err != nil {
+				return wire.In("level", err)
+			}
+			v.Level = Level(s)
+		case "levels":
+			seen |= 1 << 2
+			if err := wire.BeginArray(dec); err != nil {
+				return wire.In("levels", err)
+			}
+			items0 := []Level{}
+			for {
+				more, err := wire.NextElement(dec)
+				if err != nil {
+					return wire.In("levels", err)
+				}
+				if !more {
+					break
+				}
+				var element0 Level
+				{
+					s, err := wire.ReadString(dec)
+					if err != nil {
+						return wire.In("levels", wire.In(wire.Index(len(items0)), err))
+					}
+					element0 = Level(s)
+				}
+				items0 = append(items0, element0)
+			}
+			v.Levels = items0
+		case "code":
+			seen |= 1 << 3
+			s, err := wire.ReadString(dec)
+			if err != nil {
+				return wire.In("code", err)
+			}
+			v.Code = Code(s)
+		case "note":
+			seen |= 1 << 4
+			if wire.IsNull(dec) {
+				if _, err := dec.ReadToken(); err != nil {
+					return wire.In("note", err)
+				}
+			} else {
+				var value string
+				s, err := wire.ReadString(dec)
+				if err != nil {
+					return wire.In("note", err)
+				}
+				value = s
+				v.Note = &value
+			}
+		case "reading":
+			seen |= 1 << 5
+			u, err := decodeReading(dec)
+			if err != nil {
+				return wire.In("reading", err)
+			}
+			v.Reading = u
+		case "message":
+			seen |= 1 << 6
+			if err := v.Message.UnmarshalJSONFrom(dec); err != nil {
+				return wire.In("message", err)
+			}
+		case "tolerant":
+			seen |= 1 << 7
+			if err := v.Tolerant.UnmarshalJSONFrom(dec); err != nil {
+				return wire.In("tolerant", err)
+			}
+		default:
+			return wire.Unknown(name)
+		}
+	}
+	if seen&(1<<0) == 0 {
+		return wire.Required("ratio")
+	}
+	if seen&(1<<1) == 0 {
+		return wire.Required("level")
+	}
+	if seen&(1<<2) == 0 {
+		return wire.Required("levels")
+	}
+	if seen&(1<<3) == 0 {
+		return wire.Required("code")
+	}
+	if seen&(1<<4) == 0 {
+		return wire.Required("note")
+	}
+	if seen&(1<<5) == 0 {
+		return wire.Required("reading")
+	}
+	if seen&(1<<6) == 0 {
+		return wire.Required("message")
+	}
+	if seen&(1<<7) == 0 {
+		return wire.Required("tolerant")
+	}
+	return nil
+}
+
+// validate checks the rules of the fields of Extras, and reports every one that
+// is broken.
+func (v Extras) validate() error {
+	var r wire.Report
+	r.Float("ratio", float64(v.Ratio), wire.FloatBetween(0.5, 4))
+	r.OneOf("level", string(v.Level), "low", "high")
+	{
+		var group0 wire.Report
+		for i, e := range v.Levels {
+			var item0 wire.Report
+			item0.OneOf("", string(e), "low", "high")
+			group0.Nest(wire.Index(i), item0.Err())
+		}
+		r.Nest("levels", group0.Err())
+	}
+	r.Pattern("code", string(v.Code), lowercase)
+	r.Chars("code", string(v.Code), wire.Between(3, 3))
+	if v.Note != nil {
+		r.Chars("note", (*v.Note), wire.Between(1, 3))
+	}
+	r.Nest("reading", validateReading(v.Reading))
+	r.Nest("message", v.Message.validate())
+	r.Nest("tolerant", v.Tolerant.validate())
+	return r.Err()
+}

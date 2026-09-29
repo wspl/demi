@@ -1,0 +1,38 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "tab": {
+      "type": "string",
+      "description": "Browser tab ID returned by open or tabs",
+      "pattern": "^t[1-9][0-9]{0,14}$"
+    },
+    "url": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "load": {
+      "type": "string",
+      "enum": [
+        "commit",
+        "domcontentloaded",
+        "load"
+      ],
+      "description": "How far a navigation loads before it answers."
+    },
+    "timeout": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 1,
+      "description": "Whole operation deadline in milliseconds",
+      "maximum": 300000
+    }
+  },
+  "required": [
+    "tab",
+    "url"
+  ],
+  "description": "`goto`: navigates a tab to a URL.",
+  "title": "GotoInput"
+}
