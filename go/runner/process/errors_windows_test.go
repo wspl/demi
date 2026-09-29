@@ -1,5 +1,5 @@
 package process_test
 
-import "syscall"
+import "golang.org/x/sys/windows"
 
-func exhaustedError() error { return syscall.ERROR_TOO_MANY_OPEN_FILES }
+func exhaustedError() error { return windows.ERROR_TOO_MANY_OPEN_FILES }

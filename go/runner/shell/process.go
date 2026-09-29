@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"strconv"
@@ -200,10 +201,15 @@ func startProcess(ctx context.Context, path string, args []string, stdout, stder
 		return nil, err
 	}
 
-	cleanup, err := contain(cmd)
+	group, err := process.Contain(cmd)
 	if err != nil {
 		closeFiles()
 		return nil, err
+	}
+	cleanup := func() {
+		if err := group.Close(); err != nil {
+			slog.Warn("shell descendant cleanup failed", "error", err)
+		}
 	}
 	err = cmd.Start()
 	if err != nil {
