@@ -1,0 +1,4 @@
+golang.org/x/crypto/x509roots/fallback v0.0.0-20260921070245-7a4a4d6beae2 h1:eZbx26MSkMP0nFHSVwZplOsFCdjlfBz822hYXljWbUo=
+golang.org/x/crypto/x509roots/fallback v0.0.0-20260921070245-7a4a4d6beae2/go.mod h1:HPze8vhfG6fO06AM+VSvxRm4E3+5Yk375mgrJ5M2z1E=
+golang.org/x/sys v0.48.0 h1:bbX/i/6MgT9BVLM9RT1thmxL04yeTAhbEz4SyadbXoo=
+golang.org/x/sys v0.48.0/go.mod h1:hNLxWAXmnKAxqDtdwIYC4bM9oQPEecfsnNMuSxOs3og=

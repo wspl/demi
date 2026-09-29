@@ -151,7 +151,7 @@ func TestGeneratedTypeScriptIsWhatTheDeclarationsSay(t *testing.T) {
 // The files a package commits are what go generate writes: no declaration
 // changed without its generated code.
 func TestCommittedGeneratedFilesAreCurrent(t *testing.T) {
-	for _, dir := range []string{"wiretest", "../../commandservice"} {
+	for _, dir := range []string{"wiretest", "../../commandservice", "../../artifact", "../../claudeproto"} {
 		pkg, err := Load(dir)
 		if err != nil {
 			t.Fatalf("%s: %v", dir, err)
