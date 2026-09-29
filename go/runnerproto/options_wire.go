@@ -3,6 +3,7 @@
 package runnerproto
 
 import (
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
 	"reflect"
@@ -15,6 +16,40 @@ import (
 // decoder, which json needs to decode into an interface.
 var wireOptions = json.JoinOptions(
 	json.Deterministic(true),
+	json.WithUnmarshalers(json.JoinUnmarshalers(
+		json.UnmarshalFromFunc(func(dec *jsontext.Decoder, v *KeptRecord) error {
+			value, err := decodeKeptRecord(dec)
+			if err != nil {
+				return err
+			}
+			*v = value
+			return nil
+		}),
+		json.UnmarshalFromFunc(func(dec *jsontext.Decoder, v *Inbound) error {
+			value, err := decodeInbound(dec)
+			if err != nil {
+				return err
+			}
+			*v = value
+			return nil
+		}),
+		json.UnmarshalFromFunc(func(dec *jsontext.Decoder, v *Outbound) error {
+			value, err := decodeOutbound(dec)
+			if err != nil {
+				return err
+			}
+			*v = value
+			return nil
+		}),
+		json.UnmarshalFromFunc(func(dec *jsontext.Decoder, v *ArtifactOwner) error {
+			value, err := decodeArtifactOwner(dec)
+			if err != nil {
+				return err
+			}
+			*v = value
+			return nil
+		}),
+	)),
 )
 
 // decode decodes data, one JSON document, as a T, one of the package's wire

@@ -127,6 +127,13 @@ func (p *reader) number(text string) (int64, error) {
 		return n, nil
 	}
 	value, ok := p.pkg.consts[text]
+	if qualifier, name, qualified := strings.Cut(text, "."); qualified && p.foreign != nil && p.use(qualifier) {
+		owner, err := p.foreign(p.imports[p.file][qualifier])
+		if err != nil {
+			return 0, err
+		}
+		value, ok = owner.consts[name]
+	}
 	if !ok {
 		return 0, fmt.Errorf("%s is neither a number nor a constant of the package", text)
 	}
