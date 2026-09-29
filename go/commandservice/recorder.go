@@ -15,6 +15,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -90,7 +91,7 @@ func (r *Recorder) Report() (EditJournal, error) {
 		if err != nil {
 			// A file that cannot be looked at is kept: only one that is gone is
 			// dropped.
-			return errors.Is(err, fs.ErrNotExist)
+			return absent(err)
 		}
 		return !info.Mode().IsRegular()
 	})
@@ -387,37 +388,52 @@ type contents struct {
 	kind contentsKind
 	// data are the bytes of held contents.
 	data []byte
-	// stamp tells a held or unavailable file from another by its size and its
-	// modification time, when they are known. The Rust also compares the time
-	// the file was created; the standard library does not offer it.
+	// stamp tells a held or unavailable file from another by its size, its
+	// modification time and its creation time, when they are known.
 	stamp *fileStamp
 }
 
 type fileStamp struct {
 	length   int64
 	modified time.Time
+	// created is when the file was created, where the system and the file system
+	// tell; two stamps are equal only if both know it and agree, or neither does.
+	created    time.Time
+	hasCreated bool
 }
 
-func stampOf(info fs.FileInfo) *fileStamp {
-	return &fileStamp{length: info.Size(), modified: info.ModTime()}
+func stampOf(path string, info fs.FileInfo) *fileStamp {
+	stamp := &fileStamp{length: info.Size(), modified: info.ModTime()}
+	stamp.created, stamp.hasCreated = birthTime(path, info)
+	return stamp
 }
 
 func (s *fileStamp) equal(other *fileStamp) bool {
-	return s.length == other.length && s.modified.Equal(other.modified)
+	if s.length != other.length || !s.modified.Equal(other.modified) || s.hasCreated != other.hasCreated {
+		return false
+	}
+	return !s.hasCreated || s.created.Equal(other.created)
+}
+
+// absent reports whether a lookup failed because nothing is at the path: a path
+// below a file names nothing either (docs/execution/edit-tracking.md
+// § Recording actual writes).
+func absent(err error) bool {
+	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
 }
 
 // statContents looks at a path without reading it.
 func statContents(path string) contents {
 	info, err := os.Stat(path)
 	switch {
-	case errors.Is(err, fs.ErrNotExist):
+	case absent(err):
 		return contents{kind: missing}
 	case err != nil:
 		return contents{kind: unavailable}
 	case !info.Mode().IsRegular():
 		return contents{kind: notFile}
 	}
-	return contents{kind: unavailable, stamp: stampOf(info)}
+	return contents{kind: unavailable, stamp: stampOf(path, info)}
 }
 
 // readContents reads a path: what it holds up to [EditFileBytes] bytes.
@@ -427,13 +443,13 @@ func readContents(path string) contents {
 	case err == nil && !info.Mode().IsRegular():
 		return contents{kind: notFile}
 	case err == nil && info.Size() > EditFileBytes:
-		return contents{kind: unavailable, stamp: stampOf(info)}
-	case errors.Is(err, fs.ErrNotExist):
+		return contents{kind: unavailable, stamp: stampOf(path, info)}
+	case absent(err):
 		return contents{kind: missing}
 	case err != nil:
 		return contents{kind: unavailable}
 	}
-	stamp := stampOf(info)
+	stamp := stampOf(path, info)
 	data, err := RetryBlocking(func() ([]byte, error) { return readLimited(path) })
 	if err != nil || len(data) > EditFileBytes {
 		return contents{kind: unavailable, stamp: stamp}

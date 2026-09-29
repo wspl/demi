@@ -5,6 +5,8 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
+	"time"
 )
 
 // This file gives the tests of package commandservice_test the few internals
@@ -60,3 +62,12 @@ func ServiceHandler(handler Handler) (http.Handler, func() error, error) {
 // ErrNoDescriptor is the error of a process that has no descriptor left, on
 // this platform.
 var ErrNoDescriptor = errNoDescriptor
+
+// BirthTime returns when the file at path was created, when this system tells.
+func BirthTime(path string) (time.Time, bool) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return birthTime(path, info)
+}
