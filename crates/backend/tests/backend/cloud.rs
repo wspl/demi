@@ -694,6 +694,37 @@ async fn the_clouds_files_and_todos_and_the_usage_ledger_survive_a_backend_resta
     backend.close().await;
 }
 
+// One backend and no runner; a broken shutdown reaches the 20-second test
+// guard. The runner connection timeout stays at its production default.
+#[tokio::test]
+async fn shutdown_cancels_a_cloud_boot_waiting_for_its_runner_and_saves_it_once() {
+    let harness = Harness::new().with_claude_package();
+    harness.manager.script(|script| script.silent_wake = true);
+    let (backend, master) = harness.start_set_up().await;
+    let imported = backend
+        .post(
+            "/api/providers/setup-token",
+            Some(&master),
+            json!({ "token": "sk-ant-oat01-shutdown-account", "label": "Claude" }),
+        )
+        .await;
+    assert_eq!(imported.status, StatusCode::CREATED);
+    eventually("the install wakes the Cloud", || async {
+        harness
+            .manager
+            .calls()
+            .iter()
+            .any(|call| call.starts_with("wake:"))
+    })
+    .await;
+    let device = the_cloud(&harness);
+
+    tokio::time::timeout(PATIENCE, backend.close())
+        .await
+        .expect("shutdown must not wait out the runner connection timeout");
+    assert_eq!(harness.manager.count(&format!("hibernate:{device}")), 1);
+}
+
 #[tokio::test]
 async fn shutdown_ends_an_open_download_saves_the_cloud_and_reports_a_save_that_failed() {
     let harness = Harness::new();

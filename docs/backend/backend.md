@@ -455,9 +455,11 @@ keep working, because the steps below need them:
    close, so no frame reaches a tree after its shutdown. Agent turns are
    aborted: a running turn records that its session was shut down, and its
    jobs are killed while their runners are still connected. Claude Code CLI
-   installs are cancelled; the next need starts them again. The Cloud
-   hibernates. Then the shard's runner connections close, and after them its
-   pipes fail.
+   installs are cancelled; the next need starts them again. A Cloud boot
+   waiting for its runner ends at once, since the closed listener lets no
+   runner connect, and saves what the sandbox wrote, as a failed boot does.
+   The Cloud hibernates. Then the shard's runner connections close, and after
+   them its pipes fail.
 3. Runners waiting to be paired are disconnected, and the machine manager's
    client closes
    ([Control and ownership](../cloud/managed-hosts.md#control-and-ownership));
