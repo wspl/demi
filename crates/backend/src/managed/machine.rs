@@ -534,9 +534,15 @@ impl Shard {
         };
         services.cloud.machines.call(wake).await?;
         let connection = services.cloud.tuning.runner_connection;
-        tokio::time::timeout(connection, self.devices().until_online(device))
-            .await
-            .map_err(|_| CloudError::Failed("Cloud boot timeout: its runner did not connect".into()))
+        tokio::select! {
+            biased;
+            // The listener is closed at shutdown, so no runner can connect.
+            // Let the failed-boot path save what the sandbox wrote.
+            () = self.closed() => Err(CloudError::Closed),
+            connected = tokio::time::timeout(connection, self.devices().until_online(device)) => {
+                connected.map_err(|_| CloudError::Failed("Cloud boot timeout: its runner did not connect".into()))
+            }
+        }
     }
 
     /// Ends the boot under way: a machine whose runner connected runs, one
