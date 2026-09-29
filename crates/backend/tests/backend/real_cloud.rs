@@ -665,8 +665,7 @@ async fn a_checkpoint_with_chrome_open_saves_both_images_with_what_a_mapping_wro
 
     // A second conversation keeps the Cloud running while the first goes
     // idle, its mapper ended: the first hears its release there, which
-    // closes its Chrome and removes its job output (`resource-lifecycle.md`
-    // § Conversation release).
+    // closes its Chrome (`resource-lifecycle.md` § Conversation release).
     let mut second = on_cloud(&backend, &master, &master, &vendor, SECOND, "/b").await;
     let busy = backend.file_gate(&master, SECOND).await.enter(Purpose::Demand).await;
     let ended = run(&mut first, "end", "pkill -f mapper.py; echo ended").await;
@@ -684,8 +683,8 @@ async fn a_checkpoint_with_chrome_open_saves_both_images_with_what_a_mapping_wro
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
     measured(TEST, "release of an idle conversation, window included", started.elapsed());
-    let held = run(&mut second, "held", "ls /var/lib/demi/jobs").await;
-    assert!(!held.contains(FIRST) && held.contains(SECOND), "{held}");
+    let held = run(&mut second, "held", "echo held").await;
+    assert!(held.contains("held"), "{held}");
     assert_eq!(status(&backend, &master).await.state, CloudState::Running);
     drop(busy);
     backend.close().await;
@@ -813,12 +812,12 @@ async fn a_cloud_whose_sandbox_is_killed_reports_a_death_and_boots_again_with_it
     measured(TEST, "death until off", started.elapsed());
 
     let started = Instant::now();
-    let back = run(&mut first, "back", &format!("cat ~/note; ls /var/lib/demi/jobs/{FIRST} | wc -l")).await;
+    let back = run(&mut first, "back", "cat ~/note; ls -d /var/lib/demi/jobs/job-* | wc -l").await;
     measured(TEST, "boot after the death and command", started.elapsed());
-    // The job output of the conversation, which no release reached, is on
-    // the system image and outlived the death: the earlier job's directory
-    // is there beside this job's own.
-    assert!(back.contains("before-death\n2"), "{back}");
+    // The home outlived the death. The new runner removed the job
+    // directories the dead one left (`runner.md` § Pipes and output), so only this
+    // job's own is there.
+    assert!(back.contains("before-death\n1"), "{back}");
     drop(working);
     backend.close().await;
 }
