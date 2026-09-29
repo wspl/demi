@@ -14,6 +14,7 @@ require (
 	golang.org/x/crypto/x509roots/fallback v0.0.0-20260921070245-7a4a4d6beae2
 	golang.org/x/sync v0.23.0
 	golang.org/x/sys v0.48.0
+	golang.org/x/text v0.35.0
 	golang.org/x/tools v0.43.0
 )
 
@@ -23,5 +24,4 @@ require (
 	github.com/vishvananda/netns v0.0.5 // indirect
 	golang.org/x/mod v0.34.0 // indirect
 	golang.org/x/net v0.52.0 // indirect
-	golang.org/x/text v0.35.0 // indirect
 )
