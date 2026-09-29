@@ -301,7 +301,7 @@ func TestBackendFeatureDeclarationRefusals(t *testing.T) {
 		"//demi:wire\ntype T struct{A wire.Members `json:\",inline\"`; B wire.Members `json:\",inline\"`}",
 		"//demi:wire\ntype T struct{Extra map[string]jsontext.Value `json:\",inline\"`}",
 		"//demi:wire\ntype T struct{Extra wire.Members `json:\"extra\"`}",
-		"//demi:opaque number\ntype T struct{}",
+		"//demi:opaque number format=date-time\ntype T struct{}",
 		"//demi:opaque string format=\ntype T struct{}",
 		"//demi:wire\n//demi:export bad\ntype T struct{}",
 	} {

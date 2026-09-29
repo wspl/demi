@@ -308,6 +308,9 @@ func (g *goGen) decoder(s *Struct, members []member) {
 			g.p("var content jsontext.Value")
 		}
 	}
+	for _, owner := range s.ForeignEmbeds {
+		g.p("var embed%s wire.Members", owner.Name)
+	}
 	g.p("for {")
 	g.p("name, more, err := wire.NextMember(dec)")
 	g.p("if err != nil {")
@@ -335,6 +338,10 @@ func (g *goGen) decoder(s *Struct, members []member) {
 			g.p("}")
 		case m.field == nil:
 			g.tagMember(m)
+		case m.field.Owner != nil:
+			g.p("raw,err:=wire.ReadRaw(dec)")
+			g.p("if err!=nil{return wire.In(name,err)}")
+			g.p("embed%s=append(embed%s,wire.Member{Name:name,Value:raw})", m.field.Owner.Name, m.field.Owner.Name)
 		default:
 			g.field(m.field)
 		}
@@ -368,6 +375,11 @@ func (g *goGen) decoder(s *Struct, members []member) {
 			g.p("}")
 			g.p("v.%s = value", f.Name)
 		}
+	}
+	for _, owner := range s.ForeignEmbeds {
+		g.imports["encoding/json/v2"] = true
+		g.p("{ raw,err:=embed%s.JSON(); if err!=nil{return err}", owner.Name)
+		g.p("if err:=json.Unmarshal(raw,&v.%s);err!=nil{return wire.Refusal(err)} }", owner.Name)
 	}
 	g.p("return nil")
 	g.p("}")
@@ -487,6 +499,10 @@ func wrapError(elems []string, err string) string {
 // decode writes the statements that read one JSON value of type t into target.
 func (g *goGen) decode(t *Type, target string, wraps []string, depth int) {
 	fail := "return " + wrapError(wraps, "err")
+	if t.CustomDecode {
+		g.p("if err := %s.UnmarshalJSONFrom(dec); err != nil { %s }", target, fail)
+		return
+	}
 	if t.Qualifier != "" && (t.Kind == KindUnion || t.Kind == KindString) {
 		g.p("u,err := %s.Decode%sJSONFrom(dec)", t.Qualifier, t.Name)
 		g.check(fail)
@@ -551,7 +567,7 @@ func (g *goGen) check(fail string) {
 // convert returns value, of the basic type, as the possibly named type t.
 func convert(t *Type, value string) string {
 	if t.Name != "" {
-		return fmt.Sprintf("%s(%s)", t.Name, value)
+		return fmt.Sprintf("%s(%s)", t.Src, value)
 	}
 	return value
 }
@@ -622,6 +638,9 @@ func (g *goGen) validator(s *Struct) {
 	var body goGen
 	body.imports = g.imports
 	for _, f := range s.Fields {
+		if f.Owner != nil {
+			continue
+		}
 		body.fieldRules(f)
 	}
 	if s.Unknown != nil {
@@ -629,6 +648,9 @@ func (g *goGen) validator(s *Struct) {
 	}
 	for _, embedded := range s.EmbedChecks {
 		body.p("r.Check(\"\",v.%s.check())", embedded)
+	}
+	for _, owner := range s.ForeignEmbeds {
+		body.p("r.Nest(\"\",%s(v.%s))", owner.Validator, owner.Name)
 	}
 	if s.Check {
 		body.p("r.Check(\"\", v.check())")
@@ -678,6 +700,8 @@ func (g *goGen) value(t *Type, expr string, rules []Rule, path, report string, d
 	}
 
 	switch {
+	case t.CustomCheck && t.Qualifier == "":
+		g.p("%s.Nest(%s, %s.validate())", report, path, expr)
 	case t.Kind == KindStruct && !t.Opaque:
 		g.p("%s.Nest(%s, %s.validate())", report, path, expr)
 	case t.Kind == KindUnion && t.Qualifier == "":

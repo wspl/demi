@@ -72,6 +72,9 @@ type mpGen struct{ goGen }
 func (g *mpGen) decoder(t *Type, encoding string) string {
 	body := ""
 	switch {
+	case t.CustomDecode:
+		g.imports["encoding/json/v2"] = true
+		body = fmt.Sprintf("var v %s; raw,err:=wire.MPJSON(data); if err!=nil{return v,err}; err=json.Unmarshal(raw,&v); if err!=nil{return v,wire.Refusal(err)}; return v,nil", t.Src)
 	case t.Qualifier != "" && (t.Kind == KindUnion || t.Kind == KindString):
 		body = fmt.Sprintf("return %s.Decode%sMsgpack(data)", t.Qualifier, t.Name)
 	case t.Kind == KindPointer:
@@ -146,6 +149,9 @@ func (g *mpGen) structureMP(s *Struct) error {
 	if len(s.Fields) > 0 {
 		g.p("seen := map[string]bool{}")
 	}
+	for _, owner := range s.ForeignEmbeds {
+		g.p("var embed%s []wire.MPMember", owner.Name)
+	}
 	if hasInline(s) {
 		g.p("var inlineFields []wire.MPMember")
 	}
@@ -171,6 +177,10 @@ func (g *mpGen) structureMP(s *Struct) error {
 		}
 		g.p("case %q:", f.JSON)
 		g.p("seen[field.Name] = true")
+		if f.Owner != nil {
+			g.p("embed%s=append(embed%s,field)", f.Owner.Name, f.Owner.Name)
+			continue
+		}
 		t := f.Type
 		if f.NullAsAbsent {
 			g.p("if msgp.IsNil(field.Data) {continue}")
@@ -210,6 +220,11 @@ func (g *mpGen) structureMP(s *Struct) error {
 			g.p("v.%s,err = decode%sMsgpack(inline)", f.Name, f.Type.Name)
 			g.p("if err != nil {return err}")
 		}
+	}
+	for _, owner := range s.ForeignEmbeds {
+		g.p("{ raw:=msgp.AppendMapHeader(nil,uint32(len(embed%s)))", owner.Name)
+		g.p("for _,field:=range embed%s {raw=msgp.AppendString(raw,field.Name);raw=append(raw,field.Data...)}", owner.Name)
+		g.p("if err:=v.%s.UnmarshalMsgpack(raw);err!=nil{return err} }", owner.Name)
 	}
 	g.p("return nil")
 	g.p("}")
@@ -308,7 +323,7 @@ func (g *mpGen) appendMP(t *Type, expr, encoding, path string) {
 		g.p("data = msgp.AppendBytes(data,%s)", expr)
 	case encoding == "timestamp":
 		g.p("data = wire.MPAppendTimestamp(data,int64(%s))", expr)
-	case t.Kind == KindString && t.Qualifier != "":
+	case t.Kind == KindString && t.Qualifier != "" && !t.CustomDecode:
 		g.p("encoded,err := %s.Encode%sMsgpack(%s)", t.Qualifier, t.Name, expr)
 		g.p("if err != nil {return nil,wire.In(%s,err)}", path)
 		g.p("data=append(data,encoded...)")
@@ -459,7 +474,7 @@ func (p *Package) messagePackTypes() map[string]bool {
 	field = func(t *Type) {
 		switch t.Kind {
 		case KindStruct, KindUnion, KindString:
-			if t.Qualifier == "" && !t.Opaque && t.Name != "" {
+			if t.Qualifier == "" && !t.Opaque && t.Name != "" && !t.CustomDecode {
 				visit(t.Name)
 			}
 		case KindPointer, KindSlice, KindMap:

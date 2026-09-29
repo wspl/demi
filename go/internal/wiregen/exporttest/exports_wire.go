@@ -46,6 +46,33 @@ func EncodeChoiceJSON(value Choice) ([]byte, error) {
 	}
 	return data, nil
 }
+
+// ValidateInterval checks a Interval using its owner's rules.
+func ValidateInterval(value Interval) error {
+	return value.validate()
+}
+
+// DecodeIntervalJSON reads and validates one complete JSON value.
+func DecodeIntervalJSON(data []byte) (Interval, error) {
+	var value Interval
+	err := json.Unmarshal(data, &value)
+	if err != nil {
+		return value, wire.Refusal(err)
+	}
+	return value, ValidateInterval(value)
+}
+
+// EncodeIntervalJSON validates and encodes a Interval.
+func EncodeIntervalJSON(value Interval) ([]byte, error) {
+	if err := ValidateInterval(value); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(value, json.Deterministic(true))
+	if err != nil {
+		return nil, wire.Refusal(err)
+	}
+	return data, nil
+}
 func (v Mode) validate() error {
 	var r wire.Report
 	r.OneOf("", string(v), "read", "write")

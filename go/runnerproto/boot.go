@@ -5,13 +5,12 @@ package runnerproto
 
 import (
 	"errors"
-	"net"
 	"net/url"
-	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf16"
 
+	"github.com/wspl/demi/go/core"
 	"github.com/wspl/demi/go/internal/wire"
 )
 
@@ -79,38 +78,17 @@ func deviceToken(value DeviceToken) error {
 // that is the scheme's default, and "/" for an empty path, as the WHATWG URL
 // standard writes them, so two spellings of one endpoint compare equal.
 func NormalURL(raw string) (*url.URL, error) {
-	address, err := url.Parse(raw)
+	address, err := core.ParseURL(raw)
 	if err != nil {
 		return nil, err
 	}
-	if address.Scheme == "" || address.Opaque != "" {
+	if address.OpaquePath() {
 		return nil, errors.New("is not an absolute URL")
 	}
-	address.Scheme = strings.ToLower(address.Scheme)
-	host := strings.ToLower(address.Hostname())
-	port := address.Port()
-	if _, err := strconv.ParseUint(port, 10, 16); port != "" && err != nil {
-		return nil, errors.New("has a port that is not from 0 to 65535")
-	}
-	if port == defaultPorts[address.Scheme] {
-		port = ""
-	}
-	switch {
-	case port != "":
-		address.Host = net.JoinHostPort(host, port)
-	case strings.Contains(host, ":"):
-		address.Host = "[" + host + "]"
-	default:
-		address.Host = host
-	}
-	if address.Host != "" && address.Path == "" {
-		address.Path = "/"
-	}
-	return address, nil
+	// Keep the public net/url result used by callers; parsing and normalization
+	// belong to core's WHATWG parser.
+	return url.Parse(address.String())
 }
-
-// defaultPorts are the ports the special schemes leave out.
-var defaultPorts = map[string]string{"http": "80", "https": "443", "ws": "80", "wss": "443"}
 
 // Normal returns the URL in its normal form, or an error when it is not a
 // backend URL.

@@ -54,3 +54,37 @@ func TestATokenNeverAppearsInFormattedOutput(t *testing.T) {
 		}
 	}
 }
+
+// Cost: in-process parsing and codecs only; no timers or external services.
+func TestManagedBootUsesWHATWGNormalization(t *testing.T) {
+	for raw, want := range map[string]string{
+		"HTTPS://Example.COM:443/a/../b": "https://example.com/b",
+		"ws://Example.COM:80/./a":        "ws://example.com/a",
+		"https://bücher.example/":        "https://xn--bcher-kva.example/",
+		"http://example.com/a/%2e%2e/b":  "http://example.com/b",
+	} {
+		boot := runnerproto.ManagedBoot{BackendURL: runnerproto.BackendURL(raw), DeviceToken: "opaque"}
+		json, err := boot.Encode()
+		expected := `{"backendUrl":"` + want + `","deviceToken":"opaque"}`
+		if err != nil || string(json) != expected {
+			t.Errorf("%s: %s %v; want %s", raw, json, err, expected)
+		}
+		packed, err := boot.MarshalMsgpack()
+		if err != nil {
+			t.Fatal(err)
+		}
+		decoded, err := runnerproto.DecodeManagedBootMsgpack(packed)
+		if err != nil || string(decoded.BackendURL) != want {
+			t.Errorf("MessagePack: %+v %v", decoded, err)
+		}
+	}
+	for _, raw := range []string{"https://example.com/#", "https://user:pass@example.com/", "ftp://example.com/"} {
+		boot := runnerproto.ManagedBoot{BackendURL: runnerproto.BackendURL(raw), DeviceToken: "opaque"}
+		if _, err := boot.Encode(); err == nil {
+			t.Errorf("accepted %s", raw)
+		}
+		if _, err := boot.MarshalMsgpack(); err == nil {
+			t.Errorf("MessagePack accepted %s", raw)
+		}
+	}
+}
