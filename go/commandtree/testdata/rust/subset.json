@@ -1,0 +1,637 @@
+[
+ {
+  "name": "a full input",
+  "schema": {
+   "title": "Args",
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "path"
+   ],
+   "properties": {
+    "path": {
+     "type": "string",
+     "minLength": 1,
+     "description": "A file"
+    },
+    "count": {
+     "type": "integer",
+     "format": "uint32",
+     "minimum": 0
+    },
+    "mode": {
+     "type": "string",
+     "enum": [
+      "fast",
+      "slow"
+     ]
+    },
+    "tags": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "pattern": "^[a-z]+$"
+     },
+     "maxItems": 3
+    },
+    "force": {
+     "type": "boolean"
+    }
+   }
+  },
+  "want": ""
+ },
+ {
+  "name": "an empty object",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false
+  },
+  "want": ""
+ },
+ {
+  "name": "an object keyword outside the subset",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "minProperties": 1
+  },
+  "want": "command input uses \"minProperties\", outside the command input subset"
+ },
+ {
+  "name": "not an object",
+  "schema": {
+   "type": "array"
+  },
+  "want": "command input must describe an object"
+ },
+ {
+  "name": "no type",
+  "schema": {
+   "additionalProperties": false
+  },
+  "want": "command input must describe an object"
+ },
+ {
+  "name": "open to other properties",
+  "schema": {
+   "type": "object",
+   "properties": {}
+  },
+  "want": "command input must refuse unknown fields (additionalProperties: false)"
+ },
+ {
+  "name": "open with additionalProperties true",
+  "schema": {
+   "type": "object",
+   "additionalProperties": true
+  },
+  "want": "command input must refuse unknown fields (additionalProperties: false)"
+ },
+ {
+  "name": "properties that are not an object",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": []
+  },
+  "declaration": {
+   "declaration": "[] is not of type \"object\""
+  }
+ },
+ {
+  "name": "a required list that is not a list",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": "a"
+  },
+  "declaration": {
+   "declaration": "\"a\" is not of type \"array\""
+  }
+ },
+ {
+  "name": "a required name that is not declared",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "a"
+   ],
+   "properties": {}
+  },
+  "want": "command input requires an undeclared field \"a\""
+ },
+ {
+  "name": "a required entry that is not a name",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    3
+   ],
+   "properties": {}
+  },
+  "declaration": {
+   "declaration": "3 is not of type \"string\""
+  }
+ },
+ {
+  "name": "a field that is not a schema",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": 3
+   }
+  },
+  "declaration": {
+   "declaration": "3 is not of types \"boolean\", \"object\""
+  }
+ },
+ {
+  "name": "a default",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "type": "integer",
+     "default": 2
+    }
+   }
+  },
+  "want": "input \"field\": carries a default; a missing value is the handler's to supply"
+ },
+ {
+  "name": "a union with oneOf",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "oneOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "integer"
+      }
+     ]
+    }
+   }
+  },
+  "want": "input \"field\": is a union, which has no command-line form"
+ },
+ {
+  "name": "a union with anyOf",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "integer"
+      }
+     ]
+    }
+   }
+  },
+  "want": "input \"field\": is a union, which has no command-line form"
+ },
+ {
+  "name": "a union with allOf",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "allOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "integer"
+      }
+     ]
+    }
+   }
+  },
+  "want": "input \"field\": is a union, which has no command-line form"
+ },
+ {
+  "name": "a ref",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "$ref": "#"
+    }
+   }
+  },
+  "want": "input \"field\": refers to another schema"
+ },
+ {
+  "name": "a nested object by properties",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "type": "object",
+     "properties": {
+      "inner": {
+       "type": "string"
+      }
+     }
+    }
+   }
+  },
+  "want": "input \"field\": is a nested object, which has no command-line form"
+ },
+ {
+  "name": "a keyword outside the subset",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "uniqueItems": true
+    }
+   }
+  },
+  "want": "input \"field\": uses \"uniqueItems\", outside the command input subset"
+ },
+ {
+  "name": "const",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "const": 1,
+     "type": "integer"
+    }
+   }
+  },
+  "want": "input \"field\": uses \"const\", outside the command input subset"
+ },
+ {
+  "name": "a nullable type",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "type": [
+      "string",
+      "null"
+     ]
+    }
+   }
+  },
+  "want": "input \"field\": allows null; an optional field is absent instead"
+ },
+ {
+  "name": "several types",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "type": [
+      "string",
+      "integer"
+     ]
+    }
+   }
+  },
+  "want": "input \"field\": has several types"
+ },
+ {
+  "name": "no type in a field",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "description": "x"
+    }
+   }
+  },
+  "want": "input \"field\": declares no type"
+ },
+ {
+  "name": "a type that is not a string",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "type": 3
+    }
+   }
+  },
+  "declaration": {
+   "declaration": "3 is not valid under any of the schemas listed in the 'anyOf' keyword"
+  }
+ },
+ {
+  "name": "a format on a string",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "type": "string",
+     "format": "uri"
+    }
+   }
+  },
+  "want": "input \"field\": carries a format, which only a number's schema may"
+ },
+ {
+  "name": "a format on a number",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "type": "integer",
+     "format": "uint32"
+    }
+   }
+  },
+  "want": ""
+ },
+ {
+  "name": "items on a string",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "type": "string",
+     "items": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "want": "input \"field\": has items but is not an array"
+ },
+ {
+  "name": "a string enum",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "type": "string",
+     "enum": [
+      "a",
+      "b"
+     ]
+    }
+   }
+  },
+  "want": ""
+ },
+ {
+  "name": "an enum with null",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "type": "string",
+     "enum": [
+      "a",
+      null
+     ]
+    }
+   }
+  },
+  "want": "input \"field\": allows null; an optional field is absent instead"
+ },
+ {
+  "name": "an enum of numbers in a string",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "type": "string",
+     "enum": [
+      "a",
+      1
+     ]
+    }
+   }
+  },
+  "want": "input \"field\": is an enum of values that are not all strings"
+ },
+ {
+  "name": "an enum that is not a list",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "type": "string",
+     "enum": "a"
+    }
+   }
+  },
+  "declaration": {
+   "declaration": "\"a\" is not of type \"array\""
+  }
+ },
+ {
+  "name": "an enum on a number",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "type": "integer",
+     "enum": [
+      1,
+      2
+     ]
+    }
+   }
+  },
+  "want": "input \"field\": is an enum of values that are not strings"
+ },
+ {
+  "name": "an array without items",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "type": "array"
+    }
+   }
+  },
+  "want": "input \"field\": is an array without items"
+ },
+ {
+  "name": "an array of arrays",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "type": "array",
+     "items": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     }
+    }
+   }
+  },
+  "want": "input \"field\": is an array of arrays, which has no command-line form"
+ },
+ {
+  "name": "an array of objects",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "type": "array",
+     "items": {
+      "type": "object"
+     }
+    }
+   }
+  },
+  "want": "input \"field\": its items: is a nested object, which has no command-line form"
+ },
+ {
+  "name": "an array of a bad item",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "default": "a"
+     }
+    }
+   }
+  },
+  "want": "input \"field\": its items: carries a default; a missing value is the handler's to supply"
+ },
+ {
+  "name": "an array of nullable items",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "type": "array",
+     "items": {
+      "type": [
+       "string",
+       "null"
+      ]
+     }
+    }
+   }
+  },
+  "want": "input \"field\": its items: allows null; an optional field is absent instead"
+ },
+ {
+  "name": "an object field",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "type": "object"
+    }
+   }
+  },
+  "want": "input \"field\": is a nested object, which has no command-line form"
+ },
+ {
+  "name": "a null field",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "type": "null"
+    }
+   }
+  },
+  "want": "input \"field\": has type \"null\", outside the command input subset"
+ },
+ {
+  "name": "bounds",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 9,
+     "exclusiveMinimum": 0,
+     "exclusiveMaximum": 10
+    }
+   }
+  },
+  "want": ""
+ },
+ {
+  "name": "string bounds",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 9,
+     "pattern": "^a"
+    }
+   }
+  },
+  "want": ""
+ },
+ {
+  "name": "array bounds",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "field": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "minItems": 1,
+     "maxItems": 3
+    }
+   }
+  },
+  "want": ""
+ }
+]

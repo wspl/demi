@@ -16,6 +16,9 @@ type Package struct {
 	// Structs and Unions are the marked declarations by name.
 	Structs map[string]*Struct
 	Unions  map[string]*Union
+	// Opaque are the marked structs the package decodes itself: the generated
+	// code calls their UnmarshalJSONFrom and generates nothing for them.
+	Opaque map[string]bool
 
 	// named are the types the wire types use that are named after a basic type.
 	named map[string]*Type
@@ -91,6 +94,8 @@ type Type struct {
 	Elem *Type
 	// Key is the key of a map.
 	Key *Type
+	// Opaque is whether a struct is one the package decodes itself.
+	Opaque bool
 }
 
 // A Union is a sealed interface, Go's sum type.

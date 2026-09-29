@@ -1,0 +1,39 @@
+[
+ {
+  "name": "a type that does not exist",
+  "schema": {
+   "type": "nope"
+  },
+  "refused": true
+ },
+ {
+  "name": "a minimum that is not a number",
+  "schema": {
+   "minimum": "x"
+  },
+  "refused": true
+ },
+ {
+  "name": "a pattern that is not a string",
+  "schema": {
+   "pattern": 3
+  },
+  "refused": true
+ },
+ {
+  "name": "a required list that is not a list",
+  "schema": {
+   "required": "a"
+  },
+  "refused": true
+ },
+ {
+  "name": "a property that is not a schema",
+  "schema": {
+   "properties": {
+    "a": 3
+   }
+  },
+  "refused": true
+ }
+]

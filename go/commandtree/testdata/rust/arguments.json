@@ -1,0 +1,167 @@
+[
+ {
+  "name": "arguments that fit",
+  "leaf": {
+   "name": "x",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "n": {
+      "type": "integer"
+     },
+     "s": {
+      "type": "string",
+      "maxLength": 3
+     }
+    },
+    "required": [
+     "n"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "arguments": {
+   "n": 1
+  },
+  "want": ""
+ },
+ {
+  "name": "a missing argument",
+  "leaf": {
+   "name": "x",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "n": {
+      "type": "integer"
+     },
+     "s": {
+      "type": "string",
+      "maxLength": 3
+     }
+    },
+    "required": [
+     "n"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "arguments": {},
+  "want": "Invalid command arguments: \"n\" is a required property"
+ },
+ {
+  "name": "a string for a number",
+  "leaf": {
+   "name": "x",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "n": {
+      "type": "integer"
+     },
+     "s": {
+      "type": "string",
+      "maxLength": 3
+     }
+    },
+    "required": [
+     "n"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "arguments": {
+   "n": "7"
+  },
+  "want": "Invalid command arguments: \"n\" is not of type \"integer\""
+ },
+ {
+  "name": "an unknown argument",
+  "leaf": {
+   "name": "x",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "n": {
+      "type": "integer"
+     },
+     "s": {
+      "type": "string",
+      "maxLength": 3
+     }
+    },
+    "required": [
+     "n"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "arguments": {
+   "n": 1,
+   "z": 2,
+   "y": 3
+  },
+  "want": "Invalid command arguments: Additional properties are not allowed ('z', 'y' were unexpected)"
+ },
+ {
+  "name": "several failures",
+  "leaf": {
+   "name": "x",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "n": {
+      "type": "integer"
+     },
+     "s": {
+      "type": "string",
+      "maxLength": 3
+     }
+    },
+    "required": [
+     "n"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "arguments": {
+   "s": "toolong",
+   "q": 1
+  },
+  "want": "Invalid command arguments: Additional properties are not allowed ('q' was unexpected); \"n\" is a required property; \"s\" is longer than 3 characters",
+  "rust": "Invalid command arguments: \"s\" is longer than 3 characters; Additional properties are not allowed ('q' was unexpected); \"n\" is a required property",
+  "reason": "failures sort by instance location, then by the keyword's place in its schema object (top-level keywords by name); the Rust orders them by its keyword priority and fused validators"
+ },
+ {
+  "name": "no input and no arguments",
+  "leaf": {
+   "name": "x",
+   "summary": "S",
+   "kind": "rpc"
+  },
+  "arguments": {},
+  "want": ""
+ },
+ {
+  "name": "no input and arguments",
+  "leaf": {
+   "name": "x",
+   "summary": "S",
+   "kind": "rpc"
+  },
+  "arguments": {
+   "a": 1
+  },
+  "want": "Invalid command arguments: the command takes no arguments"
+ }
+]

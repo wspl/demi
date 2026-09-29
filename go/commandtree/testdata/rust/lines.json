@@ -1,0 +1,1501 @@
+{
+ "trees": {
+  "filer": {
+   "name": "filer",
+   "summary": "Create, edit, and list files.",
+   "subcommands": [
+    {
+     "name": "create",
+     "summary": "Create a file.",
+     "kind": "rpc",
+     "input": {
+      "type": "object",
+      "properties": {
+       "path": {
+        "type": "string"
+       },
+       "content": {
+        "type": "string",
+        "maxLength": 8,
+        "description": "File content"
+       }
+      },
+      "required": [
+       "path",
+       "content"
+      ],
+      "additionalProperties": false
+     },
+     "positionals": [
+      "path"
+     ],
+     "stdinField": "content"
+    },
+    {
+     "name": "edit",
+     "summary": "Replace text in a file.",
+     "kind": "rpc",
+     "input": {
+      "type": "object",
+      "properties": {
+       "path": {
+        "type": "string"
+       },
+       "old": {
+        "type": "string"
+       },
+       "new": {
+        "type": "string"
+       },
+       "occurrence": {
+        "type": "integer",
+        "minimum": 1
+       }
+      },
+      "required": [
+       "path",
+       "old",
+       "new"
+      ],
+      "additionalProperties": false
+     },
+     "positionals": [
+      "path"
+     ]
+    },
+    {
+     "name": "measure",
+     "summary": "Record readings.",
+     "kind": "rpc",
+     "input": {
+      "type": "object",
+      "properties": {
+       "v": {
+        "type": "array",
+        "items": {
+         "type": "number"
+        }
+       },
+       "label": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "quiet": {
+        "type": "boolean"
+       }
+      },
+      "required": [
+       "v"
+      ],
+      "additionalProperties": false
+     }
+    },
+    {
+     "name": "forward",
+     "summary": "Forward argv.",
+     "kind": "rpc",
+     "input": {
+      "type": "object",
+      "properties": {
+       "args": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      },
+      "required": [
+       "args"
+      ],
+      "additionalProperties": false
+     },
+     "restField": "args"
+    },
+    {
+     "name": "status",
+     "summary": "Set a status.",
+     "kind": "rpc",
+     "input": {
+      "type": "object",
+      "properties": {
+       "status": {
+        "type": "string",
+        "enum": [
+         "pending",
+         "in_progress",
+         "done"
+        ]
+       }
+      },
+      "required": [],
+      "additionalProperties": false
+     }
+    },
+    {
+     "name": "list",
+     "summary": "List files.",
+     "kind": "rpc",
+     "output": {
+      "json": {
+       "type": "object",
+       "properties": {
+        "files": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        }
+       },
+       "required": [
+        "files"
+       ],
+       "additionalProperties": false
+      }
+     }
+    },
+    {
+     "name": "watch",
+     "summary": "Background pollers.",
+     "subcommands": [
+      {
+       "name": "get",
+       "summary": "Read a poller.",
+       "kind": "rpc",
+       "input": {
+        "type": "object",
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "id"
+        ],
+        "additionalProperties": false
+       },
+       "positionals": [
+        "id"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "kcenv": {
+   "name": "kcenv",
+   "summary": "Read an environment key.",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "key"
+    ],
+    "additionalProperties": false
+   },
+   "positionals": [
+    "key"
+   ]
+  },
+  "fixture": {
+   "name": "fixture",
+   "summary": "CLI fixture.",
+   "subcommands": [
+    {
+     "name": "read",
+     "summary": "Read a native file.",
+     "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "File path"
+       },
+       "count": {
+        "default": 2,
+        "description": "Count",
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 9007199254740991
+       },
+       "upper": {
+        "description": "Uppercase",
+        "type": "boolean"
+       },
+       "tag": {
+        "description": "Tags",
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "body": {
+        "type": "string",
+        "description": "Text body"
+       },
+       "args": {
+        "description": "Forwarded arguments",
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      },
+      "required": [
+       "path",
+       "body"
+      ]
+     },
+     "positionals": [
+      "path"
+     ],
+     "stdinField": "body",
+     "restField": "args",
+     "output": {
+      "json": {
+       "$schema": "https://json-schema.org/draft/2020-12/schema",
+       "type": "object",
+       "properties": {
+        "ok": {
+         "type": "boolean"
+        }
+       },
+       "required": [
+        "ok"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "kind": "native",
+     "binding": {
+      "package": "demicodes.fixture",
+      "operation": "file.read",
+      "descriptorHash": "7d320ed041df0a3277ce2946c2893522cac021e30c3876dc2cb58ac29bfbe636"
+     }
+    }
+   ]
+  }
+ },
+ "cases": [
+  {
+   "tree": "filer",
+   "argv": [],
+   "parsed": {
+    "path": [
+     "filer"
+    ],
+    "values": {},
+    "json": false,
+    "help": true
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "--help"
+   ],
+   "parsed": {
+    "path": [
+     "filer"
+    ],
+    "values": {},
+    "json": false,
+    "help": true
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "create",
+    "--help"
+   ],
+   "parsed": {
+    "path": [
+     "filer",
+     "create"
+    ],
+    "values": {},
+    "json": false,
+    "help": true
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "create",
+    "note.txt"
+   ],
+   "stdin": "body",
+   "parsed": {
+    "path": [
+     "filer",
+     "create"
+    ],
+    "values": {
+     "path": "note.txt",
+     "content": "body"
+    },
+    "json": false,
+    "help": false
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "create",
+    "note.txt"
+   ],
+   "stdin": "a long body",
+   "error": "Invalid command arguments: \"content\" is longer than 8 characters"
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "create",
+    "note.txt",
+    "--content"
+   ],
+   "stdin": "body",
+   "error": "\"filer create\" reads content only from stdin. Remove --content and use a quoted heredoc, pipe, or input redirection."
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "create",
+    "note.txt",
+    "--content",
+    "inline"
+   ],
+   "stdin": "body",
+   "error": "\"filer create\" reads content only from stdin. Remove --content and use a quoted heredoc, pipe, or input redirection."
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "create",
+    "note.txt",
+    "--content=inline"
+   ],
+   "stdin": "body",
+   "error": "\"filer create\" reads content only from stdin. Remove --content and use a quoted heredoc, pipe, or input redirection."
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "create",
+    "note.txt",
+    "inline"
+   ],
+   "stdin": "body",
+   "error": "Unexpected positional argument \"inline\""
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "create",
+    "--path",
+    "note.txt"
+   ],
+   "stdin": "body",
+   "error": "\"path\" is a positional argument for \"filer create\"; --path is not an option"
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "create",
+    "--",
+    "--help"
+   ],
+   "stdin": "body",
+   "parsed": {
+    "path": [
+     "filer",
+     "create"
+    ],
+    "values": {
+     "path": "--help",
+     "content": "body"
+    },
+    "json": false,
+    "help": false
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "create",
+    "note.txt"
+   ],
+   "error": "stdin field was not supplied by dispatcher"
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "list"
+   ],
+   "stdin": "unexpected",
+   "error": "stdin body supplied to a leaf without stdinField"
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "list"
+   ],
+   "parsed": {
+    "path": [
+     "filer",
+     "list"
+    ],
+    "values": {},
+    "json": false,
+    "help": false
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "forward",
+    "--",
+    "--help",
+    "--json"
+   ],
+   "parsed": {
+    "path": [
+     "filer",
+     "forward"
+    ],
+    "values": {
+     "args": [
+      "--help",
+      "--json"
+     ]
+    },
+    "json": false,
+    "help": false
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "forward",
+    "a",
+    "b"
+   ],
+   "error": "Unexpected positional argument \"a\""
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "forward",
+    "--args",
+    "value"
+   ],
+   "error": "\"args\" is passed after -- for \"filer forward\"; --args is not an option"
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "forward"
+   ],
+   "error": "Invalid command arguments: \"args\" is a required property"
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "forward",
+    "--"
+   ],
+   "parsed": {
+    "path": [
+     "filer",
+     "forward"
+    ],
+    "values": {
+     "args": []
+    },
+    "json": false,
+    "help": false
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "edit",
+    "note.txt",
+    "--old",
+    "--new",
+    "replacement"
+   ],
+   "error": "Missing value for \"--old\""
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "edit",
+    "note.txt",
+    "--old=--help",
+    "--new="
+   ],
+   "parsed": {
+    "path": [
+     "filer",
+     "edit"
+    ],
+    "values": {
+     "path": "note.txt",
+     "old": "--help",
+     "new": ""
+    },
+    "json": false,
+    "help": false
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "edit",
+    "note.txt",
+    "--old",
+    "a",
+    "--old",
+    "b",
+    "--new",
+    "c"
+   ],
+   "error": "Duplicate value for \"old\""
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "edit",
+    "f",
+    "--old",
+    "a",
+    "--new",
+    "b",
+    "--occurrence",
+    "2"
+   ],
+   "parsed": {
+    "path": [
+     "filer",
+     "edit"
+    ],
+    "values": {
+     "path": "f",
+     "old": "a",
+     "new": "b",
+     "occurrence": 2
+    },
+    "json": false,
+    "help": false
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "edit",
+    "f",
+    "--old",
+    "a",
+    "--new",
+    "b",
+    "--occurrence",
+    "0"
+   ],
+   "error": "Invalid command arguments: \"occurrence\" is less than the minimum of 1"
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "edit",
+    "f",
+    "--old",
+    "a",
+    "--new",
+    "b",
+    "--occurrence",
+    "2.0"
+   ],
+   "parsed": {
+    "path": [
+     "filer",
+     "edit"
+    ],
+    "values": {
+     "path": "f",
+     "old": "a",
+     "new": "b",
+     "occurrence": 2
+    },
+    "json": false,
+    "help": false
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "edit",
+    "f",
+    "--old",
+    "a",
+    "--new",
+    "b",
+    "--occurrence",
+    "2.5"
+   ],
+   "error": "Invalid command arguments: \"occurrence\" is not of type \"integer\""
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "edit",
+    "f",
+    "--old",
+    "a",
+    "--new",
+    "b",
+    "--occurrence",
+    " 3 "
+   ],
+   "parsed": {
+    "path": [
+     "filer",
+     "edit"
+    ],
+    "values": {
+     "path": "f",
+     "old": "a",
+     "new": "b",
+     "occurrence": 3
+    },
+    "json": false,
+    "help": false
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "edit",
+    "f",
+    "--old",
+    "a",
+    "--new",
+    "b",
+    "--occurrence",
+    "1e2"
+   ],
+   "parsed": {
+    "path": [
+     "filer",
+     "edit"
+    ],
+    "values": {
+     "path": "f",
+     "old": "a",
+     "new": "b",
+     "occurrence": 100
+    },
+    "json": false,
+    "help": false
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "edit",
+    "f",
+    "--old",
+    "a",
+    "--new",
+    "b",
+    "--occurrence",
+    "0x10"
+   ],
+   "error": "Invalid command arguments: \"occurrence\" is not of type \"integer\""
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "edit",
+    "f",
+    "--old",
+    "a",
+    "--new",
+    "b",
+    "--occurrence",
+    "+5"
+   ],
+   "parsed": {
+    "path": [
+     "filer",
+     "edit"
+    ],
+    "values": {
+     "path": "f",
+     "old": "a",
+     "new": "b",
+     "occurrence": 5
+    },
+    "json": false,
+    "help": false
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "edit",
+    "f",
+    "--old",
+    "a",
+    "--new",
+    "b",
+    "--occurrence",
+    ".5"
+   ],
+   "error": "Invalid command arguments: \"occurrence\" is not of type \"integer\"",
+   "rust": "Invalid command arguments: \"occurrence\" is not of type \"integer\"; \"occurrence\" is less than the minimum of 1",
+   "reason": "the library stops a schema's keywords at the first failed type, const or enum, so the failures of the keywords after it are not reported; the Rust goes on"
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "edit",
+    "f",
+    "--old",
+    "a",
+    "--new",
+    "b",
+    "--occurrence",
+    "1e999"
+   ],
+   "error": "Invalid command arguments: \"occurrence\" is not of type \"integer\""
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "edit",
+    "f",
+    "--old",
+    "a",
+    "--new",
+    "b",
+    "--occurrence",
+    "inf"
+   ],
+   "error": "Invalid command arguments: \"occurrence\" is not of type \"integer\""
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "edit",
+    "f",
+    "--occurrence",
+    "NaN"
+   ],
+   "error": "Invalid command arguments: \"old\" is a required property; \"new\" is a required property; \"occurrence\" is not of type \"integer\""
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "edit",
+    "f",
+    "--occurrence"
+   ],
+   "error": "Missing value for \"--occurrence\""
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "edit",
+    "--old"
+   ],
+   "error": "Missing value for \"--old\""
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "edit"
+   ],
+   "error": "Invalid command arguments: \"path\" is a required property; \"old\" is a required property; \"new\" is a required property"
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "edit",
+    "f",
+    "g"
+   ],
+   "error": "Unexpected positional argument \"g\""
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "edit",
+    "f",
+    "-x"
+   ],
+   "error": "Unexpected positional argument \"-x\""
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "edit",
+    "f",
+    "--="
+   ],
+   "error": "Unknown option \"--\" for \"filer edit\""
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "edit",
+    "f",
+    "--=x"
+   ],
+   "error": "Unknown option \"--\" for \"filer edit\""
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "edit",
+    "f",
+    "--bogus",
+    "x"
+   ],
+   "error": "Unknown option \"--bogus\" for \"filer edit\""
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "edit",
+    "f",
+    "--old",
+    "a",
+    "--new",
+    "b",
+    "--help"
+   ],
+   "parsed": {
+    "path": [
+     "filer",
+     "edit"
+    ],
+    "values": {
+     "path": "f",
+     "old": "a",
+     "new": "b"
+    },
+    "json": false,
+    "help": true
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "measure",
+    "--v",
+    "12",
+    "--v",
+    "13"
+   ],
+   "parsed": {
+    "path": [
+     "filer",
+     "measure"
+    ],
+    "values": {
+     "v": [
+      12,
+      13
+     ]
+    },
+    "json": false,
+    "help": false
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "measure",
+    "--v",
+    "1.5",
+    "--label",
+    "a",
+    "--quiet"
+   ],
+   "parsed": {
+    "path": [
+     "filer",
+     "measure"
+    ],
+    "values": {
+     "v": [
+      1.5
+     ],
+     "label": [
+      "a"
+     ],
+     "quiet": true
+    },
+    "json": false,
+    "help": false
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "measure",
+    "--v",
+    "1",
+    "--quiet=false"
+   ],
+   "parsed": {
+    "path": [
+     "filer",
+     "measure"
+    ],
+    "values": {
+     "v": [
+      1
+     ],
+     "quiet": false
+    },
+    "json": false,
+    "help": false
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "measure",
+    "--v",
+    "1",
+    "--quiet",
+    "false"
+   ],
+   "parsed": {
+    "path": [
+     "filer",
+     "measure"
+    ],
+    "values": {
+     "v": [
+      1
+     ],
+     "quiet": false
+    },
+    "json": false,
+    "help": false
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "measure",
+    "--v",
+    "1",
+    "--quiet",
+    "true",
+    "--label",
+    "x"
+   ],
+   "parsed": {
+    "path": [
+     "filer",
+     "measure"
+    ],
+    "values": {
+     "v": [
+      1
+     ],
+     "quiet": true,
+     "label": [
+      "x"
+     ]
+    },
+    "json": false,
+    "help": false
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "measure",
+    "--v",
+    "1",
+    "--quiet=yes"
+   ],
+   "error": "Invalid command arguments: \"quiet\" is not of type \"boolean\""
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "measure",
+    "--v",
+    "twelve",
+    "--quiet=maybe"
+   ],
+   "error": "Invalid command arguments: \"v.0\" is not of type \"number\"; \"quiet\" is not of type \"boolean\""
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "measure",
+    "--v",
+    "1",
+    "--quiet",
+    "--quiet"
+   ],
+   "error": "Duplicate value for \"quiet\""
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "measure",
+    "--v",
+    "9007199254740991",
+    "--v",
+    "9007199254740992",
+    "--v",
+    "-3",
+    "--v",
+    "-0"
+   ],
+   "parsed": {
+    "path": [
+     "filer",
+     "measure"
+    ],
+    "values": {
+     "v": [
+      9007199254740991,
+      9007199254740992.0,
+      -3,
+      0
+     ]
+    },
+    "json": false,
+    "help": false
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "measure",
+    "--v=1",
+    "--v=2",
+    "--label=a",
+    "--label=b"
+   ],
+   "parsed": {
+    "path": [
+     "filer",
+     "measure"
+    ],
+    "values": {
+     "v": [
+      1,
+      2
+     ],
+     "label": [
+      "a",
+      "b"
+     ]
+    },
+    "json": false,
+    "help": false
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "measure"
+   ],
+   "error": "Invalid command arguments: \"v\" is a required property"
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "measure",
+    "--json"
+   ],
+   "error": "Command \"filer measure\" does not define JSON output"
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "status",
+    "--json"
+   ],
+   "error": "Command \"filer status\" does not define JSON output"
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "status"
+   ],
+   "parsed": {
+    "path": [
+     "filer",
+     "status"
+    ],
+    "values": {},
+    "json": false,
+    "help": false
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "status",
+    "--status",
+    "done"
+   ],
+   "parsed": {
+    "path": [
+     "filer",
+     "status"
+    ],
+    "values": {
+     "status": "done"
+    },
+    "json": false,
+    "help": false
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "status",
+    "--status",
+    "nope"
+   ],
+   "error": "Invalid command arguments: \"status\" is not one of \"pending\", \"in_progress\" or \"done\""
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "list",
+    "--json"
+   ],
+   "parsed": {
+    "path": [
+     "filer",
+     "list"
+    ],
+    "values": {},
+    "json": true,
+    "help": false
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "list",
+    "--json",
+    "--json"
+   ],
+   "parsed": {
+    "path": [
+     "filer",
+     "list"
+    ],
+    "values": {},
+    "json": true,
+    "help": false
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "list",
+    "--help",
+    "--bogus"
+   ],
+   "parsed": {
+    "path": [
+     "filer",
+     "list"
+    ],
+    "values": {},
+    "json": false,
+    "help": true
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "watch"
+   ],
+   "parsed": {
+    "path": [
+     "filer",
+     "watch"
+    ],
+    "values": {},
+    "json": false,
+    "help": true
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "watch",
+    "--help"
+   ],
+   "parsed": {
+    "path": [
+     "filer",
+     "watch"
+    ],
+    "values": {},
+    "json": false,
+    "help": true
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "watch",
+    "get",
+    "my-id"
+   ],
+   "parsed": {
+    "path": [
+     "filer",
+     "watch",
+     "get"
+    ],
+    "values": {
+     "id": "my-id"
+    },
+    "json": false,
+    "help": false
+   }
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "watch",
+    "missing"
+   ],
+   "error": "Unknown subcommand \"filer watch missing\""
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "watch",
+    "get",
+    "my-id",
+    "--missing",
+    "x"
+   ],
+   "error": "Unknown option \"--missing\" for \"filer watch get\""
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "watch",
+    "get"
+   ],
+   "error": "Invalid command arguments: \"id\" is a required property"
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "missing"
+   ],
+   "error": "Unknown subcommand \"filer missing\""
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "--json"
+   ],
+   "error": "Unknown subcommand \"filer --json\""
+  },
+  {
+   "tree": "filer",
+   "argv": [
+    "--bogus"
+   ],
+   "error": "Unknown subcommand \"filer --bogus\""
+  },
+  {
+   "tree": "kcenv",
+   "argv": [
+    "HOME"
+   ],
+   "parsed": {
+    "path": [
+     "kcenv"
+    ],
+    "values": {
+     "key": "HOME"
+    },
+    "json": false,
+    "help": false
+   }
+  },
+  {
+   "tree": "kcenv",
+   "argv": [],
+   "error": "Invalid command arguments: \"key\" is a required property"
+  },
+  {
+   "tree": "kcenv",
+   "argv": [
+    "--help"
+   ],
+   "parsed": {
+    "path": [
+     "kcenv"
+    ],
+    "values": {},
+    "json": false,
+    "help": true
+   }
+  },
+  {
+   "tree": "kcenv",
+   "argv": [
+    "HOME",
+    "x"
+   ],
+   "error": "Unexpected positional argument \"x\""
+  },
+  {
+   "tree": "kcenv",
+   "argv": [
+    "--key",
+    "HOME"
+   ],
+   "error": "\"key\" is a positional argument for \"kcenv\"; --key is not an option"
+  },
+  {
+   "tree": "kcenv",
+   "argv": [
+    "--"
+   ],
+   "error": "Invalid command arguments: \"key\" is a required property"
+  },
+  {
+   "tree": "fixture",
+   "argv": [
+    "read",
+    "p",
+    "--count",
+    "0"
+   ],
+   "stdin": "b",
+   "error": "Invalid command arguments: \"count\" is less than or equal to the minimum of 0"
+  },
+  {
+   "tree": "fixture",
+   "argv": [
+    "read",
+    "p"
+   ],
+   "stdin": "b",
+   "parsed": {
+    "path": [
+     "fixture",
+     "read"
+    ],
+    "values": {
+     "path": "p",
+     "body": "b"
+    },
+    "json": false,
+    "help": false
+   }
+  },
+  {
+   "tree": "fixture",
+   "argv": [
+    "read",
+    "p",
+    "--count",
+    "9007199254740992"
+   ],
+   "stdin": "b",
+   "error": "Invalid command arguments: \"count\" is greater than the maximum of 9007199254740991"
+  },
+  {
+   "tree": "fixture",
+   "argv": [
+    "read",
+    "p",
+    "--upper",
+    "no"
+   ],
+   "stdin": "b",
+   "error": "Invalid command arguments: \"upper\" is not of type \"boolean\""
+  },
+  {
+   "tree": "fixture",
+   "argv": [
+    "read",
+    "p",
+    "--tag",
+    "a",
+    "--tag",
+    "b",
+    "--json",
+    "--json"
+   ],
+   "stdin": "b",
+   "parsed": {
+    "path": [
+     "fixture",
+     "read"
+    ],
+    "values": {
+     "path": "p",
+     "tag": [
+      "a",
+      "b"
+     ],
+     "body": "b"
+    },
+    "json": true,
+    "help": false
+   }
+  },
+  {
+   "tree": "fixture",
+   "argv": [
+    "read",
+    "p",
+    "--",
+    "a",
+    "--json"
+   ],
+   "stdin": "b",
+   "parsed": {
+    "path": [
+     "fixture",
+     "read"
+    ],
+    "values": {
+     "path": "p",
+     "args": [
+      "a",
+      "--json"
+     ],
+     "body": "b"
+    },
+    "json": false,
+    "help": false
+   }
+  }
+ ]
+}

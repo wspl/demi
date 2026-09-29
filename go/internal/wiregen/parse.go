@@ -24,6 +24,7 @@ const (
 	directiveWire    = "//demi:wire"
 	directiveUnion   = "//demi:union"
 	directiveVariant = "//demi:variant"
+	directiveOpaque  = "//demi:opaque"
 )
 
 // generatedSuffix ends the name of every file the generator writes.
@@ -123,6 +124,7 @@ func LoadSource(sources map[string][]byte) (*Package, error) {
 		pkg: &Package{
 			Structs:  map[string]*Struct{},
 			Unions:   map[string]*Union{},
+			Opaque:   map[string]bool{},
 			named:    map[string]*Type{},
 			patterns: map[string]string{},
 		},
@@ -223,7 +225,7 @@ func (p *reader) declare(m *marked, byFile map[string]*File) error {
 	kinds := 0
 	for _, directive := range m.directives {
 		switch fields := strings.Fields(directive); fields[0] {
-		case directiveWire, directiveUnion, directiveVariant:
+		case directiveWire, directiveUnion, directiveVariant, directiveOpaque:
 			kinds++
 		default:
 			return p.errorf(m.spec.Pos(), "%s: unknown directive %s", m.name, fields[0])
@@ -247,6 +249,13 @@ func (p *reader) declare(m *marked, byFile map[string]*File) error {
 	}
 	directive := strings.Fields(m.directives[0])
 	switch directive[0] {
+	case directiveOpaque:
+		if _, ok := m.spec.Type.(*ast.StructType); !ok {
+			return p.errorf(m.spec.Pos(), "%s: %s marks a struct", m.name, directive[0])
+		}
+		// An opaque type has no generated code, so it has no file to write.
+		p.pkg.Opaque[m.name] = true
+		return nil
 	case directiveWire, directiveVariant:
 		if _, ok := m.spec.Type.(*ast.StructType); !ok {
 			return p.errorf(m.spec.Pos(), "%s: %s marks a struct", m.name, directive[0])
@@ -479,6 +488,9 @@ func (p *reader) typeOf(expr ast.Expr) (*Type, error) {
 		if _, ok := p.pkg.Structs[expr.Name]; ok {
 			return &Type{Kind: KindStruct, Name: expr.Name, Src: src}, nil
 		}
+		if p.pkg.Opaque[expr.Name] {
+			return &Type{Kind: KindStruct, Name: expr.Name, Src: src, Opaque: true}, nil
+		}
 		if _, ok := p.pkg.Unions[expr.Name]; ok {
 			return &Type{Kind: KindUnion, Name: expr.Name, Src: src}, nil
 		}
@@ -491,7 +503,7 @@ func (p *reader) typeOf(expr ast.Expr) (*Type, error) {
 		if err != nil {
 			return nil, err
 		}
-		if elem.Kind == KindPointer || elem.Kind == KindSlice || elem.Kind == KindMap {
+		if elem.Kind == KindPointer {
 			return nil, fmt.Errorf("a pointer to %s", elem.Src)
 		}
 		return &Type{Kind: KindPointer, Elem: elem, Src: src}, nil
