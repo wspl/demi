@@ -61,3 +61,44 @@ func (v Interval) validate() error {
 	r.Check("", v.check())
 	return r.Err()
 }
+
+// UnmarshalJSONFrom decodes the JSON object of Rounded: it refuses a member that
+// the type does not have, a required member that is missing, a null, and a
+// value of another JSON kind than the member's, naming the member.
+func (v *Rounded) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	*v = Rounded{}
+	if err := wire.BeginObject(dec); err != nil {
+		return err
+	}
+	var seen uint64
+	for {
+		name, more, err := wire.NextMember(dec)
+		if err != nil {
+			return err
+		}
+		if !more {
+			break
+		}
+		switch name {
+		case "value":
+			seen |= 1 << 0
+			f, err := wire.ReadFloat(dec)
+			if err != nil {
+				return wire.In("value", err)
+			}
+			v.Value = f
+		default:
+			return wire.Unknown(name)
+		}
+	}
+	if seen&(1<<0) == 0 {
+		return wire.Required("value")
+	}
+	return nil
+}
+
+// validate checks the rules of the fields of Rounded, and reports every one that
+// is broken.
+func (Rounded) validate() error {
+	return nil
+}

@@ -240,7 +240,12 @@ func (g *mpGen) structureMP(s *Struct) error {
 		g.p("var err error; v,err = v.normalizeWire(); if err != nil {return nil,err}")
 	}
 	g.p("if err := v.validate(); err != nil {return nil,err}")
-	n := len(s.Fields)
+	n := 0
+	for _, f := range s.Fields {
+		if f.Owner == nil {
+			n++
+		}
+	}
 	if hasInline(s) {
 		n++
 	}
@@ -251,7 +256,19 @@ func (g *mpGen) structureMP(s *Struct) error {
 	if s.Unknown != nil {
 		g.p("count += uint32(len(v.%s))", s.Unknown.Name)
 	}
+	// An embedded foreign struct is written by its owner's encoder, as the
+	// owner writes it alone; its members join the map at its place.
+	for _, owner := range s.ForeignEmbeds {
+		g.p("embedded%s,err := v.%s.MarshalMsgpack()", owner.Name, owner.Name)
+		g.p("if err != nil {return nil,err}")
+		g.p("embeddedCount%s,embedded%s,err := msgp.ReadMapHeaderBytes(embedded%s)", owner.Name, owner.Name, owner.Name)
+		g.p("if err != nil {return nil,err}")
+		g.p("count += embeddedCount%s", owner.Name)
+	}
 	for _, f := range s.Fields {
+		if f.Owner != nil {
+			continue
+		}
 		if !f.Required {
 			if f.Type.Kind == KindBool {
 				g.p("if !v.%s {count--}", f.Name)
@@ -265,7 +282,15 @@ func (g *mpGen) structureMP(s *Struct) error {
 		g.p("data = msgp.AppendString(data,%q)", s.Union.TagName)
 		g.p("data = msgp.AppendString(data,%q)", s.Tag)
 	}
+	written := map[*Type]bool{}
 	for _, f := range s.Fields {
+		if f.Owner != nil {
+			if !written[f.Owner] {
+				written[f.Owner] = true
+				g.p("data = append(data,embedded%s...)", f.Owner.Name)
+			}
+			continue
+		}
 		if f.Inline {
 			g.p("{")
 			g.p("encoded,err := Encode%sMsgpack(v.%s)", f.Type.Name, f.Name)

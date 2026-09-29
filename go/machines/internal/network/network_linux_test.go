@@ -5,7 +5,6 @@ package network_test
 import (
 	"context"
 	"net/netip"
-	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -14,6 +13,7 @@ import (
 	"github.com/wspl/demi/go/machines/internal/network"
 	"github.com/wspl/demi/go/machines/internal/roottest"
 	"github.com/wspl/demi/go/machines/internal/tools"
+	"github.com/wspl/demi/go/runnerproto"
 )
 
 func TestMain(m *testing.M) {
@@ -45,7 +45,7 @@ func newNetwork(t *testing.T, pool, backend string) *network.Network {
 	if err != nil {
 		t.Skip(err)
 	}
-	address, err := url.Parse(backend)
+	address, err := runnerproto.NormalURL(backend)
 	if err != nil {
 		t.Fatal(err)
 	}

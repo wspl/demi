@@ -3,9 +3,11 @@ package wiregen
 import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/token"
+	"slices"
 	"strings"
 )
 
@@ -91,8 +93,52 @@ func (p *reader) opaqueRepresentation(m marked, arguments []string) error {
 			return fmt.Errorf("%s: jsonschema requires inline, named or ref", m.name)
 		}
 	}
+	if err := schemaAgrees(t); err != nil {
+		return fmt.Errorf("%s: %w", m.name, err)
+	}
 	if len(arguments) > 0 || len(t.Schema) > 0 || t.SchemaRef != "" || m.has("//demi:representation") {
 		p.pkg.OpaqueScalars[m.name] = t
+	}
+	return nil
+}
+
+// schemaTypes are the JSON Schema types that admit the values of a wire kind.
+var schemaTypes = map[Kind][]string{
+	KindString: {"string"},
+	KindFloat:  {"number", "integer"},
+	KindInt:    {"integer", "number"},
+	KindUint:   {"integer", "number"},
+	KindBool:   {"boolean"},
+}
+
+// schemaAgrees refuses an explicit schema that contradicts the declared
+// representation: a type that admits none of its values, or another format.
+func schemaAgrees(t *Type) error {
+	if t.WireKind == 0 || len(t.Schema) == 0 {
+		return nil
+	}
+	var schema map[string]jsontext.Value
+	if err := json.Unmarshal(t.Schema, &schema); err != nil {
+		return err
+	}
+	if raw, ok := schema["type"]; ok {
+		var names []string
+		var name string
+		if json.Unmarshal(raw, &name) == nil {
+			names = []string{name}
+		} else if json.Unmarshal(raw, &names) != nil {
+			return errors.New("the schema's type is neither a name nor a list of names")
+		}
+		admitted := schemaTypes[t.WireKind]
+		if !slices.ContainsFunc(names, func(name string) bool { return slices.Contains(admitted, name) }) {
+			return fmt.Errorf("the schema's type %s admits no value of the representation", raw)
+		}
+	}
+	if raw, ok := schema["format"]; ok && t.Format != "" {
+		var format string
+		if json.Unmarshal(raw, &format) != nil || format != t.Format {
+			return fmt.Errorf("the schema's format %s contradicts the declared format", raw)
+		}
 	}
 	return nil
 }
@@ -146,6 +192,9 @@ func (p *reader) namedSchema(m marked, named *Type) error {
 	named.SchemaInline = schema.SchemaInline
 	named.SchemaRef = schema.SchemaRef
 	named.WireKind = named.Kind
+	if err := schemaAgrees(named); err != nil {
+		return fmt.Errorf("%s: %w", m.name, err)
+	}
 	p.pkg.OpaqueScalars[m.name] = named
 	return nil
 }

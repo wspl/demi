@@ -16,6 +16,16 @@ type Embedded struct {
 	Label Trimmed `json:"label" check:"chars=1..3"`
 }
 
+// Measured embeds an owner whose encoder differs from its fields.
+//
+//demi:wire
+//demi:export
+//demi:msgpack
+type Measured struct {
+	exporttest.Rounded
+	Unit string `json:"unit"`
+}
+
 //demi:value
 //demi:check nonul
 //demi:decode
