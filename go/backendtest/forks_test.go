@@ -128,7 +128,7 @@ func TestAForkKeepsTheHistoryThroughTheChosenTextWhileTheSourceRunsOn(t *testing
 	destinationSocket.Open()
 	vendor.Respond(scripted.Answer([]string{"A3"}, 1, 1))
 	destinationSocket.Chat("m4", "U4")
-	replayed := vendor.Requests()[3].JSON(t)
+	replayed := scenarioItem(t, vendor.Requests(), 3).JSON(t)
 	messages := jsonText(backendtest.At(replayed, "messages"))
 	if got := len(backendtest.At(replayed, "messages").([]any)); got != 3 {
 		t.Fatalf("the destination replays %d messages: %s", got, messages)
@@ -176,7 +176,7 @@ func TestAForkOfAConversationTheBackendNoLongerHoldsReadsItsStoredHistory(t *tes
 	b = h.Start()
 	master = b.Login(backendtest.MasterEmail, backendtest.MasterPassword)
 	stored := b.Transcript(master, convFirst)
-	secondText := textIDs(stored)[1]
+	secondText := scenarioItem(t, textIDs(stored), 1)
 	path := "/api/conversations/" + convFirst + "/fork"
 	created := b.Post(path, master, forkBody(convSecond, secondText)).Expect(http.StatusCreated)
 	// The first message titled the source.
@@ -185,6 +185,9 @@ func TestAForkOfAConversationTheBackendNoLongerHoldsReadsItsStoredHistory(t *tes
 	}
 	backendtest.AssertJSON(t, created.At("conversation.model"), settings)
 	// The history through the latest text, without the response after it.
+	if len(stored) < 5 {
+		t.Fatalf("the source has fewer than five blocks: %v", stored)
+	}
 	backendtest.AssertJSON(t, b.Transcript(master, convSecond), stored[:5])
 	b.Post(path, master, forkBody(convSecond, secondText)).Expect(http.StatusOK)
 	backendtest.AssertJSON(t, b.Transcript(master, convFirst), stored)
@@ -228,7 +231,7 @@ func TestAForkKeepsTheTodosItsHistoryHad(t *testing.T) {
 		vendor.Respond(shell("toolu_list", "demi todo list --json"))
 		vendor.Respond(scripted.Answer([]string{"Listed."}, 1, 1))
 		socket.Chat("m3", "What is left?")
-		listed := scripted.ToolResult(t, vendor.Requests()[before+1].JSON(t), "toolu_list")
+		listed := scripted.ToolResult(t, scenarioItem(t, vendor.Requests(), before+1).JSON(t), "toolu_list")
 		lines := strings.Split(strings.TrimRight(listed, "\n"), "\n")
 		var todos any
 		if err := json.Unmarshal([]byte(lines[len(lines)-1]), &todos); err != nil {
@@ -268,7 +271,7 @@ func TestAForkReadsTheOutputsOfTheCommandsItsHistoryNames(t *testing.T) {
 		t.Fatalf("two commands: %v", commands)
 	}
 	before, after := commands[0], commands[1]
-	counted := textIDs(blocks)[0]
+	counted := scenarioItem(t, textIDs(blocks), 0)
 
 	// The destination's history names the first command, whose output demi shell
 	// output reads there as in the source; the second is not the destination's.
@@ -279,11 +282,46 @@ func TestAForkReadsTheOutputsOfTheCommandsItsHistoryNames(t *testing.T) {
 	vendor.Respond(shell("toolu_read", "demi shell output "+before+" --raw; demi shell output "+after))
 	vendor.Respond(scripted.Answer([]string{"Read."}, 1, 1))
 	socket.Chat("m3", "What did it count?")
-	read := scripted.ToolResult(t, vendor.Requests()[requests+1].JSON(t), "toolu_read")
+	read := scripted.ToolResult(t, scenarioItem(t, vendor.Requests(), requests+1).JSON(t), "toolu_read")
 	contains(t, read, "1\n2\n3\ndemi shell output: no command "+after+" in this conversation")
 	// The destination goes on from its source's numbers.
 	if id := backendtest.Field(t, read, "commandId"); id != "3" {
 		t.Fatalf("the destination's next command is %s", id)
 	}
+	b.Stop()
+}
+
+// Cost: one backend, a scripted vendor and a real device, a few seconds: the
+// device installs the builtin package for the command whose edits the Fork keeps.
+func TestAForkReadsTheEditsItsHistoryMadeFromTheSameBlobsAndWritesNoObject(t *testing.T) {
+	t.Parallel()
+	vendor := scripted.StartVendor(t)
+	b, master := backendtest.New(t, backendtest.WithBuiltin()).StartSetUp()
+	provider := b.Anthropic(master, vendor, "")
+	b.CreateConversation(master, convFirst)
+	// The runner lives as long as its device binding.
+	onDeviceConversation(t, b, master, convFirst)
+	b.Choose(master, convFirst, provider, "claude-opus-4-8")
+	source := b.Connect(master, convFirst)
+	source.Open()
+	vendor.Respond(backendtest.ShellCall("toolu_1", "printf 'hello\\n' | demi file create notes.txt", time.Minute))
+	vendor.Respond(scripted.Answer([]string{"Written."}, 1, 1))
+	source.Chat("m1", "Write the notes")
+	edited := keptFiles(b, master, convFirst)
+	if len(edited) != 1 || len(edited[0]) == 0 {
+		t.Fatalf("the command lists no change: %v", edited)
+	}
+	if original, modified := editSides(t, b, master, edited[0][0]); original != "" || modified != "hello\n" {
+		t.Fatalf("the edit reads %q and %q", original, modified)
+	}
+
+	texts := textIDs(b.Transcript(master, convFirst))
+	before := b.Control.ObjectCounts()
+	b.Post("/api/conversations/"+convFirst+"/fork", master, forkBody(convSecond, scenarioItem(t, texts, len(texts)-1))).Expect(http.StatusCreated)
+	// The destination's call names the same blobs, and the Fork put none.
+	if puts := b.Control.ObjectCounts().Since(before).Puts; puts != 0 {
+		t.Fatalf("the fork put %d objects", puts)
+	}
+	backendtest.AssertJSON(t, keptFiles(b, master, convSecond), edited)
 	b.Stop()
 }

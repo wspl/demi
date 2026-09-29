@@ -24,6 +24,15 @@ use url::Url;
 
 use crate::vault::accounts::SETUP_TOKEN_FAMILY;
 
+/// The ChatGPT backend and the sign-in service of the `codex` family, where a
+/// test's scripted Codex stands in for them (`testing`).
+#[cfg(feature = "testing")]
+#[derive(Debug, Clone)]
+pub struct CodexEndpoints {
+    pub backend_url: Url,
+    pub auth_url: Url,
+}
+
 /// A provider family: `anthropic`, `codex`, or a test's scripted one.
 pub trait ProviderFamily: Send + Sync + 'static {
     /// How the family's entries authenticate.
@@ -119,10 +128,17 @@ impl FamilyRegistry {
         Self::default()
             .with("anthropic", AnthropicFamily)
             .with(SETUP_TOKEN_FAMILY, ClaudeCodeFamily)
-            .with("codex", CodexFamily)
+            .with("codex", CodexFamily::default())
             .with("google", GoogleFamily)
             .with("grok-build", GrokBuildFamily)
             .with("openai", OpenAiFamily)
+    }
+
+    /// The built-in families with the `codex` family at a test's scripted
+    /// Codex in place of the vendor's own (`testing`).
+    #[cfg(feature = "testing")]
+    pub fn builtin_with_codex(endpoints: CodexEndpoints) -> Self {
+        Self::builtin().with("codex", CodexFamily { endpoints: Some(endpoints) })
     }
 
     /// The registry with `family` under `name`, in place of any family of
@@ -215,7 +231,11 @@ impl ProviderFamily for GoogleFamily {
 
 /// The `codex` family: ChatGPT accounts on the Codex backend, signed in by
 /// Codex's device login.
-struct CodexFamily;
+#[derive(Default)]
+struct CodexFamily {
+    #[cfg(feature = "testing")]
+    endpoints: Option<CodexEndpoints>,
+}
 
 impl ProviderFamily for CodexFamily {
     fn credential(&self) -> CredentialKind {
@@ -227,7 +247,13 @@ impl ProviderFamily for CodexFamily {
             return Err(FamilyError::WrongCredential);
         };
         let (account, quota) = bound(subscription.account);
-        let config = CodexConfig::new(account);
+        #[allow(unused_mut, reason = "a test build may point the endpoints elsewhere")]
+        let mut config = CodexConfig::new(account);
+        #[cfg(feature = "testing")]
+        if let Some(endpoints) = &self.endpoints {
+            config.backend_url = endpoints.backend_url.clone();
+            config.auth_url = endpoints.auth_url.clone();
+        }
         let provider = CodexProvider::new(config, subscription.pool, quota, args.http, args.clock);
         Ok(Arc::new(provider))
     }

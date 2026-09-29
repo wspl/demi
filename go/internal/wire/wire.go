@@ -17,7 +17,11 @@ type InvalidError struct {
 	Path string
 	// Rule says what the field breaks.
 	Rule string
+	// Cause is available through errors.Is/As, never through Error.
+	Cause error
 }
+
+func (e *InvalidError) Unwrap() error { return e.Cause }
 
 func (e *InvalidError) Error() string {
 	if e.Path == "" {
@@ -58,7 +62,7 @@ func Prefix(elem, path string) string {
 func In(elem string, err error) error {
 	var invalid *InvalidError
 	if errors.As(err, &invalid) {
-		return &InvalidError{Path: Prefix(elem, invalid.Path), Rule: invalid.Rule}
+		return &InvalidError{Path: Prefix(elem, invalid.Path), Rule: invalid.Rule, Cause: invalid.Cause}
 	}
-	return &InvalidError{Path: elem, Rule: syntaxRule(err)}
+	return &InvalidError{Path: elem, Rule: syntaxRule(err), Cause: err}
 }

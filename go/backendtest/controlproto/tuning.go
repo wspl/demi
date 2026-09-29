@@ -19,10 +19,33 @@ type Tuning struct {
 	// UserStreams are the user streams a page may open, by name, each bound to
 	// an operation of a native package; they replace the default one.
 	UserStreams *map[string]NativeOperation `json:"userStreams,omitzero"`
+	// Families points the subscription families at the suite's scripted
+	// servers in place of their vendors.
+	Families *FamiliesTuning `json:"families,omitzero"`
+	// ClockStartMs is where the manual clock starts, in Unix milliseconds; the
+	// suite's shared start without it.
+	ClockStartMs *int64 `json:"clockStartMs,omitzero"`
 	// Mail is whether the backend has a mail sender: one that keeps what it
 	// sends for mail.list. Without one an email change answers
 	// mail_unavailable.
 	Mail *bool `json:"mail,omitzero"`
+}
+
+// FamiliesTuning is where the subscription families reach their vendors; a
+// family left out keeps its vendor's endpoints.
+//
+//demi:wire
+type FamiliesTuning struct {
+	Codex *CodexTuning `json:"codex,omitzero"`
+}
+
+// CodexTuning is the ChatGPT backend and the sign-in service of the codex
+// family.
+//
+//demi:wire
+type CodexTuning struct {
+	BackendURL string `json:"backendUrl" check:"chars=1.."`
+	AuthURL    string `json:"authUrl" check:"chars=1.."`
 }
 
 // A NativeOperation is the operation of a native package that a user stream

@@ -323,7 +323,7 @@ func TestAnInstalledRunnerWorksWithTheMaskOfTheShellThatRanTheInstaller(t *testi
 	vendor.Respond(scripted.ToolUse("mask", "shell_exec", backendtest.Map{"script": "umask; echo made > made.txt", "timeoutMs": 60_000}))
 	vendor.Respond(scripted.Answer([]string{"done"}, 1, 1))
 	socket.Chat("m1", "show the mask")
-	result := scripted.ToolResult(t, vendor.Requests()[1].JSON(t), "mask")
+	result := scripted.ToolResult(t, scenarioItem(t, vendor.Requests(), 1).JSON(t), "mask")
 	contains(t, result, "0002")
 	if got := modeOf(t, filepath.Join(installed.home, "made.txt")); got != 0o664 {
 		t.Fatalf("the file's mode is %o", got)

@@ -278,7 +278,11 @@ func (f *httpFixture) serve(connection net.Conn) {
 	if err != nil {
 		return
 	}
-	target := strings.Split(h.line, " ")[1]
+	parts := strings.Split(h.line, " ")
+	if len(parts) < 2 {
+		return // A malformed request has no route to serve.
+	}
+	target := parts[1]
 	target, _, _ = strings.Cut(target, "?")
 	switch target {
 	case "/headers":
@@ -326,8 +330,22 @@ func (f *httpFixture) serve(connection net.Conn) {
 	case "/hold":
 		_, _ = io.WriteString(connection, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nTransfer-Encoding: chunked\r\n\r\n")
 		_, _ = io.WriteString(connection, asChunk("held\n"))
-		// Its end, a failure or a stray byte all end the hold.
-		_, _ = reader.ReadByte()
+		// Its end, a failure or a stray byte all end the hold; each proceed sends
+		// one more chunk meanwhile.
+		ended := make(chan struct{})
+		go func() {
+			defer close(ended)
+			_, _ = reader.ReadByte()
+		}()
+	hold:
+		for {
+			select {
+			case <-ended:
+				break hold
+			case <-f.proceed:
+				_, _ = io.WriteString(connection, asChunk("still\n"))
+			}
+		}
 		f.seen <- seenReleased{}
 	case "/refuse":
 		f.seen <- seenRequest{head: h}
@@ -428,7 +446,7 @@ func fetch(t testing.TB, b *backendtest.Backend, host, path string) (int, string
 	v := visit(t, b)
 	v.write("GET " + path + " HTTP/1.1\r\nHost: " + host + "\r\nConnection: close\r\n\r\n")
 	answer := v.head()
-	status, err := strconv.Atoi(strings.Split(answer.line, " ")[1])
+	status, err := strconv.Atoi(scenarioItem(t, strings.Split(answer.line, " "), 1))
 	if err != nil {
 		t.Fatalf("the status line %q", answer.line)
 	}
@@ -1030,8 +1048,8 @@ func TestTheAgentExposesAServiceAndListsRenewsAndRemovesExposesWithDemiHostExpos
 	for _, exposedOne := range []map[string]any{first, second} {
 		printed := fmt.Sprintf("Exposed 127.0.0.1:%d on laptop as %v\nExpires in 60 minutes (expose %v).\n",
 			fixture.port, exposedOne["url"], exposedOne["number"])
-		if !strings.Contains(backendtest.ShownOutput(added.Received[0]), printed) {
-			t.Fatalf("%q is not in %s", printed, added.Received[0])
+		if !strings.Contains(backendtest.ShownOutput(added.Result(t, 0)), printed) {
+			t.Fatalf("%q is not in %s", printed, added.Result(t, 0))
 		}
 	}
 	if status, body := fetch(t, b, hostOf(t, first), "/hello"); status != 200 || body != "hello" {
@@ -1042,17 +1060,17 @@ func TestTheAgentExposesAServiceAndListsRenewsAndRemovesExposesWithDemiHostExpos
 	listed := work.Turn(backendtest.ShellCall("t2", "demi host expose list && demi host expose list --json", 20*time.Second), backendtest.Say("listed"))
 	address, _ := first["address"].(string)
 	header := fmt.Sprintf("Expose  Device  %-*s  Expires  URL\n", len(address), "Address")
-	if !strings.Contains(listed.Received[0], header) {
-		t.Fatalf("no header %q in %s", header, listed.Received[0])
+	if !strings.Contains(listed.Result(t, 0), header) {
+		t.Fatalf("no header %q in %s", header, listed.Result(t, 0))
 	}
 	for _, exposedOne := range []map[string]any{first, second} {
 		row := fmt.Sprintf("%-6v  laptop  %s  60 min   %v\n", exposedOne["number"], address, exposedOne["url"])
-		if !strings.Contains(listed.Received[0], row) {
-			t.Fatalf("no row %q in %s", row, listed.Received[0])
+		if !strings.Contains(listed.Result(t, 0), row) {
+			t.Fatalf("no row %q in %s", row, listed.Result(t, 0))
 		}
 	}
 	var printed []any
-	for line := range strings.SplitSeq(listed.Received[0], "\n") {
+	for line := range strings.SplitSeq(listed.Result(t, 0), "\n") {
 		if strings.HasPrefix(line, `{"exposes":`) {
 			printed, _ = backendtest.At(backendtest.Decode(t, []byte(line)), "exposes").([]any)
 		}
@@ -1073,7 +1091,7 @@ func TestTheAgentExposesAServiceAndListsRenewsAndRemovesExposesWithDemiHostExpos
 	changes := "demi host expose renew 1 && demi host expose remove 1 && demi host expose renew 1; echo exit=$?; " +
 		add + "; demi host expose add 8080 --host nope; echo exit=$?"
 	changed := work.Turn(backendtest.ShellCall("t3", changes, 20*time.Second), backendtest.Say("changed"))
-	received := changed.Received[0]
+	received := changed.Result(t, 0)
 	for _, expected := range []string{
 		"Expose 1 expires in 60 minutes.\n",
 		"Removed expose 1; its URL no longer works.\n",
@@ -1106,6 +1124,195 @@ func TestWithoutAnExposeDomainExposesAreUnavailable(t *testing.T) {
 	backendtest.AssertJSON(t, []any{state["exposes"], state["exposeDomain"]}, []any{[]any{}, nil})
 	if listed := exposesOf(b, master); len(listed) != 0 {
 		t.Fatalf("exposes are listed: %v", listed)
+	}
+	b.Stop()
+}
+
+// Cost: one backend and a real runner, about a second.
+func TestAnExposeIsRenewedBeforeItsHourAndAnswersUnknownASecondAfterItsExpiry(t *testing.T) {
+	t.Parallel()
+	b, master := backendtest.New(t, backendtest.WithExposeDomain(exposeDomain)).StartSetUp()
+	laptop := b.Pair(master, "laptop")
+	fixture := startHTTPFixture(t)
+	exposed := exposeOn(t, b, master, laptop.ID(), fixture.port)
+	id, _ := exposed["id"].(string)
+	host := hostOf(t, exposed)
+
+	// Renewed before its hour, it lives an hour from the renewal.
+	now := b.Control.AdvanceClock(50 * time.Minute)
+	renewed := b.Post("/api/exposes/"+id+"/renew", master, backendtest.Map{}).Expect(http.StatusOK)
+	if got := instant(t, renewed.At("expose.expiresAt")); !got.Equal(now.Add(time.Hour)) {
+		t.Fatalf("the renewed expose ends at %v, not %v", got, now.Add(time.Hour))
+	}
+	b.Control.AdvanceClock(50 * time.Minute)
+	if status, _ := fetch(t, b, host, "/hello"); status != 200 {
+		t.Fatalf("the renewed expose answers %d", status)
+	}
+
+	// A second after its expiry the URL answers as unknown, and the visit
+	// destroyed the record.
+	b.Control.AdvanceClock(10*time.Minute + time.Second)
+	status, page := fetch(t, b, host, "/hello")
+	if status != 404 || !strings.Contains(page, "does not exist") {
+		t.Fatalf("an expired expose answers %d %q", status, page)
+	}
+	if listed := exposesOf(b, master); len(listed) != 0 {
+		t.Fatalf("an expired expose is listed: %v", listed)
+	}
+	wantRefusal(t, b.Post("/api/exposes/"+id+"/renew", master, backendtest.Map{}), http.StatusNotFound, "expose_not_found", "the renewal of an expired expose")
+	b.Stop()
+}
+
+// Cost: one backend and a real runner, about a second.
+func TestAConnectionHeldAcrossItsExposesExpiryEndsAtTheExpiry(t *testing.T) {
+	t.Parallel()
+	b, master := backendtest.New(t, backendtest.WithExposeDomain(exposeDomain)).StartSetUp()
+	laptop := b.Pair(master, "laptop")
+	fixture := startHTTPFixture(t)
+	expiring := exposeOn(t, b, master, laptop.ID(), fixture.port)
+	b.Control.AdvanceClock(time.Hour - time.Second)
+	held := hold(t, b, hostOf(t, expiring))
+	b.Control.AdvanceClock(2 * time.Second)
+	held.ended()
+	if released := fixture.next(); released != (seenReleased{}) {
+		t.Fatalf("the service saw %+v", released)
+	}
+	if listed := exposesOf(b, master); len(listed) != 0 {
+		t.Fatalf("an expired expose is listed: %v", listed)
+	}
+	b.Stop()
+}
+
+// Cost: one backend, a scripted manager and a Cloud's runner, several seconds: a
+// Cloud boots and installs the builtin package, checkpoints, and then idles for a
+// window that passes in real time.
+func TestACloudsExposesOutliveItsCheckpointsAndEndWhenItStopsIdle(t *testing.T) {
+	t.Parallel()
+	vendor := scripted.StartVendor(t)
+	const window = 600 * time.Millisecond
+	h := backendtest.New(t, backendtest.WithBuiltin(), backendtest.WithExposeDomain(exposeDomain))
+	idleAfter(h, window)
+	h.Cloud().SweepMs = backendtest.Ptr(uint64(50))
+	h.Cloud().CheckpointIntervalMs = backendtest.Ptr(uint64(300))
+	b, master := h.StartSetUp()
+	fixture := startHTTPFixture(t)
+	provider := b.Anthropic(master, vendor, "/work")
+	b.CreateConversation(master, exposeAgentConv)
+	// A lease of the conversation's file gate is its work: the Cloud does not idle
+	// before the test has looked, and idles once it ends.
+	working := b.Control.EnterGate(master.User.ID, exposeAgentConv, "demand")
+	work := b.Open(master, vendor, exposeAgentConv, provider, "/work")
+	work.Turn(backendtest.ShellCall("t1", "true", 20*time.Second), backendtest.Say("awake"))
+	device := theCloud(t, h)
+	exposed := exposeOn(t, b, master, device, fixture.port)
+	host := hostOf(t, exposed)
+	held := hold(t, b, host)
+
+	// A checkpoint keeps the Cloud running, and its expose and the expose's
+	// connection with it: what the service sends on the connection afterwards
+	// still arrives.
+	checkpoint := "checkpoint:" + device
+	before := h.Manager.Count(checkpoint)
+	backendtest.Eventually(t, "the Cloud checkpoints", func() bool { return h.Manager.Count(checkpoint) > before })
+	if status, body := fetch(t, b, host, "/hello"); status != 200 || body != "hello" {
+		t.Fatalf("the Cloud's expose answers %d %q", status, body)
+	}
+	fixture.proceed <- struct{}{}
+	if got := held.chunksUntil("still\n"); got != "still\n" {
+		t.Fatalf("the connection carries %q", got)
+	}
+	backendtest.AssertJSON(t, exposesOf(b, master), []any{exposed})
+
+	// Idle, the Cloud stops a window after its work ends, and its expose ends with
+	// it, before the Cloud is saved.
+	rested := time.Now()
+	working.Release()
+	held.ended()
+	if released := fixture.next(); released != (seenReleased{}) {
+		t.Fatalf("the service saw %+v", released)
+	}
+	if listed := exposesOf(b, master); len(listed) != 0 {
+		t.Fatalf("the stopped Cloud's expose is listed: %v", listed)
+	}
+	stopped := h.Manager.Arrival("hibernate:"+device, backendtest.Patience)
+	if stopped.Before(rested.Add(window)) {
+		t.Fatalf("the Cloud stopped %v after its work ended", stopped.Sub(rested))
+	}
+	if status, _ := fetch(t, b, host, "/hello"); status != 404 {
+		t.Fatalf("a stopped Cloud's expose answers %d", status)
+	}
+	b.Stop()
+}
+
+// Cost: one backend, a scripted manager and a Cloud's runner booted three times,
+// several seconds: the Cloud boots again after its death and after its reset, and
+// installs the builtin package each time.
+func TestACloudsExposesEndWhenItDiesResetsOrIsFoundStoppedAndBeforeABackendServes(t *testing.T) {
+	t.Parallel()
+	vendor := scripted.StartVendor(t)
+	h := backendtest.New(t, backendtest.WithBuiltin(), backendtest.WithExposeDomain(exposeDomain))
+	b, master := h.StartSetUp()
+	fixture := startHTTPFixture(t)
+	provider := b.Anthropic(master, vendor, "/work")
+	b.CreateConversation(master, exposeAgentConv)
+	work := b.Open(master, vendor, exposeAgentConv, provider, "/work")
+	work.Turn(backendtest.ShellCall("t1", "true", 20*time.Second), backendtest.Say("awake"))
+	device := theCloud(t, h)
+	released := func() {
+		t.Helper()
+		if seen := fixture.next(); seen != (seenReleased{}) {
+			t.Fatalf("the service saw %+v", seen)
+		}
+	}
+	noExposes := func(what string) {
+		backendtest.Eventually(t, what, func() bool { return len(exposesOf(b, master)) == 0 })
+	}
+
+	// The Cloud's sandbox dies.
+	dying := exposeOn(t, b, master, device, fixture.port)
+	held := hold(t, b, hostOf(t, dying))
+	h.Manager.Kill(device)
+	held.ended()
+	released()
+	noExposes("the dead Cloud's expose ends")
+
+	// The next operation boots it again, and a reset stops it.
+	work.Turn(backendtest.ShellCall("t2", "true", 20*time.Second), backendtest.Say("awake again"))
+	resetting := exposeOn(t, b, master, device, fixture.port)
+	held = hold(t, b, hostOf(t, resetting))
+	resetCloud(b, master, cloudReset)
+	held.ended()
+	released()
+	untilCloud(t, b, master, "the reset is ready", resetIs("ready"))
+	if listed := exposesOf(b, master); len(listed) != 0 {
+		t.Fatalf("a reset Cloud's exposes are listed: %v", listed)
+	}
+
+	// A Cloud stopped without a word keeps its expose, offline, until the next
+	// operation finds it stopped and boots it again.
+	found := exposeOn(t, b, master, device, fixture.port)
+	h.Manager.StopQuietly(device)
+	backendtest.Eventually(t, "the backend sees the runner go", func() bool { return !cloudOnline(b, master) })
+	backendtest.AssertJSON(t, exposesOf(b, master), []any{found})
+	if status, _ := fetch(t, b, hostOf(t, found), "/hello"); status != 502 {
+		t.Fatalf("an expose of a Cloud stopped without a word answers %d", status)
+	}
+	work.Turn(backendtest.ShellCall("t3", "true", 20*time.Second), backendtest.Say("booted"))
+	if listed := exposesOf(b, master); len(listed) != 0 {
+		t.Fatalf("the found stopped Cloud's exposes are listed: %v", listed)
+	}
+	if status, _ := fetch(t, b, hostOf(t, found), "/hello"); status != 404 {
+		t.Fatalf("an ended expose answers %d", status)
+	}
+
+	// A backend that stopped without saving its Cloud, as a crash does, leaves its
+	// exposes behind; the next one ends them before it serves, since the machine
+	// manager has stopped every Cloud by then.
+	crashing := exposeOn(t, b, master, device, fixture.port)
+	b.Kill()
+	b = h.Start()
+	if listed := exposesOf(b, master); len(listed) != 0 {
+		t.Fatalf("the crashed backend's expose %v outlived its Cloud", crashing["id"])
 	}
 	b.Stop()
 }

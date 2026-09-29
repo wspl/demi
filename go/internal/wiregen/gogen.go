@@ -76,6 +76,13 @@ func (p *Package) GenerateGo() (map[string][]byte, error) {
 	if packed != nil {
 		files["msgpack_wire.go"] = packed
 	}
+	exported, err := p.exports()
+	if err != nil {
+		return nil, err
+	}
+	if exported != nil {
+		files["exports_wire.go"] = exported
+	}
 	return files, nil
 }
 
@@ -262,7 +269,7 @@ func (g *goGen) structure(s *Struct) error {
 		return fmt.Errorf("%s: a wire struct has at most 64 members", s.Name)
 	}
 	g.decoder(s, members)
-	if s.Union != nil && s.Union.TagName != "" || len(s.Embeds) > 0 || hasInline(s) {
+	if s.Union != nil && s.Union.TagName != "" || len(s.Embeds) > 0 || hasInline(s) || s.Unknown != nil {
 		g.encoder(s)
 	}
 	g.validator(s)
@@ -333,7 +340,12 @@ func (g *goGen) decoder(s *Struct, members []member) {
 		}
 	}
 	g.p("default:")
-	if s.Open {
+	if s.Unknown != nil {
+		g.p("raw,err := wire.ReadRaw(dec)")
+		g.p("if err!=nil{return wire.In(name,err)}")
+		g.p("if v.%s==nil {v.%s=make(map[string]jsontext.Value)}", s.Unknown.Name, s.Unknown.Name)
+		g.p("v.%s[name]=raw", s.Unknown.Name)
+	} else if s.Open {
 		g.p("if err := dec.SkipValue(); err != nil {")
 		g.p("return err")
 		g.p("}")
@@ -385,9 +397,12 @@ func (g *goGen) encoder(s *Struct) {
 		g.p("// it embeds among its own.")
 	}
 	g.p("func (v %s) MarshalJSONTo(enc *jsontext.Encoder) error {", s.Name)
+	if s.Unknown != nil {
+		g.p("if err:=wire.CheckUnknown(v.%s,%s);err!=nil{return err}", s.Unknown.Name, quoted(structMemberNames(s)))
+	}
 	g.p("return json.MarshalEncode(enc, struct {")
 	var values []string
-	if s.Union != nil {
+	if s.Union != nil && s.Union.TagName != "" {
 		g.p("Tag string `json:%s`", strconv.Quote(s.Union.TagName))
 		values = append(values, strconv.Quote(s.Tag))
 	}
@@ -398,6 +413,10 @@ func (g *goGen) encoder(s *Struct) {
 		}
 		g.p("%s %s `json:%s`", f.Name, f.Type.Src, strconv.Quote(f.JSON+option))
 		values = append(values, "v."+f.Name)
+	}
+	if s.Unknown != nil {
+		g.p("%s map[string]jsontext.Value `json:\",embed\"`", s.Unknown.Name)
+		values = append(values, "v."+s.Unknown.Name)
 	}
 	g.p("}{%s})", strings.Join(values, ", "))
 	g.p("}")
@@ -421,8 +440,14 @@ func (g *goGen) field(f *Field) {
 	wraps := []string{strconv.Quote(f.JSON)}
 	target := "v." + f.Name
 	if f.Type.Kind == KindPointer {
-		if f.Nullable {
-			// A required member that may be null: the null is the value.
+		if f.TriState {
+			g.p("var value %s", f.Type.Elem.Src)
+			g.decode(f.Type.Elem, "value", wraps, 0)
+			g.p("%s = &value", target)
+			return
+		}
+		if f.Nullable || f.NullAsAbsent {
+			// Nullable and null-as-absent fields both read null as nil.
 			g.p("if wire.IsNull(dec) {")
 			g.p("if _, err := dec.ReadToken(); err != nil {")
 			g.p("return %s", wrapError(wraps, "err"))
@@ -597,6 +622,12 @@ func (g *goGen) validator(s *Struct) {
 	body.imports = g.imports
 	for _, f := range s.Fields {
 		body.fieldRules(f)
+	}
+	if s.Unknown != nil {
+		body.p("r.Check(\"\",wire.CheckUnknown(v.%s,%s))", s.Unknown.Name, quoted(structMemberNames(s)))
+	}
+	for _, embedded := range s.EmbedChecks {
+		body.p("r.Check(\"\",v.%s.check())", embedded)
 	}
 	if s.Check {
 		body.p("r.Check(\"\", v.check())")
@@ -1024,11 +1055,18 @@ func (g *goGen) adjacentEncoder(s *Struct) {
 	g.p("// MarshalJSONTo encodes %s as a JSON object with its tag and, beside it, its", s.Name)
 	g.p("// members as the content.")
 	g.p("func (v %s) MarshalJSONTo(enc *jsontext.Encoder) error {", s.Name)
+	if s.Unknown != nil {
+		g.p("if err:=wire.CheckUnknown(v.%s,%s);err!=nil{return err}", s.Unknown.Name, quoted(structMemberNames(s)))
+	}
 	g.p("type content struct {")
 	values := make([]string, len(s.Fields))
 	for i, f := range s.Fields {
 		g.p("%s %s `json:%s`", f.Name, f.Type.Src, strconv.Quote(f.JSON+omitOption(f)))
 		values[i] = "v." + f.Name
+	}
+	if s.Unknown != nil {
+		g.p("%s map[string]jsontext.Value `json:%s`", s.Unknown.Name, strconv.Quote(",embed"))
+		values = append(values, "v."+s.Unknown.Name)
 	}
 	g.p("}")
 	g.p("return json.MarshalEncode(enc, struct {")
@@ -1058,7 +1096,11 @@ func (g *goGen) inlineEncoder(s *Struct) {
 			continue
 		}
 		if !f.Required {
-			g.p("if v.%s != nil {", f.Name)
+			if f.Type.Kind == KindBool {
+				g.p("if v.%s {", f.Name)
+			} else {
+				g.p("if v.%s != nil {", f.Name)
+			}
 		}
 		g.p("if err := enc.WriteToken(jsontext.String(%s)); err != nil {", strconv.Quote(f.JSON))
 		g.p("return err")
@@ -1136,4 +1178,16 @@ func (g *goGen) adjacentValidator(u *Union) {
 // hasInline reports whether a struct has an inline union.
 func hasInline(s *Struct) bool {
 	return slices.ContainsFunc(s.Fields, func(f *Field) bool { return f.Inline })
+}
+
+// structMemberNames lists the names reserved against retained unknown members.
+func structMemberNames(s *Struct) []string {
+	var names []string
+	if s.Union != nil && s.Union.TagName != "" && s.Union.ContentName == "" {
+		names = append(names, s.Union.TagName)
+	}
+	for _, f := range s.Fields {
+		names = append(names, f.JSON)
+	}
+	return names
 }

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json/v2"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/wspl/demi/go/backendtest/procgroup"
 	"github.com/wspl/demi/go/builtinproto"
 	"github.com/wspl/demi/go/commandservice"
 )
@@ -69,8 +71,14 @@ type artifact struct {
 }
 
 // Main runs a package's tests and removes what they published. A package's
-// TestMain calls it.
+// TestMain calls it. The test process adopts the processes that lose their
+// parent, such as the jobs of a runner a scenario killed, so that each
+// scenario's cleanup can end them (procgroup.KillAdopted).
 func Main(m *testing.M) int {
+	if err := procgroup.AdoptOrphans(); err != nil {
+		fmt.Fprintf(os.Stderr, "the test process cannot adopt orphans: %v\n", err)
+		return 1
+	}
 	code := m.Run()
 	releases.mu.Lock()
 	defer releases.mu.Unlock()

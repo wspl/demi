@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/wspl/demi/go/backendtest"
+	"github.com/wspl/demi/go/backendtest/controlproto"
 	"github.com/wspl/demi/go/backendtest/scripted"
 )
 
@@ -91,7 +92,7 @@ func TestAnEditRestoresTheTodosKeepsTheFilesAndAnswersItsReceiptOnAnotherSocketA
 	socket.Until(isIdle)
 	// The model reads the history the edit kept and the new message, on a fresh
 	// runtime; the removed turns and their tool result are gone.
-	replayed := jsonText(backendtest.At(vendor.Requests()[asked].JSON(t), "messages"))
+	replayed := jsonText(backendtest.At(scenarioItem(t, vendor.Requests(), asked).JSON(t), "messages"))
 	contains(t, replayed, "A-kept", "answer-A-kept", "B-edited")
 	for _, gone := range []string{"B-removed", "C-removed", "tool_result"} {
 		if containsText(replayed, gone) {
@@ -135,10 +136,119 @@ func TestAnEditRestoresTheTodosKeepsTheFilesAndAnswersItsReceiptOnAnotherSocketA
 	vendor.Respond(shell("toolu_check", "cat sentinel.txt && demi todo list"))
 	vendor.Respond(scripted.Answer([]string{"checked"}, 1, 1))
 	third.Chat("m4", "Verify the effects")
-	checked := scripted.ToolResult(t, vendor.Requests()[before+1].JSON(t), "toolu_check")
+	checked := scripted.ToolResult(t, scenarioItem(t, vendor.Requests(), before+1).JSON(t), "toolu_check")
 	contains(t, checked, "permanent", "No todos")
 	if containsText(checked, "permanent todo") {
 		t.Fatalf("the removed todo is back: %s", checked)
 	}
+	b.Stop()
+}
+
+// Cost: one backend and a scripted vendor, about a second.
+func TestAnEditReachesThePageAndTheModelOnlyOnceItsTransactionCommits(t *testing.T) {
+	t.Parallel()
+	vendor := scripted.StartVendor(t)
+	b, master := backendtest.New(t).StartSetUp()
+	provider := b.Anthropic(master, vendor, "")
+	b.CreateConversation(master, convFirst)
+	b.Choose(master, convFirst, provider, "claude-opus-4-8")
+	socket := b.Connect(master, convFirst)
+	socket.Open()
+	vendor.Respond(scripted.Answer([]string{"answer-A-kept"}, 1, 1))
+	socket.Chat("m1", "A-kept")
+	vendor.Respond(scripted.Answer([]string{"answer-B-removed"}, 1, 1))
+	// The socket saw the turn end, so every save of the turns has committed, and
+	// the next save is the edit's.
+	socket.Chat("m2", "B-removed")
+	history := b.Transcript(master, convFirst)
+	request := editFrame(t, socket, "B-removed", "edit-1", "B-edited")
+
+	hold := b.Control.Hold(controlproto.HoldCommits)
+	asked := len(vendor.Requests())
+	vendor.Respond(scripted.Answer([]string{"answer-edited"}, 1, 1))
+	socket.Send(request)
+	hold.Wait(1)
+	// The edit's rows are written and its commit waits. A process that died now
+	// would leave the database as a reload reads it here, with the history before
+	// the edit, and the model is not asked.
+	backendtest.AssertJSON(t, b.Transcript(master, convFirst), history)
+	if got := len(vendor.Requests()); got != asked {
+		t.Fatalf("the model is asked before the commit: %d requests, not %d", got, asked)
+	}
+
+	// Once the commit completes, the replacement and the result reach the page,
+	// and the model is asked with the replacement.
+	hold.Release()
+	answered := socket.UntilType("edit_result")
+	if outcome, _ := answered[len(answered)-1]["outcome"].(map[string]any); outcome["status"] != "accepted" {
+		t.Fatalf("the edit is %v", outcome)
+	}
+	patched := false
+	for _, frame := range answered {
+		patched = patched || frame["type"] == "transcript_patch"
+	}
+	if !patched {
+		t.Fatalf("no patch reached the page: %v", answered)
+	}
+	socket.Until(isIdle)
+	replayed := jsonText(backendtest.At(scenarioItem(t, vendor.Requests(), asked).JSON(t), "messages"))
+	if !containsText(replayed, "B-edited") || containsText(replayed, "B-removed") {
+		t.Fatalf("the model reads %s", replayed)
+	}
+	b.Stop()
+}
+
+// Cost: one backend and a scripted vendor, about a second.
+func TestThePageSeesATurnEndOnceItsSaveCommitsAndAnEditSentThenIsAdmitted(t *testing.T) {
+	t.Parallel()
+	vendor := scripted.StartVendor(t)
+	b, master := backendtest.New(t).StartSetUp()
+	provider := b.Anthropic(master, vendor, "")
+	b.CreateConversation(master, convFirst)
+	b.Choose(master, convFirst, provider, "claude-opus-4-8")
+	socket := b.Connect(master, convFirst)
+	socket.Open()
+	vendor.Respond(scripted.Answer([]string{"answer-A"}, 1, 1))
+	socket.Chat("m1", "A-kept")
+
+	// The next turn answers, and the save that ends it waits at its commit.
+	hold := b.Control.Hold(controlproto.HoldCommits)
+	vendor.Respond(scripted.Answer([]string{"answer-B"}, 1, 1))
+	socket.Send(backendtest.SendMessage("m2", "B-removed"))
+	hold.Wait(1)
+	// Meanwhile the page has not seen the turn end: the reset that answers a sync
+	// follows every frame sent before it, and none of them says idle.
+	socket.Send(backendtest.Frame{"type": "sync_transcript"})
+	meanwhile := socket.UntilType("transcript_reset")
+	for _, frame := range meanwhile {
+		if isIdle(frame) {
+			t.Fatalf("the page saw the turn end before its save committed: %v", meanwhile)
+		}
+	}
+	reset := meanwhile[len(meanwhile)-1]
+	blocks, _ := reset["blocks"].([]any)
+	var target any
+	for _, block := range blocks {
+		if backendtest.At(block, "type") == "user" && backendtest.At(block, "turnId") == "m2" {
+			target = backendtest.At(block, "id")
+		}
+	}
+	if target == nil {
+		t.Fatalf("the message m2 is not in %v", backendtest.BlockKinds(blocks))
+	}
+	request := backendtest.Frame{"type": "edit_and_send", "request": backendtest.Map{
+		"operationId": "edit-1", "targetBlockId": target, "version": reset["version"],
+		"content": []any{backendtest.Map{"type": "text", "text": "B-edited"}},
+	}}
+
+	// Once the save commits, the page sees the turn end, and an edit it sends at
+	// that moment is admitted.
+	hold.Release()
+	socket.Until(isIdle)
+	vendor.Respond(scripted.Answer([]string{"answer-edited"}, 1, 1))
+	if outcome := editOutcome(socket, request); outcome["status"] != "accepted" {
+		t.Fatalf("the edit is %v", outcome)
+	}
+	socket.Until(isIdle)
 	b.Stop()
 }

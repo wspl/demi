@@ -118,7 +118,7 @@ func TestATitleFollowsTheFirstMessageAndARenameOrAnArchiveWhileOneIsAskedWins(t 
 		t.Fatalf("the title request is %s", jsonText(first))
 	}
 	// The request is metered like a turn.
-	if got := backendtest.At(usageTotals(b, master)[0], "requests"); got != 2.0 {
+	if got := backendtest.At(scenarioItem(t, usageTotals(b, master), 0), "requests"); got != 2.0 {
 		t.Fatalf("the ledger counts %v requests", got)
 	}
 
