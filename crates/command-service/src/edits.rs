@@ -332,7 +332,10 @@ impl FileStamp {
 /// Whether a lookup failed because nothing is at the path: a path below a
 /// file names nothing either (`edit-tracking.md` § Recording actual writes).
 fn absent(error: &io::Error) -> bool {
-    matches!(error.kind(), io::ErrorKind::NotFound | io::ErrorKind::NotADirectory)
+    matches!(
+        error.kind(),
+        io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+    )
 }
 
 impl Contents {
