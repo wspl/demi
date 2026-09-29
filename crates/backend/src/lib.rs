@@ -48,7 +48,7 @@ pub use storage::conversations::CommitHold;
 #[cfg(feature = "testing")]
 pub use sync::SyncStep;
 #[cfg(feature = "testing")]
-pub use testing::{ControlServer, Mailbox, ManualClock, TestControl, TestControlError};
+pub use testing::{ControlConnections, ControlServer, Mailbox, ManualClock, TestControl, TestControlError};
 #[cfg(feature = "testing")]
 pub use storage::objects::counting::{ObjectCounts, ObjectTally};
 pub use storage::objects::S3ConfigError;

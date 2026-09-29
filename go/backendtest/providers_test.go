@@ -7,8 +7,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/wspl/demi/go/backendtest"
 	"github.com/wspl/demi/go/backendtest/scripted"
@@ -266,7 +269,7 @@ func TestAVendorEntryTakesItsFamilyWireAndEndpointFromModelsDevAndReadsItsLiveMo
 	// with the copy's validator.
 	vendor.Respond(scripted.Status(304))
 	live := modelsOf(b, master, "")
-	if got := vendor.Requests()[1].Header.Get("If-None-Match"); got != `"fixture"` {
+	if got := scenarioItem(t, vendor.Requests(), 1).Header.Get("If-None-Match"); got != `"fixture"` {
 		t.Fatalf("the validator is %q", got)
 	}
 	models, _ := live.At("providers.0.models").([]any)
@@ -322,7 +325,7 @@ func tested(t *testing.T, b *backendtest.Backend, master *backendtest.Session, v
 	result := b.Post("/api/providers/"+entry["id"].(string)+"/test", master, backendtest.Map{"modelId": "m"}).Expect(http.StatusOK)
 	backendtest.AssertJSON(t, result.Value(), backendtest.Map{"type": "passed", "model": "m display"})
 	requests := vendor.Requests()
-	return requests[len(requests)-1]
+	return scenarioItem(t, requests, len(requests)-1)
 }
 
 // sseBody is a server-sent events body with one data frame per payload.
@@ -347,7 +350,7 @@ func TestTheProviderTestSendsOneRealRequestThroughTheEntrysFamily(t *testing.T) 
 	vendor.Respond(answered)
 	passed := b.Post(path, master, backendtest.Map{"modelId": "claude-opus-4-8"}).Expect(http.StatusOK)
 	backendtest.AssertJSON(t, passed.Value(), backendtest.Map{"type": "passed", "model": "Claude Opus 4.8"})
-	sent := vendor.Requests()[0]
+	sent := scenarioItem(t, vendor.Requests(), 0)
 	if sent.Path != "/v1/messages" || sent.Header.Get("X-Api-Key") != "sk-ant-test" {
 		t.Fatalf("the request is %s with key %q", sent.Path, sent.Header.Get("X-Api-Key"))
 	}
@@ -390,6 +393,126 @@ func TestTheProviderTestSendsOneRealRequestThroughTheEntrysFamily(t *testing.T) 
 	google := tested(t, b, master, vendor, "google", "", "")
 	if google.Path != "/v1/models/m:streamGenerateContent" || google.Header.Get("X-Goog-Api-Key") != "sk-2" {
 		t.Fatalf("the google request is %s with %q", google.Path, google.Header.Get("X-Goog-Api-Key"))
+	}
+	b.Stop()
+}
+
+// modelsDevWith is a models.dev document whose deepseek vendor lists the models.
+func modelsDevWith(ids ...string) backendtest.Map {
+	models := backendtest.Map{}
+	for _, id := range ids {
+		models[id] = backendtest.Map{"name": id, "limit": backendtest.Map{"context": 128_000}}
+	}
+	return backendtest.Map{"deepseek": backendtest.Map{
+		"id": "deepseek", "name": "DeepSeek", "npm": "@ai-sdk/openai-compatible",
+		"api": "https://api.deepseek.com", "models": models,
+	}}
+}
+
+// modelIDs are the ids of the first provider's models in a catalog answer.
+func modelIDs(catalog *backendtest.Answer) []string {
+	models, _ := catalog.At("providers.0.models").([]any)
+	ids := make([]string, len(models))
+	for index, model := range models {
+		ids[index], _ = backendtest.At(model, "id").(string)
+	}
+	return ids
+}
+
+// Cost: one backend started twice and a scripted models.dev, about two seconds.
+func TestADirectoryCatalogIsCachedRefreshedOnDemandAndKeptAfterAFailedRefresh(t *testing.T) {
+	t.Parallel()
+	vendor := scripted.StartVendor(t)
+	// The document the source answers with now, or none while it is down.
+	var mu sync.Mutex
+	document := modelsDevWith("a", "b")
+	down := false
+	vendor.Handle(func(scripted.Request) *scripted.Response {
+		mu.Lock()
+		defer mu.Unlock()
+		if down {
+			return scripted.Status(503)
+		}
+		return served(document)
+	})
+	source := func(ids []string, failing bool) {
+		mu.Lock()
+		defer mu.Unlock()
+		document, down = modelsDevWith(ids...), failing
+	}
+	reads := func() int { return len(vendor.Requests()) }
+	h := backendtest.New(t, backendtest.WithModelsDev(vendor.URL("/api.json")))
+	b, master := h.StartSetUp()
+	entry := createProvider(b, master, backendtest.Map{"source": "vendor", "vendorId": "deepseek", "label": "DeepSeek", "apiKey": "sk-1"})
+
+	first := modelsOf(b, master, "")
+	if ids := modelIDs(first); !slices.Equal(ids, []string{"a", "b"}) || first.At("providers.0.stale") != false {
+		t.Fatalf("the first read is %v %v", ids, first.At("providers.0.stale"))
+	}
+	readsAfterFirst := reads()
+	modelsOf(b, master, "")
+	if got := reads(); got != readsAfterFirst {
+		t.Fatalf("a fresh record asked the source: %d reads after %d", got, readsAfterFirst)
+	}
+
+	for _, query := range []string{"?refresh=1", "?refresh=TRUE", "?refresh="} {
+		wantRefusal(t, b.Get("/api/models"+query, master), http.StatusBadRequest, "invalid_query", query)
+	}
+	source([]string{"a", "b", "c"}, false)
+	if ids := modelIDs(modelsOf(b, master, "?refresh=true")); len(ids) != 3 {
+		t.Fatalf("a refresh reads %v", ids)
+	}
+	afterRefresh := reads()
+	source(nil, true)
+	failed := modelsOf(b, master, "?refresh=true")
+	if ids := modelIDs(failed); len(ids) != 3 || failed.At("providers.0.stale") != true {
+		t.Fatalf("a failed refresh answers %v stale %v", ids, failed.At("providers.0.stale"))
+	}
+	if warnings, _ := failed.At("providers.0.warnings").([]any); len(warnings) != 1 {
+		t.Fatalf("a failed refresh warns %v", warnings)
+	}
+	if reads() <= afterRefresh {
+		t.Fatal("the failed refresh never asked the source")
+	}
+
+	// A restart serves the stored record before it asks the source.
+	b.Stop()
+	b = h.Start()
+	before := reads()
+	restored := modelsOf(b, master, "")
+	if ids := modelIDs(restored); len(ids) != 3 {
+		t.Fatalf("the restored record is %v", ids)
+	}
+	if got := reads(); got != before {
+		t.Fatalf("the restored record asked the source: %d reads after %d", got, before)
+	}
+
+	// Expired: the record at once, marked stale, while one refresh runs.
+	b.Control.AdvanceClock(16 * time.Minute)
+	source([]string{"d"}, false)
+	expired := modelsOf(b, master, "")
+	if ids := modelIDs(expired); len(ids) != 3 || expired.At("providers.0.stale") != true {
+		t.Fatalf("the expired record is %v stale %v", modelIDs(expired), expired.At("providers.0.stale"))
+	}
+	backendtest.Eventually(t, "the refresh brings the new list", func() bool {
+		return slices.Equal(modelIDs(modelsOf(b, master, "")), []string{"d"})
+	})
+	if refreshed := modelsOf(b, master, ""); refreshed.At("providers.0.stale") != false {
+		t.Fatal("the refreshed record is stale")
+	}
+
+	// A configured list is read from the entry and never fetched.
+	b.Patch("/api/providers/"+entry["id"].(string), master, backendtest.Map{"models": []any{configuredNamed("typed")}}).Expect(http.StatusOK)
+	before = reads()
+	typed := modelsOf(b, master, "?refresh=true")
+	if ids := modelIDs(typed); !slices.Equal(ids, []string{"typed"}) || typed.At("providers.0.stale") != false {
+		t.Fatalf("the configured list is %v", ids)
+	}
+	if got := reads(); got != before {
+		t.Fatalf("a configured list was fetched: %d reads after %d", got, before)
+	}
+	if typed.At("providers.0.sourceFetchedAt") != "1970-01-01T00:00:00.000Z" {
+		t.Fatalf("the configured list's source time is %v", typed.At("providers.0.sourceFetchedAt"))
 	}
 	b.Stop()
 }

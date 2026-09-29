@@ -24,6 +24,16 @@ const (
 	convThird  = "5a4b3c2d-1e0f-4a1b-8c2d-3e4f5a6b7c8d"
 )
 
+// scenarioItem returns an observed item or fails this scenario when it is absent.
+// Neither testing nor slices provides a checked assertion for an indexed item.
+func scenarioItem[T any](t testing.TB, items []T, index int) T {
+	t.Helper()
+	if index < 0 || index >= len(items) {
+		t.Fatalf("observed %d items, need item %d", len(items), index)
+	}
+	return items[index]
+}
+
 // jsonText is the JSON text of a value, as a request's body or a block shows it.
 func jsonText(value any) string {
 	return string(backendtest.Marshal(value))
@@ -147,7 +157,7 @@ func TestAMessageRunsOverTheSocketAndAReloadShowsWhatTheDatabaseHolds(t *testing
 		t.Fatalf("the turn has no patch: %v", turn)
 	}
 
-	sent := vendor.Requests()[0]
+	sent := scenarioItem(t, vendor.Requests(), 0)
 	if sent.Path != "/v1/messages" || sent.Header.Get("X-Api-Key") != "sk-ant-test" {
 		t.Fatalf("the request is %s with key %q", sent.Path, sent.Header.Get("X-Api-Key"))
 	}
@@ -214,7 +224,7 @@ func TestAMessageRunsOverTheSocketAndAReloadShowsWhatTheDatabaseHolds(t *testing
 	backendtest.AssertJSON(t, handshake[1]["blocks"], live)
 	vendor.Respond(scripted.Answer([]string{"Again."}, 20, 2))
 	reloaded.Chat("m2", "Once more")
-	replayed := vendor.Requests()[1].JSON(t)
+	replayed := scenarioItem(t, vendor.Requests(), 1).JSON(t)
 	if messages := backendtest.At(replayed, "messages").([]any); len(messages) != 3 {
 		t.Fatalf("the replayed request has %d messages: %s", len(messages), jsonText(replayed))
 	}
@@ -281,7 +291,10 @@ func TestARequestTheVendorRefusesAsTooLargeCompactsAndGoesAgainFromTheSummary(t 
 	if len(requests) != 4 {
 		t.Fatalf("the vendor got %d requests", len(requests))
 	}
-	first, refused, summary, again := requests[0].JSON(t), requests[1].JSON(t), requests[2].JSON(t), requests[3].JSON(t)
+	first := requests[0].JSON(t)
+	refused := requests[1].JSON(t)
+	summary := requests[2].JSON(t)
+	again := requests[3].JSON(t)
 	messages := func(body any) []any {
 		list, _ := unmarked(backendtest.At(body, "messages")).([]any)
 		return list
@@ -300,10 +313,10 @@ func TestARequestTheVendorRefusesAsTooLargeCompactsAndGoesAgainFromTheSummary(t 
 		return list
 	}
 	firstBlocks, summaryBlocks := blocks(first), blocks(summary)
-	backendtest.AssertJSON(t, summaryBlocks[:len(firstBlocks)], firstBlocks)
 	if len(summaryBlocks) != len(firstBlocks)+1 {
 		t.Fatalf("the summary request adds %d blocks", len(summaryBlocks)-len(firstBlocks))
 	}
+	backendtest.AssertJSON(t, summaryBlocks[:len(firstBlocks)], firstBlocks)
 	contains(t, jsonText(summaryBlocks[len(summaryBlocks)-1][1]), "Summarize the conversation above")
 	backendtest.AssertJSON(t, unmarked(backendtest.At(summary, "system")), unmarked(backendtest.At(first, "system")))
 	backendtest.AssertJSON(t, backendtest.At(summary, "tools"), backendtest.At(first, "tools"))
@@ -311,6 +324,9 @@ func TestARequestTheVendorRefusesAsTooLargeCompactsAndGoesAgainFromTheSummary(t 
 		t.Fatalf("the refused request has %d messages", len(messages(refused)))
 	}
 	retried := messages(again)
+	if len(retried) != 3 {
+		t.Fatalf("the retried request has %d messages, want 3", len(retried))
+	}
 	contains(t, jsonText(retried[0]), `Previous conversation summary:\nThe user asked a first question.`)
 	contains(t, jsonText(retried[1]), "First answer.")
 	contains(t, jsonText(retried[2]), "Second question")
@@ -488,7 +504,7 @@ func TestARequestOverTheRateLimitFailsWithoutReachingTheVendor(t *testing.T) {
 	if got := len(vendor.Requests()); got != 1 {
 		t.Fatalf("the vendor got %d requests", got)
 	}
-	if got := backendtest.At(usageTotals(b, master)[0], "requests"); got != 1.0 {
+	if got := backendtest.At(scenarioItem(t, usageTotals(b, master), 0), "requests"); got != 1.0 {
 		t.Fatalf("the ledger counts %v requests", got)
 	}
 	if status := b.Summary(master, convFirst)["status"]; status != "error" {
@@ -532,7 +548,7 @@ func TestAShutdownInTheMiddleOfATurnSavesItsInterruptionAndTheNextStartServesIt(
 		t.Fatalf("the conversation is %v", status)
 	}
 	// The ledger carries its rows over the restart.
-	if got := backendtest.At(usageTotals(b, master)[0], "requests"); got != 1.0 {
+	if got := backendtest.At(scenarioItem(t, usageTotals(b, master), 0), "requests"); got != 1.0 {
 		t.Fatalf("the ledger counts %v requests", got)
 	}
 
@@ -691,7 +707,7 @@ func TestThePageReceivesWhatTheProviderReadsFromAnErrorBlocksRecord(t *testing.T
 	}
 	transcript := b.Get("/api/conversations/"+convFirst+"/transcript", master).Expect(http.StatusOK)
 	blocks := transcript.At("blocks").([]any)
-	last := blocks[len(blocks)-1]
+	last := scenarioItem(t, blocks, len(blocks)-1)
 	if backendtest.At(last, "type") != "error" {
 		t.Fatalf("the turn failed: %v", backendtest.BlockKinds(blocks))
 	}
@@ -907,7 +923,7 @@ func TestAChangeOfTheModelSettingsReachesEveryPageAndTheNextRequest(t *testing.T
 	// Page B's message runs with both.
 	vendor.Respond(scripted.Answer([]string{"one"}, 1, 1))
 	socket.Chat("m1", "first")
-	sent := vendor.Requests()[0].JSON(t)
+	sent := scenarioItem(t, vendor.Requests(), 0).JSON(t)
 	if backendtest.At(sent, "model") != "m" || backendtest.At(sent, "output_config.effort") != "high" || backendtest.At(sent, "service_tier") != "priority" {
 		t.Fatalf("the request is %s", jsonText(sent))
 	}
@@ -924,7 +940,7 @@ func TestAChangeOfTheModelSettingsReachesEveryPageAndTheNextRequest(t *testing.T
 	backendtest.AssertJSON(t, switched.At("conversation.model"), settings("n", "high", nil))
 	vendor.Respond(scripted.Answer([]string{"two"}, 1, 1))
 	socket.Chat("m2", "second")
-	sent = vendor.Requests()[1].JSON(t)
+	sent = scenarioItem(t, vendor.Requests(), 1).JSON(t)
 	if backendtest.At(sent, "model") != "n" || backendtest.At(sent, "output_config.effort") != "high" || backendtest.At(sent, "service_tier") != nil {
 		t.Fatalf("the request is %s", jsonText(sent))
 	}
@@ -936,7 +952,7 @@ func TestAChangeOfTheModelSettingsReachesEveryPageAndTheNextRequest(t *testing.T
 	socket.Open()
 	vendor.Respond(scripted.Answer([]string{"three"}, 1, 1))
 	socket.Chat("m3", "third")
-	if effort := backendtest.At(vendor.Requests()[2].JSON(t), "output_config.effort"); effort != "low" {
+	if effort := backendtest.At(scenarioItem(t, vendor.Requests(), 2).JSON(t), "output_config.effort"); effort != "low" {
 		t.Fatalf("the third request carries the effort %v", effort)
 	}
 
@@ -982,7 +998,7 @@ func TestAModelThatCannotTurnThinkingOffShowsTheEffortItsRequestsCarry(t *testin
 	socket.Open()
 	vendor.Respond(scripted.Answer([]string{"one"}, 1, 1))
 	socket.Chat("m1", "first")
-	sent := vendor.Requests()[0].JSON(t)
+	sent := scenarioItem(t, vendor.Requests(), 0).JSON(t)
 	if backendtest.At(sent, "thinking.type") != "adaptive" || backendtest.At(sent, "output_config.effort") != "low" {
 		t.Fatalf("the request is %s", jsonText(sent))
 	}
@@ -1087,6 +1103,71 @@ func TestABatchAnswersEachItemOnItsOwn(t *testing.T) {
 		{"items": []any{}}, {"items": tooMany}, {"items": []any{backendtest.Map{"id": convFirst}}},
 	} {
 		wantRefusal(t, b.Post("/api/conversations/batch", master, body), http.StatusBadRequest, "invalid_body", "a batch outside its rules")
+	}
+	b.Stop()
+}
+
+// Cost: one backend and a scripted vendor, about a second.
+func TestAnEditOfTheEntryReachesTheNextRequestAndADeletedEntryRefusesInference(t *testing.T) {
+	t.Parallel()
+	vendor := scripted.StartVendor(t)
+	b, master := backendtest.New(t).StartSetUp()
+	entry := newEntry(b, master, backendtest.Map{
+		"source": "custom", "providerType": "anthropic", "label": "Keyed", "apiKey": "old-key",
+		"baseUrl": vendor.URL("/v1"), "models": []any{configuredModel(4_000)},
+	})
+	b.CreateConversation(master, convFirst)
+	b.Choose(master, convFirst, entry, "m")
+	socket := b.Connect(master, convFirst)
+	socket.Open()
+
+	// An edit while the first request runs: that request finishes with the
+	// settings it started with, and the next one gets the new ones.
+	gate := scripted.NewGate()
+	vendor.Respond(scripted.Answer([]string{"one"}, 1, 1).After(gate))
+	socket.Send(backendtest.SendMessage("m1", "before the edit"))
+	vendor.Received(t, 1)
+	path := "/api/providers/" + entry
+	b.Patch(path, master, backendtest.Map{"apiKey": "new-key", "models": []any{configuredModel(8_000)}}).Expect(http.StatusOK)
+	gate.Permit(1)
+	socket.UntilIdle()
+	vendor.Respond(scripted.Answer([]string{"two"}, 1, 1))
+	socket.Chat("m2", "after the edit")
+	vendor.Respond(scripted.Answer([]string{"three"}, 1, 1))
+	socket.Chat("m3", "the same entry")
+	var keys []string
+	var limits []any
+	for _, request := range vendor.Requests() {
+		keys = append(keys, request.Header.Get("x-api-key"))
+		limits = append(limits, backendtest.At(request.JSON(t), "max_tokens"))
+	}
+	if want := []string{"old-key", "new-key", "new-key"}; !slices.Equal(keys, want) {
+		t.Fatalf("the requests carry the keys %v, want %v", keys, want)
+	}
+	backendtest.AssertJSON(t, limits, []any{4_000, 8_000, 8_000})
+	if totals := usageTotals(b, master); len(totals) != 1 || backendtest.At(totals[0], "requests") != 3.0 {
+		t.Fatalf("the usage is %v", totals)
+	}
+
+	// A deleted entry refuses the next request before any vendor.
+	b.Delete(path, master).Expect(http.StatusNoContent)
+	turn := socket.Chat("m4", "after the deletion")
+	refused := anyFrame(turn, func(frame backendtest.Frame) bool {
+		message, _ := frame["message"].(string)
+		return frame["type"] == "error" && strings.Contains(message, "is no longer available to this conversation")
+	})
+	if !refused {
+		t.Fatalf("the turn did not refuse: %v", frameTypes(turn))
+	}
+	if got := len(vendor.Requests()); got != 3 {
+		t.Fatalf("the vendor got %d requests", got)
+	}
+	if totals := usageTotals(b, master); len(totals) != 1 || backendtest.At(totals[0], "requests") != 3.0 {
+		t.Fatalf("the usage after the refusal is %v", totals)
+	}
+	kinds := backendtest.BlockKinds(b.Transcript(master, convFirst))
+	if len(kinds) == 0 || kinds[len(kinds)-1] != "error" {
+		t.Fatalf("the history ends with %v", kinds)
 	}
 	b.Stop()
 }

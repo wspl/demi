@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wspl/demi/go/backendtest"
 	"github.com/wspl/demi/go/backendtest/scripted"
@@ -148,7 +149,7 @@ func TestAConversationOnAPairedDeviceInfersThroughTheCloudsCLIWithTheActiveAccou
 	socket.Open()
 	socket.Chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a01", "hello")
 	blocks := b.Transcript(master, claudeConversation)
-	last := blocks[len(blocks)-1]
+	last := scenarioItem(t, blocks, len(blocks)-1)
 	if backendtest.At(last, "type") != "error" || !strings.HasPrefix(backendtest.At(last, "message").(string), reason) {
 		t.Fatalf("the request did not fail as the install did: %v", last)
 	}
@@ -178,6 +179,13 @@ func TestAConversationOnAPairedDeviceInfersThroughTheCloudsCLIWithTheActiveAccou
 		t.Fatal("the laptop holds the CLI's directory")
 	}
 
+	// An unchanged entry keeps the same CLI process across turns. The final
+	// process log below detects an unnecessary runtime restart at the wire.
+	socket.Chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a04", "same account again")
+	if got := lastText(t, b.Transcript(master, claudeConversation)); got != answer(claudeFirstToken) {
+		t.Fatalf("the unchanged entry's CLI answered %q", got)
+	}
+
 	// After another account is selected, the next request closes the process and
 	// starts one with that account's token.
 	added := b.Post("/api/providers/"+provider+"/accounts", master, backendtest.Map{"token": claudeSecondToken}).Expect(http.StatusCreated)
@@ -195,4 +203,77 @@ func TestAConversationOnAPairedDeviceInfersThroughTheCloudsCLIWithTheActiveAccou
 		t.Fatalf("the CLI's processes:\n%s\nwant:\n%s", processes, want)
 	}
 	b.Stop()
+}
+
+// Cost: one backend, a scripted manager and a Cloud's runner, about a second.
+//
+// backend.md § Startup and shutdown: "Claude Code CLI installs are cancelled;
+// the next need starts them again", and the shutdown runs every step, so a
+// backend asked to stop while an install runs exits without a failure.
+// Terminate uses the harness deadline only as a guard against a hung shutdown.
+func TestAShutdownCancelsARunningCLIInstall(t *testing.T) {
+	t.Parallel()
+	distribution := scripted.StartVendor(t)
+	// The release's manifest is asked for and never answered, so the install is
+	// under way for as long as the backend lives.
+	held := scripted.NewGate()
+	distribution.Handle(func(request scripted.Request) *scripted.Response {
+		if strings.HasSuffix(request.Path, "/manifest.json") {
+			return claudeManifest(claudeNewest).After(held)
+		}
+		return scripted.Status(200).Chunk([]byte(claudeNewest + "\n"))
+	})
+	catalog := scripted.StartVendor(t)
+	catalog.RespondAt("/api.json", claudeModels())
+	h := backendtest.New(t,
+		backendtest.WithClaudePackage(),
+		backendtest.WithClaudeReleases(distribution.URL("/releases")),
+		backendtest.WithModelsDev(catalog.URL("/api.json")))
+	b, master := h.StartSetUp()
+	b.Post("/api/providers/setup-token", master, backendtest.Map{"token": claudeFirstToken, "label": "Claude"}).Expect(http.StatusCreated)
+	backendtest.Eventually(t, "the install asks for the release's manifest", func() bool {
+		for _, request := range distribution.Requests() {
+			if strings.HasSuffix(request.Path, "/manifest.json") {
+				return true
+			}
+		}
+		return false
+	})
+	started := time.Now()
+	code := b.Terminate()()
+	if code != 0 {
+		t.Fatalf("the backend exited with %d, %v after the stop signal:\n%s", code, time.Since(started), b.Logs())
+	}
+}
+
+// Cost: one backend and a scripted manager; a broken shutdown costs Patience.
+// The install has started a Cloud boot whose runner never connects. Shutdown
+// cancels the install (backend.md § Startup and shutdown). Keep the production
+// runner timeout so this scenario also exposes any shutdown wait on its boot.
+// Patience is a test guard, not a documented product shutdown deadline.
+func TestAShutdownDuringAnInstallsCloudBootCompletes(t *testing.T) {
+	t.Parallel()
+	h := backendtest.New(t, backendtest.WithClaudePackage())
+	h.Manager.Configure(func(script *scripted.Script) { script.SilentWake = true })
+	b, master := h.StartSetUp()
+	b.Post("/api/providers/setup-token", master, backendtest.Map{"token": claudeFirstToken, "label": "Claude"}).Expect(http.StatusCreated)
+	backendtest.Eventually(t, "the install wakes the user's Cloud", func() bool {
+		for _, call := range h.Manager.Calls() {
+			if strings.HasPrefix(call, "wake:") {
+				return true
+			}
+		}
+		return false
+	})
+	started := time.Now()
+	if code := b.Terminate()(); code != 0 {
+		t.Fatalf("shutdown waited beyond the test guard during the install's Cloud boot: exit %d after %v\n%s", code, time.Since(started), b.Logs())
+	}
+	devices := h.Manager.Devices()
+	if len(devices) != 1 {
+		t.Fatalf("the install woke one Cloud: %v", devices)
+	}
+	if saves := h.Manager.Count("hibernate:" + devices[0]); saves != 1 {
+		t.Fatalf("shutdown saved the Cloud %d times, want 1", saves)
+	}
 }

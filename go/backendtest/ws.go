@@ -363,6 +363,12 @@ func (c *SyncChannel) Closed() (int, string) {
 	}
 }
 
+// Close ends the channel from the page's side.
+func (c *SyncChannel) Close() {
+	// A channel that ended already has nothing to close.
+	_ = c.conn.Close(websocket.StatusNormalClosure, "")
+}
+
 // SendText sends the backend a text message, which a page never does.
 func (c *SyncChannel) SendText(text string) {
 	c.t.Helper()

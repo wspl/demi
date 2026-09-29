@@ -29,7 +29,7 @@ func TestALongOutputsResultNamesWhatItLeavesOutAndDemiShellOutputPrintsIt(t *tes
 	// 30,000 lines, 168,894 bytes: beyond the 32 KiB of each stream the backend
 	// receives while the command runs.
 	counted := work.Turn(backendtest.ShellCall("t1", "seq 1 30000", 30*time.Second), backendtest.Say("counted"))
-	result := counted.Received[0]
+	result := counted.Result(t, 0)
 	if n := len([]rune(result)); n > 16_000 {
 		t.Fatalf("the result is %d characters", n)
 	}
@@ -75,14 +75,20 @@ func TestALongOutputsResultNamesWhatItLeavesOutAndDemiShellOutputPrintsIt(t *tes
 	// The command the line names prints those lines, a page at a time, numbered
 	// as cat -n numbers them.
 	paged := work.Turn(backendtest.ShellCall("t2", read, 30*time.Second), backendtest.Say("read"))
-	page := strings.Split(strings.TrimSuffix(backendtest.ShownOutput(paged.Received[0]), "\n"), "\n")
+	page := strings.Split(strings.TrimSuffix(backendtest.ShownOutput(paged.Result(t, 0)), "\n"), "\n")
+	if len(page) < 3 {
+		t.Fatalf("the output page has fewer than three lines: %v", page)
+	}
 	if !strings.HasPrefix(page[0], fmt.Sprintf("[command %s: lines %d-", command, first)) || !strings.HasSuffix(page[0], " of 30000, stdout and stderr]") {
 		t.Fatalf("the page begins %q", page[0])
 	}
 	if page[1] != fmt.Sprintf("%6d\t%d", first, first) {
 		t.Fatalf("the first line is %q", page[1])
 	}
-	shownLine := strings.Split(page[len(page)-2], "\t")[1]
+	_, shownLine, found := strings.Cut(page[len(page)-2], "\t")
+	if !found {
+		t.Fatalf("the output line has no tab: %q", page[len(page)-2])
+	}
 	shown, _ := strconv.ParseUint(shownLine, 10, 64)
 	next := fmt.Sprintf("[next: demi shell output %s --lines %d-%d]", command, shown+1, last)
 	if page[len(page)-1] != next {
@@ -100,7 +106,7 @@ func TestALongOutputsResultNamesWhatItLeavesOutAndDemiShellOutputPrintsIt(t *tes
 	// early ends the call quietly.
 	script := fmt.Sprintf("demi shell output %s --raw | grep -n '^12345$'; demi shell output %s --raw | head -n 2", command, command)
 	searched := work.Turn(backendtest.ShellCall("t3", script, 30*time.Second), backendtest.Say("searched"))
-	if got := backendtest.ShownOutput(searched.Received[0]); got != "12345:12345\n1\n2\n" {
+	if got := backendtest.ShownOutput(searched.Result(t, 0)); got != "12345:12345\n1\n2\n" {
 		t.Fatalf("the search shows %q", got)
 	}
 
@@ -111,19 +117,19 @@ func TestALongOutputsResultNamesWhatItLeavesOutAndDemiShellOutputPrintsIt(t *tes
 	wantTail := fmt.Sprintf("[command %s: lines 29999-30000 of 30000, stdout and stderr]\n 29999\t29999\n 30000\t30000\n", command) +
 		"demi shell output: lines 30001-30002 are past the end: the output has 30000 lines\n" +
 		"demi shell output: no command nothing-here in this conversation\n"
-	if got := backendtest.ShownOutput(tailed.Received[0]); got != wantTail {
+	if got := backendtest.ShownOutput(tailed.Result(t, 0)); got != wantTail {
 		t.Fatalf("the tail shows %q, not %q", got, wantTail)
 	}
 
 	// A running command's output reads as its Host keeps it so far.
 	started := work.Turn(backendtest.ShellCall("t5", "seq 1 20000; sleep 30", time.Second), backendtest.Say("running"))
-	if !strings.HasPrefix(started.Received[0], "status: running") {
-		t.Fatalf("the command is %s", started.Received[0])
+	if !strings.HasPrefix(started.Result(t, 0), "status: running") {
+		t.Fatalf("the command is %s", started.Result(t, 0))
 	}
-	running := backendtest.Field(t, started.Received[0], "commandId")
+	running := backendtest.Field(t, started.Result(t, 0), "commandId")
 	newest := work.Turn(backendtest.ShellCall("t6", "demi shell output "+running+" --tail 1", 30*time.Second), backendtest.Say("newest"))
 	wantNewest := fmt.Sprintf("[command %s: lines 20000-20000 of 20000 so far, stdout and stderr]\n 20000\t20000\n", running)
-	if got := backendtest.ShownOutput(newest.Received[0]); got != wantNewest {
+	if got := backendtest.ShownOutput(newest.Result(t, 0)); got != wantNewest {
 		t.Fatalf("the newest line shows %q, not %q", got, wantNewest)
 	}
 	b.Stop()

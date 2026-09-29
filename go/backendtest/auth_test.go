@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wspl/demi/go/backendtest"
 )
@@ -18,6 +19,27 @@ func cookieAttributes(cookie string) []string {
 		parts[i] = strings.ToLower(strings.TrimSpace(parts[i]))
 	}
 	return parts
+}
+
+// sessionCookie is the one session cookie the answer sets, or fails the test.
+func sessionCookie(t *testing.T, answer *backendtest.Answer) string {
+	t.Helper()
+	cookies := answer.SessionCookies()
+	if len(cookies) == 0 {
+		t.Fatalf("the answer sets no session cookie: %d %s", answer.Status, answer.Body)
+	}
+	return cookies[0]
+}
+
+// mailCode is the code of the index'th verification mail the backend sent, or
+// fails the test when it sent fewer.
+func mailCode(t *testing.T, b *backendtest.Backend, index int) string {
+	t.Helper()
+	mail := b.Control.Mail()
+	if len(mail) <= index {
+		t.Fatalf("the backend sent %d verification mails, not %d", len(mail), index+1)
+	}
+	return mail[index].Code
 }
 
 // Cost: one backend, about a second: the start and a password hash per login.
@@ -40,7 +62,7 @@ func TestSetupCreatesTheMasterOnceAndSignsItIn(t *testing.T) {
 	}
 	// The cookie lives as long as the session: 30 days from the setup, on the
 	// backend's clock, which stands still at its start.
-	attributes := cookieAttributes(answer.SessionCookies()[0])
+	attributes := cookieAttributes(sessionCookie(t, answer))
 	for _, attribute := range []string{"httponly", "samesite=lax", "path=/", "expires=sat, 24 oct 2026 08:00:00 gmt"} {
 		if !slices.Contains(attributes, attribute) {
 			t.Fatalf("%q is not among %v", attribute, attributes)
@@ -131,7 +153,7 @@ func TestEveryOtherAPIPathWantsALiveSession(t *testing.T) {
 	// A cookie that names no session is refused and cleared.
 	forged := b.Get("/api/auth/me", &backendtest.Session{Cookie: backendtest.SessionCookie + "=not-a-session"})
 	wantRefusal(t, forged, http.StatusUnauthorized, "unauthenticated", "a forged cookie")
-	cleared := cookieAttributes(forged.SessionCookies()[0])
+	cleared := cookieAttributes(sessionCookie(t, forged))
 	if cleared[0] != backendtest.SessionCookie+"=" || !slices.Contains(cleared, "max-age=0") {
 		t.Fatalf("the cookie is not cleared: %v", cleared)
 	}
@@ -298,7 +320,7 @@ func TestLoginLocksOutAfterFiveFailuresAndLogoutEndsTheSession(t *testing.T) {
 	b.Get("/api/auth/me", signedIn).Expect(http.StatusOK)
 
 	out := b.Post("/api/auth/logout", signedIn, backendtest.Map{}).Expect(http.StatusNoContent)
-	if !slices.Contains(cookieAttributes(out.SessionCookies()[0]), "max-age=0") {
+	if !slices.Contains(cookieAttributes(sessionCookie(t, out)), "max-age=0") {
 		t.Fatalf("the sign-out does not clear the cookie: %v", out.SessionCookies())
 	}
 	b.Get("/api/auth/me", signedIn).Expect(http.StatusUnauthorized)
@@ -371,5 +393,133 @@ func TestEmailIdentityIsNormalizedAndTheNicknamePersists(t *testing.T) {
 
 	unavailable := b.Post("/api/auth/email", signedIn, backendtest.Map{"email": "next@example.test", "password": backendtest.MasterPassword})
 	wantRefusal(t, unavailable, http.StatusServiceUnavailable, "mail_unavailable", "an email change without a mail sender")
+	b.Stop()
+}
+
+const day = 24 * time.Hour
+
+// Cost: one backend, about a second.
+func TestASessionSlidesWhileUsedAndExpiresWhenSilent(t *testing.T) {
+	t.Parallel()
+	b, master := backendtest.New(t).StartSetUp()
+
+	b.Control.AdvanceClock(10 * day)
+	early := b.Get("/api/auth/me", master).Expect(http.StatusOK)
+	if cookies := early.SessionCookies(); len(cookies) != 0 {
+		t.Fatalf("a session with more than half its life left is renewed: %v", cookies)
+	}
+
+	// 16 days in, less than 15 remain: the session renews to 30 days from now.
+	b.Control.AdvanceClock(6 * day)
+	renewed := b.Get("/api/auth/me", master).Expect(http.StatusOK)
+	cookie := cookieAttributes(sessionCookie(t, renewed))
+	if cookie[0] != strings.ToLower(master.Cookie) || !slices.Contains(cookie, "expires=mon, 09 nov 2026 08:00:00 gmt") {
+		t.Fatalf("the renewed cookie is %v", cookie)
+	}
+
+	// Past the first expiry, inside the renewed one.
+	b.Control.AdvanceClock(20 * day)
+	b.Get("/api/auth/me", master).Expect(http.StatusOK)
+
+	b.Control.AdvanceClock(31 * day)
+	expired := b.Get("/api/auth/me", master)
+	wantRefusal(t, expired, http.StatusUnauthorized, "unauthenticated", "an expired session")
+	if !slices.Contains(cookieAttributes(sessionCookie(t, expired)), "max-age=0") {
+		t.Fatalf("an expired session's cookie is not cleared: %v", expired.SessionCookies())
+	}
+	b.Stop()
+}
+
+// startEmailChange asks for the account's email to change to email.
+func startEmailChange(b *backendtest.Backend, session *backendtest.Session, email string) *backendtest.Answer {
+	return b.Post("/api/auth/email", session, backendtest.Map{"email": email, "password": backendtest.MasterPassword})
+}
+
+// Cost: one backend started twice, about two seconds.
+func TestAnEmailChangeNeedsADeliveredUnexpiredSingleUseCodeAndSurvivesRestart(t *testing.T) {
+	t.Parallel()
+	h := backendtest.New(t, backendtest.WithMail())
+	b, master := h.StartSetUp()
+
+	wantRefusal(t, b.Post("/api/auth/email", master, backendtest.Map{"email": "next@example.test", "password": "wrong-password"}),
+		http.StatusUnauthorized, "invalid_credentials", "a wrong password")
+	wantRefusal(t, startEmailChange(b, master, backendtest.MasterEmail), http.StatusConflict, "email_taken", "the account's own address")
+
+	started := startEmailChange(b, master, "NEXT@example.test").Expect(http.StatusAccepted)
+	mail := b.Control.Mail()
+	if len(mail) != 1 || mail[0].Email != "next@example.test" {
+		t.Fatalf("the mail sent is %+v", mail)
+	}
+	challengeID := started.Str("challenge.id")
+	if started.Str("challenge.email") != mail[0].Email || started.Str("challenge.expiresAt") != "2026-09-24T08:10:00.000Z" {
+		t.Fatalf("the challenge is %s", started.Body)
+	}
+	if strings.Contains(started.Text(), mail[0].Code) {
+		t.Fatal("the answer carries the code")
+	}
+	wantRefusal(t, startEmailChange(b, master, "next@example.test"), http.StatusTooManyRequests, "too_many_attempts", "a second code within the cooldown")
+	for _, malformed := range []string{"abcdef", "١٢٣٤٥٦"} {
+		wantRefusal(t, b.Post("/api/auth/email/confirm", master, backendtest.Map{"id": challengeID, "code": malformed}),
+			http.StatusBadRequest, "invalid_body", "the code "+malformed)
+	}
+
+	// The challenge is a record, which a restart keeps. The clock is the new
+	// process's, which starts where the first did.
+	b.Stop()
+	b = h.Start()
+	master = b.Login(backendtest.MasterEmail, backendtest.MasterPassword)
+	confirm := backendtest.Map{"id": challengeID, "code": mail[0].Code}
+	b.Post("/api/auth/email/confirm", master, confirm).Expect(http.StatusOK)
+	if email := b.Get("/api/auth/me", master).Str("user.email"); email != "next@example.test" {
+		t.Fatalf("the account's address is %s", email)
+	}
+	wantRefusal(t, b.Post("/api/auth/email/confirm", master, confirm), http.StatusBadRequest, "invalid_code", "a code used twice")
+	wantRefusal(t, b.LoginAnswer(backendtest.MasterEmail, backendtest.MasterPassword), http.StatusUnauthorized, "invalid_credentials", "the old address")
+	if signedIn := b.Login("next@example.test", backendtest.MasterPassword); signedIn.User.ID != master.User.ID {
+		t.Fatalf("the new address signs in as %s", signedIn.User.ID)
+	}
+
+	// After the cooldown a new code goes out; ten minutes later it is dead.
+	b.Control.AdvanceClock(time.Minute)
+	later := startEmailChange(b, master, "later@example.test").Expect(http.StatusAccepted)
+	b.Control.AdvanceClock(10 * time.Minute)
+	mail = b.Control.Mail()
+	if len(mail) != 1 {
+		t.Fatalf("the new process's mailbox holds %+v", mail)
+	}
+	wantRefusal(t, b.Post("/api/auth/email/confirm", master, backendtest.Map{"id": later.Str("challenge.id"), "code": mail[0].Code}),
+		http.StatusBadRequest, "invalid_code", "a code after its ten minutes")
+	b.Stop()
+}
+
+// Cost: one backend, about a second.
+func TestAFailedDeliveryAllowsARetryAndWrongCodesOrANewPasswordEndAChallenge(t *testing.T) {
+	t.Parallel()
+	b, master := backendtest.New(t, backendtest.WithMail()).StartSetUp()
+	start := func() *backendtest.Answer { return startEmailChange(b, master, "new@example.test") }
+
+	b.Control.FailMail(true)
+	wantRefusal(t, start(), http.StatusServiceUnavailable, "mail_failed", "a failed delivery")
+	// The failed code holds back no retry.
+	b.Control.FailMail(false)
+	challenge := start().Expect(http.StatusAccepted).Str("challenge.id")
+	code := mailCode(t, b, 0)
+	wrong := "000000"
+	if code == wrong {
+		wrong = "111111"
+	}
+	for range 5 {
+		wantRefusal(t, b.Post("/api/auth/email/confirm", master, backendtest.Map{"id": challenge, "code": wrong}),
+			http.StatusBadRequest, "invalid_code", "a wrong code")
+	}
+	wantRefusal(t, b.Post("/api/auth/email/confirm", master, backendtest.Map{"id": challenge, "code": code}),
+		http.StatusBadRequest, "invalid_code", "the right code after five wrong ones")
+
+	b.Control.AdvanceClock(time.Minute)
+	challenge = start().Expect(http.StatusAccepted).Str("challenge.id")
+	code = mailCode(t, b, 1)
+	b.Put("/api/auth/password", master, backendtest.Map{"current": backendtest.MasterPassword, "next": "new-password-2"}).Expect(http.StatusNoContent)
+	wantRefusal(t, b.Post("/api/auth/email/confirm", master, backendtest.Map{"id": challenge, "code": code}),
+		http.StatusBadRequest, "invalid_code", "a code after a new password")
 	b.Stop()
 }

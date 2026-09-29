@@ -49,7 +49,10 @@ impl Control {
         self.next += 1;
         let id = self.next.to_string();
         let request = json!({ "id": id, "op": op, "params": params });
-        self.write.write_all(format!("{request}\n").as_bytes()).await.unwrap_or_else(|error| panic!("{op} cannot be sent: {error}"));
+        self.write
+            .write_all(format!("{request}\n").as_bytes())
+            .await
+            .unwrap_or_else(|error| panic!("{op} cannot be sent: {error}"));
         id
     }
 
@@ -106,7 +109,11 @@ async fn the_control_serves_each_of_its_operations_from_the_backend_process_and_
     let directory = tempfile::Builder::new().prefix("demi-control-").tempdir().unwrap();
     let path = |name: &str| directory.path().join(name);
     std::fs::write(path("native.json"), r#"{ "releases": [], "store": { "provider": "local" } }"#).unwrap();
-    std::fs::write(path("tuning.json"), r#"{ "runners": { "pingMs": 0 }, "mail": true }"#).unwrap();
+    std::fs::write(
+        path("tuning.json"),
+        r#"{ "runners": { "pingMs": 0 }, "mail": true, "clockStartMs": 1893456000000 }"#,
+    )
+    .unwrap();
     let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
     let url = format!("http://127.0.0.1:{port}");
     let mut backend = Command::new(env!("CARGO_BIN_EXE_demi-backend"))
@@ -130,7 +137,8 @@ async fn the_control_serves_each_of_its_operations_from_the_backend_process_and_
 
     // The clock stands still where the control puts it, and the backend reads
     // it: the account set up now is created at that moment.
-    let start: jiff::Timestamp = "2026-09-24T08:00:00Z".parse().unwrap();
+    // The tuning file starts the clock at 2030-01-01T00:00:00Z.
+    let start: jiff::Timestamp = "2030-01-01T00:00:00Z".parse().unwrap();
     let moved = control.ok("clock.advance", json!({ "byMs": 1_500 })).await;
     assert_eq!(moved["atMs"], json!(start.as_millisecond() + 1_500));
     let at: jiff::Timestamp = "2030-01-02T03:04:05Z".parse().unwrap();
@@ -277,6 +285,10 @@ async fn the_control_serves_each_of_its_operations_from_the_backend_process_and_
         .await
         .expect("the snapshot never came after the release");
     assert!(matches!(snapshot, Some(Ok(_))), "{snapshot:?}");
+
+    // A hold that is still held when the stop signal comes stays held through
+    // the shutdown, which it does not keep waiting.
+    again.ok("hold", json!({ "target": "hello:bind" })).await;
 
     // A stop signal ends the process cleanly and removes the socket.
     let pid = backend.id().unwrap().to_string();

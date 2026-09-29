@@ -99,6 +99,23 @@ func WithNativeFixture() Option {
 	}
 }
 
+// WithClockAt starts the manual clock at at instead of the suite's shared
+// start, for a scenario that compares the backend's times with those the file
+// system gives the objects it writes.
+func WithClockAt(at time.Time) Option {
+	return func(h *Harness) { h.Tuning.ClockStartMs = Ptr(at.UnixMilli()) }
+}
+
+// WithCodex points the codex family at a scripted Codex, both its sign-in service
+// and its backend.
+func WithCodex(codex *scripted.Codex) Option {
+	return func(h *Harness) {
+		h.Tuning.Families = &controlproto.FamiliesTuning{
+			Codex: &controlproto.CodexTuning{BackendURL: codex.URL(""), AuthURL: codex.URL("")},
+		}
+	}
+}
+
 // WithMail gives the backend a mail sender that keeps the verification mail it
 // sends, which Control.Mail lists.
 func WithMail() Option {
@@ -154,6 +171,9 @@ func New(t testing.TB, options ...Option) *Harness {
 		// What a stopped scenario leaves is a temporary directory of ours.
 		_ = os.RemoveAll(root)
 	})
+	// The jobs of a runner that was killed have no parent left but this
+	// process, which ends them once the scenario's processes are gone.
+	t.Cleanup(func() { procgroup.KillAdopted(root) })
 	h := &Harness{
 		t:    t,
 		Root: root,
@@ -451,19 +471,33 @@ func (b *Backend) Stop() {
 // code: 0 for a shutdown that succeeded.
 func (b *Backend) Shutdown() int {
 	b.t.Helper()
+	code := b.Terminate()()
+	if code < 0 {
+		b.t.Fatalf("the backend did not stop within %s:\n%s", Patience, b.output.String())
+	}
+	return code
+}
+
+// Terminate asks the backend to stop without waiting for it. The function it
+// answers waits for the shutdown and answers the backend's exit code, or -1
+// once it killed a backend that did not stop within Patience; it fails no test,
+// so a goroutine of the scenario may call it.
+func (b *Backend) Terminate() func() int {
 	if b.ended {
-		return 0
+		return func() int { return 0 }
 	}
 	// A process that ended already has nothing to signal.
 	_ = b.cmd.Process.Signal(syscall.SIGTERM)
-	select {
-	case <-b.exited:
-	case <-time.After(Patience):
-		b.kill()
-		b.t.Fatalf("the backend did not stop within %s:\n%s", Patience, b.output.String())
+	return func() int {
+		select {
+		case <-b.exited:
+		case <-time.After(Patience):
+			b.kill()
+			return -1
+		}
+		b.finish()
+		return b.cmd.ProcessState.ExitCode()
 	}
-	b.finish()
-	return b.cmd.ProcessState.ExitCode()
 }
 
 // kill ends the backend at once, and is a no-op for one that ended.

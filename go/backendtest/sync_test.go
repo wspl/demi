@@ -1,11 +1,14 @@
 package backendtest_test
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/wspl/demi/go/backendtest"
+	"github.com/wspl/demi/go/backendtest/controlproto"
 	"github.com/wspl/demi/go/backendtest/scripted"
 )
 
@@ -169,5 +172,209 @@ func TestEachSocketOfAPageSendsAHeartbeatOnceItWasQuietForTheInterval(t *testing
 	if time.Since(connected) < interval {
 		t.Fatal("a heartbeat came before the interval")
 	}
+	b.Stop()
+}
+
+func pinConversation(b *backendtest.Backend, session *backendtest.Session, id string) {
+	b.Patch("/api/conversations/"+id, session, backendtest.Map{"pinned": true}).Expect(http.StatusOK)
+}
+
+// Cost: one backend, about a second.
+func TestAPageThatReconnectsCatchesUpOnWhatChangedWhileItWasAwayAndWhileItRead(t *testing.T) {
+	t.Parallel()
+	b, laptop := backendtest.New(t).StartSetUp()
+	phone := b.Login(backendtest.MasterEmail, backendtest.MasterPassword)
+	b.CreateConversation(laptop, convFirst)
+	away := b.Sync(phone)
+	away.Snapshot()
+	away.Close()
+	renameConversation(b, laptop, convFirst, "Renamed while away")
+
+	// The phone connects again; once its channel has read the state, and before
+	// it sends it, the laptop pins the conversation.
+	held := b.Control.Hold(controlproto.HoldSyncSnapshot)
+	page := b.Sync(phone)
+	held.Wait(1)
+	pinConversation(b, laptop, convFirst)
+	held.Release()
+	state := page.Snapshot()
+	if backendtest.At(state, "conversations.0.title") != "Renamed while away" || backendtest.At(state, "conversations.0.pinned") != false {
+		t.Fatalf("the snapshot reads %v", backendtest.At(state, "conversations.0"))
+	}
+	// The pin, made after that read, comes after it: the summary, then the order.
+	caughtUp := page.Until(func(event backendtest.Frame) bool { return event["type"] == "conversation_order" })
+	if len(caughtUp) != 2 {
+		t.Fatalf("the page caught up with %v", caughtUp)
+	}
+	if summary := summaryOf(caughtUp[0], convFirst); summary == nil || summary["pinned"] != true {
+		t.Fatalf("the summary is %v", caughtUp[0])
+	}
+	b.Stop()
+}
+
+// Cost: one backend, about a second.
+func TestAPageThatFallsBehindReceivesEachChangedPartOnceAsItIsWhenItReads(t *testing.T) {
+	t.Parallel()
+	b, laptop := backendtest.New(t).StartSetUp()
+	phone := b.Login(backendtest.MasterEmail, backendtest.MasterPassword)
+	b.CreateConversation(laptop, convFirst)
+	page := b.Sync(phone)
+	page.Snapshot()
+
+	// The phone's page takes nothing while the laptop renames the conversation
+	// fifty times and changes a preference.
+	held := b.Control.Hold(controlproto.HoldSyncChanges)
+	for number := 1; number <= 50; number++ {
+		renameConversation(b, laptop, convFirst, fmt.Sprintf("Title %d", number))
+	}
+	setTheme(b, laptop, "dark")
+	held.Wait(1)
+	held.Release()
+	// It receives the conversation once, as it is now, then the preference.
+	latest := summaryOf(page.Next(), convFirst)
+	if latest == nil || latest["title"] != "Title 50" {
+		t.Fatalf("the page receives %v", latest)
+	}
+	if event := page.Next(); !themed(event, "dark") {
+		t.Fatalf("the page receives %v", event)
+	}
+	// It was not closed for falling behind.
+	renameConversation(b, laptop, convFirst, "Caught up")
+	if renamed := summaryOf(page.Next(), convFirst); renamed == nil || renamed["title"] != "Caught up" {
+		t.Fatalf("the page receives %v", renamed)
+	}
+	b.Stop()
+}
+
+// upgradeRefusal is how the channel's route answers an upgrade before
+// upgrading, from origin, with the session if any.
+func upgradeRefusal(b *backendtest.Backend, session *backendtest.Session, origin string) (int, string) {
+	headers := map[string]string{
+		"Upgrade": "websocket", "Connection": "Upgrade", "Sec-WebSocket-Version": "13",
+		"Sec-WebSocket-Key": "MDEyMzQ1Njc4OWFiY2RlZg==",
+	}
+	if origin != "" {
+		headers["Origin"] = origin
+	}
+	return b.Do(backendtest.Request{Path: "/api/sync", Session: session, Headers: headers}).Refusal()
+}
+
+// Cost: one backend, about a second.
+func TestTheChannelOpensForASignedInPageOfTheProductAndEndsWithItsSessionOrTheBackend(t *testing.T) {
+	t.Parallel()
+	b, laptop := backendtest.New(t).StartSetUp()
+	product := b.URL
+	if status, code := upgradeRefusal(b, laptop, "https://a1b2c3.expose.localhost"); status != http.StatusForbidden || code != "forbidden_origin" {
+		t.Fatalf("a foreign page is refused with %d %s", status, code)
+	}
+	if status, code := upgradeRefusal(b, nil, product); status != http.StatusUnauthorized || code != "unauthenticated" {
+		t.Fatalf("a page without a session is refused with %d %s", status, code)
+	}
+	plain := b.Do(backendtest.Request{Path: "/api/sync", Session: laptop, Headers: map[string]string{"Origin": product}})
+	wantRefusal(t, plain, http.StatusUpgradeRequired, "upgrade_required", "a request that is no upgrade")
+
+	// Signing out closes the channels of that session, and no other's.
+	phone := b.Login(backendtest.MasterEmail, backendtest.MasterPassword)
+	tablet := b.Login(backendtest.MasterEmail, backendtest.MasterPassword)
+	laptopPage := b.Sync(laptop)
+	laptopPage.Snapshot()
+	phonePage := b.Sync(phone)
+	phonePage.Snapshot()
+	b.Post("/api/auth/logout", phone, backendtest.Map{}).Expect(http.StatusNoContent)
+	if code, reason := phonePage.Closed(); code != 4002 || reason != "session_ended" {
+		t.Fatalf("the phone's channel closes with %d %s", code, reason)
+	}
+
+	// A channel never renews its session, not even as it opens: the tablet's page
+	// opens 20 days after its sign-in, when a request would renew the session, and
+	// closes as the session ends 30 days after the sign-in. The laptop's requests
+	// renew the laptop's.
+	b.Control.AdvanceClock(20 * day)
+	setTheme(b, laptop, "dark")
+	if event := laptopPage.Next(); !themed(event, "dark") {
+		t.Fatalf("the laptop's page receives %v", event)
+	}
+	tabletPage := b.Sync(tablet)
+	tabletPage.Snapshot()
+	b.Control.AdvanceClock(11 * day)
+	setTheme(b, laptop, "light")
+	if event := laptopPage.Next(); !themed(event, "light") {
+		t.Fatalf("the laptop's page receives %v", event)
+	}
+	if code, reason := tabletPage.Closed(); code != 4002 || reason != "session_ended" {
+		t.Fatalf("the tablet's channel closes with %d %s", code, reason)
+	}
+
+	// A page sends nothing on its channel.
+	laptopPage.SendText("hello")
+	if code, reason := laptopPage.Closed(); code != 1008 || reason != "unexpected_message" {
+		t.Fatalf("the laptop's channel closes with %d %s", code, reason)
+	}
+
+	// At shutdown the channels close first.
+	last := b.Sync(laptop)
+	last.Snapshot()
+	stopped := b.Terminate()
+	if code, reason := last.Closed(); code != 1001 || reason != "backend_closing" {
+		t.Fatalf("the channel closes at shutdown with %d %s", code, reason)
+	}
+	if code := stopped(); code != 0 {
+		t.Fatalf("the backend exited with %d", code)
+	}
+}
+
+// untilProviders reads the channel up to the message that carries count entries,
+// and answers them.
+func untilProviders(page *backendtest.SyncChannel, count int) []any {
+	received := page.Until(func(event backendtest.Frame) bool {
+		providers, _ := event["providers"].([]any)
+		return event["type"] == "providers" && len(providers) == count
+	})
+	providers, _ := received[len(received)-1]["providers"].([]any)
+	return providers
+}
+
+// Cost: one backend and a scripted Codex, about a second.
+func TestAnEntryReachesThePageOfEveryUserWhoInfersWithItAndOnlyAConfiguringUserSeesItsAccounts(t *testing.T) {
+	t.Parallel()
+	codex := scripted.StartCodex(t)
+	b, master := backendtest.New(t, backendtest.WithCodex(codex)).StartSetUp()
+	reader := b.CreateUser(master, "reader@example.test", "reader-pass-1", "user")
+	masters := b.Sync(master)
+	if providers, _ := masters.Snapshot()["providers"].([]any); len(providers) != 0 {
+		t.Fatalf("a new instance has entries %v", providers)
+	}
+	readers := b.Sync(reader)
+	readers.Snapshot()
+
+	// The master adds entries of a shared instance, which every user infers with:
+	// every user's page receives them.
+	device := codexEntry(t, b, master, codex)
+	b.Post("/api/providers", master, backendtest.Map{
+		"source": "custom", "providerType": "anthropic", "label": "Work", "apiKey": "sk-state",
+	}).Expect(http.StatusCreated)
+	seen := untilProviders(masters, 2)
+	var labels []any
+	for _, entry := range seen {
+		labels = append(labels, backendtest.At(entry, "label"))
+	}
+	backendtest.AssertJSON(t, labels, []any{"codex subscription", "Work"})
+	if strings.Contains(jsonText(seen), "sk-state") {
+		t.Fatal("the page receives an API key")
+	}
+	subscription := backendtest.At(seen[0], "details")
+	if accounts, _ := backendtest.At(subscription, "accounts").([]any); len(accounts) != 1 || backendtest.At(subscription, "active") != backendtest.At(accounts[0], "id") {
+		t.Fatalf("the subscription's details are %v", subscription)
+	}
+	if backendtest.At(seen[1], "details.auth.status") != "authenticated" || backendtest.At(seen[0], "id") != device["id"] {
+		t.Fatalf("the entries are %v", seen)
+	}
+	// A user who only infers sees no accounts, plan or usage.
+	seen = untilProviders(readers, 2)
+	subscription = backendtest.At(seen[0], "details")
+	if accounts, _ := backendtest.At(subscription, "accounts").([]any); len(accounts) != 0 || backendtest.At(subscription, "active") != nil || backendtest.At(subscription, "quota") != nil {
+		t.Fatalf("a reader sees %v", subscription)
+	}
+	backendtest.AssertJSON(t, backendtest.At(subscription, "auth"), backendtest.Map{"status": "authenticated"})
 	b.Stop()
 }

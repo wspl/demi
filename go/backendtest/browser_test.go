@@ -1,8 +1,10 @@
 package backendtest_test
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/wspl/demi/go/backendtest"
 )
@@ -86,5 +88,65 @@ func TestABackendWhoseCatalogServesNoBrowserHasNoTabRoutes(t *testing.T) {
 	id := newID()
 	b.CreateConversation(master, id)
 	wantRefusal(t, b.Get(tabsRoute(id), master), http.StatusNotFound, "not_found", "the tabs of a backend without a browser")
+	b.Stop()
+}
+
+// Cost: one backend and a Cloud's runner, over a second: the Cloud installs the
+// builtin package, and the idle window passes in real time.
+func TestListingARunningCloudsTabsDoesNotKeepItAwake(t *testing.T) {
+	t.Parallel()
+	// Far longer than the time between two listings, so that listings counted as
+	// activity would keep the Cloud up.
+	const window = 800 * time.Millisecond
+	h := backendtest.New(t, backendtest.WithBuiltin())
+	idleAfter(h, window)
+	h.Cloud().SweepMs = backendtest.Ptr(uint64(50))
+	b, master := h.StartSetUp()
+	id := newID()
+	b.CreateConversation(master, id)
+	// Reading the conversation's files wakes the Cloud it works on.
+	b.Get("/api/conversations/"+id+"/fs", master).Expect(http.StatusOK)
+	device := theCloud(t, h)
+	// Closing a tab starts the browser's service, which the Cloud's runner
+	// installs first. The close restarts the window as it is admitted and is no
+	// activity after that, so a lease of the conversation's file gate, which is
+	// its work, keeps the Cloud up meanwhile.
+	working := b.Control.EnterGate(master.User.ID, id, "demand")
+	b.Delete(tabsRoute(id)+"/"+absentTab, master).Expect(http.StatusNoContent)
+	rested := time.Now()
+	working.Release()
+	// The page lists the tabs again and again, and the Cloud idles and stops all
+	// the same, a window after the last activity. A listing the stop overtakes
+	// finds the runner gone.
+	done := make(chan struct{})
+	listing := make(chan error, 1)
+	go func() {
+		defer close(listing)
+		for {
+			select {
+			case <-done:
+				return
+			default:
+			}
+			listed, err := b.TryDo(backendtest.Request{Path: tabsRoute(id), Session: master})
+			if err != nil {
+				listing <- err
+				return
+			}
+			if listed.Status != http.StatusOK && !(listed.Status == http.StatusConflict && listed.ErrorCode() == "device_offline") {
+				listing <- fmt.Errorf("a listing is answered %d %s", listed.Status, listed.Body)
+				return
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}()
+	stopped := h.Manager.Arrival("hibernate:"+device, backendtest.Patience)
+	close(done)
+	if err := <-listing; err != nil {
+		t.Fatal(err)
+	}
+	if stopped.Before(rested.Add(window)) {
+		t.Fatalf("the Cloud stopped %v after the last activity", stopped.Sub(rested))
+	}
 	b.Stop()
 }

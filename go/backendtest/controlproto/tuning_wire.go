@@ -128,6 +128,26 @@ func (v *Tuning) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 			}
 			value = entries0
 			v.UserStreams = &value
+		case "families":
+			if wire.IsNull(dec) {
+				return wire.In("families", wire.Null())
+			}
+			var value FamiliesTuning
+			if err := value.UnmarshalJSONFrom(dec); err != nil {
+				return wire.In("families", err)
+			}
+			v.Families = &value
+		case "clockStartMs":
+			if wire.IsNull(dec) {
+				return wire.In("clockStartMs", wire.Null())
+			}
+			var value int64
+			n, err := wire.ReadInt(dec, 64)
+			if err != nil {
+				return wire.In("clockStartMs", err)
+			}
+			value = n
+			v.ClockStartMs = &value
 		case "mail":
 			if wire.IsNull(dec) {
 				return wire.In("mail", wire.Null())
@@ -184,6 +204,106 @@ func (v Tuning) validate() error {
 			r.Nest("userStreams", group0.Err())
 		}
 	}
+	if v.Families != nil {
+		r.Nest("families", (*v.Families).validate())
+	}
+	return r.Err()
+}
+
+// UnmarshalJSONFrom decodes the JSON object of FamiliesTuning: it refuses a member that
+// the type does not have, a required member that is missing, a null, and a
+// value of another JSON kind than the member's, naming the member.
+func (v *FamiliesTuning) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	*v = FamiliesTuning{}
+	if err := wire.BeginObject(dec); err != nil {
+		return err
+	}
+	for {
+		name, more, err := wire.NextMember(dec)
+		if err != nil {
+			return err
+		}
+		if !more {
+			break
+		}
+		switch name {
+		case "codex":
+			if wire.IsNull(dec) {
+				return wire.In("codex", wire.Null())
+			}
+			var value CodexTuning
+			if err := value.UnmarshalJSONFrom(dec); err != nil {
+				return wire.In("codex", err)
+			}
+			v.Codex = &value
+		default:
+			return wire.Unknown(name)
+		}
+	}
+	return nil
+}
+
+// validate checks the rules of the fields of FamiliesTuning, and reports every one that
+// is broken.
+func (v FamiliesTuning) validate() error {
+	var r wire.Report
+	if v.Codex != nil {
+		r.Nest("codex", (*v.Codex).validate())
+	}
+	return r.Err()
+}
+
+// UnmarshalJSONFrom decodes the JSON object of CodexTuning: it refuses a member that
+// the type does not have, a required member that is missing, a null, and a
+// value of another JSON kind than the member's, naming the member.
+func (v *CodexTuning) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	*v = CodexTuning{}
+	if err := wire.BeginObject(dec); err != nil {
+		return err
+	}
+	var seen uint64
+	for {
+		name, more, err := wire.NextMember(dec)
+		if err != nil {
+			return err
+		}
+		if !more {
+			break
+		}
+		switch name {
+		case "backendUrl":
+			seen |= 1 << 0
+			s, err := wire.ReadString(dec)
+			if err != nil {
+				return wire.In("backendUrl", err)
+			}
+			v.BackendURL = s
+		case "authUrl":
+			seen |= 1 << 1
+			s, err := wire.ReadString(dec)
+			if err != nil {
+				return wire.In("authUrl", err)
+			}
+			v.AuthURL = s
+		default:
+			return wire.Unknown(name)
+		}
+	}
+	if seen&(1<<0) == 0 {
+		return wire.Required("backendUrl")
+	}
+	if seen&(1<<1) == 0 {
+		return wire.Required("authUrl")
+	}
+	return nil
+}
+
+// validate checks the rules of the fields of CodexTuning, and reports every one that
+// is broken.
+func (v CodexTuning) validate() error {
+	var r wire.Report
+	r.Chars("backendUrl", v.BackendURL, wire.AtLeast(1))
+	r.Chars("authUrl", v.AuthURL, wire.AtLeast(1))
 	return r.Err()
 }
 
