@@ -335,3 +335,29 @@ func TestRetainedAdjacentVariantAndInlineFalse(t *testing.T) {
 		t.Fatalf("retained adjacent MessagePack: %s %v", encoded, err)
 	}
 }
+
+// Cost: in-memory encoding only; no timers or external services.
+func TestRetainedEncodingSyntaxPath(t *testing.T) {
+	for _, scenario := range []struct{ name, raw, path string }{
+		{"nested", `{"more":[1,SECRET]}`, "nested.more[1]"},
+		{"nested", `{"nested":{"more":[1,SECRET]}}`, "nested.nested.more[1]"},
+	} {
+		value := featuretest.Reasoning{ID: "r", Extra: wire.Members{{Name: scenario.name, Value: jsontext.Value(scenario.raw)}}}
+		for _, packed := range []bool{false, true} {
+			var err error
+			if packed {
+				_, err = value.MarshalMsgpack()
+			} else {
+				_, err = featuretest.EncodeReasoningJSON(value)
+			}
+			var invalid *wire.InvalidError
+			var syntax *jsontext.SyntacticError
+			if !errors.As(err, &invalid) || !errors.As(err, &syntax) {
+				t.Fatalf("packed=%v: lost typed cause: %v", packed, err)
+			}
+			if invalid.Path != scenario.path || strings.Contains(err.Error(), "SECRET") {
+				t.Fatalf("packed=%v: path=%q want %q; %v", packed, invalid.Path, scenario.path, err)
+			}
+		}
+	}
+}
