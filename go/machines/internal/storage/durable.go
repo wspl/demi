@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/wspl/demi/go/artifact"
+	"github.com/wspl/demi/go/internal/fsfail"
 )
 
 // WriteRecord replaces the file at path with data, synced before the rename
@@ -48,16 +49,7 @@ func RemoveTree(path string) error {
 // private to the owner; a directory that exists keeps its mode.
 func CreatePrivate(path string) error {
 	if err := os.MkdirAll(path, 0o700); err != nil {
-		return fmt.Errorf("failed to create %s: %w", path, unwrapPath(err))
+		return fmt.Errorf("failed to create %s: %w", path, fsfail.Cause(err))
 	}
 	return nil
-}
-
-// unwrapPath returns the cause of a failed file operation, whose message the
-// caller words with the path itself.
-func unwrapPath(err error) error {
-	if pathError, ok := err.(*os.PathError); ok {
-		return pathError.Err
-	}
-	return err
 }

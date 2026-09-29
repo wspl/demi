@@ -6,7 +6,6 @@ package config
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"net/netip"
@@ -16,6 +15,7 @@ import (
 	"strings"
 
 	whatwg "github.com/nlnwa/whatwg-url/url"
+	"github.com/wspl/demi/go/internal/envflag"
 	"github.com/wspl/demi/go/runnerproto"
 )
 
@@ -94,24 +94,6 @@ var (
 	ErrMissingSocket = errors.New("DEMI_MACHINES_SOCKET is required")
 )
 
-// A UsageError means the command line or a setting's value is not one the
-// manager reads, as clap says of its own refusals; the other errors of a
-// configuration are the manager's (the Rust exits with status 2 for the first and
-// 1 for the second).
-type UsageError struct {
-	Err error
-}
-
-func (e *UsageError) Error() string { return e.Err.Error() }
-
-func (e *UsageError) Unwrap() error { return e.Err }
-
-// IsUsage reports whether err is a [UsageError].
-func IsUsage(err error) bool {
-	var usage *UsageError
-	return errors.As(err, &usage)
-}
-
 // An UnknownError means a DEMI_MANAGED_* variable the manager does not declare.
 type UnknownError struct {
 	Name string
@@ -129,96 +111,47 @@ func (e *LimitsOffError) Error() string {
 	return e.Variable + " applies only with DEMI_MANAGED_LIMITS=on"
 }
 
-// setting is one flag with the variable that sets it, its default and its
-// parser. A setting is set by its flag, else by its variable, else it takes its
-// default.
-type setting struct {
-	flag     string
-	variable string
-	fallback string
-	// required means there is no default and the manager cannot start without
-	// it.
-	required bool
-	// list means the flag may repeat and its value is a comma-separated list.
-	list  bool
-	parse func(value string) error
-	// explicit is whether the flag or the variable set it.
-	explicit bool
-}
-
 // Parse reads the configuration from args (the program's arguments after its
 // name) and the variables lookup finds. An error names the variable, or the
-// flag, of the setting it refuses. help receives the usage text of -h and
-// --help.
+// flag, of the setting it refuses; an envflag.UsageError is one clap would
+// report. help receives the usage text of -h and --help.
 func Parse(args []string, environ []string, help io.Writer) (*Config, error) {
-	lookup := environment(environ)
 	var config Config
 	var recoverFlag, namespaceFlag, limitsOn bool
 	var cpus, memory uint32
 	limitsOn = true
 	dns := []netip.Addr{}
-	settings := []*setting{
-		{flag: "socket", variable: "DEMI_MACHINES_SOCKET", parse: absolute(&config.Socket)},
-		{flag: "data", variable: "DEMI_MACHINES_DATA", fallback: "/var/lib/demi-machines", parse: absolute(&config.Data)},
-		{flag: "runsc", variable: "DEMI_MANAGED_RUNSC", required: true, parse: absolute(&config.Runsc)},
-		{flag: "image", variable: "DEMI_MANAGED_IMAGE", required: true, parse: absolute(&config.Image)},
-		{flag: "backend-url", variable: "DEMI_MANAGED_BACKEND_URL", required: true, parse: backendURL(&config.BackendURL)},
-		{flag: "limits", variable: "DEMI_MANAGED_LIMITS", fallback: "on", parse: switchValue(&limitsOn)},
-		{flag: "cpus", variable: "DEMI_MANAGED_CPUS", fallback: "2", parse: positive(&cpus)},
-		{flag: "mem-mib", variable: "DEMI_MANAGED_MEM_MIB", fallback: "2048", parse: positive(&memory)},
-		{flag: "system-mib", variable: "DEMI_MANAGED_SYSTEM_MIB", fallback: "1024", parse: positive(&config.SystemMiB)},
-		{flag: "home-mib", variable: "DEMI_MANAGED_HOME_MIB", fallback: "1024", parse: positive(&config.HomeMiB)},
-		{flag: "subnet", variable: "DEMI_MANAGED_SUBNET", fallback: "172.30.0.0/16", parse: subnet(&config.Subnet)},
-		{flag: "slots", variable: "DEMI_MANAGED_SLOTS", fallback: "256", parse: slots(&config.Slots)},
-		{flag: "dns", variable: "DEMI_MANAGED_DNS", required: true, list: true, parse: resolvers(&dns)},
+	cpusSetting := &envflag.Setting{Flag: "cpus", Variable: "DEMI_MANAGED_CPUS", Fallback: "2", Parse: positive(&cpus)}
+	memorySetting := &envflag.Setting{Flag: "mem-mib", Variable: "DEMI_MANAGED_MEM_MIB", Fallback: "2048", Parse: positive(&memory)}
+	settings := []*envflag.Setting{
+		{Flag: "socket", Variable: "DEMI_MACHINES_SOCKET", Parse: absolute(&config.Socket)},
+		{Flag: "data", Variable: "DEMI_MACHINES_DATA", Fallback: "/var/lib/demi-machines", Parse: absolute(&config.Data)},
+		{Flag: "runsc", Variable: "DEMI_MANAGED_RUNSC", Required: true, Parse: absolute(&config.Runsc)},
+		{Flag: "image", Variable: "DEMI_MANAGED_IMAGE", Required: true, Parse: absolute(&config.Image)},
+		{Flag: "backend-url", Variable: "DEMI_MANAGED_BACKEND_URL", Required: true, Parse: backendURL(&config.BackendURL)},
+		{Flag: "limits", Variable: "DEMI_MANAGED_LIMITS", Fallback: "on", Parse: switchValue(&limitsOn)},
+		cpusSetting,
+		memorySetting,
+		{Flag: "system-mib", Variable: "DEMI_MANAGED_SYSTEM_MIB", Fallback: "1024", Parse: positive(&config.SystemMiB)},
+		{Flag: "home-mib", Variable: "DEMI_MANAGED_HOME_MIB", Fallback: "1024", Parse: positive(&config.HomeMiB)},
+		{Flag: "subnet", Variable: "DEMI_MANAGED_SUBNET", Fallback: "172.30.0.0/16", Parse: subnet(&config.Subnet)},
+		{Flag: "slots", Variable: "DEMI_MANAGED_SLOTS", Fallback: "256", Parse: slots(&config.Slots)},
+		{Flag: "dns", Variable: "DEMI_MANAGED_DNS", Required: true, List: true, Parse: resolvers(&dns)},
 	}
 	if err := rejectUnknown(settings, environ); err != nil {
 		return nil, err
 	}
-	commandLine := flag.NewFlagSet("demi-machines", flag.ContinueOnError)
-	commandLine.SetOutput(io.Discard)
-	// A flag given twice is refused, as clap refuses it, except the list.
-	repeated := ""
-	once := func(name string, seen *bool) {
-		commandLine.BoolFunc(name, "", func(string) error {
-			if *seen {
-				repeated = name
-			}
-			*seen = true
-			return nil
-		})
+	command := envflag.Command{
+		Name:     "demi-machines",
+		Settings: settings,
+		Switches: []envflag.Switch{{Flag: "recover", Target: &recoverFlag}, {Flag: "recover-namespace", Target: &namespaceFlag}},
+		Usage:    func(out io.Writer) { usage(out, settings) },
 	}
-	once("recover", &recoverFlag)
-	once("recover-namespace", &namespaceFlag)
-	given := map[string][]string{}
-	for _, s := range settings {
-		commandLine.Func(s.flag, s.variable, func(value string) error {
-			if len(given[s.flag]) > 0 && !s.list {
-				repeated = s.flag
-			}
-			given[s.flag] = append(given[s.flag], value)
-			return nil
-		})
-	}
-	if err := commandLine.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			usage(help, commandLine, settings)
-		}
-		return nil, &UsageError{Err: err}
-	}
-	if repeated != "" {
-		return nil, &UsageError{Err: fmt.Errorf("--%s cannot be used multiple times", repeated)}
-	}
-	if commandLine.NArg() > 0 {
-		return nil, &UsageError{Err: fmt.Errorf("unexpected argument %q", commandLine.Arg(0))}
+	if err := command.Parse(args, envflag.Environment(environ), help); err != nil {
+		return nil, err
 	}
 	if recoverFlag && namespaceFlag {
-		return nil, &UsageError{Err: errors.New("--recover and --recover-namespace cannot be used together")}
-	}
-	for _, s := range settings {
-		if err := s.read(given[s.flag], lookup); err != nil {
-			return nil, &UsageError{Err: err}
-		}
+		return nil, &envflag.UsageError{Err: errors.New("--recover and --recover-namespace cannot be used together")}
 	}
 	capacity := uint64(1) << (32 - config.Subnet.Bits())
 	if uint64(config.Slots)*4 > capacity {
@@ -237,9 +170,9 @@ func Parse(args []string, environ []string, help io.Writer) (*Config, error) {
 		config.Limits = &Limits{CPUs: cpus, MemoryMiB: memory}
 	} else {
 		// A budget nothing would apply is refused, not ignored.
-		for _, s := range settings {
-			if (s.flag == "cpus" || s.flag == "mem-mib") && s.explicit {
-				return nil, &LimitsOffError{Variable: s.variable}
+		for _, s := range []*envflag.Setting{cpusSetting, memorySetting} {
+			if s.Explicit() {
+				return nil, &LimitsOffError{Variable: s.Variable}
 			}
 		}
 	}
@@ -247,62 +180,12 @@ func Parse(args []string, environ []string, help io.Writer) (*Config, error) {
 	return &config, nil
 }
 
-// read sets the setting from its flag values, else its variable, else its
-// default.
-func (s *setting) read(values []string, lookup func(string) (string, bool)) error {
-	source := "--" + s.flag
-	if len(values) == 0 {
-		if value, ok := lookup(s.variable); ok {
-			values = []string{value}
-			source = s.variable
-		}
-	}
-	if len(values) == 0 {
-		if s.required {
-			return fmt.Errorf("%s is required (--%s)", s.variable, s.flag)
-		}
-		if s.fallback == "" {
-			return nil
-		}
-		values = []string{s.fallback}
-	} else {
-		s.explicit = true
-	}
-	if s.list {
-		var items []string
-		for _, value := range values {
-			items = append(items, strings.Split(value, ",")...)
-		}
-		values = items
-	}
-	for _, value := range values {
-		if err := s.parse(value); err != nil {
-			return fmt.Errorf("invalid value for %s: %w", source, err)
-		}
-	}
-	return nil
-}
-
-// environment returns the lookup of a list of NAME=VALUE entries.
-func environment(environ []string) func(string) (string, bool) {
-	values := make(map[string]string, len(environ))
-	for _, entry := range environ {
-		if name, value, ok := strings.Cut(entry, "="); ok {
-			values[name] = value
-		}
-	}
-	return func(name string) (string, bool) {
-		value, ok := values[name]
-		return value, ok
-	}
-}
-
 // rejectUnknown refuses a DEMI_MANAGED_* variable the settings do not declare.
 // The declared names come from the settings themselves, so they are listed once.
-func rejectUnknown(settings []*setting, environ []string) error {
+func rejectUnknown(settings []*envflag.Setting, environ []string) error {
 	var known []string
 	for _, s := range settings {
-		known = append(known, s.variable)
+		known = append(known, s.Variable)
 	}
 	for _, entry := range environ {
 		name, _, _ := strings.Cut(entry, "=")
@@ -313,12 +196,12 @@ func rejectUnknown(settings []*setting, environ []string) error {
 	return nil
 }
 
-func usage(out io.Writer, commandLine *flag.FlagSet, settings []*setting) {
+func usage(out io.Writer, settings []*envflag.Setting) {
 	fmt.Fprintln(out, "The Cloud machine manager: runs users' Cloud machines as gVisor sandboxes and serves the backend over a Unix socket.")
 	fmt.Fprintln(out, "\nUsage: demi-machines [--recover]")
 	fmt.Fprintln(out, "\nSettings, each a flag or the variable named:")
 	for _, s := range settings {
-		fmt.Fprintf(out, "  --%s <%s>\n", s.flag, s.variable)
+		fmt.Fprintf(out, "  --%s <%s>\n", s.Flag, s.Variable)
 	}
 	fmt.Fprintln(out, "\nFlags:")
 	fmt.Fprintln(out, "  --recover  fence and save what a stopped manager left behind, then exit")

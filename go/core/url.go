@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"net/url"
 	"strings"
 
 	whatwg "github.com/nlnwa/whatwg-url/url"
@@ -22,6 +23,17 @@ func ParseURL(text string) (*whatwg.Url, error) {
 		return nil, errors.New("must be an absolute URL")
 	}
 	return value, nil
+}
+
+// NetURL is address for net/http: its serialization, read by net/url. A
+// serialization net/url refuses, such as a path with a stray "%", is
+// refused.
+func NetURL(address *whatwg.Url) (*url.URL, error) {
+	parsed, err := url.Parse(address.String())
+	if err != nil {
+		return nil, errors.New("must be a URL net/http can request")
+	}
+	return parsed, nil
 }
 
 // hasEmptyPunycodeLabel reports whether host has a label that is the Punycode

@@ -14,6 +14,7 @@ import (
 	"unicode"
 
 	"github.com/wspl/demi/go/artifact"
+	"github.com/wspl/demi/go/internal/fsfail"
 )
 
 // instanceSecretFile is the data directory's file that holds the instance
@@ -65,26 +66,16 @@ func LoadInstanceSecret(dataDir string) (InstanceSecret, error) {
 		return secret, nil
 	}
 	if !errors.Is(err, fs.ErrNotExist) {
-		return InstanceSecret{}, fmt.Errorf("the instance secret file %s cannot be read: %w", path, withoutPath(err))
+		return InstanceSecret{}, fmt.Errorf("the instance secret file %s cannot be read: %w", path, fsfail.Cause(err))
 	}
 	var secret InstanceSecret
 	// crypto/rand never fails: it crashes the program instead.
 	rand.Read(secret.bytes[:])
 	publication := artifact.Publication{Mode: artifact.CreateNew, Permissions: artifact.Private, Durable: true}
 	if err := artifact.PublishBytes(path, []byte(hex.EncodeToString(secret.bytes[:])+"\n"), publication); err != nil {
-		return InstanceSecret{}, fmt.Errorf("the instance secret file %s cannot be created: %w", path, withoutPath(err))
+		return InstanceSecret{}, fmt.Errorf("the instance secret file %s cannot be created: %w", path, fsfail.Cause(err))
 	}
 	return secret, nil
-}
-
-// withoutPath is err without the path an *fs.PathError repeats, since the
-// message names the file already.
-func withoutPath(err error) error {
-	var path *fs.PathError
-	if errors.As(err, &path) {
-		return path.Err
-	}
-	return err
 }
 
 // Format writes a placeholder for every verb: the secret never shows.

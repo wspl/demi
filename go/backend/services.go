@@ -4,6 +4,7 @@ import (
 	"github.com/wspl/demi/go/backend/auth"
 	"github.com/wspl/demi/go/backend/storage"
 	"github.com/wspl/demi/go/core"
+	"github.com/wspl/demi/go/webapi"
 )
 
 // Services is what the users share, safe from any goroutine: the program
@@ -11,6 +12,8 @@ import (
 // (g7-backend.md § Services). The Clouds' settings join it with the Cloud's
 // machine.
 type Services struct {
+	// Mode says who configures providers (product.md § Instance mode).
+	Mode webapi.InstanceMode
 	// Clock is the wall clock the backend reads times from.
 	Clock core.Clock
 	// Control is the control database: users, sessions, providers, devices

@@ -14,6 +14,7 @@ import (
 
 	"github.com/coreos/go-systemd/v22/daemon"
 
+	"github.com/wspl/demi/go/internal/envflag"
 	"github.com/wspl/demi/go/machines/internal/config"
 	"github.com/wspl/demi/go/machines/internal/storage"
 	"github.com/wspl/demi/go/machines/internal/tools"
@@ -34,7 +35,7 @@ func Main() int {
 			return 0
 		}
 		fmt.Fprintf(os.Stderr, "demi-machines: %v\n", err)
-		if config.IsUsage(err) {
+		if envflag.IsUsage(err) {
 			return 2
 		}
 		return 1
