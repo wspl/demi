@@ -7,8 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-
-	"github.com/google/uuid"
+	"uuid"
 
 	"github.com/wspl/demi/go/machines/internal/fault"
 	"github.com/wspl/demi/go/machinesproto"
@@ -54,7 +53,7 @@ func WriteState(path string, state machinesproto.ImageState) error {
 
 // NewGeneration returns a new generation's id.
 func NewGeneration() machinesproto.GenerationID {
-	return machinesproto.GenerationID(uuid.NewString())
+	return machinesproto.GenerationID(uuid.New().String())
 }
 
 // A Store is the immutable image store: each device's committed generations and
@@ -111,7 +110,7 @@ func (s *Store) Publish(device machinesproto.DeviceID, state machinesproto.Image
 	if err := Sync(directory); err != nil {
 		return err
 	}
-	stage := filepath.Join(generations, ".publish-"+uuid.NewString())
+	stage := filepath.Join(generations, ".publish-"+uuid.New().String())
 	if err := os.Mkdir(stage, 0o777); err != nil {
 		return err
 	}

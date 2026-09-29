@@ -11,6 +11,7 @@ import (
 	"errors"
 	"net"
 	"net/url"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf16"
@@ -90,6 +91,9 @@ func NormalURL(raw string) (*url.URL, error) {
 	address.Scheme = strings.ToLower(address.Scheme)
 	host := strings.ToLower(address.Hostname())
 	port := address.Port()
+	if _, err := strconv.ParseUint(port, 10, 16); port != "" && err != nil {
+		return nil, errors.New("has a port that is not from 0 to 65535")
+	}
 	if port == defaultPorts[address.Scheme] {
 		port = ""
 	}

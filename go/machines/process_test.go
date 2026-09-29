@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -75,6 +76,14 @@ func manager(t *testing.T) string {
 		t.Fatal(buildErr)
 	}
 	return built
+}
+
+// removeBuiltManager removes the executable the process tests built, and the
+// directory it was built in.
+func removeBuiltManager() {
+	if built != "" {
+		_ = os.RemoveAll(filepath.Dir(built)) // A leftover in the temporary directory is harmless.
+	}
 }
 
 // init is the host's init: the host's mounts are shared, as systemd's are, and its
@@ -324,7 +333,7 @@ func (r *running) start(notify *net.UnixConn) start {
 		length, _, err := notify.ReadFromUnix(message)
 		switch {
 		case err == nil:
-			if slicesContains(strings.Split(string(message[:length]), "\n"), "READY=1") {
+			if slices.Contains(strings.Split(string(message[:length]), "\n"), "READY=1") {
 				return start{ready: true}
 			}
 		case errors.Is(err, os.ErrDeadlineExceeded):
@@ -341,15 +350,6 @@ func (r *running) start(notify *net.UnixConn) start {
 			r.t.Fatalf("the manager neither became ready nor exited within %v", readyDeadline)
 		}
 	}
-}
-
-func slicesContains(lines []string, want string) bool {
-	for _, line := range lines {
-		if line == want {
-			return true
-		}
-	}
-	return false
 }
 
 // waitReady waits for readiness; an exit before it fails the test.

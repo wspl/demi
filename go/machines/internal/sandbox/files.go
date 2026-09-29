@@ -14,8 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/google/uuid"
+	"uuid"
 
 	"github.com/wspl/demi/go/internal/wire"
 	"github.com/wspl/demi/go/machines/internal/storage"
@@ -33,7 +32,7 @@ type SandboxID string
 
 // NewSandboxID returns the id of a new boot.
 func NewSandboxID() SandboxID {
-	return SandboxID("demi-" + uuid.NewString())
+	return SandboxID("demi-" + uuid.New().String())
 }
 
 // sandboxID is the rule of a boot's id.

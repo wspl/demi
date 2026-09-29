@@ -9,8 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-
-	"github.com/google/uuid"
+	"uuid"
 
 	"github.com/wspl/demi/go/machines/internal/fault"
 	"github.com/wspl/demi/go/machines/internal/sandbox"
@@ -191,7 +190,7 @@ type stage struct {
 }
 
 func (w *deviceWorker) newStage(prefix string) (*stage, error) {
-	path := filepath.Join(w.core.Config.Working(), "."+prefix+"-"+uuid.NewString())
+	path := filepath.Join(w.core.Config.Working(), "."+prefix+"-"+uuid.New().String())
 	if err := os.Mkdir(path, 0o777); err != nil {
 		return nil, err
 	}

@@ -7,7 +7,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"net/netip"
-	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -21,6 +20,7 @@ import (
 	"github.com/wspl/demi/go/machines/internal/storage"
 	"github.com/wspl/demi/go/machines/internal/tools"
 	"github.com/wspl/demi/go/machinesproto"
+	"github.com/wspl/demi/go/runnerproto"
 )
 
 // The manager's storage state machine without a sandbox: first-use storage, reset,
@@ -40,27 +40,35 @@ type fixture struct {
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
+	// runsc is never run: the tests are of storage.
+	return newFixtureWith(t, os.Args[0], 8, &config.Limits{CPUs: 2, MemoryMiB: 2048})
+}
+
+// newFixtureWith is a fixture whose runsc is the program at runsc, with slots
+// network slots and the resource limits.
+func newFixtureWith(t *testing.T, runsc string, slots uint16, limits *config.Limits) *fixture {
+	t.Helper()
 	roottest.Require(t)
-	programs, err := tools.Resolve(os.Args[0])
+	programs, err := tools.Resolve(runsc)
 	if err != nil {
 		t.Skip(err)
 	}
 	directory := t.TempDir()
 	data := filepath.Join(directory, "data")
-	backend, err := url.Parse("http://203.0.113.10:3271")
+	backend, err := runnerproto.NormalURL("http://203.0.113.10:3271")
 	if err != nil {
 		t.Fatal(err)
 	}
 	cfg := &config.Config{
 		Data:       data,
-		Runsc:      "/nonexistent/runsc",
+		Runsc:      runsc,
 		Image:      filepath.Join(directory, "image"),
 		BackendURL: backend,
-		Limits:     &config.Limits{CPUs: 2, MemoryMiB: 2048},
+		Limits:     limits,
 		SystemMiB:  32,
 		HomeMiB:    32,
 		Subnet:     netip.MustParsePrefix("172.30.0.0/16"),
-		Slots:      8,
+		Slots:      slots,
 		DNS:        []netip.Addr{netip.MustParseAddr("1.1.1.1")},
 	}
 	base := machinesproto.BaseVersion(strings.Repeat("b", 64))

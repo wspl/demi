@@ -10,6 +10,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"io/fs"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -24,8 +25,8 @@ import (
 )
 
 // scripted records each call and answers it from a script: an operation named in
-// failures fails once with that message (keyed by the name of the params type,
-// such as HibernateParams), and the call to read the base version waits for
+// failures fails once with that message (keyed by the wire name of the
+// operation), and the call to read the base version waits for
 // release when one is set.
 type scripted struct {
 	mu       sync.Mutex
@@ -48,7 +49,7 @@ func (f *failure) Unwrap() error { return f.cause }
 func (s *scripted) Handle(_ context.Context, call machinesproto.Call) (any, error) {
 	s.mu.Lock()
 	s.calls = append(s.calls, call)
-	operation := reflect.TypeOf(call).Name()
+	operation := machinesproto.OperationName(call)
 	message, fails := s.failures[operation]
 	delete(s.failures, operation)
 	release := s.release
@@ -207,7 +208,7 @@ func TestEveryCallReachesTheServiceAndItsResultTheClient(t *testing.T) {
 		}
 		want := machinesproto.OK{ID: request.ID, Result: jsontext.Value(result)}
 		if got := c.receive(); !reflect.DeepEqual(got, want) {
-			t.Errorf("%T: %+v, want %+v", request.Call, got, want)
+			t.Errorf("%s: %+v, want %+v", machinesproto.OperationName(request.Call), got, want)
 		}
 	}
 	if calls := h.finish().called(); !reflect.DeepEqual(calls, expected) {
@@ -215,9 +216,31 @@ func TestEveryCallReachesTheServiceAndItsResultTheClient(t *testing.T) {
 	}
 }
 
+// logBuffer is a log destination that several goroutines write and a test reads.
+type logBuffer struct {
+	mu   sync.Mutex
+	text strings.Builder
+}
+
+func (b *logBuffer) Write(data []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.text.Write(data)
+}
+
+func (b *logBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.text.String()
+}
+
 func TestAFailureIsAnErrorReplyAndTheConnectionStaysUsable(t *testing.T) {
+	logged := &logBuffer{}
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(logged, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
 	h := serve(t)
-	h.service.failures["HibernateParams"] = "no such machine"
+	h.service.failures["hibernate"] = "no such machine"
 	c := h.connect()
 	c.send(`{"id":"1","op":"hibernate","params":{"deviceId":"dev-9"}}` + "\n")
 	if got, want := c.receive(), (machinesproto.Failure{ID: "1", Message: "no such machine"}); got != want {
@@ -227,6 +250,10 @@ func TestAFailureIsAnErrorReplyAndTheConnectionStaysUsable(t *testing.T) {
 	c.send("\n" + `{"id":"2","op":"reconcile","params":{}}` + "\n")
 	if ok, isOK := c.receive().(machinesproto.OK); !isOK || ok.ID != "2" {
 		t.Errorf("the request after the failure: %+v", ok)
+	}
+	// The log line names the operation as the wire does.
+	if !strings.Contains(logged.String(), "machines: hibernate failed: no such machine") {
+		t.Errorf("the log says %q", logged.String())
 	}
 }
 
@@ -264,7 +291,11 @@ func TestADeathReachesEveryConnection(t *testing.T) {
 func TestABadLineDropsItsConnectionBeforeTheLinesBehindIt(t *testing.T) {
 	h := serve(t)
 	next := `{"id":"2","op":"reconcile","params":{}}` + "\n"
+	// A valid request one byte over the limit, padded in a member the contract
+	// ignores: only the limit refuses it.
+	over := paddedRequest(machinesproto.MaxLineBytes + 1)
 	for _, bad := range []string{
+		over + "\n",
 		`{"id":"1","op":"wake","params":{}}` + "\n",
 		"not json\n",
 		"\xff\n",
@@ -282,14 +313,18 @@ func TestABadLineDropsItsConnectionBeforeTheLinesBehindIt(t *testing.T) {
 	}
 }
 
+// paddedRequest returns a valid request of the given length in bytes, padded in
+// a member the contract ignores.
+func paddedRequest(length int) string {
+	prefix := `{"id":"1","op":"reconcile","params":{},"x":"`
+	suffix := `"}`
+	return prefix + strings.Repeat("y", length-len(prefix)-len(suffix)) + suffix
+}
+
 func TestALineOfTheLimitIsServed(t *testing.T) {
 	h := serve(t)
 	c := h.connect()
-	// A request of exactly the limit: padding in a member the contract ignores.
-	prefix := `{"id":"1","op":"reconcile","params":{},"x":"`
-	suffix := `"}`
-	padding := strings.Repeat("y", machinesproto.MaxLineBytes-len(prefix)-len(suffix))
-	c.send(prefix + padding + suffix + "\n")
+	c.send(paddedRequest(machinesproto.MaxLineBytes) + "\n")
 	if ok, isOK := c.receive().(machinesproto.OK); !isOK || ok.ID != "1" {
 		t.Errorf("%+v", ok)
 	}

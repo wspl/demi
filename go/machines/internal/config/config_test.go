@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/netip"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/wspl/demi/go/machines/internal/config"
@@ -82,6 +83,10 @@ func TestObsoleteMalformedAndInsufficientSettingsAreRefused(t *testing.T) {
 		{"DEMI_MACHINES_DATA=state"},
 		{"DEMI_MANAGED_BACKEND_URL=file:///tmp/backend"},
 		{"DEMI_MANAGED_BACKEND_URL=http://"},
+		// What the URL parser of the Rust refuses or the manager refuses later.
+		{"DEMI_MANAGED_BACKEND_URL=https://backend.example.com/#"},
+		{"DEMI_MANAGED_BACKEND_URL=https://backend.example.com/#top"},
+		{"DEMI_MANAGED_BACKEND_URL=https://backend.example.com:65536"},
 		{"DEMI_MANAGED_LIMITS=yes"},
 	} {
 		if _, err := parse(nil, settings...); err == nil {
@@ -137,5 +142,37 @@ func TestServingNeedsASocketAndRecoveryDoesNot(t *testing.T) {
 	}
 	if _, err := parse([]string{"--recover", "--recover-namespace"}); err == nil {
 		t.Error("the two recoveries were accepted together")
+	}
+}
+
+func TestAFlagGivenTwiceIsRefusedExceptTheList(t *testing.T) {
+	for _, args := range [][]string{{"--slots=8", "--slots=9"}, {"--recover", "--recover"}, {"--limits=off", "--limits=off"}} {
+		if _, err := parse(args); err == nil || !config.IsUsage(err) {
+			t.Errorf("%v: %v", args, err)
+		}
+	}
+}
+
+// The Rust exits with status 2 for what clap refuses (a flag, a value, a missing
+// setting) and 1 for the manager's own refusals.
+func TestUsageErrorsAreToldFromTheManagersOwnRefusals(t *testing.T) {
+	for name, test := range map[string]struct {
+		args     []string
+		settings []string
+		usage    bool
+	}{
+		"a value that does not parse":  {nil, []string{"DEMI_MANAGED_CPUS=0"}, true},
+		"an unknown flag":              {[]string{"--nonsense"}, nil, true},
+		"an unexpected argument":       {[]string{"extra"}, nil, true},
+		"an unknown variable":          {nil, []string{"DEMI_MANAGED_FIRECRACKER=/old"}, false},
+		"slots over the subnet":        {nil, []string{"DEMI_MANAGED_SUBNET=172.30.0.0/30", "DEMI_MANAGED_SLOTS=2"}, false},
+		"a budget with the limits off": {nil, []string{"DEMI_MANAGED_LIMITS=off", "DEMI_MANAGED_CPUS=2"}, false},
+	} {
+		if _, err := parse(test.args, test.settings...); err == nil || config.IsUsage(err) != test.usage {
+			t.Errorf("%s: %v, usage %v", name, err, config.IsUsage(err))
+		}
+	}
+	if _, err := config.Parse(nil, slices.DeleteFunc(slices.Clone(required), func(entry string) bool { return strings.HasPrefix(entry, "DEMI_MACHINES_SOCKET") }), io.Discard); err == nil || config.IsUsage(err) {
+		t.Errorf("a missing socket: %v", err)
 	}
 }

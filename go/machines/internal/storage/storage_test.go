@@ -570,6 +570,26 @@ func TestAReleaseThatFailsACheckIsRefusedAndLeavesNoStage(t *testing.T) {
 	}
 }
 
+// A failure to read the archive is an I/O error; only bytes that differ from the
+// manifest's are an integrity mismatch.
+func TestAnArchiveThatCannotBeReadIsAnIOErrorNotAnIntegrityMismatch(t *testing.T) {
+	found := programs(t)
+	image := imagetest.New(t, imagetest.Entries(), []imagetest.Executable{imagetest.Runner, imagetest.Tini}, hostArchitecture(t))
+	archive := filepath.Join(image.Dir, "rootfs.tar.zst")
+	if err := os.Remove(archive); err != nil {
+		t.Fatal(err)
+	}
+	// Opening a directory succeeds and reading it does not.
+	if err := os.Mkdir(archive, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, err := storage.ImportBase(context.Background(), found, image.Dir, t.TempDir())
+	var mismatch *storage.IntegrityError
+	if err == nil || errors.As(err, &mismatch) || !strings.Contains(err.Error(), "is a directory") {
+		t.Errorf("%v", err)
+	}
+}
+
 // The design's acceptance of the in-process copy: on each filesystem it produces
 // the source's bytes and allocates no more blocks than
 // cp --reflink=auto --sparse=always does. The filesystems a host has tools for

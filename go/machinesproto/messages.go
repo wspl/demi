@@ -119,6 +119,32 @@ func (CheckpointParams) call()         {}
 func (GrowVolumeParams) call()         {}
 func (ResetParams) call()              {}
 
+// OperationName returns the name of call's operation on the wire, such as
+// "grow_volume", for a log line.
+func OperationName(call Call) string {
+	switch call.(type) {
+	case ReconcileParams:
+		return "reconcile"
+	case CurrentBaseVersionParams:
+		return "current_base_version"
+	case ImageStateParams:
+		return "image_state"
+	case RuntimeStateParams:
+		return "runtime_state"
+	case WakeParams:
+		return "wake"
+	case HibernateParams:
+		return "hibernate"
+	case CheckpointParams:
+		return "checkpoint"
+	case GrowVolumeParams:
+		return "grow_volume"
+	case ResetParams:
+		return "reset"
+	}
+	return "unknown"
+}
+
 // A Response is what the manager sends: the reply to a request, or the death of
 // a device's sandbox, which every connection receives. A member a response does
 // not declare is ignored.

@@ -10,9 +10,6 @@ import (
 	"path/filepath"
 )
 
-// UserID is the UID and GID of the sandbox's user, demi.
-const UserID = 1000
-
 // CopySkeleton copies the directory skeleton to the new directory destination
 // (docs/cloud/managed-hosts.md § Container initialization): symbolic links as
 // they are, and every entry owned by the sandbox's user.

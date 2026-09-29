@@ -34,7 +34,10 @@ func Main() int {
 			return 0
 		}
 		fmt.Fprintf(os.Stderr, "demi-machines: %v\n", err)
-		return 2
+		if config.IsUsage(err) {
+			return 2
+		}
+		return 1
 	}
 	// The journal records the service's standard error and the time; the
 	// messages name their part of the manager themselves.

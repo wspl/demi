@@ -15,8 +15,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"golang.org/x/sys/unix"
 
 	"github.com/wspl/demi/go/artifact"
@@ -162,7 +162,7 @@ func prepare(image, bases string) (release, string, error) {
 	case !errors.Is(err, os.ErrNotExist):
 		return release{}, "", err
 	}
-	stage := filepath.Join(bases, ".base-"+uuid.NewString())
+	stage := filepath.Join(bases, ".base-"+uuid.New().String())
 	if err := os.MkdirAll(filepath.Join(stage, "rootfs"), 0o777); err != nil {
 		return release{}, "", err
 	}
@@ -173,6 +173,21 @@ func prepare(image, bases string) (release, string, error) {
 		return release{}, "", err
 	}
 	return release{manifest: manifest, bytes: data, version: version}, stage, nil
+}
+
+// integrityWriter reports the refusal of a verifier, bytes past the declared
+// size, as an integrity mismatch, which leaves an error of the copy's reading or
+// writing an I/O error.
+type integrityWriter struct {
+	*artifact.Verifier
+}
+
+func (w integrityWriter) Write(chunk []byte) (int, error) {
+	written, err := w.Verifier.Write(chunk)
+	if err != nil {
+		err = &IntegrityError{Err: err}
+	}
+	return written, err
 }
 
 // copyVerified copies the archive into the stage, checking its size and SHA-256
@@ -188,9 +203,9 @@ func copyVerified(source, stage string, manifest *machinesproto.CloudImageManife
 		return err
 	}
 	verifier := artifact.NewVerifier(artifact.Digest{Size: manifest.Rootfs.Size, SHA256: manifest.Rootfs.SHA256})
-	if _, err := io.Copy(io.MultiWriter(verifier, to), from); err != nil {
+	if _, err := io.Copy(io.MultiWriter(integrityWriter{verifier}, to), from); err != nil {
 		to.Close()
-		return &IntegrityError{Err: err}
+		return err
 	}
 	if err := to.Close(); err != nil {
 		return err

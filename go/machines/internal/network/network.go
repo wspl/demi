@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -156,7 +157,8 @@ func (n *Network) backendAddresses(ctx context.Context) ([]netip.Addr, error) {
 			}
 		}
 	}
-	addresses = sortedUnique(addresses)
+	slices.SortFunc(addresses, netip.Addr.Compare)
+	addresses = slices.Compact(addresses)
 	if len(addresses) == 0 {
 		return nil, ErrNoBackendAddress
 	}
@@ -166,23 +168,6 @@ func (n *Network) backendAddresses(ctx context.Context) ([]netip.Addr, error) {
 		}
 	}
 	return addresses, nil
-}
-
-func sortedUnique(addresses []netip.Addr) []netip.Addr {
-	unique := make(map[netip.Addr]bool, len(addresses))
-	var result []netip.Addr
-	for _, address := range addresses {
-		if !unique[address] {
-			unique[address] = true
-			result = append(result, address)
-		}
-	}
-	for i := 1; i < len(result); i++ {
-		for j := i; j > 0 && result[j].Less(result[j-1]); j-- {
-			result[j], result[j-1] = result[j-1], result[j]
-		}
-	}
-	return result
 }
 
 // Attach creates slot's namespace and veth pair, gives both ends their addresses

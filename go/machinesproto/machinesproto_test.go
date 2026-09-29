@@ -49,6 +49,10 @@ func TestEveryRequestDecodesAndEncodesToTheSameBytes(t *testing.T) {
 		if err != nil || !bytes.Equal(encoded, line) {
 			t.Errorf("%s: %q, %v; want %q", name, encoded, err, line)
 		}
+		// Each request line is named after its operation, which a log line uses.
+		if got := machinesproto.OperationName(request.Call); got != name {
+			t.Errorf("%s decoded as the operation %s", name, got)
+		}
 	}
 }
 

@@ -131,6 +131,8 @@ func TestAPoolThatOverlapsAHostRouteOrALoopbackBackendIsRefused(t *testing.T) {
 	// A veth pair, which the manager needs anyway: a kernel may lack the dummy
 	// driver.
 	run(t, "ip", "link", "add", "probe0", "type", "veth", "peer", "name", "probe1")
+	// Deleting one end deletes the pair, which a second run of the test needs.
+	t.Cleanup(func() { run(t, "ip", "link", "delete", "probe0") })
 	run(t, "ip", "addr", "add", "172.30.5.1/24", "dev", "probe0")
 	run(t, "ip", "link", "set", "probe0", "up")
 	overlapping := newNetwork(t, "172.30.0.0/16", "http://203.0.113.10:3271")

@@ -9,13 +9,11 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sync"
 	"time"
 
@@ -233,60 +231,18 @@ func (s *server) serveConnection(c *connection) {
 	c.conn.Close()
 }
 
-var errTooLong = errors.New("a line is longer than the limit")
-
-// readLine reads one line, its newline and a carriage return before it removed,
-// of at most limit bytes.
-func readLine(reader *bufio.Reader, limit int) ([]byte, error) {
-	var line []byte
-	for {
-		chunk, err := reader.ReadSlice('\n')
-		line = append(line, chunk...)
-		if len(line) > limit+2 {
-			return nil, errTooLong
-		}
-		switch {
-		case err == nil:
-			line = line[:len(line)-1]
-			if len(line) > 0 && line[len(line)-1] == '\r' {
-				line = line[:len(line)-1]
-			}
-			if len(line) > limit {
-				return nil, errTooLong
-			}
-			return line, nil
-		case errors.Is(err, bufio.ErrBufferFull):
-		case errors.Is(err, io.EOF):
-			// The last line of a stream has no newline.
-			if len(line) == 0 {
-				return nil, io.EOF
-			}
-			if line[len(line)-1] == '\r' {
-				line = line[:len(line)-1]
-			}
-			if len(line) > limit {
-				return nil, errTooLong
-			}
-			return line, nil
-		default:
-			return nil, err
-		}
-	}
-}
-
 func (s *server) readRequests(c *connection) {
-	reader := bufio.NewReaderSize(c.conn, 64*1024)
-	for {
-		line, err := readLine(reader, machinesproto.MaxLineBytes)
-		switch {
-		case errors.Is(err, io.EOF):
-			return
-		case errors.Is(err, errTooLong):
-			slog.Warn("machines: dropping a connection over a bad frame: " + err.Error())
-			return
-		case err != nil:
-			slog.Debug("machines: connection error: " + err.Error())
-			return
+	// A line, its carriage return and its newline: room for one of the limit's
+	// length and no more. The scanner drops the line ending and refuses a longer
+	// line with bufio.ErrTooLong.
+	scanner := bufio.NewScanner(c.conn)
+	scanner.Buffer(make([]byte, 0, 64*1024), machinesproto.MaxLineBytes+2)
+	tooLong := false
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) > machinesproto.MaxLineBytes {
+			tooLong = true
+			break
 		}
 		if len(line) == 0 {
 			continue
@@ -301,6 +257,15 @@ func (s *server) readRequests(c *connection) {
 			defer s.requests.Done()
 			s.answer(c, request)
 		}()
+	}
+	// The scanner ends at the end of the stream (no error), at a line it cannot
+	// hold, or at a connection error.
+	err := scanner.Err()
+	switch {
+	case tooLong || errors.Is(err, bufio.ErrTooLong):
+		slog.Warn("machines: dropping a connection over a bad frame: a line is longer than the limit")
+	case err != nil:
+		slog.Debug("machines: connection error: " + err.Error())
 	}
 }
 
@@ -341,7 +306,7 @@ func (s *server) writeLines(c *connection) {
 // answer runs one request and queues its reply, unless its connection has closed:
 // the operation completes either way.
 func (s *server) answer(c *connection, request machinesproto.Request) {
-	operation := reflect.TypeOf(request.Call).Name()
+	operation := machinesproto.OperationName(request.Call)
 	var response machinesproto.Response
 	result, err := s.service.Handle(s.ctx, request.Call)
 	if err == nil {

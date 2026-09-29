@@ -10,8 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
-
-	"github.com/google/uuid"
+	"uuid"
 
 	"github.com/wspl/demi/go/machines/internal/fault"
 	"github.com/wspl/demi/go/machines/internal/linux"
@@ -130,7 +129,7 @@ func device(path string) (uint64, error) {
 // overlay, writes through the overlay, freezes the filesystem and copies the
 // image; the probe is released whatever happens.
 func probeStorage(ctx context.Context, core *Core) error {
-	stage := filepath.Join(core.Config.Data, probePrefix+uuid.NewString())
+	stage := filepath.Join(core.Config.Data, probePrefix+uuid.New().String())
 	probed := probe(ctx, core, stage)
 	released := releaseProbe(stage)
 	return errors.Join(probed, released)

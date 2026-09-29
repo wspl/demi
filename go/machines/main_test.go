@@ -10,5 +10,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	os.Exit(roottest.Main(m))
+	code := roottest.Main(m)
+	removeBuiltManager()
+	os.Exit(code)
 }

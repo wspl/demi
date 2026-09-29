@@ -94,6 +94,24 @@ var (
 	ErrMissingSocket = errors.New("DEMI_MACHINES_SOCKET is required")
 )
 
+// A UsageError means the command line or a setting's value is not one the
+// manager reads, as clap says of its own refusals; the other errors of a
+// configuration are the manager's (the Rust exits with status 2 for the first and
+// 1 for the second).
+type UsageError struct {
+	Err error
+}
+
+func (e *UsageError) Error() string { return e.Err.Error() }
+
+func (e *UsageError) Unwrap() error { return e.Err }
+
+// IsUsage reports whether err is a [UsageError].
+func IsUsage(err error) bool {
+	var usage *UsageError
+	return errors.As(err, &usage)
+}
+
 // An UnknownError means a DEMI_MANAGED_* variable the manager does not declare.
 type UnknownError struct {
 	Name string
@@ -159,11 +177,25 @@ func Parse(args []string, environ []string, help io.Writer) (*Config, error) {
 	}
 	commandLine := flag.NewFlagSet("demi-machines", flag.ContinueOnError)
 	commandLine.SetOutput(io.Discard)
-	commandLine.BoolVar(&recoverFlag, "recover", false, "fence and save what a stopped manager left behind, then exit")
-	commandLine.BoolVar(&namespaceFlag, "recover-namespace", false, "recover inside a saved mount namespace; only the manager starts this")
+	// A flag given twice is refused, as clap refuses it, except the list.
+	repeated := ""
+	once := func(name string, seen *bool) {
+		commandLine.BoolFunc(name, "", func(string) error {
+			if *seen {
+				repeated = name
+			}
+			*seen = true
+			return nil
+		})
+	}
+	once("recover", &recoverFlag)
+	once("recover-namespace", &namespaceFlag)
 	given := map[string][]string{}
 	for _, s := range settings {
 		commandLine.Func(s.flag, s.variable, func(value string) error {
+			if len(given[s.flag]) > 0 && !s.list {
+				repeated = s.flag
+			}
 			given[s.flag] = append(given[s.flag], value)
 			return nil
 		})
@@ -172,17 +204,20 @@ func Parse(args []string, environ []string, help io.Writer) (*Config, error) {
 		if errors.Is(err, flag.ErrHelp) {
 			usage(help, commandLine, settings)
 		}
-		return nil, err
+		return nil, &UsageError{Err: err}
+	}
+	if repeated != "" {
+		return nil, &UsageError{Err: fmt.Errorf("--%s cannot be used multiple times", repeated)}
 	}
 	if commandLine.NArg() > 0 {
-		return nil, fmt.Errorf("unexpected argument %q", commandLine.Arg(0))
+		return nil, &UsageError{Err: fmt.Errorf("unexpected argument %q", commandLine.Arg(0))}
 	}
 	if recoverFlag && namespaceFlag {
-		return nil, errors.New("--recover and --recover-namespace cannot be used together")
+		return nil, &UsageError{Err: errors.New("--recover and --recover-namespace cannot be used together")}
 	}
 	for _, s := range settings {
 		if err := s.read(given[s.flag], lookup); err != nil {
-			return nil, err
+			return nil, &UsageError{Err: err}
 		}
 	}
 	capacity := uint64(1) << (32 - config.Subnet.Bits())
@@ -301,6 +336,10 @@ func absolute(target *string) func(string) error {
 
 func backendURL(target **url.URL) func(string) error {
 	return func(value string) error {
+		// The URL parser reads a bare "#" as no fragment at all.
+		if strings.Contains(value, "#") {
+			return errors.New("must not have a fragment")
+		}
 		address, err := runnerproto.NormalURL(value)
 		if err != nil {
 			return err
