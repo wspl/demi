@@ -48,6 +48,9 @@ func Write(dir, tsPath string) error {
 	if tsPath == "" {
 		return nil
 	}
+	if err := pkg.refuseTypeScript(); err != nil {
+		return err
+	}
 	source, err := pkg.GenerateTypeScript()
 	if err != nil {
 		return err

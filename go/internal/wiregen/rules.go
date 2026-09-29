@@ -69,7 +69,7 @@ func (p *reader) parseRule(item string) (Rule, error) {
 	name, value, hasValue := strings.Cut(item, "=")
 	kind := RuleKind(name)
 	switch kind {
-	case RuleNoNUL, RuleUnique:
+	case RuleNoNUL, RuleUnique, RuleNullable:
 		if hasValue {
 			return Rule{}, fmt.Errorf("check %q: %s takes no value", item, name)
 		}

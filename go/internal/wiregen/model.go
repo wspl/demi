@@ -34,6 +34,9 @@ type File struct {
 	// Name is the file's name, such as "invocation.go".
 	Name  string
 	Types []string
+	// Imports are the packages of the file that the wire types name, by the name
+	// the file gives them: the generated code needs them too.
+	Imports map[string]string
 }
 
 // A Struct is a marked struct: a wire type, or the variant of a union.
@@ -48,6 +51,10 @@ type Struct struct {
 	// Check is whether the struct has a method check() error for the rules
 	// across its fields.
 	Check bool
+	// Open is whether the struct ignores the members it does not have, as a
+	// serde struct without deny_unknown_fields does, where the others refuse
+	// them (//demi:open).
+	Open bool
 }
 
 // A Field is a member of a wire struct.
@@ -59,7 +66,12 @@ type Field struct {
 	Type *Type
 	// Required is whether the member must be present: it has no omitzero.
 	Required bool
-	Rules    []Rule
+	// Nullable is whether a required member may be null; its type is a pointer.
+	Nullable bool
+	// Inline is whether the field is a union whose members are the struct's own,
+	// as serde's flatten makes them; its json name is empty.
+	Inline bool
+	Rules  []Rule
 }
 
 // A Kind says what a wire type holds.
@@ -96,6 +108,10 @@ type Type struct {
 	Key *Type
 	// Opaque is whether a struct is one the package decodes itself.
 	Opaque bool
+	// Qualifier is the name of the package of a wire struct of another package,
+	// which is opaque here: its own generated code decodes it and its own rules
+	// are run by a func rule of the field that holds it.
+	Qualifier string
 }
 
 // A Union is a sealed interface, Go's sum type.
@@ -105,6 +121,9 @@ type Union struct {
 	// TagName is the member that tells the variants apart; empty for a union
 	// told apart by its members.
 	TagName string
+	// ContentName is, for an adjacently tagged union, the member that holds the
+	// variant's members; empty for the other unions.
+	ContentName string
 	// Sealed is the interface's unexported method.
 	Sealed   string
 	Variants []*Struct
@@ -127,6 +146,9 @@ const (
 	RuleFunc    RuleKind = "func"
 	RuleEach    RuleKind = "each"
 	RuleKeys    RuleKind = "keys"
+	// RuleNullable is not a check but a member's mark: a required member may be
+	// null. The reader takes it out of a field's rules.
+	RuleNullable RuleKind = "nullable"
 )
 
 // A Rule is one rule of a check tag.

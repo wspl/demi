@@ -12,6 +12,7 @@ import (
 	"go/token"
 	"go/types"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -25,6 +26,9 @@ const (
 	directiveUnion   = "//demi:union"
 	directiveVariant = "//demi:variant"
 	directiveOpaque  = "//demi:opaque"
+	// open adds to a wire struct or a variant: it ignores members it does not
+	// have.
+	directiveOpen = "//demi:open"
 )
 
 // generatedSuffix ends the name of every file the generator writes.
@@ -128,7 +132,12 @@ func LoadSource(sources map[string][]byte) (*Package, error) {
 			named:    map[string]*Type{},
 			patterns: map[string]string{},
 		},
-		specs: map[string]*ast.StructType{},
+		specs:   map[string]*ast.StructType{},
+		imports: map[string]map[string]string{},
+		used:    map[string]map[string]string{},
+	}
+	for _, file := range files {
+		p.imports[filepath.Base(fset.Position(file.Pos()).Filename)] = importsOf(file)
 	}
 	if len(files) > 0 {
 		p.pkg.Name = files[0].Name.Name
@@ -150,6 +159,43 @@ type reader struct {
 	specs map[string]*ast.StructType
 	// decls are the declarations to resolve once every name is known.
 	decls []marked
+	// imports are the packages each file imports, by the name the file gives
+	// them, and used those of them that its wire types name; file is the file
+	// being resolved.
+	imports map[string]map[string]string
+	used    map[string]map[string]string
+	file    string
+}
+
+// importsOf returns the packages a file imports by the name it gives them.
+func importsOf(file *ast.File) map[string]string {
+	imports := map[string]string{}
+	for _, spec := range file.Imports {
+		path, err := strconv.Unquote(spec.Path.Value)
+		if err != nil {
+			continue
+		}
+		name := pathpkg.Base(path)
+		if spec.Name != nil {
+			name = spec.Name.Name
+		}
+		imports[name] = path
+	}
+	return imports
+}
+
+// use records that the wire types of the file being resolved name the package
+// imported as qualifier, and returns whether the file imports one.
+func (p *reader) use(qualifier string) bool {
+	path, ok := p.imports[p.file][qualifier]
+	if !ok {
+		return false
+	}
+	if p.used[p.file] == nil {
+		p.used[p.file] = map[string]string{}
+	}
+	p.used[p.file][qualifier] = path
+	return true
 }
 
 // A marked is a declaration with a directive, and the file it is in.
@@ -214,6 +260,7 @@ func (p *reader) load() error {
 	for _, file := range p.files {
 		name := filepath.Base(p.fset.Position(file.Pos()).Filename)
 		if f, ok := byFile[name]; ok {
+			f.Imports = p.used[name]
 			p.pkg.Files = append(p.pkg.Files, f)
 		}
 	}
@@ -222,17 +269,31 @@ func (p *reader) load() error {
 
 // declare records what a type declaration is, before any field is resolved.
 func (p *reader) declare(m *marked, byFile map[string]*File) error {
-	kinds := 0
+	kinds, open := 0, false
 	for _, directive := range m.directives {
 		switch fields := strings.Fields(directive); fields[0] {
 		case directiveWire, directiveUnion, directiveVariant, directiveOpaque:
 			kinds++
+		case directiveOpen:
+			if len(fields) > 1 {
+				return p.errorf(m.spec.Pos(), "%s: %s takes no argument", m.name, directiveOpen)
+			}
+			open = true
 		default:
 			return p.errorf(m.spec.Pos(), "%s: unknown directive %s", m.name, fields[0])
 		}
 	}
 	if kinds > 1 {
 		return p.errorf(m.spec.Pos(), "%s: a declaration has one directive", m.name)
+	}
+	if open {
+		directive := ""
+		if kinds == 1 {
+			directive = strings.Fields(m.directives[kindIndex(m.directives)])[0]
+		}
+		if directive != directiveWire && directive != directiveVariant {
+			return p.errorf(m.spec.Pos(), "%s: %s marks a wire struct or a variant", m.name, directiveOpen)
+		}
 	}
 	if kinds == 0 {
 		// A type named after a basic type is not a wire type, but its fields
@@ -247,7 +308,7 @@ func (p *reader) declare(m *marked, byFile map[string]*File) error {
 		}
 		return nil
 	}
-	directive := strings.Fields(m.directives[0])
+	directive := strings.Fields(m.directives[kindIndex(m.directives)])
 	switch directive[0] {
 	case directiveOpaque:
 		if _, ok := m.spec.Type.(*ast.StructType); !ok {
@@ -260,7 +321,7 @@ func (p *reader) declare(m *marked, byFile map[string]*File) error {
 		if _, ok := m.spec.Type.(*ast.StructType); !ok {
 			return p.errorf(m.spec.Pos(), "%s: %s marks a struct", m.name, directive[0])
 		}
-		s := &Struct{Name: m.name, Doc: m.doc}
+		s := &Struct{Name: m.name, Doc: m.doc, Open: open}
 		if directive[0] == directiveVariant && len(directive) > 1 {
 			s.Tag = directive[1]
 		}
@@ -276,8 +337,14 @@ func (p *reader) declare(m *marked, byFile map[string]*File) error {
 		case len(directive) == 2 && directive[1] == "untagged":
 		case len(directive) == 2 && strings.HasPrefix(directive[1], "tag="):
 			u.TagName = strings.TrimPrefix(directive[1], "tag=")
+		case len(directive) == 3 && strings.HasPrefix(directive[1], "tag=") && strings.HasPrefix(directive[2], "content="):
+			u.TagName = strings.TrimPrefix(directive[1], "tag=")
+			u.ContentName = strings.TrimPrefix(directive[2], "content=")
+			if u.TagName == "" || u.ContentName == "" || u.TagName == u.ContentName {
+				return p.errorf(m.spec.Pos(), "%s: an adjacently tagged union names its tag and its content, apart", m.name)
+			}
 		default:
-			return p.errorf(m.spec.Pos(), "%s: a union is `tag=NAME` or `untagged`", m.name)
+			return p.errorf(m.spec.Pos(), "%s: a union is `tag=NAME` or `untagged`, and `tag=NAME` may be followed by `content=NAME`", m.name)
 		}
 		if len(iface.Methods.List) != 1 || len(iface.Methods.List[0].Names) != 1 || ast.IsExported(iface.Methods.List[0].Names[0].Name) {
 			return p.errorf(m.spec.Pos(), "%s: a union has one unexported method", m.name)
@@ -293,6 +360,17 @@ func (p *reader) declare(m *marked, byFile map[string]*File) error {
 	f.Types = append(f.Types, m.name)
 	p.decls = append(p.decls, *m)
 	return nil
+}
+
+// kindIndex returns the index of the directive that says what a declaration is;
+// //demi:open only adds to it.
+func kindIndex(directives []string) int {
+	for i, directive := range directives {
+		if strings.Fields(directive)[0] != directiveOpen {
+			return i
+		}
+	}
+	return 0
 }
 
 func basicType(name string) *Type {
@@ -414,6 +492,7 @@ func (p *reader) resolve(m marked) error {
 		return nil
 	}
 	spec := p.specs[m.name]
+	p.file = m.file
 	s.Check = p.methods[m.name]["check"]
 	for _, field := range spec.Fields.List {
 		if len(field.Names) != 1 {
@@ -433,28 +512,61 @@ func (p *reader) resolve(m marked) error {
 		}
 		tag := reflect.StructTag(tagText)
 		jsonName, options, _ := strings.Cut(tag.Get("json"), ",")
-		if jsonName == "" || jsonName == "-" {
-			return p.errorf(field.Pos(), "%s: a wire field has a json name", where)
-		}
-		omitzero := false
+		omitzero, inline := false, false
 		for _, option := range strings.Split(options, ",") {
 			switch option {
 			case "":
 			case "omitzero":
 				omitzero = true
+			case "inline":
+				inline = true
 			default:
 				return p.errorf(field.Pos(), "%s: the json option %q is not one of a wire field's", where, option)
 			}
+		}
+		if jsonName == "-" || jsonName == "" && !inline {
+			return p.errorf(field.Pos(), "%s: a wire field has a json name", where)
+		}
+		if inline && jsonName != "" {
+			return p.errorf(field.Pos(), "%s: an inline field has no json name", where)
 		}
 		t, err := p.typeOf(field.Type)
 		if err != nil {
 			return p.errorf(field.Pos(), "%s: %v", where, err)
 		}
-		if omitzero && t.Kind != KindPointer {
-			return p.errorf(field.Pos(), "%s: an optional field is a pointer with omitzero", where)
+		if inline {
+			union := p.pkg.Unions[t.Name]
+			switch {
+			case t.Kind != KindUnion || union.ContentName == "":
+				return p.errorf(field.Pos(), "%s: an inline field is an adjacently tagged union", where)
+			case omitzero:
+				return p.errorf(field.Pos(), "%s: an inline field is required", where)
+			case slices.ContainsFunc(s.Fields, func(f *Field) bool { return f.Inline }):
+				return p.errorf(field.Pos(), "%s: a struct has one inline field", m.name)
+			}
 		}
-		if t.Kind == KindPointer && !omitzero {
+		var rules []Rule
+		if check, ok := tag.Lookup("check"); ok {
+			rules, err = p.parseRules(check)
+			if err != nil {
+				return p.errorf(field.Pos(), "%s: %v", where, err)
+			}
+		}
+		nullable := slices.ContainsFunc(rules, func(rule Rule) bool { return rule.Kind == RuleNullable })
+		rules = slices.DeleteFunc(rules, func(rule Rule) bool { return rule.Kind == RuleNullable })
+		switch {
+		case nullable && (t.Kind != KindPointer || omitzero):
+			return p.errorf(field.Pos(), "%s: a nullable field is a required pointer, without omitzero", where)
+		case omitzero && t.Kind != KindPointer:
+			return p.errorf(field.Pos(), "%s: an optional field is a pointer with omitzero", where)
+		case t.Kind == KindPointer && !omitzero && !nullable:
 			return p.errorf(field.Pos(), "%s: a pointer field is optional and has omitzero", where)
+		}
+		if err := p.checkRules(t, rules); err != nil {
+			return p.errorf(field.Pos(), "%s: %v", where, err)
+		}
+		if err := p.foreignRules(t, rules); err != nil {
+			return p.errorf(field.Pos(), "%s: %v", where, err)
 		}
 		f := &Field{
 			Name:     name,
@@ -462,15 +574,9 @@ func (p *reader) resolve(m marked) error {
 			Doc:      strings.TrimSpace(field.Doc.Text()),
 			Type:     t,
 			Required: !omitzero,
-		}
-		if check, ok := tag.Lookup("check"); ok {
-			f.Rules, err = p.parseRules(check)
-			if err != nil {
-				return p.errorf(field.Pos(), "%s: %v", where, err)
-			}
-			if err := p.checkRules(t, f.Rules); err != nil {
-				return p.errorf(field.Pos(), "%s: %v", where, err)
-			}
+			Nullable: nullable,
+			Inline:   inline,
+			Rules:    rules,
 		}
 		s.Fields = append(s.Fields, f)
 	}
@@ -536,8 +642,14 @@ func (p *reader) typeOf(expr ast.Expr) (*Type, error) {
 		}
 		return &Type{Kind: KindMap, Key: key, Elem: elem, Src: src}, nil
 	case *ast.SelectorExpr:
-		if x, ok := expr.X.(*ast.Ident); ok && x.Name == "jsontext" && expr.Sel.Name == "Value" {
+		x, ok := expr.X.(*ast.Ident)
+		if ok && x.Name == "jsontext" && expr.Sel.Name == "Value" {
 			return &Type{Kind: KindRaw, Src: src}, nil
+		}
+		// A wire struct of another package: it is decoded by its own generated
+		// code, so it is opaque here.
+		if ok && p.use(x.Name) {
+			return &Type{Kind: KindStruct, Name: expr.Sel.Name, Src: src, Opaque: true, Qualifier: x.Name}, nil
 		}
 	}
 	return nil, fmt.Errorf("the type %s is not one the wire holds", src)
@@ -560,7 +672,7 @@ func (p *reader) link() error {
 		if !ok {
 			continue
 		}
-		isVariant := len(m.directives) > 0 && strings.HasPrefix(m.directives[0], directiveVariant)
+		isVariant := len(m.directives) > 0 && strings.HasPrefix(m.directives[kindIndex(m.directives)], directiveVariant)
 		var owner *Union
 		for _, u := range p.pkg.Unions {
 			if p.methods[m.name][u.Sealed] {
@@ -599,9 +711,30 @@ func (p *reader) link() error {
 				}
 				tags[v.Tag] = true
 				for _, f := range v.Fields {
-					if f.JSON == u.TagName {
+					// The members of an adjacently tagged variant are in its content,
+					// beside no tag.
+					if f.JSON == u.TagName && u.ContentName == "" {
 						return fmt.Errorf("%s.%s: the member is the tag of the union %s, which the variant does not declare", v.Name, f.Name, u.Name)
 					}
+				}
+			}
+		}
+	}
+	return p.checkInlineMembers()
+}
+
+// checkInlineMembers refuses a struct whose inline union writes a member, its
+// tag or its content, that another field of the struct has as its name.
+func (p *reader) checkInlineMembers() error {
+	for _, s := range p.pkg.Structs {
+		for _, inline := range s.Fields {
+			if !inline.Inline {
+				continue
+			}
+			union := p.pkg.Unions[inline.Type.Name]
+			for _, f := range s.Fields {
+				if !f.Inline && (f.JSON == union.TagName || f.JSON == union.ContentName) {
+					return fmt.Errorf("%s.%s: the member is one that the inline union %s writes", s.Name, f.Name, union.Name)
 				}
 			}
 		}

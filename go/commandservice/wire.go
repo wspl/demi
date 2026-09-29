@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/wspl/demi/go/internal/wire"
 )
@@ -52,6 +53,32 @@ func Encode[T any](value T) ([]byte, error) {
 		return nil, ErrTooLarge
 	}
 	return data, nil
+}
+
+// Validate checks value, one of the wire's types, against the rules of its
+// fields, as [Decode] and [Encode] do, and reports every rule it breaks. A wire
+// type of another package holds one of these values and names this function in
+// a func rule to run its rules.
+func Validate[T any](value T) error {
+	return check(value)
+}
+
+// ValidateTarget checks that name is a target a package carries an executable
+// for, by the rule of a descriptor's targets.
+func ValidateTarget(name string) error {
+	probe := PackageDescriptor{
+		ID:              "demi.probe",
+		Version:         "0",
+		ProtocolVersion: Version,
+		Operations:      []string{"probe"},
+		Targets:         map[TargetTriple]PackageArtifact{TargetTriple(name): {SHA256: strings.Repeat("0", 64), Size: 1}},
+	}
+	err := check(probe)
+	var invalid *InvalidError
+	if errors.As(err, &invalid) {
+		return errors.New(invalid.Rule)
+	}
+	return err
 }
 
 // The patterns of the rules of the wire's fields.

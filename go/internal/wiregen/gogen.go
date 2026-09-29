@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"go/format"
+	pathpkg "path"
 	"slices"
 	"strconv"
 	"strings"
@@ -25,7 +26,16 @@ const optionsFile = "options" + generatedSuffix
 func (p *Package) GenerateGo() (map[string][]byte, error) {
 	files := map[string][]byte{}
 	for _, file := range p.Files {
-		g := &goGen{imports: map[string]bool{wireImport: true}}
+		g := &goGen{imports: map[string]bool{wireImport: true}, unions: p.Unions}
+		for alias, path := range file.Imports {
+			g.imports[path] = true
+			if alias != pathpkg.Base(path) {
+				if g.aliases == nil {
+					g.aliases = map[string]string{}
+				}
+				g.aliases[path] = alias
+			}
+		}
 		for _, name := range file.Types {
 			if s, ok := p.Structs[name]; ok {
 				if err := g.structure(s); err != nil {
@@ -88,6 +98,9 @@ func (p *Package) options() ([]byte, error) {
 	g.p(")")
 	g.p("")
 	g.helpers(p.Name)
+	if p.hasNullable() {
+		g.nullableHelpers()
+	}
 	return g.finish(p.Name)
 }
 
@@ -147,6 +160,11 @@ func (g *goGen) helpers(pkgName string) {
 type goGen struct {
 	buf     bytes.Buffer
 	imports map[string]bool
+	// unions are the package's unions, by name, for what inline fields need.
+	unions map[string]*Union
+	// aliases are the names a file gives the packages it imports under another
+	// name than their last path element.
+	aliases map[string]string
 }
 
 func (g *goGen) p(format string, args ...any) {
@@ -169,7 +187,11 @@ func (g *goGen) finish(pkgName string) ([]byte, error) {
 	for _, module := range []bool{false, true} {
 		for _, path := range paths {
 			if strings.Contains(strings.SplitN(path, "/", 2)[0], ".") == module {
-				fmt.Fprintf(&out, "\t%q\n", path)
+				if alias, ok := g.aliases[path]; ok {
+					fmt.Fprintf(&out, "\t%s %q\n", alias, path)
+				} else {
+					fmt.Fprintf(&out, "\t%q\n", path)
+				}
 			}
 		}
 		if !module {
@@ -193,14 +215,28 @@ type member struct {
 	tag string
 	// required members are counted in the decoder's bit set.
 	required bool
+	// inline is the inline field whose union this member belongs to: the tag or
+	// the content of the union.
+	inline *Field
+	// content is whether a member of an inline union is its content.
+	content bool
 }
 
 func (g *goGen) members(s *Struct) []member {
 	var members []member
-	if s.Union != nil && s.Union.TagName != "" {
+	// The variant of an adjacently tagged union is decoded from the union's
+	// content, where the tag is not.
+	if s.Union != nil && s.Union.TagName != "" && s.Union.ContentName == "" {
 		members = append(members, member{json: s.Union.TagName, tag: s.Tag, required: true})
 	}
 	for _, f := range s.Fields {
+		if f.Inline {
+			union := g.unions[f.Type.Name]
+			members = append(members,
+				member{json: union.TagName, inline: f, required: true},
+				member{json: union.ContentName, inline: f, content: true, required: true})
+			continue
+		}
 		members = append(members, member{json: f.JSON, field: f, required: f.Required})
 	}
 	return members
@@ -212,7 +248,7 @@ func (g *goGen) structure(s *Struct) error {
 		return fmt.Errorf("%s: a wire struct has at most 64 members", s.Name)
 	}
 	g.decoder(s, members)
-	if s.Union != nil && s.Union.TagName != "" {
+	if s.Union != nil && s.Union.TagName != "" || slices.ContainsFunc(s.Fields, func(f *Field) bool { return f.Inline }) {
 		g.encoder(s)
 	}
 	g.validator(s)
@@ -222,9 +258,15 @@ func (g *goGen) structure(s *Struct) error {
 // decoder writes UnmarshalJSONFrom of a struct.
 func (g *goGen) decoder(s *Struct, members []member) {
 	g.imports["encoding/json/jsontext"] = true
-	g.p("// UnmarshalJSONFrom decodes the JSON object of %s: it refuses a member that", s.Name)
-	g.p("// the type does not have, a required member that is missing, a null, and a")
-	g.p("// value of another JSON kind than the member's, naming the member.")
+	if s.Open {
+		g.p("// UnmarshalJSONFrom decodes the JSON object of %s: it ignores a member that", s.Name)
+		g.p("// the type does not have, and refuses a required member that is missing, a")
+		g.p("// null, and a value of another JSON kind than the member's, naming the member.")
+	} else {
+		g.p("// UnmarshalJSONFrom decodes the JSON object of %s: it refuses a member that", s.Name)
+		g.p("// the type does not have, a required member that is missing, a null, and a")
+		g.p("// value of another JSON kind than the member's, naming the member.")
+	}
 	g.p("func (v *%s) UnmarshalJSONFrom(dec *jsontext.Decoder) error {", s.Name)
 	g.p("*v = %s{}", s.Name)
 	g.p("if err := wire.BeginObject(dec); err != nil {")
@@ -238,6 +280,12 @@ func (g *goGen) decoder(s *Struct, members []member) {
 	}
 	if required > 0 {
 		g.p("var seen uint64")
+	}
+	for _, f := range s.Fields {
+		if f.Inline {
+			g.p("var tag string")
+			g.p("var content jsontext.Value")
+		}
 	}
 	g.p("for {")
 	g.p("name, more, err := wire.NextMember(dec)")
@@ -253,14 +301,31 @@ func (g *goGen) decoder(s *Struct, members []member) {
 		if m.required {
 			g.p("seen |= 1 << %d", i)
 		}
-		if m.field == nil {
+		switch {
+		case m.inline != nil && m.content:
+			g.p("content, err = wire.ReadRaw(dec)")
+			g.p("if err != nil {")
+			g.p("return wire.In(%s, err)", strconv.Quote(m.json))
+			g.p("}")
+		case m.inline != nil:
+			g.p("tag, err = wire.ReadString(dec)")
+			g.p("if err != nil {")
+			g.p("return wire.In(%s, err)", strconv.Quote(m.json))
+			g.p("}")
+		case m.field == nil:
 			g.tagMember(m)
-			continue
+		default:
+			g.field(m.field)
 		}
-		g.field(m.field)
 	}
 	g.p("default:")
-	g.p("return wire.Unknown(name)")
+	if s.Open {
+		g.p("if err := dec.SkipValue(); err != nil {")
+		g.p("return err")
+		g.p("}")
+	} else {
+		g.p("return wire.Unknown(name)")
+	}
 	g.p("}")
 	g.p("}")
 	for i, m := range members {
@@ -270,30 +335,109 @@ func (g *goGen) decoder(s *Struct, members []member) {
 			g.p("}")
 		}
 	}
+	for _, f := range s.Fields {
+		if f.Inline {
+			g.p("value, err := decode%sParts(tag, content)", f.Type.Name)
+			g.p("if err != nil {")
+			g.p("return err")
+			g.p("}")
+			g.p("v.%s = value", f.Name)
+		}
+	}
 	g.p("return nil")
 	g.p("}")
 	g.p("")
 }
 
-// encoder writes MarshalJSONTo of the variant of a tagged union, which writes
-// the tag the struct does not hold before its members.
+// encoder writes MarshalJSONTo of a struct that json cannot encode as it is: the
+// variant of a tagged union, which writes the tag the struct does not hold, and a
+// struct with an inline union, whose members it writes as its own.
 func (g *goGen) encoder(s *Struct) {
 	g.imports["encoding/json/jsontext"] = true
 	g.imports["encoding/json/v2"] = true
+	if s.Union == nil {
+		g.inlineEncoder(s)
+		return
+	}
+	if s.Union.ContentName != "" {
+		g.adjacentEncoder(s)
+		return
+	}
 	g.p("// MarshalJSONTo encodes %s as a JSON object that starts with its tag.", s.Name)
 	g.p("func (v %s) MarshalJSONTo(enc *jsontext.Encoder) error {", s.Name)
 	g.p("return json.MarshalEncode(enc, struct {")
 	g.p("Tag string `json:%s`", strconv.Quote(s.Union.TagName))
 	values := []string{strconv.Quote(s.Tag)}
 	for _, f := range s.Fields {
-		option := ""
-		if !f.Required {
-			option = ",omitzero"
-		}
-		g.p("%s %s `json:%s`", f.Name, f.Type.Src, strconv.Quote(f.JSON+option))
+		g.p("%s %s `json:%s`", f.Name, f.Type.Src, strconv.Quote(f.JSON+omitOption(f)))
 		values = append(values, "v."+f.Name)
 	}
 	g.p("}{%s})", strings.Join(values, ", "))
+	g.p("}")
+	g.p("")
+}
+
+// omitOption is the json option of a field that may be absent.
+func omitOption(f *Field) string {
+	if f.Required {
+		return ""
+	}
+	return ",omitzero"
+}
+
+// adjacentEncoder writes MarshalJSONTo of a variant of an adjacently tagged
+// union: the tag and, beside it, the variant's members as the content.
+func (g *goGen) adjacentEncoder(s *Struct) {
+	g.p("// MarshalJSONTo encodes %s as a JSON object with its tag and, beside it, its", s.Name)
+	g.p("// members as the content.")
+	g.p("func (v %s) MarshalJSONTo(enc *jsontext.Encoder) error {", s.Name)
+	g.p("type content struct {")
+	values := make([]string, len(s.Fields))
+	for i, f := range s.Fields {
+		g.p("%s %s `json:%s`", f.Name, f.Type.Src, strconv.Quote(f.JSON+omitOption(f)))
+		values[i] = "v." + f.Name
+	}
+	g.p("}")
+	g.p("return json.MarshalEncode(enc, struct {")
+	g.p("Tag string `json:%s`", strconv.Quote(s.Union.TagName))
+	g.p("Content content `json:%s`", strconv.Quote(s.Union.ContentName))
+	g.p("}{%s, content{%s}})", strconv.Quote(s.Tag), strings.Join(values, ", "))
+	g.p("}")
+	g.p("")
+}
+
+// inlineEncoder writes MarshalJSONTo of a struct with an inline union: its
+// members in their order, and the union's, which its variant encodes as an object
+// of its own, in the place of the inline field.
+func (g *goGen) inlineEncoder(s *Struct) {
+	g.imports["encoding/json/jsontext"] = true
+	g.p("// MarshalJSONTo encodes %s as a JSON object whose members include those of", s.Name)
+	g.p("// its inline union.")
+	g.p("func (v %s) MarshalJSONTo(enc *jsontext.Encoder) error {", s.Name)
+	g.p("if err := enc.WriteToken(jsontext.BeginObject); err != nil {")
+	g.p("return err")
+	g.p("}")
+	for _, f := range s.Fields {
+		if f.Inline {
+			g.p("if err := wire.WriteMembers(enc, v.%s, wireOptions); err != nil {", f.Name)
+			g.p("return err")
+			g.p("}")
+			continue
+		}
+		if !f.Required {
+			g.p("if v.%s != nil {", f.Name)
+		}
+		g.p("if err := enc.WriteToken(jsontext.String(%s)); err != nil {", strconv.Quote(f.JSON))
+		g.p("return err")
+		g.p("}")
+		g.p("if err := json.MarshalEncode(enc, v.%s); err != nil {", f.Name)
+		g.p("return err")
+		g.p("}")
+		if !f.Required {
+			g.p("}")
+		}
+	}
+	g.p("return enc.WriteToken(jsontext.EndObject)")
 	g.p("}")
 	g.p("")
 }
@@ -315,15 +459,32 @@ func (g *goGen) field(f *Field) {
 	wraps := []string{strconv.Quote(f.JSON)}
 	target := "v." + f.Name
 	if f.Type.Kind == KindPointer {
+		if f.Nullable {
+			// A required member that may be null: the null is the value.
+			g.p("if wire.IsNull(dec) {")
+			g.p("if _, err := dec.ReadToken(); err != nil {")
+			g.p("return %s", wrapError(wraps, "err"))
+			g.p("}")
+			g.p("} else {")
+			g.pointer(f, target, wraps)
+			g.p("}")
+			return
+		}
 		g.p("if wire.IsNull(dec) {")
 		g.p("return %s", wrapError(wraps, "wire.Null()"))
 		g.p("}")
-		g.p("var value %s", f.Type.Elem.Src)
-		g.decode(f.Type.Elem, "value", wraps, 0)
-		g.p("%s = &value", target)
+		g.pointer(f, target, wraps)
 		return
 	}
 	g.decode(f.Type, target, wraps, 0)
+}
+
+// pointer writes the read of the value that an optional or a nullable member
+// points to.
+func (g *goGen) pointer(f *Field, target string, wraps []string) {
+	g.p("var value %s", f.Type.Elem.Src)
+	g.decode(f.Type.Elem, "value", wraps, 0)
+	g.p("%s = &value", target)
 }
 
 // wrapError returns the expression of err as the refusal of the value that the
@@ -674,6 +835,11 @@ func (g *goGen) union(u *Union) {
 	for i, v := range u.Variants {
 		names[i] = strconv.Quote(v.Name)
 	}
+	if u.ContentName != "" {
+		g.adjacentDecoder(u)
+		g.adjacentValidator(u)
+		return
+	}
 	g.p("// decode%s decodes the JSON object of a %s, whichever variant it is.", u.Name, u.Name)
 	g.p("func decode%s(dec *jsontext.Decoder) (%s, error) {", u.Name, u.Name)
 	g.p("raw, err := wire.ReadObject(dec)")
@@ -739,4 +905,102 @@ func (g *goGen) union(u *Union) {
 	g.p("return fmt.Errorf(\"%%T is not a variant of %s\", v)", u.Name)
 	g.p("}")
 	g.p("")
+}
+
+// adjacentDecoder writes the decoders of an adjacently tagged union: of its
+// object, and of its parts, which a struct with the union inline reads from its
+// own members.
+func (g *goGen) adjacentDecoder(u *Union) {
+	tag, content := strconv.Quote(u.TagName), strconv.Quote(u.ContentName)
+	g.p("// decode%s decodes the JSON object of a %s, whichever variant it is.", u.Name, u.Name)
+	g.p("func decode%s(dec *jsontext.Decoder) (%s, error) {", u.Name, u.Name)
+	g.p("tag, content, err := wire.ReadAdjacent(dec, %s, %s)", tag, content)
+	g.p("if err != nil {")
+	g.p("return nil, err")
+	g.p("}")
+	g.p("return decode%sParts(tag, content)", u.Name)
+	g.p("}")
+	g.p("")
+	g.p("// decode%sParts decodes the variant of a %s that tag names from its", u.Name, u.Name)
+	g.p("// content.")
+	g.p("func decode%sParts(tag string, content jsontext.Value) (%s, error) {", u.Name, u.Name)
+	g.p("switch tag {")
+	var tags []string
+	for _, v := range u.Variants {
+		tags = append(tags, strconv.Quote(v.Tag))
+		g.p("case %s:", strconv.Quote(v.Tag))
+		g.p("var v %s", v.Name)
+		g.p("if err := v.UnmarshalJSONFrom(wire.NewDecoder(content)); err != nil {")
+		g.p("return nil, wire.In(%s, err)", content)
+		g.p("}")
+		g.p("return v, nil")
+	}
+	g.p("}")
+	g.p("return nil, wire.UnknownTag(%s, %s)", tag, strings.Join(tags, ", "))
+	g.p("}")
+	g.p("")
+}
+
+// adjacentValidator writes the checks of an adjacently tagged union: those of its
+// variant, whose paths lie in the content.
+func (g *goGen) adjacentValidator(u *Union) {
+	content := strconv.Quote(u.ContentName)
+	g.p("// validate%s checks the rules of the variant that v is.", u.Name)
+	g.p("func validate%s(v %s) error {", u.Name, u.Name)
+	g.p("switch v := v.(type) {")
+	g.p("case nil:")
+	g.p("return wire.Required(\"\")")
+	for _, v := range u.Variants {
+		g.p("case %s:", v.Name)
+		g.p("return wire.NestIn(%s, v.validate())", content)
+		g.p("case *%s:", v.Name)
+		g.p("if v == nil {")
+		g.p("return fmt.Errorf(\"a nil %%T is not a variant of %s\", v)", u.Name)
+		g.p("}")
+		g.p("return wire.NestIn(%s, v.validate())", content)
+	}
+	g.p("}")
+	g.p("return fmt.Errorf(\"%%T is not a variant of %s\", v)", u.Name)
+	g.p("}")
+	g.p("")
+}
+
+// hasNullable reports whether a wire struct of the package has a member that is
+// required and may be null.
+func (p *Package) hasNullable() bool {
+	for _, s := range p.Structs {
+		if slices.ContainsFunc(s.Fields, func(f *Field) bool { return f.Nullable }) {
+			return true
+		}
+	}
+	return false
+}
+
+// nullableHelpers writes the decode and encode of a result that may be null: a
+// document that is a wire type or a JSON null.
+func (g *goGen) nullableHelpers() {
+	g.p("")
+	g.p("// decodeNullable decodes data, one JSON document, as a T, or as nil when it is")
+	g.p("// a JSON null, and checks the rules of a T.")
+	g.p("func decodeNullable[T any](data []byte) (*T, error) {")
+	g.p("var value *T")
+	g.p("if err := json.Unmarshal(data, &value, wireOptions); err != nil {")
+	g.p("return nil, wire.Refusal(err)")
+	g.p("}")
+	g.p("if value == nil {")
+	g.p("return nil, nil")
+	g.p("}")
+	g.p("if err := check(*value); err != nil {")
+	g.p("return nil, err")
+	g.p("}")
+	g.p("return value, nil")
+	g.p("}")
+	g.p("")
+	g.p("// encodeNullable returns the JSON of value, or a null for nil.")
+	g.p("func encodeNullable[T any](value *T) ([]byte, error) {")
+	g.p("if value == nil {")
+	g.p("return []byte(\"null\"), nil")
+	g.p("}")
+	g.p("return encode(*value)")
+	g.p("}")
 }
