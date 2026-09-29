@@ -442,10 +442,10 @@ func (g *goGen) fieldRules(f *Field) {
 // value writes the checks of the value expr of type t: its rules, and, for a
 // struct or a union, its own checks.
 func (g *goGen) value(t *Type, expr string, rules []Rule, path, report string, depth int) {
-	switch t.Kind {
-	case KindStruct:
+	switch {
+	case t.Kind == KindStruct && !t.Opaque:
 		g.p("%s.Nest(%s, %s.validate())", report, path, expr)
-	case KindUnion:
+	case t.Kind == KindUnion:
 		g.p("%s.Nest(%s, validate%s(%s))", report, path, t.Name, expr)
 	}
 	var each, keys *Rule
@@ -480,7 +480,7 @@ func (g *goGen) value(t *Type, expr string, rules []Rule, path, report string, d
 
 // needsDive reports whether a value of type t has checks of its own.
 func needsDive(t *Type) bool {
-	return t.Kind == KindStruct || t.Kind == KindUnion
+	return t.Kind == KindStruct && !t.Opaque || t.Kind == KindUnion
 }
 
 func (g *goGen) rule(t *Type, expr string, rule Rule, path, report string, depth int) {

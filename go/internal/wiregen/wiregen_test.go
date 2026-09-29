@@ -98,6 +98,21 @@ type Drawing struct {
 	Shapes []Shape ` + "`json:\"shapes\"`" + `
 }
 `,
+	"opaque": `package p
+
+// A Schema decodes itself.
+//
+//demi:opaque
+type Schema struct{}
+
+//demi:wire
+type Leaf struct {
+	Input       *Schema   ` + "`json:\"input,omitzero\"`" + `
+	Schemas     []Schema  ` + "`json:\"schemas\"`" + `
+	Positionals *[]string ` + "`json:\"positionals,omitzero\" check:\"each(nonul)\"`" + `
+	Labels      *map[string]string ` + "`json:\"labels,omitzero\"`" + `
+}
+`,
 	"untagged": `package p
 
 //demi:union untagged
@@ -151,7 +166,7 @@ func TestGeneratedTypeScriptIsWhatTheDeclarationsSay(t *testing.T) {
 // The files a package commits are what go generate writes: no declaration
 // changed without its generated code.
 func TestCommittedGeneratedFilesAreCurrent(t *testing.T) {
-	for _, dir := range []string{"wiretest", "../../commandservice"} {
+	for _, dir := range []string{"wiretest", "../../commandservice", "../../commandtree"} {
 		pkg, err := Load(dir)
 		if err != nil {
 			t.Fatalf("%s: %v", dir, err)
@@ -170,6 +185,16 @@ func TestCommittedGeneratedFilesAreCurrent(t *testing.T) {
 				t.Errorf("%s/%s is not what go generate writes: run go generate in %s", dir, name, dir)
 			}
 		}
+	}
+}
+
+func TestAnOpaqueTypeHasNoTypeScriptSchema(t *testing.T) {
+	pkg, err := LoadSource(map[string][]byte{"opaque.go": []byte(goldenCases["opaque"])})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pkg.GenerateTypeScript(); err == nil || !strings.Contains(err.Error(), "Schema is decoded by its package and has no TypeScript schema") {
+		t.Errorf("error = %v, want the opaque type named", err)
 	}
 }
 
@@ -201,6 +226,8 @@ func TestADeclarationThatBreaksTheRulesOfTheWireIsRefusedNamingIt(t *testing.T) 
 		"an unclosed parenthesis":                 {field("A []string `json:\"a\" check:\"each(nonul\"`"), "a parenthesis is not closed"},
 		"a directive that is unknown":             {header + "//demi:wired\ntype T struct{}\n", "unknown directive"},
 		"a wire mark on an interface":             {header + "//demi:wire\ntype T interface{}\n", "marks a struct"},
+		"an opaque mark on an interface":          {header + "//demi:opaque\ntype T interface{}\n", "marks a struct"},
+		"a pointer to a pointer":                  {field("A **string `json:\"a,omitzero\"`"), "a pointer to *string"},
 		"a union without a kind":                  {header + "//demi:union\ntype T interface{ t() }\n", "`tag=NAME` or `untagged`"},
 		"a union with two methods":                {header + "//demi:union untagged\ntype T interface{ t(); u() }\n", "one unexported method"},
 		"a union without variants":                {header + "//demi:union untagged\ntype T interface{ t() }\n", "the union has no variants"},

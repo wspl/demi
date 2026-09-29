@@ -1,0 +1,269 @@
+[
+ {
+  "name": "an rpc leaf",
+  "node": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc"
+  },
+  "accepted": true,
+  "encoded": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc"
+  }
+ },
+ {
+  "name": "an rpc leaf with a binding",
+  "node": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "binding": {
+    "package": "demi.builtin",
+    "operation": "file.read",
+    "descriptorHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   }
+  },
+  "accepted": false
+ },
+ {
+  "name": "a native leaf without a binding",
+  "node": {
+   "name": "add",
+   "summary": "S",
+   "kind": "native"
+  },
+  "accepted": false
+ },
+ {
+  "name": "a native leaf",
+  "node": {
+   "name": "add",
+   "summary": "S",
+   "kind": "native",
+   "binding": {
+    "package": "p",
+    "operation": "o",
+    "descriptorHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   }
+  },
+  "accepted": true,
+  "encoded": {
+   "name": "add",
+   "summary": "S",
+   "kind": "native",
+   "binding": {
+    "package": "p",
+    "operation": "o",
+    "descriptorHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   }
+  }
+ },
+ {
+  "name": "a native leaf with an incomplete binding",
+  "node": {
+   "name": "add",
+   "summary": "S",
+   "kind": "native",
+   "binding": {
+    "package": "p",
+    "operation": "o"
+   }
+  },
+  "accepted": false
+ },
+ {
+  "name": "a native leaf with an unknown binding member",
+  "node": {
+   "name": "add",
+   "summary": "S",
+   "kind": "native",
+   "binding": {
+    "package": "p",
+    "operation": "o",
+    "descriptorHash": "h",
+    "x": 1
+   }
+  },
+  "accepted": false
+ },
+ {
+  "name": "a leaf of an unknown kind",
+  "node": {
+   "name": "add",
+   "summary": "S",
+   "kind": "other"
+  },
+  "accepted": false
+ },
+ {
+  "name": "a leaf without a kind",
+  "node": {
+   "name": "a",
+   "summary": "S"
+  },
+  "accepted": false
+ },
+ {
+  "name": "a leaf with an unknown member",
+  "node": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "extra": 1
+  },
+  "accepted": false
+ },
+ {
+  "name": "a leaf with a null option",
+  "node": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "successOutput": null
+  },
+  "accepted": false
+ },
+ {
+  "name": "a group with an unknown member",
+  "node": {
+   "name": "g",
+   "summary": "G",
+   "subcommands": [
+    {
+     "name": "add",
+     "summary": "S",
+     "kind": "rpc"
+    }
+   ],
+   "extra": 1
+  },
+  "accepted": false
+ },
+ {
+  "name": "a group without subcommands member",
+  "node": {
+   "name": "g",
+   "summary": "G"
+  },
+  "accepted": false
+ },
+ {
+  "name": "a group and a leaf at once",
+  "node": {
+   "name": "g",
+   "summary": "G",
+   "subcommands": [],
+   "kind": "rpc"
+  },
+  "accepted": false
+ },
+ {
+  "name": "a leaf with an invalid input schema",
+  "node": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "nope"
+   }
+  },
+  "accepted": false
+ },
+ {
+  "name": "a leaf with an input that is not an object",
+  "node": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": []
+  },
+  "accepted": false
+ },
+ {
+  "name": "a leaf with an output schema",
+  "node": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "output": {
+    "json": {
+     "type": "object",
+     "properties": {
+      "ok": {
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "ok"
+     ],
+     "additionalProperties": false
+    }
+   }
+  },
+  "accepted": true,
+  "encoded": {
+   "name": "add",
+   "summary": "S",
+   "output": {
+    "json": {
+     "additionalProperties": false,
+     "properties": {
+      "ok": {
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "ok"
+     ],
+     "type": "object"
+    }
+   },
+   "kind": "rpc"
+  }
+ },
+ {
+  "name": "a leaf with an unknown output member",
+  "node": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "output": {
+    "json": {},
+    "x": 1
+   }
+  },
+  "accepted": false
+ },
+ {
+  "name": "a leaf with an empty output",
+  "node": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "output": {}
+  },
+  "accepted": true,
+  "encoded": {
+   "name": "add",
+   "summary": "S",
+   "output": {},
+   "kind": "rpc"
+  }
+ },
+ {
+  "name": "a node that is not an object",
+  "node": 3,
+  "accepted": false
+ },
+ {
+  "name": "a leaf with a name that is not a string",
+  "node": {
+   "name": 1,
+   "summary": "S",
+   "kind": "rpc"
+  },
+  "accepted": false
+ }
+]

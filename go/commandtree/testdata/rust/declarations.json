@@ -1,0 +1,1247 @@
+[
+ {
+  "name": "a valid leaf",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc"
+  },
+  "want": ""
+ },
+ {
+  "name": "a name that begins with a hyphen",
+  "tree": {
+   "name": "-a",
+   "summary": "S",
+   "kind": "rpc"
+  },
+  "want": "invalid command name: -a"
+ },
+ {
+  "name": "a name with a space",
+  "tree": {
+   "name": "a b",
+   "summary": "S",
+   "kind": "rpc"
+  },
+  "want": "invalid command name: a b"
+ },
+ {
+  "name": "an empty name",
+  "tree": {
+   "name": "",
+   "summary": "S",
+   "kind": "rpc"
+  },
+  "want": "invalid command name: "
+ },
+ {
+  "name": "a name with a non-ASCII letter",
+  "tree": {
+   "name": "é",
+   "summary": "S",
+   "kind": "rpc"
+  },
+  "want": "invalid command name: é"
+ },
+ {
+  "name": "a name with digits, underscore and hyphen",
+  "tree": {
+   "name": "a1_b-c",
+   "summary": "S",
+   "kind": "rpc"
+  },
+  "want": ""
+ },
+ {
+  "name": "a group without subcommands",
+  "tree": {
+   "name": "todo",
+   "summary": "G",
+   "subcommands": []
+  },
+  "want": "command group todo has no subcommands"
+ },
+ {
+  "name": "a group with duplicate subcommands",
+  "tree": {
+   "name": "todo",
+   "summary": "G",
+   "subcommands": [
+    {
+     "name": "add",
+     "summary": "S",
+     "kind": "rpc"
+    },
+    {
+     "name": "add",
+     "summary": "S",
+     "kind": "rpc"
+    }
+   ]
+  },
+  "want": "duplicate command name: add"
+ },
+ {
+  "name": "a group with distinct subcommands",
+  "tree": {
+   "name": "todo",
+   "summary": "G",
+   "subcommands": [
+    {
+     "name": "add",
+     "summary": "S",
+     "kind": "rpc"
+    },
+    {
+     "name": "list",
+     "summary": "S",
+     "kind": "rpc"
+    }
+   ]
+  },
+  "want": ""
+ },
+ {
+  "name": "a bad name inside a group",
+  "tree": {
+   "name": "todo",
+   "summary": "G",
+   "subcommands": [
+    {
+     "name": "a b",
+     "summary": "S",
+     "kind": "rpc"
+    }
+   ]
+  },
+  "want": "invalid command name: a b"
+ },
+ {
+  "name": "32 levels",
+  "tree": {
+   "name": "g30",
+   "summary": "G",
+   "subcommands": [
+    {
+     "name": "g29",
+     "summary": "G",
+     "subcommands": [
+      {
+       "name": "g28",
+       "summary": "G",
+       "subcommands": [
+        {
+         "name": "g27",
+         "summary": "G",
+         "subcommands": [
+          {
+           "name": "g26",
+           "summary": "G",
+           "subcommands": [
+            {
+             "name": "g25",
+             "summary": "G",
+             "subcommands": [
+              {
+               "name": "g24",
+               "summary": "G",
+               "subcommands": [
+                {
+                 "name": "g23",
+                 "summary": "G",
+                 "subcommands": [
+                  {
+                   "name": "g22",
+                   "summary": "G",
+                   "subcommands": [
+                    {
+                     "name": "g21",
+                     "summary": "G",
+                     "subcommands": [
+                      {
+                       "name": "g20",
+                       "summary": "G",
+                       "subcommands": [
+                        {
+                         "name": "g19",
+                         "summary": "G",
+                         "subcommands": [
+                          {
+                           "name": "g18",
+                           "summary": "G",
+                           "subcommands": [
+                            {
+                             "name": "g17",
+                             "summary": "G",
+                             "subcommands": [
+                              {
+                               "name": "g16",
+                               "summary": "G",
+                               "subcommands": [
+                                {
+                                 "name": "g15",
+                                 "summary": "G",
+                                 "subcommands": [
+                                  {
+                                   "name": "g14",
+                                   "summary": "G",
+                                   "subcommands": [
+                                    {
+                                     "name": "g13",
+                                     "summary": "G",
+                                     "subcommands": [
+                                      {
+                                       "name": "g12",
+                                       "summary": "G",
+                                       "subcommands": [
+                                        {
+                                         "name": "g11",
+                                         "summary": "G",
+                                         "subcommands": [
+                                          {
+                                           "name": "g10",
+                                           "summary": "G",
+                                           "subcommands": [
+                                            {
+                                             "name": "g9",
+                                             "summary": "G",
+                                             "subcommands": [
+                                              {
+                                               "name": "g8",
+                                               "summary": "G",
+                                               "subcommands": [
+                                                {
+                                                 "name": "g7",
+                                                 "summary": "G",
+                                                 "subcommands": [
+                                                  {
+                                                   "name": "g6",
+                                                   "summary": "G",
+                                                   "subcommands": [
+                                                    {
+                                                     "name": "g5",
+                                                     "summary": "G",
+                                                     "subcommands": [
+                                                      {
+                                                       "name": "g4",
+                                                       "summary": "G",
+                                                       "subcommands": [
+                                                        {
+                                                         "name": "g3",
+                                                         "summary": "G",
+                                                         "subcommands": [
+                                                          {
+                                                           "name": "g2",
+                                                           "summary": "G",
+                                                           "subcommands": [
+                                                            {
+                                                             "name": "g1",
+                                                             "summary": "G",
+                                                             "subcommands": [
+                                                              {
+                                                               "name": "g0",
+                                                               "summary": "G",
+                                                               "subcommands": [
+                                                                {
+                                                                 "name": "x",
+                                                                 "summary": "S",
+                                                                 "kind": "rpc"
+                                                                }
+                                                               ]
+                                                              }
+                                                             ]
+                                                            }
+                                                           ]
+                                                          }
+                                                         ]
+                                                        }
+                                                       ]
+                                                      }
+                                                     ]
+                                                    }
+                                                   ]
+                                                  }
+                                                 ]
+                                                }
+                                               ]
+                                              }
+                                             ]
+                                            }
+                                           ]
+                                          }
+                                         ]
+                                        }
+                                       ]
+                                      }
+                                     ]
+                                    }
+                                   ]
+                                  }
+                                 ]
+                                }
+                               ]
+                              }
+                             ]
+                            }
+                           ]
+                          }
+                         ]
+                        }
+                       ]
+                      }
+                     ]
+                    }
+                   ]
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "want": ""
+ },
+ {
+  "name": "33 levels",
+  "tree": {
+   "name": "g31",
+   "summary": "G",
+   "subcommands": [
+    {
+     "name": "g30",
+     "summary": "G",
+     "subcommands": [
+      {
+       "name": "g29",
+       "summary": "G",
+       "subcommands": [
+        {
+         "name": "g28",
+         "summary": "G",
+         "subcommands": [
+          {
+           "name": "g27",
+           "summary": "G",
+           "subcommands": [
+            {
+             "name": "g26",
+             "summary": "G",
+             "subcommands": [
+              {
+               "name": "g25",
+               "summary": "G",
+               "subcommands": [
+                {
+                 "name": "g24",
+                 "summary": "G",
+                 "subcommands": [
+                  {
+                   "name": "g23",
+                   "summary": "G",
+                   "subcommands": [
+                    {
+                     "name": "g22",
+                     "summary": "G",
+                     "subcommands": [
+                      {
+                       "name": "g21",
+                       "summary": "G",
+                       "subcommands": [
+                        {
+                         "name": "g20",
+                         "summary": "G",
+                         "subcommands": [
+                          {
+                           "name": "g19",
+                           "summary": "G",
+                           "subcommands": [
+                            {
+                             "name": "g18",
+                             "summary": "G",
+                             "subcommands": [
+                              {
+                               "name": "g17",
+                               "summary": "G",
+                               "subcommands": [
+                                {
+                                 "name": "g16",
+                                 "summary": "G",
+                                 "subcommands": [
+                                  {
+                                   "name": "g15",
+                                   "summary": "G",
+                                   "subcommands": [
+                                    {
+                                     "name": "g14",
+                                     "summary": "G",
+                                     "subcommands": [
+                                      {
+                                       "name": "g13",
+                                       "summary": "G",
+                                       "subcommands": [
+                                        {
+                                         "name": "g12",
+                                         "summary": "G",
+                                         "subcommands": [
+                                          {
+                                           "name": "g11",
+                                           "summary": "G",
+                                           "subcommands": [
+                                            {
+                                             "name": "g10",
+                                             "summary": "G",
+                                             "subcommands": [
+                                              {
+                                               "name": "g9",
+                                               "summary": "G",
+                                               "subcommands": [
+                                                {
+                                                 "name": "g8",
+                                                 "summary": "G",
+                                                 "subcommands": [
+                                                  {
+                                                   "name": "g7",
+                                                   "summary": "G",
+                                                   "subcommands": [
+                                                    {
+                                                     "name": "g6",
+                                                     "summary": "G",
+                                                     "subcommands": [
+                                                      {
+                                                       "name": "g5",
+                                                       "summary": "G",
+                                                       "subcommands": [
+                                                        {
+                                                         "name": "g4",
+                                                         "summary": "G",
+                                                         "subcommands": [
+                                                          {
+                                                           "name": "g3",
+                                                           "summary": "G",
+                                                           "subcommands": [
+                                                            {
+                                                             "name": "g2",
+                                                             "summary": "G",
+                                                             "subcommands": [
+                                                              {
+                                                               "name": "g1",
+                                                               "summary": "G",
+                                                               "subcommands": [
+                                                                {
+                                                                 "name": "g0",
+                                                                 "summary": "G",
+                                                                 "subcommands": [
+                                                                  {
+                                                                   "name": "x",
+                                                                   "summary": "S",
+                                                                   "kind": "rpc"
+                                                                  }
+                                                                 ]
+                                                                }
+                                                               ]
+                                                              }
+                                                             ]
+                                                            }
+                                                           ]
+                                                          }
+                                                         ]
+                                                        }
+                                                       ]
+                                                      }
+                                                     ]
+                                                    }
+                                                   ]
+                                                  }
+                                                 ]
+                                                }
+                                               ]
+                                              }
+                                             ]
+                                            }
+                                           ]
+                                          }
+                                         ]
+                                        }
+                                       ]
+                                      }
+                                     ]
+                                    }
+                                   ]
+                                  }
+                                 ]
+                                }
+                               ]
+                              }
+                             ]
+                            }
+                           ]
+                          }
+                         ]
+                        }
+                       ]
+                      }
+                     ]
+                    }
+                   ]
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "want": ""
+ },
+ {
+  "name": "34 levels",
+  "tree": {
+   "name": "g32",
+   "summary": "G",
+   "subcommands": [
+    {
+     "name": "g31",
+     "summary": "G",
+     "subcommands": [
+      {
+       "name": "g30",
+       "summary": "G",
+       "subcommands": [
+        {
+         "name": "g29",
+         "summary": "G",
+         "subcommands": [
+          {
+           "name": "g28",
+           "summary": "G",
+           "subcommands": [
+            {
+             "name": "g27",
+             "summary": "G",
+             "subcommands": [
+              {
+               "name": "g26",
+               "summary": "G",
+               "subcommands": [
+                {
+                 "name": "g25",
+                 "summary": "G",
+                 "subcommands": [
+                  {
+                   "name": "g24",
+                   "summary": "G",
+                   "subcommands": [
+                    {
+                     "name": "g23",
+                     "summary": "G",
+                     "subcommands": [
+                      {
+                       "name": "g22",
+                       "summary": "G",
+                       "subcommands": [
+                        {
+                         "name": "g21",
+                         "summary": "G",
+                         "subcommands": [
+                          {
+                           "name": "g20",
+                           "summary": "G",
+                           "subcommands": [
+                            {
+                             "name": "g19",
+                             "summary": "G",
+                             "subcommands": [
+                              {
+                               "name": "g18",
+                               "summary": "G",
+                               "subcommands": [
+                                {
+                                 "name": "g17",
+                                 "summary": "G",
+                                 "subcommands": [
+                                  {
+                                   "name": "g16",
+                                   "summary": "G",
+                                   "subcommands": [
+                                    {
+                                     "name": "g15",
+                                     "summary": "G",
+                                     "subcommands": [
+                                      {
+                                       "name": "g14",
+                                       "summary": "G",
+                                       "subcommands": [
+                                        {
+                                         "name": "g13",
+                                         "summary": "G",
+                                         "subcommands": [
+                                          {
+                                           "name": "g12",
+                                           "summary": "G",
+                                           "subcommands": [
+                                            {
+                                             "name": "g11",
+                                             "summary": "G",
+                                             "subcommands": [
+                                              {
+                                               "name": "g10",
+                                               "summary": "G",
+                                               "subcommands": [
+                                                {
+                                                 "name": "g9",
+                                                 "summary": "G",
+                                                 "subcommands": [
+                                                  {
+                                                   "name": "g8",
+                                                   "summary": "G",
+                                                   "subcommands": [
+                                                    {
+                                                     "name": "g7",
+                                                     "summary": "G",
+                                                     "subcommands": [
+                                                      {
+                                                       "name": "g6",
+                                                       "summary": "G",
+                                                       "subcommands": [
+                                                        {
+                                                         "name": "g5",
+                                                         "summary": "G",
+                                                         "subcommands": [
+                                                          {
+                                                           "name": "g4",
+                                                           "summary": "G",
+                                                           "subcommands": [
+                                                            {
+                                                             "name": "g3",
+                                                             "summary": "G",
+                                                             "subcommands": [
+                                                              {
+                                                               "name": "g2",
+                                                               "summary": "G",
+                                                               "subcommands": [
+                                                                {
+                                                                 "name": "g1",
+                                                                 "summary": "G",
+                                                                 "subcommands": [
+                                                                  {
+                                                                   "name": "g0",
+                                                                   "summary": "G",
+                                                                   "subcommands": [
+                                                                    {
+                                                                     "name": "x",
+                                                                     "summary": "S",
+                                                                     "kind": "rpc"
+                                                                    }
+                                                                   ]
+                                                                  }
+                                                                 ]
+                                                                }
+                                                               ]
+                                                              }
+                                                             ]
+                                                            }
+                                                           ]
+                                                          }
+                                                         ]
+                                                        }
+                                                       ]
+                                                      }
+                                                     ]
+                                                    }
+                                                   ]
+                                                  }
+                                                 ]
+                                                }
+                                               ]
+                                              }
+                                             ]
+                                            }
+                                           ]
+                                          }
+                                         ]
+                                        }
+                                       ]
+                                      }
+                                     ]
+                                    }
+                                   ]
+                                  }
+                                 ]
+                                }
+                               ]
+                              }
+                             ]
+                            }
+                           ]
+                          }
+                         ]
+                        }
+                       ]
+                      }
+                     ]
+                    }
+                   ]
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "want": "command tree exceeds 32 levels"
+ },
+ {
+  "name": "an input that is not an object",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "array"
+   }
+  },
+  "want": "command input must describe an object"
+ },
+ {
+  "name": "an input without a type",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "properties": {}
+   }
+  },
+  "want": "command input must describe an object"
+ },
+ {
+  "name": "an input of an object",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "text": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "want": ""
+ },
+ {
+  "name": "a positional that has no schema",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "text": {
+      "type": "string"
+     }
+    }
+   },
+   "positionals": [
+    "other"
+   ]
+  },
+  "want": "input source has no schema: other"
+ },
+ {
+  "name": "a positional without an input",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "positionals": [
+    "text"
+   ]
+  },
+  "want": "input source has no schema: text"
+ },
+ {
+  "name": "a stdin field that has no schema",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "text": {
+      "type": "string"
+     }
+    }
+   },
+   "stdinField": "other"
+  },
+  "want": "input source has no schema: other"
+ },
+ {
+  "name": "a rest field that has no schema",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "text": {
+      "type": "string"
+     }
+    }
+   },
+   "restField": "other"
+  },
+  "want": "input source has no schema: other"
+ },
+ {
+  "name": "a duplicate positional",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "text": {
+      "type": "string"
+     }
+    }
+   },
+   "positionals": [
+    "text",
+    "text"
+   ]
+  },
+  "want": "multiple input sources for text"
+ },
+ {
+  "name": "a positional that is also the stdin field",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "text": {
+      "type": "string"
+     }
+    }
+   },
+   "positionals": [
+    "text"
+   ],
+   "stdinField": "text"
+  },
+  "want": "multiple input sources for text"
+ },
+ {
+  "name": "a positional that is also the rest field",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "text": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     }
+    }
+   },
+   "positionals": [
+    "text"
+   ],
+   "restField": "text"
+  },
+  "want": "multiple input sources for text"
+ },
+ {
+  "name": "the stdin field that is also the rest field",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "text": {
+      "type": "string"
+     }
+    }
+   },
+   "stdinField": "text",
+   "restField": "text"
+  },
+  "want": "multiple input sources for text"
+ },
+ {
+  "name": "an input name with a space",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "bad name": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "want": "invalid input name: bad name"
+ },
+ {
+  "name": "an input named help",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "help": {
+      "type": "boolean"
+     }
+    }
+   }
+  },
+  "want": "reserved command option: help"
+ },
+ {
+  "name": "an input named json",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "json": {
+      "type": "boolean"
+     }
+    }
+   }
+  },
+  "want": "reserved command option: json"
+ },
+ {
+  "name": "an input named json that is a positional",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "json": {
+      "type": "string"
+     }
+    }
+   },
+   "positionals": [
+    "json"
+   ]
+  },
+  "want": ""
+ },
+ {
+  "name": "a stdin field that is not a string",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "body": {
+      "type": "integer"
+     }
+    }
+   },
+   "stdinField": "body"
+  },
+  "want": "stdin input must be a string"
+ },
+ {
+  "name": "a stdin field without a type",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "body": {}
+    }
+   },
+   "stdinField": "body"
+  },
+  "want": "stdin input must be a string"
+ },
+ {
+  "name": "a rest field that is not an array",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "args": {
+      "type": "string"
+     }
+    }
+   },
+   "restField": "args"
+  },
+  "want": "rest input must be a string array"
+ },
+ {
+  "name": "a rest field of arrays of numbers",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "args": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      }
+     }
+    }
+   },
+   "restField": "args"
+  },
+  "want": "rest input must be a string array"
+ },
+ {
+  "name": "a rest field without items",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "args": {
+      "type": "array"
+     }
+    }
+   },
+   "restField": "args"
+  },
+  "want": "rest input must be a string array"
+ },
+ {
+  "name": "a rest field of strings",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "args": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     }
+    }
+   },
+   "restField": "args"
+  },
+  "want": ""
+ },
+ {
+  "name": "a required positional after an optional one",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "a": {
+      "type": "string"
+     },
+     "b": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "b"
+    ]
+   },
+   "positionals": [
+    "a",
+    "b"
+   ]
+  },
+  "want": "required positional follows optional positional"
+ },
+ {
+  "name": "an optional positional after a required one",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "a": {
+      "type": "string"
+     },
+     "b": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "a"
+    ]
+   },
+   "positionals": [
+    "a",
+    "b"
+   ]
+  },
+  "want": ""
+ },
+ {
+  "name": "optional positionals only",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "a": {
+      "type": "string"
+     },
+     "b": {
+      "type": "string"
+     }
+    }
+   },
+   "positionals": [
+    "a",
+    "b"
+   ]
+  },
+  "want": ""
+ },
+ {
+  "name": "a native leaf with a binding",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "native",
+   "binding": {
+    "package": "p",
+    "operation": "o",
+    "descriptorHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   }
+  },
+  "want": ""
+ },
+ {
+  "name": "the first fault of a leaf is the input's type",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "array"
+   },
+   "positionals": [
+    "x"
+   ]
+  },
+  "want": "command input must describe an object"
+ },
+ {
+  "name": "the first fault is a source's, before the names of the input",
+  "tree": {
+   "name": "add",
+   "summary": "S",
+   "kind": "rpc",
+   "input": {
+    "type": "object",
+    "properties": {
+     "bad name": {
+      "type": "string"
+     }
+    }
+   },
+   "positionals": [
+    "gone"
+   ]
+  },
+  "want": "input source has no schema: gone"
+ },
+ {
+  "name": "a group with two faults reports the first child's",
+  "tree": {
+   "name": "g",
+   "summary": "G",
+   "subcommands": [
+    {
+     "name": "a b",
+     "summary": "S",
+     "kind": "rpc"
+    },
+    {
+     "name": "c d",
+     "summary": "S",
+     "kind": "rpc"
+    }
+   ]
+  },
+  "want": "invalid command name: a b"
+ }
+]

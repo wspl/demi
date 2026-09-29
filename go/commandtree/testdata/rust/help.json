@@ -1,0 +1,10 @@
+[
+ {
+  "tree": "filer",
+  "help": "filer: Create, edit, and list files.\n\nSubcommands:\n  filer create — Create a file.\n  filer edit — Replace text in a file.\n  filer measure — Record readings.\n  filer forward — Forward argv.\n  filer status — Set a status.\n  filer list — List files.\n  filer watch — Background pollers.\n\nfiler create: Create a file.\n\nUsage:\n\n  filer create <path> <<'EOF'\n  <content>\n  EOF\n    Parameters:\n      <path> (required)\n    Stdin body: content - File content\n\nfiler edit: Replace text in a file.\n\nUsage:\n\n  filer edit <path> --old <old> --new <new> [--occurrence <occurrence>]\n    Parameters:\n      <path> (required)\n      --old <old> (required)\n      --new <new> (required)\n      --occurrence <occurrence> (optional)\n\nfiler measure: Record readings.\n\nUsage:\n\n  filer measure --v <v> [--label <label>] [--quiet [true|false]]\n    Parameters:\n      --v <v> (required, repeatable)\n      --label <label> (optional, repeatable)\n      --quiet [true|false] (optional)\n\nfiler forward: Forward argv.\n\nUsage:\n\n  filer forward -- <args>...\n    Parameters:\n      -- <args>... (required)\n\nfiler status: Set a status.\n\nUsage:\n\n  filer status [--status <pending|in_progress|done>]\n    Parameters:\n      --status <pending|in_progress|done> (optional)\n\nfiler list: List files.\n\nUsage:\n\n  filer list [--json]\n    Success output: raw text by default; machine-readable JSON when --json is passed\n    --json: emits machine-readable JSON for this command\n\nfiler watch: Background pollers.\n\nSubcommands:\n  filer watch get — Read a poller.\n\nfiler watch get: Read a poller.\n\nUsage:\n\n  filer watch get <id>\n    Parameters:\n      <id> (required)"
+ },
+ {
+  "tree": "kcenv",
+  "help": "kcenv: Read an environment key.\n\nUsage:\n\n  kcenv <key>\n    Parameters:\n      <key> (required)"
+ }
+]

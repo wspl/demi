@@ -1,0 +1,1482 @@
+[
+ {
+  "name": "a value of the wrong type names its type",
+  "schema": {
+   "type": "integer"
+  },
+  "instance": "x",
+  "want": "value is not of type \"integer\""
+ },
+ {
+  "name": "a null is not an integer",
+  "schema": {
+   "type": "integer"
+  },
+  "instance": null,
+  "want": "value is not of type \"integer\""
+ },
+ {
+  "name": "a float is not an integer",
+  "schema": {
+   "type": "integer"
+  },
+  "instance": 2.5,
+  "want": "value is not of type \"integer\""
+ },
+ {
+  "name": "a float that is whole is an integer",
+  "schema": {
+   "type": "integer"
+  },
+  "instance": 2.0
+ },
+ {
+  "name": "an object is not a boolean",
+  "schema": {
+   "type": "boolean"
+  },
+  "instance": {
+   "a": 1
+  },
+  "want": "value is not of type \"boolean\""
+ },
+ {
+  "name": "an array is not a string",
+  "schema": {
+   "type": "string"
+  },
+  "instance": [
+   1
+  ],
+  "want": "value is not of type \"string\""
+ },
+ {
+  "name": "several types are listed in the order of their names",
+  "schema": {
+   "type": [
+    "string",
+    "null"
+   ]
+  },
+  "instance": 1,
+  "want": "value is not of types \"null\", \"string\""
+ },
+ {
+  "name": "several types are listed in the order of their names again",
+  "schema": {
+   "type": [
+    "object",
+    "array",
+    "boolean"
+   ]
+  },
+  "instance": 1,
+  "want": "value is not of types \"boolean\", \"array\", \"object\""
+ },
+ {
+  "name": "a path is joined by dots",
+  "schema": {
+   "type": "object",
+   "properties": {
+    "a": {
+     "type": "object",
+     "properties": {
+      "b": {
+       "type": "integer"
+      }
+     },
+     "required": [],
+     "additionalProperties": false
+    }
+   },
+   "required": [],
+   "additionalProperties": false
+  },
+  "instance": {
+   "a": {
+    "b": "x"
+   }
+  },
+  "want": "\"a.b\" is not of type \"integer\""
+ },
+ {
+  "name": "an array element names its index",
+  "schema": {
+   "type": "object",
+   "properties": {
+    "v": {
+     "type": "array",
+     "items": {
+      "type": "number"
+     }
+    }
+   },
+   "required": [],
+   "additionalProperties": false
+  },
+  "instance": {
+   "v": [
+    1,
+    "x",
+    3,
+    "y"
+   ]
+  },
+  "want": "\"v.1\" is not of type \"number\"; \"v.3\" is not of type \"number\""
+ },
+ {
+  "name": "a string outside its enum",
+  "schema": {
+   "type": "string",
+   "enum": [
+    "a",
+    "b"
+   ]
+  },
+  "instance": "c",
+  "want": "value is not one of \"a\" or \"b\""
+ },
+ {
+  "name": "an enum of three lists all",
+  "schema": {
+   "type": "string",
+   "enum": [
+    "a",
+    "b",
+    "c"
+   ]
+  },
+  "instance": "d",
+  "want": "value is not one of \"a\", \"b\" or \"c\""
+ },
+ {
+  "name": "an enum of four lists two and counts the rest",
+  "schema": {
+   "type": "string",
+   "enum": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ]
+  },
+  "instance": "e",
+  "want": "value is not one of \"a\", \"b\" or 2 other candidates"
+ },
+ {
+  "name": "an enum of one",
+  "schema": {
+   "type": "string",
+   "enum": [
+    "a"
+   ]
+  },
+  "instance": "b",
+  "want": "value is not one of \"a\""
+ },
+ {
+  "name": "an enum that is not strings",
+  "schema": {
+   "enum": [
+    1,
+    "a",
+    null,
+    true
+   ]
+  },
+  "instance": "b",
+  "want": "value is not one of 1, \"a\" or 2 other candidates"
+ },
+ {
+  "name": "the type failure and the enum failure of one value are both reported",
+  "schema": {
+   "type": "string",
+   "enum": [
+    "a",
+    "b"
+   ]
+  },
+  "instance": 1,
+  "want": "value is not of type \"string\"",
+  "rust": "value is not of type \"string\"; value is not one of \"a\" or \"b\"",
+  "reason": "the library stops a schema's keywords at the first failed type, const or enum, so the failures of the keywords after it are not reported; the Rust goes on"
+ },
+ {
+  "name": "the enum failure and the length failure of one value are both reported",
+  "schema": {
+   "type": "string",
+   "enum": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "minLength": 2
+  },
+  "instance": "x",
+  "want": "value is not one of \"a\", \"b\" or 2 other candidates",
+  "rust": "value is not one of \"a\", \"b\" or 2 other candidates; value is shorter than 2 characters",
+  "reason": "the library stops a schema's keywords at the first failed type, const or enum, so the failures of the keywords after it are not reported; the Rust goes on"
+ },
+ {
+  "name": "a constant",
+  "schema": {
+   "const": 3
+  },
+  "instance": 4,
+  "want": "3 was expected"
+ },
+ {
+  "name": "a constant that is a string",
+  "schema": {
+   "const": "x"
+  },
+  "instance": "y",
+  "want": "\"x\" was expected"
+ },
+ {
+  "name": "the type failure and the constant failure are both reported",
+  "schema": {
+   "type": "integer",
+   "const": 3
+  },
+  "instance": "x",
+  "want": "value is not of type \"integer\"",
+  "rust": "value is not of type \"integer\"; 3 was expected",
+  "reason": "the library stops a schema's keywords at the first failed type, const or enum, so the failures of the keywords after it are not reported; the Rust goes on"
+ },
+ {
+  "name": "below a minimum",
+  "schema": {
+   "type": "integer",
+   "minimum": 2
+  },
+  "instance": 1,
+  "want": "value is less than the minimum of 2"
+ },
+ {
+  "name": "above a maximum",
+  "schema": {
+   "type": "integer",
+   "maximum": 3
+  },
+  "instance": 9,
+  "want": "value is greater than the maximum of 3"
+ },
+ {
+  "name": "at an exclusive minimum",
+  "schema": {
+   "type": "integer",
+   "exclusiveMinimum": 0
+  },
+  "instance": 0,
+  "want": "value is less than or equal to the minimum of 0"
+ },
+ {
+  "name": "at an exclusive maximum",
+  "schema": {
+   "type": "integer",
+   "exclusiveMaximum": 3
+  },
+  "instance": 3,
+  "want": "value is greater than or equal to the maximum of 3"
+ },
+ {
+  "name": "a fractional limit",
+  "schema": {
+   "type": "number",
+   "minimum": 1.5
+  },
+  "instance": 1,
+  "want": "value is less than the minimum of 1.5"
+ },
+ {
+  "name": "a limit near the largest exact integer",
+  "schema": {
+   "type": "integer",
+   "maximum": 9007199254740991
+  },
+  "instance": 9007199254740992,
+  "want": "value is greater than the maximum of 9007199254740991"
+ },
+ {
+  "name": "a maximum and an exclusive maximum together",
+  "schema": {
+   "type": "number",
+   "maximum": 2.5,
+   "exclusiveMaximum": 3
+  },
+  "instance": 3,
+  "want": "value is greater than or equal to the maximum of 3; value is greater than the maximum of 2.5",
+  "rust": "value is greater than the maximum of 2.5; value is greater than or equal to the maximum of 3",
+  "reason": "failures sort by instance location, then by the keyword's place in its schema object (top-level keywords by name); the Rust orders them by its keyword priority and fused validators"
+ },
+ {
+  "name": "not a multiple",
+  "schema": {
+   "type": "integer",
+   "multipleOf": 3
+  },
+  "instance": 4,
+  "want": "value is not a multiple of 3"
+ },
+ {
+  "name": "a string too short",
+  "schema": {
+   "type": "string",
+   "minLength": 2
+  },
+  "instance": "a",
+  "want": "value is shorter than 2 characters"
+ },
+ {
+  "name": "a string too short for one character",
+  "schema": {
+   "type": "string",
+   "minLength": 1
+  },
+  "instance": "",
+  "want": "value is shorter than 1 character"
+ },
+ {
+  "name": "a string too long",
+  "schema": {
+   "type": "string",
+   "maxLength": 8
+  },
+  "instance": "a long body",
+  "want": "value is longer than 8 characters"
+ },
+ {
+  "name": "a string too long for one character",
+  "schema": {
+   "type": "string",
+   "maxLength": 1
+  },
+  "instance": "ab",
+  "want": "value is longer than 1 character"
+ },
+ {
+  "name": "a code point counts as one character",
+  "schema": {
+   "type": "string",
+   "maxLength": 1
+  },
+  "instance": "𝄞"
+ },
+ {
+  "name": "two code points are two characters",
+  "schema": {
+   "type": "string",
+   "maxLength": 1
+  },
+  "instance": "𝄞x",
+  "want": "value is longer than 1 character"
+ },
+ {
+  "name": "an array with too few items",
+  "schema": {
+   "type": "array",
+   "minItems": 3
+  },
+  "instance": [
+   1
+  ],
+  "want": "value has less than 3 items"
+ },
+ {
+  "name": "an array with too few for one item",
+  "schema": {
+   "type": "array",
+   "minItems": 1
+  },
+  "instance": [],
+  "want": "value has less than 1 item"
+ },
+ {
+  "name": "an array with too many items",
+  "schema": {
+   "type": "array",
+   "maxItems": 2
+  },
+  "instance": [
+   1,
+   2,
+   3
+  ],
+  "want": "value has more than 2 items"
+ },
+ {
+  "name": "an array with too many for one item",
+  "schema": {
+   "type": "array",
+   "maxItems": 1
+  },
+  "instance": [
+   1,
+   2
+  ],
+  "want": "value has more than 1 item"
+ },
+ {
+  "name": "an object with too few properties",
+  "schema": {
+   "type": "object",
+   "minProperties": 2
+  },
+  "instance": {
+   "a": 1
+  },
+  "want": "value has less than 2 properties"
+ },
+ {
+  "name": "an object with too many properties",
+  "schema": {
+   "type": "object",
+   "maxProperties": 1
+  },
+  "instance": {
+   "a": 1,
+   "b": 2
+  },
+  "want": "value has more than 1 property"
+ },
+ {
+  "name": "an object with too many for one property",
+  "schema": {
+   "type": "object",
+   "maxProperties": 0
+  },
+  "instance": {
+   "a": 1
+  },
+  "want": "value has more than 0 properties"
+ },
+ {
+  "name": "a missing property is named without its path",
+  "schema": {
+   "type": "object",
+   "properties": {
+    "o": {
+     "type": "object",
+     "properties": {
+      "x": {
+       "type": "integer"
+      }
+     },
+     "required": [
+      "x"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "required": [
+    "o"
+   ],
+   "additionalProperties": false
+  },
+  "instance": {
+   "o": {}
+  },
+  "want": "\"x\" is a required property"
+ },
+ {
+  "name": "missing properties are named in the order the schema requires them",
+  "schema": {
+   "type": "object",
+   "properties": {
+    "a": {
+     "type": "integer"
+    },
+    "b": {
+     "type": "integer"
+    },
+    "c": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "c",
+    "a",
+    "b"
+   ],
+   "additionalProperties": false
+  },
+  "instance": {},
+  "want": "\"c\" is a required property; \"a\" is a required property; \"b\" is a required property"
+ },
+ {
+  "name": "a missing property of a required list",
+  "schema": {
+   "type": "object",
+   "properties": {
+    "a": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "a"
+   ],
+   "additionalProperties": false
+  },
+  "instance": {},
+  "want": "\"a\" is a required property"
+ },
+ {
+  "name": "an unexpected property",
+  "schema": {
+   "type": "object",
+   "properties": {
+    "a": {
+     "type": "integer"
+    }
+   },
+   "required": [],
+   "additionalProperties": false
+  },
+  "instance": {
+   "a": 1,
+   "z": 2
+  },
+  "want": "Additional properties are not allowed ('z' was unexpected)"
+ },
+ {
+  "name": "unexpected properties are named in the instance's order",
+  "schema": {
+   "type": "object",
+   "properties": {
+    "a": {
+     "type": "integer"
+    }
+   },
+   "required": [],
+   "additionalProperties": false
+  },
+  "instance": {
+   "q": 1,
+   "a": 1,
+   "p": 2
+  },
+  "want": "Additional properties are not allowed ('q', 'p' were unexpected)"
+ },
+ {
+  "name": "an additional property checked by a schema",
+  "schema": {
+   "type": "object",
+   "additionalProperties": {
+    "type": "integer"
+   }
+  },
+  "instance": {
+   "c": "x",
+   "a": "y"
+  },
+  "want": "\"c\" is not of type \"integer\"; \"a\" is not of type \"integer\""
+ },
+ {
+  "name": "a value against a pattern",
+  "schema": {
+   "type": "string",
+   "pattern": "^[a-z]+$"
+  },
+  "instance": "ABC",
+  "want": "value does not match \"^[a-z]+$\""
+ },
+ {
+  "name": "a value against a pattern and a length",
+  "schema": {
+   "type": "string",
+   "pattern": "^a+$",
+   "maxLength": 1
+  },
+  "instance": "bb",
+  "want": "value is longer than 1 character; value does not match \"^a+$\""
+ },
+ {
+  "name": "duplicate elements",
+  "schema": {
+   "type": "array",
+   "uniqueItems": true
+  },
+  "instance": [
+   1,
+   1
+  ],
+  "want": "value has non-unique elements"
+ },
+ {
+  "name": "nothing in an array matches contains",
+  "schema": {
+   "type": "array",
+   "contains": {
+    "type": "integer"
+   }
+  },
+  "instance": [
+   "a"
+  ],
+  "want": "None of value are valid under the given schema"
+ },
+ {
+  "name": "a value under none of anyOf",
+  "schema": {
+   "anyOf": [
+    {
+     "type": "integer"
+    },
+    {
+     "type": "string"
+    }
+   ]
+  },
+  "instance": true,
+  "want": "value is not valid under any of the schemas listed in the 'anyOf' keyword"
+ },
+ {
+  "name": "a value under none of oneOf",
+  "schema": {
+   "oneOf": [
+    {
+     "type": "integer"
+    },
+    {
+     "type": "string"
+    }
+   ]
+  },
+  "instance": true,
+  "want": "value is not valid under any of the schemas listed in the 'oneOf' keyword"
+ },
+ {
+  "name": "a value under two of oneOf",
+  "schema": {
+   "oneOf": [
+    {
+     "type": "integer"
+    },
+    {
+     "type": "number"
+    }
+   ]
+  },
+  "instance": 1,
+  "want": "value is valid under more than one of the schemas listed in the 'oneOf' keyword"
+ },
+ {
+  "name": "the failures of every allOf branch",
+  "schema": {
+   "allOf": [
+    {
+     "type": "integer",
+     "minimum": 5
+    },
+    {
+     "maximum": 3
+    }
+   ]
+  },
+  "instance": 4,
+  "want": "value is greater than the maximum of 3; value is less than the minimum of 5",
+  "rust": "value is less than the minimum of 5; value is greater than the maximum of 3",
+  "reason": "failures sort by instance location, then by the keyword's place in its schema object (top-level keywords by name); the Rust orders them by its keyword priority and fused validators"
+ },
+ {
+  "name": "a value that a not forbids",
+  "schema": {
+   "not": {
+    "type": "integer"
+   }
+  },
+  "instance": 4,
+  "want": "{\"type\":\"integer\"} is not allowed for value"
+ },
+ {
+  "name": "a name that fails propertyNames",
+  "schema": {
+   "type": "object",
+   "propertyNames": {
+    "maxLength": 2
+   }
+  },
+  "instance": {
+   "abc": 1
+  },
+  "want": "\"abc\" is longer than 2 characters"
+ },
+ {
+  "name": "a dependent property missing",
+  "schema": {
+   "type": "object",
+   "dependentRequired": {
+    "a": [
+     "b"
+    ]
+   }
+  },
+  "instance": {
+   "a": 1
+  },
+  "want": "\"b\" is a required property"
+ },
+ {
+  "name": "a false schema",
+  "schema": {
+   "properties": {
+    "a": false
+   }
+  },
+  "instance": {
+   "a": 1
+  },
+  "want": "False schema does not allow \"a\""
+ },
+ {
+  "name": "every failure is joined with a semicolon, in the instance's order",
+  "schema": {
+   "type": "object",
+   "properties": {
+    "b": {
+     "type": "integer"
+    },
+    "a": {
+     "type": "integer"
+    },
+    "c": {
+     "type": "integer"
+    }
+   },
+   "required": [],
+   "additionalProperties": false
+  },
+  "instance": {
+   "c": "x",
+   "a": "y",
+   "b": "z"
+  },
+  "want": "\"c\" is not of type \"integer\"; \"a\" is not of type \"integer\"; \"b\" is not of type \"integer\""
+ },
+ {
+  "name": "required comes before the properties, and the unexpected last",
+  "schema": {
+   "type": "object",
+   "properties": {
+    "b": {
+     "type": "integer"
+    },
+    "a": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "z",
+    "y"
+   ],
+   "additionalProperties": false
+  },
+  "instance": {
+   "a": "x",
+   "b": "y",
+   "q": 1
+  },
+  "want": "Additional properties are not allowed ('q' was unexpected); \"z\" is a required property; \"y\" is a required property; \"a\" is not of type \"integer\"; \"b\" is not of type \"integer\"",
+  "rust": "\"z\" is a required property; \"y\" is a required property; \"a\" is not of type \"integer\"; \"b\" is not of type \"integer\"; Additional properties are not allowed ('q' was unexpected)",
+  "reason": "failures sort by instance location, then by the keyword's place in its schema object (top-level keywords by name); the Rust orders them by its keyword priority and fused validators"
+ },
+ {
+  "name": "keyword failures of one node come before its children",
+  "schema": {
+   "type": "array",
+   "maxItems": 1,
+   "items": {
+    "type": "string",
+    "maxLength": 1
+   }
+  },
+  "instance": [
+   "ab",
+   "cd"
+  ],
+  "want": "value has more than 1 item; \"0\" is longer than 1 character; \"1\" is longer than 1 character"
+ },
+ {
+  "name": "items are reported before prefix items",
+  "schema": {
+   "type": "array",
+   "prefixItems": [
+    {
+     "type": "string"
+    }
+   ],
+   "items": {
+    "type": "integer"
+   }
+  },
+  "instance": [
+   1,
+   "a"
+  ],
+  "want": "\"0\" is not of type \"string\"; \"1\" is not of type \"integer\"",
+  "rust": "\"1\" is not of type \"integer\"; \"0\" is not of type \"string\"",
+  "reason": "failures sort by instance location, then by the keyword's place in its schema object (top-level keywords by name); the Rust orders them by its keyword priority and fused validators"
+ },
+ {
+  "name": "many properties keep the instance's order",
+  "schema": {
+   "type": "object",
+   "properties": {
+    "p00": {
+     "type": "integer"
+    },
+    "p01": {
+     "type": "integer"
+    },
+    "p02": {
+     "type": "integer"
+    },
+    "p03": {
+     "type": "integer"
+    },
+    "p04": {
+     "type": "integer"
+    },
+    "p05": {
+     "type": "integer"
+    },
+    "p06": {
+     "type": "integer"
+    },
+    "p07": {
+     "type": "integer"
+    },
+    "p08": {
+     "type": "integer"
+    },
+    "p09": {
+     "type": "integer"
+    },
+    "p10": {
+     "type": "integer"
+    },
+    "p11": {
+     "type": "integer"
+    },
+    "p12": {
+     "type": "integer"
+    },
+    "p13": {
+     "type": "integer"
+    },
+    "p14": {
+     "type": "integer"
+    },
+    "p15": {
+     "type": "integer"
+    },
+    "p16": {
+     "type": "integer"
+    },
+    "p17": {
+     "type": "integer"
+    },
+    "p18": {
+     "type": "integer"
+    },
+    "p19": {
+     "type": "integer"
+    }
+   }
+  },
+  "instance": {
+   "p19": "x",
+   "p18": "x",
+   "p17": "x",
+   "p16": "x",
+   "p15": "x",
+   "p14": "x",
+   "p13": "x",
+   "p12": "x",
+   "p11": "x",
+   "p10": "x",
+   "p09": "x",
+   "p08": "x",
+   "p07": "x",
+   "p06": "x",
+   "p05": "x",
+   "p04": "x",
+   "p03": "x",
+   "p02": "x",
+   "p01": "x",
+   "p00": "x"
+  },
+  "want": "\"p19\" is not of type \"integer\"; \"p18\" is not of type \"integer\"; \"p17\" is not of type \"integer\"; \"p16\" is not of type \"integer\"; \"p15\" is not of type \"integer\"; \"p14\" is not of type \"integer\"; \"p13\" is not of type \"integer\"; \"p12\" is not of type \"integer\"; \"p11\" is not of type \"integer\"; \"p10\" is not of type \"integer\"; \"p09\" is not of type \"integer\"; \"p08\" is not of type \"integer\"; \"p07\" is not of type \"integer\"; \"p06\" is not of type \"integer\"; \"p05\" is not of type \"integer\"; \"p04\" is not of type \"integer\"; \"p03\" is not of type \"integer\"; \"p02\" is not of type \"integer\"; \"p01\" is not of type \"integer\"; \"p00\" is not of type \"integer\""
+ },
+ {
+  "name": "a size limit and a uniqueness failure of an array come before the elements",
+  "schema": {
+   "type": "array",
+   "items": {
+    "type": "integer"
+   },
+   "minItems": 3,
+   "uniqueItems": true
+  },
+  "instance": [
+   "a",
+   "a"
+  ],
+  "want": "value has less than 3 items; value has non-unique elements; \"0\" is not of type \"integer\"; \"1\" is not of type \"integer\""
+ },
+ {
+  "name": "an input like a command's",
+  "schema": {
+   "type": "object",
+   "properties": {
+    "count": {
+     "type": "integer",
+     "exclusiveMinimum": 0,
+     "maximum": 9007199254740991
+    },
+    "path": {
+     "type": "string"
+    },
+    "tag": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   },
+   "required": [
+    "path"
+   ],
+   "additionalProperties": false
+  },
+  "instance": {
+   "count": "many",
+   "tag": [
+    "a",
+    2
+   ]
+  },
+  "want": "\"path\" is a required property; \"count\" is not of type \"integer\"; \"tag.1\" is not of type \"string\"",
+  "rust": "\"count\" is not of type \"integer\"; \"tag.1\" is not of type \"string\"; \"path\" is a required property",
+  "reason": "failures sort by instance location, then by the keyword's place in its schema object (top-level keywords by name); the Rust orders them by its keyword priority and fused validators"
+ },
+ {
+  "name": "a single required name is reported after the properties and the unexpected ones",
+  "schema": {
+   "type": "object",
+   "properties": {
+    "n": {
+     "type": "integer"
+    },
+    "s": {
+     "type": "string",
+     "maxLength": 3
+    }
+   },
+   "required": [
+    "n"
+   ],
+   "additionalProperties": false
+  },
+  "instance": {
+   "s": "toolong",
+   "q": 1
+  },
+  "want": "Additional properties are not allowed ('q' was unexpected); \"n\" is a required property; \"s\" is longer than 3 characters",
+  "rust": "\"s\" is longer than 3 characters; Additional properties are not allowed ('q' was unexpected); \"n\" is a required property",
+  "reason": "failures sort by instance location, then by the keyword's place in its schema object (top-level keywords by name); the Rust orders them by its keyword priority and fused validators"
+ },
+ {
+  "name": "a single required name that is present",
+  "schema": {
+   "type": "object",
+   "properties": {
+    "n": {
+     "type": "integer"
+    },
+    "s": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "n"
+   ],
+   "additionalProperties": false
+  },
+  "instance": {
+   "s": 1,
+   "n": "x"
+  },
+  "want": "\"s\" is not of type \"string\"; \"n\" is not of type \"integer\""
+ },
+ {
+  "name": "a single required name of a schema that allows other properties",
+  "schema": {
+   "type": "object",
+   "properties": {
+    "n": {
+     "type": "integer"
+    },
+    "s": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "n"
+   ]
+  },
+  "instance": {
+   "s": 1
+  },
+  "want": "\"n\" is a required property; \"s\" is not of type \"string\""
+ },
+ {
+  "name": "two required names are reported before the properties",
+  "schema": {
+   "type": "object",
+   "properties": {
+    "a": {
+     "type": "integer"
+    },
+    "b": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "a",
+    "b"
+   ]
+  },
+  "instance": {
+   "b": "x"
+  },
+  "want": "\"a\" is a required property; \"b\" is not of type \"integer\""
+ },
+ {
+  "name": "two required names before an instance with more members than properties are followed by the schema's order",
+  "schema": {
+   "type": "object",
+   "properties": {
+    "a": {
+     "type": "integer"
+    },
+    "b": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "a",
+    "b"
+   ]
+  },
+  "instance": {
+   "z": 1,
+   "y": 2,
+   "b": "x",
+   "a": "y"
+  },
+  "want": "\"b\" is not of type \"integer\"; \"a\" is not of type \"integer\"",
+  "rust": "\"a\" is not of type \"integer\"; \"b\" is not of type \"integer\"",
+  "reason": "failures sort by instance location, then by the keyword's place in its schema object (top-level keywords by name); the Rust orders them by its keyword priority and fused validators"
+ },
+ {
+  "name": "properties are reported in the schema's order when the instance has more members than the schema has properties",
+  "schema": {
+   "type": "object",
+   "properties": {
+    "a": {
+     "type": "integer"
+    },
+    "b": {
+     "type": "integer"
+    }
+   }
+  },
+  "instance": {
+   "z": 1,
+   "b": "x",
+   "a": "y"
+  },
+  "want": "\"b\" is not of type \"integer\"; \"a\" is not of type \"integer\"",
+  "rust": "\"a\" is not of type \"integer\"; \"b\" is not of type \"integer\"",
+  "reason": "failures sort by instance location, then by the keyword's place in its schema object (top-level keywords by name); the Rust orders them by its keyword priority and fused validators"
+ },
+ {
+  "name": "properties are reported in the instance's order when it has as many members",
+  "schema": {
+   "type": "object",
+   "properties": {
+    "a": {
+     "type": "integer"
+    },
+    "b": {
+     "type": "integer"
+    }
+   }
+  },
+  "instance": {
+   "b": "x",
+   "a": "y"
+  },
+  "want": "\"b\" is not of type \"integer\"; \"a\" is not of type \"integer\""
+ },
+ {
+  "name": "three required names are reported in the schema's order before the properties",
+  "schema": {
+   "type": "object",
+   "properties": {
+    "a": {
+     "type": "integer"
+    },
+    "b": {
+     "type": "integer"
+    },
+    "c": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "c",
+    "b",
+    "a"
+   ]
+  },
+  "instance": {
+   "x": "y"
+  },
+  "want": "\"c\" is a required property; \"b\" is a required property; \"a\" is a required property"
+ },
+ {
+  "name": "properties and a schema for the others are reported in the instance's order",
+  "schema": {
+   "type": "object",
+   "properties": {
+    "a": {
+     "type": "integer"
+    }
+   },
+   "additionalProperties": {
+    "type": "integer"
+   }
+  },
+  "instance": {
+   "c": "x",
+   "a": "y",
+   "b": "z"
+  },
+  "want": "\"c\" is not of type \"integer\"; \"a\" is not of type \"integer\"; \"b\" is not of type \"integer\""
+ },
+ {
+  "name": "properties and a schema for the others with one required name",
+  "schema": {
+   "type": "object",
+   "properties": {
+    "a": {
+     "type": "integer"
+    }
+   },
+   "additionalProperties": {
+    "type": "integer"
+   },
+   "required": [
+    "a"
+   ]
+  },
+  "instance": {
+   "c": "x"
+  },
+  "want": "\"a\" is a required property; \"c\" is not of type \"integer\""
+ },
+ {
+  "name": "required names outside the properties",
+  "schema": {
+   "type": "object",
+   "properties": {
+    "a": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "x",
+    "y"
+   ],
+   "additionalProperties": false
+  },
+  "instance": {
+   "q": 1
+  },
+  "want": "Additional properties are not allowed ('q' was unexpected); \"x\" is a required property; \"y\" is a required property",
+  "rust": "\"x\" is a required property; \"y\" is a required property; Additional properties are not allowed ('q' was unexpected)",
+  "reason": "failures sort by instance location, then by the keyword's place in its schema object (top-level keywords by name); the Rust orders them by its keyword priority and fused validators"
+ },
+ {
+  "name": "a nested object with a single required name",
+  "schema": {
+   "type": "object",
+   "properties": {
+    "o": {
+     "type": "object",
+     "properties": {
+      "x": {
+       "type": "integer"
+      },
+      "y": {
+       "type": "integer"
+      }
+     },
+     "required": [
+      "x"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "required": [
+    "o"
+   ],
+   "additionalProperties": false
+  },
+  "instance": {
+   "o": {
+    "y": "bad",
+    "z": 1
+   }
+  },
+  "want": "\"x\" is a required property; Additional properties are not allowed ('z' was unexpected); \"o.y\" is not of type \"integer\"",
+  "rust": "\"o.y\" is not of type \"integer\"; Additional properties are not allowed ('z' was unexpected); \"x\" is a required property",
+  "reason": "failures sort by instance location, then by the keyword's place in its schema object (top-level keywords by name); the Rust orders them by its keyword priority and fused validators"
+ },
+ {
+  "name": "an object of an array of objects",
+  "schema": {
+   "type": "object",
+   "properties": {
+    "rows": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "id": {
+        "type": "integer"
+       }
+      },
+      "required": [
+       "id"
+      ],
+      "additionalProperties": false
+     }
+    }
+   }
+  },
+  "instance": {
+   "rows": [
+    {
+     "id": "a"
+    },
+    {},
+    {
+     "id": 1,
+     "x": 2
+    }
+   ]
+  },
+  "want": "\"rows.0.id\" is not of type \"integer\"; \"id\" is a required property; Additional properties are not allowed ('x' was unexpected)"
+ },
+ {
+  "name": "minProperties before the properties",
+  "schema": {
+   "type": "object",
+   "minProperties": 3,
+   "properties": {
+    "a": {
+     "type": "integer"
+    }
+   }
+  },
+  "instance": {
+   "a": "x"
+  },
+  "want": "value has less than 3 properties; \"a\" is not of type \"integer\""
+ },
+ {
+  "name": "a type failure hides the properties",
+  "schema": {
+   "type": "object",
+   "properties": {
+    "a": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "a"
+   ],
+   "additionalProperties": false
+  },
+  "instance": [
+   1
+  ],
+  "want": "value is not of type \"object\""
+ },
+ {
+  "name": "a number failing every bound",
+  "schema": {
+   "type": "number",
+   "minimum": 5,
+   "maximum": 1,
+   "exclusiveMinimum": 6,
+   "exclusiveMaximum": 0,
+   "multipleOf": 2
+  },
+  "instance": 3,
+  "want": "value is greater than or equal to the maximum of 0; value is less than or equal to the minimum of 6; value is greater than the maximum of 1; value is less than the minimum of 5; value is not a multiple of 2",
+  "rust": "value is less than the minimum of 5; value is greater than the maximum of 1; value is less than or equal to the minimum of 6; value is greater than or equal to the maximum of 0; value is not a multiple of 2",
+  "reason": "failures sort by instance location, then by the keyword's place in its schema object (top-level keywords by name); the Rust orders them by its keyword priority and fused validators"
+ },
+ {
+  "name": "a string failing every bound",
+  "schema": {
+   "type": "string",
+   "minLength": 5,
+   "maxLength": 1,
+   "pattern": "^z"
+  },
+  "instance": "abc",
+  "want": "value is longer than 1 character; value is shorter than 5 characters; value does not match \"^z\"",
+  "rust": "value is shorter than 5 characters; value is longer than 1 character; value does not match \"^z\"",
+  "reason": "failures sort by instance location, then by the keyword's place in its schema object (top-level keywords by name); the Rust orders them by its keyword priority and fused validators"
+ },
+ {
+  "name": "a whole number that is a float against an integer minimum",
+  "schema": {
+   "type": "integer",
+   "minimum": 1
+  },
+  "instance": 0.5,
+  "want": "value is not of type \"integer\"",
+  "rust": "value is not of type \"integer\"; value is less than the minimum of 1",
+  "reason": "the library stops a schema's keywords at the first failed type, const or enum, so the failures of the keywords after it are not reported; the Rust goes on"
+ },
+ {
+  "name": "a string enum with a wrong-typed number and a bound",
+  "schema": {
+   "type": "string",
+   "enum": [
+    "a"
+   ],
+   "maxLength": 1
+  },
+  "instance": 1,
+  "want": "value is not of type \"string\"",
+  "rust": "value is not of type \"string\"; value is not one of \"a\"",
+  "reason": "the library stops a schema's keywords at the first failed type, const or enum, so the failures of the keywords after it are not reported; the Rust goes on"
+ },
+ {
+  "name": "a nullable string of a wrong type",
+  "schema": {
+   "type": [
+    "string",
+    "null"
+   ],
+   "maxLength": 2
+  },
+  "instance": 5,
+  "want": "value is not of types \"null\", \"string\""
+ },
+ {
+  "name": "a value of a type list that fits one member",
+  "schema": {
+   "type": [
+    "string",
+    "null"
+   ]
+  },
+  "instance": null
+ },
+ {
+  "name": "integer and number are listed in that order",
+  "schema": {
+   "type": [
+    "number",
+    "integer"
+   ]
+  },
+  "instance": "x",
+  "want": "value is not of types \"integer\", \"number\""
+ },
+ {
+  "name": "a minimum written as a float",
+  "schema": {
+   "type": "number",
+   "minimum": 1.0
+  },
+  "instance": 0.5,
+  "want": "value is less than the minimum of 1",
+  "rust": "value is less than the minimum of 1.0",
+  "reason": "a limit written as a float is printed as the exact integer it is (Rust: the f64 as written, 1.0)"
+ },
+ {
+  "name": "a maximum written in exponent form",
+  "schema": {
+   "type": "integer",
+   "maximum": 1e+16
+  },
+  "instance": 20000000000000000,
+  "want": "value is greater than the maximum of 10000000000000000",
+  "rust": "value is greater than the maximum of 1e+16",
+  "reason": "a limit written as a float is printed as the exact integer it is (Rust: 1e+16)"
+ },
+ {
+  "name": "a limit that only an exact number tells apart",
+  "schema": {
+   "type": "number",
+   "minimum": 1e+20
+  },
+  "instance": 99999999999999999999,
+  "want": "value is less than the minimum of 100000000000000000000",
+  "rust": "",
+  "reason": "limits are compared exactly (Rust rounds them to f64, so it accepts a value one below the limit's f64)"
+ },
+ {
+  "name": "no additional property without declared properties",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false
+  },
+  "instance": {
+   "a": 1,
+   "b": 2
+  },
+  "want": "Additional properties are not allowed ('a', 'b' were unexpected)",
+  "rust": "False schema does not allow value",
+  "reason": "the failure names the fields, as commands.md asks (Rust: 'False schema does not allow value')"
+ },
+ {
+  "name": "a word boundary before a letter that is not ASCII",
+  "schema": {
+   "type": "string",
+   "pattern": "\\bfoo\\b"
+  },
+  "instance": "éfoo",
+  "rust": "value does not match \"\\bfoo\\b\"",
+  "reason": "RE2's \\b is ASCII (Rust's is Unicode), so the pattern matches"
+ },
+ {
+  "name": "no failure",
+  "schema": {
+   "type": "object",
+   "properties": {
+    "a": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "a"
+   ],
+   "additionalProperties": false
+  },
+  "instance": {
+   "a": 1
+  }
+ }
+]

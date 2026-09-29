@@ -67,7 +67,9 @@ func (p *Package) dependencies(name string) []string {
 	walk = func(t *Type) {
 		switch t.Kind {
 		case KindStruct, KindUnion:
-			found = append(found, t.Name)
+			if !t.Opaque {
+				found = append(found, t.Name)
+			}
 		case KindSlice, KindPointer:
 			walk(t.Elem)
 		case KindMap:
@@ -154,6 +156,9 @@ func (p *Package) schema(t *Type, rules []Rule) (string, error) {
 	case KindPointer:
 		return p.schema(t.Elem, rules)
 	case KindStruct, KindUnion:
+		if t.Opaque {
+			return "", fmt.Errorf("%s is decoded by its package and has no TypeScript schema", t.Name)
+		}
 		return schemaName(t.Name), nil
 	case KindBool:
 		return "z.boolean()", nil
