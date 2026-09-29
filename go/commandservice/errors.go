@@ -49,18 +49,6 @@ func (cancelledError) Error() string { return "command cancelled" }
 
 func (cancelledError) Is(target error) bool { return target == context.Canceled }
 
-// An InvalidError means a value from outside the process, or one about to
-// leave it, breaks the rules of its wire type.
-type InvalidError struct {
-	// Reason says which field broke which rule, and never quotes the value: a
-	// value may be a secret, and errors are logged.
-	Reason string
-}
-
-func (e *InvalidError) Error() string {
-	return "invalid command protocol value: " + e.Reason
-}
-
 // A RejectedError means the service refused an HTTP request before running it:
 // invalid metadata (400), an unknown operation (404), a second numbers stream
 // (409), or a service that is shutting down (503).

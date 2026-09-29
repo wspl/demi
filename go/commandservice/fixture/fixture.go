@@ -271,7 +271,7 @@ func result(call *commandservice.Call) (commandservice.Completion, error) {
 // Conversation answers the conversation endpoint from what the fixture holds.
 func (f *Service) Conversation(call *commandservice.ConversationCall) (commandservice.Completion, error) {
 	request := call.Request
-	if request.Operation == commandservice.OperationRelease && f.isStalling(request.Conversation) {
+	if release, ok := request.(commandservice.ReleaseRequest); ok && f.isStalling(release.Conversation) {
 		notify(f.stalled)
 		<-call.Context().Done()
 		return commandservice.Completion{}, commandservice.ErrCancelled
@@ -303,15 +303,18 @@ func (f *Service) answer(request commandservice.ConversationRequest) (answer any
 	defer f.mu.Unlock()
 	_, unanswerable := f.conversations["unanswerable"]
 	_, stalls := f.conversations["stall"]
-	switch {
-	case request.Operation == commandservice.OperationStatus && unanswerable:
-		// A service that cannot say what it holds.
-		return nil, false, errors.New("fixture status unavailable")
-	case request.Operation == commandservice.OperationStatus:
+	switch request := request.(type) {
+	case commandservice.StatusRequest:
+		if unanswerable {
+			// A service that cannot say what it holds.
+			return nil, false, errors.New("fixture status unavailable")
+		}
 		return statusReport{Conversations: slices.Sorted(maps.Keys(f.conversations))}, stalls, nil
-	case request.Conversation == "fail":
-		return nil, false, errors.New("fixture cleanup failed")
+	case commandservice.ReleaseRequest:
+		if request.Conversation == "fail" {
+			return nil, false, errors.New("fixture cleanup failed")
+		}
+		delete(f.conversations, request.Conversation)
 	}
-	delete(f.conversations, request.Conversation)
 	return struct{}{}, false, nil
 }

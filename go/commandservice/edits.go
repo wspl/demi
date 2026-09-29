@@ -1,12 +1,5 @@
 package commandservice
 
-import (
-	"errors"
-	"path/filepath"
-
-	"github.com/google/jsonschema-go/jsonschema"
-)
-
 // The limits of a job's edit record that its journal states.
 const (
 	// EditJobBytes is the most bytes the record copies in total.
@@ -20,37 +13,21 @@ const (
 // An EditContext says where an invoked command records its edits: the job's
 // edit directory and the lock that serializes writers to it. Both paths are
 // absolute.
+//
+//demi:wire
 type EditContext struct {
-	Directory string `json:"directory"`
-	Lock      string `json:"lock"`
-}
-
-var editContextWire = declare(func(s *jsonschema.Schema) {
-	prop(s, "directory").Pattern = patternNonEmptyNoNUL
-	prop(s, "lock").Pattern = patternNonEmptyNoNUL
-}, checkEditContext)
-
-func checkEditContext(v *EditContext) error {
-	if !filepath.IsAbs(v.Directory) {
-		return errors.New("directory: is not an absolute path")
-	}
-	if !filepath.IsAbs(v.Lock) {
-		return errors.New("lock: is not an absolute path")
-	}
-	return nil
+	Directory string `json:"directory" check:"chars=1..,nonul,func=absolutePath"`
+	Lock      string `json:"lock" check:"chars=1..,nonul,func=absolutePath"`
 }
 
 // EditCopies holds the copies of one edit segment: the file before and after
 // it.
+//
+//demi:wire
 type EditCopies struct {
-	Original *string `json:"original,omitzero"`
-	Modified *string `json:"modified,omitzero"`
+	Original *string `json:"original,omitzero" check:"chars=1..,nonul"`
+	Modified *string `json:"modified,omitzero" check:"chars=1..,nonul"`
 }
-
-var editCopiesWire = declare[EditCopies](func(s *jsonschema.Schema) {
-	prop(s, "original").Pattern = patternNonEmptyNoNUL
-	prop(s, "modified").Pattern = patternNonEmptyNoNUL
-}, nil)
 
 // An EditKind says whether an edited file existed before the job.
 type EditKind string
@@ -62,28 +39,20 @@ const (
 )
 
 // An EditFile is one edited file and its segments.
+//
+//demi:wire
 type EditFile struct {
-	Path  string       `json:"path"`
-	Kind  EditKind     `json:"kind"`
-	Edits []EditCopies `json:"edits"`
+	Path  string       `json:"path" check:"chars=1..,nonul"`
+	Kind  EditKind     `json:"kind" check:"oneof=added|modified"`
+	Edits []EditCopies `json:"edits" check:"items=..EditJobSegments"`
 }
-
-var editFileWire = declare[EditFile](func(s *jsonschema.Schema) {
-	prop(s, "path").Pattern = patternNonEmptyNoNUL
-	prop(s, "kind").Enum = []any{string(EditAdded), string(EditModified)}
-	prop(s, "edits").MaxItems = jsonschema.Ptr(EditJobSegments)
-}, nil, editCopiesWire)
 
 // An EditJournal is a job's edit record as the command left it.
+//
+//demi:wire
 type EditJournal struct {
-	Files          []EditFile `json:"files"`
-	BytesCopied    uint64     `json:"bytesCopied"`
-	NextSegment    uint64     `json:"nextSegment"`
+	Files          []EditFile `json:"files" check:"items=..EditJobFiles"`
+	BytesCopied    uint64     `json:"bytesCopied" check:"range=..EditJobBytes"`
+	NextSegment    uint64     `json:"nextSegment" check:"range=..EditJobSegments"`
 	FilesTruncated bool       `json:"filesTruncated"`
 }
-
-var _ = declare[EditJournal](func(s *jsonschema.Schema) {
-	prop(s, "files").MaxItems = jsonschema.Ptr(EditJobFiles)
-	prop(s, "bytesCopied").Maximum = jsonschema.Ptr(float64(EditJobBytes))
-	prop(s, "nextSegment").Maximum = jsonschema.Ptr(float64(EditJobSegments))
-}, nil, editFileWire)

@@ -177,7 +177,7 @@ func TestWhereAnswersTheBytesOfTheRustFixture(t *testing.T) {
 	call.Args = []byte(`{"label":"A"}`)
 	call.Env = map[string]string{"PROBE": "alpha", "OTHER": "ignored"}
 	call.Cwd = "/work"
-	call.Context.Caller = commandservice.UserCaller()
+	call.Context.Caller = commandservice.UserCaller{}
 	want := `{"label":"A","context":{"conversation":"conversation","caller":{"kind":"user"},"locale":{"timeZone":"UTC","languages":["en-US"]}},"cwd":"/work","value":"alpha"}`
 	if got := run(t, process.Client, call, nil); string(got.stdout) != want {
 		t.Errorf("where = %s\nwant    %s", got.stdout, want)

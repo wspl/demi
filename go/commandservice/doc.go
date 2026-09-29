@@ -18,7 +18,8 @@
 // and [Exchange], and answers a service's numbers stream with
 // [NumbersStream.Answer].
 //
-// Every value that enters from the other side of the wire is checked where it
-// enters, against a schema derived from its Go type ([Decode]), and every value
-// that leaves is checked before it is sent ([Encode]).
+// Every value that enters from the other side of the wire is decoded into its
+// type and checked where it enters ([Decode]), and every value that leaves is
+// checked before it is sent ([Encode]). The wire's types are declared with
+// their rules in Go, and go generate writes their decoders (see wire.go).
 package commandservice

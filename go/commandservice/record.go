@@ -129,7 +129,7 @@ func (r *RecordReader) next() (Record, error) {
 		return Record{Kind: kind, Completion: completion}, nil
 	case RecordInputPull:
 		if len(payload) > 0 {
-			return Record{}, &InvalidError{Reason: "an input pull record carries no payload"}
+			return Record{}, &InvalidError{Rule: "an input pull record carries no payload"}
 		}
 		return Record{Kind: kind}, nil
 	default:

@@ -127,7 +127,7 @@ func TestTheServiceAnswersOnThePathsOfTheWireWithoutAContentType(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	status, err := commandservice.Encode(commandservice.ConversationRequest{Operation: commandservice.OperationStatus})
+	status, err := commandservice.Encode(commandservice.StatusRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}

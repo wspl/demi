@@ -30,7 +30,7 @@ func invocation(operation string) commandservice.Invocation {
 		InvocationID: operation,
 		Context: commandservice.CommandContext{
 			Conversation: "conversation",
-			Caller:       commandservice.AgentCaller(1),
+			Caller:       commandservice.AgentCaller{Number: 1},
 			Locale:       commandservice.CommandLocale{TimeZone: "UTC", Languages: []string{"en-US"}},
 		},
 		Args: jsontext.Value(`{}`),
@@ -95,9 +95,9 @@ func conversation(t testing.TB, client *commandservice.Client, request commandse
 }
 
 func release(conversation string) commandservice.ConversationRequest {
-	return commandservice.ConversationRequest{Operation: commandservice.OperationRelease, Conversation: conversation}
+	return commandservice.ReleaseRequest{Conversation: conversation}
 }
 
 func status() commandservice.ConversationRequest {
-	return commandservice.ConversationRequest{Operation: commandservice.OperationStatus}
+	return commandservice.StatusRequest{}
 }

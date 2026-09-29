@@ -4,52 +4,33 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json/jsontext"
-	"errors"
 	"fmt"
-	"net/url"
 	"slices"
-
-	"github.com/google/jsonschema-go/jsonschema"
 )
 
 // maxSafeInteger is the largest integer a JavaScript peer holds exactly.
 const maxSafeInteger = 1<<53 - 1
 
 // A PackageArtifact is one target's executable: its SHA-256 and size.
+//
+//demi:wire
 type PackageArtifact struct {
-	SHA256 string `json:"sha256"`
-	Size   uint64 `json:"size"`
+	SHA256 string `json:"sha256" check:"pattern=sha256Hex"`
+	Size   uint64 `json:"size" check:"range=1..maxSafeInteger"`
 }
-
-var artifactWire = declare[PackageArtifact](func(s *jsonschema.Schema) {
-	prop(s, "sha256").Pattern = `^[0-9a-f]{64}$`
-	size := prop(s, "size")
-	size.Minimum = jsonschema.Ptr(1.0)
-	size.Maximum = jsonschema.Ptr(float64(maxSafeInteger))
-}, nil)
 
 // A PackageDescriptor is a native command package release: its identity, the
 // operations it serves and the artifact of each target it carries.
 // Publication requires every target; a development release may carry fewer.
+//
+//demi:wire
 type PackageDescriptor struct {
-	ID              string                           `json:"id"`
-	Version         string                           `json:"version"`
-	ProtocolVersion uint64                           `json:"protocolVersion"`
-	Operations      []string                         `json:"operations"`
-	Targets         map[TargetTriple]PackageArtifact `json:"targets"`
+	ID              string                           `json:"id" check:"pattern=packageID"`
+	Version         string                           `json:"version" check:"chars=1.."`
+	ProtocolVersion uint64                           `json:"protocolVersion" check:"eq=Version"`
+	Operations      []string                         `json:"operations" check:"items=1..,unique,each(chars=1..)"`
+	Targets         map[TargetTriple]PackageArtifact `json:"targets" check:"keys(oneof=aarch64-apple-darwin|x86_64-apple-darwin|aarch64-unknown-linux-musl|x86_64-unknown-linux-musl|aarch64-pc-windows-msvc|x86_64-pc-windows-msvc)"`
 }
-
-var _ = declare[PackageDescriptor](func(s *jsonschema.Schema) {
-	prop(s, "id").Pattern = `^[a-z0-9]+(?:[.-][a-z0-9]+)+$`
-	prop(s, "version").MinLength = jsonschema.Ptr(1)
-	prop(s, "protocolVersion").Const = jsonschema.Ptr[any](Version)
-	limitOperations(prop(s, "operations"))
-	prop(s, "targets").PropertyNames = &jsonschema.Schema{Enum: []any{
-		string(TargetDarwinArm64), string(TargetDarwinAmd64),
-		string(TargetLinuxArm64), string(TargetLinuxAmd64),
-		string(TargetWindowsArm64), string(TargetWindowsAmd64),
-	}}
-}, nil, artifactWire)
 
 // Digest returns the descriptor's identity: the SHA-256 of its canonical JSON.
 // It refuses a descriptor that breaks the rules of its type.
@@ -89,15 +70,12 @@ func (d PackageDescriptor) Artifact(target TargetTriple) (PackageArtifact, error
 
 // A ServiceInfo is what a resident service answers on its info path: the
 // protocol it speaks and the operations it serves, each once.
+//
+//demi:wire
 type ServiceInfo struct {
-	ProtocolVersion uint64   `json:"protocolVersion"`
-	Operations      []string `json:"operations"`
+	ProtocolVersion uint64   `json:"protocolVersion" check:"eq=Version"`
+	Operations      []string `json:"operations" check:"items=1..,unique,each(chars=1..)"`
 }
-
-var _ = declare[ServiceInfo](func(s *jsonschema.Schema) {
-	prop(s, "protocolVersion").Const = jsonschema.Ptr[any](Version)
-	limitOperations(prop(s, "operations"))
-}, nil)
 
 // An ArtifactLocation says where a runner fetches an artifact: a URL, valid
 // until ExpiresAt when set, or a path on the runner's machine. It holds one of
@@ -107,44 +85,28 @@ var _ = declare[ServiceInfo](func(s *jsonschema.Schema) {
 // with a signed HTTPS URL, and a development store with a URL on the backend
 // itself. The scheme cannot change what runs, because the runner checks the
 // download against the size and SHA-256 its pinned descriptor declares.
-type ArtifactLocation struct {
-	URL string `json:"url,omitzero"`
+//
+//demi:union untagged
+type ArtifactLocation interface {
+	artifactLocation()
+}
+
+// An ArtifactURL locates an artifact by a URL.
+//
+//demi:variant
+type ArtifactURL struct {
+	URL string `json:"url" check:"chars=1..,func=downloadURL"`
 	// ExpiresAt is the time the URL stops working, in milliseconds since the
 	// Unix epoch.
 	ExpiresAt *int64 `json:"expiresAt,omitzero"`
-	Path      string `json:"path,omitzero"`
 }
 
-var _ = declare(func(s *jsonschema.Schema) {
-	prop(s, "url").MinLength = jsonschema.Ptr(1)
-	prop(s, "path").MinLength = jsonschema.Ptr(1)
-	// A location with a path is a path and has nothing else; any other is a URL.
-	s.If = &jsonschema.Schema{Required: []string{"path"}}
-	s.Then = form{refuses: []string{"url", "expiresAt"}}.rules()
-	s.Else = form{requires: []string{"url"}}.rules()
-}, func(v *ArtifactLocation) error {
-	if v.URL == "" {
-		return nil
-	}
-	return checkDownloadURL(v.URL)
-})
-
-// checkDownloadURL refuses a URL a runner must not download from. It never
-// echoes the URL, which may carry a signature.
-func checkDownloadURL(raw string) error {
-	address, err := url.Parse(raw)
-	if err != nil {
-		// url.Parse quotes the part of the URL it could not read.
-		return errors.New("url: is not a valid URL")
-	}
-	web := address.Scheme == "http" || address.Scheme == "https"
-	credentials := false
-	if address.User != nil {
-		_, hasPassword := address.User.Password()
-		credentials = address.User.Username() != "" || hasPassword
-	}
-	if !web || address.Host == "" || credentials {
-		return errors.New("url: artifact downloads require an HTTP or HTTPS URL without credentials")
-	}
-	return nil
+// An ArtifactPath locates an artifact by a path on the runner's machine.
+//
+//demi:variant
+type ArtifactPath struct {
+	Path string `json:"path" check:"chars=1.."`
 }
+
+func (ArtifactURL) artifactLocation()  {}
+func (ArtifactPath) artifactLocation() {}

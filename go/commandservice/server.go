@@ -276,7 +276,7 @@ func (s *service) closeHandler() error {
 // holds no conversation state.
 func defaultConversation(call *ConversationCall) (Completion, error) {
 	answer := "{}"
-	if call.Request.Operation == OperationStatus {
+	if _, status := call.Request.(StatusRequest); status {
 		answer = `{"conversations":[]}`
 	}
 	if _, err := io.WriteString(call.Stdout, answer); err != nil {
@@ -441,8 +441,9 @@ func (s *service) acceptConversation(document []byte, state *callState) (pending
 		return pendingCall{}, http.StatusBadRequest
 	}
 	call := &ConversationCall{Request: request, Stdout: state.writer(RecordStdout), state: state}
+	_, release := request.(ReleaseRequest)
 	return pendingCall{
-		release: request.Operation == OperationRelease,
+		release: release,
 		run:     func() (Completion, error) { return s.conversation(call) },
 	}, 0
 }

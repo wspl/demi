@@ -84,7 +84,7 @@ func Exchange(ctx context.Context, stream *Stream, input io.Reader, stdout, stde
 			select {
 			case pulls <- struct{}{}:
 			default:
-				e.fail(&ExchangeError{Side: ServiceSide, Err: &InvalidError{Reason: "overlapping input demands"}})
+				e.fail(&ExchangeError{Side: ServiceSide, Err: &InvalidError{Rule: "overlapping input demands"}})
 			}
 		case RecordCompletion:
 			completion = record.Completion

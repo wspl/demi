@@ -1,43 +1,50 @@
 package commandservice
 
+//go:generate go run github.com/wspl/demi/go/cmd/wiregen
+
 import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"net/url"
+	"path/filepath"
 	"reflect"
-	"slices"
-	"strings"
+	"regexp"
 
-	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/wspl/demi/go/internal/wire"
 )
+
+// The wire's types are declared beside their rules: cmd/wiregen reads the
+// declarations marked //demi:wire, //demi:union and //demi:variant, and writes
+// the *_wire.go files, which hold each type's decoder, its rule check and the
+// package's json options
+// (docs/internal/go-migration/design/wire-contracts.md). Run `go generate`
+// after changing a declaration.
+
+// An InvalidError means a value from outside the process, or one about to
+// leave it, breaks the rules of its wire type. It names the field and the rule,
+// never the value: a value may be a secret, and errors are logged.
+type InvalidError = wire.InvalidError
 
 // Decode checks data, one JSON document from outside the process, and returns
 // it as a T, one of the wire's types. It refuses a document over
 // [MaxMetadataBytes] with [ErrTooLarge], and one that is not valid JSON, breaks
-// the schema of T (a required member missing, an unknown member, a null where a
-// value is optional, a constraint of the type) or breaks a rule a schema cannot
-// express, with an [*InvalidError]. The error names the field and the rule,
-// never the value: a value may be a secret.
+// the structure of T (a required member missing, an unknown member, a null
+// where a value is optional, a value of another JSON kind) or breaks a rule of
+// a field with an [*InvalidError], or with several of them joined when the
+// rules of the fields are broken. The error names the field and the rule, never
+// the value: a value may be a secret.
 func Decode[T any](data []byte) (T, error) {
 	var value T
-	w, err := wireOf[T]()
-	if err != nil {
-		return value, err
-	}
 	if len(data) > MaxMetadataBytes {
 		return value, ErrTooLarge
 	}
-	if err := w.validate(data); err != nil {
+	if err := json.Unmarshal(data, &value, wireOptions); err != nil {
+		return value, wire.Refusal(err)
+	}
+	if err := check(value); err != nil {
 		return value, err
-	}
-	if err := json.Unmarshal(data, &value); err != nil {
-		return value, unfit(err)
-	}
-	if w.check != nil {
-		if err := w.check(&value); err != nil {
-			return value, &InvalidError{Reason: err.Error()}
-		}
 	}
 	return value, nil
 }
@@ -45,270 +52,83 @@ func Decode[T any](data []byte) (T, error) {
 // Encode returns the JSON of value, one of the wire's types, after checking it
 // as [Decode] would, so the SDK never sends what its peer would refuse.
 func Encode[T any](value T) ([]byte, error) {
-	w, err := wireOf[T]()
-	if err != nil {
+	if err := check(value); err != nil {
 		return nil, err
 	}
-	data, err := json.Marshal(value, json.Deterministic(true))
+	data, err := json.Marshal(value, wireOptions)
 	if err != nil {
-		return nil, unfit(err)
+		return nil, wire.Refusal(err)
 	}
 	if len(data) > MaxMetadataBytes {
 		return nil, ErrTooLarge
 	}
-	if err := w.validate(data); err != nil {
-		return nil, err
-	}
-	if w.check != nil {
-		if err := w.check(&value); err != nil {
-			return nil, &InvalidError{Reason: err.Error()}
-		}
-	}
 	return data, nil
 }
 
-// A wire holds what is known about one wire type: its schema, derived from the
-// Go type and the constraints written beside the type, and its check of the
-// rules a schema cannot express.
-type wire struct {
-	typ      reflect.Type
-	schema   *jsonschema.Schema
-	resolved *jsonschema.Resolved
-	// check takes a pointer to a value of typ; it is nil when the schema says it
-	// all.
-	check func(value any) error
-}
-
-// wires is the registry of the wire's types, keyed by their Go type: each is
-// declared where the type is defined, when the package initializes.
-var wires = map[reflect.Type]*wire{}
-
-func wireOf[T any]() (*wire, error) {
-	typ := reflect.TypeFor[T]()
-	w, ok := wires[typ]
+// check runs the generated rule check of a wire type. A value that is absent
+// (a nil interface, or a nil pointer) is refused as required.
+func check(value any) error {
+	if value == nil {
+		return wire.Required("")
+	}
+	// A nil pointer to a wire type has methods, and calling them would panic.
+	if pointer := reflect.ValueOf(value); pointer.Kind() == reflect.Pointer && pointer.IsNil() {
+		return wire.Required("")
+	}
+	checked, ok := value.(interface{ validate() error })
 	if !ok {
-		return nil, fmt.Errorf("commandservice: %s is not a type of the wire", typ)
+		return fmt.Errorf("commandservice: %T is not a type of the wire", value)
 	}
-	return w, nil
+	return checked.validate()
 }
 
-// declare builds the schema of T once, when the package initializes, registers
-// it for [Decode] and [Encode], and returns it for the wire types that embed T:
-// the schema jsonschema infers from the type (a field without omitempty or
-// omitzero is required, and an object refuses unknown members), then refine,
-// which adds the constraints of the type. parts are the wire types T embeds.
-// check runs after decoding, for the rules a schema cannot express; it may be
-// nil. A wire type that no other embeds is declared as `var _ = declare[T](...)`.
-func declare[T any](refine func(*jsonschema.Schema), check func(*T) error, parts ...*wire) *wire {
-	typ := reflect.TypeFor[T]()
-	schema := schemaOf[T](parts...)
-	if refine != nil {
-		refine(schema)
-	}
-	resolved, err := schema.Resolve(nil)
-	if err != nil {
-		panic(fmt.Sprintf("commandservice: the schema of %s does not resolve: %v", typ, err))
-	}
-	w := &wire{typ: typ, schema: schema, resolved: resolved}
-	if check != nil {
-		// Decode and Encode hand check the pointer to a T that it was declared for.
-		w.check = func(value any) error { return check(value.(*T)) }
-	}
-	wires[typ] = w
-	return w
-}
+// The patterns of the rules of the wire's fields.
+var (
+	// nameCharacters are the characters of a conversation's name.
+	nameCharacters = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+	// envName is the name of an environment variable: it holds no NUL and no
+	// equals sign.
+	envName = regexp.MustCompile(`^[^\x00=]+$`)
+	// packageID is the id of a native command package.
+	packageID = regexp.MustCompile(`^[a-z0-9]+(?:[.-][a-z0-9]+)+$`)
+	// sha256Hex is a SHA-256 in lower-case hexadecimal.
+	sha256Hex = regexp.MustCompile(`^[0-9a-f]{64}$`)
+)
 
-// schemaOf infers the schema of T, with no null in it, reusing the schemas of
-// the wire types parts that T embeds.
-func schemaOf[T any](parts ...*wire) *jsonschema.Schema {
-	options := &jsonschema.ForOptions{TypeSchemas: map[reflect.Type]*jsonschema.Schema{}}
-	for _, part := range parts {
-		options.TypeSchemas[part.typ] = part.schema
-	}
-	schema, err := jsonschema.For[T](options)
-	if err != nil {
-		panic(fmt.Sprintf("commandservice: the schema of %s: %v", reflect.TypeFor[T](), err))
-	}
-	refuseNull(schema)
-	return schema
-}
-
-// validate checks the JSON document data against the schema. jsonschema
-// validates the Go value a document unmarshals into, not its bytes, so the
-// document is unmarshaled once as an untyped value for the schema and once,
-// after the schema accepts it, into the type.
-func (w *wire) validate(data []byte) error {
-	var document any
-	if err := json.Unmarshal(data, &document); err != nil {
-		return unfit(err)
-	}
-	if err := w.resolved.Validate(document); err != nil {
-		return violation(err)
+// requireObject is the rule of a field that holds JSON that its owner checks:
+// the wire only knows it is an object.
+func requireObject(value jsontext.Value) error {
+	if value.Kind() != '{' {
+		return errors.New("must be an object")
 	}
 	return nil
 }
 
-// violation describes the failure of a schema validation as the schema location
-// that a value broke and the rule, and leaves out the value, which jsonschema
-// quotes in most of its messages. jsonschema reports a failure as text: a chain
-// of errors that each say "validating <location>: " and, last, the rule's own
-// message, which starts with the rule's name. The library gives no structured
-// error (a location and a rule as values) to read instead, so this reads its
-// text; TestARefusalNamesTheFieldAndTheRuleAndNeverTheValue guards the reading.
-// A message that names members and no value is kept whole.
-func violation(err error) *InvalidError {
-	location := "root"
-	leaf := err
-	for {
-		inner := errors.Unwrap(leaf)
-		if inner == nil {
-			break
-		}
-		wrapped := strings.TrimSuffix(leaf.Error(), ": "+inner.Error())
-		location = strings.TrimPrefix(wrapped, "validating ")
-		leaf = inner
+// absolutePath is the rule of a path that the runner and the command both
+// resolve.
+func absolutePath(path string) error {
+	if !filepath.IsAbs(path) {
+		return errors.New("is not an absolute path")
 	}
-	rule := leaf.Error()
-	if !isMemberRule(rule) {
-		rule, _, _ = strings.Cut(rule, ":")
-	}
-	return &InvalidError{Reason: location + ": " + rule}
+	return nil
 }
 
-// isMemberRule reports whether the message of a jsonschema rule names members
-// of an object and nothing else.
-func isMemberRule(message string) bool {
-	for _, prefix := range []string{"required:", "unexpected additional properties", "minItems:", "maxItems:", "uniqueItems:", "minProperties:", "maxProperties:"} {
-		if strings.HasPrefix(message, prefix) {
-			return true
-		}
+// downloadURL refuses a URL a runner must not download from: an HTTP or HTTPS
+// URL without credentials is one it may.
+func downloadURL(raw string) error {
+	address, err := url.Parse(raw)
+	if err != nil {
+		// url.Parse quotes the part of the URL it could not read.
+		return errors.New("is not a valid URL")
 	}
-	return false
-}
-
-// unfit describes why a document could not be decoded from or encoded as JSON
-// without quoting what it holds: the JSON pointer of the member and the kind of
-// failure.
-func unfit(err error) *InvalidError {
-	var pointer jsontext.Pointer
-	rule := "is not valid JSON"
-	var semantic *json.SemanticError
-	var syntactic *jsontext.SyntacticError
-	switch {
-	case errors.As(err, &semantic):
-		pointer = semantic.JSONPointer
-		rule = "does not fit its type"
-	case errors.As(err, &syntactic):
-		pointer = syntactic.JSONPointer
+	web := address.Scheme == "http" || address.Scheme == "https"
+	credentials := false
+	if address.User != nil {
+		_, hasPassword := address.User.Password()
+		credentials = address.User.Username() != "" || hasPassword
 	}
-	location := "root"
-	if pointer != "" {
-		location = string(pointer)
+	if !web || address.Host == "" || credentials {
+		return errors.New("must be an HTTP or HTTPS URL without credentials")
 	}
-	return &InvalidError{Reason: location + ": " + rule}
-}
-
-// refuseNull removes the null that jsonschema.For adds to the type of every
-// pointer and slice, from s and everything beneath it: no field of the wire is
-// nullable, so a null is refused wherever a value is optional. jsonschema
-// v0.4.3 has no option to leave the null out.
-func refuseNull(s *jsonschema.Schema) {
-	if slices.Contains(s.Types, "null") {
-		types := slices.DeleteFunc(slices.Clone(s.Types), func(name string) bool { return name == "null" })
-		s.Types = nil
-		if len(types) == 1 {
-			s.Type = types[0]
-		} else {
-			s.Types = types
-		}
-	}
-	for _, property := range s.Properties {
-		refuseNull(property)
-	}
-	if s.Items != nil {
-		refuseNull(s.Items)
-	}
-	if s.AdditionalProperties != nil {
-		refuseNull(s.AdditionalProperties)
-	}
-}
-
-// prop returns the schema of the property name of the object schema s.
-func prop(s *jsonschema.Schema, name string) *jsonschema.Schema {
-	property := s.Properties[name]
-	if property == nil {
-		panic(fmt.Sprintf("commandservice: the schema has no property %q", name))
-	}
-	return property
-}
-
-// The patterns of strings that must not hold a NUL character, as paths and
-// environment values must not.
-const (
-	patternNonEmptyNoNUL = `^[^\x00]+$`
-	patternEnvName       = `^[^\x00=]+$`
-	patternNoNUL         = `^[^\x00]*$`
-)
-
-// limitConversationName adds the rule of a conversation's name to the schema of
-// a string: 1 to [ConversationNameChars] ASCII letters, digits, '-' and '_'. The
-// name is a conversation's, or the provider entry's that work outside any
-// conversation serves. The runner names a job's directory after it, so it can
-// never name another path.
-func limitConversationName(s *jsonschema.Schema) {
-	s.Pattern = fmt.Sprintf(`^[A-Za-z0-9_-]{1,%d}$`, ConversationNameChars)
-}
-
-// A form is one shape of a value that has one of two: the members it requires
-// and the members it refuses, which the other shape has.
-type form struct {
-	requires []string
-	refuses  []string
-}
-
-// rules returns the schema of the form's members.
-func (f form) rules() *jsonschema.Schema {
-	rules := &jsonschema.Schema{Required: f.requires}
-	for _, name := range f.refuses {
-		if rules.Properties == nil {
-			rules.Properties = map[string]*jsonschema.Schema{}
-		}
-		// The schema that nothing matches.
-		rules.Properties[name] = &jsonschema.Schema{Not: &jsonschema.Schema{}}
-	}
-	return rules
-}
-
-// tagged adds to s, the schema inferred from a struct that stands for a value
-// of one of two forms, the rules that tell them apart by the string member tag:
-// first when tag is firstValue, second when it is secondValue. A value with
-// another tag, or none, is refused for that, by the type's own schema. The
-// error of a value that breaks its form is the form's, which names the member
-// and the rule; a oneOf would say only that no form fit.
-func tagged(s *jsonschema.Schema, tag, firstValue, secondValue string, first, second form) {
-	prop(s, tag).Enum = []any{firstValue, secondValue}
-	tagIs := func(value string) *jsonschema.Schema {
-		return &jsonschema.Schema{
-			Required:   []string{tag},
-			Properties: map[string]*jsonschema.Schema{tag: {Const: jsonschema.Ptr[any](value)}},
-		}
-	}
-	s.If = tagIs(firstValue)
-	s.Then = first.rules()
-	s.Else = &jsonschema.Schema{If: tagIs(secondValue), Then: second.rules()}
-}
-
-// limitOperations adds the rules of a list of operation names to the schema of
-// an array: at least one, each named, none twice.
-func limitOperations(s *jsonschema.Schema) {
-	s.MinItems = jsonschema.Ptr(1)
-	s.Items.MinLength = jsonschema.Ptr(1)
-	s.UniqueItems = true
-}
-
-// limitLength adds the bounds of a string's length in characters (Unicode
-// scalar values, which jsonschema counts) to its schema.
-func limitLength(s *jsonschema.Schema, minimum, maximum int) {
-	s.MinLength = jsonschema.Ptr(minimum)
-	s.MaxLength = jsonschema.Ptr(maximum)
+	return nil
 }

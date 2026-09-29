@@ -46,22 +46,22 @@ func (l *lifecycle) Invoke(*commandservice.Call) (commandservice.Completion, err
 
 func (l *lifecycle) Conversation(call *commandservice.ConversationCall) (commandservice.Completion, error) {
 	l.started.send()
-	release := call.Request.Operation == commandservice.OperationRelease
+	request, release := call.Request.(commandservice.ReleaseRequest)
 	switch {
-	case release && call.Request.Conversation == "wait":
+	case release && request.Conversation == "wait":
 		<-call.Context().Done()
 		l.order.add("release stopped")
 		l.cancelled.send()
 		return commandservice.Completion{}, call.Context().Err()
-	case release && call.Request.Conversation == "resist":
+	case release && request.Conversation == "resist":
 		<-call.Context().Done()
 		return commandservice.Completion{}, errors.New("cleanup was cut short")
-	case release && call.Request.Conversation == "abandon":
+	case release && request.Conversation == "abandon":
 		<-call.Context().Done()
 		return commandservice.Completion{ExitCode: 3}, nil
-	case release && call.Request.Conversation == "exit":
+	case release && request.Conversation == "exit":
 		return commandservice.Completion{ExitCode: 3}, nil
-	case release && call.Request.Conversation == "panic":
+	case release && request.Conversation == "panic":
 		panic("cleanup broke")
 	}
 	return commandservice.Completion{}, errors.New("profile cleanup failed")
