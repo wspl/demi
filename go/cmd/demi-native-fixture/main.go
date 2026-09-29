@@ -1,18 +1,11 @@
+// Command demi-native-fixture is the runner's native fixture service: a
+// command service over its standard input and output, with deliberately faulty
+// operations for the runner's integration tests. The runner starts it with
+// --command-service, which it needs no other flag for.
 package main
 
-import (
-	"context"
-	"fmt"
-	"os"
-
-	cs "github.com/wspl/demi/go/commandservice"
-	"github.com/wspl/demi/go/commandservice/servicetest"
-)
+import "github.com/wspl/demi/go/commandservice/fixture"
 
 func main() {
-	if err := cs.ServeStdio(context.Background(), servicetest.NewFixture()); err != nil {
-		// A broken diagnostic pipe cannot prevent the required process exit.
-		fmt.Fprintf(os.Stderr, "fixture: %v\n", err)
-		os.Exit(1)
-	}
+	fixture.Main()
 }

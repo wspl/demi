@@ -5,240 +5,204 @@ import (
 	"context"
 	"errors"
 	"io"
-	"net"
-	"os"
-	"os/exec"
-	"slices"
-	"sync"
+	"strings"
 	"testing"
-	"time"
 
-	cs "github.com/wspl/demi/go/commandservice"
+	"github.com/wspl/demi/go/commandservice"
 	"github.com/wspl/demi/go/commandservice/servicetest"
 )
 
-func invocation(op string) cs.Invocation {
-	return cs.Invocation{
-		Operation:    op,
-		InvocationID: "test",
-		Context: cs.CommandContext{
-			Conversation: "c1",
-			Caller:       cs.CommandCaller{Kind: "user"},
-			Locale:       cs.CommandLocale{TimeZone: "UTC", Languages: []string{"en-US"}},
+func TestConcurrentBinaryEchoAndACancelKeepTheConnection(t *testing.T) {
+	started, cancelled := newSignal(), newSignal()
+	server := servicetest.Start(t, operations{
+		"echo": echo,
+		"wait": func(call *commandservice.Call) (commandservice.Completion, error) {
+			started.send()
+			<-call.Context().Done()
+			cancelled.send()
+			return commandservice.Completion{}, call.Context().Err()
 		},
-		Args: []byte(`{}`),
-		Cwd:  "/tmp",
-		Env:  map[string]string{},
-	}
-}
-
-// clientFor owns both ends of an in-process command connection and joins Serve.
-func clientFor(t *testing.T, h cs.Handler) (*cs.Client, context.Context) {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	a, b := net.Pipe()
-	done := make(chan error, 1)
-	t.Cleanup(func() {
-		cancel()
-		// Both endpoints may already be closed by normal service teardown.
-		_ = a.Close()
-		_ = b.Close()
-		timer := time.NewTimer(6 * time.Second)
-		defer timer.Stop()
-		select {
-		case err := <-done:
-			if err != nil {
-				t.Error(err)
-			}
-		case <-timer.C:
-			t.Error("service failed to stop within cancellation grace")
-		}
 	})
-	go func() { done <- cs.Serve(ctx, a, h) }()
-	client, err := cs.Connect(ctx, b)
+	client := server.Client
+	waiting, err := client.Invoke(testContext(t), invocation("wait"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return client, ctx
-}
+	started.receive(t)
 
-// exchangeInvocation returns the outputs of one fixture call without touching testing state.
-func exchangeInvocation(ctx context.Context, client *cs.Client, v cs.Invocation, input []byte) ([]byte, []byte, cs.Completion, error) {
-	stream, err := client.Invoke(ctx, v)
-	if err != nil {
-		return nil, nil, cs.Completion{}, err
+	binary := []byte{0, 255, 13, 10, 128}
+	got := run(t, client, invocation("echo"), binary)
+	if !bytes.Equal(got.stdout, binary) || string(got.stderr) != "done" || got.completion.ExitCode != 7 {
+		t.Errorf("echo = %q %q %+v", got.stdout, got.stderr, got.completion)
 	}
-	var out, diag bytes.Buffer
-	completion, err := cs.Exchange(ctx, stream, bytes.NewReader(input), &out, &diag)
-	return out.Bytes(), diag.Bytes(), completion, err
-}
 
-func run(t *testing.T, ctx context.Context, client *cs.Client, v cs.Invocation, input []byte) ([]byte, []byte, cs.Completion) {
-	t.Helper()
-	out, diag, completion, err := exchangeInvocation(ctx, client, v, input)
-	if err != nil {
-		t.Fatal(err)
+	waiting.Cancel()
+	cancelled.receive(t)
+	if _, err := waiting.Next(); !errors.Is(err, commandservice.ErrCancelled) {
+		t.Errorf("the cancelled stream's next record: error = %v, want ErrCancelled", err)
 	}
-	return out, diag, completion
+	// The cancel did not take the connection with it.
+	if _, err := client.Info(testContext(t)); err != nil {
+		t.Errorf("the connection after a cancel: %v", err)
+	}
 }
 
-// The same client scenario runs in process and against the Rust executable.
-// Budget 20 seconds; all coordination is by protocol records or completion.
-func fixtureScenario(t *testing.T, c *cs.Client, ctx context.Context) {
-	info, err := c.Info(ctx)
+func TestEachInputPullAsksForExactlyOneChunk(t *testing.T) {
+	server := servicetest.Start(t, operations{"echo": echo})
+	stream, err := server.Client.Invoke(testContext(t), invocation("echo"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(info.Operations, servicetest.FixtureOperations()) {
-		t.Fatal(info)
+	next := func(want commandservice.RecordKind) commandservice.Record {
+		t.Helper()
+		record, err := stream.Next()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if record.Kind != want {
+			t.Fatalf("record kind %d, want %d", record.Kind, want)
+		}
+		return record
 	}
-	where := invocation("where")
-	where.Args = []byte(`{"label":"here"}`)
-	where.Env["PROBE"] = "value"
-	location, _, _ := run(t, ctx, c, where, nil)
-	expected := `{"label":"here","context":{"conversation":"c1","caller":{"kind":"user"},"locale":{"timeZone":"UTC","languages":["en-US"]}},"cwd":"/tmp","value":"value"}`
-	if string(location) != expected {
-		t.Fatalf("where bytes: %s", location)
+	// A record is read only after the input it answers was sent, so a service
+	// that asked for more than one chunk ahead would show as a second pull
+	// where the echo belongs.
+	for _, chunk := range []string{"first", "second"} {
+		next(commandservice.RecordInputPull)
+		if err := stream.Write([]byte(chunk)); err != nil {
+			t.Fatal(err)
+		}
+		if got := next(commandservice.RecordStdout); string(got.Data) != chunk {
+			t.Errorf("echo = %q, want %q", got.Data, chunk)
+		}
 	}
-	var wg sync.WaitGroup
-	for range 12 {
-		wg.Go(func() {
-			input := bytes.Repeat([]byte{0, 255, 128, 1}, 20000)
-			out, _, completion, err := exchangeInvocation(ctx, c, invocation("echo"), input)
-			if err != nil {
-				t.Error(err)
+	next(commandservice.RecordInputPull)
+	if err := stream.End(); err != nil {
+		t.Fatal(err)
+	}
+	next(commandservice.RecordStderr)
+	next(commandservice.RecordCompletion)
+	if _, err := stream.Next(); err != io.EOF {
+		t.Errorf("after the completion: error = %v, want io.EOF", err)
+	}
+}
+
+func TestAResetInterruptsOutputBlockedOnFlowControl(t *testing.T) {
+	ended := newSignal()
+	server := servicetest.Start(t, operations{"flood": flood(ended)})
+	stream, err := server.Client.Invoke(testContext(t), invocation("flood"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Reading one record starts the flood; the rest fills the stream's window
+	// and the output queue, and the handler blocks writing.
+	if _, err := stream.Next(); err != nil {
+		t.Fatal(err)
+	}
+	stream.Cancel()
+	ended.receive(t)
+}
+
+func TestAnInvocationWithItsWholeInputInOneRequestBodyKeepsItsChunkBoundaries(t *testing.T) {
+	// Metadata and input share the request body, and the input follows the
+	// metadata without waiting for a pull: the service must keep the suffix.
+	chunks := make(chan []byte, 4)
+	server := servicetest.Start(t, operations{
+		"chunks": func(call *commandservice.Call) (commandservice.Completion, error) {
+			for {
+				chunk, err := call.Stdin.Next()
+				if err == io.EOF {
+					close(chunks)
+					return commandservice.Completion{}, nil
+				}
+				if err != nil {
+					return commandservice.Completion{}, err
+				}
+				chunks <- chunk
+			}
+		},
+	})
+	stream, err := server.Client.Invoke(testContext(t), invocation("chunks"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The whole input is written ahead of the pulls, by a goroutine, since a
+	// write returns once the transport has taken it.
+	go func() {
+		for _, chunk := range [][]byte{{1}, {}, bytes.Repeat([]byte{2}, 64*1024)} {
+			if err := stream.Write(chunk); err != nil {
 				return
 			}
-			if !bytes.Equal(out, input) || completion.ExitCode != 0 {
-				t.Error("binary echo failed")
-			}
-		})
-	}
-	wg.Wait()
-	out, diag, completion := run(t, ctx, c, invocation("result"), nil)
-	if string(out) != "command output" || string(diag) != "command diagnostic" || completion.ExitCode != 17 {
-		t.Fatal(string(out), string(diag), completion)
-	}
-	v := invocation("result")
-	v.Env["RESULT"] = "error"
-	_, _, completion = run(t, ctx, c, v, nil)
-	if completion.ExitCode != 1 || completion.Error == nil || completion.Error.Message != "command failed" {
-		t.Fatal(completion)
-	}
-	s, err := c.Invoke(ctx, invocation("echo"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if r, err := s.Next(); err != nil || r.Kind != cs.InputPull {
-		t.Fatal(r, err)
-	}
-	s.Cancel()
-	run(t, ctx, c, invocation("result"), nil)
-	run(t, ctx, c, invocation("retain"), nil)
-	s, err = c.Conversation(ctx, cs.ConversationRequest{Operation: "status"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var held bytes.Buffer
-	if _, err = cs.Exchange(ctx, s, bytes.NewReader(nil), &held, io.Discard); err != nil {
-		t.Fatal(err)
-	}
-	status, err := cs.Decode[cs.ConversationStatus](held.Bytes())
-	if err != nil || len(status.Conversations) != 1 || status.Conversations[0] != "c1" {
-		t.Fatal(status, err)
-	}
-	numbers, err := c.Numbers(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	answered := make(chan error, 1)
-	var next uint64 = 1
-	var mu sync.Mutex
-	go func() {
-		answered <- numbers.Answer(ctx, func(_ context.Context, r cs.NumbersRequest) (uint64, error) {
-			mu.Lock()
-			defer mu.Unlock()
-			first := next
-			next += uint64(r.Count)
-			return first, nil
-		})
+		}
+		_ = stream.End()
 	}()
-	for _, want := range []string{`{"first":1}`, `{"first":2}`} {
-		out, _, completion = run(t, ctx, c, invocation("number"), nil)
-		if string(out) != want || completion.ExitCode != 0 {
-			t.Fatal(string(out), completion)
+	var got [][]byte
+	for chunk := range chunks {
+		got = append(got, chunk)
+		// Every chunk is a pull's answer; the pulls are answered by the writer.
+		for {
+			record, err := stream.Next()
+			if err != nil || record.Kind == commandservice.RecordInputPull {
+				break
+			}
 		}
 	}
-	if err = c.Shutdown(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if err = <-answered; err != nil {
-		t.Fatal(err)
+	if len(got) != 3 || len(got[0]) != 1 || len(got[1]) != 0 || len(got[2]) != 64*1024 {
+		t.Errorf("chunk lengths %d, want 1, 0 and 65536", len(got))
 	}
 }
 
-func TestFixture(t *testing.T) {
-	c, ctx := clientFor(t, servicetest.NewFixture())
-	fixtureScenario(t, c, ctx)
-}
-
-type processConn struct {
-	net.Conn
-	in  io.WriteCloser
-	out io.ReadCloser
-}
-
-func (p processConn) Read(b []byte) (int, error) { return p.out.Read(b) }
-
-func (p processConn) Write(b []byte) (int, error) { return p.in.Write(b) }
-
-func (p processConn) Close() error {
-	return errors.Join(p.in.Close(), p.out.Close())
-}
-
-func TestRustFixture(t *testing.T) {
-	path := os.Getenv("DEMI_RUST_FIXTURE")
-	if path == "" {
-		t.Skip("DEMI_RUST_FIXTURE is unset")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	t.Cleanup(cancel)
-	command := exec.CommandContext(ctx, path)
-	input, err := command.StdinPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		// Process and transport teardown can both close these pipes.
-		_ = input.Close()
+// A call that ends without a completion, because its handler returned a
+// cancellation nobody asked for or because its completion is over the wire's
+// limit, is reset, which the caller sees as an error; the service goes on.
+func TestACallThatCannotSendItsCompletionIsResetAndKeepsTheService(t *testing.T) {
+	server := servicetest.Start(t, operations{
+		"cancelled": func(*commandservice.Call) (commandservice.Completion, error) {
+			return commandservice.Completion{}, context.Canceled
+		},
+		"oversized": func(*commandservice.Call) (commandservice.Completion, error) {
+			return commandservice.Completion{}, errors.New(strings.Repeat("x", 64*1024))
+		},
+		"short": short,
 	})
-	output, err := command.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		// Wait and transport teardown can both close the output pipe.
-		_ = output.Close()
-	})
-	command.Stderr = os.Stderr
-	if err = command.Start(); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if t.Failed() {
-			cancel()
+	for _, operation := range []string{"cancelled", "oversized"} {
+		stream, err := server.Client.Invoke(testContext(t), invocation(operation))
+		if err != nil {
+			t.Fatalf("%s: %v", operation, err)
 		}
-		if err := command.Wait(); err != nil {
-			t.Errorf("Rust fixture exit: %v", err)
+		if err := drain(stream); err == nil {
+			t.Errorf("%s: the call ended with a completion", operation)
 		}
-	})
-	client, err := cs.Connect(ctx, processConn{in: input, out: output})
-	if err != nil {
-		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		// Normal shutdown may have closed the peer before the transport is released.
-		_ = client.Close()
+	if got := run(t, server.Client, invocation("short"), nil); string(got.stdout) != "ok" {
+		t.Errorf("the call after them printed %q", got.stdout)
+	}
+}
+
+// A handler's error reaches its caller as a completion with exit code 1 and the
+// text of the error, whatever bytes the text holds: bytes that are not valid
+// UTF-8 become U+FFFD, since JSON carries only UTF-8, and the call does not end
+// without its completion for that.
+func TestAHandlersErrorAlwaysReachesItsCallerAsACompletion(t *testing.T) {
+	server := servicetest.Start(t, operations{
+		"fails": func(*commandservice.Call) (commandservice.Completion, error) {
+			return commandservice.Completion{}, errors.New("no such file")
+		},
+		"fails badly": func(*commandservice.Call) (commandservice.Completion, error) {
+			return commandservice.Completion{}, errors.New("no such file \xff\xfe")
+		},
+		"says so badly": func(*commandservice.Call) (commandservice.Completion, error) {
+			return commandservice.Completion{ExitCode: 2, Error: &commandservice.CommandError{Code: "custom", Message: "\xffgone"}}, nil
+		},
 	})
-	fixtureScenario(t, client, ctx)
+	for name, want := range map[string]commandservice.Completion{
+		"fails":         {ExitCode: 1, Error: &commandservice.CommandError{Code: "command_failed", Message: "no such file"}},
+		"fails badly":   {ExitCode: 1, Error: &commandservice.CommandError{Code: "command_failed", Message: "no such file \uFFFD"}},
+		"says so badly": {ExitCode: 2, Error: &commandservice.CommandError{Code: "custom", Message: "\uFFFDgone"}},
+	} {
+		got := run(t, server.Client, invocation(name), nil).completion
+		if got.ExitCode != want.ExitCode || got.Error == nil || *got.Error != *want.Error {
+			t.Errorf("%s: completion %+v %+v, want %+v %+v", name, got, got.Error, want, want.Error)
+		}
+	}
 }

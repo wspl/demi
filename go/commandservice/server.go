@@ -5,559 +5,644 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"net"
 	"net/http"
-	"slices"
+	"os"
+	"runtime/debug"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 )
 
-const cancellationGrace = 5 * time.Second
-const phaseTimeout = 10 * time.Second
+// errBrokenConnection is how Serve ends when the HTTP/2 connection failed: the
+// peer broke the protocol and the server closed the connection, or the peer
+// closed it before the handshake was complete.
+var errBrokenConnection = errors.New("the HTTP/2 connection failed")
 
-const (
-	serviceRunning uint32 = iota
-	serviceDraining
-	serviceStopped
-)
-
-// Handler owns invocation work. Invoke must stop when Call.Context ends.
-// A handler that ignores cancellation may outlive Serve only when Serve returns
-// ErrCancellationDeadline; the process owner must then exit to retire that work.
-type Handler interface {
-	Operations() []string
-	Invoke(*Call) (Completion, error)
-}
-
-// ConversationHandler optionally owns conversation status and resource release.
-type ConversationHandler interface {
-	Conversation(*ConversationCall) (Completion, error)
-}
-
-// Closer optionally releases service resources after invocation handlers stop.
-// Close must honor its deadline. A noncooperative Close may outlive Serve only
-// after ErrCancellationDeadline, requiring the process owner to exit.
-type Closer interface{ Close(context.Context) error }
-
-// Call contains one invocation's metadata, bounded IO, and numbers source.
-type Call struct {
-	Invocation Invocation
-	Stdin      *Input
-	Stdout     io.Writer
-	Stderr     io.Writer
-	Numbers    *Numbers
-	ctx        context.Context
-}
-
-// Context ends on cancellation and when the invocation finishes.
-func (c *Call) Context() context.Context { return c.ctx }
-
-// ConversationCall contains trusted lifecycle metadata and its output writer.
-type ConversationCall struct {
-	Request ConversationRequest
-	Stdout  io.Writer
-	ctx     context.Context
-}
-
-// Context ends on cancellation and when the lifecycle call finishes.
-func (c *ConversationCall) Context() context.Context { return c.ctx }
-
-// Input supplies one bounded chunk per Next call, preserving input boundaries.
-type Input struct {
-	reader io.Reader
-	output *recordOutput
-	ended  bool
-}
-
-// Next requests one chunk, or returns io.EOF once the caller ends its input.
-func (i *Input) Next() ([]byte, error) {
-	if i.ended {
-		return nil, io.EOF
+// Serve serves one connection until the peer closes it, a drain that the peer
+// asked for with a shutdown request completes, or ctx ends. It closes conn and
+// returns only after every call has stopped and the handler's Close, if it has
+// one, has returned.
+//
+// It returns nil when the service ended normally, also when the peer closed its
+// side after an answered shutdown. Otherwise the service is faulty, and its
+// process must exit so that the runner retires it:
+//   - [ErrCancellationDeadline]: a call, or Close, did not stop within the
+//     cancellation grace.
+//   - [ErrConversationCleanup]: a conversation release failed.
+//   - An error of the connection: the peer broke the HTTP/2 protocol, so that the
+//     server closed the connection while the service was neither draining, nor
+//     cancelled, nor told by the peer that it closed; or the transport itself
+//     failed.
+//   - An [*InvalidError], before Serve serves anything: the handler's catalog
+//     breaks the rules of the wire.
+//
+// A handshake that fails, times out ([ErrHandshakeTimeout]) or is cut short by
+// ctx ([ErrCancelled]) ends Serve without calling Close: nothing was served.
+func Serve(ctx context.Context, conn net.Conn, handler Handler) error {
+	s, err := newService(ctx, handler)
+	if err != nil {
+		// The connection is given up; there is nothing to say to its peer.
+		_ = conn.Close()
+		return err
 	}
-	if err := i.output.send(Record{Kind: InputPull}); err != nil {
+	return s.serve(conn)
+}
+
+// unencryptedHTTP2 is the protocol set of both ends: HTTP/2 with prior
+// knowledge, without TLS.
+func unencryptedHTTP2() *http.Protocols {
+	var protocols http.Protocols
+	protocols.SetUnencryptedHTTP2(true)
+	return &protocols
+}
+
+// A service is one connection's server: it answers the wire's requests, runs
+// each call on a goroutine of its own, and counts them.
+type service struct {
+	handler      Handler
+	conversation func(*ConversationCall) (Completion, error)
+	info         []byte
+	operations   map[string]bool
+	numbers      *numberSource
+	srv          *http.Server
+
+	// ctx ends when the service stops, or when the context Serve was given
+	// ends; every call's context descends from it.
+	ctx      context.Context
+	stop     context.CancelFunc
+	draining atomic.Bool
+	// handshake limits the time the peer has to complete the HTTP/2 handshake,
+	// which handshaken says it did.
+	handshake  *time.Timer
+	handshaken atomic.Bool
+
+	// callsMu guards stopped and the additions to calls.
+	callsMu sync.Mutex
+	stopped bool
+	calls   sync.WaitGroup
+
+	faultOnce sync.Once
+	faultErr  error
+	faulted   chan struct{}
+}
+
+// newService returns the service of handler, or the error of the handler's
+// catalog.
+func newService(ctx context.Context, handler Handler) (*service, error) {
+	catalog := ServiceInfo{ProtocolVersion: Version, Operations: handler.Operations()}
+	info, err := Encode(catalog)
+	if err != nil {
 		return nil, err
 	}
-	data, err := readFrame(i.reader, MaxRecordBytes)
-	if err == io.EOF {
-		i.ended = true
+	s := &service{
+		handler:      handler,
+		conversation: defaultConversation,
+		info:         info,
+		operations:   map[string]bool{},
+		numbers:      newNumberSource(),
+		faulted:      make(chan struct{}),
 	}
-	return data, err
+	s.ctx, s.stop = context.WithCancel(ctx)
+	for _, operation := range catalog.Operations {
+		s.operations[operation] = true
+	}
+	if conversations, ok := handler.(ConversationHandler); ok {
+		s.conversation = conversations.Conversation
+	}
+	return s, nil
 }
 
-type recordOutput struct {
-	ctx     context.Context
-	records chan Record
-}
+// What ended a service's wait: its context, a fault, or the connection.
+type endCause int
 
-func (o *recordOutput) send(record Record) error {
-	if o.ctx.Err() != nil {
-		return ErrCancelled
+const (
+	endedByContext endCause = iota
+	endedByFault
+	endedByConnection
+)
+
+// serve serves conn until the service stops, and then releases everything it
+// holds; [Serve] documents how it returns.
+func (s *service) serve(conn net.Conn) error {
+	defer s.stop()
+	transport := newServiceConn(conn)
+	s.handshake = time.AfterFunc(handshakeTimeout, func() { s.fail(ErrHandshakeTimeout) })
+	defer s.handshake.Stop()
+	s.srv = &http.Server{
+		Handler:   s,
+		Protocols: unencryptedHTTP2(),
+		// Invocations are not counted (docs/execution/native-runtime.md
+		// § Validation and flow control): each stream has its own window and
+		// output queue, and the connection's window is the largest HTTP/2
+		// allows, so the connection never becomes the constraint.
+		HTTP2: &http.HTTP2Config{
+			MaxConcurrentStreams:          math.MaxInt32,
+			MaxReceiveBufferPerStream:     MaxRecordBytes,
+			MaxReceiveBufferPerConnection: maxHTTP2Window,
+		},
+		MaxHeaderBytes: maxHeaderBytes,
+		BaseContext:    func(net.Listener) context.Context { return s.ctx },
+		ConnState:      s.connState,
 	}
+	serving := make(chan struct{})
+	go func() {
+		// After Close, Serve returns http.ErrServerClosed; what broke the
+		// connection is what serviceConn kept.
+		_ = s.srv.Serve(newConnListener(transport))
+		close(serving)
+	}()
+
+	var cause endCause
 	select {
-	case <-o.ctx.Done():
+	case <-s.ctx.Done():
+		cause = endedByContext
+	case <-s.faulted:
+		cause = endedByFault
+	case <-transport.closed:
+		cause = endedByConnection
+	}
+	handshaken := s.handshaken.Load()
+
+	s.stop()
+	// Close reports only how the listener closed, which the listener owns.
+	_ = s.srv.Close()
+	<-serving
+	s.awaitCalls()
+	s.numbers.end()
+	if !handshaken {
+		// Nothing was served, so there is nothing to release.
+		return s.failedHandshake(cause)
+	}
+	if err := s.closeHandler(); err != nil {
+		return err
+	}
+	if err := s.fault(); err != nil {
+		return err
+	}
+	draining := s.draining.Load()
+	if failure := transport.failure(); failure != nil && !(draining && peerClosed(failure)) {
+		return failure
+	}
+	if cause == endedByConnection && !draining && !transport.peerEnded() {
+		return errBrokenConnection
+	}
+	return nil
+}
+
+// failedHandshake returns how Serve ends when the handshake was not complete:
+// it timed out, ctx ended, or the connection closed.
+func (s *service) failedHandshake(cause endCause) error {
+	if err := s.fault(); err != nil {
+		return err
+	}
+	if cause == endedByContext {
 		return ErrCancelled
-	case o.records <- record:
+	}
+	return errBrokenConnection
+}
+
+// connState watches the connection for the end of its handshake: the HTTP/2
+// server reports the connection active once it has read the client's preface.
+func (s *service) connState(_ net.Conn, state http.ConnState) {
+	if state == http.StateActive {
+		s.handshaken.Store(true)
+		s.handshake.Stop()
+	}
+}
+
+// fail records the service's first fault and wakes Serve, which retires the
+// service.
+func (s *service) fail(err error) {
+	s.faultOnce.Do(func() {
+		s.faultErr = err
+		close(s.faulted)
+	})
+}
+
+// fault returns the service's first fault, if it has one.
+func (s *service) fault() error {
+	select {
+	case <-s.faulted:
+		return s.faultErr
+	default:
 		return nil
 	}
 }
 
-type recordWriter struct {
-	output *recordOutput
-	kind   RecordKind
-}
-
-func (w recordWriter) Write(data []byte) (int, error) {
-	written := 0
-	for len(data) > 0 {
-		count := min(len(data), MaxRecordBytes)
-		record := Record{Kind: w.kind, Data: slices.Clone(data[:count])}
-		if err := w.output.send(record); err != nil {
-			return written, err
-		}
-		data = data[count:]
-		written += count
+// begin admits a request, unless the service has stopped taking them.
+func (s *service) begin() bool {
+	s.callsMu.Lock()
+	defer s.callsMu.Unlock()
+	if s.stopped {
+		return false
 	}
-	return written, nil
+	s.calls.Add(1)
+	return true
 }
 
-func protocols() *http.Protocols {
-	p := new(http.Protocols)
-	p.SetUnencryptedHTTP2(true)
-	return p
+// awaitCalls refuses every later request and waits for the ones running. Each
+// ends within the cancellation grace of the service's stop.
+func (s *service) awaitCalls() {
+	s.callsMu.Lock()
+	s.stopped = true
+	s.callsMu.Unlock()
+	s.calls.Wait()
 }
 
-func http2Config() *http.HTTP2Config {
-	return &http.HTTP2Config{
-		MaxConcurrentStreams:          math.MaxInt32,
-		MaxReceiveBufferPerStream:     MaxRecordBytes,
-		MaxReceiveBufferPerConnection: math.MaxInt32,
+// closeHandler calls the handler's Close, if it has one, once every call has
+// stopped, with a deadline of the cancellation grace.
+func (s *service) closeHandler() error {
+	closer, ok := s.handler.(Closer)
+	if !ok {
+		return nil
 	}
-}
-
-type service struct {
-	handler       Handler
-	info          ServiceInfo
-	server        *http.Server
-	numbers       *Numbers
-	ctx           context.Context
-	cancel        context.CancelFunc
-	state         uint32
-	fault         chan error
-	shutdown      chan struct{}
-	admission     sync.Mutex
-	requests      map[chan struct{}]struct{}
-	numbersOpened bool
-}
-
-func (s *service) fail(err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), cancellationGrace)
+	defer cancel()
+	closed := make(chan error, 1)
+	go func() { closed <- closer.Close(ctx) }()
 	select {
-	case s.fault <- err:
-	default:
+	case err := <-closed:
+		return err
+	case <-ctx.Done():
+		return ErrCancellationDeadline
 	}
-	s.cancel()
-	// Closing is best-effort teardown; the originating fault is retained.
-	_ = s.server.Close()
 }
 
+// defaultConversation answers the conversation endpoint of a handler that
+// holds no conversation state.
+func defaultConversation(call *ConversationCall) (Completion, error) {
+	answer := "{}"
+	if call.Request.Operation == OperationStatus {
+		answer = `{"conversations":[]}`
+	}
+	if _, err := io.WriteString(call.Stdout, answer); err != nil {
+		return Completion{}, err
+	}
+	return Completion{}, nil
+}
+
+// ServeHTTP answers one request of the wire. After a shutdown the HTTP/2
+// server refuses the streams above its GOAWAY's last stream ID itself; the
+// requests it had already accepted are answered 503 here.
 func (s *service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	done := make(chan struct{})
-	s.admission.Lock()
-	if s.state == serviceStopped {
-		s.admission.Unlock()
+	if !s.begin() {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	shutdown := r.Method == http.MethodPost && r.URL.Path == ShutdownPath
-	if s.state != serviceRunning && !shutdown {
-		s.admission.Unlock()
+	defer s.calls.Done()
+	// The wire's responses carry no headers, and net/http would sniff a
+	// Content-Type from the body.
+	w.Header()["Content-Type"] = nil
+	// The route is the path as the peer wrote it, still escaped: a request for
+	// /v1/%69nfo is not one for /v1/info.
+	route := r.Method + " " + r.URL.EscapedPath()
+	if route == "POST "+ShutdownPath {
+		s.shutdown(w)
+		return
+	}
+	if s.draining.Load() {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	firstShutdown := shutdown && s.state == serviceRunning
-	if firstShutdown {
-		s.state = serviceDraining
-	}
-	s.requests[done] = struct{}{}
-	s.admission.Unlock()
-	defer func() {
-		s.admission.Lock()
-		delete(s.requests, done)
-		close(done)
-		s.admission.Unlock()
-	}()
-	if shutdown {
-		s.numbers.stop()
-		w.WriteHeader(http.StatusOK)
-		if err := http.NewResponseController(w).Flush(); err != nil {
-			s.fail(err)
-			return
-		}
-		if firstShutdown {
-			close(s.shutdown)
-		}
-		return
-	}
-	switch {
-	case r.Method == http.MethodGet && r.URL.Path == InfoPath:
-		data, err := Encode(s.info)
-		if err != nil {
-			s.fail(err)
-			return
-		}
-		if _, err = w.Write(data); err != nil {
-			return
-		}
-	case r.Method == http.MethodPost && (r.URL.Path == InvokePath || r.URL.Path == ConversationPath || r.URL.Path == NumbersPath):
-		s.invoke(w, r)
+	switch route {
+	case "GET " + InfoPath:
+		s.serveInfo(w)
+	case "POST " + InvokePath:
+		s.serveCall(w, r, invocationCall)
+	case "POST " + ConversationPath:
+		s.serveCall(w, r, conversationCall)
+	case "POST " + NumbersPath:
+		s.serveCall(w, r, numbersCall)
 	default:
 		w.WriteHeader(http.StatusNotFound)
 	}
 }
 
-type handlerResult struct {
+func (s *service) serveInfo(w http.ResponseWriter) {
+	w.WriteHeader(http.StatusOK)
+	// A write fails only when the peer is gone, which nothing here answers.
+	_, _ = w.Write(s.info)
+}
+
+// shutdown stops admission and drains: every new request is answered 503, the
+// calls running finish, and the connection closes once they have. The numbers
+// stream, which would hold the connection open, completes.
+func (s *service) shutdown(w http.ResponseWriter) {
+	s.draining.Store(true)
+	s.numbers.finish()
+	w.WriteHeader(http.StatusOK)
+	// The server sends GOAWAY and closes the connection once its streams end.
+	// Serve waits for this goroutine as it does for the calls: the goroutine
+	// ends when the connection is closed or the service stops, and its error is
+	// only that of the context.
+	s.calls.Add(1)
+	go func() {
+		defer s.calls.Done()
+		_ = s.srv.Shutdown(s.ctx)
+	}()
+}
+
+// The kinds of request that run something.
+type callKind int
+
+const (
+	invocationCall callKind = iota
+	conversationCall
+	numbersCall
+)
+
+// A pendingCall is a call whose metadata the service accepted.
+type pendingCall struct {
+	// release says the call releases a conversation, so that a failure of it
+	// faults the service.
+	release bool
+	run     func() (Completion, error)
+}
+
+// A result is how a handler returned.
+type result struct {
 	completion Completion
 	err        error
-	panicked   bool
 }
 
-// runHandler retains the handler outcome independently of its output queue.
-func runHandler(run func() (Completion, error), output *recordOutput, result chan<- handlerResult) {
-	outcome := handlerResult{}
-	defer func() {
-		if cause := recover(); cause != nil {
-			outcome.err = fmt.Errorf("command handler failed: %v", cause)
-			outcome.panicked = true
-		}
-		result <- outcome
-		close(output.records)
-	}()
-	outcome.completion, outcome.err = run()
-}
-
-func releaseFault(result handlerResult) error {
-	if result.err != nil {
-		if errors.Is(result.err, ErrCancelled) && !result.panicked {
-			return nil
-		}
-		return fmt.Errorf("%w: %v", ErrConversationCleanup, result.err)
-	}
-	if result.completion.ExitCode != 0 {
-		detail := fmt.Sprintf("release exited with status %d", result.completion.ExitCode)
-		if commandErr := result.completion.Error; commandErr != nil {
-			detail += fmt.Sprintf(": %s: %s", commandErr.Code, commandErr.Message)
-		}
-		return fmt.Errorf("%w: %s", ErrConversationCleanup, detail)
-	}
-	return nil
-}
-
-func (s *service) invoke(w http.ResponseWriter, r *http.Request) {
-	controller := http.NewResponseController(w)
-	if err := controller.SetReadDeadline(time.Now().Add(phaseTimeout)); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	metadata, err := readFrame(r.Body, MaxMetadataBytes)
-	if resetErr := controller.SetReadDeadline(time.Time{}); resetErr != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
+// serveCall runs one call: it reads the metadata, sends the response headers
+// before waiting for input, runs the handler on a goroutine of its own, and
+// writes the handler's records until it completes or the call is cancelled.
+func (s *service) serveCall(w http.ResponseWriter, r *http.Request, kind callKind) {
 	ctx, cancel := context.WithCancel(r.Context())
-	stop := context.AfterFunc(s.ctx, cancel)
-	defer stop()
 	defer cancel()
-	output := &recordOutput{ctx: ctx, records: make(chan Record, 4)}
-	stdout := recordWriter{output: output, kind: Stdout}
-	input := &Input{reader: r.Body, output: output}
-	var run func() (Completion, error)
-	release := false
-	switch r.URL.Path {
-	case InvokePath:
-		invocation, err := Decode[Invocation](metadata)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		if !slices.Contains(s.info.Operations, invocation.Operation) {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		call := &Call{
-			Invocation: invocation,
-			Stdin:      input,
-			Stdout:     stdout,
-			Stderr:     recordWriter{output: output, kind: Stderr},
-			Numbers:    s.numbers,
-			ctx:        ctx,
-		}
-		run = func() (Completion, error) { return s.handler.Invoke(call) }
-	case ConversationPath:
-		request, err := Decode[ConversationRequest](metadata)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		release = request.Operation == "release"
-		run = func() (Completion, error) {
-			if handler, ok := s.handler.(ConversationHandler); ok {
-				return handler.Conversation(&ConversationCall{Request: request, Stdout: stdout, ctx: ctx})
-			}
-			body := []byte(`{}`)
-			if request.Operation == "status" {
-				body = []byte(`{"conversations":[]}`)
-			}
-			_, err := stdout.Write(body)
-			return Completion{}, err
-		}
-	case NumbersPath:
-		if _, err := Decode[NumbersOpen](metadata); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		s.admission.Lock()
-		if s.numbersOpened {
-			s.admission.Unlock()
-			w.WriteHeader(http.StatusConflict)
-			return
-		}
-		s.numbersOpened = true
-		s.admission.Unlock()
-		defer s.numbers.stop()
-		run = func() (Completion, error) { return s.numbers.relay(ctx, input, r.Body) }
+	state := newCallState(ctx, r.Body)
+	pending, status := s.accept(r, kind, state)
+	if status != 0 {
+		w.WriteHeader(status)
+		return
 	}
 	w.WriteHeader(http.StatusOK)
+	controller := http.NewResponseController(w)
 	if err := controller.Flush(); err != nil {
+		// The caller is gone before the handler started.
 		return
 	}
-	result := make(chan handlerResult, 1)
-	go runHandler(run, output, result)
-	joined := false
-	defer func() {
-		cancel()
-		// Closing a request body interrupts input; any read failure is already a stream failure.
-		_ = r.Body.Close()
-		if joined {
-			return
-		}
-		timer := time.NewTimer(cancellationGrace)
-		defer timer.Stop()
-		select {
-		case outcome := <-result:
-			if release {
-				if err := releaseFault(outcome); err != nil {
-					s.fail(err)
-				}
-			}
-		case <-timer.C:
-			s.fail(ErrCancellationDeadline)
-		}
-	}()
+	done := make(chan result, 1)
+	go func() { done <- runHandler(pending.run) }()
+
+	res, finished := s.pump(w, controller, state, done)
+	if !finished {
+		s.cancelled(cancel, state, done, pending.release)
+		return
+	}
+	s.complete(w, controller, res, pending.release)
+}
+
+// accept reads the metadata of a request within the metadata timeout and
+// checks it. It returns the HTTP status that refuses the request, or 0 with the
+// call.
+func (s *service) accept(r *http.Request, kind callKind, state *callState) (pendingCall, int) {
+	document, err := readMetadata(r.Body)
+	if err != nil {
+		return pendingCall{}, http.StatusBadRequest
+	}
+	switch kind {
+	case invocationCall:
+		return s.acceptInvocation(document, state)
+	case conversationCall:
+		return s.acceptConversation(document, state)
+	default:
+		return s.acceptNumbers(document, state)
+	}
+}
+
+func (s *service) acceptInvocation(document []byte, state *callState) (pendingCall, int) {
+	invocation, err := Decode[Invocation](document)
+	if err != nil {
+		return pendingCall{}, http.StatusBadRequest
+	}
+	if !s.operations[invocation.Operation] {
+		return pendingCall{}, http.StatusNotFound
+	}
+	call := &Call{
+		Invocation: invocation,
+		Stdin:      &Input{state: state},
+		Stdout:     state.writer(RecordStdout),
+		Stderr:     state.writer(RecordStderr),
+		Numbers:    s.numbers.numbers(),
+		state:      state,
+	}
+	return pendingCall{run: func() (Completion, error) { return s.handler.Invoke(call) }}, 0
+}
+
+func (s *service) acceptConversation(document []byte, state *callState) (pendingCall, int) {
+	request, err := Decode[ConversationRequest](document)
+	if err != nil {
+		return pendingCall{}, http.StatusBadRequest
+	}
+	call := &ConversationCall{Request: request, Stdout: state.writer(RecordStdout), state: state}
+	return pendingCall{
+		release: request.Operation == OperationRelease,
+		run:     func() (Completion, error) { return s.conversation(call) },
+	}, 0
+}
+
+func (s *service) acceptNumbers(document []byte, state *callState) (pendingCall, int) {
+	if _, err := Decode[NumbersOpen](document); err != nil {
+		return pendingCall{}, http.StatusBadRequest
+	}
+	// Only the first request opens the stream; a later one is refused once its
+	// metadata is read.
+	if !s.numbers.claim() {
+		return pendingCall{}, http.StatusConflict
+	}
+	return pendingCall{run: func() (Completion, error) {
+		return Completion{}, s.numbers.relay(state)
+	}}, 0
+}
+
+// pump writes the call's records until its handler returns, when it returns the
+// handler's result and true, or the call is cancelled: the caller reset the
+// stream, the response failed, or the service is stopping.
+func (s *service) pump(w http.ResponseWriter, controller *http.ResponseController, state *callState, done <-chan result) (result, bool) {
 	for {
-		if ctx.Err() != nil {
-			panic(http.ErrAbortHandler)
+		if state.ctx.Err() != nil {
+			return result{}, false
 		}
 		select {
-		case <-ctx.Done():
-			panic(http.ErrAbortHandler)
-		case record, ok := <-output.records:
-			if ctx.Err() != nil {
-				panic(http.ErrAbortHandler)
+		case record := <-state.records:
+			if err := writeRecord(w, controller, record); err != nil {
+				return result{}, false
 			}
-			if !ok {
-				outcome := <-result
-				joined = true
-				if outcome.panicked {
-					if release {
-						s.fail(releaseFault(outcome))
+		case res := <-done:
+			// The handler queued its records before it returned; they go
+			// ahead of its completion.
+			for {
+				select {
+				case record := <-state.records:
+					if err := writeRecord(w, controller, record); err != nil {
+						return result{}, false
 					}
-					panic(http.ErrAbortHandler)
+				default:
+					return res, true
 				}
-				if errors.Is(outcome.err, ErrCancelled) {
-					panic(http.ErrAbortHandler)
-				}
-				completion := outcome.completion
-				if outcome.err != nil {
-					completion = Completion{ExitCode: 1, Error: &CommandError{Code: "command_failed", Message: outcome.err.Error()}}
-				}
-				if release {
-					if fault := releaseFault(handlerResult{completion: completion}); fault != nil {
-						defer s.fail(fault)
-					}
-				}
-				record = Record{Kind: Completed, Completion: completion}
 			}
-			encoded, err := record.Encode()
-			if err != nil {
-				panic(http.ErrAbortHandler)
-			}
-			if _, err = w.Write(encoded); err != nil {
-				return
-			}
-			if err = controller.Flush(); err != nil {
-				return
-			}
-			if !ok {
-				return
-			}
+		case <-state.ctx.Done():
+			return result{}, false
 		}
 	}
 }
 
-// singleListener gives net/http exactly the connection supplied by its owner.
-type singleListener struct {
-	conn   net.Conn
-	taken  bool
-	closed chan struct{}
-	once   sync.Once
-}
-
-func (l *singleListener) Accept() (net.Conn, error) {
-	if !l.taken {
-		l.taken = true
-		return l.conn, nil
-	}
-	<-l.closed
-	return nil, net.ErrClosed
-}
-
-// Close stops accepting connections.
-func (l *singleListener) Close() error {
-	l.once.Do(func() { close(l.closed) })
-	return nil
-}
-
-func (l *singleListener) Addr() net.Addr { return l.conn.LocalAddr() }
-
-// observedConn distinguishes a peer closing from net/http rejecting its protocol.
-type observedConn struct {
-	net.Conn
-	peerClosed atomic.Bool
-}
-
-func (c *observedConn) Read(buffer []byte) (int, error) {
-	count, err := c.Conn.Read(buffer)
-	if err != nil && !errors.Is(err, net.ErrClosed) {
-		var timeout net.Error
-		if !errors.As(err, &timeout) || !timeout.Timeout() {
-			c.peerClosed.Store(true)
-		}
-	}
-	return count, err
-}
-
-// Serve owns conn on every return path, drains admitted calls, and releases the
-// handler. ErrCancellationDeadline requires the process to exit: Go cannot stop
-// an uncooperative handler or Closer, but no SDK join goroutine remains behind.
-func Serve(owner context.Context, conn net.Conn, handler Handler) error {
-	// The service owns the transport even when catalog validation fails.
-	// Close only releases IO; the selected protocol or handler result owns the error.
-	defer conn.Close()
-	info := ServiceInfo{ProtocolVersion: Version, Operations: slices.Clone(handler.Operations())}
-	data, err := Encode(info)
+func writeRecord(w http.ResponseWriter, controller *http.ResponseController, record Record) error {
+	data, err := record.MarshalBinary()
 	if err != nil {
 		return err
 	}
-	if len(data) > MaxMetadataBytes {
-		return ErrTooLarge
-	}
-	ctx, cancel := context.WithCancel(owner)
-	defer cancel()
-	observed := &observedConn{Conn: conn}
-	listener := &singleListener{conn: observed, closed: make(chan struct{})}
-	s := &service{
-		handler:  handler,
-		info:     info,
-		ctx:      ctx,
-		cancel:   cancel,
-		numbers:  newNumbers(),
-		fault:    make(chan error, 1),
-		shutdown: make(chan struct{}),
-		requests: make(map[chan struct{}]struct{}),
-	}
+	return writeBytes(w, controller, data)
+}
 
-	s.server = &http.Server{
-		Handler:           s,
-		Protocols:         protocols(),
-		HTTP2:             http2Config(),
-		MaxHeaderBytes:    HeaderListBytes - httpHeaderAdjustment,
-		ReadHeaderTimeout: phaseTimeout,
-		BaseContext:       func(net.Listener) context.Context { return ctx },
-		ConnState: func(_ net.Conn, state http.ConnState) {
-			if state == http.StateClosed {
-				// Closing the synthetic listener wakes Serve; it has no failure path.
-				_ = listener.Close()
-			}
-		},
+// writeBytes sends data as part of the response, and flushes it, so that each
+// record reaches the caller as it is written.
+func writeBytes(w http.ResponseWriter, controller *http.ResponseController, data []byte) error {
+	if _, err := w.Write(data); err != nil {
+		return err
 	}
-	served := make(chan error, 1)
-	go func() { served <- s.server.Serve(listener) }()
-	serverJoined := false
-	select {
-	case <-s.shutdown:
-		// Shutdown's own goroutine is joined before this function proceeds.
-		drained := make(chan error, 1)
-		go func() { drained <- s.server.Shutdown(ctx) }()
-		select {
-		case err = <-drained:
-		case <-ctx.Done():
-			// Closing is best effort because cancellation or a retained fault owns the outcome.
-			_ = s.server.Close()
-			<-drained
-		}
-	case serveErr := <-served:
-		serverJoined = true
-		if !errors.Is(serveErr, net.ErrClosed) && !errors.Is(serveErr, http.ErrServerClosed) {
-			err = serveErr
-		}
-		s.admission.Lock()
-		if ctx.Err() == nil && s.state == serviceRunning && !observed.peerClosed.Load() {
-			err = errors.New("command service connection failed")
-		}
-		s.admission.Unlock()
-	case <-ctx.Done():
-	}
+	return controller.Flush()
+}
+
+// cancelled joins the handler of a call that was cancelled: the service stops
+// reading its output, wakes it if it waits for input, and waits for it to
+// return, at most the cancellation grace. A handler that does not return in
+// time faults the service, since a handler that ignores its cancellation cannot
+// be made to release its resources; so does a conversation release that fails.
+// The stream is already reset, or its connection is closing, so nothing more is
+// sent.
+func (s *service) cancelled(cancel context.CancelFunc, state *callState, done <-chan result, release bool) {
 	cancel()
-	s.numbers.stop()
-	// Stop admission and interrupt all HTTP IO before joining requests.
-	_ = s.server.Close()
-	if !serverJoined {
-		<-served
-	}
-	s.admission.Lock()
-	s.state = serviceStopped
-	pending := make([]chan struct{}, 0, len(s.requests))
-	for done := range s.requests {
-		pending = append(pending, done)
-	}
-	s.admission.Unlock()
-	// Each request joins its handler with the grace; no indefinite WaitGroup waiter exists.
-	for _, done := range pending {
-		<-done
-	}
+	state.abort()
+	timer := time.NewTimer(cancellationGrace)
+	defer timer.Stop()
 	select {
-	case fault := <-s.fault:
-		err = fault
-	default:
-	}
-	if closer, ok := handler.(Closer); ok {
-		closeCtx, closeCancel := context.WithTimeout(context.Background(), cancellationGrace)
-		closed := make(chan error, 1)
-		go func() { closed <- closer.Close(closeCtx) }()
-		select {
-		case closeErr := <-closed:
-			if closeErr != nil {
-				err = closeErr
+	case res := <-done:
+		if release {
+			if err := releaseFailure(res); err != nil {
+				s.fail(err)
 			}
-		case <-closeCtx.Done():
-			err = ErrCancellationDeadline
 		}
-		closeCancel()
+	case <-timer.C:
+		s.fail(ErrCancellationDeadline)
 	}
-	return err
+}
+
+// releaseFailure returns the fault a cancelled release leaves: it panicked,
+// failed for another reason than its cancellation, or ended with a nonzero
+// exit code.
+func releaseFailure(res result) error {
+	switch {
+	case res.err != nil && isCancellation(res.err):
+		return nil
+	case res.err != nil:
+		return cleanupFailure(res.err)
+	case res.completion.ExitCode != 0:
+		return cleanupFailure(releaseExit(res.completion))
+	}
+	return nil
+}
+
+// releaseExit describes a release that ended with a nonzero exit code.
+func releaseExit(completion Completion) error {
+	if completion.Error == nil {
+		return fmt.Errorf("release exited with status %d", completion.ExitCode)
+	}
+	return fmt.Errorf("release exited with status %d: %s: %s", completion.ExitCode, completion.Error.Code, completion.Error.Message)
+}
+
+func cleanupFailure(cause error) error {
+	return fmt.Errorf("%w: %w", ErrConversationCleanup, cause)
+}
+
+// complete ends a call whose handler returned: it sends the completion, and
+// leaves the service faulty when a conversation release failed. A handler that
+// was cancelled or panicked has no completion to send: the stream is reset.
+func (s *service) complete(w http.ResponseWriter, controller *http.ResponseController, res result, release bool) {
+	var completion Completion
+	var panicked *handlerPanic
+	switch {
+	case errors.As(res.err, &panicked):
+		if release {
+			s.fail(cleanupFailure(res.err))
+		}
+		panic(http.ErrAbortHandler)
+	case res.err != nil && isCancellation(res.err):
+		panic(http.ErrAbortHandler)
+	case res.err != nil:
+		completion = Completion{ExitCode: 1, Error: &CommandError{Code: "command_failed", Message: res.err.Error()}}
+	default:
+		completion = res.completion
+	}
+	if completion.Error != nil {
+		// The text of an error can be any bytes, and JSON carries only UTF-8.
+		fixed := *completion.Error
+		fixed.Message = strings.ToValidUTF8(fixed.Message, "\uFFFD")
+		completion.Error = &fixed
+	}
+	data, err := Record{Kind: RecordCompletion, Completion: completion}.MarshalBinary()
+	if err != nil {
+		// A completion that cannot be sent leaves only a reset to tell so.
+		panic(http.ErrAbortHandler)
+	}
+	// A failed write means the caller is gone, which its stream shows.
+	_ = writeBytes(w, controller, data)
+	if release && completion.ExitCode != 0 {
+		s.fail(cleanupFailure(releaseExit(completion)))
+	}
+}
+
+// A handlerPanic is the error of a handler that panicked.
+type handlerPanic struct {
+	value any
+}
+
+func (p *handlerPanic) Error() string {
+	return fmt.Sprintf("command handler panicked: %v", p.value)
+}
+
+// runHandler runs a handler, and turns its panic into an error: a handler that
+// panics fails its own call, not the service.
+func runHandler(run func() (Completion, error)) (res result) {
+	defer func() {
+		if value := recover(); value != nil {
+			slog.Error("command handler panicked", "panic", value, "stack", string(debug.Stack()))
+			res = result{err: &handlerPanic{value: value}}
+		}
+	}()
+	completion, err := run()
+	return result{completion: completion, err: err}
+}
+
+// peerClosed reports whether err is how a connection ends when its peer closes
+// its side: a write into a closed pipe or socket, a reset, or an end of input.
+// After an answered shutdown that is how a connection may end, on either side.
+// Which errors say so depends on the platform ([closedByPeer]).
+func peerClosed(err error) bool {
+	return errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.ErrClosedPipe) || closedByPeer(err)
+}
+
+// readMetadata reads the metadata that opens a request within the metadata
+// timeout: a four-byte big-endian length, then that many bytes of JSON.
+func readMetadata(body io.ReadCloser) ([]byte, error) {
+	// A read that waits for the caller's metadata ends when the body closes.
+	timer := time.AfterFunc(metadataTimeout, func() {
+		// The body's close error says only that it was closed before.
+		_ = body.Close()
+	})
+	document, err := readFrame(body, MaxMetadataBytes)
+	if !timer.Stop() {
+		// The time is up, and the body closed with it.
+		return nil, os.ErrDeadlineExceeded
+	}
+	if errors.Is(err, io.EOF) {
+		return nil, io.ErrUnexpectedEOF
+	}
+	return document, err
 }

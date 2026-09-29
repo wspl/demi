@@ -7,225 +7,339 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"unicode"
 )
 
-type draw struct {
-	request NumbersRequest
-	answer  chan NumbersAnswer
-}
+// numbersQueue is the most draws that wait for the numbers stream; a full queue
+// holds back their callers.
+const numbersQueue = 64
 
-// Numbers provides the service’s connection-scoped source of conversation numbers.
+// maxNumbersInFlight is the most requests of one service that the answering
+// end has in flight; it refuses one beyond at once.
+const maxNumbersInFlight = 32
+
+var errNumbersEnded = fmt.Errorf("%w: the numbers stream has ended", ErrNumbers)
+
+// Numbers draws numbers of a conversation's sequences. Some state a service
+// keeps is named with a number the model reads, which the conversation must
+// never give twice, so the backend keeps the count and the runner forwards
+// each request over the service's numbers stream. Numbers is safe for
+// concurrent use.
 type Numbers struct {
-	draws chan draw
-	done  chan struct{}
-	once  sync.Once
+	reserve func(context.Context, NumbersRequest) (uint64, error)
 }
 
-func newNumbers() *Numbers { return &Numbers{draws: make(chan draw, 64), done: make(chan struct{})} }
+// NewNumbers returns a numbers source that answers each draw by calling
+// reserve, for a handler that runs without a numbers stream. The service's own
+// source is the one its calls carry.
+func NewNumbers(reserve func(ctx context.Context, request NumbersRequest) (uint64, error)) *Numbers {
+	return &Numbers{reserve: reserve}
+}
 
-func (n *Numbers) stop() { n.once.Do(func() { close(n.done) }) }
-
-// Draw reserves count numbers and returns their first number. Before the numbers stream
-// opens it waits, until that stream answers or the context ends.
+// Draw returns the first of count consecutive numbers of conversation's
+// sequence, which now belong to the caller. A draw made before the runner
+// opened the numbers stream waits for it. It fails when the runner refuses the
+// request, when the stream ends, and when ctx ends. It refuses a request that
+// breaks the wire's rules (an unnamed conversation, a count outside 1 to
+// [MaxNumbers]) here, where the caller learns why, instead of where the runner
+// reads it and breaks the stream.
 func (n *Numbers) Draw(ctx context.Context, conversation string, sequence Sequence, count int) (uint64, error) {
-	req := NumbersRequest{Conversation: conversation, Sequence: sequence, Count: count}
-	if _, err := Encode(req); err != nil {
+	request := NumbersRequest{Conversation: conversation, Sequence: sequence, Count: count}
+	if _, err := Encode(request); err != nil {
 		return 0, err
 	}
-	d := draw{request: req, answer: make(chan NumbersAnswer, 1)}
+	return n.reserve(ctx, request)
+}
+
+// A draw is a request that waits for its answer.
+type draw struct {
+	request NumbersRequest
+	answer  chan drawAnswer
+}
+
+type drawAnswer struct {
+	first uint64
+	err   error
+}
+
+// A numberSource is the connection's numbers source: draws wait in it for the
+// runner's numbers stream, which writes each as a request record and hands
+// back its answer. The runner opens the stream once. It ends at shutdown, when
+// the runner ends its input, and when the service stops; a draw still waiting
+// then fails.
+type numberSource struct {
+	draws   chan *draw
+	claimed atomic.Bool
+
+	// finishing is closed at shutdown: the stream completes.
+	finishing  chan struct{}
+	finishOnce sync.Once
+	// ended is closed when the stream, or the service, has ended: no draw is
+	// answered after.
+	ended   chan struct{}
+	endOnce sync.Once
+}
+
+func newNumberSource() *numberSource {
+	return &numberSource{
+		draws:     make(chan *draw, numbersQueue),
+		finishing: make(chan struct{}),
+		ended:     make(chan struct{}),
+	}
+}
+
+// numbers returns the source as the handler sees it.
+func (n *numberSource) numbers() *Numbers {
+	return &Numbers{reserve: n.reserve}
+}
+
+// claim reports whether the caller may open the numbers stream: only the first
+// request to ask does.
+func (n *numberSource) claim() bool {
+	return n.claimed.CompareAndSwap(false, true)
+}
+
+// finish tells the numbers stream to complete, as the service's shutdown does.
+func (n *numberSource) finish() {
+	n.finishOnce.Do(func() { close(n.finishing) })
+}
+
+// end fails every draw that is waiting, and every later one.
+func (n *numberSource) end() {
+	n.endOnce.Do(func() { close(n.ended) })
+}
+
+func (n *numberSource) reserve(ctx context.Context, request NumbersRequest) (uint64, error) {
+	d := &draw{request: request, answer: make(chan drawAnswer, 1)}
 	select {
-	case <-ctx.Done():
-		return 0, ctx.Err()
-	case <-n.done:
-		return 0, fmt.Errorf("conversation numbers: the numbers stream has ended")
 	case n.draws <- d:
-	}
-	select {
+	case <-n.ended:
+		return 0, errNumbersEnded
 	case <-ctx.Done():
 		return 0, ctx.Err()
-	case <-n.done:
-		return 0, fmt.Errorf("conversation numbers: the numbers stream has ended")
-	case a := <-d.answer:
-		if a.Error != nil {
-			return 0, fmt.Errorf("conversation numbers: %s", *a.Error)
-		}
-		return *a.First, nil
 	}
-}
-
-func (n *Numbers) relay(ctx context.Context, input *Input, body io.Closer) (Completion, error) {
-	defer n.stop()
-	ctx, cancel := context.WithCancel(ctx)
-	queue := &recordOutput{ctx: ctx, records: input.output.records}
-	input.output = queue
-	output := recordWriter{output: queue, kind: Stdout}
-	results := make(chan error, 2)
-	var workers sync.WaitGroup
-	var mu sync.Mutex
-	waiting := make(map[uint64]chan NumbersAnswer)
-	workers.Go(func() {
-		var next uint64
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case draw := <-n.draws:
-				draw.request.ID = next
-				next++
-				mu.Lock()
-				waiting[draw.request.ID] = draw.answer
-				mu.Unlock()
-				data, err := Encode(draw.request)
-				if err != nil {
-					results <- err
-					return
-				}
-				if _, err = output.Write(data); err != nil {
-					results <- err
-					return
-				}
-			}
-		}
-	})
-	workers.Go(func() {
-		for {
-			data, err := input.Next()
-			if err != nil {
-				results <- err
-				return
-			}
-			answer, err := Decode[NumbersAnswer](data)
-			if err != nil {
-				results <- err
-				return
-			}
-			mu.Lock()
-			recipient := waiting[answer.ID]
-			delete(waiting, answer.ID)
-			mu.Unlock()
-			if recipient != nil {
-				recipient <- answer
-			}
-		}
-	})
-	defer func() {
-		cancel()
-		// Closing only interrupts a blocked read; its error cannot change the relay outcome.
-		_ = body.Close()
-		workers.Wait()
-	}()
 	select {
-	case <-ctx.Done():
-		return Completion{}, ctx.Err()
-	case <-n.done:
-		return Completion{}, nil
-	case err := <-results:
-		if err == io.EOF {
-			return Completion{}, nil
+	case answer := <-d.answer:
+		return answer.first, answer.err
+	case <-n.ended:
+		// The stream may have answered as it ended.
+		select {
+		case answer := <-d.answer:
+			return answer.first, answer.err
+		default:
+			return 0, errNumbersEnded
 		}
-		return Completion{}, err
+	case <-ctx.Done():
+		return 0, ctx.Err()
 	}
 }
 
-// NumbersStream is the caller side of the service’s long-lived numbers request.
-type NumbersStream struct{ stream *Stream }
+// relay serves the numbers stream: it writes each draw as one request record
+// to the call's output and hands each answer, one input chunk, to the draw it
+// answers. It returns when the service shuts down, when the runner ends the
+// input, when a request or an answer breaks the wire, or when the call is
+// cancelled.
+func (n *numberSource) relay(state *callState) error {
+	out := state.writer(RecordStdout)
+	answers := make(chan NumbersAnswer)
+	readEnd := make(chan error, 1)
+	stop := make(chan struct{})
+	readDone := make(chan struct{})
+	go func() {
+		defer close(readDone)
+		readEnd <- readAnswers(&Input{state: state}, answers, stop)
+	}()
+	defer func() {
+		close(stop)
+		state.abort()
+		<-readDone
+		n.end()
+	}()
 
-// Answer answers at most 32 concurrent reservations, sends answers only on input demand,
-// and returns on completion. The reserve callback must honor its context; callbacks are
-// cancelled and joined on return.
+	waiting := map[uint64]*draw{}
+	var next uint64
+	for {
+		select {
+		case d := <-n.draws:
+			d.request.ID = next
+			next++
+			data, err := Encode(d.request)
+			if err != nil {
+				d.answer <- drawAnswer{err: err}
+				continue
+			}
+			waiting[d.request.ID] = d
+			if _, err := out.Write(data); err != nil {
+				return err
+			}
+		case answer := <-answers:
+			d, ok := waiting[answer.ID]
+			if !ok {
+				// The runner answered an ID this stream has no draw waiting
+				// for.
+				continue
+			}
+			delete(waiting, answer.ID)
+			d.answer <- outcomeOf(answer)
+		case err := <-readEnd:
+			return err
+		case <-n.finishing:
+			return nil
+		case <-state.ctx.Done():
+			return ErrCancelled
+		}
+	}
+}
+
+// readAnswers reads the answers of the numbers stream, each one input chunk,
+// until the runner ends its input (nil), the input fails, or stop is closed.
+func readAnswers(in *Input, answers chan<- NumbersAnswer, stop <-chan struct{}) error {
+	for {
+		chunk, err := in.Next()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		answer, err := Decode[NumbersAnswer](chunk)
+		if err != nil {
+			return err
+		}
+		select {
+		case answers <- answer:
+		case <-stop:
+			return nil
+		}
+	}
+}
+
+// outcomeOf returns the outcome of an answer that [Decode] has checked.
+func outcomeOf(answer NumbersAnswer) drawAnswer {
+	if answer.First != nil {
+		return drawAnswer{first: *answer.First}
+	}
+	return drawAnswer{err: fmt.Errorf("%w: %s", ErrNumbers, *answer.Error)}
+}
+
+// A NumbersStream is a service's open numbers stream, which its caller
+// answers.
+type NumbersStream struct {
+	stream *Stream
+}
+
+// numbersEvent is what the numbers stream's reader found next: a record, or
+// the error that ended the stream.
+type numbersEvent struct {
+	record Record
+	err    error
+}
+
+// Answer answers the service's requests until it ends the stream: each goes to
+// reserve, at most 32 at a time, and each answer goes back as one input chunk
+// when the service pulls. It returns nil when the service ends the stream, as
+// its shutdown does, and cancels the stream and every reserve still running
+// when it returns.
 func (s *NumbersStream) Answer(ctx context.Context, reserve func(context.Context, NumbersRequest) (uint64, error)) error {
 	ctx, cancel := context.WithCancel(ctx)
-	type received struct {
-		record Record
-		err    error
-	}
-	records := make(chan received)
-	readerDone := make(chan struct{})
+	events := make(chan numbersEvent)
+	readDone := make(chan struct{})
 	go func() {
-		defer close(readerDone)
-		for {
-			r, err := s.stream.Next()
-			select {
-			case records <- received{r, err}:
-			case <-ctx.Done():
-				return
-			}
-			if err != nil {
-				return
-			}
-		}
+		defer close(readDone)
+		s.read(ctx, events)
 	}()
-	var workers sync.WaitGroup
+	var reserving sync.WaitGroup
 	defer func() {
 		cancel()
 		s.stream.Cancel()
-		<-readerDone
-		workers.Wait()
+		<-readDone
+		reserving.Wait()
 	}()
-	results := make(chan NumbersAnswer, 32)
-	active := 0
-	var pending []NumbersAnswer
+
+	reserved := make(chan NumbersAnswer)
+	var queue []NumbersAnswer
 	pulls := 0
+	inFlight := 0
 	for {
-		for pulls > 0 && len(pending) > 0 {
-			b, err := Encode(pending[0])
+		// Each pull lets one answer go.
+		for pulls > 0 && len(queue) > 0 {
+			data, err := Encode(queue[0])
 			if err != nil {
 				return err
 			}
-			if err = s.stream.Write(b); err != nil {
+			if err := s.stream.Write(data); err != nil {
 				return err
 			}
-			pending = pending[1:]
+			queue = queue[1:]
 			pulls--
 		}
 		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case answer := <-results:
-			active--
-			pending = append(pending, answer)
-		case item := <-records:
-			if item.err != nil {
-				if item.err == io.EOF {
-					return nil
-				}
-				return item.err
+		case event := <-events:
+			if event.err != nil {
+				return event.err
 			}
-			switch item.record.Kind {
-			case InputPull:
-				pulls++
-			case Completed:
-				return nil
-			case Stderr:
-				slog.Info("numbers stream: " + strings.TrimRightFunc(strings.ToValidUTF8(string(item.record.Data), "�"), unicode.IsSpace))
-			case Stdout:
-				request, err := Decode[NumbersRequest](item.record.Data)
+			switch event.record.Kind {
+			case RecordStdout:
+				request, err := Decode[NumbersRequest](event.record.Data)
 				if err != nil {
 					return err
 				}
-				if active >= 32 {
-					message := "too many number requests in flight"
-					pending = append(pending, NumbersAnswer{ID: request.ID, Error: &message})
+				if inFlight >= maxNumbersInFlight {
+					refusal := "too many number requests in flight"
+					queue = append(queue, NumbersAnswer{ID: request.ID, Error: &refusal})
 					continue
 				}
-				active++
-				workers.Add(1)
+				inFlight++
+				reserving.Add(1)
 				go func() {
-					defer workers.Done()
-					first, err := reserve(ctx, request)
-					answer := NumbersAnswer{ID: request.ID, First: &first}
-					if err != nil {
-						message := err.Error()
-						answer.First = nil
-						answer.Error = &message
-					}
+					defer reserving.Done()
 					select {
-					case results <- answer:
+					case reserved <- answerTo(ctx, request, reserve):
 					case <-ctx.Done():
 					}
 				}()
+			case RecordInputPull:
+				pulls++
+			case RecordStderr:
+				slog.Info("numbers stream", "stderr", strings.TrimRightFunc(string(event.record.Data), unicode.IsSpace))
+			case RecordCompletion:
+				// The service ended the stream, as its shutdown does.
+				return nil
 			}
+		case answer := <-reserved:
+			inFlight--
+			queue = append(queue, answer)
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
+}
+
+// read sends the records of the stream to events until it ends, or ctx does.
+func (s *NumbersStream) read(ctx context.Context, events chan<- numbersEvent) {
+	for {
+		record, err := s.stream.Next()
+		select {
+		case events <- numbersEvent{record: record, err: err}:
+		case <-ctx.Done():
+			return
+		}
+		if err != nil || record.Kind == RecordCompletion {
+			return
+		}
+	}
+}
+
+// answerTo asks reserve for the numbers of request and returns the answer
+// that carries its outcome, as reserve gave it; bytes of a refusal's text that
+// are not valid UTF-8 become U+FFFD.
+func answerTo(ctx context.Context, request NumbersRequest, reserve func(context.Context, NumbersRequest) (uint64, error)) NumbersAnswer {
+	first, err := reserve(ctx, request)
+	if err != nil {
+		// The text of an error can be any bytes, and JSON carries only UTF-8.
+		message := strings.ToValidUTF8(err.Error(), "\uFFFD")
+		return NumbersAnswer{ID: request.ID, Error: &message}
+	}
+	return NumbersAnswer{ID: request.ID, First: &first}
 }

@@ -1,241 +1,314 @@
 package commandservice
 
 import (
-	"context"
-	"encoding/binary"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"io"
 	"reflect"
+	"slices"
+	"strings"
 
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
-var (
-	// ErrTooLarge reports a frame exceeding its protocol limit.
-	ErrTooLarge = errors.New("command protocol payload exceeds limit")
-	// ErrInvalid reports a wire value that violates its contract.
-	ErrInvalid = errors.New("invalid command protocol value")
-	// ErrUnknownRecord reports an unrecognized response-record kind.
-	ErrUnknownRecord = errors.New("unknown response record kind")
-	// ErrAfterCompletion reports response bytes after the final completion.
-	ErrAfterCompletion = errors.New("response contains data after completion")
-	// ErrIncomplete reports a truncated response or a missing completion.
-	ErrIncomplete = errors.New("response ended without complete final status")
-	// ErrCancelled identifies command cancellation.
-	ErrCancelled = context.Canceled
-	// ErrCancellationDeadline requires retiring a process whose handler or Closer did not stop.
-	ErrCancellationDeadline = errors.New("handler exceeded cancellation deadline; retire the service process")
-	// ErrConversationCleanup requires retiring a service after failed conversation cleanup.
-	ErrConversationCleanup = errors.New("conversation cleanup failed; retire the service process")
-)
-
-// InvalidError names a command wire field and the rule it violates.
-type InvalidError struct{ Field, Rule string }
-
-// Error returns the protocol failure description.
-func (err *InvalidError) Error() string {
-	return fmt.Sprintf("%s: %s: %s", ErrInvalid, err.Field, err.Rule)
+// Decode checks data, one JSON document from outside the process, and returns
+// it as a T, one of the wire's types. It refuses a document over
+// [MaxMetadataBytes] with [ErrTooLarge], and one that is not valid JSON, breaks
+// the schema of T (a required member missing, an unknown member, a null where a
+// value is optional, a constraint of the type) or breaks a rule a schema cannot
+// express, with an [*InvalidError]. The error names the field and the rule,
+// never the value: a value may be a secret.
+func Decode[T any](data []byte) (T, error) {
+	var value T
+	w, err := wireOf[T]()
+	if err != nil {
+		return value, err
+	}
+	if len(data) > MaxMetadataBytes {
+		return value, ErrTooLarge
+	}
+	if err := w.validate(data); err != nil {
+		return value, err
+	}
+	if err := json.Unmarshal(data, &value); err != nil {
+		return value, unfit(err)
+	}
+	if w.check != nil {
+		if err := w.check(&value); err != nil {
+			return value, &InvalidError{Reason: err.Error()}
+		}
+	}
+	return value, nil
 }
 
-// Unwrap allows errors.Is to recognize ErrInvalid.
-func (err *InvalidError) Unwrap() error { return ErrInvalid }
-
-// RejectedError reports an HTTP rejection before command execution.
-type RejectedError struct{ Status int }
-
-// Error returns the protocol failure description.
-func (err *RejectedError) Error() string {
-	return fmt.Sprintf("service rejected HTTP status %d", err.Status)
-}
-
-func schemaFor[T WireValue]() (*jsonschema.Resolved, error) {
-	schemas, err := wireSchemas()
+// Encode returns the JSON of value, one of the wire's types, after checking it
+// as [Decode] would, so the SDK never sends what its peer would refuse.
+func Encode[T any](value T) ([]byte, error) {
+	w, err := wireOf[T]()
 	if err != nil {
 		return nil, err
 	}
-	t := reflect.TypeFor[T]()
-	if t.Kind() == reflect.Pointer {
-		t = t.Elem()
+	data, err := json.Marshal(value, json.Deterministic(true))
+	if err != nil {
+		return nil, unfit(err)
 	}
-	schema, ok := schemas[t]
+	if len(data) > MaxMetadataBytes {
+		return nil, ErrTooLarge
+	}
+	if err := w.validate(data); err != nil {
+		return nil, err
+	}
+	if w.check != nil {
+		if err := w.check(&value); err != nil {
+			return nil, &InvalidError{Reason: err.Error()}
+		}
+	}
+	return data, nil
+}
+
+// A wire holds what is known about one wire type: its schema, derived from the
+// Go type and the constraints written beside the type, and its check of the
+// rules a schema cannot express.
+type wire struct {
+	typ      reflect.Type
+	schema   *jsonschema.Schema
+	resolved *jsonschema.Resolved
+	// check takes a pointer to a value of typ; it is nil when the schema says it
+	// all.
+	check func(value any) error
+}
+
+// wires is the registry of the wire's types, keyed by their Go type: each is
+// declared where the type is defined, when the package initializes.
+var wires = map[reflect.Type]*wire{}
+
+func wireOf[T any]() (*wire, error) {
+	typ := reflect.TypeFor[T]()
+	w, ok := wires[typ]
 	if !ok {
-		return nil, &InvalidError{Field: "type", Rule: "SDK wire schema is missing"}
+		return nil, fmt.Errorf("commandservice: %s is not a type of the wire", typ)
 	}
-	return schema, nil
+	return w, nil
 }
 
-// Decode validates a wire value’s schema, decodes it without changing opaque JSON, and runs
-// its nested checks. Framing supplies any size limit.
-func Decode[T WireValue](b []byte) (T, error) {
-	var v T
-	s, err := schemaFor[T]()
+// declare builds the schema of T once, when the package initializes, registers
+// it for [Decode] and [Encode], and returns it for the wire types that embed T:
+// the schema jsonschema infers from the type (a field without omitempty or
+// omitzero is required, and an object refuses unknown members), then refine,
+// which adds the constraints of the type. parts are the wire types T embeds.
+// check runs after decoding, for the rules a schema cannot express; it may be
+// nil. A wire type that no other embeds is declared as `var _ = declare[T](...)`.
+func declare[T any](refine func(*jsonschema.Schema), check func(*T) error, parts ...*wire) *wire {
+	typ := reflect.TypeFor[T]()
+	schema := schemaOf[T](parts...)
+	if refine != nil {
+		refine(schema)
+	}
+	resolved, err := schema.Resolve(nil)
 	if err != nil {
-		return v, err
+		panic(fmt.Sprintf("commandservice: the schema of %s does not resolve: %v", typ, err))
 	}
-	var raw any
-	if err = json.Unmarshal(b, &raw); err != nil {
-		return v, &InvalidError{Field: "JSON", Rule: err.Error()}
+	w := &wire{typ: typ, schema: schema, resolved: resolved}
+	if check != nil {
+		// Decode and Encode hand check the pointer to a T that it was declared for.
+		w.check = func(value any) error { return check(value.(*T)) }
 	}
-	if raw == nil {
-		return v, &InvalidError{Field: "value", Rule: "must not be null"}
-	}
-	if err = s.Validate(raw); err != nil {
-		return v, &InvalidError{Field: "value", Rule: err.Error()}
-	}
-	if err = json.Unmarshal(b, &v); err != nil {
-		return v, &InvalidError{Field: "value", Rule: err.Error()}
-	}
-	return v, v.validate()
+	wires[typ] = w
+	return w
 }
 
-// Encode validates a wire value and encodes it with deterministic map ordering. Framing
-// supplies any size limit.
-func Encode[T WireValue](v T) ([]byte, error) {
-	b, err := json.Marshal(v, json.Deterministic(true))
+// schemaOf infers the schema of T, with no null in it, reusing the schemas of
+// the wire types parts that T embeds.
+func schemaOf[T any](parts ...*wire) *jsonschema.Schema {
+	options := &jsonschema.ForOptions{TypeSchemas: map[reflect.Type]*jsonschema.Schema{}}
+	for _, part := range parts {
+		options.TypeSchemas[part.typ] = part.schema
+	}
+	schema, err := jsonschema.For[T](options)
 	if err != nil {
-		return nil, err
+		panic(fmt.Sprintf("commandservice: the schema of %s: %v", reflect.TypeFor[T](), err))
 	}
-	if _, err = Decode[T](b); err != nil {
-		return nil, err
-	}
-	return b, nil
+	refuseNull(schema)
+	return schema
 }
 
-func frame(b []byte, limit int) ([]byte, error) {
-	if len(b) > limit {
-		return nil, ErrTooLarge
+// validate checks the JSON document data against the schema. jsonschema
+// validates the Go value a document unmarshals into, not its bytes, so the
+// document is unmarshaled once as an untyped value for the schema and once,
+// after the schema accepts it, into the type.
+func (w *wire) validate(data []byte) error {
+	var document any
+	if err := json.Unmarshal(data, &document); err != nil {
+		return unfit(err)
 	}
-	out := make([]byte, 4+len(b))
-	binary.BigEndian.PutUint32(out, uint32(len(b)))
-	copy(out[4:], b)
-	return out, nil
+	if err := w.resolved.Validate(document); err != nil {
+		return violation(err)
+	}
+	return nil
 }
 
-func readFrame(r io.Reader, limit int) ([]byte, error) {
-	var head [4]byte
-	if _, err := io.ReadFull(r, head[:]); err != nil {
-		return nil, err
+// violation describes the failure of a schema validation as the schema location
+// that a value broke and the rule, and leaves out the value, which jsonschema
+// quotes in most of its messages. jsonschema reports a failure as text: a chain
+// of errors that each say "validating <location>: " and, last, the rule's own
+// message, which starts with the rule's name. The library gives no structured
+// error (a location and a rule as values) to read instead, so this reads its
+// text; TestARefusalNamesTheFieldAndTheRuleAndNeverTheValue guards the reading.
+// A message that names members and no value is kept whole.
+func violation(err error) *InvalidError {
+	location := "root"
+	leaf := err
+	for {
+		inner := errors.Unwrap(leaf)
+		if inner == nil {
+			break
+		}
+		wrapped := strings.TrimSuffix(leaf.Error(), ": "+inner.Error())
+		location = strings.TrimPrefix(wrapped, "validating ")
+		leaf = inner
 	}
-	n := binary.BigEndian.Uint32(head[:])
-	if n > uint32(limit) {
-		return nil, ErrTooLarge
+	rule := leaf.Error()
+	if !isMemberRule(rule) {
+		rule, _, _ = strings.Cut(rule, ":")
 	}
-	b := make([]byte, n)
-	_, err := io.ReadFull(r, b)
-	return b, err
+	return &InvalidError{Reason: location + ": " + rule}
 }
 
-// EncodeInput frames one input chunk with its bounded four-byte length prefix.
-func EncodeInput(b []byte) ([]byte, error) { return frame(b, MaxRecordBytes) }
-
-// EncodeMetadata validates and frames one metadata value, limited to MaxMetadataBytes.
-func EncodeMetadata[T WireValue](v T) ([]byte, error) {
-	b, err := Encode(v)
-	if err != nil {
-		return nil, err
+// isMemberRule reports whether the message of a jsonschema rule names members
+// of an object and nothing else.
+func isMemberRule(message string) bool {
+	for _, prefix := range []string{"required:", "unexpected additional properties", "minItems:", "maxItems:", "uniqueItems:", "minProperties:", "maxProperties:"} {
+		if strings.HasPrefix(message, prefix) {
+			return true
+		}
 	}
-	return frame(b, MaxMetadataBytes)
+	return false
 }
 
-// RecordKind identifies a response record’s payload.
-type RecordKind byte
+// unfit describes why a document could not be decoded from or encoded as JSON
+// without quoting what it holds: the JSON pointer of the member and the kind of
+// failure.
+func unfit(err error) *InvalidError {
+	var pointer jsontext.Pointer
+	rule := "is not valid JSON"
+	var semantic *json.SemanticError
+	var syntactic *jsontext.SyntacticError
+	switch {
+	case errors.As(err, &semantic):
+		pointer = semantic.JSONPointer
+		rule = "does not fit its type"
+	case errors.As(err, &syntactic):
+		pointer = syntactic.JSONPointer
+	}
+	location := "root"
+	if pointer != "" {
+		location = string(pointer)
+	}
+	return &InvalidError{Reason: location + ": " + rule}
+}
 
+// refuseNull removes the null that jsonschema.For adds to the type of every
+// pointer and slice, from s and everything beneath it: no field of the wire is
+// nullable, so a null is refused wherever a value is optional. jsonschema
+// v0.4.3 has no option to leave the null out.
+func refuseNull(s *jsonschema.Schema) {
+	if slices.Contains(s.Types, "null") {
+		types := slices.DeleteFunc(slices.Clone(s.Types), func(name string) bool { return name == "null" })
+		s.Types = nil
+		if len(types) == 1 {
+			s.Type = types[0]
+		} else {
+			s.Types = types
+		}
+	}
+	for _, property := range s.Properties {
+		refuseNull(property)
+	}
+	if s.Items != nil {
+		refuseNull(s.Items)
+	}
+	if s.AdditionalProperties != nil {
+		refuseNull(s.AdditionalProperties)
+	}
+}
+
+// prop returns the schema of the property name of the object schema s.
+func prop(s *jsonschema.Schema, name string) *jsonschema.Schema {
+	property := s.Properties[name]
+	if property == nil {
+		panic(fmt.Sprintf("commandservice: the schema has no property %q", name))
+	}
+	return property
+}
+
+// The patterns of strings that must not hold a NUL character, as paths and
+// environment values must not.
 const (
-	// Stdout carries standard-output bytes.
-	Stdout RecordKind = 1
-	// Stderr carries standard-error bytes.
-	Stderr RecordKind = 2
-	// Completed carries the final command completion.
-	Completed RecordKind = 3
-	// InputPull permits exactly one input chunk or EOF.
-	InputPull RecordKind = 4
+	patternNonEmptyNoNUL = `^[^\x00]+$`
+	patternEnvName       = `^[^\x00=]+$`
+	patternNoNUL         = `^[^\x00]*$`
 )
 
-// Record carries stdout, stderr, completion, or one input demand.
-type Record struct {
-	Kind       RecordKind
-	Data       []byte
-	Completion Completion
+// limitConversationName adds the rule of a conversation's name to the schema of
+// a string: 1 to [ConversationNameChars] ASCII letters, digits, '-' and '_'. The
+// name is a conversation's, or the provider entry's that work outside any
+// conversation serves. The runner names a job's directory after it, so it can
+// never name another path.
+func limitConversationName(s *jsonschema.Schema) {
+	s.Pattern = fmt.Sprintf(`^[A-Za-z0-9_-]{1,%d}$`, ConversationNameChars)
 }
 
-// Encode frames this response record after validating its kind and payload.
-func (r Record) Encode() ([]byte, error) {
-	b := r.Data
-	var err error
-	switch r.Kind {
-	case Stdout, Stderr:
-	case Completed:
-		b, err = Encode(r.Completion)
-	case InputPull:
-		if len(b) != 0 {
-			return nil, ErrInvalid
-		}
-	default:
-		return nil, ErrUnknownRecord
-	}
-	if err != nil {
-		return nil, err
-	}
-	f, err := frame(b, MaxRecordBytes)
-	if err != nil {
-		return nil, err
-	}
-	return append([]byte{byte(r.Kind)}, f...), nil
+// A form is one shape of a value that has one of two: the members it requires
+// and the members it refuses, which the other shape has.
+type form struct {
+	requires []string
+	refuses  []string
 }
 
-// RecordDecoder reads bounded records independently of transport fragmentation and requires
-// a final completion.
-type RecordDecoder struct {
-	Reader    io.Reader
-	completed bool
+// rules returns the schema of the form's members.
+func (f form) rules() *jsonschema.Schema {
+	rules := &jsonschema.Schema{Required: f.requires}
+	for _, name := range f.refuses {
+		if rules.Properties == nil {
+			rules.Properties = map[string]*jsonschema.Schema{}
+		}
+		// The schema that nothing matches.
+		rules.Properties[name] = &jsonschema.Schema{Not: &jsonschema.Schema{}}
+	}
+	return rules
 }
 
-// Next reads one bounded record and rejects truncation or bytes after completion.
-func (d *RecordDecoder) Next() (Record, error) {
-	var r Record
-	var header [5]byte
-	if d.completed {
-		_, err := io.ReadFull(d.Reader, header[:1])
-		if err == io.EOF {
-			return r, io.EOF
-		}
-		if err != nil {
-			return r, err
-		}
-		return r, ErrAfterCompletion
-	}
-	if _, err := io.ReadFull(d.Reader, header[:]); err != nil {
-		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-			return r, ErrIncomplete
-		}
-		return r, err
-	}
-	r.Kind = RecordKind(header[0])
-	if r.Kind < Stdout || r.Kind > InputPull {
-		return r, ErrUnknownRecord
-	}
-	length := binary.BigEndian.Uint32(header[1:])
-	if length > MaxRecordBytes {
-		return r, ErrTooLarge
-	}
-	r.Data = make([]byte, length)
-	_, err := io.ReadFull(d.Reader, r.Data)
-	if err != nil {
-		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-			return r, ErrIncomplete
-		}
-		return r, err
-	}
-	if r.Kind == Completed {
-		r.Completion, err = Decode[Completion](r.Data)
-		if err == nil {
-			d.completed = true
+// tagged adds to s, the schema inferred from a struct that stands for a value
+// of one of two forms, the rules that tell them apart by the string member tag:
+// first when tag is firstValue, second when it is secondValue. A value with
+// another tag, or none, is refused for that, by the type's own schema. The
+// error of a value that breaks its form is the form's, which names the member
+// and the rule; a oneOf would say only that no form fit.
+func tagged(s *jsonschema.Schema, tag, firstValue, secondValue string, first, second form) {
+	prop(s, tag).Enum = []any{firstValue, secondValue}
+	tagIs := func(value string) *jsonschema.Schema {
+		return &jsonschema.Schema{
+			Required:   []string{tag},
+			Properties: map[string]*jsonschema.Schema{tag: {Const: jsonschema.Ptr[any](value)}},
 		}
 	}
-	if r.Kind == InputPull && len(r.Data) != 0 {
-		return r, ErrInvalid
-	}
-	return r, err
+	s.If = tagIs(firstValue)
+	s.Then = first.rules()
+	s.Else = &jsonschema.Schema{If: tagIs(secondValue), Then: second.rules()}
+}
+
+// limitOperations adds the rules of a list of operation names to the schema of
+// an array: at least one, each named, none twice.
+func limitOperations(s *jsonschema.Schema) {
+	s.MinItems = jsonschema.Ptr(1)
+	s.Items.MinLength = jsonschema.Ptr(1)
+	s.UniqueItems = true
+}
+
+// limitLength adds the bounds of a string's length in characters (Unicode
+// scalar values, which jsonschema counts) to its schema.
+func limitLength(s *jsonschema.Schema, minimum, maximum int) {
+	s.MinLength = jsonschema.Ptr(minimum)
+	s.MaxLength = jsonschema.Ptr(maximum)
 }

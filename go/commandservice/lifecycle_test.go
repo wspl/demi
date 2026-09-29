@@ -1,203 +1,324 @@
 package commandservice_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
 	"net"
-	"net/http"
-	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
-	cs "github.com/wspl/demi/go/commandservice"
+	"github.com/wspl/demi/go/commandservice"
 	"github.com/wspl/demi/go/commandservice/servicetest"
 )
 
-type lifecycleHandler struct {
-	entered, stopped, closed chan struct{}
-	once                     sync.Once
+// closing is a handler that records when its calls return and when it closes.
+type closing struct {
+	operations
+	order events
 }
 
-func (h *lifecycleHandler) Operations() []string { return []string{"ping"} }
-
-func (h *lifecycleHandler) Invoke(*cs.Call) (cs.Completion, error) { return cs.Completion{}, nil }
-
-func (h *lifecycleHandler) Conversation(c *cs.ConversationCall) (cs.Completion, error) {
-	if c.Request.Conversation == "fail" {
-		return cs.Completion{}, errors.New("cleanup failed")
-	}
-	close(h.entered)
-	<-c.Context().Done()
-	close(h.stopped)
-	return cs.Completion{}, c.Context().Err()
-}
-
-func (h *lifecycleHandler) Close(context.Context) error {
-	h.once.Do(func() { close(h.closed) })
+func (c *closing) Close(context.Context) error {
+	c.order.add("close")
 	return nil
 }
 
-// Lifecycle scenarios have a 10 second budget and synchronize on handler events.
-func TestConversationLifecycle(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	h := &lifecycleHandler{entered: make(chan struct{}), stopped: make(chan struct{}), closed: make(chan struct{})}
-	a, b := net.Pipe()
-	t.Cleanup(func() {
-		cancel()
-		// Either side may already be closed by service teardown.
-		_ = a.Close()
-		_ = b.Close()
-	})
-	done := make(chan error, 1)
-	go func() { done <- cs.Serve(ctx, a, h) }()
-	c, err := cs.Connect(ctx, b)
-	if err != nil {
+func newClosing(started signal) *closing {
+	c := &closing{}
+	c.operations = operations{
+		"hold": func(call *commandservice.Call) (commandservice.Completion, error) {
+			started.send()
+			<-call.Context().Done()
+			c.order.add("call returned")
+			return commandservice.Completion{}, call.Context().Err()
+		},
+	}
+	return c
+}
+
+func TestServeEndsAfterItsCallsWhenThePeerClosesTheConnection(t *testing.T) {
+	started := newSignal()
+	handler := newClosing(started)
+	server := servicetest.Start(t, handler)
+	if _, err := server.Client.Invoke(testContext(t), invocation("hold")); err != nil {
 		t.Fatal(err)
 	}
-	// Teardown may already have closed the peer; closing only releases transport resources.
-	defer c.Close()
-	s, err := c.Conversation(ctx, cs.ConversationRequest{Operation: "release", Conversation: "wait"})
-	if err != nil {
+	started.receive(t)
+	if err := server.Client.Close(); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-h.entered:
-	case <-ctx.Done():
-		t.Fatal(ctx.Err())
+	if err := server.Wait(testContext(t)); err != nil {
+		t.Errorf("Serve returned %v after the peer closed the connection", err)
 	}
-	s.Cancel()
-	select {
-	case <-h.stopped:
-	case <-ctx.Done():
-		t.Fatal(ctx.Err())
-	}
-	run(t, ctx, c, invocation("ping"), nil)
-	s, err = c.Conversation(ctx, cs.ConversationRequest{Operation: "release", Conversation: "fail"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	r, err := s.Next()
-	if err == nil && r.Kind == cs.Completed && r.Completion.ExitCode == 0 {
-		t.Fatal(r, err)
-	}
-	select {
-	case err = <-done:
-		if !errors.Is(err, cs.ErrConversationCleanup) {
-			t.Fatal(err)
-		}
-	case <-ctx.Done():
-		t.Fatal(ctx.Err())
-	}
-	select {
-	case <-h.closed:
-	default:
-		t.Fatal("Serve returned before Close")
+	if got := handler.order.all(); len(got) != 2 || got[0] != "call returned" || got[1] != "close" {
+		t.Errorf("order = %v, want every call to return before the handler closes", got)
 	}
 }
 
-func TestNumbersConversationScope(t *testing.T) {
-	c, ctx := clientFor(t, servicetest.NewFixture())
-	waiting, err := c.Invoke(ctx, invocation("number"))
+func TestServeEndsAfterItsCallsWhenItsContextEnds(t *testing.T) {
+	started := newSignal()
+	handler := newClosing(started)
+	server := servicetest.Start(t, handler)
+	stream, err := server.Client.Invoke(testContext(t), invocation("hold"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	numbers, err := c.Numbers(ctx)
-	if err != nil {
-		t.Fatal(err)
+	started.receive(t)
+	server.Stop()
+	if err := server.Wait(testContext(t)); err != nil {
+		t.Errorf("Serve returned %v after its context ended", err)
 	}
-	if _, err = c.Numbers(ctx); err == nil {
-		t.Fatal("second numbers stream accepted")
-	} else {
-		var rejected *cs.RejectedError
-		if !errors.As(err, &rejected) || rejected.Status != http.StatusConflict {
-			t.Fatal(err)
-		}
+	if got := handler.order.all(); len(got) != 2 || got[0] != "call returned" || got[1] != "close" {
+		t.Errorf("order = %v, want every call to return before the handler closes", got)
 	}
-	answered := make(chan error, 1)
-	var mu sync.Mutex
-	counts := make(map[string]uint64)
-	go func() {
-		answered <- numbers.Answer(ctx, func(_ context.Context, r cs.NumbersRequest) (uint64, error) {
-			mu.Lock()
-			defer mu.Unlock()
-			first := counts[r.Conversation] + 1
-			counts[r.Conversation] += uint64(r.Count)
-			return first, nil
-		})
-	}()
-	var out bytes.Buffer
-	if _, err = cs.Exchange(ctx, waiting, bytes.NewReader(nil), &out, io.Discard); err != nil || out.String() != `{"first":1}` {
-		t.Fatal(out.String(), err)
-	}
-	v := invocation("number")
-	v.Context.Conversation = "c2"
-	result, _, _ := run(t, ctx, c, v, nil)
-	if string(result) != `{"first":1}` {
-		t.Fatal(string(result))
-	}
-	if err = c.Shutdown(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if err = <-answered; err != nil {
-		t.Fatal(err)
+	// The stream that was running ends without a completion, which no
+	// handler that was cancelled sends.
+	if err := drain(stream); err == nil {
+		t.Error("a cancelled call ended with a completion")
 	}
 }
 
-type stuckHandler struct{ entered, release, stopped chan struct{} }
-
-func (h *stuckHandler) Operations() []string { return []string{"stuck"} }
-
-func (h *stuckHandler) Invoke(*cs.Call) (cs.Completion, error) {
-	close(h.entered)
-	<-h.release
-	close(h.stopped)
-	return cs.Completion{}, nil
+// requireClosed fails the test unless the other end of conn was closed.
+func requireClosed(t *testing.T, conn net.Conn) {
+	t.Helper()
+	// A connection that stayed open would block the read; the deadline guards
+	// against that hang. A pipe whose other end closed refuses a deadline, and
+	// its read does not block.
+	if err := conn.SetReadDeadline(time.Now().Add(hang)); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+		t.Fatal(err)
+	}
+	if _, err := conn.Read(make([]byte, 1)); err != io.EOF {
+		t.Errorf("reading the connection: %v, want io.EOF", err)
+	}
 }
 
-// This fault scenario costs the protocol's five-second grace, budget eight seconds.
-// It waits for service retirement, not a test sleep; release joins the planted fault.
-func TestCancellationDeadlineIsNotWaitedTwice(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-	defer cancel()
-	h := &stuckHandler{entered: make(chan struct{}), release: make(chan struct{}), stopped: make(chan struct{})}
-	a, b := net.Pipe()
-	t.Cleanup(func() {
-		cancel()
-		// Either side may already be closed by service teardown.
-		_ = a.Close()
-		_ = b.Close()
-	})
-	done := make(chan error, 1)
-	go func() { done <- cs.Serve(ctx, a, h) }()
-	c, err := cs.Connect(ctx, b)
+// A service whose handshake did not complete has served nothing, so it has
+// nothing to release: it ends without calling its handler's Close, closes the
+// connection it was given, and returns ErrCancelled when its context cut the
+// handshake short.
+func TestAServiceCutShortBeforeItsHandshakeClosesTheConnectionAndNotItsHandler(t *testing.T) {
+	clientEnd, serviceEnd := net.Pipe()
+	handler := newClosing(newSignal())
+	ctx, stop := context.WithCancel(testContext(t))
+	served := make(chan error, 1)
+	go func() { served <- commandservice.Serve(ctx, serviceEnd, handler) }()
+	stop()
+	if err := <-served; !errors.Is(err, commandservice.ErrCancelled) {
+		t.Errorf("Serve returned %v after its context ended, want ErrCancelled", err)
+	}
+	requireClosed(t, clientEnd)
+	if got := handler.order.all(); len(got) != 0 {
+		t.Errorf("the handler saw %v of a service that served nothing", got)
+	}
+}
+
+// A peer that closes its side before the handshake is complete has failed it.
+func TestAPeerThatClosesBeforeTheHandshakeFailsTheServiceWithoutClosingItsHandler(t *testing.T) {
+	clientEnd, serviceEnd := net.Pipe()
+	handler := newClosing(newSignal())
+	served := make(chan error, 1)
+	go func() { served <- commandservice.Serve(testContext(t), serviceEnd, handler) }()
+	if err := clientEnd.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-served; err == nil || errors.Is(err, commandservice.ErrCancelled) {
+		t.Errorf("Serve returned %v after the peer closed before the handshake, want its failure", err)
+	}
+	if got := handler.order.all(); len(got) != 0 {
+		t.Errorf("the handler saw %v of a service that served nothing", got)
+	}
+}
+
+func TestShutdownLetsRunningCallsFinishThenEndsTheService(t *testing.T) {
+	server := servicetest.Start(t, operations{"hold": hold})
+	client := server.Client
+	held, err := client.Invoke(testContext(t), invocation("hold"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Teardown may already have closed the peer; closing only releases transport resources.
-	defer c.Close()
-	defer func() {
-		close(h.release)
-		select {
-		case <-h.entered:
-			<-h.stopped
-		default:
+	if err := client.Shutdown(testContext(t)); err != nil {
+		t.Fatal(err)
+	}
+	// Admission stopped: no new call starts.
+	if _, err := client.Invoke(testContext(t), invocation("hold")); err == nil {
+		t.Error("a call was admitted after the shutdown")
+	}
+	// The call that was running still ends normally, with its completion.
+	completed := false
+	if _, err := held.Next(); err != nil {
+		t.Fatal(err)
+	}
+	if err := held.End(); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		record, err := held.Next()
+		if err == io.EOF {
+			break
 		}
-	}()
-	s, err := c.Invoke(ctx, invocation("stuck"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	<-h.entered
-	s.Cancel()
-	select {
-	case err = <-done:
-		if !errors.Is(err, cs.ErrCancellationDeadline) {
+		if err != nil {
 			t.Fatal(err)
 		}
-	case <-ctx.Done():
-		t.Fatal("service waited beyond the cancellation grace")
+		completed = completed || record.Kind == commandservice.RecordCompletion
+	}
+	if !completed {
+		t.Error("the call that was running when the service drained ended without its completion")
+	}
+	if err := server.Wait(testContext(t)); err != nil {
+		t.Errorf("Serve returned %v after a drain", err)
+	}
+}
+
+func TestAnInvalidCatalogFailsServeBeforeItServes(t *testing.T) {
+	for name, handler := range map[string]commandservice.Handler{
+		"none":     operations{},
+		"repeated": repeating{},
+		"unnamed":  operations{"": short},
+	} {
+		clientEnd, serviceEnd := net.Pipe()
+		err := commandservice.Serve(testContext(t), serviceEnd, handler)
+		var invalid *commandservice.InvalidError
+		if !errors.As(err, &invalid) {
+			t.Errorf("%s: Serve returned %v, want an InvalidError", name, err)
+		}
+		// Serve closed the connection it was given.
+		requireClosed(t, clientEnd)
+	}
+}
+
+// repeating is a handler that names the same operation twice.
+type repeating struct{ operations }
+
+func (repeating) Operations() []string { return []string{"same", "same"} }
+
+// riggedConn is the service's end of a connection whose writes a test can
+// make fail, as a peer's closed pipe does.
+type riggedConn struct {
+	net.Conn
+	failWrites atomic.Bool
+	failure    error
+}
+
+func (c *riggedConn) Write(p []byte) (int, error) {
+	if c.failWrites.Load() {
+		return 0, c.failure
+	}
+	return c.Conn.Write(p)
+}
+
+// serveRigged serves a handler with one call that holds until its input ends,
+// over a connection whose writes fail with failure once told to, and starts
+// that call.
+func serveRigged(t *testing.T, failure error) (conn *riggedConn, held *commandservice.Stream, client *commandservice.Client, served <-chan error) {
+	t.Helper()
+	clientEnd, serviceEnd := net.Pipe()
+	conn = &riggedConn{Conn: serviceEnd, failure: failure}
+	started := newSignal()
+	handler := operations{"hold": func(call *commandservice.Call) (commandservice.Completion, error) {
+		started.send()
+		return hold(call)
+	}}
+	result := make(chan error, 1)
+	go func() { result <- commandservice.Serve(context.Background(), conn, handler) }()
+	client, err := commandservice.Connect(testContext(t), clientEnd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { client.Close() })
+	held, err = client.Invoke(testContext(t), invocation("hold"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	started.receive(t)
+	return conn, held, client, result
+}
+
+// A peer that closes its transport while the service still has frames to write
+// ends the connection; after an answered shutdown that is no failure, and
+// before one it is. What the platform says of a write into a closed pipe is
+// closedPipeErrors; a pipe made in memory and a stream that ends in the middle
+// of a frame say it the same way on every platform.
+func TestAPeerThatClosesItsTransportIsNoFailureOnlyAfterAnAnsweredShutdown(t *testing.T) {
+	for _, closed := range append([]error{io.ErrClosedPipe, io.ErrUnexpectedEOF}, closedPipeErrors...) {
+		for _, shutdown := range []bool{true, false} {
+			conn, held, client, served := serveRigged(t, closed)
+			if shutdown {
+				if err := client.Shutdown(testContext(t)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// The held call completes into a closed pipe.
+			conn.failWrites.Store(true)
+			_ = held.End()
+			select {
+			case err := <-served:
+				if shutdown && err != nil {
+					t.Errorf("%v: after an answered shutdown, Serve returned %v", closed, err)
+				}
+				if !shutdown && !errors.Is(err, closed) {
+					t.Errorf("%v: without a shutdown, Serve returned %v, want the failure of the pipe", closed, err)
+				}
+			case <-time.After(hang):
+				t.Fatal("Serve did not return")
+			}
+		}
+	}
+}
+
+// What the service's own close does to a read is nothing the peer said: the
+// connection tells the peer's end from its own close by whether the service had
+// closed it. The test reads and closes in both orders, and needs no scheduling:
+// either way the read fails after the close.
+func TestAReadThatFailsBecauseTheServiceClosedTheConnectionIsNotThePeersEnd(t *testing.T) {
+	for _, closeFirst := range []bool{false, true} {
+		peer, serviceEnd := net.Pipe()
+		conn := commandservice.NewServiceConn(serviceEnd)
+		read := make(chan error, 1)
+		startRead := func() {
+			go func() {
+				_, err := conn.Read(make([]byte, 1))
+				read <- err
+			}()
+		}
+		if !closeFirst {
+			startRead()
+		}
+		if err := conn.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if closeFirst {
+			startRead()
+		}
+		if err := <-read; err == nil {
+			t.Fatalf("closed first %v: the read of a closed connection succeeded", closeFirst)
+		}
+		if conn.PeerEnded() {
+			t.Errorf("closed first %v: the service's own close was taken for the peer's end", closeFirst)
+		}
+		if err := conn.Failure(); err != nil {
+			t.Errorf("closed first %v: the service's own close was taken for the peer's failure: %v", closeFirst, err)
+		}
+		peer.Close()
+	}
+}
+
+// The peer that closes its side ends the connection's input, which is all the
+// service learns of it.
+func TestAReadThatEndsBecauseThePeerClosedIsThePeersEnd(t *testing.T) {
+	peer, serviceEnd := net.Pipe()
+	conn := commandservice.NewServiceConn(serviceEnd)
+	t.Cleanup(func() { conn.Close() })
+	if err := peer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Read(make([]byte, 1)); err != io.EOF {
+		t.Fatalf("the read after the peer closed returned %v, want the end of input", err)
+	}
+	if !conn.PeerEnded() {
+		t.Error("the end of the peer's input was not taken for the peer's end")
+	}
+	if err := conn.Failure(); err != nil {
+		t.Errorf("the end of the peer's input was taken for a failure: %v", err)
 	}
 }

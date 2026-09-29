@@ -1,165 +1,147 @@
 package commandservice_test
 
 import (
-	"bytes"
+	"context"
 	"io"
 	"sync"
 	"testing"
 
-	cs "github.com/wspl/demi/go/commandservice"
+	"github.com/wspl/demi/go/commandservice"
+	"github.com/wspl/demi/go/commandservice/servicetest"
 )
 
-type loadHandler struct {
-	started  chan string
-	finished chan string
-	release  chan struct{}
+// No call is refused for how many others are in flight: past any count a new
+// call starts, and cancelling calls never ends the connection.
+
+// drain reads a stream to its end; the end of a completed response is not an
+// error.
+func drain(stream *commandservice.Stream) error {
+	for {
+		if _, err := stream.Next(); err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+	}
 }
 
-func (h *loadHandler) Operations() []string { return []string{"hold", "flood", "ping"} }
-
-func (h *loadHandler) Invoke(c *cs.Call) (cs.Completion, error) {
-	op := c.Invocation.Operation
-	if op != "flood" {
-		h.started <- op
+// endsAndDrains ends the input of a stream, which answers the pull its handler
+// waits at, and reads the stream to its end.
+func endsAndDrains(stream *commandservice.Stream) error {
+	if err := stream.End(); err != nil {
+		return err
 	}
-	defer func() { h.finished <- op }()
-	switch op {
-	case "hold":
-		select {
-		case <-h.release:
-		case <-c.Context().Done():
-			return cs.Completion{}, c.Context().Err()
-		}
-	case "flood":
-		b := make([]byte, cs.MaxRecordBytes-36)
-		for range 6 {
-			if _, err := c.Stdout.Write(b); err != nil {
-				return cs.Completion{}, err
-			}
-		}
-		h.started <- op
-		for {
-			if _, err := c.Stdout.Write(b); err != nil {
-				return cs.Completion{}, err
-			}
-		}
-	}
-	return cs.Completion{}, nil
+	return drain(stream)
 }
 
-// Budget 20 seconds. 160 held invocations exceed the default HTTP/2 limit;
-// 80 unread streams exceed a 4 MiB connection window. No sleeps coordinate work.
-func TestIndependentStreams(t *testing.T) {
-	h := &loadHandler{
-		started:  make(chan string, 512),
-		finished: make(chan string, 512),
-		release:  make(chan struct{}),
+func TestHeldCallsBeyondAnyCountAllStartAndFinish(t *testing.T) {
+	server := servicetest.Start(t, operations{"hold": hold, "short": short})
+	client := server.Client
+	held := make([]*commandservice.Stream, 256)
+	for i := range held {
+		stream, err := client.Invoke(testContext(t), invocation("hold"))
+		if err != nil {
+			t.Fatalf("call %d: %v", i, err)
+		}
+		held[i] = stream
 	}
-	c, ctx := clientFor(t, h)
-	var held []*cs.Stream
-	for range 160 {
-		s, err := c.Invoke(ctx, invocation("hold"))
+	var finishing sync.WaitGroup
+	failures := make(chan error, len(held))
+	for _, stream := range held {
+		finishing.Add(1)
+		go func() {
+			defer finishing.Done()
+			failures <- endsAndDrains(stream)
+		}()
+	}
+	finishing.Wait()
+	close(failures)
+	for err := range failures {
 		if err != nil {
 			t.Fatal(err)
 		}
-		held = append(held, s)
 	}
-	for range held {
-		select {
-		case <-h.started:
-		case <-ctx.Done():
-			t.Fatal(ctx.Err())
-		}
+	if got := run(t, client, invocation("short"), nil); string(got.stdout) != "ok" {
+		t.Errorf("the call after them printed %q", got.stdout)
 	}
-	close(h.release)
-	for _, s := range held {
-		if _, err := cs.Exchange(ctx, s, bytes.NewReader(nil), io.Discard, io.Discard); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for range held {
-		<-h.finished
-	}
-	var stalled []*cs.Stream
-	for range 80 {
-		s, err := c.Invoke(ctx, invocation("flood"))
+}
+
+func TestCancellingACallNeverTurnsAwayTheNext(t *testing.T) {
+	server := servicetest.Start(t, operations{"hold": hold, "short": short})
+	client := server.Client
+	held := make([]*commandservice.Stream, 0, 64)
+	open := func() {
+		stream, err := client.Invoke(testContext(t), invocation("hold"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		stalled = append(stalled, s)
+		held = append(held, stream)
 	}
-	for range stalled {
-		select {
-		case <-h.started:
-		case <-ctx.Done():
-			t.Fatal(ctx.Err())
+	for range 64 {
+		open()
+	}
+	for range 200 {
+		held[0].Cancel()
+		held = held[1:]
+		open()
+	}
+	if got := run(t, client, invocation("short"), nil); string(got.stdout) != "ok" {
+		t.Errorf("the call after them printed %q", got.stdout)
+	}
+}
+
+// An output nobody reads fills only its own window: more calls than a 4 MiB
+// connection window holds, each stalled with a full stream window of output
+// nobody reads, leave the connection to an independent call.
+func TestUnreadOutputsNeverHoldBackAnIndependentCall(t *testing.T) {
+	ended := newSignal()
+	server := servicetest.Start(t, operations{"flood": flood(ended), "short": short})
+	client := server.Client
+	// 4 MiB is 64 windows of 64 KiB.
+	floods := make([]*commandservice.Stream, 80)
+	for i := range floods {
+		stream, err := client.Invoke(testContext(t), invocation("flood"))
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
-	run(t, ctx, c, invocation("ping"), nil)
-	<-h.started
-	<-h.finished
-	for _, s := range stalled {
-		s.Cancel()
-	}
-	for range stalled {
-		select {
-		case <-h.finished:
-		case <-ctx.Done():
-			t.Fatal(ctx.Err())
+		// One record read starts the flood; the rest of its output stays
+		// unread, in its window.
+		if _, err := stream.Next(); err != nil {
+			t.Fatal(err)
 		}
+		floods[i] = stream
 	}
-	// A burst abandoned at response headers must leave this same connection usable.
-	var wg sync.WaitGroup
-	for range 160 {
-		wg.Go(func() {
-			s, err := c.Invoke(ctx, invocation("flood"))
-			if err != nil {
-				t.Error(err)
-				return
+	if got := run(t, client, invocation("short"), nil); string(got.stdout) != "ok" {
+		t.Errorf("an independent call printed %q beside unread outputs", got.stdout)
+	}
+	for _, stream := range floods {
+		stream.Cancel()
+	}
+	for range floods {
+		ended.receive(t)
+	}
+}
+
+func TestAbandoningABurstOfCallsKeepsTheConnection(t *testing.T) {
+	server := servicetest.Start(t, operations{"hold": hold, "short": short})
+	client := server.Client
+	stop, stopAll := context.WithCancel(testContext(t))
+	var burst sync.WaitGroup
+	for range 1000 {
+		burst.Add(1)
+		go func() {
+			defer burst.Done()
+			// A call that opens is cancelled at once; one that is still
+			// opening when the burst is called off is abandoned mid-request.
+			if stream, err := client.Invoke(stop, invocation("hold")); err == nil {
+				stream.Cancel()
 			}
-			s.Cancel()
-		})
+		}()
 	}
-	wg.Wait()
-	run(t, ctx, c, invocation("ping"), nil)
-}
-
-func TestEarlyCompletionInput(t *testing.T) {
-	h := &loadHandler{started: make(chan string, 1), finished: make(chan string, 1)}
-	c, ctx := clientFor(t, h)
-	s, err := c.Invoke(ctx, invocation("ping"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = cs.Exchange(ctx, s, bytes.NewReader(nil), io.Discard, io.Discard); err != nil {
-		t.Fatal(err)
-	}
-	if err = s.Write([]byte("late")); err != nil {
-		t.Fatal(err)
-	}
-	if err = s.End(); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestDrainKeepsRunningCall(t *testing.T) {
-	h := &loadHandler{started: make(chan string, 1), finished: make(chan string, 1), release: make(chan struct{})}
-	c, ctx := clientFor(t, h)
-	s, err := c.Invoke(ctx, invocation("hold"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-h.started:
-	case <-ctx.Done():
-		t.Fatal(ctx.Err())
-	}
-	if err = c.Shutdown(ctx); err != nil {
-		t.Fatal(err)
-	}
-	close(h.release)
-	completion, err := cs.Exchange(ctx, s, bytes.NewReader(nil), io.Discard, io.Discard)
-	if err != nil || completion.ExitCode != 0 {
-		t.Fatal(completion, err)
+	stopAll()
+	burst.Wait()
+	if got := run(t, client, invocation("short"), nil); string(got.stdout) != "ok" {
+		t.Errorf("the call after the burst printed %q", got.stdout)
 	}
 }

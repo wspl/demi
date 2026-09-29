@@ -4,281 +4,184 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
-	"net"
-	"net/http"
-	"sync"
+	"log/slog"
+	"strings"
 	"testing"
-	"time"
+	"testing/iotest"
 
-	cs "github.com/wspl/demi/go/commandservice"
+	"github.com/wspl/demi/go/commandservice"
 	"github.com/wspl/demi/go/commandservice/servicetest"
 )
 
-// scriptedPeer exposes wire sequences a valid Handler cannot generate.
-// Its network connection and HTTP worker are always joined; each test has a ten-second guard.
-func scriptedPeer(t *testing.T, handler http.HandlerFunc) (*cs.Client, context.Context) {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	t.Cleanup(cancel)
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	protocols := new(http.Protocols)
-	protocols.SetUnencryptedHTTP2(true)
-	server := &http.Server{Handler: handler, Protocols: protocols}
-	done := make(chan error, 1)
-	t.Cleanup(func() {
-		if err := server.Close(); err != nil {
-			t.Error(err)
+// sizes prints the length of each chunk of its input, one to a line.
+func sizes(call *commandservice.Call) (commandservice.Completion, error) {
+	for {
+		chunk, err := call.Stdin.Next()
+		if err == io.EOF {
+			return commandservice.Completion{}, nil
 		}
-		if err := <-done; err != nil && !errors.Is(err, http.ErrServerClosed) {
-			t.Error(err)
+		if err != nil {
+			return commandservice.Completion{}, err
 		}
-	})
-	go func() { done <- server.Serve(listener) }()
-	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", listener.Addr().String())
-	if err != nil {
-		t.Fatal(err)
+		if _, err := fmt.Fprintf(call.Stdout, "%d\n", len(chunk)); err != nil {
+			return commandservice.Completion{}, err
+		}
 	}
-	t.Cleanup(func() {
-		// The transport may already have closed this connection.
-		_ = conn.Close()
-	})
-	client, err := cs.Connect(ctx, conn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return client, ctx
 }
 
-func sendRecord(t *testing.T, w http.ResponseWriter, record cs.Record) bool {
-	t.Helper()
-	data, err := record.Encode()
-	if err != nil {
-		t.Error(err)
-		return false
-	}
-	if _, err = w.Write(data); err != nil {
-		return false
-	}
-	return http.NewResponseController(w).Flush() == nil
-}
-
-type signalledReader struct {
-	io.Reader
-	entered  chan struct{}
-	returned chan struct{}
-	once     sync.Once
-}
-
-func (r *signalledReader) Read(data []byte) (int, error) {
-	r.once.Do(func() { close(r.entered) })
-	count, err := r.Reader.Read(data)
-	if r.returned != nil {
-		close(r.returned)
-	}
-	return count, err
-}
-
-type signalledWriter struct{ wrote chan struct{} }
-
-func (w signalledWriter) Write(data []byte) (int, error) {
-	close(w.wrote)
-	return len(data), nil
-}
-
-func TestExchangeDoesNotWaitForBlockedRead(t *testing.T) {
-	read, write := io.Pipe()
-	t.Cleanup(func() {
-		// These closes release the caller-owned test input even on assertion failure.
-		_ = read.Close()
-		_ = write.Close()
-	})
-	input := &signalledReader{Reader: read, entered: make(chan struct{}), returned: make(chan struct{})}
-	client, ctx := scriptedPeer(t, func(w http.ResponseWriter, r *http.Request) {
-		if !sendRecord(t, w, cs.Record{Kind: cs.InputPull}) {
-			return
-		}
-		select {
-		case <-input.entered:
-		case <-r.Context().Done():
-			return
-		}
-		if !sendRecord(t, w, cs.Record{Kind: cs.Stdout, Data: []byte("visible")}) {
-			return
-		}
-		sendRecord(t, w, cs.Record{Kind: cs.Completed})
-	})
-	stream, err := client.Invoke(ctx, invocation("probe"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	wrote := make(chan struct{})
-	result := make(chan error, 1)
-	go func() {
-		_, err := cs.Exchange(ctx, stream, input, signalledWriter{wrote: wrote}, io.Discard)
-		result <- err
-	}()
-	select {
-	case <-wrote:
-	case <-ctx.Done():
-		t.Fatal("output waited behind Read")
-	}
-	select {
-	case err = <-result:
+func TestEachPullIsAnsweredWithOneReadAndAShortReadIsOneChunk(t *testing.T) {
+	server := servicetest.Start(t, operations{"sizes": sizes})
+	for name, test := range map[string]struct {
+		input io.Reader
+		want  string
+	}{
+		"a short read":       {iotest.OneByteReader(strings.NewReader("abc")), "1\n1\n1\n"},
+		"more than a record": {bytes.NewReader(make([]byte, 3*65536+8)), "65536\n65536\n65536\n8\n"},
+		"no input":           {strings.NewReader(""), ""},
+		"data with its end":  {iotest.DataErrReader(strings.NewReader("abcd")), "4\n"},
+	} {
+		stream, err := server.Client.Invoke(testContext(t), invocation("sizes"))
 		if err != nil {
 			t.Fatal(err)
 		}
-	case <-ctx.Done():
-		t.Fatal("completion waited behind Read")
-	}
-	if err = write.Close(); err != nil {
-		t.Fatal(err)
-	}
-	<-input.returned
-}
-
-type zeroProgressReader struct{ read bool }
-
-func (r *zeroProgressReader) Read(data []byte) (int, error) {
-	if !r.read {
-		r.read = true
-		return 0, nil
-	}
-	return copy(data, "content"), io.EOF
-}
-
-func TestExchangeRetriesZeroProgress(t *testing.T) {
-	for _, operation := range []string{"first", "echo"} {
-		t.Run(operation, func(t *testing.T) {
-			client, ctx := clientFor(t, servicetest.NewFixture())
-			stream, err := client.Invoke(ctx, invocation(operation))
-			if err != nil {
-				t.Fatal(err)
-			}
-			var output bytes.Buffer
-			if _, err = cs.Exchange(ctx, stream, &zeroProgressReader{}, &output, io.Discard); err != nil {
-				t.Fatal(err)
-			}
-			if output.String() != "content" {
-				t.Fatalf("output %q", output.String())
-			}
-		})
+		var stdout bytes.Buffer
+		if _, err := commandservice.Exchange(testContext(t), stream, test.input, &stdout, io.Discard); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if stdout.String() != test.want {
+			t.Errorf("%s: chunks %q, want %q", name, stdout.String(), test.want)
+		}
 	}
 }
 
-// Budget ten seconds per case. Handler entry or request EOF establishes that the
-// first demand has left the queue before the peer sends one or two more pulls.
-func TestExchangeDemandQueue(t *testing.T) {
-	for _, test := range []struct {
-		name   string
-		ended  bool
-		queued int
+// noInput is an input that has nothing to give.
+func noInput() io.Reader { return bytes.NewReader(nil) }
+
+var errBroken = errors.New("the terminal is gone")
+
+// failingWriter fails its first write.
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errBroken }
+
+func TestAnExchangeSaysWhichSideFailedAndCancelsTheInvocation(t *testing.T) {
+	cancelled := newSignal()
+	// A handler that prints, asks for input and then waits for its cancellation.
+	waiting := func(call *commandservice.Call) (commandservice.Completion, error) {
+		if _, err := io.WriteString(call.Stdout, "output"); err != nil {
+			return commandservice.Completion{}, err
+		}
+		if _, err := call.Stdin.Next(); err != nil {
+			cancelled.send()
+			return commandservice.Completion{}, err
+		}
+		<-call.Context().Done()
+		cancelled.send()
+		return commandservice.Completion{}, call.Context().Err()
+	}
+	server := servicetest.Start(t, operations{"waiting": waiting, "echo": echo})
+	exchange := func(input io.Reader, stdout io.Writer) error {
+		stream, err := server.Client.Invoke(testContext(t), invocation("waiting"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = commandservice.Exchange(testContext(t), stream, input, stdout, io.Discard)
+		return err
+	}
+	for name, test := range map[string]struct {
+		input  io.Reader
+		stdout io.Writer
+		side   commandservice.Side
 	}{
-		{"reading_one_queued", false, 1},
-		{"reading_overflow", false, 2},
-		{"ended_one_queued", true, 1},
-		{"ended_overflow", true, 2},
+		"the input":  {iotest.ErrReader(errBroken), io.Discard, commandservice.InputSide},
+		"the output": {strings.NewReader("input"), failingWriter{}, commandservice.OutputSide},
 	} {
-		t.Run(test.name, func(t *testing.T) {
-			read, write := io.Pipe()
-			t.Cleanup(func() {
-				// Release caller-owned blocked input, including on assertion failures.
-				_ = read.Close()
-				_ = write.Close()
-			})
-			blocked := &signalledReader{Reader: read, entered: make(chan struct{})}
-			var input io.Reader = blocked
-			if test.ended {
-				input = bytes.NewReader(nil)
-			}
-			client, ctx := scriptedPeer(t, func(w http.ResponseWriter, r *http.Request) {
-				if !sendRecord(t, w, cs.Record{Kind: cs.InputPull}) {
-					return
-				}
-				if test.ended {
-					if _, err := io.Copy(io.Discard, r.Body); err != nil {
-						t.Error(err)
-						return
-					}
-				} else {
-					select {
-					case <-blocked.entered:
-					case <-r.Context().Done():
-						return
-					}
-				}
-				for range test.queued {
-					if !sendRecord(t, w, cs.Record{Kind: cs.InputPull}) {
-						return
-					}
-				}
-				if test.queued == 1 {
-					sendRecord(t, w, cs.Record{Kind: cs.Completed})
-				} else {
-					<-r.Context().Done()
-				}
-			})
-			stream, err := client.Invoke(ctx, invocation("probe"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			_, err = cs.Exchange(ctx, stream, input, io.Discard, io.Discard)
-			if test.queued == 1 {
-				if err != nil {
-					t.Fatal(err)
-				}
-			} else {
-				var invalid *cs.InvalidError
-				if !errors.As(err, &invalid) || invalid.Rule != "overlapping input demands" {
-					t.Fatal(err)
-				}
-			}
-		})
+		err := exchange(test.input, test.stdout)
+		var failed *commandservice.ExchangeError
+		if !errors.As(err, &failed) || failed.Side != test.side || !errors.Is(err, errBroken) {
+			t.Errorf("%s failing: error = %v, want an ExchangeError of side %d wrapping the failure", name, err, test.side)
+		}
+		// The failure cancelled the invocation, which the handler saw.
+		cancelled.receive(t)
 	}
 }
 
-func TestExchangeAfterEarlyInputEnd(t *testing.T) {
-	client, ctx := clientFor(t, servicetest.NewFixture())
-	stream, err := client.Invoke(ctx, invocation("echo"))
+func TestAnExchangeFailsOnTheServiceSideWhenTheConnectionBreaks(t *testing.T) {
+	started := newSignal()
+	server := servicetest.Start(t, operations{"hold": func(call *commandservice.Call) (commandservice.Completion, error) {
+		started.send()
+		<-call.Context().Done()
+		return commandservice.Completion{}, call.Context().Err()
+	}})
+	stream, err := server.Client.Invoke(testContext(t), invocation("hold"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = stream.End(); err != nil {
+	failure := make(chan error, 1)
+	go func() {
+		_, err := commandservice.Exchange(testContext(t), stream, noInput(), io.Discard, io.Discard)
+		failure <- err
+	}()
+	started.receive(t)
+	if err := server.Client.Close(); err != nil {
 		t.Fatal(err)
 	}
-	completion, err := cs.Exchange(ctx, stream, bytes.NewReader(nil), io.Discard, io.Discard)
-	if err != nil || completion.ExitCode != 0 {
-		t.Fatal(completion, err)
+	var failed *commandservice.ExchangeError
+	if err := <-failure; !errors.As(err, &failed) || failed.Side != commandservice.ServiceSide {
+		t.Errorf("error = %v, want an ExchangeError of the service side", err)
 	}
 }
 
-func TestLateInputBeforeNextAndRepeatedEOF(t *testing.T) {
-	client, ctx := scriptedPeer(t, func(w http.ResponseWriter, r *http.Request) {
-		sendRecord(t, w, cs.Record{Kind: cs.Completed})
+func TestAnExchangeEndsWithItsContext(t *testing.T) {
+	started, cancelled := newSignal(), newSignal()
+	server := servicetest.Start(t, operations{"hold": func(call *commandservice.Call) (commandservice.Completion, error) {
+		started.send()
+		<-call.Context().Done()
+		cancelled.send()
+		return commandservice.Completion{}, call.Context().Err()
+	}})
+	stream, err := server.Client.Invoke(testContext(t), invocation("hold"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(testContext(t))
+	failure := make(chan error, 1)
+	go func() {
+		_, err := commandservice.Exchange(ctx, stream, noInput(), io.Discard, io.Discard)
+		failure <- err
+	}()
+	started.receive(t)
+	cancel()
+	if err := <-failure; !errors.Is(err, context.Canceled) {
+		t.Errorf("error = %v, want the context's", err)
+	}
+	cancelled.receive(t)
+}
+
+func silenceLog(t *testing.T) {
+	t.Helper()
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+}
+
+func TestAPanickingHandlerFailsItsOwnCallAndNotTheService(t *testing.T) {
+	silenceLog(t)
+	server := servicetest.Start(t, operations{
+		"panic": func(*commandservice.Call) (commandservice.Completion, error) { panic("the handler broke") },
+		"short": short,
 	})
-	stream, err := client.Invoke(ctx, invocation("probe"))
+	stream, err := server.Client.Invoke(testContext(t), invocation("panic"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Force the request writer to meet the stopped body before consuming any response.
-	for range 8 {
-		if err = stream.Write(make([]byte, cs.MaxRecordBytes)); err != nil {
-			t.Fatal(err)
-		}
+	// The call ends without a completion, which the reset of its stream says.
+	if _, err := commandservice.Exchange(testContext(t), stream, noInput(), io.Discard, io.Discard); err == nil {
+		t.Error("the call of a handler that panicked completed")
 	}
-	if err = stream.End(); err != nil {
-		t.Fatal(err)
-	}
-	record, err := stream.Next()
-	if err != nil || record.Kind != cs.Completed {
-		t.Fatal(record, err)
-	}
-	for range 3 {
-		if _, err = stream.Next(); err != io.EOF {
-			t.Fatal(err)
-		}
+	if got := run(t, server.Client, invocation("short"), nil); string(got.stdout) != "ok" {
+		t.Errorf("the next call printed %q", got.stdout)
 	}
 }
