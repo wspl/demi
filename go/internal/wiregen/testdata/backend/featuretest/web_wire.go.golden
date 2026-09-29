@@ -75,14 +75,22 @@ func (v *Embedded) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	return nil
 }
 
-// MarshalJSONTo encodes Embedded as a JSON object with the members of the structs
-// it embeds among its own.
+// MarshalJSONTo encodes Embedded as a JSON object whose members include those of
+// the foreign structs it embeds, each written by its owner's encoder.
 func (v Embedded) MarshalJSONTo(enc *jsontext.Encoder) error {
-	return json.MarshalEncode(enc, struct {
-		Low   int     `json:"low"`
-		High  int     `json:"high"`
-		Label Trimmed `json:"label"`
-	}{v.Low, v.High, v.Label})
+	if err := enc.WriteToken(jsontext.BeginObject); err != nil {
+		return err
+	}
+	if err := wire.WriteMembers(enc, v.Interval, wireOptions); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.String("label")); err != nil {
+		return err
+	}
+	if err := json.MarshalEncode(enc, v.Label); err != nil {
+		return err
+	}
+	return enc.WriteToken(jsontext.EndObject)
 }
 
 // validate checks the rules of the fields of Embedded, and reports every one that
@@ -93,6 +101,87 @@ func (v Embedded) validate() error {
 	r.NoNUL("label", string(v.Label))
 	r.Chars("label", string(v.Label), wire.Between(1, 3))
 	r.Nest("", exporttest.ValidateInterval(v.Interval))
+	return r.Err()
+}
+
+// UnmarshalJSONFrom decodes the JSON object of Measured: it refuses a member that
+// the type does not have, a required member that is missing, a null, and a
+// value of another JSON kind than the member's, naming the member.
+func (v *Measured) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	*v = Measured{}
+	if err := wire.BeginObject(dec); err != nil {
+		return err
+	}
+	var seen uint64
+	var embedRounded wire.Members
+	for {
+		name, more, err := wire.NextMember(dec)
+		if err != nil {
+			return err
+		}
+		if !more {
+			break
+		}
+		switch name {
+		case "value":
+			seen |= 1 << 0
+			raw, err := wire.ReadRaw(dec)
+			if err != nil {
+				return wire.In(name, err)
+			}
+			embedRounded = append(embedRounded, wire.Member{Name: name, Value: raw})
+		case "unit":
+			seen |= 1 << 1
+			s, err := wire.ReadString(dec)
+			if err != nil {
+				return wire.In("unit", err)
+			}
+			v.Unit = s
+		default:
+			return wire.Unknown(name)
+		}
+	}
+	if seen&(1<<0) == 0 {
+		return wire.Required("value")
+	}
+	if seen&(1<<1) == 0 {
+		return wire.Required("unit")
+	}
+	{
+		raw, err := embedRounded.JSON()
+		if err != nil {
+			return err
+		}
+		if err := json.Unmarshal(raw, &v.Rounded); err != nil {
+			return wire.Refusal(err)
+		}
+	}
+	return nil
+}
+
+// MarshalJSONTo encodes Measured as a JSON object whose members include those of
+// the foreign structs it embeds, each written by its owner's encoder.
+func (v Measured) MarshalJSONTo(enc *jsontext.Encoder) error {
+	if err := enc.WriteToken(jsontext.BeginObject); err != nil {
+		return err
+	}
+	if err := wire.WriteMembers(enc, v.Rounded, wireOptions); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.String("unit")); err != nil {
+		return err
+	}
+	if err := json.MarshalEncode(enc, v.Unit); err != nil {
+		return err
+	}
+	return enc.WriteToken(jsontext.EndObject)
+}
+
+// validate checks the rules of the fields of Measured, and reports every one that
+// is broken.
+func (v Measured) validate() error {
+	var r wire.Report
+	r.Nest("", exporttest.ValidateRounded(v.Rounded))
 	return r.Err()
 }
 

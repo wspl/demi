@@ -62,6 +62,11 @@ func TestManagedBootUsesWHATWGNormalization(t *testing.T) {
 		"ws://Example.COM:80/./a":        "ws://example.com/a",
 		"https://bücher.example/":        "https://xn--bcher-kva.example/",
 		"http://example.com/a/%2e%2e/b":  "http://example.com/b",
+		// What the standard accepts is accepted and written as it writes it.
+		"http://example.com/%":   "http://example.com/%",
+		"http://example.com/%zz": "http://example.com/%zz",
+		"http://example.com/a|b": "http://example.com/a|b",
+		"http://example.com/a^b": "http://example.com/a^b",
 	} {
 		boot := runnerproto.ManagedBoot{BackendURL: runnerproto.BackendURL(raw), DeviceToken: "opaque"}
 		json, err := boot.Encode()

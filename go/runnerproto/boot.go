@@ -5,11 +5,11 @@ package runnerproto
 
 import (
 	"errors"
-	"net/url"
 	"strings"
 	"unicode"
 	"unicode/utf16"
 
+	whatwg "github.com/nlnwa/whatwg-url/url"
 	"github.com/wspl/demi/go/core"
 	"github.com/wspl/demi/go/internal/wire"
 )
@@ -52,13 +52,13 @@ func backendURL(value BackendURL) error {
 	if err != nil {
 		return errors.New("is not a URL")
 	}
-	switch address.Scheme {
+	switch address.Scheme() {
 	case "http", "https", "ws", "wss":
 	default:
 		return errors.New("is not a backend URL")
 	}
-	// net/url loses a bare fragment delimiter, so check the original text.
-	if address.Hostname() == "" || address.User != nil || strings.ContainsRune(string(value), '#') {
+	// The parser drops a bare fragment delimiter, so check the original text.
+	if address.Hostname() == "" || address.Username() != "" || address.Password() != "" || strings.ContainsRune(string(value), '#') {
 		return errors.New("is not a backend URL")
 	}
 	return nil
@@ -73,11 +73,14 @@ func deviceToken(value DeviceToken) error {
 	return nil
 }
 
-// NormalURL parses raw as an absolute URL and returns it in its normal form,
-// which names an installation: the scheme and the host in lower case, no port
-// that is the scheme's default, and "/" for an empty path, as the WHATWG URL
-// standard writes them, so two spellings of one endpoint compare equal.
-func NormalURL(raw string) (*url.URL, error) {
+// NormalURL parses raw as an absolute URL as the WHATWG URL standard does, the
+// Rust's url crate among them. Its String is the URL's normal form, which
+// names an installation: the scheme and the host in lower case, no port that
+// is the scheme's default, and "/" for an empty path, so two spellings of one
+// endpoint compare equal. The URL is the parser's own, never re-read by
+// net/url, which refuses what the standard accepts (a stray "%") and writes
+// the path differently ("|" escaped).
+func NormalURL(raw string) (*whatwg.Url, error) {
 	address, err := core.ParseURL(raw)
 	if err != nil {
 		return nil, err
@@ -85,9 +88,7 @@ func NormalURL(raw string) (*url.URL, error) {
 	if address.OpaquePath() {
 		return nil, errors.New("is not an absolute URL")
 	}
-	// Keep the public net/url result used by callers; parsing and normalization
-	// belong to core's WHATWG parser.
-	return url.Parse(address.String())
+	return address, nil
 }
 
 // Normal returns the URL in its normal form, or an error when it is not a

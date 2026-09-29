@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/go/machines/internal/config"
+	"github.com/wspl/demi/go/runnerproto"
 )
 
 // required are the settings a manager cannot start without.
@@ -29,6 +30,22 @@ func parse(args []string, settings ...string) (*config.Config, error) {
 		environ = append(environ, setting)
 	}
 	return config.Parse(args, environ, io.Discard)
+}
+
+// The configured backend is written as a boot file writes it, so a sandbox
+// whose boot names the configured backend is admitted, whatever the path holds.
+// Cost: parsing only.
+func TestTheBackendURLIsWrittenAsBootFilesWriteIt(t *testing.T) {
+	for _, raw := range []string{"https://Backend.example.com:443/a|b", "https://backend.example.com/%zz^"} {
+		cfg, err := parse(nil, "DEMI_MANAGED_BACKEND_URL="+raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		boot, err := runnerproto.BackendURL(raw).Normal()
+		if err != nil || cfg.BackendURL.String() != boot {
+			t.Errorf("%s: configured %s, boot %s %v", raw, cfg.BackendURL, boot, err)
+		}
+	}
 }
 
 func TestDefaultsApplyAndTheBackendURLIsNormalized(t *testing.T) {

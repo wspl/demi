@@ -9,13 +9,13 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
-	"net/url"
 	"os"
 	"os/exec"
 	"slices"
 	"strconv"
 	"strings"
 
+	whatwg "github.com/nlnwa/whatwg-url/url"
 	"github.com/wspl/demi/go/machines/internal/linux"
 	"github.com/wspl/demi/go/machines/internal/tools"
 )
@@ -57,13 +57,13 @@ func (e *OverlapError) Error() string {
 type Network struct {
 	pool    netip.Prefix
 	dns     []netip.Addr
-	backend *url.URL
+	backend *whatwg.Url
 	tools   *tools.Tools
 }
 
 // New returns the host side of Cloud networking for a pool, the resolvers a
 // sandbox uses and the backend it may reach, whose URL is in its normal form.
-func New(pool netip.Prefix, dns []netip.Addr, backend *url.URL, t *tools.Tools) *Network {
+func New(pool netip.Prefix, dns []netip.Addr, backend *whatwg.Url, t *tools.Tools) *Network {
 	return &Network{pool: pool, dns: dns, backend: backend, tools: t}
 }
 
@@ -120,10 +120,10 @@ func (n *Network) Prepare(ctx context.Context) error {
 }
 
 // backendPort returns the port of the backend's URL, or its scheme's default.
-func backendPort(backend *url.URL) (uint16, error) {
+func backendPort(backend *whatwg.Url) (uint16, error) {
 	text := backend.Port()
 	if text == "" {
-		switch backend.Scheme {
+		switch backend.Scheme() {
 		case "https", "wss":
 			return 443, nil
 		default:
@@ -140,7 +140,8 @@ func backendPort(backend *url.URL) (uint16, error) {
 // backendAddresses returns the backend's IPv4 addresses, none of them loopback
 // or unspecified: a sandbox reaches the backend over the network.
 func (n *Network) backendAddresses(ctx context.Context) ([]netip.Addr, error) {
-	host := n.backend.Hostname()
+	// The standard writes an IPv6 host in brackets.
+	host := strings.TrimSuffix(strings.TrimPrefix(n.backend.Hostname(), "["), "]")
 	var addresses []netip.Addr
 	if literal, err := netip.ParseAddr(host); err == nil {
 		if literal.Is4() {

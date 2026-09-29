@@ -3,6 +3,8 @@
 package exporttest
 
 import (
+	"math"
+
 	"github.com/tinylib/msgp/msgp"
 	"github.com/wspl/demi/go/internal/wire"
 )
@@ -81,6 +83,67 @@ func (v Interval) MarshalMsgpack() ([]byte, error) {
 		} else {
 			data = msgp.AppendInt64(data, int64(v.High))
 		}
+	}
+	return data, nil
+}
+
+// UnmarshalMsgpack reads the structure of one complete Rounded value.
+func (v *Rounded) UnmarshalMsgpack(data []byte) error {
+	*v = Rounded{}
+	fields, err := wire.MPObject(data)
+	if err != nil {
+		return err
+	}
+	seen := map[string]bool{}
+	for _, field := range fields {
+		switch field.Name {
+		case "value":
+			seen[field.Name] = true
+			value, err := (func(data []byte) (float64, error) {
+				value, err := wire.MPFloat(data)
+				return float64(value), err
+			})(field.Data)
+			if err != nil {
+				return wire.In(field.Name, err)
+			}
+			v.Value = value
+		default:
+			return wire.Unknown(field.Name)
+		}
+	}
+	if !seen["value"] {
+		return wire.Required("value")
+	}
+	return nil
+}
+
+// DecodeRoundedMsgpack reads and validates one complete value.
+func DecodeRoundedMsgpack(data []byte) (Rounded, error) {
+	var value Rounded
+	if err := value.UnmarshalMsgpack(data); err != nil {
+		return value, err
+	}
+	return value, value.validate()
+}
+
+// MarshalMsgpack encodes Rounded as a map in declaration order.
+func (v Rounded) MarshalMsgpack() ([]byte, error) {
+	var err error
+	v, err = v.normalizeWire()
+	if err != nil {
+		return nil, err
+	}
+	if err := v.validate(); err != nil {
+		return nil, err
+	}
+	count := uint32(1)
+	data := msgp.AppendMapHeader(nil, count)
+	data = msgp.AppendString(data, "value")
+	{
+		if math.IsNaN(float64(v.Value)) || math.IsInf(float64(v.Value), 0) {
+			return nil, &wire.InvalidError{Path: "value", Rule: "expected finite number"}
+		}
+		data = msgp.AppendFloat64(data, float64(v.Value))
 	}
 	return data, nil
 }

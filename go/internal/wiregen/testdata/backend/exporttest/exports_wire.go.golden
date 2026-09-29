@@ -121,3 +121,30 @@ func EncodeModeJSON(value Mode) ([]byte, error) {
 	}
 	return data, nil
 }
+
+// ValidateRounded checks a Rounded using its owner's rules.
+func ValidateRounded(value Rounded) error {
+	return value.validate()
+}
+
+// DecodeRoundedJSON reads and validates one complete JSON value.
+func DecodeRoundedJSON(data []byte) (Rounded, error) {
+	var value Rounded
+	err := json.Unmarshal(data, &value)
+	if err != nil {
+		return value, wire.Refusal(err)
+	}
+	return value, ValidateRounded(value)
+}
+
+// EncodeRoundedJSON validates and encodes a Rounded.
+func EncodeRoundedJSON(value Rounded) ([]byte, error) {
+	if err := ValidateRounded(value); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(value, json.Deterministic(true))
+	if err != nil {
+		return nil, wire.Refusal(err)
+	}
+	return data, nil
+}

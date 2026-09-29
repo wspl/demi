@@ -4,6 +4,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"github.com/wspl/demi/go/internal/wire"
+	"github.com/wspl/demi/go/internal/wiregen/exporttest"
 	"github.com/wspl/demi/go/internal/wiregen/featuretest"
 	"github.com/wspl/demi/go/internal/wiregen/packtest"
 	"strings"
@@ -59,6 +60,25 @@ func TestForeignEmbeddingAndNormalizedValue(t *testing.T) {
 		if _, err := featuretest.EncodeEmbeddedJSON(value); err == nil {
 			t.Fatal("encoding lost custom check")
 		}
+	}
+}
+
+// An embedded struct is written as its owner writes it alone, in JSON and in
+// MessagePack, even where the owner's encoder differs from its fields.
+// Cost: in-memory encoding only.
+func TestForeignEmbeddingWritesThroughTheOwnersEncoder(t *testing.T) {
+	value := featuretest.Measured{Rounded: exporttest.Rounded{Value: 1.4}, Unit: "m"}
+	encoded, err := featuretest.EncodeMeasuredJSON(value)
+	if err != nil || string(encoded) != `{"value":1,"unit":"m"}` {
+		t.Fatalf("JSON %s %v", encoded, err)
+	}
+	packed, err := value.MarshalMsgpack()
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := featuretest.DecodeMeasuredMsgpack(packed)
+	if err != nil || decoded.Value != 1 || decoded.Unit != "m" {
+		t.Fatalf("MessagePack %+v %v", decoded, err)
 	}
 }
 
@@ -163,6 +183,11 @@ func TestWebFeatureDeclarationRefusals(t *testing.T) {
 		"//demi:opaque\n//demi:jsonschema inline []\ntype T struct{}",
 		"//demi:opaque\n//demi:jsonschema inline {\"type\":\"string\",\"type\":\"number\"}\ntype T struct{}",
 		"//demi:opaque\n//demi:jsonschema ref A.B\ntype T struct{}",
+		// A schema that contradicts the representation it describes.
+		"//demi:opaque string\n//demi:jsonschema inline {\"type\":\"number\"}\ntype T struct{}",
+		"//demi:opaque number\n//demi:jsonschema named {\"type\":[\"string\",\"null\"]}\ntype T struct{}",
+		"//demi:opaque string format=email\n//demi:jsonschema inline {\"type\":\"string\",\"format\":\"uri\"}\ntype T struct{}",
+		"//demi:value\n//demi:check nonul\n//demi:jsonschema inline {\"type\":\"boolean\"}\ntype T string",
 		"//demi:opaque\n//demi:representation Missing\ntype T struct{}",
 		"//demi:opaque string\n//demi:representation Values\ntype T struct{Values []string `json:\"values\"`}",
 	} {

@@ -631,30 +631,107 @@ func (v Embedded) MarshalMsgpack() ([]byte, error) {
 	if err := v.validate(); err != nil {
 		return nil, err
 	}
-	count := uint32(3)
+	count := uint32(1)
+	embeddedInterval, err := v.Interval.MarshalMsgpack()
+	if err != nil {
+		return nil, err
+	}
+	embeddedCountInterval, embeddedInterval, err := msgp.ReadMapHeaderBytes(embeddedInterval)
+	if err != nil {
+		return nil, err
+	}
+	count += embeddedCountInterval
 	data := msgp.AppendMapHeader(nil, count)
-	data = msgp.AppendString(data, "low")
-	{
-		if v.Low >= 0 {
-			data = msgp.AppendUint64(data, uint64(v.Low))
-		} else {
-			data = msgp.AppendInt64(data, int64(v.Low))
-		}
-	}
-	data = msgp.AppendString(data, "high")
-	{
-		if v.High >= 0 {
-			data = msgp.AppendUint64(data, uint64(v.High))
-		} else {
-			data = msgp.AppendInt64(data, int64(v.High))
-		}
-	}
+	data = append(data, embeddedInterval...)
 	data = msgp.AppendString(data, "label")
 	{
 		if !utf8.ValidString(string(v.Label)) {
 			return nil, &wire.InvalidError{Path: "label", Rule: "invalid UTF-8"}
 		}
 		data = msgp.AppendString(data, string(v.Label))
+	}
+	return data, nil
+}
+
+// UnmarshalMsgpack reads the structure of one complete Measured value.
+func (v *Measured) UnmarshalMsgpack(data []byte) error {
+	*v = Measured{}
+	fields, err := wire.MPObject(data)
+	if err != nil {
+		return err
+	}
+	seen := map[string]bool{}
+	var embedRounded []wire.MPMember
+	for _, field := range fields {
+		switch field.Name {
+		case "value":
+			seen[field.Name] = true
+			embedRounded = append(embedRounded, field)
+		case "unit":
+			seen[field.Name] = true
+			value, err := (func(data []byte) (string, error) {
+				value, err := wire.MPString(data)
+				return string(value), err
+			})(field.Data)
+			if err != nil {
+				return wire.In(field.Name, err)
+			}
+			v.Unit = value
+		default:
+			return wire.Unknown(field.Name)
+		}
+	}
+	if !seen["value"] {
+		return wire.Required("value")
+	}
+	if !seen["unit"] {
+		return wire.Required("unit")
+	}
+	{
+		raw := msgp.AppendMapHeader(nil, uint32(len(embedRounded)))
+		for _, field := range embedRounded {
+			raw = msgp.AppendString(raw, field.Name)
+			raw = append(raw, field.Data...)
+		}
+		if err := v.Rounded.UnmarshalMsgpack(raw); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// DecodeMeasuredMsgpack reads and validates one complete value.
+func DecodeMeasuredMsgpack(data []byte) (Measured, error) {
+	var value Measured
+	if err := value.UnmarshalMsgpack(data); err != nil {
+		return value, err
+	}
+	return value, value.validate()
+}
+
+// MarshalMsgpack encodes Measured as a map in declaration order.
+func (v Measured) MarshalMsgpack() ([]byte, error) {
+	if err := v.validate(); err != nil {
+		return nil, err
+	}
+	count := uint32(1)
+	embeddedRounded, err := v.Rounded.MarshalMsgpack()
+	if err != nil {
+		return nil, err
+	}
+	embeddedCountRounded, embeddedRounded, err := msgp.ReadMapHeaderBytes(embeddedRounded)
+	if err != nil {
+		return nil, err
+	}
+	count += embeddedCountRounded
+	data := msgp.AppendMapHeader(nil, count)
+	data = append(data, embeddedRounded...)
+	data = msgp.AppendString(data, "unit")
+	{
+		if !utf8.ValidString(string(v.Unit)) {
+			return nil, &wire.InvalidError{Path: "unit", Rule: "invalid UTF-8"}
+		}
+		data = msgp.AppendString(data, string(v.Unit))
 	}
 	return data, nil
 }

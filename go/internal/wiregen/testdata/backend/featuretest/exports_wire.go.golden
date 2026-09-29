@@ -150,6 +150,33 @@ func EncodeForeignJSON(value Foreign) ([]byte, error) {
 	return data, nil
 }
 
+// ValidateMeasured checks a Measured using its owner's rules.
+func ValidateMeasured(value Measured) error {
+	return value.validate()
+}
+
+// DecodeMeasuredJSON reads and validates one complete JSON value.
+func DecodeMeasuredJSON(data []byte) (Measured, error) {
+	var value Measured
+	err := json.Unmarshal(data, &value)
+	if err != nil {
+		return value, wire.Refusal(err)
+	}
+	return value, ValidateMeasured(value)
+}
+
+// EncodeMeasuredJSON validates and encodes a Measured.
+func EncodeMeasuredJSON(value Measured) ([]byte, error) {
+	if err := ValidateMeasured(value); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(value, json.Deterministic(true))
+	if err != nil {
+		return nil, wire.Refusal(err)
+	}
+	return data, nil
+}
+
 // ValidatePatch checks a Patch using its owner's rules.
 func ValidatePatch(value Patch) error {
 	return value.validate()

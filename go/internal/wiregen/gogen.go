@@ -400,6 +400,9 @@ func (g *goGen) encoder(s *Struct) {
 	case hasInline(s):
 		g.inlineEncoder(s)
 		return
+	case len(s.ForeignEmbeds) > 0:
+		g.embedEncoder(s)
+		return
 	}
 	if s.Union != nil {
 		g.p("// MarshalJSONTo encodes %s as a JSON object that starts with its tag.", s.Name)
@@ -1138,6 +1141,72 @@ func (g *goGen) inlineEncoder(s *Struct) {
 		if !f.Required {
 			g.p("}")
 		}
+	}
+	g.p("return enc.WriteToken(jsontext.EndObject)")
+	g.p("}")
+	g.p("")
+}
+
+// embedEncoder writes MarshalJSONTo of a struct that embeds foreign structs:
+// its own members, and at each embedding's place the embedded struct's members
+// as its owner writes it alone, so an owner whose encoder differs from its
+// fields is written the same inside the struct.
+func (g *goGen) embedEncoder(s *Struct) {
+	g.p("// MarshalJSONTo encodes %s as a JSON object whose members include those of", s.Name)
+	g.p("// the foreign structs it embeds, each written by its owner's encoder.")
+	g.p("func (v %s) MarshalJSONTo(enc *jsontext.Encoder) error {", s.Name)
+	if s.Unknown != nil {
+		g.p("if err := wire.CheckUnknown(v.%s, %s); err != nil {", s.Unknown.Name, quoted(structMemberNames(s)))
+		g.p("return err")
+		g.p("}")
+	}
+	g.p("if err := enc.WriteToken(jsontext.BeginObject); err != nil {")
+	g.p("return err")
+	g.p("}")
+	if s.Union != nil && s.Union.TagName != "" {
+		for _, token := range []string{s.Union.TagName, s.Tag} {
+			g.p("if err := enc.WriteToken(jsontext.String(%s)); err != nil {", strconv.Quote(token))
+			g.p("return err")
+			g.p("}")
+		}
+	}
+	written := map[*Type]bool{}
+	for _, f := range s.Fields {
+		if f.Owner != nil {
+			if written[f.Owner] {
+				continue
+			}
+			written[f.Owner] = true
+			g.p("if err := wire.WriteMembers(enc, v.%s, wireOptions); err != nil {", f.Owner.Name)
+			g.p("return err")
+			g.p("}")
+			continue
+		}
+		if !f.Required {
+			if f.Type.Kind == KindBool {
+				g.p("if v.%s {", f.Name)
+			} else {
+				g.p("if v.%s != nil {", f.Name)
+			}
+		}
+		g.p("if err := enc.WriteToken(jsontext.String(%s)); err != nil {", strconv.Quote(f.JSON))
+		g.p("return err")
+		g.p("}")
+		g.p("if err := json.MarshalEncode(enc, v.%s); err != nil {", f.Name)
+		g.p("return err")
+		g.p("}")
+		if !f.Required {
+			g.p("}")
+		}
+	}
+	if s.Unknown != nil {
+		g.p("extra, err := v.%s.JSON()", s.Unknown.Name)
+		g.p("if err != nil {")
+		g.p("return err")
+		g.p("}")
+		g.p("if err := wire.WriteMembers(enc, extra); err != nil {")
+		g.p("return err")
+		g.p("}")
 	}
 	g.p("return enc.WriteToken(jsontext.EndObject)")
 	g.p("}")
