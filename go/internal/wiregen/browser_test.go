@@ -127,7 +127,7 @@ type Input struct { Value Scalar ` + "`json:\"value\" check:\"func=Validate\"`" 
 // In-memory generation and validation; no processes or deadlines.
 func TestNativeBrowserMembers(t *testing.T) {
 	source := `package p
-import "encoding/json/jsontext"
+import "github.com/wspl/demi/go/internal/wire"
 //demi:opaque string format=http-url
 type Endpoint struct{}
 //demi:wire
@@ -135,7 +135,7 @@ type Input struct {
  Setting **string ` + "`json:\"setting,omitzero\" check:\"nullable,chars=1..\"`" + `
  Default *string ` + "`json:\"default,omitzero\" check:\"nullabsent\"`" + `
  Endpoint Endpoint ` + "`json:\"endpoint\" check:\"func=Validate\"`" + `
- Extra map[string]jsontext.Value ` + "`json:\",inline\"`" + `
+ Extra wire.Members ` + "`json:\",inline\"`" + `
 }`
 	pkg, err := LoadSource(map[string][]byte{"input.go": []byte(source)})
 	if err != nil {
