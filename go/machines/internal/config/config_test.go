@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wspl/demi/go/internal/envflag"
 	"github.com/wspl/demi/go/machines/internal/config"
 	"github.com/wspl/demi/go/runnerproto"
 )
@@ -164,7 +165,7 @@ func TestServingNeedsASocketAndRecoveryDoesNot(t *testing.T) {
 
 func TestAFlagGivenTwiceIsRefusedExceptTheList(t *testing.T) {
 	for _, args := range [][]string{{"--slots=8", "--slots=9"}, {"--recover", "--recover"}, {"--limits=off", "--limits=off"}} {
-		if _, err := parse(args); err == nil || !config.IsUsage(err) {
+		if _, err := parse(args); err == nil || !envflag.IsUsage(err) {
 			t.Errorf("%v: %v", args, err)
 		}
 	}
@@ -185,11 +186,11 @@ func TestUsageErrorsAreToldFromTheManagersOwnRefusals(t *testing.T) {
 		"slots over the subnet":        {nil, []string{"DEMI_MANAGED_SUBNET=172.30.0.0/30", "DEMI_MANAGED_SLOTS=2"}, false},
 		"a budget with the limits off": {nil, []string{"DEMI_MANAGED_LIMITS=off", "DEMI_MANAGED_CPUS=2"}, false},
 	} {
-		if _, err := parse(test.args, test.settings...); err == nil || config.IsUsage(err) != test.usage {
-			t.Errorf("%s: %v, usage %v", name, err, config.IsUsage(err))
+		if _, err := parse(test.args, test.settings...); err == nil || envflag.IsUsage(err) != test.usage {
+			t.Errorf("%s: %v, usage %v", name, err, envflag.IsUsage(err))
 		}
 	}
-	if _, err := config.Parse(nil, slices.DeleteFunc(slices.Clone(required), func(entry string) bool { return strings.HasPrefix(entry, "DEMI_MACHINES_SOCKET") }), io.Discard); err == nil || config.IsUsage(err) {
+	if _, err := config.Parse(nil, slices.DeleteFunc(slices.Clone(required), func(entry string) bool { return strings.HasPrefix(entry, "DEMI_MACHINES_SOCKET") }), io.Discard); err == nil || envflag.IsUsage(err) {
 		t.Errorf("a missing socket: %v", err)
 	}
 }
