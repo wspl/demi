@@ -1,0 +1,282 @@
+{
+  "control.sqlite": {
+    "attachments": [
+      [
+        "rust-upload",
+        "rust-user",
+        "text/plain",
+        3,
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        "abc",
+        1700000000000
+      ]
+    ],
+    "conversation_drafts": [
+      [
+        "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01",
+        2,
+        "{\"text\":\"draft\",\"files\":[]}",
+        2,
+        1,
+        "{\"text\":\"before\",\"files\":[]}",
+        1700000000000
+      ]
+    ],
+    "conversation_fork_operations": [
+      [
+        "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a02",
+        "rust-user",
+        "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01",
+        "rust-message",
+        "{\"title\":\"Fork\",\"target\":{\"kind\":\"cloud\"},\"model\":null,\"createdAt\":\"2023-11-14T22:13:20Z\",\"attachedHosts\":[]}"
+      ]
+    ],
+    "conversation_hosts": [
+      [
+        "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01",
+        "rust-device",
+        "Workstation",
+        null,
+        1700000000000
+      ]
+    ],
+    "conversation_panels": [
+      [
+        "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01",
+        "{\"selection\":\"change\",\"tabs\":[]}",
+        1700000000000
+      ]
+    ],
+    "conversations": [
+      [
+        "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01",
+        "rust-user",
+        "Rust conversation",
+        "user",
+        0,
+        0,
+        0,
+        3,
+        "device",
+        "rust-device",
+        "/home/work",
+        null,
+        null,
+        null,
+        1,
+        null,
+        2,
+        1,
+        1700000000000,
+        1700000000000,
+        1700000000000
+      ]
+    ],
+    "devices": [
+      [
+        "rust-device",
+        "rust-user",
+        "user",
+        "Workstation",
+        "linux",
+        "device-hash",
+        1700000000000,
+        null
+      ]
+    ],
+    "email_challenges": [
+      [
+        "rust-user",
+        "challenge",
+        "next@example.test",
+        "password-hash",
+        "code-hash",
+        1700000600000,
+        1700000000000,
+        0
+      ]
+    ],
+    "exposes": [
+      [
+        "abcdefghijklmnopqrstuvwxyz",
+        1,
+        "rust-user",
+        "rust-device",
+        "localhost:8080",
+        1700000000000,
+        4102444800000
+      ]
+    ],
+    "managed_operations": [
+      [
+        "rust-device",
+        "d6d7ad31-b0f6-4b36-9295-751a1fcf56b8",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "ready",
+        null,
+        1700000000000
+      ]
+    ],
+    "model_catalogs": [
+      [
+        "rust-provider",
+        "{\"key\":\"digest\",\"checkedAt\":\"2023-11-14T22:13:20Z\",\"catalog\":{\"models\":[],\"defaultModelId\":null,\"warnings\":[],\"sourceFetchedAt\":\"2023-11-14T22:13:20Z\",\"stale\":false}}"
+      ]
+    ],
+    "provider_credentials": [
+      [
+        "rust-provider",
+        "credential",
+        null,
+        "Fixture",
+        null,
+        "fixture",
+        {
+          "hex": "010203"
+        },
+        1,
+        null,
+        1700000000000
+      ]
+    ],
+    "providers": [
+      [
+        "rust-provider",
+        "rust-user",
+        "openai",
+        "api_key",
+        "Rust provider",
+        {
+          "hex": "010203"
+        },
+        null,
+        1700000000000
+      ]
+    ],
+    "usage_ledger": [
+      [
+        "usage-one",
+        "rust-user",
+        "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01",
+        "rust-provider",
+        "fixture-model",
+        100,
+        30,
+        20,
+        10,
+        1700000000000
+      ]
+    ],
+    "user_preferences": [
+      [
+        "rust-user",
+        "{\"appearance\":{\"theme\":\"dark\"},\"shortcuts\":{}}"
+      ]
+    ],
+    "users": [
+      [
+        "rust-user",
+        "rust@example.test",
+        "Rust fixture",
+        "$argon2id$v=19$m=19456,t=2,p=1$Zml4dHVyZSBzYWx0IDEyMzQ$3O+xY2KB0deLJDK6gBnA0XIGqs5L+03UilnGJrcgSrs",
+        "master",
+        1700000000000,
+        1
+      ]
+    ],
+    "web_sessions": [
+      [
+        "fixture-session-hash",
+        "rust-user",
+        4102444800000
+      ]
+    ],
+    "workspaces": [
+      [
+        "rust-workspace",
+        "rust-user",
+        "rust-device",
+        "/home/work",
+        "Work",
+        0,
+        1700000000000
+      ]
+    ]
+  },
+  "conversations/0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01.sqlite": {
+    "blob_refs": [
+      [
+        "root",
+        0,
+        0,
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        "message",
+        1700000000000
+      ]
+    ],
+    "blocks": [
+      [
+        "root",
+        0,
+        "{\"type\":\"user\",\"id\":\"rust-message\",\"turnId\":\"rust-turn\",\"createdAt\":\"2023-11-14T22:13:20.000Z\",\"model\":{\"providerId\":\"rust-provider\",\"model\":{\"id\":\"fixture-model\",\"name\":\"Fixture\",\"contextWindow\":8192,\"inputLimit\":null,\"outputLimit\":null,\"thinking\":[],\"acceptedExtensions\":null},\"thinking\":null,\"serviceTierId\":null},\"content\":[{\"type\":\"image\",\"source\":{\"type\":\"ref\",\"ref\":\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\",\"mediaType\":\"image/png\"}}],\"preamble\":null}"
+      ]
+    ],
+    "command_outputs": [
+      [
+        "command-rust",
+        1700000000000,
+        "55a55e7cebc92c5ad9595d5c4e049e6b7a8628662dfc3efb3ed99fb7afccd9dc",
+        7,
+        "connection lost",
+        null,
+        null
+      ]
+    ],
+    "command_snapshots": [
+      [
+        "root",
+        0,
+        "{}"
+      ]
+    ],
+    "nodes": [
+      [
+        "root",
+        0,
+        null,
+        "",
+        null,
+        1,
+        1700000000000,
+        1,
+        null,
+        null,
+        null,
+        null,
+        0,
+        "{\"phase\":\"idle\",\"queue\":[],\"agentInputs\":[],\"wakeups\":[],\"cwd\":\"/home/work\",\"model\":{\"providerId\":\"rust-provider\",\"model\":{\"id\":\"fixture-model\",\"name\":\"Fixture\",\"contextWindow\":8192,\"inputLimit\":null,\"outputLimit\":null,\"thinking\":[],\"acceptedExtensions\":null},\"thinking\":null,\"serviceTierId\":null},\"harness\":\"fixture\",\"edits\":[]}",
+        1,
+        0,
+        0
+      ]
+    ],
+    "sequences": [
+      [
+        "command",
+        8
+      ],
+      [
+        "agent",
+        3
+      ]
+    ],
+    "session_boundaries": [
+      [
+        "root",
+        "rust-message",
+        "before_user",
+        0
+      ]
+    ]
+  }
+}
