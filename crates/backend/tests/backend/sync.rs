@@ -9,7 +9,7 @@
 use std::time::{Duration, Instant};
 
 use demi_agent_protocol::{ClientFrame, ServerFrame};
-use demi_backend::SyncStep;
+use demi_backend_shard::sync::SyncStep;
 use demi_core::AuthState;
 use demi_provider::quota::ProbeCost;
 use demi_provider::testing::{MockResponse, MockVendor};
