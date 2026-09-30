@@ -10,7 +10,7 @@
 use demi_command_service::protocol::host_target;
 use demi_web_api::error::ErrorCode;
 use reqwest::StatusCode;
-use reqwest::header::{CACHE_CONTROL, CONTENT_LENGTH};
+use reqwest::header::{CACHE_CONTROL, CONTENT_ENCODING};
 
 use crate::streams::{self, CONVERSATION};
 use crate::support::{FIXTURE, Harness};
@@ -25,13 +25,18 @@ async fn a_runner_installs_a_development_release_from_the_backend_which_serves_n
     streams::answered(&mut echo).await;
     echo.close(None).await.unwrap();
 
-    // The route serves the loaded executable whole, as an immutable file.
+    // The route serves the loaded executable whole, as an immutable file,
+    // in the content coding a runner decodes.
     let artifact = &FIXTURE.descriptor.targets[host_target()];
-    let served = backend.get(&format!("/native-artifacts/{}", artifact.sha256), None).await;
+    let path = format!("/native-artifacts/{}", artifact.sha256);
+    let served = backend.get(&path, None).await;
     assert_eq!(served.status, StatusCode::OK);
     assert!(served.body == std::fs::read(&FIXTURE.program).unwrap(), "the served bytes differ from the program");
-    assert_eq!(served.headers[CONTENT_LENGTH], artifact.size.to_string().as_str());
     assert_eq!(served.headers[CACHE_CONTROL], "public, max-age=31536000, immutable");
+    let undecoded = reqwest::Client::builder().no_zstd().build().unwrap();
+    let encoded = undecoded.get(format!("{}{path}", backend.url)).send().await.unwrap();
+    assert_eq!(encoded.headers()[CONTENT_ENCODING], "zstd");
+    assert!(encoded.bytes().await.unwrap().len() < artifact.size as usize);
     // A digest no loaded release carries, or no digest at all, is not there.
     for unknown in ["0".repeat(64), "demi-native-fixture".to_owned()] {
         let refused = backend.get(&format!("/native-artifacts/{unknown}"), None).await;

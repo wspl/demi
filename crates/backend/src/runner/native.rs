@@ -7,7 +7,6 @@
 //! Each shard thread builds its own `CommandCatalog` from it, since a
 //! catalog's artifact resolver lives on one thread.
 
-use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -81,11 +80,11 @@ impl NativeCatalog {
         }
     }
 
-    /// The file of the executable whose SHA-256 is `sha256`, when a
-    /// development store serves it.
-    pub(crate) fn local_file(&self, sha256: &str) -> Option<&Path> {
+    /// The executable whose SHA-256 is `sha256` in the content coding runners
+    /// download it in, when a development store serves it.
+    pub(crate) async fn local_encoded(&self, sha256: &str) -> Option<std::io::Result<bytes::Bytes>> {
         match &self.store {
-            Store::Local(artifacts) => artifacts.file(sha256),
+            Store::Local(artifacts) => artifacts.encoded(sha256).await,
             Store::Unpublished | Store::Signed(_) => None,
         }
     }

@@ -1,7 +1,7 @@
 //! The crate boundary check (`crates-and-packages.md` § Boundary checks): the
 //! Cargo workspace's members and the first-party dependencies their manifests
 //! declare, against the document's Rust crate graph, which the check reads
-//! rather than a copy of it.
+//! rather than a copy of it, and each member's one test binary.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
@@ -30,8 +30,37 @@ struct Metadata {
 
 #[derive(Deserialize)]
 struct Package {
+    name: String,
     manifest_path: PathBuf,
     dependencies: Vec<Dependency>,
+    targets: Vec<Target>,
+}
+
+/// A library, executable, integration test or other target of a member.
+#[derive(Deserialize)]
+struct Target {
+    kind: Vec<String>,
+    name: String,
+    src_path: PathBuf,
+    /// Whether `cargo test` builds the target's tests.
+    test: bool,
+    doctest: bool,
+}
+
+impl Target {
+    fn is(&self, kind: &str) -> bool {
+        self.kind.iter().any(|named| named == kind)
+    }
+
+    /// Whether an integration test's file says at its top why it is a test
+    /// binary of its own (`crates-and-packages.md` § Module layout).
+    fn is_its_own_binary(&self) -> bool {
+        let source = std::fs::read_to_string(&self.src_path).expect("a test's source is readable");
+        source
+            .lines()
+            .take_while(|line| line.starts_with("//") || line.starts_with("#!"))
+            .any(|line| line.to_lowercase().contains("its own binary"))
+    }
 }
 
 #[derive(Deserialize)]
@@ -65,6 +94,8 @@ struct Workspace {
     lines: Vec<(String, BTreeSet<String>)>,
     /// The workspace members by directory name.
     members: BTreeMap<String, Dependencies>,
+    /// The members' packages, for their targets.
+    packages: Vec<Package>,
 }
 
 impl Workspace {
@@ -154,6 +185,7 @@ static WORKSPACE: LazyLock<Workspace> = LazyLock::new(|| {
     Workspace {
         lines: graph_lines(&document),
         members,
+        packages: metadata.packages,
     }
 });
 
@@ -318,4 +350,26 @@ fn the_graph_is_acyclic() {
         "the graph has a cycle through {}",
         listed(remaining.keys())
     );
+}
+
+#[test]
+fn each_member_has_one_test_binary() {
+    let workspace = &*WORKSPACE;
+    let mut violations = Vec::new();
+    for package in &workspace.packages {
+        let mut binaries = Vec::new();
+        for target in &package.targets {
+            if target.is("lib") && target.doctest {
+                violations.push(format!("{}'s library runs doc tests", package.name));
+            }
+            let builds_tests = target.test && (target.is("lib") || target.is("bin") || target.is("test"));
+            if builds_tests && !(target.is("test") && target.is_its_own_binary()) {
+                binaries.push(target.name.as_str());
+            }
+        }
+        if binaries.len() > 1 {
+            violations.push(format!("{} has the test binaries {}", package.name, listed(binaries)));
+        }
+    }
+    assert_none(violations);
 }

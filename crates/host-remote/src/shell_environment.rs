@@ -997,17 +997,3 @@ impl Utf8Stream {
         rest
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::Utf8Stream;
-
-    #[test]
-    fn a_character_split_across_chunks_decodes_once_whole() {
-        let mut stream = Utf8Stream::default();
-        let bytes = "aé€😀".as_bytes();
-        let decoded: String = bytes.iter().map(|byte| stream.decode(&[*byte])).collect();
-        assert_eq!(decoded, "aé€😀");
-        assert_eq!(stream.decode(b"\xff!"), "\u{fffd}!");
-    }
-}

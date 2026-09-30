@@ -83,8 +83,15 @@ opt-level = 3
 [profile.dev.package.blake2]
 opt-level = 3
 
+# Small executables, since every paired device downloads each one
+# (`builds-and-releases.md` § Build profiles). Measured on aarch64-apple-darwin,
+# runner and demi-commands: thin LTO at opt-level 3 36.0 and 23.8 MiB in 79 s;
+# these 20.4 and 14.0 MiB in 125 s. Panics unwind: the runner and the command
+# services contain a panic to one job or invocation.
 [profile.release]
-lto = "thin"
+lto = "fat"
+codegen-units = 1
+opt-level = "s"
 strip = true
 
 [patch.crates-io]
@@ -92,6 +99,7 @@ chromiumoxide = { path = "vendor/chromiumoxide" }
 chromiumoxide_cdp = { path = "vendor/chromiumoxide_cdp" }
 jaq-core = { path = "vendor/jaq-core" }
 argmax = { path = "vendor/argmax" }
+brush-builtins = { path = "vendor/brush-builtins" }
 brush-core = { path = "vendor/brush-core" }
 uucore = { path = "vendor/uucore" }
 uu_cat = { path = "vendor/uu_cat" }

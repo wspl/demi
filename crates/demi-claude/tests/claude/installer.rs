@@ -1,3 +1,7 @@
+//! The installer's rules (`claude-code.md` § The package), downloading from
+//! a fixture server: which release it installs, where, how it checks and
+//! shares an installation, and why it refuses.
+
 use std::{
     path::{Path, PathBuf},
     time::Duration,
@@ -12,7 +16,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tokio_util::sync::CancellationToken;
 
-use crate::{
+use demi_claude::{
     install::{EnsureError, Installer, Roots},
     platform::{self, Loaders, platform_key},
 };

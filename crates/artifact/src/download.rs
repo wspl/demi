@@ -36,8 +36,9 @@ pub fn client_allowing_http() -> Result<reqwest::Client, Error> {
         .map_err(|error| Error::Download(error.without_url().to_string()))
 }
 
-/// Streams `url` into `output`, enforcing the declared size and SHA-256. The
-/// caller owns `output` and discards it on any failure.
+/// Streams `url` into `output`, decoding its content coding, and enforces the
+/// declared size and SHA-256 on the decoded bytes. The caller owns `output`
+/// and discards it on any failure.
 pub async fn download(
     client: &reqwest::Client,
     url: &str,
@@ -133,6 +134,11 @@ async fn get(client: &reqwest::Client, url: &str, cancel: &CancellationToken) ->
         return Err(Error::Rejected {
             status: response.status().as_u16(),
         });
+    }
+    // The client decodes zstd and then drops the header, and with it the
+    // encoded length: a coding still named is one it does not decode.
+    if let Some(coding) = response.headers().get(reqwest::header::CONTENT_ENCODING) {
+        return Err(Error::Coding(String::from_utf8_lossy(coding.as_bytes()).into_owned()));
     }
     Ok(response)
 }

@@ -13,6 +13,7 @@ doctest = false
 [[bin]]
 name = "demi-machines"
 path = "src/main.rs"
+test = false
 
 [features]
 # Acceptance builds: `DEMI_MACHINES_FAULT=<point>` aborts the process at that

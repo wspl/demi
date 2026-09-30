@@ -125,10 +125,6 @@ name = "chromiumoxide_tests"
 path = "tests/lib.rs"
 harness = true
 
-[dependencies.async-tungstenite]
-version = "0.32"
-features = ["tokio-runtime"]
-
 [dependencies.base64]
 version = "0.22"
 
@@ -163,10 +159,6 @@ version = "3"
 [dependencies.pin-project-lite]
 version = "0.2"
 
-[dependencies.reqwest]
-version = "0.13"
-default-features = false
-
 [dependencies.serde]
 version = "1"
 features = ["derive"]
@@ -176,6 +168,11 @@ version = "1"
 
 [dependencies.thiserror]
 version = "2"
+
+[dependencies.tokio-tungstenite]
+version = "0.29"
+default-features = false
+features = ["connect"]
 
 [dependencies.tokio]
 version = "1"
@@ -236,4 +233,6 @@ patches = [
     "A same-document navigation completes its watcher at once instead of waiting for a load that never comes",
     "Flattened child targets (out-of-process frames) are registered with their parent's session, their console messages reach their tab, and target creation and attachment may arrive in either order",
     "License files have Unix line endings",
+    "The CDP connection is tokio-tungstenite 0.29, the workspace's WebSocket, in place of async-tungstenite 0.32 with a second tungstenite",
+    "Connecting takes the DevTools WebSocket URL only: the lookup over HTTP at json/version, which alone needed reqwest 0.13, is left out, since Demi connects to the Chrome it launched",
 ]
