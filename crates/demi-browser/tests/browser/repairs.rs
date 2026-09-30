@@ -1,6 +1,7 @@
 //! Round-one regression specifications. These compile without launching Chrome.
 
-use demi_browser::browser::{BrowserError, BrowserTab, Result};
+use demi_browser_driver::operation::{BrowserError, Result};
+use demi_browser_tabs::tab::BrowserTab;
 use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
 use tokio_util::sync::CancellationToken;
@@ -15,8 +16,7 @@ async fn command(tab: &BrowserTab, operation: &str, mut args: Value) -> Result<V
     if args.get("timeout").is_none() {
         args["timeout"] = json!(10_000);
     }
-    let result = tab
-        .execute(operation, args.clone(), &CancellationToken::new())
+    let result = demi_browser_page::actions::execute(tab, operation, args.clone(), &CancellationToken::new())
         .await;
     if let Err(error) = &result {
         eprintln!("browser {operation} {args}: {error:?}");
@@ -189,8 +189,7 @@ async fn targeted_keyboard_preserves_selection_and_stops_on_focus_loss() {
             "invalid_input",
             "not_started",
         );
-        let events = tab
-            .read_only("keys", &CancellationToken::new(), TIMEOUT)
+        let events = demi_browser_page::evaluation::evaluate(&tab, "keys", &CancellationToken::new(), TIMEOUT)
             .await
             .expect("read the keyboard event log expression: keys");
         let events = events.as_array().unwrap();
@@ -397,7 +396,7 @@ async fn action_conditions_shadow_hits_and_shared_wait_states() {
         }
         command(&tab, "move", json!({"css": "#disabled-button"})).await?;
         assert_eq!(
-            tab.read_only("hovered", &CancellationToken::new(), TIMEOUT)
+            demi_browser_page::evaluation::evaluate(&tab, "hovered", &CancellationToken::new(), TIMEOUT)
                 .await?,
             true
         );
@@ -631,7 +630,7 @@ async fn label_text_and_accessible_name_are_distinct_and_ambiguity_is_explicit()
         )
         .await?;
         assert_eq!(
-            tab.read_only("fallbackClicks", &CancellationToken::new(), TIMEOUT)
+            demi_browser_page::evaluation::evaluate(&tab, "fallbackClicks", &CancellationToken::new(), TIMEOUT)
                 .await?,
             1
         );
@@ -664,7 +663,7 @@ async fn label_text_and_accessible_name_are_distinct_and_ambiguity_is_explicit()
         );
         click(&tab, ".fallback").await?;
         assert_eq!(
-            tab.read_only("fallbackClicks", &CancellationToken::new(), TIMEOUT)
+            demi_browser_page::evaluation::evaluate(&tab, "fallbackClicks", &CancellationToken::new(), TIMEOUT)
                 .await?,
             2
         );
@@ -729,13 +728,13 @@ async fn explicit_navigation_tracks_documents_failures_and_history_boundaries() 
             .await?;
         command(&tab, "goto", json!({"url": format!("{base}/500")})).await?;
         assert_eq!(
-            tab.read_only("document.title", &CancellationToken::new(), TIMEOUT)
+            demi_browser_page::evaluation::evaluate(&tab, "document.title", &CancellationToken::new(), TIMEOUT)
                 .await?,
             "HTTP error document"
         );
         command(&tab, "goto", json!({"url": format!("{base}/redirect")})).await?;
         assert_eq!(
-            tab.read_only("location.pathname", &CancellationToken::new(), TIMEOUT)
+            demi_browser_page::evaluation::evaluate(&tab, "location.pathname", &CancellationToken::new(), TIMEOUT)
                 .await?,
             "/destination"
         );
@@ -747,13 +746,13 @@ async fn explicit_navigation_tracks_documents_failures_and_history_boundaries() 
         .await?;
         command(&tab, "back", json!({})).await?;
         assert_eq!(
-            tab.read_only("location.hash", &CancellationToken::new(), TIMEOUT)
+            demi_browser_page::evaluation::evaluate(&tab, "location.hash", &CancellationToken::new(), TIMEOUT)
                 .await?,
             ""
         );
         command(&tab, "forward", json!({})).await?;
         assert_eq!(
-            tab.read_only("location.hash", &CancellationToken::new(), TIMEOUT)
+            demi_browser_page::evaluation::evaluate(&tab, "location.hash", &CancellationToken::new(), TIMEOUT)
                 .await?,
             "#changed"
         );
@@ -834,13 +833,13 @@ async fn url_observation_delivers_input_and_observes_transient_matches() {
         )
         .await?;
         assert_eq!(
-            tab.read_only("noNavClicks", &CancellationToken::new(), TIMEOUT)
+            demi_browser_page::evaluation::evaluate(&tab, "noNavClicks", &CancellationToken::new(), TIMEOUT)
                 .await?,
             1
         );
         click(&tab, "#no-nav").await?;
         assert_eq!(
-            tab.read_only("noNavClicks", &CancellationToken::new(), TIMEOUT)
+            demi_browser_page::evaluation::evaluate(&tab, "noNavClicks", &CancellationToken::new(), TIMEOUT)
                 .await?,
             2
         );
@@ -860,7 +859,7 @@ async fn url_observation_delivers_input_and_observes_transient_matches() {
         )
         .await?;
         assert_eq!(
-            tab.read_only("location.pathname", &CancellationToken::new(), TIMEOUT)
+            demi_browser_page::evaluation::evaluate(&tab, "location.pathname", &CancellationToken::new(), TIMEOUT)
                 .await?,
             "/returned"
         );
@@ -924,7 +923,7 @@ async fn url_observation_delivers_input_and_observes_transient_matches() {
 async fn inspect_keeps_false_values_and_protects_passwords_and_handles_expire() {
     let retained = Arc::new(std::sync::Mutex::new(None));
     // Both browsers are one conversation's, one after the other.
-    let numbers = demi_browser::browser::TabNumbers::new(
+    let numbers = demi_browser_driver::numbers::TabNumbers::new(
         demi_command_service::testing::counting_numbers(),
         "conversation".into(),
     );
@@ -1031,8 +1030,7 @@ async fn inspect_keeps_false_values_and_protects_passwords_and_handles_expire() 
             "stale_ref",
             "not_started",
         );
-        let failed = tab
-            .execute("info", json!({"tab": old_tab}), &CancellationToken::new())
+        let failed = demi_browser_page::actions::execute(&tab, "info", json!({"tab": old_tab}), &CancellationToken::new())
             .await
             .unwrap_err();
         assert_eq!(failed.code().to_string(), "tab_not_found");
@@ -1048,7 +1046,7 @@ async fn input_and_animation_probes_clean_up_on_cancellation_and_dialogs() {
         let tab = browser.open(&format!("{base}/#cancel-typing"), &CancellationToken::new(), TIMEOUT).await?;
         let cancel = CancellationToken::new();
         let (typing, ()) = tokio::join!(
-            tab.execute("type", json!({"tab": tab.id(), "css": "#text", "text": "x".repeat(10_000), "timeout": 10_000}), &cancel),
+            demi_browser_page::actions::execute(&tab, "type", json!({"tab": tab.id(), "css": "#text", "text": "x".repeat(10_000), "timeout": 10_000}), &cancel),
             async {
                 let _cancel_on_exit = cancel.clone().drop_guard();
                 tokio::time::timeout(TIMEOUT, reqwest::get(format!("{base}/wait-typing"))).await.unwrap().unwrap();
@@ -1056,18 +1054,18 @@ async fn input_and_animation_probes_clean_up_on_cancellation_and_dialogs() {
             }
         );
         assert_eq!(typing.unwrap_err().code().to_string(), "cancelled");
-        let events = tab.read_only("keys", &CancellationToken::new(), TIMEOUT).await?;
+        let events = demi_browser_page::evaluation::evaluate(&tab, "keys", &CancellationToken::new(), TIMEOUT).await?;
         let events = events.as_array().unwrap();
         assert!(!events.is_empty());
         assert_eq!(events.iter().filter(|event| event["type"] == "keydown").count(), events.iter().filter(|event| event["type"] == "keyup").count());
         let dialog = command(&tab, "key", json!({"css": "#key-dialog", "key": "Control+x"})).await.unwrap_err();
         assert_eq!(dialog.code().to_string(), "dialog_blocked");
         command(&tab, "dialog.dismiss", json!({})).await?;
-        let events = tab.read_only("keys", &CancellationToken::new(), TIMEOUT).await?;
+        let events = demi_browser_page::evaluation::evaluate(&tab, "keys", &CancellationToken::new(), TIMEOUT).await?;
         let events = events.as_array().unwrap();
         assert_eq!(events.iter().filter(|event| event["type"] == "keydown" && event["key"] == "Control").count(), events.iter().filter(|event| event["type"] == "keyup" && event["key"] == "Control").count());
         error(command(&tab, "click", json!({"css": "#moving", "timeout": 5000})).await, "not_actionable", "not_started");
-        assert_eq!(tab.read_only("Object.getOwnPropertyNames(document.querySelector('#moving')).filter(name => name.startsWith('probe_'))", &CancellationToken::new(), TIMEOUT).await?, json!([]));
+        assert_eq!(demi_browser_page::evaluation::evaluate(&tab, "Object.getOwnPropertyNames(document.querySelector('#moving')).filter(name => name.startsWith('probe_'))", &CancellationToken::new(), TIMEOUT).await?, json!([]));
         Ok(())
     }).await;
 }
@@ -1236,7 +1234,7 @@ async fn catalog_cross_origin_frames_scope_focus_and_references() {
         command(&tab,"click",json!({"frame":[outer],"css":"#cross-button"})).await?;
         let clicked = command(&tab,"read",json!({"frame":[outer],"css":"#cross-button","property":"text"})).await?["value"].clone();
         if clicked != "Cross clicked" {
-            let parent = tab.read_only("JSON.stringify({events:window.pointerEvents,scroll:[scrollX,scrollY]})", &CancellationToken::new(), TIMEOUT).await?;
+            let parent = demi_browser_page::evaluation::evaluate(&tab, "JSON.stringify({events:window.pointerEvents,scroll:[scrollX,scrollY]})", &CancellationToken::new(), TIMEOUT).await?;
             let child = command(&tab,"eval",json!({"frame":[outer],"css":"#cross-button","expression":"JSON.stringify({text:element.textContent,events:element.ownerDocument.defaultView.pointerEvents})"})).await?;
             tokio::time::sleep(Duration::from_millis(500)).await;
             let later = command(&tab,"read",json!({"frame":[outer],"css":"#cross-button","property":"text"})).await?;
@@ -1281,8 +1279,7 @@ async fn frame_pointer_actions_wait_for_composited_scroll() {
         let outer =
             command(&tab, "find", json!({"css": "#cross-frame"})).await?["matches"][0]["ref"]
                 .clone();
-        let viewport = tab
-            .read_only(
+        let viewport = demi_browser_page::evaluation::evaluate(&tab, 
                 "[innerWidth, innerHeight, devicePixelRatio]",
                 &CancellationToken::new(),
                 TIMEOUT,
@@ -1317,7 +1314,7 @@ async fn frame_pointer_actions_wait_for_composited_scroll() {
             );
         }
         assert_eq!(
-            tab.read_only(
+            demi_browser_page::evaluation::evaluate(&tab, 
                 "[innerWidth, innerHeight, devicePixelRatio]",
                 &CancellationToken::new(),
                 TIMEOUT
@@ -1482,7 +1479,7 @@ async fn viewport_overrides_are_per_tab_and_survive_screenshots() {
                 expected
             );
             assert_eq!(
-                tab.read_only(
+                demi_browser_page::evaluation::evaluate(tab, 
                     "({width: innerWidth, height: innerHeight})",
                     &CancellationToken::new(),
                     TIMEOUT
@@ -1490,7 +1487,7 @@ async fn viewport_overrides_are_per_tab_and_survive_screenshots() {
                 .await?,
                 css
             );
-            let bytes = tab.screenshot(&CancellationToken::new(), TIMEOUT).await?;
+            let bytes = demi_browser_page::screenshot::screenshot(tab, &CancellationToken::new(), TIMEOUT).await?;
             let png = png::Decoder::new(std::io::Cursor::new(bytes))
                 .read_info()
                 .unwrap();
@@ -1513,7 +1510,7 @@ async fn viewport_overrides_are_per_tab_and_survive_screenshots() {
         );
         for (tab, css) in [(&first, size(1280, 720)), (&second, size(640, 480))] {
             assert_eq!(
-                tab.read_only(
+                demi_browser_page::evaluation::evaluate(tab, 
                     "({width: innerWidth, height: innerHeight})",
                     &CancellationToken::new(),
                     TIMEOUT
