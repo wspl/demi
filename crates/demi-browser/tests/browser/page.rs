@@ -13,8 +13,13 @@ use axum::{
     routing::{any, get},
 };
 use demi_command_service::testing::counting_numbers;
-use demi_browser::browser::{
-    BrowserEnvironment, BrowserError, BrowserTab, LaunchOptions, Result, TabNumbers, with_browser,
+use demi_browser_driver::{
+    numbers::TabNumbers,
+    operation::{BrowserError, Result},
+};
+use demi_browser_tabs::{
+    environment::{BrowserEnvironment, LaunchOptions, with_browser},
+    tab::BrowserTab,
 };
 use serde_json::json;
 use tokio::sync::Mutex;
@@ -72,7 +77,7 @@ async fn browser_contract_and_cleanup() {
     assert!(result.is_ok(), "{result:?}");
     let tab = retained_tab.lock().await.take().unwrap();
     assert!(matches!(
-        tab.read_only("1", &CancellationToken::new(), DEADLINE)
+        demi_browser_page::evaluation::evaluate(&tab, "1", &CancellationToken::new(), DEADLINE)
             .await,
         Err(BrowserError::Closed)
     ));
@@ -118,7 +123,7 @@ async fn browser_contract_and_cleanup() {
                 .open("about:blank", &CancellationToken::new(), DEADLINE)
                 .await?;
             end.cancel();
-            std::future::pending::<demi_browser::browser::Result<()>>().await
+            std::future::pending::<demi_browser_driver::operation::Result<()>>().await
         },
     )
     .await;
@@ -138,14 +143,14 @@ async fn exercise_browser(
     assert!(browser.tabs(&live, DEADLINE).await?.is_empty());
     let tab = browser.open(&url, &live, DEADLINE).await?;
     assert_eq!(
-        tab.read_only("document.title", &live, DEADLINE).await?,
+        demi_browser_page::evaluation::evaluate(&tab, "document.title", &live, DEADLINE).await?,
         json!("Native browser test")
     );
-    tab.fill_css("#email", "hello@example.test", &live, DEADLINE)
+    demi_browser_page::testing::fill_css(&tab, "#email", "hello@example.test", &live, DEADLINE)
         .await?;
-    tab.click_css("#normal", &live, DEADLINE).await?;
+    demi_browser_page::testing::click_css(&tab, "#normal", &live, DEADLINE).await?;
     assert_eq!(
-        tab.read_only(
+        demi_browser_page::evaluation::evaluate(&tab, 
             "({email:document.querySelector('#email').value,clicks:normalClicks})",
             &live,
             DEADLINE
@@ -154,8 +159,7 @@ async fn exercise_browser(
         json!({"email":"hello@example.test","clicks":1})
     );
     for selector in ["#covered", "#disabled", "#missing"] {
-        let result = tab
-            .click_css(selector, &live, Duration::from_millis(250))
+        let result = demi_browser_page::testing::click_css(&tab, selector, &live, Duration::from_millis(250))
             .await;
         assert!(
             matches!(
@@ -166,11 +170,11 @@ async fn exercise_browser(
         );
     }
     assert!(matches!(
-        tab.click_css(".duplicate", &live, DEADLINE).await,
+        demi_browser_page::testing::click_css(&tab, ".duplicate", &live, DEADLINE).await,
         Err(BrowserError::Ambiguous(2))
     ));
     assert_eq!(
-        tab.read_only(
+        demi_browser_page::evaluation::evaluate(&tab, 
             "[coveredClicks,overlayClicks,disabledClicks]",
             &live,
             DEADLINE
@@ -194,34 +198,34 @@ async fn exercise_browser(
         "[1,,3]",
     ] {
         assert!(
-            tab.read_only(expression, &live, DEADLINE).await.is_err(),
+            demi_browser_page::evaluation::evaluate(&tab, expression, &live, DEADLINE).await.is_err(),
             "accepted {expression}"
         );
     }
     assert_eq!(
-        tab.read_only("(()=>{const a={x:1};return [a,a]})()", &live, DEADLINE)
+        demi_browser_page::evaluation::evaluate(&tab, "(()=>{const a={x:1};return [a,a]})()", &live, DEADLINE)
             .await?,
         json!([{"x":1},{"x":1}])
     );
     // Storage getters are conservatively rejected by Chrome's debug evaluator.
     // Read the fixture's storage through an ordinary page action instead.
-    tab.click_css("#check-storage", &live, DEADLINE).await?;
-    assert_eq!(tab.read_only("({mutated:document.body.hasAttribute('data-mutated'),stored:window.storageValue,sideEffects})", &live, DEADLINE).await?, json!({"mutated":false,"stored":null,"sideEffects":0}));
+    demi_browser_page::testing::click_css(&tab, "#check-storage", &live, DEADLINE).await?;
+    assert_eq!(demi_browser_page::evaluation::evaluate(&tab, "({mutated:document.body.hasAttribute('data-mutated'),stored:window.storageValue,sideEffects})", &live, DEADLINE).await?, json!({"mutated":false,"stored":null,"sideEffects":0}));
     assert_eq!(requests.load(Ordering::SeqCst), 0);
-    tab.click_css("#arm", &live, DEADLINE).await?;
-    tab.click_css("#late", &live, DEADLINE).await?;
+    demi_browser_page::testing::click_css(&tab, "#arm", &live, DEADLINE).await?;
+    demi_browser_page::testing::click_css(&tab, "#late", &live, DEADLINE).await?;
     assert_eq!(
-        tab.read_only("lateClicks", &live, DEADLINE).await?,
+        demi_browser_page::evaluation::evaluate(&tab, "lateClicks", &live, DEADLINE).await?,
         json!(1)
     );
-    let png = tab.screenshot(&live, DEADLINE).await?;
+    let png = demi_browser_page::screenshot::screenshot(&tab, &live, DEADLINE).await?;
     assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
 
     let other = browser.open("about:blank", &live, DEADLINE).await?;
     let cancel = CancellationToken::new();
     let (waiting, independent) =
-        tokio::join!(tab.click_css("#disabled", &cancel, DEADLINE), async {
-            let result = other.read_only("1 + 1", &live, DEADLINE).await;
+        tokio::join!(demi_browser_page::testing::click_css(&tab, "#disabled", &cancel, DEADLINE), async {
+            let result = demi_browser_page::evaluation::evaluate(&other, "1 + 1", &live, DEADLINE).await;
             cancel.cancel();
             result
         },);
@@ -230,8 +234,8 @@ async fn exercise_browser(
     // Allow the Host to observe the disabled control before its wait expires.
     // A 100 ms budget can expire during the first snapshot on a small Cloud.
     let (waiting, busy) = tokio::join!(
-        tab.click_css("#disabled", &live, DEADLINE),
-        tab.read_only("1", &live, DEADLINE),
+        demi_browser_page::testing::click_css(&tab, "#disabled", &live, DEADLINE),
+        demi_browser_page::evaluation::evaluate(&tab, "1", &live, DEADLINE),
     );
     assert!(
         matches!(waiting, Err(BrowserError::NotActionable { .. })),

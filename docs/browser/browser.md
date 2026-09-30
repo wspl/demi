@@ -560,8 +560,8 @@ Browser service
                |                 CDP event pump
                |-- tab registry ..... tabs, handles and openers; publishes a snapshot
                |-- capture channel .. the capture extension's connection (live view)
-               |-- live hub ......... viewers, the captures they share, screen and
-               |                      viewports (live view)
+               |-- live hub ......... viewers, the captures they share, screen,
+               |                      viewports and page observers (live view)
                `-- each tab ......... the operation lock and what its holder uses
                                       (references, asset inventories, WebMCP tool
                                       sets); debugging connections; console buffer;
@@ -585,7 +585,8 @@ Browser service
   command that holds the tab's operation lock, and return to the tab when it
   releases the lock. Debugging connections, the console buffer, and the open
   dialog with the key and button releases it holds back each have an owner of
-  their own, because work outside the operation lock also uses them: the
+  their own (the debugging owner starts with the tab's first `cdp` command),
+  because work outside the operation lock also uses them: the
   page's console messages arrive while commands run, a viewer answers a
   dialog from the live view, and closing a tab ends its debugging
   connections.
@@ -1936,7 +1937,7 @@ for the browser:
   per-conversation browsers and their owners (`demi-browser`), the driver and
   output rendering (`browser-driver`), environments and tabs
   (`browser-tabs`), page observation, actions and assets (`browser-page`),
-  CDP handling (`browser-cdp`) and the live view (`browser-live`).
+  CDP handling and WebMCP (`browser-cdp`) and the live view (`browser-live`).
 - `artifact`: the verified download and installation of the pinned Chrome for
   Testing release, used by `browser-driver` and by Cloud image packaging.
 - `command-service`: generic invocation and conversation protocol, not page or

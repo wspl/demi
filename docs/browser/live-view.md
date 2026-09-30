@@ -43,7 +43,7 @@ For example, the agent starts the user's application at
 User's browser (Demi web)   Backend                        Host (Cloud or paired device)
 +--------------------+ WSS  +-----------------------+      +---------------------------------+
 | web-ui live view   |<====>| edge: user stream     |pipes | runner --/v1/invoke--> demi-    |
-| video, input,      |      | route; checks cookie, |<====>|                        commands |
+| video, input,      |      | route; checks cookie, |<====>|                        browser  |
 | native controls,   |      | owner and Origin;     |      |   conversation browser          |
 | viewport menu      |      | relays the bytes      |      |     tab registry                |
 +--------------------+      | - - - - - - - - - - - |      |     live view module:           |
@@ -53,11 +53,12 @@ User's browser (Demi web)   Backend                        Host (Cloud or paired
                             +-----------------------+      +---------------------------------+
 ```
 
-- `demi-browser` owns a live view module inside each conversation's browser
+- `demi-browser` runs a live view module inside each conversation's browser
   environment: viewers, capture, delivery, input, and each tab's viewport and
   pixel ratio. Two owners serve it: the live hub keeps the viewers, the
-  captures they share, and the screen and viewports their panels decide; the
-  capture channel keeps the connection to the capture extension
+  captures they share, the screen and viewports their panels decide, and the
+  page observers of the tabs they watch; the environment's capture channel
+  keeps the connection to the capture extension
   ([Owners inside the service](browser.md#owners-inside-the-service)).
 - Chrome runs a capture extension that the environment loads. It encodes each
   watched tab as H.264 and hands the frames to the module over a loopback
@@ -520,8 +521,10 @@ crate and package; for the live view:
 | Where | Responsibility |
 | --- | --- |
 | `browser-protocol` | The live protocol: its message types, the frame kinds, the frame header, the frame limit and the video codec; the capture extension's messages. The page receives the live protocol as generated TypeScript in `@demicodes/protocol`. |
-| `browser-live` | The live view module: viewers, capture control, delivery and congestion, heartbeat, input, viewport modes and screen ratio, served by the live hub and the capture channel. |
-| `browser-driver` | The capture extension and page observers as embedded resources; launch configuration. |
+| `browser-live` | The live view module: viewers, capture control, delivery and congestion, heartbeat, input, viewport modes and screen ratio, and the page observers of watched tabs with their script, served by the live hub and the capture channel. |
+| `browser-driver` | The capture extension as an embedded resource, the capture channel it connects to, and launch configuration. |
+| `browser-tabs` | Each tab's viewport, dialog and the upload directory the viewers' files go to. |
+| `demi-browser` | Starting the live hub of each browser it runs, and the conversation browser that the viewer trait reaches. |
 | `command-service`, the runner's crates, `runner-protocol`, `host-remote` | [User streams](../execution/native-runtime.md#user-streams) and [service streams](../execution/runner.md#service-streams), with no browser knowledge. |
 | `coding-agent` | Declaring `viewport set --scale` with the other `demi browser` commands. |
 | `backend` | Declaring the `browser` user stream; the user stream route, where the user's shard admits and ends the stream and the edge relays its bytes with backpressure; the [browser tab routes](../product/web-api.md#conversation-browser-tabs), which call the browser's own operations and hold no browser logic. |
