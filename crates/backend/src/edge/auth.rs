@@ -7,6 +7,10 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::CookieJar;
+use demi_backend_accounts::email_change::{StartOutcome, StartRefusal};
+use demi_backend_storage::accounts::ChallengeOutcome;
+use demi_backend_storage::accounts::TokenHash;
+use demi_backend_sync::Part;
 use demi_web_api::auth::{
     Credentials, EmailChangeConfirm, EmailChangeStart, EmailChangeStarted, Identity, NicknamePatch,
     PasswordChange, SetupRequest, SetupStatus,
@@ -17,10 +21,7 @@ use super::body::JsonBody;
 use super::cookies::{self, Https, SESSION_COOKIE};
 use super::error::ApiError;
 use super::gate::AuthUser;
-use crate::auth::email_change::{ChallengeOutcome, StartOutcome, StartRefusal};
-use crate::auth::sessions::TokenHash;
 use crate::backend::Services;
-use crate::sync::Part;
 
 pub(super) async fn setup_status(State(services): State<Arc<Services>>) -> Result<Json<SetupStatus>, ApiError> {
     let needed = !services.control.has_users().await?;

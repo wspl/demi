@@ -2,7 +2,6 @@
 //! `demi-backend`; `Backend::start` with a `BackendConfig` is the entry point
 //! for tests.
 
-mod auth;
 mod backend;
 mod config;
 mod conversation;
@@ -11,17 +10,11 @@ mod expose;
 #[cfg(feature = "testing")]
 mod holds;
 mod lifecycle;
-mod llm;
 mod managed;
 mod runner;
-mod settings;
 mod shard;
-mod storage;
 mod sync;
-mod usage;
-mod vault;
 
-pub use auth::email_change::{AccountMail, MailError, VerificationMail};
 pub use backend::{Backend, ShutdownError, ShutdownErrors, StartError};
 pub use config::{
     BackendConfig, CloudTuning, Config, ConfigError, ConversationTuning, ExposeTuning, LifecycleTuning, PageTuning,
@@ -30,10 +23,6 @@ pub use config::{
 pub use expose::{ExposeDomain, NotExposeDomain};
 #[cfg(feature = "testing")]
 pub use managed::client::{MachinesClient, MachinesError};
-pub use llm::families::{
-    AccountBinding, ApiKeyArgs, FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily,
-    SubscriptionArgs,
-};
 #[cfg(feature = "testing")]
 pub use holds::StepHold;
 #[cfg(feature = "testing")]
@@ -42,11 +31,5 @@ pub use runner::native::NativeCatalog;
 pub use runner::publication::{PublicationError, publish_native};
 pub use shard::ShardPlacement;
 #[cfg(feature = "testing")]
-pub use storage::conversations::CommitHold;
-#[cfg(feature = "testing")]
 pub use sync::SyncStep;
-#[cfg(feature = "testing")]
-pub use storage::objects::counting::{ObjectCounts, ObjectTally};
-pub use storage::objects::S3ConfigError;
-pub use vault::logins::LoginTiming;
-pub use vault::secret::{InstanceSecret, SecretError};
+pub use config::secret::{InstanceSecret, SecretError};

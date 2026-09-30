@@ -10,20 +10,20 @@
 //! before its publication.
 
 use demi_agent_session::ForkError;
+use demi_backend_storage::StorageError;
+use demi_backend_storage::control::ControlService;
+use demi_backend_storage::conversation_index::ConversationRecord;
+use demi_backend_storage::conversations::ConversationStores;
+use demi_backend_storage::forks::{ForkMetadata, ForkOperation};
+use demi_backend_storage::tree;
+use demi_backend_storage::{command_outputs, sequences};
+use demi_backend_sync::Part;
 use demi_core::BlockId;
 use demi_web_api::conversations::ConversationTarget;
 use demi_web_api::ids::ConversationId;
 
-use super::root_of;
+use super::{ConversationBlobs, root_of};
 use crate::shard::Shard;
-use crate::storage::StorageError;
-use crate::storage::{command_outputs, sequences};
-use crate::storage::control::ControlService;
-use crate::storage::conversation_index::ConversationRecord;
-use crate::storage::conversations::ConversationStores;
-use crate::storage::forks::{ForkMetadata, ForkOperation};
-use crate::storage::tree;
-use crate::sync::Part;
 
 /// A Fork's destination, and whether this request created it.
 pub(crate) struct Forked {
@@ -144,7 +144,7 @@ impl Shard {
             .await?
             .unwrap_or_default();
         if !rows.is_empty() {
-            let blobs = services.blobs.for_user(self.user());
+            let blobs = ConversationBlobs(services.blobs.for_user(self.user()));
             services
                 .conversations
                 .db(&destination)
@@ -224,12 +224,12 @@ mod tests {
 
     use super::*;
     use demi_runner_protocol::wire::RunnerPlatform;
-    use crate::auth::sessions::TokenHash;
-    use crate::storage::blobs::{BlobStores, UserBlobs};
-    use crate::storage::control::testing;
-    use crate::storage::conversation_index::{AttachedHostRecord, RecordChange};
-    use crate::storage::objects;
-    use crate::storage::tree::SqliteTreeStore;
+    use demi_backend_storage::accounts::TokenHash;
+    use demi_backend_objects::blobs::{BlobStores, UserBlobs};
+    use demi_backend_storage::control::testing;
+    use demi_backend_storage::conversation_index::{AttachedHostRecord, RecordChange};
+    use demi_backend_objects::store as objects;
+    use demi_backend_storage::tree::SqliteTreeStore;
 
     fn conversation(id: &str) -> ConversationId {
         ConversationId::try_from(id).unwrap()
@@ -254,7 +254,8 @@ mod tests {
             changed_blocks: Vec::new(),
             block_count: 0,
         };
-        SqliteTreeStore::new(stores.db(id), blobs.clone(), std::rc::Rc::new(|_: &demi_core::NodeId| {}))
+        let blobs = Arc::new(ConversationBlobs(blobs.clone()));
+        SqliteTreeStore::new(stores.db(id), blobs, std::rc::Rc::new(|_: &demi_core::NodeId| {}))
             .create_node(NodeRecord::root(root_of(id), at), initial)
             .await
             .unwrap();

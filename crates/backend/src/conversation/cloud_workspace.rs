@@ -3,11 +3,11 @@
 //! machine access (`sessions-and-targets.md` § Every way to a Host), which
 //! wakes a stopped Cloud.
 
+use demi_backend_storage::workspaces::{WorkspaceRecord, new_workspace_id};
 use demi_shell::{HostFs, MkdirOptions};
 
 use super::host_access::{HostAccessError, Refusal};
 use crate::shard::Shard;
-use crate::storage::workspaces::{WorkspaceRecord, new_workspace_id};
 
 impl Shard {
     /// Makes `~/projects/<id>` on the user's Cloud, then the workspace `name`

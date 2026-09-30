@@ -48,12 +48,12 @@ impl Shard {
 
 #[cfg(test)]
 mod tests {
+    use demi_backend_storage::accounts::TokenHash;
+    use demi_backend_storage::control::testing;
     use demi_runner_protocol::wire::{RunnerPlatform, VolumeName};
 
-    use crate::auth::sessions::TokenHash;
     use crate::backend::Services;
     use crate::shard::{ShardPlacement, ShardPool};
-    use crate::storage::control::testing;
 
     #[tokio::test(flavor = "local")]
     async fn a_growth_is_more_than_nothing_within_its_volumes_maximum_and_only_for_the_cloud() {

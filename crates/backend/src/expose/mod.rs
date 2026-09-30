@@ -17,6 +17,7 @@ use std::rc::{Rc, Weak};
 use std::str::FromStr;
 use std::time::Duration;
 
+use demi_backend_storage::StorageError;
 use demi_core::{Clock, Timestamp};
 use demi_host_remote::{PipeReader, PipeWriter};
 use demi_shell::HostErrorKind;
@@ -29,7 +30,6 @@ pub(crate) use self::commands::expose_group;
 pub(crate) use self::records::ExposeError;
 use crate::shard::Shard;
 use crate::shard::lease::Lease;
-use crate::storage::StorageError;
 
 /// Concurrent relayed connections per expose; one more answers 503
 /// (`expose.md` § The public relay).

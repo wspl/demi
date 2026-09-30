@@ -1,11 +1,14 @@
 //! Conversations on the user's shard (`backend.md` § Request paths and
 //! responsibilities): the agent server that hosts each conversation's tree
 //! over the conversation's database, the conversation socket, the provider
-//! runtimes the sessions infer with, the conversations' summaries, and the
+//! runtimes the sessions infer with, the Claude Code CLI's work on the
+//! user's Cloud and the provider test, the conversations' summaries, and the
 //! failure facts of their history.
 
 mod announcement;
+pub(crate) mod claude_cli;
 mod cloud_workspace;
+mod connection_test;
 mod failure_facts;
 mod fork;
 mod harness;
@@ -28,9 +31,15 @@ use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
 use demi_agent::{AgentServer, ServerConfig, ServerDeps, TreeStores};
-use demi_agent_store::AgentTreeStore;
+use demi_agent_store::media::BlobStore;
+use demi_agent_store::{AgentTreeStore, StoreError};
 use demi_agent_transcript::RandomIds;
-use demi_core::NodeId;
+use demi_backend_objects::blobs::UserBlobs;
+use demi_backend_providers::usage::rate_limit::RequestRateLimit;
+use demi_backend_storage::blob_refs::OwnerBlobs;
+use demi_backend_storage::tree::SqliteTreeStore;
+use demi_backend_sync::Part;
+use demi_core::{BlobRef, NodeId};
 use demi_web_api::ids::{ConversationId, UserId};
 
 pub(crate) use self::failure_facts::failure_facts;
@@ -42,9 +51,22 @@ use self::shells::ShardShellEnvironments;
 use self::titles::Titles;
 use crate::backend::Services;
 use crate::shard::Shard;
-use crate::storage::tree::SqliteTreeStore;
-use crate::sync::Part;
-use crate::usage::rate_limit::RequestRateLimit;
+
+/// A user's blobs as the commits of the user's conversation databases reach
+/// them: the namespace and its record of blob uses, which the object store
+/// keeps and storage reads through `OwnerBlobs`.
+#[derive(Clone)]
+pub(crate) struct ConversationBlobs(pub(crate) UserBlobs);
+
+impl OwnerBlobs for ConversationBlobs {
+    fn media(&self) -> &dyn BlobStore {
+        &self.0
+    }
+
+    fn commit_uses(&self, blobs: &[BlobRef]) -> Result<(), StoreError> {
+        self.0.commit_uses(blobs)
+    }
+}
 
 /// What a shard's conversations run on: the agent server and the title
 /// requests, which infer with the same providers.
@@ -70,7 +92,7 @@ pub(crate) fn conversation_parts(
         let services = services.clone();
         let marks = marks.clone();
         // The shard's user owns every conversation it hosts.
-        let blobs = services.blobs.for_user(&user);
+        let blobs: Arc<dyn OwnerBlobs> = Arc::new(ConversationBlobs(services.blobs.for_user(&user)));
         Rc::new(move |root: &NodeId| {
             let conversation = conversation_of(root);
             let db = services.conversations.db(&conversation);

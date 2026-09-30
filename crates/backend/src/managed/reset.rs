@@ -15,6 +15,8 @@
 
 use std::rc::Rc;
 
+use demi_backend_storage::StorageError;
+use demi_backend_storage::managed::ManagedOperation;
 use demi_machines_protocol::{CurrentBaseVersionParams, ReconcileParams, ResetParams};
 use demi_web_api::cloud::ResetPhase;
 use demi_web_api::ids::OperationId;
@@ -22,8 +24,6 @@ use demi_web_api::ids::OperationId;
 use super::machine::{CloudError, Machine, Phase};
 use crate::backend::Services;
 use crate::shard::Shard;
-use crate::storage::StorageError;
-use crate::storage::managed::ManagedOperation;
 
 /// What a backend that started records of a reset its disks were recovered
 /// for: the operation failed, and a retry boots the Cloud.

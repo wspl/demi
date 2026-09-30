@@ -10,6 +10,7 @@
 
 use std::rc::{Rc, Weak};
 
+use demi_backend_idle::{Activity, IdlePolicy, Retirement};
 use demi_gates::{GateLease, Purpose};
 use demi_machines_protocol::CheckpointParams;
 use tokio::time::Instant;
@@ -17,7 +18,6 @@ use tokio_util::task::AbortOnDropHandle;
 
 use super::machine::Machine;
 use crate::conversation::root_of;
-use crate::lifecycle::{self, Activity, IdlePolicy, Retirement};
 use crate::shard::Shard;
 
 impl Shard {
@@ -30,7 +30,7 @@ impl Shard {
             shard: Rc::downgrade(&self.this()),
             machine: machine.clone(),
         };
-        let watch = lifecycle::watch(idle, window, sweep, self.tasks().clone());
+        let watch = demi_backend_idle::watch(idle, window, sweep, self.tasks().clone());
         let maintenance = maintain(Rc::downgrade(&self.this()), machine.clone());
         vec![
             AbortOnDropHandle::new(self.tasks().spawn_local(watch)),

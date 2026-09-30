@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use demi_agent::testing::client_text;
 use demi_agent_protocol::{ClientFrame, EditOutcome, EditRequest, ServerFrame, TranscriptVersion};
-use demi_backend::{FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily};
+use demi_backend_providers::llm::families::{FamilyArgs, FamilyCredential, FamilyError, ProviderFamily};
 use demi_core::{
     AuthState, Block, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList, RuntimeState,
     SessionPhase, Timestamp, TokenUsage, TurnId,
@@ -924,7 +924,7 @@ async fn the_conversation_socket_opens_only_from_a_page_of_the_product() {
 #[tokio::test]
 async fn an_edit_of_the_entry_reaches_the_next_request_and_a_deleted_entry_refuses_inference() {
     let runs = Runs::new();
-    let harness = Harness::new().with_families(FamilyRegistry::builtin().with("keyed", Keyed(runs.clone())));
+    let harness = Harness::new().with_families(demi_backend_families::builtin().with("keyed", Keyed(runs.clone())));
     let (backend, master) = harness.start_set_up().await;
     let body = json!({
         "source": "custom", "providerType": "keyed", "label": "Keyed", "apiKey": "old-key",

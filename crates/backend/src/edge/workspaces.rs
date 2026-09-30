@@ -8,6 +8,8 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use demi_backend_storage::workspaces::{WorkspaceDeletion, new_workspace_id};
+use demi_backend_sync::Part;
 use demi_web_api::error::ErrorCode;
 use demi_web_api::ids::WorkspaceId;
 use demi_web_api::workspaces::{CreateWorkspace, RenameWorkspace, WorkspaceAnswer, Workspaces};
@@ -17,8 +19,6 @@ use super::body::JsonBody;
 use super::error::ApiError;
 use super::gate::AuthUser;
 use crate::backend::Services;
-use crate::storage::workspaces::{WorkspaceDeletion, new_workspace_id};
-use crate::sync::Part;
 
 pub(super) async fn list(
     State(services): State<Arc<Services>>,

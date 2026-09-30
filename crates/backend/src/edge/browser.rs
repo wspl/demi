@@ -11,6 +11,7 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use bytes::Bytes;
+use demi_backend_storage::conversation_index::ConversationRecord;
 use demi_browser_protocol::browser::{
     BackInput, BrowserCreatedBy, BrowserErrorCode, BrowserFailure, BrowserOperation, BrowserTab, CloseInput,
     FailureDocument, ForwardInput, GotoInput, OpenInput, OpenResult, PREFIX, ReloadInput, TabId, TabsInput, TabsResult,
@@ -30,7 +31,6 @@ use super::error::ApiError;
 use super::gate::AuthUser;
 use crate::conversation::host_access::{HostAccessError, Refusal};
 use crate::conversation::stream::{BROWSER_STREAM, ServiceBinding, ServiceCall, UserCallError, UserCallKind};
-use crate::storage::conversation_index::ConversationRecord;
 
 /// The most bytes of an operation's JSON answer.
 const ANSWER_MAX_BYTES: usize = 1024 * 1024;

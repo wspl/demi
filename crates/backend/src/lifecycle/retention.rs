@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use demi_agent_store::COMMAND_OUTPUT_DAYS;
 use demi_agent_transcript::retire::{KEPT, Retirement};
+use demi_backend_storage::{blob_refs, command_outputs};
 use demi_core::{BlobRef, Timestamp};
 use demi_gates::Reservation;
 use demi_web_api::ids::ConversationId;
@@ -20,7 +21,7 @@ use jiff::SignedDuration;
 use crate::backend::Services;
 use crate::conversation::root_of;
 use crate::shard::{Shard, Shards};
-use crate::storage::{blob_refs, command_outputs};
+use crate::conversation::ConversationBlobs;
 
 /// How long an unreferenced blob, and its last use, must be old before a
 /// collection deletes it: longer than a medium that was put waits for the
@@ -149,7 +150,7 @@ impl Shard {
         }
         // Read under the reservation: no tree can have been live since.
         let retirement = self.retirement(id).await?;
-        let blobs = services.blobs.for_user(self.user());
+        let blobs = ConversationBlobs(services.blobs.for_user(self.user()));
         services
             .conversations
             .db(id)
@@ -182,7 +183,7 @@ impl Shard {
         if due != Some(true) {
             return Ok(0);
         }
-        let blobs = services.blobs.for_user(self.user());
+        let blobs = ConversationBlobs(services.blobs.for_user(self.user()));
         services
             .conversations
             .db(id)

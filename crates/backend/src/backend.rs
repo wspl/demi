@@ -19,37 +19,38 @@ use demi_command_tree::NativeOperation;
 use demi_runner_protocol::values::BackendUrl;
 use demi_web_api::settings::InstanceMode;
 
+use demi_backend_accounts::email_change::{AccountMail, EmailChanges};
+use demi_backend_accounts::login_limiter::LoginLimiter;
+use demi_backend_accounts::passwords::{HashError, PasswordHasher};
+use demi_backend_accounts::sessions::WebSessions;
+use demi_backend_objects::ObjectError;
+use demi_backend_objects::blobs::BlobStores;
+use demi_backend_objects::store::{self as objects, S3Config, S3ConfigError};
+use demi_backend_providers::llm::assembly::ProviderAssembly;
+use demi_backend_providers::llm::catalog_cache::ModelCatalogCache;
+use demi_backend_providers::llm::claude_releases::ClaudeReleases;
+use demi_backend_providers::llm::families::FamilyRegistry;
+use demi_backend_providers::llm::vendors::VendorCatalog;
+use demi_backend_providers::vault::entries::Vault;
+use demi_backend_providers::vault::logins::{LoginFlows, LoginTiming};
+use demi_backend_providers::vault::operations::ProviderOperations;
+use demi_backend_providers::vault::quotas::AccountQuotas;
+use demi_backend_storage::StorageError;
+use demi_backend_storage::control::ControlService;
+use demi_backend_storage::conversations::{self, ConversationStores};
+use demi_backend_sync::SyncRegistry;
 use demi_provider::models_dev::ModelsDevClient;
 
-use crate::auth::email_change::{AccountMail, EmailChanges};
-use crate::auth::login_limiter::LoginLimiter;
-use crate::auth::passwords::{HashError, PasswordHasher};
-use crate::auth::sessions::WebSessions;
 use crate::config::{BackendConfig, ConversationTuning, ExposeTuning, LifecycleTuning, PageTuning, RunnerTuning};
 use crate::conversation::stream::UserStreams;
 use crate::edge::{AppState, Edge, Site};
 use crate::expose::ExposeDomain;
-use crate::llm::assembly::ProviderAssembly;
-use crate::llm::catalog_cache::ModelCatalogCache;
-use crate::llm::claude_cli::CliInstalls;
-use crate::llm::claude_releases::ClaudeReleases;
-use crate::llm::families::FamilyRegistry;
-use crate::llm::vendors::VendorCatalog;
+use crate::conversation::claude_cli::CliInstalls;
 use crate::managed::{CloudServices, MachinesClient, recover_resets};
 use crate::runner::claims::PendingClaims;
 use crate::runner::native::NativeCatalog;
 use crate::shard::ShardPool;
-use crate::storage::blobs::BlobStores;
-use crate::storage::objects::{S3Config, S3ConfigError};
-use crate::storage::control::ControlService;
-use crate::storage::conversations::{self, ConversationStores};
-use crate::storage::{StorageError, objects};
-use crate::sync::SyncRegistry;
-use crate::vault::entries::Vault;
-use crate::vault::logins::{LoginFlows, LoginTiming};
-use crate::vault::operations::ProviderOperations;
-use crate::vault::quotas::AccountQuotas;
-use crate::vault::secret::{InstanceSecret, SecretError};
+use crate::config::secret::{InstanceSecret, SecretError};
 
 const CONTROL_DATABASE: &str = "control.sqlite";
 const CONVERSATION_DATABASES: &str = "conversations";
@@ -322,9 +323,9 @@ impl Services {
         let storage = Storage::open(data, clock.clone(), objects).await.unwrap();
         let secret = InstanceSecret::load_or_create(data).await.unwrap();
         let providers = ProviderSetup {
-            families: FamilyRegistry::builtin(),
+            families: demi_backend_families::builtin(),
             models_dev_url: ModelsDevClient::DEFAULT_URL.parse().unwrap(),
-            claude_releases: crate::llm::claude_releases::DEFAULT_RELEASES_URL.parse().unwrap(),
+            claude_releases: demi_backend_providers::llm::claude_releases::DEFAULT_RELEASES_URL.parse().unwrap(),
             logins: LoginTiming::default(),
             clock,
         };
@@ -373,6 +374,8 @@ pub enum StartError {
     Secret(#[from] SecretError),
     #[error("storage cannot be opened: {0}")]
     Storage(#[from] StorageError),
+    #[error("the object store cannot be opened: {0}")]
+    Objects(#[from] ObjectError),
     #[error("DEMI_OBJECT_STORE_CONFIG cannot be used: {0}")]
     ObjectStore(S3ConfigError),
     #[error("password hashing cannot start: {0}")]
@@ -558,7 +561,7 @@ impl Backend {
     /// Holds every commit of a conversation's checkpoint from now on, until
     /// the hold is released.
     #[cfg(feature = "testing")]
-    pub fn hold_commits(&self) -> crate::CommitHold {
+    pub fn hold_commits(&self) -> demi_backend_storage::conversations::CommitHold {
         self.services.conversations.hold_commits()
     }
 

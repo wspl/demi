@@ -12,6 +12,11 @@ use std::rc::Rc;
 use demi_agent::ProviderResolver as _;
 use demi_agent::title::{request_title, title_from_message};
 use demi_agent_protocol::ClientContent;
+use demi_backend_storage::StorageError;
+use demi_backend_storage::control::ControlService;
+use demi_backend_storage::conversation_index::ConversationRecord;
+use demi_backend_storage::tree;
+use demi_backend_sync::{Part, UserMarks};
 use demi_core::{Block, ModelSelection, UserContentBlock};
 use demi_web_api::ids::{ConversationId, ProviderId};
 use tokio_util::sync::CancellationToken;
@@ -20,11 +25,6 @@ use tokio_util::task::TaskTracker;
 use super::providers::ConversationProviders;
 use super::root_of;
 use crate::shard::Shard;
-use crate::storage::StorageError;
-use crate::storage::control::ControlService;
-use crate::storage::conversation_index::ConversationRecord;
-use crate::storage::tree;
-use crate::sync::{Part, UserMarks};
 
 /// What one request reads, and the state it began from.
 pub(crate) struct TitleRequest {

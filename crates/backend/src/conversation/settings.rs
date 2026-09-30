@@ -9,26 +9,13 @@
 //! takes when it next opens.
 
 use demi_agent::ResolveError;
+use demi_backend_storage::conversation_index::{RecordChange, SettingsChange};
 use demi_core::{ModelSelection, ProviderModel};
-use demi_web_api::conversations::ModelChoice;
 use demi_web_api::ids::{ConversationId, ProviderId};
 
 use super::root_of;
 use super::transition::ChangeRefusal;
 use crate::shard::Shard;
-use crate::storage::conversation_index::RecordChange;
-
-/// A change of a conversation's model settings: the parts a patch names.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SettingsChange {
-    /// A switch to this model, with the effort and the tier below and the
-    /// model's defaults for a part they leave out.
-    pub(crate) model: Option<ModelChoice>,
-    /// The thinking effort, or null for the model's default.
-    pub(crate) thinking_effort: Option<Option<String>>,
-    /// The service tier, or null for the vendor's default.
-    pub(crate) service_tier_id: Option<Option<String>>,
-}
 
 impl Shard {
     /// Applies `change` to the model settings of the user's conversation

@@ -10,12 +10,12 @@ use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use axum::http::StatusCode;
 use axum::response::Response;
 use axum_extra::extract::CookieJar;
+use demi_backend_storage::accounts::TokenHash;
 use demi_web_api::error::ErrorCode;
 
 use super::AppState;
 use super::cookies::SESSION_COOKIE;
 use super::error::ApiError;
-use crate::auth::sessions::TokenHash;
 use crate::sync::ChannelSession;
 
 pub(super) async fn channel(

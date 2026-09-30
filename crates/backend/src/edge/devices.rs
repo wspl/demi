@@ -8,6 +8,8 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use demi_backend_storage::accounts::TokenHash;
+use demi_backend_storage::devices::DeviceRecord;
 use demi_shell::{HostError, HostErrorKind, MkdirOptions};
 use demi_web_api::devices::{Claim, ClaimedDevice, DeviceKind, DeviceLog, DeviceLogLine, DeviceLogQuery, Devices};
 use demi_web_api::error::ErrorCode;
@@ -19,10 +21,8 @@ use super::body::JsonBody;
 use super::error::ApiError;
 use super::gate::AuthUser;
 use super::query::QueryParams;
-use crate::auth::sessions::TokenHash;
 use crate::runner::codes::{ClaimCode, new_device_token};
 use crate::runner::files::browse_directory;
-use crate::storage::devices::DeviceRecord;
 
 pub(super) async fn list(State(state): State<AppState>, AuthUser(user): AuthUser) -> Result<Json<Devices>, ApiError> {
     let devices = state

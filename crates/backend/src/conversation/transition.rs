@@ -13,6 +13,11 @@
 //! (`resource-lifecycle.md` § A release that fails). A transition waits for
 //! no other work: a conversation that is busy refuses it.
 
+use demi_backend_storage::StorageError;
+use demi_backend_storage::conversation_index::{
+    ChangeOutcome, ConversationChange, ConversationRecord, RecordChange, SettingsChange, SwitchEnds, TargetSwitch,
+};
+use demi_backend_sync::Part;
 use demi_gates::{Purpose, Reservation};
 use demi_web_api::conversations::{ConversationPatch, ConversationTarget, ConversationUpdate, FieldResult, PatchField};
 use demi_web_api::devices::DeviceKind;
@@ -20,15 +25,8 @@ use demi_web_api::error::ErrorCode;
 use demi_web_api::ids::ConversationId;
 
 use super::root_of;
-use super::settings::SettingsChange;
-use super::target::TargetSwitch;
 use super::transfer::TransfersClosed;
 use crate::shard::Shard;
-use crate::storage::StorageError;
-use crate::storage::conversation_index::{
-    ChangeOutcome, ConversationChange, ConversationRecord, RecordChange, SwitchEnds,
-};
-use crate::sync::Part;
 
 /// Why a change was not applied.
 #[derive(Debug, thiserror::Error)]
@@ -391,12 +389,6 @@ fn failed(field: PatchField, refusal: &ChangeRefusal) -> FieldResult {
     }
 }
 
-impl From<RecordChange> for ConversationChange {
-    fn from(change: RecordChange) -> Self {
-        Self::Record(change)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
@@ -406,11 +398,11 @@ mod tests {
 
     use super::*;
     use demi_runner_protocol::wire::RunnerPlatform;
-    use crate::auth::sessions::TokenHash;
+    use demi_backend_storage::accounts::TokenHash;
     use crate::backend::Services;
     use crate::shard::{ShardPlacement, ShardPool};
-    use crate::storage::control::testing;
-    use crate::storage::conversation_index::{AttachedHostRecord, Creation};
+    use demi_backend_storage::control::testing;
+    use demi_backend_storage::conversation_index::{AttachedHostRecord, Creation};
 
     const ID: &str = "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01";
 

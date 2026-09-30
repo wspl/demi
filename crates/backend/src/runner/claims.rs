@@ -9,6 +9,7 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
+use demi_backend_storage::devices::DeviceRecord;
 use demi_runner_protocol::values::DeviceToken;
 use demi_runner_protocol::wire::RunnerInfo;
 use demi_web_api::devices::DeviceDto;
@@ -17,7 +18,6 @@ use tokio::sync::oneshot;
 use tokio::time::Instant;
 
 use super::codes::ClaimCode;
-use crate::storage::devices::DeviceRecord;
 
 /// The window claim attempts are counted in.
 const ATTEMPT_WINDOW: Duration = Duration::from_secs(60);

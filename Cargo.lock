@@ -1399,9 +1399,7 @@ dependencies = [
 name = "demi-backend"
 version = "0.1.3"
 dependencies = [
- "aes-gcm",
  "argon2",
- "async-trait",
  "axum",
  "axum-extra",
  "bytes",
@@ -1416,6 +1414,13 @@ dependencies = [
  "demi-agent-transcript",
  "demi-artifact",
  "demi-backend",
+ "demi-backend-accounts",
+ "demi-backend-families",
+ "demi-backend-idle",
+ "demi-backend-objects",
+ "demi-backend-providers",
+ "demi-backend-storage",
+ "demi-backend-sync",
  "demi-browser-protocol",
  "demi-claude-protocol",
  "demi-coding-agent",
@@ -1427,28 +1432,18 @@ dependencies = [
  "demi-host-remote",
  "demi-machines-protocol",
  "demi-provider",
- "demi-provider-anthropic-api",
  "demi-provider-claude-code",
- "demi-provider-codex",
- "demi-provider-google",
- "demi-provider-grok-build",
- "demi-provider-openai-api",
  "demi-runner-protocol",
  "demi-shell",
  "demi-web-api",
  "futures-util",
  "garde",
- "hashlink",
  "hex",
  "hkdf",
- "hmac",
  "http-body",
  "httparse",
  "hyper",
  "hyper-util",
- "icu_collator",
- "icu_locale",
- "icu_time",
  "jiff",
  "mime",
  "object_store",
@@ -1457,19 +1452,15 @@ dependencies = [
  "rand 0.9.5",
  "reqwest",
  "rusqlite",
- "rusqlite_migration",
  "schemars",
  "serde",
  "serde_json",
  "serde_json_canonicalizer",
- "serde_with",
  "sha2",
  "shlex",
- "subtle",
  "tempfile",
  "thiserror",
  "tokio",
- "tokio-rusqlite",
  "tokio-tungstenite",
  "tokio-util",
  "tower",
@@ -1479,6 +1470,158 @@ dependencies = [
  "typed-path",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "demi-backend-accounts"
+version = "0.1.3"
+dependencies = [
+ "argon2",
+ "demi-backend-storage",
+ "demi-command-service",
+ "demi-core",
+ "demi-web-api",
+ "futures-util",
+ "hex",
+ "icu_locale",
+ "icu_time",
+ "jiff",
+ "password-hash",
+ "rand 0.9.5",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "demi-backend-families"
+version = "0.1.3"
+dependencies = [
+ "demi-backend-providers",
+ "demi-core",
+ "demi-provider",
+ "demi-provider-anthropic-api",
+ "demi-provider-claude-code",
+ "demi-provider-codex",
+ "demi-provider-google",
+ "demi-provider-grok-build",
+ "demi-provider-openai-api",
+ "demi-web-api",
+ "reqwest",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "demi-backend-idle"
+version = "0.1.3"
+dependencies = [
+ "demi-gates",
+ "futures-util",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "demi-backend-objects"
+version = "0.1.3"
+dependencies = [
+ "async-trait",
+ "axum",
+ "bytes",
+ "demi-agent-store",
+ "demi-core",
+ "demi-web-api",
+ "futures-util",
+ "jiff",
+ "object_store",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
+name = "demi-backend-providers"
+version = "0.1.3"
+dependencies = [
+ "aes-gcm",
+ "demi-backend-storage",
+ "demi-backend-sync",
+ "demi-claude-protocol",
+ "demi-core",
+ "demi-provider",
+ "demi-provider-anthropic-api",
+ "demi-provider-claude-code",
+ "demi-provider-openai-api",
+ "demi-web-api",
+ "futures-util",
+ "garde",
+ "hex",
+ "icu_collator",
+ "jiff",
+ "rand 0.9.5",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_json_canonicalizer",
+ "serde_with",
+ "sha2",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "demi-backend-storage"
+version = "0.1.3"
+dependencies = [
+ "demi-agent-store",
+ "demi-agent-transcript",
+ "demi-core",
+ "demi-gates",
+ "demi-host-remote",
+ "demi-machines-protocol",
+ "demi-runner-protocol",
+ "demi-shell",
+ "demi-web-api",
+ "futures-util",
+ "garde",
+ "hashlink",
+ "hex",
+ "hmac",
+ "jiff",
+ "password-hash",
+ "rusqlite",
+ "rusqlite_migration",
+ "serde",
+ "serde_json",
+ "sha2",
+ "subtle",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-rusqlite",
+ "tokio-util",
+ "uuid",
+]
+
+[[package]]
+name = "demi-backend-sync"
+version = "0.1.3"
+dependencies = [
+ "demi-backend-storage",
+ "demi-web-api",
+ "tokio",
 ]
 
 [[package]]

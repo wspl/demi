@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use demi_agent_protocol::{ClientFrame, ServerFrame};
-use demi_backend::FamilyRegistry;
+use demi_backend_providers::llm::families::FamilyRegistry;
 use demi_core::WireApi;
 use demi_provider::CatalogError;
 use demi_provider::testing::{MockResponse, MockVendor, RecordedRequest, sse_body};
@@ -63,7 +63,7 @@ async fn catalog_of(backend: &TestBackend, session: &Session, query: &str) -> Mo
 }
 
 fn scripted(directory: &Arc<Directory>) -> FamilyRegistry {
-    FamilyRegistry::builtin().with(
+    demi_backend_families::builtin().with(
         "scripted",
         ScriptedKey {
             directory: directory.clone(),
@@ -363,7 +363,7 @@ fn served(document: &Value) -> MockResponse {
 async fn a_vendor_entry_takes_its_family_wire_and_endpoint_from_models_dev_and_reads_its_live_models() {
     let vendor = MockVendor::start().await;
     let directory = Arc::new(Directory::default());
-    let families = FamilyRegistry::builtin().with(
+    let families = demi_backend_families::builtin().with(
         "openai",
         ScriptedKey {
             directory: directory.clone(),

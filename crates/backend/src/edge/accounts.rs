@@ -9,6 +9,7 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use demi_backend_providers::vault::accounts;
 use demi_web_api::error::ErrorCode;
 use demi_web_api::ids::{CredentialId, LoginId};
 use demi_web_api::providers::{
@@ -23,7 +24,6 @@ use super::provider_cli::install_for_account;
 use super::providers::{configures, reserve, scoped};
 use crate::backend::Services;
 use crate::shard::Shards;
-use crate::vault::accounts;
 
 /// Creates the caller's Claude Code entry from a setup token, and starts
 /// the install of its CLI on the caller's Cloud.

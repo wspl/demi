@@ -5,6 +5,10 @@
 //! read-only connection, so listing hundreds of conversations takes no
 //! writer from a running one.
 
+use demi_backend_storage::StorageError;
+use demi_backend_storage::columns::decode;
+use demi_backend_storage::conversation_index::ConversationRecord;
+use demi_backend_storage::tree::{self, SummaryFacts, Terminal};
 use demi_core::{ModelSelection, SessionPhase};
 use demi_web_api::conversations::{ConversationStatus, ConversationSummary, ModelSettings};
 use demi_web_api::ids::ProviderId;
@@ -12,10 +16,6 @@ use futures_util::future::try_join_all;
 
 use super::root_of;
 use crate::shard::Shard;
-use crate::storage::StorageError;
-use crate::storage::columns::decode;
-use crate::storage::conversation_index::ConversationRecord;
-use crate::storage::tree::{self, SummaryFacts, Terminal};
 
 impl Shard {
     /// The summaries of the user's conversations that are archived, or that

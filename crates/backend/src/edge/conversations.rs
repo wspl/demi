@@ -13,6 +13,9 @@ use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Response;
+use demi_backend_storage::conversation_index::{ConversationRecord, Creation};
+use demi_backend_storage::tree;
+use demi_backend_sync::Part;
 use demi_web_api::conversations::{
     BatchAnswer, BatchResult, ConversationAnswer, ConversationBatch, ConversationPatch, ConversationUpdate, Conversations,
     ConversationsQuery, CreateConversation, FieldResult, ForkAnswer, ForkRequest, ReadRequest, SubagentHistory,
@@ -29,9 +32,6 @@ use super::query::QueryParams;
 use crate::backend::Services;
 use crate::conversation::titles::TitleRefusal;
 use crate::conversation::{ForkRefusal, failure_facts};
-use crate::storage::conversation_index::{ConversationRecord, Creation};
-use crate::storage::tree;
-use crate::sync::Part;
 
 fn not_found() -> ApiError {
     ApiError::new(StatusCode::NOT_FOUND, ErrorCode::ConversationNotFound, "No such conversation")
@@ -195,7 +195,7 @@ pub(super) async fn batch(
                 };
                 results.push(result);
             }
-            Ok::<_, crate::storage::StorageError>(results)
+            Ok::<_, demi_backend_storage::StorageError>(results)
         })
         .await??;
     Ok((StatusCode::MULTI_STATUS, Json(BatchAnswer { results })))

@@ -1,0 +1,38 @@
+[package]
+name = "demi-backend-accounts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+# Its tests reach the lockout's internals, so they are unit tests and the
+# crate has no integration tests (`crates-and-packages.md` § Module layout);
+# no doc examples.
+doctest = false
+
+[dependencies]
+demi-backend-storage = { path = "../backend-storage" }
+demi-command-service = { path = "../command-service" }
+demi-core = { path = "../core" }
+demi-web-api = { path = "../web-api" }
+# `std` for `password_hash::Error` as a `std::error::Error`; `password-hash`'s
+# `getrandom` gives `SaltString::generate` its operating-system RNG.
+argon2 = { version = "0.5", features = ["std"] }
+futures-util.workspace = true
+hex = "0.4"
+# The IANA time zones and the locale canonicalization a reported locale is
+# checked against, from ICU4X's compiled data: the same on every machine,
+# without a system time zone database.
+icu_locale = "2"
+icu_time = { version = "2", default-features = false, features = ["compiled_data"] }
+jiff.workspace = true
+password-hash = { version = "0.5", features = ["getrandom"] }
+rand = "0.9"
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

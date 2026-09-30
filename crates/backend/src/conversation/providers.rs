@@ -15,6 +15,10 @@ use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
 use demi_agent::{ProviderResolver, ResolveError};
+use demi_backend_providers::llm::catalog::configured_selection;
+use demi_backend_providers::usage::meter::{Ledger, MeteredRuntime};
+use demi_backend_providers::usage::rate_limit::RequestRateLimit;
+use demi_backend_providers::vault::entries::{EntryCredential, ProviderEntry};
 use demi_core::{Model, ModelSelection, NodeId};
 use demi_provider::{
     ErrorCode, InferenceRequest, Provider, ProviderEvent, ProviderFailure, ProviderRun, ProviderRuntime, RequestLimits,
@@ -26,12 +30,8 @@ use futures_util::{StreamExt as _, stream};
 
 use super::conversation_of;
 use crate::backend::Services;
-use crate::llm::catalog::configured_selection;
-use crate::llm::claude_cli::{CloudPlacement, ProcessWork};
+use crate::conversation::claude_cli::{CloudPlacement, ProcessWork};
 use crate::shard::Shard;
-use crate::usage::meter::{Ledger, MeteredRuntime};
-use crate::usage::rate_limit::RequestRateLimit;
-use crate::vault::entries::{EntryCredential, ProviderEntry};
 
 /// Where the user's sessions get their runtimes.
 pub(super) struct ConversationProviders {

@@ -10,6 +10,8 @@ use std::convert::Infallible;
 use std::rc::Rc;
 
 use axum::extract::ws::{CloseFrame, Message, Utf8Bytes, WebSocket, close_code};
+use demi_backend_storage::accounts::TokenHash;
+use demi_backend_sync::{Part, Registration};
 use demi_core::Timestamp;
 use demi_web_api::auth::UserDto;
 use demi_web_api::exposes::ExposeDto;
@@ -17,8 +19,6 @@ use demi_web_api::state::SyncEvent;
 use futures_util::StreamExt as _;
 use futures_util::stream::SplitStream;
 
-use super::{Part, Registration};
-use crate::auth::sessions::TokenHash;
 use crate::expose::first_expiry;
 use crate::shard::{PageGone, PageSocket, Shard};
 

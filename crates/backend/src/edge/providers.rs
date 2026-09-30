@@ -10,6 +10,9 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use demi_backend_providers::llm::families::ProviderFamily;
+use demi_backend_providers::vault::entries::{ApiKeyConfig, EntryCredential, ProviderEntry};
+use demi_backend_providers::vault::operations::OperationGuard;
 use demi_core::WireApi;
 use demi_provider::quota::QuotaError;
 use demi_provider::{Provider, Secret};
@@ -26,10 +29,7 @@ use super::body::{JsonBody, OptionalJsonBody};
 use super::error::ApiError;
 use super::gate::AuthUser;
 use crate::backend::Services;
-use crate::llm::families::ProviderFamily;
 use crate::shard::Shards;
-use crate::vault::entries::{ApiKeyConfig, EntryCredential, ProviderEntry};
-use crate::vault::operations::OperationGuard;
 
 /// Refuses a user who does not configure the scope's entries.
 pub(super) fn configures(services: &Services, user: &UserDto) -> Result<(), ApiError> {

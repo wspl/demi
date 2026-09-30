@@ -1,0 +1,18 @@
+[package]
+name = "demi-backend-sync"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+# No tests of its own: the synchronization scenarios of `demi-backend` cover
+# the registry at the page's channel (`crates-and-packages.md` § Module
+# layout); no doc examples.
+test = false
+doctest = false
+
+[dependencies]
+demi-backend-storage = { path = "../backend-storage" }
+demi-web-api = { path = "../web-api" }
+tokio.workspace = true

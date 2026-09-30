@@ -2,13 +2,12 @@
 //! target): its selection resolved to a device and the directory its work
 //! starts in there.
 
+use demi_backend_storage::StorageError;
+use demi_backend_storage::conversation_index::{ConversationRecord, ExecutionTarget};
 use demi_web_api::conversations::ConversationTarget;
-use demi_web_api::ids::{ConversationId, DeviceId, WorkspaceId};
-use serde::{Deserialize, Serialize};
+use demi_web_api::ids::ConversationId;
 
 use crate::shard::Shard;
-use crate::storage::StorageError;
-use crate::storage::conversation_index::ConversationRecord;
 
 /// The Cloud's home directory, before its runner reports one.
 const CLOUD_HOME: &str = "/home/demi";
@@ -16,52 +15,6 @@ const CLOUD_HOME: &str = "/home/demi";
 /// Where a conversation on the Cloud works unless it names a directory.
 pub(crate) fn cloud_session_directory(id: &ConversationId, home: Option<&str>) -> String {
     format!("{}/sessions/{id}", home.unwrap_or(CLOUD_HOME))
-}
-
-/// A conversation's selection resolved: the device its work runs on, and
-/// the directory the work starts in there. A Cloud has no device until its
-/// first use makes it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
-#[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
-#[garde(allow_unvalidated)]
-pub(crate) enum ExecutionTarget {
-    Cloud {
-        device_id: Option<DeviceId>,
-        path: String,
-    },
-    Device {
-        device_id: DeviceId,
-        path: String,
-    },
-    Workspace {
-        workspace_id: WorkspaceId,
-        device_id: DeviceId,
-        path: String,
-    },
-}
-
-impl ExecutionTarget {
-    pub(crate) fn device(&self) -> Option<&DeviceId> {
-        match self {
-            Self::Cloud { device_id, .. } => device_id.as_ref(),
-            Self::Device { device_id, .. } | Self::Workspace { device_id, .. } => Some(device_id),
-        }
-    }
-
-    pub(crate) fn path(&self) -> &str {
-        match self {
-            Self::Cloud { path, .. } | Self::Device { path, .. } | Self::Workspace { path, .. } => path,
-        }
-    }
-}
-
-/// The latest target switch, which every node's next context block
-/// describes.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
-#[garde(allow_unvalidated)]
-pub(crate) struct TargetSwitch {
-    pub(crate) from: ExecutionTarget,
-    pub(crate) to: ExecutionTarget,
 }
 
 impl Shard {

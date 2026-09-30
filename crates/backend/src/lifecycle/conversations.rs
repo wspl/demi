@@ -16,10 +16,10 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
+use demi_backend_idle::{Activity, IdlePolicy, Retirement};
 use demi_web_api::ids::ConversationId;
 use tokio_util::task::AbortOnDropHandle;
 
-use super::{Activity, IdlePolicy, Retirement};
 use crate::conversation::root_of;
 use crate::shard::Shard;
 
@@ -62,7 +62,7 @@ impl Shard {
             id: id.clone(),
         };
         let lifecycle = &self.services().lifecycle;
-        let watch = super::watch(policy, lifecycle.idle_window, lifecycle.idle_poll, self.tasks().clone());
+        let watch = demi_backend_idle::watch(policy, lifecycle.idle_window, lifecycle.idle_poll, self.tasks().clone());
         let watch = AbortOnDropHandle::new(self.tasks().spawn_local(watch));
         self.idle_watches().watches.borrow_mut().insert(id.clone(), watch);
     }
@@ -146,12 +146,12 @@ mod tests {
 
     use super::*;
     use demi_runner_protocol::wire::RunnerPlatform;
-    use crate::auth::sessions::TokenHash;
+    use demi_backend_storage::accounts::TokenHash;
     use crate::backend::Services;
     use crate::config::LifecycleTuning;
     use crate::shard::{ShardPlacement, ShardPool};
-    use crate::storage::control::testing;
-    use crate::storage::conversation_index::{AttachedHostRecord, ConversationChange, Creation, RecordChange};
+    use demi_backend_storage::control::testing;
+    use demi_backend_storage::conversation_index::{AttachedHostRecord, ConversationChange, Creation, RecordChange};
 
     const ID: &str = "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01";
 

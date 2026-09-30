@@ -5,8 +5,8 @@
 use demi_command_service::protocol::{CommandCaller, CommandContext, CommandLocale};
 use demi_web_api::ids::{ConversationId, ProviderId, UserId};
 
-use crate::storage::StorageError;
-use crate::storage::control::ControlService;
+use demi_backend_storage::StorageError;
+use demi_backend_storage::control::ControlService;
 
 /// The locale commands receive until the user's browser reports one.
 pub(crate) fn default_locale() -> CommandLocale {
