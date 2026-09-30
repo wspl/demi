@@ -231,7 +231,7 @@ patches = [
     "Bounded CDP websocket messages (16 MiB); an oversized message fails the connection",
     "Evaluation keeps an explicit execution context or scope",
     "Chrome starts through a caller's spawn hook (launch_with), so the service puts it in its own process group with its profile marker",
-    "A launch reads what Chrome wrote before it reports Chrome's exit, so the reason a Chrome that exits at once gave (such as running as root) is not lost to a random choice between the two",
+    "A launch reads what Chrome wrote before it reports Chrome's exit, so the reason a Chrome that exits at once gave (such as running as root) is not lost to a random choice between the two, nor on Unix to an exit reaped before the reactor reported the pipe readable (macOS): the pipe is drained without waiting before the exit is reported",
     "Touch emulation only for a viewport that has touch, so a page keeps a fine pointer with hover",
     "A same-document navigation completes its watcher at once instead of waiting for a load that never comes",
     "Flattened child targets (out-of-process frames) are registered with their parent's session, their console messages reach their tab, and target creation and attachment may arrive in either order",

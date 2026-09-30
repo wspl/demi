@@ -589,11 +589,39 @@ async fn ws_url_from_output(
                 }
             },
             exit_status = exit_status_fut => {
+                // An exit can be reaped before the reactor has reported the
+                // pipe readable, as on macOS, where the wait answers at once:
+                // what the browser wrote is in the pipe by then, so it is read
+                // before the exit is reported.
+                #[cfg(unix)]
+                if let Err(e) = drain_ready(buf.get_ref(), &mut stderr_bytes) {
+                    return Err(CdpError::LaunchIo(e, BrowserStderr::new(stderr_bytes)));
+                }
                 return Err(match exit_status {
                     Err(e) => CdpError::LaunchIo(e, BrowserStderr::new(stderr_bytes)),
                     Ok(exit_status) => CdpError::LaunchExit(exit_status, BrowserStderr::new(stderr_bytes)),
                 })
             },
+        }
+    }
+}
+
+/// Appends what `stderr` holds now to `bytes`, without waiting: its
+/// descriptor is non-blocking, so a read of a drained pipe answers
+/// `WouldBlock`, and one whose writers are gone answers the end.
+#[cfg(unix)]
+fn drain_ready(stderr: &crate::async_process::ChildStderr, bytes: &mut Vec<u8>) -> io::Result<()> {
+    use std::io::Read as _;
+    use std::os::fd::AsFd as _;
+    let pipe = std::fs::File::from(stderr.inner.as_fd().try_clone_to_owned()?);
+    let mut chunk = [0; 4096];
+    loop {
+        match (&pipe).read(&mut chunk) {
+            Ok(0) => return Ok(()),
+            Ok(count) => bytes.extend_from_slice(&chunk[..count]),
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => return Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) => return Err(error),
         }
     }
 }
