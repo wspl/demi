@@ -173,7 +173,7 @@ impl Host {
     /// that receives the host's mounts.
     fn manager(&self, settings: &Settings, args: &[&str]) -> Manager {
         let unshare = self.unshare.id();
-        let mut nsenter = Command::new("nsenter")
+        let nsenter = Command::new("nsenter")
             .arg(format!("--mount=/proc/{unshare}/ns/mnt"))
             .arg(format!("--net=/proc/{unshare}/ns/net"))
             .arg(format!("--pid=/proc/{unshare}/ns/pid_for_children"))
