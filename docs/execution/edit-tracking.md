@@ -190,11 +190,11 @@ Only Uncommitted mode lists files and offers a changed-file tree.
 | --- | --- |
 | `vendor/brush-core`, `vendor/uucore`, `vendor/sed` | Route writable opens, file writes and temporary-file publication through the execution owner's hooks. |
 | `crates/command-service` | Define the recording context and journal and implement the shared bounded recorder with OS locking. |
-| `crates/demi-commands` | Record create, edit, patch publication and rollback using the invocation's recorder. |
-| `crates/runner` | Create job recording contexts, associate descriptors with paths, forward redirected external output, finalize reports and share line counting with the working tree. |
+| `crates/demi-file` | Record create, edit, patch publication and rollback using the invocation's recorder. |
+| `crates/runner-jobs`, `crates/runner-shell` | Create job recording contexts, associate descriptors with paths, forward redirected external output, finalize reports and share line counting with the working tree. |
 | `crates/runner-protocol`, `crates/shell`, `crates/host-remote` | Carry the report through command completion. |
-| `crates/backend` | Store the copies as blobs before tool completion; the blob route serves them. |
-| `crates/core`, `crates/agent` | Define the shell tool view with its small file and segment list, and carry it in the transcript, exclusively for the user. |
+| `crates/backend-shard` | Store the copies as blobs before tool completion; the blob route serves them. |
+| `crates/core`, `crates/agent-tools` | Define the shell tool view with its small file and segment list, and carry it in the transcript, exclusively for the user. |
 | `packages/web-ui` | Shared file selection, segment selection and diff behavior. |
 | `packages/web`, `packages/web-gallery` | Product data adapters and matching specimens. |
 
