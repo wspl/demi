@@ -9,6 +9,7 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use demi_backend_providers::vault::entries::ProviderEntry;
 use demi_web_api::auth::UserDto;
 use demi_web_api::providers::{CliInstallAnswer, NewestVersion, ProviderCli};
 use demi_web_api::query::Refresh;
@@ -18,9 +19,8 @@ use super::gate::AuthUser;
 use super::providers::scoped;
 use super::query::QueryParams;
 use crate::backend::Services;
-use crate::llm::claude_cli::start_install;
+use crate::conversation::claude_cli::start_install;
 use crate::shard::Shards;
-use crate::vault::entries::ProviderEntry;
 
 /// The entry the path names, when its provider runs a process; an entry
 /// whose provider runs none has no tool to read or install.

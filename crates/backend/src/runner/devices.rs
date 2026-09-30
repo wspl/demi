@@ -11,6 +11,9 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use axum::extract::ws::{Message, WebSocket};
+use demi_backend_storage::control::ControlService;
+use demi_backend_storage::devices::DeviceRecord;
+use demi_backend_sync::{Part, UserMarks};
 use demi_host_remote::{Admission, DeviceLink, Link, LinkEnd, LinkOptions, RemoteHost, host_identity};
 use demi_runner_protocol::wire::{HelloErrorCode, Inbound, RunnerInfo};
 use demi_shell::{HostIdentity, HostKey};
@@ -23,9 +26,6 @@ use tokio::sync::{oneshot, watch};
 use super::accept::send;
 use super::policy::ShardPolicy;
 use crate::shard::Shard;
-use crate::storage::control::ControlService;
-use crate::storage::devices::DeviceRecord;
-use crate::sync::{Part, UserMarks};
 
 /// Why a revoked device's connection ended; its runner hears it and stops.
 const REVOKED: &str = "device revoked";
@@ -266,7 +266,7 @@ impl Shard {
     /// Revokes a device: its exposes end with their connections, its row
     /// goes with its attachments, and its runner hears that it was revoked
     /// and stops for good.
-    pub(crate) async fn revoke_device(&self, device: DeviceId) -> Result<(), crate::storage::StorageError> {
+    pub(crate) async fn revoke_device(&self, device: DeviceId) -> Result<(), demi_backend_storage::StorageError> {
         self.destroy_exposes_on(&device).await;
         self.services().control.delete_device(device.clone()).await?;
         self.mark(Part::Devices);
@@ -276,7 +276,7 @@ impl Shard {
 
     /// The user's devices as the browser sees them: the paired ones oldest
     /// first, then the Cloud once its first use made it.
-    pub(crate) async fn device_list(&self) -> Result<Vec<DeviceDto>, crate::storage::StorageError> {
+    pub(crate) async fn device_list(&self) -> Result<Vec<DeviceDto>, demi_backend_storage::StorageError> {
         let control = &self.services().control;
         let mut devices = control.paired_devices(self.user().clone()).await?;
         if let Some(cloud) = control.managed_device(self.user().clone()).await? {

@@ -7,6 +7,7 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use demi_backend_storage::conversation_index::{AttachedHostRecord, ConversationChange, RecordChange};
 use demi_web_api::error::ErrorCode;
 use demi_web_api::hosts::{AttachHost, AttachedHost, AttachedHosts, RenameHost};
 use demi_web_api::ids::{ConversationId, DeviceId, UserId};
@@ -16,7 +17,6 @@ use super::body::JsonBody;
 use super::error::ApiError;
 use super::gate::AuthUser;
 use crate::conversation::transition::ChangeRefusal;
-use crate::storage::conversation_index::{AttachedHostRecord, ConversationChange, RecordChange};
 
 pub(super) async fn list(
     State(state): State<AppState>,

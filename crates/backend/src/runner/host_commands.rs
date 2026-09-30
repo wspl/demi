@@ -14,6 +14,7 @@ use std::future::Future;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
+use demi_backend_storage::conversation_index::ExecutionTarget;
 use demi_core::StreamKind;
 use demi_host_remote::{JobEnd, JobStart, Pipe, RemoteJob};
 use demi_runner_protocol::wire::Signal;
@@ -25,7 +26,6 @@ use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
 use crate::conversation::host_access::{HostRole, ReachableHost};
-use crate::conversation::target::ExecutionTarget;
 use crate::expose::expose_group;
 use crate::shard::Shard;
 
@@ -408,12 +408,12 @@ mod tests {
 
     use super::*;
     use demi_runner_protocol::wire::RunnerPlatform;
-    use crate::auth::sessions::TokenHash;
+    use demi_backend_storage::accounts::TokenHash;
     use crate::backend::Services;
     use crate::runner::command_context::default_locale;
     use crate::shard::{ShardPlacement, ShardPool};
-    use crate::storage::control::testing;
-    use crate::storage::conversation_index::{AttachedHostRecord, Creation, RecordChange};
+    use demi_backend_storage::control::testing;
+    use demi_backend_storage::conversation_index::{AttachedHostRecord, Creation, RecordChange};
 
     const ID: &str = "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01";
 

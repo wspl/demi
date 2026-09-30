@@ -13,11 +13,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
-use demi_backend::{
-    AccountMail, Backend, BackendConfig, CloudTuning, ConversationTuning, ExposeDomain, ExposeTuning, FamilyRegistry,
-    LifecycleTuning, LoginTiming, MailError, NativeCatalog, ObjectCounts, PageTuning, RunnerTuning,
-    VerificationMail, publish_native,
-};
+use demi_backend_objects::counting::ObjectCounts;
+use demi_backend_accounts::email_change::{AccountMail, MailError, VerificationMail};
+use demi_backend_providers::llm::families::FamilyRegistry;
+use demi_backend_providers::vault::logins::LoginTiming;
+use demi_backend::{Backend, BackendConfig, CloudTuning, ConversationTuning, ExposeDomain, ExposeTuning, LifecycleTuning, NativeCatalog, PageTuning, RunnerTuning, publish_native};
 use demi_browser_protocol::{Operation as BrowserOperation, PACKAGE as BROWSER_PACKAGE};
 use demi_command_service::protocol::{PackageDescriptor, host_target};
 use demi_command_service::testing::built_program;
@@ -265,7 +265,7 @@ impl Harness {
             mail: false,
             web_directory: None,
             mode: InstanceMode::Shared,
-            families: FamilyRegistry::builtin(),
+            families: demi_backend_families::builtin(),
             models_dev_url: None,
             claude_releases: None,
             logins: LoginTiming::default(),
@@ -653,7 +653,7 @@ impl TestBackend {
 
     /// Holds every commit of a conversation's checkpoint from now on, until
     /// the hold is released or dropped.
-    pub fn hold_commits(&self) -> demi_backend::CommitHold {
+    pub fn hold_commits(&self) -> demi_backend_storage::conversations::CommitHold {
         self.backend.hold_commits()
     }
 

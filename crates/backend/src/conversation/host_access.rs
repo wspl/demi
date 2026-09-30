@@ -12,6 +12,10 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::rc::Rc;
 
+use demi_backend_objects::ObjectError;
+use demi_backend_storage::StorageError;
+use demi_backend_storage::conversation_index::{ConversationRecord, ExecutionTarget};
+use demi_backend_storage::devices::DeviceRecord;
 use demi_gates::{ActivityGate, GateLease, Purpose, SerialGate};
 use demi_host_remote::{Admission, RemoteHost};
 use demi_shell::{HostError, HostErrorKind, HostFs, MkdirOptions};
@@ -21,14 +25,10 @@ use demi_web_api::ids::{ConversationId, DeviceId};
 use futures_util::future::join_all;
 use tokio_util::sync::CancellationToken;
 
-use super::target::ExecutionTarget;
 use super::transfer::{OpenTransfer, TransferSet, TransfersClosed};
 use crate::managed::{CloudAdmission, CloudError};
 use crate::runner::{HostOwner, host_key};
 use crate::shard::Shard;
-use crate::storage::StorageError;
-use crate::storage::conversation_index::ConversationRecord;
-use crate::storage::devices::DeviceRecord;
 
 /// Each conversation's slot, made on its first use and kept while the shard
 /// lives: a second slot for one conversation would be a second file gate.
@@ -100,6 +100,8 @@ pub(crate) enum HostAccessError {
     Host(#[from] HostError),
     #[error(transparent)]
     Storage(#[from] StorageError),
+    #[error(transparent)]
+    Objects(#[from] ObjectError),
     /// A put of a fitted upload image through the agent's view of the blob
     /// namespace failed.
     #[error(transparent)]
@@ -118,7 +120,7 @@ impl HostAccessError {
             Self::Refused(Refusal::DeviceGone) => (ErrorCode::DeviceNotFound, 404),
             Self::Cloud(error) => error.code(),
             Self::Host(error) => host_error_code(error),
-            Self::Cancelled | Self::Storage(_) | Self::Store(_) => (ErrorCode::InternalError, 500),
+            Self::Cancelled | Self::Storage(_) | Self::Objects(_) | Self::Store(_) => (ErrorCode::InternalError, 500),
         }
     }
 }

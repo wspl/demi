@@ -23,6 +23,9 @@ use demi_agent_protocol::{
     ClientContent, ClientFrame, EditOutcome, FrameError, ServerFrame, TranscriptPatch, decode_client_frame,
 };
 use demi_agent_store::media::HeldMedia;
+use demi_backend_storage::StorageError;
+use demi_backend_storage::conversation_index::ConversationRecord;
+use demi_backend_sync::Part;
 use demi_core::{Block, UserContentBlock};
 use demi_gates::{GateLease, Purpose};
 use demi_web_api::error::ErrorCode;
@@ -35,9 +38,6 @@ use super::host_access::{Admitted, ConversationHost, Waits};
 use super::remote_files::RemoteFile;
 use super::{failure_facts, root_of};
 use crate::shard::{PageSocket, Shard};
-use crate::storage::StorageError;
-use crate::storage::conversation_index::ConversationRecord;
-use crate::sync::Part;
 
 /// The close code of a socket whose page fell a full outbox behind; the page
 /// reconnects and adopts the running tree.

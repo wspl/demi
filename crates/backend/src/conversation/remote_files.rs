@@ -8,13 +8,13 @@
 //! file's bytes: a device revoked or disconnected before the read makes the
 //! command fail.
 
+use demi_backend_storage::StorageError;
+use demi_backend_storage::conversation_index::{AttachedHostRecord, ChangeOutcome, RecordChange};
+use demi_backend_storage::devices::DeviceRecord;
 use demi_core::UserContentBlock;
 use demi_web_api::ids::{ConversationId, DeviceId};
 
 use crate::shard::Shard;
-use crate::storage::StorageError;
-use crate::storage::conversation_index::{AttachedHostRecord, ChangeOutcome, RecordChange};
-use crate::storage::devices::DeviceRecord;
 
 /// A file a message names on one of the user's devices.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -124,11 +124,11 @@ mod tests {
 
     use super::*;
     use demi_runner_protocol::wire::RunnerPlatform;
-    use crate::auth::sessions::TokenHash;
+    use demi_backend_storage::accounts::TokenHash;
     use crate::backend::Services;
     use crate::shard::{ShardPlacement, ShardPool};
-    use crate::storage::control::testing;
-    use crate::storage::conversation_index::Creation;
+    use demi_backend_storage::control::testing;
+    use demi_backend_storage::conversation_index::Creation;
 
     #[tokio::test(flavor = "local")]
     async fn a_reference_keeps_its_device_and_path_and_an_inaccessible_one_grants_nothing() {

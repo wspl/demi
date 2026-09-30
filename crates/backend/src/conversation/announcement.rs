@@ -8,12 +8,11 @@
 //! context blocks of its own transcript: each block names the revision it
 //! describes, and a switch and a reset are each announced to a node once.
 
+use demi_backend_storage::StorageError;
+use demi_backend_storage::conversation_index::{AttachedHostRecord, ExecutionTarget, TargetSwitch};
 use demi_web_api::ids::ConversationId;
 
-use super::target::{ExecutionTarget, TargetSwitch};
 use crate::shard::Shard;
-use crate::storage::StorageError;
-use crate::storage::conversation_index::AttachedHostRecord;
 
 /// The line that opens a switch's announcement.
 const SWITCHED: &str = "[Execution target switched]";

@@ -8,7 +8,7 @@
 //! calls a real model.
 
 use demi_agent_tools::testing::field;
-use demi_backend::ObjectCounts;
+use demi_backend_objects::counting::ObjectCounts;
 use demi_core::{Block, BlockId, ToolView};
 use demi_provider::testing::{MockResponse, MockVendor};
 use demi_web_api::conversations::{ConversationStatus, ForkAnswer};
