@@ -1,0 +1,38 @@
+[package]
+name = "demi-browser-tabs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+# Its tests reach the registry's and the environment's internals, so they are
+# unit tests and the crate has no integration tests (`crates-and-packages.md`
+# § Module layout); no doc examples.
+doctest = false
+
+[features]
+# Chrome's own view of its targets, for the Chrome tests.
+testing = []
+
+[dependencies]
+chromiumoxide = "=0.9.1"
+demi-browser-driver = { path = "../browser-driver" }
+demi-browser-protocol = { path = "../browser-protocol" }
+demi-command-service = { path = "../command-service" }
+futures-util.workspace = true
+regex = "1"
+serde.workspace = true
+serde_json.workspace = true
+tempfile = "3"
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+url = "2"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+# Tab numbers at hand without a source, for the registry's tests.
+demi-browser-driver = { path = "../browser-driver", features = ["testing"] }

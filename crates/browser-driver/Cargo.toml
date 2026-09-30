@@ -1,0 +1,43 @@
+[package]
+name = "demi-browser-driver"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+# Its tests reach the driver's internals, so they are unit tests and the
+# crate has no integration tests (`crates-and-packages.md` § Module layout);
+# no doc examples.
+doctest = false
+
+[features]
+# The capture extension's ID, for the Chrome tests, and tab numbers at hand
+# without a source, for the registry's tests.
+testing = []
+
+[dependencies]
+bytes.workspace = true
+chromiumoxide = "=0.9.1"
+demi-artifact = { path = "../artifact" }
+demi-browser-protocol = { path = "../browser-protocol" }
+demi-command-service = { path = "../command-service" }
+demi-core = { path = "../core" }
+futures-util.workspace = true
+getrandom = "0.4"
+serde.workspace = true
+serde_json.workspace = true
+tempfile = "3"
+thiserror.workspace = true
+tokio.workspace = true
+tokio-tungstenite = { version = "0.29", default-features = false, features = ["handshake"] }
+tokio-util.workspace = true
+tracing.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+sysinfo = { version = "0.39", default-features = false, features = ["system"] }
+
+[dev-dependencies]
+base64 = "0.22"
+sha2 = "0.10"

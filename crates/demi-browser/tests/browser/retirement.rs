@@ -3,9 +3,8 @@
 use std::{collections::HashSet, os::unix::fs::PermissionsExt, path::PathBuf, time::Duration};
 
 use demi_command_service::testing::counting_numbers;
-use demi_browser::browser::{
-    BrowserError, DirectoryBases, LaunchOptions, TabNumbers, with_browser,
-};
+use demi_browser_driver::{numbers::TabNumbers, operation::BrowserError};
+use demi_browser_tabs::environment::{DirectoryBases, LaunchOptions, with_browser};
 use serde_json::json;
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 use tokio_util::sync::CancellationToken;
