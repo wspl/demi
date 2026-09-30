@@ -1,111 +1,120 @@
-use std::time::Duration;
+//! The backend connection (`runner.md` § Connection and identity): the
+//! runner's socket URL, its typed messages, a connection a malformed message
+//! or the backend ends, and an inbound queue that holds the reading back
+//! instead of closing the connection.
 
-use demi_runner::connection::wire;
-use demi_runner::connection::{Transport, socket_url};
+use std::{collections::BTreeMap, time::Duration};
+
+use demi_host_remote::testing::{RunnerProcess, RunnerProcessOptions};
+use demi_runner_protocol::wire::{self, Inbound, Outbound};
 use futures_util::{SinkExt, StreamExt};
-use tokio_tungstenite::{
-    WebSocketStream,
-    tungstenite::{Message, protocol::Role},
+use tokio::net::TcpListener;
+use tokio_tungstenite::tungstenite::{
+    Message,
+    handshake::server::{Request, Response},
 };
-use tokio_util::sync::CancellationToken;
 
-async fn pair() -> (Transport, WebSocketStream<tokio::io::DuplexStream>) {
-    let (client, server) = tokio::io::duplex(1024);
-    let client = WebSocketStream::from_raw_socket(client, Role::Client, None).await;
-    let server = WebSocketStream::from_raw_socket(server, Role::Server, None).await;
-    (
-        Transport::from_socket(client, CancellationToken::new()),
-        server,
-    )
+use crate::Host;
+
+/// The runner connects to `/api/runner` of a backend URL that names no path,
+/// and to the path and query of one that names them.
+#[tokio::test]
+async fn the_socket_is_the_backend_urls_path_or_the_runner_route() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        for (path, requested) in [("", "/api/runner"), ("/custom?x=1", "/custom?x=1")] {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let backend = format!("http://{}{path}", listener.local_addr().unwrap());
+            let mut process = RunnerProcess::start(
+                &backend,
+                RunnerProcessOptions {
+                    token: Some("test-token".into()),
+                    ..RunnerProcessOptions::default()
+                },
+            );
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut uri = None;
+            let socket = tokio_tungstenite::accept_hdr_async(
+                stream,
+                |request: &Request, response: Response| {
+                    uri = Some(request.uri().to_string());
+                    Ok(response)
+                },
+            )
+            .await
+            .unwrap();
+            assert_eq!(uri.as_deref(), Some(requested), "{backend}");
+            drop(socket);
+            process.stop().await;
+        }
+    })
+    .await
+    .unwrap();
 }
 
-#[test]
-fn backend_url_preserves_explicit_path_and_query() {
-    let url = |value: &str| socket_url(&value.parse().unwrap()).unwrap();
-    assert_eq!(url("https://example.test").as_str(), "wss://example.test/api/runner");
-    assert_eq!(
-        url("http://example.test/custom?x=1").as_str(),
-        "ws://example.test/custom?x=1"
-    );
-    assert!("https://user:pass@example.test".parse::<demi_runner_protocol::values::BackendUrl>().is_err());
-}
-
+/// A ping is answered with a pong that counts the jobs; a connection the
+/// backend closes is opened again.
 #[tokio::test]
 async fn typed_exchange_and_remote_close() {
     tokio::time::timeout(Duration::from_secs(60), async {
-        let (mut client, mut server) = pair().await;
-        let ping = rmp_serde::to_vec_named(&serde_json::json!({"type":"ping"})).unwrap();
-        server.send(Message::Binary(ping.into())).await.unwrap();
-        assert!(matches!(
-            client.input.recv().await.unwrap(),
-            wire::Inbound::Ping {}
-        ));
-        client.output.send(wire::encode(&wire::Outbound::Pong { jobs: 2 }).unwrap()).await.unwrap();
-        let response = server.next().await.unwrap().unwrap().into_data();
-        let value: serde_json::Value = rmp_serde::from_slice(&response).unwrap();
-        assert_eq!(value, serde_json::json!({"type":"pong", "jobs":2}));
-        server.close(None).await.unwrap();
-        assert!(client.input.recv().await.is_none());
-        client.close().await.unwrap();
+        let mut host = Host::start(BTreeMap::new()).await.online().await;
+        host.send(Inbound::Ping {}).await;
+        assert!(matches!(host.frame().await, Outbound::Pong { jobs: 0 }));
+        host.close_connection().await;
+        host.reconnected().await;
+        host.close().await;
     })
     .await
     .unwrap();
 }
 
+/// A message that is not the protocol's ends the connection; the runner
+/// connects again.
 #[tokio::test]
-async fn close_interrupts_stalled_output() {
+async fn malformed_input_fails_the_connection() {
     tokio::time::timeout(Duration::from_secs(60), async {
-        let (client, _server) = pair().await;
-        let output = wire::encode(&wire::Outbound::SpawnOutput {
-            spawn_id: "stalled".into(),
-            stream: wire::OutputStream::Stdout,
-            bytes: wire::WireBytes(vec![0; 65536]),
-        })
-        .unwrap();
-        client.output.send(output).await.unwrap();
-        tokio::task::yield_now().await;
-        client.close().await.unwrap();
+        let mut host = Host::start(BTreeMap::new()).await.online().await;
+        host.send_raw(Message::Text("{}".into())).await;
+        host.ended().await;
+        host.reconnected().await;
+        host.close().await;
     })
     .await
     .unwrap();
 }
 
-#[tokio::test]
-async fn malformed_input_fails_connection() {
-    tokio::time::timeout(Duration::from_secs(60), async {
-        let (mut client, mut server) = pair().await;
-        server.send(Message::Text("{}".into())).await.unwrap();
-        assert!(client.input.recv().await.is_none());
-        assert!(client.close().await.is_err());
-    })
-    .await
-    .unwrap();
-}
-
-/// A full inbound queue holds the reading back instead of closing the
-/// connection (`runner.md` § Connection and identity).
+/// Far more messages than the runner's inbound queue holds, sent while the
+/// backend reads nothing, are each answered: a full queue holds the reading
+/// back instead of closing the connection.
 #[tokio::test]
 async fn a_full_inbound_queue_waits_instead_of_closing() {
     tokio::time::timeout(Duration::from_secs(60), async {
-        let (mut client, mut server) = pair().await;
-        let ping = rmp_serde::to_vec_named(&serde_json::json!({"type":"ping"})).unwrap();
-        // Far more than the queue holds, while nothing takes them.
-        for _ in 0..64 {
-            server.send(Message::Binary(ping.clone().into())).await.unwrap();
+        let mut host = Host::start(BTreeMap::new()).await.online().await;
+        let ping = wire::encode(&Inbound::Ping {}).unwrap().into_bytes();
+        for _ in 0..256 {
+            host.send_raw(Message::Binary(ping.clone().into())).await;
         }
-        while client.input.len() < client.input.max_capacity() {
-            tokio::time::sleep(Duration::from_millis(1)).await;
+        for _ in 0..256 {
+            assert!(matches!(host.frame().await, Outbound::Pong { .. }));
         }
-        for _ in 0..64 {
-            assert!(matches!(
-                client.input.recv().await.unwrap(),
-                wire::Inbound::Ping {}
-            ));
-        }
-        client.output.send(wire::encode(&wire::Outbound::Pong { jobs: 0 }).unwrap()).await.unwrap();
-        assert!(server.next().await.unwrap().is_ok());
-        client.close().await.unwrap();
+        host.close().await;
     })
     .await
     .unwrap();
+}
+
+impl Host {
+    async fn send_raw(&mut self, message: Message) {
+        self.socket.send(message).await.unwrap();
+    }
+
+    /// Closes the connection from the backend's end.
+    async fn close_connection(&mut self) {
+        self.socket.close(None).await.unwrap();
+        self.ended().await;
+    }
+
+    /// Waits until the runner's end of the connection is gone.
+    async fn ended(&mut self) {
+        while let Some(Ok(_)) = self.socket.next().await {}
+    }
 }

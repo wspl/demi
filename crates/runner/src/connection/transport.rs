@@ -7,8 +7,10 @@
 
 use std::{io, time::Duration};
 
-use super::wire::{self, Frame, Inbound};
-use demi_runner_protocol::values::BackendUrl;
+use demi_runner_protocol::{
+    values::BackendUrl,
+    wire::{self, Frame, Inbound},
+};
 use futures_util::{SinkExt, StreamExt};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -44,7 +46,7 @@ pub struct Transport {
 
 /// The backend's runner socket: its `ws`/`wss` form, at `/api/runner` unless
 /// the URL names another path.
-pub fn socket_url(backend: &BackendUrl) -> io::Result<reqwest::Url> {
+pub fn socket_url(backend: &BackendUrl) -> io::Result<url::Url> {
     let mut url = backend.url().clone();
     let scheme = match url.scheme() {
         "http" | "ws" => "ws",
@@ -161,25 +163,6 @@ impl Transport {
             cancel,
             owner: Some(owner),
         }
-    }
-
-    /// A transport whose peer is the returned channels, for tests and
-    /// in-process peers: the peer sends messages into the first and reads
-    /// every frame, control or output, in the order sent from the second.
-    pub fn channels() -> (Self, mpsc::Sender<Inbound>, mpsc::Receiver<Frame>) {
-        let (output, frames) = mpsc::channel(128);
-        let (inbound, input) = mpsc::channel(QUEUE_MESSAGES);
-        (
-            Self {
-                control: output.clone(),
-                output,
-                input,
-                cancel: CancellationToken::new(),
-                owner: None,
-            },
-            inbound,
-            frames,
-        )
     }
 
     pub async fn close(mut self) -> io::Result<()> {
