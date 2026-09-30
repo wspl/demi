@@ -1,0 +1,6 @@
+//! The `demi.claude` package: the program at its boundary, and the
+//! installer's rules. As the package's integration tests, they also make
+//! `cargo test` build the program, which the backend's scenarios start.
+
+mod installer;
+mod program;

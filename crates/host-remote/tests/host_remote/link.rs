@@ -859,6 +859,55 @@ async fn a_watched_command_is_followed_and_its_pages_view_holds_what_the_runner_
     ));
 }
 
+/// A character the runner's messages split shows once, whole, in both
+/// views, and a byte that is not text shows as U+FFFD (`runtime.md` § Live
+/// output).
+#[tokio::test(flavor = "local")]
+async fn a_character_split_across_messages_shows_once_whole() {
+    let device = device();
+    let mut link = device.connect(None);
+    let pages = TestPages::new(false);
+    let shell = watched_environment(device.host("/work", Admission::Free), pages.clone());
+    let started = shell
+        .exec(exec("print"), CancellationToken::new())
+        .await
+        .unwrap();
+    pages.next().await;
+    let Inbound::JobStart { job_id, .. } = link.next().await else {
+        panic!("expected a job")
+    };
+    let text = "aé€😀".as_bytes();
+    for (offset, byte) in text.iter().enumerate() {
+        link.send(Outbound::JobOutput {
+            job_id: job_id.clone(),
+            stream: OutputStream::Stdout,
+            offset: offset as u64,
+            bytes: WireBytes(vec![*byte]),
+        })
+        .await;
+    }
+    link.send(Outbound::JobOutput {
+        job_id: job_id.clone(),
+        stream: OutputStream::Stdout,
+        offset: text.len() as u64,
+        bytes: WireBytes(b"\xff!".to_vec()),
+    })
+    .await;
+    let shown = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let view = pages.next().await;
+            if view.tail.ends_with('!') {
+                break view.tail;
+            }
+        }
+    })
+    .await
+    .expect("the pages see the output");
+    assert_eq!(shown, "aé€😀\u{fffd}!");
+    let status = shell.status(&started.command_id).unwrap();
+    assert_eq!(status.stdout.tail, "aé€😀\u{fffd}!");
+}
+
 /// The model's idle time counts from the latest growth of a command's
 /// output, also beyond the runner's view of a stream, which the model's view
 /// does not hold (`runtime.md` § Results and previews).

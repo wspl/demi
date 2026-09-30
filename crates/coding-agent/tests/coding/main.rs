@@ -9,8 +9,11 @@
 //! starts the `demi.builtin` service, and the runner itself starts in a few
 //! hundred milliseconds.
 
+mod browser;
+mod command_line;
 mod file;
 mod frames;
 mod hosts;
 mod marathon;
 mod support;
+mod todo;

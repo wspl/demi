@@ -121,9 +121,10 @@ impl Installer {
         }
     }
 
-    /// An installer that also downloads from a fixture server on `127.0.0.1`.
-    #[cfg(test)]
-    pub(crate) fn with_loopback_http(roots: Roots) -> Self {
+    /// An installer that also downloads from a fixture server on `127.0.0.1`,
+    /// for tests of the install rules.
+    #[cfg(feature = "testing")]
+    pub fn with_loopback_http(roots: Roots) -> Self {
         Self {
             roots,
             transport: Transport::HttpsOrLoopbackHttp,
@@ -285,7 +286,7 @@ impl Installer {
         let host = release::host(artifact);
         let client = match self.transport {
             Transport::Https => demi_artifact::client(),
-            #[cfg(test)]
+            #[cfg(feature = "testing")]
             Transport::HttpsOrLoopbackHttp => demi_artifact::client_allowing_http(),
         }
         .map_err(|error| EnsureError::DownloadFailed(error.to_string()))?;

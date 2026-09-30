@@ -68,33 +68,3 @@ pub fn decode_records(bytes: &[u8]) -> Result<Vec<KeptRecord>, WireError> {
     }
     Ok(records)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// A kept output at its bound, with the largest count of bytes left out,
-    /// is within what a `job_read` may carry.
-    #[test]
-    fn the_record_between_the_parts_fits_the_read_bound() {
-        let gap = encode_record(&KeptRecord::LeftOut(u64::MAX)).unwrap();
-        assert!(JOB_KEPT_BYTES + gap.len() <= JOB_KEPT_READ_BYTES);
-    }
-
-    #[test]
-    fn records_round_trip_and_a_second_gap_is_refused() {
-        let records = [
-            KeptRecord::Output(OutputStream::Stdout, WireBytes(b"a".to_vec())),
-            KeptRecord::LeftOut(7),
-            KeptRecord::Output(OutputStream::Stderr, WireBytes(b"b".to_vec())),
-        ];
-        let bytes: Vec<u8> = records
-            .iter()
-            .flat_map(|record| encode_record(record).unwrap())
-            .collect();
-        assert_eq!(decode_records(&bytes).unwrap(), records);
-        let twice = [bytes.clone(), encode_record(&KeptRecord::LeftOut(1)).unwrap()].concat();
-        assert!(decode_records(&twice).is_err());
-        assert!(decode_records(&bytes[..bytes.len() - 1]).is_err());
-    }
-}

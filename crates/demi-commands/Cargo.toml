@@ -13,6 +13,7 @@ doctest = false
 [[bin]]
 name = "demi-commands"
 path = "src/main.rs"
+test = false
 
 [features]
 # Page-driving helpers, and Chrome's own targets, for the Chrome tests.

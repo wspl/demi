@@ -71,7 +71,7 @@ version = "4.5"
 version = "0.3"
 
 [dependencies.fancy-regex]
-version = "0.18.0"
+version = "0.19.1"
 
 [dependencies.memchr]
 version = "2.7.4"
@@ -219,6 +219,7 @@ strip = true
 [package.metadata.demi]
 maintainer = "demi-runner"
 patches = [
+    "fancy-regex 0.19, the version the runner links, in place of 0.18",
     "Paths resolve against the shell job's working directory, and an in-place edit is recorded as the job's edit (edit-tracking.md)",
     "The e and w commands' shells start through uucore::context, and a long script checks the job's cancellation",
     "Files, streams, the environment, printing and exit go through uucore::context, so a run embedded in a shell job uses the job's working directory, environment, standard streams and cancellation, and exit ends only the utility",

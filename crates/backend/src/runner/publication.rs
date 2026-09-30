@@ -4,11 +4,14 @@
 //! names is verified whole (its descriptor, and each target's executable by
 //! size and SHA-256). For object storage, a release must carry all six
 //! targets; its executables are uploaded once each as content-addressed
-//! objects, its descriptor and then its immutable package-and-version mapping
-//! are published, and only then does the catalog serve. A write never
-//! replaces an object: finding one in place is success when its size and
-//! digest are the ones published, and a refusal otherwise. Runners download
-//! an executable from a URL signed for five minutes. A development store
+//! objects, compressed in the content coding runners download them in, its
+//! descriptor and then its immutable package-and-version mapping are
+//! published, and only then does the catalog serve. Every object carries the
+//! SHA-256 and size of what it stands for, the executable's for an encoded
+//! one. A write never replaces an object: finding one in place is success when
+//! those are the ones published, and a refusal otherwise; an executable in
+//! place is not encoded again. Runners download an executable from a URL
+//! signed for five minutes. A development store
 //! uploads nothing and takes a release of fewer targets: the backend serves
 //! the executables itself (`local_store`).
 
@@ -40,8 +43,10 @@ const SIGNED_FOR: Duration = Duration::from_secs(300);
 /// How many uploads run at once.
 const UPLOADS: usize = 4;
 
-/// The metadata key an object's SHA-256 is published under.
+/// The metadata keys of the SHA-256 and the size of what an object stands
+/// for.
 const SHA256: &str = "sha256";
+const SIZE: &str = "size";
 
 /// What a package key leaves unencoded in a version: what a URI component
 /// may carry as it is.
@@ -241,6 +246,10 @@ where
         .try_for_each_concurrent(UPLOADS, |(path, artifact)| {
             let store = &*store;
             async move {
+                let key = blob(prefix, &artifact.sha256)?;
+                if in_place(store, &key, &artifact, cancel).await? {
+                    return Ok(());
+                }
                 let read = tokio::select! {
                     () = cancel.cancelled() => return Err(PublicationError::Cancelled),
                     read = tokio::fs::read(&path) => read,
@@ -260,7 +269,14 @@ where
                     .update(&bytes)
                     .and_then(|()| verifier.finish())
                     .map_err(|error| refused(error.to_string()))?;
-                put_immutable(store, &blob(prefix, &artifact.sha256)?, bytes, &artifact, cancel).await
+                let encoded = tokio::task::spawn_blocking(move || {
+                    demi_artifact::encode_blocking(&bytes, demi_artifact::Effort::Published)
+                })
+                    .await
+                    .map_err(|error| refused(error.to_string()))?
+                    .map_err(|error| refused(error.to_string()))?;
+                let coding = Some(demi_artifact::CONTENT_CODING);
+                put_immutable(store, &key, Bytes::from(encoded), &artifact, coding, cancel).await
             }
         })
         .await?;
@@ -276,12 +292,12 @@ where
         };
         let body = Bytes::from(body);
         let named = object(format!("{prefix}/descriptors/{}.json", artifact.sha256))?;
-        put_immutable(&*store, &named, body.clone(), &artifact, cancel).await?;
+        put_immutable(&*store, &named, body.clone(), &artifact, None, cancel).await?;
         // The package and version's meaning, published last: a conflicting
         // descriptor fails instead of changing what the version names.
         let version = utf8_percent_encode(&descriptor.version, COMPONENT);
         let claim = object(format!("{prefix}/packages/{}/{version}.json", descriptor.id))?;
-        put_immutable(&*store, &claim, body, &artifact, cancel).await?;
+        put_immutable(&*store, &claim, body, &artifact, None, cancel).await?;
     }
     Ok(Published {
         packages: verified.into_iter().map(|release| release.descriptor).collect(),
@@ -370,19 +386,24 @@ fn blob(prefix: &str, sha256: &str) -> Result<Path, PublicationError> {
     object(format!("{prefix}/blobs/{sha256}"))
 }
 
-/// Creates the object at `path` unless one is there; one in place is
-/// success when it is these bytes, by size and published digest, and a
-/// conflict otherwise.
+/// Creates the object at `path`, which stands for `artifact`, from `bytes`
+/// in `coding`, unless one is there; one in place is success when it stands
+/// for `artifact`, and a conflict otherwise.
 async fn put_immutable(
     store: &dyn ObjectStore,
     path: &Path,
     bytes: Bytes,
     artifact: &PackageArtifact,
+    coding: Option<&'static str>,
     cancel: &CancellationToken,
 ) -> Result<(), PublicationError> {
     let mut attributes = Attributes::new();
     attributes.insert(Attribute::Metadata(SHA256.into()), artifact.sha256.clone().into());
+    attributes.insert(Attribute::Metadata(SIZE.into()), artifact.size.to_string().into());
     attributes.insert(Attribute::ContentType, "application/octet-stream".into());
+    if let Some(coding) = coding {
+        attributes.insert(Attribute::ContentEncoding, coding.into());
+    }
     let options = PutOptions {
         mode: PutMode::Create,
         attributes,
@@ -394,21 +415,45 @@ async fn put_immutable(
     };
     match put {
         Ok(_) => Ok(()),
-        Err(object_store::Error::AlreadyExists { .. }) => {
-            let head = GetOptions {
-                head: true,
-                ..GetOptions::default()
-            };
-            let existing = store.get_opts(path, head).await?;
-            let digest = existing.attributes.get(&Attribute::Metadata(SHA256.into()));
-            let same = existing.meta.size == artifact.size && digest.map(|value| value.as_ref()) == Some(artifact.sha256.as_str());
-            if !same {
-                return Err(PublicationError::Conflict(path.to_string()));
-            }
-            Ok(())
-        }
+        Err(object_store::Error::AlreadyExists { .. }) => in_place(store, path, artifact, cancel).await.map(drop),
         Err(error) => Err(error.into()),
     }
+}
+
+/// Whether an object at `path` stands for `artifact`: none is `false`, one
+/// whose published SHA-256 and size are the artifact's is `true`, and any
+/// other is a conflict.
+async fn in_place(
+    store: &dyn ObjectStore,
+    path: &Path,
+    artifact: &PackageArtifact,
+    cancel: &CancellationToken,
+) -> Result<bool, PublicationError> {
+    let head = GetOptions {
+        head: true,
+        ..GetOptions::default()
+    };
+    let found = tokio::select! {
+        () = cancel.cancelled() => return Err(PublicationError::Cancelled),
+        found = store.get_opts(path, head) => found,
+    };
+    let existing = match found {
+        Ok(existing) => existing,
+        Err(object_store::Error::NotFound { .. }) => return Ok(false),
+        Err(error) => return Err(error.into()),
+    };
+    let published = |key: &str| {
+        existing
+            .attributes
+            .get(&Attribute::Metadata(key.to_owned().into()))
+            .map(|value| value.as_ref().to_owned())
+    };
+    let same = published(SHA256).as_deref() == Some(artifact.sha256.as_str())
+        && published(SIZE) == Some(artifact.size.to_string());
+    if !same {
+        return Err(PublicationError::Conflict(path.to_string()));
+    }
+    Ok(true)
 }
 
 /// The published executables' downloads, signed on each request. `Send`,
@@ -512,6 +557,22 @@ mod tests {
         assert!(written[..6].iter().all(|key| key.starts_with("native/blobs/")), "{written:?}");
         assert!(written[6].starts_with("native/descriptors/"), "{written:?}");
         assert_eq!(written[7], CLAIM);
+        // An executable is stored in its content coding and downloads as
+        // the executable its descriptor names.
+        let bytes = std::fs::read(directory.path().join(TARGETS[0]).join("commands")).unwrap();
+        let digest = demi_artifact::Digest {
+            size: bytes.len() as u64,
+            sha256: hex::encode(Sha256::digest(&bytes)),
+        };
+        let key = format!("native/blobs/{}", digest.sha256);
+        assert_ne!(fake.object(&key).unwrap(), bytes);
+        let mut downloaded = Vec::new();
+        let client = demi_artifact::client_allowing_http().unwrap();
+        let url = format!("{}demi/{key}", fake.endpoint);
+        demi_artifact::download(&client, &url, &digest, &mut downloaded, &cancel)
+            .await
+            .unwrap();
+        assert_eq!(downloaded, bytes);
         // A second start finds its objects in place.
         publish(&releases, "native", store.clone(), &cancel).await.unwrap();
         assert_eq!(fake.written().len(), 8);

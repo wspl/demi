@@ -1,5 +1,5 @@
 //! The runner wire against its golden corpus, the refusals of its decoder,
-//! and manifest verification.
+//! kept output records, manifest verification and the runner release record.
 
 use std::path::Path;
 
@@ -393,4 +393,56 @@ fn a_kept_output_decodes_from_its_recorded_bytes() {
         .flat_map(|record| wire::encode_record(record).unwrap())
         .collect();
     assert_eq!(encoded, bytes);
+}
+
+/// A release record as `cargo xtask native package` writes it, compacted,
+/// for the wire this build speaks.
+fn record() -> String {
+    format!(
+        r#"{{"release":"317dd84e2ce0846a1bea4bc5959959c04af7ba8e4de32b3752fdd6b409f7b1a5","wire":{},"commandProtocol":1,"targets":{{"aarch64-apple-darwin":{{"sha256":"dbf18cb3af50a3348a834ea9cee7981f7354f84aa89764f4d68812c81ebe045b","size":38772096}},"aarch64-unknown-linux-musl":{{"sha256":"5d4219232ad6a95b2a0e72097011e91ae3773e8523e8032788904fa0e9164197","size":38710848}}}}}}"#,
+        wire::VERSION
+    )
+}
+
+#[test]
+fn a_release_record_is_checked_in_every_field() {
+    let record = record();
+    demi_runner_protocol::release::RunnerRelease::decode(record.as_bytes()).expect("the record as written is valid");
+    let wire = format!(r#""wire":{}"#, wire::VERSION);
+    for (from, to) in [
+        (r#""release":"317dd84e"#.to_owned(), r#""release":"317DD84E"#.to_owned()),
+        (wire.clone(), format!(r#""wire":{}"#, wire::VERSION - 1)),
+        (r#""commandProtocol":1"#.to_owned(), r#""commandProtocol":2"#.to_owned()),
+        ("aarch64-apple-darwin".to_owned(), "aarch64-apple-ios".to_owned()),
+        (r#""size":38772096"#.to_owned(), r#""size":0"#.to_owned()),
+        (wire.clone(), format!(r#"{wire},"channel":"beta""#)),
+    ] {
+        let changed = record.replacen(&from, &to, 1);
+        assert!(demi_runner_protocol::release::RunnerRelease::decode(changed.as_bytes()).is_err(), "{changed}");
+    }
+}
+
+/// A kept output at its bound, with the largest count of bytes left out,
+/// is within what a `job_read` may carry.
+#[test]
+fn the_record_between_the_parts_fits_the_read_bound() {
+    let gap = wire::encode_record(&KeptRecord::LeftOut(u64::MAX)).unwrap();
+    assert!(wire::JOB_KEPT_BYTES + gap.len() <= wire::JOB_KEPT_READ_BYTES);
+}
+
+#[test]
+fn records_round_trip_and_a_second_gap_is_refused() {
+    let records = [
+        KeptRecord::Output(OutputStream::Stdout, WireBytes(b"a".to_vec())),
+        KeptRecord::LeftOut(7),
+        KeptRecord::Output(OutputStream::Stderr, WireBytes(b"b".to_vec())),
+    ];
+    let bytes: Vec<u8> = records
+        .iter()
+        .flat_map(|record| wire::encode_record(record).unwrap())
+        .collect();
+    assert_eq!(wire::decode_records(&bytes).unwrap(), records);
+    let twice = [bytes.clone(), wire::encode_record(&KeptRecord::LeftOut(1)).unwrap()].concat();
+    assert!(wire::decode_records(&twice).is_err());
+    assert!(wire::decode_records(&bytes[..bytes.len() - 1]).is_err());
 }

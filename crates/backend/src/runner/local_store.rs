@@ -3,12 +3,16 @@
 //! executables of the development releases it loaded itself, each at
 //! `/native-artifacts/<sha256>` on its public URL, and answers a runner's
 //! location request with that URL. A paired device's runner and the Cloud's
-//! then download and verify an executable as they would from object storage.
+//! then download and verify an executable as they would from object storage,
+//! in the same content coding: the store encodes each executable once, when
+//! a runner first asks for it, so a backend's start waits for no encoding.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::io;
+use std::path::PathBuf;
 use std::sync::Arc;
 
+use bytes::Bytes;
 use demi_command_service::protocol::{ArtifactLocation, ArtifactUrl, PackageArtifact};
 use demi_host_remote::ArtifactResolver;
 use futures_util::future::LocalBoxFuture;
@@ -25,10 +29,12 @@ pub(crate) struct LocalArtifacts {
     files: HashMap<String, LocalFile>,
 }
 
-/// One executable: its file in its release directory, and its size.
+/// One executable: its file in its release directory, its size, and its
+/// bytes in the content coding once a runner asked for them.
 struct LocalFile {
     path: PathBuf,
     size: u64,
+    encoded: tokio::sync::OnceCell<Bytes>,
 }
 
 impl LocalArtifacts {
@@ -41,15 +47,37 @@ impl LocalArtifacts {
             files.entry(artifact.sha256).or_insert(LocalFile {
                 path,
                 size: artifact.size,
+                encoded: tokio::sync::OnceCell::new(),
             });
         }
         Self { files }
     }
 
-    /// The file of the executable whose SHA-256 is `sha256`, when a loaded
-    /// release carries it.
-    pub(crate) fn file(&self, sha256: &str) -> Option<&Path> {
-        self.files.get(sha256).map(|file| file.path.as_path())
+    /// The executable whose SHA-256 is `sha256` in the content coding
+    /// ([`demi_artifact::CONTENT_CODING`]), when a loaded release carries it.
+    /// Concurrent first requests share one encoding. The backend verified the
+    /// file when it loaded the release: a file that is gone since is the
+    /// deployment's fault.
+    pub(crate) async fn encoded(&self, sha256: &str) -> Option<io::Result<Bytes>> {
+        let file = self.files.get(sha256)?;
+        let encoded = file
+            .encoded
+            .get_or_try_init(|| {
+                let path = file.path.clone();
+                async move {
+                    tokio::task::spawn_blocking(move || {
+                        let bytes = std::fs::read(&path)
+                            .map_err(|error| io::Error::new(error.kind(), format!("{}: {error}", path.display())))?;
+                        demi_artifact::encode_blocking(&bytes, demi_artifact::Effort::Development)
+                            .map(Bytes::from)
+                            .map_err(io::Error::other)
+                    })
+                    .await
+                    .map_err(io::Error::other)?
+                }
+            })
+            .await;
+        Some(encoded.cloned())
     }
 
     /// Where a runner downloads `artifact`: from `backend`, which serves it.
