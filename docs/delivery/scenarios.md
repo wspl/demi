@@ -162,8 +162,8 @@ queue, and command-state correctness assert those values explicitly on the
 cold transcript.
 
 The world does not bound the `job_output` bytes a job sends. The runner's wire
-test pins them where the runner sends them
-(`crates/runner/tests/runner/tasks.rs`): the first 32 KiB of each stream, and
+test pins them where the runner sends them, in the job table's tests of
+`runner-jobs`: the first 32 KiB of each stream, and
 beyond them, while the backend follows the job, at most 16 KiB of the newest
 bytes per stream and interval, the last before `job_exit`
 ([Pipes and output](../execution/runner.md#pipes-and-output)).
@@ -251,7 +251,7 @@ Chrome, or Claude Code CLI:
 | Browser | Chrome for Testing on a paired device or on the Cloud | The pinned Chrome for Testing executable (`DEMI_TEST_CHROME`), and on the Cloud what the Cloud suite needs |
 | Claude Code | The vendor's CLI on the Cloud's runner, calling a local mock of the vendor's endpoint | The CLI executable (`DEMI_TEST_CLAUDE_CODE`) |
 
-Of the browser suite, only the Chrome tests of `demi-commands` exist: they
+Of the browser suite, only the Chrome tests of `demi-browser` exist: they
 drive a real Chrome for Testing through the command program on the machine
 that runs them, not through the backend or on a Cloud
 ([Validation](builds-and-releases.md#validation) gives the command). The

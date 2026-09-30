@@ -112,10 +112,12 @@ backend's scenario suites in [Scenarios](scenarios.md).
   Claude Code suites exist, and release acceptance checks by hand what they
   leave out
   ([Real machine acceptance](scenarios.md#real-machine-acceptance)).
-- Each crate has one integration test binary
+- Each crate has one test binary, which tests its public boundary
   ([Module layout](../architecture/crates-and-packages.md#module-layout)); a
   test gets a binary of its own only when it changes or exhausts process-wide
-  state, such as the open-file limit.
+  state, such as the open-file limit. A behavior that can be reached only
+  through a crate's private items is a sign that the crate holds two parts:
+  split it, and test the inner part at its own boundary.
 - A new test goes into the existing test file for the code it covers. A test
   for a fixed bug sits beside the tests of the behavior it restores and is
   named after that behavior.

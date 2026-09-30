@@ -362,7 +362,7 @@ the user test how real sites and applications behave for real visitors:
 What cannot change without a GPU remains: on Cloud, WebGL reports its software
 renderer.
 
-The Rust browser module in `demi-commands` uses chromiumoxide for Chrome process
+The browser crates of `demi.browser` use chromiumoxide for Chrome process
 integration, typed CDP calls, page handles, and event decoding. Demi owns semantic
 targeting, actionability checks, input ownership, and resource retirement. A
 library helper is used only when its behavior matches the command contract;
@@ -483,7 +483,7 @@ runner's shutdown deadline, cannot retire them, and three rules cover that case:
      profile its link names, but only a profile directory of this user's,
      and removes the runtime directory. One whose lock is held belongs to
      another running service and is never touched; during an upgrade, for
-     example, the service of the previous `demi.builtin` release can still
+     example, the service of the previous `demi.browser` release can still
      hold conversations' browsers while the new one starts.
   2. The profiles whose runtime directory is gone, which no running
      environment has. A restart that empties a `/tmp` held in memory leaves
@@ -522,7 +522,7 @@ Declaration, argument conversion, help, and `--json` follow
 the dispatcher directly; external programs use the same root alias. A browser
 action does not launch another browser process or a new model-tool loop.
 
-Browser algorithms and the driver belong to the native `demi.builtin`
+Browser algorithms and the driver belong to the native `demi.browser`
 implementation. Runner owns authenticated scope, processes, and transport.
 Chrome for Testing and its driver run on the selected Host. The debugging
 connection is not exposed directly to the public network or the Demi web app.
@@ -623,7 +623,7 @@ page-provided tool schemas/results at entry: each is decoded into its type and
 checked against its bounds there, and corrupt data is refused, never repaired
 ([Validation at entry](../architecture/contracts.md#validation-at-entry)).
 Browser arguments, results, error codes, limits and event payloads are defined
-once, as Rust types in the `builtin-protocol` crate. The `demi browser` command
+once, as Rust types in the `browser-protocol` crate. The `demi browser` command
 declarations take their schemas from those types, and the native handlers
 decode their input into them and return them as results. The page uses the
 same definitions, as TypeScript generated from them, without depending on the
@@ -947,7 +947,7 @@ coordinates in a full-page screenshot are not current viewport coordinates.
 ### Catalog
 
 The `demi browser` catalog has these commands, grouped by family. Each is
-declared once, from its types in the `builtin-protocol` crate, and its help
+declared once, from its types in the `browser-protocol` crate, and its help
 shows only the declared arguments.
 
 | Family | Commands |
@@ -1692,7 +1692,7 @@ the same name. Page tool descriptions remain external data, not system instructi
 ### Structured result fields
 
 These are business result fields for `--json`. Their exact types are the
-result types in the `builtin-protocol` crate. List results report truncation. Do not reuse a
+result types in the `browser-protocol` crate. List results report truncation. Do not reuse a
 field with a different meaning or type. A `viewport` value carries `width`,
 `height`, `devicePixelRatio` and `mode`.
 
@@ -1920,21 +1920,25 @@ persistent JavaScript REPL; Bash already composes their operations.
 [Crates and packages](../architecture/crates-and-packages.md) is authoritative;
 for the browser:
 
-- `builtin-protocol`: the browser's operation arguments, results, error codes,
+- `browser-protocol`: the browser's operation arguments, results, error codes,
   limits and event payloads, the live view messages and frame header, and the
   capture extension's messages; the page receives the types it uses as
   generated TypeScript in `@demicodes/protocol`.
 - `coding-agent`: the `demi browser` command declarations, built from those
   types, with help rendered from the declarations; the command tree includes
   them when the native package catalog provides the browser's operations.
-- `backend`: builds the command context of every job and sends the generic
+- the backend: builds the command context of every job and sends the generic
   conversation release; declares the `browser` user stream; no browser module.
-- `runner` and `host-remote`: the command context of every invocation, service residency,
-  the release forward, cancellation, and transport; no webpage algorithms.
-- `demi-commands`: driver, per-conversation environments and their owners,
-  page observation, actions, output rendering, assets, and CDP handling.
+- the runner's crates and `host-remote`: the command context of every
+  invocation, service residency, the release forward, cancellation, and
+  transport; no webpage algorithms.
+- `demi-browser` and the [browser libraries](../architecture/crates-and-packages.md#browser-libraries):
+  per-conversation browsers and their owners (`demi-browser`), the driver and
+  output rendering (`browser-driver`), environments and tabs
+  (`browser-tabs`), page observation, actions and assets (`browser-page`),
+  CDP handling (`browser-cdp`) and the live view (`browser-live`).
 - `artifact`: the verified download and installation of the pinned Chrome for
-  Testing release, used by `demi-commands` and by Cloud image packaging.
+  Testing release, used by `browser-driver` and by Cloud image packaging.
 - `command-service`: generic invocation and conversation protocol, not page or
   cookie semantics.
 - `web-ui`: the [live view](live-view.md#responsibilities), with the
