@@ -8,13 +8,13 @@ use std::{
 };
 
 use demi_agent::{
-    AgentServer, AgentTreeStore, EnvironmentScope, PromptContext, ServerConfig, ServerDeps,
-    ShellEnvironmentFactory,
-    testing::{
-        MemoryTreeStore, ScriptedProviders, SequentialIds, TestClient, TokioClock, client_text,
-    },
+    AgentServer, ServerConfig, ServerDeps,
+    testing::{ScriptedProviders, TestClient, client_text},
 };
 use demi_agent_protocol::{ClientFrame, ServerFrame};
+use demi_agent_store::{AgentTreeStore, testing::MemoryTreeStore};
+use demi_agent_tools::{EnvironmentScope, PromptContext, ShellEnvironmentFactory};
+use demi_agent_transcript::testing::SequentialIds;
 use demi_coding_agent::{CodingHarness, DemiOptions, HostResolver, demi_root};
 use demi_command_service::testing::built_program;
 use demi_core::{Block, CommandId, NodeId, SessionPhase, ToolView, TurnId};
@@ -24,7 +24,7 @@ use demi_host_remote::{
 };
 use demi_provider::{
     InferenceItem, InferenceRequest, ProviderEvent, ResultPart,
-    testing::{ScriptedRuntime, Turn, event},
+    testing::{ScriptedRuntime, TokioClock, Turn, event},
 };
 use demi_shell::{
     CommandSet, HostError, HostErrorKind, ShellEnvironment, testing::test_command_context,

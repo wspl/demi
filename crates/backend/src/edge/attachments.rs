@@ -12,7 +12,7 @@ use axum::extract::State;
 use axum::extract::rejection::{BytesRejection, FailedToBufferBody};
 use axum::http::header::{CONTENT_LENGTH, CONTENT_TYPE};
 use axum::http::{HeaderMap, StatusCode};
-use demi_agent::attachments::{is_text, snippet, upload_media_type};
+use demi_agent_store::attachments::{is_text, snippet, upload_media_type};
 use demi_web_api::attachments::{ATTACHMENT_MAX_BYTES, AttachmentAnswer, AttachmentDto, UploadQuery};
 use demi_web_api::error::ErrorCode;
 use garde::Validate as _;

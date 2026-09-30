@@ -7,7 +7,7 @@
 //! no bytes; and the destination's numbers go on from the source's. No test
 //! calls a real model.
 
-use demi_agent::testing::field;
+use demi_agent_tools::testing::field;
 use demi_backend::ObjectCounts;
 use demi_core::{Block, BlockId, ToolView};
 use demi_provider::testing::{MockResponse, MockVendor};

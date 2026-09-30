@@ -5,16 +5,20 @@
 use std::{cell::RefCell, collections::VecDeque, rc::Rc, sync::Arc};
 
 use demi_agent::{
-    AgentHarness, AgentServer, AgentTreeStore, Profile, PromptContext, ServerConfig, ServerDeps,
-    testing::{
-        MemoryTreeStore, NoHost, NoShells, ScriptedProviders, SequentialIds, TestClient, TokioClock,
-    },
+    AgentServer, ServerConfig, ServerDeps,
+    testing::{ScriptedProviders, TestClient},
 };
 use demi_agent_protocol::{ClientFrame, ServerFrame};
+use demi_agent_store::{AgentTreeStore, testing::MemoryTreeStore};
+use demi_agent_tools::{
+    AgentHarness, Profile, PromptContext,
+    testing::{NoHost, NoShells},
+};
+use demi_agent_transcript::testing::SequentialIds;
 use demi_core::{Block, Clock, ModelSelection, NodeId, Timestamp, TurnId};
 use demi_provider::{
     InferenceItem, InferenceRequest, ProviderRun, ProviderRuntime, RequestLimits, UserPart,
-    testing::{FixedClock, ScriptedRuntime, Turn},
+    testing::{FixedClock, ScriptedRuntime, TokioClock, Turn},
 };
 use demi_shell::{
     CommandSet, GroupBuilder, JobCaller, LeafBuilder, PortError, PortRequest, PortResponse,
@@ -546,7 +550,7 @@ fn start() -> Timestamp {
 }
 
 /// The root's session.
-pub fn session_of(fixture: &Fixture) -> demi_agent::AgentSession {
+pub fn session_of(fixture: &Fixture) -> demi_agent_session::AgentSession {
     fixture
         .server
         .tree(&conversation())

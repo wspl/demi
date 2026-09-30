@@ -103,7 +103,7 @@ pub(crate) enum HostAccessError {
     /// A put of a fitted upload image through the agent's view of the blob
     /// namespace failed.
     #[error(transparent)]
-    Store(#[from] demi_agent::store::StoreError),
+    Store(#[from] demi_agent_store::StoreError),
 }
 
 impl HostAccessError {

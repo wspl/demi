@@ -4,8 +4,8 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use demi_agent::testing::{field, shown_output};
 use demi_agent_protocol::{ClientFrame, ServerFrame, ShellStatus};
+use demi_agent_tools::testing::{field, shown_output};
 use demi_core::CommandId;
 use demi_provider::{
     InferenceRequest, ProviderEvent,

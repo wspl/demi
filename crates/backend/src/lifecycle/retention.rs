@@ -10,8 +10,8 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::time::Duration;
 
-use demi_agent::store::COMMAND_OUTPUT_DAYS;
-use demi_agent::transcript::retire::{KEPT, Retirement};
+use demi_agent_store::COMMAND_OUTPUT_DAYS;
+use demi_agent_transcript::retire::{KEPT, Retirement};
 use demi_core::{BlobRef, Timestamp};
 use demi_gates::Reservation;
 use demi_web_api::ids::ConversationId;

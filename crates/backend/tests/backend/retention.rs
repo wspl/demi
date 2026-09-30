@@ -13,8 +13,8 @@
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
-use demi_agent::testing::field;
 use demi_agent_protocol::{ClientFrame, ServerFrame};
+use demi_agent_tools::testing::field;
 use demi_backend::ObjectCounts;
 use demi_core::{
     Block, GoneCause, ModelMediaKind, Timestamp, ToolMediaSource, ToolResultContentBlock, UserContentBlock,
