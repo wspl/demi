@@ -44,7 +44,7 @@ Each executable is built for the targets where it runs:
 | Executable | Targets | Reason |
 | --- | --- | --- |
 | `demi-runner` | All six | Paired devices run macOS, Linux, or Windows on arm64 or x86_64, and the Cloud guest runs Linux |
-| `demi-commands`, `demi-claude` | All six | A published command package supplies its operations on every target ([Publish a complete release](../execution/native-runtime.md#publish-a-complete-release)) |
+| `demi-file`, `demi-browser`, `demi-claude` | All six | A published command package supplies its operations on every target ([Publish a complete release](../execution/native-runtime.md#publish-a-complete-release)) |
 | `demi-backend` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl`, `aarch64-apple-darwin`, `x86_64-apple-darwin` | Servers run Linux; a developer may also run the backend on a Mac, with the Cloud in a Lima VM ([Develop on a Mac with Lima](../guides/mac-development.md)) |
 | `demi-machines` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl` | The machine manager drives gVisor, Linux namespaces, cgroups, loop devices, and nftables, which exist only on Linux |
 
@@ -108,6 +108,38 @@ building. `ring` chooses `clang` on Windows arm64, so the build explicitly
 selects the MSVC driver dialect and release optimization to match cargo-xwin's
 SDK flags.
 
+## Build profiles
+
+The workspace's `Cargo.toml` holds the two profiles, and nothing else sets
+compiler options: no `RUSTFLAGS`, no per-machine configuration.
+
+The release profile makes the executables small, because every paired device
+downloads each one and every Cloud image carries them: fat link-time
+optimization (`lto = "fat"`), one code-generation unit per crate
+(`codegen-units = 1`), optimization for size (`opt-level = "s"`) and stripped
+symbols (`strip = true`). Together these make the runner and the command programs
+about 40% smaller than thin link-time optimization at `opt-level = 3`, and a
+release build takes about half as long again. `opt-level = "z"` would save a
+quarter more, but it also gives up the speed optimizations that `"s"` keeps,
+and the runner's utilities run searches and sorts in process. Panics unwind in
+every profile: the runner contains a utility's panic to its job
+([Shell jobs](../execution/runner.md#shell-jobs)), and a resident command
+service fails one invocation, not every conversation it holds; `panic =
+"abort"` would end the whole process.
+
+The development profile keeps line tables for backtraces and no other debug
+information, builds dependencies without debug information, and optimizes the
+few dependencies whose unoptimized code slows the tests, each with the
+measurement in a comment beside it. Incremental compilation stays on: it makes
+a rebuild after an edit two to three times faster.
+
+Cargo never deletes a compiled unit. Each change to a dependency, its version
+or its features produces new units beside the old ones, so a target directory
+grows without bound, and a build in a directory of hundreds of thousands of
+stale files spends most of its time in the kernel. When a target directory
+has grown large, delete it by hand: a full build of the one selection
+([Validation](#validation)) takes about a minute.
+
 ## Cross builds
 
 Build on the machine itself, with its own cross tools; the build container
@@ -165,8 +197,10 @@ those targets; without them it requires every target of the executable.
 build's default.
 
 ```sh
-cargo xtask native package --package demi-commands \
-  --artifacts .cache/native-target --output .cache/releases/demi-builtin-<version>
+cargo xtask native package --package demi-file \
+  --artifacts .cache/native-target --output .cache/releases/demi-file-<version>
+cargo xtask native package --package demi-browser \
+  --artifacts .cache/native-target --output .cache/releases/demi-browser-<version>
 cargo xtask native package --package demi-claude \
   --artifacts .cache/native-target --output .cache/releases/demi-claude-<version>
 cargo xtask native package --package demi-runner \
@@ -180,10 +214,11 @@ Each executable has its own kind of release:
 - **Command packages.** Each command program is released on its own. Its
   release directory holds `descriptor.json` and one subdirectory per target
   with the executable. The descriptor's id and operations are the ones the
-  package's contract crate declares (`builtin-protocol` for `demi-commands`,
-  `claude-protocol` for `demi-claude`), the operation list the program routes
-  by, so a release cannot advertise an operation the program does not serve;
-  its version is the workspace version.
+  package's contract crate declares (`file-protocol` for `demi-file`,
+  `browser-protocol` for `demi-browser`, `claude-protocol` for
+  `demi-claude`), the operation list the program routes by, so a release
+  cannot advertise an operation the program does not serve; its version is
+  the workspace version.
   [Bind an exact package](../execution/native-runtime.md#bind-an-exact-package)
   defines the descriptor.
 - **Runner.** A runner release is a directory named by the hash of its
@@ -262,8 +297,8 @@ It reads that version's official download metadata and, for each platform
 Demi supports, downloads the `chrome` archive from Chrome for Testing's
 download host through the artifact library, measures its size and SHA-256, and
 checks that it holds the executable the record names. It then writes the
-release record, `crates/builtin-protocol/src/release/chrome.json`, which
-`demi-commands` compiles in and the Cloud image build installs from; commit it
+release record, `crates/browser-protocol/src/release/chrome.json`, which
+`browser-driver` compiles in and the Cloud image build installs from; commit it
 with the change that adopts the version. Chrome for Testing publishes no
 Windows arm64 build, so the record carries five of the six targets. The
 downloads are not kept: every installer downloads its archive again and checks
@@ -287,12 +322,12 @@ its own copy of every shared dependency.
 | --- | --- |
 | `cargo check --workspace --all-targets --features demi-runner/test-fixtures` | The type check of every crate, test and example |
 | `cargo test --workspace --features demi-runner/test-fixtures` | The Rust tests, the crate boundary check among them ([Boundary checks](../architecture/crates-and-packages.md#boundary-checks)); `--test <name>` runs one test target |
-| `DEMI_TEST_CHROME=<chrome> cargo test --workspace --features demi-runner/test-fixtures,demi-commands/testing --test browser -- --include-ignored --test-threads=1` | The tests that start Chrome, one at a time, with the executable of the pinned Chrome for Testing release; the selection adds the page-driving helpers of `demi-commands` |
+| `DEMI_TEST_CHROME=<chrome> cargo test --workspace --features demi-runner/test-fixtures,demi-browser/testing --test browser -- --include-ignored --test-threads=1` | The tests that start Chrome, one at a time, with the executable of the pinned Chrome for Testing release; the selection adds the page-driving helpers of the browser crates |
 | `DEMI_TEST_CLAUDE_CODE=<claude> SSL_CERT_FILE=$PWD/crates/backend/tests/backend/claude_code/distribution-ca.pem cargo test --workspace --features demi-runner/test-fixtures --test backend -- --ignored claude_code` | The Claude Code suite, with the executable of the vendor's CLI and the CA of the suite's local distribution |
-| `bun run test` | The TypeScript tests, the package boundary check among them ([Boundary checks](../architecture/crates-and-packages.md#boundary-checks)), and the test of the capture extension's JavaScript, which sits beside the extension in `demi-commands`; it first builds the programs the tests start, with the same selection |
+| `bun run test` | The TypeScript tests, the package boundary check among them ([Boundary checks](../architecture/crates-and-packages.md#boundary-checks)), and the test of the capture extension's JavaScript, which sits beside the extension in `browser-driver`; it first builds the programs the tests start, with the same selection |
 | `sudo bash crates/machines/scripts/cloud-suite.sh --image <release> --native <configuration> --work <directory>` | The Cloud suite on Linux, as root, against a machine manager with its resource limits off that the script starts in a stand-in execution host; against an installed manager, the suite's variables and its `cargo test` command instead ([Cloud suite](scenarios.md#cloud-suite)) |
 
-A test that starts another program, such as a runner or `demi-commands`,
+A test that starts another program, such as a runner or `demi-file`,
 starts the one Cargo built into the target directory the test runs from
 (`command_service::testing::built_program`); it builds nothing itself.
 `cargo test` of the whole selection builds every program first: Cargo builds

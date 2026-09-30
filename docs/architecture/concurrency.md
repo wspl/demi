@@ -37,7 +37,8 @@ Each program picks its model by what its state belongs to.
 |---|---|---|
 | Backend | A multi-threaded edge; shard threads, each with a single-threaded runtime; one thread per open SQLite connection; the blocking pool | A user's conversations, runner connections and Cloud state change on every tool call, so they stay on one thread; bytes and cross-user services run in parallel at the edge |
 | Runner | A single-threaded control runtime; a shell runtime with its own large blocking pool; a Host log thread | Its state belongs to one registration and one backend connection, so there is nothing to run in parallel; shell work must not share a bounded pool with control work |
-| `demi-commands` | A multi-threaded runtime with owner tasks | Its state belongs to many conversations whose browsers must make progress in parallel |
+| `demi-browser` | A multi-threaded runtime with owner tasks | Its state belongs to many conversations whose browsers must make progress in parallel |
+| `demi-file` | A multi-threaded runtime, file mutations behind one gate | Reads run in parallel; mutations wait on disk one at a time |
 | `demi-claude` | A current-thread runtime | Installs are rare and wait on IO |
 | Machine manager | A single-threaded loop, one worker task per device, the blocking pool and one-shot namespace threads | Little state and much blocking work |
 
@@ -121,12 +122,15 @@ a job's cancellation is a pipe polled together with the file.
 When `demi-runner` runs as a command alias, it serves one invocation on a
 current-thread runtime.
 
-### demi-commands
+### demi-browser and demi-file
+
+`demi-file` runs one task per invocation (the command-service SDK), and its
+file mutations pass one `SerialGate`, with the work on the blocking pool.
+`demi-browser`:
 
 ```text
 multi-threaded runtime
   one task per invocation (the command-service SDK), routed by operation
-  file mutations: one SerialGate, the work on the blocking pool
   per conversation: a browser owner task (absent, starting, ready, closing)
     per running Chrome: tab registry, capture channel and live hub owner tasks,
       all joined through one TaskTracker when the browser retires
@@ -242,9 +246,15 @@ starts with one shard thread. More threads are configuration, provided
 per-user state stays in the shard and cross-user state stays in shared
 services.
 
-**Composition.** The shard's behavior is written as `impl Shard` blocks, one
-per module. Each component owns its state, and `Shard` combines them, so no
-component holds a reference back to another.
+**Composition.** Each component owns its state, and `Shard` combines them, so
+no component holds a reference back to another. The components live in the
+[backend libraries](crates-and-packages.md#backend-libraries) beneath the
+shard, which cannot see `Shard`: a component whose operations need another
+component, such as the Cloud, whose reset holds the user's conversations,
+defines the narrow trait of what it needs of the shard (`CloudShard`) and
+writes those operations as methods of `dyn CloudShard`. `backend-shard`
+implements each such trait for `Shard`, and its own behavior is written as
+`impl Shard` blocks, one per module.
 
 ## Locks
 
@@ -257,8 +267,8 @@ no reader can hold up the registration.
 
 | Need | Tool | Examples |
 |---|---|---|
-| State shared by tasks | One owner: shard-local state, or a task that owns it and answers requests | The runner's job table belongs to its connection; `demi-commands`' tab registry is an owner task |
-| Serializing an operation across awaits | A named gate from the `gates` crate, or a purpose-named gate built on a semaphore | A conversation's file gate; the file mutations of `demi-commands`; a credential refresh that must run once |
+| State shared by tasks | One owner: shard-local state, or a task that owns it and answers requests | The runner's job table belongs to its connection; `demi-browser`'s tab registry is an owner task |
+| Serializing an operation across awaits | A named gate from the `gates` crate, or a purpose-named gate built on a semaphore | A conversation's file gate; the file mutations of `demi-file`; a credential refresh that must run once |
 | Read-mostly data | An immutable snapshot published through `watch` | The runner's device token; the tab snapshot commands look tabs up in, so commands on different tabs run in parallel |
 
 **Gates.** An `ActivityGate` is a first-in, first-out semaphore. A lease is one
@@ -313,7 +323,8 @@ What crosses is owned data in both directions.
 |---|---|
 | Backend | One thread per open SQLite connection, because rusqlite is synchronous and a transaction stays on one thread; the blocking pool for other disk work, password hashing, and serializing request bodies with media and transcripts |
 | Runner | The control blocking pool behind `Admission` for filesystem requests, git computations and hashing; the shell runtime's pool for interpreter units and utilities; its own thread for the Host log |
-| `demi-commands` | The blocking pool for file mutations, archive extraction, image decoding and encoding, output publication, process-table scans and hashing |
+| `demi-file` | The blocking pool for file mutations and output publication |
+| `demi-browser` | The blocking pool for archive extraction, image decoding and encoding, output publication, process-table scans and hashing |
 | `demi-claude` | One blocking call each for hashing and file writes |
 | Machine manager | One entry point to the blocking pool; the storage and Linux functions take a token only that entry point creates, so running off the loop is checked at compile time. Child processes start from the loop, because spawning is quick and waiting is event-driven, and dropping one kills it; firewall updates run on the pool because their library spawns synchronously |
 

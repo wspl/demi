@@ -39,7 +39,7 @@ pins ([Dispatch](#dispatch-the-same-declaration-on-each-surface)):
   "name": "read",
   "summary": "Read a file on the execution target",
   "kind": "native",
-  "binding": { "package": "demi.builtin", "operation": "file.read" },
+  "binding": { "package": "demi.file", "operation": "file.read" },
   "input": {
     "title": "FileRead",
     "type": "object",
@@ -57,9 +57,9 @@ Placed under the `demi file` group, the leaf handles `demi file read notes.txt`.
 The dispatcher validates `{ "path": "notes.txt" }` against `input` before
 invoking `file.read`, and the native service decodes the same value into
 `FileRead`, together with the invocation's cwd and IO. The arguments and
-results of every `demi.builtin` operation are types of one contract crate that
-the declarations and the native programs both link, so a declaration and its
-handler cannot describe different arguments
+results of every `demi.file` operation are types of one contract crate,
+`file-protocol`, that the declarations and the native program both link, so a
+declaration and its handler cannot describe different arguments
 ([Contract crates](../architecture/contracts.md#contract-crates)).
 
 An `rpc` leaf runs a handler in the backend instead.
@@ -426,7 +426,7 @@ a faulty handler that cannot stop follows the
 
 ## File commands
 
-`demi file read`, `create`, `edit`, and `patch` run in the native `demi.builtin`
+`demi file read`, `create`, `edit`, and `patch` run in the native `demi.file`
 service, beside the file. Each resolves relative paths against the invocation's
 cwd and stops at the invocation's cancellation. Mutations run one at a time in a
 service: one mutation's planning and writes finish before the next begins. Each

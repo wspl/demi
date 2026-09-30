@@ -33,8 +33,9 @@ names each crate's items.
 | Conversation WebSocket frames, transcript blocks and patches, tool views | `agent-protocol`, `core` | Backend; `agent-client` and `web-ui`, through `@demicodes/protocol` |
 | Runner wire (MessagePack over a WebSocket) and command manifests | `runner-protocol`, with manifest nodes from `command-tree` | Backend; runner |
 | Managed boot record | `runner-protocol` | Backend and machine manager; the runner in a Cloud sandbox reads it |
-| Command invocations between a runner and a command program | `command-service` | Runner; `demi-commands`, `demi-claude` |
-| `demi.builtin` operations, live view messages, capture extension events | `builtin-protocol` | `coding-agent` declarations, the backend and `demi-commands`; the page reads live view messages through `@demicodes/protocol` |
+| Command invocations between a runner and a command program | `command-service` | Runner; `demi-file`, `demi-browser`, `demi-claude` |
+| `demi.file` operations | `file-protocol` | `coding-agent` declarations; `demi-file` |
+| `demi.browser` operations, live view messages, capture extension events | `browser-protocol` | `coding-agent` declarations, the backend and the browser crates; the page reads live view messages through `@demicodes/protocol` |
 | `demi.claude` operations and the Claude Code release record | `claude-protocol` | Backend; `demi-claude` |
 | Machine-manager socket (one JSON document per line over a Unix socket) and the Cloud image manifest | `machines-protocol` | Backend; machine manager; `xtask` writes the image manifest |
 | JSON stored in the control and conversation databases | The crate that owns the data, such as `core` for blocks | Backend |
@@ -134,8 +135,8 @@ These are the points where values enter, and what a failure does:
 | A command's arguments | The declaration's JSON Schema, at the dispatcher and again in a native handler before work | One usage error that names every field that failed |
 | A machine-manager request or response | `machines-protocol` | A malformed line or an unknown operation drops the connection; an invalid device id is that operation's error ([Managed Cloud hosts](../cloud/managed-hosts.md)) |
 | The managed boot file | `runner-protocol`'s `ManagedBoot` | The runner fails; it never falls back to pairing ([Runner](../execution/runner.md#managed-guests-and-verification)) |
-| A capture extension event | `builtin-protocol` | The extension connection fails, and the failure is logged ([Live view](../browser/live-view.md)) |
-| A row or JSON column read from a database | The backend's storage module | The restore stops; nothing is repaired or defaulted ([Storage](../backend/storage.md)) |
+| A capture extension event | `browser-protocol` | The extension connection fails, and the failure is logged ([Live view](../browser/live-view.md)) |
+| A row or JSON column read from a database | `backend-storage` | The restore stops; nothing is repaired or defaulted ([Storage](../backend/storage.md)) |
 | A sealed credential document | The vault | The error names the field path and the kind of failure, never the value ([Providers](../providers/providers.md)) |
 | Configuration from arguments and the environment | Each program's configuration, at startup | The program does not start, and the error names the variable |
 | A tool call's input from the model | The tool | The model receives the tool's error ([Tools](../agent/runtime.md#tools)) |
@@ -154,7 +155,7 @@ xtask contracts: the emitter, which fails on anything outside its subset
    v
 Zod source and z.infer types
    -> packages/protocol/src/generated/   @demicodes/protocol: core, agent-protocol,
-                                          builtin-protocol types the page reads
+                                          browser-protocol types the page reads
    -> packages/web/src/api/generated/    web: the web-api REST types
 ```
 

@@ -45,25 +45,27 @@ visitors of an expose hostname, whom the public relay serves; and anyone who
 downloads the runner installers. The backend itself calls the machine manager
 over the manager's Unix socket.
 
-| Module | Responsibility | Design contract |
-|---|---|---|
-| `edge` | The listener and router, the session gate, request extractors and body limits, error codes, installer, native artifact and browser-asset routes, and the byte copies of file transfers, pipes, user streams and the expose relay | [Web API](../product/web-api.md) |
-| `shard` | Shard threads, each user's shard, calls into it, socket adoption and the page socket both of a page's sockets are served through, leases | [Runtime model](#runtime-model) |
-| `config` | The typed configuration, validated at startup | [Configuration](#configuration) |
-| `auth` | Accounts, password hashing, web sessions, login lockout, email-change delivery | [Authentication and ownership](#authentication-and-ownership), [Product](../product/product.md#user-system) |
-| `settings` | Per-user preferences | [Web API](../product/web-api.md#user-preferences) |
-| `sync` | The pages' synchronization channels: the product state, the parts that changed, and the registry that marks changes on each user's channels | [Browser synchronization](#browser-synchronization) |
-| `conversation` | Agent-tree hosting, frame scoping, attachment and remote-file references, history and Fork, summaries and titles, target resolution and transitions, the conversation's host access, file transfers and user streams, and the keeper that stores what a command leaves when it ends | [Sessions and targets](../execution/sessions-and-targets.md) |
-| `runner` | Pairing, device links and runner connections, the rpc relay and each session's commands, the product's `demi host` group, installer scripts, native artifact publication and the development store | [Runner](../execution/runner.md), [Commands](../execution/commands.md), [Native runtime](../execution/native-runtime.md#backend-deployment-configuration) |
-| `lifecycle` | The conversation idle clock, the conversation release, and the daily retention pass that retires expired tool media, removes expired command outputs and collects blobs | [Conversation idle and Host resource release](../execution/resource-lifecycle.md), [Retention](storage.md#retention) |
-| `managed` | Cloud policy and capacity, machine transitions, reset and recovery, the machine manager's client | [Managed hosts](../cloud/managed-hosts.md) |
-| `expose` | Expose records and their lifetime, live relay connections, the `demi host expose` leaves | [Host expose](../execution/expose.md) |
-| `llm`, `vault`, `usage` | Provider assembly and model catalogs; credential records, scope and login flows; metering and the request rate limit | [Providers](../providers/providers.md), [Models](../providers/models.md), [Usage and quota](../providers/usage-and-quota.md) |
-| `storage` | The control service, conversation databases and the tree store with its `blob_refs` index and its records of commands' outputs, the object store with its record of blob uses | [Storage](storage.md) |
+| Module | Crate | Responsibility | Design contract |
+|---|---|---|---|
+| `edge` | `backend-edge` | The listener and router, the session gate, request extractors and body limits, error codes, installer, native artifact and browser-asset routes, runner acceptance, and the byte copies of file transfers, pipes, user streams and the expose relay | [Web API](../product/web-api.md) |
+| `shard` | `backend-shard` | Shard threads, each user's shard, calls into it, socket adoption and the page socket both of a page's sockets are served through, leases | [Runtime model](#runtime-model) |
+| `config` | `demi-backend` | The typed configuration, validated at startup, and the instance secret with the keys derived from it | [Configuration](#configuration) |
+| `auth`, `settings` | `backend-accounts` | Accounts, password hashing, web sessions, login lockout, email-change delivery; per-user preferences | [Authentication and ownership](#authentication-and-ownership), [Product](../product/product.md#user-system), [Web API](../product/web-api.md#user-preferences) |
+| `sync` | `backend-sync`, `backend-shard` | The registry that marks changes on each user's channels (`backend-sync`); the pages' synchronization channels with the product state and the parts that changed (`backend-shard`) | [Browser synchronization](#browser-synchronization) |
+| `conversation` | `backend-shard` | Agent-tree hosting, frame scoping, attachment references, history and Fork, summaries and titles, and the keeper that stores what a command leaves when it ends | [Sessions and targets](../execution/sessions-and-targets.md) |
+| `host_access` | `backend-host-access` | The conversation's host access, target resolution and transitions, file transfers, uploads, remote files and user streams, the nodes' shell environments, the product's `demi host` group | [Host operations](../execution/sessions-and-targets.md#host-operations) |
+| `runner` | `backend-runners` | Pairing, device links and runner connections, the rpc relay and each session's commands, installer scripts, native artifact publication and the development store | [Runner](../execution/runner.md), [Commands](../execution/commands.md), [Native runtime](../execution/native-runtime.md#backend-deployment-configuration) |
+| `lifecycle` | `backend-idle`, `backend-shard` | The idle watch (`backend-idle`); the conversation idle clock, the conversation release, and the daily retention pass that retires expired tool media, removes expired command outputs and collects blobs (`backend-shard`) | [Conversation idle and Host resource release](../execution/resource-lifecycle.md), [Retention](storage.md#retention) |
+| `managed` | `backend-cloud` | Cloud policy and capacity, machine transitions, reset and recovery, the machine manager's client | [Managed hosts](../cloud/managed-hosts.md) |
+| `expose` | `backend-expose` | Expose records and their lifetime, live relay connections | [Host expose](../execution/expose.md) |
+| `llm`, `vault`, `usage` | `backend-providers`, `backend-families` | Provider assembly and model catalogs; credential records, scope and login flows; metering and the request rate limit; the built-in provider families (`backend-families`) | [Providers](../providers/providers.md), [Models](../providers/models.md), [Usage and quota](../providers/usage-and-quota.md) |
+| `storage` | `backend-storage`, `backend-objects` | The control service, conversation databases and the tree store with its `blob_refs` index and its records of commands' outputs (`backend-storage`); the object store with its record of blob uses (`backend-objects`) | [Storage](storage.md) |
 
-These are modules of one backend, not independently deployed services.
-[Crates and packages](../architecture/crates-and-packages.md#crates) names the
-crates the backend builds on.
+These are modules of one backend executable, not independently deployed
+services; each lives in the crate the table names, so that a change to one
+recompiles only it and what builds on it.
+[Crates and packages](../architecture/crates-and-packages.md#backend-libraries)
+gives each crate's boundary and their layering.
 
 ## Runtime model
 
@@ -525,7 +527,9 @@ Cloud guest, and both run `x86_64-unknown-linux-musl`:
    cargo xtask native build --target x86_64-unknown-linux-musl
    cargo xtask native package --package demi-runner --output .cache/releases/runners \
      --target x86_64-unknown-linux-musl
-   cargo xtask native package --package demi-commands --output .cache/releases/demi-builtin \
+   cargo xtask native package --package demi-file --output .cache/releases/demi-file \
+     --target x86_64-unknown-linux-musl
+   cargo xtask native package --package demi-browser --output .cache/releases/demi-browser \
      --target x86_64-unknown-linux-musl
    cargo xtask native package --package demi-claude --output .cache/releases/demi-claude \
      --target x86_64-unknown-linux-musl
@@ -539,7 +543,8 @@ Cloud guest, and both run `x86_64-unknown-linux-musl`:
    ```json
    {
      "releases": [
-       { "directory": "demi-builtin", "executable": "demi-commands" },
+       { "directory": "demi-file", "executable": "demi-file" },
+       { "directory": "demi-browser", "executable": "demi-browser" },
        { "directory": "demi-claude", "executable": "demi-claude" }
      ],
      "store": { "provider": "local" }

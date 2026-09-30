@@ -9,8 +9,12 @@ algorithms run in separate executables that stay running to serve multiple calls
 These *resident services* can be released independently of the runner. The runner
 embeds no JavaScript engine.
 
-All native Demi commands belong to the `demi.builtin` package. The package that
-installs the Claude Code CLI, `demi.claude`, uses the same contract
+Demi's native commands belong to two packages, one per capability:
+`demi.file`, the file commands, and `demi.browser`, the conversation browser.
+Each is its own resident program and its own release, so a job that edits a
+file downloads and starts only the small file program, and a browser release
+does not re-release the file commands. The package that installs the Claude
+Code CLI, `demi.claude`, uses the same contract
 ([The package](../providers/claude-code.md#the-package)). Shell utilities and
 `rpc` handlers have their own owners.
 
@@ -89,8 +93,8 @@ its release. These terms have distinct meanings:
 
 | Term | Meaning in the patch example |
 | --- | --- |
-| Declaration | Names package `demi.builtin` and operation `file.patch`. |
-| Catalog | Maps `demi.builtin` to one selected release descriptor. |
+| Declaration | Names package `demi.file` and operation `file.patch`. |
+| Catalog | Maps `demi.file` to one selected release descriptor. |
 | Descriptor | Identifies that release, its operations, and each platform executable. |
 | Manifest | Pins the descriptor hash and operation for the job. |
 | Artifact | The executable bytes selected for the laptop's platform. |
@@ -100,7 +104,7 @@ an existing job executes. The backend composes the catalog at startup from its
 [deployment configuration](#backend-deployment-configuration) and gives it, with
 its artifact resolver, to the execution adapter that builds every conversation's
 shell environments. The command tree declares the binding: the `patch` leaf of
-the `demi file` group names package `demi.builtin` and operation `file.patch`.
+the `demi file` group names package `demi.file` and operation `file.patch`.
 Its help and argument type follow the
 [command declaration contract](commands.md).
 
@@ -120,7 +124,7 @@ carries; a published release carries all six of the
 
 | Descriptor field | Meaning |
 | --- | --- |
-| `id` | Stable namespaced identity, such as `demi.builtin`. |
+| `id` | Stable namespaced identity, such as `demi.file`. |
 | `version` | Human-readable release version, immutable within its publisher. |
 | `protocolVersion` | Command-service wire major version. |
 | `operations` | Unique operation IDs supplied by the package, written from the package's Rust operation enum when the release is packaged. |
@@ -184,8 +188,10 @@ download failures do not count as expiration.
 
 To download, the runner completes these steps:
 
-1. Download to a temporary file, enforcing the declared size.
-2. Verify the size and SHA-256.
+1. Download to a temporary file, decoding the response's content coding, and
+   enforce the declared size on the decoded bytes. The runner accepts `zstd`
+   and no coding; a response with any other coding fails the download.
+2. Verify the size and SHA-256 of the decoded bytes.
 3. Apply executable permissions where required and publish the verified file
    atomically into the cache.
 
@@ -212,7 +218,7 @@ looks there before it asks the backend: the directory
 `/opt/demi/artifacts/<sha256>`, named by the SHA-256 that the pinned
 descriptor gives the executable, holds that executable as its one file, under
 the name its release gives it. For example, the first `demi file patch` on a
-Cloud after a reset finds `/opt/demi/artifacts/<sha256>/demi-commands`, checks
+Cloud after a reset finds `/opt/demi/artifacts/<sha256>/demi-file`, checks
 it, and starts the service from there, without asking the backend for a
 location or downloading anything.
 
@@ -348,7 +354,7 @@ anything holds a lease on it:
 
 For example, the page lists the conversation browser's tabs with a one-shot
 `browser.tabs` call each time it is shown again. The first listing on a
-connection starts the `demi.builtin` service; the next ones find it running,
+connection starts the `demi.browser` service; the next ones find it running,
 whether or not a job has run.
 
 When the last lease ends, and after each conversation release ends, the
@@ -370,7 +376,7 @@ A status check that fails, or does not answer within 5 seconds, keeps the servic
 the failure to the [Host log](runner.md#host-log): a service that cannot say
 what it holds is not a service that holds nothing, and shutting it down would
 end every conversation it serves. For example, when the connection switches to
-a new `demi.builtin` release, the service that ran the earlier release loses its
+a new `demi.browser` release, the service that ran the earlier release loses its
 last lease while one conversation's browser in it is still retiring; the
 service stays, and so does every other conversation's browser.
 
@@ -531,7 +537,7 @@ use, reached through the same port.
 
 Each user stream is declared by name with a native binding, beside the command
 tree and the way a command leaf binds an operation: the `browser` stream binds
-`demi.builtin` operation `browser.live`. The declarations are fixed with the
+`demi.browser` operation `browser.live`. The declarations are fixed with the
 command tree for the backend's lifetime, and a page can open only a declared
 name.
 
@@ -733,10 +739,25 @@ ETags must not be treated as SHA-256 checksums.
 Under the configured prefix, an executable is `blobs/<sha256>`, a descriptor's
 canonical JSON is `descriptors/<digest>.json`, and the package/version mapping
 is `packages/<id>/<version>.json`, with the version percent-encoded as a URI
-component. Each object carries its SHA-256 as `sha256` metadata: an object
-already in place counts as the one being published when its size and that
-metadata match, and as a conflict otherwise. A runner downloads an executable
-from a GET URL signed for five minutes.
+component. A runner downloads an executable from a GET URL signed for five
+minutes.
+
+An executable's object holds the executable compressed with zstd and carries
+`Content-Encoding: zstd`; descriptors and mappings are stored as they are.
+HTTP's own content coding is the mechanism: object storage serves the stored
+bytes with the coding they were stored with, and the runner's HTTP client
+decodes them ([Install the selected executable](#install-the-selected-executable)),
+so no descriptor, manifest or cache entry knows about compression. zstd rather
+than gzip because it matters here: the release runner compresses to about 28%
+of its size with zstd and to 41% with gzip.
+
+Every object carries `sha256` and `size` metadata, which describe what the
+object stands for: for an executable, the SHA-256 and byte size of the
+executable, not of the compressed bytes; for any other object, of its stored
+bytes. An object already in place counts as the one being published when both
+values match, and as a conflict otherwise. The compressed bytes of one
+executable may differ between zstd versions without changing what the object
+is.
 
 A development store runs step 1 on the targets each release carries, skips
 steps 2 and 3, and serves the executables from the backend itself
@@ -764,7 +785,8 @@ key prefix of the published objects, defaults to `native` and is one or more
 {
   "prefix": "native",
   "releases": [
-    { "directory": "./demi-commands", "executable": "demi-commands" }
+    { "directory": "./demi-file", "executable": "demi-file" },
+    { "directory": "./demi-browser", "executable": "demi-browser" }
   ],
   "store": {
     "provider": "s3",
@@ -784,7 +806,7 @@ presigned GET requests required by publication.
 With `"provider": "local"`, a development store, the backend runs on a
 developer's own machine and serves the executables itself. For example, a
 backend at `http://10.0.0.5:3271` that loaded a development release of
-`demi.builtin` answers the Cloud guest's request for the
+`demi.file` answers the Cloud guest's request for the
 `x86_64-unknown-linux-musl` executable with
 `http://10.0.0.5:3271/native-artifacts/<sha256>`, and the guest's runner
 downloads and verifies it from there, as the paired machine's runner does its
@@ -796,8 +818,10 @@ The development store:
   six targets, but at least one.
 - Serves each executable of a loaded release at
   `GET /native-artifacts/<sha256>` on `DEMI_BACKEND_PUBLIC_URL`, without
-  credentials, like the runner installers' downloads. Any other digest
-  answers 404 `not_found`.
+  credentials, like the runner installers' downloads, with
+  `Content-Encoding: zstd` as object storage serves it; it compresses each
+  executable once, when it loads the release. Any other digest answers 404
+  `not_found`.
 - Answers a runner's location request with that URL, which has the scheme of
   the public URL and no expiry.
 - Takes no other setting, and no `prefix`.
@@ -805,7 +829,8 @@ The development store:
 ```json
 {
   "releases": [
-    { "directory": "demi-builtin", "executable": "demi-commands" },
+    { "directory": "demi-file", "executable": "demi-file" },
+    { "directory": "demi-browser", "executable": "demi-browser" },
     { "directory": "demi-claude", "executable": "demi-claude" }
   ],
   "store": { "provider": "local" }
