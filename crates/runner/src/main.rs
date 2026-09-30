@@ -1,12 +1,27 @@
-use demi_command_service::protocol::LocalInvocation;
-use demi_runner::{
-    commands::command_client::{self, RawCommand, Stdio},
-    host_log, management,
-    registration::{self, Options},
-    state::{self, RunnerState},
+//! The runner (`runner.md`): the execution host's program, which registers
+//! with the backend and serves its work, and, under a root command's name,
+//! the command alias that forwards one command line to it.
+
+mod connection;
+mod host_log;
+mod management;
+mod registration;
+mod state;
+
+use demi_command_service::protocol::{LocalInvocation, host_target};
+use demi_runner_host::volumes::ManagedVolume;
+use demi_runner_process::{
+    command_client::{self, RAW, RawCommand, Stdio},
     stdio::{self, standard_file},
 };
-use demi_runner_protocol::{boot::ManagedBoot, values::BackendUrl, wire::RunnerPlatform};
+use demi_runner_protocol::{
+    boot::ManagedBoot,
+    values::BackendUrl,
+    wire::{self, RunnerPlatform},
+};
+use demi_runner_shell::ShellRuntime;
+use registration::Options;
+use state::RunnerState;
 use tracing_subscriber::{
     Layer as _, filter::LevelFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _,
 };
@@ -14,6 +29,7 @@ use std::{
     collections::BTreeMap,
     io,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -30,7 +46,7 @@ async fn command(root: String, argv: Vec<String>) -> io::Result<u8> {
     let stdin = standard_file(0)?;
     let request = RawCommand::new(context, root, argv, stdio::is_live(&stdin, &env)?)?;
     let invocation = LocalInvocation {
-        operation: "raw".into(),
+        operation: RAW.into(),
         invocation_id: uuid::Uuid::new_v4().simple().to_string(),
         args: serde_json::to_value(request).map_err(io::Error::other)?,
         cwd: std::env::current_dir()?.to_string_lossy().into_owned(),
@@ -59,7 +75,7 @@ async fn manage(
 ) -> io::Result<u8> {
     let active = state.active().await?;
     let request = LocalInvocation {
-        operation: "manage".into(),
+        operation: management::MANAGE.into(),
         invocation_id: uuid::Uuid::new_v4().simple().to_string(),
         args: serde_json::to_value(management::Request {
             secret: active.secret.clone(),
@@ -125,9 +141,13 @@ fn home() -> io::Result<PathBuf> {
         .ok_or_else(|| io::Error::other("user home is not configured"))
 }
 
+/// The runner's own name, under which it runs as the runner rather than as a
+/// command alias.
+const PROGRAM: &str = "demi-runner";
+
 /// Runs this device as a Demi execution target.
 #[derive(clap::Parser)]
-#[command(name = "demi-runner", version)]
+#[command(name = PROGRAM, version)]
 struct Cli {
     #[command(subcommand)]
     action: Action,
@@ -178,7 +198,7 @@ struct Installation {
     release: Option<String>,
 }
 
-async fn runner(cli: Cli, shell: demi_runner::shell::ShellRuntime) -> io::Result<u8> {
+async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
     let (installation, boot_path, name, managed) = match cli.action {
         Action::Run {
             installation,
@@ -225,8 +245,8 @@ async fn runner(cli: Cli, shell: demi_runner::shell::ShellRuntime) -> io::Result
         }
     };
     let identity = identity(home.to_string_lossy().into_owned())?;
-    let runner = demi_runner::connection::wire::RunnerInfo {
-        native_target: Some(demi_runner::services::target().into()),
+    let runner = wire::RunnerInfo {
+        native_target: Some(host_target().into()),
         name: name.unwrap_or_else(|| identity.hostname.clone()),
         platform: if cfg!(target_os = "macos") {
             RunnerPlatform::Darwin
@@ -263,7 +283,7 @@ async fn runner(cli: Cli, shell: demi_runner::shell::ShellRuntime) -> io::Result
     // Every job and stream shares this process's open files (`runner.md`
     // § Load); without the raise the runner still works, waiting sooner.
     #[cfg(unix)]
-    match demi_runner::process::raise_open_file_limit() {
+    match demi_runner_process::process::raise_open_file_limit() {
         Ok((started, raised)) => {
             tracing::info!("open-file limit {raised} (started with {started})")
         }
@@ -272,7 +292,7 @@ async fn runner(cli: Cli, shell: demi_runner::shell::ShellRuntime) -> io::Result
     // Read once before any job runs, since reading it may briefly set a
     // stricter one (`process::umask`).
     #[cfg(unix)]
-    let _umask = demi_runner::process::umask();
+    let _umask = demi_runner_process::process::umask();
     let options = Options {
         backend,
         log: log.reader(),
@@ -285,19 +305,19 @@ async fn runner(cli: Cli, shell: demi_runner::shell::ShellRuntime) -> io::Result
         token: boot.as_ref().map(|boot| boot.device_token.clone()),
         volumes: if boot.is_some() {
             vec![
-                demi_runner::volumes::ManagedVolume {
-                    name: demi_runner::connection::wire::VolumeName::System,
+                ManagedVolume {
+                    name: wire::VolumeName::System,
                     mount: "/".into(),
                 },
-                demi_runner::volumes::ManagedVolume {
-                    name: demi_runner::connection::wire::VolumeName::Home,
+                ManagedVolume {
+                    name: wire::VolumeName::Home,
                     mount: "/home".into(),
                 },
             ]
         } else {
             vec![]
         },
-        shell,
+        shell: Arc::new(shell),
     };
     let stop = CancellationToken::new();
     let running = registration::run(options, stop.clone());
@@ -324,7 +344,7 @@ async fn runner(cli: Cli, shell: demi_runner::shell::ShellRuntime) -> io::Result
     Ok(code)
 }
 
-fn identity(home_dir: String) -> io::Result<demi_runner::connection::wire::HostIdentity> {
+fn identity(home_dir: String) -> io::Result<wire::HostIdentity> {
     let hostname = hostname::get()?
         .into_string()
         .map_err(|_| io::Error::other("the hostname is not UTF-8"))?;
@@ -336,7 +356,7 @@ fn identity(home_dir: String) -> io::Result<demi_runner::connection::wire::HostI
     // Windows has no numeric user and group for the runner to report.
     #[cfg(windows)]
     let (uid, gid) = (0, 0);
-    Ok(demi_runner::connection::wire::HostIdentity {
+    Ok(wire::HostIdentity {
         uid,
         gid,
         hostname,
@@ -366,18 +386,18 @@ fn main() {
         .and_then(|name| name.to_str())
         .unwrap_or("");
     // A root command's alias passes its arguments through untouched.
-    let cli = (name == "demi-runner").then(<Cli as clap::Parser>::parse);
+    let cli = (name == PROGRAM).then(<Cli as clap::Parser>::parse);
     // Shutdown leaves the runtimes' remaining threads to the process exit
     // below; runner shutdown has joined its owned jobs and services already.
     let result = if let Some(cli) = cli {
         // The control thread's state belongs to one registration, so it runs
         // alone; shell jobs have a runtime of their own.
-        let shell = demi_runner::shell::ShellRuntime::build().expect("shell runtime");
+        let shell = ShellRuntime::build().expect("shell runtime");
         let control = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build_local(tokio::runtime::LocalOptions::default())
             .expect("control runtime");
-        let result = control.block_on(runner(cli, demi_runner::shell::ShellRuntime::new(&shell)));
+        let result = control.block_on(runner(cli, ShellRuntime::new(&shell)));
         control.shutdown_background();
         shell.shutdown_background();
         result

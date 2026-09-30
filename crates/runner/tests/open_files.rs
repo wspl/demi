@@ -11,19 +11,25 @@
 use demi_command_service::{
     protocol::{
         CommandCaller, CommandContext, CommandLocale, LocalInvocation, PackageArtifact,
-        PackageDescriptor,
+        PackageDescriptor, host_target,
     },
-    testing::pauses,
+    testing::{built_program, pauses},
 };
-use demi_runner::{
-    commands::command_client::{RawCommand, Stdio, forward},
-    connection::wire::{Inbound, PipeRef},
-    host::HostServer,
+use demi_runner_host::host::HostServer;
+use demi_runner_jobs::testing::Dispatch;
+use demi_runner_process::{
+    command_client::{RawCommand, Stdio, forward},
+    job_shell::ShellJob,
     pipes::PipeClient,
-    process::{ChildProcess, OutputStream, ProcessInput, SpawnOptions},
-    services::{ArtifactResolver, ArtifactSource, RuntimeError, ServiceRegistry, target},
-    shell::{job::Job, scope::Scope},
-    testing::{Dispatch, NoNumbers},
+    process::{ChildProcess, ProcessInput, SpawnOptions},
+};
+use demi_runner_protocol::wire::{self, Inbound, OutputStream, PipeRef};
+use demi_runner_services::{
+    ArtifactResolver, ArtifactSource, RuntimeError, ServiceRegistry, testing::NoNumbers,
+};
+use demi_runner_shell::{
+    ShellRuntime,
+    testing::{Job, Scope},
 };
 use futures_util::{StreamExt, future::BoxFuture};
 use serde_json::json;
@@ -145,7 +151,7 @@ async fn ready_job(cwd: &Path, script: &str) -> Job {
         BTreeMap::from([("HOME".to_owned(), cwd.to_string_lossy().into_owned())]),
         false,
         scope.clone(),
-        &demi_runner::shell::ShellRuntime::current(),
+        &ShellRuntime::current(),
     )
     .await
     .unwrap();
@@ -252,7 +258,7 @@ fn reply(bytes: Vec<u8>) -> serde_json::Value {
 /// The next reply whose `key` is `value`; replies for other requests, such as
 /// a finished pipe's report, are skipped.
 async fn reply_for(
-    replies: &tokio::sync::Mutex<mpsc::Receiver<demi_runner::connection::wire::Frame>>,
+    replies: &tokio::sync::Mutex<mpsc::Receiver<wire::Frame>>,
     key: &str,
     value: &str,
 ) -> serde_json::Value {
@@ -469,7 +475,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
                 BTreeMap::from([("HOME".to_owned(), cwd.to_string_lossy().into_owned())]),
                 false,
                 Scope::new(CancellationToken::new(), None),
-                &demi_runner::shell::ShellRuntime::current(),
+                &ShellRuntime::current(),
             )
             .await
             .map_err(|error| error.to_string())?;
@@ -530,7 +536,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
         let services = ServiceRegistry::new(cache.join("cache"), None, root_path.clone(), BTreeMap::new())
             .await
             .unwrap();
-        let bytes = std::fs::read(env!("CARGO_BIN_EXE_demi-native-fixture")).unwrap();
+        let bytes = std::fs::read(built_program("demi-native-fixture")).unwrap();
         let path = cache.join("fixture");
         std::fs::write(&path, &bytes).unwrap();
         let descriptor = PackageDescriptor {
@@ -541,7 +547,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
                 .map(String::from)
                 .to_vec(),
             targets: BTreeMap::from([(
-                target().into(),
+                host_target().into(),
                 PackageArtifact {
                     sha256: format!("{:x}", Sha256::digest(&bytes)),
                     size: bytes.len() as u64,
@@ -638,7 +644,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
     // Last, since it raises this process's limit: the runner raises its own
     // open-file limit, and a raw process, a job's command and a utility's
     // child program get the one the runner was started with.
-    let (started, raised) = demi_runner::process::raise_open_file_limit().unwrap();
+    let (started, raised) = demi_runner_process::process::raise_open_file_limit().unwrap();
     assert_eq!(started, 1024);
     assert!(raised > started, "the test needs a hard limit above 1024");
     let mut child = ChildProcess::spawn(SpawnOptions {
@@ -661,7 +667,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
         BTreeMap::from([("HOME".to_owned(), cwd.to_string_lossy().into_owned())]),
         false,
         Scope::new(CancellationToken::new(), None),
-        &demi_runner::shell::ShellRuntime::current(),
+        &ShellRuntime::current(),
     )
     .await
     .unwrap();
