@@ -766,6 +766,8 @@ demi-backend (executable: configuration, composition)
   parts of a user's product state (`Part`), and the marks each change leaves
   on that user's open channels (`SyncRegistry`, `UserMarks`)
   ([Browser synchronization](../backend/backend.md#browser-synchronization)).
+  A channel is registered under the hash of the session it opened with, a
+  record of `backend-storage`, so a sign-out ends that session's channels.
 - **Public boundary:** the items above.
 - **Must not:** read or build the product state; `backend-shard` does.
 
@@ -777,10 +779,14 @@ demi-backend (executable: configuration, composition)
   and its records of commands' outputs, the schemas and their migrations, and
   the encodings of stored values; and the record types it stores, among them
   the hashes and policies of sessions and challenges, a conversation's target
-  and settings changes, and catalog records, which the domains above use.
+  and settings changes, and catalog records, which the domains above use. The
+  tree store reaches the owner's blobs through `OwnerBlobs`, the narrow trait
+  of what its commits need of the namespace and the record of blob uses that
+  `backend-objects` keeps, which the shard implements.
 - **Public boundary:** the stores and their records. Its `testing` feature
   opens a control database with a test key and runs raw statements behind the
-  service's back, for tests of what the service must refuse.
+  service's back, for tests of what the service must refuse, and holds the
+  commits of the conversations' checkpoints (`CommitHold`).
 - **Must not:** hold a domain's policy or call another backend crate.
 
 #### `backend-objects`
@@ -818,7 +824,7 @@ demi-backend (executable: configuration, composition)
 #### `backend-families`
 
 - **Owns:** the built-in provider families, one per vendor crate
-  (`FamilyRegistry::builtin`).
+  (`builtin`).
 - **Public boundary:** the registry the executable starts with.
 - **Must not:** hold anything but the families' construction.
 
@@ -1299,8 +1305,8 @@ browser-tabs -> browser-driver, browser-protocol, command-service
 browser-page -> browser-driver, browser-protocol, browser-tabs, command-service
 browser-cdp -> browser-driver, browser-protocol, browser-tabs, command-service
 browser-live -> browser-driver, browser-page, browser-protocol, browser-tabs, command-service, core
-backend-sync -> web-api
-backend-storage -> agent-store, core, gates, host-remote, machines-protocol, runner-protocol, shell, web-api
+backend-sync -> backend-storage, web-api
+backend-storage -> agent-store, agent-transcript, core, gates, host-remote, machines-protocol, runner-protocol, shell, web-api
 backend-objects -> agent-store, core, web-api
 backend-accounts -> backend-storage, command-service, core, web-api
 backend-providers -> backend-storage, backend-sync, claude-protocol, core, provider, provider-anthropic-api, provider-claude-code, provider-openai-api, web-api

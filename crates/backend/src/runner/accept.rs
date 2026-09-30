@@ -7,12 +7,12 @@
 use std::sync::Arc;
 
 use axum::extract::ws::{Message, WebSocket};
+use demi_backend_storage::accounts::TokenHash;
 use demi_runner_protocol::values::DeviceToken;
 use demi_runner_protocol::wire::{self, HelloErrorCode, Inbound, Outbound, RunnerInfo};
 
 use super::claims::ClaimGrant;
 use super::codes::ClaimCode;
-use crate::auth::sessions::TokenHash;
 use crate::backend::Services;
 use crate::shard::Shards;
 

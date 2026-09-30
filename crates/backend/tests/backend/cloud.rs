@@ -17,7 +17,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use demi_backend::{FamilyRegistry, LifecycleTuning};
+
+use demi_backend::LifecycleTuning;
 use demi_gates::Purpose;
 use demi_provider::testing::MockVendor;
 use demi_web_api::cloud::{CloudResetAnswer, CloudState, CloudStatus, ResetPhase};
@@ -102,7 +103,7 @@ fn with_process_family(harness: Harness) -> Harness {
         wires: &[],
         process_host: true,
     };
-    harness.with_families(FamilyRegistry::builtin().with("process", process))
+    harness.with_families(demi_backend_families::builtin().with("process", process))
 }
 
 /// The master's entry of the family `process`, with its one model `m`.

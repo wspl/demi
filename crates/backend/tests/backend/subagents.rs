@@ -11,7 +11,7 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
 use demi_agent_protocol::JobPhase;
-use demi_backend::{FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily};
+use demi_backend_providers::llm::families::{FamilyArgs, FamilyCredential, FamilyError, ProviderFamily};
 use demi_core::{
     AuthState, Block, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
     RuntimeState, Timestamp,
@@ -181,7 +181,7 @@ impl ProviderRuntime for TreeRuntime {
 /// conversation `FIRST` on the entry's model `m` and a paired device's
 /// `work` directory; the harness holds the backend's data and the device.
 async fn tree(scripts: &Arc<Scripts>) -> (Harness, TestBackend, Session, crate::support::Paired, String) {
-    let harness = Harness::new().with_families(FamilyRegistry::builtin().with("tree", Tree(scripts.clone())));
+    let harness = Harness::new().with_families(demi_backend_families::builtin().with("tree", Tree(scripts.clone())));
     let (backend, master) = harness.start_set_up().await;
     let created = backend
         .post(

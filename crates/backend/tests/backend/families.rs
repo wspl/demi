@@ -8,7 +8,7 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use demi_backend::{FamilyArgs, FamilyCredential, FamilyError, ProviderFamily};
+use demi_backend_providers::llm::families::{FamilyArgs, FamilyCredential, FamilyError, ProviderFamily};
 use demi_core::{
     AuthState, LoginPending, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModel, ProviderModelList,
     QuotaWindow, RuntimeState, Timestamp, WireApi,

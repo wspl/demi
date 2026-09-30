@@ -8,6 +8,7 @@
 
 use std::rc::{Rc, Weak};
 
+use demi_backend_storage::sequences;
 use demi_command_service::protocol::ServiceSequence;
 use demi_core::Sequence;
 use demi_host_remote::{JobOrigin, LinkPolicy};
@@ -21,7 +22,6 @@ use super::conversation_of;
 use super::host_commands::reachable;
 use crate::conversation::root_of;
 use crate::shard::Shard;
-use crate::storage::sequences;
 
 /// The rules of one device's connection, in its user's shard.
 pub(crate) struct ShardPolicy {

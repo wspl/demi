@@ -7,6 +7,9 @@
 //! exposes: creation is refused as unavailable, and there is none to list,
 //! renew or remove.
 
+use demi_backend_storage::StorageError;
+use demi_backend_storage::exposes::ExposeRecord;
+use demi_backend_sync::Part;
 use demi_web_api::devices::DeviceKind;
 use demi_web_api::error::ErrorCode;
 use demi_web_api::exposes::{ExposeAddress, ExposeDto};
@@ -16,9 +19,6 @@ use url::Url;
 
 use super::ExposeDomain;
 use crate::shard::Shard;
-use crate::storage::StorageError;
-use crate::storage::exposes::ExposeRecord;
-use crate::sync::Part;
 
 /// How long an expose lives from its creation or its last renewal.
 pub(super) const LIFETIME: SignedDuration = SignedDuration::from_hours(1);

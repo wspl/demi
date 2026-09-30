@@ -22,6 +22,7 @@ use std::time::Duration;
 
 use axum::http::Method;
 use bytes::Bytes;
+use demi_backend_objects::store::S3Config;
 use demi_command_service::protocol::{ArtifactLocation, ArtifactUrl, PackageArtifact, PackageDescriptor, TARGETS};
 use demi_host_remote::ArtifactResolver;
 use futures_util::TryStreamExt as _;
@@ -35,7 +36,6 @@ use tokio_util::sync::CancellationToken;
 
 use super::local_store::LocalArtifacts;
 use super::native::{NativeCatalog, Store};
-use crate::storage::objects::S3Config;
 
 /// How long a runner's signed download URL stays valid.
 const SIGNED_FOR: Duration = Duration::from_secs(300);
@@ -513,10 +513,10 @@ mod tests {
     use object_store::aws::AmazonS3Builder;
     use sha2::{Digest as _, Sha256};
 
+    use demi_backend_objects::fake_s3::FakeS3;
     use demi_browser_protocol::PACKAGE as BROWSER_PACKAGE;
 
     use super::*;
-    use crate::storage::objects::fake_s3::FakeS3;
 
     /// A release of `targets` in `directory`, whose executables are test
     /// bytes, not programs.

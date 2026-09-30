@@ -6,20 +6,21 @@ use axum::http::{Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use demi_web_api::error::{ErrorBody, ErrorCode};
 
+use demi_backend_accounts::email_change::EmailChangeError;
+use demi_backend_accounts::passwords::HashError;
+use demi_backend_objects::ObjectError;
+use demi_backend_providers::llm::assembly::AssemblyError;
+use demi_backend_providers::vault::accounts::AccountRefusal;
+use demi_backend_providers::vault::logins::LoginRefusal;
+use demi_backend_storage::StorageError;
 use demi_shell::HostError;
 
-use crate::auth::email_change::EmailChangeError;
-use crate::auth::passwords::HashError;
 use crate::conversation::host_access::{HostAccessError, host_error_code};
 use crate::conversation::stream::StreamError;
 use crate::expose::ExposeError;
-use crate::llm::assembly::AssemblyError;
 use crate::managed::CloudError;
 use crate::runner::files::{TextError, TextRefusal};
 use crate::shard::ShardUnavailable;
-use crate::storage::StorageError;
-use crate::vault::accounts::AccountRefusal;
-use crate::vault::logins::LoginRefusal;
 
 #[derive(Debug)]
 pub(crate) struct ApiError {
@@ -143,6 +144,12 @@ impl From<ShardUnavailable> for ApiError {
 
 impl From<StorageError> for ApiError {
     fn from(error: StorageError) -> Self {
+        Self::internal(&error)
+    }
+}
+
+impl From<ObjectError> for ApiError {
+    fn from(error: ObjectError) -> Self {
         Self::internal(&error)
     }
 }

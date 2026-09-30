@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use axum::extract::State;
 use axum::http::StatusCode;
+use demi_backend_sync::Part;
 use demi_web_api::error::ErrorCode;
 use demi_web_api::sidebar::SidebarReorder;
 
@@ -13,7 +14,6 @@ use super::body::JsonBody;
 use super::error::ApiError;
 use super::gate::AuthUser;
 use crate::backend::Services;
-use crate::sync::Part;
 
 pub(super) async fn reorder(
     State(services): State<Arc<Services>>,

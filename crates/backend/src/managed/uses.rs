@@ -12,6 +12,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+use demi_backend_storage::StorageError;
 use demi_gates::Reservation;
 use demi_web_api::ids::{ConversationId, ProviderId};
 
@@ -19,7 +20,6 @@ use super::machine::CloudError;
 use crate::conversation::root_of;
 use crate::conversation::transfer::TransfersClosed;
 use crate::shard::Shard;
-use crate::storage::StorageError;
 
 /// How a conversation uses the Cloud.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

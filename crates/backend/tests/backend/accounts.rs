@@ -9,7 +9,8 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use demi_backend::{FamilyRegistry, LoginTiming};
+use demi_backend_providers::llm::families::FamilyRegistry;
+use demi_backend_providers::vault::logins::LoginTiming;
 use demi_core::{QuotaWindow, SnapshotSource};
 use demi_provider::quota::ProbeCost;
 use demi_provider::testing::{MockResponse, MockVendor};
@@ -55,7 +56,7 @@ pub(crate) fn scripts(cost: Option<ProbeCost>) -> Scripts {
         quota: quota.clone(),
         directory: Arc::new(Directory::default()),
     };
-    let families = FamilyRegistry::builtin()
+    let families = demi_backend_families::builtin()
         .with("claude-code", family())
         .with("device", family());
     Scripts { login, families }

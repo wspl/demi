@@ -12,6 +12,9 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use demi_agent_tools::{EnvironmentScope, ShellEnvironmentFactory};
+use demi_backend_objects::blobs::UserBlobs;
+use demi_backend_storage::command_outputs::{self, CommandOutput, OutputRow};
+use demi_backend_storage::conversations::ConversationDb;
 use demi_command_service::protocol::CommandCaller;
 use demi_core::{Clock, CommandId, EditCopies, EditedFile, ShellId};
 use demi_host_remote::{
@@ -27,16 +30,13 @@ use demi_web_api::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 
-use super::conversation_of;
+use super::{ConversationBlobs, conversation_of};
 use super::host_access::{HostAccessError, Refusal};
 use crate::runner::command_context::command_context;
 use crate::runner::device_of;
 use crate::runner::files::text_of;
 use crate::runner::router::CommandRegistration;
 use crate::shard::Shard;
-use crate::storage::blobs::UserBlobs;
-use crate::storage::command_outputs::{self, CommandOutput, OutputRow};
-use crate::storage::conversations::ConversationDb;
 
 impl Shard {
     /// A node's Host: the conversation's current main Host. The host access
@@ -82,7 +82,9 @@ impl From<HostAccessError> for HostError {
         match error {
             HostAccessError::Host(error) => error,
             HostAccessError::Cancelled => HostError::new(HostErrorKind::Interrupted, error.to_string()),
-            HostAccessError::Storage(_) | HostAccessError::Store(_) => HostError::failed(None, error.to_string()),
+            HostAccessError::Storage(_) | HostAccessError::Objects(_) | HostAccessError::Store(_) => {
+                HostError::failed(None, error.to_string())
+            }
             HostAccessError::Missing
             | HostAccessError::Cloud(_)
             | HostAccessError::Refused(
@@ -287,7 +289,7 @@ impl CommandKeeper for Keeper {
                 ended,
                 output: stored,
             };
-            let blobs = self.blobs.clone();
+            let blobs = ConversationBlobs(self.blobs.clone());
             let recorded = self
                 .db
                 .call(move |connection| command_outputs::insert(connection, &blobs, &[row]))
@@ -372,11 +374,11 @@ mod tests {
 
     use super::*;
     use demi_runner_protocol::wire::RunnerPlatform;
-    use crate::auth::sessions::TokenHash;
+    use demi_backend_storage::accounts::TokenHash;
     use crate::backend::Services;
     use crate::shard::{ShardPlacement, ShardPool};
-    use crate::storage::control::testing;
-    use crate::storage::conversation_index::Creation;
+    use demi_backend_storage::control::testing;
+    use demi_backend_storage::conversation_index::Creation;
 
     const ID: &str = "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01";
 
