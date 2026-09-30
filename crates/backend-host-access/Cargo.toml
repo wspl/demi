@@ -1,0 +1,46 @@
+[package]
+name = "demi-backend-host-access"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+# Its tests reach the transfers' registration and the answers a download's
+# metadata decides, so they are unit tests and the crate has no integration
+# tests (`crates-and-packages.md` § Module layout); the operations over a
+# shard are tested in `backend-shard`, which implements `HostShard`. No doc
+# examples.
+doctest = false
+
+[dependencies]
+demi-agent-store = { path = "../agent-store" }
+demi-agent-tools = { path = "../agent-tools" }
+demi-backend-cloud = { path = "../backend-cloud" }
+demi-backend-expose = { path = "../backend-expose" }
+demi-backend-objects = { path = "../backend-objects" }
+demi-backend-runners = { path = "../backend-runners" }
+demi-backend-storage = { path = "../backend-storage" }
+demi-command-service = { path = "../command-service" }
+demi-command-tree = { path = "../command-tree" }
+demi-core = { path = "../core" }
+demi-gates = { path = "../gates" }
+demi-host-remote = { path = "../host-remote" }
+demi-runner-protocol = { path = "../runner-protocol" }
+demi-shell = { path = "../shell" }
+demi-web-api = { path = "../web-api" }
+bytes.workspace = true
+futures-util.workspace = true
+http.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+shlex = "2"
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+url = "2"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

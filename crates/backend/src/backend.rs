@@ -3,316 +3,31 @@
 //! `Backend::close` shuts them down in order (`backend.md` § Startup and
 //! shutdown).
 
-use std::collections::BTreeMap;
 use std::fmt;
 use std::io;
 use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicBool;
+use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
-use object_store::ObjectStore;
-use tokio_util::task::AbortOnDropHandle;
-
-use demi_command_tree::NativeOperation;
-use demi_web_api::settings::InstanceMode;
-
-use demi_backend_accounts::email_change::{AccountMail, EmailChanges};
-use demi_backend_accounts::login_limiter::LoginLimiter;
-use demi_backend_accounts::passwords::{HashError, PasswordHasher};
-use demi_backend_accounts::sessions::WebSessions;
 use demi_backend_cloud::CloudServices;
 use demi_backend_cloud::client::MachinesClient;
 use demi_backend_cloud::reset::recover_resets;
+use demi_backend_edge::{AppState, Edge, Site};
 use demi_backend_objects::ObjectError;
-use demi_backend_objects::blobs::BlobStores;
 use demi_backend_objects::store::{self as objects, S3Config, S3ConfigError};
-use demi_backend_providers::llm::assembly::ProviderAssembly;
-use demi_backend_providers::llm::catalog_cache::ModelCatalogCache;
-use demi_backend_providers::llm::claude_releases::ClaudeReleases;
-use demi_backend_providers::llm::families::FamilyRegistry;
-use demi_backend_providers::llm::vendors::VendorCatalog;
-use demi_backend_providers::vault::entries::Vault;
-use demi_backend_providers::vault::logins::{LoginFlows, LoginTiming};
-use demi_backend_providers::vault::operations::ProviderOperations;
-use demi_backend_providers::vault::quotas::AccountQuotas;
-use demi_backend_runners::claims::PendingClaims;
-use demi_backend_runners::native::NativeCatalog;
-use demi_backend_runners::public_url::PublicUrl;
+use demi_backend_shard::conversation::recover_forks;
+use demi_backend_shard::lifecycle::retention;
+use demi_backend_shard::services::{
+    CloseError, ProviderSetup, ServiceKeys, ServiceSettings, Services, ServicesError, Storage,
+};
+use demi_backend_shard::shard::ShardPool;
+use demi_backend_shard::shard::cloud::route_deaths;
 use demi_backend_storage::StorageError;
-use demi_backend_storage::control::ControlService;
-use demi_backend_storage::conversations::{self, ConversationStores};
-use demi_backend_sync::SyncRegistry;
-use demi_provider::models_dev::ModelsDevClient;
-use demi_backend_expose::domain::ExposeDomain;
+use tokio_util::task::AbortOnDropHandle;
 
-use crate::config::{BackendConfig, ConversationTuning, ExposeTuning, LifecycleTuning, PageTuning, RunnerTuning};
-use crate::conversation::stream::UserStreams;
-use crate::edge::{AppState, Edge, Site};
-use crate::conversation::claude_cli::CliInstalls;
-use crate::shard::ShardPool;
+use crate::config::BackendConfig;
 use crate::config::secret::{InstanceSecret, SecretError};
-
-const CONTROL_DATABASE: &str = "control.sqlite";
-const CONVERSATION_DATABASES: &str = "conversations";
-
-/// The services that span users, or that are needed before the user is
-/// known. The edge and every shard share them.
-pub(crate) struct Services {
-    pub(crate) mode: InstanceMode,
-    /// The wall clock the backend reads times from.
-    pub(crate) clock: Arc<dyn demi_core::Clock>,
-    pub(crate) control: ControlService,
-    pub(crate) conversations: ConversationStores,
-    pub(crate) blobs: BlobStores,
-    pub(crate) hasher: PasswordHasher,
-    pub(crate) sessions: WebSessions,
-    pub(crate) limiter: LoginLimiter,
-    pub(crate) email: EmailChanges,
-    pub(crate) vault: Vault,
-    pub(crate) assembly: Arc<ProviderAssembly>,
-    /// The vendor's Claude Code releases, which the CLI on each Cloud follows.
-    pub(crate) claude_releases: ClaudeReleases,
-    /// The outcome of the CLI installs no conversation asked for.
-    pub(crate) cli_installs: CliInstalls,
-    pub(crate) operations: Arc<ProviderOperations>,
-    pub(crate) logins: Arc<LoginFlows>,
-    /// Runners waiting to be paired, which have no user yet.
-    pub(crate) claims: PendingClaims,
-    pub(crate) runners: RunnerTuning,
-    pub(crate) conversation_tuning: ConversationTuning,
-    /// How the sockets to a page are timed.
-    pub(crate) pages: PageTuning,
-    /// The native packages each shard's catalog is built from.
-    pub(crate) native: NativeCatalog,
-    /// The user streams a page may open.
-    pub(crate) user_streams: UserStreams,
-    /// The machine manager's client, the Cloud capacity across users and
-    /// the Cloud's settings.
-    pub(crate) cloud: CloudServices,
-    /// Where runners, Cloud guests and expose visitors reach this backend.
-    pub(crate) public_url: PublicUrl,
-    /// When a conversation's Host resources are reclaimed.
-    pub(crate) lifecycle: LifecycleTuning,
-    /// The domain of expose hostnames; without it, exposes are unavailable.
-    pub(crate) expose_domain: Option<ExposeDomain>,
-    /// How the public relay treats its connections.
-    pub(crate) expose_tuning: ExposeTuning,
-    /// Each user's open synchronization channels, which every change a
-    /// page shows marks.
-    pub(crate) sync: SyncRegistry,
-    /// The step a test holds runners' hellos at (`Backend::hold_hellos`).
-    #[cfg(feature = "testing")]
-    pub(crate) hellos: crate::holds::StepHolds<crate::HelloStep>,
-    /// The step a test holds the synchronization channels at
-    /// (`Backend::hold_sync`).
-    #[cfg(feature = "testing")]
-    pub(crate) syncs: crate::holds::StepHolds<crate::SyncStep>,
-}
-
-/// What the provider services start with.
-pub(crate) struct ProviderSetup {
-    pub(crate) families: FamilyRegistry,
-    pub(crate) models_dev_url: url::Url,
-    /// The Claude Code distribution.
-    pub(crate) claude_releases: url::Url,
-    pub(crate) logins: LoginTiming,
-    pub(crate) clock: Arc<dyn demi_core::Clock>,
-}
-
-/// The databases and the object store, which open before the services and
-/// close after them. Cloning it is cheap.
-#[derive(Clone)]
-struct Storage {
-    control: ControlService,
-    conversations: ConversationStores,
-    blobs: BlobStores,
-}
-
-impl Storage {
-    /// The databases in `data_dir`, beside the object store `objects`.
-    async fn open(
-        data_dir: &Path,
-        clock: Arc<dyn demi_core::Clock>,
-        objects: Arc<dyn ObjectStore>,
-    ) -> Result<Self, StorageError> {
-        let control = ControlService::open(&data_dir.join(CONTROL_DATABASE), clock.clone()).await?;
-        let rest = async {
-            let conversations =
-                ConversationStores::open(data_dir.join(CONVERSATION_DATABASES), conversations::MAX_WRITERS).await?;
-            let blobs = BlobStores::new(objects, clock);
-            Ok::<_, StorageError>((conversations, blobs))
-        }
-        .await;
-        match rest {
-            Ok((conversations, blobs)) => Ok(Self {
-                control,
-                conversations,
-                blobs,
-            }),
-            Err(error) => {
-                // Opening the rest left no connection open; the control
-                // database has one.
-                if let Err(failure) = control.close().await {
-                    tracing::error!(
-                        error = &failure as &dyn std::error::Error,
-                        "the control database did not close after a failed start"
-                    );
-                }
-                Err(error)
-            }
-        }
-    }
-
-    /// Closes the conversation databases, then the control database, and
-    /// answers every step that failed.
-    async fn close(&self) -> Vec<ShutdownError> {
-        let mut failures: Vec<ShutdownError> = self
-            .conversations
-            .close()
-            .await
-            .into_iter()
-            .map(ShutdownError::Conversation)
-            .collect();
-        if let Err(error) = self.control.close().await {
-            failures.push(ShutdownError::Control(error));
-        }
-        failures
-    }
-}
-
-impl Services {
-    /// Starts the services on the edge's runtime, which the ones that spawn
-    /// work of their own run it on.
-    async fn start(
-        mode: InstanceMode,
-        storage: Storage,
-        secret: &InstanceSecret,
-        mail: Option<Arc<dyn AccountMail>>,
-        providers: ProviderSetup,
-        runners: RunnerTuning,
-        conversation_tuning: ConversationTuning,
-        pages: PageTuning,
-        native: NativeCatalog,
-        user_streams: &BTreeMap<String, NativeOperation>,
-        cloud: CloudServices,
-        lifecycle: LifecycleTuning,
-        expose_domain: Option<ExposeDomain>,
-        expose_tuning: ExposeTuning,
-    ) -> Result<Self, StartError> {
-        let Storage {
-            control,
-            conversations,
-            blobs,
-        } = storage;
-        let hasher = PasswordHasher::new().await?;
-        let clock = providers.clock.clone();
-        let edge = tokio::runtime::Handle::current();
-        // The shared services' own client; each shard thread builds its own.
-        let http = reqwest::Client::builder().build().map_err(StartError::Http)?;
-        let sync = SyncRegistry::default();
-        let vault = Vault::new(control.clone(), secret.vault_key(), mode, sync.clone());
-        let models_dev = ModelsDevClient::new(http.clone(), providers.models_dev_url, providers.clock.clone());
-        let claude_releases = ClaudeReleases::new(&providers.claude_releases, edge.clone()).map_err(StartError::Http)?;
-        let assembly = Arc::new(ProviderAssembly::new(
-            vault.clone(),
-            providers.families,
-            AccountQuotas::new(vault.clone(), edge.clone()),
-            ModelCatalogCache::new(control.clone(), providers.clock.clone(), edge),
-            VendorCatalog::new(models_dev),
-            http,
-            providers.clock,
-        ));
-        let operations = Arc::new(ProviderOperations::default());
-        let logins = LoginFlows::new(assembly.clone(), operations.clone(), providers.logins);
-        Ok(Self {
-            mode,
-            clock,
-            sessions: WebSessions::new(control.clone()),
-            limiter: LoginLimiter::new(),
-            email: EmailChanges::new(control.clone(), hasher.clone(), mail, secret.email_code_key()),
-            hasher,
-            control,
-            conversations,
-            blobs,
-            vault,
-            assembly,
-            claude_releases,
-            cli_installs: CliInstalls::default(),
-            operations,
-            logins,
-            claims: PendingClaims::new(runners.claims_per_minute),
-            runners,
-            conversation_tuning,
-            pages,
-            user_streams: UserStreams::new(user_streams, &native),
-            native,
-            cloud,
-            public_url: PublicUrl::default(),
-            lifecycle,
-            expose_domain,
-            expose_tuning,
-            sync,
-            #[cfg(feature = "testing")]
-            hellos: crate::holds::StepHolds::default(),
-            #[cfg(feature = "testing")]
-            syncs: crate::holds::StepHolds::default(),
-        })
-    }
-
-    /// Cancels the logins, and drains the catalog refreshes and quota
-    /// writes, before storage closes.
-    async fn close_providers(&self) {
-        self.logins.close().await;
-        self.assembly.close().await;
-    }
-
-    /// The services over storage in `data`, for unit tests.
-    #[cfg(test)]
-    pub(crate) async fn start_for_tests(data: &std::path::Path) -> Arc<Self> {
-        Self::start_for_tests_with_lifecycle(data, LifecycleTuning::default()).await
-    }
-
-    /// The services over storage in `data` whose idle watches follow
-    /// `lifecycle`, for unit tests of the idle release.
-    #[cfg(test)]
-    pub(crate) async fn start_for_tests_with_lifecycle(
-        data: &std::path::Path,
-        lifecycle: LifecycleTuning,
-    ) -> Arc<Self> {
-        let clock: Arc<dyn demi_core::Clock> = Arc::new(demi_core::SystemClock);
-        let objects = objects::open(data, None).await.unwrap();
-        let storage = Storage::open(data, clock.clone(), objects).await.unwrap();
-        let secret = InstanceSecret::load_or_create(data).await.unwrap();
-        let providers = ProviderSetup {
-            families: demi_backend_families::builtin(),
-            models_dev_url: ModelsDevClient::DEFAULT_URL.parse().unwrap(),
-            claude_releases: demi_backend_providers::llm::claude_releases::DEFAULT_RELEASES_URL.parse().unwrap(),
-            logins: LoginTiming::default(),
-            clock,
-        };
-        // No manager listens there: a Cloud a unit test uses fails to start.
-        let (machines, _deaths) = MachinesClient::new(data.join("machines.sock"));
-        let services = Self::start(
-            InstanceMode::Shared,
-            storage,
-            &secret,
-            None,
-            providers,
-            RunnerTuning::default(),
-            ConversationTuning::default(),
-            PageTuning::default(),
-            NativeCatalog::unpublished(),
-            &BTreeMap::new(),
-            CloudServices::new(machines, demi_backend_cloud::tuning::CloudTuning::default()),
-            lifecycle,
-            None,
-            ExposeTuning::default(),
-        )
-        .await;
-        Arc::new(services.unwrap())
-    }
-}
 
 /// A running backend.
 pub struct Backend {
@@ -340,14 +55,15 @@ pub enum StartError {
     Objects(#[from] ObjectError),
     #[error("DEMI_OBJECT_STORE_CONFIG cannot be used: {0}")]
     ObjectStore(S3ConfigError),
-    #[error("password hashing cannot start: {0}")]
-    Hashing(#[from] HashError),
-    #[error("the HTTP client cannot start: {0}")]
-    Http(reqwest::Error),
+    #[error(transparent)]
+    Services(#[from] ServicesError),
     #[error("the shard threads cannot start: {0}")]
     Shards(io::Error),
     #[error("the backend cannot listen on {address}: {source}")]
-    Listen { address: SocketAddr, source: io::Error },
+    Listen {
+        address: SocketAddr,
+        source: io::Error,
+    },
     /// The machine manager did not reconcile, or an interrupted reset could
     /// not be finished.
     #[error("the Clouds cannot be recovered: {0}")]
@@ -359,10 +75,8 @@ pub enum StartError {
 pub enum ShutdownError {
     #[error("the listener did not stop cleanly: {0}")]
     Edge(io::Error),
-    #[error("a conversation database did not close: {0}")]
-    Conversation(StorageError),
-    #[error("the control database did not close: {0}")]
-    Control(StorageError),
+    #[error(transparent)]
+    Storage(#[from] CloseError),
     /// A user's Cloud could not be saved; the manager's reconcile saves it.
     #[error("a Cloud was not saved: {0}")]
     Cloud(String),
@@ -392,13 +106,20 @@ impl Backend {
         let data_dir = config.data_dir.clone();
         tokio::fs::create_dir_all(&data_dir)
             .await
-            .map_err(|source| StartError::DataDirectory { path: data_dir.clone(), source })?;
+            .map_err(|source| StartError::DataDirectory {
+                path: data_dir.clone(),
+                source,
+            })?;
         let secret = match &config.instance_secret {
             Some(secret) => secret.clone(),
             None => InstanceSecret::load_or_create(&data_dir).await?,
         };
         let s3 = match &config.object_store {
-            Some(path) => Some(S3Config::read(path).await.map_err(StartError::ObjectStore)?),
+            Some(path) => Some(
+                S3Config::read(path)
+                    .await
+                    .map_err(StartError::ObjectStore)?,
+            ),
             None => None,
         };
         // The object store: the S3 bucket the configuration names, or the
@@ -422,7 +143,11 @@ impl Backend {
         started
     }
 
-    async fn serve(config: BackendConfig, storage: Storage, secret: &InstanceSecret) -> Result<Self, StartError> {
+    async fn serve(
+        config: BackendConfig,
+        storage: Storage,
+        secret: &InstanceSecret,
+    ) -> Result<Self, StartError> {
         let providers = ProviderSetup {
             families: config.families,
             models_dev_url: config.models_dev_url,
@@ -431,22 +156,24 @@ impl Backend {
             clock: config.clock,
         };
         let (machines, deaths) = MachinesClient::new(config.machines_socket);
-        let services = Services::start(
-            config.mode,
-            storage.clone(),
-            secret,
-            config.account_mail,
-            providers,
-            config.runners,
-            config.conversations,
-            config.pages,
-            config.native,
-            &config.user_streams,
-            CloudServices::new(machines, config.cloud),
-            config.lifecycle,
-            config.expose_domain,
-            config.exposes,
-        );
+        let keys = ServiceKeys {
+            vault: secret.vault_key(),
+            email_codes: secret.email_code_key(),
+        };
+        let settings = ServiceSettings {
+            mode: config.mode,
+            mail: config.account_mail,
+            runners: config.runners,
+            conversations: config.conversations,
+            pages: config.pages,
+            native: config.native,
+            user_streams: &config.user_streams,
+            cloud: CloudServices::new(machines, config.cloud),
+            lifecycle: config.lifecycle,
+            expose_domain: config.expose_domain,
+            exposes: config.exposes,
+        };
+        let services = Services::start(storage.clone(), keys, providers, settings);
         let services = Arc::new(services.await?);
         let shards = match ShardPool::start(config.shards, services.clone()).await {
             Ok(shards) => shards,
@@ -455,7 +182,7 @@ impl Backend {
                 return Err(StartError::Shards(error));
             }
         };
-        let deaths = AbortOnDropHandle::new(tokio::spawn(crate::shard::cloud::route_deaths(
+        let deaths = AbortOnDropHandle::new(tokio::spawn(route_deaths(
             deaths,
             services.clone(),
             shards.shards(),
@@ -470,7 +197,7 @@ impl Backend {
         }
         // Fork destinations whose root committed before their publication are
         // published before the backend serves.
-        if let Err(error) = crate::conversation::recover_forks(&services.control, &services.conversations).await {
+        if let Err(error) = recover_forks(&services.control, &services.conversations).await {
             shards.close().await;
             services.close_providers().await;
             return Err(StartError::Storage(error));
@@ -498,7 +225,7 @@ impl Backend {
         // The first pass reads the references once the recovery above has
         // published every Fork destination whose root committed.
         let retention = services.lifecycle.retention_interval.map(|interval| {
-            AbortOnDropHandle::new(tokio::spawn(crate::lifecycle::retention::schedule(
+            AbortOnDropHandle::new(tokio::spawn(retention::schedule(
                 services.clone(),
                 shards.shards(),
                 interval,
@@ -530,14 +257,20 @@ impl Backend {
     /// Holds every runner's hello at `step` from now on, until the hold is
     /// released.
     #[cfg(feature = "testing")]
-    pub fn hold_hellos(&self, step: crate::HelloStep) -> crate::StepHold {
+    pub fn hold_hellos(
+        &self,
+        step: demi_backend_shard::holds::HelloStep,
+    ) -> demi_backend_shard::holds::StepHold {
         self.services.hellos.hold(step)
     }
 
     /// Holds every page's synchronization channel at `step` from now on,
     /// until the hold is released.
     #[cfg(feature = "testing")]
-    pub fn hold_sync(&self, step: crate::SyncStep) -> crate::StepHold {
+    pub fn hold_sync(
+        &self,
+        step: demi_backend_shard::sync::SyncStep,
+    ) -> demi_backend_shard::holds::StepHold {
         self.services.syncs.hold(step)
     }
 
@@ -555,7 +288,13 @@ impl Backend {
         self.shards
             .shards()
             .of(user)
-            .call(move |shard, _| async move { shard.conversations().slot(&conversation).files.gate().clone() })
+            .call(move |shard, _| async move {
+                shard
+                    .conversations()
+                    .slot(&conversation)
+                    .file_gate()
+                    .clone()
+            })
             .await
             .expect("the user's shard serves while the backend runs")
     }
@@ -582,7 +321,13 @@ impl Backend {
         // No pass starts from now on; one under way ends with its shard.
         drop(self.retention);
         self.services.logins.close().await;
-        failures.extend(self.shards.close().await.into_iter().map(ShutdownError::Cloud));
+        failures.extend(
+            self.shards
+                .close()
+                .await
+                .into_iter()
+                .map(ShutdownError::Cloud),
+        );
         self.services.claims.close();
         // No shard is left to route a death to.
         drop(self.deaths);
@@ -593,7 +338,13 @@ impl Backend {
             failures.push(ShutdownError::Edge(error));
         }
         self.services.assembly.close().await;
-        failures.extend(self.storage.close().await);
+        failures.extend(
+            self.storage
+                .close()
+                .await
+                .into_iter()
+                .map(ShutdownError::Storage),
+        );
         if failures.is_empty() {
             Ok(())
         } else {

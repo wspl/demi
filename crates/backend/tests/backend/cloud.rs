@@ -18,7 +18,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 
-use demi_backend::LifecycleTuning;
+use demi_backend_shard::tuning::LifecycleTuning;
 use demi_gates::Purpose;
 use demi_provider::testing::MockVendor;
 use demi_web_api::cloud::{CloudResetAnswer, CloudState, CloudStatus, ResetPhase};

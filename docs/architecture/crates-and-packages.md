@@ -893,21 +893,35 @@ demi-backend (executable: configuration, composition)
 
 - **Owns:** the conversation's host access (`with_host`, the one way to a
   conversation's Host; [Host operations](../execution/sessions-and-targets.md#host-operations)),
-  with target resolution and the transitions that end a target (switch,
-  archive, detach); file transfers, uploads, remote files and user streams;
-  the shell environments of agent nodes over it; the product's `demi host`
-  group with its `expose` leaves; and `HostShard`, what host access needs of
-  its user's shard: the conversation's idle watch.
+  with each conversation's slot and its file gate, target resolution and the
+  transitions that end a target (switch, archive, detach); file transfers,
+  uploads, remote files and user streams, with the leases the edge holds of
+  them; the shell environments of agent nodes over it, which keep the
+  commands' outputs and edit copies as the user's blobs (`ConversationBlobs`);
+  the product's `demi host` group with its `expose` leaves; and `HostShard`,
+  what host access needs of its user's shard: the handles its operations use
+  (the control service, the user's devices, pipes, command router, blobs and
+  conversation databases, the native catalog and the public address, and
+  the shard as the Cloud and the exposes see it) and the conversation's idle
+  watch, which every Host admission starts. Uploads read the user's blobs,
+  and the shells store theirs, in `backend-objects`, which is why it depends
+  on it.
 - **Public boundary:** host access and its operations on `dyn HostShard`, the
-  transitions, the shell environment factory and the `demi host` group.
+  conversations' slots, the transitions, the leases, the shell environment
+  factory and the `demi host` group. A slot's file gate gives its leases, the
+  ones a conversation's Host is made against, only to host access; other
+  work holds the conversation through the gate itself (`file_gate`), whose
+  leases make no Host.
 - **Must not:** see `Shard`; or leave a second way to a conversation's Host.
 
 #### `backend-shard`
 
 - **Owns:** the user shard ([The user shard](concurrency.md#the-user-shard)):
   shard threads, `Shard`, `Shards` and the shard pool, the shared services a
-  shard is given (`Services`), calls into a shard, socket adoption, the page
-  socket and leases; conversations as the agent sees them: agent-tree hosting
+  shard is given (`Services`) over the storage they open, the times and
+  bounds the shard and the edge run with, calls into a shard with the routing
+  of the machine manager's death events, socket adoption and the page
+  socket; conversations as the agent sees them: agent-tree hosting
   with the coding harness, the conversation socket, history and fork,
   summaries and titles, the providers a session resolves and its failure
   facts; the conversations' idle watches, release and the daily retention
@@ -916,8 +930,12 @@ demi-backend (executable: configuration, composition)
   policy; the network stream of a relayed expose connection, opened through
   device access; and the implementations of `CloudShard`, `ExposeShard` and
   `HostShard` for `Shard`.
-- **Public boundary:** the shard pool and the calls the edge makes into a
-  shard. Its `testing` feature starts shared services and a shard for tests.
+- **Public boundary:** the shard pool, the shared services, the times and
+  bounds, and the calls the edge makes into a shard. Its `testing` feature
+  starts shared services for tests (`Services::start_for_tests`), on which a
+  test starts the shard pool, and adds the holds of a flow at one of its
+  steps (`StepHold`) that `Backend::hold_hellos` and `Backend::hold_sync`
+  return.
 - **Must not:** serve HTTP.
 
 #### `backend-edge`
@@ -927,7 +945,9 @@ demi-backend (executable: configuration, composition)
   installer, native artifact and browser-asset routes, runner acceptance, and
   the byte copies of file transfers, pipes, user streams and the expose relay
   ([Web API](../product/web-api.md)).
-- **Public boundary:** the router the executable serves.
+- **Public boundary:** the edge the executable starts (`Edge`), with the
+  state its routes reach (`AppState`, `Site`). Its `testing` feature holds
+  the runners' hellos at the token's lookup (`Backend::hold_hellos`).
 - **Must not:** hold business logic beyond routing and validation.
 
 ### Browser libraries
@@ -1032,7 +1052,9 @@ demi-browser (executable: conversations, composition)
   schedule (`CloudTuning`, `LifecycleTuning`), the native command packages their commands bind to
   (`NativeCatalog`, which the executable and the scenarios make with
   `publish_native` from a `DEMI_NATIVE_CONFIG` file) and the user stream
-  declarations. Its `testing` feature adds `Backend::hold_commits`, which
+  declarations. A test imports each of these from the library that owns it
+  (`backend-providers`, `backend-shard`, `backend-cloud`, `backend-runners`),
+  never through the executable. Its `testing` feature adds `Backend::hold_commits`, which
   holds the commits of the conversations' checkpoints (`CommitHold`) for the
   scenarios that stop a save at its commit
   ([Message editing](../agent/message-editing.md#durability-and-failure-boundaries)),
@@ -1331,10 +1353,10 @@ backend-runners -> artifact, backend-objects, backend-storage, backend-sync, com
 backend-idle -> gates
 backend-cloud -> backend-idle, backend-providers, backend-runners, backend-storage, backend-sync, gates, host-remote, machines-protocol, runner-protocol, shell, web-api
 backend-expose -> backend-storage, backend-sync, core, web-api
-backend-host-access -> agent-tools, backend-cloud, backend-expose, backend-idle, backend-runners, backend-storage, backend-sync, command-service, command-tree, core, gates, host-remote, runner-protocol, shell, web-api
-backend-shard -> agent, agent-protocol, agent-store, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-idle, backend-objects, backend-providers, backend-runners, backend-storage, backend-sync, browser-protocol, claude-protocol, coding-agent, command-service, core, gates, host-remote, provider, provider-claude-code, runner-protocol, shell, web-api
-backend-edge -> agent, agent-protocol, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-objects, backend-providers, backend-runners, backend-shard, backend-storage, backend-sync, browser-protocol, command-service, core, host-remote, provider, runner-protocol, shell, web-api
-backend -> agent, artifact, backend-accounts, backend-cloud, backend-edge, backend-expose, backend-families, backend-host-access, backend-objects, backend-providers, backend-runners, backend-shard, backend-storage, backend-sync, browser-protocol, command-tree, core, gates, host-remote, provider, runner-protocol, web-api
+backend-host-access -> agent-store, agent-tools, backend-cloud, backend-expose, backend-objects, backend-runners, backend-storage, command-service, command-tree, core, gates, host-remote, runner-protocol, shell, web-api
+backend-shard -> agent, agent-protocol, agent-session, agent-store, agent-tools, agent-transcript, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-idle, backend-objects, backend-providers, backend-runners, backend-storage, backend-sync, browser-protocol, claude-protocol, coding-agent, command-service, command-tree, core, file-protocol, gates, host-remote, machines-protocol, provider, provider-claude-code, runner-protocol, shell, web-api
+backend-edge -> agent-protocol, agent-store, artifact, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-objects, backend-providers, backend-runners, backend-shard, backend-storage, backend-sync, browser-protocol, command-service, core, host-remote, provider, runner-protocol, shell, web-api
+backend -> artifact, backend-accounts, backend-cloud, backend-edge, backend-expose, backend-families, backend-host-access, backend-objects, backend-providers, backend-runners, backend-shard, backend-storage, browser-protocol, command-tree, core, gates, provider, web-api
 machines -> artifact, machines-protocol, runner-protocol
 runner -> command-service, runner-host, runner-jobs, runner-process, runner-protocol, runner-services, runner-shell
 demi-file -> artifact, command-service, core, file-protocol, gates
