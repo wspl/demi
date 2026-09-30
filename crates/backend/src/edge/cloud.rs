@@ -6,18 +6,19 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use demi_web_api::cloud::{CloudReset, CloudResetAnswer, CloudStatus};
 use demi_web_api::error::ErrorCode;
+use demi_backend_cloud::machine::CloudError;
+use demi_backend_cloud::status::operation_dto;
 
 use super::AppState;
 use super::body::JsonBody;
 use super::error::ApiError;
 use super::gate::AuthUser;
-use crate::managed::{CloudError, operation_dto};
 
 pub(super) async fn status(State(state): State<AppState>, AuthUser(user): AuthUser) -> Result<Json<CloudStatus>, ApiError> {
     let status = state
         .shards
         .of(&user.id)
-        .call(|shard, _| async move { shard.cloud_status().await })
+        .call(|shard, _| async move { shard.cloud_shard().cloud_status().await })
         .await??;
     Ok(Json(status))
 }
@@ -32,7 +33,7 @@ pub(super) async fn reset(
     let operation = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.reset_cloud(operation_id).await })
+        .call(move |shard, _| async move { shard.cloud_shard().reset_cloud(operation_id).await })
         .await?
         .map_err(|error| match error {
             // A reset that cannot start now is refused like a second reset.
