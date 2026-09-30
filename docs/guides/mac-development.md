@@ -33,7 +33,9 @@ cargo xtask native build \
   --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
 cargo xtask native package --package demi-runner --output .cache/releases/runners \
   --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
-cargo xtask native package --package demi-commands --output .cache/releases/demi-builtin \
+cargo xtask native package --package demi-file --output .cache/releases/demi-file \
+  --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
+cargo xtask native package --package demi-browser --output .cache/releases/demi-browser \
   --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
 cargo xtask native package --package demi-claude --output .cache/releases/demi-claude \
   --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
