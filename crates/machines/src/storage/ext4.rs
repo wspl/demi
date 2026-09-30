@@ -6,6 +6,7 @@ use std::{
     ffi::OsStr, fs::File, io, num::NonZeroU64, os::unix::fs::FileExt, path::Path, time::Duration,
 };
 
+#[cfg(target_os = "linux")]
 use rustix::thread::CapabilitySet;
 
 use crate::{
@@ -110,14 +111,17 @@ pub async fn make_home(tools: &Tools, root: &Path, image: &Path, bytes: NonZeroU
 /// Grows the mounted ext4 filesystem on `device` to the device's size.
 /// `resize2fs` reports the kernel's refusal for want of `CAP_SYS_RESOURCE`
 /// as a bare "Permission denied"; the error names the capability instead
-/// (`managed-hosts.md` § Lifecycle and capacity).
+/// (`managed-hosts.md` § Lifecycle and capacity). Only the manager's Linux
+/// sandboxes grow a mounted filesystem.
+#[cfg(target_os = "linux")]
 pub async fn grow_mounted(tools: &Tools, device: &Path) -> Result<(), Ext4Error> {
     let Err(failed) = tools.run(Tool::Resize2fs, [device], None).await else {
         return Ok(());
     };
     // The manager runs as root, so `resize2fs` holds what the manager's
     // bounding set allows.
-    let held = rustix::thread::capability_is_in_bounding_set(CapabilitySet::SYS_RESOURCE).map_err(io::Error::from)?;
+    let held = rustix::thread::capability_is_in_bounding_set(CapabilitySet::SYS_RESOURCE)
+        .map_err(io::Error::from)?;
     if !held {
         return Err(Ext4Error::GrowthCapability(failed));
     }

@@ -3,7 +3,6 @@
 use bytes::Bytes;
 use demi_runner::connection::wire::SpawnErrorKind;
 use demi_runner::process::{ChildProcess, OutputStream, ProcessInput, SpawnOptions};
-use futures_util::FutureExt;
 use std::{collections::BTreeMap, time::Duration};
 
 fn options(command: &str, args: &[&str]) -> SpawnOptions {
@@ -115,6 +114,8 @@ async fn spawn_failure_distinguishes_missing_cwd_from_missing_executable() {
 #[tokio::test]
 async fn a_program_still_open_for_writing_starts_once_it_is_closed() {
     use std::{io::Write, os::unix::fs::OpenOptionsExt};
+
+    use futures_util::FutureExt;
     tokio::time::timeout(Duration::from_secs(60), async {
         let directory = tempfile::tempdir().unwrap();
         let program = directory.path().join("program");

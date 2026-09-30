@@ -389,6 +389,14 @@ mod unix {
                 };
                 // Without -S or -H, both limits change, as in bash.
                 let both = asked.soft == asked.hard;
+                let raised = (asked.hard || both) && limit > hard;
+                // Raising a hard limit takes privilege, measured against the
+                // job's own limit: the probe below starts from the runner's,
+                // which may be higher, as macOS's unlimited open files are.
+                if raised && !rustix::process::geteuid().is_root() {
+                    writeln!(stderr, "ulimit: {description}: cannot modify limit: Operation not permitted")?;
+                    return Ok(ExecutionResult::general_error());
+                }
                 let soft = if asked.soft || both { limit } else { soft };
                 let hard = if asked.hard || both { limit } else { hard };
                 attributes.limits.retain(|&(set, ..)| set != resource);

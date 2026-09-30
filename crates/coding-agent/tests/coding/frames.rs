@@ -157,12 +157,16 @@ async fn every_page_sees_a_commands_output_as_it_comes_and_its_end() {
         // handshake, whatever the other page read, beside the ended reader
         // that the transcript last showed running; then it follows as the
         // other page does.
-        turn(&mut client, "message-3", "Wait.").await;
+        // Its first line may reach the page within the turn or after it.
+        let frames = turn(&mut client, "message-3", "Wait.").await;
         let long = fixture.shell_commands().last().unwrap().clone();
-        view_until(&mut client, &long, |status| {
-            status.command().tail == "long-ready\n"
-        })
-        .await;
+        let ready = |status: &ShellStatus| status.command().tail == "long-ready\n";
+        let seen = shell_outputs(&frames)
+            .into_iter()
+            .any(|status| command_of(&status) == &long && ready(&status));
+        if !seen {
+            view_until(&mut client, &long, ready).await;
+        }
         let mut second = fixture.attach().await;
         let handshake = second.received();
         let live: Vec<(CommandId, bool, String)> = shell_outputs(&handshake)
