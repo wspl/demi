@@ -74,57 +74,21 @@ pub struct BrowserConnection {
 }
 
 impl Browser {
-    /// Connect to an already running chromium instance via the given URL.
-    ///
-    /// If the URL is a http(s) URL, it will first attempt to retrieve the Websocket URL from the `json/version` endpoint.
+    /// Connect to an already running chromium instance via its DevTools
+    /// WebSocket URL (`ws://`).
     pub async fn connect(url: impl Into<String>) -> Result<(Self, Handler)> {
         Self::connect_with_config(url, HandlerConfig::default()).await
     }
 
     // Connect to an already running chromium instance with a given `HandlerConfig`.
     ///
-    /// If the URL is a http URL, it will first attempt to retrieve the Websocket URL from the `json/version` endpoint.
+    /// The URL is the browser's DevTools WebSocket URL: looking it up over
+    /// HTTP at `json/version` is left out of this copy.
     pub async fn connect_with_config(
         url: impl Into<String>,
         config: HandlerConfig,
     ) -> Result<(Self, Handler)> {
-        let mut debug_ws_url = url.into();
-
-        if debug_ws_url.starts_with("http") {
-            match reqwest::Client::new()
-                .get(
-                    if debug_ws_url.ends_with("/json/version")
-                        || debug_ws_url.ends_with("/json/version/")
-                    {
-                        debug_ws_url.clone()
-                    } else {
-                        format!(
-                            "{}{}json/version",
-                            &debug_ws_url,
-                            if debug_ws_url.ends_with('/') { "" } else { "/" }
-                        )
-                    },
-                )
-                .header("content-type", "application/json")
-                .send()
-                .await
-            {
-                Ok(req) => {
-                    let socketaddr = req.remote_addr().unwrap();
-                    let connection: BrowserConnection =
-                        serde_json::from_slice(&req.bytes().await.unwrap_or_default())
-                            .unwrap_or_default();
-
-                    if !connection.web_socket_debugger_url.is_empty() {
-                        // prevent proxy interfaces from returning local ips to connect to the exact machine
-                        debug_ws_url = connection
-                            .web_socket_debugger_url
-                            .replace("127.0.0.1", &socketaddr.ip().to_string());
-                    }
-                }
-                Err(_) => return Err(CdpError::NoResponse),
-            }
-        }
+        let debug_ws_url = url.into();
 
         let conn = Connection::<CdpEventMessage>::connect(&debug_ws_url).await?;
 

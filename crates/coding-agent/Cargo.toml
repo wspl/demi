@@ -6,7 +6,9 @@ license.workspace = true
 rust-version.workspace = true
 
 [lib]
-# No doc examples: rustdoc has nothing to test.
+# One test binary, the integration tests' (`crates-and-packages.md`
+# § Module layout); no doc examples.
+test = false
 doctest = false
 
 [dependencies]
@@ -21,8 +23,8 @@ serde_json.workspace = true
 
 [dev-dependencies]
 # The scenarios run the harness in an agent server whose shells are real
-# runner jobs, with the `demi.builtin` package the workspace built; the unit
-# tests use the shell's in-memory rpc port.
+# runner jobs, with the `demi.builtin` package the workspace built; the rpc
+# groups' tests use the shell's in-memory rpc port.
 demi-agent = { path = "../agent", features = ["testing"] }
 demi-agent-protocol = { path = "../agent-protocol" }
 demi-command-service = { path = "../command-service", features = ["testing"] }

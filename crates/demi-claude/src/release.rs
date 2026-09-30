@@ -12,7 +12,7 @@ pub(crate) enum Transport {
     #[default]
     Https,
     /// HTTPS, and plain HTTP to `127.0.0.1` for a test's fixture server.
-    #[cfg(test)]
+    #[cfg(feature = "testing")]
     HttpsOrLoopbackHttp,
 }
 
@@ -33,7 +33,7 @@ fn allowed(artifact: &Artifact, transport: Transport) -> Result<(), String> {
     let url = reqwest::Url::parse(&artifact.url).map_err(|error| format!("url: {error}"))?;
     let allowed = match transport {
         Transport::Https => url.scheme() == "https",
-        #[cfg(test)]
+        #[cfg(feature = "testing")]
         Transport::HttpsOrLoopbackHttp => {
             url.scheme() == "https"
                 || (url.scheme() == "http" && url.host_str() == Some("127.0.0.1"))

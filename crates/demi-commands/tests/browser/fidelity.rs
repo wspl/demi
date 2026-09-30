@@ -124,7 +124,11 @@ async fn pages_see_an_ordinary_chrome_in_the_users_time_zone_and_languages() {
                 .any(|brand| brand == "Chromium")
         );
         // Scrollbars take their usual width, and the window holds the viewport.
-        assert!(report["scrollbar"].as_f64().unwrap() > 0.0, "{report}");
+        // macOS draws overlay scrollbars, zero wide, unless its user asks for
+        // others, as an ordinary Chrome there does.
+        if !cfg!(target_os = "macos") {
+            assert!(report["scrollbar"].as_f64().unwrap() > 0.0, "{report}");
+        }
         assert!(
             report["outer"][0].as_f64() >= report["inner"][0].as_f64(),
             "{report}"

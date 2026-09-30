@@ -1903,7 +1903,7 @@ impl<'a, SE: extensions::ShellExtensions> WordExpander<'a, SE> {
         if let Some(pattern) = pattern {
             if !pattern.is_empty() {
                 let regex = pattern.to_regex(false, false)?;
-                let result = regex.replace_all(s.as_ref(), |caps: &fancy_regex::Captures<'_>| {
+                let result = regex.replace_all(s.as_ref(), |caps: &fancy_regex::Captures<'_, str>| {
                     caps[0].to_uppercase()
                 });
                 Ok(result.into_owned())
@@ -1922,7 +1922,7 @@ impl<'a, SE: extensions::ShellExtensions> WordExpander<'a, SE> {
         if let Some(pattern) = pattern {
             if !pattern.is_empty() {
                 let regex = pattern.to_regex(false, false)?;
-                let result = regex.replace_all(s.as_ref(), |caps: &fancy_regex::Captures<'_>| {
+                let result = regex.replace_all(s.as_ref(), |caps: &fancy_regex::Captures<'_, str>| {
                     caps[0].to_lowercase()
                 });
                 Ok(result.into_owned())

@@ -12,7 +12,7 @@ use std::sync::atomic::AtomicBool;
 
 use axum::body::Body;
 use axum::extract::{Path, State};
-use axum::http::header::{CACHE_CONTROL, CONTENT_LENGTH, CONTENT_TYPE, HOST};
+use axum::http::header::{CACHE_CONTROL, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE, HOST};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use demi_command_service::protocol::{is_digest, is_target};
@@ -48,6 +48,9 @@ const UNCONFIGURED: &str = "Runner releases are not configured on this backend.\
 /// default, which cut a runner of many megabytes into tens of thousands of
 /// chunks.
 const ARTIFACT_READ: usize = 256 * 1024;
+
+/// The caching of an immutable executable's download: a year.
+const IMMUTABLE: &str = "public, max-age=31536000, immutable";
 
 pub(super) async fn shell(State(state): State<AppState>, https: Https, headers: HeaderMap) -> Result<Response, ApiError> {
     installer(&state, https, &headers, shell_script, "text/x-shellscript; charset=utf-8").await
@@ -127,21 +130,23 @@ pub(super) async fn artifact(
     immutable_download(opened).await
 }
 
-/// A development store's command executable, by its SHA-256: only one that
-/// a release the backend loaded carries; any other digest answers 404.
+/// A development store's command executable, by its SHA-256, in the content
+/// coding object storage serves it in: only one that a release the backend
+/// loaded carries; any other digest answers 404.
 pub(super) async fn native_artifact(
     State(state): State<AppState>,
     Path(sha256): Path<String>,
 ) -> Result<Response, ApiError> {
-    let Some(path) = state.services.native.local_file(&sha256) else {
+    let Some(encoded) = state.services.native.local_encoded(&sha256).await else {
         return Err(ApiError::new(StatusCode::NOT_FOUND, ErrorCode::NotFound, "No such native artifact"));
     };
-    // The backend verified the file when it loaded the release: a file that
-    // is gone since is the deployment's fault.
-    let opened = tokio::fs::File::open(path)
-        .await
-        .map_err(|error| ApiError::internal_message(format!("{}: {error}", path.display())))?;
-    immutable_download(opened).await
+    let encoded = encoded.map_err(|error| ApiError::internal_message(error.to_string()))?;
+    let headers = [
+        (CONTENT_TYPE, HeaderValue::from_static("application/octet-stream")),
+        (CONTENT_ENCODING, HeaderValue::from_static(demi_artifact::CONTENT_CODING)),
+        (CACHE_CONTROL, HeaderValue::from_static(IMMUTABLE)),
+    ];
+    Ok((headers, encoded).into_response())
 }
 
 /// `file`, an immutable executable, as a download: its whole length in large
@@ -154,7 +159,7 @@ async fn immutable_download(file: tokio::fs::File) -> Result<Response, ApiError>
         .len();
     let headers = [
         (CONTENT_TYPE, HeaderValue::from_static("application/octet-stream")),
-        (CACHE_CONTROL, HeaderValue::from_static("public, max-age=31536000, immutable")),
+        (CACHE_CONTROL, HeaderValue::from_static(IMMUTABLE)),
         (CONTENT_LENGTH, HeaderValue::from(size)),
     ];
     Ok((headers, Body::from_stream(ReaderStream::with_capacity(file, ARTIFACT_READ))).into_response())

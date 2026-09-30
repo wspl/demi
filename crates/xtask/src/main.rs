@@ -2,6 +2,8 @@
 //! § xtask). `cargo xtask` runs them; `bun run contracts` builds the
 //! workspace and runs `target/debug/xtask contracts`.
 
+#[cfg(test)]
+mod boundaries;
 mod browser;
 mod cloud_image;
 mod contracts;

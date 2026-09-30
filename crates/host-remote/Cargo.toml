@@ -6,7 +6,9 @@ license.workspace = true
 rust-version.workspace = true
 
 [lib]
-# No doc examples: rustdoc has nothing to test.
+# One test binary, the integration tests' (`crates-and-packages.md`
+# § Module layout); no doc examples.
+test = false
 doctest = false
 
 [dependencies]

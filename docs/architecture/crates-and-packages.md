@@ -1345,11 +1345,15 @@ review.
   crate's integration test binary, `tests/<crate>/main.rs` with a module per
   area, which tests the crate's public boundary; the library and every
   executable target set `test = false`, and every library `doctest = false`.
-  A crate whose behavior is observable only inside it, such as the machine
-  manager's Linux internals, keeps its tests beside the code as unit tests
-  and has no `tests/` directory instead. A test gets a binary of its own only
-  when it changes or exhausts process-wide state, such as the open-file
-  limit, and says so at the top of its file. The crate boundary check
+  A crate whose program another test starts has that binary in any case:
+  Cargo builds a package's programs only for its integration tests. A crate
+  without programs whose behavior is observable only inside it keeps its
+  tests beside the code as unit tests and has no `tests/` directory instead.
+  A test gets a binary of its own only when it changes or exhausts
+  process-wide state, such as the open-file limit, or needs what the others
+  must not have, such as the machine manager's tests that run the manager as
+  root in namespaces of their own; its file says so at the top ("its own
+  binary"). The crate boundary check
   enforces these rules ([Boundary checks](#boundary-checks)). Test support is
   a `testing` cargo feature of the crate that owns the thing being faked
   (`agent::testing`, `provider::testing`, `provider_codex::testing`,
@@ -1391,12 +1395,10 @@ the workspace's `cargo metadata`, and fails unless:
   it, directly or through other crates; a crate's dev-dependency on itself,
   through which its own tests turn on its `testing` feature, is allowed;
 - the graph is acyclic;
-- each crate has one test binary ([Module layout](#module-layout)): either
-  unit tests in its library and no integration test target, or one
-  integration test target with `test = false` on the library; every
-  executable target has `test = false`, every library `doctest = false`, and
-  a second integration test target is allowed only with the process-wide
-  reason its file states.
+- each crate has one test binary ([Module layout](#module-layout)): of its
+  library, its executables and its integration tests, one target at most
+  builds tests, besides integration tests whose file says at its top why it
+  is its own binary; every library has `doctest = false`.
 
 It is a test of `xtask`, and the Rust tests run it.
 

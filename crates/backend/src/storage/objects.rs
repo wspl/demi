@@ -294,7 +294,8 @@ pub(crate) mod fake_s3 {
 
     use super::S3Config;
 
-    /// An object and the metadata it was put with.
+    /// An object and the metadata it was put with, its content coding among
+    /// them.
     #[derive(Clone)]
     struct Object {
         bytes: Bytes,
@@ -397,7 +398,7 @@ pub(crate) mod fake_s3 {
                 }
                 let metadata = headers
                     .iter()
-                    .filter(|(name, _)| name.as_str().starts_with("x-amz-meta-"))
+                    .filter(|(name, _)| name.as_str().starts_with("x-amz-meta-") || *name == "content-encoding")
                     .map(|(name, value)| (name.clone(), value.clone()))
                     .collect();
                 let tag = etag(&body);

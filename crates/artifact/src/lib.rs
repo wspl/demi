@@ -3,11 +3,12 @@
 //! trusts) with a declared size and SHA-256, and measured ones for a release
 //! being prepared, digests, durable atomic publication, release publication,
 //! the install lock between processes, install receipts and archive
-//! installation.
+//! installation, and the content coding a command executable is served in.
 //! Callers name the location, size and digest they expect; nothing here
 //! chooses what to install.
 
 mod archive;
+mod coding;
 mod digest;
 mod download;
 mod lock;
@@ -16,6 +17,7 @@ pub mod receipt;
 mod release;
 
 pub use archive::{Archive, install_archive, installed, zip_holds};
+pub use coding::{CONTENT_CODING, Effort, encode_blocking};
 pub use digest::{Digest, Verifier, digest};
 pub use download::{client, client_allowing_http, copy, download, download_measured};
 pub use lock::InstallLock;
@@ -87,6 +89,8 @@ pub mod testing {
         pub length: bool,
         /// How long the server waits after the request before it answers.
         pub delay: Duration,
+        /// The `Content-Encoding` the answer declares, if any.
+        pub coding: Option<&'static str>,
     }
 
     impl Answer {
@@ -97,6 +101,7 @@ pub mod testing {
                 body: body.into(),
                 length: true,
                 delay: Duration::ZERO,
+                coding: None,
             }
         }
     }
@@ -147,7 +152,14 @@ pub mod testing {
                             } else {
                                 String::new()
                             };
-                            let head = format!("HTTP/1.1 {} Fixture\r\n{length}connection: close\r\n\r\n", answer.status);
+                            let coding = answer
+                                .coding
+                                .map(|coding| format!("content-encoding: {coding}\r\n"))
+                                .unwrap_or_default();
+                            let head = format!(
+                                "HTTP/1.1 {} Fixture\r\n{length}{coding}connection: close\r\n\r\n",
+                                answer.status
+                            );
                             // The client may hang up first, as on a failed
                             // check; nothing waits for the answer then.
                             let _written = socket.write_all(head.as_bytes()).await;
@@ -197,6 +209,10 @@ pub enum Error {
     Size { declared: u64, actual: u64 },
     #[error("the artifact does not match its declared SHA-256")]
     Digest,
+    /// The server sent the bytes in a content coding the download does not
+    /// decode: only [`CONTENT_CODING`] and none are.
+    #[error("the artifact arrived in the content coding {0}, which downloads do not decode")]
+    Coding(String),
     /// The archive is not what its installation needs, such as one that
     /// does not extract or lacks its executable.
     #[error("the archive {0}")]

@@ -124,6 +124,12 @@ tokio = { workspace = true, features = ["test-util"] }
 test-fixtures = ["demi-command-service/testing"]
 
 [[bin]]
+name = "demi-runner"
+path = "src/main.rs"
+test = false
+
+[[bin]]
 name = "demi-native-fixture"
 path = "tests/fixtures/service.rs"
 required-features = ["test-fixtures"]
+test = false

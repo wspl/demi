@@ -136,7 +136,7 @@ fn failed(version: &str, error: demi_artifact::Error) -> BrowserError {
     match error {
         Error::Cancelled => BrowserError::Cancelled,
         Error::Io(error) => BrowserError::Io(error),
-        error @ (Error::Download(_) | Error::Rejected { .. }) => {
+        error @ (Error::Download(_) | Error::Rejected { .. } | Error::Coding(_)) => {
             BrowserError::Installation(format!("{version} download failed: {error}"))
         }
         error @ (Error::TooLarge { .. } | Error::Size { .. } | Error::Digest) => {

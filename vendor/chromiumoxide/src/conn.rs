@@ -3,13 +3,12 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::ready;
 
-use async_tungstenite::tungstenite::Message as WsMessage;
-use async_tungstenite::{WebSocketStream, tungstenite::protocol::WebSocketConfig};
 use futures::stream::Stream;
 use futures::task::{Context, Poll};
 use futures::{SinkExt, StreamExt};
-
-use async_tungstenite::tokio::ConnectStream;
+use tokio::net::TcpStream;
+use tokio_tungstenite::tungstenite::Message as WsMessage;
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, tungstenite::protocol::WebSocketConfig};
 use chromiumoxide_cdp::cdp::browser_protocol::target::SessionId;
 use chromiumoxide_types::{CallId, EventMessage, Message, MethodCall, MethodId};
 
@@ -25,7 +24,7 @@ pub struct Connection<T: EventMessage> {
     /// Queue of commands to send.
     pending_commands: VecDeque<MethodCall>,
     /// The websocket of the chromium instance
-    ws: WebSocketStream<ConnectStream>,
+    ws: WebSocketStream<MaybeTlsStream<TcpStream>>,
     /// The identifier for a specific command
     next_id: usize,
     needs_flush: bool,
@@ -40,9 +39,10 @@ impl<T: EventMessage + Unpin> Connection<T> {
             .max_message_size(Some(MAX_CDP_MESSAGE_BYTES))
             .max_frame_size(Some(MAX_CDP_MESSAGE_BYTES));
 
-        let (ws, _) = async_tungstenite::tokio::connect_async_with_config(
+        let (ws, _) = tokio_tungstenite::connect_async_with_config(
             debug_ws_url.as_ref(),
             Some(config),
+            false,
         )
         .await?;
 
@@ -172,7 +172,7 @@ mod tests {
         let address = listener.local_addr().unwrap();
         let send = tokio::spawn(async move {
             let (stream, _) = listener.accept().await.unwrap();
-            let mut socket = async_tungstenite::tokio::accept_async(stream)
+            let mut socket = tokio_tungstenite::accept_async(stream)
                 .await
                 .unwrap();
             socket
@@ -190,7 +190,7 @@ mod tests {
         assert!(matches!(
             result,
             Some(Err(CdpError::Ws(
-                async_tungstenite::tungstenite::Error::Capacity(_)
+                tokio_tungstenite::tungstenite::Error::Capacity(_)
             )))
         ));
         // The client can reject the frame header before the peer finishes writing.
@@ -200,7 +200,7 @@ mod tests {
         if let Err(error) = peer {
             assert!(matches!(
                 error,
-                async_tungstenite::tungstenite::Error::Io(_)
+                tokio_tungstenite::tungstenite::Error::Io(_)
             ));
         }
     }

@@ -4,10 +4,10 @@
 use std::{path::Path, time::Duration};
 
 use demi_artifact::{
-    Archive, Digest, Error, InstallLock, Mode, Permissions, Publication, ReleaseFile, ReleaseRecord,
+    Archive, CONTENT_CODING, Digest, Effort, Error, InstallLock, Mode, Permissions, Publication, ReleaseFile, ReleaseRecord,
     Staged, Verifier, copy, digest, download, download_measured, install_archive, installed, publish,
     publish_bytes, publish_directory, publish_release, receipt,
-    client_allowing_http,
+    client_allowing_http, encode_blocking,
     testing::{Answer, Server, zip},
     zip_holds,
 };
@@ -71,6 +71,41 @@ async fn a_download_is_verified_as_it_arrives() {
     cancel.cancel();
     let result = download(&client, &url, &declared(BODY), &mut Vec::new(), &cancel).await;
     assert!(matches!(result, Err(Error::Cancelled)), "{result:?}");
+}
+
+/// A command executable arrives in zstd content coding, and what is checked
+/// against its declared size and SHA-256 is the decoded executable; a coding
+/// the download does not decode fails instead of producing other bytes.
+#[tokio::test]
+async fn a_download_decodes_zstd_before_it_verifies_and_refuses_another_coding() {
+    let client = client_allowing_http().unwrap();
+    let cancel = CancellationToken::new();
+    let encoded = encode_blocking(BODY, Effort::Published).unwrap();
+    assert_ne!(encoded, BODY);
+    let server = Server::start([
+        (
+            "/zstd".to_owned(),
+            Answer {
+                coding: Some(CONTENT_CODING),
+                ..Answer::ok(encoded)
+            },
+        ),
+        (
+            "/gzip".to_owned(),
+            Answer {
+                coding: Some("gzip"),
+                ..Answer::ok(BODY)
+            },
+        ),
+    ])
+    .await;
+    let mut output = Vec::new();
+    download(&client, &server.url("/zstd"), &declared(BODY), &mut output, &cancel)
+        .await
+        .unwrap();
+    assert_eq!(output, BODY);
+    let result = download(&client, &server.url("/gzip"), &declared(BODY), &mut Vec::new(), &cancel).await;
+    assert!(matches!(&result, Err(Error::Coding(coding)) if coding == "gzip"), "{result:?}");
 }
 
 #[tokio::test]
