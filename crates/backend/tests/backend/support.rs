@@ -18,7 +18,7 @@ use demi_backend::{
     LifecycleTuning, LoginTiming, MailError, NativeCatalog, ObjectCounts, PageTuning, RunnerTuning,
     VerificationMail, publish_native,
 };
-use demi_builtin_protocol::{Operation, PACKAGE as BUILTIN_PACKAGE};
+use demi_browser_protocol::{Operation as BrowserOperation, PACKAGE as BROWSER_PACKAGE};
 use demi_command_service::protocol::{PackageDescriptor, host_target};
 use demi_command_service::testing::built_program;
 use demi_command_tree::NativeOperation;
@@ -66,7 +66,7 @@ const RELEASES: &str = concat!(env!("CARGO_TARGET_TMPDIR"), "/backend-releases")
 /// target and its program, and the catalog a backend loads from its
 /// development release. Each test process computes the digest once and
 /// publishes the release once: both read the whole program, most of a second
-/// for `demi-commands`.
+/// for `demi-browser`.
 pub struct Built {
     pub descriptor: PackageDescriptor,
     pub program: PathBuf,
@@ -133,9 +133,18 @@ fn replace(path: &std::path::Path, bytes: &[u8]) {
     std::fs::rename(&staged, path).unwrap();
 }
 
-/// `demi.builtin`, from `demi-commands`.
-static BUILTIN: LazyLock<Built> =
-    LazyLock::new(|| Built::new(BUILTIN_PACKAGE, built_program("demi-commands"), Operation::names()));
+/// `demi.file`, from `demi-file`.
+static FILE: LazyLock<Built> = LazyLock::new(|| {
+    Built::new(
+        demi_file_protocol::PACKAGE,
+        built_program("demi-file"),
+        demi_file_protocol::OPERATIONS.iter().copied(),
+    )
+});
+
+/// `demi.browser`, from `demi-browser`.
+static BROWSER: LazyLock<Built> =
+    LazyLock::new(|| Built::new(BROWSER_PACKAGE, built_program("demi-browser"), BrowserOperation::names()));
 
 /// `demi.claude`, from `demi-claude`.
 static CLAUDE: LazyLock<Built> = LazyLock::new(|| {
@@ -306,10 +315,17 @@ impl Harness {
         self
     }
 
-    /// Conversations whose commands bind to the `demi.builtin` package the
-    /// workspace built, which runners install from the backend.
-    pub fn with_builtin_package(mut self) -> Self {
-        self.release = Some(&*BUILTIN);
+    /// Conversations whose `demi file` commands bind to the `demi.file`
+    /// package the workspace built, which runners install from the backend.
+    pub fn with_file_package(mut self) -> Self {
+        self.release = Some(&*FILE);
+        self
+    }
+
+    /// Conversations whose `demi browser` commands and `browser` user
+    /// stream bind to the `demi.browser` package the workspace built.
+    pub fn with_browser_package(mut self) -> Self {
+        self.release = Some(&*BROWSER);
         self
     }
 

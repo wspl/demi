@@ -23,7 +23,7 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 use demi_backend::MachinesClient;
-use demi_builtin_protocol::browser::{BrowserTab, TabId};
+use demi_browser_protocol::browser::{BrowserTab, TabId};
 use demi_gates::Purpose;
 use demi_machines_protocol::{CheckpointParams, ImageStateParams, MachineImageState};
 use demi_provider::testing::MockVendor;

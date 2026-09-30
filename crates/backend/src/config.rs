@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use demi_builtin_protocol::{PACKAGE as BUILTIN_PACKAGE, live};
+use demi_browser_protocol::{PACKAGE as BROWSER_PACKAGE, live};
 use demi_command_tree::NativeOperation;
 use demi_core::{Clock, SystemClock};
 use demi_web_api::settings::InstanceMode;
@@ -407,7 +407,7 @@ impl BackendConfig {
             user_streams: BTreeMap::from([(
                 BROWSER_STREAM.to_owned(),
                 NativeOperation {
-                    package: BUILTIN_PACKAGE.to_owned(),
+                    package: BROWSER_PACKAGE.to_owned(),
                     operation: live::OPERATION.to_owned(),
                 },
             )]),

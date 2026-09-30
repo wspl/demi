@@ -2,7 +2,7 @@
 //! browser tabs): the bodies around the operations the agent's `demi
 //! browser` commands run, whose tab records they reuse.
 
-use demi_builtin_protocol::browser::BrowserTab;
+use demi_browser_protocol::browser::BrowserTab;
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

@@ -179,7 +179,7 @@ async fn a_fork_of_a_conversation_the_backend_no_longer_holds_reads_its_stored_h
 async fn a_fork_reads_the_edits_its_history_made_from_the_same_blobs_and_writes_no_object() {
     let counts = ObjectCounts::default();
     let vendor = MockVendor::start().await;
-    let harness = Harness::new().with_builtin_package().with_object_counts(&counts);
+    let harness = Harness::new().with_file_package().with_object_counts(&counts);
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;

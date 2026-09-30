@@ -3,7 +3,7 @@
 //! § Generated TypeScript). Every type they refer to is emitted with them.
 
 use demi_agent_protocol as frames;
-use demi_builtin_protocol::live;
+use demi_browser_protocol::live;
 use demi_core as core;
 use demi_web_api as api;
 use schemars::{JsonSchema, Schema, SchemaGenerator};

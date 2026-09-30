@@ -1,6 +1,6 @@
 //! `demi browser`: every operation of the package has its command.
 
-use demi_builtin_protocol::browser::{OPERATIONS, PREFIX};
+use demi_browser_protocol::browser::{OPERATIONS, PREFIX};
 
 use crate::command_line::{demi, help, parse};
 

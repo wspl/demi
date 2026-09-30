@@ -311,7 +311,7 @@ fn a_leaf_runs_one_way_and_names_valid_inputs() {
     let rpc = json!({"name": "add", "summary": "Add", "kind": "rpc"});
     assert!(serde_json::from_value::<Node>(rpc.clone()).is_ok());
     let mut bound = rpc.clone();
-    bound["binding"] = json!({"package": "demi.builtin", "operation": "file.read",
+    bound["binding"] = json!({"package": "demi.file", "operation": "file.read",
         "descriptorHash": "a".repeat(64)});
     assert!(serde_json::from_value::<Node>(bound).is_err());
     let unbound = json!({"name": "read", "summary": "Read", "kind": "native"});

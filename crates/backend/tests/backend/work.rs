@@ -185,7 +185,7 @@ impl Turn {
 #[tokio::test]
 async fn the_model_creates_reads_edits_and_lists_its_files_where_the_conversation_works() {
     let vendor = MockVendor::start().await;
-    let harness = Harness::new().with_builtin_package();
+    let harness = Harness::new().with_file_package();
     let (backend, master) = harness.start_set_up().await;
     let alpha = backend.pair(&master, "alpha").await;
     let provider = anthropic_at(&backend, &master, &vendor, "/alpha").await;
@@ -199,7 +199,7 @@ async fn the_model_creates_reads_edits_and_lists_its_files_where_the_conversatio
     assert!(created.received[0].contains("exitCode: 0"), "{}", created.received[0]);
     assert!(created.received[0].contains("Created notes.md"), "{}", created.received[0]);
     assert_eq!(std::fs::read_to_string(home.join("src/notes.md")).unwrap(), "alpha\nbeta\ngamma\n");
-    // The model is offered the `demi.builtin` package's commands beside the
+    // The model is offered the `demi.file` package's commands beside the
     // backend's own.
     let system = created.requests[0]["system"].to_string();
     assert!(system.contains("demi file create") && system.contains("demi host"), "{system}");
@@ -225,7 +225,7 @@ async fn the_model_creates_reads_edits_and_lists_its_files_where_the_conversatio
 #[tokio::test]
 async fn a_switch_moves_the_work_and_the_departed_device_keeps_its_files_within_reach() {
     let vendor = MockVendor::start().await;
-    let harness = Harness::new().with_builtin_package();
+    let harness = Harness::new().with_file_package();
     let (backend, master) = harness.start_set_up().await;
     let alpha = backend.pair(&master, "alpha").await;
     let beta = backend.pair(&master, "beta").await;
@@ -291,7 +291,7 @@ async fn a_switch_moves_the_work_and_the_departed_device_keeps_its_files_within_
 #[tokio::test]
 async fn two_conversations_on_one_device_keep_their_directories_shells_and_todos_apart() {
     let vendor = MockVendor::start().await;
-    let harness = Harness::new().with_builtin_package();
+    let harness = Harness::new().with_file_package();
     let (backend, master) = harness.start_set_up().await;
     let alpha = backend.pair(&master, "alpha").await;
     let home = alpha.runner.home_dir().to_owned();
@@ -337,7 +337,7 @@ async fn two_conversations_on_one_device_keep_their_directories_shells_and_todos
 #[tokio::test]
 async fn a_runner_lost_in_the_middle_of_a_command_ends_it_and_the_returned_runner_serves_the_next_turn() {
     let vendor = MockVendor::start().await;
-    let harness = Harness::new().with_builtin_package();
+    let harness = Harness::new().with_file_package();
     let (backend, master) = harness.start_set_up().await;
     let mut alpha = backend.pair(&master, "alpha").await;
     let provider = anthropic_at(&backend, &master, &vendor, "/alpha").await;
@@ -408,7 +408,7 @@ pub(crate) async fn edit_sides(backend: &TestBackend, master: &Session, file: &E
 #[tokio::test]
 async fn a_commands_edits_are_kept_as_its_call_history_and_outlive_its_runner() {
     let vendor = MockVendor::start().await;
-    let harness = Harness::new().with_builtin_package();
+    let harness = Harness::new().with_file_package();
     let (backend, master) = harness.start_set_up().await;
     let mut paired = backend.pair(&master, "paired").await;
     let provider = anthropic_at(&backend, &master, &vendor, "/paired").await;
@@ -451,7 +451,7 @@ async fn a_commands_edits_are_kept_as_its_call_history_and_outlive_its_runner() 
 #[tokio::test]
 async fn after_a_backend_restart_the_runner_comes_back_and_the_conversation_goes_on_there() {
     let vendor = MockVendor::start().await;
-    let harness = Harness::new().with_builtin_package();
+    let harness = Harness::new().with_file_package();
     let (backend, master) = harness.start_set_up().await;
     let alpha = backend.pair(&master, "alpha").await;
     let provider = anthropic_at(&backend, &master, &vendor, "/alpha").await;
@@ -522,7 +522,7 @@ async fn moved_from_alpha_to_beta(
 #[tokio::test]
 async fn demi_host_shell_carries_bytes_both_ways_through_pipes_and_keeps_the_far_hosts_directory() {
     let vendor = MockVendor::start().await;
-    let harness = Harness::new().with_builtin_package();
+    let harness = Harness::new().with_file_package();
     let (backend, master) = harness.start_set_up().await;
     let alpha = backend.pair(&master, "alpha").await;
     let beta = backend.pair(&master, "beta").await;
@@ -575,7 +575,7 @@ async fn demi_host_shell_carries_bytes_both_ways_through_pipes_and_keeps_the_far
 #[tokio::test]
 async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_and_is_stopped_with_it() {
     let vendor = MockVendor::start().await;
-    let harness = Harness::new().with_builtin_package();
+    let harness = Harness::new().with_file_package();
     let (backend, master) = harness.start_set_up().await;
     let alpha = backend.pair(&master, "alpha").await;
     let beta = backend.pair(&master, "beta").await;

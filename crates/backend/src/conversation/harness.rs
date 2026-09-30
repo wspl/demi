@@ -1,14 +1,15 @@
 //! The harness the backend's conversations run (`runtime.md` § Sessions and
 //! turns): the coding agent, `CodingHarness`, whose `demi` root carries the
-//! backend's `host` group and, when the published `demi.builtin` package
-//! serves them, the file and browser commands. A node's Host is the
+//! backend's `host` group and, when the published `demi.file` and
+//! `demi.browser` packages serve them, the file and browser commands. A node's Host is the
 //! conversation's current main Host, which the conversation's host access
 //! resolves.
 
 use std::rc::{Rc, Weak};
 
 use demi_agent::PromptContext;
-use demi_builtin_protocol::{PACKAGE as BUILTIN_PACKAGE, browser, file};
+use demi_browser_protocol::{PACKAGE as BROWSER, browser};
+use demi_file_protocol::{OPERATIONS as FILE_OPERATIONS, PACKAGE as FILE};
 use demi_coding_agent::{CodingHarness, DemiOptions, HostResolver};
 use demi_host_remote::RemoteHost;
 use demi_shell::HostError;
@@ -25,8 +26,8 @@ pub(crate) type ConversationHarness = CodingHarness<ShardHosts>;
 /// packages of `native`.
 pub(crate) fn conversation_harness(shard: Weak<Shard>, native: &NativeCatalog) -> ConversationHarness {
     let options = DemiOptions {
-        file: native.serves(BUILTIN_PACKAGE, file::OPERATIONS),
-        browser: native.serves(BUILTIN_PACKAGE, browser::OPERATIONS),
+        file: native.serves(FILE, FILE_OPERATIONS),
+        browser: native.serves(BROWSER, browser::OPERATIONS),
         extra: vec![host_group(shard.clone())],
     };
     CodingHarness::new(ShardHosts { shard }, options).expect("the backend's `demi` groups are named apart from the coding agent's")

@@ -504,8 +504,8 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     let system = body["system"].to_string();
     assert!(system.contains("You are a coding agent. Use shell session tools"), "{system}");
     assert!(system.contains("demi host"), "the backend's group is among the commands: {system}");
-    // Without the `demi.builtin` package the backend's own groups are
-    // offered, and none of the package's.
+    // Without the native packages the backend's own groups are
+    // offered, and none of the packages'.
     assert!(system.contains("demi todo"), "{system}");
     assert!(!system.contains("demi file") && !system.contains("demi browser"), "{system}");
     assert_eq!(body["model"], "claude-opus-4-8");

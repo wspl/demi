@@ -431,7 +431,7 @@ async fn a_relayed_connection_nothing_moves_on_closes_after_the_idle_limit() {
 #[tokio::test]
 async fn the_agent_exposes_a_service_and_lists_renews_and_removes_exposes_with_demi_host_expose() {
     let vendor = MockVendor::start().await;
-    let harness = Harness::new().with_builtin_package().with_expose_domain(DOMAIN);
+    let harness = Harness::new().with_file_package().with_expose_domain(DOMAIN);
     let (backend, master) = harness.start_set_up().await;
     let fixture = HttpFixture::start(Arc::new(Notify::new())).await;
     let provider = anthropic_at(&backend, &master, &vendor, "/work").await;
@@ -529,7 +529,7 @@ async fn without_an_expose_domain_exposes_are_unavailable() {
 async fn a_clouds_exposes_outlive_its_checkpoints_and_end_when_it_stops_idle() {
     let vendor = MockVendor::start().await;
     let window = Duration::from_millis(600);
-    let mut harness = Harness::new().with_builtin_package().with_expose_domain(DOMAIN);
+    let mut harness = Harness::new().with_file_package().with_expose_domain(DOMAIN);
     harness.lifecycle = idle_after(window);
     harness.cloud.sweep = Duration::from_millis(50);
     harness.cloud.checkpoint_interval = Duration::from_millis(300);
@@ -581,7 +581,7 @@ async fn a_clouds_exposes_outlive_its_checkpoints_and_end_when_it_stops_idle() {
 #[tokio::test]
 async fn a_clouds_exposes_end_when_it_dies_resets_or_is_found_stopped_and_before_a_backend_serves() {
     let vendor = MockVendor::start().await;
-    let harness = Harness::new().with_builtin_package().with_expose_domain(DOMAIN);
+    let harness = Harness::new().with_file_package().with_expose_domain(DOMAIN);
     let (backend, master) = harness.start_set_up().await;
     let mut fixture = HttpFixture::start(Arc::new(Notify::new())).await;
     let provider = anthropic_at(&backend, &master, &vendor, "/work").await;

@@ -1,5 +1,5 @@
 //! The conversation browser's tab routes (`web-api.md` § Conversation
-//! browser tabs), against the `demi.builtin` package the workspace built,
+//! browser tabs), against the `demi.browser` package the workspace built,
 //! on a paired device's real runner, on a Cloud that never started, and on
 //! a running Cloud, which listing its tabs does not keep awake
 //! (`resource-lifecycle.md` § Activity). No browser runs: the operations
@@ -36,7 +36,7 @@ fn tabs(id: &str) -> String {
 // service answers the routes.
 #[tokio::test]
 async fn the_tab_routes_run_the_browsers_operations_as_the_user_on_the_conversations_host() {
-    let harness = Harness::new().with_builtin_package();
+    let harness = Harness::new().with_browser_package();
     let (backend, master) = harness.start_set_up().await;
     let mut laptop = backend.pair(&master, "laptop").await;
     let id = conversation(&backend, &master).await;
@@ -93,7 +93,7 @@ async fn the_tab_routes_run_the_browsers_operations_as_the_user_on_the_conversat
 
 #[tokio::test]
 async fn a_stopped_cloud_is_not_woken_to_list_close_or_move_its_tabs() {
-    let harness = Harness::new().with_builtin_package();
+    let harness = Harness::new().with_browser_package();
     let (backend, master) = harness.start_set_up().await;
     // A new conversation works on the Cloud, which never started.
     let id = conversation(&backend, &master).await;
@@ -120,7 +120,7 @@ async fn listing_a_running_clouds_tabs_does_not_keep_it_awake() {
     // Far longer than the time between two listings, so that listings counted
     // as activity would keep the Cloud up.
     let window = Duration::from_millis(800);
-    let mut harness = Harness::new().with_builtin_package();
+    let mut harness = Harness::new().with_browser_package();
     harness.lifecycle = idle_after(window);
     harness.cloud.sweep = Duration::from_millis(50);
     let (backend, master) = harness.start_set_up().await;

@@ -194,7 +194,7 @@ fn a_boot_credential_never_appears_in_debugging_output() {
 /// embedding one command package.
 fn manifest() -> serde_json::Value {
     let runner = serde_json::json!({ "sha256": "a".repeat(64), "size": 38710848 });
-    let builtin = serde_json::json!({ "sha256": "c".repeat(64), "size": 2048 });
+    let file = serde_json::json!({ "sha256": "c".repeat(64), "size": 2048 });
     serde_json::json!({
         "formatVersion": 1,
         "os": "linux",
@@ -205,14 +205,14 @@ fn manifest() -> serde_json::Value {
         "executables": {
             "/usr/bin/demi-runner": runner,
             "/usr/bin/tini": { "sha256": "e".repeat(64), "size": 10 },
-            format!("/opt/demi/artifacts/{}/demi-commands", "c".repeat(64)): builtin,
+            format!("/opt/demi/artifacts/{}/demi-file", "c".repeat(64)): file,
         },
         "releases": [{
-            "id": "demi.builtin",
+            "id": "demi.file",
             "version": "0.1.3",
             "protocolVersion": 1,
             "operations": ["file.read"],
-            "targets": { "aarch64-unknown-linux-musl": builtin },
+            "targets": { "aarch64-unknown-linux-musl": file },
         }],
         "runner": {
             "release": "f".repeat(64),
@@ -240,7 +240,7 @@ fn an_image_manifest_names_its_embedded_runner_and_packages() {
     assert!(matches!(decode(&changed), Err(ManifestError::Runner)));
     let mut changed = manifest();
     changed["executables"].as_object_mut().unwrap().retain(|path, _| !path.starts_with("/opt/"));
-    assert!(matches!(decode(&changed), Err(ManifestError::Release(id)) if id == "demi.builtin"));
+    assert!(matches!(decode(&changed), Err(ManifestError::Release(id)) if id == "demi.file"));
     for (field, value) in [
         ("formatVersion", serde_json::json!(2)),
         ("os", serde_json::json!("darwin")),

@@ -20,7 +20,7 @@ const CONVERSATION: &str = "5e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a05";
 #[tokio::test]
 async fn a_long_outputs_result_names_what_it_leaves_out_and_demi_shell_output_prints_it() {
     let vendor = MockVendor::start().await;
-    let harness = Harness::new().with_builtin_package();
+    let harness = Harness::new().with_file_package();
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic_at(&backend, &master, &vendor, "/work").await;
     create(&backend, &master, CONVERSATION).await;

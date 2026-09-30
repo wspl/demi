@@ -1,4 +1,4 @@
-//! What the scenarios share: a real runner for one device, the `demi.builtin`
+//! What the scenarios share: a real runner for one device, the `demi.file`
 //! package the workspace built, and an agent server whose conversations run
 //! the coding harness on that device, their shells real runner jobs and
 //! their model a script.
@@ -15,7 +15,6 @@ use demi_agent::{
     },
 };
 use demi_agent_protocol::{ClientFrame, ServerFrame};
-use demi_builtin_protocol::{Operation, PACKAGE};
 use demi_coding_agent::{CodingHarness, DemiOptions, HostResolver, demi_root};
 use demi_command_service::testing::built_program;
 use demi_core::{Block, CommandId, NodeId, SessionPhase, ToolView, TurnId};
@@ -102,13 +101,12 @@ impl Fixture {
         let harness = CodingHarness::new(DeviceHost(host.clone()), DemiOptions::default()).unwrap();
         let providers = Rc::new(ScriptedProviders::default());
         providers.provide("stub", script);
-        let builtin = NativeFixture::package(
-            PACKAGE,
-            built_program("demi-commands"),
-            Operation::names(),
+        let file = NativeFixture::package(
+            demi_file_protocol::PACKAGE,
+            built_program("demi-file"),
+            demi_file_protocol::OPERATIONS.iter().copied(),
         );
-        let catalog =
-            CommandCatalog::new(vec![builtin.descriptor.clone()], builtin.resolver()).unwrap();
+        let catalog = CommandCatalog::new(vec![file.descriptor.clone()], file.resolver()).unwrap();
         let store = MemoryTreeStore::new();
         let server = AgentServer::new(ServerDeps {
             harness: Rc::new(harness),

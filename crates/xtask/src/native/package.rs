@@ -69,9 +69,13 @@ async fn package(options: &Options, cancel: &CancellationToken) -> Result<String
     let executable = options.package;
     let release = match executable {
         Executable::Runner => Release::Runner,
-        Executable::Commands => Release::Package {
-            id: demi_builtin_protocol::PACKAGE,
-            operations: demi_builtin_protocol::Operation::names().map(String::from).collect(),
+        Executable::File => Release::Package {
+            id: demi_file_protocol::PACKAGE,
+            operations: demi_file_protocol::OPERATIONS.iter().map(|&name| name.to_owned()).collect(),
+        },
+        Executable::Browser => Release::Package {
+            id: demi_browser_protocol::PACKAGE,
+            operations: demi_browser_protocol::Operation::names().map(String::from).collect(),
         },
         Executable::Claude => Release::Package {
             id: demi_claude_protocol::PACKAGE,
@@ -351,21 +355,21 @@ mod tests {
         let artifacts = root.path().join("artifacts");
         let carried = ["aarch64-apple-darwin", "x86_64-unknown-linux-musl"];
         let cancel = CancellationToken::new();
-        build(&artifacts, Executable::Commands, &carried, "commands");
+        build(&artifacts, Executable::Browser, &carried, "browser");
         build(&artifacts, Executable::Runner, &carried, "runner");
         // Without named targets, a release needs every target's build.
-        let output = root.path().join("demi-builtin");
-        let incomplete = package(&options(Executable::Commands, &artifacts, &output, &[]), &cancel).await;
+        let output = root.path().join("demi-browser");
+        let incomplete = package(&options(Executable::Browser, &artifacts, &output, &[]), &cancel).await;
         assert!(matches!(incomplete, Err(Error::NotBuilt { .. })), "{incomplete:?}");
         assert!(!output.exists());
-        package(&options(Executable::Commands, &artifacts, &output, &carried), &cancel)
+        package(&options(Executable::Browser, &artifacts, &output, &carried), &cancel)
             .await
             .unwrap();
         let descriptor = serde_json::from_slice(&std::fs::read(output.join(DESCRIPTOR)).unwrap()).unwrap();
         let descriptor = PackageDescriptor::parse(descriptor).unwrap();
-        assert_eq!(descriptor.id, demi_builtin_protocol::PACKAGE);
+        assert_eq!(descriptor.id, demi_browser_protocol::PACKAGE);
         assert_eq!(descriptor.version, VERSION);
-        let declared: Vec<&str> = demi_builtin_protocol::Operation::names().collect();
+        let declared: Vec<&str> = demi_browser_protocol::Operation::names().collect();
         assert_eq!(descriptor.operations, declared);
         assert_eq!(descriptor.targets.keys().collect::<Vec<_>>(), carried);
         assert_eq!(names(&output), [carried[0], DESCRIPTOR, carried[1]]);

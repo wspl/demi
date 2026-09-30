@@ -3,10 +3,10 @@
 //! version's official download metadata, downloads the archive of each
 //! platform Demi supports through `artifact`, measures it, checks that it
 //! holds the executable the record names, and writes the release record with
-//! builtin-protocol's type, which `demi-commands` installs from.
+//! browser-protocol's type, which `demi-browser` installs from.
 
 use demi_artifact::{Mode, Permissions, Publication};
-use demi_builtin_protocol::release::{BrowserRelease, ReleasePlatform};
+use demi_browser_protocol::release::{BrowserRelease, ReleasePlatform};
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
@@ -15,7 +15,7 @@ const METADATA: &str = "https://googlechromelabs.github.io/chrome-for-testing";
 /// Where every official archive is.
 const ARCHIVES: &str = "https://storage.googleapis.com/";
 /// The pinned record, which `BrowserRelease::pinned` reads.
-const RECORD: &str = "crates/builtin-protocol/src/release/chrome.json";
+const RECORD: &str = "crates/browser-protocol/src/release/chrome.json";
 /// The most bytes a version's metadata may have.
 const METADATA_BYTES: u64 = 1024 * 1024;
 /// The most bytes an archive may have.

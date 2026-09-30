@@ -573,7 +573,7 @@ mod tests {
     fn a_page_holds_what_its_cursor_limit_and_source_ask_for() {
         let directory = tempfile::tempdir().unwrap();
         let mut files = Files::open(directory.path().into(), LIMITS).unwrap();
-        files.append(entry("service:demi.builtin", "tabs failed"));
+        files.append(entry("service:demi.browser", "tabs failed"));
         files.append(entry(RUNNER, "online"));
         files.append(Entry {
             conversation_id: Some("conversation".into()),
@@ -719,7 +719,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let (writer, layer) = open(directory.path().join("log")).await.unwrap();
         emit(layer, || {
-            tracing::info!(source = "service:demi.builtin", "could not list tabs");
+            tracing::info!(source = "service:demi.browser", "could not list tabs");
             tracing::warn!(source = "stream:browser.live", conversation = "c1", "view failed\nretrying");
             tracing::info!(pid = 7, "service started");
         });
@@ -728,7 +728,7 @@ mod tests {
             texts(&page),
             ["could not list tabs", "view failed", "retrying", "service started pid=7"]
         );
-        assert_eq!(page.lines[0].source, "service:demi.builtin");
+        assert_eq!(page.lines[0].source, "service:demi.browser");
         assert_eq!(page.lines[1].conversation_id.as_deref(), Some("c1"));
         assert_eq!(page.lines[3].source, RUNNER);
         writer.close().await;

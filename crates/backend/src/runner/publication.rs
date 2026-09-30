@@ -513,7 +513,7 @@ mod tests {
     use object_store::aws::AmazonS3Builder;
     use sha2::{Digest as _, Sha256};
 
-    use demi_builtin_protocol::PACKAGE as BUILTIN_PACKAGE;
+    use demi_browser_protocol::PACKAGE as BROWSER_PACKAGE;
 
     use super::*;
     use crate::storage::objects::fake_s3::FakeS3;
@@ -664,11 +664,11 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("native.json");
         let write = |text: &str| std::fs::write(&path, text).unwrap();
-        write(r#"{"releases":[{"directory":"./demi-commands","executable":"demi-commands"}],"store":{"provider":"s3","bucket":"demi-native","region":"us-east-1"}}"#);
+        write(r#"{"releases":[{"directory":"./demi-file","executable":"demi-file"}],"store":{"provider":"s3","bucket":"demi-native","region":"us-east-1"}}"#);
         let config = NativeConfig::read(&path).await.unwrap();
         assert_eq!(config.prefix(), "native");
-        assert_eq!(config.releases[0].directory, directory.path().join("./demi-commands"));
-        write(r#"{"releases":[{"directory":"demi-commands","executable":"demi-commands"}],"store":{"provider":"local"}}"#);
+        assert_eq!(config.releases[0].directory, directory.path().join("./demi-file"));
+        write(r#"{"releases":[{"directory":"demi-file","executable":"demi-file"}],"store":{"provider":"local"}}"#);
         let config = NativeConfig::read(&path).await.unwrap();
         assert_eq!(config.store, NativeStore::Local(LocalStore {}));
         for refused in [
@@ -692,7 +692,7 @@ mod tests {
         let path = directory.path().join("native.json");
         std::fs::write(&path, r#"{"releases":[],"store":{"provider":"s3","bucket":"demi-native","region":"us-east-1"}}"#).unwrap();
         let catalog = publish_native(&path, &CancellationToken::new()).await.unwrap();
-        assert!(catalog.package(BUILTIN_PACKAGE).is_none());
-        assert!(!catalog.serves(BUILTIN_PACKAGE, &[]));
+        assert!(catalog.package(BROWSER_PACKAGE).is_none());
+        assert!(!catalog.serves(BROWSER_PACKAGE, &[]));
     }
 }

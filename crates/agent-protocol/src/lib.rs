@@ -44,6 +44,6 @@ pub fn decode_client_frame(text: &str) -> Result<ClientFrame, FrameError> {
     };
     frame
         .check_content()
-        .map_err(|report| FrameError::Invalid(DecodeError::Invalid(report)))?;
+        .map_err(|report| FrameError::Invalid(DecodeError::from(report)))?;
     Ok(frame)
 }
