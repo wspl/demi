@@ -97,7 +97,11 @@ impl Seek for &File {
 /// The options, what they write (a bit each for write, append, truncate,
 /// create and create_new), and whether the utility gave a mode.
 #[derive(Clone, Debug)]
-pub struct OpenOptions(std::fs::OpenOptions, u8, bool);
+pub struct OpenOptions(
+    std::fs::OpenOptions,
+    u8,
+    #[cfg_attr(not(unix), expect(dead_code, reason = "only Unix gives a created file a mode"))] bool,
+);
 impl Default for OpenOptions {
     fn default() -> Self {
         Self::new()

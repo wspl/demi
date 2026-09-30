@@ -585,6 +585,7 @@ pub fn resolve_path(path: &Path, cwd: &Path) -> PathBuf {
 /// the shell that ran it for the programs it starts.
 pub(crate) struct UtilityControl {
     pub(crate) scope: Scope,
+    #[cfg_attr(not(unix), expect(dead_code, reason = "only Unix applies a umask and limits to a child"))]
     pub(crate) attributes: ChildAttributes,
 }
 

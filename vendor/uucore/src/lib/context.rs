@@ -538,6 +538,7 @@ pub fn umask() -> u32 {
 /// mode of its own: `base` less the invocation's umask. The utility's process
 /// may be shared, so its own umask is not the invocation's; it still applies
 /// beneath this one.
+#[cfg(unix)]
 pub(crate) fn creation_mode(base: u32) -> Option<u32> {
     CURRENT.with(|current| current.borrow().as_ref().map(|context| base & !context.umask))
 }
