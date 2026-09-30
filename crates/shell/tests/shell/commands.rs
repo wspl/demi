@@ -56,7 +56,7 @@ fn todo() -> GroupBuilder {
                     "read",
                     "Read a file.",
                     NativeOperation {
-                        package: "demi.builtin".into(),
+                        package: "demi.file".into(),
                         operation: "file.read".into(),
                     },
                 )
@@ -157,7 +157,7 @@ fn registration_refuses_reserved_taken_malformed_and_unbound_commands() {
                 "read",
                 "Read.",
                 NativeOperation {
-                    package: "demi.builtin".into(),
+                    package: "demi.file".into(),
                     operation: "file.read".into(),
                 },
             )

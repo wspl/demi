@@ -7,7 +7,7 @@
 
 use std::fmt::Write as _;
 
-use demi_builtin_protocol::live;
+use demi_browser_protocol::live;
 use demi_core::{ATTACHMENT_FILE_EXTENSIONS, PREVIEW_TYPES, VIDEO_FILE_EXTENSIONS};
 
 use super::zod::{push_doc, quote};

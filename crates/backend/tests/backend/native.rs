@@ -1,7 +1,7 @@
 //! The development store end to end (`native-runtime.md` § Backend
 //! deployment configuration). The harness writes the native packages the
 //! workspace built as development releases, which the backend's local store
-//! serves itself (`support::Harness::with_builtin_package`), so every
+//! serves itself (`support::Harness::with_file_package`), so every
 //! scenario whose runner runs a native command, on a paired device or on the
 //! Cloud, installs it from the backend. This file shows the store's own
 //! promises: a runner installs a package from the backend's route and runs
