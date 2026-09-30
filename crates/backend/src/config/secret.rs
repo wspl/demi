@@ -99,33 +99,3 @@ impl InstanceSecret {
         key
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use std::os::unix::fs::PermissionsExt as _;
-
-    use super::*;
-
-    #[tokio::test]
-    async fn the_secret_file_is_created_once_readable_by_its_owner_only() {
-        let data = tempfile::tempdir().unwrap();
-        let first = InstanceSecret::load_or_create(data.path()).await.unwrap();
-        let mode = std::fs::metadata(data.path().join(FILE)).unwrap().permissions().mode();
-        assert_eq!(mode & 0o777, 0o600);
-        let again = InstanceSecret::load_or_create(data.path()).await.unwrap();
-        assert_eq!(first.0, again.0);
-
-        std::fs::write(data.path().join(FILE), "not hex\n").unwrap();
-        let corrupt = InstanceSecret::load_or_create(data.path()).await.unwrap_err();
-        assert!(matches!(corrupt, SecretError::Corrupt { .. }), "{corrupt}");
-    }
-
-    #[test]
-    fn a_configured_secret_is_64_hex_digits() {
-        let digits = "0123456789abcdef".repeat(4);
-        assert!(digits.parse::<InstanceSecret>().is_ok());
-        assert!(digits.to_uppercase().parse::<InstanceSecret>().is_ok());
-        assert!(digits[1..].parse::<InstanceSecret>().is_err());
-        assert!(format!("{}zz", &digits[2..]).parse::<InstanceSecret>().is_err());
-    }
-}

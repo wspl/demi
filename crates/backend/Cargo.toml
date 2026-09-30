@@ -7,7 +7,9 @@ rust-version.workspace = true
 
 
 [lib]
-# No doc examples: rustdoc has nothing to test.
+# One test binary, the integration tests' (`crates-and-packages.md`
+# § Module layout); no doc examples.
+test = false
 doctest = false
 
 [[bin]]
@@ -17,93 +19,76 @@ test = false
 
 [features]
 # A hold on the commits of the conversations' checkpoints (`CommitHold`), for
-# the scenarios that stop a save at its commit, and a conversation's file gate
-# with the view of the entrants waiting at it (`Backend::file_gate`), and an
-# object store that counts what reaches it (`ObjectCounts`).
-testing = ["demi-backend-objects/testing", "demi-backend-storage/testing", "demi-gates/testing"]
+# the scenarios that stop a save at its commit, a conversation's file gate
+# with the view of the entrants waiting at it (`Backend::file_gate`), an
+# object store that counts what reaches it (`ObjectCounts`), and the holds of
+# the runners' hellos and the pages' synchronization channels (`StepHold`).
+testing = [
+  "demi-backend-edge/testing",
+  "demi-backend-objects/testing",
+  "demi-backend-shard/testing",
+  "demi-backend-storage/testing",
+  "demi-gates/testing",
+]
 
 [dependencies]
-demi-agent = { path = "../agent" }
-demi-agent-protocol = { path = "../agent-protocol" }
-demi-agent-session = { path = "../agent-session" }
-demi-agent-store = { path = "../agent-store" }
-demi-agent-tools = { path = "../agent-tools" }
-demi-agent-transcript = { path = "../agent-transcript" }
 demi-artifact = { path = "../artifact" }
 demi-backend-accounts = { path = "../backend-accounts" }
 demi-backend-cloud = { path = "../backend-cloud" }
+demi-backend-edge = { path = "../backend-edge" }
 demi-backend-expose = { path = "../backend-expose" }
 demi-backend-families = { path = "../backend-families" }
-demi-backend-idle = { path = "../backend-idle" }
+demi-backend-host-access = { path = "../backend-host-access" }
 demi-backend-objects = { path = "../backend-objects" }
 demi-backend-providers = { path = "../backend-providers" }
 demi-backend-runners = { path = "../backend-runners" }
+demi-backend-shard = { path = "../backend-shard" }
 demi-backend-storage = { path = "../backend-storage" }
-demi-backend-sync = { path = "../backend-sync" }
 demi-browser-protocol = { path = "../browser-protocol" }
-demi-file-protocol = { path = "../file-protocol" }
-demi-claude-protocol = { path = "../claude-protocol" }
-demi-coding-agent = { path = "../coding-agent" }
-demi-command-service = { path = "../command-service" }
 demi-command-tree = { path = "../command-tree" }
 demi-core = { path = "../core" }
 demi-gates = { path = "../gates" }
-demi-host-remote = { path = "../host-remote" }
-demi-machines-protocol = { path = "../machines-protocol" }
 demi-provider = { path = "../provider" }
-demi-provider-claude-code = { path = "../provider-claude-code" }
-demi-runner-protocol = { path = "../runner-protocol" }
-demi-shell = { path = "../shell" }
 demi-web-api = { path = "../web-api" }
-axum = { version = "0.8", features = ["ws"] }
-axum-extra = { version = "0.12", features = ["cookie", "typed-header"] }
-bytes.workspace = true
 clap = { version = "4", features = ["derive", "env"] }
-cookie = "0.18"
-futures-util.workspace = true
-garde.workspace = true
 hex = "0.4"
 hkdf = "0.12"
-http-body = "1"
-# The edge serves its connections itself, keeping header case, and the
-# expose relay forwards with the HTTP/1 client (`expose.md` § Rationale).
-hyper = { version = "1", features = ["client", "http1", "server"] }
-hyper-util = { version = "0.1", features = ["tokio"] }
-jiff.workspace = true
-mime = "0.3"
-object_store = { version = "0.13", default-features = false, features = ["aws", "fs"] }
-percent-encoding = "2"
 rand = "0.9"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
-schemars.workspace = true
-serde.workspace = true
-serde_json.workspace = true
 sha2 = "0.10"
-shlex = "2"
 thiserror.workspace = true
 tokio.workspace = true
-tokio-util = { workspace = true, features = ["codec"] }
-tower = { version = "0.5", features = ["util"] }
-tower-http = { version = "0.6", features = ["fs", "trace"] }
+tokio-util.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-typed-path = "0.12"
 url = { version = "2", features = ["serde"] }
-uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 demi-agent = { path = "../agent", features = ["testing"] }
+demi-agent-protocol = { path = "../agent-protocol" }
 demi-agent-store = { path = "../agent-store", features = ["testing"] }
 demi-agent-tools = { path = "../agent-tools", features = ["testing"] }
 demi-backend = { path = ".", features = ["testing"] }
 demi-backend-runners = { path = "../backend-runners", features = ["testing"] }
+demi-backend-shard = { path = "../backend-shard", features = ["testing"] }
+demi-claude-protocol = { path = "../claude-protocol" }
 demi-command-service = { path = "../command-service", features = ["testing"] }
+demi-file-protocol = { path = "../file-protocol" }
 demi-host-remote = { path = "../host-remote", features = ["testing"] }
+demi-machines-protocol = { path = "../machines-protocol" }
 demi-provider = { path = "../provider", features = ["testing"] }
+demi-provider-claude-code = { path = "../provider-claude-code" }
+demi-runner-protocol = { path = "../runner-protocol" }
 demi-shell = { path = "../shell", features = ["testing"] }
+bytes.workspace = true
 # The upload and retention scenarios look for images' base64 in what a
 # provider was sent.
 data-encoding = "2"
+futures-util.workspace = true
+jiff.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+serde.workspace = true
+serde_json.workspace = true
+uuid = { version = "1", features = ["v4"] }
 # The account scenarios store password hashes of their own; `password-hash`'s
 # `getrandom` gives `SaltString::generate` its operating-system RNG.
 argon2 = "0.5"
