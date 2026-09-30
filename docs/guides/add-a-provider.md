@@ -223,8 +223,9 @@ how probes and observations merge is defined in
 
 ## Register the family
 
-The backend's family registry (`FamilyRegistry::builtins`) maps each family to
-its credential kind, an API key or a subscription account, and to a factory.
+The backend's built-in families (`builtin` in `backend-families`) map each
+family to its credential kind, an API key or a subscription account, and to a
+factory.
 The factory builds your provider from the entry's configuration and the
 models.dev client and, for a subscription family, from the entry's pool, the
 account's ID and the account's quota snapshot store. Add your family there.

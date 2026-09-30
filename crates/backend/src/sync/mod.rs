@@ -1,15 +1,15 @@
 //! The pages' synchronization channels (`backend.md` § Browser
-//! synchronization, `web-api.md` § Page synchronization): the registry
-//! through which every change marks the parts it changed on each user's open
-//! channels, the product state and its parts as a channel reads them, and
-//! the channel's task in the user's shard.
+//! synchronization, `web-api.md` § Page synchronization): the product state
+//! and its parts as a channel reads them, and the channel's task in the
+//! user's shard. Every change marks the parts it changed in the registry of
+//! `backend-sync`.
 
 mod channel;
-mod registry;
 mod state;
 
+use demi_backend_sync::Part;
+
 pub(crate) use self::channel::ChannelSession;
-pub(crate) use self::registry::{Part, Registration, SyncRegistry, UserMarks};
 use crate::shard::Shard;
 
 /// Where a channel waits while a test holds it (`Backend::hold_sync`).

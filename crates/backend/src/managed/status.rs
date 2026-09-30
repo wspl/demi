@@ -3,12 +3,12 @@
 //! filesystems' capacities and their limits. Reading it never wakes the
 //! Cloud.
 
+use demi_backend_storage::StorageError;
+use demi_backend_storage::managed::ManagedOperation;
 use demi_machines_protocol::ImageStateParams;
 use demi_web_api::cloud::{CloudDevice, CloudOperation, CloudState, CloudStatus, CloudVolumes};
 
 use crate::shard::Shard;
-use crate::storage::StorageError;
-use crate::storage::managed::ManagedOperation;
 
 impl Shard {
     pub(crate) async fn cloud_status(&self) -> Result<CloudStatus, StorageError> {

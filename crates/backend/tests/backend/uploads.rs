@@ -13,7 +13,7 @@ use std::sync::LazyLock;
 use demi_agent_protocol::{
     ClientContent, ClientFrame, EditOutcome, EditRequest, MediaRef, ServerFrame, SteerOutcome, TranscriptPatch,
 };
-use demi_backend::ObjectCounts;
+use demi_backend_objects::counting::ObjectCounts;
 use demi_core::{
     Block, BlockId, GoneCause, MediaSource, ModelMediaKind, SessionPhase, ToolResultContentBlock, TurnId,
     UserContentBlock,

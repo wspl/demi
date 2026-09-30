@@ -4,14 +4,14 @@
 //! sends it; the state is not one atomic read across databases, and need not
 //! be, since a change made while it is read is marked and sent after it.
 
+use demi_backend_storage::StorageError;
+use demi_backend_sync::Part;
 use demi_web_api::auth::UserDto;
 use demi_web_api::providers::{ProviderReading, ProviderState};
 use demi_web_api::state::{ProductState, SyncEvent};
 use futures_util::future::join_all;
 
-use super::Part;
 use crate::shard::Shard;
-use crate::storage::StorageError;
 
 impl Shard {
     /// The product state for `user`, this shard's user as the session

@@ -12,7 +12,7 @@ use demi_core::Block;
 use demi_provider::Provider;
 use demi_web_api::ids::ProviderId;
 
-use crate::llm::assembly::ProviderAssembly;
+use demi_backend_providers::llm::assembly::ProviderAssembly;
 
 /// The facts of the error blocks among `blocks`, by block id; none when no
 /// block yields one. A block whose provider entry is gone, or cannot be

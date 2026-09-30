@@ -16,13 +16,13 @@ use axum::response::{IntoResponse, Response};
 use axum_extra::TypedHeader;
 use axum_extra::headers::Authorization;
 use axum_extra::headers::authorization::Bearer;
+use demi_backend_storage::accounts::TokenHash;
+use demi_backend_storage::devices::DeviceRecord;
 use demi_host_remote::PipeRefusal;
 use demi_runner_protocol::wire::MAX_MESSAGE_BYTES;
 
 use super::AppState;
-use crate::auth::sessions::TokenHash;
 use crate::runner::accept::accept;
-use crate::storage::devices::DeviceRecord;
 
 /// `WS /api/runner`: the socket carries MessagePack frames of at most the
 /// wire's limit; a larger one closes it.

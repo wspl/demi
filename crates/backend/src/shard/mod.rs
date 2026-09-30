@@ -19,6 +19,7 @@ use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
 use demi_agent::AgentServer;
+use demi_backend_providers::usage::rate_limit::RequestRateLimit;
 use demi_gates::KeyedSerialGate;
 use demi_host_remote::{ARRIVAL, Pipes};
 use demi_web_api::ids::UserId;
@@ -33,12 +34,11 @@ use crate::conversation::host_access::Conversations;
 use crate::conversation::titles::Titles;
 use crate::conversation::{self, ConversationHarness, ConversationParts};
 use crate::expose::Exposes;
-use crate::llm::claude_cli::ClaudeCli;
+use crate::conversation::claude_cli::ClaudeCli;
 use crate::lifecycle::conversations::ConversationWatches;
 use crate::managed::Cloud;
 use crate::runner::devices::Devices;
 use crate::runner::router::CommandRouter;
-use crate::usage::rate_limit::RequestRateLimit;
 
 /// Where the shards run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
