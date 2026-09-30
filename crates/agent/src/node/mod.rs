@@ -7,6 +7,16 @@
 
 use std::{rc::Rc, sync::Arc};
 
+use demi_agent_session::{
+    AgentSession, Continuation, RestoreError, SessionConfig, SessionDeps, SessionInit,
+    SessionRuntime, ToolFailure, ToolInvocation, ToolOutcome,
+};
+use demi_agent_store::{AgentTreeStore, NodeRecord, StoreError};
+use demi_agent_tools::{
+    AgentHarness, CallError, Environments, PromptContext, ShellAccess, ShellEnvironmentFactory,
+    StoreNumbers, definitions, stored_running_commands,
+};
+use demi_agent_transcript::IdSource;
 use demi_core::{Clock, CommandId, ModelSelection, NodeId, QueuedMessage};
 use demi_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_provider::{ProviderRuntime, ToolDefinition};
@@ -14,16 +24,6 @@ use demi_shell::{
     CommandSet, JobCaller, Numbers, PageFeed, PageState, PageView, ShellError, WholeOutput,
 };
 use futures_util::future::LocalBoxFuture;
-
-use crate::{
-    AgentHarness, IdSource, PromptContext, ShellEnvironmentFactory,
-    session::{
-        AgentSession, Continuation, RestoreError, SessionConfig, SessionDeps, SessionInit,
-        SessionRuntime, ToolFailure, ToolInvocation, ToolOutcome,
-    },
-    store::{AgentTreeStore, NodeRecord, StoreError},
-    tools::{self, CallError, Environments, ShellAccess, StoreNumbers},
-};
 
 /// A node's place in its tree, which sets its lifecycle policy: a child
 /// resumes a turn the process interrupted and closes once it is quiescent;
@@ -114,7 +114,7 @@ impl<H: AgentHarness> Node<H> {
     /// § Live output): each one its shells run, and each one the transcript
     /// last saw running that they still hold, oldest first.
     pub(crate) fn live_views(&self) -> Vec<PageView> {
-        let stored = tools::stored_running_commands(&self.session.transcript().blocks);
+        let stored = stored_running_commands(&self.session.transcript().blocks);
         let mut views: Vec<PageView> = self
             .runtime
             .environments
@@ -304,7 +304,7 @@ impl<H: AgentHarness> SessionRuntime for NodeRuntime<H> {
 
     /// The standard tools, and only these.
     fn tools(&self) -> Arc<[ToolDefinition]> {
-        tools::definitions()
+        definitions()
     }
 
     fn invoke_tool(

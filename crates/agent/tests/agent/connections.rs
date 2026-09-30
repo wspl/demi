@@ -9,9 +9,10 @@ use std::time::Duration;
 
 use demi_agent::{
     Outgoing, ServerConfig,
-    testing::{MemoryTreeStore, TestFiles, client_text, model_of},
+    testing::{TestFiles, client_text},
 };
 use demi_agent_protocol::{ClientFrame, ClientFrameKind, EditOutcome, ServerFrame, SteerOutcome};
+use demi_agent_store::testing::{MemoryTreeStore, model_of};
 use demi_core::{Block, BlockId, CommandId, NodeId, SessionPhase};
 use demi_provider::{
     ProviderEvent,

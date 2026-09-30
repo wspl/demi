@@ -848,7 +848,7 @@ mod tests {
 
         control.mark_conversation_read(first.id.clone(), 5).await.unwrap();
         control.mark_conversation_read(first.id.clone(), 3).await.unwrap();
-        let model = demi_agent::testing::model_of("entry-1", "claude-opus-4-8");
+        let model = demi_agent_store::testing::model_of("entry-1", "claude-opus-4-8");
         let changed = control
             .change_conversation(first.id.clone(), RecordChange::Model(model.clone()))
             .await

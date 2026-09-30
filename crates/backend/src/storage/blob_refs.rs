@@ -16,9 +16,9 @@
 
 use std::collections::BTreeSet;
 
-use demi_agent::store::media::{self, BlockReference, Holder};
-use demi_agent::store::{CheckpointState, StoreError};
-use demi_agent::transcript::retire::{self as rule, KEPT, Retirement};
+use demi_agent_store::media::{self, BlockReference, Holder};
+use demi_agent_store::{CheckpointState, StoreError};
+use demi_agent_transcript::retire::{self as rule, KEPT, Retirement};
 use demi_core::{BlobRef, Block, NodeId, Timestamp};
 use rusqlite::{Connection, Transaction, params};
 

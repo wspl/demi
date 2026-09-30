@@ -4,6 +4,10 @@ exclude = ["vendor/*", "vendor/chromiumoxide", "vendor/chromiumoxide_cdp"]
 members = [
   "crates/agent",
   "crates/agent-protocol",
+  "crates/agent-session",
+  "crates/agent-store",
+  "crates/agent-tools",
+  "crates/agent-transcript",
   "crates/artifact",
   "crates/backend",
   "crates/browser-protocol",

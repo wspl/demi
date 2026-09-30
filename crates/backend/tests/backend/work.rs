@@ -12,7 +12,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use demi_agent::testing::{field, shown_output};
+use demi_agent_tools::testing::{field, shown_output};
 use demi_core::{Block, EditedFile, ToolView};
 use demi_provider::testing::{MockResponse, MockVendor};
 use reqwest::StatusCode;
