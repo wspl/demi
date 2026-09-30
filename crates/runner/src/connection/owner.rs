@@ -4,40 +4,49 @@
 //! the backend's outbound queue, which the transport drains on its own.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     io,
     path::PathBuf,
     sync::Arc,
     time::Duration,
 };
 
+use demi_runner_host::{
+    host::HostServer,
+    volumes::{ManagedVolume, Volumes},
+};
+use demi_runner_jobs::{
+    commands::{
+        contexts::{self, ContextIndex, ContextPaths, ContextTable, Installation, Installed},
+        dispatch::Dispatcher,
+        streams::ServiceStreams,
+    },
+    connection::{ConnectionHandle, Ended, Relay, Request},
+    job_directories::JobDirectories,
+    kept_output::KeptReader,
+    tasks::{Commands, JobConfig, JobTable, TaskCommand, TaskSpec, WorkId, failure_exit},
+};
+use demi_runner_process::{
+    job_shell::JobShell,
+    pipes::{PipeClient, report_pipe},
+};
+use demi_runner_protocol::{
+    values::{BackendUrl, DeviceToken},
+    wire::{self, Inbound},
+};
+use demi_runner_services::ServiceHandle;
 use tokio::{
     sync::{mpsc, watch},
     task::JoinSet,
 };
 use tokio_util::sync::CancellationToken;
 
-use super::{ConnectionHandle, Ended, Relay, Request, Transport, wire};
+use super::Transport;
 use crate::{
-    commands::{
-        contexts::{self, ContextIndex, ContextPaths, ContextTable, Installation, Installed},
-        dispatch::Dispatcher,
-        streams::ServiceStreams,
-    },
-    host::HostServer,
     host_log::{self, HostLogReader},
-    job_directories::JobDirectories,
-    kept_output::KeptReader,
     management::{Management, Phase},
-    pipes::PipeClient,
-    services::ServiceHandle,
-    shell::ShellRuntime,
     state::{RunnerConfig, RunnerState},
-    tasks::{Commands, JobConfig, JobTable, TaskCommand, TaskSpec, WorkId, failure_exit, report_pipe},
-    volumes::{ManagedVolume, Volumes},
 };
-use demi_runner_protocol::values::{BackendUrl, DeviceToken};
-use wire::Inbound;
 
 /// How a connection ended.
 pub enum End {
@@ -62,7 +71,10 @@ pub struct Registered {
     pub log: HostLogReader,
     /// The job root (`runner.md` § Pipes and output).
     pub jobs: PathBuf,
-    pub shell: ShellRuntime,
+    pub shell: Arc<dyn JobShell>,
+    /// The names no declared root command may take: the runner's own and
+    /// its shell's builtins.
+    pub reserved: BTreeSet<String>,
     /// The local endpoint command clients reach.
     pub endpoint: String,
     /// The default working directory and the environment jobs start from.
@@ -384,8 +396,9 @@ impl Owner<'_> {
                 self.installation.send_replace(Installation::Installing);
                 let paths = self.registered.paths.clone();
                 let services = self.registered.services.clone();
+                let reserved = self.registered.reserved.clone();
                 self.work.spawn(async move {
-                    let result = contexts::install(manifest, &paths, &services).await;
+                    let result = contexts::install(manifest, &paths, &services, &reserved).await;
                     Work::Installed {
                         installation,
                         result,

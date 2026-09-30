@@ -1,0 +1,45 @@
+[package]
+name = "demi-runner-services"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+# One test binary, the integration tests' (`crates-and-packages.md`
+# § Module layout); no doc examples.
+test = false
+doctest = false
+
+[features]
+# The native fixture program, the registry's decisions as a test sees them,
+# and a number source that refuses (`demi_runner_services::testing`).
+testing = ["dep:bytes", "demi-command-service/testing"]
+
+[dependencies]
+demi-artifact = { path = "../artifact" }
+demi-command-service = { path = "../command-service" }
+demi-runner-process = { path = "../runner-process" }
+demi-runner-protocol = { path = "../runner-protocol" }
+# The native fixture program's.
+bytes = { workspace = true, optional = true }
+futures-util.workspace = true
+process-wrap.workspace = true
+reqwest = { version = "0.12", default-features = false }
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+demi-runner-services = { path = ".", features = ["testing"] }
+sha2 = "0.10"
+tempfile = "3"
+tracing-subscriber.workspace = true
+
+[[bin]]
+name = "demi-native-fixture"
+path = "tests/fixtures/service.rs"
+required-features = ["testing"]
+test = false

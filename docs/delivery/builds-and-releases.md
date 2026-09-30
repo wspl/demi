@@ -313,8 +313,9 @@ release acceptance runs the shared Rust suite on each platform that ships a
 feature.
 
 Every Rust command but the Chrome suite's selects the same thing: the whole
-workspace with the runner's `test-fixtures` feature, which builds the fixture
-programs the tests start. Cargo unifies features over what one command
+workspace with the runner's `test-fixtures` feature, which turns on the
+runner libraries' test support and so builds the fixture programs the tests
+start. Cargo unifies features over what one command
 selects, so a command that selected one crate or other features would build
 its own copy of every shared dependency.
 

@@ -4,21 +4,25 @@
 //! connection in turn is served by its own owner
 //! ([`crate::connection::serve`]).
 
-use crate::connection::{self, End, Registered, Transport, wire};
+use crate::connection::{self, End, Registered, Transport};
 use crate::{
-    commands::contexts::{ContextPaths, Contexts},
-    commands::dispatch::Dispatcher,
-    commands::local::Server,
     host_log::HostLogReader,
-    management::{Management, Phase},
-    pipes::PipeClient,
-    services::ServiceRegistry,
+    management::{Endpoint, Management, Phase},
     state::{ActiveRunner, RunnerConfig, RunnerState},
 };
+use demi_runner_host::volumes::ManagedVolume;
+use demi_runner_jobs::commands::{
+    contexts::{ContextPaths, Contexts},
+    dispatch::Dispatcher,
+    local::Server,
+};
+use demi_runner_process::{job_shell::JobShell, pipes::PipeClient};
 use demi_runner_protocol::{
     image::ARTIFACTS_PATH,
     values::{BackendUrl, DeviceToken},
+    wire,
 };
+use demi_runner_services::ServiceRegistry;
 use std::{collections::BTreeMap, io, path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
@@ -36,9 +40,9 @@ pub struct Options {
     pub env: BTreeMap<String, String>,
     pub runner: wire::RunnerInfo,
     pub token: Option<DeviceToken>,
-    pub volumes: Vec<crate::volumes::ManagedVolume>,
-    /// Where shell jobs run (`concurrency.md` § Runner).
-    pub shell: crate::shell::ShellRuntime,
+    pub volumes: Vec<ManagedVolume>,
+    /// Runs the jobs' scripts (`concurrency.md` § Runner).
+    pub shell: Arc<dyn JobShell>,
 }
 
 pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
@@ -89,9 +93,16 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
         contexts: Contexts::new(index.subscribe()),
         services: registry.handle(),
         pipes: pipes.clone(),
-        management: management.clone(),
     });
-    let server = Server::start(dispatcher.clone()).await?;
+    let server = Server::start(Arc::new(Endpoint {
+        dispatcher: dispatcher.clone(),
+        management: management.clone(),
+    }))
+    .await?;
+    // A root command of the runner's name would run the runner, and one of a
+    // builtin's name the builtin.
+    let mut reserved = options.shell.builtin_names();
+    reserved.insert(crate::PROGRAM.into());
     lease
         .publish(
             &state,
@@ -116,6 +127,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
         log: options.log,
         jobs: options.jobs,
         shell: options.shell,
+        reserved,
         endpoint: server.endpoint().into(),
         cwd: options.cwd,
         env: options.env,

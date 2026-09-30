@@ -1901,33 +1901,22 @@ dependencies = [
 name = "demi-runner"
 version = "0.1.3"
 dependencies = [
- "brush-builtins",
- "brush-core",
  "bytes",
- "chrono",
  "clap",
- "demi-artifact",
  "demi-command-service",
- "demi-command-tree",
+ "demi-host-remote",
+ "demi-runner-host",
+ "demi-runner-jobs",
+ "demi-runner-process",
  "demi-runner-protocol",
- "diffutils",
- "filetime",
- "findutils",
- "fsevent-sys",
+ "demi-runner-services",
+ "demi-runner-shell",
+ "demi-shell",
  "futures-util",
- "gix",
  "hostname",
- "jaq",
  "libc",
- "notify",
- "process-wrap",
- "procfs",
- "reqwest",
- "ripgrep",
- "rlimit",
  "rmp-serde",
  "rustix",
- "sed",
  "serde",
  "serde_json",
  "sha2",
@@ -1939,6 +1928,155 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "demi-runner-host"
+version = "0.1.3"
+dependencies = [
+ "bytes",
+ "demi-artifact",
+ "demi-command-service",
+ "demi-runner-process",
+ "demi-runner-protocol",
+ "filetime",
+ "fsevent-sys",
+ "futures-util",
+ "gix",
+ "libc",
+ "notify",
+ "rmp-serde",
+ "rustix",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "demi-runner-jobs"
+version = "0.1.3"
+dependencies = [
+ "bytes",
+ "demi-command-service",
+ "demi-command-tree",
+ "demi-runner-jobs",
+ "demi-runner-process",
+ "demi-runner-protocol",
+ "demi-runner-services",
+ "futures-util",
+ "rmp-serde",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "demi-runner-process"
+version = "0.1.3"
+dependencies = [
+ "bytes",
+ "demi-artifact",
+ "demi-command-service",
+ "demi-runner-protocol",
+ "futures-util",
+ "gix-imara-diff",
+ "libc",
+ "process-wrap",
+ "procfs",
+ "reqwest",
+ "rlimit",
+ "rustix",
+ "serde",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "demi-runner-protocol"
+version = "0.1.3"
+dependencies = [
+ "demi-command-service",
+ "demi-command-tree",
+ "demi-core",
+ "garde",
+ "rmp-serde",
+ "schemars",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "serde_plain",
+ "serde_with",
+ "thiserror",
+ "url",
+]
+
+[[package]]
+name = "demi-runner-services"
+version = "0.1.3"
+dependencies = [
+ "bytes",
+ "demi-artifact",
+ "demi-command-service",
+ "demi-runner-process",
+ "demi-runner-protocol",
+ "demi-runner-services",
+ "futures-util",
+ "process-wrap",
+ "reqwest",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "demi-runner-shell"
+version = "0.1.3"
+dependencies = [
+ "brush-builtins",
+ "brush-core",
+ "bytes",
+ "chrono",
+ "clap",
+ "demi-command-service",
+ "demi-runner-process",
+ "demi-runner-protocol",
+ "demi-runner-shell",
+ "diffutils",
+ "findutils",
+ "futures-util",
+ "jaq",
+ "libc",
+ "process-wrap",
+ "ripgrep",
+ "rlimit",
+ "rustix",
+ "sed",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
  "uu_basename",
  "uu_cat",
  "uu_chmod",
@@ -1976,25 +2114,6 @@ dependencies = [
  "uucore",
  "uuid",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "demi-runner-protocol"
-version = "0.1.3"
-dependencies = [
- "demi-command-service",
- "demi-command-tree",
- "demi-core",
- "garde",
- "rmp-serde",
- "schemars",
- "serde",
- "serde_bytes",
- "serde_json",
- "serde_plain",
- "serde_with",
- "thiserror",
- "url",
 ]
 
 [[package]]

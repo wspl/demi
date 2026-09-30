@@ -2,6 +2,7 @@
 //! configuration, device token and lock, and the record of the runner that
 //! holds it. Each file is checked as it is read.
 
+use demi_runner_process::private_files::{chmod, write_private};
 use demi_runner_protocol::values::{BackendUrl, DeviceToken};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -91,7 +92,7 @@ pub struct StateLease {
 impl RunnerState {
     pub async fn open(root: PathBuf) -> io::Result<Self> {
         tokio::fs::create_dir_all(&root).await?;
-        crate::fs::chmod(&root, 0o700).await?;
+        chmod(&root, 0o700).await?;
         Ok(Self { root })
     }
 
@@ -204,29 +205,5 @@ async fn read_optional(path: &Path) -> io::Result<Option<Vec<u8>>> {
         Ok(bytes) => Ok(Some(bytes)),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error),
-    }
-}
-
-/// Replaces the state file at `path` with `bytes` and a final newline,
-/// readable by the owner alone and on disk before the rename.
-pub(crate) async fn write_private(path: PathBuf, mut bytes: Vec<u8>) -> io::Result<()> {
-    if !bytes.ends_with(b"\n") {
-        bytes.push(b'\n');
-    }
-    let publication = demi_artifact::Publication {
-        mode: demi_artifact::Mode::Replace,
-        permissions: demi_artifact::Permissions::Private,
-        durable: true,
-    };
-    demi_artifact::publish_bytes(&path, &bytes, publication)
-        .await
-        .map_err(io_error)
-}
-
-/// An artifact failure as the IO error it is, or wraps.
-pub(crate) fn io_error(error: demi_artifact::Error) -> io::Error {
-    match error {
-        demi_artifact::Error::Io(error) => error,
-        error => io::Error::other(error),
     }
 }

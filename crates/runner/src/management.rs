@@ -1,9 +1,19 @@
-//! Installation status and coordinated upgrade drain.
+//! Installation status and coordinated upgrade drain, which the runner's
+//! local endpoint answers beside the declared commands.
 
+use demi_command_service::{
+    Handler, InvocationContext, ServiceError,
+    protocol::{Completion, LocalInvocation},
+};
+use demi_runner_jobs::commands::dispatch::{Dispatcher, completed, reported};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::{future::Future, pin::Pin, sync::Arc};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
+
+/// The local operation that asks for the installation's status or its
+/// drain; its arguments are a [`Request`].
+pub const MANAGE: &str = "manage";
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -72,7 +82,11 @@ impl Management {
     /// Whether `request` carries the secret, compared in constant time.
     pub fn authorize(&self, request: &Request) -> bool {
         use subtle::ConstantTimeEq;
-        request.secret.as_bytes().ct_eq(self.secret.as_bytes()).into()
+        request
+            .secret
+            .as_bytes()
+            .ct_eq(self.secret.as_bytes())
+            .into()
     }
 
     pub fn phase(&self) -> Phase {
@@ -95,5 +109,62 @@ impl Management {
             draining: self.draining.is_cancelled(),
             jobs: snapshot.jobs,
         }
+    }
+}
+
+impl Management {
+    /// Answers one management request: its secret checked, the drain begun
+    /// when it asks for one, and the status written on its standard output.
+    async fn answer(
+        &self,
+        context: InvocationContext<LocalInvocation>,
+    ) -> Result<Completion, ServiceError> {
+        let request: Request = serde_json::from_value(context.request.args)?;
+        if !self.authorize(&request) {
+            return Err(ServiceError::failed(InvalidSecret));
+        }
+        if matches!(request.action, Action::Drain) {
+            self.draining.cancel();
+        }
+        context
+            .output
+            .stdout(serde_json::to_vec(&self.status())?.into())
+            .await?;
+        Ok(completed(0))
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("invalid management secret")]
+struct InvalidSecret;
+
+/// What the runner's local endpoint serves: the declared commands the
+/// dispatcher runs, and the management requests.
+pub struct Endpoint {
+    pub dispatcher: Arc<Dispatcher>,
+    pub management: Arc<Management>,
+}
+
+impl Handler for Endpoint {
+    type Metadata = LocalInvocation;
+
+    fn operations(&self) -> Vec<String> {
+        let mut operations = self.dispatcher.operations();
+        operations.push(MANAGE.into());
+        operations
+    }
+
+    fn invoke(
+        &self,
+        context: InvocationContext<LocalInvocation>,
+    ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
+        if context.request.operation != MANAGE {
+            return self.dispatcher.invoke(context);
+        }
+        let management = self.management.clone();
+        Box::pin(async move {
+            let output = context.output.clone();
+            reported(management.answer(context).await, &output).await
+        })
     }
 }

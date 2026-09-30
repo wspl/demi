@@ -1,0 +1,205 @@
+use std::{
+    collections::BTreeMap,
+    future::Future,
+    pin::Pin,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
+
+use bytes::Bytes;
+use demi_command_service::{
+    Client, Handler, InvocationContext, ServiceError,
+    protocol::{Completion, LocalInvocation, Record},
+};
+use demi_runner_jobs::commands::local::Server;
+use demi_runner_process::command_client;
+use tokio_util::sync::CancellationToken;
+
+struct Commands {
+    cancelled: Arc<AtomicBool>,
+}
+
+impl Handler for Commands {
+    type Metadata = LocalInvocation;
+
+    fn operations(&self) -> Vec<String> {
+        vec!["echo".into(), "wait".into()]
+    }
+
+    fn invoke(
+        &self,
+        mut context: InvocationContext<LocalInvocation>,
+    ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
+        let cancelled = self.cancelled.clone();
+        Box::pin(async move {
+            if context.request.operation == "wait" {
+                context.output.stdout(Bytes::from_static(b"ready")).await?;
+                context.cancellation.cancelled().await;
+                cancelled.store(true, Ordering::SeqCst);
+                return Err(ServiceError::Cancelled);
+            }
+            while let Some(bytes) = context.input.next().await? {
+                context.output.stdout(bytes).await?;
+            }
+            Ok(Completion {
+                exit_code: 0,
+                error: None,
+            })
+        })
+    }
+}
+
+fn invocation(operation: &str) -> LocalInvocation {
+    LocalInvocation {
+        operation: operation.into(),
+        invocation_id: operation.into(),
+        args: serde_json::json!({}),
+        cwd: std::env::temp_dir().to_string_lossy().into_owned(),
+        env: BTreeMap::new(),
+    }
+}
+
+#[tokio::test]
+async fn private_endpoint_streams_binary_input_on_demand_and_joins_cancelled_calls() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let server = Server::start(Arc::new(Commands {
+            cancelled: cancelled.clone(),
+        }))
+        .await
+        .unwrap();
+        let endpoint = server.endpoint().to_owned();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&endpoint).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
+        let socket = command_client::connect(&endpoint, &CancellationToken::new())
+            .await
+            .unwrap();
+        let (client, connection) = Client::connect(socket).await.unwrap();
+        let driver = tokio::spawn(connection);
+        let (mut input, mut output) = client.invoke(&invocation("echo")).await.unwrap();
+        assert_eq!(output.next().await.unwrap(), Some(Record::InputPull));
+        input.write(Bytes::from_static(b"raw\0\xff")).await.unwrap();
+        assert_eq!(
+            output.next().await.unwrap(),
+            Some(Record::Stdout(Bytes::from_static(b"raw\0\xff")))
+        );
+        assert_eq!(output.next().await.unwrap(), Some(Record::InputPull));
+        input.end().unwrap();
+        assert!(matches!(
+            output.next().await.unwrap(),
+            Some(Record::Completion(_))
+        ));
+        assert_eq!(output.next().await.unwrap(), None);
+        drop(input);
+        drop(output);
+        let (input, mut output) = client.invoke(&invocation("wait")).await.unwrap();
+        assert_eq!(
+            output.next().await.unwrap(),
+            Some(Record::Stdout(Bytes::from_static(b"ready")))
+        );
+        server.close().await.unwrap();
+        assert!(cancelled.load(Ordering::SeqCst));
+        #[cfg(unix)]
+        assert!(!std::path::Path::new(&endpoint).exists());
+        drop(input);
+        drop(output);
+        drop(client);
+        // Server shutdown can surface a transport reset; the driver must still exit.
+        let _transport_outcome = driver.await.unwrap();
+    })
+    .await
+    .unwrap();
+}
+
+/// A refused client waits while the runner holds its lock, and fails at once
+/// when the runner has stopped or crashed (`commands.md` § External command
+/// clients). The clock is paused: the client's pauses between attempts and
+/// the test's deadlines pass as soon as nothing else can happen, so "at once"
+/// is within a second of that clock and "waits" is half a second of it,
+/// however loaded the machine.
+#[cfg(unix)]
+#[tokio::test(start_paused = true)]
+async fn a_client_waits_for_a_busy_runner_but_not_for_a_gone_one() {
+    // Stopped: the runner removed its endpoint.
+    let server = Server::start(Arc::new(Commands {
+        cancelled: Arc::new(AtomicBool::new(false)),
+    }))
+    .await
+    .unwrap();
+    let endpoint = server.endpoint().to_owned();
+    server.close().await.unwrap();
+    let stopped = tokio::time::timeout(
+        Duration::from_secs(1),
+        command_client::connect(&endpoint, &CancellationToken::new()),
+    )
+    .await;
+    assert!(
+        matches!(stopped, Ok(Err(_))),
+        "a stopped runner fails at once"
+    );
+
+    // Crashed: its socket is left behind, nothing listens and no lock is held.
+    // The socket never listens: a listening one closed again would still
+    // accept in any child another test forks meanwhile, which keeps a copy
+    // of it until it runs its own program.
+    let crashed = tempfile::tempdir().unwrap();
+    let socket = crashed.path().join("ipc.sock");
+    tokio::net::UnixSocket::new_stream()
+        .unwrap()
+        .bind(&socket)
+        .unwrap();
+    std::fs::File::create(crashed.path().join("ipc.alive")).unwrap();
+    let gone = tokio::time::timeout(
+        Duration::from_secs(1),
+        command_client::connect(socket.to_str().unwrap(), &CancellationToken::new()),
+    )
+    .await;
+    assert!(matches!(gone, Ok(Err(_))), "a crashed runner fails at once");
+
+    // Busy: the queue of connections not yet accepted is full while the
+    // runner holds its lock.
+    let busy = tempfile::tempdir().unwrap();
+    let socket = busy.path().join("ipc.sock");
+    let unaccepted = tokio::net::UnixSocket::new_stream().unwrap();
+    unaccepted.bind(&socket).unwrap();
+    let listener = unaccepted.listen(1).unwrap();
+    let alive = std::fs::File::create(busy.path().join("ipc.alive")).unwrap();
+    alive.try_lock().unwrap();
+    let mut queued = Vec::new();
+    // A connect that fails or does not finish is one the full queue holds
+    // back.
+    while let Ok(Ok(stream)) = tokio::time::timeout(
+        Duration::from_secs(1),
+        tokio::net::UnixStream::connect(&socket),
+    )
+    .await
+    {
+        queued.push(stream);
+    }
+    let waiting = tokio::spawn({
+        let socket = socket.to_str().unwrap().to_owned();
+        async move {
+            command_client::connect(&socket, &CancellationToken::new())
+                .await
+                .map(|_| ())
+        }
+    });
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert!(!waiting.is_finished(), "a busy runner is waited for");
+    drop(listener);
+    drop(alive);
+    let after = tokio::time::timeout(Duration::from_secs(2), waiting).await;
+    assert!(
+        matches!(after, Ok(Ok(Err(_)))),
+        "once the runner is gone the waiting client fails"
+    );
+}
