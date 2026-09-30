@@ -9,7 +9,7 @@
 //! writes or removes are its uses, which it records before it commits
 //! (`storage.md` § Collecting blobs).
 
-use demi_agent::store::StoreError;
+use demi_agent_store::StoreError;
 use demi_core::{BlobRef, Block, CommandId, Timestamp, ToolView};
 use demi_shell::Missing;
 use rusqlite::{Connection, OptionalExtension, Row, params};

@@ -385,7 +385,8 @@ next to the wire's types, so that a command program depends on one crate.
   runtimes (`ScriptedRuntime`), a scripted vendor server (`MockVendor`), waits
   for a run's events that fail a test instead of hanging it (`next_event`,
   `all_events`), the check of an API-key entry's built-in catalog
-  (`assert_built_in_catalog`) and a fixed clock (`FixedClock`). Behavior:
+  (`assert_built_in_catalog`), a fixed clock (`FixedClock`) and a wall clock
+  that moves with Tokio's paused clock (`TokioClock`). Behavior:
   [Providers](../providers/providers.md),
   [Models](../providers/models.md),
   [Usage and quota](../providers/usage-and-quota.md) and
@@ -490,10 +491,11 @@ Each crate implements the provider contract for one vendor family.
     and the blocks an upload becomes with its recorded media type and opening
     (`attachments`).
 - **Public boundary:** the items above; `agent_store::testing` supplies an
-  in-memory tree store (`MemoryTreeStore`) with an in-memory blob namespace
-  (`MemoryBlobs`), the tree store contract's cases that every realization
-  passes (`store_contract`), and the model and text values those cases use
-  (`test_model`, `text`).
+  in-memory tree store (`MemoryTreeStore`, whose calls a test can hold with
+  `StoreGate`) with an in-memory blob namespace (`MemoryBlobs`), the tree
+  store contract's cases that every realization passes (`store_contract`),
+  and the model selections, texts and images the agent crates' tests build on
+  (`test_model`, `model_of`, `model_reading`, `text`, `sent_text`, `png`).
 - **Must not:** depend on the transcript, the session or the tools, or know a
   provider's runtime. The product's store decides where media bytes go; this
   crate defines only what is stored.
@@ -507,7 +509,10 @@ Each crate implements the provider contract for one vendor family.
   (`replay`), and the rule that retires a tool result's expired images and
   videos, which the backend applies to stored conversations (`retire`).
 - **Public boundary:** the items above; `agent_transcript::testing` supplies
-  predictable identities (`SequentialIds`).
+  predictable identities (`SequentialIds`) and the texts the model receives
+  for a resume, a fired wakeup and an agent message (`RESUME_TEXT`,
+  `WAKEUP_TEXT`, `agent_message_envelope`), which a session's tests compare
+  its requests with.
 - **Must not:** run a turn, call a provider or store anything itself.
 
 #### `agent-session`
@@ -522,8 +527,12 @@ Each crate implements the provider contract for one vendor family.
   `ToolFailure`), which it defines and the tools implement.
 - **Public boundary:** the handle, its construction and restoration
   (`SessionDeps`, `SessionInit`), its events, status and errors, the editing
-  types (`EditSubmission`, `EditCheck` and their outcomes), and the
-  tool-call contract. Behavior: [Agent runtime](../agent/runtime.md).
+  types (`EditSubmission`, `EditCheck` and their outcomes), the command
+  storage a job's calls reach (`AgentSession::storage`, answering the shell's
+  storage port messages), and the tool-call contract;
+  `agent_session::testing` supplies the compaction request's instruction
+  (`COMPACTION_SUMMARY_INSTRUCTION`). Behavior:
+  [Agent runtime](../agent/runtime.md).
 - **Must not:** know tools, nodes, trees or connections; a session runs a
   tool only through the tool-call contract.
 
@@ -537,7 +546,7 @@ Each crate implements the provider contract for one vendor family.
   context and the Host its nodes' shell tools reach (`AgentHarness::Host`).
 - **Public boundary:** the items above; `agent_tools::testing` supplies a
   Host type for agents without shell tools (`NoHost`, `NoShells`) and the
-  readers of a shell tool's result text (`field`, `preview`).
+  readers of a shell tool's result text (`field`, `shown_output`).
 - **Must not:** create sessions, nodes or trees, or own a shell interpreter.
 
 #### `agent`
@@ -561,9 +570,9 @@ Each crate implements the provider contract for one vendor family.
     (`ContentResolver`), and the conversation title request and its rules
     (`title`).
 - **Public boundary:** the items above; `agent::testing` supplies provider
-  runtimes that play scripts (`ScriptedProviders`) and a test client that
-  drives a connection (`TestClient`, and `waiting_frames` for what an outbox
-  holds). A product supplies the harness, the providers, a shell environment
+  runtimes that play scripts (`ScriptedProviders`), uploads a frame's files
+  resolve to (`TestFiles`) and a test client that drives a connection
+  (`TestClient`, and `waiting_frames` for what an outbox holds). A product supplies the harness, the providers, a shell environment
   per Host and a tree store; the agent never knows which shell engine runs.
   Behavior: [Agent runtime](../agent/runtime.md) and
   [Subagents](../agent/subagents.md).
@@ -1248,7 +1257,7 @@ provider-claude-code -> core, provider, shell
 shell -> command-service, command-tree, core
 agent-store -> agent-protocol, core, provider, shell
 agent-transcript -> agent-protocol, agent-store, core, provider
-agent-session -> agent-protocol, agent-store, agent-transcript, command-service, core, gates, provider
+agent-session -> agent-protocol, agent-store, agent-transcript, command-service, core, gates, provider, shell
 agent-tools -> agent-protocol, agent-session, agent-store, agent-transcript, core, provider, shell
 agent -> agent-protocol, agent-session, agent-store, agent-tools, agent-transcript, core, gates, provider, shell
 coding-agent -> agent-tools, browser-protocol, command-tree, core, file-protocol, shell

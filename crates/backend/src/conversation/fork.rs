@@ -9,7 +9,7 @@
 //! destination, and startup publishes a destination whose root committed
 //! before its publication.
 
-use demi_agent::ForkError;
+use demi_agent_session::ForkError;
 use demi_core::BlockId;
 use demi_web_api::conversations::ConversationTarget;
 use demi_web_api::ids::ConversationId;
@@ -217,9 +217,9 @@ mod tests {
     use std::num::NonZeroUsize;
     use std::sync::Arc;
 
-    use demi_agent::AgentTreeStore as _;
-    use demi_agent::store::{CheckpointState, CheckpointUpdate, NodeRecord};
-    use demi_agent::testing::test_model;
+    use demi_agent_store::{
+        AgentTreeStore as _, CheckpointState, CheckpointUpdate, NodeRecord, testing::test_model,
+    };
     use demi_core::{SessionPhase, Timestamp};
 
     use super::*;

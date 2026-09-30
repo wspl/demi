@@ -6,60 +6,51 @@ license.workspace = true
 rust-version.workspace = true
 
 [lib]
-# No doc examples: rustdoc has nothing to test.
+# One test binary, the integration tests' (`crates-and-packages.md`
+# § Module layout); no doc examples.
+test = false
 doctest = false
 
 [features]
-# An in-memory tree store, predictable ids, scripted provider runtimes and a
-# test client that drives a connection (`agent::testing`), for the tests of
-# the agent and of what sits above it, with the view of the actions waiting
-# at a tree's admission (`demi-gates/testing`).
-testing = ["demi-gates/testing", "demi-provider/testing"]
+# Scripted provider runtimes and a test client that drives a connection
+# (`agent::testing`), for the tests of the agent and of what sits above it,
+# with the test support of the agent's lower crates and the view of the
+# actions waiting at a tree's admission (`demi-gates/testing`).
+testing = ["demi-agent-tools/testing", "demi-gates/testing", "demi-provider/testing"]
 
 [dependencies]
 bytes.workspace = true
 demi-agent-protocol = { path = "../agent-protocol" }
-demi-command-service = { path = "../command-service" }
+demi-agent-session = { path = "../agent-session" }
+demi-agent-store = { path = "../agent-store" }
+demi-agent-tools = { path = "../agent-tools" }
+demi-agent-transcript = { path = "../agent-transcript" }
 demi-core = { path = "../core" }
 demi-gates = { path = "../gates" }
 demi-provider = { path = "../provider" }
 demi-shell = { path = "../shell" }
 futures-util.workspace = true
-garde.workspace = true
-# Fits an image as it enters a transcript (`runtime.md` § Images in the
-# transcript): only the codecs of the types a model reads, and no threads.
-image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
-jiff.workspace = true
-rand = "0.9"
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-serde_json_canonicalizer = "0.3"
-serde_path_to_error = "0.1"
-serde_with.workspace = true
-sha2 = "0.10"
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
-uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 # The crate's own tests use its test support and the scripted provider
 # runtimes.
 demi-agent = { path = ".", features = ["testing"] }
+demi-agent-store = { path = "../agent-store", features = ["testing"] }
+demi-agent-tools = { path = "../agent-tools", features = ["testing"] }
+demi-agent-transcript = { path = "../agent-transcript", features = ["testing"] }
 demi-provider = { path = "../provider", features = ["testing"] }
-# Each provider's format of a session's requests (`session/tests/requests.rs`,
-# `providers.md` § The rule).
-demi-provider-anthropic-api = { path = "../provider-anthropic-api" }
-demi-provider-codex = { path = "../provider-codex", features = ["testing"] }
-demi-provider-google = { path = "../provider-google" }
-demi-provider-grok-build = { path = "../provider-grok-build" }
 tokio = { workspace = true, features = ["test-util"] }
 # The compaction fixture's harness (`fixtures/compaction/README.md`) talks
 # to a real model. It is an example, so every build of the one selection
 # compiles it and no test runs it; its provider is a dev-dependency, so the
-# library never links one. The requests' tests use it too.
+# library never links one.
 demi-provider-openai-api = { path = "../provider-openai-api" }
 flate2 = "1"
 reqwest = { version = "0.12", default-features = false }

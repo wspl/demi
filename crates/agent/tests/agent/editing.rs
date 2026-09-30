@@ -4,18 +4,24 @@
 //! requests the replacement makes, and the checkpoints the store keeps.
 
 use demi_agent::{
-    AgentTreeStore, ForkError, ServerConfig,
-    store::{ClosePhase, NodeClose},
-    testing::{
-        MemoryTreeStore, TestClient, TestFiles, client_text, model_of, model_reading,
-        waiting_frames,
-    },
-    transcript::CutError,
+    ServerConfig,
+    testing::{TestClient, TestFiles, client_text, waiting_frames},
 };
+use demi_agent_protocol::MediaRef;
 use demi_agent_protocol::{
     ClientContent, ClientFrame, EditOutcome, EditRequest, ServerFrame, TranscriptPatch,
     TranscriptVersion,
 };
+use demi_agent_session::ForkError;
+use demi_agent_store::{
+    AgentTreeStore, ClosePhase, NodeClose,
+    testing::{MemoryTreeStore, model_of, model_reading},
+};
+use demi_agent_store::{
+    media::{BlobStore, HeldMedia},
+    testing::MemoryBlobs,
+};
+use demi_agent_transcript::CutError;
 use demi_core::{
     Attachment, B64Bytes, BlobRef, Block, BlockId, DocumentSource, FileExtension, MediaSource,
     NodeId, OperationId, SessionPhase, Timestamp, TurnId, UserContentBlock, attachment_tag,
@@ -27,12 +33,6 @@ use demi_provider::{
 use demi_shell::{PortError, Revision, StorageOp, StorageReply};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
-
-use demi_agent::{
-    store::media::{BlobStore, HeldMedia},
-    testing::MemoryBlobs,
-};
-use demi_agent_protocol::MediaRef;
 
 use crate::{
     subagents::{checkpoint, child_record},
@@ -210,7 +210,7 @@ async fn an_edit_replaces_its_message_and_what_follows_once_and_infers_on_a_fres
         unreachable!()
     };
     assert_eq!(replacement.turn_id, turn_id);
-    assert_eq!(replacement.content, demi_agent::testing::text("B2"));
+    assert_eq!(replacement.content, demi_agent_store::testing::text("B2"));
     assert_eq!(accepted.blocks[..4], replaces[0][..]);
     assert_eq!(
         kinds(&accepted.blocks),
@@ -223,14 +223,14 @@ async fn an_edit_replaces_its_message_and_what_follows_once_and_infers_on_a_fres
         *request.items,
         [
             InferenceItem::UserMessage {
-                content: demi_agent::testing::sent_text("A")
+                content: demi_agent_store::testing::sent_text("A")
             },
             InferenceItem::AssistantText {
                 model_id: "test-model".into(),
                 text: "answer A".into()
             },
             InferenceItem::UserMessage {
-                content: demi_agent::testing::sent_text("B2")
+                content: demi_agent_store::testing::sent_text("B2")
             },
         ]
     );
@@ -673,14 +673,14 @@ async fn a_fork_seed_keeps_the_history_through_a_completed_text_from_a_live_or_a
                 *request.items,
                 [
                     InferenceItem::UserMessage {
-                        content: demi_agent::testing::sent_text("A")
+                        content: demi_agent_store::testing::sent_text("A")
                     },
                     InferenceItem::AssistantText {
                         model_id: "test-model".into(),
                         text: "answer A".into()
                     },
                     InferenceItem::UserMessage {
-                        content: demi_agent::testing::sent_text("U3")
+                        content: demi_agent_store::testing::sent_text("U3")
                     },
                 ]
             );

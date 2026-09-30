@@ -10,8 +10,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use bytes::Bytes;
-use demi_agent::store::StoreError;
-use demi_agent::store::media::BlobStore;
+use demi_agent_store::StoreError;
+use demi_agent_store::media::BlobStore;
 use demi_core::{B64Bytes, BlobRef, Clock, Timestamp};
 use demi_web_api::ids::UserId;
 use futures_util::StreamExt as _;

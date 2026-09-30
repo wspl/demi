@@ -21,11 +21,12 @@
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
-use demi_agent::store::{
-    BoundaryEdge, Checkpoint, CheckpointState, CheckpointUpdate, ClosePhase, CommandStateSnapshot, CommandStorageKey,
-    CommandVersion, CommitGuard, NodeClose, NodeRecord, SessionBoundary, StoreError, media::BlobStore,
+use demi_agent_store::{
+    BoundaryEdge, Checkpoint, CheckpointState, CheckpointUpdate, ClosePhase, CommandStateSnapshot,
+    CommandStorageKey, CommandVersion, CommitGuard, NodeClose, NodeRecord, SessionBoundary,
+    StoreError, media::BlobStore,
 };
-use demi_agent::{AgentTreeStore, SessionStore, StoredOutput};
+use demi_agent_store::{AgentTreeStore, SessionStore, StoredOutput};
 use demi_core::{Block, BlockId, CommandId, CompletionId, NodeId, QueuedMessage, Sequence, SessionPhase, Timestamp};
 use demi_host_remote::decode_output;
 use futures_util::future::LocalBoxFuture;
@@ -803,8 +804,8 @@ mod tests {
     use std::num::NonZeroUsize;
     use std::sync::Arc;
 
-    use demi_agent::testing::{store_contract, test_model, text};
-    use demi_agent::transcript::retire::Retirement;
+    use demi_agent_store::testing::{store_contract, test_model, text};
+    use demi_agent_transcript::retire::Retirement;
     use demi_core::{
         BlobRef, EditCopies, EditKind, EditSegment, EditedFile, MediaSource, ResponseBlock, ShellId, ShellToolView,
         ShellViewStatus, TextBlock, TokenUsage, ToolCallBlock, ToolCallStatus, ToolMediaSource,

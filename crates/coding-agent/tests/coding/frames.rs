@@ -7,11 +7,9 @@
 
 use std::{cell::RefCell, rc::Rc, time::Duration, time::Instant};
 
-use demi_agent::{
-    ServerConfig,
-    testing::{TestClient, shown_output},
-};
+use demi_agent::{ServerConfig, testing::TestClient};
 use demi_agent_protocol::{ClientFrame, ServerFrame, ShellStatus, TranscriptPatch};
+use demi_agent_tools::testing::shown_output;
 use demi_core::{Block, CommandId, ToolCallStatus};
 use demi_provider::testing::{ScriptedRuntime, Turn, event};
 use serde_json::json;

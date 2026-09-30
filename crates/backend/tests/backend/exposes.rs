@@ -17,7 +17,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
-use demi_agent::testing::shown_output;
+use demi_agent_tools::testing::shown_output;
 use demi_core::Clock as _;
 use demi_gates::Purpose;
 use demi_provider::testing::MockVendor;
