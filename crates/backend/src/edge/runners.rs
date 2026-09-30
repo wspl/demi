@@ -22,7 +22,7 @@ use demi_host_remote::PipeRefusal;
 use demi_runner_protocol::wire::MAX_MESSAGE_BYTES;
 
 use super::AppState;
-use crate::runner::accept::accept;
+use super::runner_socket::accept;
 
 /// `WS /api/runner`: the socket carries MessagePack frames of at most the
 /// wire's limit; a larger one closes it.

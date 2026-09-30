@@ -24,8 +24,8 @@ impl Shard {
         let devices = self.device_list().await?;
         let mut conversations = self.conversation_summaries(false).await?;
         conversations.extend(self.conversation_summaries(true).await?);
-        let cloud = self.cloud_status().await?;
-        let exposes = self.list_exposes().await?;
+        let cloud = self.cloud_shard().cloud_status().await?;
+        let exposes = self.expose_shard().list_exposes().await?;
         Ok(ProductState {
             user,
             mode: services.mode,
@@ -84,13 +84,13 @@ impl Shard {
                 devices: self.device_list().await?,
             },
             Part::Exposes => SyncEvent::Exposes {
-                exposes: self.list_exposes().await?,
+                exposes: self.expose_shard().list_exposes().await?,
             },
             Part::Providers => SyncEvent::Providers {
                 providers: self.provider_states(user).await?,
             },
             Part::Cloud => SyncEvent::Cloud {
-                cloud: self.cloud_status().await?,
+                cloud: self.cloud_shard().cloud_status().await?,
             },
         };
         Ok(Some(event))

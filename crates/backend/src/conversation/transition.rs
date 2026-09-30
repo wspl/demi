@@ -204,7 +204,7 @@ impl Shard {
         let tree = self.reserve_idle_tree(id)?;
         let slot = self.conversations().slot(id);
         let transfers = slot.transfers.close().await;
-        let files = slot.files.try_reserve().ok_or(ChangeRefusal::TurnInFlight)?;
+        let files = slot.files.gate().try_reserve().ok_or(ChangeRefusal::TurnInFlight)?;
         Ok(Hold {
             _files: files,
             _transfers: transfers,
@@ -451,7 +451,7 @@ mod tests {
                 // the test has yielded, the rename has gone as far as it can,
                 // to the gate or through its commit, which a second read would
                 // then see.
-                let held = slot.files.try_reserve().unwrap();
+                let held = slot.files.gate().try_reserve().unwrap();
                 let renaming = {
                     let shard = shard.clone();
                     let id = id.clone();

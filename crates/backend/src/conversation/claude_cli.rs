@@ -24,10 +24,10 @@ use demi_web_api::providers::{CliInstall, CliMachine};
 use futures_util::future::LocalBoxFuture;
 use serde::de::DeserializeOwned;
 use tokio_util::sync::CancellationToken;
+use demi_backend_cloud::access::MachineAccess;
+use demi_backend_runners::command_context::{command_context, provider_context};
 
 use crate::backend::Services;
-use crate::managed::MachineAccess;
-use crate::runner::command_context::{command_context, provider_context};
 use crate::shard::{Shard, Shards};
 
 /// The most an operation of the package answers: one JSON document.
@@ -106,6 +106,7 @@ impl Placement for CloudPlacement {
                 .upgrade()
                 .ok_or_else(|| StartError("The backend is shutting down".into()))?;
             let access = shard
+                .cloud_shard()
                 .machine_access()
                 .await
                 .map_err(|error| StartError(error.to_string()))?;
@@ -220,7 +221,7 @@ impl Shard {
     }
 
     async fn install_cli_now(&self, entry: &ProviderId) -> Result<String, String> {
-        let access = self.machine_access().await.map_err(|error| error.to_string())?;
+        let access = self.cloud_shard().machine_access().await.map_err(|error| error.to_string())?;
         let site = self.cli_site(&access, &ProcessWork::Account(entry.clone())).await?;
         Ok(site.executable)
     }

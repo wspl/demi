@@ -5,7 +5,9 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use clap::Parser as _;
-use demi_backend::{Backend, Config, NativeCatalog, PublicationError, publish_native};
+use demi_backend::{Backend, Config};
+use demi_backend_runners::native::NativeCatalog;
+use demi_backend_runners::publication::{PublicationError, publish_native};
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;

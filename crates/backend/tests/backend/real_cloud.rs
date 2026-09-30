@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
 
-use demi_backend::MachinesClient;
+use demi_backend_cloud::client::MachinesClient;
 use demi_browser_protocol::browser::{BrowserTab, TabId};
 use demi_gates::Purpose;
 use demi_machines_protocol::{CheckpointParams, ImageStateParams, MachineImageState};

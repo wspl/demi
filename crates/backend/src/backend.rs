@@ -6,23 +6,24 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::io;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use object_store::ObjectStore;
 use tokio_util::task::AbortOnDropHandle;
-use url::Url;
 
 use demi_command_tree::NativeOperation;
-use demi_runner_protocol::values::BackendUrl;
 use demi_web_api::settings::InstanceMode;
 
 use demi_backend_accounts::email_change::{AccountMail, EmailChanges};
 use demi_backend_accounts::login_limiter::LoginLimiter;
 use demi_backend_accounts::passwords::{HashError, PasswordHasher};
 use demi_backend_accounts::sessions::WebSessions;
+use demi_backend_cloud::CloudServices;
+use demi_backend_cloud::client::MachinesClient;
+use demi_backend_cloud::reset::recover_resets;
 use demi_backend_objects::ObjectError;
 use demi_backend_objects::blobs::BlobStores;
 use demi_backend_objects::store::{self as objects, S3Config, S3ConfigError};
@@ -35,20 +36,20 @@ use demi_backend_providers::vault::entries::Vault;
 use demi_backend_providers::vault::logins::{LoginFlows, LoginTiming};
 use demi_backend_providers::vault::operations::ProviderOperations;
 use demi_backend_providers::vault::quotas::AccountQuotas;
+use demi_backend_runners::claims::PendingClaims;
+use demi_backend_runners::native::NativeCatalog;
+use demi_backend_runners::public_url::PublicUrl;
 use demi_backend_storage::StorageError;
 use demi_backend_storage::control::ControlService;
 use demi_backend_storage::conversations::{self, ConversationStores};
 use demi_backend_sync::SyncRegistry;
 use demi_provider::models_dev::ModelsDevClient;
+use demi_backend_expose::domain::ExposeDomain;
 
 use crate::config::{BackendConfig, ConversationTuning, ExposeTuning, LifecycleTuning, PageTuning, RunnerTuning};
 use crate::conversation::stream::UserStreams;
 use crate::edge::{AppState, Edge, Site};
-use crate::expose::ExposeDomain;
 use crate::conversation::claude_cli::CliInstalls;
-use crate::managed::{CloudServices, MachinesClient, recover_resets};
-use crate::runner::claims::PendingClaims;
-use crate::runner::native::NativeCatalog;
 use crate::shard::ShardPool;
 use crate::config::secret::{InstanceSecret, SecretError};
 
@@ -107,45 +108,6 @@ pub(crate) struct Services {
     /// (`Backend::hold_sync`).
     #[cfg(feature = "testing")]
     pub(crate) syncs: crate::holds::StepHolds<crate::SyncStep>,
-}
-
-/// Where runners, Cloud guests and expose visitors reach this backend:
-/// `DEMI_BACKEND_PUBLIC_URL`, or without one (a test's backend) the
-/// listener's own address. The edge sets it once the backend listens,
-/// before it serves; a Cloud's boot, an expose's URL and a development
-/// store's downloads name it. Cloning it shares it.
-#[derive(Clone, Default)]
-pub(crate) struct PublicUrl(Arc<OnceLock<BackendUrl>>);
-
-impl PublicUrl {
-    /// Sets the URL once the backend listens on `address`: `public`, or
-    /// without one the listener's own address.
-    pub(crate) fn listening(&self, public: Option<&Url>, address: SocketAddr) {
-        let url = match public {
-            Some(public) => public.as_str().parse::<BackendUrl>(),
-            None => {
-                // A listener on every address is reached on the loopback one.
-                let ip = match address.ip() {
-                    IpAddr::V4(ip) if ip.is_unspecified() => IpAddr::V4(Ipv4Addr::LOCALHOST),
-                    IpAddr::V6(ip) if ip.is_unspecified() => IpAddr::V6(Ipv6Addr::LOCALHOST),
-                    ip => ip,
-                };
-                format!("http://{}", SocketAddr::new(ip, address.port())).parse::<BackendUrl>()
-            }
-        };
-        match url {
-            // A backend listens once; a second call finds the URL set.
-            Ok(url) => {
-                let _ = self.0.set(url);
-            }
-            Err(error) => tracing::error!("the URL runners connect to is not usable: {error}"),
-        }
-    }
-
-    /// The URL, once the backend listens.
-    pub(crate) fn get(&self) -> Option<&BackendUrl> {
-        self.0.get()
-    }
 }
 
 /// What the provider services start with.
@@ -342,7 +304,7 @@ impl Services {
             PageTuning::default(),
             NativeCatalog::unpublished(),
             &BTreeMap::new(),
-            CloudServices::new(machines, crate::config::CloudTuning::default()),
+            CloudServices::new(machines, demi_backend_cloud::tuning::CloudTuning::default()),
             lifecycle,
             None,
             ExposeTuning::default(),
@@ -493,7 +455,7 @@ impl Backend {
                 return Err(StartError::Shards(error));
             }
         };
-        let deaths = AbortOnDropHandle::new(tokio::spawn(crate::managed::route_deaths(
+        let deaths = AbortOnDropHandle::new(tokio::spawn(crate::shard::cloud::route_deaths(
             deaths,
             services.clone(),
             shards.shards(),
@@ -501,7 +463,7 @@ impl Backend {
         // Before the backend serves, the machine manager settles what an
         // earlier backend left, which stops every Cloud and so ends their
         // exposes, and resets it left unfinished commit their disks.
-        if let Err(error) = recover_resets(&services).await {
+        if let Err(error) = recover_resets(&services.control, &services.cloud).await {
             shards.close().await;
             services.close_providers().await;
             return Err(StartError::Cloud(error.to_string()));
@@ -593,7 +555,7 @@ impl Backend {
         self.shards
             .shards()
             .of(user)
-            .call(move |shard, _| async move { shard.conversations().slot(&conversation).files.clone() })
+            .call(move |shard, _| async move { shard.conversations().slot(&conversation).files.gate().clone() })
             .await
             .expect("the user's shard serves while the backend runs")
     }
