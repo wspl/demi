@@ -85,3 +85,14 @@ impl Hold {
         let _released = released.wait_for(|released| *released).await;
     }
 }
+
+/// Where a hello waits while a test holds it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HelloStep {
+    /// At the edge, as the runner's token is looked up, while the edge
+    /// watches the runner's socket for its close.
+    TokenLookup,
+    /// In the shard of the device's owner, which took the socket and has not
+    /// bound it to the device yet.
+    Bind,
+}

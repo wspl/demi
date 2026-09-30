@@ -25,11 +25,12 @@ use hyper::client::conn::http1;
 use hyper::upgrade::OnUpgrade;
 use hyper_util::rt::TokioIo;
 use tokio_util::io::{CopyToBytes, SinkWriter, StreamReader};
+use demi_backend_expose::relay::RelayRefusal;
 
 use super::AppState;
 use super::cookies::over_https;
 use super::listener::{ConnectionWatch, Peer};
-use crate::expose::{ExposeConnection, RelayRefusal};
+use crate::shard::exposes::ExposeConnection;
 use crate::shard::lease::Lease;
 
 /// Headers that concern one connection only, which the relay never passes

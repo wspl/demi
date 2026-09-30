@@ -29,6 +29,7 @@ mod panel;
 mod provider_cli;
 mod providers;
 mod query;
+mod runner_socket;
 mod runners;
 mod settings;
 mod sidebar;
@@ -56,12 +57,12 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tower::ServiceExt as _;
 use tower_http::trace::TraceLayer;
+use demi_backend_runners::local_store;
 
 use self::error::ApiError;
 pub(crate) use self::install::Site;
 use self::listener::{EdgeListener, Peer};
 use crate::backend::Services;
-use crate::runner::local_store;
 use crate::shard::Shards;
 
 /// The listener and the server over it.

@@ -27,7 +27,8 @@ use demi_backend_storage::StorageError;
 use demi_backend_storage::conversation_index::ConversationRecord;
 use demi_backend_sync::Part;
 use demi_core::{Block, UserContentBlock};
-use demi_gates::{GateLease, Purpose};
+use demi_backend_runners::file_gate::FileLease;
+use demi_gates::Purpose;
 use demi_web_api::error::ErrorCode;
 use demi_web_api::ids::{ConversationId, ProviderId};
 use futures_util::StreamExt as _;
@@ -387,7 +388,7 @@ enum Prepared {
 /// How a frame is admitted while it is handled.
 enum Admission {
     /// Under a lease of the conversation's file gate.
-    Files(#[expect(dead_code, reason = "held for its drop")] GateLease),
+    Files(#[expect(dead_code, reason = "held for its drop")] FileLease),
     /// On the conversation's main Host, for its uploads.
     Host(#[expect(dead_code, reason = "held for its drop")] Admitted),
 }

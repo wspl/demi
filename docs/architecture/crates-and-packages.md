@@ -832,14 +832,24 @@ demi-backend (executable: configuration, composition)
 
 - **Owns:** runners and their devices: pairing with its pending claims and
   codes, the installer scripts, each device's runner connection (`Devices`)
-  and its device access, the rpc relay's routing of a job's calls, the command
-  context a job carries, native artifact publication and the development
-  store, and the backend's public address that runners reach (`PublicUrl`)
+  and the Host handles made over it, device access among them, the lease of
+  a conversation's file gate (`FileGate`, `FileLease`), the rpc relay's
+  routing of a job's calls, the command context a job carries, the file
+  listings and text the product reads from a Host, native artifact
+  publication and the development store, and the backend's public address
+  that runners reach (`PublicUrl`)
   ([Runner](../execution/runner.md),
   [Native runtime](../execution/native-runtime.md#backend-deployment-configuration)).
+  Publication uploads to the object store `backend-objects` configures, and
+  the file gate is a `gates` gate, which is why it depends on both.
 - **Public boundary:** the items above. A Host handle owned by a conversation
-  is given out only against that conversation's file-gate lease, which only
-  host access takes.
+  is given out only against that conversation's file-gate lease:
+  `Devices::conversation_host` takes a `FileLease`, which names the
+  conversation of its gate, and keys the handle by it. The gates live in the
+  conversations' slots of host access, and only host access takes their
+  leases. Device access and machine access make handles that touch no
+  conversation's files. Its `testing` feature gives a bound connection's
+  driver without a socket, for tests that play a runner.
 - **Must not:** reach a conversation's Host except through host access, or
   know conversations, the Cloud or exposes.
 
@@ -857,9 +867,11 @@ demi-backend (executable: configuration, composition)
 - **Owns:** each user's Cloud: policy and capacity across users, the machine
   transitions, wake, hibernate, checkpoint, reset, growth, recovery and
   maintenance, the machine manager's client, and machine access
-  ([Managed hosts](../cloud/managed-hosts.md)); and `CloudShard`, what the
-  Cloud needs of its user's shard: holding the user's conversations for an
-  idle stop or a reset, their activity, and the notice that a Cloud stopped.
+  ([Managed hosts](../cloud/managed-hosts.md)), with its times and limits
+  (`CloudTuning`); and `CloudShard`, what the Cloud needs of its user's
+  shard: the handles its operations use, holding the user's conversations
+  for an idle stop or a reset (`ConversationHold`), their activity and
+  whether someone attends them, and the notice that a Cloud stopped.
 - **Public boundary:** the Cloud component, its operations on
   `dyn CloudShard`, and the manager client.
 - **Must not:** see `Shard`, conversations' state or exposes.
@@ -867,11 +879,14 @@ demi-backend (executable: configuration, composition)
 #### `backend-expose`
 
 - **Owns:** expose records and their lifetime, and the live relay connections
+  with their admission up to the device
   ([Host expose](../execution/expose.md)); and `ExposeShard`, what an expose
-  needs of its user's shard: whether the Cloud runs.
+  needs of its user's shard: whether a device takes a new expose, its runner
+  connected and, for a Cloud, the Cloud running.
 - **Public boundary:** the exposes component and its operations on
   `dyn ExposeShard`. The `demi host expose` leaves are host commands and live
-  in `backend-host-access`.
+  in `backend-host-access`; the network stream of an admitted connection is
+  opened by `backend-shard` through device access.
 - **Must not:** see `Shard` or reach a Host.
 
 #### `backend-host-access`
@@ -898,7 +913,8 @@ demi-backend (executable: configuration, composition)
   facts; the conversations' idle watches, release and the daily retention
   pass; the pages' product state and synchronization channels; the Claude Code
   CLI's work on the user's Cloud; runner adoption and the runner link's
-  policy; and the implementations of `CloudShard`, `ExposeShard` and
+  policy; the network stream of a relayed expose connection, opened through
+  device access; and the implementations of `CloudShard`, `ExposeShard` and
   `HostShard` for `Shard`.
 - **Public boundary:** the shard pool and the calls the edge makes into a
   shard. Its `testing` feature starts shared services and a shard for tests.
@@ -1311,10 +1327,10 @@ backend-objects -> agent-store, core, web-api
 backend-accounts -> backend-storage, command-service, core, web-api
 backend-providers -> backend-storage, backend-sync, claude-protocol, core, provider, provider-anthropic-api, provider-claude-code, provider-openai-api, web-api
 backend-families -> backend-providers, core, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, web-api
-backend-runners -> artifact, backend-storage, backend-sync, browser-protocol, command-service, host-remote, runner-protocol, shell, web-api
+backend-runners -> artifact, backend-objects, backend-storage, backend-sync, command-service, gates, host-remote, runner-protocol, shell, web-api
 backend-idle -> gates
 backend-cloud -> backend-idle, backend-providers, backend-runners, backend-storage, backend-sync, gates, host-remote, machines-protocol, runner-protocol, shell, web-api
-backend-expose -> backend-storage, backend-sync, core, host-remote, shell, web-api
+backend-expose -> backend-storage, backend-sync, core, web-api
 backend-host-access -> agent-tools, backend-cloud, backend-expose, backend-idle, backend-runners, backend-storage, backend-sync, command-service, command-tree, core, gates, host-remote, runner-protocol, shell, web-api
 backend-shard -> agent, agent-protocol, agent-store, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-idle, backend-objects, backend-providers, backend-runners, backend-storage, backend-sync, browser-protocol, claude-protocol, coding-agent, command-service, core, gates, host-remote, provider, provider-claude-code, runner-protocol, shell, web-api
 backend-edge -> agent, agent-protocol, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-objects, backend-providers, backend-runners, backend-shard, backend-storage, backend-sync, browser-protocol, command-service, core, host-remote, provider, runner-protocol, shell, web-api

@@ -8,18 +8,18 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_web_api::exposes::{CreateExpose, ExposeAnswer, Exposes};
 use demi_web_api::ids::ExposeId;
+use demi_backend_expose::records::ExposeError;
 
 use super::AppState;
 use super::body::JsonBody;
 use super::error::ApiError;
 use super::gate::AuthUser;
-use crate::expose::ExposeError;
 
 pub(super) async fn list(State(state): State<AppState>, AuthUser(user): AuthUser) -> Result<Json<Exposes>, ApiError> {
     let exposes = state
         .shards
         .of(&user.id)
-        .call(|shard, _| async move { shard.list_exposes().await })
+        .call(|shard, _| async move { shard.expose_shard().list_exposes().await })
         .await??;
     Ok(Json(Exposes { exposes }))
 }
@@ -32,7 +32,7 @@ pub(super) async fn create(
     let expose = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.add_expose(&device_id, address).await })
+        .call(move |shard, _| async move { shard.expose_shard().add_expose(&device_id, address).await })
         .await??;
     Ok((StatusCode::CREATED, Json(ExposeAnswer { expose })))
 }
@@ -46,7 +46,7 @@ pub(super) async fn renew(
     let expose = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.renew_expose(&id).await })
+        .call(move |shard, _| async move { shard.expose_shard().renew_expose(&id).await })
         .await??;
     Ok(Json(ExposeAnswer { expose }))
 }
@@ -60,7 +60,7 @@ pub(super) async fn remove(
     state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.remove_expose(&id).await })
+        .call(move |shard, _| async move { shard.expose_shard().remove_expose(&id).await })
         .await??;
     Ok(StatusCode::NO_CONTENT)
 }

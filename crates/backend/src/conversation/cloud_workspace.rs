@@ -14,7 +14,7 @@ impl Shard {
     /// over it. Every project of the user is a directory on the same Cloud.
     pub(crate) async fn create_cloud_workspace(&self, name: String) -> Result<WorkspaceRecord, HostAccessError> {
         let id = new_workspace_id();
-        let access = self.machine_access().await?;
+        let access = self.cloud_shard().machine_access().await?;
         let path = format!("{}/projects/{id}", access.home);
         HostFs::mkdir(&access.host, &path, MkdirOptions { recursive: true }).await?;
         self.services()

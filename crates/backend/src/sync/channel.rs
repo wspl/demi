@@ -19,7 +19,7 @@ use demi_web_api::state::SyncEvent;
 use futures_util::StreamExt as _;
 use futures_util::stream::SplitStream;
 
-use crate::expose::first_expiry;
+use demi_backend_expose::relay::first_expiry;
 use crate::shard::{PageGone, PageSocket, Shard};
 
 /// The close code of a channel whose session ended.

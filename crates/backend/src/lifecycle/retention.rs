@@ -140,7 +140,7 @@ impl Shard {
         let reservation = if wait {
             self.free_gate(id).await
         } else {
-            self.conversations().slot(id).files.try_reserve()
+            self.conversations().slot(id).files.gate().try_reserve()
         };
         let Some(_reservation) = reservation else {
             return Ok(0);
@@ -213,7 +213,7 @@ impl Shard {
     /// The conversation's file gate, reserved once nothing holds or waits
     /// for it; none once its tree is live again or the shard closes.
     async fn free_gate(&self, id: &ConversationId) -> Option<Reservation> {
-        let files = self.conversations().slot(id).files.clone();
+        let files = self.conversations().slot(id).files.gate().clone();
         loop {
             if self.is_closing() || self.agent().tree(&root_of(id)).is_some() {
                 return None;

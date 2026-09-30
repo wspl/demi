@@ -31,10 +31,13 @@ demi-agent-tools = { path = "../agent-tools" }
 demi-agent-transcript = { path = "../agent-transcript" }
 demi-artifact = { path = "../artifact" }
 demi-backend-accounts = { path = "../backend-accounts" }
+demi-backend-cloud = { path = "../backend-cloud" }
+demi-backend-expose = { path = "../backend-expose" }
 demi-backend-families = { path = "../backend-families" }
 demi-backend-idle = { path = "../backend-idle" }
 demi-backend-objects = { path = "../backend-objects" }
 demi-backend-providers = { path = "../backend-providers" }
+demi-backend-runners = { path = "../backend-runners" }
 demi-backend-storage = { path = "../backend-storage" }
 demi-backend-sync = { path = "../backend-sync" }
 demi-browser-protocol = { path = "../browser-protocol" }
@@ -57,7 +60,6 @@ axum-extra = { version = "0.12", features = ["cookie", "typed-header"] }
 bytes.workspace = true
 clap = { version = "4", features = ["derive", "env"] }
 cookie = "0.18"
-data-encoding = "2"
 futures-util.workspace = true
 garde.workspace = true
 hex = "0.4"
@@ -76,7 +78,6 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-serde_json_canonicalizer = "0.3"
 sha2 = "0.10"
 shlex = "2"
 thiserror.workspace = true
@@ -95,10 +96,14 @@ demi-agent = { path = "../agent", features = ["testing"] }
 demi-agent-store = { path = "../agent-store", features = ["testing"] }
 demi-agent-tools = { path = "../agent-tools", features = ["testing"] }
 demi-backend = { path = ".", features = ["testing"] }
+demi-backend-runners = { path = "../backend-runners", features = ["testing"] }
 demi-command-service = { path = "../command-service", features = ["testing"] }
 demi-host-remote = { path = "../host-remote", features = ["testing"] }
 demi-provider = { path = "../provider", features = ["testing"] }
 demi-shell = { path = "../shell", features = ["testing"] }
+# The upload and retention scenarios look for images' base64 in what a
+# provider was sent.
+data-encoding = "2"
 # The account scenarios store password hashes of their own; `password-hash`'s
 # `getrandom` gives `SaltString::generate` its operating-system RNG.
 argon2 = "0.5"

@@ -1,0 +1,34 @@
+[package]
+name = "demi-backend-cloud"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+# One test binary, the integration tests' (`crates-and-packages.md`
+# § Module layout); no doc examples.
+test = false
+doctest = false
+
+[dependencies]
+demi-backend-idle = { path = "../backend-idle" }
+demi-backend-providers = { path = "../backend-providers" }
+demi-backend-runners = { path = "../backend-runners" }
+demi-backend-storage = { path = "../backend-storage" }
+demi-backend-sync = { path = "../backend-sync" }
+demi-gates = { path = "../gates" }
+demi-host-remote = { path = "../host-remote" }
+demi-machines-protocol = { path = "../machines-protocol" }
+demi-runner-protocol = { path = "../runner-protocol" }
+demi-shell = { path = "../shell" }
+demi-web-api = { path = "../web-api" }
+futures-util.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util = { workspace = true, features = ["codec"] }
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

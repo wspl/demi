@@ -13,10 +13,10 @@ use demi_coding_agent::{CodingHarness, DemiOptions, HostResolver};
 use demi_file_protocol::{OPERATIONS as FILE_OPERATIONS, PACKAGE as FILE};
 use demi_host_remote::RemoteHost;
 use demi_shell::HostError;
+use demi_backend_runners::native::NativeCatalog;
 
 use super::conversation_of;
-use crate::runner::host_commands::host_group;
-use crate::runner::native::NativeCatalog;
+use super::host_commands::host_group;
 use crate::shard::Shard;
 
 /// The harness of a shard's conversations.

@@ -34,7 +34,7 @@ impl Shard {
     /// holding its file gate, or a user stream someone has open.
     pub(crate) fn conversation_activity(&self, id: &ConversationId) -> Activity {
         let slot = self.conversations().slot(id);
-        let host = Activity::of(&slot.files.state()).and(Activity::of(&slot.streams.state()));
+        let host = Activity::of(&slot.files.gate().state()).and(Activity::of(&slot.streams.state()));
         match self.agent().tree(&root_of(id)) {
             Some(tree) => host.and(Activity::of(&tree.admission().state())),
             None => host,
@@ -112,7 +112,7 @@ impl IdlePolicy for ConversationIdle {
             },
             None => None,
         };
-        let Some(files) = shard.conversations().slot(&self.id).files.try_reserve() else {
+        let Some(files) = shard.conversations().slot(&self.id).files.gate().try_reserve() else {
             return Ok(None);
         };
         let id = self.id.clone();
@@ -127,7 +127,7 @@ impl IdlePolicy for ConversationIdle {
         let Ok(shard) = self.shard() else {
             return std::future::pending().await;
         };
-        let mut files = shard.conversations().slot(&self.id).files.subscribe();
+        let mut files = shard.conversations().slot(&self.id).files.gate().subscribe();
         // The slot keeps the gate's sender while the shard lives.
         let _ = files.changed().await;
     }

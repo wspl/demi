@@ -14,12 +14,12 @@ use demi_backend_providers::vault::accounts::AccountRefusal;
 use demi_backend_providers::vault::logins::LoginRefusal;
 use demi_backend_storage::StorageError;
 use demi_shell::HostError;
+use demi_backend_expose::records::ExposeError;
+use demi_backend_cloud::machine::CloudError;
+use demi_backend_runners::files::{TextError, TextRefusal};
 
 use crate::conversation::host_access::{HostAccessError, host_error_code};
 use crate::conversation::stream::StreamError;
-use crate::expose::ExposeError;
-use crate::managed::CloudError;
-use crate::runner::files::{TextError, TextRefusal};
 use crate::shard::ShardUnavailable;
 
 #[derive(Debug)]
