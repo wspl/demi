@@ -1,25 +1,29 @@
 //! The `demi.browser` package (`crates-and-packages.md` § demi-browser): the
-//! conversations' browsers, as a resident command service.
+//! conversations' browsers, as a resident command service composed of the
+//! browser libraries.
 
-pub mod browser;
+mod conversations;
 
 use std::{future::Future, pin::Pin, sync::Arc};
 
-use demi_browser_protocol::{Operation, OperationError};
+use demi_browser_driver::installation::BrowserDirectories;
+use demi_browser_protocol::{Operation, OperationError, browser as protocol};
 use demi_command_service::protocol::{Completion, Invocation};
-use demi_command_service::{ConversationContext, Handler, InvocationContext, Numbers, ServiceError};
+use demi_command_service::{
+    ConversationContext, Handler, InvocationContext, Numbers, ServiceError,
+};
 
 /// The service.
 pub struct DemiBrowser {
-    browsers: Arc<browser::Conversations>,
+    browsers: Arc<conversations::Conversations>,
 }
 
 impl DemiBrowser {
     /// The service, whose browsers find or install the pinned Chrome in
-    /// `directories`: a Host's are [`browser::BrowserDirectories::host`].
-    pub fn new(directories: browser::BrowserDirectories) -> Self {
+    /// `directories`: a Host's are [`BrowserDirectories::host`].
+    pub fn new(directories: BrowserDirectories) -> Self {
         Self {
-            browsers: Arc::new(browser::Conversations::new(directories)),
+            browsers: Arc::new(conversations::Conversations::new(directories)),
         }
     }
 }

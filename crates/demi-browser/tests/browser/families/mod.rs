@@ -7,7 +7,8 @@ use demi_command_service::{
     Handler, Input, InvocationContext, Output, ServiceError,
     protocol::{CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Record},
 };
-use demi_browser::{DemiBrowser, browser::BrowserDirectories};
+use demi_browser::DemiBrowser;
+use demi_browser_driver::installation::BrowserDirectories;
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
@@ -219,7 +220,7 @@ pub async fn install_chrome(root: &std::path::Path) {
         std::path::PathBuf::from(std::env::var_os("DEMI_TEST_CHROME").expect("DEMI_TEST_CHROME"));
     demi_artifact::testing::install_unpacked(
         root,
-        &demi_browser::browser::pinned_archive().unwrap(),
+        &demi_browser_driver::installation::pinned_archive().unwrap(),
         &executable,
         &CancellationToken::new(),
     )

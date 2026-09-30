@@ -14,11 +14,16 @@ async fn main() {
         .without_time()
         .with_target(false)
         .init();
-    let browsers = demi_browser::browser::BrowserDirectories::host();
-    let service = demi_command_service::serve_stdio(Arc::new(demi_browser::DemiBrowser::new(browsers.clone())));
+    let browsers = demi_browser_driver::installation::BrowserDirectories::host();
+    let service = demi_command_service::serve_stdio(Arc::new(demi_browser::DemiBrowser::new(
+        browsers.clone(),
+    )));
     // Profiles a service that ended without retiring its browsers left are
     // removed beside serving (`browser.md` § Native driver).
-    let (result, ()) = tokio::join!(service, demi_browser::browser::sweep_orphans(&browsers));
+    let (result, ()) = tokio::join!(
+        service,
+        demi_browser_tabs::environment::sweep_orphans(&browsers)
+    );
     if let Err(error) = result {
         eprintln!("demi-browser: {error}");
         std::process::exit(1);

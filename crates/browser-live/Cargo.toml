@@ -1,0 +1,30 @@
+[package]
+name = "demi-browser-live"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+# Its tests reach the rate control's and the framing's internals, so they are
+# unit tests and the crate has no integration tests (`crates-and-packages.md`
+# § Module layout); no doc examples.
+doctest = false
+
+[dependencies]
+bytes.workspace = true
+chromiumoxide = "=0.9.1"
+demi-browser-driver = { path = "../browser-driver" }
+demi-browser-page = { path = "../browser-page" }
+demi-browser-protocol = { path = "../browser-protocol" }
+demi-browser-tabs = { path = "../browser-tabs" }
+demi-command-service = { path = "../command-service" }
+demi-core = { path = "../core" }
+futures-util.workspace = true
+garde.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true

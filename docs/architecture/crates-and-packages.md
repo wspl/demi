@@ -923,25 +923,29 @@ demi-browser (executable: conversations, composition)
 #### `browser-driver`
 
 - **Owns:** Chrome and the operations run on it: the installation of the
-  pinned Chrome for Testing release, launch with the capture extension, the
-  Chrome process and its profile, the operation type every command runs as
-  with its cancellation and failure (`Operation`), element handles, frames,
-  navigation history, the conversation numbers stream, and the text and
-  output a command answers with ([Native driver](../browser/browser.md#native-driver)).
+  pinned Chrome for Testing release, launch with the capture extension and
+  the capture channel, the extension's connection, which the live view starts
+  captures over, the Chrome process and its profile, the operation type every
+  command runs as with its cancellation and failure (`Operation`) and the
+  agent it acts for, element handles, frames, navigation history, the
+  conversation numbers stream, and the text and output a command answers with
+  ([Native driver](../browser/browser.md#native-driver)). The capture
+  channel's decoding of the extension's frames is why it depends on `core`.
 - **Public boundary:** the items above; its `testing` feature adds the
-  capture extension's id.
-- **Must not:** know tabs, conversations or the live view.
+  capture extension's id and tab numbers at hand without a numbers source.
+- **Must not:** know tabs, conversations or the live view's viewers.
 
 #### `browser-tabs`
 
-- **Owns:** a conversation browser's environment and its tabs: the tab
+- **Owns:** a conversation browser's environment and its tabs: the Chrome
+  process tree, profile and CDP event pump of each environment, the tab
   registry and its snapshot, each tab's state and gate, the data each feature
-  keeps for a tab (references, assets, WebMCP and console state, debug
-  sessions), viewports, dialogs, console logs, navigation, and the CDP session
-  owner that pumps a tab's events.
-- **Public boundary:** the environment, the registry, `BrowserTab` and the
-  tab state. Its `testing` feature adds the helpers that drive a page by CSS
-  selector and Chrome's own view of its targets.
+  keeps for a tab (references, asset inventories, WebMCP tool sets, the
+  console buffer, and the way to the tab's debugging owner), viewports,
+  dialogs, console logs and navigation.
+- **Public boundary:** the environment, the registry, `BrowserTab`, the tab
+  state and the modules that keep it. Its `testing` feature adds Chrome's own
+  view of its targets.
 - **Must not:** act on a page's content beyond navigation, or know the live
   view.
 
@@ -950,24 +954,36 @@ demi-browser (executable: conversations, composition)
 - **Owns:** what the commands do to a page: element location and state,
   evaluation, observation, queries and probes, content and screenshots,
   keyboard, pointer, selection and select options, the actions that combine
-  them, the clipboard, uploads, downloads, fetches and assets.
-- **Public boundary:** one function per action over a `BrowserTab`.
+  them, the clipboard, uploads, downloads, fetches and assets, and the
+  capabilities of these families. The families that read the invocation's
+  working directory, standard input or caller take its command context from
+  `command-service`.
+- **Public boundary:** one function per action over a `BrowserTab`. Its
+  `testing` feature adds the helpers that drive a page by CSS selector.
 - **Must not:** own tab state or the CDP session.
 
 #### `browser-cdp`
 
 - **Owns:** raw CDP commands with their validation against the pinned
-  protocol, and WebMCP, with `jsonschema` for the schemas pages declare.
-- **Public boundary:** the two command families over a `BrowserTab`.
+  protocol, each tab's debugging owner, which the tab's first `cdp` command
+  starts, with its connections and their event pumps, and WebMCP;
+  `jsonschema` validates both the pinned protocol and the schemas pages
+  declare.
+- **Public boundary:** the two command families over a `BrowserTab` and their
+  capabilities. Its `testing` feature adds evaluation in a target no command
+  addresses.
 - **Must not:** own tab state.
 
 #### `browser-live`
 
 - **Owns:** the live view ([Live view](../browser/live-view.md)): the capture
-  pipeline, frame rate and pacing, the viewer connections of user streams, and
-  the relay of the user's input to the tab; and the trait through which a
-  viewer reaches its conversation's browser, which `demi-browser` implements.
-- **Public boundary:** the live view's hub and the viewer trait.
+  pipeline, frame rate and pacing, the viewer connections of user streams,
+  the page observer of each watched tab, and the relay of the user's input to
+  the tab; and the trait through which a viewer reaches its conversation's
+  browser, which `demi-browser` implements. The hub starts with an
+  environment, and `demi-browser` starts it for each browser it runs.
+- **Public boundary:** the live view's hub, the viewer trait and the serving
+  of a view.
 - **Must not:** know how conversations are owned or released.
 
 ### Executables
@@ -1081,9 +1097,11 @@ demi-browser (executable: conversations, composition)
 #### `demi-browser`
 
 - **Owns:** the independently released `demi.browser` resident program: the
-  conversations' browsers, one owner per conversation, routing each invocation
-  by the package's operation list, the sweep of orphaned profiles at start,
-  and the composition of the [browser libraries](#browser-libraries).
+  conversations' browsers, one owner per conversation, each with the live
+  view hub of the browser it runs, routing each invocation by the package's
+  operation list, the `capabilities` command, which is the one place that
+  knows every command family, the sweep of orphaned profiles at start, and the
+  composition of the [browser libraries](#browser-libraries).
 - **Public boundary:** the executable. Behavior:
   [Conversation browser](../browser/browser.md), whose
   [catalog](../browser/browser.md#catalog) lists the browser commands, and
@@ -1276,11 +1294,11 @@ runner-host -> artifact, command-service, runner-process, runner-protocol
 runner-services -> artifact, command-service, runner-process, runner-protocol
 runner-shell -> command-service, runner-process, runner-protocol
 runner-jobs -> command-service, command-tree, runner-process, runner-protocol, runner-services
-browser-driver -> artifact, browser-protocol, command-service
+browser-driver -> artifact, browser-protocol, command-service, core
 browser-tabs -> browser-driver, browser-protocol, command-service
-browser-page -> browser-driver, browser-protocol, browser-tabs
+browser-page -> browser-driver, browser-protocol, browser-tabs, command-service
 browser-cdp -> browser-driver, browser-protocol, browser-tabs, command-service
-browser-live -> browser-driver, browser-page, browser-protocol, browser-tabs
+browser-live -> browser-driver, browser-page, browser-protocol, browser-tabs, command-service, core
 backend-sync -> web-api
 backend-storage -> agent-store, core, gates, host-remote, machines-protocol, runner-protocol, shell, web-api
 backend-objects -> agent-store, core, web-api

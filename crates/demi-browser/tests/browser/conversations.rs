@@ -5,7 +5,8 @@ use demi_command_service::{
         CommandCaller, CommandContext, CommandLocale, ConversationRequest, Invocation, Record,
     },
 };
-use demi_browser::{DemiBrowser, browser::BrowserDirectories};
+use demi_browser::DemiBrowser;
+use demi_browser_driver::installation::BrowserDirectories;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
