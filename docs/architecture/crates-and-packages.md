@@ -663,12 +663,15 @@ demi-runner (executable: connection, registration, Host log, composition)
   file contents and output to the backend's pipe routes, and the report of a
   pipe's outcome ([Pipes and output](../execution/runner.md#pipes-and-output));
   the split of a stream into lines and the kept tail of a stream; private
-  state files written atomically; the line counts of a change to a file; the
+  state files written atomically, through `artifact`'s publication; the line
+  counts of a change to a file; the
   local command client that a command alias runs
   ([External command clients](../execution/commands.md#external-command-clients));
   and the job shell contract (`JobShell`, `ShellJob`): how the runner starts
   a job's script, feeds its input, signals, cancels and awaits it, without
-  knowing which shell runs it.
+  knowing which shell runs it. A job's declared commands come with it as
+  their root names, its execution context's id and the command-service
+  `Handler` each invocation goes to (`JobCommands`).
 - **Public boundary:** the items above.
 - **Must not:** know the backend connection, jobs, commands, services or the
   shell that implements the contract.
@@ -679,7 +682,9 @@ demi-runner (executable: connection, registration, Host log, composition)
   ([Host operations](../execution/runner.md#host-operations)): filesystem
   operations and file contents through pipes, the working tree with its
   status, diffs and change watch (gix and notify), network streams, and the
-  volumes a Host reports.
+  volumes a Host reports. It resolves a request's paths and waits out a lack
+  of open files with `command-service`, as every native program does, and
+  writes a file's contents through `artifact`'s staged publication.
 - **Public boundary:** one function per operation over its wire request, and
   the working tree's watch.
 - **Must not:** know jobs, commands or the connection that carries the
@@ -707,7 +712,7 @@ demi-runner (executable: connection, registration, Host log, composition)
   options, the builtins that act on a process, the declared commands'
   builtins, which hand each invocation to the handler the job supplies, a
   utility's panic contained to its job, and the job shell contract's
-  implementation.
+  implementation, whose signals and output streams are `runner-protocol`'s.
 - **Public boundary:** the `JobShell` implementation and the names the shell
   reserves (`builtin_names`), which the composition gives the command
   dispatcher.
@@ -727,8 +732,9 @@ demi-runner (executable: connection, registration, Host log, composition)
   every native invocation; it implements no browser operation.
 - **Public boundary:** the job table, the dispatcher, which implements the
   command-service `Handler` the shell calls, and the connection handle it
-  sends rpc calls and reports through (`ConnectionHandle`), which the
-  composition implements.
+  sends rpc calls and reports through (`ConnectionHandle`), whose requests
+  the composition's connection owner serves and whose answers it routes
+  (`Relay`).
 - **Must not:** know the shell that runs a job's script, beyond the job shell
   contract, or own the backend connection.
 
@@ -1044,10 +1050,13 @@ demi-browser (executable: conversations, composition)
   connection, the Host log, installation, and the composition of the
   [runner libraries](#runner-libraries): it gives the jobs the shell, the
   services and the connection handle, and the dispatcher the names the shell
-  reserves. It keeps a service resident while it holds conversation state and
-  forwards the conversation release, through `runner-services`.
+  reserves with the runner's own; its local endpoint answers the management
+  requests (`status`, `drain`) beside the dispatcher's commands. It keeps a
+  service resident while it holds conversation state and forwards the
+  conversation release, through `runner-services`.
 - **Public boundary:** the executable; the crate has no library. Its test
-  binary drives the built program, as a backend does. Behavior:
+  binary drives the built program, as a backend does; the open-file test, a
+  binary of its own, runs the runner libraries in its process. Behavior:
   [Runner](../execution/runner.md) and
   [Native command execution](../execution/native-runtime.md).
 - **Must not:** own conversations or provider implementations; administer
@@ -1262,10 +1271,10 @@ agent-tools -> agent-protocol, agent-session, agent-store, agent-transcript, cor
 agent -> agent-protocol, agent-session, agent-store, agent-tools, agent-transcript, core, gates, provider, shell
 coding-agent -> agent-tools, browser-protocol, command-tree, core, file-protocol, shell
 host-remote -> command-service, command-tree, core, gates, runner-protocol, shell
-runner-process -> command-service, runner-protocol
-runner-host -> runner-process, runner-protocol
+runner-process -> artifact, command-service, runner-protocol
+runner-host -> artifact, command-service, runner-process, runner-protocol
 runner-services -> artifact, command-service, runner-process, runner-protocol
-runner-shell -> command-service, runner-process
+runner-shell -> command-service, runner-process, runner-protocol
 runner-jobs -> command-service, command-tree, runner-process, runner-protocol, runner-services
 browser-driver -> artifact, browser-protocol, command-service
 browser-tabs -> browser-driver, browser-protocol, command-service
@@ -1287,7 +1296,7 @@ backend-shard -> agent, agent-protocol, agent-store, backend-accounts, backend-c
 backend-edge -> agent, agent-protocol, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-objects, backend-providers, backend-runners, backend-shard, backend-storage, backend-sync, browser-protocol, command-service, core, host-remote, provider, runner-protocol, shell, web-api
 backend -> agent, artifact, backend-accounts, backend-cloud, backend-edge, backend-expose, backend-families, backend-host-access, backend-objects, backend-providers, backend-runners, backend-shard, backend-storage, backend-sync, browser-protocol, command-tree, core, gates, host-remote, provider, runner-protocol, web-api
 machines -> artifact, machines-protocol, runner-protocol
-runner -> artifact, command-service, command-tree, runner-host, runner-jobs, runner-process, runner-protocol, runner-services, runner-shell
+runner -> command-service, runner-host, runner-jobs, runner-process, runner-protocol, runner-services, runner-shell
 demi-file -> artifact, command-service, core, file-protocol, gates
 demi-browser -> browser-cdp, browser-driver, browser-live, browser-page, browser-protocol, browser-tabs, command-service
 demi-claude -> artifact, claude-protocol, command-service

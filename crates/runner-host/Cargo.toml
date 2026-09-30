@@ -1,0 +1,42 @@
+[package]
+name = "demi-runner-host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+# One test binary, the integration tests' (`crates-and-packages.md`
+# § Module layout); no doc examples.
+test = false
+doctest = false
+
+[dependencies]
+demi-artifact = { path = "../artifact" }
+demi-command-service = { path = "../command-service" }
+demi-runner-process = { path = "../runner-process" }
+demi-runner-protocol = { path = "../runner-protocol" }
+bytes.workspace = true
+filetime = "0.2"
+futures-util.workspace = true
+gix = { version = "0.87", default-features = false, features = ["status", "blob-diff", "sha1", "parallel"] }
+notify = "8.2"
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+uuid = { version = "1", features = ["v4"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+rustix = { version = "1", features = ["fs"] }
+
+# The working-tree watch's FSEvents stream (`src/tree_watch.rs`).
+[target.'cfg(target_os = "macos")'.dependencies]
+fsevent-sys = "4.1"
+
+[dev-dependencies]
+rmp-serde = "1.3"
+serde.workspace = true
+serde_json.workspace = true
+tempfile = "3"

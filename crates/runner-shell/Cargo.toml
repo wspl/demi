@@ -1,0 +1,97 @@
+[package]
+name = "demi-runner-shell"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+# One test binary, the integration tests' (`crates-and-packages.md`
+# § Module layout); no doc examples.
+test = false
+doctest = false
+
+[features]
+# A job's shell and scope with the view of its units' activity, and the
+# utilities one by one (`demi_runner_shell::testing`).
+testing = []
+
+[dependencies]
+brush-core = "0.5"
+brush-builtins = "0.2"
+demi-command-service = { path = "../command-service" }
+demi-runner-process = { path = "../runner-process" }
+demi-runner-protocol = { path = "../runner-protocol" }
+bytes.workspace = true
+clap = { version = "4", features = ["derive"] }
+futures-util.workspace = true
+# `std` for the utilities' child programs (uucore's `context::Control::spawn`).
+process-wrap = { workspace = true, features = ["std"] }
+serde_json.workspace = true
+tempfile = "3"
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+uuid = { version = "1", features = ["v4"] }
+
+ripgrep = "15.2.0"
+jaq = { version = "3.1.1", default-features = false }
+uucore = { version = "0.11", features = ["mode"] }
+uu_cat = "0.11"
+uu_head = "0.11"
+uu_tail = "0.11"
+uu_wc = "0.11"
+uu_ls = "0.11"
+uu_cp = "0.11"
+uu_mv = "0.11"
+uu_rm = "0.11"
+uu_mkdir = "0.11"
+uu_rmdir = "0.11"
+uu_touch = "0.11"
+uu_tee = "0.11"
+uu_sort = "0.11"
+uu_uniq = "0.11"
+uu_cut = "0.11"
+uu_tr = "0.11"
+uu_paste = "0.11"
+uu_nl = "0.11"
+uu_tac = "0.11"
+uu_basename = "0.11"
+uu_dirname = "0.11"
+uu_realpath = "0.11"
+uu_env = "0.11"
+uu_seq = "0.11"
+uu_date = "0.11"
+uu_sleep = "0.11"
+uu_mktemp = "0.11"
+uu_du = "0.11"
+uu_df = "0.11"
+uu_od = "0.11"
+uu_grep = "0.2.0"
+sed = "0.2.0"
+findutils = "0.10.0"
+diffutils = "0.5.0"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+rlimit = "0.11"
+rustix = { version = "1", features = ["event", "process"] }
+uu_chmod = "0.11"
+uu_chown = "0.11"
+uu_stat = "0.11"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_Storage_FileSystem", "Win32_System_Pipes", "Win32_System_IO"] }
+
+[target.'cfg(windows)'.dependencies.chrono]
+version = "0.4"
+default-features = false
+features = ["std"]
+
+[dev-dependencies]
+demi-command-service = { path = "../command-service", features = ["testing"] }
+demi-runner-shell = { path = ".", features = ["testing"] }
+rlimit = "0.11"
+tempfile = "3"
+tokio = { workspace = true, features = ["test-util"] }

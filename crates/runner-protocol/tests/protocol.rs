@@ -446,3 +446,25 @@ fn records_round_trip_and_a_second_gap_is_refused() {
     assert!(wire::decode_records(&twice).is_err());
     assert!(wire::decode_records(&bytes[..bytes.len() - 1]).is_err());
 }
+
+/// A backend's URL names a host over HTTP or a WebSocket, and never carries
+/// credentials or a fragment (`runner.md` § Connection and identity): the
+/// installation, the claim and the boot record are refused otherwise.
+#[test]
+fn a_backend_url_names_a_host_without_credentials_or_a_fragment() {
+    use demi_runner_protocol::values::BackendUrl;
+
+    for accepted in ["https://demi.example.com", "http://10.0.0.5:3271", "wss://demi.example.com/runner"] {
+        assert!(accepted.parse::<BackendUrl>().is_ok(), "{accepted}");
+    }
+    for refused in [
+        "https://user:pass@demi.example.com",
+        "https://user@demi.example.com",
+        "https://demi.example.com/#runner",
+        "ftp://demi.example.com",
+        "file:///tmp/backend",
+        "not a url",
+    ] {
+        assert!(refused.parse::<BackendUrl>().is_err(), "{refused}");
+    }
+}
