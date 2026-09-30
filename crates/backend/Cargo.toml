@@ -10,6 +10,11 @@ rust-version.workspace = true
 # No doc examples: rustdoc has nothing to test.
 doctest = false
 
+[[bin]]
+name = "demi-backend"
+path = "src/main.rs"
+test = false
+
 [features]
 # A hold on the commits of the conversations' checkpoints (`CommitHold`), for
 # the scenarios that stop a save at its commit, and a conversation's file gate

@@ -757,7 +757,8 @@ executable, not of the compressed bytes; for any other object, of its stored
 bytes. An object already in place counts as the one being published when both
 values match, and as a conflict otherwise. The compressed bytes of one
 executable may differ between zstd versions without changing what the object
-is.
+is, and an executable already in place is not compressed again, so a start
+that publishes nothing new compresses nothing.
 
 A development store runs step 1 on the targets each release carries, skips
 steps 2 and 3, and serves the executables from the backend itself
@@ -819,9 +820,12 @@ The development store:
 - Serves each executable of a loaded release at
   `GET /native-artifacts/<sha256>` on `DEMI_BACKEND_PUBLIC_URL`, without
   credentials, like the runner installers' downloads, with
-  `Content-Encoding: zstd` as object storage serves it; it compresses each
-  executable once, when it loads the release. Any other digest answers 404
-  `not_found`.
+  `Content-Encoding: zstd` as object storage serves it. It compresses each
+  executable once, when a runner first asks for it, and at a fast level,
+  since it compresses again at every backend start and a development
+  release is often a debug build of over 100 MB; publication to object
+  storage compresses once, at zstd's slowest ordinary level. Any other
+  digest answers 404 `not_found`.
 - Answers a runner's location request with that URL, which has the scheme of
   the public URL and no expiry.
 - Takes no other setting, and no `prefix`.

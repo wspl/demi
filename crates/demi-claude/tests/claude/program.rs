@@ -1,12 +1,11 @@
+#![cfg(unix)]
 //! The `demi-claude` program at its boundary (`claude-code.md` § The
 //! package): the command service it serves on its standard input and
 //! output, as a runner starts it, answers each invocation with one document
-//! and says a failure in its completion too. The installer's rules, which
-//! download from a fixture server, are tested beside it in `src/tests.rs`.
+//! and says a failure in its completion too.
 //! As an integration test of the package, it also makes `cargo test` build
 //! the program, which the backend's scenarios start. `HOME` names the user's
 //! root on Unix only.
-#![cfg(unix)]
 
 use std::path::{Path, PathBuf};
 

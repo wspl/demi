@@ -74,6 +74,8 @@ maintainer = "demi-commands"
 patches = [
     "ClientSecurityState uses the Chrome 153 local network access policy field and type",
     "The pinned protocol (pdl/protocol.json) and its generator (tools/generate) are kept beside the generated src/cdp.rs",
+    "Input.dispatchTouchEvent sends its required touchPoints empty for TouchEnd and TouchCancel, which the generator would leave out (applied by tools/generate)",
+    "The bindings hold only the domains Demi and chromiumoxide use and those their types refer to (18 of 53, about two thirds of the code), while the validation catalog keeps every domain; an event of another domain decodes as CdpEvent::Other",
     "License files have Unix line endings",
 ]
 protocol-source = "https://chromium.googlesource.com/chromium/src/+/153.0.8010.36/third_party/blink/public/devtools_protocol/domains/Network.pdl"

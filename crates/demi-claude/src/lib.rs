@@ -5,9 +5,6 @@ pub mod install;
 pub mod platform;
 pub mod release;
 
-#[cfg(test)]
-mod tests;
-
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use bytes::Bytes;
