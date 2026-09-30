@@ -1,0 +1,56 @@
+[package]
+name = "demi-backend-runners"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+# Its tests reach the pending claims' window, the codes' alphabet and the
+# publication's object layout, so they are unit tests and the crate has no
+# integration tests (`crates-and-packages.md` § Module layout); no doc
+# examples.
+doctest = false
+
+[features]
+# A bound connection's driver without its socket (`Serving::into_driver`),
+# for tests that play a device's runner.
+testing = []
+
+[dependencies]
+demi-artifact = { path = "../artifact" }
+demi-backend-objects = { path = "../backend-objects" }
+demi-backend-storage = { path = "../backend-storage" }
+demi-backend-sync = { path = "../backend-sync" }
+demi-command-service = { path = "../command-service" }
+demi-gates = { path = "../gates" }
+demi-host-remote = { path = "../host-remote" }
+demi-runner-protocol = { path = "../runner-protocol" }
+demi-shell = { path = "../shell" }
+demi-web-api = { path = "../web-api" }
+# A runner's connection is the WebSocket the edge upgraded.
+axum = { version = "0.8", features = ["ws"] }
+bytes.workspace = true
+data-encoding = "2"
+futures-util.workspace = true
+hex = "0.4"
+jiff.workspace = true
+object_store = { version = "0.13", default-features = false, features = ["aws", "fs"] }
+percent-encoding = "2"
+rand = "0.9"
+serde.workspace = true
+serde_json.workspace = true
+serde_json_canonicalizer = "0.3"
+sha2 = "0.10"
+shlex = "2"
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+url = { version = "2", features = ["serde"] }
+
+[dev-dependencies]
+demi-backend-objects = { path = "../backend-objects", features = ["testing"] }
+demi-browser-protocol = { path = "../browser-protocol" }
+tempfile = "3"
+tokio = { workspace = true, features = ["test-util"] }

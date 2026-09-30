@@ -5,8 +5,12 @@
 //! `shards.of(user).call(..)`: the closure is `Send`, the future it starts
 //! runs on the shard and need not be, and the answer is `Send`.
 
+mod adoption;
+pub(crate) mod cloud;
+pub(crate) mod exposes;
 pub(crate) mod lease;
 mod page_socket;
+mod policy;
 
 pub(crate) use self::page_socket::{PageGone, PageSocket};
 
@@ -20,6 +24,10 @@ use std::sync::Arc;
 
 use demi_agent::AgentServer;
 use demi_backend_providers::usage::rate_limit::RequestRateLimit;
+use demi_backend_cloud::machine::Cloud;
+use demi_backend_expose::relay::Exposes;
+use demi_backend_runners::devices::Devices;
+use demi_backend_runners::router::CommandRouter;
 use demi_gates::KeyedSerialGate;
 use demi_host_remote::{ARRIVAL, Pipes};
 use demi_web_api::ids::UserId;
@@ -33,12 +41,8 @@ use crate::backend::Services;
 use crate::conversation::host_access::Conversations;
 use crate::conversation::titles::Titles;
 use crate::conversation::{self, ConversationHarness, ConversationParts};
-use crate::expose::Exposes;
 use crate::conversation::claude_cli::ClaudeCli;
 use crate::lifecycle::conversations::ConversationWatches;
-use crate::managed::Cloud;
-use crate::runner::devices::Devices;
-use crate::runner::router::CommandRouter;
 
 /// Where the shards run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -136,10 +140,6 @@ impl Shard {
         self.this.upgrade().expect("a shard's method runs while the shard lives")
     }
 
-    pub(crate) fn cloud(&self) -> &Cloud {
-        &self.cloud
-    }
-
     pub(crate) fn claude_cli(&self) -> &ClaudeCli {
         &self.claude_cli
     }
@@ -170,10 +170,6 @@ impl Shard {
 
     pub(crate) fn pipes(&self) -> &Pipes {
         &self.pipes
-    }
-
-    pub(crate) fn exposes(&self) -> &Exposes {
-        &self.exposes
     }
 
     pub(crate) fn commands(&self) -> &CommandRouter {
@@ -235,7 +231,7 @@ impl Shard {
         self.conversation_sockets.wait().await;
         let _transfers_closed = self.conversations.end_transfers().await;
         self.agent.shutdown().await;
-        let saved = self.close_cloud().await;
+        let saved = self.cloud_shard().close_cloud().await;
         self.devices.disconnect_all("backend shutting down");
         self.tasks.close();
         self.tasks.wait().await;

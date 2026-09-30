@@ -20,11 +20,11 @@ use demi_runner_protocol::release::RunnerRelease;
 use demi_web_api::error::ErrorCode;
 use tokio_util::io::ReaderStream;
 use url::Url;
+use demi_backend_runners::install::{backend_url, powershell_script, shell_script};
 
 use super::AppState;
 use super::cookies::Https;
 use super::error::ApiError;
-use crate::runner::install::{backend_url, powershell_script, shell_script};
 
 /// How the backend is reached from outside, and what it serves besides the
 /// API.

@@ -16,6 +16,8 @@ use demi_backend_objects::ObjectError;
 use demi_backend_storage::StorageError;
 use demi_backend_storage::conversation_index::{ConversationRecord, ExecutionTarget};
 use demi_backend_storage::devices::DeviceRecord;
+use demi_backend_cloud::machine::{CloudAdmission, CloudError};
+use demi_backend_runners::file_gate::{FileGate, FileLease};
 use demi_gates::{ActivityGate, GateLease, Purpose, SerialGate};
 use demi_host_remote::{Admission, RemoteHost};
 use demi_shell::{HostError, HostErrorKind, HostFs, MkdirOptions};
@@ -26,8 +28,6 @@ use futures_util::future::join_all;
 use tokio_util::sync::CancellationToken;
 
 use super::transfer::{OpenTransfer, TransferSet, TransfersClosed};
-use crate::managed::{CloudAdmission, CloudError};
-use crate::runner::{HostOwner, host_key};
 use crate::shard::Shard;
 
 /// Each conversation's slot, made on its first use and kept while the shard
@@ -42,7 +42,7 @@ pub(crate) struct Conversations {
 pub(crate) struct ConversationSlot {
     /// Every operation on the conversation's Hosts holds a lease of it; a
     /// transition reserves it.
-    pub(crate) files: ActivityGate,
+    pub(crate) files: FileGate,
     /// Every open user stream holds a demand lease of it: someone watches
     /// the conversation's Host, which is activity (`resource-lifecycle.md`
     /// § Activity). Nothing reserves it, since a transition ends the streams
@@ -64,7 +64,7 @@ impl Conversations {
             .entry(id.clone())
             .or_insert_with(|| {
                 Rc::new(ConversationSlot {
-                    files: ActivityGate::new(),
+                    files: FileGate::new(id.clone()),
                     streams: ActivityGate::new(),
                     transfers: TransferSet::new(),
                     settings: SerialGate::new(),
@@ -177,7 +177,7 @@ pub(crate) struct ConversationHost {
 /// file lease, then the Cloud's admission.
 pub(super) struct Admitted {
     pub(super) host: ConversationHost,
-    _files: GateLease,
+    _files: FileLease,
     _cloud: Option<CloudAdmission>,
 }
 
@@ -326,7 +326,7 @@ impl Shard {
                 cloud = Some(waits.wait(self.enter_cloud(&selected.device)).await??);
                 continue;
             }
-            let host = self.open_host(&record.id, &selected, cloud.as_ref()).await?;
+            let host = self.open_host(&files, &selected, cloud.as_ref()).await?;
             self.track_idle(&record.id);
             return Ok(Admitted {
                 host,
@@ -375,7 +375,7 @@ impl Shard {
         // A stream shows what the conversation's work left: it makes no
         // directory.
         selected.prepare = false;
-        let host = self.open_host(&record.id, &selected, None).await?;
+        let host = self.open_host(&files, &selected, None).await?;
         self.track_idle(&record.id);
         let watching = match attention {
             Attention::Watches => Some(slot.streams.enter(Purpose::Demand).await),
@@ -394,7 +394,7 @@ impl Shard {
     /// Takes the Cloud's admission: it wakes a stopped Cloud, joins a boot
     /// under way, or waits for a running reset to finish (`managed`).
     async fn enter_cloud(&self, device: &DeviceRecord) -> Result<CloudAdmission, CloudError> {
-        self.admit_cloud(device).await
+        self.cloud_shard().admit_cloud(device).await
     }
 
     /// The Host an operation reaches and where its work starts, found
@@ -425,7 +425,7 @@ impl Shard {
         };
         let found = match (&named, &target) {
             (Some(host), _) => control.device(host.device.clone()).await?,
-            (None, ExecutionTarget::Cloud { .. }) if allocate => Some(self.cloud_device().await?),
+            (None, ExecutionTarget::Cloud { .. }) if allocate => Some(self.cloud_shard().cloud_device().await?),
             (None, ExecutionTarget::Cloud { .. }) => {
                 Some(control.managed_device(record.owner.clone()).await?.ok_or(Refusal::Stopped)?)
             }
@@ -443,17 +443,19 @@ impl Shard {
         Ok(Selected { device, root, prepare })
     }
 
-    /// The admitted Host, its Cloud session directory made first.
+    /// The admitted Host of the operation that holds `files`, its Cloud
+    /// session directory made first.
     async fn open_host(
         &self,
-        id: &ConversationId,
+        files: &FileLease,
         selected: &Selected,
         cloud: Option<&CloudAdmission>,
     ) -> Result<ConversationHost, HostAccessError> {
         let device = &selected.device.id;
         let admission = cloud.map_or(Admission::Free, |cloud| cloud.per_operation.clone());
-        let key = host_key(device, HostOwner::Conversation(id), &selected.root);
-        let host = self.devices().host(device, key, selected.root.clone(), admission);
+        let host = self
+            .devices()
+            .conversation_host(device, files, selected.root.clone(), admission);
         if selected.prepare {
             HostFs::mkdir(&host, &selected.root, MkdirOptions { recursive: true }).await?;
         }

@@ -174,7 +174,10 @@ The conversation's host access runs in the user's shard, the part of the
 backend that holds everything belonging to one user on a single thread
 ([The user shard](../architecture/concurrency.md#the-user-shard)). The file
 gates, the admission of file transfers and user streams, and the transitions
-that end them live there too.
+that end them live there too. A runner connection makes a conversation's Host
+handle only against a lease of that conversation's file gate, which only the
+host access takes, so no other code can make one
+([`backend-runners`](../architecture/crates-and-packages.md#backend-runners)).
 
 Admission is a loop, because the two things it waits for, the conversation's
 file gate and a Cloud's admission, are also what a transition takes. A Cloud's
