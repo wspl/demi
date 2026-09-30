@@ -1279,7 +1279,7 @@ backend-edge -> agent, agent-protocol, backend-accounts, backend-cloud, backend-
 backend -> agent, artifact, backend-accounts, backend-cloud, backend-edge, backend-expose, backend-families, backend-host-access, backend-objects, backend-providers, backend-runners, backend-shard, backend-storage, backend-sync, browser-protocol, command-tree, core, gates, host-remote, provider, runner-protocol, web-api
 machines -> artifact, machines-protocol, runner-protocol
 runner -> artifact, command-service, command-tree, runner-host, runner-jobs, runner-process, runner-protocol, runner-services, runner-shell
-demi-file -> artifact, command-service, file-protocol, gates
+demi-file -> artifact, command-service, core, file-protocol, gates
 demi-browser -> browser-cdp, browser-driver, browser-live, browser-page, browser-protocol, browser-tabs, command-service
 demi-claude -> artifact, claude-protocol, command-service
 xtask -> agent-protocol, artifact, browser-protocol, claude-protocol, command-service, core, file-protocol, machines-protocol, runner-protocol, web-api

@@ -26,7 +26,8 @@ testing = ["demi-gates/testing", "dep:async-trait"]
 demi-agent = { path = "../agent" }
 demi-agent-protocol = { path = "../agent-protocol" }
 demi-artifact = { path = "../artifact" }
-demi-builtin-protocol = { path = "../builtin-protocol" }
+demi-browser-protocol = { path = "../browser-protocol" }
+demi-file-protocol = { path = "../file-protocol" }
 demi-claude-protocol = { path = "../claude-protocol" }
 demi-coding-agent = { path = "../coding-agent" }
 demi-command-service = { path = "../command-service" }

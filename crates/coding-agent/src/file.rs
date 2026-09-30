@@ -1,9 +1,8 @@
 //! The `demi file` group: every leaf runs a `file.*` operation of the
-//! `demi.builtin` package beside the file, its arguments declared from the
-//! `builtin-protocol` types (`commands.md` § File commands).
+//! `demi.file` package beside the file, its arguments declared from the
+//! `file-protocol` types (`commands.md` § File commands).
 
-use demi_builtin_protocol::PACKAGE;
-use demi_builtin_protocol::file::{CreateArgs, EditArgs, PatchArgs, ReadArgs};
+use demi_file_protocol::{CreateArgs, EditArgs, PACKAGE, PatchArgs, ReadArgs};
 use demi_command_tree::NativeOperation;
 use demi_shell::{GroupBuilder, LeafBuilder};
 

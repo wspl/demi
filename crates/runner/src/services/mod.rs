@@ -49,7 +49,7 @@ pub enum RuntimeError {
 /// it reports (`native-runtime.md` § Invocation protocol).
 #[derive(Debug, Clone, thiserror::Error)]
 pub struct ServiceExit {
-    /// The package, such as `demi.builtin`.
+    /// The package, such as `demi.file`.
     pub service: String,
     pub reason: ExitReason,
     /// The end of the service's standard error.

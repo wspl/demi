@@ -13,7 +13,8 @@ doctest = false
 
 [dependencies]
 demi-agent = { path = "../agent" }
-demi-builtin-protocol = { path = "../builtin-protocol" }
+demi-browser-protocol = { path = "../browser-protocol" }
+demi-file-protocol = { path = "../file-protocol" }
 demi-command-tree = { path = "../command-tree" }
 demi-core = { path = "../core" }
 demi-shell = { path = "../shell" }
@@ -23,7 +24,7 @@ serde_json.workspace = true
 
 [dev-dependencies]
 # The scenarios run the harness in an agent server whose shells are real
-# runner jobs, with the `demi.builtin` package the workspace built; the rpc
+# runner jobs, with the `demi.file` package the workspace built; the rpc
 # groups' tests use the shell's in-memory rpc port.
 demi-agent = { path = "../agent", features = ["testing"] }
 demi-agent-protocol = { path = "../agent-protocol" }

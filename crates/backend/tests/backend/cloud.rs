@@ -151,7 +151,7 @@ pub(crate) fn idle_after(window: Duration) -> LifecycleTuning {
 #[tokio::test]
 async fn the_first_uses_of_two_conversations_boot_one_cloud_which_stops_when_idle_and_wakes_for_the_next_operation() {
     let vendor = MockVendor::start().await;
-    let mut harness = Harness::new().with_builtin_package();
+    let mut harness = Harness::new().with_file_package();
     harness.lifecycle = idle_after(Duration::from_millis(600));
     // The conversations' own idle watches read their activity once an hour
     // here, so the Cloud's own idle watch is what stops it.
@@ -295,7 +295,7 @@ async fn a_conversation_archived_while_its_cloud_is_stopped_does_not_wake_it() {
 #[tokio::test]
 async fn a_cloud_the_manager_stopped_without_a_word_boots_again_for_the_operations_that_need_it() {
     let vendor = MockVendor::start().await;
-    let harness = Harness::new().with_builtin_package();
+    let harness = Harness::new().with_file_package();
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic_at(&backend, &master, &vendor, "/a").await;
     create(&backend, &master, FIRST).await;
@@ -327,7 +327,7 @@ async fn a_cloud_the_manager_stopped_without_a_word_boots_again_for_the_operatio
 #[tokio::test]
 async fn a_conversation_that_left_the_cloud_reaches_it_as_an_attached_host_which_its_work_wakes() {
     let vendor = MockVendor::start().await;
-    let mut harness = Harness::new().with_builtin_package();
+    let mut harness = Harness::new().with_file_package();
     harness.lifecycle = idle_after(Duration::from_millis(800));
     // The conversation's own idle watch reads its activity once an hour
     // while it works here, so the Cloud's own idle watch is what stops it.
@@ -386,7 +386,7 @@ async fn a_conversation_that_left_the_cloud_reaches_it_as_an_attached_host_which
 #[tokio::test]
 async fn a_reset_keeps_the_clouds_files_and_identity_tells_the_model_and_is_the_same_reset_when_asked_again() {
     let vendor = MockVendor::start().await;
-    let harness = Harness::new().with_builtin_package();
+    let harness = Harness::new().with_file_package();
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic_at(&backend, &master, &vendor, "/a").await;
     create(&backend, &master, FIRST).await;
@@ -447,7 +447,7 @@ async fn a_reset_keeps_the_clouds_files_and_identity_tells_the_model_and_is_the_
 #[tokio::test]
 async fn a_failed_reset_reports_its_failure_and_the_same_operation_resumes_without_losing_home() {
     let vendor = MockVendor::start().await;
-    let harness = Harness::new().with_builtin_package();
+    let harness = Harness::new().with_file_package();
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic_at(&backend, &master, &vendor, "/a").await;
     create(&backend, &master, FIRST).await;
@@ -489,7 +489,7 @@ async fn a_failed_reset_reports_its_failure_and_the_same_operation_resumes_witho
 #[tokio::test]
 async fn a_reset_holds_a_cloud_conversation_until_it_ends_and_leaves_one_that_only_has_the_cloud_attached_running() {
     let vendor = MockVendor::start().await;
-    let harness = Harness::new().with_builtin_package();
+    let harness = Harness::new().with_file_package();
     let (backend, master) = harness.start_set_up().await;
     let alpha = backend.pair(&master, "alpha").await;
     let cloud_model = anthropic_at(&backend, &master, &vendor, "/cloud").await;
@@ -666,7 +666,7 @@ async fn the_clouds_device_log_answers_while_it_runs_and_a_stopped_cloud_says_so
 #[tokio::test]
 async fn the_clouds_files_and_todos_and_the_usage_ledger_survive_a_backend_restart() {
     let vendor = MockVendor::start().await;
-    let harness = Harness::new().with_builtin_package();
+    let harness = Harness::new().with_file_package();
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic_at(&backend, &master, &vendor, "/a").await;
     create(&backend, &master, FIRST).await;
@@ -900,7 +900,7 @@ async fn a_backend_that_stopped_in_the_middle_of_a_reset_finishes_its_disk_step_
 #[tokio::test]
 async fn at_its_lifetime_cap_the_cloud_ends_the_jobs_nothing_attends_and_stops() {
     let vendor = MockVendor::start().await;
-    let mut harness = Harness::new().with_builtin_package();
+    let mut harness = Harness::new().with_file_package();
     harness.cloud.lifetime_cap = Duration::from_secs(2);
     harness.cloud.sweep = Duration::from_millis(100);
     let (backend, master) = harness.start_set_up().await;
@@ -927,7 +927,7 @@ async fn at_its_lifetime_cap_the_cloud_ends_the_jobs_nothing_attends_and_stops()
 #[tokio::test]
 async fn cloud_projects_share_the_users_one_machine_and_a_deleted_project_keeps_its_files() {
     let vendor = MockVendor::start().await;
-    let harness = Harness::new().with_builtin_package();
+    let harness = Harness::new().with_file_package();
     let (backend, master) = harness.start_set_up().await;
     let project = |name: &str| {
         let body = json!({ "kind": "cloud", "name": name });

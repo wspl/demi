@@ -61,8 +61,10 @@ pub enum Error {
 pub enum Executable {
     #[value(name = "demi-runner")]
     Runner,
-    #[value(name = "demi-commands")]
-    Commands,
+    #[value(name = "demi-file")]
+    File,
+    #[value(name = "demi-browser")]
+    Browser,
     #[value(name = "demi-claude")]
     Claude,
     #[value(name = "demi-backend")]
@@ -74,13 +76,14 @@ pub enum Executable {
 impl Executable {
     /// The executables a build makes unless named: the runner and the
     /// command programs.
-    const DEFAULT: [Self; 3] = [Self::Runner, Self::Commands, Self::Claude];
+    const DEFAULT: [Self; 4] = [Self::Runner, Self::File, Self::Browser, Self::Claude];
 
     /// The Cargo package, which is also the executable's name.
     pub fn name(self) -> &'static str {
         match self {
             Self::Runner => "demi-runner",
-            Self::Commands => "demi-commands",
+            Self::File => "demi-file",
+            Self::Browser => "demi-browser",
             Self::Claude => "demi-claude",
             Self::Backend => "demi-backend",
             Self::Machines => "demi-machines",
@@ -90,7 +93,7 @@ impl Executable {
     /// The targets it runs on, in the order of the release matrix.
     fn targets(self) -> &'static [&'static str] {
         match self {
-            Self::Runner | Self::Commands | Self::Claude => TARGETS,
+            Self::Runner | Self::File | Self::Browser | Self::Claude => TARGETS,
             // Servers run Linux; a developer may also run the backend on a
             // Mac, with the Cloud in a Lima VM.
             Self::Backend => &[

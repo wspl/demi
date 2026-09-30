@@ -1,10 +1,10 @@
 //! The `demi browser` group (`browser.md`): one native leaf per operation of
-//! the `demi.builtin` package's browser, its arguments and `--json` result
-//! declared from the `builtin-protocol` types, so the command line, the
+//! the `demi.browser` package, its arguments and `--json` result
+//! declared from the `browser-protocol` types, so the command line, the
 //! runner's check and the operation read one definition.
 
-use demi_builtin_protocol::PACKAGE;
-use demi_builtin_protocol::browser::*;
+use demi_browser_protocol::PACKAGE;
+use demi_browser_protocol::browser::*;
 use demi_command_tree::NativeOperation;
 use demi_shell::{GroupBuilder, LeafBuilder};
 

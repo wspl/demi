@@ -86,10 +86,10 @@ pub enum DecodeError {
     /// The JSON does not have the type's shape.
     #[error(transparent)]
     Shape(serde_json::Error),
-    /// The value has the shape but breaks one of the type's rules; the
-    /// report names each field and rule.
-    #[error("{}", .0.to_string().trim_end())]
-    Invalid(garde::Report),
+    /// The value has the shape but breaks one of the type's rules, such as
+    /// a field's bound, which the message names with each field and rule.
+    #[error("{0}")]
+    Invalid(String),
 }
 
 impl From<serde_json::Error> for DecodeError {
@@ -105,7 +105,7 @@ impl From<serde_json::Error> for DecodeError {
 
 impl From<garde::Report> for DecodeError {
     fn from(report: garde::Report) -> Self {
-        Self::Invalid(report)
+        Self::Invalid(report.to_string().trim_end().to_owned())
     }
 }
 
@@ -117,6 +117,16 @@ where
     T: DeserializeOwned + garde::Validate<Context = ()>,
 {
     let decoded: T = serde_json::from_str(json)?;
+    decoded.validate()?;
+    Ok(decoded)
+}
+
+/// [`decode`] for JSON bytes, such as a message off a socket.
+pub fn decode_slice<T>(json: &[u8]) -> Result<T, DecodeError>
+where
+    T: DeserializeOwned + garde::Validate<Context = ()>,
+{
+    let decoded: T = serde_json::from_slice(json)?;
     decoded.validate()?;
     Ok(decoded)
 }
