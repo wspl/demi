@@ -17,6 +17,10 @@ use std::{
 };
 
 use demi_agent_protocol::ServerFrame;
+use demi_agent_session::{Continuation, ModelSwitch, SessionEvent, Settle, Status, Subscription};
+use demi_agent_store::{AgentTreeStore, NodeRecord, StoreError};
+use demi_agent_tools::{AgentHarness, Profile, shell_output};
+use demi_agent_transcript::IdSource;
 use demi_core::{Clock, CommandId, NodeId};
 use demi_gates::{ActivityGate, KeyedSerialGate, Reservation};
 use demi_shell::RegisterError;
@@ -31,11 +35,8 @@ use self::{
 };
 use super::{AgentServer, ResolveError, commands, connection::Outbox};
 use crate::{
-    AgentHarness, IdSource, Node, Profile,
+    Node,
     node::{self, AssembleError, NodeRole, NodeSpec, Prompt},
-    session::{Continuation, ModelSwitch, SessionEvent, Settle, Status, Subscription},
-    store::{AgentTreeStore, NodeRecord, StoreError},
-    tools,
 };
 
 /// A conversation's live tree.
@@ -459,7 +460,7 @@ impl<H: AgentHarness> Tree<H> {
             .root
             .live_views()
             .into_iter()
-            .map(|view| tools::shell_output(None, view))
+            .map(|view| shell_output(None, view))
             .collect();
         for child in self.descendants() {
             let id = child.node().id();
@@ -468,7 +469,7 @@ impl<H: AgentHarness> Tree<H> {
                     .node()
                     .live_views()
                     .into_iter()
-                    .map(|view| tools::shell_output(Some(id.clone()), view)),
+                    .map(|view| shell_output(Some(id.clone()), view)),
             );
         }
         frames

@@ -10,8 +10,8 @@
 use std::path::Path;
 
 use bytes::Bytes;
-use demi_agent::attachments::{Upload, unavailable, upload_blocks};
-use demi_agent::store::media::HeldMedia;
+use demi_agent_store::attachments::{Upload, unavailable, upload_blocks};
+use demi_agent_store::media::HeldMedia;
 use demi_core::{B64Bytes, UserContentBlock};
 use demi_host_remote::RemoteHost;
 use demi_shell::{FileContents, Host as _, HostError, WriteOptions};

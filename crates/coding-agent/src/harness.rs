@@ -5,7 +5,7 @@
 
 use std::rc::Rc;
 
-use demi_agent::{AgentHarness, PromptContext};
+use demi_agent_tools::{AgentHarness, PromptContext};
 use demi_shell::{CommandSet, Host, HostError, RegisterError};
 
 use crate::{DemiOptions, demi_root};

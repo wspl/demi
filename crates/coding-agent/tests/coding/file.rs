@@ -3,7 +3,7 @@
 //! whose `file` commands run in the `demi.file` package the workspace
 //! built.
 
-use demi_agent::testing::{field, shown_output};
+use demi_agent_tools::testing::{field, shown_output};
 use demi_provider::testing::ScriptedRuntime;
 
 use crate::support::{Fixture, scripts, turn, within};

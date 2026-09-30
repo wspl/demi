@@ -18,11 +18,11 @@ use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 
 use axum::extract::ws::{CloseFrame, Message, Utf8Bytes, WebSocket, close_code};
-use demi_agent::store::media::HeldMedia;
 use demi_agent::{ContentError, ContentResolver, FileReference, Outgoing, ResolvedFiles};
 use demi_agent_protocol::{
     ClientContent, ClientFrame, EditOutcome, FrameError, ServerFrame, TranscriptPatch, decode_client_frame,
 };
+use demi_agent_store::media::HeldMedia;
 use demi_core::{Block, UserContentBlock};
 use demi_gates::{GateLease, Purpose};
 use demi_web_api::error::ErrorCode;

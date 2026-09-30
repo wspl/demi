@@ -200,6 +200,14 @@ pub fn trim(text: &str) -> &str {
     text.trim_matches(is_trimmed_space)
 }
 
+/// The byte offset of the scalar value `chars` of `text`, or its length
+/// when it holds fewer: where a cut after `chars` scalar values falls.
+pub fn char_offset(text: &str, chars: usize) -> usize {
+    text.char_indices()
+        .nth(chars)
+        .map_or(text.len(), |(offset, _)| offset)
+}
+
 /// JavaScript's white space and line terminators.
 fn is_trimmed_space(character: char) -> bool {
     character == '\u{feff}' || (character.is_whitespace() && character != '\u{85}')

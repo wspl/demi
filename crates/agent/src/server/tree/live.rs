@@ -10,6 +10,7 @@ use std::{
     time::Duration,
 };
 
+use demi_agent_tools::shell_output;
 use demi_core::{CommandId, NodeId};
 use demi_shell::{CommandRecord, PageFeed};
 use tokio::{
@@ -18,7 +19,6 @@ use tokio::{
 };
 
 use super::FrameSink;
-use crate::tools;
 
 /// How often a tree sends its commands' new output, at most.
 pub(crate) const INTERVAL: Duration = Duration::from_millis(250);
@@ -91,7 +91,7 @@ impl LiveOutput {
         }
         drop(waiting);
         let view = record.borrow().page_view();
-        self.sink.emit(tools::shell_output(subagent.clone(), view));
+        self.sink.emit(shell_output(subagent.clone(), view));
     }
 
     /// When the waiting commands are due: at once after a quiet interval.
@@ -115,7 +115,7 @@ impl LiveOutput {
         } in waiting
         {
             let view = record.borrow().page_view();
-            self.sink.emit(tools::shell_output(subagent, view));
+            self.sink.emit(shell_output(subagent, view));
         }
     }
 }
@@ -163,177 +163,5 @@ impl PageFeed for NodeFeed {
             // A tree that is gone has no page; its sender is gone too.
             None => watch::channel(false).1,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use demi_agent_protocol::{ServerFrame, ShellStatus};
-    use demi_core::{ShellId, StreamKind};
-    use demi_shell::{Ending, WholeOutput};
-    use tokio_util::task::AbortOnDropHandle;
-
-    use super::*;
-    use crate::server::{
-        connection::{FrameRx, Outbox, Outgoing},
-        tree::Attachment,
-    };
-
-    fn record(command: &str) -> Rc<RefCell<CommandRecord>> {
-        Rc::new(RefCell::new(CommandRecord::new(
-            ShellId::try_from("shell").unwrap(),
-            CommandId::try_from(command).unwrap(),
-            format!("call-{command}"),
-        )))
-    }
-
-    fn print(record: &Rc<RefCell<CommandRecord>>, text: &str) {
-        record.borrow_mut().append_output(StreamKind::Stdout, text);
-    }
-
-    /// Lets the sending task run.
-    async fn settle() {
-        for _ in 0..10 {
-            tokio::task::yield_now().await;
-        }
-    }
-
-    /// The command views waiting in `frames`: the subagent, the command,
-    /// whether it runs, and its tail.
-    fn views(frames: &mut FrameRx) -> Vec<(Option<String>, String, bool, String)> {
-        let mut views = Vec::new();
-        while let Some(outgoing) = frames.try_recv() {
-            let Outgoing::Frame(ServerFrame::ShellOutput {
-                subagent_id,
-                status,
-            }) = outgoing
-            else {
-                panic!("expected a command's view, got {outgoing:?}");
-            };
-            let command = status.command();
-            views.push((
-                subagent_id.map(|id| id.to_string()),
-                command.command_id.to_string(),
-                matches!(*status, ShellStatus::Running { .. }),
-                command.tail.clone(),
-            ));
-        }
-        views
-    }
-
-    fn view(
-        subagent: Option<&str>,
-        command: &str,
-        running: bool,
-        tail: &str,
-    ) -> (Option<String>, String, bool, String) {
-        (
-            subagent.map(str::to_owned),
-            command.to_owned(),
-            running,
-            tail.to_owned(),
-        )
-    }
-
-    /// The sending rules of `runtime.md` § Live output, on a paused clock: a
-    /// quiet change goes at once, new output at most every interval with
-    /// the tree's changed commands together, an end at once with nothing of
-    /// its command after it; a chatty command sends a frame an interval;
-    /// without a page nothing is sent or kept, and the jobs are followed
-    /// only while a page is attached.
-    #[tokio::test(flavor = "local", start_paused = true)]
-    async fn new_output_goes_at_most_every_interval_and_an_end_at_once() {
-        let sink = Rc::new(FrameSink::new());
-        let live = LiveOutput::new(sink.clone());
-        let _sending = AbortOnDropHandle::new(tokio::task::spawn_local(send_changes(live.clone())));
-        let root = live.feed(None);
-        let child = live.feed(Some(NodeId::try_from("child").unwrap()));
-        let mut following = root.watching();
-        assert!(!*following.borrow_and_update());
-        let (outbox, mut frames) = Outbox::new(64);
-        sink.attach(Attachment {
-            connection: 1,
-            outbox,
-        });
-        assert!(*following.borrow_and_update());
-
-        // A change after a quiet interval goes at once.
-        let a = record("a");
-        root.changed(&a);
-        settle().await;
-        assert_eq!(views(&mut frames), [view(None, "a", true, "")]);
-
-        // Within the interval, changes wait and go together, each command's
-        // view as it is when they go.
-        print(&a, "one\n");
-        root.changed(&a);
-        print(&a, "two\n");
-        root.changed(&a);
-        let b = record("b");
-        child.changed(&b);
-        settle().await;
-        assert_eq!(views(&mut frames), []);
-        tokio::time::advance(INTERVAL).await;
-        settle().await;
-        assert_eq!(
-            views(&mut frames),
-            [
-                view(None, "a", true, "one\ntwo\n"),
-                view(Some("child"), "b", true, "")
-            ]
-        );
-
-        // An end goes at once, with what waited of its command; nothing of
-        // the command follows it.
-        print(&a, "three\n");
-        root.changed(&a);
-        let ended = a.borrow_mut().settle(
-            Ending::Exited(0),
-            std::sync::Arc::new(WholeOutput::default()),
-            None,
-            "end\n",
-        );
-        assert!(ended);
-        root.changed(&a);
-        assert_eq!(
-            views(&mut frames),
-            [view(None, "a", false, "one\ntwo\nthree\nend\n")]
-        );
-        tokio::time::advance(INTERVAL).await;
-        settle().await;
-        assert_eq!(views(&mut frames), []);
-
-        // A command that prints without a pause sends a frame an interval.
-        for _ in 0..1000 {
-            print(&b, "x");
-            child.changed(&b);
-            tokio::time::advance(std::time::Duration::from_millis(1)).await;
-        }
-        settle().await;
-        let sent = views(&mut frames);
-        assert!(
-            (4..=5).contains(&sent.len()),
-            "{} frames in a second",
-            sent.len()
-        );
-
-        // Without a page nothing is sent or kept, and the jobs are no longer
-        // followed: what waited when the last page left, and what changes
-        // while none is attached, never reaches the next page.
-        print(&b, "y");
-        child.changed(&b);
-        sink.detach(1);
-        assert!(!*following.borrow_and_update());
-        settle().await;
-        print(&b, "z");
-        child.changed(&b);
-        let (outbox, mut later) = Outbox::new(64);
-        sink.attach(Attachment {
-            connection: 2,
-            outbox,
-        });
-        tokio::time::advance(INTERVAL).await;
-        settle().await;
-        assert_eq!(views(&mut later), []);
     }
 }

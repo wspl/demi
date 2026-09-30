@@ -243,6 +243,32 @@ impl Clock for FixedClock {
     }
 }
 
+/// A wall clock that moves with Tokio's, so that a test on the paused clock
+/// moves the times records carry too: `start` plus the Tokio time elapsed
+/// since the clock was made.
+#[derive(Debug)]
+pub struct TokioClock {
+    start: Timestamp,
+    origin: tokio::time::Instant,
+}
+
+impl TokioClock {
+    pub fn new(start: Timestamp) -> Self {
+        Self {
+            start,
+            origin: tokio::time::Instant::now(),
+        }
+    }
+}
+
+impl Clock for TokioClock {
+    fn now(&self) -> Timestamp {
+        let elapsed = i64::try_from(self.origin.elapsed().as_millis()).unwrap_or(i64::MAX);
+        Timestamp::from_millisecond(self.start.as_millisecond().saturating_add(elapsed))
+            .expect("a test's time stays in range")
+    }
+}
+
 /// A JWT whose payload is `claims`, with a signature nobody checks, as the
 /// tokens vendors issue: providers read claims without verifying them.
 pub fn jwt(claims: &serde_json::Value) -> String {

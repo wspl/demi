@@ -6,12 +6,16 @@
 use std::{rc::Rc, time::Duration};
 
 use demi_agent::{
-    ServerConfig, attachments,
-    store::media::BlobStore,
-    testing::{self, MemoryBlobs, MemoryTreeStore, TestClient, TestFiles, model_of, model_reading},
+    ServerConfig,
+    testing::{TestClient, TestFiles},
 };
 use demi_agent_protocol::{
     AbortResult, AbortTarget, ClientContent, ClientFrame, ServerFrame, TranscriptPatch,
+};
+use demi_agent_store::{
+    attachments,
+    media::BlobStore,
+    testing::{MemoryBlobs, MemoryTreeStore, model_of, model_reading, png},
 };
 use demi_core::{
     Block, FailureSource, FileExtension, MediaSource, ModelSelection, SessionPhase, ThinkingConfig,
@@ -216,7 +220,7 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
     ]);
     // The upload route stored the file: its blob holds the bytes.
     let blobs = MemoryBlobs::new();
-    let png = testing::png(4, 3, 1);
+    let png = png(4, 3, 1);
     let uploaded = blobs.put(png.clone()).await.unwrap();
     let path = "/home/demi/.demi/attachments/conversation/tiny.png";
     let upload = attachments::Upload {

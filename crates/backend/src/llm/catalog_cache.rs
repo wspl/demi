@@ -355,6 +355,7 @@ mod tests {
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     use demi_core::ProviderModel;
+    use demi_provider::testing::TokioClock;
     use demi_web_api::providers::CredentialKind;
     use futures_util::future::join_all;
     use tokio::sync::oneshot;
@@ -362,19 +363,6 @@ mod tests {
     use super::*;
     use crate::storage::control::testing;
     use crate::storage::providers::NewProvider;
-
-    /// Wall time that follows Tokio's clock, so a paused test moves both.
-    struct TokioClock {
-        start: Timestamp,
-        origin: Instant,
-    }
-
-    impl Clock for TokioClock {
-        fn now(&self) -> Timestamp {
-            let elapsed = i64::try_from(self.origin.elapsed().as_millis()).unwrap();
-            Timestamp::from_millisecond(self.start.as_millisecond() + elapsed).unwrap()
-        }
-    }
 
     fn catalog(name: &str) -> ProviderModelList {
         ProviderModelList {
@@ -428,10 +416,7 @@ mod tests {
                 active: None,
             };
             control.insert_provider(entry, Vec::new()).await.unwrap();
-            let clock = Arc::new(TokioClock {
-                start: "2026-09-24T09:50:00.000Z".parse().unwrap(),
-                origin: Instant::now(),
-            });
+            let clock = Arc::new(TokioClock::new("2026-09-24T09:50:00.000Z".parse().unwrap()));
             Self {
                 _data: data,
                 control,

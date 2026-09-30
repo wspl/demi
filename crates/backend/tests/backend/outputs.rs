@@ -6,7 +6,7 @@
 //! and what a running command's Host kept so far. The model is an Anthropic
 //! endpoint the test scripts; the device is a real runner.
 
-use demi_agent::testing::{field, shown_output};
+use demi_agent_tools::testing::{field, shown_output};
 use demi_provider::testing::MockVendor;
 
 use crate::conversations::{anthropic_at, create, on_device};

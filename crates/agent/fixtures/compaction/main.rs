@@ -15,16 +15,21 @@
 use std::{io::Read, process::ExitCode, rc::Rc, sync::Arc, time::Duration};
 
 use demi_agent::{
-    AgentHarness, AgentServer, AgentTreeStore, CompactionConfig, PromptContext, ProviderResolver,
-    RandomIds, ResolveError, ServerConfig, ServerDeps, SessionConfig,
-    store::{
-        CheckpointState, CheckpointUpdate, CommandStateSnapshot, NodeRecord,
-        media::{HeldMedia, ModelView},
-    },
-    testing::{MemoryTreeStore, NoHost, NoShells, TestClient, client_text},
-    transcript::{RequestView, estimate::context_tokens},
+    AgentServer, ProviderResolver, ResolveError, ServerConfig, ServerDeps,
+    testing::{TestClient, client_text},
 };
 use demi_agent_protocol::{ClientFrame, ServerFrame};
+use demi_agent_session::{CompactionConfig, SessionConfig};
+use demi_agent_store::{
+    AgentTreeStore, CheckpointState, CheckpointUpdate, CommandStateSnapshot, NodeRecord,
+    media::{HeldMedia, ModelView},
+    testing::MemoryTreeStore,
+};
+use demi_agent_tools::{
+    AgentHarness, PromptContext,
+    testing::{NoHost, NoShells},
+};
+use demi_agent_transcript::{RandomIds, RequestView, estimate::context_tokens};
 use demi_core::{
     Block, Clock, Model, ModelSelection, NodeId, SessionPhase, SystemClock, TurnId, WireApi,
 };
@@ -373,7 +378,7 @@ fn tail(answer: &str) -> &str {
 }
 
 fn uuid() -> String {
-    demi_agent::IdSource::next_id(&RandomIds)
+    demi_agent_transcript::IdSource::next_id(&RandomIds)
 }
 
 /// Baseline recall, then `EXTRA_GENERATIONS` forced compactions, each

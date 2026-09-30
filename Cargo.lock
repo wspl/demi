@@ -1252,35 +1252,25 @@ dependencies = [
  "bytes",
  "demi-agent",
  "demi-agent-protocol",
- "demi-command-service",
+ "demi-agent-session",
+ "demi-agent-store",
+ "demi-agent-tools",
+ "demi-agent-transcript",
  "demi-core",
  "demi-gates",
  "demi-provider",
- "demi-provider-anthropic-api",
- "demi-provider-codex",
- "demi-provider-google",
- "demi-provider-grok-build",
  "demi-provider-openai-api",
  "demi-shell",
  "flate2",
  "futures-util",
- "garde",
- "image",
- "jiff",
- "rand 0.9.5",
  "reqwest",
  "schemars",
  "serde",
  "serde_json",
- "serde_json_canonicalizer",
- "serde_path_to_error",
- "serde_with",
- "sha2",
  "thiserror",
  "tokio",
  "tokio-util",
  "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -1295,6 +1285,95 @@ dependencies = [
  "serde_plain",
  "serde_with",
  "thiserror",
+]
+
+[[package]]
+name = "demi-agent-session"
+version = "0.1.3"
+dependencies = [
+ "demi-agent-protocol",
+ "demi-agent-session",
+ "demi-agent-store",
+ "demi-agent-transcript",
+ "demi-command-service",
+ "demi-core",
+ "demi-gates",
+ "demi-provider",
+ "demi-provider-anthropic-api",
+ "demi-provider-codex",
+ "demi-provider-google",
+ "demi-provider-grok-build",
+ "demi-provider-openai-api",
+ "demi-shell",
+ "futures-util",
+ "garde",
+ "rand 0.9.5",
+ "reqwest",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "demi-agent-store"
+version = "0.1.3"
+dependencies = [
+ "demi-agent-protocol",
+ "demi-agent-store",
+ "demi-core",
+ "demi-provider",
+ "demi-shell",
+ "futures-util",
+ "garde",
+ "image",
+ "serde",
+ "serde_json",
+ "serde_json_canonicalizer",
+ "sha2",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "demi-agent-tools"
+version = "0.1.3"
+dependencies = [
+ "bytes",
+ "demi-agent-protocol",
+ "demi-agent-session",
+ "demi-agent-store",
+ "demi-agent-transcript",
+ "demi-core",
+ "demi-provider",
+ "demi-shell",
+ "futures-util",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_path_to_error",
+ "serde_with",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "demi-agent-transcript"
+version = "0.1.3"
+dependencies = [
+ "demi-agent-protocol",
+ "demi-agent-store",
+ "demi-agent-transcript",
+ "demi-core",
+ "demi-provider",
+ "jiff",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "uuid",
 ]
 
 [[package]]
@@ -1331,6 +1410,10 @@ dependencies = [
  "data-encoding",
  "demi-agent",
  "demi-agent-protocol",
+ "demi-agent-session",
+ "demi-agent-store",
+ "demi-agent-tools",
+ "demi-agent-transcript",
  "demi-artifact",
  "demi-backend",
  "demi-browser-protocol",
@@ -1487,6 +1570,9 @@ version = "0.1.3"
 dependencies = [
  "demi-agent",
  "demi-agent-protocol",
+ "demi-agent-store",
+ "demi-agent-tools",
+ "demi-agent-transcript",
  "demi-browser-protocol",
  "demi-command-service",
  "demi-command-tree",

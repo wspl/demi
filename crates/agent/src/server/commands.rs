@@ -6,6 +6,7 @@
 
 use std::rc::{Rc, Weak};
 
+use demi_agent_tools::{AgentHarness, Profile};
 use demi_core::{NodeId, is_blank, trim};
 use demi_shell::{
     Call, CommandSet, GroupBuilder, LeafBuilder, RegisterError, RpcError, RpcPort, TypedRpc,
@@ -18,7 +19,6 @@ use super::{
     shell_output::shell_group,
     tree::{AgentSnapshot, StartInput, Tree, TreeEntry},
 };
-use crate::{AgentHarness, Profile};
 
 /// The one description of a spawn's brief (`subagents.md` § Command help).
 const SPAWN_PROMPT: &str = "The child's first user message and only task brief. The child starts with an empty transcript and cannot see this conversation: do not refer to prior turns, and do not paste this conversation or the product user's message unchanged. Include the goal for this child, applicable decisions and constraints, whether to edit or only report, how to verify, and every concrete identifier it needs (paths, ids, error text, commands already tried and their key results). State the exact shape of the last assistant text it should return.";

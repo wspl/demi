@@ -25,6 +25,10 @@ testing = ["demi-gates/testing", "dep:async-trait"]
 [dependencies]
 demi-agent = { path = "../agent" }
 demi-agent-protocol = { path = "../agent-protocol" }
+demi-agent-session = { path = "../agent-session" }
+demi-agent-store = { path = "../agent-store" }
+demi-agent-tools = { path = "../agent-tools" }
+demi-agent-transcript = { path = "../agent-transcript" }
 demi-artifact = { path = "../artifact" }
 demi-browser-protocol = { path = "../browser-protocol" }
 demi-file-protocol = { path = "../file-protocol" }
@@ -106,6 +110,8 @@ uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 demi-agent = { path = "../agent", features = ["testing"] }
+demi-agent-store = { path = "../agent-store", features = ["testing"] }
+demi-agent-tools = { path = "../agent-tools", features = ["testing"] }
 demi-backend = { path = ".", features = ["testing"] }
 demi-command-service = { path = "../command-service", features = ["testing"] }
 demi-host-remote = { path = "../host-remote", features = ["testing"] }

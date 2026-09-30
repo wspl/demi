@@ -7,10 +7,10 @@
 
 use std::rc::{Rc, Weak};
 
-use demi_agent::PromptContext;
+use demi_agent_tools::PromptContext;
 use demi_browser_protocol::{PACKAGE as BROWSER, browser};
-use demi_file_protocol::{OPERATIONS as FILE_OPERATIONS, PACKAGE as FILE};
 use demi_coding_agent::{CodingHarness, DemiOptions, HostResolver};
+use demi_file_protocol::{OPERATIONS as FILE_OPERATIONS, PACKAGE as FILE};
 use demi_host_remote::RemoteHost;
 use demi_shell::HostError;
 

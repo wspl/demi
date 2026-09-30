@@ -11,6 +11,11 @@ use std::{
 };
 
 use demi_agent_protocol::{JobPhase, ServerFrame, SubagentEvent, TranscriptPatch};
+use demi_agent_session::{
+    AgentMessageError, AgentSession, Execution, SessionEvent, Settle, Subscription,
+};
+use demi_agent_store::{ClosePhase, NodeClose, NodeRecord};
+use demi_agent_tools::{AgentHarness, Profile};
 use demi_core::{
     AgentMessage, AgentMessageEvent, Block, BlockId, CompletionId, CompletionOutcome, NodeId,
     QueuedMessage, Sender, Sequence, ToolCallBlock, ToolCallStatus, TurnId, UserContentBlock,
@@ -25,11 +30,9 @@ use tokio_util::task::AbortOnDropHandle;
 
 use super::Tree;
 use crate::{
-    AgentHarness, AgentSession, Node,
+    Node,
     node::{self, NodeRole, NodeSpec, Prompt},
     server::commands::with_runtime_groups,
-    session::{AgentMessageError, Execution, SessionEvent, Settle, Subscription},
-    store::{ClosePhase, NodeClose, NodeRecord},
 };
 
 /// The most live children one node has at once.
@@ -182,7 +185,7 @@ impl<H: AgentHarness> Tree<H> {
         }
     }
 
-    fn profile(&self, name: Option<&str>) -> Result<Option<&crate::Profile>, String> {
+    fn profile(&self, name: Option<&str>) -> Result<Option<&Profile>, String> {
         let Some(name) = name else {
             return Ok(None);
         };

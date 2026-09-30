@@ -1,0 +1,31 @@
+[package]
+name = "demi-agent-transcript"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+# One test binary, the integration tests' (`crates-and-packages.md`
+# § Module layout); no doc examples.
+test = false
+doctest = false
+
+[features]
+# Predictable identities (`agent_transcript::testing`), with the store's test
+# support below them.
+testing = ["demi-agent-store/testing"]
+
+[dependencies]
+demi-agent-protocol = { path = "../agent-protocol" }
+demi-agent-store = { path = "../agent-store" }
+demi-core = { path = "../core" }
+demi-provider = { path = "../provider" }
+jiff.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+demi-agent-transcript = { path = ".", features = ["testing"] }

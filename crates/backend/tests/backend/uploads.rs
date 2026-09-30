@@ -33,7 +33,7 @@ use crate::support::{Answer, Harness, Session, TestBackend, answer as read};
 
 /// A PNG image, whose type the backend reads from its bytes; a real one,
 /// since an image is decoded as it enters a transcript.
-pub(crate) static PNG: LazyLock<Vec<u8>> = LazyLock::new(|| demi_agent::testing::png(4, 3, 0).as_bytes().to_vec());
+pub(crate) static PNG: LazyLock<Vec<u8>> = LazyLock::new(|| demi_agent_store::testing::png(4, 3, 0).as_bytes().to_vec());
 
 async fn post(backend: &TestBackend, session: &Session, query: &str, media_type: Option<&str>, bytes: Vec<u8>) -> Answer {
     let headers: Vec<(&str, &str)> = media_type.into_iter().map(|media_type| ("content-type", media_type)).collect();
@@ -336,7 +336,7 @@ async fn an_image_over_2000_px_enters_fitted_from_an_upload_and_a_tool_and_stays
     create(&backend, &master, FIRST).await;
     let (paired, root) = on_device(&harness, &backend, &master, FIRST).await;
     choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
-    let wide = demi_agent::testing::png(2_400, 10, 1).as_bytes().to_vec();
+    let wide = demi_agent_store::testing::png(2_400, 10, 1).as_bytes().to_vec();
     std::fs::write(format!("{root}/wide.png"), &wide).unwrap();
     let image = upload(&backend, &master, "wide.png", "image/png", &wide).await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
@@ -384,7 +384,7 @@ async fn an_image_over_2000_px_enters_fitted_from_an_upload_and_a_tool_and_stays
 
 /// A PNG image that differs from the others by its pixels.
 pub(crate) fn png(seed: u8) -> Vec<u8> {
-    demi_agent::testing::png(4, 3, seed).as_bytes().to_vec()
+    demi_agent_store::testing::png(4, 3, seed).as_bytes().to_vec()
 }
 
 /// The frames of a compaction pass, to the idle phase that ends it.

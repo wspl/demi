@@ -6,10 +6,10 @@
 //! § Files the edit keeps). No frame carries bytes.
 
 use demi_agent_protocol::ClientContent;
+use demi_agent_session::EditContent;
+use demi_agent_store::media::HeldMedia;
 use demi_core::UserContentBlock;
 use futures_util::future::LocalBoxFuture;
-
-use crate::{session::EditContent, store::media::HeldMedia};
 
 /// A file a message's content refers to, which only the backend can
 /// resolve: an upload it holds or a file on a paired device.

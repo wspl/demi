@@ -12,6 +12,8 @@ use std::{
 use demi_agent_protocol::{
     ClientFrame, ClientFrameKind, EditOutcome, EditRequest, ServerFrame, SteerOutcome,
 };
+use demi_agent_session::{AgentSession, EditCheck, EditSubmission, accepted, edit_digest};
+use demi_agent_tools::AgentHarness;
 use demi_core::{BlockId, NodeId, SessionPhase, TurnId};
 use tokio::sync::mpsc::{self, error::TrySendError};
 
@@ -19,10 +21,6 @@ use super::{
     AgentServer,
     content::{ContentError, ContentResolver, resolve_edit, resolve_message},
     tree::Tree,
-};
-use crate::{
-    AgentHarness, AgentSession,
-    session::{EditCheck, EditSubmission, accepted, edit_digest},
 };
 
 /// What a refusal says when the connection has no session.

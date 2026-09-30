@@ -1,43 +1,27 @@
-//! The agent runtime (`crates-and-packages.md` § agent; behavior in
+//! The agent server (`crates-and-packages.md` § agent; behavior in
 //! `runtime.md`). An [`AgentServer`] per user shard holds each open
 //! conversation's [`Tree`]; a tree's [`Node`]s each run an
-//! [`AgentSession`], which keeps a transcript, asks a provider runtime for the
-//! next response, runs the tools the model requests and saves its checkpoint
-//! through the tree store ([`AgentTreeStore`], [`SessionStore`]). A
-//! [`Connection`] handles the decoded frames of one conversation socket,
-//! which the backend owns.
+//! [`AgentSession`](demi_agent_session::AgentSession) with the standard tools
+//! (`demi_agent_tools`), and save their checkpoints through the tree store
+//! (`demi_agent_store`). A [`Connection`] handles the decoded frames of one
+//! conversation socket, which the backend owns.
 //!
-//! A product supplies the harness ([`AgentHarness`]), each conversation's
+//! A product supplies the harness
+//! ([`AgentHarness`](demi_agent_tools::AgentHarness)), each conversation's
 //! model selection and the provider runtimes ([`ProviderResolver`]) and a
 //! tree store per conversation. Everything here
 //! runs on the user's shard, a single-threaded runtime: nothing is `Send`,
 //! and shared state sits in `Rc` and `RefCell` behind synchronous methods, so
 //! no borrow crosses an await (`concurrency.md` § The user shard).
 
-pub mod attachments;
-mod harness;
-mod ids;
-mod images;
 mod node;
 mod server;
-mod session;
-pub mod store;
-#[cfg(any(test, feature = "testing"))]
+#[cfg(feature = "testing")]
 pub mod testing;
 pub mod title;
-mod tools;
-pub mod transcript;
 
-pub use harness::{AgentHarness, Profile, PromptContext};
-pub use ids::{IdSource, RandomIds};
 pub use node::Node;
 pub use server::{
     AgentServer, Connection, ContentError, ContentResolver, FileReference, FrameRx, Outgoing,
     ProviderResolver, ResolveError, ResolvedFiles, ServerConfig, ServerDeps, Tree, TreeStores,
 };
-pub use session::{
-    AgentSession, CompactionConfig, ForkError, ModelSwitch, RetryPolicy, SessionConfig,
-    TranscriptSnapshot,
-};
-pub use store::{AgentTreeStore, SessionStore, StoredOutput};
-pub use tools::{EnvironmentScope, ShellEnvironmentFactory};

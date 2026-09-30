@@ -8,6 +8,8 @@
 use std::rc::Weak;
 
 use bytes::Bytes;
+use demi_agent_store::{COMMAND_OUTPUT_DAYS, StoredOutput};
+use demi_agent_tools::{AgentHarness, PAGE_CHARS};
 use demi_core::{CommandId, StreamKind};
 use demi_shell::{
     GroupBuilder, LeafBuilder, OutputText, Piece, RpcError, RpcPort, Seen, ShellError, Streams,
@@ -20,11 +22,7 @@ use super::{
     commands::{Invoked, verb},
     tree::Tree,
 };
-use crate::{AgentHarness, AgentServer, StoredOutput, store::COMMAND_OUTPUT_DAYS};
-
-/// The most characters a page of output takes, so that a result printing
-/// one is never cut.
-pub(crate) const PAGE_CHARS: usize = 12_000;
+use crate::AgentServer;
 
 /// The characters of one line a page shows.
 const LINE_CHARS: usize = 2_000;

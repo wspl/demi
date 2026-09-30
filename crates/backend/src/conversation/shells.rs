@@ -11,14 +11,14 @@ use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_agent::{EnvironmentScope, ShellEnvironmentFactory};
+use demi_agent_tools::{EnvironmentScope, ShellEnvironmentFactory};
 use demi_command_service::protocol::CommandCaller;
+use demi_core::{Clock, CommandId, EditCopies, EditedFile, ShellId};
 use demi_host_remote::{
     CommandCatalog, CommandKeeper, ContextSource, EnvironmentOptions, HostAccess, RemoteHost, RemoteShellEnvironment,
     edited_file, encode_output,
 };
 use demi_runner_protocol::wire::JobFileChange;
-use demi_core::{Clock, CommandId, EditCopies, EditedFile, ShellId};
 use demi_shell::{
     CommandStatus, ExecRequest, Host, HostError, HostErrorKind, HostFs, HostKey, PageView, ShellEnvironment,
     ShellError, WholeOutput,

@@ -12,7 +12,7 @@ test = false
 doctest = false
 
 [dependencies]
-demi-agent = { path = "../agent" }
+demi-agent-tools = { path = "../agent-tools" }
 demi-browser-protocol = { path = "../browser-protocol" }
 demi-file-protocol = { path = "../file-protocol" }
 demi-command-tree = { path = "../command-tree" }
@@ -28,6 +28,9 @@ serde_json.workspace = true
 # groups' tests use the shell's in-memory rpc port.
 demi-agent = { path = "../agent", features = ["testing"] }
 demi-agent-protocol = { path = "../agent-protocol" }
+demi-agent-store = { path = "../agent-store", features = ["testing"] }
+demi-agent-tools = { path = "../agent-tools", features = ["testing"] }
+demi-agent-transcript = { path = "../agent-transcript", features = ["testing"] }
 demi-command-service = { path = "../command-service", features = ["testing"] }
 demi-host-remote = { path = "../host-remote", features = ["testing"] }
 demi-provider = { path = "../provider", features = ["testing"] }

@@ -4,14 +4,14 @@
 
 use std::{cell::RefCell, rc::Rc, time::Duration};
 
-use demi_agent::{
-    AgentTreeStore, Profile, ServerConfig,
-    store::{
-        CheckpointState, CheckpointUpdate, ClosePhase, CommandStateSnapshot, NodeClose, NodeRecord,
-    },
+use demi_agent::ServerConfig;
+use demi_agent_protocol::{ClientFrame, JobPhase, ServerFrame, SubagentEvent, TranscriptPatch};
+use demi_agent_store::{
+    AgentTreeStore, CheckpointState, CheckpointUpdate, ClosePhase, CommandStateSnapshot, NodeClose,
+    NodeRecord,
     testing::{MemoryTreeStore, model_of, test_model, text},
 };
-use demi_agent_protocol::{ClientFrame, JobPhase, ServerFrame, SubagentEvent, TranscriptPatch};
+use demi_agent_tools::Profile;
 use demi_core::{
     AgentMessage, AgentMessageEvent, Block, BlockId, CompletionId, CompletionOutcome, NodeId,
     QueuedMessage, SessionPhase, TextBlock, Timestamp, TurnId, UserBlock,

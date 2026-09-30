@@ -19,6 +19,12 @@ use std::{
     time::Duration,
 };
 
+use demi_agent_session::{ForkError, ModelSwitch, SessionConfig, fork_seed};
+use demi_agent_store::{
+    AgentTreeStore, Checkpoint, CheckpointUpdate, CommandStateHistory, NodeRecord, StoreError,
+};
+use demi_agent_tools::{AgentHarness, ShellEnvironmentFactory};
+use demi_agent_transcript::IdSource;
 use demi_core::{BlockId, Clock, ModelSelection, NodeId, SessionPhase};
 use demi_gates::KeyedSerialGate;
 use demi_provider::ProviderRuntime;
@@ -28,16 +34,9 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 pub use connection::{Connection, FrameRx, Outgoing};
 pub use content::{ContentError, ContentResolver, FileReference, ResolvedFiles};
-pub(crate) use shell_output::PAGE_CHARS;
 pub use tree::Tree;
 
-use crate::{
-    AgentHarness, IdSource, Node, SessionConfig, ShellEnvironmentFactory,
-    session::{ForkError, ModelSwitch, fork_seed},
-    store::{
-        AgentTreeStore, Checkpoint, CheckpointUpdate, CommandStateHistory, NodeRecord, StoreError,
-    },
-};
+use crate::Node;
 
 /// Where the agent gets a conversation's model selection and the provider
 /// runtimes its sessions infer with. The backend holds each conversation's
@@ -72,7 +71,7 @@ pub enum ResolveError {
     Failed(String),
 }
 
-fn fork_store(error: crate::store::StoreError) -> ForkError {
+fn fork_store(error: StoreError) -> ForkError {
     ForkError::Store(error.to_string())
 }
 
