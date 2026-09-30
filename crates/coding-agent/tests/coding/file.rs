@@ -1,6 +1,6 @@
 //! `demi file` as the model runs it (`commands.md` § File commands): each
 //! script is one `shell_exec` in the conversation's shell on a real runner,
-//! whose `file` commands run in the `demi.builtin` package the workspace
+//! whose `file` commands run in the `demi.file` package the workspace
 //! built.
 
 use demi_agent::testing::{field, shown_output};
@@ -41,7 +41,7 @@ const PNG: [u8; 11] = [
 ];
 
 // Several seconds: nine scripts run a shell job each, and the first
-// `demi file` starts the `demi.builtin` service.
+// `demi file` starts the `demi.file` service.
 #[tokio::test(flavor = "local")]
 async fn demi_file_reads_and_creates_files_in_and_beyond_the_workspace() {
     within(async {
@@ -103,7 +103,7 @@ async fn demi_file_reads_and_creates_files_in_and_beyond_the_workspace() {
 }
 
 // Several seconds: eleven scripts run a shell job each, and the first
-// `demi file` starts the `demi.builtin` service. The files the edits and the
+// `demi file` starts the `demi.file` service. The files the edits and the
 // failed patch start from are written by the test, and it reads what they
 // leave itself, so every job runs a command under test.
 #[tokio::test(flavor = "local")]

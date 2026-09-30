@@ -18,6 +18,6 @@
       "@demicodes/*": ["./packages/*/src/index.ts"]
     }
   },
-  "include": ["packages/*/src", "scripts/typecheck-vue.ts", "scripts/__tests__", "crates/demi-commands/src/browser/capture"],
+  "include": ["packages/*/src", "scripts/typecheck-vue.ts", "scripts/__tests__", "crates/demi-browser/src/browser/capture"],
   "exclude": ["packages/web-ui", "packages/web-gallery", "packages/web"]
 }

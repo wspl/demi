@@ -1333,12 +1333,13 @@ dependencies = [
  "demi-agent-protocol",
  "demi-artifact",
  "demi-backend",
- "demi-builtin-protocol",
+ "demi-browser-protocol",
  "demi-claude-protocol",
  "demi-coding-agent",
  "demi-command-service",
  "demi-command-tree",
  "demi-core",
+ "demi-file-protocol",
  "demi-gates",
  "demi-host-remote",
  "demi-machines-protocol",
@@ -1398,7 +1399,42 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-builtin-protocol"
+name = "demi-browser"
+version = "0.1.3"
+dependencies = [
+ "axum",
+ "base64",
+ "bytes",
+ "chromiumoxide",
+ "demi-artifact",
+ "demi-browser-protocol",
+ "demi-command-service",
+ "demi-core",
+ "futures-util",
+ "garde",
+ "getrandom 0.4.3",
+ "jsonschema",
+ "libc",
+ "png",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sysinfo",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "demi-browser-protocol"
 version = "0.1.3"
 dependencies = [
  "base64",
@@ -1451,10 +1487,11 @@ version = "0.1.3"
 dependencies = [
  "demi-agent",
  "demi-agent-protocol",
- "demi-builtin-protocol",
+ "demi-browser-protocol",
  "demi-command-service",
  "demi-command-tree",
  "demi-core",
+ "demi-file-protocol",
  "demi-host-remote",
  "demi-provider",
  "demi-shell",
@@ -1508,42 +1545,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-commands"
-version = "0.1.3"
-dependencies = [
- "axum",
- "base64",
- "bytes",
- "chromiumoxide",
- "demi-artifact",
- "demi-builtin-protocol",
- "demi-command-service",
- "demi-gates",
- "futures-util",
- "garde",
- "getrandom 0.4.3",
- "jsonschema",
- "libc",
- "png",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "sha2",
- "sysinfo",
- "tempfile",
- "thiserror",
- "tokio",
- "tokio-tungstenite",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "url",
- "uuid",
- "zip",
-]
-
-[[package]]
 name = "demi-core"
 version = "0.1.3"
 dependencies = [
@@ -1557,6 +1558,39 @@ dependencies = [
  "serde_plain",
  "serde_with",
  "sha2",
+ "thiserror",
+]
+
+[[package]]
+name = "demi-file"
+version = "0.1.3"
+dependencies = [
+ "bytes",
+ "demi-artifact",
+ "demi-command-service",
+ "demi-core",
+ "demi-file-protocol",
+ "demi-gates",
+ "regex",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "demi-file-protocol"
+version = "0.1.3"
+dependencies = [
+ "demi-core",
+ "garde",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_with",
  "thiserror",
 ]
 
@@ -1901,7 +1935,7 @@ name = "demi-web-api"
 version = "0.1.3"
 dependencies = [
  "demi-agent-protocol",
- "demi-builtin-protocol",
+ "demi-browser-protocol",
  "demi-command-service",
  "demi-core",
  "demi-runner-protocol",
@@ -8300,10 +8334,11 @@ dependencies = [
  "clap",
  "demi-agent-protocol",
  "demi-artifact",
- "demi-builtin-protocol",
+ "demi-browser-protocol",
  "demi-claude-protocol",
  "demi-command-service",
  "demi-core",
+ "demi-file-protocol",
  "demi-machines-protocol",
  "demi-runner-protocol",
  "demi-web-api",

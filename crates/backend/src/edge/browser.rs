@@ -11,7 +11,7 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use bytes::Bytes;
-use demi_builtin_protocol::browser::{
+use demi_browser_protocol::browser::{
     BackInput, BrowserCreatedBy, BrowserErrorCode, BrowserFailure, BrowserOperation, BrowserTab, CloseInput,
     FailureDocument, ForwardInput, GotoInput, OpenInput, OpenResult, PREFIX, ReloadInput, TabId, TabsInput, TabsResult,
 };

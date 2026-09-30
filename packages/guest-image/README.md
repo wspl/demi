@@ -19,8 +19,10 @@ for amd64):
 cargo xtask native build --target aarch64-unknown-linux-musl
 cargo xtask native package --package demi-runner \
   --target aarch64-unknown-linux-musl --output .cache/releases/runners
-cargo xtask native package --package demi-commands \
-  --target aarch64-unknown-linux-musl --output .cache/releases/demi-builtin-<build>
+cargo xtask native package --package demi-file \
+  --target aarch64-unknown-linux-musl --output .cache/releases/demi-file-<build>
+cargo xtask native package --package demi-browser \
+  --target aarch64-unknown-linux-musl --output .cache/releases/demi-browser-<build>
 cargo xtask native package --package demi-claude \
   --target aarch64-unknown-linux-musl --output .cache/releases/demi-claude-<build>
 cargo zigbuild --release --locked -p xtask \
@@ -34,7 +36,8 @@ util-linux installed:
 sudo bash packages/guest-image/rootfs/build.sh \
   --xtask .cache/native-target/aarch64-unknown-linux-musl/release/xtask \
   --runners .cache/releases/runners \
-  --package .cache/releases/demi-builtin-<build> \
+  --package .cache/releases/demi-file-<build> \
+  --package .cache/releases/demi-browser-<build> \
   --package .cache/releases/demi-claude-<build> \
   --output /opt/demi-cloud/releases/<build>
 ```

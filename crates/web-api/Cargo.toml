@@ -12,7 +12,7 @@ doctest = false
 
 [dependencies]
 demi-agent-protocol = { path = "../agent-protocol" }
-demi-builtin-protocol = { path = "../builtin-protocol" }
+demi-browser-protocol = { path = "../browser-protocol" }
 demi-command-service = { path = "../command-service" }
 demi-core = { path = "../core" }
 demi-runner-protocol = { path = "../runner-protocol" }

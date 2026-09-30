@@ -4,9 +4,9 @@
 //! tells the registry when it takes its lease; the registry sees the lease
 //! end when its holder drops it, and nobody waits for the decision.
 //!
-//! For example, a job whose manifest names `demi.builtin` holds a lease on
+//! For example, a job whose manifest names `demi.browser` holds a lease on
 //! its artifact while the job runs, and the installed manifest holds another.
-//! When the connection installs a manifest with a newer `demi.builtin`, the
+//! When the connection installs a manifest with a newer `demi.browser`, the
 //! old artifact's last lease ends when its last job does. The registry then
 //! asks the old service which conversations it holds: it stops a service that
 //! holds none, and keeps one that holds some or cannot say.

@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use demi_artifact::{Archive, Digest, Mode, Permissions, Publication, ReleaseFile, ReleaseRecord, Staged};
-use demi_builtin_protocol::release::{BrowserRelease, IMAGE_BROWSERS};
+use demi_browser_protocol::release::{BrowserRelease, IMAGE_BROWSERS};
 use demi_command_service::protocol::{PackageArtifact, PackageDescriptor};
 use demi_machines_protocol::image::{
     Architecture, CloudImageManifest, FormatVersion, INIT_PATH, InstalledPackage, ManifestError, Os, RUNNER_PATH,
@@ -397,7 +397,7 @@ async fn symlink(_: &std::ffi::OsStr, _: &Path) -> Result<(), Error> {
 }
 
 /// Installs the pinned Chrome for Testing archive of `target` where
-/// `demi-commands` looks for it first; returns its executable's path in the
+/// `demi-browser` looks for it first; returns its executable's path in the
 /// image with its size and SHA-256, and the tool's entry.
 async fn install_chrome(
     root: &Path,
@@ -706,7 +706,7 @@ fn invalid(path: &Path, reason: impl ToString) -> Error {
 #[cfg(test)]
 mod tests {
     use demi_artifact::testing::{Answer, Server, zip};
-    use demi_builtin_protocol::release::ReleasePlatform;
+    use demi_browser_protocol::release::ReleasePlatform;
 
     use super::*;
 
@@ -788,8 +788,8 @@ Version: 0.19.0-3
 
     /// A build's inputs: a tree as rootfs/build.sh leaves it with the dpkg
     /// database `database`, a runner release, the two command packages, and
-    /// the pinned archives on a fixture server. The demi-commands file in its
-    /// release holds `commands`, whatever its descriptor records.
+    /// the pinned archives on a fixture server. The demi-browser file in its
+    /// release holds `browser`, whatever its descriptor records.
     struct Fixture {
         _directory: tempfile::TempDir,
         _server: Server,
@@ -800,7 +800,7 @@ Version: 0.19.0-3
     }
 
     impl Fixture {
-        async fn new(database: &str, commands: &[u8]) -> Self {
+        async fn new(database: &str, browser_program: &[u8]) -> Self {
             let directory = tempfile::tempdir().unwrap();
             let path = directory.path();
             let root = path.join("root");
@@ -819,10 +819,10 @@ Version: 0.19.0-3
             write(&runners.join(&runner.release).join(TARGET).join("demi-runner"), b"runner");
             write(&runners.join(&runner.release).join(MANIFEST), &record);
             write(&runners.join(MANIFEST), &record);
-            let builtin = path.join("demi-builtin");
+            let browser = path.join("demi-browser");
             let claude = path.join("demi-claude");
             let releases = vec![
-                command_package(&builtin, demi_builtin_protocol::PACKAGE, "demi-commands", b"commands", commands).await,
+                command_package(&browser, demi_browser_protocol::PACKAGE, "demi-browser", b"browser", browser_program).await,
                 command_package(&claude, demi_claude_protocol::PACKAGE, "demi-claude", b"claude", b"claude").await,
             ];
             let chrome = zip(&[(CHROME, b"chrome"), ("chrome-linux-arm64/LICENSE", b"license")]);
@@ -860,7 +860,7 @@ Version: 0.19.0-3
             let options = Options {
                 root,
                 runners,
-                packages: vec![builtin, claude],
+                packages: vec![browser, claude],
                 output: path.join("releases/build"),
             };
             Self {
@@ -897,7 +897,7 @@ Version: 0.19.0-3
     async fn an_image_embeds_its_verified_inputs_and_publishes_a_manifest_the_manager_imports() {
         // The repository's pins are what a real build downloads.
         Pins::pinned().unwrap();
-        let fixture = Fixture::new(DATABASE, b"commands").await;
+        let fixture = Fixture::new(DATABASE, b"browser").await;
         let client = demi_artifact::client_allowing_http().unwrap();
         let cancel = CancellationToken::new();
         let base = package(&fixture.options, ARCHITECTURE, &fixture.pins, &client, &cancel)
@@ -932,11 +932,11 @@ Version: 0.19.0-3
             .map(|tool| (tool.name.as_str(), tool.version.as_str(), tool.sha256.as_str()))
             .collect();
         assert_eq!(recorded, tools);
-        let commands = measured(b"commands").await;
+        let browser = measured(b"browser").await;
         let claude = measured(b"claude").await;
         let executables = BTreeMap::from([
             (format!("{ARTIFACTS_PATH}/{}/demi-claude", claude.sha256), claude.clone()),
-            (format!("{ARTIFACTS_PATH}/{}/demi-commands", commands.sha256), commands.clone()),
+            (format!("{ARTIFACTS_PATH}/{}/demi-browser", browser.sha256), browser.clone()),
             (format!("{IMAGE_BROWSERS}/{}/{CHROME}", chrome.sha256), measured(b"chrome").await),
             (RUNNER_PATH.to_owned(), measured(b"runner").await),
             (INIT_PATH.to_owned(), measured(b"tini").await),
@@ -975,17 +975,17 @@ Version: 0.19.0-3
     async fn an_artifact_unlike_its_release_or_an_unfinished_package_fails_the_image_and_publishes_nothing() {
         let client = demi_artifact::client_allowing_http().unwrap();
         let cancel = CancellationToken::new();
-        // demi-commands' file is not the executable its descriptor records.
-        let corrupt = Fixture::new(DATABASE, b"COMMANDS").await;
+        // demi-browser's file is not the executable its descriptor records.
+        let corrupt = Fixture::new(DATABASE, b"BROWSER").await;
         let refused = package(&corrupt.options, ARCHITECTURE, &corrupt.pins, &client, &cancel).await;
         assert!(
-            matches!(&refused, Err(Error::File { path, source: demi_artifact::Error::Digest }) if path.ends_with("demi-commands")),
+            matches!(&refused, Err(Error::File { path, source: demi_artifact::Error::Digest }) if path.ends_with("demi-browser")),
             "{refused:?}"
         );
         assert!(!corrupt.options.output.exists());
         // dpkg lists a package whose installation did not finish.
         let database = DATABASE.replace("Status: install ok installed\nArchitecture", "Status: install ok half-configured\nArchitecture");
-        let unfinished = Fixture::new(&database, b"commands").await;
+        let unfinished = Fixture::new(&database, b"browser").await;
         let refused = package(&unfinished.options, ARCHITECTURE, &unfinished.pins, &client, &cancel).await;
         assert!(matches!(&refused, Err(Error::Unfinished { package, .. }) if package == "tini"), "{refused:?}");
         assert!(!unfinished.options.output.exists());
