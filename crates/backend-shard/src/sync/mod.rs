@@ -1,0 +1,31 @@
+//! The pages' synchronization channels (`backend.md` § Browser
+//! synchronization, `web-api.md` § Page synchronization): the product state
+//! and its parts as a channel reads them, and the channel's task in the
+//! user's shard. Every change marks the parts it changed in the registry of
+//! `backend-sync`.
+
+mod channel;
+mod state;
+
+use demi_backend_sync::Part;
+
+pub use self::channel::ChannelSession;
+use crate::shard::Shard;
+
+/// Where a channel waits while a test holds it (`Backend::hold_sync`).
+#[cfg(feature = "testing")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SyncStep {
+    /// Once it has read its product state, before it sends it.
+    Snapshot,
+    /// Once a change woke it, before it takes and reads the parts that
+    /// changed.
+    Changes,
+}
+
+impl Shard {
+    /// Marks `part` changed on the user's open channels.
+    pub fn mark(&self, part: Part) {
+        self.services().sync.mark(self.user(), part);
+    }
+}

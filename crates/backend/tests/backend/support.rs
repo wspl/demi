@@ -17,7 +17,8 @@ use demi_backend_objects::counting::ObjectCounts;
 use demi_backend_accounts::email_change::{AccountMail, MailError, VerificationMail};
 use demi_backend_providers::llm::families::FamilyRegistry;
 use demi_backend_providers::vault::logins::LoginTiming;
-use demi_backend::{Backend, BackendConfig, ConversationTuning, ExposeTuning, LifecycleTuning, PageTuning, RunnerTuning};
+use demi_backend::{Backend, BackendConfig};
+use demi_backend_shard::tuning::{ConversationTuning, ExposeTuning, LifecycleTuning, PageTuning, RunnerTuning};
 use demi_backend_cloud::tuning::CloudTuning;
 use demi_backend_expose::domain::ExposeDomain;
 use demi_backend_runners::native::NativeCatalog;
@@ -663,13 +664,13 @@ impl TestBackend {
 
     /// Holds every runner's hello at `step` from now on, until the hold is
     /// released or dropped.
-    pub fn hold_hellos(&self, step: demi_backend::HelloStep) -> demi_backend::StepHold {
+    pub fn hold_hellos(&self, step: demi_backend_shard::holds::HelloStep) -> demi_backend_shard::holds::StepHold {
         self.backend.hold_hellos(step)
     }
 
     /// Holds every page's synchronization channel at `step` from now on,
     /// until the hold is released or dropped.
-    pub fn hold_sync(&self, step: demi_backend::SyncStep) -> demi_backend::StepHold {
+    pub fn hold_sync(&self, step: demi_backend_shard::sync::SyncStep) -> demi_backend_shard::holds::StepHold {
         self.backend.hold_sync(step)
     }
 

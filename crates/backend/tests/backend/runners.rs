@@ -7,7 +7,7 @@
 use std::time::Duration;
 
 use demi_agent_protocol::ClientFrame;
-use demi_backend::HelloStep;
+use demi_backend_shard::holds::HelloStep;
 use demi_host_remote::testing::{RunnerProcess, RunnerProcessOptions};
 use demi_runner_protocol::values::DeviceToken;
 use demi_command_service::protocol::ServiceSequence;

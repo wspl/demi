@@ -29,6 +29,29 @@ async fn patch_me(url: &str, session: &Session, body: Body) -> Answer {
     answer(response).await
 }
 
+/// A `PATCH /api/auth/me` without a session whose head declares a body over
+/// the limit, sent without the body: the status and body of the answer.
+async fn declared_over_the_limit(url: &str) -> (u16, String) {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+    let address = url.strip_prefix("http://").unwrap();
+    let mut socket = tokio::net::TcpStream::connect(address).await.unwrap();
+    let head = format!(
+        "PATCH /api/auth/me HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        JSON_BODY_LIMIT + 1
+    );
+    socket.write_all(head.as_bytes()).await.unwrap();
+    let mut answer = Vec::new();
+    tokio::time::timeout(std::time::Duration::from_secs(10), socket.read_to_end(&mut answer))
+        .await
+        .expect("the backend answers and closes within the hang guard")
+        .unwrap();
+    let answer = String::from_utf8(answer).unwrap();
+    let (head, body) = answer.split_once("\r\n\r\n").unwrap();
+    let status = head.split_whitespace().nth(1).unwrap().parse().unwrap();
+    (status, body.to_owned())
+}
+
 #[tokio::test]
 async fn a_json_body_over_its_limit_is_refused_before_it_is_read() {
     let harness = Harness::new();
@@ -43,11 +66,14 @@ async fn a_json_body_over_its_limit_is_refused_before_it_is_read() {
     let streamed = patch_me(&backend.url, &master, Body::wrap_stream(chunks)).await;
     assert_eq!(streamed.refusal(), (StatusCode::PAYLOAD_TOO_LARGE, ErrorCode::TooLarge));
 
-    // The gate runs first: without a session the same body is 401.
-    let anonymous = backend
-        .send(Method::PATCH, "/api/auth/me", None, Some(json!({ "nickname": "x".repeat(JSON_BODY_LIMIT) })))
-        .await;
-    assert_eq!(anonymous.refusal(), (StatusCode::UNAUTHORIZED, ErrorCode::Unauthenticated));
+    // The gate runs first: without a session a body over the limit is 401.
+    // The request declares the length and sends no byte of the body, which
+    // the backend never reads: a client still writing one when the refusal
+    // comes can meet the connection's reset instead of the answer.
+    let (status, body) = declared_over_the_limit(&backend.url).await;
+    assert_eq!(status, 401, "{body}");
+    let refusal: demi_web_api::error::ErrorBody = serde_json::from_str(&body).unwrap();
+    assert_eq!(refusal.code, ErrorCode::Unauthenticated);
     backend.close().await;
 }
 
