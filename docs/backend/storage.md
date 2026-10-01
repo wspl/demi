@@ -91,10 +91,9 @@ input, which the multi-worker control service also relies on
   millisecond by id. `workspaces` names directories on devices; deleting a
   workspace never deletes its files. Online status comes from live
   connections, not the last-seen time. `exposes` stores
-  each [Host expose](../execution/expose.md#the-expose-record): id, number,
-  owner, device, target address, creation and expiry time. The user's row
-  keeps the next expose number, which an add takes and advances in its
-  transaction, so a number is never given twice. Expiry, removal, a Cloud
+  each [Host expose](../execution/expose.md#the-expose-record): id, owner,
+  device, target address, creation and expiry time; the numbers the model
+  sees are the `expose` plugin's values. Expiry, removal, a Cloud
   stop and device revocation delete rows; nothing updates a row except
   renewal.
 - **Conversation index:** `conversations` stores ownership, title and its
