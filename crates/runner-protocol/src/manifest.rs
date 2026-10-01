@@ -4,8 +4,8 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use demi_command_protocol::{PackageDescriptor, ProtocolError, canonical_digest};
 use demi_command_declarations::{DeclarationError, NativeOperation, Node};
+use demi_command_protocol::{PackageDescriptor, ProtocolError, canonical_digest};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -50,7 +50,10 @@ impl Manifest {
         let mut digests = HashMap::new();
         for descriptor in packages {
             let digest = descriptor.digest()?;
-            if digests.insert(descriptor.id.clone(), digest.clone()).is_some() {
+            if digests
+                .insert(descriptor.id.clone(), digest.clone())
+                .is_some()
+            {
                 return Err(ManifestError::Invalid(format!(
                     "duplicate command package: {}",
                     descriptor.id
@@ -78,7 +81,9 @@ impl Manifest {
             tree.validate()?;
             let name = tree.name().to_owned();
             if pinned.insert(name.clone(), Root { tree }).is_some() {
-                return Err(ManifestError::Invalid(format!("duplicate root command: {name}")));
+                return Err(ManifestError::Invalid(format!(
+                    "duplicate root command: {name}"
+                )));
             }
         }
         Ok(Self {
@@ -109,14 +114,20 @@ impl Manifest {
                 return Err(ManifestError::Invalid("manifest root name mismatch".into()));
             }
             root.tree.validate()?;
-            for binding in root.tree.leaves().into_iter().filter_map(|leaf| leaf.binding()) {
-                let resolves = manifest
-                    .packages
-                    .get(&binding.descriptor_hash)
-                    .is_some_and(|descriptor| {
-                        descriptor.id == binding.package
-                            && descriptor.operations.contains(&binding.operation)
-                    });
+            for binding in root
+                .tree
+                .leaves()
+                .into_iter()
+                .filter_map(|leaf| leaf.binding())
+            {
+                let resolves =
+                    manifest
+                        .packages
+                        .get(&binding.descriptor_hash)
+                        .is_some_and(|descriptor| {
+                            descriptor.id == binding.package
+                                && descriptor.operations.contains(&binding.operation)
+                        });
                 if !resolves {
                     return Err(ManifestError::Invalid(
                         "unresolved native command binding".into(),
@@ -125,7 +136,9 @@ impl Manifest {
             }
         }
         if hash(&manifest.roots, &manifest.packages)? != manifest.hash {
-            return Err(ManifestError::Invalid("command manifest hash mismatch".into()));
+            return Err(ManifestError::Invalid(
+                "command manifest hash mismatch".into(),
+            ));
         }
         Ok(manifest)
     }

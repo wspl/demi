@@ -27,7 +27,10 @@ pub struct PipeClient {
 }
 
 impl PipeClient {
-    pub fn new(backend: &BackendUrl, token: watch::Receiver<Option<DeviceToken>>) -> io::Result<Self> {
+    pub fn new(
+        backend: &BackendUrl,
+        token: watch::Receiver<Option<DeviceToken>>,
+    ) -> io::Result<Self> {
         Self::with_connect_timeout(backend, token, CONNECT_TIMEOUT)
     }
 

@@ -378,7 +378,11 @@ pub struct ErrorBlock {
     #[garde(skip)]
     pub code: Option<String>,
     /// The provider's record of the failure, when a provider failed.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "ProviderErrorDiagnostics")]
     #[garde(dive)]
     pub diagnostics: Option<ProviderErrorDiagnostics>,

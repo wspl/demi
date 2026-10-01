@@ -198,18 +198,24 @@ async fn answer_early(io: tokio::io::DuplexStream) {
             // A four-byte length, then the metadata.
             while invocation
                 && (metadata.len() < 4
-                    || metadata.len() < 4 + u32::from_be_bytes(metadata[..4].try_into().unwrap()) as usize)
+                    || metadata.len()
+                        < 4 + u32::from_be_bytes(metadata[..4].try_into().unwrap()) as usize)
             {
                 let chunk = body.data().await.unwrap().unwrap();
                 body.flow_control().release_capacity(chunk.len()).unwrap();
                 metadata.extend_from_slice(&chunk);
             }
-            let mut stream = respond.send_response(http::Response::new(()), false).unwrap();
+            let mut stream = respond
+                .send_response(http::Response::new(()), false)
+                .unwrap();
             let completion = Completion {
                 exit_code: 0,
                 error: None,
             };
-            for record in [Record::Stdout(Bytes::from_static(b"{}")), Record::Completion(completion)] {
+            for record in [
+                Record::Stdout(Bytes::from_static(b"{}")),
+                Record::Completion(completion),
+            ] {
                 stream.send_data(record.encode().unwrap(), false).unwrap();
             }
             stream.send_data(Bytes::new(), true).unwrap();
@@ -245,7 +251,10 @@ async fn what_a_caller_sends_after_an_early_answer_is_not_a_failure() {
                 output.next().await.unwrap(),
                 Some(Record::Stdout(Bytes::from_static(b"{}")))
             );
-            assert!(matches!(output.next().await.unwrap(), Some(Record::Completion(_))));
+            assert!(matches!(
+                output.next().await.unwrap(),
+                Some(Record::Completion(_))
+            ));
             assert_eq!(output.next().await.unwrap(), None);
         }
         let (mut input, mut output) = client

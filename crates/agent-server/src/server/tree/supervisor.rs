@@ -10,18 +10,18 @@ use std::{
     rc::{Rc, Weak},
 };
 
-use demi_conversation_socket_protocol::{JobPhase, ServerFrame, SubagentEvent, TranscriptPatch};
 use demi_agent_session::{
     AgentMessageError, AgentSession, Execution, SessionEvent, Settle, Subscription,
 };
 use demi_agent_store::{ClosePhase, NodeClose, NodeRecord};
 use demi_agent_tools::{AgentHarness, Profile};
+use demi_conversation_socket_protocol::{JobPhase, ServerFrame, SubagentEvent, TranscriptPatch};
+use demi_host_interface::{RpcError, RpcPort};
+use demi_shared_gates::Purpose;
 use demi_shared_types::{
     AgentMessage, AgentMessageEvent, Block, BlockId, CompletionId, CompletionOutcome, NodeId,
     QueuedMessage, Sender, Sequence, ToolCallBlock, ToolCallStatus, TurnId, UserContentBlock,
 };
-use demi_shared_gates::Purpose;
-use demi_host_interface::{RpcError, RpcPort};
 use futures_util::future::LocalBoxFuture;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -379,7 +379,8 @@ impl<H: AgentHarness> Tree<H> {
             .node(&id)
             .await
             .map_err(|error| error.to_string())?;
-        let Some(record) = stored.filter(|record| record.parent.as_ref() == Some(owner.id())) else {
+        let Some(record) = stored.filter(|record| record.parent.as_ref() == Some(owner.id()))
+        else {
             return Err("no such subagent of yours (see `demi agent list`)".to_owned());
         };
         let number = record.number;
@@ -777,7 +778,10 @@ impl<H: AgentHarness> Tree<H> {
             if number == self.root.record().number {
                 self.root.id().clone()
             } else {
-                self.child_numbered(number).ok_or_else(no_live)?.id().clone()
+                self.child_numbered(number)
+                    .ok_or_else(no_live)?
+                    .id()
+                    .clone()
             }
         };
         if &recipient_id == caller {
@@ -956,7 +960,11 @@ impl<H: AgentHarness> Tree<H> {
 
     /// The child of `owner` the model knows by `number`, live or archived;
     /// none when `owner` has no such child.
-    pub(crate) async fn child_of(&self, owner: &NodeId, number: u64) -> Result<Option<NodeId>, String> {
+    pub(crate) async fn child_of(
+        &self,
+        owner: &NodeId,
+        number: u64,
+    ) -> Result<Option<NodeId>, String> {
         let children = self
             .store
             .children(owner)

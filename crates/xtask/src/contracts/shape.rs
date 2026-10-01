@@ -33,8 +33,14 @@ pub enum Shape {
     Ref(String),
     String(StringShape),
     /// An integer within its bounds, which lie within JavaScript's safe range.
-    Integer { min: i64, max: i64 },
-    Number { min: Option<Bound>, max: Option<Bound> },
+    Integer {
+        min: i64,
+        max: i64,
+    },
+    Number {
+        min: Option<Bound>,
+        max: Option<Bound>,
+    },
     Boolean,
     /// One exact string, such as a variant's tag.
     Literal(String),
@@ -49,7 +55,10 @@ pub enum Shape {
     Record(Box<Shape>),
     Object(Object),
     /// An internally tagged enum: each variant an object with the tag.
-    Union { tag: String, variants: Vec<Variant> },
+    Union {
+        tag: String,
+        variants: Vec<Variant>,
+    },
     /// A value or `null`.
     Nullable(Box<Shape>),
     /// Any JSON value.
@@ -131,7 +140,10 @@ fn unsupported(at: &str, problem: impl Into<String>) -> Unsupported {
 
 /// A schema's description, if it has one.
 pub fn description(schema: &Value) -> Option<String> {
-    schema.get("description").and_then(Value::as_str).map(str::to_owned)
+    schema
+        .get("description")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
 }
 
 /// The definition a `$ref` names.
@@ -156,8 +168,14 @@ fn keywords(schema: &Map<String, Value>) -> Vec<&str> {
 
 /// Refuses every keyword of `schema` outside `allowed` and the annotations.
 fn only(schema: &Map<String, Value>, at: &str, allowed: &[&str]) -> Result<(), Unsupported> {
-    match keywords(schema).into_iter().find(|key| !allowed.contains(key)) {
-        Some(key) => Err(unsupported(at, format!("the keyword `{key}` in this schema"))),
+    match keywords(schema)
+        .into_iter()
+        .find(|key| !allowed.contains(key))
+    {
+        Some(key) => Err(unsupported(
+            at,
+            format!("the keyword `{key}` in this schema"),
+        )),
         None => Ok(()),
     }
 }
@@ -209,16 +227,23 @@ fn read_nullable_any_of(options: &Value, at: &str) -> Result<Shape, Unsupported>
         .as_array()
         .ok_or_else(|| unsupported(at, "`anyOf` that is not a list"))?;
     match options.as_slice() {
-        [value, other] | [other, value] if *other == null && *value != null => {
-            Ok(Shape::Nullable(Box::new(read(value, &format!("{at}.anyOf"))?)))
-        }
-        _ => Err(unsupported(at, "`anyOf` other than a value or null (an untagged enum)")),
+        [value, other] | [other, value] if *other == null && *value != null => Ok(Shape::Nullable(
+            Box::new(read(value, &format!("{at}.anyOf"))?),
+        )),
+        _ => Err(unsupported(
+            at,
+            "`anyOf` other than a value or null (an untagged enum)",
+        )),
     }
 }
 
 /// `"type": [T, "null"]`, as schemars writes a nullable value of a simple
 /// type.
-fn read_nullable_type(schema: &Map<String, Value>, kinds: &[Value], at: &str) -> Result<Shape, Unsupported> {
+fn read_nullable_type(
+    schema: &Map<String, Value>,
+    kinds: &[Value],
+    at: &str,
+) -> Result<Shape, Unsupported> {
     let kind = match kinds {
         [Value::String(kind), Value::String(null)] | [Value::String(null), Value::String(kind)]
             if null == "null" && kind != "null" =>
@@ -258,7 +283,11 @@ fn read_string(schema: &Map<String, Value>, at: &str) -> Result<Shape, Unsupport
         only(schema, at, &["type", "enum"])?;
         return Ok(Shape::Enum(strings(values, at)?));
     }
-    only(schema, at, &["type", "minLength", "maxLength", "pattern", "format"])?;
+    only(
+        schema,
+        at,
+        &["type", "minLength", "maxLength", "pattern", "format"],
+    )?;
     let format = match schema.get("format").and_then(Value::as_str) {
         None => StringFormat::Text,
         Some("trimmed") => StringFormat::Trimmed,
@@ -293,10 +322,9 @@ fn strings(values: &Value, at: &str) -> Result<Vec<String>, Unsupported> {
     values
         .iter()
         .map(|value| {
-            value
-                .as_str()
-                .map(str::to_owned)
-                .ok_or_else(|| unsupported(at, format!("the enum value {value}, which is not a string")))
+            value.as_str().map(str::to_owned).ok_or_else(|| {
+                unsupported(at, format!("the enum value {value}, which is not a string"))
+            })
         })
         .collect()
 }
@@ -310,7 +338,11 @@ fn strings(values: &Value, at: &str) -> Result<Vec<String>, Unsupported> {
 /// `[:alpha:]`), `&&`, `--` and `~~`, and a `]` that opens a class (a
 /// literal in Rust, an empty class in the user's browser).
 fn check_pattern(pattern: &str) -> Result<(), String> {
-    let refuse = |what: &str| Err(format!("the pattern {pattern:?} uses {what}, which Rust and the user's browser read differently"));
+    let refuse = |what: &str| {
+        Err(format!(
+            "the pattern {pattern:?} uses {what}, which Rust and the user's browser read differently"
+        ))
+    };
     let characters: Vec<char> = pattern.chars().collect();
     let mut in_class = false;
     let mut index = 0;
@@ -319,7 +351,11 @@ fn check_pattern(pattern: &str) -> Result<(), String> {
         let next = characters.get(index + 1).copied();
         match character {
             '\\' => {
-                if let Some(escaped @ ('d' | 'D' | 'w' | 'W' | 's' | 'S' | 'b' | 'B' | 'p' | 'P' | 'A' | 'z' | 'Z')) = next {
+                if let Some(
+                    escaped @ ('d' | 'D' | 'w' | 'W' | 's' | 'S' | 'b' | 'B' | 'p' | 'P' | 'A'
+                    | 'z' | 'Z'),
+                ) = next
+                {
                     return refuse(&format!("\\{escaped}"));
                 }
                 index += 2;
@@ -327,14 +363,20 @@ fn check_pattern(pattern: &str) -> Result<(), String> {
             }
             '[' if in_class => return refuse("a `[` inside a class"),
             '[' => {
-                let first = if next == Some('^') { characters.get(index + 2) } else { next.as_ref() };
+                let first = if next == Some('^') {
+                    characters.get(index + 2)
+                } else {
+                    next.as_ref()
+                };
                 if first == Some(&']') {
                     return refuse("a `]` that opens a class");
                 }
                 in_class = true;
             }
             ']' if in_class => in_class = false,
-            '&' | '-' | '~' if in_class && next == Some(character) => return refuse("class set operations"),
+            '&' | '-' | '~' if in_class && next == Some(character) => {
+                return refuse("class set operations");
+            }
             '.' if !in_class => return refuse("`.`"),
             '(' if !in_class && next == Some('?') && characters.get(index + 2) != Some(&':') => {
                 return refuse("a group other than `(?:`");
@@ -365,7 +407,11 @@ fn format_bounds(format: Option<&str>, at: &str) -> Result<(i64, i64), Unsupport
 }
 
 /// An integer bound of the schema, which must be whole.
-fn integer_bound(schema: &Map<String, Value>, key: &str, at: &str) -> Result<Option<i64>, Unsupported> {
+fn integer_bound(
+    schema: &Map<String, Value>,
+    key: &str,
+    at: &str,
+) -> Result<Option<i64>, Unsupported> {
     let Some(value) = schema.get(key) else {
         return Ok(None);
     };
@@ -377,7 +423,9 @@ fn integer_bound(schema: &Map<String, Value>, key: &str, at: &str) -> Result<Opt
         return Ok(Some(i64::MAX));
     }
     match value.as_f64() {
-        Some(number) if number.fract() == 0.0 => Ok(Some(number.clamp(i64::MIN as f64, i64::MAX as f64) as i64)),
+        Some(number) if number.fract() == 0.0 => {
+            Ok(Some(number.clamp(i64::MIN as f64, i64::MAX as f64) as i64))
+        }
         _ => Err(unsupported(at, format!("an integer `{key}` of {value}"))),
     }
 }
@@ -386,7 +434,14 @@ fn read_integer(schema: &Map<String, Value>, at: &str) -> Result<Shape, Unsuppor
     only(
         schema,
         at,
-        &["type", "format", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum"],
+        &[
+            "type",
+            "format",
+            "minimum",
+            "maximum",
+            "exclusiveMinimum",
+            "exclusiveMaximum",
+        ],
     )?;
     let (mut min, mut max) = format_bounds(schema.get("format").and_then(Value::as_str), at)?;
     if let Some(minimum) = integer_bound(schema, "minimum", at)? {
@@ -407,26 +462,49 @@ fn read_integer(schema: &Map<String, Value>, at: &str) -> Result<Shape, Unsuppor
     if min < -MAX_SAFE_INTEGER || max > MAX_SAFE_INTEGER {
         return Err(unsupported(
             at,
-            format!("an integer from {min} to {max}, beyond JavaScript's safe range: bound it with garde's `range` to `MAX_SAFE_INTEGER`"),
+            format!(
+                "an integer from {min} to {max}, beyond JavaScript's safe range: bound it with garde's `range` to `MAX_SAFE_INTEGER`"
+            ),
         ));
     }
     if min > max {
-        return Err(unsupported(at, format!("an integer between {min} and {max}")));
+        return Err(unsupported(
+            at,
+            format!("an integer between {min} and {max}"),
+        ));
     }
     Ok(Shape::Integer { min, max })
 }
 
-fn number_bound(schema: &Map<String, Value>, inclusive: &str, exclusive: &str, at: &str) -> Result<Option<Bound>, Unsupported> {
+fn number_bound(
+    schema: &Map<String, Value>,
+    inclusive: &str,
+    exclusive: &str,
+    at: &str,
+) -> Result<Option<Bound>, Unsupported> {
     let read = |key: &str| {
         schema
             .get(key)
-            .map(|value| value.as_f64().ok_or_else(|| unsupported(at, format!("`{key}` of {value}"))))
+            .map(|value| {
+                value
+                    .as_f64()
+                    .ok_or_else(|| unsupported(at, format!("`{key}` of {value}")))
+            })
             .transpose()
     };
     match (read(inclusive)?, read(exclusive)?) {
-        (Some(_), Some(_)) => Err(unsupported(at, format!("both `{inclusive}` and `{exclusive}`"))),
-        (Some(value), None) => Ok(Some(Bound { value, exclusive: false })),
-        (None, Some(value)) => Ok(Some(Bound { value, exclusive: true })),
+        (Some(_), Some(_)) => Err(unsupported(
+            at,
+            format!("both `{inclusive}` and `{exclusive}`"),
+        )),
+        (Some(value), None) => Ok(Some(Bound {
+            value,
+            exclusive: false,
+        })),
+        (None, Some(value)) => Ok(Some(Bound {
+            value,
+            exclusive: true,
+        })),
         (None, None) => Ok(None),
     }
 }
@@ -435,7 +513,14 @@ fn read_number(schema: &Map<String, Value>, at: &str) -> Result<Shape, Unsupport
     only(
         schema,
         at,
-        &["type", "format", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum"],
+        &[
+            "type",
+            "format",
+            "minimum",
+            "maximum",
+            "exclusiveMinimum",
+            "exclusiveMaximum",
+        ],
     )?;
     match schema.get("format").and_then(Value::as_str) {
         None | Some("double") => {}
@@ -460,12 +545,17 @@ fn read_array(schema: &Map<String, Value>, at: &str) -> Result<Shape, Unsupporte
 }
 
 fn read_object(schema: &Map<String, Value>, at: &str) -> Result<Shape, Unsupported> {
-    only(schema, at, &["type", "properties", "required", "additionalProperties"])?;
+    only(
+        schema,
+        at,
+        &["type", "properties", "required", "additionalProperties"],
+    )?;
     match schema.get("additionalProperties") {
         None | Some(Value::Bool(false)) => Ok(Shape::Object(read_fields(schema, at)?)),
-        Some(values) if !schema.contains_key("properties") => {
-            Ok(Shape::Record(Box::new(read(values, &format!("{at}.additionalProperties"))?)))
-        }
+        Some(values) if !schema.contains_key("properties") => Ok(Shape::Record(Box::new(read(
+            values,
+            &format!("{at}.additionalProperties"),
+        )?))),
         Some(_) => Err(unsupported(at, "an object with both fields and data keys")),
     }
 }
@@ -483,7 +573,10 @@ fn read_fields(schema: &Map<String, Value>, at: &str) -> Result<Object, Unsuppor
         Some(names) => strings(names, &format!("{at}.required"))?,
     };
     if let Some(unknown) = required.iter().find(|name| !properties.contains_key(*name)) {
-        return Err(unsupported(at, format!("the required field `{unknown}`, which has no schema")));
+        return Err(unsupported(
+            at,
+            format!("the required field `{unknown}`, which has no schema"),
+        ));
     }
     let properties = properties
         .iter()
@@ -595,7 +688,10 @@ fn discriminator(variants: &[Variant]) -> Option<String> {
     };
     let first = variants.first()?;
     let mut candidates = first.object.properties.iter().filter_map(|property| {
-        let values: Option<Vec<String>> = variants.iter().map(|variant| tag_values(variant, &property.name)).collect();
+        let values: Option<Vec<String>> = variants
+            .iter()
+            .map(|variant| tag_values(variant, &property.name))
+            .collect();
         let values = values?;
         let distinct = values
             .iter()
@@ -634,21 +730,50 @@ mod tests {
         ] {
             assert!(read(&refused, "t").is_err(), "{refused}");
         }
-        assert!(read(&json!({ "type": "string", "pattern": "^[^./\\\\\\x00][a-z.]*(?:x|y)$" }), "t").is_ok());
+        assert!(
+            read(
+                &json!({ "type": "string", "pattern": "^[^./\\\\\\x00][a-z.]*(?:x|y)$" }),
+                "t"
+            )
+            .is_ok()
+        );
     }
 
     #[test]
     fn an_integer_the_rust_type_leaves_beyond_javascripts_safe_range_is_refused() {
         for (unbounded, place) in [
-            (json!({ "type": "integer", "format": "uint64", "minimum": 0 }), "an integer from 0 to"),
-            (json!({ "type": "integer", "format": "int64", "maximum": 5 }), "an integer from -"),
+            (
+                json!({ "type": "integer", "format": "uint64", "minimum": 0 }),
+                "an integer from 0 to",
+            ),
+            (
+                json!({ "type": "integer", "format": "int64", "maximum": 5 }),
+                "an integer from -",
+            ),
         ] {
-            let error = read(&unbounded, "Summary.revision").unwrap_err().to_string();
-            assert!(error.starts_with(&format!("Summary.revision: {place}")), "{error}");
+            let error = read(&unbounded, "Summary.revision")
+                .unwrap_err()
+                .to_string();
+            assert!(
+                error.starts_with(&format!("Summary.revision: {place}")),
+                "{error}"
+            );
         }
         let bounded = json!({ "type": "integer", "format": "uint64", "minimum": 0, "maximum": MAX_SAFE_INTEGER });
-        assert_eq!(read(&bounded, "t").unwrap(), Shape::Integer { min: 0, max: MAX_SAFE_INTEGER });
+        assert_eq!(
+            read(&bounded, "t").unwrap(),
+            Shape::Integer {
+                min: 0,
+                max: MAX_SAFE_INTEGER
+            }
+        );
         let narrow = json!({ "type": "integer", "format": "uint32", "minimum": 0 });
-        assert_eq!(read(&narrow, "t").unwrap(), Shape::Integer { min: 0, max: i64::from(u32::MAX) });
+        assert_eq!(
+            read(&narrow, "t").unwrap(),
+            Shape::Integer {
+                min: 0,
+                max: i64::from(u32::MAX)
+            }
+        );
     }
 }

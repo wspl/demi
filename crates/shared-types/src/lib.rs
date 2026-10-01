@@ -49,7 +49,9 @@ pub use failure::{FailureSource, ProviderErrorDiagnostics, ProviderFailureFacts}
 pub use file_types::{PREVIEW_TYPES, PreviewType, preview_media_type, shows_in_place};
 #[doc(hidden)]
 pub use ids::__private;
-pub use ids::{BlockId, CommandId, EmptyId, NodeId, OperationId, Sequence, ShellId, TurnId, WakeupId};
+pub use ids::{
+    BlockId, CommandId, EmptyId, NodeId, OperationId, Sequence, ShellId, TurnId, WakeupId,
+};
 pub use media::{
     MODEL_MEDIA_TYPES, ModelMediaKind, ModelMediaType, model_accepts_media_type,
     model_media_type_for, sniff_model_media_type,
@@ -67,8 +69,8 @@ pub use schema::Nullable;
 pub use session::{PendingSteer, QueuedMessage, SessionPhase};
 pub use time::{Clock, SystemClock, Timestamp, TimestampError};
 pub use view::{
-    BinaryStdout, EditCopies, EditKind, EditSegment, EditedFile, OutputChunk, OutputView, ShellToolView,
-    ShellViewStatus, StreamKind, StreamView, ToolView,
+    BinaryStdout, EditCopies, EditKind, EditSegment, EditedFile, OutputChunk, OutputView,
+    ShellToolView, ShellViewStatus, StreamKind, StreamView, ToolView,
 };
 
 use serde::de::DeserializeOwned;

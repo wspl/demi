@@ -48,7 +48,11 @@ impl PasswordHasher {
     /// Whether `password` matches `stored`. Without a stored hash, as for an
     /// address without an account, it verifies against the dummy hash and
     /// answers false, so the answer takes as long either way.
-    pub async fn verify(&self, password: Password, stored: Option<PasswordHash>) -> Result<bool, HashError> {
+    pub async fn verify(
+        &self,
+        password: Password,
+        stored: Option<PasswordHash>,
+    ) -> Result<bool, HashError> {
         let known = stored.is_some();
         let against = stored.unwrap_or_else(|| self.dummy.clone());
         let matches = run(&self.permits, move || verify(&password, &against)).await?;

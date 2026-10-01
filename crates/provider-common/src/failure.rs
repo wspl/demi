@@ -23,7 +23,7 @@ pub struct ProviderFailure {
     /// What recovery reads; `None` for a failure Demi found in the vendor's
     /// answer, which is never retried automatically.
     pub code: Option<ErrorCode>,
-    pub diagnostics: Option<ProviderErrorDiagnostics>,
+    pub diagnostics: Option<Box<ProviderErrorDiagnostics>>,
     /// The wait the vendor asked for, counted from when the failure was
     /// received.
     pub retry_after: Option<Duration>,
@@ -37,7 +37,11 @@ impl ProviderFailure {
         Self {
             message: message.into(),
             code: None,
-            diagnostics: Some(diagnostics(FailureSource::Stream, None, Some(received.into()))),
+            diagnostics: Some(Box::new(diagnostics(
+                FailureSource::Stream,
+                None,
+                Some(received.into()),
+            ))),
             retry_after: None,
         }
     }
@@ -59,7 +63,10 @@ impl ProviderFailure {
         }
         let failure = Self::no_answer(message);
         if unbuilt {
-            return Self { code: None, ..failure };
+            return Self {
+                code: None,
+                ..failure
+            };
         }
         failure
     }
@@ -70,7 +77,7 @@ impl ProviderFailure {
         Self {
             message: message.into(),
             code: Some(ErrorCode::Overloaded),
-            diagnostics: Some(diagnostics(FailureSource::Transport, None, None)),
+            diagnostics: Some(Box::new(diagnostics(FailureSource::Transport, None, None))),
             retry_after: None,
         }
     }
@@ -87,7 +94,7 @@ impl ProviderFailure {
         Self {
             message,
             code: None,
-            diagnostics: Some(diagnostics(FailureSource::Stream, None, None)),
+            diagnostics: Some(Box::new(diagnostics(FailureSource::Stream, None, None))),
             retry_after: None,
         }
     }
@@ -102,7 +109,9 @@ impl ProviderFailure {
         let Some(retry_at) = reader(diagnostics, now).retry_at else {
             return self;
         };
-        let wait = retry_at.as_millisecond().saturating_sub(now.as_millisecond());
+        let wait = retry_at
+            .as_millisecond()
+            .saturating_sub(now.as_millisecond());
         self.retry_after = Some(Duration::from_millis(wait.max(0).unsigned_abs()));
         self
     }

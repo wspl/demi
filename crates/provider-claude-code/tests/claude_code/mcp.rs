@@ -2,9 +2,9 @@
 //! SDK MCP channel, § Tool-call batches).
 
 use bytes::Bytes;
-use demi_shared_types::{B64Bytes, TokenUsage};
-use demi_provider_common::{InferenceItem, MediaBytes, ProviderEvent, ResultPart, ToolCall};
 use demi_host_interface::Signal;
+use demi_provider_common::{InferenceItem, MediaBytes, ProviderEvent, ResultPart, ToolCall};
+use demi_shared_types::{B64Bytes, TokenUsage};
 use serde_json::json;
 
 use crate::cli::*;

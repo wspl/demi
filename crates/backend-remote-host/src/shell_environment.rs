@@ -19,16 +19,18 @@ use std::{
 
 use bytes::Bytes;
 use demi_command_protocol::{CommandContext, EditKind as JobEditKind};
-use demi_shared_types::{CommandId, EditCopies, EditKind, EditSegment, EditedFile, Sequence, ShellId, StreamKind};
+use demi_host_interface::{
+    BinaryOutput, CommandRecord, CommandSet, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES,
+    DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, Ending, ExecRequest, Host, HostError, HostKey,
+    JobCaller, Missing, Numbers, OutputRecord, PageFeed, PageView, ProcessEnd, Seen,
+    ShellEnvironment, ShellError, ShellTarget, SpawnErrorKind, Streams, WholeOutput, binary_line,
+};
 use demi_runner_protocol::{
     manifest::ManifestError,
     wire::{self, JobFileChange},
 };
-use demi_host_interface::{
-    BinaryOutput, CommandRecord, CommandSet, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES,
-    DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, Ending, ExecRequest, Host, HostError, HostKey,
-    JobCaller, Missing, Numbers, OutputRecord, PageFeed, PageView, ProcessEnd, Seen, ShellEnvironment,
-    ShellError, ShellTarget, SpawnErrorKind, Streams, WholeOutput, binary_line,
+use demi_shared_types::{
+    CommandId, EditCopies, EditKind, EditSegment, EditedFile, Sequence, ShellId, StreamKind,
 };
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::watch;
@@ -103,7 +105,12 @@ pub struct EnvironmentOptions {
 }
 
 impl EnvironmentOptions {
-    pub fn new(host: RemoteHost, context: ContextSource, feed: Rc<dyn PageFeed>, numbers: Rc<dyn Numbers>) -> Self {
+    pub fn new(
+        host: RemoteHost,
+        context: ContextSource,
+        feed: Rc<dyn PageFeed>,
+        numbers: Rc<dyn Numbers>,
+    ) -> Self {
         Self {
             host,
             commands: None,
@@ -165,6 +172,24 @@ struct Shell {
     cwd: String,
     env: BTreeMap<String, String>,
     foreground: Option<CommandId>,
+}
+
+/// How a command ended and the whole output it settles with, which
+/// [`CommandRecord::settle`] takes.
+struct Settlement {
+    ending: Ending,
+    output: WholeOutput,
+    binary_stdout: Option<BinaryOutput>,
+    /// What the end adds to the pages' view.
+    page: String,
+}
+
+/// A job that ended: the job, its end as the runner reported it, and what
+/// the backend received of each of its streams.
+struct EndedJob<'a> {
+    job: &'a RemoteJob,
+    end: JobEnd,
+    streams: [Received; 2],
 }
 
 /// A command that has not ended.
@@ -266,7 +291,11 @@ impl RemoteShellEnvironment {
     /// the pick needs a new shell and no shell number is spare. The shell
     /// it picks runs nothing: an existing one is checked again, since the
     /// state may have changed while the command's number was fetched.
-    fn reserve(&self, target: &ShellTarget, command: &CommandId) -> Result<Option<ShellId>, ShellError> {
+    fn reserve(
+        &self,
+        target: &ShellTarget,
+        command: &CommandId,
+    ) -> Result<Option<ShellId>, ShellError> {
         let mut state = self.0.state.borrow_mut();
         let shell_id = match target {
             ShellTarget::Existing(id) => {
@@ -361,8 +390,13 @@ impl RemoteShellEnvironment {
                 (Ending::Exited(127), push_reason(&mut output, &reason))
             };
             let output = WholeOutput::new(output, None);
-            self.end(&command, &record, ending, output, None, &page, None)
-                .await;
+            let settlement = Settlement {
+                ending,
+                output,
+                binary_stdout: None,
+                page,
+            };
+            self.end(&command, &record, settlement, None).await;
         }
         let mut state = self.0.state.borrow_mut();
         state.running.remove(&command);
@@ -460,8 +494,12 @@ impl RemoteShellEnvironment {
             }
         }
         let end = job.end().await;
-        self.finish(shell, command, running, record, &job, end, streams)
-            .await;
+        let ended = EndedJob {
+            job: &job,
+            end,
+            streams,
+        };
+        self.finish(shell, command, running, record, ended).await;
         Ok(())
     }
 
@@ -474,10 +512,9 @@ impl RemoteShellEnvironment {
         command: &CommandId,
         running: &Running,
         record: &Rc<RefCell<CommandRecord>>,
-        job: &RemoteJob,
-        end: JobEnd,
-        streams: [Received; 2],
+        ended: EndedJob<'_>,
     ) {
+        let EndedJob { job, end, streams } = ended;
         if !end.files.is_empty() {
             let files = match &self.0.options.keeper {
                 Some(keeper) => keeper.retain(command, &end.files).await,
@@ -503,11 +540,13 @@ impl RemoteShellEnvironment {
                     _ => format!("bash: {}", error.kind),
                 };
                 let page = push_reason(&mut received, &reason);
-                let output = WholeOutput::new(received, None);
-                let ending = Ending::Exited(127);
-                return self
-                    .end(command, record, ending, output, None, &page, Some(job))
-                    .await;
+                let settlement = Settlement {
+                    ending: Ending::Exited(127),
+                    output: WholeOutput::new(received, None),
+                    binary_stdout: None,
+                    page,
+                };
+                return self.end(command, record, settlement, Some(job)).await;
             }
             ProcessEnd::Lost(reason) => {
                 // What the Host held beyond what the backend received went
@@ -522,11 +561,13 @@ impl RemoteShellEnvironment {
                     page.push_str(&missing.line());
                     page.push('\n');
                 }
-                let output = WholeOutput::new(received, missing);
-                let ending = Ending::Exited(127);
-                return self
-                    .end(command, record, ending, output, None, &page, Some(job))
-                    .await;
+                let settlement = Settlement {
+                    ending: Ending::Exited(127),
+                    output: WholeOutput::new(received, missing),
+                    binary_stdout: None,
+                    page,
+                };
+                return self.end(command, record, settlement, Some(job)).await;
             }
             ProcessEnd::Exited(code) => *code,
             ProcessEnd::Signalled(signal) if matches!(signal.as_str(), "SIGTERM" | "SIGKILL") => {
@@ -578,8 +619,13 @@ impl RemoteShellEnvironment {
             record.grew(StreamKind::Stdout, lengths.stdout_bytes);
             record.grew(StreamKind::Stderr, lengths.stderr_bytes);
         }
-        self.end(command, record, ending, output, binary, &page, Some(job))
-            .await;
+        let settlement = Settlement {
+            ending,
+            output,
+            binary_stdout: binary,
+            page,
+        };
+        self.end(command, record, settlement, Some(job)).await;
     }
 
     /// Ends the command with its whole output: the keeper stores it, the
@@ -590,12 +636,15 @@ impl RemoteShellEnvironment {
         &self,
         command: &CommandId,
         record: &Rc<RefCell<CommandRecord>>,
-        ending: Ending,
-        output: WholeOutput,
-        binary_stdout: Option<BinaryOutput>,
-        page: &str,
+        settlement: Settlement,
         job: Option<&RemoteJob>,
     ) {
+        let Settlement {
+            ending,
+            output,
+            binary_stdout,
+            page,
+        } = settlement;
         if let Some(keeper) = &self.0.options.keeper {
             keeper.keep_output(command, &output).await;
         }
@@ -604,7 +653,7 @@ impl RemoteShellEnvironment {
         }
         let ended = record
             .borrow_mut()
-            .settle(ending, Arc::new(output), binary_stdout, page);
+            .settle(ending, Arc::new(output), binary_stdout, &page);
         if ended {
             self.report(record);
         }
@@ -807,7 +856,10 @@ impl ShellEnvironment for RemoteShellEnvironment {
 /// Refuses `id` when the environment has no such shell or it runs a
 /// command.
 fn check_free(state: &State, id: &ShellId) -> Result<(), ShellError> {
-    let shell = state.shells.get(id).ok_or_else(|| ShellError::UnknownShell(id.clone()))?;
+    let shell = state
+        .shells
+        .get(id)
+        .ok_or_else(|| ShellError::UnknownShell(id.clone()))?;
     match &shell.foreground {
         Some(command) => Err(ShellError::ShellBusy {
             shell: id.clone(),
@@ -839,7 +891,10 @@ fn unkept(file: &JobFileChange) -> EditedFile {
 
 /// The record a view lists for a file a job changed: its line counts and,
 /// for each edit segment, the copies `copies` answers for its index.
-pub fn edited_file(file: &JobFileChange, mut copies: impl FnMut(usize) -> Option<EditCopies>) -> EditedFile {
+pub fn edited_file(
+    file: &JobFileChange,
+    mut copies: impl FnMut(usize) -> Option<EditCopies>,
+) -> EditedFile {
     EditedFile {
         path: file.path.clone(),
         kind: match file.kind {

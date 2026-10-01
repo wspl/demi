@@ -9,7 +9,9 @@
 //! describes, and a switch and a reset are each announced to a node once.
 
 use demi_backend_database::StorageError;
-use demi_backend_database::conversation_index::{AttachedHostRecord, ExecutionTarget, TargetSwitch};
+use demi_backend_database::conversation_index::{
+    AttachedHostRecord, ExecutionTarget, TargetSwitch,
+};
 use demi_web_api_protocol::ids::ConversationId;
 
 use crate::shard::Shard;
@@ -90,7 +92,9 @@ impl Shard {
             None => device.to_string(),
         };
         Ok(match target {
-            ExecutionTarget::Workspace { workspace_id, path, .. } => {
+            ExecutionTarget::Workspace {
+                workspace_id, path, ..
+            } => {
                 let workspace = control
                     .workspace(workspace_id.clone())
                     .await?
@@ -113,7 +117,11 @@ impl Shard {
         let entries: Vec<String> = attached
             .iter()
             .map(|host| {
-                let state = if self.devices().online(&host.device) { "online" } else { "offline" };
+                let state = if self.devices().online(&host.device) {
+                    "online"
+                } else {
+                    "offline"
+                };
                 let directory = host
                     .cwd
                     .clone()
@@ -131,7 +139,11 @@ impl Shard {
 
 /// A switch's announcement: what changed, that no file moved, and how to
 /// reach the device left behind.
-fn switch_lines(switch: &TargetSwitch, description: String, attached: &[AttachedHostRecord]) -> Vec<String> {
+fn switch_lines(
+    switch: &TargetSwitch,
+    description: String,
+    attached: &[AttachedHostRecord],
+) -> Vec<String> {
     let mut lines = vec![
         SWITCHED.to_owned(),
         description,
@@ -149,8 +161,12 @@ fn switch_lines(switch: &TargetSwitch, description: String, attached: &[Attached
         ));
     }
     if let (
-        ExecutionTarget::Workspace { device_id: before, .. },
-        ExecutionTarget::Workspace { device_id: after, .. },
+        ExecutionTarget::Workspace {
+            device_id: before, ..
+        },
+        ExecutionTarget::Workspace {
+            device_id: after, ..
+        },
     ) = (&switch.from, &switch.to)
         && before == after
     {

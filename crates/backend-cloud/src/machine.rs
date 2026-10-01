@@ -33,11 +33,14 @@ use demi_backend_database::accounts::TokenHash;
 use demi_backend_database::devices::DeviceRecord;
 use demi_backend_database::managed::ManagedOperation;
 use demi_backend_page_sync::{Part, UserMarks};
-use demi_shared_gates::{ActivityGate, GateLease, Purpose};
 use demi_backend_remote_host::Admission;
-use demi_machine_manager_protocol::{HibernateParams, RuntimeState, RuntimeStateParams, WakeParams};
-use demi_runner_protocol::boot::ManagedBoot;
+use demi_backend_runners::codes::new_device_token;
 use demi_host_interface::{HostError, HostErrorKind};
+use demi_machine_manager_protocol::{
+    HibernateParams, RuntimeState, RuntimeStateParams, WakeParams,
+};
+use demi_runner_protocol::boot::ManagedBoot;
+use demi_shared_gates::{ActivityGate, GateLease, Purpose};
 use demi_web_api_protocol::cloud::CloudState;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{DeviceId, OperationId};
@@ -45,7 +48,6 @@ use futures_util::FutureExt as _;
 use futures_util::future::{LocalBoxFuture, Shared};
 use tokio::time::Instant;
 use tokio_util::task::AbortOnDropHandle;
-use demi_backend_runners::codes::new_device_token;
 
 use crate::CloudShard;
 use crate::capacity::CapacityPermit;

@@ -14,9 +14,9 @@ use demi_command_protocol::{ArtifactLocation, PackageArtifact, ServiceSequence};
 use futures_util::future::BoxFuture;
 use tokio_util::sync::CancellationToken;
 
-pub use registry::{Resident, ServiceHandle, ServiceLease, ServiceRegistry};
 #[cfg(feature = "testing")]
 pub use registry::Decision;
+pub use registry::{Resident, ServiceHandle, ServiceLease, ServiceRegistry};
 
 /// Why a resident service could not be had, or why it ended.
 #[derive(Debug, thiserror::Error)]

@@ -18,7 +18,6 @@ use demi_agent_server::{
     AgentServer, ProviderResolver, ResolveError, ServerConfig, ServerDeps,
     testing::{TestClient, client_text},
 };
-use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
 use demi_agent_session::{CompactionConfig, SessionConfig};
 use demi_agent_store::{
     AgentTreeStore, CheckpointState, CheckpointUpdate, CommandStateSnapshot, NodeRecord,
@@ -30,12 +29,13 @@ use demi_agent_tools::{
     testing::{NoHost, NoShells},
 };
 use demi_agent_transcript::{RandomIds, RequestView, estimate::context_tokens};
+use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
+use demi_host_interface::CommandSet;
+use demi_provider_common::{Provider, ProviderRuntime, RequestLimits, RuntimeEnv, Secret};
+use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider, VendorPolicy};
 use demi_shared_types::{
     Block, Clock, Model, ModelSelection, NodeId, SessionPhase, SystemClock, TurnId, WireApi,
 };
-use demi_provider_common::{Provider, ProviderRuntime, RequestLimits, RuntimeEnv, Secret};
-use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider, VendorPolicy};
-use demi_host_interface::CommandSet;
 use futures_util::future::LocalBoxFuture;
 use serde::Deserialize;
 

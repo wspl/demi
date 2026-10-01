@@ -24,11 +24,11 @@ use demi_command_package_browser_chrome::driver::{
     output,
 };
 use demi_command_package_browser_chrome::page::actions::TabResult;
-use demi_command_package_browser_protocol::OperationError;
 use demi_command_package_browser_chrome::tabs::{
     environment::{BrowserEnvironment, LaunchOptions, with_browser},
     registry::Closed,
 };
+use demi_command_package_browser_protocol::OperationError;
 use demi_command_protocol::{CommandLocale, Completion, ConversationRequest, ConversationStatus};
 use demi_command_sdk::{ConversationContext, InvocationContext, Numbers, ServiceError};
 
@@ -450,7 +450,10 @@ impl Owner {
                     numbers,
                     owner_stop.clone(),
                     move |environment| async move {
-                        let live = Arc::new(demi_command_package_browser_chrome::live::hub::Hub::start(&environment));
+                        let live =
+                            Arc::new(demi_command_package_browser_chrome::live::hub::Hub::start(
+                                &environment,
+                            ));
                         publisher.send_replace(Some(Ok(Started {
                             environment: environment.clone(),
                             live,
@@ -564,7 +567,9 @@ async fn capabilities(
         .await
         .map_err(&failure)?;
     let families = operation
-        .run(demi_command_package_browser_chrome::cdp::capabilities(tab.page()))
+        .run(demi_command_package_browser_chrome::cdp::capabilities(
+            tab.page(),
+        ))
         .await
         .map_err(&failure)?;
     capabilities.extend(families);
@@ -577,7 +582,12 @@ impl demi_command_package_browser_chrome::live::viewer::ViewedBrowser for Conver
     async fn running(
         &self,
         cancel: &CancellationToken,
-    ) -> Result<Option<(BrowserEnvironment, Arc<demi_command_package_browser_chrome::live::hub::Hub>)>> {
+    ) -> Result<
+        Option<(
+            BrowserEnvironment,
+            Arc<demi_command_package_browser_chrome::live::hub::Hub>,
+        )>,
+    > {
         let started = self.started(None, cancel).await?;
         Ok(started.map(|started| (started.environment, started.live)))
     }
@@ -805,7 +815,7 @@ impl Conversations {
                             ) =>
                         {
                             Err(BrowserError::Action {
-                                details: error.details(),
+                                details: Box::new(error.details()),
                                 source: Box::new(BrowserError::Timeout),
                             })
                         }
@@ -965,8 +975,10 @@ impl Conversations {
             } else {
                 Ok(())
             };
-            return demi_command_package_browser_chrome::driver::operation::after_cleanup(result, retired)
-                .map(CommandOutput::Json);
+            return demi_command_package_browser_chrome::driver::operation::after_cleanup(
+                result, retired,
+            )
+            .map(CommandOutput::Json);
         }
         if let BrowserOperation::Tabs(input) = command {
             let listing = environment.listed(cancellation, command.timeout()).await?;
@@ -1002,75 +1014,80 @@ impl Conversations {
             )
         {
             let operation = tab.operation(cancellation, deadline);
-            let result = demi_command_package_browser_chrome::tabs::navigation::steer(tab, command, &operation).await?;
+            let result = demi_command_package_browser_chrome::tabs::navigation::steer(
+                tab, command, &operation,
+            )
+            .await?;
             return Ok(CommandOutput::Json(output::value(result)?));
         }
         {
             let family: Option<futures_util::future::BoxFuture<'_, Result<serde_json::Value>>> =
                 match command {
-                    BrowserOperation::Upload(_) => {
-                        Some(Box::pin(demi_command_package_browser_chrome::page::upload::execute(
+                    BrowserOperation::Upload(_) => Some(Box::pin(
+                        demi_command_package_browser_chrome::page::upload::execute(
                             context,
                             &environment,
                             Some(tab),
                             command,
                             cancellation,
                             deadline,
-                        )))
-                    }
-                    BrowserOperation::Download(_) => {
-                        Some(Box::pin(demi_command_package_browser_chrome::page::download::execute(
+                        ),
+                    )),
+                    BrowserOperation::Download(_) => Some(Box::pin(
+                        demi_command_package_browser_chrome::page::download::execute(
                             context,
                             &environment,
                             Some(tab),
                             command,
                             cancellation,
                             deadline,
-                        )))
-                    }
+                        ),
+                    )),
                     BrowserOperation::ClipboardRead(_) | BrowserOperation::ClipboardWrite(_) => {
-                        Some(Box::pin(demi_command_package_browser_chrome::page::clipboard::execute(
-                            context,
-                            &environment,
-                            Some(tab),
-                            command,
-                            cancellation,
-                            deadline,
-                        )))
+                        Some(Box::pin(
+                            demi_command_package_browser_chrome::page::clipboard::execute(
+                                context,
+                                &environment,
+                                Some(tab),
+                                command,
+                                cancellation,
+                                deadline,
+                            ),
+                        ))
                     }
                     BrowserOperation::CdpTargets(_)
                     | BrowserOperation::CdpDetach(_)
                     | BrowserOperation::CdpSend(_)
-                    | BrowserOperation::CdpEvents(_) => {
-                        Some(Box::pin(demi_command_package_browser_chrome::cdp::commands::execute(
+                    | BrowserOperation::CdpEvents(_) => Some(Box::pin(
+                        demi_command_package_browser_chrome::cdp::commands::execute(
                             context,
                             &environment,
                             Some(tab),
                             command,
                             cancellation,
                             deadline,
-                        )))
-                    }
-                    BrowserOperation::AssetsList(_) | BrowserOperation::AssetsExport(_) => {
-                        Some(Box::pin(demi_command_package_browser_chrome::page::assets::execute(
+                        ),
+                    )),
+                    BrowserOperation::AssetsList(_) | BrowserOperation::AssetsExport(_) => Some(
+                        Box::pin(demi_command_package_browser_chrome::page::assets::execute(
                             context,
                             &environment,
                             Some(tab),
                             command,
                             cancellation,
                             deadline,
-                        )))
-                    }
-                    BrowserOperation::WebmcpList(_) | BrowserOperation::WebmcpCall(_) => {
-                        Some(Box::pin(demi_command_package_browser_chrome::cdp::webmcp::execute(
+                        )),
+                    ),
+                    BrowserOperation::WebmcpList(_) | BrowserOperation::WebmcpCall(_) => Some(
+                        Box::pin(demi_command_package_browser_chrome::cdp::webmcp::execute(
                             context,
                             &environment,
                             Some(tab),
                             command,
                             cancellation,
                             deadline,
-                        )))
-                    }
+                        )),
+                    ),
                     _ => None,
                 };
             if let Some(family) = family {
@@ -1108,8 +1125,12 @@ impl Conversations {
             let width = decoded.info().width;
             let height = decoded.info().height;
             drop(decoded);
-            let metadata =
-                demi_command_package_browser_chrome::page::actions::metadata(tab, cancellation, command.timeout()).await?;
+            let metadata = demi_command_package_browser_chrome::page::actions::metadata(
+                tab,
+                cancellation,
+                command.timeout(),
+            )
+            .await?;
             let path = demi_command_package_browser_chrome::driver::output::save_with_overwrite(
                 &context.request.cwd,
                 output,
@@ -1148,14 +1169,15 @@ impl Conversations {
         {
             output::preflight(&context.request.cwd, file, input.overwrite == Some(true)).await?;
             let mut session = tab.state().gate.try_checkout().ok_or(BrowserError::Busy)?;
-            let TabResult::Probe(mut result) = demi_command_package_browser_chrome::page::actions::command_admitted(
-                tab,
-                command,
-                cancellation,
-                deadline,
-                &mut session.references,
-            )
-            .await?
+            let TabResult::Probe(mut result) =
+                demi_command_package_browser_chrome::page::actions::command_admitted(
+                    tab,
+                    command,
+                    cancellation,
+                    deadline,
+                    &mut session.references,
+                )
+                .await?
             else {
                 return Err(BrowserError::InvalidResult(
                     "probe returned another result".into(),
@@ -1185,8 +1207,13 @@ impl Conversations {
             );
             return Ok(CommandOutput::Json(output::value(result)?));
         }
-        let result =
-            demi_command_package_browser_chrome::page::actions::command(tab, command, cancellation, deadline).await?;
+        let result = demi_command_package_browser_chrome::page::actions::command(
+            tab,
+            command,
+            cancellation,
+            deadline,
+        )
+        .await?;
         if let BrowserOperation::ContentRead(input) = command
             && let Some(file) = &input.output
         {

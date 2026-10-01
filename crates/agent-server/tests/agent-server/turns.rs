@@ -9,28 +9,28 @@ use demi_agent_server::{
     ServerConfig,
     testing::{TestClient, TestFiles},
 };
-use demi_conversation_socket_protocol::{
-    AbortResult, AbortTarget, ClientContent, ClientFrame, ServerFrame, TranscriptPatch,
-};
 use demi_agent_store::{
     attachments,
     media::BlobStore,
     testing::{MemoryBlobs, MemoryTreeStore, model_of, model_reading, png},
 };
-use demi_shared_types::{
-    Block, FailureSource, FileExtension, MediaSource, ModelSelection, SessionPhase, ThinkingConfig,
-    UserContentBlock, attachment_tag,
+use demi_conversation_socket_protocol::{
+    AbortResult, AbortTarget, ClientContent, ClientFrame, ServerFrame, TranscriptPatch,
 };
 use demi_provider_common::{
     ErrorCode, InferenceItem, MediaBytes, Medium, ProviderEvent, UserPart,
     testing::{ScriptedRuntime, Turn, event},
 };
+use demi_shared_types::{
+    Block, FailureSource, FileExtension, MediaSource, ModelSelection, SessionPhase, ThinkingConfig,
+    UserContentBlock, attachment_tag,
+};
 use futures_util::StreamExt;
 use serde_json::{Value, json};
 
 use crate::support::{
-    Fixture, Gate, conversation, held, is_idle, is_pending_steers, kinds, open, send,
-    session_of, switch, until,
+    Fixture, Gate, conversation, held, is_idle, is_pending_steers, kinds, open, send, session_of,
+    switch, until,
 };
 
 #[tokio::test(flavor = "local")]
@@ -297,7 +297,9 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
     // Loaded again, the model reads the bytes; a blob that is gone is named.
     for message in ["m2", "m3"] {
         client.send(ClientFrame::Close {}).await;
-        client.next_until(|frame| *frame == ServerFrame::Closed).await;
+        client
+            .next_until(|frame| *frame == ServerFrame::Closed)
+            .await;
         if message == "m3" {
             blobs.forget(&uploaded);
         }
@@ -595,7 +597,7 @@ async fn a_switch_lands_at_the_next_request_inside_the_running_turn() {
 /// provider builds nothing and keeps its runtime.
 #[tokio::test(flavor = "local")]
 async fn a_switch_to_another_provider_builds_its_runtime_and_closes_the_old_one_at_the_next_request()
-{
+ {
     let stub = ScriptedRuntime::new([Turn::Events(vec![
         event::text("from stub"),
         event::response(1, 1),
@@ -690,13 +692,14 @@ async fn the_system_prompt_has_the_command_help_and_a_context_change_is_saved_be
     let request = &script.requests()[0];
     assert_eq!(request.system_prompt, "system prompt");
     assert_eq!(request.items.len(), 2);
-    let prompts = fixture.harness.prompts.borrow();
-    assert!(
-        prompts[0].contains("greet: Greets the caller."),
-        "{prompts:?}"
-    );
-    assert!(prompts[0].contains("greet hello"), "{prompts:?}");
-    drop(prompts);
+    {
+        let prompts = fixture.harness.prompts.borrow();
+        assert!(
+            prompts[0].contains("greet: Greets the caller."),
+            "{prompts:?}"
+        );
+        assert!(prompts[0].contains("greet hello"), "{prompts:?}");
+    }
     let blocks = fixture
         .server
         .tree(&conversation())

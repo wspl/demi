@@ -87,7 +87,8 @@ impl RunnerProcess {
             .to_string_lossy()
             .into_owned();
         let state = tempfile::tempdir().expect("a temporary runner state");
-        std::fs::create_dir(state.path().join("tmp")).expect("a temporary directory for the runner");
+        std::fs::create_dir(state.path().join("tmp"))
+            .expect("a temporary directory for the runner");
         if let Some(token) = &options.token {
             write_token(state.path(), token);
         }
@@ -122,21 +123,33 @@ impl RunnerProcess {
 
     /// Another runner set up as this one: the same home, state and backend.
     pub fn command(&self) -> tokio::process::Command {
-        runner_command(&self.home_path, self.state.path(), &self.backend, &self.options)
+        runner_command(
+            &self.home_path,
+            self.state.path(),
+            &self.backend,
+            &self.options,
+        )
     }
 
     /// What the runner printed.
     pub fn output(&self) -> String {
-        self.output.lock().unwrap_or_else(PoisonError::into_inner).clone()
+        self.output
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     /// The `index`th pairing code the runner printed, once it has.
     pub async fn pairing_code(&self, index: usize) -> String {
         let mut codes = self.codes.subscribe();
-        let printed = tokio::time::timeout(PAIRING, codes.wait_for(|codes| codes.len() > index)).await;
+        let printed =
+            tokio::time::timeout(PAIRING, codes.wait_for(|codes| codes.len() > index)).await;
         match printed {
             Ok(Ok(codes)) => codes[index].clone(),
-            _ => panic!("the runner printed no pairing code {index}:\n{}", self.output()),
+            _ => panic!(
+                "the runner printed no pairing code {index}:\n{}",
+                self.output()
+            ),
         }
     }
 
@@ -213,7 +226,8 @@ impl RunnerProcess {
                 std::fs::remove_file(&path).expect("a runner state file can be removed");
             }
         }
-        std::fs::create_dir(self.state.path().join("tmp")).expect("a temporary directory for the runner");
+        std::fs::create_dir(self.state.path().join("tmp"))
+            .expect("a temporary directory for the runner");
     }
 
     fn spawn(&mut self) {
@@ -226,8 +240,14 @@ impl RunnerProcess {
             )
         });
         let outputs = [
-            child.stdout.take().map(|stream| Box::new(stream) as Box<dyn AsyncRead + Send + Unpin>),
-            child.stderr.take().map(|stream| Box::new(stream) as Box<dyn AsyncRead + Send + Unpin>),
+            child
+                .stdout
+                .take()
+                .map(|stream| Box::new(stream) as Box<dyn AsyncRead + Send + Unpin>),
+            child
+                .stderr
+                .take()
+                .map(|stream| Box::new(stream) as Box<dyn AsyncRead + Send + Unpin>),
         ];
         for output in outputs.into_iter().flatten() {
             let printed = self.output.clone();
@@ -271,7 +291,12 @@ fn write_token(state: &Path, token: &str) {
 
 /// The runner's command line for a device: its home, its state and its
 /// backend.
-fn runner_command(home: &str, state: &Path, backend: &str, options: &RunnerProcessOptions) -> tokio::process::Command {
+fn runner_command(
+    home: &str,
+    state: &Path,
+    backend: &str,
+    options: &RunnerProcessOptions,
+) -> tokio::process::Command {
     let mut command = tokio::process::Command::new(runner_binary());
     match &options.env {
         SpawnEnv::Inherit => {}

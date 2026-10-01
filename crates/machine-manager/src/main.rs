@@ -22,7 +22,12 @@ fn main() -> std::process::ExitCode {
     // The journal records the service's standard error and the time; the
     // messages name their part of the manager themselves.
     tracing_subscriber::registry()
-        .with(fmt::layer().with_writer(std::io::stderr).without_time().with_target(false))
+        .with(
+            fmt::layer()
+                .with_writer(std::io::stderr)
+                .without_time()
+                .with_target(false),
+        )
         .init();
     // One thread owns the manager's state (`concurrency.md` § Machine manager).
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -36,7 +41,10 @@ fn main() -> std::process::ExitCode {
     match result {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {
-            tracing::error!("demi-machine-manager: {}", demi_machine_manager::server::chain(&*error));
+            tracing::error!(
+                "demi-machine-manager: {}",
+                demi_machine_manager::server::chain(&*error)
+            );
             std::process::ExitCode::FAILURE
         }
     }
@@ -94,7 +102,9 @@ mod service {
         preflight::release_probes(&core.config.data).await?;
         match core.config.limits {
             Some(_) => cgroup::prepare().await?,
-            None => tracing::warn!("demi-machine-manager: DEMI_MANAGED_LIMITS=off: Clouds run without CPU, memory or PID limits"),
+            None => tracing::warn!(
+                "demi-machine-manager: DEMI_MANAGED_LIMITS=off: Clouds run without CPU, memory or PID limits"
+            ),
         }
         let (working, images) = (core.config.working(), core.config.images());
         blocking::run(move |off| preflight::require_one_filesystem(off, &working, &images)).await?;
@@ -115,8 +125,15 @@ mod service {
         // Readiness for systemd's Type=notify; without a notify socket this
         // does nothing.
         sd_notify::notify(&[sd_notify::NotifyState::Ready])?;
-        let limits = if core.config.limits.is_some() { "on" } else { "off" };
-        tracing::info!("demi-machine-manager: gVisor/systrap ready at {}, resource limits {limits}", socket_path.display());
+        let limits = if core.config.limits.is_some() {
+            "on"
+        } else {
+            "off"
+        };
+        tracing::info!(
+            "demi-machine-manager: gVisor/systrap ready at {}, resource limits {limits}",
+            socket_path.display()
+        );
         let stopping = async move {
             tokio::select! {
                 _ = terminate.recv() => {}

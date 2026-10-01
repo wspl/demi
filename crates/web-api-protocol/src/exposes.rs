@@ -62,7 +62,9 @@ fn split(address: &str) -> Option<(&str, u16)> {
     let (host, port_text) = address.rsplit_once(':')?;
     let bracketed = host.starts_with('[') || host.ends_with(']');
     let host_ok = !host.is_empty()
-        && host.bytes().all(|byte| byte.is_ascii_graphic() && byte != b'/')
+        && host
+            .bytes()
+            .all(|byte| byte.is_ascii_graphic() && byte != b'/')
         && (!bracketed || (host.len() > 2 && host.starts_with('[') && host.ends_with(']')))
         && (bracketed || !host.contains(':'));
     if !host_ok {
@@ -128,14 +130,34 @@ mod tests {
     #[test]
     fn an_address_is_a_bare_port_on_the_loopback_or_a_host_and_port_as_given() {
         let bare = address("5173").unwrap();
-        assert_eq!((bare.as_str(), bare.host(), bare.port()), ("127.0.0.1:5173", "127.0.0.1", 5173));
+        assert_eq!(
+            (bare.as_str(), bare.host(), bare.port()),
+            ("127.0.0.1:5173", "127.0.0.1", 5173)
+        );
         let named = address("dev.internal:8080").unwrap();
-        assert_eq!((named.as_str(), named.host(), named.port()), ("dev.internal:8080", "dev.internal", 8080));
+        assert_eq!(
+            (named.as_str(), named.host(), named.port()),
+            ("dev.internal:8080", "dev.internal", 8080)
+        );
         let six = address("[::1]:3000").unwrap();
-        assert_eq!((six.as_str(), six.host(), six.port()), ("[::1]:3000", "::1", 3000));
+        assert_eq!(
+            (six.as_str(), six.host(), six.port()),
+            ("[::1]:3000", "::1", 3000)
+        );
         for refused in [
-            "", "0", "65536", "localhost", ":80", "host:", "host:0", "host:http", "::1:80", "[]:80", "a b:80",
-            "a/b:80", "[::1:80",
+            "",
+            "0",
+            "65536",
+            "localhost",
+            ":80",
+            "host:",
+            "host:0",
+            "host:http",
+            "::1:80",
+            "[]:80",
+            "a b:80",
+            "a/b:80",
+            "[::1:80",
         ] {
             assert_eq!(address(refused), Err(NotExposeAddress), "{refused}");
         }

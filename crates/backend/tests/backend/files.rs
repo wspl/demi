@@ -38,9 +38,18 @@ impl OnDevice {
         let (backend, master) = harness.start_set_up().await;
         let paired = backend.pair(&master, "laptop").await;
         let created = backend
-            .post("/api/conversations", Some(&master), json!({ "id": CONVERSATION }))
+            .post(
+                "/api/conversations",
+                Some(&master),
+                json!({ "id": CONVERSATION }),
+            )
             .await;
-        assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
+        assert_eq!(
+            created.status,
+            StatusCode::CREATED,
+            "{}",
+            String::from_utf8_lossy(&created.body)
+        );
         let root = paired.runner.home_dir().join("work");
         std::fs::create_dir_all(&root).unwrap();
         let control = harness.control_database();
@@ -73,9 +82,20 @@ impl OnDevice {
     }
 
     /// A request of the master's to one of the conversation's routes.
-    async fn call(&self, method: Method, route: &str, headers: &[(&str, &str)], body: Option<reqwest::Body>) -> Answer {
+    async fn call(
+        &self,
+        method: Method,
+        route: &str,
+        headers: &[(&str, &str)],
+        body: Option<reqwest::Body>,
+    ) -> Answer {
         let path = format!("/api/conversations/{CONVERSATION}{route}");
-        answer(self.backend.response(method, &path, &self.master, headers, body).await).await
+        answer(
+            self.backend
+                .response(method, &path, &self.master, headers, body)
+                .await,
+        )
+        .await
     }
 
     async fn get(&self, route: &str) -> Answer {
@@ -103,7 +123,12 @@ fn code(answer: &Answer) -> ErrorCode {
 
 fn git(directory: &Path, arguments: &[&str]) {
     let status = std::process::Command::new("git")
-        .args(["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null"])
+        .args([
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "core.hooksPath=/dev/null",
+        ])
         .args(arguments)
         .current_dir(directory)
         .env("GIT_AUTHOR_NAME", "Test")
@@ -117,7 +142,10 @@ fn git(directory: &Path, arguments: &[&str]) {
 
 /// Bytes that differ at every position, so a misplaced range shows.
 fn header<'a>(answer: &'a Answer, name: &str) -> Option<&'a str> {
-    answer.headers.get(name).map(|value| value.to_str().unwrap())
+    answer
+        .headers
+        .get(name)
+        .map(|value| value.to_str().unwrap())
 }
 
 // Several seconds: a listing over the runner's message limit needs about 21,000
@@ -129,7 +157,12 @@ async fn the_working_tree_lists_its_changes_and_reads_one_file_and_an_offline_de
 
     // Not a repository yet: an answer, not an error.
     let outside = device.get("/changes").await;
-    assert_eq!(outside.status, StatusCode::OK, "{}", String::from_utf8_lossy(&outside.body));
+    assert_eq!(
+        outside.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&outside.body)
+    );
     let outside: Value = outside.json();
     assert_eq!(
         (&outside["root"], &outside["repository"], &outside["files"]),
@@ -144,9 +177,15 @@ async fn the_working_tree_lists_its_changes_and_reads_one_file_and_an_offline_de
     std::fs::write(device.root.join("b.txt"), "new\n").unwrap();
     std::fs::write(device.root.join("blob.bin"), [0, 255, 1]).unwrap();
     let changes: Value = device.get("/changes").await.json();
-    assert_eq!((&changes["repository"], &changes["truncated"]), (&json!(true), &json!(false)));
+    assert_eq!(
+        (&changes["repository"], &changes["truncated"]),
+        (&json!(true), &json!(false))
+    );
     let head = changes["head"].as_str().unwrap();
-    assert!(head.len() == 40 && head.chars().all(|char| char.is_ascii_hexdigit()), "{head}");
+    assert!(
+        head.len() == 40 && head.chars().all(|char| char.is_ascii_hexdigit()),
+        "{head}"
+    );
     assert_eq!(
         changes["files"],
         json!([
@@ -157,30 +196,71 @@ async fn the_working_tree_lists_its_changes_and_reads_one_file_and_an_offline_de
     );
 
     let modified = device.get("/changes/file?path=a.txt").await;
-    assert_eq!(modified.json::<Value>(), json!({ "original": "1\n2\n", "modified": "1\n2\n3\n" }));
+    assert_eq!(
+        modified.json::<Value>(),
+        json!({ "original": "1\n2\n", "modified": "1\n2\n3\n" })
+    );
     let added = device.get("/changes/file?path=b.txt").await;
-    assert_eq!(added.json::<Value>(), json!({ "original": "", "modified": "new\n" }));
+    assert_eq!(
+        added.json::<Value>(),
+        json!({ "original": "", "modified": "new\n" })
+    );
     let binary = device.get("/changes/file?path=blob.bin").await;
-    assert_eq!((binary.status, code(&binary)), (StatusCode::UNSUPPORTED_MEDIA_TYPE, ErrorCode::NotText));
+    assert_eq!(
+        (binary.status, code(&binary)),
+        (StatusCode::UNSUPPORTED_MEDIA_TYPE, ErrorCode::NotText)
+    );
     let escaping = device.get("/changes/file?path=../x").await;
-    assert_eq!(escaping.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery));
+    assert_eq!(
+        escaping.refusal(),
+        (StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery)
+    );
 
     let a = device.path("a.txt");
-    let text = device.get(&format!("/fs/file?{}", query(&[("path", &a)]))).await;
-    assert_eq!(text.json::<Value>(), json!({ "path": a, "text": "1\n2\n3\n" }));
-    let missing = device.get(&format!("/fs/file?{}", query(&[("path", &device.path("nope"))]))).await;
-    assert_eq!(missing.refusal(), (StatusCode::NOT_FOUND, ErrorCode::FsError));
+    let text = device
+        .get(&format!("/fs/file?{}", query(&[("path", &a)])))
+        .await;
+    assert_eq!(
+        text.json::<Value>(),
+        json!({ "path": a, "text": "1\n2\n3\n" })
+    );
+    let missing = device
+        .get(&format!(
+            "/fs/file?{}",
+            query(&[("path", &device.path("nope"))])
+        ))
+        .await;
+    assert_eq!(
+        missing.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::FsError)
+    );
 
     // The listing starts in the conversation's directory and names the
     // device's home; a directory is made with its parents.
-    let made = device.call(Method::POST, "/fs", &[("content-type", "application/json")], Some(
-        json!({ "path": device.path("made/deep") }).to_string().into(),
-    ))
-    .await;
-    assert_eq!(made.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&made.body));
+    let made = device
+        .call(
+            Method::POST,
+            "/fs",
+            &[("content-type", "application/json")],
+            Some(
+                json!({ "path": device.path("made/deep") })
+                    .to_string()
+                    .into(),
+            ),
+        )
+        .await;
+    assert_eq!(
+        made.status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&made.body)
+    );
     assert!(device.root.join("made/deep").is_dir());
     let listing: Value = device.get("/fs").await.json();
-    assert_eq!((&listing["path"], &listing["home"]), (&json!(root), &json!(device.paired.runner.home())));
+    assert_eq!(
+        (&listing["path"], &listing["home"]),
+        (&json!(root), &json!(device.paired.runner.home()))
+    );
     let mut names: Vec<&str> = listing["entries"]
         .as_array()
         .unwrap()
@@ -197,25 +277,53 @@ async fn the_working_tree_lists_its_changes_and_reads_one_file_and_an_offline_de
     for index in 0..=MAX_MESSAGE_BYTES / 200 {
         std::fs::write(crowded.join(format!("{name}{index}")), "").unwrap();
     }
-    let listing = device.get(&format!("/fs?{}", query(&[("path", crowded.to_str().unwrap())]))).await;
-    assert_eq!(listing.refusal(), (StatusCode::PAYLOAD_TOO_LARGE, ErrorCode::DirectoryTooLarge));
-    assert_eq!(device.get(&format!("/fs/file?{}", query(&[("path", &a)]))).await.status, StatusCode::OK);
+    let listing = device
+        .get(&format!(
+            "/fs?{}",
+            query(&[("path", crowded.to_str().unwrap())])
+        ))
+        .await;
+    assert_eq!(
+        listing.refusal(),
+        (StatusCode::PAYLOAD_TOO_LARGE, ErrorCode::DirectoryTooLarge)
+    );
+    assert_eq!(
+        device
+            .get(&format!("/fs/file?{}", query(&[("path", &a)])))
+            .await
+            .status,
+        StatusCode::OK
+    );
 
     // Offline: the routes say so rather than waking anything.
     device.paired.runner.stop().await;
-    device.backend.until_online(&device.master, device.paired.id(), false).await;
+    device
+        .backend
+        .until_online(&device.master, device.paired.id(), false)
+        .await;
     let refused = device.get("/changes").await;
-    assert_eq!(refused.refusal(), (StatusCode::CONFLICT, ErrorCode::DeviceOffline));
+    assert_eq!(
+        refused.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::DeviceOffline)
+    );
     device.backend.close().await;
 }
 
 #[tokio::test]
-async fn the_raw_routes_stream_a_file_by_range_under_inert_headers_and_the_committed_side_from_git() {
+async fn the_raw_routes_stream_a_file_by_range_under_inert_headers_and_the_committed_side_from_git()
+{
     let device = OnDevice::start().await;
     let raw = |path: &str, extra: &[(&str, &str)]| {
         let mut pairs = vec![("path", device.path(path))];
-        pairs.extend(extra.iter().map(|(name, value)| (*name, (*value).to_owned())));
-        let pairs: Vec<(&str, &str)> = pairs.iter().map(|(name, value)| (*name, value.as_str())).collect();
+        pairs.extend(
+            extra
+                .iter()
+                .map(|(name, value)| (*name, (*value).to_owned())),
+        );
+        let pairs: Vec<(&str, &str)> = pairs
+            .iter()
+            .map(|(name, value)| (*name, value.as_str()))
+            .collect();
         format!("/fs/raw?{}", query(&pairs))
     };
     let image = pattern(300_000, 0);
@@ -238,41 +346,104 @@ async fn the_raw_routes_stream_a_file_by_range_under_inert_headers_and_the_commi
         .and_then(|tag| tag.strip_suffix('"'))
         .and_then(|tag| tag.split_once('-'))
         .unwrap();
-    assert!([size, time].iter().all(|part| part.chars().all(|char| char.is_ascii_hexdigit())), "{etag}");
+    assert!(
+        [size, time]
+            .iter()
+            .all(|part| part.chars().all(|char| char.is_ascii_hexdigit())),
+        "{etag}"
+    );
     assert_eq!(whole.body, image);
 
-    let head = device.call(Method::HEAD, &raw("logo.svg", &[]), &[], None).await;
+    let head = device
+        .call(Method::HEAD, &raw("logo.svg", &[]), &[], None)
+        .await;
     assert_eq!(head.status, StatusCode::OK);
     assert_eq!(header(&head, "content-length"), Some("300000"));
     assert_eq!(header(&head, "etag"), Some(etag.as_str()));
     assert!(header(&head, "last-modified").is_some());
 
-    let part = device.call(Method::GET, &raw("logo.svg", &[]), &[("range", "bytes=1000-1999")], None).await;
+    let part = device
+        .call(
+            Method::GET,
+            &raw("logo.svg", &[]),
+            &[("range", "bytes=1000-1999")],
+            None,
+        )
+        .await;
     assert_eq!(part.status, StatusCode::PARTIAL_CONTENT);
-    assert_eq!(header(&part, "content-range"), Some("bytes 1000-1999/300000"));
+    assert_eq!(
+        header(&part, "content-range"),
+        Some("bytes 1000-1999/300000")
+    );
     assert_eq!(part.body, image[1000..2000]);
-    let past = device.call(Method::GET, &raw("logo.svg", &[]), &[("range", "bytes=300000-")], None).await;
+    let past = device
+        .call(
+            Method::GET,
+            &raw("logo.svg", &[]),
+            &[("range", "bytes=300000-")],
+            None,
+        )
+        .await;
     assert_eq!(past.status, StatusCode::RANGE_NOT_SATISFIABLE);
 
-    let unchanged = device.call(Method::GET, &raw("logo.svg", &[]), &[("if-none-match", &etag)], None).await;
+    let unchanged = device
+        .call(
+            Method::GET,
+            &raw("logo.svg", &[]),
+            &[("if-none-match", &etag)],
+            None,
+        )
+        .await;
     assert_eq!(unchanged.status, StatusCode::NOT_MODIFIED);
-    assert_eq!(device.get(&raw("logo.svg", &[("version", &etag)])).await.status, StatusCode::OK);
+    assert_eq!(
+        device
+            .get(&raw("logo.svg", &[("version", &etag)]))
+            .await
+            .status,
+        StatusCode::OK
+    );
     std::fs::write(device.root.join("logo.svg"), pattern(10, 0)).unwrap();
     let changed = device.get(&raw("logo.svg", &[("version", &etag)])).await;
-    assert_eq!(changed.refusal(), (StatusCode::PRECONDITION_FAILED, ErrorCode::FileChanged));
+    assert_eq!(
+        changed.refusal(),
+        (StatusCode::PRECONDITION_FAILED, ErrorCode::FileChanged)
+    );
 
     let download = device.get(&raw("logo.svg", &[("download", "true")])).await;
-    assert_eq!(header(&download, "content-type"), Some("application/octet-stream"));
-    assert!(header(&download, "content-disposition").unwrap().starts_with("attachment; filename=\"logo.svg\""));
+    assert_eq!(
+        header(&download, "content-type"),
+        Some("application/octet-stream")
+    );
+    assert!(
+        header(&download, "content-disposition")
+            .unwrap()
+            .starts_with("attachment; filename=\"logo.svg\"")
+    );
     assert_eq!(header(&download, "content-security-policy"), None);
     std::fs::write(device.root.join("page.html"), "<script>alert(1)</script>").unwrap();
     let html = device.get(&raw("page.html", &[])).await;
-    assert_eq!(header(&html, "content-type"), Some("application/octet-stream"));
-    assert!(header(&html, "content-disposition").unwrap().starts_with("attachment"));
-    assert_eq!(device.get(&raw(".", &[])).await.refusal(), (StatusCode::NOT_FOUND, ErrorCode::NotFound));
-    assert_eq!(device.get(&raw("missing.png", &[])).await.refusal(), (StatusCode::NOT_FOUND, ErrorCode::FsError));
+    assert_eq!(
+        header(&html, "content-type"),
+        Some("application/octet-stream")
+    );
+    assert!(
+        header(&html, "content-disposition")
+            .unwrap()
+            .starts_with("attachment")
+    );
+    assert_eq!(
+        device.get(&raw(".", &[])).await.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::NotFound)
+    );
+    assert_eq!(
+        device.get(&raw("missing.png", &[])).await.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::FsError)
+    );
     let flag = device.get(&raw("logo.svg", &[("download", "1")])).await;
-    assert_eq!(flag.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery));
+    assert_eq!(
+        flag.refusal(),
+        (StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery)
+    );
 
     // Far past the runner's message limit, whole and in order; streamed,
     // the answer has no length, which a HEAD reports.
@@ -295,26 +466,59 @@ async fn the_raw_routes_stream_a_file_by_range_under_inert_headers_and_the_commi
     assert_eq!(before.status, StatusCode::OK);
     assert_eq!(header(&before, "content-type"), Some("image/png"));
     assert_eq!(before.body, committed);
-    let tail = device.call(Method::GET, "/changes/raw?path=chart.png", &[("range", "bytes=-100")], None).await;
+    let tail = device
+        .call(
+            Method::GET,
+            "/changes/raw?path=chart.png",
+            &[("range", "bytes=-100")],
+            None,
+        )
+        .await;
     assert_eq!(tail.status, StatusCode::PARTIAL_CONTENT);
     assert_eq!(tail.body, committed[committed.len() - 100..]);
-    let head = device.call(Method::HEAD, "/changes/raw?path=chart.png", &[], None).await;
+    let head = device
+        .call(Method::HEAD, "/changes/raw?path=chart.png", &[], None)
+        .await;
     assert_eq!(header(&head, "content-length"), Some("5000"));
-    let saved = device.get("/changes/raw?path=chart.png&download=true").await;
-    assert_eq!(header(&saved, "content-type"), Some("application/octet-stream"));
-    assert!(header(&saved, "content-disposition").unwrap().starts_with("attachment; filename=\"chart.png\""));
+    let saved = device
+        .get("/changes/raw?path=chart.png&download=true")
+        .await;
+    assert_eq!(
+        header(&saved, "content-type"),
+        Some("application/octet-stream")
+    );
+    assert!(
+        header(&saved, "content-disposition")
+            .unwrap()
+            .starts_with("attachment; filename=\"chart.png\"")
+    );
     assert_eq!(saved.body, committed);
-    assert_eq!(device.get("/changes/raw?path=new.png").await.status, StatusCode::NOT_FOUND);
+    assert_eq!(
+        device.get("/changes/raw?path=new.png").await.status,
+        StatusCode::NOT_FOUND
+    );
     let escaping = device.get("/changes/raw?path=../escape.png").await;
-    assert_eq!(escaping.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery));
+    assert_eq!(
+        escaping.refusal(),
+        (StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery)
+    );
 
     // Git's copy is read whole, so one over the runner's 8 MiB is refused.
-    std::fs::write(device.root.join("poster.png"), pattern(8 * 1024 * 1024 + 1, 0)).unwrap();
+    std::fs::write(
+        device.root.join("poster.png"),
+        pattern(8 * 1024 * 1024 + 1, 0),
+    )
+    .unwrap();
     git(&device.root, &["add", "poster.png"]);
     git(&device.root, &["commit", "-q", "-m", "poster"]);
     let oversized = device.get("/changes/raw?path=poster.png").await;
-    assert_eq!(oversized.refusal(), (StatusCode::PAYLOAD_TOO_LARGE, ErrorCode::FileTooLarge));
-    let head = device.call(Method::HEAD, "/changes/raw?path=poster.png", &[], None).await;
+    assert_eq!(
+        oversized.refusal(),
+        (StatusCode::PAYLOAD_TOO_LARGE, ErrorCode::FileTooLarge)
+    );
+    let head = device
+        .call(Method::HEAD, "/changes/raw?path=poster.png", &[], None)
+        .await;
     assert_eq!(head.status, StatusCode::PAYLOAD_TOO_LARGE);
     device.backend.close().await;
 }
@@ -327,30 +531,59 @@ async fn an_upload_streams_into_place_whole_and_asks_before_it_writes_over_a_fil
         if let Some(replace) = replace {
             pairs.push(("replace", replace.to_owned()));
         }
-        let pairs: Vec<(&str, &str)> = pairs.iter().map(|(name, value)| (*name, value.as_str())).collect();
+        let pairs: Vec<(&str, &str)> = pairs
+            .iter()
+            .map(|(name, value)| (*name, value.as_str()))
+            .collect();
         let route = format!("/fs/raw?{}", query(&pairs));
         let device = &device;
         async move { device.call(Method::PUT, &route, &[], Some(body)).await }
     };
     let read = |path: &str| std::fs::read_to_string(device.root.join(path)).unwrap();
 
-    assert_eq!(put("notes.md", None, "first".into()).await.status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        put("notes.md", None, "first".into()).await.status,
+        StatusCode::NO_CONTENT
+    );
     assert_eq!(read("notes.md"), "first");
     let taken = put("notes.md", None, "second".into()).await;
-    assert_eq!(taken.refusal(), (StatusCode::CONFLICT, ErrorCode::FileExists));
+    assert_eq!(
+        taken.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::FileExists)
+    );
     assert_eq!(read("notes.md"), "first");
-    assert_eq!(put("notes.md", Some("true"), "second".into()).await.status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        put("notes.md", Some("true"), "second".into()).await.status,
+        StatusCode::NO_CONTENT
+    );
     assert_eq!(read("notes.md"), "second");
-    assert_eq!(put("empty.txt", None, reqwest::Body::from("")).await.status, StatusCode::NO_CONTENT);
-    assert_eq!(std::fs::metadata(device.root.join("empty.txt")).unwrap().len(), 0);
+    assert_eq!(
+        put("empty.txt", None, reqwest::Body::from("")).await.status,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        std::fs::metadata(device.root.join("empty.txt"))
+            .unwrap()
+            .len(),
+        0
+    );
 
     std::fs::create_dir(device.root.join("docs")).unwrap();
     let directory = put("docs", Some("true"), "x".into()).await;
-    assert_eq!(directory.refusal(), (StatusCode::CONFLICT, ErrorCode::IsDirectory));
+    assert_eq!(
+        directory.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::IsDirectory)
+    );
     let orphan = put("missing/file.txt", None, "x".into()).await;
-    assert_eq!(orphan.refusal(), (StatusCode::NOT_FOUND, ErrorCode::FsError));
+    assert_eq!(
+        orphan.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::FsError)
+    );
     let flag = put("notes.md", Some("yes"), "x".into()).await;
-    assert_eq!(flag.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery));
+    assert_eq!(
+        flag.refusal(),
+        (StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery)
+    );
 
     // Far past the JSON body limit and the runner's message limit, streamed
     // through the runner a chunk at a time.
@@ -361,10 +594,18 @@ async fn an_upload_streams_into_place_whole_and_asks_before_it_writes_over_a_fil
         move |_| Ok::<_, std::io::Error>(block.clone())
     }));
     let large = put("large.bin", None, reqwest::Body::wrap_stream(body)).await;
-    assert_eq!(large.status, StatusCode::NO_CONTENT, "{}", String::from_utf8_lossy(&large.body));
+    assert_eq!(
+        large.status,
+        StatusCode::NO_CONTENT,
+        "{}",
+        String::from_utf8_lossy(&large.body)
+    );
     let written = std::fs::read(device.root.join("large.bin")).unwrap();
     assert_eq!(written.len(), chunks * block.len());
-    assert!(written[written.len() - block.len()..] == block[..], "the upload's end arrived changed");
+    assert!(
+        written[written.len() - block.len()..] == block[..],
+        "the upload's end arrived changed"
+    );
 
     // A body the user's browser cuts short while the Host holds part of it:
     // the user's browser, gone, hears no answer, as when the page cuts its
@@ -391,30 +632,55 @@ async fn an_upload_streams_into_place_whole_and_asks_before_it_writes_over_a_fil
             .collect::<Vec<u64>>()
     };
     let (cut, cut_now) = tokio::sync::oneshot::channel::<()>();
-    let broken = stream::iter([Ok::<_, std::io::Error>(block.clone())]).chain(stream::once(async {
-        // A dropped sender cuts it too.
-        let _ = cut_now.await;
-        Err(std::io::Error::other("the user's browser went away"))
-    }));
-    let pairs = [("path", device.path("notes.md")), ("replace", "true".to_owned())];
-    let pairs: Vec<(&str, &str)> = pairs.iter().map(|(name, value)| (*name, value.as_str())).collect();
-    let url = format!("{}/api/conversations/{CONVERSATION}/fs/raw?{}", device.backend.url, query(&pairs));
+    let broken =
+        stream::iter([Ok::<_, std::io::Error>(block.clone())]).chain(stream::once(async {
+            // A dropped sender cuts it too.
+            let _ = cut_now.await;
+            Err(std::io::Error::other("the user's browser went away"))
+        }));
+    let pairs = [
+        ("path", device.path("notes.md")),
+        ("replace", "true".to_owned()),
+    ];
+    let pairs: Vec<(&str, &str)> = pairs
+        .iter()
+        .map(|(name, value)| (*name, value.as_str()))
+        .collect();
+    let url = format!(
+        "{}/api/conversations/{CONVERSATION}/fs/raw?{}",
+        device.backend.url,
+        query(&pairs)
+    );
     let upload = reqwest::Client::new()
         .put(url)
         .header("cookie", &device.master.cookie)
         .body(reqwest::Body::wrap_stream(broken))
         .send();
     let cutting = async {
-        eventually("the Host holds part of the upload", || async { partial().iter().any(|size| *size > 0) }).await;
+        eventually("the Host holds part of the upload", || async {
+            partial().iter().any(|size| *size > 0)
+        })
+        .await;
         // An upload that ended already has dropped its body; the answer says
         // how it ended.
         let _ = cut.send(());
     };
     let (answer, ()) = tokio::join!(upload, cutting);
-    assert!(answer.is_err(), "the cut upload got an answer: {:?}", answer.map(|answer| answer.status()));
-    eventually("the cut upload leaves no partial copy", || async { partial().is_empty() }).await;
+    assert!(
+        answer.is_err(),
+        "the cut upload got an answer: {:?}",
+        answer.map(|answer| answer.status())
+    );
+    eventually("the cut upload leaves no partial copy", || async {
+        partial().is_empty()
+    })
+    .await;
     let kept = std::fs::read(device.root.join("notes.md")).unwrap();
-    assert!(kept == b"second", "the path is as it was, not {} bytes", kept.len());
+    assert!(
+        kept == b"second",
+        "the path is as it was, not {} bytes",
+        kept.len()
+    );
     device.backend.close().await;
 }
 
@@ -430,20 +696,42 @@ async fn a_delete_takes_a_file_or_a_directory_and_refuses_the_directories_the_ho
     std::fs::write(device.root.join("photos/2024/a.jpg"), "a").unwrap();
     std::fs::write(device.root.join("notes.md"), "n").unwrap();
 
-    assert_eq!(remove(device.path("notes.md")).await.status, StatusCode::NO_CONTENT);
-    assert_eq!(remove(device.path("photos")).await.status, StatusCode::NO_CONTENT);
-    assert_eq!(remove(device.path("nothing")).await.status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        remove(device.path("notes.md")).await.status,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        remove(device.path("photos")).await.status,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        remove(device.path("nothing")).await.status,
+        StatusCode::NO_CONTENT
+    );
     assert_eq!(std::fs::read_dir(&device.root).unwrap().count(), 0);
 
     let root = device.root.to_str().unwrap().to_owned();
     let home = device.paired.runner.home().to_owned();
-    for path in [root.clone(), device.path(".."), home, "/".to_owned(), root.to_uppercase()] {
+    for path in [
+        root.clone(),
+        device.path(".."),
+        home,
+        "/".to_owned(),
+        root.to_uppercase(),
+    ] {
         let refused = remove(path.clone()).await;
-        assert_eq!(refused.refusal(), (StatusCode::CONFLICT, ErrorCode::ProtectedPath), "{path}");
+        assert_eq!(
+            refused.refusal(),
+            (StatusCode::CONFLICT, ErrorCode::ProtectedPath),
+            "{path}"
+        );
     }
     assert!(device.root.is_dir());
     let relative = remove("photos".to_owned()).await;
-    assert_eq!(relative.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery));
+    assert_eq!(
+        relative.refusal(),
+        (StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery)
+    );
     device.backend.close().await;
 }
 
@@ -454,34 +742,65 @@ async fn the_host_access_reaches_only_the_callers_conversation_and_the_hosts_bou
 
     // Another user's conversation answers as a missing one, as an id that
     // is none does.
-    device.harness.add_user("user@example.test", "user-pass-1", Role::User);
+    device
+        .harness
+        .add_user("user@example.test", "user-pass-1", Role::User);
     let other = backend.login("user@example.test", "user-pass-1").await;
     let foreign = backend
-        .get(&format!("/api/conversations/{CONVERSATION}/fs"), Some(&other))
+        .get(
+            &format!("/api/conversations/{CONVERSATION}/fs"),
+            Some(&other),
+        )
         .await;
-    assert_eq!(foreign.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ConversationNotFound));
-    let unknown = backend.get("/api/conversations/not-a-uuid/fs", Some(&device.master)).await;
-    assert_eq!(unknown.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ConversationNotFound));
+    assert_eq!(
+        foreign.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::ConversationNotFound)
+    );
+    let unknown = backend
+        .get("/api/conversations/not-a-uuid/fs", Some(&device.master))
+        .await;
+    assert_eq!(
+        unknown.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::ConversationNotFound)
+    );
 
     // A device the conversation does not reach is refused. Attached, it is
     // listed from its home until a shell there ended somewhere.
     let ci = backend.pair(&device.master, "ci").await;
     let on_ci = format!("/hosts/{}/fs", ci.id());
-    assert_eq!(device.get(&on_ci).await.refusal(), (StatusCode::NOT_FOUND, ErrorCode::HostNotAttached));
+    assert_eq!(
+        device.get(&on_ci).await.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::HostNotAttached)
+    );
     device.execute(
         "INSERT INTO conversation_hosts (conversation_id, device_id, name, cwd, attached_at)
          VALUES (?1, ?2, 'ci', NULL, 0)",
         &[CONVERSATION, ci.id()],
     );
     let listing = device.get(&on_ci).await;
-    assert_eq!(listing.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listing.body));
+    assert_eq!(
+        listing.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&listing.body)
+    );
     let listing: Value = listing.json();
-    assert_eq!((&listing["path"], &listing["home"]), (&json!(ci.runner.home()), &json!(ci.runner.home())));
+    assert_eq!(
+        (&listing["path"], &listing["home"]),
+        (&json!(ci.runner.home()), &json!(ci.runner.home()))
+    );
     let made_on_ci = ci.runner.home_dir().join("made");
     let made = device
-        .call(Method::POST, &on_ci, &[("content-type", "application/json")], Some(
-            json!({ "path": made_on_ci.to_str().unwrap() }).to_string().into(),
-        ))
+        .call(
+            Method::POST,
+            &on_ci,
+            &[("content-type", "application/json")],
+            Some(
+                json!({ "path": made_on_ci.to_str().unwrap() })
+                    .to_string()
+                    .into(),
+            ),
+        )
         .await;
     assert_eq!(made.status, StatusCode::CREATED);
     assert!(made_on_ci.is_dir());
@@ -492,15 +811,27 @@ async fn the_host_access_reaches_only_the_callers_conversation_and_the_hosts_bou
     let listing: Value = device.get(&on_ci).await.json();
     assert_eq!(listing["path"], json!(made_on_ci.to_str().unwrap()));
     // Named, the main device is the main Host.
-    let main: Value = device.get(&format!("/hosts/{}/fs", device.paired.id())).await.json();
+    let main: Value = device
+        .get(&format!("/hosts/{}/fs", device.paired.id()))
+        .await
+        .json();
     assert_eq!(main["path"], json!(device.root.to_str().unwrap()));
 
     // An archived conversation refuses every Host operation, transfers too.
-    device.execute("UPDATE conversations SET archived = 1 WHERE id = ?1", &[CONVERSATION]);
+    device.execute(
+        "UPDATE conversations SET archived = 1 WHERE id = ?1",
+        &[CONVERSATION],
+    );
     let archived = device.get("/fs").await;
-    assert_eq!(archived.refusal(), (StatusCode::CONFLICT, ErrorCode::ConversationArchived));
+    assert_eq!(
+        archived.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::ConversationArchived)
+    );
     let raw = format!("/fs/raw?{}", query(&[("path", &device.path("a.txt"))]));
-    assert_eq!(device.get(&raw).await.refusal(), (StatusCode::CONFLICT, ErrorCode::ConversationArchived));
+    assert_eq!(
+        device.get(&raw).await.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::ConversationArchived)
+    );
     device.backend.close().await;
 }
 
@@ -512,7 +843,10 @@ async fn a_shutdown_ends_an_open_download_instead_of_waiting_for_it() {
         "/api/conversations/{CONVERSATION}/fs/raw?{}",
         query(&[("path", &device.path("long.mp4"))])
     );
-    let mut playing = device.backend.response(Method::GET, &route, &device.master, &[], None).await;
+    let mut playing = device
+        .backend
+        .response(Method::GET, &route, &device.master, &[], None)
+        .await;
     assert_eq!(playing.status(), StatusCode::OK);
     assert!(playing.chunk().await.unwrap().is_some());
 

@@ -141,7 +141,11 @@ pub struct ResetParams {
 /// A message from the manager: the reply to a request, or the death of a
 /// device's sandbox, which every connection receives.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, garde::Validate)]
-#[serde(tag = "type", rename_all = "snake_case", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum MachineResponse {
     /// The operation's result, which the client decodes as the operation's
     /// [`Operation::Output`] once it knows which request this answers.
@@ -222,7 +226,9 @@ pub fn decode_response(line: &str) -> Result<MachineResponse, DecodeError> {
     decode(line)
 }
 
-fn decode<M: DeserializeOwned + garde::Validate<Context = ()>>(line: &str) -> Result<M, DecodeError> {
+fn decode<M: DeserializeOwned + garde::Validate<Context = ()>>(
+    line: &str,
+) -> Result<M, DecodeError> {
     let message: M = serde_json::from_str(line)?;
     message.validate()?;
     Ok(message)

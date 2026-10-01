@@ -18,9 +18,11 @@
 use std::os::unix::fs::PermissionsExt as _;
 use std::time::Duration;
 
-use demi_shared_types::Block;
 use demi_provider_common::testing::{MockResponse, MockVendor};
-use demi_web_api_protocol::providers::{AddedAccount, CliInstall, NewestVersion, ProviderAnswer, ProviderCli};
+use demi_shared_types::Block;
+use demi_web_api_protocol::providers::{
+    AddedAccount, CliInstall, NewestVersion, ProviderAnswer, ProviderCli,
+};
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 
@@ -88,21 +90,35 @@ fn install_by_hand(home: &str, version: &str) -> String {
 }
 
 async fn cli(backend: &TestBackend, session: &Session, provider: &str) -> ProviderCli {
-    let read = backend.get(&format!("/api/providers/{provider}/cli"), Some(session)).await;
-    assert_eq!(read.status, StatusCode::OK, "{}", String::from_utf8_lossy(&read.body));
+    let read = backend
+        .get(&format!("/api/providers/{provider}/cli"), Some(session))
+        .await;
+    assert_eq!(
+        read.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&read.body)
+    );
     read.json()
 }
 
 /// The entry's CLI once no install is under way, asking every 50 ms for at
 /// most 30 s.
-pub(crate) async fn settled(backend: &TestBackend, session: &Session, provider: &str) -> ProviderCli {
+pub(crate) async fn settled(
+    backend: &TestBackend,
+    session: &Session,
+    provider: &str,
+) -> ProviderCli {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
     loop {
         let read = cli(backend, session, provider).await;
         if read.install != Some(CliInstall::Installing {}) {
             return read;
         }
-        assert!(tokio::time::Instant::now() < deadline, "the install never ended");
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the install never ended"
+        );
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 }
@@ -140,10 +156,17 @@ async fn saved(backend: &TestBackend, session: &Session) -> Vec<Block> {
 // Over a second: the Cloud boots and installs the `demi.claude-code` package, which
 // installs the CLI and runs it.
 #[tokio::test]
-async fn a_conversation_on_a_paired_device_infers_through_the_clouds_cli_with_the_active_accounts_token() {
+async fn a_conversation_on_a_paired_device_infers_through_the_clouds_cli_with_the_active_accounts_token()
+ {
     let distribution = MockVendor::start().await;
-    distribution.respond_at("/releases/latest", MockResponse::status(200).chunk(format!("{NEWEST}\n")));
-    distribution.respond_at(&format!("/releases/{NEWEST}/manifest.json"), manifest(NEWEST));
+    distribution.respond_at(
+        "/releases/latest",
+        MockResponse::status(200).chunk(format!("{NEWEST}\n")),
+    );
+    distribution.respond_at(
+        &format!("/releases/{NEWEST}/manifest.json"),
+        manifest(NEWEST),
+    );
     // The catalog the conversation picks its model from.
     let catalog = MockVendor::start().await;
     catalog.respond_at("/api.json", claude_models());
@@ -162,17 +185,36 @@ async fn a_conversation_on_a_paired_device_infers_through_the_clouds_cli_with_th
             json!({ "token": FIRST_TOKEN, "label": "Claude" }),
         )
         .await;
-    assert_eq!(imported.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&imported.body));
-    let provider = imported.json::<ProviderAnswer>().provider.id.as_str().to_owned();
+    assert_eq!(
+        imported.status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&imported.body)
+    );
+    let provider = imported
+        .json::<ProviderAnswer>()
+        .provider
+        .id
+        .as_str()
+        .to_owned();
     let failed = settled(&backend, &master, &provider).await;
     let Some(CliInstall::Failed { message }) = &failed.install else {
         panic!("the install did not fail: {failed:?}");
     };
     let reason = format!("Claude Code {NEWEST} could not be installed: invalid release record");
     assert!(message.starts_with(&reason), "{message}");
-    assert_eq!(failed.newest, NewestVersion::Read { version: NEWEST.into() });
+    assert_eq!(
+        failed.newest,
+        NewestVersion::Read {
+            version: NEWEST.into()
+        }
+    );
     let devices = harness.manager.devices();
-    assert_eq!(devices.len(), 1, "the install woke the user's Cloud: {devices:?}");
+    assert_eq!(
+        devices.len(),
+        1,
+        "the install woke the user's Cloud: {devices:?}"
+    );
     let cloud = &devices[0];
     let machines: Vec<(&str, Option<Vec<String>>)> = failed
         .machines
@@ -180,17 +222,32 @@ async fn a_conversation_on_a_paired_device_infers_through_the_clouds_cli_with_th
         .map(|machine| (machine.device_id.as_str(), machine.versions.clone()))
         .collect();
     assert_eq!(machines, [(cloud.as_str(), Some(Vec::new()))]);
-    let accounts: Value = backend.get(&format!("/api/providers/{provider}/accounts"), Some(&master)).await.json();
+    let accounts: Value = backend
+        .get(
+            &format!("/api/providers/{provider}/accounts"),
+            Some(&master),
+        )
+        .await
+        .json();
     assert_eq!(accounts["accounts"].as_array().map(Vec::len), Some(1));
 
     // A request of a conversation whose files are on a paired laptop needs
     // the CLI on the Cloud: it fails the same way.
     create(&backend, &master, CONVERSATION).await;
     let (laptop, _) = on_device(&harness, &backend, &master, CONVERSATION).await;
-    choose(&backend, &master, CONVERSATION, &provider, "claude-opus-4-8").await;
+    choose(
+        &backend,
+        &master,
+        CONVERSATION,
+        &provider,
+        "claude-opus-4-8",
+    )
+    .await;
     let mut socket = Socket::connect(&backend, &master, CONVERSATION).await;
     socket.open().await;
-    socket.chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a01", "hello").await;
+    socket
+        .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a01", "hello")
+        .await;
     let Some(Block::Error(error)) = saved(&backend, &master).await.pop() else {
         panic!("the request did not fail");
     };
@@ -200,30 +257,60 @@ async fn a_conversation_on_a_paired_device_infers_through_the_clouds_cli_with_th
     let home = harness.manager.home(cloud);
     let older = install_by_hand(&home, OLDER);
     let started = backend
-        .post(&format!("/api/providers/{provider}/cli/install"), Some(&master), json!({}))
+        .post(
+            &format!("/api/providers/{provider}/cli/install"),
+            Some(&master),
+            json!({}),
+        )
         .await;
-    assert_eq!(started.status, StatusCode::ACCEPTED, "{}", String::from_utf8_lossy(&started.body));
+    assert_eq!(
+        started.status,
+        StatusCode::ACCEPTED,
+        "{}",
+        String::from_utf8_lossy(&started.body)
+    );
     let installed = settled(&backend, &master, &provider).await;
-    assert_eq!(installed.install, Some(CliInstall::Installed { path: older.clone() }));
+    assert_eq!(
+        installed.install,
+        Some(CliInstall::Installed {
+            path: older.clone()
+        })
+    );
     assert_eq!(installed.machines[0].versions, Some(vec![OLDER.to_owned()]));
     // The distribution was read once: its answer is believed.
     assert_eq!(distribution.requests().len(), 2);
 
     // The request infers through the Cloud's CLI, in Demi's directories
     // there, with the account's token; nothing of it reaches the laptop.
-    socket.chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a02", "hello again").await;
+    socket
+        .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a02", "hello again")
+        .await;
     let answer = |token: &str| {
-        format!("cli={older} token={token} cwd={home}/.demi/claude/run config={home}/.demi/claude/config")
+        format!(
+            "cli={older} token={token} cwd={home}/.demi/claude/run config={home}/.demi/claude/config"
+        )
     };
-    assert_eq!(last_text(&saved(&backend, &master).await), answer(FIRST_TOKEN));
+    assert_eq!(
+        last_text(&saved(&backend, &master).await),
+        answer(FIRST_TOKEN)
+    );
     assert!(!laptop.runner.home_dir().join(".demi/claude").exists());
 
     // After another account is selected, the next request closes the
     // process and starts one with that account's token.
     let added = backend
-        .post(&format!("/api/providers/{provider}/accounts"), Some(&master), json!({ "token": SECOND_TOKEN }))
+        .post(
+            &format!("/api/providers/{provider}/accounts"),
+            Some(&master),
+            json!({ "token": SECOND_TOKEN }),
+        )
         .await;
-    assert_eq!(added.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&added.body));
+    assert_eq!(
+        added.status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&added.body)
+    );
     let second = added.json::<AddedAccount>().account.id;
     let selected = backend
         .put(
@@ -232,9 +319,19 @@ async fn a_conversation_on_a_paired_device_infers_through_the_clouds_cli_with_th
             json!({ "credentialId": second }),
         )
         .await;
-    assert_eq!(selected.status, StatusCode::OK, "{}", String::from_utf8_lossy(&selected.body));
-    socket.chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a03", "and again").await;
-    assert_eq!(last_text(&saved(&backend, &master).await), answer(SECOND_TOKEN));
+    assert_eq!(
+        selected.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&selected.body)
+    );
+    socket
+        .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a03", "and again")
+        .await;
+    assert_eq!(
+        last_text(&saved(&backend, &master).await),
+        answer(SECOND_TOKEN)
+    );
     let processes = std::fs::read_to_string(format!("{home}/claude-processes.log")).unwrap();
     let expected = [
         format!("started {FIRST_TOKEN}"),

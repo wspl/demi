@@ -74,9 +74,14 @@ pub mod testing {
             writer
                 .start_file(*path, zip::write::SimpleFileOptions::default())
                 .expect("a fixture entry starts");
-            writer.write_all(contents).expect("a fixture entry is written");
+            writer
+                .write_all(contents)
+                .expect("a fixture entry is written");
         }
-        writer.finish().expect("a fixture archive ends").into_inner()
+        writer
+            .finish()
+            .expect("a fixture archive ends")
+            .into_inner()
     }
 
     /// What a fixture server answers for one path.
@@ -168,7 +173,11 @@ pub mod testing {
                     }
                 }
             });
-            Self { base, requests, accept }
+            Self {
+                base,
+                requests,
+                accept,
+            }
         }
 
         /// The URL of `path` on this server.
@@ -219,7 +228,10 @@ pub enum Error {
     Archive(String),
     /// An installation in place is not the one its receipt and archive name.
     #[error("the installation at {} {reason}", .directory.display())]
-    Installation { directory: std::path::PathBuf, reason: String },
+    Installation {
+        directory: std::path::PathBuf,
+        reason: String,
+    },
     /// A release already at its directory differs from the one being
     /// published: a published release is immutable.
     #[error("{} is already published with other contents", .0.display())]

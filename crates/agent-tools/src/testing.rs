@@ -3,7 +3,9 @@
 
 use std::rc::Rc;
 
-use demi_host_interface::{Host, HostError, HostFs, HostIdentity, HostKey, HostProcess, ShellEnvironment};
+use demi_host_interface::{
+    Host, HostError, HostFs, HostIdentity, HostKey, HostProcess, ShellEnvironment,
+};
 use futures_util::future::LocalBoxFuture;
 
 use crate::{EnvironmentScope, ShellEnvironmentFactory};
@@ -69,7 +71,9 @@ pub fn shown_output(result: &str) -> String {
     };
     let output = output.split("\nnext: ").next().unwrap_or(output);
     let output = match output.find(" bytes not shown so far; the newest: ") {
-        Some(at) => output[..at].rsplit_once("\n[... ").map_or("", |(shown, _)| shown),
+        Some(at) => output[..at]
+            .rsplit_once("\n[... ")
+            .map_or("", |(shown, _)| shown),
         None => output,
     };
     format!("{output}\n")

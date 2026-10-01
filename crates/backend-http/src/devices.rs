@@ -10,13 +10,17 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_backend_database::accounts::TokenHash;
 use demi_backend_database::devices::DeviceRecord;
-use demi_host_interface::{HostError, HostErrorKind, MkdirOptions};
-use demi_web_api_protocol::devices::{Claim, ClaimedDevice, DeviceKind, DeviceLog, DeviceLogLine, DeviceLogQuery, Devices};
-use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::files::{CreateDeviceDirectory, CreatedDirectory, DeviceDirectoryQuery, Directory};
-use demi_web_api_protocol::ids::DeviceId;
 use demi_backend_runners::codes::{ClaimCode, new_device_token};
 use demi_backend_runners::files::browse_directory;
+use demi_host_interface::{HostError, HostErrorKind, MkdirOptions};
+use demi_web_api_protocol::devices::{
+    Claim, ClaimedDevice, DeviceKind, DeviceLog, DeviceLogLine, DeviceLogQuery, Devices,
+};
+use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::files::{
+    CreateDeviceDirectory, CreatedDirectory, DeviceDirectoryQuery, Directory,
+};
+use demi_web_api_protocol::ids::DeviceId;
 
 use super::AppState;
 use super::body::JsonBody;
@@ -24,13 +28,19 @@ use super::error::ApiError;
 use super::gate::AuthUser;
 use super::query::QueryParams;
 
-pub(super) async fn list(State(state): State<AppState>, AuthUser(user): AuthUser) -> Result<Json<Devices>, ApiError> {
+pub(super) async fn list(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+) -> Result<Json<Devices>, ApiError> {
     let devices = state
         .shards
         .of(&user.id)
         .call(|shard, _| async move { shard.device_list().await })
         .await??;
-    let devices = devices.into_iter().filter(|device| device.kind == DeviceKind::User).collect();
+    let devices = devices
+        .into_iter()
+        .filter(|device| device.kind == DeviceKind::User)
+        .collect();
     Ok(Json(Devices { devices }))
 }
 
@@ -76,7 +86,11 @@ pub(super) async fn claim(
 }
 
 fn invalid_code() -> ApiError {
-    ApiError::new(StatusCode::NOT_FOUND, ErrorCode::InvalidCode, "Unknown or expired pairing code")
+    ApiError::new(
+        StatusCode::NOT_FOUND,
+        ErrorCode::InvalidCode,
+        "Unknown or expired pairing code",
+    )
 }
 
 /// Revokes a paired device: it stays while workspaces point at it.
@@ -86,7 +100,11 @@ pub(super) async fn revoke(
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let device = owned_device(&state, &user.id, &id, Some(DeviceKind::User)).await?;
-    let workspaces = state.services.control.workspaces_on_device(device.id.clone()).await?;
+    let workspaces = state
+        .services
+        .control
+        .workspaces_on_device(device.id.clone())
+        .await?;
     if workspaces > 0 {
         return Err(ApiError::new(
             StatusCode::CONFLICT,
@@ -115,13 +133,22 @@ pub(super) async fn browse(
         .shards
         .of(&user.id)
         .call(move |shard, _| async move {
-            let host = shard.devices().device_access(&device.id).ok_or_else(ApiError::device_offline)?;
+            let host = shard
+                .devices()
+                .device_access(&device.id)
+                .ok_or_else(ApiError::device_offline)?;
             let home = shard.devices().home(&device.id);
             let path = requested
                 .or_else(|| home.clone())
                 .ok_or_else(|| ApiError::invalid_query("Missing path query parameter"))?;
-            let entries = browse_directory(&host, &path).await.map_err(device_fs_error)?;
-            Ok::<_, ApiError>(Directory { path, home, entries })
+            let entries = browse_directory(&host, &path)
+                .await
+                .map_err(device_fs_error)?;
+            Ok::<_, ApiError>(Directory {
+                path,
+                home,
+                entries,
+            })
         })
         .await??;
     Ok(Json(listed))
@@ -140,7 +167,10 @@ pub(super) async fn make_directory(
         .shards
         .of(&user.id)
         .call(move |shard, _| async move {
-            let host = shard.devices().device_access(&device.id).ok_or_else(ApiError::device_offline)?;
+            let host = shard
+                .devices()
+                .device_access(&device.id)
+                .ok_or_else(ApiError::device_offline)?;
             let recursive = MkdirOptions { recursive: true };
             demi_host_interface::HostFs::mkdir(&host, &path, recursive)
                 .await
@@ -163,15 +193,24 @@ pub(super) async fn log(
         .shards
         .of(&user.id)
         .call(move |shard, _| async move {
-            let host = shard.devices().device_access(&device.id).ok_or_else(ApiError::device_offline)?;
+            let host = shard
+                .devices()
+                .device_access(&device.id)
+                .ok_or_else(ApiError::device_offline)?;
             let source = query.source.as_ref().map(|source| source.as_str());
-            host.read_log(query.since, query.limit.get(), source).await.map_err(|error| {
-                if error.kind == HostErrorKind::Offline {
-                    ApiError::device_offline()
-                } else {
-                    ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::LogUnreadable, error.message)
-                }
-            })
+            host.read_log(query.since, query.limit.get(), source)
+                .await
+                .map_err(|error| {
+                    if error.kind == HostErrorKind::Offline {
+                        ApiError::device_offline()
+                    } else {
+                        ApiError::new(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            ErrorCode::LogUnreadable,
+                            error.message,
+                        )
+                    }
+                })
         })
         .await??;
     let lines = page
@@ -179,15 +218,23 @@ pub(super) async fn log(
         .into_iter()
         .map(|line| {
             Ok(DeviceLogLine {
-                at: demi_shared_types::Timestamp::from_millisecond(line.at.0)
-                    .map_err(|error| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::LogUnreadable, error.to_string()))?,
+                at: demi_shared_types::Timestamp::from_millisecond(line.at.0).map_err(|error| {
+                    ApiError::new(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        ErrorCode::LogUnreadable,
+                        error.to_string(),
+                    )
+                })?,
                 source: line.source,
                 conversation_id: line.conversation_id,
                 text: line.text,
             })
         })
         .collect::<Result<_, ApiError>>()?;
-    Ok(Json(DeviceLog { lines, next: page.next }))
+    Ok(Json(DeviceLog {
+        lines,
+        next: page.next,
+    }))
 }
 
 /// The caller's device `id`, of `kind` when one is named; 404 otherwise.
@@ -197,9 +244,20 @@ async fn owned_device(
     id: &str,
     kind: Option<DeviceKind>,
 ) -> Result<DeviceRecord, ApiError> {
-    let not_found = || ApiError::new(StatusCode::NOT_FOUND, ErrorCode::DeviceNotFound, "No such device");
+    let not_found = || {
+        ApiError::new(
+            StatusCode::NOT_FOUND,
+            ErrorCode::DeviceNotFound,
+            "No such device",
+        )
+    };
     let id = DeviceId::try_from(id).map_err(|_| not_found())?;
-    let device = state.services.control.device(id).await?.ok_or_else(not_found)?;
+    let device = state
+        .services
+        .control
+        .device(id)
+        .await?
+        .ok_or_else(not_found)?;
     if device.user != *user || kind.is_some_and(|kind| kind != device.kind) {
         return Err(not_found());
     }
@@ -211,7 +269,9 @@ async fn owned_device(
 fn device_fs_error(error: HostError) -> ApiError {
     match error.kind {
         HostErrorKind::Offline => ApiError::device_offline(),
-        _ if error.code() == Some("ENOENT") => ApiError::new(StatusCode::NOT_FOUND, ErrorCode::FsError, error.message),
+        _ if error.code() == Some("ENOENT") => {
+            ApiError::new(StatusCode::NOT_FOUND, ErrorCode::FsError, error.message)
+        }
         _ => ApiError::new(StatusCode::BAD_REQUEST, ErrorCode::FsError, error.message),
     }
 }

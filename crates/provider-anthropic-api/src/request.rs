@@ -5,11 +5,11 @@
 
 use std::borrow::Cow;
 
-use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingSummary, is_blank};
 use demi_provider_common::{
     InferenceItem, InferenceRequest, MediaBytes, Medium, PromptCache, ResultPart, ToolDefinition,
     UserPart, json_body,
 };
+use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingSummary, is_blank};
 use serde::Serialize;
 
 /// The prefix this provider puts on the signatures and redacted data it

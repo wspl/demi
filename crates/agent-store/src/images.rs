@@ -87,9 +87,8 @@ fn fit_now(data: &B64Bytes, media_type: &str) -> Result<Fitted, Unfit> {
     let orientation = decoder.orientation()?;
     let came = decoder.dimensions();
     let mut image = DynamicImage::from_decoder(decoder)?;
-    let as_it_came = format != ImageFormat::Gif
-        && came.0.max(came.1) <= MAX_SIDE
-        && data.len() <= MAX_BYTES;
+    let as_it_came =
+        format != ImageFormat::Gif && came.0.max(came.1) <= MAX_SIDE && data.len() <= MAX_BYTES;
     if as_it_came {
         return Ok(Fitted {
             data: data.clone(),

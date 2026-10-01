@@ -11,6 +11,7 @@ mod request;
 
 use std::sync::Arc;
 
+pub(crate) use demi_provider_common::testing::run;
 use demi_provider_common::{
     Provider, ProviderRuntime, RuntimeEnv,
     credentials::{AccountMeta, CredentialPool, MemoryCredentialPool},
@@ -19,7 +20,6 @@ use demi_provider_common::{
 };
 use demi_provider_grok_build::{GrokConfig, GrokProvider};
 use serde_json::{Value, json};
-pub(crate) use demi_provider_common::testing::run;
 
 pub(crate) const NOW: &str = "2026-09-18T14:00:00.000Z";
 pub(crate) const ACCOUNT: &str = "cred-g";

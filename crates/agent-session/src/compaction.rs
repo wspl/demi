@@ -13,9 +13,11 @@ use demi_agent_transcript::{
     estimate::{RequestSize, block_tokens, context_tokens, request_size, text_tokens},
     last_assistant_text, replay,
 };
-use demi_shared_types::{B64Bytes, BlobRef, Block, ModelSelection, TokenUsage, TurnId, UserContentBlock};
-use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_provider_common::{ErrorCode, RequestLimits, ToolDefinition};
+use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
+use demi_shared_types::{
+    B64Bytes, BlobRef, Block, ModelSelection, TokenUsage, TurnId, UserContentBlock,
+};
 use futures_util::future::LocalBoxFuture;
 
 use super::{
@@ -376,7 +378,6 @@ fn session_copy(s: &Rc<SessionShared>, window: Vec<Block>, media: HeldMedia) -> 
         config: SessionConfig {
             compaction: CompactionConfig {
                 threshold_percent: None,
-                ..s.config.compaction
             },
             ..s.config
         },

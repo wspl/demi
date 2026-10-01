@@ -11,8 +11,8 @@ use futures_util::StreamExt as _;
 use futures_util::stream::BoxStream;
 use object_store::path::Path;
 use object_store::{
-    CopyOptions, GetOptions, GetResult, ListResult, MultipartUpload, ObjectMeta, ObjectStore, PutMultipartOptions,
-    PutOptions, PutPayload, PutResult, RenameOptions, Result,
+    CopyOptions, GetOptions, GetResult, ListResult, MultipartUpload, ObjectMeta, ObjectStore,
+    PutMultipartOptions, PutOptions, PutPayload, PutResult, RenameOptions, Result,
 };
 
 /// The counts of one object store, which clones share.
@@ -121,15 +121,25 @@ impl fmt::Display for Counted {
 
 #[async_trait::async_trait]
 impl ObjectStore for Counted {
-    async fn put_opts(&self, location: &Path, payload: PutPayload, opts: PutOptions) -> Result<PutResult> {
+    async fn put_opts(
+        &self,
+        location: &Path,
+        payload: PutPayload,
+        opts: PutOptions,
+    ) -> Result<PutResult> {
         let counters = &self.counts.0;
         counters.puts.fetch_add(1, Ordering::SeqCst);
-        let bytes = u64::try_from(payload.content_length()).expect("a payload's length fits in 64 bits");
+        let bytes =
+            u64::try_from(payload.content_length()).expect("a payload's length fits in 64 bits");
         counters.bytes_put.fetch_add(bytes, Ordering::SeqCst);
         self.inner.put_opts(location, payload, opts).await
     }
 
-    async fn put_multipart_opts(&self, location: &Path, opts: PutMultipartOptions) -> Result<Box<dyn MultipartUpload>> {
+    async fn put_multipart_opts(
+        &self,
+        location: &Path,
+        opts: PutMultipartOptions,
+    ) -> Result<Box<dyn MultipartUpload>> {
         self.inner.put_multipart_opts(location, opts).await
     }
 
@@ -149,7 +159,10 @@ impl ObjectStore for Counted {
         self.inner.get_opts(location, options).await
     }
 
-    fn delete_stream(&self, locations: BoxStream<'static, Result<Path>>) -> BoxStream<'static, Result<Path>> {
+    fn delete_stream(
+        &self,
+        locations: BoxStream<'static, Result<Path>>,
+    ) -> BoxStream<'static, Result<Path>> {
         let counts = self.counts.clone();
         let counted = locations.inspect(move |_| {
             counts.0.deletes.fetch_add(1, Ordering::SeqCst);

@@ -6,8 +6,8 @@
 use std::rc::Rc;
 
 use demi_command_protocol::{ArtifactLocation, PackageArtifact, PackageDescriptor};
-use demi_runner_protocol::manifest::{Manifest, ManifestError};
 use demi_host_interface::CommandSet;
+use demi_runner_protocol::manifest::{Manifest, ManifestError};
 use futures_util::future::LocalBoxFuture;
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;

@@ -10,9 +10,11 @@ use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::providers::{CredentialRow, CredentialWrite, NewProvider, ProviderRow};
 use demi_backend_page_sync::{Part, SyncRegistry};
-use demi_shared_types::{Timestamp, WireApi};
 use demi_provider_common::Secret;
-use demi_provider_common::credentials::{CredentialPool, MemoryCredentialPool, RefreshGates, decode_secret};
+use demi_provider_common::credentials::{
+    CredentialPool, MemoryCredentialPool, RefreshGates, decode_secret,
+};
+use demi_shared_types::{Timestamp, WireApi};
 use demi_web_api_protocol::auth::{Role, UserDto};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId, UserId};
 use demi_web_api_protocol::providers::{ConfiguredModels, CredentialKind, ProviderDto};
@@ -73,17 +75,33 @@ pub enum EntryCredential {
 pub struct ApiKeyConfig {
     #[garde(skip)]
     pub api_key: Secret,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[garde(skip)]
     pub base_url: Option<EndpointUrl>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[garde(skip)]
     pub wire_api: Option<WireApi>,
     /// The models.dev vendor the entry was added from.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[garde(inner(length(min = 1)))]
     pub vendor_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[garde(dive)]
     pub models: Option<ConfiguredModels>,
 }
@@ -125,7 +143,12 @@ impl ProviderEntry {
 }
 
 impl Vault {
-    pub fn new(control: ControlService, key: VaultKey, mode: InstanceMode, sync: SyncRegistry) -> Self {
+    pub fn new(
+        control: ControlService,
+        key: VaultKey,
+        mode: InstanceMode,
+        sync: SyncRegistry,
+    ) -> Self {
         Self(Arc::new(Shared {
             control,
             key,
@@ -210,7 +233,11 @@ impl Vault {
     }
 
     /// The entry `id` when it is one of `user`'s scope.
-    pub async fn visible(&self, user: &UserId, id: &ProviderId) -> Result<Option<ProviderEntry>, StorageError> {
+    pub async fn visible(
+        &self,
+        user: &UserId,
+        id: &ProviderId,
+    ) -> Result<Option<ProviderEntry>, StorageError> {
         let owner = self.owner_for(user).await?;
         let entry = self.entry(id.clone()).await?;
         Ok(entry.filter(|entry| entry.owner == owner))
@@ -268,11 +295,12 @@ impl Vault {
         let id = new_id();
         let mut accounts = Vec::new();
         for (meta, secret) in staged.entries() {
-            let account = CredentialId::try_from(meta.id).map_err(|error| StorageError::Corrupt {
-                table: "provider_credentials",
-                column: "id",
-                reason: format!("a login staged an account whose id is invalid: {error}"),
-            })?;
+            let account =
+                CredentialId::try_from(meta.id).map_err(|error| StorageError::Corrupt {
+                    table: "provider_credentials",
+                    column: "id",
+                    reason: format!("a login staged an account whose id is invalid: {error}"),
+                })?;
             accounts.push(CredentialWrite {
                 secret: self.seal_secret(&id, &account, &secret),
                 id: account,
@@ -285,7 +313,11 @@ impl Vault {
         // A pool held in memory never fails to answer.
         let staged_active = staged.active().await.ok().flatten();
         let active = staged_active
-            .and_then(|active| accounts.iter().find(|account| account.id.as_str() == active))
+            .and_then(|active| {
+                accounts
+                    .iter()
+                    .find(|account| account.id.as_str() == active)
+            })
             .or(accounts.first())
             .map(|account| account.id.clone());
         let provider = NewProvider {
@@ -345,8 +377,15 @@ impl Vault {
         self.0.control.credential(id, account).await
     }
 
-    pub fn seal_secret(&self, provider: &ProviderId, account: &CredentialId, secret: &str) -> Vec<u8> {
-        self.0.key.seal(seal::Row::Secret(provider, account), secret.as_bytes())
+    pub fn seal_secret(
+        &self,
+        provider: &ProviderId,
+        account: &CredentialId,
+        secret: &str,
+    ) -> Vec<u8> {
+        self.0
+            .key
+            .seal(seal::Row::Secret(provider, account), secret.as_bytes())
     }
 
     fn seal_config(&self, id: &ProviderId, config: &ApiKeyConfig) -> Vec<u8> {
@@ -358,10 +397,18 @@ impl Vault {
 
     fn decode(&self, row: ProviderRow) -> Result<ProviderEntry, StorageError> {
         let credential = match (row.kind, row.config) {
-            (CredentialKind::ApiKey, Some(sealed)) => EntryCredential::ApiKey(self.open_config(&row.id, &sealed)?),
-            (CredentialKind::Subscription, None) => EntryCredential::Subscription { active: row.active },
+            (CredentialKind::ApiKey, Some(sealed)) => {
+                EntryCredential::ApiKey(self.open_config(&row.id, &sealed)?)
+            }
+            (CredentialKind::Subscription, None) => {
+                EntryCredential::Subscription { active: row.active }
+            }
             // The schema ties the configuration to the kind.
-            _ => return Err(corrupt_config("the configuration does not match the entry's kind")),
+            _ => {
+                return Err(corrupt_config(
+                    "the configuration does not match the entry's kind",
+                ));
+            }
         };
         Ok(ProviderEntry {
             id: row.id,
@@ -382,9 +429,13 @@ impl Vault {
             .key
             .open(seal::Row::Config(id), sealed)
             .map_err(|error| corrupt_config(error.to_string()))?;
-        let text = String::from_utf8(document).map_err(|_| corrupt_config("the configuration is not UTF-8"))?;
-        let config: ApiKeyConfig = decode_secret(&text).map_err(|error| corrupt_config(error.to_string()))?;
-        config.validate().map_err(|report| corrupt_config(report.to_string()))?;
+        let text = String::from_utf8(document)
+            .map_err(|_| corrupt_config("the configuration is not UTF-8"))?;
+        let config: ApiKeyConfig =
+            decode_secret(&text).map_err(|error| corrupt_config(error.to_string()))?;
+        config
+            .validate()
+            .map_err(|report| corrupt_config(report.to_string()))?;
         Ok(config)
     }
 }

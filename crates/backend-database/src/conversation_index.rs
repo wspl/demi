@@ -81,7 +81,11 @@ pub struct SettingsChange {
 /// the directory the work starts in there. A Cloud has no device until its
 /// first use makes it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
-#[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 #[garde(allow_unvalidated)]
 pub enum ExecutionTarget {
     Cloud {
@@ -109,7 +113,9 @@ impl ExecutionTarget {
 
     pub fn path(&self) -> &str {
         match self {
-            Self::Cloud { path, .. } | Self::Device { path, .. } | Self::Workspace { path, .. } => path,
+            Self::Cloud { path, .. } | Self::Device { path, .. } | Self::Workspace { path, .. } => {
+                path
+            }
         }
     }
 }
@@ -139,7 +145,10 @@ pub enum RecordChange {
     /// hosts); one attached already stays as it is.
     Attach(AttachedHostRecord),
     /// An attached host's new name, unique within the conversation.
-    Rename { device: DeviceId, name: String },
+    Rename {
+        device: DeviceId,
+        name: String,
+    },
     /// A detach of an attached device; a device that is not attached
     /// detaches as nothing.
     Detach(DeviceId),
@@ -251,11 +260,12 @@ impl ControlService {
                     at: now,
                 },
             )?;
-            let record = conversation_by_id(&transaction, &id)?.ok_or_else(|| StorageError::Corrupt {
-                table: "conversations",
-                column: "id",
-                reason: "a conversation just created or found is missing".into(),
-            })?;
+            let record =
+                conversation_by_id(&transaction, &id)?.ok_or_else(|| StorageError::Corrupt {
+                    table: "conversations",
+                    column: "id",
+                    reason: "a conversation just created or found is missing".into(),
+                })?;
             transaction.commit()?;
             Ok(if record.owner != owner {
                 Creation::Unavailable
@@ -269,16 +279,27 @@ impl ControlService {
     }
 
     /// The conversation of `id`, in whichever case it is spelled.
-    pub async fn conversation(&self, id: ConversationId) -> Result<Option<ConversationRecord>, StorageError> {
-        self.call(move |connection, _| conversation_by_id(connection, &id)).await
+    pub async fn conversation(
+        &self,
+        id: ConversationId,
+    ) -> Result<Option<ConversationRecord>, StorageError> {
+        self.call(move |connection, _| conversation_by_id(connection, &id))
+            .await
     }
 
     /// The conversation's latest target switch, which every node's next
     /// context block describes; none before its first.
-    pub async fn last_switch(&self, id: ConversationId) -> Result<Option<TargetSwitch>, StorageError> {
+    pub async fn last_switch(
+        &self,
+        id: ConversationId,
+    ) -> Result<Option<TargetSwitch>, StorageError> {
         self.call(move |connection, _| {
             let text: Option<Option<String>> = connection
-                .query_row("SELECT last_switch FROM conversations WHERE id = ?1", [id.as_str()], |row| row.get(0))
+                .query_row(
+                    "SELECT last_switch FROM conversations WHERE id = ?1",
+                    [id.as_str()],
+                    |row| row.get(0),
+                )
                 .optional()?;
             text.flatten()
                 .map(|text| json("conversations", "last_switch", &text))
@@ -311,7 +332,10 @@ impl ControlService {
 
     /// The ids of the owner's conversations in the order the product state
     /// lists them: the active ones in sidebar order, then the archived ones.
-    pub async fn conversation_order(&self, owner: UserId) -> Result<Vec<ConversationId>, StorageError> {
+    pub async fn conversation_order(
+        &self,
+        owner: UserId,
+    ) -> Result<Vec<ConversationId>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection.prepare(&format!(
                 "SELECT id FROM conversations WHERE user_id = ?1 ORDER BY archived, {SIDEBAR_ORDER}"
@@ -319,7 +343,11 @@ impl ControlService {
             let mut rows = statement.query([owner.as_str()])?;
             let mut ids = Vec::new();
             while let Some(row) = rows.next()? {
-                ids.push(decode("conversations", "id", ConversationId::try_from(row.get::<_, String>(0)?))?);
+                ids.push(decode(
+                    "conversations",
+                    "id",
+                    ConversationId::try_from(row.get::<_, String>(0)?),
+                )?);
             }
             Ok(ids)
         })
@@ -328,7 +356,11 @@ impl ControlService {
 
     /// Acknowledges the output up to `revision`; an acknowledgement never
     /// moves the read revision back.
-    pub async fn mark_conversation_read(&self, id: ConversationId, revision: u64) -> Result<(), StorageError> {
+    pub async fn mark_conversation_read(
+        &self,
+        id: ConversationId,
+        revision: u64,
+    ) -> Result<(), StorageError> {
         let revision = revision_column(revision);
         self.call(move |connection, _| {
             connection.execute(
@@ -437,7 +469,11 @@ impl ControlService {
     /// Makes `title`, from the first message, the conversation's while its
     /// title is still the placeholder; answers whether it did, which makes
     /// this send the one a generated title may follow.
-    pub async fn title_from_first_message(&self, id: ConversationId, title: String) -> Result<bool, StorageError> {
+    pub async fn title_from_first_message(
+        &self,
+        id: ConversationId,
+        title: String,
+    ) -> Result<bool, StorageError> {
         self.call(move |connection, _| {
             let changed = connection.execute(
                 "UPDATE conversations SET title = ?2, title_origin = 'message'
@@ -495,9 +531,11 @@ impl ControlService {
     pub async fn live_at(&self, id: ConversationId) -> Result<Option<Timestamp>, StorageError> {
         self.call(move |connection, _| {
             connection
-                .query_row("SELECT live_at FROM conversations WHERE id = ?1", [id.as_str()], |row| {
-                    Ok(instant(row, "conversations", "live_at"))
-                })
+                .query_row(
+                    "SELECT live_at FROM conversations WHERE id = ?1",
+                    [id.as_str()],
+                    |row| Ok(instant(row, "conversations", "live_at")),
+                )
                 .optional()?
                 .transpose()
         })
@@ -550,7 +588,10 @@ pub struct NewConversation<'a> {
 /// Inserts `new` first in its owner's sidebar, unarchived and unpinned,
 /// unless a conversation has its id in any spelling; answers the rows it
 /// inserted.
-pub fn insert_conversation(connection: &Connection, new: &NewConversation<'_>) -> Result<usize, StorageError> {
+pub fn insert_conversation(
+    connection: &Connection,
+    new: &NewConversation<'_>,
+) -> Result<usize, StorageError> {
     let target = TargetColumns::of(new.target);
     let inserted = connection.execute(
         "INSERT INTO conversations (id, user_id, title, title_origin, archived, pinned, sort_order,
@@ -588,7 +629,9 @@ pub fn conversation_by_id(
     connection: &Connection,
     id: &ConversationId,
 ) -> Result<Option<ConversationRecord>, StorageError> {
-    let mut statement = connection.prepare(&format!("SELECT {CONVERSATION_COLUMNS} FROM conversations WHERE id = ?1"))?;
+    let mut statement = connection.prepare(&format!(
+        "SELECT {CONVERSATION_COLUMNS} FROM conversations WHERE id = ?1"
+    ))?;
     let mut rows = statement.query([id.as_str()])?;
     rows.next()?.map(conversation_row).transpose()
 }
@@ -599,17 +642,41 @@ fn conversation_row(row: &Row<'_>) -> Result<ConversationRecord, StorageError> {
     let model: Option<String> = row.get("model")?;
     let model = model.map(|text| json(TABLE, "model", &text)).transpose()?;
     Ok(ConversationRecord {
-        id: decode(TABLE, "id", ConversationId::try_from(row.get::<_, String>("id")?))?,
-        owner: decode(TABLE, "user_id", UserId::try_from(row.get::<_, String>("user_id")?))?,
+        id: decode(
+            TABLE,
+            "id",
+            ConversationId::try_from(row.get::<_, String>("id")?),
+        )?,
+        owner: decode(
+            TABLE,
+            "user_id",
+            UserId::try_from(row.get::<_, String>("user_id")?),
+        )?,
         title: row.get("title")?,
         archived: row.get("archived")?,
         pinned: row.get("pinned")?,
-        read_revision: decode(TABLE, "read_revision", u64::try_from(row.get::<_, i64>("read_revision")?))?,
+        read_revision: decode(
+            TABLE,
+            "read_revision",
+            u64::try_from(row.get::<_, i64>("read_revision")?),
+        )?,
         target: target_row(row)?,
-        context_version: decode(TABLE, "context_version", u64::try_from(row.get::<_, i64>("context_version")?))?,
+        context_version: decode(
+            TABLE,
+            "context_version",
+            u64::try_from(row.get::<_, i64>("context_version")?),
+        )?,
         model,
-        user_messages: decode(TABLE, "user_messages", u64::try_from(row.get::<_, i64>("user_messages")?))?,
-        titled_messages: decode(TABLE, "titled_messages", u64::try_from(row.get::<_, i64>("titled_messages")?))?,
+        user_messages: decode(
+            TABLE,
+            "user_messages",
+            u64::try_from(row.get::<_, i64>("user_messages")?),
+        )?,
+        titled_messages: decode(
+            TABLE,
+            "titled_messages",
+            u64::try_from(row.get::<_, i64>("titled_messages")?),
+        )?,
         created_at: instant(row, TABLE, "created_at")?,
         updated_at: instant(row, TABLE, "updated_at")?,
         draft_revision: decode(
@@ -630,14 +697,22 @@ fn target_row(row: &Row<'_>) -> Result<ConversationTarget, StorageError> {
         "device" => {
             let device: Option<String> = row.get("target_device_id")?;
             ConversationTarget::Device {
-                device_id: decode(TABLE, "target_device_id", DeviceId::try_from(device.unwrap_or_default()))?,
+                device_id: decode(
+                    TABLE,
+                    "target_device_id",
+                    DeviceId::try_from(device.unwrap_or_default()),
+                )?,
                 path: path.unwrap_or_default(),
             }
         }
         "workspace" => {
             let workspace: Option<String> = row.get("target_workspace_id")?;
             ConversationTarget::Workspace {
-                workspace_id: decode(TABLE, "target_workspace_id", WorkspaceId::try_from(workspace.unwrap_or_default()))?,
+                workspace_id: decode(
+                    TABLE,
+                    "target_workspace_id",
+                    WorkspaceId::try_from(workspace.unwrap_or_default()),
+                )?,
             }
         }
         other => {
@@ -673,8 +748,13 @@ pub struct AttachedHostRecord {
 
 impl ControlService {
     /// The conversation's attached hosts, first attached first.
-    pub async fn attached_hosts(&self, id: ConversationId) -> Result<Vec<AttachedHostRecord>, StorageError> {
-        let listed = self.call(move |connection, _| attached_rows(connection, &id)).await?;
+    pub async fn attached_hosts(
+        &self,
+        id: ConversationId,
+    ) -> Result<Vec<AttachedHostRecord>, StorageError> {
+        let listed = self
+            .call(move |connection, _| attached_rows(connection, &id))
+            .await?;
         Ok(listed.into_iter().map(|(host, _)| host).collect())
     }
 
@@ -684,7 +764,8 @@ impl ControlService {
         &self,
         id: ConversationId,
     ) -> Result<Vec<(AttachedHostRecord, Timestamp)>, StorageError> {
-        self.call(move |connection, _| attached_rows(connection, &id)).await
+        self.call(move |connection, _| attached_rows(connection, &id))
+            .await
     }
 }
 
@@ -797,7 +878,11 @@ fn attached_rows(
     let mut hosts = Vec::new();
     while let Some(row) = rows.next()? {
         let host = AttachedHostRecord {
-            device: decode(TABLE, "device_id", DeviceId::try_from(row.get::<_, String>("device_id")?))?,
+            device: decode(
+                TABLE,
+                "device_id",
+                DeviceId::try_from(row.get::<_, String>("device_id")?),
+            )?,
             name: row.get("name")?,
             cwd: row.get("cwd")?,
         };
@@ -821,7 +906,8 @@ pub fn insert_attached_host(
         "" => host.device.as_str(),
         trimmed => trimmed,
     };
-    let mut statement = connection.prepare_cached("SELECT name FROM conversation_hosts WHERE conversation_id = ?1")?;
+    let mut statement = connection
+        .prepare_cached("SELECT name FROM conversation_hosts WHERE conversation_id = ?1")?;
     let taken = statement
         .query_map([conversation.as_str()], |row| row.get::<_, String>(0))?
         .collect::<Result<std::collections::HashSet<String>, _>>()?;
@@ -848,7 +934,10 @@ pub fn insert_attached_host(
 
 /// Advances the conversation's execution-context revision, which every node
 /// observes before its next inference.
-fn advance_context(connection: &Connection, conversation: &ConversationId) -> Result<(), StorageError> {
+fn advance_context(
+    connection: &Connection,
+    conversation: &ConversationId,
+) -> Result<(), StorageError> {
     connection.execute(
         "UPDATE conversations SET context_version = context_version + 1 WHERE id = ?1",
         [conversation.as_str()],
@@ -861,8 +950,8 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use demi_runner_protocol::wire::RunnerPlatform;
     use crate::control::testing;
+    use demi_runner_protocol::wire::RunnerPlatform;
 
     fn conversation(number: u8) -> ConversationId {
         ConversationId::try_from(format!("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a{number:02x}")).unwrap()
@@ -878,23 +967,52 @@ mod tests {
     #[tokio::test]
     async fn the_index_finds_a_conversation_by_any_spelling_and_lists_the_newest_first() {
         let data = tempfile::tempdir().unwrap();
-        let control = ControlService::open(&data.path().join("control.sqlite"), Arc::new(demi_shared_types::SystemClock))
-            .await
-            .unwrap();
+        let control = ControlService::open(
+            &data.path().join("control.sqlite"),
+            Arc::new(demi_shared_types::SystemClock),
+        )
+        .await
+        .unwrap();
         let master = testing::master(&control).await.id;
-        let first = created(control.create_conversation(master.clone(), conversation(1)).await.unwrap());
-        assert_eq!(
-            (first.title.as_str(), &first.target, first.model.clone(), first.read_revision),
-            ("New conversation", &ConversationTarget::Cloud { path: None }, None, 0)
+        let first = created(
+            control
+                .create_conversation(master.clone(), conversation(1))
+                .await
+                .unwrap(),
         );
-        let second = created(control.create_conversation(master.clone(), conversation(2)).await.unwrap());
+        assert_eq!(
+            (
+                first.title.as_str(),
+                &first.target,
+                first.model.clone(),
+                first.read_revision
+            ),
+            (
+                "New conversation",
+                &ConversationTarget::Cloud { path: None },
+                None,
+                0
+            )
+        );
+        let second = created(
+            control
+                .create_conversation(master.clone(), conversation(2))
+                .await
+                .unwrap(),
+        );
 
         // Another spelling names the same conversation, which keeps the
         // spelling it was created with.
         let upper = ConversationId::try_from(conversation(1).as_str().to_uppercase()).unwrap();
-        assert_eq!(control.conversation(upper.clone()).await.unwrap(), Some(first.clone()));
         assert_eq!(
-            control.create_conversation(master.clone(), upper).await.unwrap(),
+            control.conversation(upper.clone()).await.unwrap(),
+            Some(first.clone())
+        );
+        assert_eq!(
+            control
+                .create_conversation(master.clone(), upper)
+                .await
+                .unwrap(),
             Creation::Existing(first.clone())
         );
 
@@ -906,10 +1024,22 @@ mod tests {
             .map(|record| record.id)
             .collect();
         assert_eq!(listed, [second.id.clone(), first.id.clone()]);
-        assert!(control.conversations(master, true).await.unwrap().is_empty());
+        assert!(
+            control
+                .conversations(master, true)
+                .await
+                .unwrap()
+                .is_empty()
+        );
 
-        control.mark_conversation_read(first.id.clone(), 5).await.unwrap();
-        control.mark_conversation_read(first.id.clone(), 3).await.unwrap();
+        control
+            .mark_conversation_read(first.id.clone(), 5)
+            .await
+            .unwrap();
+        control
+            .mark_conversation_read(first.id.clone(), 3)
+            .await
+            .unwrap();
         let model = demi_agent_store::testing::model_of("entry-1", "claude-opus-4-8");
         let changed = control
             .change_conversation(first.id.clone(), RecordChange::Model(model.clone()))
@@ -917,7 +1047,11 @@ mod tests {
             .unwrap();
         assert_eq!(changed, ChangeOutcome::Applied);
         control.touch_conversation(first.id.clone()).await.unwrap();
-        let read = control.conversation(first.id.clone()).await.unwrap().unwrap();
+        let read = control
+            .conversation(first.id.clone())
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!((read.read_revision, read.model), (5, Some(model)));
         assert!(read.updated_at >= first.updated_at);
 
@@ -930,7 +1064,14 @@ mod tests {
         .await;
         let refused = control.conversation(first.id.clone()).await.unwrap_err();
         assert!(
-            matches!(refused, StorageError::Corrupt { table: "conversations", column: "model", .. }),
+            matches!(
+                refused,
+                StorageError::Corrupt {
+                    table: "conversations",
+                    column: "model",
+                    ..
+                }
+            ),
             "{refused}"
         );
         control.close().await.unwrap();
@@ -939,11 +1080,20 @@ mod tests {
     #[tokio::test]
     async fn a_host_attaches_once_under_a_name_free_in_its_conversation() {
         let data = tempfile::tempdir().unwrap();
-        let control = ControlService::open(&data.path().join("control.sqlite"), Arc::new(demi_shared_types::SystemClock))
-            .await
-            .unwrap();
+        let control = ControlService::open(
+            &data.path().join("control.sqlite"),
+            Arc::new(demi_shared_types::SystemClock),
+        )
+        .await
+        .unwrap();
         let master = testing::master(&control).await.id;
-        let id = created(control.create_conversation(master.clone(), conversation(1)).await.unwrap()).id;
+        let id = created(
+            control
+                .create_conversation(master.clone(), conversation(1))
+                .await
+                .unwrap(),
+        )
+        .id;
         let mut devices = Vec::new();
         for (name, token) in [("laptop", "one"), ("laptop", "two"), ("ci", "three")] {
             let hash = crate::accounts::TokenHash::of(token);
@@ -994,11 +1144,20 @@ mod tests {
     #[tokio::test]
     async fn of_two_switches_from_one_target_one_wins_and_its_announcement_stays() {
         let data = tempfile::tempdir().unwrap();
-        let control = ControlService::open(&data.path().join("control.sqlite"), Arc::new(demi_shared_types::SystemClock))
-            .await
-            .unwrap();
+        let control = ControlService::open(
+            &data.path().join("control.sqlite"),
+            Arc::new(demi_shared_types::SystemClock),
+        )
+        .await
+        .unwrap();
         let master = testing::master(&control).await.id;
-        let id = created(control.create_conversation(master.clone(), conversation(1)).await.unwrap()).id;
+        let id = created(
+            control
+                .create_conversation(master.clone(), conversation(1))
+                .await
+                .unwrap(),
+        )
+        .id;
         let hash = crate::accounts::TokenHash::of("laptop");
         let laptop = control
             .create_device(master.clone(), "laptop".into(), RunnerPlatform::Linux, hash)
@@ -1044,9 +1203,11 @@ mod tests {
         // The winner's announcement is the one every node reads.
         let announced: String = control
             .call(move |connection, _| {
-                Ok(connection.query_row("SELECT last_switch FROM conversations WHERE id = ?1", [id.as_str()], |row| {
-                    row.get(0)
-                })?)
+                Ok(connection.query_row(
+                    "SELECT last_switch FROM conversations WHERE id = ?1",
+                    [id.as_str()],
+                    |row| row.get(0),
+                )?)
             })
             .await
             .unwrap();

@@ -1,8 +1,8 @@
 //! What the provider says about itself: its catalog, on either wire.
 
-use demi_shared_types::WireApi;
 use demi_provider_common::testing::{MockVendor, assert_built_in_catalog};
 use demi_provider_openai_api::VendorPolicy;
+use demi_shared_types::WireApi;
 
 use crate::provider_at;
 

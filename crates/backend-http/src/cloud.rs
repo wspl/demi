@@ -4,17 +4,20 @@
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use demi_web_api_protocol::cloud::{CloudReset, CloudResetAnswer, CloudStatus};
-use demi_web_api_protocol::error::ErrorCode;
 use demi_backend_cloud::machine::CloudError;
 use demi_backend_cloud::status::operation_dto;
+use demi_web_api_protocol::cloud::{CloudReset, CloudResetAnswer, CloudStatus};
+use demi_web_api_protocol::error::ErrorCode;
 
 use super::AppState;
 use super::body::JsonBody;
 use super::error::ApiError;
 use super::gate::AuthUser;
 
-pub(super) async fn status(State(state): State<AppState>, AuthUser(user): AuthUser) -> Result<Json<CloudStatus>, ApiError> {
+pub(super) async fn status(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+) -> Result<Json<CloudStatus>, ApiError> {
     let status = state
         .shards
         .of(&user.id)
@@ -37,7 +40,11 @@ pub(super) async fn reset(
         .await?
         .map_err(|error| match error {
             // A reset that cannot start now is refused like a second reset.
-            CloudError::Capacity => ApiError::new(StatusCode::CONFLICT, ErrorCode::CloudCapacity, error.to_string()),
+            CloudError::Capacity => ApiError::new(
+                StatusCode::CONFLICT,
+                ErrorCode::CloudCapacity,
+                error.to_string(),
+            ),
             error => error.into(),
         })?;
     let answer = CloudResetAnswer {

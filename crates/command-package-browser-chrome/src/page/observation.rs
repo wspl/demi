@@ -502,7 +502,9 @@ impl Observation {
                 .map(|node| ax_text(&node.ax.name))
                 .collect::<Vec<_>>();
             let name_matches = match &target.name_pattern {
-                Some(pattern) => Some(crate::page::query::pattern_matches(page, pattern, &names).await?),
+                Some(pattern) => {
+                    Some(crate::page::query::pattern_matches(page, pattern, &names).await?)
+                }
                 None => None,
             };
             let mut matches = Vec::new();

@@ -23,7 +23,9 @@ use super::error::ApiError;
 use super::gate::AuthUser;
 use demi_backend_user_shard::services::Services;
 
-pub(super) async fn setup_status(State(services): State<Arc<Services>>) -> Result<Json<SetupStatus>, ApiError> {
+pub(super) async fn setup_status(
+    State(services): State<Arc<Services>>,
+) -> Result<Json<SetupStatus>, ApiError> {
     let needed = !services.control.has_users().await?;
     Ok(Json(SetupStatus { needed }))
 }
@@ -36,7 +38,11 @@ pub(super) async fn setup(
     JsonBody(request): JsonBody<SetupRequest>,
 ) -> Result<Response, ApiError> {
     let password_hash = services.hasher.hash(request.password).await?;
-    let Some(user) = services.control.create_master(request.email, password_hash).await? else {
+    let Some(user) = services
+        .control
+        .create_master(request.email, password_hash)
+        .await?
+    else {
         return Err(ApiError::new(
             StatusCode::NOT_FOUND,
             ErrorCode::AlreadySetUp,
@@ -63,7 +69,9 @@ pub(super) async fn login(
         ));
     }
     let account = services.control.account_by_email(email.clone()).await?;
-    let stored = account.as_ref().map(|account| account.password_hash.clone());
+    let stored = account
+        .as_ref()
+        .map(|account| account.password_hash.clone());
     let verified = services.hasher.verify(credentials.password, stored).await?;
     let Some(account) = account.filter(|_| verified) else {
         services.limiter.failed(&email);
@@ -89,7 +97,9 @@ pub(super) async fn logout(
 ) -> Result<Response, ApiError> {
     if let Some(cookie) = jar.get(SESSION_COOKIE) {
         services.sessions.close(cookie.value()).await?;
-        services.sync.end_session(&user.id, &TokenHash::of(cookie.value()));
+        services
+            .sync
+            .end_session(&user.id, &TokenHash::of(cookie.value()));
     }
     Ok((cookies::remove(jar, https), StatusCode::NO_CONTENT).into_response())
 }
@@ -131,7 +141,10 @@ pub(super) async fn change_password(
         ));
     }
     let password_hash = services.hasher.hash(change.next).await?;
-    services.control.set_password(user.id, password_hash).await?;
+    services
+        .control
+        .set_password(user.id, password_hash)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -140,8 +153,14 @@ pub(super) async fn start_email_change(
     AuthUser(user): AuthUser,
     JsonBody(start): JsonBody<EmailChangeStart>,
 ) -> Result<(StatusCode, Json<EmailChangeStarted>), ApiError> {
-    match services.email.start(user.id, start.email, start.password).await? {
-        StartOutcome::Issued(challenge) => Ok((StatusCode::ACCEPTED, Json(EmailChangeStarted { challenge }))),
+    match services
+        .email
+        .start(user.id, start.email, start.password)
+        .await?
+    {
+        StartOutcome::Issued(challenge) => {
+            Ok((StatusCode::ACCEPTED, Json(EmailChangeStarted { challenge })))
+        }
         StartOutcome::Refused(refusal) => Err(refused(refusal)),
     }
 }
@@ -173,7 +192,11 @@ fn refused(refusal: StartRefusal) -> ApiError {
 }
 
 fn email_taken() -> ApiError {
-    ApiError::new(StatusCode::CONFLICT, ErrorCode::EmailTaken, "That email is already in use")
+    ApiError::new(
+        StatusCode::CONFLICT,
+        ErrorCode::EmailTaken,
+        "That email is already in use",
+    )
 }
 
 pub(super) async fn confirm_email_change(
@@ -181,7 +204,11 @@ pub(super) async fn confirm_email_change(
     AuthUser(user): AuthUser,
     JsonBody(confirm): JsonBody<EmailChangeConfirm>,
 ) -> Result<Json<Identity>, ApiError> {
-    match services.email.confirm(user.id, confirm.id, &confirm.code).await? {
+    match services
+        .email
+        .confirm(user.id, confirm.id, &confirm.code)
+        .await?
+    {
         ChallengeOutcome::Changed(user) => {
             services.sync.mark(&user.id, Part::User);
             Ok(Json(Identity { user }))

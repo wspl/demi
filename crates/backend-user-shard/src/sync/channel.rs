@@ -19,8 +19,8 @@ use demi_web_api_protocol::state::SyncEvent;
 use futures_util::StreamExt as _;
 use futures_util::stream::SplitStream;
 
-use demi_backend_expose::relay::first_expiry;
 use crate::shard::{PageGone, PageSocket, Shard};
+use demi_backend_expose::relay::first_expiry;
 
 /// The close code of a channel whose session ended.
 const SESSION_ENDED: u16 = 4002;
@@ -86,7 +86,10 @@ impl Shard {
             End::BackendClosing
         } else {
             let mut channel = Channel {
-                registration: self.services().sync.register(self.user(), session.token.clone()),
+                registration: self
+                    .services()
+                    .sync
+                    .register(self.user(), session.token.clone()),
                 shard: &self,
                 page: &mut page,
                 session,
@@ -124,14 +127,28 @@ impl Channel<'_> {
     /// Sends the product state, then every part that changes, until the
     /// channel ends.
     async fn serve(&mut self) -> Result<Infallible, End> {
-        let state = self.shard.product_state(self.session.user.clone()).await.map_err(|error| {
-            tracing::error!(error = &error as &dyn std::error::Error, "a page's product state could not be read");
-            End::InternalError
-        })?;
+        let state = self
+            .shard
+            .product_state(self.session.user.clone())
+            .await
+            .map_err(|error| {
+                tracing::error!(
+                    error = &error as &dyn std::error::Error,
+                    "a page's product state could not be read"
+                );
+                End::InternalError
+            })?;
         #[cfg(feature = "testing")]
-        self.shard.services().syncs.pass(super::SyncStep::Snapshot).await;
+        self.shard
+            .services()
+            .syncs
+            .pass(super::SyncStep::Snapshot)
+            .await;
         self.exposes.clone_from(&state.exposes);
-        self.send(&SyncEvent::Snapshot { state: Box::new(state) }).await?;
+        self.send(&SyncEvent::Snapshot {
+            state: Box::new(state),
+        })
+        .await?;
         loop {
             let woke = {
                 let clock = &*self.shard.services().clock;
@@ -145,7 +162,11 @@ impl Channel<'_> {
             match woke {
                 Woke::Marked => {
                     #[cfg(feature = "testing")]
-                    self.shard.services().syncs.pass(super::SyncStep::Changes).await;
+                    self.shard
+                        .services()
+                        .syncs
+                        .pass(super::SyncStep::Changes)
+                        .await;
                     let marked = self.registration.take();
                     if marked.session_ended {
                         return Err(End::SessionEnded);
@@ -174,7 +195,10 @@ impl Channel<'_> {
             }
             Ok(None) => Err(End::SessionEnded),
             Err(error) => {
-                tracing::error!(error = &error as &dyn std::error::Error, "a page's session could not be read");
+                tracing::error!(
+                    error = &error as &dyn std::error::Error,
+                    "a page's session could not be read"
+                );
                 Err(End::InternalError)
             }
         }
@@ -182,10 +206,18 @@ impl Channel<'_> {
 
     /// Reads `part` now and sends it.
     async fn send_part(&mut self, part: &Part) -> Result<(), End> {
-        let read = self.shard.read_part(part, &self.session.user).await.map_err(|error| {
-            tracing::error!(?part, error = &error as &dyn std::error::Error, "a part of a page's state could not be read");
-            End::InternalError
-        })?;
+        let read = self
+            .shard
+            .read_part(part, &self.session.user)
+            .await
+            .map_err(|error| {
+                tracing::error!(
+                    ?part,
+                    error = &error as &dyn std::error::Error,
+                    "a part of a page's state could not be read"
+                );
+                End::InternalError
+            })?;
         let Some(event) = read else {
             return Ok(());
         };
@@ -201,7 +233,8 @@ impl Channel<'_> {
         // The messages' types serialize their fields as JSON strings,
         // numbers, arrays and objects with string keys, which serde_json
         // never refuses.
-        let text = serde_json::to_string(event).expect("a synchronization message serializes to JSON");
+        let text =
+            serde_json::to_string(event).expect("a synchronization message serializes to JSON");
         self.page.send(text).await.map_err(|PageGone| End::PageGone)
     }
 }

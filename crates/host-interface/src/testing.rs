@@ -19,9 +19,9 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     ByteRange, CommandRecord, CpOptions, FileContents, FileKind, Host, HostError, MkdirOptions,
-    Numbers, PageFeed, PageView, PortError, PortRequest, PortResponse, PortTransport, Process, ProcessEnd,
-    Revision, RmOptions, RpcPort, Signal, SpawnEnv, SpawnErrorKind, SpawnRequest, StorageOp,
-    StorageReply, WriteOptions,
+    Numbers, PageFeed, PageView, PortError, PortRequest, PortResponse, PortTransport, Process,
+    ProcessEnd, Revision, RmOptions, RpcPort, Signal, SpawnEnv, SpawnErrorKind, SpawnRequest,
+    StorageOp, StorageReply, WriteOptions,
 };
 
 /// A page feed for environment tests: it keeps the view of each change it is

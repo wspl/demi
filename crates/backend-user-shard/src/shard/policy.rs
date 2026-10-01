@@ -9,11 +9,11 @@
 use std::rc::{Rc, Weak};
 
 use demi_backend_database::sequences;
-use demi_command_protocol::ServiceSequence;
-use demi_shared_types::Sequence;
 use demi_backend_remote_host::{JobOrigin, LinkPolicy};
-use demi_runner_protocol::wire::VolumeName;
+use demi_command_protocol::ServiceSequence;
 use demi_host_interface::{PortError, RpcError, RpcInvocation, RpcPort, StorageOp, StorageReply};
+use demi_runner_protocol::wire::VolumeName;
+use demi_shared_types::Sequence;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
@@ -40,7 +40,9 @@ impl ShardPolicy {
     }
 
     fn shard(&self) -> Result<Rc<Shard>, String> {
-        self.shard.upgrade().ok_or_else(|| "backend shutting down".to_owned())
+        self.shard
+            .upgrade()
+            .ok_or_else(|| "backend shutting down".to_owned())
     }
 }
 
@@ -83,17 +85,27 @@ impl LinkPolicy for ShardPolicy {
                 .ok_or_else(|| PortError::Storage("the job has no command storage".into()))?;
             let conversation = ConversationId::try_from(job.context.conversation.as_str())
                 .map_err(|_| PortError::Storage("the job belongs to no conversation".into()))?;
-            shard.agent().command_storage(&root_of(&conversation), caller, op, call).await
+            shard
+                .agent()
+                .command_storage(&root_of(&conversation), caller, op, call)
+                .await
         })
     }
 
     /// Only the user's Cloud grows its volumes (`managed-hosts.md`
     /// § Lifecycle and capacity).
-    fn grow_volume(&self, volume: VolumeName, bytes: u64) -> LocalBoxFuture<'static, Result<(), String>> {
+    fn grow_volume(
+        &self,
+        volume: VolumeName,
+        bytes: u64,
+    ) -> LocalBoxFuture<'static, Result<(), String>> {
         let shard = self.shard();
         let device = self.device.clone();
         Box::pin(async move {
-            let grown = shard?.cloud_shard().grow_cloud_volume(&device, volume, bytes).await;
+            let grown = shard?
+                .cloud_shard()
+                .grow_cloud_volume(&device, volume, bytes)
+                .await;
             if let Err(error) = &grown {
                 tracing::warn!(device = %device, %volume, bytes, "volume growth refused: {error}");
             }

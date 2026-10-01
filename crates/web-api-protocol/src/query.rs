@@ -15,7 +15,9 @@ impl<'de> Deserialize<'de> for StrictBool {
         match text.as_ref() {
             "true" => Ok(Self(true)),
             "false" => Ok(Self(false)),
-            other => Err(de::Error::custom(format!("must be true or false, not {other:?}"))),
+            other => Err(de::Error::custom(format!(
+                "must be true or false, not {other:?}"
+            ))),
         }
     }
 }

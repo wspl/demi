@@ -4,12 +4,12 @@
 
 use std::sync::Arc;
 
-use demi_shared_types::{QuotaScope, QuotaSeverity, QuotaUnit, QuotaWindow, Timestamp};
 use demi_provider_common::quota::{
     Observation, ProbeCost, ProbeReading, QuotaError, QuotaSource, clamp_used_percent, rfc3339,
     severity,
 };
 use demi_provider_common::wire::{NonEmpty, Reported};
+use demi_shared_types::{QuotaScope, QuotaSeverity, QuotaUnit, QuotaWindow, Timestamp};
 use futures_util::future::BoxFuture;
 use http::HeaderValue;
 use http::header::{ACCEPT, AUTHORIZATION};

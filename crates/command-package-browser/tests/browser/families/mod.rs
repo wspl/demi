@@ -183,7 +183,11 @@ impl BrowserFixture {
         tokio::time::timeout(std::time::Duration::from_secs(5), async {
             loop {
                 let (_, result) = self
-                    .result("browser.info", json!({"tab": tab}), CancellationToken::new())
+                    .result(
+                        "browser.info",
+                        json!({"tab": tab}),
+                        CancellationToken::new(),
+                    )
                     .await;
                 if result["error"]["code"] == "tab_busy" {
                     break;

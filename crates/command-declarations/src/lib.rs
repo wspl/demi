@@ -39,7 +39,10 @@ pub struct DeclarationError(String);
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(
     untagged,
-    bound(serialize = "B: Serialize + Clone", deserialize = "B: Deserialize<'de>")
+    bound(
+        serialize = "B: Serialize + Clone",
+        deserialize = "B: Deserialize<'de>"
+    )
 )]
 pub enum Node<B = Binding> {
     Group(Group<B>),
@@ -50,7 +53,10 @@ pub enum Node<B = Binding> {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(
     deny_unknown_fields,
-    bound(serialize = "B: Serialize + Clone", deserialize = "B: Deserialize<'de>")
+    bound(
+        serialize = "B: Serialize + Clone",
+        deserialize = "B: Deserialize<'de>"
+    )
 )]
 pub struct Group<B = Binding> {
     pub name: String,
@@ -64,7 +70,10 @@ pub struct Group<B = Binding> {
 #[serde(
     try_from = "RawLeaf<B>",
     into = "RawLeaf<B>",
-    bound(serialize = "B: Serialize + Clone", deserialize = "B: Deserialize<'de>")
+    bound(
+        serialize = "B: Serialize + Clone",
+        deserialize = "B: Deserialize<'de>"
+    )
 )]
 pub struct Leaf<B = Binding> {
     pub name: String,
@@ -84,7 +93,11 @@ pub struct Leaf<B = Binding> {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LeafOutput {
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     pub json: Option<Schema>,
 }
 
@@ -232,9 +245,7 @@ impl<B> Node<B> {
 
     fn validate_at(&self, depth: usize) -> Result<(), DeclarationError> {
         if depth > MAX_DEPTH {
-            return Err(invalid(format!(
-                "command tree exceeds {MAX_DEPTH} levels"
-            )));
+            return Err(invalid(format!("command tree exceeds {MAX_DEPTH} levels")));
         }
         if !is_command_name(self.name()) {
             return Err(invalid(format!("invalid command name: {}", self.name())));
@@ -250,10 +261,7 @@ impl<B> Node<B> {
                 let mut names = HashSet::new();
                 for child in &group.subcommands {
                     if !names.insert(child.name()) {
-                        return Err(invalid(format!(
-                            "duplicate command name: {}",
-                            child.name()
-                        )));
+                        return Err(invalid(format!("duplicate command name: {}", child.name())));
                     }
                     child.validate_at(depth + 1)?;
                 }
@@ -400,7 +408,9 @@ impl<B> Leaf<B> {
 /// then letters, digits, `_` and `-`.
 pub fn is_command_name(name: &str) -> bool {
     let mut bytes = name.bytes();
-    bytes.next().is_some_and(|byte| byte.is_ascii_alphanumeric())
+    bytes
+        .next()
+        .is_some_and(|byte| byte.is_ascii_alphanumeric())
         && bytes.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
 }
 
@@ -419,24 +429,60 @@ fn invalid(message: String) -> DeclarationError {
 struct RawLeaf<B> {
     name: String,
     summary: String,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     success_output: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     failure_output: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     running_hint: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     input: Option<Schema>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     positionals: Option<Vec<String>>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     stdin_field: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     rest_field: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     output: Option<LeafOutput>,
     kind: RawKind,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     binding: Option<B>,
 }
 

@@ -13,23 +13,26 @@
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
-use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
 use demi_agent_tools::testing::field;
 use demi_backend_blobs::counting::ObjectCounts;
-use demi_shared_types::{
-    Block, GoneCause, ModelMediaKind, Timestamp, ToolMediaSource, ToolResultContentBlock, UserContentBlock,
-};
+use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
 use demi_provider_common::testing::MockVendor;
+use demi_shared_types::{
+    Block, GoneCause, ModelMediaKind, Timestamp, ToolMediaSource, ToolResultContentBlock,
+    UserContentBlock,
+};
 use jiff::SignedDuration;
 use reqwest::StatusCode;
 use serde_json::json;
 use sha2::{Digest as _, Sha256};
 
 use crate::conversations::{
-    FIRST, SECOND, Socket, anthropic, answer, choose, create, on_device, tool_result, transcript,
+    FIRST, SECOND, Socket, answer, anthropic, choose, create, on_device, tool_result, transcript,
 };
 use crate::streams::{self, received};
-use crate::support::{Harness, MASTER_EMAIL, MASTER_PASSWORD, Paired, Session, TestBackend, eventually};
+use crate::support::{
+    Harness, MASTER_EMAIL, MASTER_PASSWORD, Paired, Session, TestBackend, eventually,
+};
 use crate::uploads::{png, upload, with_upload};
 use crate::work::{say, shell, switch};
 
@@ -53,7 +56,12 @@ fn orphan(harness: &Harness, session: &Session, bytes: &[u8], age: SignedDuratio
     let now = demi_shared_types::Clock::now(&*harness.clock).as_millisecond();
     let written = now - i64::try_from(age.as_millis()).unwrap();
     let written = SystemTime::UNIX_EPOCH + Duration::from_millis(u64::try_from(written).unwrap());
-    std::fs::File::options().write(true).open(&path).unwrap().set_modified(written).unwrap();
+    std::fs::File::options()
+        .write(true)
+        .open(&path)
+        .unwrap()
+        .set_modified(written)
+        .unwrap();
     path
 }
 
@@ -115,7 +123,10 @@ fn utc_day(at: Timestamp) -> jiff::civil::Date {
 
 /// A PNG retired on the clock's day, as `result_media` shows it.
 fn retired_on(harness: &Harness) -> String {
-    format!("image/png retired on {}", utc_day(demi_shared_types::Clock::now(&*harness.clock)))
+    format!(
+        "image/png retired on {}",
+        utc_day(demi_shared_types::Clock::now(&*harness.clock))
+    )
 }
 
 #[tokio::test]
@@ -126,17 +137,26 @@ async fn a_backend_runs_its_first_retention_pass_once_it_serves() {
     harness.lifecycle.retention_interval = Some(Duration::from_secs(24 * 60 * 60));
     let (backend, master) = harness.start_set_up().await;
     backend.close().await;
-    let left = orphan(&harness, &master, &png(4), DAY + SignedDuration::from_hours(1));
+    let left = orphan(
+        &harness,
+        &master,
+        &png(4),
+        DAY + SignedDuration::from_hours(1),
+    );
 
     let backend = harness.start().await;
-    eventually("the first pass collects the blob", || async { !left.exists() }).await;
+    eventually("the first pass collects the blob", || async {
+        !left.exists()
+    })
+    .await;
     assert_eq!(counts.tally().deletes, 1);
     backend.close().await;
 }
 
 // About two seconds: a real device runs the tool's shell command.
 #[tokio::test]
-async fn a_collection_deletes_an_unreferenced_blob_past_the_grace_and_nothing_while_a_database_cannot_be_read() {
+async fn a_collection_deletes_an_unreferenced_blob_past_the_grace_and_nothing_while_a_database_cannot_be_read()
+ {
     let counts = ObjectCounts::default();
     let vendor = MockVendor::start().await;
     let harness = Harness::new().with_object_counts(&counts);
@@ -157,11 +177,23 @@ async fn a_collection_deletes_an_unreferenced_blob_past_the_grace_and_nothing_wh
     create(&backend, &master, SECOND).await;
     let files = json!([{ "type": "upload", "ref": staged.id, "fileName": "staged.png" }]);
     let body = json!({ "base": 0, "text": "\u{FFFC}", "files": files });
-    let saved = backend.put(&format!("/api/conversations/{SECOND}/draft"), &master, body).await;
-    assert_eq!(saved.status, StatusCode::OK, "{}", String::from_utf8_lossy(&saved.body));
+    let saved = backend
+        .put(&format!("/api/conversations/{SECOND}/draft"), &master, body)
+        .await;
+    assert_eq!(
+        saved.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&saved.body)
+    );
     // What a failed save left a day ago, and what one left an hour ago.
     harness.clock.advance(DAY + SignedDuration::from_hours(1));
-    let left = orphan(&harness, &master, &png(4), DAY + SignedDuration::from_hours(1));
+    let left = orphan(
+        &harness,
+        &master,
+        &png(4),
+        DAY + SignedDuration::from_hours(1),
+    );
     let recent = orphan(&harness, &master, &png(5), SignedDuration::from_hours(1));
     let kept: Vec<PathBuf> = [png(1), png(2), png(3), Vec::new(), b"noted\n".to_vec()]
         .iter()
@@ -171,7 +203,10 @@ async fn a_collection_deletes_an_unreferenced_blob_past_the_grace_and_nothing_wh
 
     // The other conversation's database cannot be read, so the collection
     // deletes nothing.
-    let database = harness.data_dir().join("conversations").join(format!("{SECOND}.sqlite"));
+    let database = harness
+        .data_dir()
+        .join("conversations")
+        .join(format!("{SECOND}.sqlite"));
     std::fs::write(&database, "not a database").unwrap();
     let before = counts.tally();
     backend.run_retention(&master).await;
@@ -184,7 +219,11 @@ async fn a_collection_deletes_an_unreferenced_blob_past_the_grace_and_nothing_wh
     let before = counts.tally();
     backend.run_retention(&master).await;
     let collected = counts.tally().since(&before);
-    assert_eq!((collected.lists, collected.deletes), (1, 1), "{collected:?}");
+    assert_eq!(
+        (collected.lists, collected.deletes),
+        (1, 1),
+        "{collected:?}"
+    );
     assert!(!left.exists());
     for path in &kept {
         assert!(path.exists(), "{}", path.display());
@@ -195,7 +234,8 @@ async fn a_collection_deletes_an_unreferenced_blob_past_the_grace_and_nothing_wh
 // About three seconds: a real device runs two shell commands, and the
 // conversation compacts.
 #[tokio::test]
-async fn a_tool_image_summarized_a_day_before_goes_after_30_days_once_its_page_lets_go_and_its_blob_a_day_later() {
+async fn a_tool_image_summarized_a_day_before_goes_after_30_days_once_its_page_lets_go_and_its_blob_a_day_later()
+ {
     let counts = ObjectCounts::default();
     let vendor = MockVendor::start().await;
     let harness = Harness::new().with_object_counts(&counts);
@@ -207,7 +247,9 @@ async fn a_tool_image_summarized_a_day_before_goes_after_30_days_once_its_page_l
     let pasted = upload(&backend, &master, "pasted.png", "image/png", &png(3)).await;
     vendor.respond(shell("toolu_1", "cat shot.png", 60_000));
     vendor.respond(say("Seen."));
-    socket.send(&with_upload("m1", "Look", &[(&pasted, "pasted.png")])).await;
+    socket
+        .send(&with_upload("m1", "Look", &[(&pasted, "pasted.png")]))
+        .await;
     socket.until_idle().await;
     // A long message fills the history compaction keeps, so the pass
     // summarizes the first turn: its images lie before the boundary.
@@ -228,7 +270,10 @@ async fn a_tool_image_summarized_a_day_before_goes_after_30_days_once_its_page_l
     harness.clock.advance(DAY * 31);
     let master = backend.login(MASTER_EMAIL, MASTER_PASSWORD).await;
     backend.run_retention(&master).await;
-    assert_eq!(result_media(&backend, &master, "toolu_1").await, [shot.clone()]);
+    assert_eq!(
+        result_media(&backend, &master, "toolu_1").await,
+        std::slice::from_ref(&shot)
+    );
 
     // Once the page lets go, the image before the day-old boundary goes. The
     // one in the replayed window stays, since the conversation was in use,
@@ -239,13 +284,19 @@ async fn a_tool_image_summarized_a_day_before_goes_after_30_days_once_its_page_l
         result_media(&backend, &master, "toolu_1").await == [retired.clone()]
     })
     .await;
-    assert_eq!(result_media(&backend, &master, "toolu_2").await, [later.clone()]);
+    assert_eq!(
+        result_media(&backend, &master, "toolu_2").await,
+        std::slice::from_ref(&later)
+    );
     let blocks = transcript(&backend, &master, FIRST).await.blocks;
     let Some(Block::User(message)) = blocks.first() else {
         panic!("{blocks:?}");
     };
     assert!(
-        message.content.iter().any(|part| matches!(part, UserContentBlock::Image { .. })),
+        message
+            .content
+            .iter()
+            .any(|part| matches!(part, UserContentBlock::Image { .. })),
         "{message:?}"
     );
 
@@ -265,7 +316,8 @@ async fn a_tool_image_summarized_a_day_before_goes_after_30_days_once_its_page_l
 
 // About two seconds: a real device runs the tool's shell command.
 #[tokio::test]
-async fn a_conversation_idle_for_30_days_loses_its_tool_images_and_its_next_request_carries_their_text() {
+async fn a_conversation_idle_for_30_days_loses_its_tool_images_and_its_next_request_carries_their_text()
+ {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     harness.clock.follow_system();
@@ -280,7 +332,10 @@ async fn a_conversation_idle_for_30_days_loses_its_tool_images_and_its_next_requ
     harness.clock.advance(DAY * 31);
     let master = backend.login(MASTER_EMAIL, MASTER_PASSWORD).await;
     backend.run_retention(&master).await;
-    assert_eq!(result_media(&backend, &master, "toolu_1").await, [retired_on(&harness)]);
+    assert_eq!(
+        result_media(&backend, &master, "toolu_1").await,
+        [retired_on(&harness)]
+    );
 
     // The resumed conversation's next request carries the text where the
     // image was.
@@ -293,7 +348,10 @@ async fn a_conversation_idle_for_30_days_loses_its_tool_images_and_its_next_requ
         "[image:image/png, removed on {day}: a tool result's images and videos are kept for 30 days]"
     );
     assert!(sent.contains(&retired), "{sent}");
-    assert!(!sent.contains(&data_encoding::BASE64.encode(&png(1))), "{sent}");
+    assert!(
+        !sent.contains(&data_encoding::BASE64.encode(&png(1))),
+        "{sent}"
+    );
     backend.close().await;
 }
 
@@ -310,7 +368,8 @@ async fn an_archive_succeeds_though_its_device_goes_away_during_the_release() {
     }
     // The fixture service holds the conversation, and its release of it
     // never ends by itself.
-    let (_, code, reason) = received(&mut streams::socket(&backend, &master, FIRST, "stall_release").await).await;
+    let (_, code, reason) =
+        received(&mut streams::socket(&backend, &master, FIRST, "stall_release").await).await;
     assert_eq!((code, reason.as_str()), (1000, "completed"));
 
     // The archive's release reaches the device, which goes away before it
@@ -318,12 +377,18 @@ async fn an_archive_succeeds_though_its_device_goes_away_during_the_release() {
     let path = format!("/api/conversations/{FIRST}");
     let archiving = backend.patch(&path, &master, json!({ "archived": true }));
     let going_away = async {
-        let (_, code, reason) = received(&mut streams::socket(&backend, &master, SECOND, "stalled").await).await;
+        let (_, code, reason) =
+            received(&mut streams::socket(&backend, &master, SECOND, "stalled").await).await;
         assert_eq!((code, reason.as_str()), (1000, "completed"));
         laptop.runner.kill().await;
     };
     let (archived, ()) = tokio::join!(archiving, going_away);
-    assert_eq!(archived.status, StatusCode::OK, "{}", String::from_utf8_lossy(&archived.body));
+    assert_eq!(
+        archived.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&archived.body)
+    );
     backend.close().await;
 }
 
@@ -338,7 +403,11 @@ async fn a_commands_output_is_removed_30_days_after_it_ended() {
     vendor.respond(shell("toolu_1", "echo kept", 60_000));
     vendor.respond(say("Said."));
     socket.chat("m1", "Say it").await;
-    let command = field(&tool_result(&vendor.requests()[1].json(), "toolu_1"), "commandId").to_owned();
+    let command = field(
+        &tool_result(&vendor.requests()[1].json(), "toolu_1"),
+        "commandId",
+    )
+    .to_owned();
     let read = |id: &str| shell(id, &format!("demi shell output {command} --raw"), 60_000);
     vendor.respond(read("toolu_2"));
     vendor.respond(say("Read."));

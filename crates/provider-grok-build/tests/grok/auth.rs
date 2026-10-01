@@ -2,12 +2,12 @@
 //! before a request, after a refusal with HTTP 401, and one at a time
 //! (`providers.md` § Token refresh).
 
-use demi_shared_types::{AuthState, TokenUsage};
 use demi_provider_common::{
     ErrorCode, Provider, ProviderEvent,
     credentials::{AccountMeta, CredentialPool, MemoryCredentialPool},
     testing::{MockResponse, MockVendor, inference_request},
 };
+use demi_shared_types::{AuthState, TokenUsage};
 use serde_json::{Value, json};
 
 use crate::{ACCOUNT, CHAT, chat, form, json_answer, pool_with, provider, run, runtime_of, secret};

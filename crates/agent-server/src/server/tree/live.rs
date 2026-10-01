@@ -11,8 +11,8 @@ use std::{
 };
 
 use demi_agent_tools::shell_output;
-use demi_shared_types::{CommandId, NodeId};
 use demi_host_interface::{CommandRecord, PageFeed};
+use demi_shared_types::{CommandId, NodeId};
 use tokio::{
     sync::{Notify, watch},
     time::Instant,

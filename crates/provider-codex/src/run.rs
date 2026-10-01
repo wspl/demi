@@ -78,7 +78,7 @@ pub(crate) fn run(
                     refused_token = Some(credentials.access_token);
                 }
                 Err(OpenError::Refused(refusal)) => {
-                    yield ProviderEvent::Error(refused(refusal, &shared));
+                    yield ProviderEvent::Error(refused(*refusal, &shared));
                     return;
                 }
                 Err(OpenError::Failed(failure)) => {

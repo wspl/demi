@@ -40,7 +40,10 @@ pub(super) fn execute(
         let raw = RawCommand::new(
             commands.context.clone(),
             context.command_name,
-            args.into_iter().skip(1).map(|arg| arg.to_string()).collect(),
+            args.into_iter()
+                .skip(1)
+                .map(|arg| arg.to_string())
+                .collect(),
             is_live(&stdin, &env)?,
         )?;
         let cancellation = scope.cancellation.child_token();

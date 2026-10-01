@@ -184,15 +184,25 @@ mod tests {
 
     #[test]
     fn an_email_address_is_trimmed_and_lowercased_before_it_is_checked() {
-        assert_eq!(email("  Ana@Example.TEST \n"), Ok("ana@example.test".to_owned()));
+        assert_eq!(
+            email("  Ana@Example.TEST \n"),
+            Ok("ana@example.test".to_owned())
+        );
         let longest = format!("{}@example.test", "a".repeat(EMAIL_MAX - 13));
-        assert_eq!(email(&format!("  {}  ", longest.to_uppercase())), Ok(longest.clone()));
+        assert_eq!(
+            email(&format!("  {}  ", longest.to_uppercase())),
+            Ok(longest.clone())
+        );
         assert_eq!(email(&format!("a{longest}")), Err(EmailError::TooLong));
     }
 
     #[test]
     fn an_email_address_has_the_form_the_web_app_accepts() {
-        for accepted in ["a@b.co", "first.last+tag@sub.example.org", "o'neil_x-y@a-b.example"] {
+        for accepted in [
+            "a@b.co",
+            "first.last+tag@sub.example.org",
+            "o'neil_x-y@a-b.example",
+        ] {
             assert!(email(accepted).is_ok(), "{accepted}");
         }
         for refused in [
@@ -214,10 +224,24 @@ mod tests {
 
     #[test]
     fn an_endpoint_is_an_http_or_https_url() {
-        let endpoint = |text: &str| EndpointUrl::try_from(text.to_owned()).map(|endpoint| endpoint.as_str().to_owned());
-        assert_eq!(endpoint("https://api.kimi.com/coding/v1"), Ok("https://api.kimi.com/coding/v1".to_owned()));
-        assert_eq!(endpoint("http://127.0.0.1:8080"), Ok("http://127.0.0.1:8080/".to_owned()));
-        for refused in ["", "api.openai.com/v1", "ftp://example.test/", "file:///etc", "https://"] {
+        let endpoint = |text: &str| {
+            EndpointUrl::try_from(text.to_owned()).map(|endpoint| endpoint.as_str().to_owned())
+        };
+        assert_eq!(
+            endpoint("https://api.kimi.com/coding/v1"),
+            Ok("https://api.kimi.com/coding/v1".to_owned())
+        );
+        assert_eq!(
+            endpoint("http://127.0.0.1:8080"),
+            Ok("http://127.0.0.1:8080/".to_owned())
+        );
+        for refused in [
+            "",
+            "api.openai.com/v1",
+            "ftp://example.test/",
+            "file:///etc",
+            "https://",
+        ] {
             assert_eq!(endpoint(refused), Err(NotEndpoint), "{refused}");
         }
     }

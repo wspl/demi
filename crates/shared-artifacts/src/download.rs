@@ -124,7 +124,11 @@ fn failed(error: reqwest::Error) -> Error {
 }
 
 /// The answer to a GET of `url`, once it is a success.
-async fn get(client: &reqwest::Client, url: &str, cancel: &CancellationToken) -> Result<reqwest::Response, Error> {
+async fn get(
+    client: &reqwest::Client,
+    url: &str,
+    cancel: &CancellationToken,
+) -> Result<reqwest::Response, Error> {
     let response = tokio::select! {
         _ = cancel.cancelled() => return Err(Error::Cancelled),
         response = client.get(url).send() => response.map_err(failed)?,
@@ -138,7 +142,9 @@ async fn get(client: &reqwest::Client, url: &str, cancel: &CancellationToken) ->
     // The client decodes zstd and then drops the header, and with it the
     // encoded length: a coding still named is one it does not decode.
     if let Some(coding) = response.headers().get(reqwest::header::CONTENT_ENCODING) {
-        return Err(Error::Coding(String::from_utf8_lossy(coding.as_bytes()).into_owned()));
+        return Err(Error::Coding(
+            String::from_utf8_lossy(coding.as_bytes()).into_owned(),
+        ));
     }
     Ok(response)
 }

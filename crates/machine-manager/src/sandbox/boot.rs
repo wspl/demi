@@ -165,7 +165,12 @@ impl Sandbox {
         let credentials = boot.clone();
         let dns = core.config.dns.clone();
         blocking::run(move |off| -> io::Result<()> {
-            mount::system_overlay(off, &directory.base(), &directory.volume(Volume::System), &directory.rootfs())?;
+            mount::system_overlay(
+                off,
+                &directory.base(),
+                &directory.volume(Volume::System),
+                &directory.rootfs(),
+            )?;
             mount::tmpfs(off, &directory.credentials(), "size=1m,mode=0700")?;
             directory.write_credentials(off, &credentials, &dns)?;
             Ok(())
@@ -194,11 +199,15 @@ impl Sandbox {
             Ok((log.into_parts().0, directory.log()))
         })
         .await?;
-        core.runsc.start(&self.record.id, self.directory.root(), log).await?;
+        core.runsc
+            .start(&self.record.id, self.directory.root(), log)
+            .await?;
         fault::point("sandbox-started");
         let runsc = core.runsc.clone();
         let id = self.record.id.clone();
-        self.waiter = Some(tokio::task::spawn_local(async move { runsc.wait(&id).await }));
+        self.waiter = Some(tokio::task::spawn_local(
+            async move { runsc.wait(&id).await },
+        ));
         Ok(())
     }
 
@@ -265,7 +274,11 @@ impl Sandbox {
         volume: Volume,
         bytes: NonZeroU64,
     ) -> Result<NonZeroU64, SandboxError> {
-        let number = *self.loops.as_ref().ok_or(SandboxError::NotGrowable)?.get(volume);
+        let number = *self
+            .loops
+            .as_ref()
+            .ok_or(SandboxError::NotGrowable)?
+            .get(volume);
         let image = working.images().get(volume).clone();
         let extended = image.clone();
         blocking::run(move |off| -> io::Result<()> {
@@ -337,11 +350,14 @@ impl Sandbox {
                 core.runsc.resume(id).await?;
             }
             let signalled = core.runsc.terminate(id).await?;
-            if !signalled.status.success() && core.runsc.status(id).await? != Some(Status::Stopped) {
+            if !signalled.status.success() && core.runsc.status(id).await? != Some(Status::Stopped)
+            {
                 return Err(SandboxError::Signal(signalled.message().to_owned()));
             }
             let deadline = tokio::time::Instant::now() + STOP_GRACE;
-            while tokio::time::Instant::now() < deadline && core.runsc.status(id).await? == Some(Status::Running) {
+            while tokio::time::Instant::now() < deadline
+                && core.runsc.status(id).await? == Some(Status::Running)
+            {
                 tokio::time::sleep(STOP_POLL).await;
             }
         }
@@ -365,9 +381,14 @@ impl Drop for Sandbox {
 
 /// `e2fsck -p` before a mount; exit 1 means it corrected the filesystem.
 async fn check(tools: &Tools, volume: Volume, image: &Path) -> Result<(), SandboxError> {
-    let output = tools.output(Tool::E2fsck, [Path::new("-p"), image], None).await?;
+    let output = tools
+        .output(Tool::E2fsck, [Path::new("-p"), image], None)
+        .await?;
     if !matches!(output.status.code(), Some(0 | 1)) {
-        return Err(SandboxError::NeedsRecovery(volume, output.message().to_owned()));
+        return Err(SandboxError::NeedsRecovery(
+            volume,
+            output.message().to_owned(),
+        ));
     }
     Ok(())
 }

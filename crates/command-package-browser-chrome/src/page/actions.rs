@@ -295,7 +295,9 @@ pub async fn command_admitted(
                 let view = input.view.unwrap_or_default();
                 let limit = input.limit.unwrap_or(DEFAULT_NODES);
                 let (tree, truncated) = match view {
-                    crate::page::protocol::InspectView::Dom => observation.dom_tree(references, limit)?,
+                    crate::page::protocol::InspectView::Dom => {
+                        observation.dom_tree(references, limit)?
+                    }
                     crate::page::protocol::InspectView::Accessibility => {
                         let (nodes, truncated) = observation.tree(references, limit)?;
                         (observation::hierarchy(nodes), truncated)
@@ -319,9 +321,10 @@ pub async fn command_admitted(
                             "find --query cannot combine ordinary target flags".into(),
                         ));
                     }
-                    let query = crate::page::query::parse(input.body.as_deref().ok_or_else(|| {
-                        BrowserError::Configuration("find --query requires stdin".into())
-                    })?)?;
+                    let query =
+                        crate::page::query::parse(input.body.as_deref().ok_or_else(|| {
+                            BrowserError::Configuration("find --query requires stdin".into())
+                        })?)?;
                     observation.query(tab.page(), &query, references).await?
                 } else {
                     if input.body.is_some() {
@@ -619,7 +622,8 @@ pub async fn command_admitted(
                         &operation,
                     )
                     .await?;
-                    crate::page::keyboard::type_text(tab, &element, &input.text, &operation).await?;
+                    crate::page::keyboard::type_text(tab, &element, &input.text, &operation)
+                        .await?;
                     None
                 } else {
                     let (_, name) =
@@ -921,8 +925,7 @@ pub async fn command_admitted(
             // register in time appears in a later `tabs`.
             let registered = operation.run(tab.popups());
             if let Ok(Ok(after)) =
-                tokio::time::timeout(crate::driver::operation::CONTROL_TIMEOUT, registered)
-                    .await
+                tokio::time::timeout(crate::driver::operation::CONTROL_TIMEOUT, registered).await
             {
                 let opened: Vec<_> = after
                     .into_iter()
@@ -961,15 +964,13 @@ async fn target_info(tab: &BrowserTab) -> Result<(String, String)> {
 pub(crate) async fn completed_navigation(tab: &BrowserTab, url: String) -> NavigationResult {
     // A metadata failure cannot reverse completed input. A subsequent
     // navigation's title must not be attributed to the document we observed.
-    let title = match tokio::time::timeout(
-        crate::driver::operation::CONTROL_TIMEOUT,
-        target_info(tab),
-    )
-    .await
-    {
-        Ok(Ok((current, title))) if current == url => Some(title),
-        _ => None,
-    };
+    let title =
+        match tokio::time::timeout(crate::driver::operation::CONTROL_TIMEOUT, target_info(tab))
+            .await
+        {
+            Ok(Ok((current, title))) if current == url => Some(title),
+            _ => None,
+        };
     NavigationResult {
         tab: tab.id().clone(),
         url,

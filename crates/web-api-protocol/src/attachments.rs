@@ -41,7 +41,11 @@ pub struct AttachmentDto {
     /// The bytes in the caller's blobs.
     pub sha256: BlobRef,
     pub created_at: Timestamp,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "String")]
     pub snippet: Option<String>,
 }

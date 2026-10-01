@@ -1,13 +1,13 @@
 //! A Codex account's quota: the `x-codex-*` headers on every answer of the
 //! service and the free usage probe (`usage-and-quota.md` § Codex).
 
-use demi_shared_types::{QuotaSeverity, SnapshotSource, Timestamp};
+use demi_provider_codex::TransportMode;
 use demi_provider_common::{
     Provider,
     quota::{ProbeCost, QuotaError},
     testing::{MockResponse, MockVendor, inference_request},
 };
-use demi_provider_codex::TransportMode;
+use demi_shared_types::{QuotaSeverity, SnapshotSource, Timestamp};
 use serde_json::json;
 
 use crate::{NOW, RESPONSES, completed, fresh_token, pool_with, provider, run, runtime_of, secret};

@@ -18,9 +18,9 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use demi_agent_tools::testing::shown_output;
-use demi_shared_types::Clock as _;
-use demi_shared_gates::Purpose;
 use demi_provider_common::testing::MockVendor;
+use demi_shared_gates::Purpose;
+use demi_shared_types::Clock as _;
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::cloud::ResetPhase;
 use demi_web_api_protocol::error::ErrorCode;
@@ -29,7 +29,10 @@ use futures_util::{SinkExt as _, StreamExt as _};
 use jiff::SignedDuration;
 use reqwest::StatusCode;
 use serde_json::json;
-use tokio::io::{AsyncBufRead, AsyncBufReadExt as _, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _, BufReader};
+use tokio::io::{
+    AsyncBufRead, AsyncBufReadExt as _, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _,
+    BufReader,
+};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Notify, mpsc};
@@ -105,7 +108,12 @@ async fn a_relayed_request_reaches_the_service_as_sent_and_its_answer_comes_back
     ] {
         assert_eq!(seen.values(name), [value], "{name}: {:?}", seen.headers);
     }
-    assert_eq!(seen.headers.len(), 10, "nothing else reaches the service: {:?}", seen.headers);
+    assert_eq!(
+        seen.headers.len(),
+        10,
+        "nothing else reaches the service: {:?}",
+        seen.headers
+    );
     assert_eq!(answer.line, "HTTP/1.1 200 OK");
     for (name, value) in [
         ("Content-Type", "text/plain"),
@@ -116,9 +124,16 @@ async fn a_relayed_request_reaches_the_service_as_sent_and_its_answer_comes_back
     }
     assert_eq!(
         answer.lines("set-cookie"),
-        [("Set-Cookie", "first=1; Path=/"), ("set-cookie", "second=2; HttpOnly")]
+        [
+            ("Set-Cookie", "first=1; Path=/"),
+            ("set-cookie", "second=2; HttpOnly")
+        ]
     );
-    assert!(answer.lines("connection").is_empty(), "{:?}", answer.headers);
+    assert!(
+        answer.lines("connection").is_empty(),
+        "{:?}",
+        answer.headers
+    );
     let mut body = [0; 5];
     read.read_exact(&mut body).await.unwrap();
     assert_eq!(&body, b"hello");
@@ -135,23 +150,33 @@ async fn a_relayed_request_reaches_the_service_as_sent_and_its_answer_comes_back
     let answer = read_head(&mut read).await;
     assert_eq!(answer.line, "HTTP/1.1 200 OK");
     assert_eq!(answer.values("transfer-encoding"), ["chunked"]);
-    assert!(read_chunked(&mut read).await == pattern(BODY_BYTES, 7), "the answer arrived changed");
+    assert!(
+        read_chunked(&mut read).await == pattern(BODY_BYTES, 7),
+        "the answer arrived changed"
+    );
     let Seen::Request { head: seen, body } = fixture.next().await else {
         panic!("the service saw an event stream");
     };
     assert_eq!(seen.line, "POST /upload HTTP/1.1");
     assert_eq!(seen.values("transfer-encoding"), ["chunked"]);
-    assert!(body == pattern(BODY_BYTES, 3), "the request body arrived changed");
+    assert!(
+        body == pattern(BODY_BYTES, 3),
+        "the request body arrived changed"
+    );
 
     // An event stream reaches the visitor event by event: the service sends
     // the second event only once the visitor read the first. The stream's
     // input ends only once the answer is complete.
     let (mut read, mut write) = visit(&backend).await;
-    let request = format!("GET /events HTTP/1.1\r\nHost: {host}\r\nAccept: text/event-stream\r\n\r\n");
+    let request =
+        format!("GET /events HTTP/1.1\r\nHost: {host}\r\nAccept: text/event-stream\r\n\r\n");
     write.write_all(request.as_bytes()).await.unwrap();
     let answer = read_head(&mut read).await;
     assert_eq!(answer.line, "HTTP/1.1 200 OK");
-    assert_eq!(answer.lines("Content-Type"), [("Content-Type", "text/event-stream")]);
+    assert_eq!(
+        answer.lines("Content-Type"),
+        [("Content-Type", "text/event-stream")]
+    );
     let first = tokio::time::timeout(STEP, read_until(&mut read, "data: 1\n\n"))
         .await
         .expect("the first event reaches the visitor before the service sends the second");
@@ -209,7 +234,9 @@ async fn a_websocket_through_the_relay_carries_messages_and_close_codes_both_way
     // The visitor's handshake reaches the service with its key, and the
     // service's switch reaches the visitor.
     let stream = TcpStream::connect(backend.address()).await.unwrap();
-    let (mut socket, switched) = tokio_tungstenite::client_async(url.as_str(), stream).await.unwrap();
+    let (mut socket, switched) = tokio_tungstenite::client_async(url.as_str(), stream)
+        .await
+        .unwrap();
     assert_eq!(switched.status(), 101);
     assert!(switched.headers().contains_key("sec-websocket-accept"));
     let WebSocketSeen::Handshake(handshake) = fixture.next().await else {
@@ -218,14 +245,14 @@ async fn a_websocket_through_the_relay_carries_messages_and_close_codes_both_way
     assert_eq!(handshake["host"], format!("127.0.0.1:{}", fixture.port));
     assert!(handshake.contains_key("sec-websocket-key"), "{handshake:?}");
     // Text, binary, and a ping answered by the service's pong, unchanged.
-    for message in [
-        Message::text("hello"),
-        Message::binary(vec![0, 1, 2, 255]),
-    ] {
+    for message in [Message::text("hello"), Message::binary(vec![0, 1, 2, 255])] {
         socket.send(message.clone()).await.unwrap();
         assert_eq!(socket.next().await.unwrap().unwrap(), message);
     }
-    socket.send(Message::Ping(Bytes::from_static(b"are you there"))).await.unwrap();
+    socket
+        .send(Message::Ping(Bytes::from_static(b"are you there")))
+        .await
+        .unwrap();
     assert_eq!(
         socket.next().await.unwrap().unwrap(),
         Message::Pong(Bytes::from_static(b"are you there"))
@@ -237,7 +264,10 @@ async fn a_websocket_through_the_relay_carries_messages_and_close_codes_both_way
         reason: "visitor done".into(),
     };
     socket.close(Some(visitor_done.clone())).await.unwrap();
-    assert_eq!(fixture.next().await, WebSocketSeen::Closed(Some(visitor_done.clone())));
+    assert_eq!(
+        fixture.next().await,
+        WebSocketSeen::Closed(Some(visitor_done.clone()))
+    );
     assert_eq!(
         socket.next().await.unwrap().unwrap(),
         Message::Close(Some(visitor_done))
@@ -245,7 +275,9 @@ async fn a_websocket_through_the_relay_carries_messages_and_close_codes_both_way
 
     // The service's close code and reason reach the visitor.
     let stream = TcpStream::connect(backend.address()).await.unwrap();
-    let (mut socket, _) = tokio_tungstenite::client_async(url.as_str(), stream).await.unwrap();
+    let (mut socket, _) = tokio_tungstenite::client_async(url.as_str(), stream)
+        .await
+        .unwrap();
     assert!(matches!(fixture.next().await, WebSocketSeen::Handshake(_)));
     socket.send(Message::text("close")).await.unwrap();
     let service_done = CloseFrame {
@@ -272,60 +304,127 @@ async fn an_expose_answers_anyone_for_an_hour_and_only_its_owner_lists_renews_or
     // domain, and a visitor without a session reaches the service.
     let exposed = expose(&backend, &master, laptop.id(), fixture.port).await;
     let port = backend.address().port();
-    assert_eq!(exposed.url, format!("http://{}.{DOMAIN}:{port}/", exposed.id));
-    assert_eq!(exposed.address.as_str(), format!("127.0.0.1:{}", fixture.port));
+    assert_eq!(
+        exposed.url,
+        format!("http://{}.{DOMAIN}:{port}/", exposed.id)
+    );
+    assert_eq!(
+        exposed.address.as_str(),
+        format!("127.0.0.1:{}", fixture.port)
+    );
     assert_eq!(exposed.created_at, harness.clock.now());
-    assert_eq!(exposed.expires_at.as_millisecond() - exposed.created_at.as_millisecond(), 3_600_000);
+    assert_eq!(
+        exposed.expires_at.as_millisecond() - exposed.created_at.as_millisecond(),
+        3_600_000
+    );
     let state = backend.sync(&master).await.snapshot().await;
-    assert_eq!(state.exposes, [exposed.clone()]);
+    assert_eq!(state.exposes, std::slice::from_ref(&exposed));
     assert_eq!(state.expose_domain.as_deref(), Some(DOMAIN));
-    assert_eq!(list(&backend, &master).await, [exposed.clone()]);
+    assert_eq!(
+        list(&backend, &master).await,
+        std::slice::from_ref(&exposed)
+    );
     let host = host_of(&exposed);
-    assert_eq!(fetch(&backend, &host, "/hello").await, (200, "hello".to_owned()));
+    assert_eq!(
+        fetch(&backend, &host, "/hello").await,
+        (200, "hello".to_owned())
+    );
 
     // Another user sees none of it and can change none of it, nor expose a
     // service on the device.
     harness.add_user(OTHER_EMAIL, OTHER_PASSWORD, Role::User);
     let other = backend.login(OTHER_EMAIL, OTHER_PASSWORD).await;
     assert!(list(&backend, &other).await.is_empty());
-    let renewal = backend.post(&format!("/api/exposes/{}/renew", exposed.id), Some(&other), json!({})).await;
-    assert_eq!(renewal.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ExposeNotFound));
-    let removal = backend.delete(&format!("/api/exposes/{}", exposed.id), &other).await;
-    assert_eq!(removal.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ExposeNotFound));
+    let renewal = backend
+        .post(
+            &format!("/api/exposes/{}/renew", exposed.id),
+            Some(&other),
+            json!({}),
+        )
+        .await;
+    assert_eq!(
+        renewal.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::ExposeNotFound)
+    );
+    let removal = backend
+        .delete(&format!("/api/exposes/{}", exposed.id), &other)
+        .await;
+    assert_eq!(
+        removal.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::ExposeNotFound)
+    );
     let foreign = json!({ "deviceId": laptop.id(), "address": "8080" });
     let refused = backend.post("/api/exposes", Some(&other), foreign).await;
-    assert_eq!(refused.refusal(), (StatusCode::NOT_FOUND, ErrorCode::DeviceNotFound));
+    assert_eq!(
+        refused.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::DeviceNotFound)
+    );
     let portless = json!({ "deviceId": laptop.id(), "address": "localhost" });
     let refused = backend.post("/api/exposes", Some(&master), portless).await;
-    assert_eq!(refused.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody));
+    assert_eq!(
+        refused.refusal(),
+        (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody)
+    );
 
     // Renewed before its hour, it lives an hour from the renewal.
     harness.clock.advance(SignedDuration::from_mins(50));
-    let renewal = backend.post(&format!("/api/exposes/{}/renew", exposed.id), Some(&master), json!({})).await;
-    assert_eq!(renewal.status, StatusCode::OK, "{}", String::from_utf8_lossy(&renewal.body));
+    let renewal = backend
+        .post(
+            &format!("/api/exposes/{}/renew", exposed.id),
+            Some(&master),
+            json!({}),
+        )
+        .await;
+    assert_eq!(
+        renewal.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&renewal.body)
+    );
     let renewed = renewal.json::<ExposeAnswer>().expose;
-    assert_eq!(renewed.expires_at.as_millisecond(), harness.clock.now().as_millisecond() + 3_600_000);
+    assert_eq!(
+        renewed.expires_at.as_millisecond(),
+        harness.clock.now().as_millisecond() + 3_600_000
+    );
     harness.clock.advance(SignedDuration::from_mins(50));
     assert_eq!(fetch(&backend, &host, "/hello").await.0, 200);
 
     // A second after its expiry the URL answers as unknown, and the visit
     // destroyed the record.
-    harness.clock.advance(SignedDuration::from_mins(10) + SignedDuration::from_secs(1));
+    harness
+        .clock
+        .advance(SignedDuration::from_mins(10) + SignedDuration::from_secs(1));
     let (status, page) = fetch(&backend, &host, "/hello").await;
     assert_eq!(status, 404);
     assert!(page.contains("does not exist"), "{page}");
     assert_eq!(stored_exposes(&harness), 0);
-    let renewal = backend.post(&format!("/api/exposes/{}/renew", exposed.id), Some(&master), json!({})).await;
-    assert_eq!(renewal.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ExposeNotFound));
+    let renewal = backend
+        .post(
+            &format!("/api/exposes/{}/renew", exposed.id),
+            Some(&master),
+            json!({}),
+        )
+        .await;
+    assert_eq!(
+        renewal.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::ExposeNotFound)
+    );
 
     // Removed, it is gone at once.
     let removed = expose(&backend, &master, laptop.id(), fixture.port).await;
-    let removal = backend.delete(&format!("/api/exposes/{}", removed.id), &master).await;
+    let removal = backend
+        .delete(&format!("/api/exposes/{}", removed.id), &master)
+        .await;
     assert_eq!(removal.status, StatusCode::NO_CONTENT);
     assert_eq!(fetch(&backend, &host_of(&removed), "/hello").await.0, 404);
     assert!(list(&backend, &master).await.is_empty());
-    let again = backend.delete(&format!("/api/exposes/{}", removed.id), &master).await;
-    assert_eq!(again.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ExposeNotFound));
+    let again = backend
+        .delete(&format!("/api/exposes/{}", removed.id), &master)
+        .await;
+    assert_eq!(
+        again.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::ExposeNotFound)
+    );
     backend.close().await;
 }
 
@@ -342,14 +441,18 @@ async fn open_connections_end_with_their_expose_and_an_offline_device_keeps_its_
     // connection closes, and the runner closes its socket to the service.
     let removed = expose(&backend, &master, laptop.id(), fixture.port).await;
     let held = hold(&backend, &host_of(&removed)).await;
-    let removal = backend.delete(&format!("/api/exposes/{}", removed.id), &master).await;
+    let removal = backend
+        .delete(&format!("/api/exposes/{}", removed.id), &master)
+        .await;
     assert_eq!(removal.status, StatusCode::NO_CONTENT);
     held.ended().await;
     assert_eq!(fixture.next().await, Seen::Released);
 
     // Held open across its expiry, likewise at the expiry.
     let expiring = expose(&backend, &master, laptop.id(), fixture.port).await;
-    harness.clock.advance(SignedDuration::from_mins(60) - SignedDuration::from_secs(1));
+    harness
+        .clock
+        .advance(SignedDuration::from_mins(60) - SignedDuration::from_secs(1));
     let held = hold(&backend, &host_of(&expiring)).await;
     harness.clock.advance(SignedDuration::from_secs(2));
     held.ended().await;
@@ -364,17 +467,25 @@ async fn open_connections_end_with_their_expose_and_an_offline_device_keeps_its_
     let (status, page) = fetch(&backend, &host_of(&kept), "/hello").await;
     assert_eq!(status, 502);
     assert!(page.contains("device_offline"), "{page}");
-    assert_eq!(list(&backend, &master).await, [kept.clone()]);
+    assert_eq!(list(&backend, &master).await, std::slice::from_ref(&kept));
     let offline = json!({ "deviceId": laptop.id(), "address": fixture.port.to_string() });
     let refused = backend.post("/api/exposes", Some(&master), offline).await;
-    assert_eq!(refused.refusal(), (StatusCode::CONFLICT, ErrorCode::DeviceOffline));
+    assert_eq!(
+        refused.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::DeviceOffline)
+    );
     laptop.runner.start_again();
     backend.until_online(&master, laptop.id(), true).await;
-    assert_eq!(fetch(&backend, &host_of(&kept), "/hello").await, (200, "hello".to_owned()));
+    assert_eq!(
+        fetch(&backend, &host_of(&kept), "/hello").await,
+        (200, "hello".to_owned())
+    );
 
     // Revoked, the device's exposes end with their connections.
     let held = hold(&backend, &host_of(&kept)).await;
-    let revoked = backend.delete(&format!("/api/devices/{}", laptop.id()), &master).await;
+    let revoked = backend
+        .delete(&format!("/api/devices/{}", laptop.id()), &master)
+        .await;
     assert_eq!(revoked.status, StatusCode::NO_CONTENT);
     held.ended().await;
     assert_eq!(fixture.next().await, Seen::Released);
@@ -421,7 +532,11 @@ async fn a_relayed_connection_nothing_moves_on_closes_after_the_idle_limit() {
     let held = hold(&backend, &host).await;
     let quiet = tokio::time::Instant::now();
     held.ended().await;
-    assert!(quiet.elapsed() >= Duration::from_millis(900), "closed after {:?}", quiet.elapsed());
+    assert!(
+        quiet.elapsed() >= Duration::from_millis(900),
+        "closed after {:?}",
+        quiet.elapsed()
+    );
     assert_eq!(fixture.next().await, Seen::Released);
     backend.close().await;
 }
@@ -431,7 +546,9 @@ async fn a_relayed_connection_nothing_moves_on_closes_after_the_idle_limit() {
 #[tokio::test]
 async fn the_agent_exposes_a_service_and_lists_renews_and_removes_exposes_with_demi_host_expose() {
     let vendor = MockVendor::start().await;
-    let harness = Harness::new().with_file_package().with_expose_domain(DOMAIN);
+    let harness = Harness::new()
+        .with_file_package()
+        .with_expose_domain(DOMAIN);
     let (backend, master) = harness.start_set_up().await;
     let fixture = HttpFixture::start(Arc::new(Notify::new())).await;
     let provider = anthropic_at(&backend, &master, &vendor, "/work").await;
@@ -443,7 +560,10 @@ async fn the_agent_exposes_a_service_and_lists_renews_and_removes_exposes_with_d
     // user's exposes takes the user's next number.
     let add = format!("demi host expose add {}", fixture.port);
     let added = work
-        .turn(vec![shell("t1", &format!("{add} && {add}"), 20_000), say("exposed")])
+        .turn(vec![
+            shell("t1", &format!("{add} && {add}"), 20_000),
+            say("exposed"),
+        ])
         .await;
     let exposed = list(&backend, &master).await;
     let numbered = |number: u64| {
@@ -459,22 +579,50 @@ async fn the_agent_exposes_a_service_and_lists_renews_and_removes_exposes_with_d
             "Exposed 127.0.0.1:{} on laptop as {}\nExpires in 60 minutes (expose {}).\n",
             fixture.port, expose.url, expose.number
         );
-        assert!(shown_output(&added.received[0]).contains(&printed), "{}", added.received[0]);
+        assert!(
+            shown_output(&added.received[0]).contains(&printed),
+            "{}",
+            added.received[0]
+        );
     }
-    assert_eq!(fetch(&backend, &host_of(&first), "/hello").await, (200, "hello".to_owned()));
+    assert_eq!(
+        fetch(&backend, &host_of(&first), "/hello").await,
+        (200, "hello".to_owned())
+    );
 
     // `list` shows every expose of the user under a header, or as JSON.
     let listed = work
-        .turn(vec![shell("t2", "demi host expose list && demi host expose list --json", 20_000), say("listed")])
+        .turn(vec![
+            shell(
+                "t2",
+                "demi host expose list && demi host expose list --json",
+                20_000,
+            ),
+            say("listed"),
+        ])
         .await;
     let address = first.address.as_str();
-    let header = format!("Expose  Device  {:<width$}  Expires  URL\n", "Address", width = address.len());
-    assert!(listed.received[0].contains(&header), "{}", listed.received[0]);
+    let header = format!(
+        "Expose  Device  {:<width$}  Expires  URL\n",
+        "Address",
+        width = address.len()
+    );
+    assert!(
+        listed.received[0].contains(&header),
+        "{}",
+        listed.received[0]
+    );
     for expose in [&first, &second] {
-        let row = format!("{:<6}  laptop  {address}  60 min   {}\n", expose.number, expose.url);
+        let row = format!(
+            "{:<6}  laptop  {address}  60 min   {}\n",
+            expose.number, expose.url
+        );
         assert!(listed.received[0].contains(&row), "{}", listed.received[0]);
     }
-    let json = serde_json::to_string(&Exposes { exposes: exposed.clone() }).unwrap();
+    let json = serde_json::to_string(&Exposes {
+        exposes: exposed.clone(),
+    })
+    .unwrap();
     assert!(listed.received[0].contains(&json), "{}", listed.received[0]);
 
     // Another user's exposes are numbered apart: theirs is 1 too.
@@ -492,7 +640,9 @@ async fn the_agent_exposes_a_service_and_lists_renews_and_removes_exposes_with_d
         "demi host expose renew 1 && demi host expose remove 1 && demi host expose renew 1; echo exit=$?; \
          {add}; demi host expose add 8080 --host nope; echo exit=$?"
     );
-    let changed = work.turn(vec![shell("t3", &changes, 20_000), say("changed")]).await;
+    let changed = work
+        .turn(vec![shell("t3", &changes, 20_000), say("changed")])
+        .await;
     let received = &changed.received[0];
     for expected in [
         "Expose 1 expires in 60 minutes.\n",
@@ -516,7 +666,10 @@ async fn without_an_expose_domain_exposes_are_unavailable() {
     let laptop = backend.pair(&master, "laptop").await;
     let body = json!({ "deviceId": laptop.id(), "address": "1234" });
     let refused = backend.post("/api/exposes", Some(&master), body).await;
-    assert_eq!(refused.refusal(), (StatusCode::CONFLICT, ErrorCode::ExposeUnavailable));
+    assert_eq!(
+        refused.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::ExposeUnavailable)
+    );
     let state = backend.sync(&master).await.snapshot().await;
     assert_eq!((state.exposes, state.expose_domain), (Vec::new(), None));
     assert!(list(&backend, &master).await.is_empty());
@@ -529,7 +682,9 @@ async fn without_an_expose_domain_exposes_are_unavailable() {
 async fn a_clouds_exposes_outlive_its_checkpoints_and_end_when_it_stops_idle() {
     let vendor = MockVendor::start().await;
     let window = Duration::from_millis(600);
-    let mut harness = Harness::new().with_file_package().with_expose_domain(DOMAIN);
+    let mut harness = Harness::new()
+        .with_file_package()
+        .with_expose_domain(DOMAIN);
     harness.lifecycle = idle_after(window);
     harness.cloud.sweep = Duration::from_millis(50);
     harness.cloud.checkpoint_interval = Duration::from_millis(300);
@@ -540,9 +695,14 @@ async fn a_clouds_exposes_outlive_its_checkpoints_and_end_when_it_stops_idle() {
     create(&backend, &master, CONVERSATION).await;
     // A lease of the conversation's file gate is its work: the Cloud does
     // not idle before the test has looked, and idles once it ends.
-    let working = backend.file_gate(&master, CONVERSATION).await.enter(Purpose::Demand).await;
+    let working = backend
+        .file_gate(&master, CONVERSATION)
+        .await
+        .enter(Purpose::Demand)
+        .await;
     let mut work = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/work").await;
-    work.turn(vec![shell("t1", "true", 20_000), say("awake")]).await;
+    work.turn(vec![shell("t1", "true", 20_000), say("awake")])
+        .await;
     let device = the_cloud(&harness);
     let exposed = expose(&backend, &master, &device, fixture.port).await;
     let host = host_of(&exposed);
@@ -553,11 +713,20 @@ async fn a_clouds_exposes_outlive_its_checkpoints_and_end_when_it_stops_idle() {
     // afterwards still arrives.
     let checkpoint = format!("checkpoint:{device}");
     let before = harness.manager.count(&checkpoint);
-    eventually("the Cloud checkpoints", || async { harness.manager.count(&checkpoint) > before }).await;
-    assert_eq!(fetch(&backend, &host, "/hello").await, (200, "hello".to_owned()));
+    eventually("the Cloud checkpoints", || async {
+        harness.manager.count(&checkpoint) > before
+    })
+    .await;
+    assert_eq!(
+        fetch(&backend, &host, "/hello").await,
+        (200, "hello".to_owned())
+    );
     proceed.notify_one();
     assert_eq!(held.until("still\n").await, "still\n");
-    assert_eq!(list(&backend, &master).await, [exposed.clone()]);
+    assert_eq!(
+        list(&backend, &master).await,
+        std::slice::from_ref(&exposed)
+    );
 
     // Idle, the Cloud stops a window after its work ends, and its expose
     // ends with it, before the Cloud is saved.
@@ -566,7 +735,10 @@ async fn a_clouds_exposes_outlive_its_checkpoints_and_end_when_it_stops_idle() {
     held.ended().await;
     assert_eq!(fixture.next().await, Seen::Released);
     assert!(list(&backend, &master).await.is_empty());
-    let stopped = harness.manager.arrival(&format!("hibernate:{device}"), PATIENCE).await;
+    let stopped = harness
+        .manager
+        .arrival(&format!("hibernate:{device}"), PATIENCE)
+        .await;
     assert!(
         stopped >= rested + window,
         "the Cloud stopped {:?} after its work ended",
@@ -579,15 +751,19 @@ async fn a_clouds_exposes_outlive_its_checkpoints_and_end_when_it_stops_idle() {
 // Several seconds: the Cloud boots again after its death and after its reset,
 // and installs the builtin package each time.
 #[tokio::test]
-async fn a_clouds_exposes_end_when_it_dies_resets_or_is_found_stopped_and_before_a_backend_serves() {
+async fn a_clouds_exposes_end_when_it_dies_resets_or_is_found_stopped_and_before_a_backend_serves()
+{
     let vendor = MockVendor::start().await;
-    let harness = Harness::new().with_file_package().with_expose_domain(DOMAIN);
+    let harness = Harness::new()
+        .with_file_package()
+        .with_expose_domain(DOMAIN);
     let (backend, master) = harness.start_set_up().await;
     let mut fixture = HttpFixture::start(Arc::new(Notify::new())).await;
     let provider = anthropic_at(&backend, &master, &vendor, "/work").await;
     create(&backend, &master, CONVERSATION).await;
     let mut work = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/work").await;
-    work.turn(vec![shell("t1", "true", 20_000), say("awake")]).await;
+    work.turn(vec![shell("t1", "true", 20_000), say("awake")])
+        .await;
     let device = the_cloud(&harness);
 
     // The Cloud's sandbox dies.
@@ -596,17 +772,24 @@ async fn a_clouds_exposes_end_when_it_dies_resets_or_is_found_stopped_and_before
     harness.manager.kill(&device).await;
     held.ended().await;
     assert_eq!(fixture.next().await, Seen::Released);
-    eventually("the dead Cloud's expose ends", || async { list(&backend, &master).await.is_empty() }).await;
+    eventually("the dead Cloud's expose ends", || async {
+        list(&backend, &master).await.is_empty()
+    })
+    .await;
 
     // The next operation boots it again, and a reset stops it.
-    work.turn(vec![shell("t2", "true", 20_000), say("awake again")]).await;
+    work.turn(vec![shell("t2", "true", 20_000), say("awake again")])
+        .await;
     let resetting = expose(&backend, &master, &device, fixture.port).await;
     let held = hold(&backend, &host_of(&resetting)).await;
     reset(&backend, &master, RESET).await;
     held.ended().await;
     assert_eq!(fixture.next().await, Seen::Released);
     until_status(&backend, &master, "the reset is ready", |status| {
-        status.operation.as_ref().is_some_and(|operation| operation.phase == ResetPhase::Ready)
+        status
+            .operation
+            .as_ref()
+            .is_some_and(|operation| operation.phase == ResetPhase::Ready)
     })
     .await;
     assert!(list(&backend, &master).await.is_empty());
@@ -615,10 +798,14 @@ async fn a_clouds_exposes_end_when_it_dies_resets_or_is_found_stopped_and_before
     // next operation finds it stopped and boots it again.
     let found = expose(&backend, &master, &device, fixture.port).await;
     harness.manager.stop_quietly(&device).await;
-    eventually("the backend sees the runner go", || async { !cloud_online(&backend, &master).await }).await;
-    assert_eq!(list(&backend, &master).await, [found.clone()]);
+    eventually("the backend sees the runner go", || async {
+        !cloud_online(&backend, &master).await
+    })
+    .await;
+    assert_eq!(list(&backend, &master).await, std::slice::from_ref(&found));
     assert_eq!(fetch(&backend, &host_of(&found), "/hello").await.0, 502);
-    work.turn(vec![shell("t3", "true", 20_000), say("booted")]).await;
+    work.turn(vec![shell("t3", "true", 20_000), say("booted")])
+        .await;
     assert!(list(&backend, &master).await.is_empty());
     assert_eq!(fetch(&backend, &host_of(&found), "/hello").await.0, 404);
     backend.close().await;
@@ -644,7 +831,12 @@ async fn a_clouds_exposes_end_when_it_dies_resets_or_is_found_stopped_and_before
 async fn expose(backend: &TestBackend, session: &Session, device: &str, port: u16) -> ExposeDto {
     let body = json!({ "deviceId": device, "address": port.to_string() });
     let created = backend.post("/api/exposes", Some(session), body).await;
-    assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
+    assert_eq!(
+        created.status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&created.body)
+    );
     created.json::<ExposeAnswer>().expose
 }
 
@@ -657,7 +849,12 @@ fn host_of(expose: &ExposeDto) -> String {
 /// The session's exposes, as `GET /api/exposes` lists them.
 async fn list(backend: &TestBackend, session: &Session) -> Vec<ExposeDto> {
     let listed = backend.get("/api/exposes", Some(session)).await;
-    assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
+    assert_eq!(
+        listed.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&listed.body)
+    );
     listed.json::<Exposes>().exposes
 }
 
@@ -691,7 +888,10 @@ async fn hold(backend: &TestBackend, host: &str) -> Held {
     let head = read_head(&mut read).await;
     assert_eq!(head.line, "HTTP/1.1 200 OK");
     assert_eq!(read_until(&mut read, "held\n").await, "held\n");
-    Held { read, _write: write }
+    Held {
+        read,
+        _write: write,
+    }
 }
 
 /// A visitor's connection with an answer in progress.
@@ -718,7 +918,10 @@ impl Held {
 
 /// A visitor's connection to the backend, in raw bytes.
 async fn visit(backend: &TestBackend) -> (BufReader<OwnedReadHalf>, OwnedWriteHalf) {
-    let (read, write) = TcpStream::connect(backend.address()).await.unwrap().into_split();
+    let (read, write) = TcpStream::connect(backend.address())
+        .await
+        .unwrap()
+        .into_split();
     (BufReader::new(read), write)
 }
 
@@ -742,7 +945,10 @@ impl Head {
 
     /// The values of `name`, whatever its case, in their order.
     fn values(&self, name: &str) -> Vec<&str> {
-        self.lines(name).into_iter().map(|(_, value)| value).collect()
+        self.lines(name)
+            .into_iter()
+            .map(|(_, value)| value)
+            .collect()
     }
 }
 
@@ -752,7 +958,11 @@ async fn read_head(read: &mut (impl AsyncBufRead + Unpin)) -> Head {
     loop {
         let start = bytes.len();
         let count = read.read_until(b'\n', &mut bytes).await.unwrap();
-        assert!(count > 0, "the stream ended in a head: {}", String::from_utf8_lossy(&bytes));
+        assert!(
+            count > 0,
+            "the stream ended in a head: {}",
+            String::from_utf8_lossy(&bytes)
+        );
         if &bytes[start..] == b"\r\n" {
             break;
         }
@@ -760,12 +970,19 @@ async fn read_head(read: &mut (impl AsyncBufRead + Unpin)) -> Head {
     let first = bytes.iter().position(|byte| *byte == b'\n').unwrap() + 1;
     let line = String::from_utf8(bytes[..first - 2].to_vec()).unwrap();
     let mut slots = [httparse::EMPTY_HEADER; 64];
-    let httparse::Status::Complete((_, parsed)) = httparse::parse_headers(&bytes[first..], &mut slots).unwrap() else {
+    let httparse::Status::Complete((_, parsed)) =
+        httparse::parse_headers(&bytes[first..], &mut slots).unwrap()
+    else {
         panic!("an incomplete head: {}", String::from_utf8_lossy(&bytes));
     };
     let headers = parsed
         .iter()
-        .map(|header| (header.name.to_owned(), String::from_utf8(header.value.to_vec()).unwrap()))
+        .map(|header| {
+            (
+                header.name.to_owned(),
+                String::from_utf8(header.value.to_vec()).unwrap(),
+            )
+        })
         .collect();
     Head { line, headers }
 }
@@ -817,7 +1034,10 @@ async fn read_until(read: &mut (impl AsyncBufRead + Unpin), end: &str) -> String
 /// Writes `body` as a chunked body, in chunks of 64 KiB.
 async fn write_chunked(write: &mut (impl AsyncWrite + Unpin), body: &[u8]) {
     for chunk in body.chunks(64 << 10) {
-        write.write_all(format!("{:x}\r\n", chunk.len()).as_bytes()).await.unwrap();
+        write
+            .write_all(format!("{:x}\r\n", chunk.len()).as_bytes())
+            .await
+            .unwrap();
         write.write_all(chunk).await.unwrap();
         write.write_all(b"\r\n").await.unwrap();
     }
@@ -884,7 +1104,11 @@ async fn serve_http(socket: TcpStream, seen: mpsc::UnboundedSender<Seen>, procee
     let target = head.line.split(' ').nth(1).unwrap().to_owned();
     match target.split('?').next().unwrap() {
         "/headers" => {
-            seen.send(Seen::Request { head, body: Vec::new() }).unwrap();
+            seen.send(Seen::Request {
+                head,
+                body: Vec::new(),
+            })
+            .unwrap();
             let answer = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nX-Service-Header: Yes\r\n\
                           Set-Cookie: first=1; Path=/\r\nset-cookie: second=2; HttpOnly\r\nContent-Length: 5\r\n\
                           Connection: close\r\n\r\nhello";
@@ -908,10 +1132,16 @@ async fn serve_http(socket: TcpStream, seen: mpsc::UnboundedSender<Seen>, procee
             let head = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\n\
                         Transfer-Encoding: chunked\r\n\r\n";
             write.write_all(head.as_bytes()).await.unwrap();
-            write.write_all(chunk("event: tick\ndata: 1\n\n").as_bytes()).await.unwrap();
+            write
+                .write_all(chunk("event: tick\ndata: 1\n\n").as_bytes())
+                .await
+                .unwrap();
             proceed.notified().await;
             let open_while_streaming = !ended.is_finished();
-            write.write_all(chunk("event: tick\ndata: 2\n\n").as_bytes()).await.unwrap();
+            write
+                .write_all(chunk("event: tick\ndata: 2\n\n").as_bytes())
+                .await
+                .unwrap();
             write.write_all(b"0\r\n\r\n").await.unwrap();
             let ended_after_answer = tokio::time::timeout(STEP, &mut ended).await.is_ok();
             seen.send(Seen::EventStream {
@@ -921,11 +1151,13 @@ async fn serve_http(socket: TcpStream, seen: mpsc::UnboundedSender<Seen>, procee
             .unwrap();
         }
         "/hello" => {
-            let answer = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 5\r\n\r\nhello";
+            let answer =
+                "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 5\r\n\r\nhello";
             write.write_all(answer.as_bytes()).await.unwrap();
         }
         "/hold" => {
-            let head = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nTransfer-Encoding: chunked\r\n\r\n";
+            let head =
+                "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nTransfer-Encoding: chunked\r\n\r\n";
             write.write_all(head.as_bytes()).await.unwrap();
             write.write_all(chunk("held\n").as_bytes()).await.unwrap();
             let mut byte = [0; 1];
@@ -940,7 +1172,11 @@ async fn serve_http(socket: TcpStream, seen: mpsc::UnboundedSender<Seen>, procee
             seen.send(Seen::Released).unwrap();
         }
         "/refuse" => {
-            seen.send(Seen::Request { head, body: Vec::new() }).unwrap();
+            seen.send(Seen::Request {
+                head,
+                body: Vec::new(),
+            })
+            .unwrap();
             let answer = "HTTP/1.1 426 Upgrade Required\r\nContent-Type: text/plain\r\nContent-Length: 17\r\n\
                           Connection: close\r\n\r\nno upgrades here\n";
             write.write_all(answer.as_bytes()).await.unwrap();
@@ -998,11 +1234,19 @@ impl WebSocketFixture {
 
 async fn serve_websocket(socket: TcpStream, seen: mpsc::UnboundedSender<WebSocketSeen>) {
     let handshake = seen.clone();
+    #[allow(
+        clippy::result_large_err,
+        reason = "tungstenite's handshake callback fixes this signature, its error response included"
+    )]
     let record = move |request: &Request, response: Response| {
-        handshake.send(WebSocketSeen::Handshake(request.headers().clone())).unwrap();
+        handshake
+            .send(WebSocketSeen::Handshake(request.headers().clone()))
+            .unwrap();
         Ok(response)
     };
-    let mut socket = tokio_tungstenite::accept_hdr_async(socket, record).await.unwrap();
+    let mut socket = tokio_tungstenite::accept_hdr_async(socket, record)
+        .await
+        .unwrap();
     while let Some(Ok(message)) = socket.next().await {
         match message {
             Message::Text(text) if text.as_str() == "close" => {

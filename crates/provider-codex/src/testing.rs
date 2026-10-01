@@ -148,6 +148,10 @@ async fn serve(stream: TcpStream, script: Script, recorded: &Recorded) {
             return;
         }
         Script::Refuse(status) => {
+            #[allow(
+                clippy::result_large_err,
+                reason = "tungstenite's handshake callback fixes this signature, its error response included"
+            )]
             let callback =
                 move |request: &Request, _response: Response| -> Result<Response, ErrorResponse> {
                     recorded.lock().unwrap().push(Connection {
@@ -165,6 +169,10 @@ async fn serve(stream: TcpStream, script: Script, recorded: &Recorded) {
     };
     let headers = Arc::new(Mutex::new(HeaderMap::new()));
     let captured = headers.clone();
+    #[allow(
+        clippy::result_large_err,
+        reason = "tungstenite's handshake callback fixes this signature, its error response included"
+    )]
     let callback =
         move |request: &Request, mut response: Response| -> Result<Response, ErrorResponse> {
             *captured.lock().unwrap() = request.headers().clone();

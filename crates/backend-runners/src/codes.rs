@@ -15,13 +15,23 @@ use demi_runner_protocol::values::DeviceToken;
 /// `I` and `L` as `1`, and ignores the dashes and spaces a person types.
 static CROCKFORD: LazyLock<Encoding> = LazyLock::new(|| {
     let mut specification = Specification::new();
-    specification.symbols.push_str("0123456789ABCDEFGHJKMNPQRSTVWXYZ");
+    specification
+        .symbols
+        .push_str("0123456789ABCDEFGHJKMNPQRSTVWXYZ");
     specification.bit_order = BitOrder::MostSignificantFirst;
     specification.check_trailing_bits = true;
     specification.ignore.push_str(" \t\r\n-");
-    specification.translate.from.push_str("abcdefghjkmnpqrstvwxyzoOiIlL");
-    specification.translate.to.push_str("ABCDEFGHJKMNPQRSTVWXYZ001111");
-    specification.encoding().expect("the Crockford alphabet is a valid base32")
+    specification
+        .translate
+        .from
+        .push_str("abcdefghjkmnpqrstvwxyzoOiIlL");
+    specification
+        .translate
+        .to
+        .push_str("ABCDEFGHJKMNPQRSTVWXYZ001111");
+    specification
+        .encoding()
+        .expect("the Crockford alphabet is a valid base32")
 });
 
 /// How many characters of a printed code go between two dashes.
@@ -70,14 +80,28 @@ mod tests {
         let code = ClaimCode::generate();
         let printed = code.printed();
         assert_eq!(printed.len(), 26 + 6);
-        assert!(printed.split('-').all(|group| (1..=GROUP).contains(&group.len())));
-        assert!(printed.chars().all(|char| char == '-' || "0123456789ABCDEFGHJKMNPQRSTVWXYZ".contains(char)));
+        assert!(
+            printed
+                .split('-')
+                .all(|group| (1..=GROUP).contains(&group.len()))
+        );
+        assert!(
+            printed
+                .chars()
+                .all(|char| char == '-' || "0123456789ABCDEFGHJKMNPQRSTVWXYZ".contains(char))
+        );
         assert_eq!(ClaimCode::parse(&printed), Some(code));
         let messy = format!(" {} ", printed.to_lowercase().replace('-', " "));
         assert_eq!(ClaimCode::parse(&messy), Some(code));
         let confusable = printed.replace('0', "o").replace('1', "l");
         assert_eq!(ClaimCode::parse(&confusable), Some(code));
-        for refused in ["", "AAAA-BBBB", "NOPE-NOPE", &printed[..printed.len() - 1], "U".repeat(26).as_str()] {
+        for refused in [
+            "",
+            "AAAA-BBBB",
+            "NOPE-NOPE",
+            &printed[..printed.len() - 1],
+            "U".repeat(26).as_str(),
+        ] {
             assert_eq!(ClaimCode::parse(refused), None, "{refused}");
         }
     }

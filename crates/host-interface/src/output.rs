@@ -470,9 +470,7 @@ fn push_chunk(chunks: &mut Vec<OutputChunk>, stream: StreamKind, bytes: &[u8]) {
 
 /// A note on a line of its own.
 fn push_note(chunks: &mut Vec<OutputChunk>, note: &str) {
-    let after_line = chunks
-        .last()
-        .is_none_or(|chunk| chunk.text.ends_with('\n'));
+    let after_line = chunks.last().is_none_or(|chunk| chunk.text.ends_with('\n'));
     let separator = if after_line { "" } else { "\n" };
     chunks.push(OutputChunk {
         stream: StreamKind::Stderr,
@@ -537,7 +535,11 @@ impl<'a> Iterator for Forward<'a> {
         }
         if self.missing {
             self.missing = false;
-            return self.text.missing.as_ref().map(|missing| Piece::Note(missing.line()));
+            return self
+                .text
+                .missing
+                .as_ref()
+                .map(|missing| Piece::Note(missing.line()));
         }
         None
     }

@@ -6,7 +6,6 @@
 
 use std::{sync::Arc, time::Duration};
 
-use demi_shared_types::{Clock, LoginPending, Timestamp};
 use demi_provider_common::{
     Secret,
     credentials::{
@@ -16,6 +15,7 @@ use demi_provider_common::{
     oauth::{DEVICE_LOGIN_LIFETIME, PollInterval, ResponseError, decode_json_response},
     wire::NonEmpty,
 };
+use demi_shared_types::{Clock, LoginPending, Timestamp};
 use futures_util::future::BoxFuture;
 use reqwest::{StatusCode, Url, header::CONTENT_TYPE};
 use serde::Deserialize;

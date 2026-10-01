@@ -47,7 +47,10 @@ pub trait MachineService {
     type Error: std::error::Error;
 
     /// Runs one call and returns its result as the `ok` reply carries it.
-    fn handle(&self, call: MachineCall) -> impl Future<Output = Result<serde_json::Value, Self::Error>>;
+    fn handle(
+        &self,
+        call: MachineCall,
+    ) -> impl Future<Output = Result<serde_json::Value, Self::Error>>;
 }
 
 /// The bound socket; [`serve`] removes its file when it stops.
@@ -78,7 +81,10 @@ impl Socket {
                 Err(error) => return Err(error),
             }
             let listener = std::os::unix::net::UnixListener::bind(&path).map_err(|error| {
-                io::Error::new(error.kind(), format!("failed to listen on {}: {error}", path.display()))
+                io::Error::new(
+                    error.kind(),
+                    format!("failed to listen on {}: {error}", path.display()),
+                )
             })?;
             fs_err::set_permissions(&path, std::fs::Permissions::from_mode(0o660))?;
             listener.set_nonblocking(true)?;
@@ -253,7 +259,10 @@ async fn answer<S: MachineService>(
 ) {
     let operation = request.call.name();
     let response = match service.handle(request.call).await {
-        Ok(result) => MachineResponse::Ok { id: request.id, result },
+        Ok(result) => MachineResponse::Ok {
+            id: request.id,
+            result,
+        },
         Err(error) => {
             tracing::warn!("machines: {operation} failed: {}", chain(&error));
             MachineResponse::Error {
@@ -324,7 +333,9 @@ mod tests {
             self.calls.borrow_mut().push(call.clone());
             let failure = {
                 let mut failures = self.failures.borrow_mut();
-                let position = failures.iter().position(|(operation, _)| *operation == call.name());
+                let position = failures
+                    .iter()
+                    .position(|(operation, _)| *operation == call.name());
                 position.map(|position| failures.remove(position).1)
             };
             if let Some(message) = failure {
@@ -359,10 +370,11 @@ mod tests {
             let service = Rc::new(ScriptedService::default());
             let (deaths, received) = mpsc::channel(4);
             let (stop, stopped) = oneshot::channel::<()>();
-            let server = tokio::task::spawn_local(serve(socket, service.clone(), received, async {
-                // A dropped sender stops the server as well.
-                let _ = stopped.await;
-            }));
+            let server =
+                tokio::task::spawn_local(serve(socket, service.clone(), received, async {
+                    // A dropped sender stops the server as well.
+                    let _ = stopped.await;
+                }));
             Self {
                 directory,
                 service,
@@ -449,7 +461,11 @@ mod tests {
     #[tokio::test(flavor = "local")]
     async fn a_failure_is_an_error_reply_and_the_connection_stays_usable() {
         let harness = Harness::start().await;
-        harness.service.failures.borrow_mut().push(("hibernate", "no such machine"));
+        harness
+            .service
+            .failures
+            .borrow_mut()
+            .push(("hibernate", "no such machine"));
         let mut client = harness.connect().await;
         client
             .send(b"{\"id\":\"1\",\"op\":\"hibernate\",\"params\":{\"deviceId\":\"dev-9\"}}\n")
@@ -462,8 +478,12 @@ mod tests {
             })
         );
         // An empty line is skipped.
-        client.send(b"\n{\"id\":\"2\",\"op\":\"reconcile\",\"params\":{}}\n").await;
-        assert!(matches!(client.receive().await, Some(MachineResponse::Ok { id, .. }) if id == "2"));
+        client
+            .send(b"\n{\"id\":\"2\",\"op\":\"reconcile\",\"params\":{}}\n")
+            .await;
+        assert!(
+            matches!(client.receive().await, Some(MachineResponse::Ok { id, .. }) if id == "2")
+        );
         harness.stop().await;
     }
 
@@ -476,9 +496,13 @@ mod tests {
         client
             .send(b"{\"id\":\"slow\",\"op\":\"current_base_version\",\"params\":{}}\n{\"id\":\"fast\",\"op\":\"reconcile\",\"params\":{}}\n")
             .await;
-        assert!(matches!(client.receive().await, Some(MachineResponse::Ok { id, .. }) if id == "fast"));
+        assert!(
+            matches!(client.receive().await, Some(MachineResponse::Ok { id, .. }) if id == "fast")
+        );
         release.send(()).expect("the slow request waits");
-        assert!(matches!(client.receive().await, Some(MachineResponse::Ok { id, .. }) if id == "slow"));
+        assert!(
+            matches!(client.receive().await, Some(MachineResponse::Ok { id, .. }) if id == "slow")
+        );
         harness.stop().await;
     }
 
@@ -489,7 +513,9 @@ mod tests {
         let mut second = harness.connect().await;
         // A round trip on each shows the server has accepted both.
         for client in [&mut first, &mut second] {
-            client.send(b"{\"id\":\"1\",\"op\":\"reconcile\",\"params\":{}}\n").await;
+            client
+                .send(b"{\"id\":\"1\",\"op\":\"reconcile\",\"params\":{}}\n")
+                .await;
             client.receive().await.expect("reply");
         }
         let device = DeviceId::parse("dev-1").expect("device id");
@@ -548,10 +574,19 @@ mod tests {
         let path = directory.path().join("machines.sock");
         drop(std::os::unix::net::UnixListener::bind(&path).expect("stale socket"));
         let socket = Socket::bind(&path).await.expect("replaces a stale socket");
-        let mode = std::fs::metadata(&path).expect("socket").permissions().mode();
+        let mode = std::fs::metadata(&path)
+            .expect("socket")
+            .permissions()
+            .mode();
         assert_eq!(mode & 0o777, 0o660);
         let (_deaths, received) = mpsc::channel(1);
-        let requests = serve(socket, Rc::new(ScriptedService::default()), received, async {}).await;
+        let requests = serve(
+            socket,
+            Rc::new(ScriptedService::default()),
+            received,
+            async {},
+        )
+        .await;
         requests.wait().await;
         assert!(!path.exists());
         std::fs::write(&path, "data").expect("a file");

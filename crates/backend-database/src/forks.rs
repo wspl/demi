@@ -15,8 +15,8 @@ use super::StorageError;
 use super::columns::{decode, json, to_json};
 use super::control::ControlService;
 use super::conversation_index::{
-    AttachedHostRecord, ConversationRecord, NewConversation, TitleOrigin, conversation_by_id, insert_attached_host,
-    insert_conversation,
+    AttachedHostRecord, ConversationRecord, NewConversation, TitleOrigin, conversation_by_id,
+    insert_attached_host, insert_conversation,
 };
 
 /// One creation attempt.
@@ -68,14 +68,21 @@ const OPERATION_COLUMNS: &str = "id, user_id, source_id, block_id, metadata";
 impl ControlService {
     /// The creation attempt that reserved `id`, in whichever case it is
     /// spelled.
-    pub async fn fork_operation(&self, id: ConversationId) -> Result<Option<ForkOperation>, StorageError> {
-        self.call(move |connection, _| operation_by_id(connection, &id)).await
+    pub async fn fork_operation(
+        &self,
+        id: ConversationId,
+    ) -> Result<Option<ForkOperation>, StorageError> {
+        self.call(move |connection, _| operation_by_id(connection, &id))
+            .await
     }
 
     /// Reserves `operation`'s destination: the attempt that already holds
     /// it when it is this one, none when another attempt or a conversation
     /// holds the id.
-    pub async fn reserve_fork(&self, operation: ForkOperation) -> Result<Option<ForkOperation>, StorageError> {
+    pub async fn reserve_fork(
+        &self,
+        operation: ForkOperation,
+    ) -> Result<Option<ForkOperation>, StorageError> {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
             if let Some(existing) = operation_by_id(&transaction, &operation.id)? {
@@ -125,14 +132,18 @@ impl ControlService {
     /// of the attempt, the title the user's. A destination published already
     /// is answered as it is. An attached host whose device is gone since is
     /// left out, as its revocation left the source.
-    pub async fn publish_fork(&self, id: ConversationId) -> Result<ConversationRecord, StorageError> {
+    pub async fn publish_fork(
+        &self,
+        id: ConversationId,
+    ) -> Result<ConversationRecord, StorageError> {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
-            let operation = operation_by_id(&transaction, &id)?.ok_or_else(|| StorageError::Corrupt {
-                table: "conversation_fork_operations",
-                column: "id",
-                reason: format!("no Fork reserved {id}"),
-            })?;
+            let operation =
+                operation_by_id(&transaction, &id)?.ok_or_else(|| StorageError::Corrupt {
+                    table: "conversation_fork_operations",
+                    column: "id",
+                    reason: format!("no Fork reserved {id}"),
+                })?;
             let metadata = &operation.metadata;
             let inserted = insert_conversation(
                 &transaction,
@@ -154,7 +165,12 @@ impl ControlService {
                         |row| row.get(0),
                     )?;
                     if paired {
-                        insert_attached_host(&transaction, &operation.id, host, metadata.created_at)?;
+                        insert_attached_host(
+                            &transaction,
+                            &operation.id,
+                            host,
+                            metadata.created_at,
+                        )?;
                     }
                 }
             }
@@ -172,7 +188,10 @@ impl ControlService {
     }
 }
 
-fn operation_by_id(connection: &Connection, id: &ConversationId) -> Result<Option<ForkOperation>, StorageError> {
+fn operation_by_id(
+    connection: &Connection,
+    id: &ConversationId,
+) -> Result<Option<ForkOperation>, StorageError> {
     connection
         .query_row(
             &format!("SELECT {OPERATION_COLUMNS} FROM conversation_fork_operations WHERE id = ?1"),
@@ -189,10 +208,26 @@ fn operation_row(row: &Row<'_>) -> Result<ForkOperation, StorageError> {
     const TABLE: &str = "conversation_fork_operations";
     let metadata: String = row.get("metadata")?;
     Ok(ForkOperation {
-        id: decode(TABLE, "id", ConversationId::try_from(row.get::<_, String>("id")?))?,
-        owner: decode(TABLE, "user_id", UserId::try_from(row.get::<_, String>("user_id")?))?,
-        source: decode(TABLE, "source_id", ConversationId::try_from(row.get::<_, String>("source_id")?))?,
-        block: decode(TABLE, "block_id", BlockId::try_from(row.get::<_, String>("block_id")?))?,
+        id: decode(
+            TABLE,
+            "id",
+            ConversationId::try_from(row.get::<_, String>("id")?),
+        )?,
+        owner: decode(
+            TABLE,
+            "user_id",
+            UserId::try_from(row.get::<_, String>("user_id")?),
+        )?,
+        source: decode(
+            TABLE,
+            "source_id",
+            ConversationId::try_from(row.get::<_, String>("source_id")?),
+        )?,
+        block: decode(
+            TABLE,
+            "block_id",
+            BlockId::try_from(row.get::<_, String>("block_id")?),
+        )?,
         metadata: json(TABLE, "metadata", &metadata)?,
     })
 }

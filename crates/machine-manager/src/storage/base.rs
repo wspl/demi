@@ -15,11 +15,11 @@ use std::{
     time::Duration,
 };
 
-use demi_shared_artifacts::{Digest, Verifier};
 use demi_machine_manager_protocol::{
     BaseVersion,
     image::{Architecture, CloudImageManifest, INIT_PATH, ManifestError, RUNNER_PATH},
 };
+use demi_shared_artifacts::{Digest, Verifier};
 use rustix::fs::{Mode, OFlags, ResolveFlags};
 use sha2::Digest as _;
 
@@ -159,7 +159,11 @@ fn prepare(off: &OffLoop, image: &Path, bases: &Path) -> Result<Prepared, BaseEr
     })
 }
 
-fn copy_verified(source: &Path, stage: &Path, manifest: &CloudImageManifest) -> Result<(), BaseError> {
+fn copy_verified(
+    source: &Path,
+    stage: &Path,
+    manifest: &CloudImageManifest,
+) -> Result<(), BaseError> {
     let expected = Digest {
         size: manifest.rootfs.size,
         sha256: manifest.rootfs.sha256.clone(),
@@ -173,7 +177,9 @@ fn copy_verified(source: &Path, stage: &Path, manifest: &CloudImageManifest) -> 
         if count == 0 {
             break;
         }
-        verifier.update(&buffer[..count]).map_err(BaseError::Integrity)?;
+        verifier
+            .update(&buffer[..count])
+            .map_err(BaseError::Integrity)?;
         to.write_all(&buffer[..count])?;
     }
     verifier.finish().map_err(BaseError::Integrity)
@@ -193,7 +199,9 @@ async fn extract(tools: &Tools, release: &Release, stage: &Path) -> Result<(), B
         "-C".as_ref(),
         root.as_os_str(),
     ];
-    tools.run(Tool::Bsdtar, args, Some(EXTRACTION_DEADLINE)).await?;
+    tools
+        .run(Tool::Bsdtar, args, Some(EXTRACTION_DEADLINE))
+        .await?;
     Ok(())
 }
 
@@ -276,18 +284,28 @@ mod tests {
     #[tokio::test]
     async fn a_verified_base_is_imported_once_under_its_manifest_digest() {
         let tools = Tools::on_path();
-        let image = CloudImage::new(&entries(), &[RUNNER, TINI, ("/usr/sbin/init", b"tini")], host());
+        let image = CloudImage::new(
+            &entries(),
+            &[RUNNER, TINI, ("/usr/sbin/init", b"tini")],
+            host(),
+        );
         let bases = tempfile::tempdir().unwrap();
         let version = import(&tools, image.path(), bases.path()).await.unwrap();
         let bytes = std::fs::read(image.path().join("manifest.json")).unwrap();
         assert_eq!(version.as_str(), digest(&bytes));
         let base = bases.path().join(&version);
         assert_eq!(std::fs::read(base.join("manifest.json")).unwrap(), bytes);
-        assert_eq!(std::fs::read(base.join("rootfs/usr/bin/tini")).unwrap(), b"tini");
+        assert_eq!(
+            std::fs::read(base.join("rootfs/usr/bin/tini")).unwrap(),
+            b"tini"
+        );
         assert!(!base.join("rootfs.tar.zst").exists());
         // A second import finds it; a stale stage is removed.
         std::fs::create_dir(bases.path().join(".base-stale")).unwrap();
-        assert_eq!(import(&tools, image.path(), bases.path()).await.unwrap(), version);
+        assert_eq!(
+            import(&tools, image.path(), bases.path()).await.unwrap(),
+            version
+        );
         let names: Vec<_> = std::fs::read_dir(bases.path())
             .unwrap()
             .map(|entry| entry.unwrap().file_name())
@@ -295,7 +313,9 @@ mod tests {
         assert_eq!(names, [version.as_str()]);
         // The same version with other stored bytes is refused.
         std::fs::write(base.join("manifest.json"), b"{}").unwrap();
-        let error = import(&tools, image.path(), bases.path()).await.unwrap_err();
+        let error = import(&tools, image.path(), bases.path())
+            .await
+            .unwrap_err();
         assert_eq!(error.to_string(), "Pinned Cloud image manifest differs");
     }
 
@@ -312,21 +332,43 @@ mod tests {
                 },
                 "Cloud root archive integrity mismatch",
             ),
-            (CloudImage::new(&entries(), &[RUNNER, TINI], other()), "architecture differs"),
-            (CloudImage::new(&entries(), &[RUNNER], host()), "lacks /usr/bin/tini"),
-            (CloudImage::new(&entries(), &[RUNNER, TINI, ("/usr/bin/demi-helper", b"helper")], host()), "No such file"),
-            (CloudImage::new(&entries(), &[RUNNER, ("/usr/bin/tini", b"other")], host()), "integrity mismatch: /usr/bin/tini"),
+            (
+                CloudImage::new(&entries(), &[RUNNER, TINI], other()),
+                "architecture differs",
+            ),
+            (
+                CloudImage::new(&entries(), &[RUNNER], host()),
+                "lacks /usr/bin/tini",
+            ),
+            (
+                CloudImage::new(
+                    &entries(),
+                    &[RUNNER, TINI, ("/usr/bin/demi-helper", b"helper")],
+                    host(),
+                ),
+                "No such file",
+            ),
+            (
+                CloudImage::new(&entries(), &[RUNNER, ("/usr/bin/tini", b"other")], host()),
+                "integrity mismatch: /usr/bin/tini",
+            ),
             (
                 {
                     let mut escaping = entries();
                     escaping.push(("usr/bin/escape", Entry::Link("/etc/hostname")));
-                    CloudImage::new(&escaping, &[RUNNER, TINI, ("/usr/bin/escape", b"host")], host())
+                    CloudImage::new(
+                        &escaping,
+                        &[RUNNER, TINI, ("/usr/bin/escape", b"host")],
+                        host(),
+                    )
                 },
                 "Invalid image executable path: /usr/bin/escape",
             ),
         ];
         for (image, expected) in cases {
-            let error = import(&tools, image.path(), bases.path()).await.unwrap_err();
+            let error = import(&tools, image.path(), bases.path())
+                .await
+                .unwrap_err();
             let message = crate::server::chain(&error);
             assert!(message.contains(expected), "{message}");
             let left: Vec<_> = std::fs::read_dir(bases.path()).unwrap().collect();

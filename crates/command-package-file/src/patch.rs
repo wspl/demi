@@ -97,22 +97,21 @@ pub fn apply(
             .map(|path| resolve(cwd, path))
             .transpose()?;
         let before = old_path.as_ref().map(fs::read).transpose()?;
-        let original = std::str::from_utf8(before.as_deref().unwrap_or_default())
-            .map_err(PatchError::from)?;
+        let original =
+            std::str::from_utf8(before.as_deref().unwrap_or_default()).map_err(PatchError::from)?;
         let label = patch
             .old
             .as_deref()
             .or(patch.new.as_deref())
             .ok_or(PatchError::NoPath)?;
-        let updated = apply_hunks(original, &patch.hunks, cancellation).map_err(|error| {
-            match error {
+        let updated =
+            apply_hunks(original, &patch.hunks, cancellation).map_err(|error| match error {
                 FileError::Patch(source) => FileError::Patch(PatchError::DoesNotApply {
                     label: label.to_owned(),
                     source: Box::new(source),
                 }),
                 error => error,
-            }
-        })?;
+            })?;
         if new_path.is_none() && !updated.is_empty() {
             return Err(PatchError::DeleteLeavesContent.into());
         }

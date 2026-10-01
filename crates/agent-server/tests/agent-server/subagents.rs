@@ -5,30 +5,32 @@
 use std::{cell::RefCell, rc::Rc, time::Duration};
 
 use demi_agent_server::ServerConfig;
-use demi_conversation_socket_protocol::{ClientFrame, JobPhase, ServerFrame, SubagentEvent, TranscriptPatch};
 use demi_agent_store::{
     AgentTreeStore, CheckpointState, CheckpointUpdate, ClosePhase, CommandStateSnapshot, NodeClose,
     NodeRecord,
     testing::{MemoryTreeStore, model_of, test_model, text},
 };
 use demi_agent_tools::Profile;
-use demi_shared_types::{
-    AgentMessage, AgentMessageEvent, Block, BlockId, CompletionId, CompletionOutcome, NodeId,
-    QueuedMessage, SessionPhase, TextBlock, Timestamp, TurnId, UserBlock,
+use demi_conversation_socket_protocol::{
+    ClientFrame, JobPhase, ServerFrame, SubagentEvent, TranscriptPatch,
 };
+use demi_host_interface::{CommandSet, RpcError, StorageOp, StorageReply};
 use demi_provider_common::{
     InferenceItem, UserPart,
     testing::{Turn, event},
 };
-use demi_host_interface::{CommandSet, RpcError, StorageOp, StorageReply};
+use demi_shared_types::{
+    AgentMessage, AgentMessageEvent, Block, BlockId, CompletionId, CompletionOutcome, NodeId,
+    QueuedMessage, SessionPhase, TextBlock, Timestamp, TurnId, UserBlock,
+};
 use serde_json::{Value, json};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::support::{
-    CommandRun, Fixture, Gate, Model, TestHarness, agent, agent_call, command_storage, named_node,
-    conversation, held, is_idle, is_pending_steers, open, request_text, send, texts, until,
-    until_answered,
+    CommandRun, Fixture, Gate, Model, TestHarness, agent, agent_call, command_storage,
+    conversation, held, is_idle, is_pending_steers, named_node, open, request_text, send, texts,
+    until, until_answered,
 };
 
 fn said(text: &str) -> Turn {
@@ -221,9 +223,10 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
     let [UserPart::Text(preamble), UserPart::Text(first)] = content.as_slice() else {
         panic!("{content:?}")
     };
-    assert!(preamble.starts_with(
-        "You are a subagent: agent 1 of this conversation, spawned by agent 0."
-    ));
+    assert!(
+        preamble
+            .starts_with("You are a subagent: agent 1 of this conversation, spawned by agent 0.")
+    );
     assert!(preamble.contains("`demi agent spawn` spawns your own children."));
     assert_eq!(first, brief);
     assert!(
@@ -382,13 +385,7 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
         json!({ "id": "1", "message": "late" }),
     )
     .await;
-    let abort_sibling = agent(
-        &fixture.server,
-        &alpha,
-        "abort",
-        json!({ "id": 3 }),
-    )
-    .await;
+    let abort_sibling = agent(&fixture.server, &alpha, "abort", json!({ "id": 3 })).await;
     let resume_foreign = agent(
         &fixture.server,
         &alpha,
@@ -407,27 +404,9 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
     )
     .await
     .unwrap();
-    let shown = agent(
-        &fixture.server,
-        &alpha,
-        "show",
-        json!({ "id": 3 }),
-    )
-    .await;
-    let show_root = agent(
-        &fixture.server,
-        &alpha,
-        "show",
-        json!({ "id": 0 }),
-    )
-    .await;
-    let show_archived = agent(
-        &fixture.server,
-        &alpha,
-        "show",
-        json!({ "id": 1 }),
-    )
-    .await;
+    let shown = agent(&fixture.server, &alpha, "show", json!({ "id": 3 })).await;
+    let show_root = agent(&fixture.server, &alpha, "show", json!({ "id": 0 })).await;
+    let show_archived = agent(&fixture.server, &alpha, "show", json!({ "id": 1 })).await;
 
     // Agents are numbered in spawn order: delta 1, alpha 2, beta 3, and
     // gamma, which alpha spawned, 4.
@@ -442,7 +421,9 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
     // message's delivery.
     let alpha_heard = request_text(&model.requests_of("task alpha")[1]);
     assert!(
-        alpha_heard.contains(r#"{"sender":{"agent":4,"description":"gamma","round":1},"event":"message","#),
+        alpha_heard.contains(
+            r#"{"sender":{"agent":4,"description":"gamma","round":1},"event":"message","#
+        ),
         "{alpha_heard}"
     );
     assert!(alpha_heard.contains("gamma status"), "{alpha_heard}");
@@ -482,10 +463,7 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
                 "│ └─● {} ← you",
                 live(4, "gamma", "provider_streaming", "streaming")
             ),
-            format!(
-                "├─● {}",
-                live(3, "beta", "provider_streaming", "streaming")
-            ),
+            format!("├─● {}", live(3, "beta", "provider_streaming", "streaming")),
             "└─○ 1  archived (completed 0s ago)  \"delta\"".to_owned(),
         ]
         .join("\n")
@@ -534,7 +512,10 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
             + "\n"
     );
     assert_eq!(refused(&show_root), "demi agent show: no live agent 0\n");
-    assert_eq!(refused(&show_archived), "demi agent show: no live agent 1\n");
+    assert_eq!(
+        refused(&show_archived),
+        "demi agent show: no live agent 1\n"
+    );
 
     // A child with a message waiting does not close before it reads it.
     beta_gate.open();
@@ -590,7 +571,10 @@ async fn abort_closes_the_subtree_and_dispose_detaches_it_for_the_next_open() {
     .await;
     let frames = client.next_until(is_idle).await;
 
-    assert_eq!(aborted.stdout, format!("aborted {}\n", fixture.number(&alpha)));
+    assert_eq!(
+        aborted.stdout,
+        format!("aborted {}\n", fixture.number(&alpha))
+    );
     let closes: Vec<(NodeId, JobPhase)> = lifecycle(&frames)
         .into_iter()
         .filter(|(event, ..)| *event == SubagentEvent::Closed)
@@ -651,7 +635,7 @@ async fn abort_closes_the_subtree_and_dispose_detaches_it_for_the_next_open() {
         .filter(|(event, ..)| *event == SubagentEvent::Started)
         .map(|(_, id, _)| id)
         .collect();
-    assert_eq!(started, [beta.clone()]);
+    assert_eq!(started, std::slice::from_ref(&beta));
     assert_eq!(model.requests_of("task beta").len(), 2);
     assert_eq!(
         closed_phase(&fixture, &beta),
@@ -681,7 +665,12 @@ pub(crate) fn checkpoint(queue: Vec<QueuedMessage>, blocks: Vec<Block>) -> Check
 }
 
 /// A child in its first round, agent `number` of the conversation.
-pub(crate) fn child_record(id: &str, number: u64, parent: &str, profile: Option<&str>) -> NodeRecord {
+pub(crate) fn child_record(
+    id: &str,
+    number: u64,
+    parent: &str,
+    profile: Option<&str>,
+) -> NodeRecord {
     NodeRecord {
         id: NodeId::try_from(id).unwrap(),
         number,
@@ -1173,8 +1162,14 @@ async fn profiles_and_the_spawn_restriction_shape_a_childs_prompt_and_commands()
             .unwrap()
             .can_spawn_subagents
     );
-    let help = fixture.harness.prompts.borrow();
-    assert!(help.iter().any(|help| !help.contains("demi agent spawn")));
+    assert!(
+        fixture
+            .harness
+            .prompts
+            .borrow()
+            .iter()
+            .any(|help| !help.contains("demi agent spawn"))
+    );
 
     let reserved = Profile {
         name: "default".into(),

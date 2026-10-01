@@ -18,7 +18,10 @@ use super::error::ApiError;
 use super::gate::AdminUser;
 use demi_backend_user_shard::services::Services;
 
-pub(super) async fn list(State(services): State<Arc<Services>>, AdminUser(_): AdminUser) -> Result<Json<Users>, ApiError> {
+pub(super) async fn list(
+    State(services): State<Arc<Services>>,
+    AdminUser(_): AdminUser,
+) -> Result<Json<Users>, ApiError> {
     Ok(Json(Users {
         users: services.control.users().await?,
     }))
@@ -38,7 +41,13 @@ pub(super) async fn create(
         .control
         .create_user(request.email, password_hash, role)
         .await?
-        .ok_or_else(|| ApiError::new(StatusCode::CONFLICT, ErrorCode::EmailTaken, "An account has that email"))?;
+        .ok_or_else(|| {
+            ApiError::new(
+                StatusCode::CONFLICT,
+                ErrorCode::EmailTaken,
+                "An account has that email",
+            )
+        })?;
     Ok((StatusCode::CREATED, Json(CreatedUser { user })))
 }
 
@@ -50,7 +59,13 @@ pub(super) async fn reset_password(
     Path(id): Path<String>,
     body: Result<JsonBody<PasswordReset>, ApiError>,
 ) -> Result<StatusCode, ApiError> {
-    let not_found = || ApiError::new(StatusCode::NOT_FOUND, ErrorCode::UserNotFound, "No such user");
+    let not_found = || {
+        ApiError::new(
+            StatusCode::NOT_FOUND,
+            ErrorCode::UserNotFound,
+            "No such user",
+        )
+    };
     let id = UserId::try_from(id).map_err(|_| not_found())?;
     let target = services.control.account(id).await?.ok_or_else(not_found)?;
     if !caller.role.outranks(target.user.role) {
@@ -58,6 +73,9 @@ pub(super) async fn reset_password(
     }
     let JsonBody(reset) = body?;
     let password_hash = services.hasher.hash(reset.password).await?;
-    services.control.set_password(target.user.id, password_hash).await?;
+    services
+        .control
+        .set_password(target.user.id, password_hash)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }

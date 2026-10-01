@@ -207,7 +207,10 @@ async fn raw_spawn_inherits_environment_only_when_requested() {
 /// Starts `script` as job `job`; for one that `exits`, waits for its end.
 async fn job_of(host: &mut Host, job: &str, script: &str, exits: bool) {
     start_job(host, job, script).await;
-    while exits {
+    if !exits {
+        return;
+    }
+    loop {
         if let Outbound::JobExit { job_id, .. } = host.frame().await
             && job_id == job
         {

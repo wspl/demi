@@ -20,8 +20,8 @@ use demi_backend_idle_watch::{Activity, IdlePolicy, Retirement};
 use demi_web_api_protocol::ids::ConversationId;
 use tokio_util::task::AbortOnDropHandle;
 
-use demi_backend_host_access::root_of;
 use crate::shard::Shard;
+use demi_backend_host_access::root_of;
 
 /// The idle watch of each conversation that reached a Host.
 #[derive(Default)]
@@ -62,9 +62,17 @@ impl Shard {
             id: id.clone(),
         };
         let lifecycle = &self.services().lifecycle;
-        let watch = demi_backend_idle_watch::watch(policy, lifecycle.idle_window, lifecycle.idle_poll, self.tasks().clone());
+        let watch = demi_backend_idle_watch::watch(
+            policy,
+            lifecycle.idle_window,
+            lifecycle.idle_poll,
+            self.tasks().clone(),
+        );
         let watch = AbortOnDropHandle::new(self.tasks().spawn_local(watch));
-        self.idle_watches().watches.borrow_mut().insert(id.clone(), watch);
+        self.idle_watches()
+            .watches
+            .borrow_mut()
+            .insert(id.clone(), watch);
     }
 
     /// Starts the conversation's idle watch again, as a won target switch
@@ -94,7 +102,9 @@ struct ConversationIdle {
 
 impl ConversationIdle {
     fn shard(&self) -> Result<Rc<Shard>, String> {
-        self.shard.upgrade().ok_or_else(|| "the shard is gone".to_owned())
+        self.shard
+            .upgrade()
+            .ok_or_else(|| "the shard is gone".to_owned())
     }
 }
 
@@ -112,14 +122,27 @@ impl IdlePolicy for ConversationIdle {
             },
             None => None,
         };
-        let Some(files) = shard.conversations().slot(&self.id).file_gate().try_reserve() else {
+        let Some(files) = shard
+            .conversations()
+            .slot(&self.id)
+            .file_gate()
+            .try_reserve()
+        else {
             return Ok(None);
         };
         let id = self.id.clone();
         Ok(Some(Box::pin(async move {
             let _held = (files, tree);
-            let record = shard.host_shard().owned_conversation(&id).await.map_err(|error| error.to_string())?;
-            shard.host_shard().release_everywhere(&record).await.map_err(|error| error.to_string())
+            let record = shard
+                .host_shard()
+                .owned_conversation(&id)
+                .await
+                .map_err(|error| error.to_string())?;
+            shard
+                .host_shard()
+                .release_everywhere(&record)
+                .await
+                .map_err(|error| error.to_string())
         })))
     }
 
@@ -145,13 +168,15 @@ mod tests {
     use tokio_util::sync::CancellationToken;
 
     use super::*;
-    use demi_runner_protocol::wire::RunnerPlatform;
-    use demi_backend_database::accounts::TokenHash;
     use crate::services::Services;
-    use crate::tuning::LifecycleTuning;
     use crate::shard::{ShardPlacement, ShardPool};
+    use crate::tuning::LifecycleTuning;
+    use demi_backend_database::accounts::TokenHash;
     use demi_backend_database::control::testing;
-    use demi_backend_database::conversation_index::{AttachedHostRecord, ConversationChange, Creation, RecordChange};
+    use demi_backend_database::conversation_index::{
+        AttachedHostRecord, ConversationChange, Creation, RecordChange,
+    };
+    use demi_runner_protocol::wire::RunnerPlatform;
 
     const ID: &str = "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01";
 
@@ -172,7 +197,10 @@ mod tests {
 
     /// A backend's services, whose idle window is `WINDOW`, with the
     /// conversation `ID` and the master's paired devices `names`.
-    async fn fixture(data: &std::path::Path, names: &[&str]) -> (std::sync::Arc<Services>, UserId, Vec<DeviceId>) {
+    async fn fixture(
+        data: &std::path::Path,
+        names: &[&str],
+    ) -> (std::sync::Arc<Services>, UserId, Vec<DeviceId>) {
         let lifecycle = LifecycleTuning {
             idle_window: WINDOW,
             idle_poll: Duration::from_millis(50),
@@ -183,13 +211,21 @@ mod tests {
         let owner = testing::master(&control).await.id;
         let id = ConversationId::try_from(ID).unwrap();
         assert!(matches!(
-            control.create_conversation(owner.clone(), id).await.unwrap(),
+            control
+                .create_conversation(owner.clone(), id)
+                .await
+                .unwrap(),
             Creation::Created(_)
         ));
         let mut devices = Vec::new();
         for name in names {
             let device = control
-                .create_device(owner.clone(), (*name).into(), RunnerPlatform::Linux, TokenHash::of(name))
+                .create_device(
+                    owner.clone(),
+                    (*name).into(),
+                    RunnerPlatform::Linux,
+                    TokenHash::of(name),
+                )
                 .await
                 .unwrap();
             devices.push(device.id);
@@ -205,7 +241,9 @@ mod tests {
             let (log, id) = (released.clone(), device.clone());
             shard.play_runner_for_tests(device, "/home/ana", move |_| {
                 let (log, id) = (log.clone(), id.clone());
-                Box::pin(async move { log.send_modify(|released| released.push((id, Instant::now()))) })
+                Box::pin(
+                    async move { log.send_modify(|released| released.push((id, Instant::now()))) },
+                )
             });
         }
         released
@@ -243,7 +281,9 @@ mod tests {
     async fn an_hour_without_activity_releases_the_conversation_on_its_main_and_attached_devices() {
         let data = tempfile::tempdir().unwrap();
         let (services, owner, devices) = fixture(data.path(), &["main", "attached"]).await;
-        let pool = ShardPool::start(ShardPlacement::Inline, services).await.unwrap();
+        let pool = ShardPool::start(ShardPlacement::Inline, services)
+            .await
+            .unwrap();
         pool.shards()
             .of(&owner)
             .call(move |shard, _| async move {
@@ -292,10 +332,13 @@ mod tests {
     // A window and a half of real time: the switch comes half a window after
     // the activity, and the release it leads to a full window after it.
     #[tokio::test(flavor = "local")]
-    async fn a_switch_restarts_the_window_so_the_old_deadline_releases_nothing_and_an_archive_ends_it() {
+    async fn a_switch_restarts_the_window_so_the_old_deadline_releases_nothing_and_an_archive_ends_it()
+     {
         let data = tempfile::tempdir().unwrap();
         let (services, owner, devices) = fixture(data.path(), &["old", "new"]).await;
-        let pool = ShardPool::start(ShardPlacement::Inline, services).await.unwrap();
+        let pool = ShardPool::start(ShardPlacement::Inline, services)
+            .await
+            .unwrap();
         pool.shards()
             .of(&owner)
             .call(move |shard, _| async move {
@@ -315,8 +358,12 @@ mod tests {
                 // The switch releases the old device, once.
                 let switched = Instant::now();
                 shard.transition(&id, on(&new)).await.unwrap();
-                let devices: Vec<DeviceId> = released.borrow().iter().map(|(device, _)| device.clone()).collect();
-                assert_eq!(devices, [old.clone()]);
+                let devices: Vec<DeviceId> = released
+                    .borrow()
+                    .iter()
+                    .map(|(device, _)| device.clone())
+                    .collect();
+                assert_eq!(devices, std::slice::from_ref(&old));
                 // The old binding's deadline releases nothing: the next
                 // releases are the new binding's, on the new device and on
                 // the old one, which the switch left attached, a full window

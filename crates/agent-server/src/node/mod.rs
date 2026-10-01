@@ -13,16 +13,16 @@ use demi_agent_session::{
 };
 use demi_agent_store::{AgentTreeStore, NodeRecord, StoreError};
 use demi_agent_tools::{
-    AgentHarness, CallError, Environments, PromptContext, ShellAccess, ShellEnvironmentFactory,
-    StoreNumbers, definitions, stored_running_commands,
+    AgentHarness, CallError, Environments, ProfilePrompt, PromptContext, ShellAccess,
+    ShellEnvironmentFactory, StoreNumbers, definitions, stored_running_commands,
 };
 use demi_agent_transcript::IdSource;
-use demi_shared_types::{Clock, CommandId, ModelSelection, NodeId, QueuedMessage};
-use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
-use demi_provider_common::{ProviderRuntime, ToolDefinition};
 use demi_host_interface::{
     CommandSet, JobCaller, Numbers, PageFeed, PageState, PageView, ShellError, WholeOutput,
 };
+use demi_provider_common::{ProviderRuntime, ToolDefinition};
+use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
+use demi_shared_types::{Clock, CommandId, ModelSelection, NodeId, QueuedMessage};
 use futures_util::future::LocalBoxFuture;
 
 /// A node's place in its tree, which sets its lifecycle policy: a child
@@ -184,7 +184,7 @@ pub(crate) enum Prompt {
     /// The harness's system prompt and preamble.
     Harness,
     /// A profile's system prompt, which drops the harness's preamble.
-    Profile(Rc<dyn Fn(PromptContext<'_>, &str) -> String>),
+    Profile(ProfilePrompt),
 }
 
 /// What the session calls in its node: the tree's admission, the prompts

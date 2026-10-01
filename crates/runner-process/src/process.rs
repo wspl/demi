@@ -8,8 +8,8 @@ use std::{
 
 use bytes::Bytes;
 use demi_command_sdk::descriptors::{self, Backoff};
-use process_wrap::tokio::{ChildWrapper, CommandWrap, KillOnDrop};
 use futures_util::StreamExt;
+use process_wrap::tokio::{ChildWrapper, CommandWrap, KillOnDrop};
 use tokio::{
     io::{AsyncRead, AsyncWriteExt},
     process::Command,
@@ -346,7 +346,7 @@ pub fn umask() -> u32 {
         let strict = rustix::fs::Mode::from_raw_mode(0o077);
         let umask = rustix::process::umask(strict);
         rustix::process::umask(umask);
-        u32::from(umask.as_raw_mode())
+        umask.as_raw_mode()
     })
 }
 
@@ -362,7 +362,9 @@ pub fn set_attributes(command: &mut std::process::Command, attributes: &ChildAtt
     use std::os::unix::process::CommandExt;
     let mut limits = attributes.limits.clone();
     if let Some(&(soft, hard)) = STARTED_WITH.get()
-        && !limits.iter().any(|&(resource, ..)| resource == rlimit::Resource::NOFILE)
+        && !limits
+            .iter()
+            .any(|&(resource, ..)| resource == rlimit::Resource::NOFILE)
     {
         limits.push((rlimit::Resource::NOFILE, soft, hard));
     }
@@ -560,7 +562,10 @@ fn exit_signal(status: ExitStatus) -> Option<String> {
             Signal::Continue,
         ];
         status.signal().map(|raw| {
-            match SIGNALS.into_iter().find(|signal| number(*signal).as_raw() == raw) {
+            match SIGNALS
+                .into_iter()
+                .find(|signal| number(*signal).as_raw() == raw)
+            {
                 Some(signal) => signal.to_string(),
                 None if raw == rustix::process::Signal::PIPE.as_raw() => "SIGPIPE".into(),
                 None => format!("SIG{raw}"),

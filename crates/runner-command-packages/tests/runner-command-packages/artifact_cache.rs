@@ -3,7 +3,9 @@
 //! partial or mismatched is ever published.
 
 use demi_command_protocol::PackageArtifact;
-use demi_runner_command_packages::{ArtifactResolver, ArtifactSource, RuntimeError, cache::ArtifactCache};
+use demi_runner_command_packages::{
+    ArtifactResolver, ArtifactSource, RuntimeError, cache::ArtifactCache,
+};
 use futures_util::future::BoxFuture;
 use sha2::{Digest, Sha256};
 use std::{
@@ -50,9 +52,14 @@ async fn a_cached_executable_is_reused_without_asking_and_one_of_another_size_fa
         path: source,
         calls: AtomicUsize::new(0),
     };
-    let cache = ArtifactCache::new(root.path().join("cache"), None).await.unwrap();
+    let cache = ArtifactCache::new(root.path().join("cache"), None)
+        .await
+        .unwrap();
     let cancel = CancellationToken::new();
-    let path = cache.install(&artifact(bytes), &resolver, &cancel).await.unwrap();
+    let path = cache
+        .install(&artifact(bytes), &resolver, &cancel)
+        .await
+        .unwrap();
     assert_eq!(tokio::fs::read(&path).await.unwrap(), bytes);
     #[cfg(unix)]
     {
@@ -60,12 +67,23 @@ async fn a_cached_executable_is_reused_without_asking_and_one_of_another_size_fa
         let mode = std::fs::metadata(&path).unwrap().permissions().mode();
         assert_eq!(mode & 0o111, 0o111, "the cached executable runs");
     }
-    assert_eq!(cache.install(&artifact(bytes), &resolver, &cancel).await.unwrap(), path);
+    assert_eq!(
+        cache
+            .install(&artifact(bytes), &resolver, &cancel)
+            .await
+            .unwrap(),
+        path
+    );
     assert_eq!(resolver.calls.load(Ordering::SeqCst), 1);
     tokio::fs::write(&path, b"corrupt cache").await.unwrap();
     let result = cache.install(&artifact(bytes), &resolver, &cancel).await;
     assert!(
-        matches!(result, Err(RuntimeError::Artifact(demi_shared_artifacts::Error::Size { .. }))),
+        matches!(
+            result,
+            Err(RuntimeError::Artifact(
+                demi_shared_artifacts::Error::Size { .. }
+            ))
+        ),
         "{result:?}"
     );
 }
@@ -84,7 +102,10 @@ async fn a_mismatched_download_leaves_no_file_behind() {
     let result = cache
         .install(&artifact(b"small"), &resolver, &CancellationToken::new())
         .await;
-    assert!(matches!(result, Err(RuntimeError::Artifact(_))), "{result:?}");
+    assert!(
+        matches!(result, Err(RuntimeError::Artifact(_))),
+        "{result:?}"
+    );
     assert!(
         tokio::fs::read_dir(cache_root)
             .await

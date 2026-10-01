@@ -4,13 +4,13 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use demi_conversation_socket_protocol::{ClientFrame, ServerFrame, ShellStatus};
 use demi_agent_tools::testing::{field, shown_output};
-use demi_shared_types::CommandId;
+use demi_conversation_socket_protocol::{ClientFrame, ServerFrame, ShellStatus};
 use demi_provider_common::{
     InferenceRequest, ProviderEvent,
     testing::{ScriptedRuntime, Turn, event},
 };
+use demi_shared_types::CommandId;
 use serde_json::json;
 
 use crate::support::{Fixture, exec, is_idle, last_result, reply, scripts, turn, within};
@@ -267,59 +267,60 @@ async fn the_shell_tools_feed_a_waiting_command_stop_a_long_one_and_yield_betwee
         while model.borrow().phase != Phase::Done {
             frames.extend(client.next_until(is_idle).await);
         }
-        let model = model.borrow();
-        let reader = model.reader.clone().unwrap();
-        let long = model.long.clone().unwrap();
-        assert!(
-            model.seen[0].starts_with("status: running\n"),
-            "{}",
-            model.seen[0]
-        );
-        assert!(
-            model.seen[1].starts_with("status: running\n"),
-            "{}",
-            model.seen[1]
-        );
-        assert_eq!(model.reader_output, "hello Alice\n");
-        let aborted = model.seen.last().unwrap();
-        assert!(aborted.starts_with("status: aborted\n"), "{aborted}");
-        assert!(
-            aborted.contains("next: command was intentionally stopped."),
-            "{aborted}"
-        );
-
-        // The page saw each command's output and its end, and nothing of a
-        // command after its end (`runtime.md` § Live output).
-        let mut ends: Vec<(CommandId, ShellStatus)> = Vec::new();
-        for frame in &frames {
-            let ServerFrame::ShellOutput { status, .. } = frame else {
-                continue;
-            };
-            let command = &status.command().command_id;
+        {
+            let model = model.borrow();
+            let reader = model.reader.clone().unwrap();
+            let long = model.long.clone().unwrap();
             assert!(
-                !ends.iter().any(|(ended, _)| ended == command),
-                "a frame after the end of {command}"
+                model.seen[0].starts_with("status: running\n"),
+                "{}",
+                model.seen[0]
             );
-            if !matches!(**status, ShellStatus::Running { .. }) {
-                ends.push((command.clone(), ShellStatus::clone(status)));
+            assert!(
+                model.seen[1].starts_with("status: running\n"),
+                "{}",
+                model.seen[1]
+            );
+            assert_eq!(model.reader_output, "hello Alice\n");
+            let aborted = model.seen.last().unwrap();
+            assert!(aborted.starts_with("status: aborted\n"), "{aborted}");
+            assert!(
+                aborted.contains("next: command was intentionally stopped."),
+                "{aborted}"
+            );
+
+            // The page saw each command's output and its end, and nothing of a
+            // command after its end (`runtime.md` § Live output).
+            let mut ends: Vec<(CommandId, ShellStatus)> = Vec::new();
+            for frame in &frames {
+                let ServerFrame::ShellOutput { status, .. } = frame else {
+                    continue;
+                };
+                let command = &status.command().command_id;
+                assert!(
+                    !ends.iter().any(|(ended, _)| ended == command),
+                    "a frame after the end of {command}"
+                );
+                if !matches!(**status, ShellStatus::Running { .. }) {
+                    ends.push((command.clone(), ShellStatus::clone(status)));
+                }
             }
+            let [(first, greeted), (second, stopped)] = &ends[..] else {
+                panic!("{ends:?}");
+            };
+            assert_eq!((first, second), (&reader, &long));
+            assert!(
+                matches!(greeted, ShellStatus::Exited { exit_code: 0, command } if command.tail == "hello Alice\n"),
+                "{greeted:?}"
+            );
+            assert!(matches!(stopped, ShellStatus::Aborted { .. }), "{stopped:?}");
+            // No call was an error, the abort included.
+            let kinds = fixture.kinds();
+            assert!(
+                !kinds.iter().any(|kind| kind == "tool_call:error"),
+                "{kinds:?}"
+            );
         }
-        let [(first, greeted), (second, stopped)] = &ends[..] else {
-            panic!("{ends:?}");
-        };
-        assert_eq!((first, second), (&reader, &long));
-        assert!(
-            matches!(greeted, ShellStatus::Exited { exit_code: 0, command } if command.tail == "hello Alice\n"),
-            "{greeted:?}"
-        );
-        assert!(matches!(stopped, ShellStatus::Aborted { .. }), "{stopped:?}");
-        // No call was an error, the abort included.
-        let kinds = fixture.kinds();
-        assert!(
-            !kinds.iter().any(|kind| kind == "tool_call:error"),
-            "{kinds:?}"
-        );
-        drop(model);
         fixture.stop().await;
     })
     .await;

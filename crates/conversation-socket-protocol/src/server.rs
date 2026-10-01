@@ -23,7 +23,11 @@ pub type Failures = BTreeMap<BlockId, ProviderFailureFacts>;
 /// A frame the backend sends on a conversation's socket. Every frame for one
 /// attachment goes through one outbox in causal order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
-#[serde(tag = "type", rename_all = "snake_case", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum ServerFrame {
     /// The connection is attached; the snapshot frames follow.
     Opened,
@@ -47,7 +51,11 @@ pub enum ServerFrame {
         blocks: Vec<Block>,
         #[garde(dive)]
         version: TranscriptVersion,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         #[schemars(with = "Failures")]
         #[garde(skip)]
         failures: Option<Failures>,
@@ -58,7 +66,11 @@ pub enum ServerFrame {
         patches: Vec<TranscriptPatch>,
         #[garde(range(max = MAX_SAFE_INTEGER))]
         revision: u64,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         #[schemars(with = "Failures")]
         #[garde(skip)]
         failures: Option<Failures>,
@@ -93,7 +105,11 @@ pub enum ServerFrame {
     /// every page, whatever any page or the model read.
     ShellOutput {
         /// The subagent whose command it is; absent for the root's.
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         #[schemars(with = "NodeId")]
         #[garde(skip)]
         subagent_id: Option<NodeId>,
@@ -115,7 +131,11 @@ pub enum ServerFrame {
         #[schemars(with = "Nullable<String>")]
         #[garde(skip)]
         code: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         #[schemars(with = "ProviderErrorDiagnostics")]
         #[garde(dive)]
         diagnostics: Option<ProviderErrorDiagnostics>,
@@ -125,11 +145,19 @@ pub enum ServerFrame {
     Error {
         #[garde(skip)]
         message: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         #[schemars(with = "String")]
         #[garde(skip)]
         code: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         #[schemars(with = "ProviderErrorDiagnostics")]
         #[garde(dive)]
         diagnostics: Option<ProviderErrorDiagnostics>,
@@ -148,7 +176,11 @@ pub enum ServerFrame {
         blocks: Vec<Block>,
         #[garde(range(max = MAX_SAFE_INTEGER))]
         revision: u64,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         #[schemars(with = "Failures")]
         #[garde(skip)]
         failures: Option<Failures>,
@@ -160,7 +192,11 @@ pub enum ServerFrame {
         patches: Vec<TranscriptPatch>,
         #[garde(range(max = MAX_SAFE_INTEGER))]
         revision: u64,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         #[schemars(with = "Failures")]
         #[garde(skip)]
         failures: Option<Failures>,
@@ -175,7 +211,11 @@ pub enum ServerFrame {
 
 /// How an edit ended.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
-#[serde(tag = "status", rename_all = "snake_case", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "status",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum EditOutcome {
     /// The replacement is durable; its turn has this id.
     Accepted {
@@ -190,7 +230,11 @@ pub enum EditOutcome {
 
 /// How a steer ended.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
-#[serde(tag = "status", rename_all = "snake_case", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "status",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum SteerOutcome {
     /// The steer is pending until the next continuation boundary.
     Accepted,
@@ -201,7 +245,9 @@ pub enum SteerOutcome {
 }
 
 /// What an `abort` stopped, and whether another `abort` would stop more.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct AbortResult {
     /// Null when there was nothing to stop.
@@ -269,7 +315,11 @@ pub struct SubagentJob {
     pub ended_at: Option<Timestamp>,
     /// Only on a `completed` close: the child's last assistant text, at most
     /// 32 KiB.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "String")]
     #[garde(skip)]
     pub result: Option<String>,
@@ -291,7 +341,11 @@ serde_plain::derive_fromstr_from_deserialize!(JobPhase);
 /// Where a command is, with the pages' view of it: running, exited with its
 /// code, or stopped.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
-#[serde(tag = "status", rename_all = "snake_case", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "status",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum ShellStatus {
     Running {
         #[serde(flatten)]

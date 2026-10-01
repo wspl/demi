@@ -10,8 +10,7 @@ use std::{
 use futures_util::future::BoxFuture;
 
 use crate::credentials::{
-    AccountDocument, AccountMeta, CredentialPool, PoolError, RefreshGates, RefreshPermit,
-    Revision,
+    AccountDocument, AccountMeta, CredentialPool, PoolError, RefreshGates, RefreshPermit, Revision,
 };
 
 /// A pool held in memory, with refresh turns of its own. Clones share the
@@ -80,7 +79,12 @@ impl CredentialPool for MemoryCredentialPool {
     }
 
     fn meta<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<Option<AccountMeta>, PoolError>> {
-        let meta = self.shared.lock().accounts.get(id).map(|entry| entry.meta.clone());
+        let meta = self
+            .shared
+            .lock()
+            .accounts
+            .get(id)
+            .map(|entry| entry.meta.clone());
         Box::pin(async { Ok(meta) })
     }
 
@@ -149,10 +153,15 @@ impl AccountDocument for MemoryDocument {
     }
 
     fn read(&self) -> BoxFuture<'_, Result<Option<Revision>, PoolError>> {
-        let revision = self.shared.lock().accounts.get(&self.id).map(|entry| Revision {
-            text: entry.text.clone(),
-            version: entry.version,
-        });
+        let revision = self
+            .shared
+            .lock()
+            .accounts
+            .get(&self.id)
+            .map(|entry| Revision {
+                text: entry.text.clone(),
+                version: entry.version,
+            });
         Box::pin(async { Ok(revision) })
     }
 

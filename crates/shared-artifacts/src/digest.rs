@@ -36,7 +36,9 @@ impl Measure {
             .size
             .checked_add(chunk.len() as u64)
             .filter(|size| *size <= self.limit)
-            .ok_or(Error::TooLarge { declared: self.limit })?;
+            .ok_or(Error::TooLarge {
+                declared: self.limit,
+            })?;
         self.hash.update(chunk);
         Ok(())
     }

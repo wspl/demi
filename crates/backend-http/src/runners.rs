@@ -45,13 +45,15 @@ pub(super) async fn put(
 ) -> Response {
     let device = match device_of(&state, authorization).await {
         Ok(device) => device,
-        Err(refusal) => return refusal,
+        Err(refusal) => return *refusal,
     };
     let owner = device.user.clone();
     let claimed = state
         .shards
         .of(&owner)
-        .call_while_closing(move |shard, _| async move { shard.pipes().claim_source(&id, device.id.as_str()) })
+        .call_while_closing(move |shard, _| async move {
+            shard.pipes().claim_source(&id, device.id.as_str())
+        })
         .await;
     let source = match claimed {
         Ok(Ok(source)) => source,
@@ -73,13 +75,15 @@ pub(super) async fn get(
 ) -> Response {
     let device = match device_of(&state, authorization).await {
         Ok(device) => device,
-        Err(refusal) => return refusal,
+        Err(refusal) => return *refusal,
     };
     let owner = device.user.clone();
     let claimed = state
         .shards
         .of(&owner)
-        .call_while_closing(move |shard, _| async move { shard.pipes().claim_sink(&id, device.id.as_str()) })
+        .call_while_closing(move |shard, _| async move {
+            shard.pipes().claim_sink(&id, device.id.as_str())
+        })
         .await;
     let mut sink = match claimed {
         Ok(Ok(sink)) => sink,
@@ -90,7 +94,10 @@ pub(super) async fn get(
         return (StatusCode::CONFLICT, failure.to_string()).into_response();
     }
     (
-        [(CONTENT_TYPE, "application/octet-stream"), (CACHE_CONTROL, "no-store")],
+        [
+            (CONTENT_TYPE, "application/octet-stream"),
+            (CACHE_CONTROL, "no-store"),
+        ],
         Body::from_stream(sink.into_stream()),
     )
         .into_response()
@@ -101,15 +108,24 @@ pub(super) async fn get(
 async fn device_of(
     state: &AppState,
     authorization: Option<TypedHeader<Authorization<Bearer>>>,
-) -> Result<DeviceRecord, Response> {
-    let unauthorized = || (StatusCode::UNAUTHORIZED, "device token required").into_response();
+) -> Result<DeviceRecord, Box<Response>> {
+    let unauthorized =
+        || Box::new((StatusCode::UNAUTHORIZED, "device token required").into_response());
     let TypedHeader(Authorization(bearer)) = authorization.ok_or_else(unauthorized)?;
-    match state.services.control.device_by_token(TokenHash::of(bearer.token())).await {
+    match state
+        .services
+        .control
+        .device_by_token(TokenHash::of(bearer.token()))
+        .await
+    {
         Ok(Some(device)) => Ok(device),
         Ok(None) => Err(unauthorized()),
         Err(error) => {
-            tracing::error!(error = &error as &dyn std::error::Error, "a pipe's device could not be read");
-            Err(StatusCode::INTERNAL_SERVER_ERROR.into_response())
+            tracing::error!(
+                error = &error as &dyn std::error::Error,
+                "a pipe's device could not be read"
+            );
+            Err(Box::new(StatusCode::INTERNAL_SERVER_ERROR.into_response()))
         }
     }
 }

@@ -10,9 +10,9 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use demi_shared_artifacts::{Mode, Permissions, Publication, ReleaseFile, ReleaseRecord};
 use demi_command_protocol::{PackageArtifact, PackageDescriptor, canonical_digest};
 use demi_runner_protocol::release::RunnerRelease;
+use demi_shared_artifacts::{Mode, Permissions, Publication, ReleaseFile, ReleaseRecord};
 use serde::Serialize;
 use tokio_util::sync::CancellationToken;
 
@@ -53,7 +53,10 @@ enum Release {
     Runner,
     /// A command package: its id and the operations its program serves, as
     /// its contract crate declares them.
-    Package { id: &'static str, operations: Vec<String> },
+    Package {
+        id: &'static str,
+        operations: Vec<String>,
+    },
     /// The backend or the machine manager: the executable of one version.
     Executable,
 }
@@ -71,11 +74,16 @@ async fn package(options: &Options, cancel: &CancellationToken) -> Result<String
         Executable::Runner => Release::Runner,
         Executable::File => Release::Package {
             id: demi_command_package_file_protocol::PACKAGE,
-            operations: demi_command_package_file_protocol::OPERATIONS.iter().map(|&name| name.to_owned()).collect(),
+            operations: demi_command_package_file_protocol::OPERATIONS
+                .iter()
+                .map(|&name| name.to_owned())
+                .collect(),
         },
         Executable::Browser => Release::Package {
             id: demi_command_package_browser_protocol::PACKAGE,
-            operations: demi_command_package_browser_protocol::Operation::names().map(String::from).collect(),
+            operations: demi_command_package_browser_protocol::Operation::names()
+                .map(String::from)
+                .collect(),
         },
         Executable::Claude => Release::Package {
             id: demi_command_package_claude_code_protocol::PACKAGE,
@@ -96,7 +104,9 @@ async fn package(options: &Options, cancel: &CancellationToken) -> Result<String
         let source = artifacts.join(target).join("release").join(&name);
         let digest = match demi_shared_artifacts::digest(&source, u64::MAX, cancel).await {
             Ok(digest) => digest,
-            Err(demi_shared_artifacts::Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
+            Err(demi_shared_artifacts::Error::Io(error))
+                if error.kind() == std::io::ErrorKind::NotFound =>
+            {
                 return Err(Error::NotBuilt {
                     executable,
                     target,
@@ -121,7 +131,9 @@ async fn package(options: &Options, cancel: &CancellationToken) -> Result<String
     }
     match release {
         Release::Runner => runner(&output, built, cancel).await,
-        Release::Package { id, operations } => command_package(&output, id, operations, built, cancel).await,
+        Release::Package { id, operations } => {
+            command_package(&output, id, operations, built, cancel).await
+        }
         Release::Executable => executable_release(&output, executable, built, cancel).await,
     }
 }
@@ -142,7 +154,9 @@ async fn command_package(
         operations,
         targets: built.targets,
     };
-    let digest = descriptor.digest().map_err(|error| Error::Record(error.to_string()))?;
+    let digest = descriptor
+        .digest()
+        .map_err(|error| Error::Record(error.to_string()))?;
     let bytes = record(&descriptor)?;
     let record = ReleaseRecord {
         name: DESCRIPTOR,
@@ -214,7 +228,9 @@ async fn runner(output: &Path, built: Built, cancel: &CancellationToken) -> Resu
         command_protocol,
         targets: built.targets,
     };
-    release.validate().map_err(|error| Error::Record(error.to_string()))?;
+    release
+        .validate()
+        .map_err(|error| Error::Record(error.to_string()))?;
     let bytes = record(&release)?;
     let directory = output.join(&release.release);
     let manifest = ReleaseRecord {
@@ -249,11 +265,20 @@ mod tests {
         for target in targets {
             let directory = artifacts.join(target).join("release");
             std::fs::create_dir_all(&directory).unwrap();
-            std::fs::write(directory.join(executable.file_name(target)), format!("{contents} {target}")).unwrap();
+            std::fs::write(
+                directory.join(executable.file_name(target)),
+                format!("{contents} {target}"),
+            )
+            .unwrap();
         }
     }
 
-    fn options(executable: Executable, artifacts: &Path, output: &Path, targets: &[&'static str]) -> Options {
+    fn options(
+        executable: Executable,
+        artifacts: &Path,
+        output: &Path,
+        targets: &[&'static str],
+    ) -> Options {
         Options {
             package: executable,
             targets: targets.to_vec(),
@@ -282,33 +307,63 @@ mod tests {
         let output = root.path().join("runners");
         let cancel = CancellationToken::new();
         build(&artifacts, Executable::Runner, TARGETS, "first");
-        package(&options(Executable::Runner, &artifacts, &output, &[]), &cancel).await.unwrap();
+        package(
+            &options(Executable::Runner, &artifacts, &output, &[]),
+            &cancel,
+        )
+        .await
+        .unwrap();
         let first = pointer(&output);
         assert_eq!(first.targets.len(), TARGETS.len());
         assert_eq!(
             std::fs::read(output.join(&first.release).join(MANIFEST)).unwrap(),
             std::fs::read(output.join(MANIFEST)).unwrap()
         );
-        let windows = output.join(&first.release).join("x86_64-pc-windows-msvc/demi-runner.exe");
-        assert_eq!(std::fs::read(windows).unwrap(), b"first x86_64-pc-windows-msvc");
+        let windows = output
+            .join(&first.release)
+            .join("x86_64-pc-windows-msvc/demi-runner.exe");
+        assert_eq!(
+            std::fs::read(windows).unwrap(),
+            b"first x86_64-pc-windows-msvc"
+        );
         // Packaged again, the same release is the one in place.
-        package(&options(Executable::Runner, &artifacts, &output, &[]), &cancel).await.unwrap();
+        package(
+            &options(Executable::Runner, &artifacts, &output, &[]),
+            &cancel,
+        )
+        .await
+        .unwrap();
         assert_eq!(pointer(&output), first);
         // Another build is another release, which the manifest names from
         // now on; the first one stays for the runners installed from it.
         build(&artifacts, Executable::Runner, TARGETS, "second");
-        package(&options(Executable::Runner, &artifacts, &output, &[]), &cancel).await.unwrap();
+        package(
+            &options(Executable::Runner, &artifacts, &output, &[]),
+            &cancel,
+        )
+        .await
+        .unwrap();
         let second = pointer(&output);
         assert_ne!(second.release, first.release);
-        let mut releases = vec![first.release.clone(), second.release.clone(), MANIFEST.to_owned()];
+        let mut releases = vec![
+            first.release.clone(),
+            second.release.clone(),
+            MANIFEST.to_owned(),
+        ];
         releases.sort();
         assert_eq!(names(&output), releases);
         // A release whose bytes changed in place is refused, and the
         // manifest keeps naming the release it named.
-        let linux = output.join(&first.release).join("x86_64-unknown-linux-musl/demi-runner");
+        let linux = output
+            .join(&first.release)
+            .join("x86_64-unknown-linux-musl/demi-runner");
         std::fs::write(&linux, b"corrupt").unwrap();
         build(&artifacts, Executable::Runner, TARGETS, "first");
-        let refused = package(&options(Executable::Runner, &artifacts, &output, &[]), &cancel).await;
+        let refused = package(
+            &options(Executable::Runner, &artifacts, &output, &[]),
+            &cancel,
+        )
+        .await;
         assert!(
             matches!(&refused, Err(Error::Artifact(demi_shared_artifacts::Error::Conflict(path))) if *path == linux),
             "{refused:?}"
@@ -325,16 +380,25 @@ mod tests {
         let cancel = CancellationToken::new();
         build(&artifacts, Executable::Machines, &linux, "manager");
         let output = root.path().join("demi-machine-manager");
-        package(&options(Executable::Machines, &artifacts, &output, &[]), &cancel)
-            .await
-            .unwrap();
+        package(
+            &options(Executable::Machines, &artifacts, &output, &[]),
+            &cancel,
+        )
+        .await
+        .unwrap();
         let mut targets = serde_json::Map::new();
         for target in linux {
             let path = artifacts.join(target).join("release/demi-machine-manager");
-            let digest = demi_shared_artifacts::digest(&path, u64::MAX, &cancel).await.unwrap();
-            targets.insert(target.to_owned(), serde_json::json!({"sha256": digest.sha256, "size": digest.size}));
+            let digest = demi_shared_artifacts::digest(&path, u64::MAX, &cancel)
+                .await
+                .unwrap();
+            targets.insert(
+                target.to_owned(),
+                serde_json::json!({"sha256": digest.sha256, "size": digest.size}),
+            );
         }
-        let record: serde_json::Value = serde_json::from_slice(&std::fs::read(output.join(RELEASE)).unwrap()).unwrap();
+        let record: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(output.join(RELEASE)).unwrap()).unwrap();
         let expected = serde_json::json!({"executable": "demi-machine-manager", "version": VERSION, "targets": targets});
         assert_eq!(record, expected);
         assert_eq!(names(&output), [linux[0], RELEASE, linux[1]]);
@@ -345,8 +409,18 @@ mod tests {
         // Another build of the same version is refused: a published version
         // is immutable.
         build(&artifacts, Executable::Machines, &linux, "rebuilt");
-        let refused = package(&options(Executable::Machines, &artifacts, &output, &[]), &cancel).await;
-        assert!(matches!(refused, Err(Error::Artifact(demi_shared_artifacts::Error::Conflict(_)))), "{refused:?}");
+        let refused = package(
+            &options(Executable::Machines, &artifacts, &output, &[]),
+            &cancel,
+        )
+        .await;
+        assert!(
+            matches!(
+                refused,
+                Err(Error::Artifact(demi_shared_artifacts::Error::Conflict(_)))
+            ),
+            "{refused:?}"
+        );
     }
 
     #[tokio::test]
@@ -359,26 +433,47 @@ mod tests {
         build(&artifacts, Executable::Runner, &carried, "runner");
         // Without named targets, a release needs every target's build.
         let output = root.path().join("demi-browser");
-        let incomplete = package(&options(Executable::Browser, &artifacts, &output, &[]), &cancel).await;
-        assert!(matches!(incomplete, Err(Error::NotBuilt { .. })), "{incomplete:?}");
+        let incomplete = package(
+            &options(Executable::Browser, &artifacts, &output, &[]),
+            &cancel,
+        )
+        .await;
+        assert!(
+            matches!(incomplete, Err(Error::NotBuilt { .. })),
+            "{incomplete:?}"
+        );
         assert!(!output.exists());
-        package(&options(Executable::Browser, &artifacts, &output, &carried), &cancel)
-            .await
-            .unwrap();
-        let descriptor = serde_json::from_slice(&std::fs::read(output.join(DESCRIPTOR)).unwrap()).unwrap();
+        package(
+            &options(Executable::Browser, &artifacts, &output, &carried),
+            &cancel,
+        )
+        .await
+        .unwrap();
+        let descriptor =
+            serde_json::from_slice(&std::fs::read(output.join(DESCRIPTOR)).unwrap()).unwrap();
         let descriptor = PackageDescriptor::parse(descriptor).unwrap();
-        assert_eq!(descriptor.id, demi_command_package_browser_protocol::PACKAGE);
+        assert_eq!(
+            descriptor.id,
+            demi_command_package_browser_protocol::PACKAGE
+        );
         assert_eq!(descriptor.version, VERSION);
-        let declared: Vec<&str> = demi_command_package_browser_protocol::Operation::names().collect();
+        let declared: Vec<&str> =
+            demi_command_package_browser_protocol::Operation::names().collect();
         assert_eq!(descriptor.operations, declared);
         assert_eq!(descriptor.targets.keys().collect::<Vec<_>>(), carried);
         assert_eq!(names(&output), [carried[0], DESCRIPTOR, carried[1]]);
         let runners = root.path().join("runners");
-        package(&options(Executable::Runner, &artifacts, &runners, &carried), &cancel)
-            .await
-            .unwrap();
+        package(
+            &options(Executable::Runner, &artifacts, &runners, &carried),
+            &cancel,
+        )
+        .await
+        .unwrap();
         let release = pointer(&runners);
         assert_eq!(release.targets.keys().collect::<Vec<_>>(), carried);
-        assert_eq!(names(&runners.join(&release.release)), [carried[0], MANIFEST, carried[1]]);
+        assert_eq!(
+            names(&runners.join(&release.release)),
+            [carried[0], MANIFEST, carried[1]]
+        );
     }
 }
