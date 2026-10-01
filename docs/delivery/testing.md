@@ -116,8 +116,10 @@ backend's scenario suites in [Scenarios](scenarios.md).
   ([Module layout](../architecture/crates-and-packages.md#module-layout)); a
   test gets a binary of its own only when it changes or exhausts process-wide
   state, such as the open-file limit. A behavior that can be reached only
-  through a crate's private items is a sign that the crate holds two parts:
-  split it, and test the inner part at its own boundary.
+  through a crate's private items may mean that the crate holds two parts.
+  Split it only where
+  [build isolation](../architecture/crates-and-packages.md#module-layout)
+  allows; otherwise the crate keeps its tests as unit tests.
 - A new test goes into the existing test file for the code it covers. A test
   for a fixed bug sits beside the tests of the behavior it restores and is
   named after that behavior.
