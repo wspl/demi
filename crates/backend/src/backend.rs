@@ -167,6 +167,7 @@ impl Backend {
             conversations: config.conversations,
             pages: config.pages,
             native: config.native,
+            plugins: config.plugins,
             user_streams: &config.user_streams,
             cloud: CloudServices::new(machines, config.cloud),
             lifecycle: config.lifecycle,

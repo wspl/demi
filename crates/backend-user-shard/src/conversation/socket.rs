@@ -247,7 +247,7 @@ impl Shard {
     async fn handle_message(
         &self,
         conversation: &ConversationId,
-        connection: &demi_agent_server::Connection<super::ConversationHarness>,
+        connection: &demi_agent_server::Connection<super::ShardHosts>,
         files: &ConversationFiles,
         text: &str,
     ) -> Handled {

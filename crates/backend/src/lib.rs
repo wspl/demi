@@ -5,6 +5,7 @@
 mod backend;
 mod config;
 pub mod families;
+pub mod plugins;
 
 pub use backend::{Backend, ShutdownError, ShutdownErrors, StartError};
 pub use config::secret::{InstanceSecret, SecretError};

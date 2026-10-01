@@ -41,7 +41,7 @@ use tokio_util::task::TaskTracker;
 
 use crate::conversation::claude_cli::ClaudeCli;
 use crate::conversation::titles::Titles;
-use crate::conversation::{self, ConversationHarness, ConversationParts};
+use crate::conversation::{self, ConversationParts, ShardHosts};
 use crate::lifecycle::conversations::ConversationWatches;
 use crate::services::Services;
 use demi_backend_host_access::access::Conversations;
@@ -83,7 +83,7 @@ pub struct Shard {
     /// Cancelled when the shard starts closing: it takes no new runner.
     closing: CancellationToken,
     /// The user's conversation trees.
-    agent: Rc<AgentServer<ConversationHarness>>,
+    agent: Rc<AgentServer<ShardHosts>>,
     /// The title requests of the user's conversations.
     titles: Titles,
     /// What opens a conversation's tree: the conversation sockets being
@@ -206,7 +206,7 @@ impl Shard {
         self.closing.cancelled()
     }
 
-    pub(crate) fn agent(&self) -> &Rc<AgentServer<ConversationHarness>> {
+    pub(crate) fn agent(&self) -> &Rc<AgentServer<ShardHosts>> {
         &self.agent
     }
 

@@ -62,7 +62,9 @@ pub use editing::{
     EditCheck, EditContent, EditError, EditSubmission, accepted, edit_digest, fork_seed,
 };
 pub use retry::RetryPolicy;
-pub use runtime::{SessionRuntime, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome};
+pub use runtime::{
+    NewContext, SeenContext, SessionRuntime, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome,
+};
 
 use self::{
     bus::EventBus,
@@ -245,8 +247,6 @@ pub enum AgentMessageError {
 /// Why a checkpoint could not be restored.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum RestoreError {
-    #[error("The checkpoint's harness \"{stored}\" is not \"{expected}\"")]
-    Harness { stored: String, expected: String },
     #[error(transparent)]
     CommandState(#[from] CommandStateError),
     #[error("The checkpoint's waiting input is invalid: {0}")]
@@ -487,7 +487,6 @@ impl AgentSession {
         let parts = CoreParts {
             id: init.id,
             cwd: init.cwd,
-            harness: deps.runtime.harness_name().to_owned(),
             model: init.model,
             provider: init.runtime,
             transcript,
@@ -519,13 +518,6 @@ impl AgentSession {
             transcript,
             command_state,
         } = checkpoint;
-        let expected = deps.runtime.harness_name();
-        if state.harness != expected {
-            return Err(RestoreError::Harness {
-                stored: state.harness,
-                expected: expected.to_owned(),
-            });
-        }
         check_restored_input(&id, &transcript, &state.agent_inputs, &state.wakeups)?;
         let mut operations = HashSet::new();
         if let Some(receipt) = state
@@ -556,7 +548,6 @@ impl AgentSession {
         let parts = CoreParts {
             id,
             cwd: state.cwd,
-            harness: state.harness,
             model: state.model,
             provider: runtime,
             transcript,

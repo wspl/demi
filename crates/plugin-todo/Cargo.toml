@@ -1,0 +1,26 @@
+[package]
+name = "demi-plugin-todo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+# One test binary, the integration tests' (`crates-and-packages.md`
+# § Module layout); no doc examples.
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+demi-host-interface = { path = "../host-interface" }
+demi-plugin-interface = { path = "../plugin-interface" }
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+# The plugin runs through the JSON loopback over an in-memory rpc port.
+demi-command-declarations = { path = "../command-declarations" }
+demi-host-interface = { path = "../host-interface", features = ["testing"] }
+demi-plugin-interface = { path = "../plugin-interface", features = ["testing"] }
+tokio = { workspace = true, features = ["test-util"] }

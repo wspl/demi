@@ -6,14 +6,14 @@ one such session was built once, with three secrets planted at its start, and
 is replayed here against the real model to check that the secrets survive.
 
 `large-context-fixture.json.gz` is that session: 237 blocks that compacted
-four times over about 1.08 million tokens, with its harness name and working
-directory, in the agent's block format. It was converted once from the
+four times over about 1.08 million tokens, with its working directory, in the agent's block format. It was converted once from the
 TypeScript fixture it replaces (`packages/agent/fixtures/compaction/` at commit
 `1b7fdbab`): each block's model selection gained its service tier and output
 limit, a `user` block its turn id (its own id), a `resume` block the turn of
 the `user` block before it, a completed `text` block its `forkable` mark, and a
 `tool_call` block its view, while the TypeScript-only `metadata` and
-`streamingOutput` went. The harness loads it with the agent's own decoding, so
+`streamingOutput` went; later its harness name went with the harness. The
+fixture loads it with the agent's own decoding, so
 a block that does not decode stops it.
 
 `main.rs` opens the fixture as a conversation of an agent server over an

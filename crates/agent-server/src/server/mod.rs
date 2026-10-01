@@ -23,12 +23,12 @@ use demi_agent_session::{Continuation, ForkError, ModelSwitch, SessionConfig, fo
 use demi_agent_store::{
     AgentTreeStore, Checkpoint, CheckpointUpdate, CommandStateHistory, NodeRecord, StoreError,
 };
-use demi_agent_tools::{AgentHarness, ShellEnvironmentFactory};
+use demi_agent_tools::{ContextSource, HostResolver, ShellEnvironmentFactory};
 use demi_agent_transcript::IdSource;
-use demi_host_interface::{JobCaller, PortError, StorageOp, StorageReply};
+use demi_host_interface::{CommandSet, JobCaller, PortError, StorageOp, StorageReply};
 use demi_provider_common::ProviderRuntime;
 use demi_shared_gates::KeyedSerialGate;
-use demi_shared_types::{BlockId, Clock, ModelSelection, NodeId, SessionPhase};
+use demi_shared_types::{BlockId, Clock, ModelSelection, NodeId, Profile, SessionPhase};
 use futures_util::future::{LocalBoxFuture, join_all};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
@@ -111,9 +111,22 @@ impl Default for ServerConfig {
     }
 }
 
-/// What a product gives the agent server.
-pub struct ServerDeps<H: AgentHarness> {
-    pub harness: Rc<H>,
+/// What a product gives the agent server (`runtime.md` § Sessions and
+/// turns): what every node is assembled from, and the answers it asks for
+/// while a node runs.
+pub struct ServerDeps<H: HostResolver> {
+    /// The commands every node starts from; the server grafts its own
+    /// groups per node.
+    pub commands: Rc<CommandSet>,
+    /// The instructions of every node's system prompt, which a profile's
+    /// replace.
+    pub instructions: Rc<str>,
+    /// The named subagent profiles.
+    pub profiles: Rc<[Profile]>,
+    /// Where a node's shell tools run.
+    pub hosts: Rc<H>,
+    /// What the model must learn before each request, in this order.
+    pub context: Rc<[Rc<dyn ContextSource>]>,
     pub providers: Rc<dyn ProviderResolver>,
     /// Makes each node's shell environment on each Host it uses.
     pub shells: Rc<dyn ShellEnvironmentFactory<H::Host>>,
@@ -129,7 +142,7 @@ pub struct ServerDeps<H: AgentHarness> {
 }
 
 /// The agent server of one user shard.
-pub struct AgentServer<H: AgentHarness> {
+pub struct AgentServer<H: HostResolver> {
     deps: ServerDeps<H>,
     /// Each open conversation's live tree, by its root.
     trees: RefCell<HashMap<NodeId, Rc<Tree<H>>>>,
@@ -141,7 +154,7 @@ pub struct AgentServer<H: AgentHarness> {
     next_connection: Cell<u64>,
 }
 
-impl<H: AgentHarness> AgentServer<H> {
+impl<H: HostResolver> AgentServer<H> {
     pub fn new(deps: ServerDeps<H>) -> Rc<Self> {
         Rc::new(Self {
             deps,
@@ -295,7 +308,6 @@ impl<H: AgentHarness> AgentServer<H> {
             .load()
             .await
             .map_err(fork_store)?
-            .filter(|checkpoint| checkpoint.state.harness == self.deps.harness.name())
             .ok_or(ForkError::NoCheckpoint)?;
         let commands = CommandStateHistory::restore(checkpoint.command_state)
             .map_err(|error| ForkError::Store(error.to_string()))?;
@@ -304,8 +316,8 @@ impl<H: AgentHarness> AgentServer<H> {
 
     /// Stores a Fork's seed as the first checkpoint of the new root
     /// `destination`, in one create commit; opening the conversation
-    /// assembles its runtime. A seed that is not idle, holds waiting work or
-    /// edit receipts, or belongs to another harness is refused.
+    /// assembles its runtime. A seed that is not idle, or holds waiting work
+    /// or edit receipts, is refused.
     pub async fn initialize_fork(
         &self,
         destination: &NodeId,
@@ -316,8 +328,7 @@ impl<H: AgentHarness> AgentServer<H> {
             && state.queue.is_empty()
             && state.agent_inputs.is_empty()
             && state.wakeups.is_empty()
-            && state.edits.is_empty()
-            && state.harness == self.deps.harness.name();
+            && state.edits.is_empty();
         if !fresh {
             return Err(ForkError::InvalidSeed);
         }

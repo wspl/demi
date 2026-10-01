@@ -23,6 +23,7 @@ mod file_types;
 mod ids;
 mod media;
 mod model;
+mod profile;
 mod provider_state;
 mod quota;
 mod schema;
@@ -61,6 +62,7 @@ pub use model::{
     ThinkingCapability, ThinkingConfig, ThinkingSummary, TokenUsage, VIDEO_FILE_EXTENSIONS,
     file_extension_support, model_accepts_video,
 };
+pub use profile::Profile;
 pub use provider_state::{AccountInfo, AuthState, LoginPending, RuntimeState, WireApi};
 pub use quota::{
     QuotaPlan, QuotaScope, QuotaSeverity, QuotaSnapshot, QuotaUnit, QuotaWindow, SnapshotSource,

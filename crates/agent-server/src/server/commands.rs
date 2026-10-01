@@ -6,11 +6,11 @@
 
 use std::rc::{Rc, Weak};
 
-use demi_agent_tools::{AgentHarness, Profile};
+use demi_agent_tools::HostResolver;
 use demi_host_interface::{
     Call, CommandSet, GroupBuilder, LeafBuilder, RegisterError, RpcError, RpcPort, TypedRpc,
 };
-use demi_shared_types::{NodeId, is_blank, trim};
+use demi_shared_types::{NodeId, Profile, is_blank, trim};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -133,16 +133,16 @@ struct Shown {
     agent: AgentSnapshot,
 }
 
-/// A node's commands: its harness's, with the `demi agent` and `demi shell`
+/// A node's commands: the product's, with the `demi agent` and `demi shell`
 /// groups grafted under a `demi` group, replacing any `agent` or `shell`
-/// child the harness declared, or under a new `demi` root.
-pub(crate) fn with_runtime_groups<H: AgentHarness>(
-    harness_commands: &CommandSet,
+/// child the product declared, or under a new `demi` root.
+pub(crate) fn with_runtime_groups<H: HostResolver>(
+    product_commands: &CommandSet,
     server: &Rc<AgentServer<H>>,
     can_spawn: bool,
     profiles: &[Profile],
 ) -> Result<CommandSet, RegisterError> {
-    let mut commands = harness_commands.clone();
+    let mut commands = product_commands.clone();
     let groups = [
         agent_group(Rc::downgrade(server), can_spawn, profiles),
         shell_group(Rc::downgrade(server)),
@@ -164,7 +164,7 @@ pub(crate) fn with_runtime_groups<H: AgentHarness>(
 
 /// The `agent` group of a node: every verb, or communication and reads only
 /// when the node may not spawn.
-fn agent_group<H: AgentHarness>(
+fn agent_group<H: HostResolver>(
     server: Weak<AgentServer<H>>,
     can_spawn: bool,
     profiles: &[Profile],
@@ -191,7 +191,7 @@ fn agent_group<H: AgentHarness>(
                 .describe("prompt", SPAWN_PROMPT)
                 .describe(
                     "profile",
-                    format!("Named subagent profile configured at harness assembly; omit to inherit the parent's model, prompt, Host and commands. Available: {available}."),
+                    format!("Named subagent profile; omit to inherit the parent's model, prompt, Host and commands. Available: {available}."),
                 )
                 .stdin_field("prompt")
                 .success_output("stdout is \"subagentId: <id>\"; creation succeeded, not necessarily execution")
@@ -243,7 +243,7 @@ fn agent_group<H: AgentHarness>(
 
 /// A verb's call against the live tree of the invoking job's conversation,
 /// on behalf of the job's node.
-pub(super) struct Invoked<H: AgentHarness, A> {
+pub(super) struct Invoked<H: HostResolver, A> {
     pub(super) tree: Rc<Tree<H>>,
     server: Rc<AgentServer<H>>,
     caller: NodeId,
@@ -258,7 +258,7 @@ pub(super) fn verb<H, A, F, Fut>(
     run: F,
 ) -> impl Fn(Call<A>, RpcPort) -> futures_util::future::LocalBoxFuture<'static, Result<u8, RpcError>>
 where
-    H: AgentHarness,
+    H: HostResolver,
     A: 'static,
     F: Fn(Invoked<H, A>, RpcPort) -> Fut + Copy + 'static,
     Fut: std::future::Future<Output = Result<u8, RpcError>> + 'static,
@@ -296,7 +296,7 @@ where
     }
 }
 
-async fn spawn<H: AgentHarness>(
+async fn spawn<H: HostResolver>(
     call: Invoked<H, SpawnArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
@@ -317,7 +317,7 @@ async fn spawn<H: AgentHarness>(
     }
 }
 
-async fn resume<H: AgentHarness>(
+async fn resume<H: HostResolver>(
     call: Invoked<H, ResumeArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
@@ -345,7 +345,7 @@ async fn resume<H: AgentHarness>(
     }
 }
 
-async fn send<H: AgentHarness>(call: Invoked<H, SendArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn send<H: HostResolver>(call: Invoked<H, SendArgs>, port: RpcPort) -> Result<u8, RpcError> {
     if is_blank(&call.args.message) {
         return fail(&port, "send", "message must not be empty").await;
     }
@@ -370,7 +370,7 @@ async fn send<H: AgentHarness>(call: Invoked<H, SendArgs>, port: RpcPort) -> Res
     }
 }
 
-async fn abort<H: AgentHarness>(
+async fn abort<H: HostResolver>(
     call: Invoked<H, AbortArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
@@ -397,7 +397,7 @@ async fn abort<H: AgentHarness>(
     out(&port, format!("aborted {number}\n")).await
 }
 
-async fn list<H: AgentHarness>(call: Invoked<H, ListArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn list<H: HostResolver>(call: Invoked<H, ListArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let listing = match call.tree.listing().await {
         Ok(listing) => listing,
         Err(error) => return fail(&port, "list", &error).await,
@@ -414,7 +414,7 @@ async fn list<H: AgentHarness>(call: Invoked<H, ListArgs>, port: RpcPort) -> Res
     out(&port, format!("{}\n", listing.render(&call.caller))).await
 }
 
-async fn show<H: AgentHarness>(call: Invoked<H, ShowArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn show<H: HostResolver>(call: Invoked<H, ShowArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let number = call.args.id;
     let Some((snapshot, text)) = call.tree.show(number) else {
         return fail(&port, "show", &format!("no live agent {number}")).await;

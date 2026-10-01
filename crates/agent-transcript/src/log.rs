@@ -97,13 +97,20 @@ impl TranscriptLog {
         id
     }
 
-    pub fn push_context(&mut self, turn_id: TurnId, model: &ModelSelection, text: String) {
+    pub fn push_context(
+        &mut self,
+        turn_id: TurnId,
+        model: &ModelSelection,
+        source: String,
+        text: String,
+    ) {
         let (id, created_at) = self.stamp();
         self.append(Block::Context(ContextBlock {
             id,
             turn_id,
             created_at,
             model: model.clone(),
+            source,
             text,
         }));
     }

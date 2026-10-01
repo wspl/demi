@@ -117,8 +117,8 @@ A node's system prompt is rendered once, when the node is assembled
 ([Prompt cache](../providers/providers.md#prompt-cache)):
 
 ```text
-the agent runtime's rules for its tools
 the product's instructions
+the agent runtime's rules for its tools
 the help of the node's commands
 ```
 

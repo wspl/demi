@@ -341,7 +341,7 @@ pub enum ForkError {
     NotRoot,
     #[error("No matching Fork source checkpoint")]
     NoCheckpoint,
-    #[error("A Fork must start idle, without queued actions or edit receipts, of this harness")]
+    #[error("A Fork must start idle, without queued actions or edit receipts")]
     InvalidSeed,
     #[error("{0}")]
     Store(String),

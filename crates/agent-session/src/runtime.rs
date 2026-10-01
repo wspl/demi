@@ -1,5 +1,5 @@
 //! What a session calls in its node (`runtime.md` § Sessions and turns): the
-//! admission of an action, the harness's texts, and the tools. The node
+//! admission of an action, the prompts and context, and the tools. The node
 //! assembly implements it, so a session never reaches its node otherwise, and
 //! a tool never reaches into its session: it returns its outcome.
 
@@ -7,15 +7,12 @@ use std::sync::Arc;
 
 use demi_provider_common::{RequestLimits, ResultPart, ToolDefinition};
 use demi_shared_gates::{GateLease, Reservation};
-use demi_shared_types::{ModelSelection, ToolView};
+use demi_shared_types::{ModelSelection, ToolView, TurnId};
 use futures_util::future::LocalBoxFuture;
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
 pub trait SessionRuntime {
-    /// The name every checkpoint of the session records.
-    fn harness_name(&self) -> &str;
-
     /// Waits for the tree's admission and holds it while one action runs.
     fn enter_action(&self) -> LocalBoxFuture<'_, GateLease>;
 
@@ -30,10 +27,15 @@ pub trait SessionRuntime {
     /// The text before the content of a user turn.
     fn preamble(&self) -> LocalBoxFuture<'_, Option<String>>;
 
-    /// The context text before a request, when the conversation's execution
-    /// context changed since the node last saw it; `seen` is the text of
-    /// each context block of the node's transcript, oldest first.
-    fn context<'a>(&'a self, seen: &'a [&'a str]) -> LocalBoxFuture<'a, Option<String>>;
+    /// What the context sources tell the node before a request
+    /// (`runtime.md` § Context), in the sources' order: `seen` is each
+    /// context block the model receives, from the last compaction boundary
+    /// on, oldest first, and `turn` the input turn the request belongs to.
+    fn context<'a>(
+        &'a self,
+        seen: &'a [SeenContext<'a>],
+        turn: &'a TurnId,
+    ) -> LocalBoxFuture<'a, Vec<NewContext>>;
 
     /// The tools the model may call.
     fn tools(&self) -> Arc<[ToolDefinition]>;
@@ -51,6 +53,20 @@ pub trait SessionRuntime {
     fn dispose(&self) -> LocalBoxFuture<'_, ()> {
         Box::pin(async {})
     }
+}
+
+/// A context block the model receives, as its source sees it.
+#[derive(Debug, Clone, Copy)]
+pub struct SeenContext<'a> {
+    pub source: &'a str,
+    pub text: &'a str,
+}
+
+/// What one context source answered: a new block's source and text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewContext {
+    pub source: String,
+    pub text: String,
 }
 
 /// One call of a tool.

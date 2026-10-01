@@ -14,7 +14,7 @@ use demi_provider_common::testing::{ScriptedRuntime, Turn, event};
 use demi_shared_types::{Block, CommandId, ToolCallStatus};
 use serde_json::json;
 
-use crate::support::{Fixture, Harness, exec, last_result, reply, turn, within};
+use crate::support::{DeviceHost, Fixture, exec, last_result, reply, turn, within};
 
 /// The command views among `frames`, in order.
 fn shell_outputs(frames: &[ServerFrame]) -> Vec<ShellStatus> {
@@ -52,7 +52,7 @@ fn completes(frame: &ServerFrame, tool_use_id: &str) -> bool {
 /// Reads `client` until a view of `command` satisfies `wanted`, and returns
 /// it: the page asks for nothing.
 async fn view_until(
-    client: &mut TestClient<Harness>,
+    client: &mut TestClient<DeviceHost>,
     command: &CommandId,
     wanted: impl Fn(&ShellStatus) -> bool,
 ) -> ShellStatus {

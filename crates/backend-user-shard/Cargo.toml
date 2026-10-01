@@ -35,13 +35,12 @@ demi-backend-providers = { path = "../backend-providers" }
 demi-backend-runners = { path = "../backend-runners" }
 demi-backend-database = { path = "../backend-database" }
 demi-backend-page-sync = { path = "../backend-page-sync" }
-demi-command-package-browser-protocol = { path = "../command-package-browser-protocol" }
 demi-command-package-claude-code-protocol = { path = "../command-package-claude-code-protocol" }
-demi-agent-coding-harness = { path = "../agent-coding-harness" }
+demi-backend-plugins = { path = "../backend-plugins" }
+demi-plugin-interface = { path = "../plugin-interface" }
 demi-command-protocol = { path = "../command-protocol" }
 demi-command-declarations = { path = "../command-declarations" }
 demi-shared-types = { path = "../shared-types" }
-demi-command-package-file-protocol = { path = "../command-package-file-protocol" }
 demi-shared-gates = { path = "../shared-gates" }
 demi-backend-remote-host = { path = "../backend-remote-host" }
 demi-machine-manager-protocol = { path = "../machine-manager-protocol" }

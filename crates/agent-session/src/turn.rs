@@ -13,7 +13,7 @@ use std::rc::Rc;
 use demi_agent_store::{BoundaryEdge, media};
 use demi_agent_transcript::{
     estimate::{context_tokens, request_size},
-    resume_point, tool_input,
+    replay_start, resume_point, tool_input,
 };
 use demi_provider_common::{
     ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun, ResultPart,
@@ -29,7 +29,7 @@ use super::{
     input::Take,
     media::model_view,
     persist,
-    runtime::{ToolEffect, ToolInvocation, ToolOutcome},
+    runtime::{SeenContext, ToolEffect, ToolInvocation, ToolOutcome},
 };
 
 /// How many compactions one turn runs after responses over the threshold.
@@ -260,22 +260,34 @@ fn missing_boundary(block: &BlockId) -> TurnError {
     TurnError::refused(format!("No command-state boundary after block {block}"))
 }
 
-/// The next request: the context text first when the execution context
-/// changed, saved at once, then the system prompt, the tools and the replay.
+/// The next request: what the context sources tell the node first, saved at
+/// once, then the system prompt, the tools and the replay.
 async fn request(s: &SessionShared, cancel: &TurnCancel) -> Result<InferenceRequest, TurnError> {
-    let seen: Vec<String> = s.read(|core| {
-        core.transcript
-            .blocks()
+    // Only the context the model receives counts as seen: a block before
+    // the last compaction boundary is summarized away, so its source tells
+    // the model again (`runtime.md` § Context).
+    let (seen, turn) = s.read(|core| {
+        let blocks = core.transcript.blocks();
+        let seen: Vec<(String, String)> = blocks[replay_start(blocks)..]
             .iter()
             .filter_map(|block| match block {
-                Block::Context(context) => Some(context.text.clone()),
+                Block::Context(context) => Some((context.source.clone(), context.text.clone())),
                 _ => None,
             })
-            .collect()
+            .collect();
+        (seen, core.turn())
     });
-    let seen: Vec<&str> = seen.iter().map(String::as_str).collect();
-    if let Some(text) = cancel.guard(s.runtime.context(&seen)).await? {
-        s.update(|core| core.push_context(text));
+    let seen: Vec<SeenContext<'_>> = seen
+        .iter()
+        .map(|(source, text)| SeenContext { source, text })
+        .collect();
+    let news = cancel.guard(s.runtime.context(&seen, &turn)).await?;
+    if !news.is_empty() {
+        s.update(|core| {
+            for news in news {
+                core.push_context(news.source, news.text);
+            }
+        });
         persist::flush(s).await?;
         cancel.check()?;
     }

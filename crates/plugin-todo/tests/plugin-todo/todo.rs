@@ -1,28 +1,43 @@
-//! `demi todo`: the rpc group over a node's command storage.
+//! `demi todo`: the plugin's rpc group over a node's command storage, each
+//! call through the JSON loopback as the plugin host would make it.
 
 use std::rc::Rc;
 
 use demi_command_declarations::Node;
 use demi_host_interface::{
-    CommandSet, RpcError, RpcInvocation,
+    RpcInvocation,
     testing::{MemoryPort, MemoryStorage, test_command_context},
 };
+use demi_plugin_interface::{
+    Plugin, PluginError, PluginFactory, Reply, Request,
+    testing::{
+        command_line::{argv, parse, roots},
+        loopback, port,
+    },
+};
+use demi_plugin_todo::Todo;
 use serde_json::{Value, json};
-use tokio_util::sync::CancellationToken;
 
-use crate::command_line::{argv, demi, parse};
+/// The plugin's instance behind the loopback, and the `demi` root a runner
+/// reads its command lines with.
+fn demi() -> (Rc<dyn Plugin>, Node) {
+    let factory = Todo::new();
+    let root = roots(factory.manifest()).remove(0);
+    (loopback(factory.instance()), root)
+}
 
 /// Runs `demi <line>` over `storage`: what it printed, or why it failed.
 async fn call(
-    demi: &(CommandSet, Node),
+    demi: &(Rc<dyn Plugin>, Node),
     storage: &Rc<MemoryStorage>,
     line: &[&str],
-) -> Result<String, RpcError> {
-    let (commands, root) = demi;
+) -> Result<String, PluginError> {
+    let (plugin, root) = demi;
     let parsed = parse(root, line, None).unwrap();
-    let port = MemoryPort::with_storage(storage.clone());
+    let memory = MemoryPort::with_storage(storage.clone());
     let invocation = RpcInvocation {
-        path: parsed.path,
+        // The plugin host hands the plugin its path from its own group.
+        path: parsed.path[1..].to_vec(),
         argv: argv(line),
         args: parsed.values,
         json: parsed.json,
@@ -33,14 +48,16 @@ async fn call(
         stdin: false,
         pipes: None,
     };
-    let code = commands
-        .dispatch(invocation, port.port(CancellationToken::new()))
-        .await?;
-    assert_eq!(code, 0);
-    Ok(String::from_utf8(port.stdout()).unwrap())
+    let request = Request::Command {
+        user: "u1".into(),
+        invocation,
+    };
+    let reply = plugin.call(request, port(memory.clone())).await?;
+    assert_eq!(reply, Reply::Exit { code: 0 });
+    Ok(String::from_utf8(memory.stdout()).unwrap())
 }
 
-async fn run(demi: &(CommandSet, Node), storage: &Rc<MemoryStorage>, line: &[&str]) -> String {
+async fn run(demi: &(Rc<dyn Plugin>, Node), storage: &Rc<MemoryStorage>, line: &[&str]) -> String {
     call(demi, storage, line).await.unwrap()
 }
 

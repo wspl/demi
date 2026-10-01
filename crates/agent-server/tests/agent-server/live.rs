@@ -14,7 +14,7 @@ use demi_agent_server::{
     testing::{ScriptedProviders, TestClient},
 };
 use demi_agent_store::{AgentTreeStore, testing::MemoryTreeStore};
-use demi_agent_tools::{AgentHarness, EnvironmentScope, PromptContext, ShellEnvironmentFactory};
+use demi_agent_tools::{EnvironmentScope, HostResolver, NodeContext, ShellEnvironmentFactory};
 use demi_agent_transcript::testing::SequentialIds;
 use demi_conversation_socket_protocol::{ServerFrame, ShellStatus};
 use demi_host_interface::{
@@ -65,26 +65,14 @@ impl Host for ScriptedHost {
     }
 }
 
-/// A harness whose shell tools reach the scripted Host.
-struct LiveHarness;
+/// Where the nodes' shell tools run: the scripted Host.
+struct LiveHosts;
 
-impl AgentHarness for LiveHarness {
+impl HostResolver for LiveHosts {
     type Host = ScriptedHost;
 
-    fn name(&self) -> &str {
-        "live"
-    }
-
-    async fn host(&self, _context: PromptContext<'_>) -> Result<Rc<ScriptedHost>, HostError> {
+    async fn host(&self, _context: NodeContext<'_>) -> Result<Rc<ScriptedHost>, HostError> {
         Ok(Rc::new(ScriptedHost))
-    }
-
-    fn commands(&self) -> Rc<CommandSet> {
-        Rc::new(CommandSet::new())
-    }
-
-    async fn system_prompt(&self, _context: PromptContext<'_>, _commands: &str) -> String {
-        "system prompt".to_owned()
     }
 }
 
@@ -239,9 +227,9 @@ fn tails(frames: &[ServerFrame]) -> Vec<String> {
 /// A server whose conversation ran a turn that started a command which goes
 /// on running, with the page that sent it still attached.
 async fn serving() -> (
-    Rc<AgentServer<LiveHarness>>,
+    Rc<AgentServer<LiveHosts>>,
     Rc<ScriptedShell>,
-    TestClient<LiveHarness>,
+    TestClient<LiveHosts>,
     ScriptedRuntime,
 ) {
     let script = ScriptedRuntime::new([
@@ -257,7 +245,11 @@ async fn serving() -> (
     let shells = Rc::new(ScriptedShells::default());
     let store = MemoryTreeStore::new();
     let server = AgentServer::new(ServerDeps {
-        harness: Rc::new(LiveHarness),
+        commands: Rc::new(CommandSet::new()),
+        instructions: Rc::from("system prompt"),
+        profiles: Rc::new([]),
+        hosts: Rc::new(LiveHosts),
+        context: Rc::new([]),
         providers,
         shells: shells.clone(),
         stores: Rc::new(move |_: &NodeId| store.clone() as Rc<dyn AgentTreeStore>),

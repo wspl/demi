@@ -109,7 +109,7 @@ async fn a_coding_workflow_edits_files_tracks_todos_and_keeps_its_shell_across_m
                 "yield"
             ]
         );
-        // The prompt teaches the node's commands: the harness's `demi` root
+        // The prompt teaches the node's commands: the plugins' `demi` root
         // with the `demi agent` graft beside `file`, and bodies only from
         // stdin.
         let prompt = &first.system_prompt;

@@ -13,9 +13,9 @@ use std::{
 
 use demi_agent_session::{
     ActionEnd, AdmissionError, AgentMessageError, AgentSession, CompactionConfig, Continuation,
-    EditCheck, EditContent, EditError, EditSubmission, ModelSwitch, RestoreError, SessionConfig,
-    SessionDeps, SessionEvent, SessionInit, SessionRuntime, SteerError, Subscription, ToolEffect,
-    ToolFailure, ToolInvocation, ToolOutcome,
+    EditCheck, EditContent, EditError, EditSubmission, ModelSwitch, NewContext, SeenContext,
+    SessionConfig, SessionDeps, SessionEvent, SessionInit, SessionRuntime, SteerError,
+    Subscription, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome,
 };
 use demi_conversation_socket_protocol::{AbortResult, AbortTarget, TranscriptPatch};
 use demi_provider_common::{
@@ -55,13 +55,14 @@ struct TestRuntime {
     admission: ActivityGate,
     /// While set, the preamble hook never answers.
     hanging_preamble: Rc<Cell<bool>>,
+    /// What the `execution` source tells the model while the context it
+    /// receives does not hold it.
+    execution: Option<&'static str>,
+    /// The context each request's sources were shown, as `source: text`.
+    seen: Rc<RefCell<Vec<Vec<String>>>>,
 }
 
 impl SessionRuntime for TestRuntime {
-    fn harness_name(&self) -> &str {
-        "test"
-    }
-
     fn enter_action(&self) -> LocalBoxFuture<'_, GateLease> {
         Box::pin(self.admission.enter(Purpose::Demand))
     }
@@ -83,8 +84,24 @@ impl SessionRuntime for TestRuntime {
         Box::pin(async { None })
     }
 
-    fn context<'a>(&'a self, _seen: &'a [&'a str]) -> LocalBoxFuture<'a, Option<String>> {
-        Box::pin(async { None })
+    fn context<'a>(
+        &'a self,
+        seen: &'a [SeenContext<'a>],
+        _turn: &'a TurnId,
+    ) -> LocalBoxFuture<'a, Vec<NewContext>> {
+        self.seen.borrow_mut().push(
+            seen.iter()
+                .map(|seen| format!("{}: {}", seen.source, seen.text))
+                .collect(),
+        );
+        let news = self
+            .execution
+            .filter(|text| !seen.iter().any(|seen| seen.text == *text))
+            .map(|text| NewContext {
+                source: "execution".into(),
+                text: text.into(),
+            });
+        Box::pin(async move { news.into_iter().collect() })
     }
 
     fn tools(&self) -> Arc<[ToolDefinition]> {
@@ -260,6 +277,8 @@ fn test_runtime(tools: Vec<(String, Invoke)>) -> TestRuntime {
         tools,
         admission: ActivityGate::new(),
         hanging_preamble: Rc::default(),
+        execution: None,
+        seen: Rc::default(),
     }
 }
 
@@ -927,33 +946,6 @@ async fn restore_after_a_crash_during_a_tool_completes_the_call_as_interrupted_w
     assert_eq!(
         item_kinds(&request.items),
         ["user_message", "tool_use", "tool_result", "user_message"]
-    );
-}
-
-#[tokio::test(flavor = "local")]
-async fn restore_refuses_a_checkpoint_another_harness_saved() {
-    let provider = ScriptedRuntime::new(Vec::new());
-    let store = MemoryTreeStore::new();
-    let session = start(&provider, Vec::new(), &store, SessionConfig::default()).await;
-    drop(session);
-    let mut checkpoint = store.checkpoint(&root()).unwrap();
-    checkpoint.state.harness = "other".into();
-    let deps = SessionDeps {
-        runtime: Rc::new(test_runtime(Vec::new())),
-        store: store.session_store(&root()),
-        ids: Rc::new(SequentialIds::new("id")),
-        clock: Arc::new(FixedClock(Timestamp::UNIX_EPOCH)),
-        config: SessionConfig::default(),
-    };
-
-    let refused = AgentSession::restore(checkpoint, root(), Box::new(provider), deps).err();
-
-    assert_eq!(
-        refused,
-        Some(RestoreError::Harness {
-            stored: "other".into(),
-            expected: "test".into(),
-        })
     );
 }
 

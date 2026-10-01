@@ -10,7 +10,7 @@ use futures_util::future::LocalBoxFuture;
 
 use crate::{EnvironmentScope, ShellEnvironmentFactory};
 
-/// The Host type of a test harness whose agents run no shell tools: it has
+/// The Host type of a test product whose agents run no shell tools: it has
 /// no values, so no environment is ever made on one.
 #[derive(Debug)]
 pub enum NoHost {}
@@ -37,7 +37,7 @@ impl Host for NoHost {
     }
 }
 
-/// The shell environment factory of a harness whose Host is [`NoHost`].
+/// The shell environment factory of a product whose Host is [`NoHost`].
 #[derive(Debug, Default)]
 pub struct NoShells;
 

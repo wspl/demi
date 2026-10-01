@@ -44,17 +44,24 @@ Contracts and crate boundaries
 ### Plugins
 
 The plugin design ([Plugins](../architecture/plugins.md#built-in-plugins)) is
-delivered in this order, each a checkpoint of its own:
+delivered in this order, each a checkpoint of its own. The dependency graphs
+in [Crates and packages](../architecture/crates-and-packages.md#dependency-graphs),
+which the boundary checks hold the code to, list the edges the code has: each
+step adds the lines of the crates and packages it builds, such as
+`plugin-expose`, `plugin-skills` and the `@demicodes/plugin-*` packages, and
+removes the edges it retires, such as `web-api-protocol`'s and `backend-http`'s
+on the browser protocol and `backend-host-access`'s on `backend-expose`.
 
-1. **The contract and its first plugin.** `plugin-interface` with its loopback
-   transport, `backend-plugins`, the runtime without a harness (the product's
-   dependencies, context sources that name their source and see only their
-   blocks since the last compaction, profiles as data, no harness name in a
-   checkpoint), and `plugin-todo`. `agent-coding-harness` is removed.
-2. **The command plugins.** `plugin-file`, and `plugin-browser` with its
-   `browser` user stream and its tab methods over package calls, with the
-   rule that leaves out a group whose package the catalog does not serve; and
-   `plugin-expose` with `demi expose`, its numbers, the conversation hosts and
+1. **The contract and the command plugins.** `plugin-interface` with its
+   loopback transport, `backend-plugins` with the rule that leaves out a
+   group whose package the catalog does not serve, the runtime without a
+   harness (the product's dependencies, context sources that name their
+   source and see only their blocks since the last compaction, profiles as
+   data, no harness name in a checkpoint), and the commands of `plugin-todo`,
+   `plugin-file` and `plugin-browser`. `agent-coding-harness` is removed.
+   Done.
+2. **The page-facing plugins.** `plugin-browser`'s `browser` user stream and
+   its tab methods over package calls; and `plugin-expose` with `demi expose`, its numbers, the conversation hosts and
    exposes operations and a page state that follows the user's exposes. The
    plugin call routes replace the browser tab routes and `/api/exposes`.
 3. **Skills on the backend.** `plugin-skills` with its sources, its values and

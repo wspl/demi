@@ -12,7 +12,7 @@ mod cloud_workspace;
 mod connection_test;
 mod failure_facts;
 mod fork;
-mod harness;
+mod product;
 mod providers;
 pub mod settings;
 mod socket;
@@ -27,6 +27,7 @@ use std::sync::Arc;
 
 use demi_agent_server::{AgentServer, ServerConfig, ServerDeps, TreeStores};
 use demi_agent_store::AgentTreeStore;
+use demi_agent_tools::ContextSource;
 use demi_agent_transcript::RandomIds;
 use demi_backend_database::blob_refs::OwnerBlobs;
 use demi_backend_database::tree::SqliteTreeStore;
@@ -40,8 +41,8 @@ use demi_web_api_protocol::ids::UserId;
 
 pub use self::failure_facts::failure_facts;
 pub use self::fork::{ForkRefusal, recover_forks};
-pub(crate) use self::harness::ConversationHarness;
-use self::harness::conversation_harness;
+pub(crate) use self::product::ShardHosts;
+use self::product::{ExecutionContext, INSTRUCTIONS, conversation_commands};
 use self::providers::ConversationProviders;
 use self::titles::Titles;
 use self::wakeups::IndexedWakeup;
@@ -52,7 +53,7 @@ use crate::shard::Shard;
 /// What a shard's conversations run on: the agent server and the title
 /// requests, which infer with the same providers.
 pub(crate) struct ConversationParts {
-    pub agent: Rc<AgentServer<ConversationHarness>>,
+    pub agent: Rc<AgentServer<ShardHosts>>,
     pub titles: Titles,
 }
 
@@ -69,6 +70,7 @@ pub(crate) fn conversation_parts(
     rate_limit: Rc<RefCell<RequestRateLimit>>,
 ) -> ConversationParts {
     let marks = services.sync.of(&user);
+    let commands = conversation_commands(&services, user.as_str(), shard.clone());
     let stores: TreeStores = {
         let services = services.clone();
         let marks = marks.clone();
@@ -116,7 +118,15 @@ pub(crate) fn conversation_parts(
     let disposals = shard.clone();
     let hosts: Weak<dyn HostShard> = shard.clone();
     let agent = AgentServer::new(ServerDeps {
-        harness: Rc::new(conversation_harness(shard.clone(), &services.native)),
+        commands: Rc::new(commands),
+        instructions: Rc::from(INSTRUCTIONS),
+        profiles: services.plugins.profiles().into(),
+        hosts: Rc::new(ShardHosts {
+            shard: shard.clone(),
+        }),
+        context: Rc::new([Rc::new(ExecutionContext {
+            shard: shard.clone(),
+        }) as Rc<dyn ContextSource>]),
         providers,
         shells: Rc::new(ShardShellEnvironments::new(
             hosts,

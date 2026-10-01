@@ -10,7 +10,7 @@ test('the transcript hides what the reader never sees: usage, resumes and the hi
     tool('yield-1', 'yield'),
     { type: 'response', id: 'response-1', createdAt, model, usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 } },
     { type: 'wakeup', id: 'wakeup-1', turnId: 'wakeup-1', createdAt, model, placement: 'new_turn' },
-    { type: 'context', id: 'context-1', turnId: 'wakeup-1', createdAt, model, text: 'The target changed.' },
+    { type: 'context', id: 'context-1', turnId: 'wakeup-1', createdAt, model, source: 'execution', text: 'The target changed.' },
     { type: 'resume', id: 'resume-1', turnId: 'wakeup-1', createdAt, model },
     { type: 'steer', id: 'steer-1', turnId: 'wakeup-1', createdAt, model, content: [{ type: 'text', text: 'also' }] },
     tool('status-1', 'shell_status'),

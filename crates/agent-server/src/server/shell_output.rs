@@ -9,7 +9,7 @@ use std::rc::Weak;
 
 use bytes::Bytes;
 use demi_agent_store::{COMMAND_OUTPUT_DAYS, StoredOutput};
-use demi_agent_tools::{AgentHarness, PAGE_CHARS};
+use demi_agent_tools::{HostResolver, PAGE_CHARS};
 use demi_host_interface::{
     GroupBuilder, LeafBuilder, OutputText, Piece, RpcError, RpcPort, Seen, ShellError, Streams,
     TypedRpc, WholeOutput,
@@ -55,7 +55,7 @@ struct OutputArgs {
 }
 
 /// The `shell` group.
-pub(super) fn shell_group<H: AgentHarness>(server: Weak<AgentServer<H>>) -> GroupBuilder {
+pub(super) fn shell_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> GroupBuilder {
     GroupBuilder::new("shell", GROUP_SUMMARY).leaf(
         LeafBuilder::rpc("output", OUTPUT_SUMMARY)
             .input::<OutputArgs>()
@@ -82,7 +82,7 @@ struct Found {
     running: bool,
 }
 
-async fn output<H: AgentHarness>(
+async fn output<H: HostResolver>(
     call: Invoked<H, OutputArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
@@ -168,7 +168,7 @@ fn range(lines: &str) -> Option<(u64, u64)> {
 
 /// The output of the conversation's command `id`: what its Host kept so far
 /// while it runs, the stored output once it ended.
-async fn find<H: AgentHarness>(tree: &Tree<H>, id: &str) -> Result<Found, String> {
+async fn find<H: HostResolver>(tree: &Tree<H>, id: &str) -> Result<Found, String> {
     let unknown = || format!("no command {id} in this conversation");
     let command = CommandId::try_from(id).map_err(|_| unknown())?;
     if let Some(node) = tree.holder(&command) {

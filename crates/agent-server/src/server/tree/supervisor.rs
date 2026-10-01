@@ -14,13 +14,14 @@ use demi_agent_session::{
     AgentMessageError, AgentSession, Execution, SessionEvent, Settle, Subscription,
 };
 use demi_agent_store::{ClosePhase, NodeClose, NodeRecord};
-use demi_agent_tools::{AgentHarness, Profile};
+use demi_agent_tools::HostResolver;
 use demi_conversation_socket_protocol::{JobPhase, ServerFrame, SubagentEvent, TranscriptPatch};
-use demi_host_interface::{RpcError, RpcPort};
+use demi_host_interface::{CommandSet, RpcError, RpcPort};
 use demi_shared_gates::Purpose;
 use demi_shared_types::{
     AgentMessage, AgentMessageEvent, Block, BlockId, CompletionId, CompletionOutcome, NodeId,
-    QueuedMessage, Sender, Sequence, ToolCallBlock, ToolCallStatus, TurnId, UserContentBlock,
+    Profile, QueuedMessage, Sender, Sequence, ToolCallBlock, ToolCallStatus, TurnId,
+    UserContentBlock,
 };
 use futures_util::future::LocalBoxFuture;
 use schemars::JsonSchema;
@@ -31,7 +32,7 @@ use tokio_util::task::AbortOnDropHandle;
 use super::Tree;
 use crate::{
     Node,
-    node::{self, NodeRole, NodeSpec, Prompt},
+    node::{self, NodeRole, NodeSpec},
     server::commands::with_runtime_groups,
 };
 
@@ -42,13 +43,11 @@ const MAX_LIVE_CHILDREN: usize = 8;
 const RESULT_MAX_BYTES: usize = 32 * 1024;
 /// The most recent tool calls `show` lists.
 const SHOW_RECENT_TOOLS: usize = 8;
-/// Not a profile name: omitting `--profile` inherits the parent.
-pub(crate) const INHERIT_PROFILE: &str = "default";
 const INHERIT_LABEL: &str = "(inherit)";
 const OWNER_CLOSING: &str = "owner session is closing";
 
 /// A live child: its node, and what its supervision keeps about it.
-pub(crate) struct Child<H: AgentHarness> {
+pub(crate) struct Child<H: HostResolver> {
     node: Rc<Node<H>>,
     /// Set in the one step that decides the child closes; a message sent to
     /// it after that step is refused.
@@ -65,7 +64,7 @@ pub(crate) struct Child<H: AgentHarness> {
     supervision: RefCell<Option<AbortOnDropHandle<()>>>,
 }
 
-impl<H: AgentHarness> Child<H> {
+impl<H: HostResolver> Child<H> {
     pub(crate) fn node(&self) -> &Rc<Node<H>> {
         &self.node
     }
@@ -142,7 +141,7 @@ enum Decision {
     Stop,
 }
 
-impl<H: AgentHarness> Tree<H> {
+impl<H: HostResolver> Tree<H> {
     pub(crate) fn child(&self, id: &NodeId) -> Option<Rc<Child<H>>> {
         self.children.borrow().get(id).cloned()
     }
@@ -398,7 +397,7 @@ impl<H: AgentHarness> Tree<H> {
         if !record.delivered {
             return Err("The previous completion is not saved by the parent yet; retry resume after receiving it".to_owned());
         }
-        // A profile the harness no longer declares leaves the archive as it
+        // A profile no plugin declares any more leaves the archive as it
         // is.
         self.profile(record.profile.as_deref())?;
         let started_at = self.clock.now();
@@ -450,12 +449,12 @@ impl<H: AgentHarness> Tree<H> {
         let model = profile
             .and_then(|profile| profile.model.clone())
             .unwrap_or_else(|| owner.session().model());
-        let prompt = match profile.and_then(|profile| profile.system_prompt.clone()) {
-            Some(prompt) => Prompt::Profile(prompt),
-            None => owner.prompt().clone(),
+        let instructions = match profile.and_then(|profile| profile.instructions.as_deref()) {
+            Some(instructions) => Rc::from(instructions),
+            None => owner.instructions().clone(),
         };
-        let inherited = match profile.and_then(|profile| profile.commands.clone()) {
-            Some(narrow) => Rc::new(narrow(owner.inherited_commands())),
+        let inherited = match profile {
+            Some(profile) => Rc::new(narrowed(profile, owner.inherited_commands())),
             None => owner.inherited_commands().clone(),
         };
         let can_spawn = record.can_spawn_subagents;
@@ -470,9 +469,10 @@ impl<H: AgentHarness> Tree<H> {
             cwd: owner.cwd().to_owned(),
             model,
             runtime,
-            harness: deps.harness.clone(),
-            prompt,
-            preamble_suffix: Some(preamble),
+            hosts: deps.hosts.clone(),
+            instructions,
+            preamble: Some(preamble),
+            context: deps.context.clone(),
             inherited,
             commands: Rc::new(commands),
             first_message,
@@ -980,12 +980,12 @@ impl<H: AgentHarness> Tree<H> {
 /// A start under way past its owner's check: while it lasts, the owner is
 /// not quiescent. It ends with a change of the tree, so the owner's
 /// supervision looks again.
-struct Starting<H: AgentHarness> {
+struct Starting<H: HostResolver> {
     tree: Rc<Tree<H>>,
     owner: NodeId,
 }
 
-impl<H: AgentHarness> Starting<H> {
+impl<H: HostResolver> Starting<H> {
     fn new(tree: &Rc<Tree<H>>, owner: &NodeId) -> Self {
         *tree.starting.borrow_mut().entry(owner.clone()).or_default() += 1;
         Self {
@@ -995,7 +995,7 @@ impl<H: AgentHarness> Starting<H> {
     }
 }
 
-impl<H: AgentHarness> Drop for Starting<H> {
+impl<H: HostResolver> Drop for Starting<H> {
     fn drop(&mut self) {
         {
             let mut starting = self.tree.starting.borrow_mut();
@@ -1015,7 +1015,7 @@ impl<H: AgentHarness> Drop for Starting<H> {
 /// status, of the tree's children, or of its failure, and closes it once
 /// [`Tree::decide`] says so. It holds neither the tree nor the child while
 /// it waits.
-async fn supervision<H: AgentHarness>(tree: Weak<Tree<H>>, child: Weak<Child<H>>) {
+async fn supervision<H: HostResolver>(tree: Weak<Tree<H>>, child: Weak<Child<H>>) {
     let (mut status, mut changes, wake) = {
         let (Some(live_tree), Some(live_child)) = (tree.upgrade(), child.upgrade()) else {
             return;
@@ -1057,7 +1057,7 @@ async fn stop_all(session: &AgentSession) {
 }
 
 /// A child's `started` frame and its transcript.
-fn child_frames<H: AgentHarness>(child: &Child<H>) -> [ServerFrame; 2] {
+fn child_frames<H: HostResolver>(child: &Child<H>) -> [ServerFrame; 2] {
     let transcript = child.node.session().transcript();
     [
         ServerFrame::Subagent {
@@ -1446,7 +1446,7 @@ struct ToolSnapshot {
 }
 
 /// `child`'s snapshot; `parent` is its parent's number.
-fn snapshot<H: AgentHarness>(child: &Child<H>, parent: u64, now: i64) -> AgentSnapshot {
+fn snapshot<H: HostResolver>(child: &Child<H>, parent: u64, now: i64) -> AgentSnapshot {
     let record = child.node.record();
     let session = child.node.session();
     let telemetry = child.telemetry.borrow();
@@ -1551,5 +1551,14 @@ impl ToolStatus {
             Self::Completed => "completed",
             Self::Error => "error",
         }
+    }
+}
+
+/// The parent's commands a child of `profile` keeps: all of them, or those
+/// under the profile's paths (`subagents.md` § Profiles).
+fn narrowed(profile: &Profile, commands: &CommandSet) -> CommandSet {
+    match &profile.commands {
+        None => commands.clone(),
+        Some(kept) => commands.filter(|leaf| kept.iter().any(|path| leaf.starts_with(path))),
     }
 }

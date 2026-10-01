@@ -1,20 +1,21 @@
 //! What the scenarios share: a real runner for one device, the `demi.file`
 //! package the workspace built, and an agent server whose conversations run
-//! the coding harness on that device, their shells real runner jobs and
-//! their model a script.
+//! on that device with the command set the plugin host composes from the
+//! `file` and `todo` plugins, their shells real runner jobs and their model a
+//! script.
 
 use std::{
     cell::RefCell, collections::BTreeMap, future::Future, rc::Rc, sync::Arc, time::Duration,
 };
 
-use demi_agent_coding_harness::{CodingHarness, DemiOptions, HostResolver, demi_root};
 use demi_agent_server::{
     AgentServer, ServerConfig, ServerDeps,
     testing::{ScriptedProviders, TestClient, client_text},
 };
 use demi_agent_store::{AgentTreeStore, testing::MemoryTreeStore};
-use demi_agent_tools::{EnvironmentScope, PromptContext, ShellEnvironmentFactory};
+use demi_agent_tools::{EnvironmentScope, HostResolver, NodeContext, ShellEnvironmentFactory};
 use demi_agent_transcript::testing::SequentialIds;
+use demi_backend_plugins::Registry;
 use demi_backend_remote_host::{
     CommandCatalog, ContextSource, EnvironmentOptions, RemoteHost, RemoteShellEnvironmentFactory,
     testing::{FixtureOptions, NativeFixture, RunnerFixture},
@@ -24,6 +25,9 @@ use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
 use demi_host_interface::{
     CommandSet, HostError, HostErrorKind, ShellEnvironment, testing::test_command_context,
 };
+use demi_plugin_file::File;
+use demi_plugin_interface::PluginFactory;
+use demi_plugin_todo::Todo;
 use demi_provider_common::{
     InferenceItem, InferenceRequest, ProviderEvent, ResultPart,
     testing::{ScriptedRuntime, TokioClock, Turn, event},
@@ -32,8 +36,6 @@ use demi_shared_types::{Block, CommandId, NodeId, SessionPhase, ToolView, TurnId
 use futures_util::future::LocalBoxFuture;
 use serde_json::json;
 
-pub type Harness = CodingHarness<DeviceHost>;
-
 /// The conversation's Host: the fixture's device, working in the directory
 /// the test chose last.
 pub struct DeviceHost(Rc<RefCell<Rc<RemoteHost>>>);
@@ -41,7 +43,7 @@ pub struct DeviceHost(Rc<RefCell<Rc<RemoteHost>>>);
 impl HostResolver for DeviceHost {
     type Host = RemoteHost;
 
-    async fn host(&self, _context: PromptContext<'_>) -> Result<Rc<RemoteHost>, HostError> {
+    async fn host(&self, _context: NodeContext<'_>) -> Result<Rc<RemoteHost>, HostError> {
         Ok(self.0.borrow().clone())
     }
 }
@@ -78,7 +80,7 @@ impl ShellEnvironmentFactory<RemoteHost> for RunnerShells {
 /// A device's runner and an agent server whose conversations work on it.
 pub struct Fixture {
     pub runner: RunnerFixture,
-    pub server: Rc<AgentServer<Harness>>,
+    pub server: Rc<AgentServer<DeviceHost>>,
     /// The conversation's working directory on the device, inside the
     /// runner's home.
     pub workspace: String,
@@ -94,15 +96,15 @@ impl Fixture {
 
     /// A fixture whose model plays `script`, with the server's `config`.
     pub async fn start_with(script: &ScriptedRuntime, config: ServerConfig) -> Self {
+        let commands = demi_commands();
         let runner = RunnerFixture::start(FixtureOptions {
-            commands: demi_commands(),
+            commands: commands.clone(),
             ..FixtureOptions::default()
         })
         .await;
         let workspace = format!("{}/workspace", runner.home());
         std::fs::create_dir_all(&workspace).unwrap();
         let host = Rc::new(RefCell::new(Rc::new(runner.host_at(&workspace))));
-        let harness = CodingHarness::new(DeviceHost(host.clone()), DemiOptions::default()).unwrap();
         let providers = Rc::new(ScriptedProviders::default());
         providers.provide("stub", script);
         let file = NativeFixture::package(
@@ -115,7 +117,11 @@ impl Fixture {
         let catalog = CommandCatalog::new(vec![file.descriptor.clone()], file.resolver()).unwrap();
         let store = MemoryTreeStore::new();
         let server = AgentServer::new(ServerDeps {
-            harness: Rc::new(harness),
+            commands: Rc::new(commands),
+            instructions: Rc::from("You are a coding agent."),
+            profiles: Rc::new([]),
+            hosts: Rc::new(DeviceHost(host.clone())),
+            context: Rc::new([]),
             providers,
             shells: Rc::new(RunnerShells(RemoteShellEnvironmentFactory::new(catalog))),
             stores: Rc::new(move |_: &NodeId| store.clone() as Rc<dyn AgentTreeStore>),
@@ -144,14 +150,14 @@ impl Fixture {
     }
 
     /// A client that opened the conversation; its handshake waits unread.
-    pub async fn attach(&self) -> TestClient<Harness> {
+    pub async fn attach(&self) -> TestClient<DeviceHost> {
         let client = TestClient::connect(&self.server, &conversation(), &self.workspace);
         client.send(ClientFrame::Open {}).await;
         client
     }
 
     /// A client that opened the conversation and read its handshake.
-    pub async fn opened(&self) -> TestClient<Harness> {
+    pub async fn opened(&self) -> TestClient<DeviceHost> {
         let mut client = self.attach().await;
         let handshake = client
             .next_until(|frame| matches!(frame, ServerFrame::PendingSteers { .. }))
@@ -209,13 +215,15 @@ impl Fixture {
     }
 }
 
-/// The `demi` commands the device's jobs call back into.
+/// The `demi` commands the plugin host composes from the `file` and `todo`
+/// plugins, which the device's jobs call back into.
 fn demi_commands() -> CommandSet {
-    let mut commands = CommandSet::new();
-    commands
-        .register(demi_root(DemiOptions::default()))
-        .unwrap();
-    commands
+    let plugins: Vec<Box<dyn PluginFactory>> = vec![Box::new(File::new()), Box::new(Todo::new())];
+    Registry::new(plugins, |_| true)
+        .unwrap()
+        .instances("u1")
+        .commands(Vec::new())
+        .unwrap()
 }
 
 /// Runs a scenario, failing it when it does not end within a minute.
@@ -231,7 +239,7 @@ pub fn conversation() -> NodeId {
 
 /// Sends the user message `text` as `id` and returns the frames up to the
 /// idle phase that ends its turn.
-pub async fn turn(client: &mut TestClient<Harness>, id: &str, text: &str) -> Vec<ServerFrame> {
+pub async fn turn(client: &mut TestClient<DeviceHost>, id: &str, text: &str) -> Vec<ServerFrame> {
     client
         .send(ClientFrame::Send {
             message_id: TurnId::try_from(id).unwrap(),

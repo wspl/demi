@@ -44,6 +44,10 @@ demi-backend-providers = { path = "../backend-providers" }
 demi-backend-runners = { path = "../backend-runners" }
 demi-backend-user-shard = { path = "../backend-user-shard" }
 demi-backend-database = { path = "../backend-database" }
+demi-plugin-browser = { path = "../plugin-browser" }
+demi-plugin-file = { path = "../plugin-file" }
+demi-plugin-interface = { path = "../plugin-interface" }
+demi-plugin-todo = { path = "../plugin-todo" }
 demi-command-package-browser-protocol = { path = "../command-package-browser-protocol" }
 demi-command-declarations = { path = "../command-declarations" }
 demi-shared-types = { path = "../shared-types" }

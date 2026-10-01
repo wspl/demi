@@ -1,15 +1,17 @@
 //! The standard tools (`runtime.md` § Tools): `shell_exec`, `shell_status`,
 //! `shell_write`, `shell_abort` and `yield`, and only these. The shell tools
-//! reach the conversation's current Host through the harness and run in the
-//! node's shell environment for that Host, which the product makes; `yield`
-//! returns an effect for the session to apply. A tool never reaches into its
-//! session: it returns its outcome. The harness (`AgentHarness`) names the
-//! Host a node's shell tools reach, with its prompts and subagent profiles.
+//! reach the conversation's current Host through the product's resolver and
+//! run in the node's shell environment for that Host, which the product
+//! makes; `yield` returns an effect for the session to apply. A tool never
+//! reaches into its session: it returns its outcome. The product also
+//! supplies the context sources, and the rules of these tools open every
+//! node's system prompt.
 
 mod environments;
 mod frames;
-mod harness;
 mod input;
+mod product;
+mod prompt;
 mod result;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
@@ -33,8 +35,9 @@ use futures_util::future::LocalBoxFuture;
 pub use environments::Environments;
 use environments::Handle;
 pub use frames::{shell_output, stored_running_commands};
-pub use harness::{AgentHarness, CommandNarrowing, Profile, ProfilePrompt, PromptContext};
 use input::{CommandInput, ShellExecInput, ShellWriteInput, YieldInput, parse};
+pub use product::{ContextSource, HostResolver, NodeContext};
+pub use prompt::system_prompt;
 
 /// The most characters a page of `demi shell output` takes, so that a tool
 /// result printing one is never cut.
@@ -157,14 +160,14 @@ pub fn definitions() -> Arc<[ToolDefinition]> {
     DEFINITIONS.clone()
 }
 
-/// A node's access to its shells: the harness that names the current Host,
+/// A node's access to its shells: the resolver that names the current Host,
 /// the product's factory, the environments made so far, and the node they
 /// belong to.
-pub struct ShellAccess<'a, H: AgentHarness> {
-    pub harness: &'a H,
+pub struct ShellAccess<'a, H: HostResolver> {
+    pub hosts: &'a H,
     pub shells: &'a dyn ShellEnvironmentFactory<H::Host>,
     pub environments: &'a Environments,
-    pub context: PromptContext<'a>,
+    pub context: NodeContext<'a>,
     /// The node's agent number.
     pub agent: u64,
     pub commands: &'a Rc<CommandSet>,
@@ -174,7 +177,7 @@ pub struct ShellAccess<'a, H: AgentHarness> {
     pub numbers: &'a Rc<dyn Numbers>,
 }
 
-impl<H: AgentHarness> ShellAccess<'_, H> {
+impl<H: HostResolver> ShellAccess<'_, H> {
     /// The environment for the conversation's current Host, which `handle`
     /// must belong to.
     async fn environment(
@@ -182,7 +185,7 @@ impl<H: AgentHarness> ShellAccess<'_, H> {
         handle: Handle<'_>,
     ) -> Result<(Rc<environments::Slot>, Rc<dyn ShellEnvironment>), CallError> {
         let host = self
-            .harness
+            .hosts
             .host(self.context)
             .await
             .map_err(|error| CallError::Failed(error.to_string()))?;

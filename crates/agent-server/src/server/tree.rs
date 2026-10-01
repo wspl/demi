@@ -18,29 +18,26 @@ use std::{
 
 use demi_agent_session::{Continuation, ModelSwitch, SessionEvent, Settle, Status, Subscription};
 use demi_agent_store::{AgentTreeStore, NodeRecord, StoreError};
-use demi_agent_tools::{AgentHarness, Profile, shell_output};
+use demi_agent_tools::{HostResolver, shell_output};
 use demi_agent_transcript::IdSource;
 use demi_conversation_socket_protocol::ServerFrame;
 use demi_host_interface::RegisterError;
 use demi_shared_gates::{ActivityGate, KeyedSerialGate, Reservation};
-use demi_shared_types::{Clock, CommandId, NodeId};
+use demi_shared_types::{Clock, CommandId, NodeId, Profile};
 use futures_util::future::join_all;
 use tokio::sync::watch;
 use tokio_util::task::{AbortOnDropHandle, TaskTracker};
 
 pub(crate) use self::supervisor::{AgentSnapshot, StartInput, TreeEntry};
-use self::{
-    live::LiveOutput,
-    supervisor::{Child, INHERIT_PROFILE},
-};
+use self::{live::LiveOutput, supervisor::Child};
 use super::{AgentServer, ResolveError, commands, connection::Outbox};
 use crate::{
     Node,
-    node::{self, AssembleError, NodeRole, NodeSpec, Prompt},
+    node::{self, AssembleError, NodeRole, NodeSpec},
 };
 
 /// A conversation's live tree.
-pub struct Tree<H: AgentHarness> {
+pub struct Tree<H: HostResolver> {
     server: Weak<AgentServer<H>>,
     root: Rc<Node<H>>,
     /// Every live child at any depth, by id; with the root, the agent
@@ -188,15 +185,16 @@ pub(crate) enum OpenError {
     #[error(transparent)]
     Assemble(#[from] AssembleError),
     #[error(
-        "subagent profile name \"{INHERIT_PROFILE}\" is reserved: omitting --profile already inherits the parent"
+        "subagent profile name \"{}\" is reserved: omitting --profile already inherits the parent",
+        Profile::INHERIT
     )]
     ReservedProfile,
-    /// The harness's commands cannot take the `demi agent` group.
+    /// The product's commands cannot take the `demi agent` group.
     #[error("the demi agent commands cannot be added: {0}")]
     Commands(#[from] RegisterError),
 }
 
-impl<H: AgentHarness> Tree<H> {
+impl<H: HostResolver> Tree<H> {
     /// Opens the conversation's tree from its store, or creates it, with the
     /// model selection its record holds and a runtime for it; a restored root
     /// switches to that selection at its next provider request. The caller
@@ -208,14 +206,14 @@ impl<H: AgentHarness> Tree<H> {
         cwd: &str,
     ) -> Result<(Rc<Self>, Option<Continuation>), OpenError> {
         let deps = &server.deps;
-        let profiles: Rc<[Profile]> = deps.harness.profiles().into();
+        let profiles = deps.profiles.clone();
         if profiles
             .iter()
-            .any(|profile| profile.name == INHERIT_PROFILE)
+            .any(|profile| profile.name == Profile::INHERIT)
         {
             return Err(OpenError::ReservedProfile);
         }
-        let inherited = deps.harness.commands();
+        let inherited = deps.commands.clone();
         let commands = Rc::new(commands::with_runtime_groups(
             &inherited, server, true, &profiles,
         )?);
@@ -232,9 +230,10 @@ impl<H: AgentHarness> Tree<H> {
             cwd: cwd.to_owned(),
             model: model.clone(),
             runtime,
-            harness: deps.harness.clone(),
-            prompt: Prompt::Harness,
-            preamble_suffix: None,
+            hosts: deps.hosts.clone(),
+            instructions: deps.instructions.clone(),
+            preamble: None,
+            context: deps.context.clone(),
             inherited,
             commands,
             first_message: None,
@@ -585,7 +584,7 @@ fn quiescent(status: &Status) -> bool {
 /// Tells the product, through `status_changed`, that the tree opened, and
 /// each time it starts or stops working by itself: whenever whether it is
 /// quiescent changes.
-async fn report_working<H: AgentHarness>(
+async fn report_working<H: HostResolver>(
     tree: Weak<Tree<H>>,
     mut status: watch::Receiver<Status>,
     mut changes: watch::Receiver<u64>,
@@ -613,7 +612,7 @@ async fn report_working<H: AgentHarness>(
 
 /// Waits until the tree has been detached and quiescent for `idle` without
 /// a break, then hands the tree to the server for disposal.
-async fn evict_when_idle<H: AgentHarness>(
+async fn evict_when_idle<H: HostResolver>(
     tree: Weak<Tree<H>>,
     idle: Duration,
     mut attachments: watch::Receiver<Vec<Attachment>>,

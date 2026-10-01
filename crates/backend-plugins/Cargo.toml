@@ -1,5 +1,5 @@
 [package]
-name = "demi-agent-coding-harness"
+name = "demi-backend-plugins"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -12,30 +12,34 @@ doctest = false
 bench = false
 
 [dependencies]
-demi-agent-tools = { path = "../agent-tools" }
-demi-command-package-browser-protocol = { path = "../command-package-browser-protocol" }
-demi-command-package-file-protocol = { path = "../command-package-file-protocol" }
 demi-command-declarations = { path = "../command-declarations" }
-demi-shared-types = { path = "../shared-types" }
 demi-host-interface = { path = "../host-interface" }
-schemars.workspace = true
-serde.workspace = true
-serde_json.workspace = true
+demi-plugin-interface = { path = "../plugin-interface" }
+demi-shared-types = { path = "../shared-types" }
+futures-util.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
-# The scenarios run the harness in an agent server whose shells are real
-# runner jobs, with the `demi.file` package the workspace built; the rpc
-# groups' tests use the shell's in-memory rpc port.
+# The scenarios run the composed command set in an agent server whose
+# shells are real runner jobs, with the `demi.file` package the workspace
+# built.
 demi-agent-server = { path = "../agent-server", features = ["testing"] }
-demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
 demi-agent-store = { path = "../agent-store", features = ["testing"] }
 demi-agent-tools = { path = "../agent-tools", features = ["testing"] }
 demi-agent-transcript = { path = "../agent-transcript", features = ["testing"] }
-demi-command-protocol = { path = "../command-protocol", features = ["testing"] }
 demi-backend-remote-host = { path = "../backend-remote-host", features = ["testing"] }
-demi-provider-common = { path = "../provider-common", features = ["testing"] }
+demi-command-package-file-protocol = { path = "../command-package-file-protocol" }
+demi-command-protocol = { path = "../command-protocol", features = ["testing"] }
+demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
 demi-host-interface = { path = "../host-interface", features = ["testing"] }
+demi-plugin-file = { path = "../plugin-file" }
+demi-plugin-interface = { path = "../plugin-interface" }
+demi-plugin-todo = { path = "../plugin-todo" }
+demi-provider-common = { path = "../provider-common", features = ["testing"] }
+demi-shared-types = { path = "../shared-types" }
 futures-util.workspace = true
+serde_json.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 tokio-util.workspace = true
 

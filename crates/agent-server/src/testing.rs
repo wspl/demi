@@ -10,7 +10,7 @@ use std::{
 };
 
 use demi_agent_store::{media::HeldMedia, testing::test_model};
-use demi_agent_tools::AgentHarness;
+use demi_agent_tools::HostResolver;
 use demi_conversation_socket_protocol::{ClientContent, ClientFrame, ServerFrame};
 use demi_provider_common::{ProviderRuntime, testing::ScriptedRuntime};
 use demi_shared_types::{ModelSelection, NodeId, UserContentBlock};
@@ -148,14 +148,14 @@ pub const HANG_GUARD: Duration = Duration::from_secs(10);
 
 /// A client of one connection: it hands frames to the connection as the
 /// backend's socket task would, and reads what the outbox sends back.
-pub struct TestClient<H: AgentHarness> {
+pub struct TestClient<H: HostResolver> {
     connection: Connection<H>,
     frames: FrameRx,
     /// How long a wait for a frame may take before it fails as a hang.
     hang_guard: Duration,
 }
 
-impl<H: AgentHarness> TestClient<H> {
+impl<H: HostResolver> TestClient<H> {
     /// A client of the conversation `root`, whose new tree works in `cwd`,
     /// whose frames refer to no file.
     pub fn connect(server: &Rc<AgentServer<H>>, root: &NodeId, cwd: &str) -> Self {

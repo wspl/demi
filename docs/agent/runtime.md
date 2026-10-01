@@ -64,13 +64,13 @@ while a node runs:
 | The product supplies | What it is | Where it comes from in Demi |
 | --- | --- | --- |
 | The command set | The commands every node starts from; the runtime adds its own groups per node ([Tools](#tools)) | The plugins' commands and the `demi host` group ([Plugins](../architecture/plugins.md#commands)) |
-| Instructions | The text of the system prompt between the runtime's rules for its tools and the help of the node's commands | The product's instructions; a plugin adds only its commands' help ([Prompt text and context](../architecture/plugins.md#prompt-text-and-context)) |
+| Instructions | The text that opens the system prompt, before the runtime's rules for its tools | The product's instructions; a plugin adds only its commands' help ([Prompt text and context](../architecture/plugins.md#prompt-text-and-context)) |
 | Profiles | The named [subagent profiles](subagents.md#profiles), as data | The plugins' profiles |
 | The Host of a node | Where its shell tools run now, asked at each shell tool call | The conversation's host access ([Host operations](../execution/sessions-and-targets.md#host-operations)) |
 | Context sources | What the model must learn before a request, asked before each one ([Context](#context)) | The conversation's execution context, then each plugin that is a context source |
 
-A node's system prompt is therefore the runtime's rules for its five tools,
-the instructions (or a profile's, which replace them), and the rendered help
+A node's system prompt is therefore the instructions (or a profile's, which
+replace them), the runtime's rules for its five tools, and the rendered help
 of the node's commands, in that order. It is rendered once, when the node is
 assembled, and holds no time, id, Host or state
 ([Prompt cache](../providers/providers.md#prompt-cache)).

@@ -10,7 +10,7 @@ use std::{
 };
 
 use demi_agent_session::{AgentSession, EditCheck, EditSubmission, accepted, edit_digest};
-use demi_agent_tools::AgentHarness;
+use demi_agent_tools::HostResolver;
 use demi_conversation_socket_protocol::{
     ClientFrame, ClientFrameKind, EditOutcome, EditRequest, ServerFrame, SteerOutcome,
 };
@@ -124,7 +124,7 @@ impl FrameRx {
 /// One conversation socket's handling. It belongs to one conversation: the
 /// backend names the conversation and its working directory, and the client
 /// never sends them. Dropping it detaches it; the tree's turns keep running.
-pub struct Connection<H: AgentHarness> {
+pub struct Connection<H: HostResolver> {
     id: u64,
     root: NodeId,
     cwd: String,
@@ -133,7 +133,7 @@ pub struct Connection<H: AgentHarness> {
     outbox: Rc<Outbox>,
 }
 
-impl<H: AgentHarness> Connection<H> {
+impl<H: HostResolver> Connection<H> {
     pub(super) fn new(
         server: Rc<AgentServer<H>>,
         id: u64,
@@ -402,7 +402,7 @@ impl<H: AgentHarness> Connection<H> {
     }
 }
 
-impl<H: AgentHarness> Connection<H> {
+impl<H: HostResolver> Connection<H> {
     /// An edit's acceptance (`message-editing.md` § Commit and idempotency):
     /// a repeated request is answered from its receipt, or shares the
     /// acceptance in flight, before any of its files is resolved; a new one
@@ -439,7 +439,7 @@ impl<H: AgentHarness> Connection<H> {
     }
 }
 
-impl<H: AgentHarness> Drop for Connection<H> {
+impl<H: HostResolver> Drop for Connection<H> {
     fn drop(&mut self) {
         self.detach();
     }

@@ -1,4 +1,4 @@
-//! What the scenarios share: a harness, a provider runtime that answers each
+//! What the scenarios share: a product, a provider runtime that answers each
 //! node of a tree from its own script, a server over an in-memory tree
 //! store, and frame builders.
 
@@ -10,7 +10,7 @@ use demi_agent_server::{
 };
 use demi_agent_store::{AgentTreeStore, testing::MemoryTreeStore};
 use demi_agent_tools::{
-    AgentHarness, Profile, PromptContext,
+    ContextSource, HostResolver, NodeContext,
     testing::{NoHost, NoShells},
 };
 use demi_agent_transcript::testing::SequentialIds;
@@ -23,65 +23,59 @@ use demi_provider_common::{
     InferenceItem, InferenceRequest, ProviderRun, ProviderRuntime, RequestLimits, UserPart,
     testing::{FixedClock, ScriptedRuntime, TokioClock, Turn},
 };
-use demi_shared_types::{Block, Clock, ModelSelection, NodeId, Timestamp, TurnId};
+use demi_shared_types::{Block, Clock, ModelSelection, NodeId, Profile, Timestamp, TurnId};
 use futures_util::{StreamExt, future::LocalBoxFuture, stream};
 use serde_json::{Value, json};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
-/// The harness the scenarios run: fixed texts, one command, and the
-/// conversation's execution context, which the test can set.
+/// What the scenarios' product supplies: one command, the profiles the test
+/// declares, and a context source, the conversation's execution context,
+/// which the test can set.
 #[derive(Default)]
-pub struct TestHarness {
-    pub preamble: Option<String>,
+pub struct TestProduct {
     pub profiles: Vec<Profile>,
     /// The execution context: each node whose transcript does not hold it
     /// yet is given it before its next request.
     pub context: RefCell<Option<String>>,
-    /// The context texts each request's context hook was given.
+    /// The context texts each request's source was given.
     pub seen: RefCell<Vec<Vec<String>>>,
-    /// The command help each system prompt was given.
-    pub prompts: RefCell<Vec<String>>,
 }
 
-impl AgentHarness for TestHarness {
+impl HostResolver for TestProduct {
     type Host = NoHost;
+}
 
+impl ContextSource for TestProduct {
     fn name(&self) -> &str {
-        "test"
+        "execution"
     }
 
-    fn commands(&self) -> Rc<CommandSet> {
-        let mut commands = CommandSet::new();
-        commands
-            .register(
-                GroupBuilder::new("greet", "Greets the caller.")
-                    .leaf(LeafBuilder::rpc("hello", "Say hello.").bind(Hello)),
-            )
-            .expect("the test command registers");
-        Rc::new(commands)
-    }
-
-    fn profiles(&self) -> Vec<Profile> {
-        self.profiles.clone()
-    }
-
-    async fn system_prompt(&self, _context: PromptContext<'_>, commands: &str) -> String {
-        self.prompts.borrow_mut().push(commands.to_owned());
-        "system prompt".to_owned()
-    }
-
-    async fn preamble(&self, _context: PromptContext<'_>) -> Option<String> {
-        self.preamble.clone()
-    }
-
-    async fn context(&self, _context: PromptContext<'_>, seen: &[&str]) -> Option<String> {
+    fn context<'a>(
+        &'a self,
+        _node: NodeContext<'a>,
+        _turn: &'a TurnId,
+        seen: &'a [&'a str],
+    ) -> LocalBoxFuture<'a, Result<Option<String>, String>> {
         self.seen
             .borrow_mut()
             .push(seen.iter().map(|text| (*text).to_owned()).collect());
-        let current = self.context.borrow().clone()?;
-        (!seen.contains(&current.as_str())).then_some(current)
+        let current = self.context.borrow().clone();
+        let news = current.filter(|current| !seen.contains(&current.as_str()));
+        Box::pin(async move { Ok(news) })
     }
+}
+
+/// The scenarios' one command, `greet hello`.
+fn greet() -> CommandSet {
+    let mut commands = CommandSet::new();
+    commands
+        .register(
+            GroupBuilder::new("greet", "Greets the caller.")
+                .leaf(LeafBuilder::rpc("hello", "Say hello.").bind(Hello)),
+        )
+        .expect("the test command registers");
+    commands
 }
 
 struct Hello;
@@ -296,7 +290,7 @@ pub fn named_node(store: &MemoryTreeStore, run: &CommandRun) -> NodeId {
 /// A job's port: its output kept, and its command storage the node's at
 /// the generation the job recorded, while its call lives.
 struct NodePort {
-    server: Rc<AgentServer<TestHarness>>,
+    server: Rc<AgentServer<TestProduct>>,
     caller: JobCaller,
     call: CancellationToken,
     stdout: RefCell<Vec<u8>>,
@@ -334,7 +328,7 @@ impl PortTransport for NodePort {
 /// the node's commands and its command storage; `cancel` is the call's
 /// cancellation.
 pub async fn agent_call(
-    server: &Rc<AgentServer<TestHarness>>,
+    server: &Rc<AgentServer<TestProduct>>,
     node: &NodeId,
     verb: &str,
     args: Value,
@@ -384,7 +378,7 @@ pub async fn agent_call(
 /// `op` on the command storage of the root `root`, as a job that starts now
 /// would send it.
 pub async fn command_storage(
-    server: &Rc<AgentServer<TestHarness>>,
+    server: &Rc<AgentServer<TestProduct>>,
     root: &NodeId,
     op: StorageOp,
 ) -> Result<StorageReply, PortError> {
@@ -399,7 +393,7 @@ pub async fn command_storage(
 
 /// `demi agent <verb>` run to its end as a job of `node`.
 pub async fn agent(
-    server: &Rc<AgentServer<TestHarness>>,
+    server: &Rc<AgentServer<TestProduct>>,
     node: &NodeId,
     verb: &str,
     args: Value,
@@ -409,12 +403,12 @@ pub async fn agent(
         .expect("the call is dispatched")
 }
 
-/// A server with its store, resolver and harness in reach.
+/// A server with its store, resolver and product in reach.
 pub struct Fixture {
-    pub server: Rc<AgentServer<TestHarness>>,
+    pub server: Rc<AgentServer<TestProduct>>,
     pub store: Rc<MemoryTreeStore>,
     pub resolver: Rc<ScriptedProviders>,
-    pub harness: Rc<TestHarness>,
+    pub product: Rc<TestProduct>,
 }
 
 impl Fixture {
@@ -439,14 +433,14 @@ impl Fixture {
         let resolver = Rc::new(ScriptedProviders::default());
         resolver.provide("stub", script);
         let clock = Arc::new(FixedClock(start()));
-        Self::build(resolver, TestHarness::default(), store, config, clock)
+        Self::build(resolver, TestProduct::default(), store, config, clock)
     }
 
     /// A server of the provider `stub` answering from `model`, with
-    /// `harness`.
+    /// `product`.
     pub fn with_model(
         model: &Model,
-        harness: TestHarness,
+        product: TestProduct,
         store: Rc<MemoryTreeStore>,
         config: ServerConfig,
     ) -> Self {
@@ -454,7 +448,7 @@ impl Fixture {
         resolver.provide_runtime("stub", model.clone());
         Self::build(
             resolver,
-            harness,
+            product,
             store,
             config,
             Arc::new(FixedClock(start())),
@@ -463,12 +457,12 @@ impl Fixture {
 
     /// As [`with_model`](Self::with_model), on a wall clock that moves with
     /// Tokio's, so that yield wakeups fall due.
-    pub fn with_model_on_tokio_time(model: &Model, harness: TestHarness) -> Self {
+    pub fn with_model_on_tokio_time(model: &Model, product: TestProduct) -> Self {
         let resolver = Rc::new(ScriptedProviders::default());
         resolver.provide_runtime("stub", model.clone());
         Self::build(
             resolver,
-            harness,
+            product,
             MemoryTreeStore::new(),
             ServerConfig::default(),
             Arc::new(TokioClock::new(start())),
@@ -477,18 +471,22 @@ impl Fixture {
 
     fn build(
         resolver: Rc<ScriptedProviders>,
-        harness: TestHarness,
+        product: TestProduct,
         store: Rc<MemoryTreeStore>,
         config: ServerConfig,
         clock: Arc<dyn Clock>,
     ) -> Self {
-        let harness = Rc::new(harness);
+        let product = Rc::new(product);
         let stores = {
             let store = store.clone();
             Rc::new(move |_: &NodeId| store.clone() as Rc<dyn AgentTreeStore>)
         };
         let server = AgentServer::new(ServerDeps {
-            harness: harness.clone(),
+            commands: Rc::new(greet()),
+            instructions: Rc::from("system prompt"),
+            profiles: product.profiles.clone().into(),
+            hosts: product.clone(),
+            context: Rc::new([product.clone() as Rc<dyn ContextSource>]),
             providers: resolver.clone(),
             shells: Rc::new(NoShells),
             stores,
@@ -502,16 +500,16 @@ impl Fixture {
             server,
             store,
             resolver,
-            harness,
+            product,
         }
     }
 
-    pub fn client(&self) -> TestClient<TestHarness> {
+    pub fn client(&self) -> TestClient<TestProduct> {
         TestClient::connect(&self.server, &conversation(), "/workspace")
     }
 
     /// A client that opened the conversation and read its handshake.
-    pub async fn opened(&self) -> TestClient<TestHarness> {
+    pub async fn opened(&self) -> TestClient<TestProduct> {
         let mut client = self.client();
         client.send(open()).await;
         let handshake = client.next_until(is_pending_steers).await;

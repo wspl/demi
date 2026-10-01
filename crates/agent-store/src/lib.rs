@@ -310,9 +310,6 @@ pub struct CheckpointState {
     pub cwd: String,
     #[garde(dive)]
     pub model: ModelSelection,
-    /// The name of the harness that saved it.
-    #[garde(length(min = 1))]
-    pub harness: String,
     /// The receipts of the accepted edits.
     #[garde(dive)]
     pub edits: Vec<EditReceipt>,
