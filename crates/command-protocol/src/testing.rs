@@ -2,7 +2,7 @@
 //! both ends of the command wire name: the programs a test finds beside
 //! itself and the operations of the runner's native fixture service.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// The operations of the runner's native fixture service
 /// (`crates/runner/tests/fixtures/service.rs`), which the runner's and
@@ -13,12 +13,14 @@ pub const FIXTURE_OPERATIONS: [&str; 12] = [
 ];
 
 /// A program Cargo built into the target directory this test runs from,
-/// such as a workspace crate's executable.
+/// such as a workspace crate's executable: Cargo places the programs in the
+/// profile's directory, the nearest one above the test that holds Cargo's
+/// lock file, and the test itself somewhere below it.
 pub fn built_program(name: &str) -> PathBuf {
     let executable = std::env::current_exe().expect("the test knows its executable");
     let directory = executable
-        .parent()
-        .and_then(Path::parent)
-        .expect("a test runs from the target directory's deps");
+        .ancestors()
+        .find(|directory| directory.join(".cargo-lock").is_file())
+        .expect("a test runs below its profile's directory");
     directory.join(format!("{name}{}", std::env::consts::EXE_SUFFIX))
 }

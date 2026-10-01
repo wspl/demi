@@ -65,8 +65,25 @@ cargo zigbuild --release --locked -p xtask \
 
 ## Toolchain
 
-`rust-toolchain.toml` pins the Rust toolchain and lists the six targets, which
-rustup installs with it. The contract crates are ordinary Rust, and no build
+`rust-toolchain.toml` pins the Rust toolchain, a nightly of a fixed date, and
+lists the six targets, which rustup installs with it. Nightly is the toolchain
+for development and releases alike, so that the build and the code can use
+what is not yet stable:
+
+- The compiler's and Cargo's own options are adopted when a measurement shows
+  them faster or smaller, and the measurement goes beside the option. On the
+  pinned nightly the toolchain alone rebuilt 10 to 25% faster after an edit
+  than 1.98.1 (4 x86-64 cores, seven edit scenarios). The parallel front end
+  (`-Z threads=8`) was slower there, because Cargo already keeps every core
+  busy, and the Cranelift backend was no faster after an edit and does not
+  catch panics, which the runner and the command services rely on
+  ([Build profiles](#build-profiles)); neither is enabled.
+- A crate uses an unstable language or library feature where it makes the
+  code clearly simpler or faster, enabled with `#![feature]` at the crate's
+  root. Each is taken up when the code that it simplifies changes, not in a
+  sweep.
+- The pin moves to a newer nightly as a change of its own, which passes the
+  checks of [Validation](#validation) on it. The contract crates are ordinary Rust, and no build
 script generates contract code or needs the frontend's tooling, so a Cargo build
 needs only this toolchain and, for host builds, a C compiler for the
 dependencies that compile C code. The browser's TypeScript contracts come from
@@ -130,8 +147,10 @@ service fails one invocation, not every conversation it holds; `panic =
 The development profile keeps line tables for backtraces and no other debug
 information, builds dependencies without debug information, and optimizes the
 few dependencies whose unoptimized code slows the tests, each with the
-measurement in a comment beside it. Incremental compilation stays on: it makes
-a rebuild after an edit two to three times faster.
+measurement in a comment beside it. Incremental compilation stays on for the
+workspace's crates: it makes a rebuild after an edit two to three times
+faster. The vendored crates are path dependencies, which Cargo would compile
+incrementally too; they never change, so they build without it.
 
 Cargo never deletes a compiled unit. Each change to a dependency, its version
 or its features produces new units beside the old ones, so a target directory
@@ -362,7 +381,7 @@ namespaces of its own:
 
 ```sh
 cargo test --workspace --features demi-runner/test-fixtures --no-run
-sudo target/debug/deps/demi_machines-<hash> --include-ignored
+sudo target/debug/build/demi-machines/<hash>/out/demi_machines-<hash> --include-ignored
 ```
 
 The Claude Code suite runs as an ordinary user, as the Cloud's runner does:

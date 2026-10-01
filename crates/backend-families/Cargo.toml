@@ -3,7 +3,6 @@ name = "demi-backend-families"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-rust-version.workspace = true
 
 [lib]
 # Its test builds the families' providers without an entry, so it is a unit

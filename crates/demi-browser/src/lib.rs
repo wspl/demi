@@ -2,6 +2,11 @@
 //! conversations' browsers, as a resident command service composed of the
 //! browser libraries.
 
+// Whether the service is `Send` and `Sync` is decided through a conversation's
+// browser and the channels that answer with it, deeper than the default 128
+// steps of the trait solver.
+#![recursion_limit = "256"]
+
 mod conversations;
 
 use std::{future::Future, pin::Pin, sync::Arc};

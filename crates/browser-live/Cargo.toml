@@ -3,7 +3,6 @@ name = "demi-browser-live"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-rust-version.workspace = true
 
 [lib]
 # Its tests reach the rate control's and the framing's internals, so they are

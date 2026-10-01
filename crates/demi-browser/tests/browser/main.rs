@@ -7,6 +7,10 @@
 //! demi-runner/test-fixtures,demi-browser/testing --test browser --
 //! --include-ignored --test-threads=1`.
 
+// The service is `Send` and `Sync` deeper than the trait solver's default 128
+// steps, as in the library (`src/lib.rs`).
+#![recursion_limit = "256"]
+
 mod families;
 mod fixture;
 #[cfg(feature = "testing")]
