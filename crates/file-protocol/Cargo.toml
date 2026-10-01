@@ -3,7 +3,6 @@ name = "demi-file-protocol"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-rust-version.workspace = true
 
 [lib]
 # One test binary, the integration tests' (`crates-and-packages.md`

@@ -3,7 +3,6 @@ name = "demi-backend-sync"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-rust-version.workspace = true
 
 [lib]
 # No tests of its own: the synchronization scenarios of `demi-backend` cover
