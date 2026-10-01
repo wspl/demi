@@ -12,7 +12,6 @@ use axum::{
     response::Html,
     routing::{any, get},
 };
-use demi_command_service::testing::counting_numbers;
 use demi_browser_driver::{
     numbers::TabNumbers,
     operation::{BrowserError, Result},
@@ -21,6 +20,7 @@ use demi_browser_tabs::{
     environment::{BrowserEnvironment, LaunchOptions, with_browser},
     tab::BrowserTab,
 };
+use demi_command_service::testing::counting_numbers;
 use serde_json::json;
 use tokio::sync::Mutex;
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
@@ -63,7 +63,7 @@ async fn browser_contract_and_cleanup() {
     let result = with_browser(
         LaunchOptions::pinned(
             executable.clone(),
-            demi_command_service::protocol::CommandLocale {
+            demi_command_protocol::CommandLocale {
                 time_zone: "UTC".into(),
                 languages: vec!["en-US".into()],
             },
@@ -85,7 +85,7 @@ async fn browser_contract_and_cleanup() {
     let result = with_browser(
         LaunchOptions::pinned(
             executable.clone(),
-            demi_command_service::protocol::CommandLocale {
+            demi_command_protocol::CommandLocale {
                 time_zone: "UTC".into(),
                 languages: vec!["en-US".into()],
             },
@@ -110,7 +110,7 @@ async fn browser_contract_and_cleanup() {
     let result = with_browser(
         LaunchOptions::pinned(
             executable,
-            demi_command_service::protocol::CommandLocale {
+            demi_command_protocol::CommandLocale {
                 time_zone: "UTC".into(),
                 languages: vec!["en-US".into()],
             },

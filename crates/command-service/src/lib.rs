@@ -1,9 +1,9 @@
-//! HTTP/2 command services over caller-owned duplex transports.
+//! HTTP/2 command services over caller-owned duplex transports: the SDK of the
+//! command wire that `demi_command_protocol` defines.
 
 pub mod descriptors;
 pub mod edits;
 pub mod paths;
-pub mod protocol;
 
 #[cfg(feature = "testing")]
 pub mod testing;

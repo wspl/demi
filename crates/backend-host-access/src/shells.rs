@@ -15,7 +15,7 @@ use demi_agent_tools::{EnvironmentScope, ShellEnvironmentFactory};
 use demi_backend_objects::blobs::UserBlobs;
 use demi_backend_storage::command_outputs::{self, CommandOutput, OutputRow};
 use demi_backend_storage::conversations::ConversationDb;
-use demi_command_service::protocol::CommandCaller;
+use demi_command_protocol::CommandCaller;
 use demi_core::{Clock, CommandId, EditCopies, EditedFile, ShellId};
 use demi_host_remote::{
     CommandCatalog, CommandKeeper, ContextSource, EnvironmentOptions, HostAccess, RemoteHost, RemoteShellEnvironment,

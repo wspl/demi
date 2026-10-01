@@ -1,7 +1,9 @@
 //! Deliberately faulty operations available only in native integration tests.
 use bytes::Bytes;
-use demi_command_service::protocol::{Completion, ConversationRequest, Invocation, ServiceSequence};
-use demi_command_service::{ConversationContext, Handler, InvocationContext, Numbers, ServiceError};
+use demi_command_protocol::{Completion, ConversationRequest, Invocation, ServiceSequence};
+use demi_command_service::{
+    ConversationContext, Handler, InvocationContext, Numbers, ServiceError,
+};
 use std::{
     collections::BTreeSet,
     future::Future,
@@ -28,7 +30,7 @@ impl Handler for Fixture {
     type Metadata = Invocation;
 
     fn operations(&self) -> Vec<String> {
-        demi_command_service::testing::FIXTURE_OPERATIONS
+        demi_command_protocol::testing::FIXTURE_OPERATIONS
             .map(String::from)
             .to_vec()
     }

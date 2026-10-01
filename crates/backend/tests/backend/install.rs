@@ -8,7 +8,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 
-use demi_command_service::protocol::{TARGETS, VERSION, host_target};
+use demi_command_protocol::{TARGETS, VERSION, host_target};
 use demi_host_remote::testing::{PAIRING_CODE, runner_binary};
 use demi_provider::testing::MockVendor;
 use demi_runner_protocol::wire;

@@ -8,10 +8,8 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_command_service::{
-    Handler, InvocationContext, ServiceError,
-    protocol::{Completion, LocalInvocation},
-};
+use demi_command_protocol::{Completion, LocalInvocation};
+use demi_command_service::{Handler, InvocationContext, ServiceError};
 use demi_runner_jobs::commands::local::Server;
 use demi_runner_process::command_client::{Stdio, forward};
 use futures_util::FutureExt;

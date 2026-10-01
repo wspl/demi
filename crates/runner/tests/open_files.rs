@@ -8,13 +8,11 @@
 //! started with. One test in its own binary: it changes the process's
 //! open-file limit and holds every remaining descriptor.
 
-use demi_command_service::{
-    protocol::{
-        CommandCaller, CommandContext, CommandLocale, LocalInvocation, PackageArtifact,
-        PackageDescriptor, host_target,
-    },
-    testing::{built_program, pauses},
+use demi_command_protocol::{
+    CommandCaller, CommandContext, CommandLocale, LocalInvocation, PackageArtifact,
+    PackageDescriptor, host_target, testing::built_program,
 };
+use demi_command_service::testing::pauses;
 use demi_runner_host::host::HostServer;
 use demi_runner_jobs::testing::Dispatch;
 use demi_runner_process::{
@@ -543,7 +541,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
             id: "fixture".into(),
             version: "1.0.0".into(),
             protocol_version: 1,
-            operations: demi_command_service::testing::FIXTURE_OPERATIONS
+            operations: demi_command_protocol::testing::FIXTURE_OPERATIONS
                 .map(String::from)
                 .to_vec(),
             targets: BTreeMap::from([(

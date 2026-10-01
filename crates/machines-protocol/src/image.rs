@@ -6,7 +6,7 @@
 
 use std::collections::BTreeMap;
 
-use demi_command_service::protocol::{PackageArtifact, PackageDescriptor, digest};
+use demi_command_protocol::{PackageArtifact, PackageDescriptor, digest};
 use demi_runner_protocol::{image::ARTIFACTS_PATH, release::RunnerRelease};
 use serde::{Deserialize, Serialize};
 

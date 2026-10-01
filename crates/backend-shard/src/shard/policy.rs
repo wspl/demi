@@ -9,7 +9,7 @@
 use std::rc::{Rc, Weak};
 
 use demi_backend_storage::sequences;
-use demi_command_service::protocol::ServiceSequence;
+use demi_command_protocol::ServiceSequence;
 use demi_core::Sequence;
 use demi_host_remote::{JobOrigin, LinkPolicy};
 use demi_runner_protocol::wire::VolumeName;

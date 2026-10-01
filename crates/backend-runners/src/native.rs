@@ -10,7 +10,7 @@
 use std::rc::Rc;
 use std::sync::Arc;
 
-use demi_command_service::protocol::{ArtifactLocation, PackageArtifact, PackageDescriptor};
+use demi_command_protocol::{ArtifactLocation, PackageArtifact, PackageDescriptor};
 use demi_host_remote::{ArtifactResolver, CommandCatalog};
 use demi_runner_protocol::manifest::ManifestError;
 use futures_util::future::LocalBoxFuture;

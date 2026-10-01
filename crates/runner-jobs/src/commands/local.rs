@@ -2,7 +2,8 @@
 //! clients), which command aliases and the runner's management commands
 //! reach.
 
-use demi_command_service::{Handler, ServiceError, protocol::LocalInvocation};
+use demi_command_protocol::LocalInvocation;
+use demi_command_service::{Handler, ServiceError};
 #[cfg(unix)]
 use demi_runner_process::{command_client::ALIVE, private_files::chmod};
 use demi_runner_process::command_client::Stream;

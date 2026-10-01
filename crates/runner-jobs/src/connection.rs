@@ -7,7 +7,7 @@
 
 use std::{collections::HashMap, io, sync::Arc, time::Duration};
 
-use demi_command_service::protocol::{ArtifactLocation, ServiceSequence, host_target};
+use demi_command_protocol::{ArtifactLocation, ServiceSequence, host_target};
 use demi_runner_protocol::wire::{self, Inbound};
 use demi_runner_services::{NumberSource, RuntimeError, ServiceLease};
 use futures_util::future::BoxFuture;

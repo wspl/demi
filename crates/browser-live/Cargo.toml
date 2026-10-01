@@ -19,6 +19,7 @@ demi-browser-driver = { path = "../browser-driver" }
 demi-browser-page = { path = "../browser-page" }
 demi-browser-protocol = { path = "../browser-protocol" }
 demi-browser-tabs = { path = "../browser-tabs" }
+demi-command-protocol = { path = "../command-protocol" }
 demi-command-service = { path = "../command-service" }
 demi-core = { path = "../core" }
 futures-util.workspace = true

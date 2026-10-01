@@ -1,7 +1,7 @@
 //! Joined cleanup for real-browser fixture assertions, including unwinding tests.
-use demi_command_service::testing::counting_numbers;
 use demi_browser_driver::{numbers::TabNumbers, operation::Result};
 use demi_browser_tabs::environment::{BrowserEnvironment, LaunchOptions, with_browser};
+use demi_command_service::testing::counting_numbers;
 use futures_util::FutureExt;
 use std::{future::Future, path::PathBuf};
 use tokio_util::sync::CancellationToken;
@@ -29,7 +29,7 @@ where
     let result = with_browser(
         LaunchOptions::pinned(
             executable,
-            demi_command_service::protocol::CommandLocale {
+            demi_command_protocol::CommandLocale {
                 time_zone: "UTC".into(),
                 languages: vec!["en-US".into()],
             },

@@ -3,9 +3,9 @@
 //! streams its standard input and output through it.
 
 use bytes::Bytes;
+use demi_command_protocol::{Completion, LocalInvocation, MAX_RECORD_BYTES};
 use demi_command_service::{
     Client, CommandInput, CommandOutput, Exchange, ExchangeError, InputSource, OutputSink,
-    protocol::{Completion, LocalInvocation, MAX_RECORD_BYTES},
 };
 use serde::{Deserialize, Serialize};
 use std::{io, time::Duration};

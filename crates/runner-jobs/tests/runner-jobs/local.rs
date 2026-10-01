@@ -10,10 +10,8 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_command_service::{
-    Client, Handler, InvocationContext, ServiceError,
-    protocol::{Completion, LocalInvocation, Record},
-};
+use demi_command_protocol::{Completion, LocalInvocation, Record};
+use demi_command_service::{Client, Handler, InvocationContext, ServiceError};
 use demi_runner_jobs::commands::local::Server;
 use demi_runner_process::command_client;
 use tokio_util::sync::CancellationToken;

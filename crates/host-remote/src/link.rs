@@ -17,9 +17,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_command_service::protocol::{
-    ArtifactLocation, CommandContext, PackageDescriptor, ServiceSequence,
-};
+use demi_command_protocol::{ArtifactLocation, CommandContext, PackageDescriptor, ServiceSequence};
 use demi_core::StreamKind;
 use demi_gates::{GateLease, SerialGate};
 use demi_runner_protocol::wire::{

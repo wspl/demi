@@ -17,10 +17,8 @@ use axum::{
 use crate::families::{BrowserFixture, with_browser_fixture};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use demi_browser_protocol::live::VideoHeader;
-use demi_command_service::{
-    Input, ServiceError,
-    protocol::{CommandCaller, Completion, Record},
-};
+use demi_command_protocol::{CommandCaller, Completion, Record};
+use demi_command_service::{Input, ServiceError};
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 use tokio::time::Instant;

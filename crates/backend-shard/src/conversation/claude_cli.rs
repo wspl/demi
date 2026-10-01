@@ -15,7 +15,7 @@ use bytes::Bytes;
 use demi_backend_providers::llm::claude_releases::ReleaseError;
 use demi_backend_storage::StorageError;
 use demi_claude_protocol::{Installed, Operation, PACKAGE, Release, Reply, Status};
-use demi_command_service::protocol::{CommandCaller, CommandContext};
+use demi_command_protocol::{CommandCaller, CommandContext};
 use demi_host_remote::{RemoteHost, ServiceCallError, ServiceRequest};
 use demi_provider_claude_code::{CliSite, Placement, StartError};
 use demi_shell::{Host as _, MkdirOptions, Process, SpawnRequest};

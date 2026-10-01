@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use bytes::Bytes;
-use demi_command_service::protocol::{
+use demi_command_protocol::{
     CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Metadata, Record,
     RecordDecoder,
 };
@@ -114,7 +114,7 @@ async fn concurrent_binary_echo_and_cancel_preserve_connection() {
         let binary = [0, 255, 13, 10, 128];
         let mut data = invocation("echo").to_vec();
         data.extend_from_slice(
-            &demi_command_service::protocol::encode_input(Bytes::copy_from_slice(&binary)).unwrap(),
+            &demi_command_protocol::encode_input(Bytes::copy_from_slice(&binary)).unwrap(),
         );
         input.send_data(data.into(), true).unwrap();
         let records = response_records(echo.await.unwrap().into_body()).await;
@@ -192,7 +192,7 @@ async fn answer_early(io: tokio::io::DuplexStream) {
     while let Some(accepted) = connection.accept().await {
         let (request, mut respond) = accepted.unwrap();
         answers.spawn(async move {
-            let invocation = request.uri().path() == demi_command_service::protocol::INVOKE_PATH;
+            let invocation = request.uri().path() == demi_command_protocol::INVOKE_PATH;
             let mut body = request.into_body();
             let mut metadata = Vec::new();
             // A four-byte length, then the metadata.
@@ -225,7 +225,8 @@ async fn answer_early(io: tokio::io::DuplexStream) {
 /// after its answer is dropped without an error.
 #[tokio::test]
 async fn what_a_caller_sends_after_an_early_answer_is_not_a_failure() {
-    use demi_command_service::{Client, protocol::ConversationRequest};
+    use demi_command_protocol::ConversationRequest;
+    use demi_command_service::Client;
     tokio::time::timeout(Duration::from_secs(5), async {
         let (client_io, server_io) = tokio::io::duplex(64 * 1024);
         let server = tokio::spawn(answer_early(server_io));

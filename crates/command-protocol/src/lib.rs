@@ -1,4 +1,6 @@
-//! Command-service wire values and bounded incremental response framing.
+//! The command wire between an execution host and a command program
+//! (`crates-and-packages.md` § command-protocol): its values and its bounded
+//! incremental response framing.
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use thiserror::Error;
@@ -8,11 +10,13 @@ mod edits;
 mod invocation;
 mod numbers;
 mod package;
+#[cfg(feature = "testing")]
+pub mod testing;
 
 pub use conversation::{ConversationRequest, ConversationStatus};
 pub use edits::{
     EDIT_FILE_BYTES, EDIT_JOB_BYTES, EDIT_JOB_FILES, EDIT_JOB_SEGMENTS, EditContext, EditCopies,
-    EditFile, EditJournal, EditKind,
+    EditFile, EditJournal, EditKind, is_text,
 };
 pub use invocation::{
     COMMAND_LOCALE_LANGUAGES, CONVERSATION_NAME_CHARS, CommandCaller, CommandContext, CommandError,

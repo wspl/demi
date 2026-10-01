@@ -9,10 +9,8 @@ use std::{
     time::Duration,
 };
 
-use demi_command_service::{
-    Numbers,
-    protocol::{MAX_NUMBERS, ServiceSequence},
-};
+use demi_command_protocol::{MAX_NUMBERS, ServiceSequence};
+use demi_command_service::Numbers;
 
 use crate::operation::{BrowserError, Result};
 

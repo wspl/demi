@@ -33,7 +33,7 @@ demi-backend-shard = { path = "../backend-shard" }
 demi-backend-storage = { path = "../backend-storage" }
 demi-backend-sync = { path = "../backend-sync" }
 demi-browser-protocol = { path = "../browser-protocol" }
-demi-command-service = { path = "../command-service" }
+demi-command-protocol = { path = "../command-protocol" }
 demi-core = { path = "../core" }
 demi-host-remote = { path = "../host-remote" }
 demi-provider = { path = "../provider" }

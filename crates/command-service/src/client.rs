@@ -1,12 +1,12 @@
 use bytes::Bytes;
+use demi_command_protocol::{
+    CONVERSATION_PATH, ConversationRequest, INFO_PATH, INVOKE_PATH, MAX_METADATA_BYTES,
+    MAX_RECORD_BYTES, Metadata, NUMBERS_PATH, NumbersOpen, ProtocolError, Record, RecordDecoder,
+    SHUTDOWN_PATH, ServiceInfo, encode_input,
+};
 use http::{Method, Request};
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use crate::protocol::{
-    CONVERSATION_PATH, ConversationRequest, INFO_PATH, INVOKE_PATH, MAX_METADATA_BYTES,
-    MAX_RECORD_BYTES, Metadata, NUMBERS_PATH, NumbersOpen, ProtocolError, Record, RecordDecoder,
-    SHUTDOWN_PATH, ServiceInfo,
-};
 use crate::{
     NumbersStream, ServiceError,
     stream::{CONNECTION_WINDOW, send_bytes},
@@ -132,7 +132,7 @@ pub struct CommandInput {
 
 impl CommandInput {
     pub async fn write(&mut self, bytes: Bytes) -> Result<(), ServiceError> {
-        let sent = send_bytes(&mut self.stream, crate::protocol::encode_input(bytes)?).await;
+        let sent = send_bytes(&mut self.stream, encode_input(bytes)?).await;
         self.unless_answered(sent)
     }
     pub fn end(&mut self) -> Result<(), ServiceError> {

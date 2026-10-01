@@ -5,7 +5,7 @@
 //! starts from the Host image's copy of its executable when that copy
 //! matches (§ Preinstalled executables).
 
-use demi_command_service::protocol::{
+use demi_command_protocol::{
     CommandCaller, CommandContext, CommandLocale, Invocation, PackageArtifact, PackageDescriptor,
     Record, host_target,
 };
@@ -66,7 +66,7 @@ async fn fixture(root: &Path, variant: usize) -> (PackageDescriptor, PathBuf) {
         id: format!("fixture-{variant}"),
         version: "1.0.0".into(),
         protocol_version: 1,
-        operations: demi_command_service::testing::FIXTURE_OPERATIONS
+        operations: demi_command_protocol::testing::FIXTURE_OPERATIONS
             .map(String::from)
             .to_vec(),
         targets: BTreeMap::from([(
