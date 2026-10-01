@@ -2,7 +2,8 @@
 
 A plugin is how a capability joins Demi. It can add commands to the agent's
 shell, text the model reads, files every Host of its user's conversations
-holds, and a part of the web app with the calls behind it. The coding agent's
+holds, reads of a conversation's files on a running Host, and a part of the
+web app with the calls behind it. The coding agent's
 own capabilities are plugins: the todo list (`plugin-todo`), the file commands
 (`plugin-file`), the conversation browser's commands (`plugin-browser`) and
 [skills](../agent/skills.md) (`plugin-skills`). The agent runtime, the runner
@@ -27,8 +28,8 @@ conversation:
 
 ```text
 backend start      the composition root registers plugin-skills with the others;
-                   the plugin host reads its manifest: a system-prompt text and a
-                   context source, no commands
+                   the plugin host reads its manifest: a context source, no
+                   commands
 
 web app            POST /api/plugins/skills/calls/set_enabled { source, skill, enabled }
   -> plugin host   a page call: plugin-skills validates it, writes its stored
@@ -38,9 +39,9 @@ web app            POST /api/plugins/skills/calls/set_enabled { source, skill, e
                    "skills", state } and shows tdd as on
 
 first request      the session asks each context source for news; plugin-skills
-                   answers the list of enabled skills with the path of each
-                   SKILL.md; the session appends it as a context block
-  -> model         reads it, runs `cat ~/.demi/plugins/skills/<digest>/SKILL.md`
+                   answers the catalog of the skills that are on, with the path
+                   of each SKILL.md; the session appends it as a context block
+  -> model         reads it, runs `cat ~/.demi/plugins/skills/tdd-9f2c1a7b3e40/SKILL.md`
                    through shell_exec
   -> host access   before that job runs, installs the directory on the Host
                    once per runner connection
@@ -59,10 +60,10 @@ process. What varies by user, conversation or time arrives through requests.
 | Contribution | Declared | When Demi asks |
 | --- | --- | --- |
 | [Commands](#commands) | Their declarations, as data | Each time the model runs an `rpc` leaf of them |
-| [System-prompt text](#prompt-text-and-context) | Its text | Never: the text is fixed |
 | [Context](#prompt-text-and-context) | That the plugin is a context source | Before each provider request of every node |
 | [Profiles](#profiles) | The profiles, as data | Never: they are fixed |
 | [Host directories](#host-directories) | Nothing | The plugin sets them through its port when its user's needs change |
+| [Host files](#reading-a-conversations-files) | Nothing | The plugin reads them through its port when it needs them |
 | [Page state and page calls](#the-page) | The state's schema, and each method with its parameter and result schemas | When a page reads the product state; when a page calls a method |
 
 A plugin declares only what it uses: `plugin-file` declares commands and
@@ -112,29 +113,30 @@ A node's system prompt is rendered once, when the node is assembled
 
 ```text
 the agent runtime's rules for its tools
-the product's instructions, then each plugin's system-prompt text, in registration order
+the product's instructions
 the help of the node's commands
 ```
 
-A plugin's system-prompt text is fixed in its manifest. It is the same for
-every user and node, so it changes only with a Demi release, which the prompt
-cache rule allows once per conversation.
-
-Anything that differs by user or conversation, or changes while a
-conversation lives, reaches the model as a `context` block instead
+A plugin adds nothing to it but its commands' help, which is fixed in its
+manifest and the same for every user and node, so it changes only with a Demi
+release, which the prompt cache rule allows once per conversation. What a
+plugin needs the model to know beyond its commands' help reaches the model as
+a `context` block, and so does anything that differs by user or
+conversation, or changes while a conversation lives
 ([Transcript](../agent/runtime.md#block-types)). Before each provider request
 of a node, the session asks every context source in a fixed order: the
 product's execution context first, then each plugin that declared itself a
 context source, in registration order. Each source is given the text of its
 own context blocks that the model receives, the ones from the last
-`compaction_boundary` on, oldest first, and answers new text or nothing. Each
+`compaction_boundary` on, oldest first, with the node's working directory and
+the id of its current input turn, and answers new text or nothing. Each
 answer becomes one block, tagged with its source. The blocks are appended
 before the request and saved at once, so a request never carries a context
 the transcript does not hold.
 
-For example, `plugin-skills` writes the full list of enabled skills, and
-answers again only when the list it would write differs from the newest of
-its blocks. After a compaction its earlier blocks are no longer given to it,
+For example, `plugin-skills` writes the full catalog of the skills that are
+on, and answers again only when the catalog it would write differs from the
+newest of its blocks. After a compaction its earlier blocks are no longer given to it,
 so it writes the list again and the model, whose history now starts at the
 summary, still has it.
 
@@ -146,7 +148,7 @@ nothing is lost: the source is asked again before the next request.
 
 A plugin may declare [subagent profiles](../agent/subagents.md#profiles) as
 data: a name, a description, optional instructions that replace the
-product's and the plugins' text in a child's system prompt, an optional list
+product's in a child's system prompt, an optional list
 of the command paths a child keeps of its parent's commands, whether its
 children may spawn, and an optional model. Two plugins that declare the same
 profile name stop the backend at startup. No plugin of this repository
@@ -155,16 +157,19 @@ declares a profile.
 ### Host directories
 
 A plugin can keep files on every Host its user's conversations run jobs on.
-It does not reach a Host: it tells the plugin host which directories its user
+It never writes to a Host: it tells the plugin host which directories its user
 needs, and the conversation's host access installs them before a job runs.
 
 For example, the user turns on `tdd`. `plugin-skills` sets its user's
 directories to one directory, `tdd`, whose files are blobs it stored when it
 fetched the skill. The plugin host computes the directory's digest, the
 SHA-256 of its listing (each file's path, mode and SHA-256, in path order),
-records the set, and answers the directory's path on every Host:
-`~/.demi/plugins/skills/<digest>/`. The plugin names that path in its
-context block.
+records the set, and answers the directory's path on every Host: the
+directory's name and the first 12 hexadecimal digits of its digest, as
+`~/.demi/plugins/skills/tdd-9f2c1a7b3e40/`. The plugin names that path in its
+context block. A directory's name is 1 to 64 lowercase letters, digits and
+hyphens, unique in the plugin's set; the short digest tells two contents of
+one name apart, and a set holds one content per name.
 
 When a job of one of the user's conversations is admitted on a Host, host
 access installs each directory of the user's set that the Host does not hold
@@ -192,6 +197,28 @@ yet, before the job starts:
 A conversation that runs no job installs nothing, so a conversation that only
 talks never wakes its Cloud for a plugin's files.
 
+### Reading a conversation's files
+
+A plugin can read the files of a conversation on its main Host while that
+Host is running, but never wakes it, writes to it or keeps it awake. For
+example, `plugin-skills` looks for the skills a repository holds in its
+`.agents/skills` directory ([Project skills](../agent/skills.md#project-skills)).
+
+One request of the port names several paths, and the reply answers each:
+whether it exists, its kind, a directory's entries, or a file's bytes up to a
+bound the request gives. The paths are absolute, as the Host names them. The
+plugin host makes the request through the conversation's host access in the
+form that never wakes a Host, the one a one-shot user call that only looks
+uses ([Every way to a Host](../execution/sessions-and-targets.md#every-way-to-a-host)):
+
+- A Cloud that is stopped, or a paired device whose runner is not connected,
+  answers that the Host is not running, and the plugin uses what it knew
+  before, or nothing.
+- A read is a look, not activity: it keeps no Cloud awake
+  ([Activity](../execution/resource-lifecycle.md#activity)).
+- A read takes the conversation's file gate only while it is admitted, so a
+  target switch or an archive ends it instead of waiting for it.
+
 ## The contract
 
 A plugin is a factory and the instances it makes. The factory is shared by
@@ -216,7 +243,7 @@ Each request names its user, since a plugin process would serve every user:
 | Request | Carries | Reply |
 | --- | --- | --- |
 | `command` | The [rpc invocation](../execution/commands.md#handle-an-rpc-call) | The exit status |
-| `context` | The conversation, the node, and the text of the source's blocks the model receives | New text, or none |
+| `context` | The conversation, the node, its working directory, the id of its current input turn, and the text of the source's blocks the model receives | New text, or none |
 | `page_state` | Nothing more | The plugin's state for the user's pages, valid against its declared schema |
 | `page_call` | The method and its parameters, already valid against the method's schema | The result, valid against the method's result schema |
 
@@ -230,6 +257,7 @@ request and one reply, as for an rpc handler
 | Values | Every request | Read, list and conditional write of the plugin's own values for the user, each a JSON document with a revision ([Storage](../backend/storage.md#control-records)) |
 | Blobs | Every request | Put and get bytes in the user's blob namespace, by SHA-256 |
 | Host directories | Every request | Replace the user's set of [Host directories](#host-directories); the reply is each directory's path on a Host |
+| Host files | `command`, `context` | Read several paths on the conversation's main Host, if it is running ([Reading a conversation's files](#reading-a-conversations-files)) |
 | Changed | Every request | Mark the plugin's part of the user's product state as changed, so every page of the user receives the new state ([The page](#the-page)) |
 | Cancellation | Every request | Whether, and when, the request was cancelled |
 
@@ -304,20 +332,43 @@ The plugin host, in `backend-plugins`, runs every plugin of the backend:
   context source and is taken.
 - **Startup.** The host reads every manifest, checks the commands and the
   profiles ([Commands](#commands), [Profiles](#profiles)), and gives the agent
-  server the command set, the plugins' system-prompt texts, the profiles and
-  the context sources. A manifest that breaks a rule stops the backend; its
+  server the command set, the profiles and the context sources. A manifest that breaks a rule stops the backend; its
   error names the plugin.
 - **Shards.** When a user's shard starts, the host asks each factory for that
   user's instance, and wraps each `rpc` leaf of the plugin's commands in a
   handler that forwards the call to the instance.
 - **The port.** The host answers every port operation against the user's
-  storage, blobs and channels; the conversation's host access installs the
-  directories the host records.
+  storage, blobs and channels. The conversation's host access installs the
+  directories the host records, and reads the Host files a plugin asks for in
+  its form that never wakes a Host.
 
 Plugins are trusted with every user's data. A plugin serves every user of
 the backend, and a shared instance's users trust the deployment with what its
 plugins do. Choosing the plugins is the deployment's decision, made when it is
 built.
+
+## Built-in plugins
+
+These are the plugins the composition root registers, in this order. Each
+row's contributions are all that plugin declares; what is not listed it does
+not use.
+
+| Id | Crate | Contributes | Page package | Design |
+| --- | --- | --- | --- | --- |
+| `file` | `plugin-file` | The `demi file` group, bound to `demi.file` | None | [File commands](../execution/commands.md#file-commands) |
+| `todo` | `plugin-todo` | The `demi todo` group, its `rpc` handlers over the node's command storage | None | [Command state history](../agent/command-state-history.md) |
+| `browser` | `plugin-browser` | The `demi browser` group, bound to `demi.browser` | None | [Conversation browser](../browser/browser.md#command-contract) |
+| `skills` | `plugin-skills` | A context source; values and blobs; Host directories; Host file reads; page state and five page methods | `@demicodes/plugin-skills`: a settings section | [Skills](../agent/skills.md) |
+
+Besides the plugins, the components that carry them are:
+
+| Component | Holds |
+| --- | --- |
+| `plugin-interface` | The contract: factory and instance traits, manifest, requests and replies, the port, the JSON loopback transport for tests |
+| `backend-plugins` | The plugin host: registration and its checks, the command set, profiles and context sources for the agent server, instances, the port's operations, page state and page calls |
+| `backend-user-shard`, `backend-host-access`, `backend-http`, `backend` | The product's side: the agent server's dependencies, the execution context source and the product's instructions; the installation of Host directories and the reads of Host files; the page call route; the fixed list of plugins |
+| `agent-tools`, `agent-server`, `agent-session` | The runtime's side: the rules for its tools in the system prompt, the Host resolver, context sources with their sources and turns, profiles as data |
+| `web-ui`, `web`, `web-gallery` | `PluginClient`, `usePlugin()` and the slots; the client over HTTP and the sync channel; a fixture client for each plugin package's specimens |
 
 ## The page
 
