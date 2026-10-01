@@ -84,7 +84,7 @@ async fn a_message_runs_to_its_response_and_its_patches_rebuild_the_transcript()
             "response"
         ]
     );
-    // The patches, applied from the reset by `agent-client`'s one applier,
+    // The patches, applied from the reset by `conversation-client`'s one applier,
     // must give the live transcript: the fixture pins both.
     let recorded = json!({
         "name": "a turn with signed thinking, streamed text and a tool call",

@@ -106,7 +106,7 @@ export async function startBackend(root: string): Promise<Backend> {
 
 /** The backend scenarios' scripted machine manager, serving until `stop`. */
 interface MachineManager {
-  /** The Unix socket it serves, for `DEMI_MACHINES_SOCKET`. */
+  /** The Unix socket it serves, for `DEMI_MACHINE_MANAGER_SOCKET`. */
   socket: string
   stop(): Promise<void>
 }
@@ -169,7 +169,7 @@ async function launchBackend(root: string, socket: string): Promise<Backend> {
       DEMI_BACKEND_PORT: String(port),
       DEMI_INSTANCE_MODE: 'shared',
       DEMI_BACKEND_PUBLIC_URL: origin,
-      DEMI_MACHINES_SOCKET: socket,
+      DEMI_MACHINE_MANAGER_SOCKET: socket,
       DEMI_NATIVE_CONFIG: native,
     },
     stdout: 'pipe',

@@ -699,7 +699,7 @@ A child's other session events, such as phase, queue and errors, send no
 frames; its commands' output reaches the browser as the root's does, in
 `shell_output` frames that name the child
 ([Live output](runtime.md#live-output)). `AgentClient` in
-`@demicodes/agent-client` mirrors the three frames as client events; its
+`@demicodes/conversation-client` mirrors the three frames as client events; its
 transcript events omit `revision`, as the root's do.
 
 `parentSessionId` is the tree: the browser keys nested UI by it. Frames from any

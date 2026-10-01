@@ -23,7 +23,7 @@ cargo xtask native package --package demi-file \
   --target aarch64-unknown-linux-musl --output .cache/releases/demi-file-<build>
 cargo xtask native package --package demi-browser \
   --target aarch64-unknown-linux-musl --output .cache/releases/demi-browser-<build>
-cargo xtask native package --package demi-claude \
+cargo xtask native package --package demi-claude-code \
   --target aarch64-unknown-linux-musl --output .cache/releases/demi-claude-<build>
 cargo zigbuild --release --locked -p xtask \
   --target aarch64-unknown-linux-musl --target-dir .cache/native-target

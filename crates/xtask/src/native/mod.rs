@@ -65,11 +65,11 @@ pub enum Executable {
     File,
     #[value(name = "demi-browser")]
     Browser,
-    #[value(name = "demi-claude")]
+    #[value(name = "demi-claude-code")]
     Claude,
     #[value(name = "demi-backend")]
     Backend,
-    #[value(name = "demi-machines")]
+    #[value(name = "demi-machine-manager")]
     Machines,
 }
 
@@ -84,9 +84,9 @@ impl Executable {
             Self::Runner => "demi-runner",
             Self::File => "demi-file",
             Self::Browser => "demi-browser",
-            Self::Claude => "demi-claude",
+            Self::Claude => "demi-claude-code",
             Self::Backend => "demi-backend",
-            Self::Machines => "demi-machines",
+            Self::Machines => "demi-machine-manager",
         }
     }
 

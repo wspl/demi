@@ -214,7 +214,7 @@ mod tests {
     #[test]
     fn the_configuration_is_the_shipped_profile() {
         let directory = RuntimeDirectory::new(
-            std::path::Path::new("/run/demi-machines"),
+            std::path::Path::new("/run/demi-machine-manager"),
             "demi-00000000-0000-4000-8000-000000000000",
         );
         let spec = spec(&Boot {

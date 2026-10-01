@@ -1,5 +1,5 @@
 import { shallowRef, triggerRef } from 'vue'
-import { SessionError, SteerRejectedError, type AgentClient, type ClientSessionEvent } from '@demicodes/agent-client'
+import { SessionError, SteerRejectedError, type AgentClient, type ClientSessionEvent } from '@demicodes/conversation-client'
 import { asError } from '@demicodes/utils'
 import type { ClientContent, EditRequest, TranscriptVersion } from '@demicodes/protocol'
 import { AgentSocketError } from '../transport/agent-socket'

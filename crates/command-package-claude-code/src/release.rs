@@ -1,4 +1,4 @@
-//! Which download URLs the release record `claude.ensure` installs from may
+//! Which download URLs the release record `claude-code.ensure` installs from may
 //! name; the record's shape is `demi_command_package_claude_code_protocol::Release`.
 
 use demi_command_package_claude_code_protocol::{Artifact, Release};

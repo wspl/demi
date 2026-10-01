@@ -13,7 +13,7 @@ manager=""
 image=""
 backend=""
 dns=""
-data=/var/lib/demi-machines
+data=/var/lib/demi-machine-manager
 socket=/run/demi-cloud/machines.sock
 slots=256
 # The resource limits (managed-hosts.md § Resource limits); off for a host
@@ -75,15 +75,15 @@ else
   runsc=$(bash "$here/install-runsc.sh" --path)
 fi
 
-unit="${root%/}/etc/systemd/system/demi-machines.service"
-config="${root%/}/etc/demi-machines/manager.env"
+unit="${root%/}/etc/systemd/system/demi-machine-manager.service"
+config="${root%/}/etc/demi-machine-manager/manager.env"
 mkdir -p "$(dirname "$unit")" "$(dirname "$config")"
 # Each file is written beside its place and renamed into it, so a failed
 # install leaves the previous one whole and no half-written file behind.
 trap 'rm -f "$config.new" "$unit.new"' EXIT
 cat > "$config.new" <<CONFIG
-DEMI_MACHINES_SOCKET=$socket
-DEMI_MACHINES_DATA=$data
+DEMI_MACHINE_MANAGER_SOCKET=$socket
+DEMI_MACHINE_MANAGER_DATA=$data
 DEMI_MANAGED_RUNSC=$runsc
 DEMI_MANAGED_IMAGE=$image
 DEMI_MANAGED_BACKEND_URL=$backend
@@ -115,7 +115,7 @@ Restart=on-failure
 RestartSec=3
 RuntimeDirectory=demi-cloud
 RuntimeDirectoryMode=0750
-EnvironmentFile=/etc/demi-machines/manager.env
+EnvironmentFile=/etc/demi-machine-manager/manager.env
 ExecStart=$manager
 ExecStopPost=$manager --recover
 
@@ -140,15 +140,15 @@ if [ "$filesystem" = xfs ]; then
 fi
 # A running manager stops under the unit it was started with, so its own
 # stop-post recovery runs; then the new unit takes its place.
-if systemctl is-active --quiet demi-machines.service; then
-  systemctl stop demi-machines.service
+if systemctl is-active --quiet demi-machine-manager.service; then
+  systemctl stop demi-machine-manager.service
 fi
 mv "$config.new" "$config"
 mv "$unit.new" "$unit"
 systemctl daemon-reload
-systemctl enable demi-machines.service
+systemctl enable demi-machine-manager.service
 # With Type=notify, the start returns once the manager is ready or has failed.
-if ! systemctl start demi-machines.service; then
-  journalctl -u demi-machines.service -n 50 --no-pager >&2
+if ! systemctl start demi-machine-manager.service; then
+  journalctl -u demi-machine-manager.service -n 50 --no-pager >&2
   exit 1
 fi
