@@ -1,6 +1,6 @@
 //! Demi's Claude Code CLI on the user's Cloud (`claude-code.md` § The
 //! package, § Where it runs, § What the user sees): the versions the Cloud
-//! has and the install of the vendor's newest, through the `demi.claude`
+//! has and the install of the vendor's newest, through the `demi.claude-code`
 //! package; the placement that starts a provider's process there; and the
 //! installs no conversation asked for, whose outcome the settings page
 //! shows.
@@ -296,7 +296,7 @@ async fn call<T: DeserializeOwned>(
         .filter(|_| services.native.serves(PACKAGE, &served))
     else {
         return Err(failed(
-            "this deployment does not carry the demi.claude package, which installs it".into(),
+            "this deployment does not carry the demi.claude-code package, which installs it".into(),
         ));
     };
     let request = ServiceRequest {

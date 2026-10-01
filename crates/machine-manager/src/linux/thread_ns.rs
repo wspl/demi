@@ -31,7 +31,7 @@ pub async fn run<T: Send + 'static>(
     namespace: Namespace,
     job: impl FnOnce(&OffLoop) -> io::Result<T> + Send + 'static,
 ) -> io::Result<T> {
-    blocking::run_on_new_thread("demi-machines-namespace", move |off| {
+    blocking::run_on_new_thread("demi-machine-manager-namespace", move |off| {
         enter(&namespace)?;
         job(off)
     })

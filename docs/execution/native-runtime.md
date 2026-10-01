@@ -14,7 +14,7 @@ Demi's native commands belong to two packages, one per capability:
 Each is its own resident program and its own release, so a job that edits a
 file downloads and starts only the small file program, and a browser release
 does not re-release the file commands. The package that installs the Claude
-Code CLI, `demi.claude`, uses the same contract
+Code CLI, `demi.claude-code`, uses the same contract
 ([The package](../providers/claude-code.md#the-package)). Shell utilities and
 `rpc` handlers have their own owners.
 
@@ -835,7 +835,7 @@ The development store:
   "releases": [
     { "directory": "demi-file", "executable": "demi-file" },
     { "directory": "demi-browser", "executable": "demi-browser" },
-    { "directory": "demi-claude", "executable": "demi-claude" }
+    { "directory": "demi-claude-code", "executable": "demi-claude-code" }
   ],
   "store": { "provider": "local" }
 }

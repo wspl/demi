@@ -20,7 +20,7 @@ backend adapters                    preview handlers
         +------------> web-ui <------------+
                          |
                          v
-                    agent-client     AgentClient, transport, patch application
+                    conversation-client     AgentClient, transport, patch application
                          |
                          v
                       protocol       generated schemas and types
@@ -29,7 +29,7 @@ backend adapters                    preview handlers
 - `web-ui` owns reusable components and browser interaction.
 - `web` supplies product data, state, routing, and API handlers.
 - `web-gallery` supplies fixtures and handlers to demonstrate the same components.
-- `@demicodes/agent-client` is the client side of a conversation stream:
+- `@demicodes/conversation-client` is the client side of a conversation stream:
   `AgentClient` and its waiters, the WebSocket transport, and the one function
   that applies transcript patches.
 - `@demicodes/protocol` is generated. It holds the schemas and types of the

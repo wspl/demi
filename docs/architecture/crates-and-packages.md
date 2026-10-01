@@ -229,11 +229,11 @@ the browser's TypeScript. A contract crate has no async runtime and no IO.
 
 #### `command-package-claude-code-protocol`
 
-- **Owns:** the `demi.claude` package's operations, `claude.ensure` and
-  `claude.status`: their arguments and results, the release record and the
+- **Owns:** the `demi.claude-code` package's operations, `claude-code.ensure` and
+  `claude-code.status`: their arguments and results, the release record and the
   install status.
 - **Public boundary:** the types above. The backend builds the release record,
-  and `demi-claude` decodes it. Behavior:
+  and `demi-claude-code` decodes it. Behavior:
   [Claude Code](../providers/claude-code.md).
 - **Must not:** hold install logic.
 
@@ -1069,7 +1069,7 @@ demi-backend (executable: configuration, composition)
   the machine manager). The one credential that reaches a runner is a Claude
   Code account's token, in the CLI's environment on the user's Cloud.
 
-#### `machine-manager` (`demi-machines`)
+#### `machine-manager` (`demi-machine-manager`)
 
 - **Owns:** the Cloud machine manager on Linux: gVisor sandboxes run through
   `runsc` and their OCI bundles, private mounts and loop devices, network
@@ -1085,7 +1085,7 @@ demi-backend (executable: configuration, composition)
   exception; everything else is a syscall, ioctl, netlink message or file
   write. No user command becomes a host administration command. Docker and
   containerd are not dependencies.
-- **Public boundary:** the `demi-machines` executable; a library target serves
+- **Public boundary:** the `demi-machine-manager` executable; a library target serves
   its integration tests.
 - **Must not:** listen on TCP; know users, conversations or the control
   database; link the backend; execute image content on the host; offer
@@ -1143,9 +1143,9 @@ demi-backend (executable: configuration, composition)
 - **Must not:** host a runner connection, define the agent's command tree,
   store conversations or be linked into the runner.
 
-#### `command-package-claude-code` (`demi-claude`)
+#### `command-package-claude-code` (`demi-claude-code`)
 
-- **Owns:** the independently released `demi.claude` package, which installs
+- **Owns:** the independently released `demi.claude-code` package, which installs
   and verifies Demi's copy of the Claude Code CLI on the machine that runs it
   ([The package](../providers/claude-code.md#the-package)).
 - **Public boundary:** the executable.
@@ -1186,7 +1186,7 @@ packages under `packages/`.
 - **Public boundary:** the generated schemas, types and lookups.
 - **Must not:** declare a schema by hand or import another workspace package.
 
-#### `@demicodes/agent-client`
+#### `@demicodes/conversation-client`
 
 - **Published** to npm.
 - **Owns:** `AgentClient` and its waiters, the conversation WebSocket
@@ -1200,7 +1200,7 @@ packages under `packages/`.
 #### `@demicodes/utils`
 
 - **Published** to npm.
-- **Owns:** generic browser helper functions shared by `agent-client`,
+- **Owns:** generic browser helper functions shared by `conversation-client`,
   `web-ui`, `web` and `web-gallery`.
 - **Public boundary:** pure functions; no domain types or runtime services.
 - **Must not:** contain domain logic or domain types, import Node, or hold
@@ -1359,8 +1359,8 @@ A line names a workspace package by its name without the `@demicodes/` scope.
 ```text
 protocol -> none
 utils -> none
-agent-client -> protocol, utils
-web-ui -> agent-client, protocol, utils
+conversation-client -> protocol, utils
+web-ui -> conversation-client, protocol, utils
 web -> protocol, utils, web-ui
 web-gallery -> protocol, utils, web-ui
 ```
@@ -1401,9 +1401,9 @@ review.
   and `core`; `browser` appears only in `command-package-browser`, the
   conversation browser, and `shell` only for the shell interpreter. A
   library's package is `demi-<directory>`; a program's package is its
-  executable's name (`demi-backend`, `demi-runner`, `demi-machines`,
-  `demi-file`, `demi-browser`, `demi-claude`), which releases and installers
-  use.
+  executable's name (`demi-backend`, `demi-runner`, `demi-machine-manager`,
+  `demi-file`, `demi-browser`, `demi-claude-code`), which releases and
+  installers use.
 - **When a part is its own crate.** A separate crate or package requires
   independent use, distribution, dependency isolation or build isolation;
   responsibilities that change together belong in modules of one crate. Size

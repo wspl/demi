@@ -74,8 +74,8 @@ configuration is a startup error.
 
 | Variable | Owner and meaning |
 | --- | --- |
-| `DEMI_MACHINES_SOCKET` | Manager listen path; backend connect path. |
-| `DEMI_MACHINES_DATA` | Manager's persistent state, on one filesystem; default `/var/lib/demi-machines`. |
+| `DEMI_MACHINE_MANAGER_SOCKET` | Manager listen path; backend connect path. |
+| `DEMI_MACHINE_MANAGER_DATA` | Manager's persistent state, on one filesystem; default `/var/lib/demi-machine-manager`. |
 | `DEMI_MANAGED_RUNSC` | Required absolute path to the pinned runsc executable. |
 | `DEMI_MANAGED_IMAGE` | Required directory containing the Cloud image manifest and archive. |
 | `DEMI_MANAGED_LIMITS` | `on` (default) or `off`: whether sandboxes run under the cgroup v2 CPU, memory, and PID limits ([Resource limits](managed-hosts.md#resource-limits)). |
@@ -115,8 +115,8 @@ gives the rule and the request that checks a deployment.
 Example manager configuration for an already prepared Linux execution host:
 
 ```dotenv
-DEMI_MACHINES_SOCKET=/run/demi-cloud/machines.sock
-DEMI_MACHINES_DATA=/var/lib/demi-machines
+DEMI_MACHINE_MANAGER_SOCKET=/run/demi-cloud/machines.sock
+DEMI_MACHINE_MANAGER_DATA=/var/lib/demi-machine-manager
 DEMI_MANAGED_RUNSC=/opt/gvisor/<pinned-version>/runsc
 DEMI_MANAGED_IMAGE=/opt/demi-cloud/current
 DEMI_MANAGED_BACKEND_URL=https://backend.example.com
@@ -167,7 +167,7 @@ harm than waiting. No host shell command supplied by a user becomes a
 privileged launcher argument. The installer operates only on its own service,
 network namespace/interface names, cgroup subtree, and nftables table.
 
-The unit reads the manager's settings from `/etc/demi-machines/manager.env`,
+The unit reads the manager's settings from `/etc/demi-machine-manager/manager.env`,
 which the installer writes from its arguments. When a manager is already
 installed, the installer stops it under its current unit, so that manager's own
 stop-post recovery runs, and only then puts the new unit in place and starts
@@ -183,10 +183,10 @@ service with absolute paths:
 ```sh
 sudo bash crates/machine-manager/scripts/install-managed-hosts.sh \
   --user backend \
-  --manager /opt/demi/bin/demi-machines \
+  --manager /opt/demi/bin/demi-machine-manager \
   --image /opt/demi-cloud/releases/build-id \
   --backend-url https://backend.example.com --dns 1.1.1.1 \
-  --data /var/lib/demi-machines
+  --data /var/lib/demi-machine-manager
 ```
 
 `--manager` names the manager executable. `--limits off` installs the manager

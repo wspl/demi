@@ -102,12 +102,12 @@ function checkTable(schema: z.ZodType, fixtures: Json[], key: string, table: Tab
   }
 }
 
-const blocks = await read('core/tests/core/fixtures/blocks.json', z.array(jsonSchema))
-const blockTable = await read('core/tests/core/fixtures/blocks-mutations.json', tableSchema)
-const clientFrames = await read('agent-protocol/tests/frames/fixtures/client-frames.json', z.array(jsonSchema))
-const clientFrameTable = await read('agent-protocol/tests/frames/fixtures/client-frames-mutations.json', tableSchema)
-const serverFrames = await read('agent-protocol/tests/frames/fixtures/server-frames.json', z.array(jsonSchema))
-const fileTypes = await read('core/tests/core/fixtures/file-types.json', z.strictObject({
+const blocks = await read('shared-types/tests/shared-types/fixtures/blocks.json', z.array(jsonSchema))
+const blockTable = await read('shared-types/tests/shared-types/fixtures/blocks-mutations.json', tableSchema)
+const clientFrames = await read('conversation-socket-protocol/tests/frames/fixtures/client-frames.json', z.array(jsonSchema))
+const clientFrameTable = await read('conversation-socket-protocol/tests/frames/fixtures/client-frames-mutations.json', tableSchema)
+const serverFrames = await read('conversation-socket-protocol/tests/frames/fixtures/server-frames.json', z.array(jsonSchema))
+const fileTypes = await read('shared-types/tests/shared-types/fixtures/file-types.json', z.strictObject({
   previewMediaType: z.array(z.tuple([z.string(), z.string().nullable()])),
   showsInPlace: z.array(z.tuple([z.string(), z.boolean()])),
 }))

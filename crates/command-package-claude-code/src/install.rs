@@ -132,7 +132,7 @@ impl Installer {
         }
     }
 
-    /// Parse and validate the input of `claude.ensure`.
+    /// Parse and validate the input of `claude-code.ensure`.
     pub fn release(&self, input: &[u8]) -> Result<Release, EnsureError> {
         release::parse(input, self.transport)
     }

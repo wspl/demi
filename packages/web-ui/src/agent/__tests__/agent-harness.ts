@@ -1,4 +1,4 @@
-import { AgentClient } from '@demicodes/agent-client'
+import { AgentClient } from '@demicodes/conversation-client'
 import type { Block, ClientFrame, ModelSelection, ServerFrame } from '@demicodes/protocol'
 
 export const model: ModelSelection = {

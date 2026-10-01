@@ -6,7 +6,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// One change to a transcript. A batch of patches advances the revision by
-/// one; a rewrite of history is one `replace`. `agent-client`'s one patch
+/// one; a rewrite of history is one `replace`. `conversation-client`'s one patch
 /// applier applies them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(tag = "op", rename_all = "snake_case", rename_all_fields = "camelCase")]
