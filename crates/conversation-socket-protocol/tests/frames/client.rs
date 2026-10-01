@@ -1,4 +1,4 @@
-//! What the browser sends: `fixtures/client-frames.json` holds every frame in
+//! What the web app sends: `fixtures/client-frames.json` holds every frame in
 //! its wire shape.
 
 use demi_conversation_socket_protocol::{ClientFrame, FrameError, decode_client_frame};
@@ -71,8 +71,8 @@ fn mutations(kind: &str) -> Vec<(String, Value)> {
         .collect()
 }
 
-/// The cases the browser's generated schemas are checked with too; each
-/// refused one says whether the browser's schema refuses it as well.
+/// The cases the web app's generated schemas are checked with too; each
+/// refused one says whether the web app's schema refuses it as well.
 #[test]
 fn client_frames_refuse_unknown_fields_nulls_and_values_outside_their_bounds() {
     for (why, frame) in mutations("refused") {

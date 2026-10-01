@@ -12,7 +12,7 @@ Three suites drive the whole backend:
 | Suite | Where it lives | How it reaches the backend | Model | Hosts |
 | --- | --- | --- | --- | --- |
 | Backend scenarios | Rust integration tests of the backend crate (`crates/backend/tests`) | HTTP and the conversation WebSocket, with the agent protocol's typed frames | A scripted provider family | Real runner processes; a scripted machine manager for the Cloud |
-| Web app contract suite | Tests of `packages/web` | The web application's API client and `AgentClient`, against the backend executable | A scripted Anthropic-compatible endpoint | A real runner; the backend scenarios' scripted machine manager, which no path asks for the Cloud |
+| Web app contract suite | Tests of `packages/web` | The web application's API client and `ConversationClient`, against the backend executable | A scripted Anthropic-compatible endpoint | A real runner; the backend scenarios' scripted machine manager, which no path asks for the Cloud |
 | Real-machine suites | Rust tests that run only when environment variables supply their resources; of them, the Cloud and Claude Code suites and part of the browser suite exist ([Real machine acceptance](#real-machine-acceptance)) | As the backend scenarios | Scripted | A real machine manager, gVisor sandbox, and shipped image; real Chrome; the real Claude Code CLI |
 
 ## System under test
@@ -193,7 +193,7 @@ The web app contract suite checks the backend the way the page uses it, and it
 is the regression suite for that contract: a change on either side that breaks
 the other fails here. It is part of the tests of `packages/web`. It starts the
 backend executable with a temporary data directory, calls it through the web
-application's API client, and drives conversations with `AgentClient` from
+application's API client, and drives conversations with `ConversationClient` from
 `@demicodes/conversation-client`, the client the page runs. Its requests
 carry what the user's browser adds to the product page's own: the session
 cookie, and the page's `Origin` wherever the user's browser sends one

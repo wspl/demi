@@ -9,7 +9,7 @@ use demi_host_interface::CommandSet;
 
 use demi_agent_coding_harness::{DemiOptions, demi_root};
 
-/// The `demi` commands with the browser, and their manifest root.
+/// The `demi` commands with the `browser` group, and their manifest root.
 pub fn demi() -> (CommandSet, Node) {
     let mut commands = CommandSet::new();
     commands

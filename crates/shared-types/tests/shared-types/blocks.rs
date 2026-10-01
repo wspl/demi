@@ -89,8 +89,8 @@ fn mutated(case: &Value) -> Value {
     value
 }
 
-/// The cases the browser's generated schemas are checked with too; each
-/// says whether the browser refuses it as well (`contracts.md` § Strict and
+/// The cases the web app's generated schemas are checked with too; each
+/// says whether the web app refuses it as well (`contracts.md` § Strict and
 /// tolerant objects, § Rules only Rust checks).
 #[test]
 fn stored_blocks_refuse_what_the_contract_does_not_hold() {

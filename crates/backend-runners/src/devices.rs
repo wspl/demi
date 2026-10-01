@@ -211,7 +211,7 @@ impl Devices {
         }
     }
 
-    /// The device as the browser sees it.
+    /// The device as the web app sees it.
     pub fn dto(&self, device: DeviceRecord) -> DeviceDto {
         DeviceDto {
             online: self.online(&device.id),
@@ -225,7 +225,7 @@ impl Devices {
         }
     }
 
-    /// `user`'s devices as the browser sees them: the paired ones oldest
+    /// `user`'s devices as the web app sees them: the paired ones oldest
     /// first, then the Cloud once its first use made it.
     pub async fn device_list(
         &self,

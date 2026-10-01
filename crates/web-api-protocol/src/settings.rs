@@ -1,6 +1,6 @@
 //! Instance settings and each user's preferences (`web-api.md` § User
 //! preferences). Preferences hold saved overrides only: whatever is absent
-//! uses the browser's defaults.
+//! uses the web app's defaults.
 
 use demi_command_protocol::CommandLocale;
 use garde::Validate;
@@ -86,7 +86,7 @@ pub struct Appearance {
 /// has.
 pub const SHORTCUT_MAX: usize = 64;
 
-/// Keyboard shortcut overrides: each a key sequence the browser reads.
+/// Keyboard shortcut overrides: each a key sequence the web app reads.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Shortcuts {
@@ -140,7 +140,7 @@ pub struct Preferences {
     #[schemars(with = "ModelSettings")]
     #[garde(dive)]
     pub last_model: Option<ModelSettings>,
-    /// The time zone and languages the browser last reported, which
+    /// The time zone and languages the user's browser last reported, which
     /// commands receive in their command context: a zone the backend knows,
     /// in its IANA spelling, and each language once as its canonical tag.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]

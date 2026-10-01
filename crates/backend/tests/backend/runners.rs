@@ -428,7 +428,7 @@ async fn a_pipe_is_reached_only_with_a_device_token() {
         assert_eq!(answer.text().await.unwrap(), "device token required");
         let bogus = request.try_clone().unwrap().bearer_auth("not-a-token").send().await.unwrap();
         assert_eq!(bogus.status(), StatusCode::UNAUTHORIZED);
-        // The browser's session is not a device's credential.
+        // The user's session cookie is not a device's credential.
         let cookie = request.try_clone().unwrap().header("cookie", &master.cookie).send().await.unwrap();
         assert_eq!(cookie.status(), StatusCode::UNAUTHORIZED);
         let unknown = request.bearer_auth(&token).send().await.unwrap();

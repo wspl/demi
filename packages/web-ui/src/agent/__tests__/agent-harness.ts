@@ -1,4 +1,4 @@
-import { AgentClient } from '@demicodes/conversation-client'
+import { ConversationClient } from '@demicodes/conversation-client'
 import type { Block, ClientFrame, ModelSelection, ServerFrame } from '@demicodes/protocol'
 
 export const model: ModelSelection = {
@@ -31,7 +31,7 @@ export function clientHarness(answer: ServerFrame = { type: 'opened' }) {
   const sent: ClientFrame[] = []
   let deliver: (frame: unknown) => void = () => {}
   let closes = 0
-  const client = new AgentClient({
+  const client = new ConversationClient({
     send(frame) {
       sent.push(frame)
       if (frame.type === 'open') {

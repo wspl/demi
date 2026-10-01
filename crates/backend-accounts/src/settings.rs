@@ -9,7 +9,7 @@ use icu_time::zone::iana::IanaParserExtended;
 
 /// A patch whose locale, when it has one, names a time zone the backend
 /// knows, in its IANA spelling, and holds each language once as its
-/// canonical BCP 47 tag, in the order the browser reported them.
+/// canonical BCP 47 tag, in the order the user's browser reported them.
 #[derive(Debug)]
 pub struct CheckedPatch(PreferencesPatch);
 
@@ -31,7 +31,7 @@ pub fn check(mut patch: PreferencesPatch) -> Result<CheckedPatch, LocaleError> {
 }
 
 /// The locale with its time zone checked against ICU4X's IANA names, which
-/// ignore case, and its tags canonicalized as the browser's
+/// ignore case, and its tags canonicalized as a web browser's
 /// `Intl.getCanonicalLocales` does: `zh-cn` becomes `zh-CN` and `iw` becomes
 /// `he`, and a tag that repeats an earlier one goes.
 fn canonical(locale: CommandLocale) -> Result<CommandLocale, LocaleError> {

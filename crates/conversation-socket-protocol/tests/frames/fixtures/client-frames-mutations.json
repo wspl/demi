@@ -7,7 +7,7 @@
         "/cwd": "/work",
         "/sessionId": "s1"
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a model, which the conversation's record holds",
@@ -17,7 +17,7 @@
           "providerId": "stub"
         }
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "action metadata",
@@ -25,7 +25,7 @@
       "set": {
         "/metadata": {}
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a field on a frame that has none",
@@ -33,7 +33,7 @@
       "set": {
         "/force": true
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a frame type the protocol does not have",
@@ -41,7 +41,7 @@
         "type": "shell_status",
         "commandId": "cmd-1"
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a frame without its message id",
@@ -49,7 +49,7 @@
         "type": "send",
         "content": []
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "an empty message id",
@@ -57,7 +57,7 @@
       "set": {
         "/messageId": ""
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "an unknown field in content",
@@ -65,7 +65,7 @@
       "set": {
         "/content/0/lang": "en"
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "inline media bytes",
@@ -80,7 +80,7 @@
           }
         }
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "an upload without its reference",
@@ -88,7 +88,7 @@
       "set": {
         "/content/2/ref": ""
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a file name with a separator",
@@ -96,7 +96,7 @@
       "set": {
         "/content/2/fileName": "reports/a.pdf"
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a file name with a backslash",
@@ -104,7 +104,7 @@
       "set": {
         "/content/2/fileName": "reports\\a.pdf"
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a file name with NUL",
@@ -112,7 +112,7 @@
       "set": {
         "/content/2/fileName": "a\u0000.pdf"
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "the file name .",
@@ -120,7 +120,7 @@
       "set": {
         "/content/2/fileName": "."
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "the file name ..",
@@ -128,7 +128,7 @@
       "set": {
         "/content/2/fileName": ".."
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a file name of 256 characters",
@@ -136,7 +136,7 @@
       "set": {
         "/content/2/fileName": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a relative remote path",
@@ -144,7 +144,7 @@
       "set": {
         "/content/3/path": "notes.md"
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a remote path with NUL",
@@ -152,7 +152,7 @@
       "set": {
         "/content/3/path": "/a\u0000b"
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a remote file without its device",
@@ -160,7 +160,7 @@
       "set": {
         "/content/3/deviceId": ""
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "an attachment reference in a send",
@@ -171,7 +171,7 @@
           "path": "/home/demi/.demi/attachments/c1/a.txt"
         }
       },
-      "browserRefuses": false
+      "webAppRefuses": false
     },
     {
       "why": "kept media in a steer",
@@ -186,7 +186,7 @@
           }
         }
       },
-      "browserRefuses": false
+      "webAppRefuses": false
     },
     {
       "why": "an edit without content",
@@ -194,7 +194,7 @@
       "set": {
         "/request/content": []
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "an edit of blank text only",
@@ -207,7 +207,7 @@
           }
         ]
       },
-      "browserRefuses": false
+      "webAppRefuses": false
     },
     {
       "why": "an edit against a version without an epoch",
@@ -215,7 +215,7 @@
       "set": {
         "/request/version/epoch": ""
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a negative revision",
@@ -223,7 +223,7 @@
       "set": {
         "/request/version/revision": -1
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "kept media whose reference is not a SHA-256",
@@ -231,7 +231,7 @@
       "set": {
         "/request/content/2/media/ref": "blob-1"
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a kept document without its name",
@@ -239,7 +239,7 @@
       "set": {
         "/request/content/4/media/fileName": ""
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "an edit target that is empty",
@@ -247,7 +247,7 @@
       "set": {
         "/request/targetBlockId": ""
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     }
   ],
   "accepted": [

@@ -1,4 +1,4 @@
-//! The native command packages the conversations' commands bind to
+//! The command packages the conversations' commands bind to
 //! (`native-runtime.md` § Publish artifacts before enabling commands,
 //! § Backend deployment configuration): the descriptors of the loaded
 //! releases, and where a runner downloads each package's executables, from
@@ -20,7 +20,7 @@ use crate::local_store::{LocalArtifacts, ServedArtifacts};
 use crate::publication::SignedArtifacts;
 use crate::public_url::PublicUrl;
 
-/// The loaded native packages, as each shard's catalog is built from them.
+/// The loaded command packages, as each shard's catalog is built from them.
 #[derive(Clone)]
 pub struct NativeCatalog {
     packages: Vec<PackageDescriptor>,
@@ -114,7 +114,7 @@ impl ArtifactResolver for Unpublished {
         target: &str,
         _cancel: CancellationToken,
     ) -> LocalBoxFuture<'static, Result<ArtifactLocation, String>> {
-        let message = format!("no native package is published for {target}");
+        let message = format!("no command package is published for {target}");
         Box::pin(async move { Err(message) })
     }
 }

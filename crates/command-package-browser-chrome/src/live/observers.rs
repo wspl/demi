@@ -74,8 +74,8 @@ pub(crate) async fn start(tab: &BrowserTab, tasks: &TaskTracker) -> Result<Arc<O
                 .map_err(BrowserError::Configuration)?,
         )
         .await?;
-    // The tab a viewer watches is the one in front, as in the
-    // viewer's own browser.
+    // The tab a viewer watches is the one in front, as the viewer's page
+    // is in the user's browser.
     tab.page()
         .execute(SetFocusEmulationEnabledParams::new(true))
         .await?;

@@ -3,7 +3,7 @@ import { FileBrowserError } from '@demicodes/web-ui/files/types'
 import { rawFileContents } from './files'
 
 // A raw route as the file views load it (`web-api.md` § File text and working
-// tree changes): URLs the browser fetches itself, and HEAD answers read as
+// tree changes): URLs the web browser fetches itself, and HEAD answers read as
 // file descriptions.
 
 const originalFetch = globalThis.fetch

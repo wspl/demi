@@ -173,7 +173,7 @@ const narrowHost = computed(() => hosts.find((host) => host.id === narrowHostId.
 const fileChosen = ref<string | null>(null)
 const fileKey = ref(0)
 
-// One browser, inline, switched between the states a folder can be in.
+// One file browser, inline, switched between the states a folder can be in.
 const stateOptions = [
   { value: 'slow', label: 'Slow device' },
   { value: 'empty', label: 'Empty' },

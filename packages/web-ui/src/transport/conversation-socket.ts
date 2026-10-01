@@ -1,4 +1,4 @@
-import { AgentClient, createWebSocketTransport } from '@demicodes/conversation-client'
+import { ConversationClient, createWebSocketTransport } from '@demicodes/conversation-client'
 import { watchSilence } from './liveness'
 
 /**
@@ -6,10 +6,10 @@ import { watchSilence } from './liveness'
  * transport failure, not the session's, whether the session had answered
  * `open` yet or not. The runtime retries these on its own.
  */
-export class AgentSocketError extends Error {
+export class ConversationSocketError extends Error {
   constructor(message: string) {
     super(message)
-    this.name = 'AgentSocketError'
+    this.name = 'ConversationSocketError'
   }
 }
 
@@ -19,13 +19,13 @@ const CONNECT_TIMEOUT_MS = 15_000
 /**
  * Opens the conversation socket at `url` and answers its client. A socket
  * lifetime is a connection lifetime, never a server-task lifetime. Until the
- * socket opens, this owns it and a failure is an `AgentSocketError`; once it
+ * socket opens, this owns it and a failure is an `ConversationSocketError`; once it
  * opens, the client's transport owns it, and its close or failure disconnects
- * the client with an `AgentSocketError` too. So does a socket that brings
+ * the client with an `ConversationSocketError` too. So does a socket that brings
  * nothing, heartbeats included, for as long as the liveness rule allows
  * (`web-application.md` § Liveness and reconnection).
  */
-export function connectAgentClient(url: string, signal?: AbortSignal): Promise<AgentClient> {
+export function connectConversationClient(url: string, signal?: AbortSignal): Promise<ConversationClient> {
   return new Promise((resolve, reject) => {
     signal?.throwIfAborted()
     const socket = new WebSocket(url)
@@ -39,7 +39,7 @@ export function connectAgentClient(url: string, signal?: AbortSignal): Promise<A
     const failed = () => {
       release()
       socket.close()
-      reject(new AgentSocketError('Agent socket failed to connect'))
+      reject(new ConversationSocketError('Agent socket failed to connect'))
     }
     const aborted = () => {
       release()
@@ -49,12 +49,12 @@ export function connectAgentClient(url: string, signal?: AbortSignal): Promise<A
     const opened = () => {
       release()
       const transport = createWebSocketTransport(socket)
-      const client = new AgentClient({
+      const client = new ConversationClient({
         ...transport,
-        onClose: (handler) => transport.onClose((error) => handler(new AgentSocketError(error.message))),
+        onClose: (handler) => transport.onClose((error) => handler(new ConversationSocketError(error.message))),
       })
       const silence = watchSilence(() => {
-        client.disconnect(new AgentSocketError('The agent socket went silent'))
+        client.disconnect(new ConversationSocketError('The agent socket went silent'))
       })
       const heard = () => silence.heard()
       socket.addEventListener('message', heard)

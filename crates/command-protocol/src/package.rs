@@ -1,4 +1,4 @@
-//! Native command packages: the descriptor that identifies a release, the
+//! Command packages: the descriptor that identifies a release, the
 //! artifact of each target, and where a runner fetches an artifact.
 
 use std::collections::{BTreeMap, HashSet};
@@ -37,7 +37,7 @@ pub struct PackageArtifact {
     pub size: u64,
 }
 
-/// A native command package release: its identity, the operations it serves
+/// A command package release: its identity, the operations it serves
 /// and the artifact of each target it carries. Publication requires every
 /// target; a development release may carry fewer.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]

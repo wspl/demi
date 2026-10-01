@@ -9,7 +9,7 @@ import GallerySection from './GallerySection.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
 
 /**
- * The file browser's failures, pinned, each at the browser's full width. A
+ * The file browser's failures, pinned, each at its full width. A
  * directory that cannot be read is a region failure: the list is replaced by
  * a pane with an icon per kind. A folder that cannot be created is the form's
  * own failure: the list stays and the line takes the status bar.

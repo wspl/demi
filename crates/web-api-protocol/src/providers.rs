@@ -173,7 +173,7 @@ pub struct ProviderPatch {
     pub models: Option<Option<ConfiguredModels>>,
 }
 
-/// An entry as the browser sees it: its family, label, endpoint, vendor and
+/// An entry as the web app sees it: its family, label, endpoint, vendor and
 /// model list, never its key.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -525,7 +525,7 @@ pub struct CatalogProvider {
 }
 
 /// A catalog model with the selection the backend built from it, so the
-/// browser never converts one itself.
+/// web app never converts one itself.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CatalogModel {

@@ -6,7 +6,7 @@ import { useMarkdownRenderVersion } from '../markdown/highlight'
 /**
  * A Markdown file rendered as a document (`file-previews.md` § Markdown). A
  * link to a file asks the host to open it, a `#` link scrolls the document
- * to its heading or anchor, and a web link opens in a new browser tab.
+ * to its heading or anchor, and a web link opens in a new tab of the web browser.
  */
 const props = defineProps<{ text: string; place: DocumentPlace }>()
 const emit = defineEmits<{ open: [path: string] }>()

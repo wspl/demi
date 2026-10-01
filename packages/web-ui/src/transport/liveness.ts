@@ -1,9 +1,9 @@
 /**
  * The liveness of a page's WebSockets to the backend: the synchronization
- * channel, each conversation socket and each live browser view
- * (`web-application.md` § Liveness and reconnection). The far end of each
- * sends a heartbeat on a socket that has sent nothing else for a while, 30
- * seconds at most, so a socket that brings nothing for much longer died
+ * channel, each conversation socket and each live view of the conversation
+ * browser (`web-application.md` § Liveness and reconnection). The far end of
+ * each sends a heartbeat on a socket that has sent nothing else for a while,
+ * 30 seconds at most, so a socket that brings nothing for much longer died
  * without a close, as when a laptop slept and its network dropped. A socket
  * that closes, breaks or cannot be made is tried again after waits that
  * double. Timers stop while a laptop sleeps, so when the page becomes visible

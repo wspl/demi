@@ -42,7 +42,7 @@ impl Role {
     }
 }
 
-/// An account as the browser sees it; its password hash never leaves the
+/// An account as the web app sees it; its password hash never leaves the
 /// backend.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]

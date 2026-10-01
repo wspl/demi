@@ -13,9 +13,9 @@ import type {
 } from './types'
 
 /**
- * The file browser as a modal: a plain title bar over the browser, which fills a
- * fixed height so the list has room whatever the folder holds. Cancel and the
- * corner both close.
+ * The file browser as a modal: a plain title bar over the file browser, which
+ * fills a fixed height so the list has room whatever the folder holds. Cancel
+ * and the corner both close.
  */
 const props = defineProps<{
   isOpen: boolean

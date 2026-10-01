@@ -11,7 +11,7 @@ import { FileBrowserError, type FileContents, type FileDescription } from './typ
 
 /**
  * An image, a video, an audio file or a PDF, loaded from `contents` in the
- * browser's own viewer (`file-previews.md` § What the user sees). The
+ * web browser's own viewer (`file-previews.md` § What the user sees). The
  * preview pins the version it opened: when the file changes under it, it
  * says so and offers the new one instead of showing a mix of both.
  */
@@ -60,7 +60,7 @@ async function open(): Promise<void> {
     state.value = { phase: 'ready', description }
 }
 
-/** A viewer that cannot show the bytes: the file changed, or the browser cannot decode it. */
+/** A viewer that cannot show the bytes: the file changed, or the web browser cannot decode it. */
 async function failed(): Promise<void> {
   if (state.value.phase !== 'ready')
     return
@@ -110,7 +110,7 @@ onBeforeUnmount(() => {
           @size="(width, height) => dimensions = { width, height }"
           @failed="failed"
         />
-        <!-- The browser's PDF viewer refuses a sandboxed frame. -->
+        <!-- The web browser's PDF viewer refuses a sandboxed frame. -->
         <iframe v-else :src="src" :title="name" class="h-full w-full border-0" />
       </div>
       <div class="shrink-0 px-3 pb-2 text-center text-[11px] tabular-nums text-fg-muted">{{ caption }}</div>

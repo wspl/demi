@@ -1,6 +1,6 @@
 /**
  * Contracts of the file browser. A host maps its own directory source (the Web API's
- * file endpoints, a prototype's in-memory tree) onto these; the browser owns navigation,
+ * file endpoints, a prototype's in-memory tree) onto these; the file browser owns navigation,
  * selection and presentation and never knows where the entries come from.
  *
  * Paths are POSIX: `/` separates segments and `/` is the root. A source for another
@@ -61,17 +61,17 @@ export interface FileContents {
 /** The operating system behind a source; picks the root glyph. */
 export type FileBrowserPlatform = 'macos' | 'linux' | 'windows'
 
-/** The directory tree behind one browser: where it starts, what runs it and how it reads. */
+/** The directory tree behind one file browser: where it starts, what runs it and how it reads. */
 export interface FileBrowserSource {
   platform: FileBrowserPlatform
-  /** The directory the browser opens in when the caller names none, and where Home goes. */
+  /** The directory the file browser opens in when the caller names none, and where Home goes. */
   home: string
   /** Lists one directory. Rejects with a `FileBrowserError` for a known failure; anything else reads as `other`. */
   list(path: string, signal?: AbortSignal): Promise<FileBrowserEntry[]>
   /**
    * Makes the directory at `path` and any missing above it; one already
    * there is left as it is. Absent when the source cannot create
-   * directories; the browser then offers no New folder.
+   * directories; the file browser then offers no New folder.
    */
   createDirectory?(path: string, signal?: AbortSignal): Promise<void>
   /** Reads one file as text. Absent when the source cannot read files; a file view then has nothing to show. */
@@ -116,7 +116,7 @@ export interface FileBrowserPlaceGroup {
   places: FileBrowserPlace[]
 }
 
-/** A machine the sidebar can switch the browser to. The caller swaps the source when one is chosen. */
+/** A machine the sidebar can switch the file browser to. The caller swaps the source when one is chosen. */
 export interface FileBrowserHost {
   id: string
   label: string
@@ -126,5 +126,5 @@ export interface FileBrowserHost {
   icon?: Component
 }
 
-/** What the browser is for: the confirm button and what a click on a row does follow from it. */
+/** What the file browser is for: the confirm button and what a click on a row does follow from it. */
 export type FileBrowserMode = 'file' | 'directory'

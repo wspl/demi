@@ -243,7 +243,7 @@ Demi has no TypeScript SDK. The design keeps one possible without embedding
 the Rust runtime: a TypeScript program would be a client of serializable
 protocols, never a host of the Rust code. Two such protocols exist:
 
-- **The agent frame protocol.** `AgentClient` drives a session through it, as
+- **The agent frame protocol.** `ConversationClient` drives a session through it, as
   the web app does.
 - **Application commands.** An `rpc` command leaf is a callback to the
   application that declared it. Another process could register such leaves

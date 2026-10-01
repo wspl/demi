@@ -3,7 +3,7 @@
 //! in the sidebar, read revision, target, execution-context revision and
 //! model selection, which is the conversation's model settings (`models.md`
 //! § A conversation's model settings). The agent tree itself is in the conversation's own
-//! database. A conversation's id is the one the browser chose, kept in the
+//! database. A conversation's id is the one the web app chose, kept in the
 //! case it arrived in and compared without case, so an id another
 //! conversation holds in any spelling is taken.
 
@@ -679,7 +679,7 @@ impl ControlService {
     }
 
     /// The conversation's attached hosts with when each was attached, first
-    /// attached first, as the browser lists them.
+    /// attached first, as the web app lists them.
     pub async fn attached_host_listing(
         &self,
         id: ConversationId,

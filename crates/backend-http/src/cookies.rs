@@ -22,7 +22,8 @@ pub(super) fn session(token: &str, expires_at: Timestamp, https: bool) -> Cookie
         .build()
 }
 
-/// The jar with the session cookie removed, so the browser stops sending it.
+/// The jar with the session cookie removed, so the user's browser stops
+/// sending it.
 pub(super) fn remove(jar: CookieJar, https: bool) -> CookieJar {
     jar.remove(base(String::new(), https).build())
 }

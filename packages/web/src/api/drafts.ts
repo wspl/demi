@@ -18,7 +18,7 @@ export async function loadDraft(conversationId: string, signal: AbortSignal): Pr
 
 /**
  * Saves the draft. A save sent while the page closes is `keepalive`, so the
- * browser delivers it after the page is gone; nobody reads its answer then.
+ * web browser delivers it after the page is gone; nobody reads its answer then.
  */
 export async function saveDraft(
   conversationId: string,

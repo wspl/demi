@@ -39,7 +39,7 @@ const props = defineProps<{
   devices: WorkspaceDevice[]
   /** What went wrong with the last Create, shown under the form. */
   message?: string
-  /** The browser's tree for a device. */
+  /** The file browser's tree for a device. */
   sourceFor: (deviceId: string) => FileBrowserSource
   placesFor?: (deviceId: string) => FileBrowserPlaceGroup[]
 }>()

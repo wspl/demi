@@ -3,11 +3,11 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import type { Subprocess, WebSocketOptions } from 'bun'
 
-// The browser-contract suite's world (`scenarios.md` § Browser-contract
-// suite): the backend executable on a data directory of its own with the
-// backend's scripted machine manager, real runners, and a browser for the web
-// application's API client and the agent socket, which carries the session
-// cookie as a page's requests do.
+// The web app contract suite's world (`scenarios.md` § Web app
+// contract suite): the backend executable on a data directory of its own with the
+// backend's scripted machine manager, real runners, and a stand-in for the user's
+// web browser, which serves the web app's API client and the agent socket and
+// carries the session cookie as a page's requests do.
 
 /** How long a process may take to start: the backend to answer, a runner to print its code, the manager its socket. */
 const START_MS = 15_000
@@ -273,14 +273,14 @@ export async function startRunner(root: string, origin: string, name: string): P
 type BunWebSocketConstructor = typeof WebSocket & (new (url: string | URL, options: WebSocketOptions) => WebSocket)
 
 /**
- * The page's browser for the web application's modules: the page is at
- * `origin`, `fetch` resolves the page's relative `/api` paths against it,
+ * A stand-in for the user's web browser, for the web app's modules: the page
+ * is at `origin`, `fetch` resolves the page's relative `/api` paths against it,
  * sends the cookies its answers set and, with every method but GET and HEAD,
  * the page's origin, and a `WebSocket` sends them and the page's origin with
- * its upgrade, as a browser does for a same-origin page. `restore` puts the
+ * its upgrade, as a web browser does for a same-origin page. `restore` puts the
  * test process's own back.
  */
-export function openBrowser(origin: string) {
+export function openWebBrowser(origin: string) {
   const cookies = new Map<string, string>()
   const realFetch = globalThis.fetch
   const RealWebSocket = globalThis.WebSocket as BunWebSocketConstructor

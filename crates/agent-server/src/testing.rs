@@ -21,7 +21,7 @@ use crate::{
     ProviderResolver, ResolveError, ResolvedFiles,
 };
 
-/// A message's content of one text, as the browser sends it.
+/// A message's content of one text, as the web app sends it.
 pub fn client_text(text: &str) -> Vec<ClientContent> {
     vec![ClientContent::Text {
         text: text.to_owned(),

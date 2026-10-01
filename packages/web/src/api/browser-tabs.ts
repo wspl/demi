@@ -10,10 +10,10 @@ import {
 } from './generated/web-api'
 
 /**
- * Opening a tab may start the browser, on a Cloud that was stopped: the
- * operation allows itself five minutes (`browser.open`), and the request
- * waits a little longer than that, so the operation's own answer is what ends
- * the wait.
+ * Opening a tab may start the conversation browser, on a Cloud that was
+ * stopped: the operation allows itself five minutes (`browser.open`), and the
+ * request waits a little longer than that, so the operation's own answer is
+ * what ends the wait.
  */
 const OPEN_TIMEOUT_MS = 310_000
 

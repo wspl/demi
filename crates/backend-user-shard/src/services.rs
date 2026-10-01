@@ -70,7 +70,7 @@ pub struct Services {
     pub conversation_tuning: ConversationTuning,
     /// How the sockets to a page are timed.
     pub pages: PageTuning,
-    /// The native packages each shard's catalog is built from.
+    /// The command packages each shard's catalog is built from.
     pub native: NativeCatalog,
     /// The user streams a page may open.
     pub user_streams: UserStreams,

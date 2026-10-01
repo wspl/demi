@@ -142,12 +142,12 @@ export const usePreferences = defineStore('preferences', () => {
   /** The locale a report in flight sends, so a second trigger does not repeat it. */
   let reporting: string | null = null
   /**
-   * Sends the browser's time zone and languages whenever they differ from the
-   * stored ones; commands receive them (`web-api.md` § User preferences).
+   * Sends the web browser's time zone and languages whenever they differ from
+   * the stored ones; commands receive them (`web-api.md` § User preferences).
    */
   async function reportLocale(): Promise<void> {
     const stored = product.snapshot?.preferences
-    const locale = browserLocale()
+    const locale = webBrowserLocale()
     if (!stored || !locale) {
       return
     }
@@ -202,10 +202,10 @@ export const usePreferences = defineStore('preferences', () => {
 })
 
 /**
- * The browser's own time zone and languages, as the backend stores them;
- * null when the browser reports neither.
+ * The web browser's own time zone and languages, as the backend stores them;
+ * null when it reports neither.
  */
-function browserLocale(): CommandLocale | null {
+function webBrowserLocale(): CommandLocale | null {
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
   const reported = navigator.languages?.length ? navigator.languages : [navigator.language]
   try {

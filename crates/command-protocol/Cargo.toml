@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [lib]
-# Its behavior is tested through the SDK, in command-service's tests
+# Its behavior is tested through the SDK, in command-sdk's tests
 # (`crates-and-packages.md` § Module layout); no doc examples.
 test = false
 doctest = false

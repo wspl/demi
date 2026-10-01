@@ -737,7 +737,7 @@ async fn shutdown_ends_an_open_download_saves_the_cloud_and_reports_a_save_that_
     let home = harness.manager.home(&device);
     let big = format!("{home}/sessions/{FIRST}/big.bin");
     std::fs::write(&big, vec![7u8; 8 << 20]).unwrap();
-    // A download the browser stopped reading holds the Cloud.
+    // A download the user's browser stopped reading holds the Cloud.
     let download = backend
         .response(reqwest::Method::GET, &format!("/api/conversations/{FIRST}/fs/raw?path={}", query(&big)), &master, &[], None)
         .await;

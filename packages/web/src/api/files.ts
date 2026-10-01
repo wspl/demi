@@ -114,7 +114,7 @@ export function conversationFileRoutes(conversationId: string): Required<FileRou
 
 const sources = new Map<string, FileBrowserSource>()
 
-/** The shared browser handles paths and selection; this adapter handles HTTP. */
+/** The shared file browser handles paths and selection; this adapter handles HTTP. */
 export function fileSource(
   endpoints: FileRoutes,
   device: Pick<Device, 'platform' | 'home'> | null,

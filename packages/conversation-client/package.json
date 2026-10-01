@@ -1,6 +1,6 @@
 {
   "name": "@demicodes/conversation-client",
-  "description": "The browser's client of Demi's conversation socket: AgentClient, its WebSocket transport and the transcript patch applier.",
+  "description": "The browser's client of Demi's conversation socket: ConversationClient, its WebSocket transport and the transcript patch applier.",
   "version": "0.24.0",
   "private": false,
   "type": "module",

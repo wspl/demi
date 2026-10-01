@@ -37,7 +37,7 @@ export interface BrowserTabList {
   tabs: BrowserTabInfo[]
 }
 
-/** A request the backend or the browser refused, with the answer's own code and message. */
+/** A request the backend or the conversation browser refused, with the answer's own code and message. */
 export class BrowserTabsError extends Error {
   constructor(
     /** The backend's code; null when something in front of it answered. */
@@ -73,13 +73,13 @@ export interface BrowserPanelTabs {
 /** Answers that will not change by asking again. */
 const FINAL_CODES = new Set(['conversation_not_found', 'conversation_archived'])
 
-/** Whether this browser can show the view's pictures, once it has answered. */
+/** Whether this web browser can show the view's pictures, once it has answered. */
 export type PictureSupport = 'checking' | 'supported' | 'unsupported'
 
 export interface BrowserTabsOptions {
   /** The page's visibility; the document's own unless a test supplies one. */
   visibility?: Readonly<Ref<DocumentVisibilityState>>
-  /** Resolves whether this browser can decode the view's pictures; WebCodecs' answer unless the gallery or a test supplies one. */
+  /** Resolves whether this web browser can decode the view's pictures; WebCodecs' answer unless the gallery or a test supplies one. */
   pictures?: () => Promise<boolean>
 }
 
@@ -98,9 +98,9 @@ export class BrowserTabsController {
   readonly listError: ShallowRef<BrowserTabsError | null> = shallowRef(null)
   readonly session: ShallowRef<LiveSession | null> = shallowRef(null)
   /**
-   * Whether this browser can show the pictures, asked once. One that cannot
-   * opens no view, so it is no viewer (`live-view.md` § A browser tab in the
-   * panel).
+   * Whether this web browser can show the pictures, asked once. One that
+   * cannot opens no view, so it is no viewer (`live-view.md` § A browser tab
+   * in the panel).
    */
   readonly pictures: ShallowRef<PictureSupport> = shallowRef('checking')
   /**
@@ -246,7 +246,7 @@ export class BrowserTabsController {
   /**
    * A shown content watches its tab on the page's one view, opening the view
    * when there is none. A hidden page opens none until it is shown, and a
-   * browser that cannot show the pictures none at all.
+   * web browser that cannot show the pictures none at all.
    */
   show(tab: string): void {
     this.shown = tab

@@ -3,7 +3,7 @@
 '@demicodes/web': minor
 ---
 
-Demi installs its own Claude Code CLI. The `demi.claude-code` native package
+Demi installs its own Claude Code CLI. The `demi.claude-code` command package
 installs a verified executable of the vendor's newest version (or the version
 an entry is held at) under the Host user's `.demi/claude`, and a provider's
 process runs on the user's Cloud, whatever the conversation's execution target

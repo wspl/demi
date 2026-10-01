@@ -1,5 +1,5 @@
 //! The development store end to end (`native-runtime.md` § Backend
-//! deployment configuration). The harness writes the native packages the
+//! deployment configuration). The harness writes the command packages the
 //! workspace built as development releases, which the backend's local store
 //! serves itself (`support::Harness::with_file_package`), so every
 //! scenario whose runner runs a native command, on a paired device or on the

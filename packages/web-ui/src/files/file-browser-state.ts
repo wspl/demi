@@ -10,7 +10,7 @@ export interface FileBrowserSort {
   direction: 'asc' | 'desc'
 }
 
-/** Folders first, then names: every listing without sort controls, and the browser until a column is chosen. */
+/** Folders first, then names: every listing without sort controls, and the file browser until a column is chosen. */
 export const DEFAULT_SORT: Readonly<FileBrowserSort> = Object.freeze({ key: null, direction: 'asc' })
 
 const fileNameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
@@ -66,7 +66,7 @@ export function nextSort(current: FileBrowserSort, key: FileBrowserSortKey): Fil
   return { key: null, direction: 'asc' }
 }
 
-/** A browser-style history over visited directories. Navigating discards the forward stack. */
+/** A history over visited directories, with Back and Forward as in a web browser. Navigating discards the forward stack. */
 export interface FileBrowserHistory {
   readonly current: string
   readonly canBack: boolean

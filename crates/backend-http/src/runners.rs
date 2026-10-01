@@ -1,11 +1,12 @@
 //! The routes runners use, which authenticate with a device token instead of
-//! a browser session (`web-api.md` § Resource index): `WS /api/runner`, the
-//! one socket each runner holds, and `PUT/GET /api/pipes/:id`, the device
-//! ends of a pipe (`runner.md` § Pipes and output). The source's runner puts
-//! the bytes, the sink's gets them, and the edge copies them between the
-//! request bodies and the pipe's ends; the pipe records are the device
-//! owner's shard's. Pipe bodies have no size limit and no idle timeout: a
-//! quiet command's pipe stays open for as long as its command runs.
+//! the user's session cookie (`web-api.md` § Resource index):
+//! `WS /api/runner`, the one socket each runner holds, and
+//! `PUT/GET /api/pipes/:id`, the device ends of a pipe (`runner.md` § Pipes
+//! and output). The source's runner puts the bytes, the sink's gets them,
+//! and the edge copies them between the request bodies and the pipe's ends;
+//! the pipe records are the device owner's shard's. Pipe bodies have no size
+//! limit and no idle timeout: a quiet command's pipe stays open for as long
+//! as its command runs.
 
 use axum::body::Body;
 use axum::extract::ws::WebSocketUpgrade;

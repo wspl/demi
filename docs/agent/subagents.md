@@ -698,7 +698,7 @@ frames carry the same field ([Failure facts](../backend/backend.md#failure-facts
 A child's other session events, such as phase, queue and errors, send no
 frames; its commands' output reaches the web app as the root's does, in
 `shell_output` frames that name the child
-([Live output](runtime.md#live-output)). `AgentClient` in
+([Live output](runtime.md#live-output)). `ConversationClient` in
 `@demicodes/conversation-client` mirrors the three frames as client events; its
 transcript events omit `revision`, as the root's do.
 
@@ -782,7 +782,7 @@ returned, a child's as well as the root's
 | Agent runtime | The node assembly, supervision and the agent directory, the `demi agent` group, agent messages, the subagent frames, and the tree store contract |
 | Backend | The tree store over the conversation's database, and the conversation's host access for every node |
 | Coding harness | No named profiles; children inherit by default |
-| `web-ui` | Nested subagent views, receipts, and the agents chip over `AgentClient` |
+| `web-ui` | Nested subagent views, receipts, and the agents chip over `ConversationClient` |
 
 [Crates](../architecture/crates-and-packages.md#crates) names the crate that owns
 each part.

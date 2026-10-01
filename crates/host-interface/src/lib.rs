@@ -1,5 +1,5 @@
 //! The contracts between the agent and what executes its work
-//! (`crates-and-packages.md` § shell), and nothing that implements them:
+//! (`crates-and-packages.md` § host-interface), and nothing that implements them:
 //!
 //! - the Host contract: an execution target's filesystem and processes
 //!   ([`Host`], [`HostFs`], [`HostProcess`]) and its value identity

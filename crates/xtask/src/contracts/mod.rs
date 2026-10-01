@@ -1,8 +1,9 @@
 //! `xtask contracts`: the TypeScript emitter (`contracts.md` § Generated
-//! TypeScript). It asks schemars for the JSON Schema of every browser-facing
-//! Rust type, in memory, and writes Zod v4 source with `z.infer` types into
-//! `@demicodes/protocol` and `packages/web/src/api/generated`. A schema
-//! outside the emitter's subset fails generation and names the type.
+//! TypeScript). It asks schemars for the JSON Schema of every Rust type the
+//! web app receives or sends, in memory, and writes Zod v4 source with
+//! `z.infer` types into `@demicodes/protocol` and
+//! `packages/web/src/api/generated`. A schema outside the emitter's subset
+//! fails generation and names the type.
 
 mod roots;
 mod shape;
@@ -153,7 +154,7 @@ fn check_name(name: &str, names: &HashSet<&str>) -> Result<(), Error> {
     Ok(())
 }
 
-/// The definitions the browser receives: every one a receiving root refers
+/// The definitions the web app receives: every one a receiving root refers
 /// to, directly or through others.
 fn received<'a>(
     definitions: &BTreeMap<String, Definition>,

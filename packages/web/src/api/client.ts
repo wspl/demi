@@ -55,7 +55,7 @@ export function invalidResponse(error: z.ZodError): Error {
   return new Error(`Invalid server response: ${error.issues[0]?.message ?? 'unknown shape'}`)
 }
 
-/** The URL of an API path, for what the browser loads itself: an image, a player, a download. */
+/** The URL of an API path, for what the web browser loads itself: an image, a player, a download. */
 export function apiUrl(path: string): string {
   return `/api${path}`
 }
@@ -65,7 +65,7 @@ const REQUEST_TIMEOUT_MS = 60_000
 
 interface ApiRequestOptions extends RequestInit {
   allowNotModified?: boolean
-  /** For a request whose work is known to take longer than most, such as starting a browser on a Cloud. */
+  /** For a request whose work is known to take longer than most, such as starting the conversation browser on a Cloud. */
   timeoutMs?: number
 }
 

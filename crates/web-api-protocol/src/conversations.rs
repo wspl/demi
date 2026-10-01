@@ -1,4 +1,4 @@
-//! Conversations as the browser creates, lists and follows them
+//! Conversations as the web app creates, lists and follows them
 //! (`web-api.md` § Conversation creation and Fork, § Sidebar mutations, read
 //! state and page synchronization).
 
@@ -51,7 +51,7 @@ pub enum ConversationTarget {
     },
 }
 
-/// `POST /conversations`: the id the browser chose for a new conversation.
+/// `POST /conversations`: the id the web app chose for a new conversation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct CreateConversation {
@@ -59,7 +59,7 @@ pub struct CreateConversation {
     pub id: ConversationId,
 }
 
-/// A conversation as the browser lists it: its record, with the directory
+/// A conversation as the web app lists it: its record, with the directory
 /// its work runs in, its status and its output revision. What the backend
 /// keeps for itself, such as the owner, stays out.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -85,7 +85,7 @@ pub struct ConversationSummary {
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
     /// The directory the conversation's work runs in, resolved by the backend
-    /// for every kind of target, so the browser never derives it.
+    /// for every kind of target, so the web app never derives it.
     pub cwd: String,
     pub status: ConversationStatus,
     /// The output revision: it advances with each saved change of output,
@@ -336,7 +336,7 @@ pub enum BatchResult {
 }
 
 /// `POST /conversations/:id/fork`: the new conversation's id, chosen by the
-/// browser, and the completed assistant text the history is kept through.
+/// web app, and the completed assistant text the history is kept through.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ForkRequest {

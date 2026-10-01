@@ -9,9 +9,9 @@ import { useMediaUrl } from '../media-source'
  * One image or video a tool returned, at the preview's height, which it takes
  * before its bytes arrive so the transcript does not move when they load
  * (`file-previews.md` § Media a tool returned). An image is scaled down, never
- * enlarged or cropped, and a click opens it large; a video plays in the
+ * enlarged or cropped, and a click opens it large; a video plays in the web
  * browser's player. A medium the page cannot show, because it did not load
- * or the browser cannot decode it, says so in its place.
+ * or the web browser cannot decode it, says so in its place.
  */
 const props = defineProps<{
   kind: 'image' | 'video'

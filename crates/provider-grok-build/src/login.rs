@@ -339,7 +339,7 @@ impl<'de> Deserialize<'de> for UserCode {
     }
 }
 
-/// The address the user is told to open, so only a scheme a browser can be
+/// The address the user is told to open, so only a scheme a web browser can be
 /// trusted with passes: `https` anywhere, `http` on the loopback host, and
 /// no control characters, which would make the link read differently from
 /// the one shown.

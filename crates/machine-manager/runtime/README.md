@@ -27,6 +27,6 @@ and archive checksum beside the executable. Both scripts read this directory's
 `release.json` with jq, and the manager embeds the same file when it is built.
 
 The patch should be removed when a pinned upstream version passes this probe and
-the Cloud acceptance suite. Replacing the runtime still requires browser,
-persistence, network, resource-limit, and failure-recovery checks on both Linux
-architectures.
+the Cloud acceptance suite. Replacing the runtime still requires conversation
+browser, persistence, network, resource-limit, and failure-recovery checks on
+both Linux architectures.

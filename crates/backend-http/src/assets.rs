@@ -1,5 +1,5 @@
-//! The browser build served beside the API (`web-api.md` § Serving the
-//! browser build): files as they are, and `index.html` for an extensionless
+//! The web app build served beside the API (`web-api.md` § Serving the web
+//! app build): files as they are, and `index.html` for an extensionless
 //! navigation that accepts HTML, so a deep page reloads. Any other miss is a
 //! JSON 404.
 

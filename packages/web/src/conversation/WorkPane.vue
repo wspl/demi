@@ -113,11 +113,11 @@ const finishedToolCalls = computed(
 )
 watch(finishedToolCalls, () => {
   state.value.changes.refresh()
-  // The agent may have opened or closed a browser tab.
+  // The agent may have opened or closed a tab of the conversation browser.
   void browser.value?.refresh()
 })
 
-// The browser kind reads its tab list itself when the page is shown again.
+// The `browser` kind reads its tab list itself when the page is shown again.
 function refreshVisible(): void {
   if (document.visibilityState === 'visible') {
     state.value.changes.refresh()

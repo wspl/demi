@@ -3,7 +3,7 @@
 //! version's official download metadata, downloads the archive of each
 //! platform Demi supports through `artifact`, measures it, checks that it
 //! holds the executable the record names, and writes the release record with
-//! browser-protocol's type, which `demi-browser` installs from.
+//! command-package-browser-protocol's type, which `demi-browser` installs from.
 
 use demi_shared_artifacts::{Mode, Permissions, Publication};
 use demi_command_package_browser_protocol::release::{BrowserRelease, ReleasePlatform};

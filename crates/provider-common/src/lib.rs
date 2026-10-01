@@ -1,5 +1,5 @@
 //! The provider contract and the building blocks every vendor crate uses
-//! (`crates-and-packages.md` § provider): a shared [`Provider`] per entry and
+//! (`crates-and-packages.md` § provider-common): a shared [`Provider`] per entry and
 //! account and a shard-local [`ProviderRuntime`] per session; a run's events
 //! and its typed failure; the HTTP failure record and its standard reading;
 //! request bodies built off the shard and the endpoint rule of API-key

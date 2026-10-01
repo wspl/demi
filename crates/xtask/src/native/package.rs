@@ -150,7 +150,7 @@ async fn command_package(
     };
     demi_shared_artifacts::publish_release(output, record, &built.files, cancel).await?;
     Ok(format!(
-        "Native package {id}@{VERSION}: {digest}\n{}",
+        "Command package {id}@{VERSION}: {digest}\n{}",
         output.join(DESCRIPTOR).display()
     ))
 }

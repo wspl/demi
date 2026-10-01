@@ -1189,7 +1189,7 @@ under `packages/`.
 #### `@demicodes/conversation-client`
 
 - **Published** to npm.
-- **Owns:** `AgentClient` and its waiters, the conversation WebSocket
+- **Owns:** `ConversationClient` and its waiters, the conversation WebSocket
   transport, client-side session events, and `applyTranscriptPatches`, the one
   transcript patch applier. It validates every frame it receives with the
   generated schemas.
@@ -1225,7 +1225,7 @@ under `packages/`.
   sockets and the live views share, and the check of every socket when the
   page comes back (`transport/liveness.ts`,
   [Liveness and reconnection](../product/web-application.md#liveness-and-reconnection)).
-  It consumes an injected `AgentClient` and ships no control-plane transport
+  It consumes an injected `ConversationClient` and ships no control-plane transport
   of its own.
 - **Public boundary:** source-path exports (`./*`) consumed by `web` and
   `web-gallery`.

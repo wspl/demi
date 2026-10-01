@@ -75,12 +75,12 @@ export interface LiveSessionOptions {
   platform: 'mac' | 'windows' | 'linux' | 'other'
   /** Text the watched tab copied, for the viewer's own clipboard. */
   onClipboard?: (text: string) => void
-  /** The browser's tabs, each time the view reports them. */
+  /** The conversation browser's tabs, each time the view reports them. */
   onTabs?: (tabs: LiveTab[]) => void
   /**
    * The view ended; it opens again by itself, since a Host that becomes
-   * reachable again, or a browser started later, reaches the page through a
-   * new view.
+   * reachable again, or a conversation browser started later, reaches the
+   * page through a new view.
    */
   onEnded?: (reason: string) => void
   now?: () => number

@@ -21,8 +21,8 @@ export interface PictureHandlers {
 }
 
 /**
- * Whether this browser can show a live view: its WebCodecs must decode the
- * Host's H.264 (`live-view.md` § A browser tab in the panel). A Chromium
+ * Whether this web browser can show a live view: its WebCodecs must decode
+ * the Host's H.264 (`live-view.md` § A browser tab in the panel). A Chromium
  * built without proprietary codecs has a `VideoDecoder`, but not for H.264.
  */
 export async function picturesSupported(): Promise<boolean> {
@@ -33,7 +33,7 @@ export async function picturesSupported(): Promise<boolean> {
     const { supported } = await VideoDecoder.isConfigSupported(DECODER)
     return supported === true
   } catch (error) {
-    // A browser refuses to consider only a config it takes for malformed: this page's defect, and no view either way.
+    // A web browser refuses to consider only a config it takes for malformed: this page's defect, and no view either way.
     reportError('The live view asked about a decoder config the browser refuses', error)
     return false
   }

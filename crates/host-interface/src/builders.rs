@@ -80,7 +80,7 @@ impl LeafBuilder {
         Self::with_kind(name.into(), summary.into(), LeafKind::Rpc)
     }
 
-    /// A leaf that runs `operation` of a native package.
+    /// A leaf that runs `operation` of a command package.
     pub fn native(
         name: impl Into<String>,
         summary: impl Into<String>,

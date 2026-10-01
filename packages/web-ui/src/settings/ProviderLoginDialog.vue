@@ -16,7 +16,7 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 
 /**
  * A subscription sign-in, as the vendor's own flow: a device code confirmed in a
- * browser, or a token the vendor's CLI hands out after its own login
+ * web browser, or a token the vendor's CLI hands out after its own login
  * (`providers.md`). Owns nothing; the host drives the phase.
  */
 import type { ProviderLoginPhase } from './types'
@@ -113,7 +113,7 @@ const { copy: copyLink, copied: linkCopied } = useClipboard({ copiedDuring: 1500
             Open in browser
             <ExternalLink :size="ICON_PX.in24" />
           </Button>
-          <!-- For a browser on another machine, or another profile: the link alone. -->
+          <!-- For a web browser on another machine, or another profile: the link alone. -->
           <Tooltip :content="linkCopied ? 'Copied' : 'Copy the link to sign in from another browser or device'">
             <IconButton
               :icon="linkCopied ? Check : Link"

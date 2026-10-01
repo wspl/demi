@@ -1,5 +1,5 @@
 //! Building manifests from a command set (`commands.md` § Dispatch the same
-//! declaration on each surface): the backend's catalog of native packages,
+//! declaration on each surface): the backend's catalog of command packages,
 //! fixed at startup, pins each declared native command to its package's
 //! descriptor, and a job carries the resulting selection.
 
@@ -24,7 +24,7 @@ pub trait ArtifactResolver {
     ) -> LocalBoxFuture<'static, Result<ArtifactLocation, String>>;
 }
 
-/// The native packages commands bind to, and where their executables are.
+/// The command packages commands bind to, and where their executables are.
 #[derive(Clone)]
 pub struct CommandCatalog {
     packages: Rc<[PackageDescriptor]>,

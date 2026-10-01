@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 /// The most characters of a URL a route takes.
 pub const URL_MAX: usize = 4096;
 
-/// `GET …/browser/tabs`: the browser's tabs; a browser that does not run
-/// has none.
+/// `GET …/browser/tabs`: the conversation browser's tabs, none while it
+/// does not run.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct BrowserTabs {
     pub tabs: Vec<BrowserTab>,

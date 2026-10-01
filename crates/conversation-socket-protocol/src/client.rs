@@ -1,4 +1,4 @@
-//! What the browser sends (`runtime.md` § Client frames).
+//! What the web app sends (`runtime.md` § Client frames).
 
 use demi_shared_types::{BlobRef, BlockId, CommandId, NodeId, OperationId, TurnId, is_blank};
 use schemars::JsonSchema;
@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::TranscriptVersion;
 
-/// A frame the browser sends. The connection belongs to one conversation, so
+/// A frame the web app sends. The connection belongs to one conversation, so
 /// no frame names a session or a working directory.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(
@@ -184,7 +184,7 @@ impl ClientFrame {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EditRequest {
-    /// Chosen by the browser, so a repeated request is recognized.
+    /// Chosen by the web app, so a repeated request is recognized.
     #[garde(skip)]
     pub operation_id: OperationId,
     /// The `user` block the edit replaces.
@@ -198,7 +198,7 @@ pub struct EditRequest {
     pub content: Vec<ClientContent>,
 }
 
-/// One part of the content the browser sends. Files are referred to, never
+/// One part of the content the web app sends. Files are referred to, never
 /// carried: a new file is an upload or a file on a paired device, and an edit
 /// keeps what the edited message holds by reference.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
@@ -225,7 +225,7 @@ pub enum ClientContent {
         r#ref: String,
         /// The name the file is written under: no path separator, no NUL,
         /// and neither `.` nor `..`. The pattern has no lookaround, so that
-        /// the browser's engine and Rust's read it alike.
+        /// a web browser's regex engine and Rust's read it alike.
         #[garde(
             length(chars, min = 1, max = 255),
             pattern(r"^(?:[^./\\\x00][^/\\\x00]*|\.[^./\\\x00][^/\\\x00]*|\.\.[^/\\\x00]+)$")

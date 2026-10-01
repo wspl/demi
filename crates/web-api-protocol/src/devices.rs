@@ -22,7 +22,7 @@ pub enum DeviceKind {
 serde_plain::derive_display_from_serialize!(DeviceKind);
 serde_plain::derive_fromstr_from_deserialize!(DeviceKind);
 
-/// A device as the browser sees it. `platform` is the one its runner
+/// A device as the web app sees it. `platform` is the one its runner
 /// reported; `online` says whether its runner is connected now; `home` is
 /// the home directory it reported when it last connected, null until then
 /// (the backend keeps it in memory only).

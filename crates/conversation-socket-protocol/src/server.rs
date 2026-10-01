@@ -246,7 +246,7 @@ serde_plain::derive_fromstr_from_deserialize!(SubagentEvent);
 pub struct SubagentJob {
     #[garde(skip)]
     pub subagent_id: NodeId,
-    /// The node that spawned it: the browser keys nested views by it.
+    /// The node that spawned it: the web app keys nested views by it.
     #[garde(skip)]
     pub parent_session_id: NodeId,
     /// The spawn's `--description`, or empty.

@@ -55,7 +55,7 @@ impl VendorCatalog {
         vendor_id.map(policy_of).unwrap_or_default()
     }
 
-    /// The vendors an entry can be added from, by name as the browser sorts
+    /// The vendors an entry can be added from, by name as the web app sorts
     /// names, from a copy less than a day old.
     pub async fn vendors(&self) -> Result<Vec<Vendor>, ModelsDevError> {
         let snapshot = self.models_dev.current().await?;
@@ -117,7 +117,7 @@ fn official_base_url(vendor_id: &str) -> Option<String> {
     }
 }
 
-/// The root locale's collation, which orders names as the browser's
+/// The root locale's collation, which orders names as a web browser's
 /// `localeCompare` does.
 fn root_collator() -> CollatorBorrowed<'static> {
     // The root locale's data is compiled in.

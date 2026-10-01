@@ -51,7 +51,7 @@ afterEach(() => {
   }
 })
 
-test('the browser reports its time zone and languages once, and again when they differ from the stored ones', async () => {
+test('the web browser reports its time zone and languages once, and again when they differ from the stored ones', async () => {
   useProduct().start()
   channels.last().connect(productState({ preferences: saved }))
   const preferences = usePreferences()
@@ -65,7 +65,7 @@ test('the browser reports its time zone and languages once, and again when they 
   await preferences.reportLocale()
   expect(patches).toHaveLength(1)
 
-  // Another browser of the same user reported its own, which the channel
+  // Another web browser of the same user reported its own, which the channel
   // brings; this one reports again.
   saved = { ...saved, locale: { timeZone: 'Europe/Berlin', languages: ['de-DE'] } }
   channels.last().send({ type: 'preferences', preferences: saved })

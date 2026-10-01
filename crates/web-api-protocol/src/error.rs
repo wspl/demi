@@ -12,7 +12,7 @@ pub struct ErrorBody {
     pub message: String,
 }
 
-/// Every error code the browser can see. A situation has one code on every
+/// Every error code the web app can see. A situation has one code on every
 /// route (`web-api.md` § Resource index); the HTTP status belongs to the
 /// route that answers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
@@ -147,7 +147,7 @@ pub enum ErrorCode {
     /// The path is, or holds, a directory the Host needs: its root, its home
     /// or the conversation's execution directory.
     ProtectedPath,
-    /// The browser sent nothing of an upload for a minute.
+    /// The user's browser sent nothing of an upload for a minute.
     TransferStalled,
     /// A file is over the 8 MiB the product shows as text or keeps as an
     /// edit.

@@ -1,6 +1,6 @@
 //! The `demi browser` group (`browser.md`): one native leaf per operation of
 //! the `demi.browser` package, its arguments and `--json` result
-//! declared from the `browser-protocol` types, so the command line, the
+//! declared from the `command-package-browser-protocol` types, so the command line, the
 //! runner's check and the operation read one definition.
 
 use demi_command_package_browser_protocol::PACKAGE;

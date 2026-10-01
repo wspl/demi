@@ -13,7 +13,7 @@ export type ServerFrameOf<Type extends ServerFrame['type']> = Extract<ServerFram
 export type Failures = Record<string, ProviderFailureFacts>
 
 /**
- * What an `AgentClient` tells its listeners. Most events are the server frame
+ * What an `ConversationClient` tells its listeners. Most events are the server frame
  * as it arrived; transcript events carry the transcript as the client holds
  * it after the frame, and none carries a revision, which the client keeps.
  */
@@ -69,4 +69,4 @@ export type ClientSessionEvent =
       error: Error
     }
 
-export type AgentClientListener = (event: ClientSessionEvent) => void
+export type ConversationClientListener = (event: ClientSessionEvent) => void

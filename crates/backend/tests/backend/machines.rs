@@ -1,5 +1,5 @@
 //! A machine manager the tests script (`scenarios.md` § System under
-//! test): it serves the manager's socket with `machines-protocol`, as the
+//! test): it serves the manager's socket with `machine-manager-protocol`, as the
 //! real manager does, and runs each Cloud's sandbox as a real runner
 //! process whose home survives a stop, a wake and a reset. Operations of one
 //! device run one at a time, in arrival order; a device's first wake makes

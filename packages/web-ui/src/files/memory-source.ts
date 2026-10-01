@@ -1,7 +1,7 @@
 /**
  * A `FileBrowserSource` over an in-memory tree, for prototypes and gallery specimens.
  * Nothing here touches a real disk; a directory can be marked as failing to exercise
- * the browser's error states, every read can carry a simulated latency, and a
+ * the file browser's error states, every read can carry a simulated latency, and a
  * source given an upload rate takes uploads at that rate, each landing as a
  * file of its size; without one it takes no uploads. Directories are made
  * and entries deleted at once.

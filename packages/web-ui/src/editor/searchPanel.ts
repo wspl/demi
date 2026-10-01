@@ -41,7 +41,7 @@ function firstMatchFrom(state: EditorState, query: SearchQuery, from: number): {
   return first.done ? null : first.value
 }
 
-/** A changed query selects its first match from the selection on, as a browser's find does. */
+/** A changed query selects its first match from the selection on, as a web browser's find does. */
 function searchFor(view: EditorView, options: FindOptions): void {
   const query = new SearchQuery(options)
   if (query.eq(getSearchQuery(view.state)))

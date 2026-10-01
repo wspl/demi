@@ -1,8 +1,8 @@
 //! Codex's device login (`providers.md` § Login and publication), the
 //! protocol of the Codex CLI's own device-code sign-in: ask for a user code,
-//! let the user confirm it at `…/codex/device` from any browser, poll until
+//! let the user confirm it at `…/codex/device` from any web browser, poll until
 //! the service issues an authorization code with its own PKCE verifier, and
-//! exchange that for tokens. No vendor CLI and no browser on the backend.
+//! exchange that for tokens. No vendor CLI and no web browser on the backend.
 
 use std::{sync::Arc, time::Duration};
 

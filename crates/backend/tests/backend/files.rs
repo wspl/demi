@@ -366,9 +366,10 @@ async fn an_upload_streams_into_place_whole_and_asks_before_it_writes_over_a_fil
     assert_eq!(written.len(), chunks * block.len());
     assert!(written[written.len() - block.len()..] == block[..], "the upload's end arrived changed");
 
-    // A body the browser cuts short while the Host holds part of it: the
-    // browser, gone, hears no answer, as the page's own cut does, and the
-    // Host drops its partial copy at once and leaves the path as it was.
+    // A body the user's browser cuts short while the Host holds part of it:
+    // the user's browser, gone, hears no answer, as when the page cuts its
+    // own upload, and the Host drops its partial copy at once and leaves the
+    // path as it was.
     let listed = || {
         std::fs::read_dir(&device.root)
             .unwrap()
@@ -393,7 +394,7 @@ async fn an_upload_streams_into_place_whole_and_asks_before_it_writes_over_a_fil
     let broken = stream::iter([Ok::<_, std::io::Error>(block.clone())]).chain(stream::once(async {
         // A dropped sender cuts it too.
         let _ = cut_now.await;
-        Err(std::io::Error::other("the browser went away"))
+        Err(std::io::Error::other("the user's browser went away"))
     }));
     let pairs = [("path", device.path("notes.md")), ("replace", "true".to_owned())];
     let pairs: Vec<(&str, &str)> = pairs.iter().map(|(name, value)| (*name, value.as_str())).collect();

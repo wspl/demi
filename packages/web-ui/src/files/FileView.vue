@@ -24,8 +24,8 @@ import { FileBrowserError, type FileBrowserSource } from './types'
  * One file of a workspace, read through its source: the path as crumbs from
  * the workspace root, the file itself, and beside it the workspace tree with
  * the file selected. Text opens read-only in the code editor. An image, a
- * video, an audio file or a PDF shows in the browser's own viewer, Markdown
- * renders as a document, and a file the page cannot show is a card
+ * video, an audio file or a PDF shows in the web browser's own viewer,
+ * Markdown renders as a document, and a file the page cannot show is a card
  * (`file-previews.md`). Markdown and SVG offer Preview and Source, and every
  * file can be downloaded.
  *

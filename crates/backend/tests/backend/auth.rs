@@ -138,11 +138,11 @@ async fn post_from(
     answer(request.send().await.unwrap()).await
 }
 
-/// The browser sends the session cookie from every page of the product's
-/// site, an expose's among them, so a page of another site or an expose may
-/// neither set the instance up, nor sign the browser in, nor act with its
-/// session. The product's page may, and so may a program that sends no
-/// origin, such as curl calling the setup API.
+/// The user's browser sends the session cookie from every page of the
+/// product's site, an expose's among them, so a page of another site or an
+/// expose may neither set the instance up, nor sign the user in, nor act
+/// with the user's session. The product's page may, and so may a program
+/// that sends no origin, such as curl calling the setup API.
 #[tokio::test]
 async fn a_request_that_could_act_comes_from_a_page_of_the_product_or_from_no_page() {
     let harness = Harness::new().with_expose_domain("expose.localhost");
@@ -192,7 +192,7 @@ async fn a_request_that_could_act_comes_from_a_page_of_the_product_or_from_no_pa
     backend.close().await;
 }
 
-/// A browser sends Fetch Metadata with every request `Origin` must come
+/// A web browser sends Fetch Metadata with every request `Origin` must come
 /// with, so a request with `Sec-Fetch-Site` and without `Origin` lost its
 /// `Origin` at a proxy in front of the backend, which turns the check off.
 /// The request passes, as any request without `Origin` does, and the

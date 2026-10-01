@@ -8,7 +8,7 @@ license.workspace = true
 # Its tests reach the transfers' registration and the answers a download's
 # metadata decides, so they are unit tests and the crate has no integration
 # tests (`crates-and-packages.md` § Module layout); the operations over a
-# shard are tested in `backend-shard`, which implements `HostShard`. No doc
+# shard are tested in `backend-user-shard`, which implements `HostShard`. No doc
 # examples.
 doctest = false
 bench = false

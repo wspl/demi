@@ -202,7 +202,7 @@ export const useProduct = defineStore('product', () => {
       if (!snapshot.value) {
         load.value = 'failed'
       }
-      // The browser does not say why an upgrade failed: an ended session
+      // The web browser does not say why an upgrade failed: an ended session
       // answers this with 401, which ends it on the page as any 401 does.
       if (!opened && controller) {
         void apiRequest('/auth/me', { signal: controller.signal }).catch(() => {})

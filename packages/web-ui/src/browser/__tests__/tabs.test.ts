@@ -41,7 +41,7 @@ function harness(api: Partial<BrowserTabsApi>, options: BrowserTabsOptions = {})
 }
 
 /**
- * The browser's `VideoDecoder`, answering by codec, until the returned
+ * The web browser's `VideoDecoder`, answering by codec, until the returned
  * function puts back its absence: bun has no WebCodecs.
  */
 function stubDecoder(decodes: (codec: string) => boolean): () => void {
@@ -208,15 +208,15 @@ test('a page shown again reads the tab list and adds the tabs the agent opened w
   controller.dispose()
 })
 
-test('a browser that cannot decode the pictures opens no view, and one that can opens one', async () => {
+test('a web browser that cannot decode the pictures opens no view, and one that can opens one', async () => {
   // A Chromium built without proprietary codecs has WebCodecs, and VP8 and VP9, but no H.264.
   // The page asks for the codec the Host's extension encodes, the live protocol's.
-  const browsers: Array<[string, ((codec: string) => boolean) | null, PictureSupport, number]> = [
+  const webBrowsers: Array<[string, ((codec: string) => boolean) | null, PictureSupport, number]> = [
     ['no WebCodecs', null, 'unsupported', 0],
     ['WebCodecs without H.264', (codec) => codec.startsWith('vp'), 'unsupported', 0],
     ['WebCodecs with H.264', (codec) => codec === LIVE_VIDEO_CODEC, 'supported', 1],
   ]
-  for (const [browser, decodes, support, viewCount] of browsers) {
+  for (const [webBrowser, decodes, support, viewCount] of webBrowsers) {
     const restore = decodes ? stubDecoder(decodes) : () => {}
     try {
       let views = 0
@@ -228,7 +228,7 @@ test('a browser that cannot decode the pictures opens no view, and one that can 
       })
       controller.show(AGENT_TAB.id)
       await until(controller.pictures).not.toBe('checking')
-      expect({ browser, support: controller.pictures.value, views }).toEqual({ browser, support, views: viewCount })
+      expect({ webBrowser, support: controller.pictures.value, views }).toEqual({ webBrowser, support, views: viewCount })
       controller.dispose()
     } finally {
       restore()

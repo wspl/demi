@@ -194,7 +194,7 @@ async fn a_title_follows_the_first_message_and_a_rename_or_an_archive_while_one_
     let (_harness, backend, master, provider) = titling(&script).await;
     create(&backend, &master, FIRST).await;
     choose(&backend, &master, FIRST, &provider, "m").await;
-    // The browser's record creation repeats the placeholder, which settles
+    // The web app's record creation repeats the placeholder, which settles
     // nothing.
     let repeated = backend
         .patch(&format!("/api/conversations/{FIRST}"), &master, json!({ "title": "New conversation" }))

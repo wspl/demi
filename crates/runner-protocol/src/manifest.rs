@@ -1,5 +1,5 @@
 //! The command manifest the backend sends a runner: every root command's
-//! declaration tree, the native packages its commands bind to, and the hash
+//! declaration tree, the command packages its commands bind to, and the hash
 //! that identifies the whole (`commands.md` § Manifests).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -52,7 +52,7 @@ impl Manifest {
             let digest = descriptor.digest()?;
             if digests.insert(descriptor.id.clone(), digest.clone()).is_some() {
                 return Err(ManifestError::Invalid(format!(
-                    "duplicate native package: {}",
+                    "duplicate command package: {}",
                     descriptor.id
                 )));
             }
@@ -63,13 +63,13 @@ impl Manifest {
             let tree = root.pin(&mut |operation| {
                 let digest = digests.get(&operation.package).ok_or_else(|| {
                     ManifestError::Invalid(format!(
-                        "native package is not configured: {}",
+                        "command package is not configured: {}",
                         operation.package
                     ))
                 })?;
                 if !filed[digest].operations.contains(&operation.operation) {
                     return Err(ManifestError::Invalid(format!(
-                        "native package {} has no operation {}",
+                        "command package {} has no operation {}",
                         operation.package, operation.operation
                     )));
                 }
@@ -99,7 +99,7 @@ impl Manifest {
         for (digest, descriptor) in &manifest.packages {
             if !ids.insert(&descriptor.id) || descriptor.digest()? != *digest {
                 return Err(ManifestError::Invalid(format!(
-                    "duplicate or corrupt native package: {}",
+                    "duplicate or corrupt command package: {}",
                     descriptor.id
                 )));
             }

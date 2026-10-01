@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 /// The operations of the runner's native fixture service
 /// (`crates/runner/tests/fixtures/service.rs`), which the runner's and
-/// host-remote's tests name in its descriptors.
+/// backend-remote-host's tests name in its descriptors.
 pub const FIXTURE_OPERATIONS: [&str; 12] = [
     "where", "echo", "first", "spin", "result", "retain", "stall_release", "held", "crash", "stalled",
     "proceed", "number",

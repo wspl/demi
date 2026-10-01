@@ -1,4 +1,4 @@
-//! The `demi.browser` package (`crates-and-packages.md` § demi-browser): the
+//! The `demi.browser` package (`crates-and-packages.md` § command-package-browser): the
 //! conversations' browsers, as a resident command service composed of the
 //! browser libraries.
 

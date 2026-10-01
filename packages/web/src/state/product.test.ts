@@ -196,7 +196,7 @@ test('a first connection that fails shows the failure, asks whether the session 
     const refused = channels.last()
     refused.end(1006)
     expect(product.load).toBe('failed')
-    // The browser does not say why the upgrade failed; the session's read
+    // The web browser does not say why the upgrade failed; the session's read
     // does, and its 401 ends the session.
     await waitFor(() => ended.length > 0, () => `session reads: ${sessionReads}`)
     expect(sessionReads).toBe(1)

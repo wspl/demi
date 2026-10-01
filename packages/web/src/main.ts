@@ -118,7 +118,7 @@ const stopLocale = watch(
 const reportLocale = () => void preferences.reportLocale()
 window.addEventListener('languagechange', reportLocale)
 const saveDrafts = () => {
-  // The backend's saves go first: the browser sends them after the page is gone.
+  // The backend's saves go first: the web browser sends them after the page is gone.
   conversations.flushDrafts(true)
   conversations.keepLastWords()
   conversations.saveDrafts()

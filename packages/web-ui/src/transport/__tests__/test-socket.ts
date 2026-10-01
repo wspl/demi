@@ -54,7 +54,7 @@ export function playSockets(): { last(): TestSocket; restore(): void } {
   const realSocket = globalThis.WebSocket
   opened.length = 0
   // The page opens its socket with `new WebSocket(url)`, which the test
-  // socket answers in the browser socket's place.
+  // socket answers in place of the web browser's socket.
   Reflect.set(globalThis, 'WebSocket', TestSocket)
   return {
     last(): TestSocket {

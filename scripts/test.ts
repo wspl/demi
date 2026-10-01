@@ -1,6 +1,6 @@
 // Runs `bun test` with the arguments given, in a temporary directory of its
 // own that goes once the tests end: whatever a test leaves there, such as a
-// runner's state with its copies of native packages, a run leaves nothing.
+// runner's state with its copies of command packages, a run leaves nothing.
 //
 // The tests also run as a process group of their own, which ends with them.
 // A program a test started and never stopped, such as the runner of a test

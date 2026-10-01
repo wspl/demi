@@ -6,7 +6,7 @@
       "set": {
         "/unknown": 1
       },
-      "browserRefuses": false
+      "webAppRefuses": false
     },
     {
       "why": "a hidden flag",
@@ -14,7 +14,7 @@
       "set": {
         "/hidden": true
       },
-      "browserRefuses": false
+      "webAppRefuses": false
     },
     {
       "why": "a resolved content field",
@@ -22,7 +22,7 @@
       "set": {
         "/resolvedContent": []
       },
-      "browserRefuses": false
+      "webAppRefuses": false
     },
     {
       "why": "a nullable field that is absent",
@@ -30,7 +30,7 @@
       "remove": [
         "/preamble"
       ],
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "an optional field that is null",
@@ -38,7 +38,7 @@
       "set": {
         "/content/6/snippet": null
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a block kind the transcript does not have",
@@ -46,7 +46,7 @@
       "set": {
         "/type": "extension_state_snapshot"
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "an empty id",
@@ -54,7 +54,7 @@
       "set": {
         "/id": ""
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a time that is not RFC 3339",
@@ -62,7 +62,7 @@
       "set": {
         "/createdAt": "yesterday"
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a time finer than a millisecond",
@@ -70,7 +70,7 @@
       "set": {
         "/createdAt": "2026-09-21T14:13:20.000123Z"
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "client content in a stored block",
@@ -82,7 +82,7 @@
           "fileName": "a.txt"
         }
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "an untagged media source",
@@ -93,7 +93,7 @@
           "mediaType": "image/png"
         }
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a medium that holds its bytes",
@@ -105,7 +105,7 @@
           "mediaType": "image/png"
         }
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a blob reference that is not a SHA-256",
@@ -113,7 +113,7 @@
       "set": {
         "/content/1/source/ref": "sha-1-2-3"
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a blob reference that is not a string",
@@ -121,7 +121,7 @@
       "set": {
         "/content/1/source/ref": 42
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a document source without its tag",
@@ -133,7 +133,7 @@
           "fileName": "spec.pdf"
         }
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "an attachment without a name",
@@ -141,7 +141,7 @@
       "set": {
         "/content/6/name": ""
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "an attachment hash that is not a SHA-256",
@@ -149,7 +149,7 @@
       "set": {
         "/content/6/sha256": "abc"
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a size beyond JavaScript's safe integers",
@@ -157,7 +157,7 @@
       "set": {
         "/content/6/sizeBytes": 9007199254740992
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "an output limit of zero",
@@ -165,7 +165,7 @@
       "set": {
         "/model/model/outputLimit": 0
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "an output limit that is not whole",
@@ -173,7 +173,7 @@
       "set": {
         "/model/model/outputLimit": 1.5
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "an extension outside the native set",
@@ -181,7 +181,7 @@
       "set": {
         "/model/model/acceptedExtensions/0": "txt"
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a selection without its service tier",
@@ -189,7 +189,7 @@
       "remove": [
         "/model/serviceTierId"
       ],
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a field on a capability that has none",
@@ -197,7 +197,7 @@
       "set": {
         "/model/model/thinking/3/extra": 1
       },
-      "browserRefuses": false
+      "webAppRefuses": false
     },
     {
       "why": "an effort setting without its summary",
@@ -208,7 +208,7 @@
           "effort": "high"
         }
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a receipt whose block is not its message's",
@@ -216,7 +216,7 @@
       "set": {
         "/id": "m2"
       },
-      "browserRefuses": false
+      "webAppRefuses": false
     },
     {
       "why": "an explicit agent message that is blank",
@@ -224,7 +224,7 @@
       "set": {
         "/message/content": " ﻿\n"
       },
-      "browserRefuses": false
+      "webAppRefuses": false
     },
     {
       "why": "a round that is negative",
@@ -232,7 +232,7 @@
       "set": {
         "/message/sender/round": -1
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a round that is zero",
@@ -240,7 +240,7 @@
       "set": {
         "/message/sender/round": 0
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a sender's number that is negative",
@@ -248,7 +248,7 @@
       "set": {
         "/message/sender/number": -1
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a completion whose id names another round",
@@ -257,7 +257,7 @@
         "/id": "subagent:child-1:2",
         "/message/id": "subagent:child-1:2"
       },
-      "browserRefuses": false
+      "webAppRefuses": false
     },
     {
       "why": "a forkable flag that is null",
@@ -265,7 +265,7 @@
       "set": {
         "/forkable": null
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a streaming output field",
@@ -273,7 +273,7 @@
       "set": {
         "/streamingOutput": []
       },
-      "browserRefuses": false
+      "webAppRefuses": false
     },
     {
       "why": "a tool call status the transcript does not have",
@@ -281,7 +281,7 @@
       "set": {
         "/status": "running"
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a view kind no tool has",
@@ -289,7 +289,7 @@
       "set": {
         "/view/kind": "tool_error"
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "an exit code that is null",
@@ -297,7 +297,7 @@
       "set": {
         "/view/exitCode": null
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "an edited file without segments",
@@ -305,7 +305,7 @@
       "set": {
         "/view/files/0/edits": []
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "an unknown view field",
@@ -313,7 +313,7 @@
       "set": {
         "/view/unknown": 1
       },
-      "browserRefuses": false
+      "webAppRefuses": false
     },
     {
       "why": "a negative repeat count",
@@ -321,7 +321,7 @@
       "set": {
         "/view/count": -1
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "diagnostics that are null",
@@ -329,7 +329,7 @@
       "set": {
         "/diagnostics": null
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a failure source outside the set",
@@ -337,7 +337,7 @@
       "set": {
         "/diagnostics/source": "vendor"
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "an error without its code",
@@ -345,7 +345,7 @@
       "remove": [
         "/code"
       ],
-      "browserRefuses": true
+      "webAppRefuses": true
     },
     {
       "why": "a marker without its boundary",
@@ -353,7 +353,7 @@
       "set": {
         "/boundaryId": ""
       },
-      "browserRefuses": true
+      "webAppRefuses": true
     }
   ]
 }

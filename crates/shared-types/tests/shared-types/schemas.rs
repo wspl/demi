@@ -1,4 +1,4 @@
-//! The JSON Schemas the browser's validators are generated from say what
+//! The JSON Schemas the web app's validators are generated from say what
 //! serde does: an optional field may be absent but never null, a nullable
 //! field is always present and may be null, a type the backend receives
 //! refuses unknown fields, and bounds come from the garde attributes.
@@ -82,7 +82,7 @@ fn optional_fields_may_be_absent_and_nullable_fields_may_be_null() {
 }
 
 #[test]
-fn received_types_are_strict_and_types_only_the_browser_receives_are_tolerant() {
+fn received_types_are_strict_and_types_only_the_web_app_receives_are_tolerant() {
     let [root, _] = schemas::<Block>();
     for kind in ["user", "tool_call", "abort"] {
         assert_eq!(variant(&root, "type", kind)["additionalProperties"], false, "{kind}");

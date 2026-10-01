@@ -3,7 +3,7 @@
 //! the tree store over it, its `blob_refs` index and its records of commands'
 //! outputs, the schemas and their migrations, and the encodings of stored
 //! values; and the record types it stores, which the domains above use. The
-//! object store is `backend-objects`'.
+//! object store is `backend-blobs`'.
 
 pub mod accounts;
 pub mod attachments;

@@ -1,4 +1,4 @@
-//! Test support (`crates-and-packages.md` § command-service): a command
+//! Test support (`crates-and-packages.md` § command-sdk): a command
 //! service's binary started and driven with a client, a numbers source that
 //! counts, and the count of the process's pauses before trying an operation
 //! again.

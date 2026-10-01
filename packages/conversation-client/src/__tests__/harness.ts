@@ -1,7 +1,7 @@
 import type { Block, ClientFrame, ModelSelection, PendingSteer, ServerFrame } from '@demicodes/protocol'
-import { AgentClient } from '../client'
+import { ConversationClient } from '../client'
 import type { ClientSessionEvent } from '../events'
-import type { AgentClientTransport } from '../transport'
+import type { ConversationClientTransport } from '../transport'
 
 export const model: ModelSelection = {
   providerId: 'stub',
@@ -40,7 +40,7 @@ export function harness() {
   let end: (error: Error) => void = () => {}
   let closes = 0
   let refusal: Error | null = null
-  const transport: AgentClientTransport = {
+  const transport: ConversationClientTransport = {
     send: (frame) => {
       if (refusal) {
         throw refusal
@@ -63,7 +63,7 @@ export function harness() {
       closes += 1
     },
   }
-  const client = new AgentClient(transport)
+  const client = new ConversationClient(transport)
   client.subscribe((event) => events.push(event))
   return {
     client,

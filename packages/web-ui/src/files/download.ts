@@ -1,7 +1,7 @@
 /**
- * Starts the browser's download of `url`, which the server answers as an
- * attachment (`file-previews.md` § What the user sees): the page stays where
- * it is.
+ * Starts the web browser's download of `url`, which the server answers as
+ * an attachment (`file-previews.md` § What the user sees): the page stays
+ * where it is.
  */
 export function downloadUrl(url: string): void {
   const link = document.createElement('a')

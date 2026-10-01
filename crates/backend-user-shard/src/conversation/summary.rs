@@ -1,4 +1,4 @@
-//! Conversations as the browser lists them (`web-api.md` § Sidebar
+//! Conversations as the web app lists them (`web-api.md` § Sidebar
 //! mutations, read state and page synchronization): each record with the
 //! directory its work runs in, its status from the live tree or else from its
 //! last checkpoint, and its output revision. The persisted facts come from a
@@ -25,7 +25,7 @@ impl Shard {
         try_join_all(records.into_iter().map(|record| self.conversation_summary(record))).await
     }
 
-    /// `record` as the browser lists it. The live tree is asked before the
+    /// `record` as the web app lists it. The live tree is asked before the
     /// database is read: a tree does nothing by itself only once the save
     /// that ends its action has committed, so the facts read afterwards are
     /// at least that save's, and a status is never an idle tree's view of an

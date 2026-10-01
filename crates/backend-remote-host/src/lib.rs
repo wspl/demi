@@ -1,4 +1,4 @@
-//! The backend's end of a runner (`crates-and-packages.md` § host-remote):
+//! The backend's end of a runner (`crates-and-packages.md` § backend-remote-host):
 //!
 //! - the connection engine ([`Link`], served by its [`LinkDriver`]): replies
 //!   routed by id, liveness, and the plumbing of the rpc calls a job's

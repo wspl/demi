@@ -43,8 +43,8 @@ impl CommandCaller {
 }
 
 /// An IANA time zone and BCP 47 language tags in preference order. The
-/// browser reports it as a user preference (web-api), so its schema is part
-/// of the browser's contract too.
+/// web app reports it as a user preference (web-api), so its schema is part
+/// of the web app's contract too.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CommandLocale {

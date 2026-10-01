@@ -349,7 +349,7 @@ fn a_built_manifest_pins_its_native_commands_and_hashes_as_the_recorded_one() {
     assert!(refusal(vec![native("demicodes.fixture", "file.gone")], packages()).contains("no operation"));
     assert!(refusal(vec![rpc(), rpc()], vec![]).contains("duplicate root"));
     let twice = packages().into_iter().chain(packages()).collect();
-    assert!(refusal(vec![], twice).contains("duplicate native package"));
+    assert!(refusal(vec![], twice).contains("duplicate command package"));
     let contradictory = declaration(json!({"name": "note", "summary": "Note", "kind": "rpc",
         "input": {"type": "object", "properties": {"text": {"type": "string"}}},
         "positionals": ["text"], "stdinField": "text"}));

@@ -14,7 +14,7 @@
 //! `blob_refs` index in the same transaction ([`blob_refs`](super::blob_refs)),
 //! and the commit records the uses of the blobs it names before it commits.
 //!
-//! The same readings serve what the browser reads without a live session: a
+//! The same readings serve what the web app reads without a live session: a
 //! conversation's summary facts and its history, on a read-only connection,
 //! which keep the media references.
 
