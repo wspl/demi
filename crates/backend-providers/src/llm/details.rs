@@ -7,11 +7,12 @@
 
 use std::sync::Arc;
 
-use demi_shared_types::{AuthState, RuntimeState};
 use demi_provider_common::Provider;
 use demi_provider_common::quota::ProbeCost;
+use demi_shared_types::{AuthState, RuntimeState};
 use demi_web_api_protocol::providers::{
-    AccountDto, Availability, ProbeCost as ProbeCostDto, ProviderDetails, QuotaCapability, UnavailableReason,
+    AccountDto, Availability, ProbeCost as ProbeCostDto, ProviderDetails, QuotaCapability,
+    UnavailableReason,
 };
 
 use super::assembly::{AssemblyError, ProviderAssembly};
@@ -35,8 +36,8 @@ impl ProviderAssembly {
                 return (auth, RuntimeState::Unknown { message: None });
             }
         };
-        let missing_account =
-            matches!(entry.credential, EntryCredential::Subscription { .. }) && entry.active().is_none();
+        let missing_account = matches!(entry.credential, EntryCredential::Subscription { .. })
+            && entry.active().is_none();
         let auth = if missing_account {
             AuthState::Unauthenticated {
                 message: Some("No subscription account configured".into()),
@@ -71,7 +72,9 @@ impl ProviderAssembly {
         let active = entry.active().cloned();
         let quota = accounts
             .iter()
-            .find(|account| Some(account.account.id.as_str()) == active.as_ref().map(|active| active.as_str()))
+            .find(|account| {
+                Some(account.account.id.as_str()) == active.as_ref().map(|active| active.as_str())
+            })
             .and_then(|account| account.quota.clone());
         let quota_capability = match provider.quota() {
             None => QuotaCapability::None {},
@@ -91,7 +94,11 @@ impl ProviderAssembly {
             quota_capability,
             requires_process_capable_host: provider.capabilities().process_host,
         };
-        Ok(if disclose { details } else { for_inference_only(details) })
+        Ok(if disclose {
+            details
+        } else {
+            for_inference_only(details)
+        })
     }
 }
 
@@ -99,7 +106,9 @@ impl ProviderAssembly {
 /// quota, and no account label.
 fn for_inference_only(details: ProviderDetails) -> ProviderDetails {
     let auth = match details.auth {
-        AuthState::Authenticated { .. } => AuthState::Authenticated { account_label: None },
+        AuthState::Authenticated { .. } => AuthState::Authenticated {
+            account_label: None,
+        },
         other => other,
     };
     ProviderDetails {
@@ -115,17 +124,22 @@ fn for_inference_only(details: ProviderDetails) -> ProviderDetails {
 /// that is missing or refused, or a provider that cannot run, makes them
 /// unavailable.
 pub fn availability(auth: &AuthState, runtime: &RuntimeState) -> Availability {
-    if matches!(auth, AuthState::Unauthenticated { .. } | AuthState::Error { .. }) {
+    if matches!(
+        auth,
+        AuthState::Unauthenticated { .. } | AuthState::Error { .. }
+    ) {
         return Availability::Unavailable {
             reason: UnavailableReason::Authentication,
             message: "Provider login is unavailable".into(),
         };
     }
     match runtime {
-        RuntimeState::Unavailable { message } | RuntimeState::Error { message } => Availability::Unavailable {
-            reason: UnavailableReason::Runtime,
-            message: message.clone(),
-        },
+        RuntimeState::Unavailable { message } | RuntimeState::Error { message } => {
+            Availability::Unavailable {
+                reason: UnavailableReason::Runtime,
+                message: message.clone(),
+            }
+        }
         RuntimeState::Unknown { .. } | RuntimeState::Ready { .. } => Availability::Available {},
     }
 }

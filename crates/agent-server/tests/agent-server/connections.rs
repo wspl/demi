@@ -11,20 +11,22 @@ use demi_agent_server::{
     Outgoing, ServerConfig,
     testing::{TestFiles, client_text},
 };
-use demi_conversation_socket_protocol::{ClientFrame, ClientFrameKind, EditOutcome, ServerFrame, SteerOutcome};
 use demi_agent_store::testing::{MemoryTreeStore, model_of};
-use demi_shared_types::{Block, BlockId, CommandId, NodeId, SessionPhase};
+use demi_conversation_socket_protocol::{
+    ClientFrame, ClientFrameKind, EditOutcome, ServerFrame, SteerOutcome,
+};
 use demi_provider_common::{
     ProviderEvent,
     testing::{ScriptedRuntime, Turn, event},
 };
+use demi_shared_types::{Block, BlockId, CommandId, NodeId, SessionPhase};
 use futures_util::{StreamExt as _, stream};
 
 use crate::{
     editing::{edit, edit_outcome, said, user_block},
     support::{
-        Fixture, Gate, conversation, frame_type, held, is_idle, is_pending_steers,
-        kinds, open, send, session_of, turn, until,
+        Fixture, Gate, conversation, frame_type, held, is_idle, is_pending_steers, kinds, open,
+        send, session_of, turn, until,
     },
 };
 
@@ -101,12 +103,9 @@ async fn two_opens_of_one_conversation_at_once_build_one_tree() {
 /// The queue's messages by id.
 fn queued(frame: &ServerFrame) -> Option<Vec<String>> {
     match frame {
-        ServerFrame::Queue { queue } => Some(
-            queue
-                .iter()
-                .map(|message| message.id.to_string())
-                .collect(),
-        ),
+        ServerFrame::Queue { queue } => {
+            Some(queue.iter().map(|message| message.id.to_string()).collect())
+        }
         _ => None,
     }
 }
@@ -204,7 +203,10 @@ async fn a_connection_that_falls_behind_is_closed_alone_and_the_other_receives_t
         .iter()
         .filter(|frame| matches!(frame, ServerFrame::TranscriptPatch { .. }))
         .count();
-    assert!(patches > 16, "the turn outgrew one outbox: {patches} patches");
+    assert!(
+        patches > 16,
+        "the turn outgrew one outbox: {patches} patches"
+    );
     let mut held = 0;
     let end = loop {
         match stalled.outgoing().await {

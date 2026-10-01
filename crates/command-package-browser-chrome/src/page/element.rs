@@ -278,9 +278,7 @@ pub(crate) async fn prepared_state(
     }
     if scroll && !frames.is_empty() && conditions.contains(&"geometry") {
         // DOM animation frames do not flush the browser process's OOPIF transform.
-        operation
-            .run(crate::tabs::viewport::paint(page))
-            .await?;
+        operation.run(crate::tabs::viewport::paint(page)).await?;
     }
     for frame in frames.iter().rev() {
         let mut frame_conditions = vec!["geometry"];

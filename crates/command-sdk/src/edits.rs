@@ -400,10 +400,12 @@ fn publish_file(path: &Path, bytes: &[u8]) -> io::Result<()> {
         durable: false,
     };
     crate::descriptors::retry_blocking(|| {
-        demi_shared_artifacts::publish_bytes_blocking(path, bytes, publication).map_err(|error| match error {
-            demi_shared_artifacts::Error::Io(error) => error,
-            // A publication of bytes fails only in its file operations.
-            other => io::Error::other(other),
+        demi_shared_artifacts::publish_bytes_blocking(path, bytes, publication).map_err(|error| {
+            match error {
+                demi_shared_artifacts::Error::Io(error) => error,
+                // A publication of bytes fails only in its file operations.
+                other => io::Error::other(other),
+            }
         })
     })
 }

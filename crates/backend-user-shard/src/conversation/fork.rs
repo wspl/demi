@@ -22,9 +22,9 @@ use demi_shared_types::BlockId;
 use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_web_api_protocol::ids::ConversationId;
 
+use crate::shard::Shard;
 use demi_backend_host_access::blobs::ConversationBlobs;
 use demi_backend_host_access::root_of;
-use crate::shard::Shard;
 
 /// A Fork's destination, and whether this request created it.
 pub struct Forked {
@@ -64,7 +64,10 @@ impl Shard {
         block: BlockId,
     ) -> Result<Forked, ForkRefusal> {
         // Ids compare without case, so one destination takes one turn.
-        let _turn = self.forks().acquire(destination.as_str().to_ascii_lowercase()).await;
+        let _turn = self
+            .forks()
+            .acquire(destination.as_str().to_ascii_lowercase())
+            .await;
         let services = self.services();
         let control = &services.control;
         let source = control
@@ -91,11 +94,17 @@ impl Shard {
         if reserved.is_some() {
             // A retry of an attempt whose root committed before it was
             // published publishes it; one that did not commit starts again.
-            let committed = services.conversations.read(&destination, tree::has_root).await?;
+            let committed = services
+                .conversations
+                .read(&destination, tree::has_root)
+                .await?;
             if committed == Some(true) {
                 let record = control.publish_fork(destination).await?;
                 self.published(&record);
-                return Ok(Forked { record, created: false });
+                return Ok(Forked {
+                    record,
+                    created: false,
+                });
             }
         }
         let mut seed = self
@@ -109,7 +118,13 @@ impl Shard {
                 // A Cloud target keeps the source's resolved directory.
                 let target = match &source.target {
                     ConversationTarget::Cloud { path: None } => ConversationTarget::Cloud {
-                        path: Some(self.host_shard().resolve_target(&source).await?.path().to_owned()),
+                        path: Some(
+                            self.host_shard()
+                                .resolve_target(&source)
+                                .await?
+                                .path()
+                                .to_owned(),
+                        ),
                     },
                     target => target.clone(),
                 };
@@ -141,7 +156,9 @@ impl Shard {
         let commands = command_outputs::commands_of(&seed.transcript);
         let rows = services
             .conversations
-            .read(&source.id, move |connection| command_outputs::rows(connection, &commands))
+            .read(&source.id, move |connection| {
+                command_outputs::rows(connection, &commands)
+            })
             .await?
             .unwrap_or_default();
         if !rows.is_empty() {
@@ -177,7 +194,10 @@ impl Shard {
             .map_err(refused)?;
         let record = control.publish_fork(destination).await?;
         self.published(&record);
-        Ok(Forked { record, created: true })
+        Ok(Forked {
+            record,
+            created: true,
+        })
     }
 
     /// Shows a Fork's destination, just published, on the user's pages.
@@ -224,13 +244,13 @@ mod tests {
     use demi_shared_types::{SessionPhase, Timestamp};
 
     use super::*;
-    use demi_runner_protocol::wire::RunnerPlatform;
-    use demi_backend_database::accounts::TokenHash;
     use demi_backend_blobs::blobs::{BlobStores, UserBlobs};
+    use demi_backend_blobs::store as objects;
+    use demi_backend_database::accounts::TokenHash;
     use demi_backend_database::control::testing;
     use demi_backend_database::conversation_index::{AttachedHostRecord, RecordChange};
-    use demi_backend_blobs::store as objects;
     use demi_backend_database::tree::SqliteTreeStore;
+    use demi_runner_protocol::wire::RunnerPlatform;
 
     fn conversation(id: &str) -> ConversationId {
         ConversationId::try_from(id).unwrap()
@@ -238,7 +258,12 @@ mod tests {
 
     /// A destination root as a Fork's initialization commits it, with no
     /// history, so no media.
-    async fn commit_root(stores: &ConversationStores, blobs: &UserBlobs, id: &ConversationId, at: Timestamp) {
+    async fn commit_root(
+        stores: &ConversationStores,
+        blobs: &UserBlobs,
+        id: &ConversationId,
+        at: Timestamp,
+    ) {
         let state = CheckpointState {
             phase: SessionPhase::Idle,
             queue: Vec::new(),
@@ -256,28 +281,46 @@ mod tests {
             block_count: 0,
         };
         let blobs = Arc::new(ConversationBlobs(blobs.clone()));
-        SqliteTreeStore::new(stores.db(id), blobs, std::rc::Rc::new(|_: &demi_shared_types::NodeId| {}))
-            .create_node(NodeRecord::root(root_of(id), at), initial)
-            .await
-            .unwrap();
+        SqliteTreeStore::new(
+            stores.db(id),
+            blobs,
+            std::rc::Rc::new(|_: &demi_shared_types::NodeId| {}),
+        )
+        .create_node(NodeRecord::root(root_of(id), at), initial)
+        .await
+        .unwrap();
     }
 
     #[tokio::test]
     async fn startup_publishes_a_fork_whose_root_committed_and_keeps_an_uncommitted_one_hidden() {
         let data = tempfile::tempdir().unwrap();
-        let control = ControlService::open(&data.path().join("control.sqlite"), Arc::new(demi_shared_types::SystemClock))
-            .await
-            .unwrap();
-        let stores = ConversationStores::open(data.path().join("conversations"), NonZeroUsize::new(4).unwrap())
-            .await
-            .unwrap();
+        let control = ControlService::open(
+            &data.path().join("control.sqlite"),
+            Arc::new(demi_shared_types::SystemClock),
+        )
+        .await
+        .unwrap();
+        let stores = ConversationStores::open(
+            data.path().join("conversations"),
+            NonZeroUsize::new(4).unwrap(),
+        )
+        .await
+        .unwrap();
         let master = testing::master(&control).await.id;
         let source = conversation("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b");
-        control.create_conversation(master.clone(), source.clone()).await.unwrap();
+        control
+            .create_conversation(master.clone(), source.clone())
+            .await
+            .unwrap();
         let mut devices = Vec::new();
         for (name, token) in [("laptop", "one"), ("ci", "two")] {
             let device = control
-                .create_device(master.clone(), name.into(), RunnerPlatform::Linux, TokenHash::of(token))
+                .create_device(
+                    master.clone(),
+                    name.into(),
+                    RunnerPlatform::Linux,
+                    TokenHash::of(token),
+                )
                 .await
                 .unwrap();
             let host = AttachedHostRecord {
@@ -311,11 +354,19 @@ mod tests {
         let committed = conversation("7d1c2e3f-4a5b-4c1e-9d2b-0b6f7f3e8f3a");
         let uncommitted = conversation("5a4b3c2d-1e0f-4a1b-8c2d-3e4f5a6b7c8d");
         for id in [&committed, &uncommitted] {
-            control.reserve_fork(operation(id)).await.unwrap().expect("the id is free");
+            control
+                .reserve_fork(operation(id))
+                .await
+                .unwrap()
+                .expect("the id is free");
         }
         // One root commits, and the backend stops before it publishes the
         // destination; a device is revoked meanwhile.
-        let blobs = BlobStores::new(objects::open(data.path(), None).await.unwrap(), Arc::new(demi_shared_types::SystemClock)).for_user(&master);
+        let blobs = BlobStores::new(
+            objects::open(data.path(), None).await.unwrap(),
+            Arc::new(demi_shared_types::SystemClock),
+        )
+        .for_user(&master);
         commit_root(&stores, &blobs, &committed, created_at).await;
         control.delete_device(devices[1].clone()).await.unwrap();
 
@@ -324,16 +375,36 @@ mod tests {
             recover_forks(&control, &stores).await.unwrap();
         }
 
-        let published = control.conversation(committed.clone()).await.unwrap().expect("published");
+        let published = control
+            .conversation(committed.clone())
+            .await
+            .unwrap()
+            .expect("published");
         assert_eq!(
-            (published.title.as_str(), &published.target, published.pinned, published.archived),
-            ("New conversation (Fork)", &operation(&committed).metadata.target, false, false)
+            (
+                published.title.as_str(),
+                &published.target,
+                published.pinned,
+                published.archived
+            ),
+            (
+                "New conversation (Fork)",
+                &operation(&committed).metadata.target,
+                false,
+                false
+            )
         );
         assert_eq!(published.model, Some(test_model()));
         assert_eq!(published.created_at, created_at);
         // The revoked device is left out; the other keeps its name and cwd.
-        let kept: Vec<AttachedHostRecord> = attached.into_iter().filter(|host| host.device == devices[0]).collect();
-        assert_eq!(control.attached_hosts(committed.clone()).await.unwrap(), kept);
+        let kept: Vec<AttachedHostRecord> = attached
+            .into_iter()
+            .filter(|host| host.device == devices[0])
+            .collect();
+        assert_eq!(
+            control.attached_hosts(committed.clone()).await.unwrap(),
+            kept
+        );
         let listed: Vec<ConversationId> = control
             .conversations(master.clone(), false)
             .await
@@ -341,8 +412,18 @@ mod tests {
             .into_iter()
             .map(|record| record.id)
             .collect();
-        assert_eq!(listed, [committed.clone(), source], "the destination first in the sidebar");
-        assert!(control.conversation(uncommitted.clone()).await.unwrap().is_none());
+        assert_eq!(
+            listed,
+            [committed.clone(), source],
+            "the destination first in the sidebar"
+        );
+        assert!(
+            control
+                .conversation(uncommitted.clone())
+                .await
+                .unwrap()
+                .is_none()
+        );
         let pending: Vec<ConversationId> = control
             .pending_forks()
             .await

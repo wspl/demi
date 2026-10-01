@@ -15,10 +15,12 @@ use std::rc::{Rc, Weak};
 use std::time::Duration;
 
 use demi_backend_database::conversation_index::ExecutionTarget;
-use demi_shared_types::StreamKind;
 use demi_backend_remote_host::{JobEnd, JobStart, Pipe, RemoteJob};
+use demi_host_interface::{
+    Call, GroupBuilder, LeafBuilder, ProcessEnd, RpcError, RpcInvocation, RpcPort, TypedRpc,
+};
 use demi_runner_protocol::wire::Signal;
-use demi_host_interface::{Call, GroupBuilder, LeafBuilder, ProcessEnd, RpcError, RpcInvocation, RpcPort, TypedRpc};
+use demi_shared_types::StreamKind;
 use demi_web_api_protocol::ids::ConversationId;
 use futures_util::future::LocalBoxFuture;
 use schemars::JsonSchema;
@@ -33,8 +35,7 @@ use crate::expose_commands::expose_group;
 /// to terminate, before it kills it.
 const ABORT_GRACE: Duration = Duration::from_secs(5);
 
-const SUMMARY: &str =
-    "The hosts this conversation reaches: list them, show the main one, run a command on another, expose a service.";
+const SUMMARY: &str = "The hosts this conversation reaches: list them, show the main one, run a command on another, expose a service.";
 
 const LIST_SUMMARY: &str = "Hosts this conversation can reach with `demi host shell --host`: name, id, online, the directory shells start in; the main one marked.";
 
@@ -82,7 +83,10 @@ pub fn host_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
 }
 
 /// A handler over the live shard; a call after the shard closed fails.
-pub(crate) fn verb<A, F, Fut>(shard: Weak<dyn HostShard>, run: F) -> impl Fn(Call<A>, RpcPort) -> LocalBoxFuture<'static, Result<u8, RpcError>>
+pub(crate) fn verb<A, F, Fut>(
+    shard: Weak<dyn HostShard>,
+    run: F,
+) -> impl Fn(Call<A>, RpcPort) -> LocalBoxFuture<'static, Result<u8, RpcError>>
 where
     A: 'static,
     F: Fn(Rc<dyn HostShard>, Call<A>, RpcPort) -> Fut + Clone + 'static,
@@ -92,7 +96,8 @@ where
         let shard = shard.upgrade();
         let run = run.clone();
         Box::pin(async move {
-            let shard = shard.ok_or_else(|| RpcError::Failed("the backend is shutting down".into()))?;
+            let shard =
+                shard.ok_or_else(|| RpcError::Failed("the backend is shutting down".into()))?;
             run(shard, call, port).await
         })
     }
@@ -105,7 +110,10 @@ pub fn conversation_of(invocation: &RpcInvocation) -> Result<ConversationId, Rpc
 }
 
 /// The Hosts the calling conversation reaches.
-pub async fn reachable(shard: &dyn HostShard, conversation: &ConversationId) -> Result<Vec<ReachableHost>, RpcError> {
+pub async fn reachable(
+    shard: &dyn HostShard,
+    conversation: &ConversationId,
+) -> Result<Vec<ReachableHost>, RpcError> {
     let record = shard
         .owned_conversation(conversation)
         .await
@@ -122,7 +130,10 @@ pub async fn reachable(shard: &dyn HostShard, conversation: &ConversationId) -> 
 
 /// The Host of `hosts` that `wanted` names: its name, or else its device's
 /// id.
-pub(crate) fn named_host<'a>(hosts: &'a [ReachableHost], wanted: &str) -> Option<&'a ReachableHost> {
+pub(crate) fn named_host<'a>(
+    hosts: &'a [ReachableHost],
+    wanted: &str,
+) -> Option<&'a ReachableHost> {
     hosts
         .iter()
         .find(|host| host.name == wanted)
@@ -147,19 +158,32 @@ async fn list(shard: Rc<dyn HostShard>, call: Call<NoArgs>, port: RpcPort) -> Re
     let lines: Vec<String> = hosts
         .iter()
         .map(|host| {
-            let path = if host.path.is_empty() { "?" } else { &host.path };
+            let path = if host.path.is_empty() {
+                "?"
+            } else {
+                &host.path
+            };
             let role = match host.role {
                 HostRole::Main => "main",
                 HostRole::Attached => "attached",
             };
-            format!("{}  {}  {}  {path}  ({role})", host.name, host.device, online(&*shard, host))
+            format!(
+                "{}  {}  {}  {path}  ({role})",
+                host.name,
+                host.device,
+                online(&*shard, host)
+            )
         })
         .collect();
     port.stdout(format!("{}\n", lines.join("\n"))).await?;
     Ok(0)
 }
 
-async fn current(shard: Rc<dyn HostShard>, call: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn current(
+    shard: Rc<dyn HostShard>,
+    call: Call<NoArgs>,
+    port: RpcPort,
+) -> Result<u8, RpcError> {
     let conversation = conversation_of(&call.invocation)?;
     let control = shard.control();
     let record = shard
@@ -171,8 +195,11 @@ async fn current(shard: Rc<dyn HostShard>, call: Call<NoArgs>, port: RpcPort) ->
         .await
         .map_err(|error| RpcError::Failed(error.to_string()))?;
     let Some(device) = target.device() else {
-        port.stdout(format!("host: Cloud (not allocated), directory {}\n", target.path()))
-            .await?;
+        port.stdout(format!(
+            "host: Cloud (not allocated), directory {}\n",
+            target.path()
+        ))
+        .await?;
         return Ok(0);
     };
     let name = control
@@ -192,7 +219,10 @@ async fn current(shard: Rc<dyn HostShard>, call: Call<NoArgs>, port: RpcPort) ->
                 .await
                 .map_err(|error| RpcError::Failed(error.to_string()))?
                 .map_or_else(|| workspace_id.to_string(), |workspace| workspace.name);
-            format!("host: workspace \"{workspace}\" — {} on device \"{name}\" ({state})\n", target.path())
+            format!(
+                "host: workspace \"{workspace}\" — {} on device \"{name}\" ({state})\n",
+                target.path()
+            )
         }
         ExecutionTarget::Cloud { path, .. } | ExecutionTarget::Device { path, .. } => {
             let path = if path.is_empty() { "home" } else { path };
@@ -203,13 +233,21 @@ async fn current(shard: Rc<dyn HostShard>, call: Call<NoArgs>, port: RpcPort) ->
     Ok(0)
 }
 
-async fn shell(shard: Rc<dyn HostShard>, call: Call<ShellArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn shell(
+    shard: Rc<dyn HostShard>,
+    call: Call<ShellArgs>,
+    port: RpcPort,
+) -> Result<u8, RpcError> {
     let Call {
-        args: ShellArgs { host: wanted, script },
+        args: ShellArgs {
+            host: wanted,
+            script,
+        },
         invocation,
     } = call;
     if script.trim().is_empty() {
-        port.stderr("usage: demi host shell --host <name|id> <script>\n").await?;
+        port.stderr("usage: demi host shell --host <name|id> <script>\n")
+            .await?;
         return Ok(2);
     }
     let conversation = conversation_of(&invocation)?;
@@ -255,14 +293,21 @@ async fn run_on_host(
         .pipe(&relayed.stdout)
         .ok_or("the command's standard output is gone")?;
     let stdin = match &relayed.stdin {
-        Some(id) => Some(shard.pipes().pipe(id).ok_or("the command's standard input is gone")?),
+        Some(id) => Some(
+            shard
+                .pipes()
+                .pipe(id)
+                .ok_or("the command's standard input is gone")?,
+        ),
         None => None,
     };
     let device = target.device.as_str();
     if let Some(stdin) = &stdin {
         stdin.sink_to(device).map_err(|error| error.to_string())?;
     }
-    stdout.source_from(device).map_err(|error| error.to_string())?;
+    stdout
+        .source_from(device)
+        .map_err(|error| error.to_string())?;
     // The admission's waits end with the call.
     let cancel = CancellationToken::new();
     shard.tasks().spawn_local({
@@ -291,7 +336,11 @@ async fn run_on_host(
                 stdin: stdin.as_ref().map(Pipe::wire_ref),
                 stdout: Some(stdout.wire_ref()),
             };
-            let job = host.host.start_job(start).await.map_err(|error| error.message)?;
+            let job = host
+                .host
+                .start_job(start)
+                .await
+                .map_err(|error| error.message)?;
             let ended = CancellationToken::new();
             let ending = async {
                 let end = tokio::select! {
@@ -345,10 +394,15 @@ async fn run_on_host(
     }
     match ran.status {
         ProcessEnd::NotStarted(error) => {
-            let detail = error.detail.map(|detail| format!(" — {detail}")).unwrap_or_default();
+            let detail = error
+                .detail
+                .map(|detail| format!(" — {detail}"))
+                .unwrap_or_default();
             // Bash could not run the script at all: 127, as a shell answers.
             // A caller that went away reads nothing more.
-            let _ = port.stderr(format!("host shell: {}{detail}\n", error.kind)).await;
+            let _ = port
+                .stderr(format!("host shell: {}{detail}\n", error.kind))
+                .await;
             Ok(127)
         }
         _ if port.is_cancelled() => Ok(130),

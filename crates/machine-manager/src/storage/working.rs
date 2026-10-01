@@ -80,7 +80,12 @@ impl WorkingPair {
     /// it; nothing happens without one. Nothing may write the images: each
     /// is checked, an interrupted growth completed, and each synced, then
     /// linked into the generation.
-    pub async fn save(&self, tools: &Tools, store: &ImageStore, device: &DeviceId) -> Result<(), SaveError> {
+    pub async fn save(
+        &self,
+        tools: &Tools,
+        store: &ImageStore,
+        device: &DeviceId,
+    ) -> Result<(), SaveError> {
         let pair = self.clone();
         let Some(state) = blocking::run(move |off| pair.manifest(off)).await? else {
             return Ok(());
@@ -101,7 +106,10 @@ impl WorkingPair {
             store.publish(off, &device, &saved, images.as_deref())?;
             fault::point("working-published");
             remove_tree(off, pair.directory())?;
-            let parent = pair.directory().parent().expect("a working pair lies in the working directory");
+            let parent = pair
+                .directory()
+                .parent()
+                .expect("a working pair lies in the working directory");
             sync(off, parent)?;
             Ok(())
         })

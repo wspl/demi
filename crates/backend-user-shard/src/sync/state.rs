@@ -31,10 +31,16 @@ impl Shard {
             mode: services.mode,
             preferences,
             providers,
-            workspaces: workspaces.into_iter().map(|workspace| workspace.dto()).collect(),
+            workspaces: workspaces
+                .into_iter()
+                .map(|workspace| workspace.dto())
+                .collect(),
             devices,
             exposes,
-            expose_domain: services.expose_domain.as_ref().map(|domain| domain.as_str().to_owned()),
+            expose_domain: services
+                .expose_domain
+                .as_ref()
+                .map(|domain| domain.as_str().to_owned()),
             public_url: services
                 .public_url
                 .get()
@@ -48,7 +54,11 @@ impl Shard {
 
     /// The part as the message that carries it, read now for `user`, this
     /// shard's user; `None` for a conversation the user no longer has.
-    pub(crate) async fn read_part(&self, part: &Part, user: &UserDto) -> Result<Option<SyncEvent>, StorageError> {
+    pub(crate) async fn read_part(
+        &self,
+        part: &Part,
+        user: &UserDto,
+    ) -> Result<Option<SyncEvent>, StorageError> {
         let control = &self.services().control;
         let event = match part {
             Part::Conversation(id) => {

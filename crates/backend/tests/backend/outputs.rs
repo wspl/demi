@@ -29,9 +29,15 @@ async fn a_long_outputs_result_names_what_it_leaves_out_and_demi_shell_output_pr
 
     // 30,000 lines, 168,894 bytes: beyond the 32 KiB of each stream the
     // backend receives while the command runs.
-    let counted = work.turn(vec![shell("t1", "seq 1 30000", 30_000), say("counted")]).await;
+    let counted = work
+        .turn(vec![shell("t1", "seq 1 30000", 30_000), say("counted")])
+        .await;
     let result = &counted.received[0];
-    assert!(result.chars().count() <= 16_000, "{} characters", result.chars().count());
+    assert!(
+        result.chars().count() <= 16_000,
+        "{} characters",
+        result.chars().count()
+    );
     let command = field(result, "commandId").to_owned();
     let output = shown_output(result);
     let lines: Vec<&str> = output.lines().collect();
@@ -42,7 +48,9 @@ async fn a_long_outputs_result_names_what_it_leaves_out_and_demi_shell_output_pr
         .expect("the line between the start and the end");
     let first = lines[between - 1].parse::<u64>().unwrap() + 1;
     let last = lines[between + 1].parse::<u64>().unwrap() - 1;
-    let bytes: usize = (first..=last).map(|number| number.to_string().len() + 1).sum();
+    let bytes: usize = (first..=last)
+        .map(|number| number.to_string().len() + 1)
+        .sum();
     let read = format!("demi shell output {command} --lines {first}-{last}");
     assert_eq!(
         lines[between],
@@ -52,7 +60,11 @@ async fn a_long_outputs_result_names_what_it_leaves_out_and_demi_shell_output_pr
     let jobs = device.runner.state_dir().join("jobs");
     eventually("the device keeps no job directory", || {
         let held = std::fs::read_dir(&jobs)
-            .map(|entries| entries.filter_map(Result::ok).any(|entry| entry.path().is_dir()))
+            .map(|entries| {
+                entries
+                    .filter_map(Result::ok)
+                    .any(|entry| entry.path().is_dir())
+            })
             .unwrap_or(false);
         async move { !held }
     })
@@ -60,23 +72,48 @@ async fn a_long_outputs_result_names_what_it_leaves_out_and_demi_shell_output_pr
 
     // The command the line names prints those lines, a page at a time,
     // numbered as `cat -n` numbers them.
-    let paged = work.turn(vec![shell("t2", &read, 30_000), say("read")]).await;
+    let paged = work
+        .turn(vec![shell("t2", &read, 30_000), say("read")])
+        .await;
     let page = shown_output(&paged.received[0]);
     let page: Vec<&str> = page.lines().collect();
-    assert!(page[0].starts_with(&format!("[command {command}: lines {first}-")), "{}", page[0]);
-    assert!(page[0].ends_with(" of 30000, stdout and stderr]"), "{}", page[0]);
+    assert!(
+        page[0].starts_with(&format!("[command {command}: lines {first}-")),
+        "{}",
+        page[0]
+    );
+    assert!(
+        page[0].ends_with(" of 30000, stdout and stderr]"),
+        "{}",
+        page[0]
+    );
     assert_eq!(page[1], format!("{first:>6}\t{first}"));
-    let shown: u64 = page[page.len() - 2].split('\t').nth(1).unwrap().parse().unwrap();
-    let next = format!("[next: demi shell output {command} --lines {}-{last}]", shown + 1);
+    let shown: u64 = page[page.len() - 2]
+        .split('\t')
+        .nth(1)
+        .unwrap()
+        .parse()
+        .unwrap();
+    let next = format!(
+        "[next: demi shell output {command} --lines {}-{last}]",
+        shown + 1
+    );
     assert_eq!(*page.last().unwrap(), next);
-    assert!(page.iter().map(|line| line.chars().count() + 1).sum::<usize>() <= 12_000);
+    assert!(
+        page.iter()
+            .map(|line| line.chars().count() + 1)
+            .sum::<usize>()
+            <= 12_000
+    );
 
     // `grep -n` on the bytes gives the numbers pages take, and a reader that
     // stops early ends the call quietly.
     let script = format!(
         "demi shell output {command} --raw | grep -n '^12345$'; demi shell output {command} --raw | head -n 2"
     );
-    let searched = work.turn(vec![shell("t3", &script, 30_000), say("searched")]).await;
+    let searched = work
+        .turn(vec![shell("t3", &script, 30_000), say("searched")])
+        .await;
     assert_eq!(shown_output(&searched.received[0]), "12345:12345\n1\n2\n");
 
     // The newest lines; a range past the end, and a command the
@@ -84,7 +121,9 @@ async fn a_long_outputs_result_names_what_it_leaves_out_and_demi_shell_output_pr
     let script = format!(
         "demi shell output {command} --tail 2; demi shell output {command} --lines 30001-30002; demi shell output nothing-here"
     );
-    let tailed = work.turn(vec![shell("t4", &script, 30_000), say("tailed")]).await;
+    let tailed = work
+        .turn(vec![shell("t4", &script, 30_000), say("tailed")])
+        .await;
     assert_eq!(
         shown_output(&tailed.received[0]),
         format!(
@@ -95,15 +134,24 @@ async fn a_long_outputs_result_names_what_it_leaves_out_and_demi_shell_output_pr
     );
 
     // A running command's output reads as its Host keeps it so far.
-    let started = work.turn(vec![shell("t5", "seq 1 20000; sleep 30", 1_000), say("running")]).await;
+    let started = work
+        .turn(vec![
+            shell("t5", "seq 1 20000; sleep 30", 1_000),
+            say("running"),
+        ])
+        .await;
     let result = &started.received[0];
     assert!(result.starts_with("status: running"), "{result}");
     let running = field(result, "commandId").to_owned();
     let script = format!("demi shell output {running} --tail 1");
-    let newest = work.turn(vec![shell("t6", &script, 30_000), say("newest")]).await;
+    let newest = work
+        .turn(vec![shell("t6", &script, 30_000), say("newest")])
+        .await;
     assert_eq!(
         shown_output(&newest.received[0]),
-        format!("[command {running}: lines 20000-20000 of 20000 so far, stdout and stderr]\n 20000\t20000\n")
+        format!(
+            "[command {running}: lines 20000-20000 of 20000 so far, stdout and stderr]\n 20000\t20000\n"
+        )
     );
     backend.close().await;
 }

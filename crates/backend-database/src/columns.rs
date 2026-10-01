@@ -14,7 +14,11 @@ use serde::de::DeserializeOwned;
 use super::StorageError;
 
 /// `value`, or the corruption of `table.column` that its error describes.
-pub fn decode<T, E: Display>(table: &'static str, column: &'static str, value: Result<T, E>) -> Result<T, StorageError> {
+pub fn decode<T, E: Display>(
+    table: &'static str,
+    column: &'static str,
+    value: Result<T, E>,
+) -> Result<T, StorageError> {
     value.map_err(|error| StorageError::Corrupt {
         table,
         column,
@@ -23,7 +27,11 @@ pub fn decode<T, E: Display>(table: &'static str, column: &'static str, value: R
 }
 
 /// A stored millisecond count as a point in time.
-pub fn instant(row: &Row<'_>, table: &'static str, column: &'static str) -> Result<Timestamp, StorageError> {
+pub fn instant(
+    row: &Row<'_>,
+    table: &'static str,
+    column: &'static str,
+) -> Result<Timestamp, StorageError> {
     decode(table, column, Timestamp::from_millisecond(row.get(column)?))
 }
 

@@ -3,12 +3,12 @@
 
 use std::sync::Arc;
 
-use demi_shared_types::{B64Bytes, ThinkingConfig, TokenUsage};
 use demi_provider_common::{
     ErrorCode, InferenceItem, InferenceRequest, MediaBytes, Medium, ProviderEvent, ResultPart,
     ToolCall, ToolDefinition, UserPart,
     testing::{MockResponse, MockVendor, inference_request, next_event},
 };
+use demi_shared_types::{B64Bytes, ThinkingConfig, TokenUsage};
 use serde_json::{Value, json};
 
 use crate::{CHAT, chat, pool_with, provider, run, runtime_of, secret};

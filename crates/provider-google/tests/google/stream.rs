@@ -1,11 +1,11 @@
 //! The events a run makes of Gemini's stream (`providers.md` § A run,
 //! § Endpoints).
 
-use demi_shared_types::{FailureSource, TokenUsage};
 use demi_provider_common::{
     ErrorCode, ProviderEvent, ProviderFailure, ToolCall,
     testing::{MockResponse, MockVendor, inference_request, next_event},
 };
+use demi_shared_types::{FailureSource, TokenUsage};
 use serde_json::{Value, json};
 
 use crate::{chunks, run, runtime};

@@ -4,10 +4,10 @@
 
 use std::borrow::Cow;
 
+use demi_provider_common::{InferenceItem, MediaBytes, Medium, ResultPart, UserPart};
 use demi_shared_types::{
     B64Bytes, Block, DocumentSource, ModelMediaKind, ToolResultContentBlock, UserContentBlock,
 };
-use demi_provider_common::{InferenceItem, MediaBytes, Medium, ResultPart, UserPart};
 
 use super::{
     gone_text,

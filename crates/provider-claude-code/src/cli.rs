@@ -6,9 +6,9 @@
 
 use std::collections::BTreeMap;
 
+use demi_host_interface::{SpawnEnv, SpawnRequest};
 use demi_provider_common::openai_request::reasoning_effort;
 use demi_provider_common::{InferenceRequest, Secret};
-use demi_host_interface::{SpawnEnv, SpawnRequest};
 
 use crate::placement::CliSite;
 

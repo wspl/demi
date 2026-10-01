@@ -9,16 +9,16 @@
 
 use demi_agent_tools::testing::field;
 use demi_backend_blobs::counting::ObjectCounts;
-use demi_shared_types::{Block, BlockId, ToolView};
 use demi_provider_common::testing::{MockResponse, MockVendor};
+use demi_shared_types::{Block, BlockId, ToolView};
 use demi_web_api_protocol::conversations::{ConversationStatus, ForkAnswer};
 use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 
 use crate::conversations::{
-    FIRST, SECOND, Socket, THIRD, anthropic, answer, choose, create, kinds, last_text, on_device, send, summaries,
-    tool_result, tool_use, transcript,
+    FIRST, SECOND, Socket, THIRD, answer, anthropic, choose, create, kinds, last_text, on_device,
+    send, summaries, tool_result, tool_use, transcript,
 };
 use crate::support::{Harness, MASTER_EMAIL, MASTER_PASSWORD};
 use crate::work::edit_sides;
@@ -44,14 +44,25 @@ async fn a_fork_keeps_the_history_through_the_chosen_text_while_the_source_runs_
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
-    harness.add_user("ana@example.test", "ana-pass-1", demi_web_api_protocol::auth::Role::User);
+    harness.add_user(
+        "ana@example.test",
+        "ana-pass-1",
+        demi_web_api_protocol::auth::Role::User,
+    );
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
     let source_path = format!("/api/conversations/{FIRST}");
-    backend.patch(&source_path, &master, json!({ "title": "Build" })).await;
+    backend
+        .patch(&source_path, &master, json!({ "title": "Build" }))
+        .await;
     choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
-    let raised = backend.patch(&source_path, &master, json!({ "thinkingEffort": "high" })).await;
-    let settings = raised.json::<demi_web_api_protocol::conversations::ConversationUpdate>().conversation.model;
+    let raised = backend
+        .patch(&source_path, &master, json!({ "thinkingEffort": "high" }))
+        .await;
+    let settings = raised
+        .json::<demi_web_api_protocol::conversations::ConversationUpdate>()
+        .conversation
+        .model;
     let mut source = Socket::connect(&backend, &master, FIRST).await;
     source.open().await;
     vendor.respond(answer(&["A1"], 1, 1));
@@ -68,21 +79,42 @@ async fn a_fork_keeps_the_history_through_the_chosen_text_while_the_source_runs_
     vendor.received(3).await;
 
     let path = format!("{source_path}/fork");
-    let created = backend.post(&path, Some(&master), fork(SECOND, &first_text)).await;
-    assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
+    let created = backend
+        .post(&path, Some(&master), fork(SECOND, &first_text))
+        .await;
+    assert_eq!(
+        created.status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&created.body)
+    );
     let forked = created.json::<ForkAnswer>();
     let destination = &forked.conversation;
     assert_eq!(
-        (destination.id.as_str(), destination.title.as_str(), destination.pinned, destination.archived),
+        (
+            destination.id.as_str(),
+            destination.title.as_str(),
+            destination.pinned,
+            destination.archived
+        ),
         (SECOND, "Build (Fork)", false, false)
     );
     assert_eq!(destination.status, ConversationStatus::Idle);
-    assert_eq!(destination.model, settings, "the destination inherits the source's model settings");
+    assert_eq!(
+        destination.model, settings,
+        "the destination inherits the source's model settings"
+    );
     // A Cloud destination shares the source's directory.
     let directory = format!("/home/demi/sessions/{FIRST}");
-    assert_eq!(serde_json::to_value(&destination.target).unwrap(), json!({ "kind": "cloud", "path": directory }));
+    assert_eq!(
+        serde_json::to_value(&destination.target).unwrap(),
+        json!({ "kind": "cloud", "path": directory })
+    );
     assert_eq!(destination.cwd, directory);
-    assert_eq!(transcript(&backend, &master, SECOND).await.blocks, history[..2]);
+    assert_eq!(
+        transcript(&backend, &master, SECOND).await.blocks,
+        history[..2]
+    );
     let listed: Vec<String> = summaries(&backend, &master)
         .await
         .into_iter()
@@ -92,17 +124,34 @@ async fn a_fork_keeps_the_history_through_the_chosen_text_while_the_source_runs_
 
     // A retry of the attempt finds its destination; the id with another
     // text, or of a conversation no Fork created, is refused.
-    let again = backend.post(&path, Some(&master), fork(SECOND, &first_text)).await;
+    let again = backend
+        .post(&path, Some(&master), fork(SECOND, &first_text))
+        .await;
     assert_eq!(again.status, StatusCode::OK);
     assert_eq!(again.json::<ForkAnswer>(), forked);
-    let conflict = backend.post(&path, Some(&master), fork(SECOND, &second_text)).await;
-    assert_eq!(conflict.refusal(), (StatusCode::CONFLICT, ErrorCode::ForkConflict));
-    let taken = backend.post(&path, Some(&master), fork(FIRST, &first_text)).await;
-    assert_eq!(taken.refusal(), (StatusCode::CONFLICT, ErrorCode::IdUnavailable));
+    let conflict = backend
+        .post(&path, Some(&master), fork(SECOND, &second_text))
+        .await;
+    assert_eq!(
+        conflict.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::ForkConflict)
+    );
+    let taken = backend
+        .post(&path, Some(&master), fork(FIRST, &first_text))
+        .await;
+    assert_eq!(
+        taken.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::IdUnavailable)
+    );
     // A block that is no completed assistant text reserves nothing.
     let user_block = history[0].id().clone();
-    let not_text = backend.post(&path, Some(&master), fork(THIRD, &user_block)).await;
-    assert_eq!(not_text.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidForkTarget));
+    let not_text = backend
+        .post(&path, Some(&master), fork(THIRD, &user_block))
+        .await;
+    assert_eq!(
+        not_text.refusal(),
+        (StatusCode::BAD_REQUEST, ErrorCode::InvalidForkTarget)
+    );
     create(&backend, &master, THIRD).await;
     for body in [
         json!({ "id": "not-a-uuid", "blockId": first_text }),
@@ -110,14 +159,28 @@ async fn a_fork_keeps_the_history_through_the_chosen_text_while_the_source_runs_
         json!({ "id": FOURTH, "blockId": first_text, "title": "mine" }),
     ] {
         let refused = backend.post(&path, Some(&master), body.clone()).await;
-        assert_eq!(refused.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody), "{body}");
+        assert_eq!(
+            refused.refusal(),
+            (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody),
+            "{body}"
+        );
     }
     // Another user reaches neither the source nor the destination's id.
     let ana = backend.login("ana@example.test", "ana-pass-1").await;
-    let foreign = backend.post(&path, Some(&ana), fork(FOURTH, &first_text)).await;
-    assert_eq!(foreign.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ConversationNotFound));
-    let claimed = backend.post("/api/conversations", Some(&ana), json!({ "id": SECOND })).await;
-    assert_eq!(claimed.refusal(), (StatusCode::CONFLICT, ErrorCode::IdUnavailable));
+    let foreign = backend
+        .post(&path, Some(&ana), fork(FOURTH, &first_text))
+        .await;
+    assert_eq!(
+        foreign.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::ConversationNotFound)
+    );
+    let claimed = backend
+        .post("/api/conversations", Some(&ana), json!({ "id": SECOND }))
+        .await;
+    assert_eq!(
+        claimed.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::IdUnavailable)
+    );
 
     // The source runs on; the destination goes its own way, replaying only
     // the history it kept.
@@ -128,14 +191,30 @@ async fn a_fork_keeps_the_history_through_the_chosen_text_while_the_source_runs_
     destination.chat("m4", "U4").await;
     let replayed = vendor.requests()[3].json();
     let messages = replayed["messages"].to_string();
-    assert_eq!(replayed["messages"].as_array().unwrap().len(), 3, "{replayed}");
-    assert!(messages.contains("U1") && messages.contains("A1") && messages.contains("U4"), "{messages}");
+    assert_eq!(
+        replayed["messages"].as_array().unwrap().len(),
+        3,
+        "{replayed}"
+    );
+    assert!(
+        messages.contains("U1") && messages.contains("A1") && messages.contains("U4"),
+        "{messages}"
+    );
     assert!(!messages.contains("U2"), "{messages}");
     assert_eq!(last_text(&destination.live().await), "A3");
     // A Fork's title is the user's: the destination's first message leaves it.
-    let titles: Vec<String> = summaries(&backend, &master).await.into_iter().map(|summary| summary.title).collect();
+    let titles: Vec<String> = summaries(&backend, &master)
+        .await
+        .into_iter()
+        .map(|summary| summary.title)
+        .collect();
     assert!(titles.contains(&"Build (Fork)".to_owned()), "{titles:?}");
-    assert_eq!(kinds(&source.live().await), ["user", "text", "response", "user", "text", "response", "user", "abort"]);
+    assert_eq!(
+        kinds(&source.live().await),
+        [
+            "user", "text", "response", "user", "text", "response", "user", "abort"
+        ]
+    );
     backend.close().await;
 }
 
@@ -146,7 +225,9 @@ async fn a_fork_of_a_conversation_the_backend_no_longer_holds_reads_its_stored_h
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
-    let settings = choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await.model;
+    let settings = choose(&backend, &master, FIRST, &provider, "claude-opus-4-8")
+        .await
+        .model;
     let mut source = Socket::connect(&backend, &master, FIRST).await;
     source.open().await;
     vendor.respond(answer(&["A1"], 1, 1));
@@ -160,16 +241,38 @@ async fn a_fork_of_a_conversation_the_backend_no_longer_holds_reads_its_stored_h
     let stored = transcript(&backend, &master, FIRST).await.blocks;
     let second_text = texts(&stored)[1].clone();
     let path = format!("/api/conversations/{FIRST}/fork");
-    let created = backend.post(&path, Some(&master), fork(SECOND, &second_text)).await;
-    assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
+    let created = backend
+        .post(&path, Some(&master), fork(SECOND, &second_text))
+        .await;
+    assert_eq!(
+        created.status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&created.body)
+    );
     let forked = created.json::<ForkAnswer>();
     // The first message titled the source.
-    assert_eq!((forked.conversation.title.as_str(), &forked.conversation.model), ("U1 (Fork)", &settings));
+    assert_eq!(
+        (
+            forked.conversation.title.as_str(),
+            &forked.conversation.model
+        ),
+        ("U1 (Fork)", &settings)
+    );
     // The history through the latest text, without the response after it.
-    assert_eq!(transcript(&backend, &master, SECOND).await.blocks, stored[..5]);
-    let again = backend.post(&path, Some(&master), fork(SECOND, &second_text)).await;
+    assert_eq!(
+        transcript(&backend, &master, SECOND).await.blocks,
+        stored[..5]
+    );
+    let again = backend
+        .post(&path, Some(&master), fork(SECOND, &second_text))
+        .await;
     assert_eq!(again.status, StatusCode::OK);
-    assert_eq!(transcript(&backend, &master, FIRST).await.blocks, stored, "the source is unchanged");
+    assert_eq!(
+        transcript(&backend, &master, FIRST).await.blocks,
+        stored,
+        "the source is unchanged"
+    );
     backend.close().await;
 }
 
@@ -179,7 +282,9 @@ async fn a_fork_of_a_conversation_the_backend_no_longer_holds_reads_its_stored_h
 async fn a_fork_reads_the_edits_its_history_made_from_the_same_blobs_and_writes_no_object() {
     let counts = ObjectCounts::default();
     let vendor = MockVendor::start().await;
-    let harness = Harness::new().with_file_package().with_object_counts(&counts);
+    let harness = Harness::new()
+        .with_file_package()
+        .with_object_counts(&counts);
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
@@ -205,14 +310,26 @@ async fn a_fork_reads_the_edits_its_history_made_from_the_same_blobs_and_writes_
         block => panic!("{block:?}"),
     };
     let edited = files(&blocks).expect("the command lists what it changed");
-    assert_eq!(edit_sides(&backend, &master, &edited[0]).await, (String::new(), "hello\n".to_owned()));
+    assert_eq!(
+        edit_sides(&backend, &master, &edited[0]).await,
+        (String::new(), "hello\n".to_owned())
+    );
 
     let text = texts(&blocks).last().unwrap().clone();
     let before = counts.tally();
     let created = backend
-        .post(&format!("/api/conversations/{FIRST}/fork"), Some(&master), fork(SECOND, &text))
+        .post(
+            &format!("/api/conversations/{FIRST}/fork"),
+            Some(&master),
+            fork(SECOND, &text),
+        )
         .await;
-    assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
+    assert_eq!(
+        created.status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&created.body)
+    );
     // The destination's call names the same blobs, and the Fork put none.
     assert_eq!(counts.tally().since(&before).puts, 0);
     let copied = transcript(&backend, &master, SECOND).await.blocks;
@@ -233,7 +350,11 @@ async fn a_fork_keeps_the_todos_its_history_had() {
     let mut source = Socket::connect(&backend, &master, FIRST).await;
     source.open().await;
     let shell = |id: &str, script: &str| {
-        tool_use(id, "shell_exec", &json!({ "description": id, "script": script, "timeoutMs": 60_000 }))
+        tool_use(
+            id,
+            "shell_exec",
+            &json!({ "description": id, "script": script, "timeoutMs": 60_000 }),
+        )
     };
     vendor.respond(shell("toolu_add", "demi todo add \"first task\""));
     vendor.respond(answer(&["Added."], 1, 1));
@@ -249,9 +370,18 @@ async fn a_fork_keeps_the_todos_its_history_had() {
     // on.
     for (destination, text, status) in [(SECOND, added, "pending"), (THIRD, done, "done")] {
         let created = backend
-            .post(&format!("/api/conversations/{FIRST}/fork"), Some(&master), fork(destination, &text))
+            .post(
+                &format!("/api/conversations/{FIRST}/fork"),
+                Some(&master),
+                fork(destination, &text),
+            )
             .await;
-        assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
+        assert_eq!(
+            created.status,
+            StatusCode::CREATED,
+            "{}",
+            String::from_utf8_lossy(&created.body)
+        );
         let mut socket = Socket::connect(&backend, &master, destination).await;
         socket.open().await;
         let before = vendor.requests().len();
@@ -259,7 +389,8 @@ async fn a_fork_keeps_the_todos_its_history_had() {
         vendor.respond(answer(&["Listed."], 1, 1));
         socket.chat("m3", "What is left?").await;
         let listed = tool_result(&vendor.requests()[before + 1].json(), "toolu_list");
-        let todos: Value = serde_json::from_str(listed.lines().last().unwrap()).unwrap_or_else(|_| panic!("{listed}"));
+        let todos: Value = serde_json::from_str(listed.lines().last().unwrap())
+            .unwrap_or_else(|_| panic!("{listed}"));
         assert_eq!(todos["todos"][0]["status"], status, "{listed}");
     }
     backend.close().await;
@@ -292,7 +423,11 @@ async fn a_fork_reads_the_outputs_of_the_commands_its_history_names() {
     let mut source = Socket::connect(&backend, &master, FIRST).await;
     source.open().await;
     let shell = |id: &str, script: &str| {
-        tool_use(id, "shell_exec", &json!({ "description": id, "script": script, "timeoutMs": 60_000 }))
+        tool_use(
+            id,
+            "shell_exec",
+            &json!({ "description": id, "script": script, "timeoutMs": 60_000 }),
+        )
     };
     vendor.respond(shell("toolu_before", "seq 1 3"));
     vendor.respond(answer(&["Counted."], 1, 1));
@@ -311,9 +446,18 @@ async fn a_fork_reads_the_outputs_of_the_commands_its_history_names() {
     // `demi shell output` reads there as in the source; the second is not
     // the destination's.
     let created = backend
-        .post(&format!("/api/conversations/{FIRST}/fork"), Some(&master), fork(SECOND, &counted))
+        .post(
+            &format!("/api/conversations/{FIRST}/fork"),
+            Some(&master),
+            fork(SECOND, &counted),
+        )
         .await;
-    assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
+    assert_eq!(
+        created.status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&created.body)
+    );
     let mut socket = Socket::connect(&backend, &master, SECOND).await;
     socket.open().await;
     let requests = vendor.requests().len();
@@ -323,7 +467,9 @@ async fn a_fork_reads_the_outputs_of_the_commands_its_history_names() {
     socket.chat("m3", "What did it count?").await;
     let read = tool_result(&vendor.requests()[requests + 1].json(), "toolu_read");
     assert!(
-        read.contains(&format!("1\n2\n3\ndemi shell output: no command {after} in this conversation")),
+        read.contains(&format!(
+            "1\n2\n3\ndemi shell output: no command {after} in this conversation"
+        )),
         "{read}"
     );
     // The destination goes on from its source's numbers.

@@ -5,7 +5,10 @@ use demi_provider_common::{Secret, SecretError};
 #[test]
 fn a_secret_is_one_line_of_text_and_is_never_printed() {
     assert_eq!(Secret::try_from(String::new()), Err(SecretError::Empty));
-    assert_eq!(Secret::try_from("sk-1\nx".to_owned()), Err(SecretError::Control));
+    assert_eq!(
+        Secret::try_from("sk-1\nx".to_owned()),
+        Err(SecretError::Control)
+    );
     let secret = Secret::try_from("sk-ant-123".to_owned()).unwrap();
     assert_eq!(format!("{secret:?}"), "Secret(..)");
     assert_eq!(secret.expose(), "sk-ant-123");

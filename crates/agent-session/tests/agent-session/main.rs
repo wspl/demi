@@ -11,23 +11,23 @@ use std::{
     time::Duration,
 };
 
-use demi_conversation_socket_protocol::{AbortResult, AbortTarget, TranscriptPatch};
 use demi_agent_session::{
     ActionEnd, AdmissionError, AgentMessageError, AgentSession, CompactionConfig, Continuation,
     EditCheck, EditContent, EditError, EditSubmission, ModelSwitch, RestoreError, SessionConfig,
     SessionDeps, SessionEvent, SessionInit, SessionRuntime, SteerError, Subscription, ToolEffect,
     ToolFailure, ToolInvocation, ToolOutcome,
 };
-use demi_shared_types::{
-    AgentMessage, AgentMessageEvent, B64Bytes, BlobRef, Block, BlockId, DocumentSource,
-    FailureSource, FileExtension, MediaSource, ModelSelection, NodeId, OperationId, Sender,
-    SessionPhase, Timestamp, ToolCallStatus, ToolResultContentBlock, TurnId, UserContentBlock,
-};
-use demi_shared_gates::{ActivityGate, GateLease, Purpose};
+use demi_conversation_socket_protocol::{AbortResult, AbortTarget, TranscriptPatch};
 use demi_provider_common::{
     ErrorCode, InferenceItem, MediaBytes, PromptCache, ProviderEvent, ProviderRuntime,
     RequestLimits, ResultPart, ToolDefinition, UserPart,
     testing::{FixedClock, ScriptedRuntime, Turn, event},
+};
+use demi_shared_gates::{ActivityGate, GateLease, Purpose};
+use demi_shared_types::{
+    AgentMessage, AgentMessageEvent, B64Bytes, BlobRef, Block, BlockId, DocumentSource,
+    FailureSource, FileExtension, MediaSource, ModelSelection, NodeId, OperationId, Sender,
+    SessionPhase, Timestamp, ToolCallStatus, ToolResultContentBlock, TurnId, UserContentBlock,
 };
 use futures_util::future::LocalBoxFuture;
 use serde_json::json;
@@ -66,7 +66,9 @@ impl SessionRuntime for TestRuntime {
         Box::pin(self.admission.enter(Purpose::Demand))
     }
 
-    fn reserve_edit(&self) -> LocalBoxFuture<'_, Result<Option<demi_shared_gates::Reservation>, String>> {
+    fn reserve_edit(
+        &self,
+    ) -> LocalBoxFuture<'_, Result<Option<demi_shared_gates::Reservation>, String>> {
         Box::pin(async { Ok(None) })
     }
 
@@ -389,7 +391,10 @@ impl NumberedRuntime {
 }
 
 impl ProviderRuntime for NumberedRuntime {
-    fn run(&mut self, request: demi_provider_common::InferenceRequest) -> demi_provider_common::ProviderRun<'_> {
+    fn run(
+        &mut self,
+        request: demi_provider_common::InferenceRequest,
+    ) -> demi_provider_common::ProviderRun<'_> {
         self.log.borrow_mut().served.push(self.number);
         self.script.run(request)
     }
@@ -409,7 +414,10 @@ impl ProviderRuntime for NumberedRuntime {
         self.script.close()
     }
 
-    fn request_limits(&self, model: &demi_shared_types::Model) -> demi_provider_common::RequestLimits {
+    fn request_limits(
+        &self,
+        model: &demi_shared_types::Model,
+    ) -> demi_provider_common::RequestLimits {
         self.script.request_limits(model)
     }
 }
@@ -1144,8 +1152,9 @@ async fn a_medium_the_requests_model_cannot_take_reaches_it_as_the_same_text_in_
     let switch = |model: &ModelSelection, runtime: Option<&ScriptedRuntime>| {
         session
             .update_model(ModelSwitch {
-                model: model.clone(),
-                runtime: runtime.map(|runtime| Box::new(runtime.clone()) as Box<dyn ProviderRuntime>),
+                model: Box::new(model.clone()),
+                runtime: runtime
+                    .map(|runtime| Box::new(runtime.clone()) as Box<dyn ProviderRuntime>),
             })
             .unwrap();
     };
@@ -1175,12 +1184,28 @@ async fn a_medium_the_requests_model_cannot_take_reaches_it_as_the_same_text_in_
     switch(&a, None);
     session.send(message, turn("t1")).unwrap().await.unwrap();
     switch(&b, None);
-    session.send(text("look"), turn("t2")).unwrap().await.unwrap();
-    session.send(text("look again"), turn("t3")).unwrap().await.unwrap();
+    session
+        .send(text("look"), turn("t2"))
+        .unwrap()
+        .await
+        .unwrap();
+    session
+        .send(text("look again"), turn("t3"))
+        .unwrap()
+        .await
+        .unwrap();
     switch(&c, Some(&small));
-    session.send(text("small"), turn("t4")).unwrap().await.unwrap();
+    session
+        .send(text("small"), turn("t4"))
+        .unwrap()
+        .await
+        .unwrap();
     switch(&a, Some(&first));
-    session.send(text("back"), turn("t5")).unwrap().await.unwrap();
+    session
+        .send(text("back"), turn("t5"))
+        .unwrap()
+        .await
+        .unwrap();
 
     let sent = ["record it", "<image>", "<document>", "<video>"];
     let requests = first.requests();
@@ -1194,7 +1219,10 @@ async fn a_medium_the_requests_model_cannot_take_reaches_it_as_the_same_text_in_
     ];
     assert_eq!(media_parts(&requests[2]), unread);
     assert_eq!(media_parts(&requests[3]), unread);
-    assert_eq!(requests[3].items[..requests[2].items.len()], requests[2].items[..]);
+    assert_eq!(
+        requests[3].items[..requests[2].items.len()],
+        requests[2].items[..]
+    );
     assert_eq!(
         media_parts(&small.requests()[0]),
         [
@@ -1226,7 +1254,7 @@ async fn a_switch_to_another_provider_continues_the_running_turn_on_the_new_runt
 
     session
         .update_model(ModelSwitch {
-            model: model_of("other", "model-b"),
+            model: Box::new(model_of("other", "model-b")),
             runtime: Some(Box::new(second.clone())),
         })
         .unwrap();

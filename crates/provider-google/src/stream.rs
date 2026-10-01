@@ -3,12 +3,12 @@
 
 use std::sync::Arc;
 
-use demi_shared_types::{FailureSource, ProviderErrorDiagnostics, TokenUsage};
 use demi_provider_common::{
     ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ToolCall, encode_body,
     http_failure, read_http_failure,
     wire::{NonEmpty, ReportedString, decode_untagged, sse_data, undecodable},
 };
+use demi_shared_types::{FailureSource, ProviderErrorDiagnostics, TokenUsage};
 use futures_util::{Stream, StreamExt};
 use reqwest::header::{ACCEPT, CONTENT_TYPE};
 use serde::Deserialize;
@@ -208,7 +208,7 @@ impl Mapper {
         let failure = ProviderFailure {
             code: ErrorCode::classify(status.as_deref(), &message),
             message,
-            diagnostics: Some(ProviderErrorDiagnostics {
+            diagnostics: Some(Box::new(ProviderErrorDiagnostics {
                 source: FailureSource::Stream,
                 client_request_id: None,
                 provider_request_id: None,
@@ -216,7 +216,7 @@ impl Mapper {
                 provider_code: status,
                 http_status: None,
                 upstream: Some(data.to_owned()),
-            }),
+            })),
             retry_after: None,
         };
         failure.with_retry_wait(read_http_failure, self.shared.clock.now())

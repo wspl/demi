@@ -8,29 +8,31 @@ use std::{
 };
 
 use bytes::Bytes;
+use demi_backend_remote_host::{
+    Admission, ArtifactResolver, CommandCatalog, CommandKeeper, EnvironmentOptions, JobOrigin,
+    JobStart, LinkEnd, LinkPolicy, RemoteHost, RemoteShellEnvironment,
+    testing::{CommandPolicy, TEST_DEVICE, TestDevice, TestLink},
+};
+use demi_command_declarations::NativeOperation;
 use demi_command_protocol::{
     ArtifactLocation, ArtifactUrl, EditCopies, EditKind as FileEditKind, PackageArtifact,
     PackageDescriptor, ServiceSequence, host_target,
 };
-use demi_command_declarations::NativeOperation;
-use demi_shared_types::{BlobRef, CommandId, EditKind, EditSegment, EditedFile, NodeId, StreamKind};
-use demi_shared_gates::{ActivityGate, Purpose};
-use demi_backend_remote_host::{
-    Admission, ArtifactResolver, CommandCatalog, EnvironmentOptions, JobOrigin, JobStart, LinkEnd,
-    CommandKeeper, LinkPolicy, RemoteHost, RemoteShellEnvironment,
-    testing::{CommandPolicy, TEST_DEVICE, TestDevice, TestLink},
+use demi_host_interface::{
+    Call, CommandSet, CommandState, ExecRequest, GroupBuilder, HostError, HostErrorKind,
+    HostProcess, JobCaller, LeafBuilder, ObservationWindow, OutputRecord, PageState, PortError,
+    Process, ProcessEnd, RpcError, RpcInvocation, RpcPort, Seen, ShellEnvironment, ShellTarget,
+    SpawnEnv, SpawnRequest, StorageOp, StorageReply, Streams, TypedRpc, WholeOutput,
+    testing::{CountingNumbers, TestPages, test_command_context},
 };
 use demi_runner_protocol::wire::{
     ArtifactOwner, FsOk, FsResult, Inbound, JOB_VIEW_BYTES, JobArtifactOwner, JobFileChange,
     KeptRecord, Outbound, OutputLengths, OutputStream, STDIN_CHUNK_BYTES, Signal, VolumeName,
     WireBytes, encode_record,
 };
-use demi_host_interface::{
-    Call, CommandSet, CommandState, ExecRequest, GroupBuilder, HostError, HostErrorKind,
-    HostProcess, JobCaller, LeafBuilder, ObservationWindow, PageState, PortError, Process,
-    OutputRecord, ProcessEnd, RpcError, RpcInvocation, RpcPort, Seen, ShellEnvironment,
-    ShellTarget, SpawnEnv, SpawnRequest, StorageOp, StorageReply, Streams, TypedRpc, WholeOutput,
-    testing::{CountingNumbers, TestPages, test_command_context},
+use demi_shared_gates::{ActivityGate, Purpose};
+use demi_shared_types::{
+    BlobRef, CommandId, EditKind, EditSegment, EditedFile, NodeId, StreamKind,
 };
 use futures_util::future::LocalBoxFuture;
 use serde_json::{Map, Value};
@@ -78,7 +80,12 @@ fn environment(host: RemoteHost) -> RemoteShellEnvironment {
 fn watched_environment(host: RemoteHost, pages: Rc<TestPages>) -> RemoteShellEnvironment {
     let context: demi_backend_remote_host::ContextSource =
         Rc::new(|| Box::pin(async { Ok(test_command_context()) }));
-    RemoteShellEnvironment::new(EnvironmentOptions::new(host, context, pages, Rc::new(CountingNumbers::default())))
+    RemoteShellEnvironment::new(EnvironmentOptions::new(
+        host,
+        context,
+        pages,
+        Rc::new(CountingNumbers::default()),
+    ))
 }
 
 fn exec(script: &str) -> ExecRequest {
@@ -105,7 +112,10 @@ async fn answer_read(device: &TestDevice, link: &mut TestLink, job: &str, kept: 
         }
     };
     link.send(Outbound::JobRead { id, error: None }).await;
-    let source = device.pipes().claim_source(&output.id, TEST_DEVICE).unwrap();
+    let source = device
+        .pipes()
+        .claim_source(&output.id, TEST_DEVICE)
+        .unwrap();
     let body = futures_util::stream::iter([Ok::<_, std::io::Error>(bytes::Bytes::from(kept))]);
     source.pump(body).await.unwrap();
 }
@@ -136,10 +146,11 @@ async fn an_fs_reply_is_read_as_the_operation_the_caller_asked_for() {
     let device = device();
     let mut link = device.connect(None);
     let host = device.host("/work", Admission::Free);
-    let stat =
-        tokio::task::spawn_local(
-            async move { demi_host_interface::Host::fs(&host).stat("/work/file").await },
-        );
+    let stat = tokio::task::spawn_local(async move {
+        demi_host_interface::Host::fs(&host)
+            .stat("/work/file")
+            .await
+    });
     let Inbound::FsStat { id, .. } = link.next().await else {
         panic!("expected a stat request")
     };
@@ -178,9 +189,11 @@ async fn admission_holds_calls_and_process_lifetimes_and_a_refusal_sends_nothing
     let host = device.host("/work", admission);
     let exists = {
         let host = host.clone();
-        tokio::task::spawn_local(
-            async move { demi_host_interface::Host::fs(&host).exists("/work/file").await },
-        )
+        tokio::task::spawn_local(async move {
+            demi_host_interface::Host::fs(&host)
+                .exists("/work/file")
+                .await
+        })
     };
     let Inbound::FsExists { id, .. } = link.next().await else {
         panic!("expected an exists request")
@@ -337,9 +350,11 @@ async fn a_lost_connection_fails_what_it_carried_and_the_next_one_serves_the_sam
     assert_eq!((identity.uid, identity.hostname.as_str()), (501, "test"));
     let pending = {
         let host = host.clone();
-        tokio::task::spawn_local(
-            async move { demi_host_interface::Host::fs(&host).read_file("/work/x").await },
-        )
+        tokio::task::spawn_local(async move {
+            demi_host_interface::Host::fs(&host)
+                .read_file("/work/x")
+                .await
+        })
     };
     let process = host.spawn(spawn("sleep", false)).await.unwrap();
     let job = host.start_job(job_start("sleep 30")).await.unwrap();
@@ -388,7 +403,9 @@ async fn a_lost_connection_fails_what_it_carried_and_the_next_one_serves_the_sam
     let mut link = device.connect(None);
     let exists = {
         let host = host.clone();
-        tokio::task::spawn_local(async move { demi_host_interface::Host::fs(&host).exists("/work").await })
+        tokio::task::spawn_local(async move {
+            demi_host_interface::Host::fs(&host).exists("/work").await
+        })
     };
     let Inbound::FsExists { id, .. } = link.next().await else {
         panic!("expected an exists request")
@@ -758,7 +775,12 @@ async fn a_watched_command_is_followed_and_its_pages_view_holds_what_the_runner_
     let view = pages.next().await;
     assert_eq!(view.command_id, started.command_id);
     assert_eq!(
-        (view.tool_use_id.as_str(), view.state, view.tail.as_str(), view.chars),
+        (
+            view.tool_use_id.as_str(),
+            view.state,
+            view.tail.as_str(),
+            view.chars
+        ),
         ("call", PageState::Running, "", 0)
     );
     let Inbound::JobStart { job_id, .. } = link.next().await else {
@@ -801,7 +823,10 @@ async fn a_watched_command_is_followed_and_its_pages_view_holds_what_the_runner_
     // The model's view holds only the stream's first bytes.
     let status = shell.status(&started.command_id).unwrap();
     assert!(status.stdout.tail.ends_with('x'));
-    assert_eq!((status.stdout.bytes, status.unreceived), (view_end + 17, 17));
+    assert_eq!(
+        (status.stdout.bytes, status.unreceived),
+        (view_end + 17, 17)
+    );
 
     // A page that leaves makes the job unfollowed.
     pages.watch(false);
@@ -836,7 +861,10 @@ async fn a_watched_command_is_followed_and_its_pages_view_holds_what_the_runner_
     assert!(end.tail.ends_with("newest\nlast\n"), "{:?}", end.tail);
     let status = shell.status(&started.command_id).unwrap();
     let whole = status.whole.expect("the whole output");
-    assert_eq!(whole.output.records(), [OutputRecord::Output(StreamKind::Stdout, stream.into())]);
+    assert_eq!(
+        whole.output.records(),
+        [OutputRecord::Output(StreamKind::Stdout, stream.into())]
+    );
     assert!(
         drain(&mut link)
             .await
@@ -937,7 +965,8 @@ async fn a_stream_that_grows_beyond_its_view_keeps_its_command_from_idling() {
 
     // The runner says the stream grew beyond its view: the command is not
     // idle, and the model's view still holds the stream's first bytes.
-    link.send(output(JOB_VIEW_BYTES as u64 + 100, Vec::new())).await;
+    link.send(output(JOB_VIEW_BYTES as u64 + 100, Vec::new()))
+        .await;
     drain(&mut link).await;
     let status = shell.status(&started.command_id).unwrap();
     assert_eq!(status.idle_ms, 0);
@@ -1047,7 +1076,11 @@ struct Publisher {
 }
 
 impl CommandKeeper for Publisher {
-    fn retain<'a>(&'a self, _: &'a CommandId, _: &'a [JobFileChange]) -> LocalBoxFuture<'a, Vec<EditedFile>> {
+    fn retain<'a>(
+        &'a self,
+        _: &'a CommandId,
+        _: &'a [JobFileChange],
+    ) -> LocalBoxFuture<'a, Vec<EditedFile>> {
         let barrier = self.barrier.borrow_mut().take();
         Box::pin(async move {
             if let Some(barrier) = barrier {
@@ -1082,7 +1115,12 @@ async fn a_command_ends_once_its_edits_are_published_and_keeps_them() {
     let (publish, barrier) = tokio::sync::oneshot::channel();
     let context: demi_backend_remote_host::ContextSource =
         Rc::new(|| Box::pin(async { Ok(test_command_context()) }));
-    let mut options = EnvironmentOptions::new(host, context, TestPages::new(false), Rc::new(CountingNumbers::default()));
+    let mut options = EnvironmentOptions::new(
+        host,
+        context,
+        TestPages::new(false),
+        Rc::new(CountingNumbers::default()),
+    );
     options.keeper = Some(Rc::new(Publisher {
         barrier: RefCell::new(Some(barrier)),
         file: file.clone(),

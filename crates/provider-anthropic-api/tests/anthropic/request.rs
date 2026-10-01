@@ -2,12 +2,12 @@
 
 use std::{num::NonZeroU32, sync::Arc};
 
-use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingSummary, TokenUsage};
 use demi_provider_common::{
     InferenceItem, MediaBytes, Medium, PromptCache, Provider, ProviderEvent, ResultPart,
     RuntimeEnv, ToolDefinition, UserPart,
     testing::{MockVendor, inference_request},
 };
+use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingSummary, TokenUsage};
 use serde_json::{Value, json};
 
 use crate::{provider_at, run, runtime, stop};
@@ -18,7 +18,11 @@ fn text(text: &str) -> Vec<UserPart> {
 
 /// The body the vendor received for a request carrying `items` and
 /// `thinking` with the given output limit.
-async fn body(items: Vec<InferenceItem>, thinking: Option<ThinkingConfig>, output_limit: Option<u32>) -> Value {
+async fn body(
+    items: Vec<InferenceItem>,
+    thinking: Option<ThinkingConfig>,
+    output_limit: Option<u32>,
+) -> Value {
     let vendor = MockVendor::start().await;
     vendor.respond(stop());
     let mut request = inference_request();
@@ -35,13 +39,18 @@ async fn a_run_posts_to_the_messages_endpoint_with_the_key_and_version() {
     for base in ["/v1", "/v1/", "/v1/messages"] {
         vendor.respond(stop());
         let mut runtime = provider_at(&vendor, base)
-            .runtime(RuntimeEnv { http: reqwest::Client::new() })
+            .runtime(RuntimeEnv {
+                http: reqwest::Client::new(),
+            })
             .unwrap();
         let events = run(runtime.as_mut(), inference_request()).await;
         assert_eq!(events, [ProviderEvent::Response(TokenUsage::default())]);
     }
     for request in vendor.requests() {
-        assert_eq!((request.method.as_str(), request.uri.path()), ("POST", "/v1/messages"));
+        assert_eq!(
+            (request.method.as_str(), request.uri.path()),
+            ("POST", "/v1/messages")
+        );
         assert_eq!(request.header("x-api-key"), Some("sk-ant-test"));
         assert_eq!(request.header("anthropic-version"), Some("2023-06-01"));
         assert_eq!(request.header("content-type"), Some("application/json"));
@@ -58,10 +67,17 @@ async fn the_body_groups_turns_and_carries_the_tools_system_prompt_and_tier() {
     request.system_prompt = "system instructions".into();
     request.service_tier_id = Some("standard_only".into());
     request.output_limit = NonZeroU32::new(8192);
-    request.thinking = Some(ThinkingConfig::Budget { budget_tokens: 1024 });
+    request.thinking = Some(ThinkingConfig::Budget {
+        budget_tokens: 1024,
+    });
     request.items = Arc::new([
-        InferenceItem::UserMessage { content: text("hello") },
-        InferenceItem::AssistantText { model_id: "claude-test".into(), text: "Use tool".into() },
+        InferenceItem::UserMessage {
+            content: text("hello"),
+        },
+        InferenceItem::AssistantText {
+            model_id: "claude-test".into(),
+            text: "Use tool".into(),
+        },
         InferenceItem::ToolUse {
             model_id: "claude-test".into(),
             tool_use_id: "toolu-1".into(),
@@ -73,14 +89,20 @@ async fn the_body_groups_turns_and_carries_the_tools_system_prompt_and_tier() {
             output: vec![ResultPart::Text("contents".into())],
             is_error: false,
         },
-        InferenceItem::UserSteer { content: text("also check b.ts") },
+        InferenceItem::UserSteer {
+            content: text("also check b.ts"),
+        },
         InferenceItem::ToolUse {
             model_id: "claude-test".into(),
             tool_use_id: "toolu-2".into(),
             tool_name: "read_file".into(),
             input: Value::Null,
         },
-        InferenceItem::ToolResult { tool_use_id: "toolu-2".into(), output: Vec::new(), is_error: true },
+        InferenceItem::ToolResult {
+            tool_use_id: "toolu-2".into(),
+            output: Vec::new(),
+            is_error: true,
+        },
     ]);
     let schema = json!({ "type": "object", "properties": { "path": { "type": "string" } } });
     request.tools = Arc::new([ToolDefinition {
@@ -150,16 +172,27 @@ fn marks(body: &Value) -> Vec<(String, Value)> {
 }
 
 #[tokio::test]
-async fn a_session_request_marks_its_shared_prefix_the_latest_answered_request_and_its_end_for_an_hour() {
+async fn a_session_request_marks_its_shared_prefix_the_latest_answered_request_and_its_end_for_an_hour()
+ {
     // The latest answered request carried the user's message. The model
     // then called a tool twelve times at once, and this request adds its
     // answer, each call with its result, and a steer: more than the 20 blocks
     // a mark looks back over for an earlier entry.
     let model = || "model-a".to_owned();
     let mut items = vec![
-        InferenceItem::UserMessage { content: text("check every file") },
-        InferenceItem::AssistantThinking { model_id: model(), text: "plan".into(), signature: Some("anthropic:sig-1".into()), kept_past_summary: false },
-        InferenceItem::AssistantText { model_id: model(), text: "Reading them all".into() },
+        InferenceItem::UserMessage {
+            content: text("check every file"),
+        },
+        InferenceItem::AssistantThinking {
+            model_id: model(),
+            text: "plan".into(),
+            signature: Some("anthropic:sig-1".into()),
+            kept_past_summary: false,
+        },
+        InferenceItem::AssistantText {
+            model_id: model(),
+            text: "Reading them all".into(),
+        },
     ];
     for call in 0..12 {
         let id = format!("toolu-{call}");
@@ -175,7 +208,9 @@ async fn a_session_request_marks_its_shared_prefix_the_latest_answered_request_a
             is_error: false,
         });
     }
-    items.push(InferenceItem::UserSteer { content: text("also check b.ts") });
+    items.push(InferenceItem::UserSteer {
+        content: text("also check b.ts"),
+    });
     let hour = json!({ "type": "ephemeral", "ttl": "1h" });
     // Messages: the user's (0), the answer with the first call (1), then
     // each result and the next call in turn, and the last result with the
@@ -185,13 +220,41 @@ async fn a_session_request_marks_its_shared_prefix_the_latest_answered_request_a
     let cases = [
         // The system prompt, the latest answered request's last block, and
         // the request's own last block.
-        ("system", PromptCache::Session { answered_items: 1 }, vec![the_question.clone(), the_end.clone(), ("/system/0".to_owned(), hour.clone())]),
+        (
+            "system",
+            PromptCache::Session { answered_items: 1 },
+            vec![
+                the_question.clone(),
+                the_end.clone(),
+                ("/system/0".to_owned(), hour.clone()),
+            ],
+        ),
         // Without a system prompt, the tools end the shared prefix.
-        (" ", PromptCache::Session { answered_items: 1 }, vec![the_question.clone(), the_end.clone(), ("/tools/0".to_owned(), hour.clone())]),
+        (
+            " ",
+            PromptCache::Session { answered_items: 1 },
+            vec![
+                the_question.clone(),
+                the_end.clone(),
+                ("/tools/0".to_owned(), hour.clone()),
+            ],
+        ),
         // A thinking block takes no mark: the nearest block before it does.
-        ("system", PromptCache::Session { answered_items: 2 }, vec![the_question.clone(), the_end.clone(), ("/system/0".to_owned(), hour.clone())]),
+        (
+            "system",
+            PromptCache::Session { answered_items: 2 },
+            vec![
+                the_question.clone(),
+                the_end.clone(),
+                ("/system/0".to_owned(), hour.clone()),
+            ],
+        ),
         // Before any answer, only the shared prefix and the end.
-        ("system", PromptCache::Session { answered_items: 0 }, vec![the_end.clone(), ("/system/0".to_owned(), hour.clone())]),
+        (
+            "system",
+            PromptCache::Session { answered_items: 0 },
+            vec![the_end.clone(), ("/system/0".to_owned(), hour.clone())],
+        ),
         // A request no later request extends, such as a title request.
         ("system", PromptCache::Off, Vec::new()),
     ];
@@ -210,7 +273,10 @@ async fn a_session_request_marks_its_shared_prefix_the_latest_answered_request_a
         request.prompt_cache = prompt_cache;
         run(runtime(&vendor).as_mut(), request).await;
         let body = vendor.requests()[0].json();
-        assert_eq!(body["messages"][24]["content"][1]["text"], "also check b.ts");
+        assert_eq!(
+            body["messages"][24]["content"][1]["text"],
+            "also check b.ts"
+        );
         assert_eq!(marks(&body), expected, "{prompt_cache:?} {system_prompt:?}");
     }
 }
@@ -223,7 +289,13 @@ async fn a_blank_system_prompt_no_tools_and_no_tier_are_left_out() {
     request.system_prompt = " \n\t".into();
     run(runtime(&vendor).as_mut(), request).await;
     let body = vendor.requests()[0].json();
-    for absent in ["system", "tools", "thinking", "output_config", "service_tier"] {
+    for absent in [
+        "system",
+        "tools",
+        "thinking",
+        "output_config",
+        "service_tier",
+    ] {
         assert!(body.get(absent).is_none(), "{absent}: {body}");
     }
     assert_eq!(body["max_tokens"], json!(32_000));
@@ -271,65 +343,150 @@ async fn a_reused_runtime_uses_the_output_limit_of_each_request() {
 
 #[tokio::test]
 async fn thinking_maps_onto_a_budget_or_adaptive_thinking_at_an_effort() {
-    let items = || vec![InferenceItem::UserMessage { content: text("hi") }];
+    let items = || {
+        vec![InferenceItem::UserMessage {
+            content: text("hi"),
+        }]
+    };
     let cases = [
         // A budget stays below max_tokens and at least the API's minimum.
-        (Some(ThinkingConfig::Budget { budget_tokens: 999_999 }), Some(8_192), json!({ "type": "enabled", "budget_tokens": 7_168 }), Value::Null),
-        (Some(ThinkingConfig::Budget { budget_tokens: 100 }), None, json!({ "type": "enabled", "budget_tokens": 1_024 }), Value::Null),
+        (
+            Some(ThinkingConfig::Budget {
+                budget_tokens: 999_999,
+            }),
+            Some(8_192),
+            json!({ "type": "enabled", "budget_tokens": 7_168 }),
+            Value::Null,
+        ),
+        (
+            Some(ThinkingConfig::Budget { budget_tokens: 100 }),
+            None,
+            json!({ "type": "enabled", "budget_tokens": 1_024 }),
+            Value::Null,
+        ),
         // An effort is adaptive thinking at that effort, summarized unless
         // summaries are off.
         (
-            Some(ThinkingConfig::Effort { effort: "high".into(), summary: None }),
+            Some(ThinkingConfig::Effort {
+                effort: "high".into(),
+                summary: None,
+            }),
             None,
             json!({ "type": "adaptive", "display": "summarized" }),
             json!({ "effort": "high" }),
         ),
         (
-            Some(ThinkingConfig::Effort { effort: "low".into(), summary: Some(ThinkingSummary::Off) }),
+            Some(ThinkingConfig::Effort {
+                effort: "low".into(),
+                summary: Some(ThinkingSummary::Off),
+            }),
             None,
             json!({ "type": "adaptive", "display": "omitted" }),
             json!({ "effort": "low" }),
         ),
         (
-            Some(ThinkingConfig::Adaptive { effort: "max".into() }),
+            Some(ThinkingConfig::Adaptive {
+                effort: "max".into(),
+            }),
             None,
             json!({ "type": "adaptive", "display": "summarized" }),
             json!({ "effort": "max" }),
         ),
-        (Some(ThinkingConfig::Disabled {}), None, Value::Null, Value::Null),
+        (
+            Some(ThinkingConfig::Disabled {}),
+            None,
+            Value::Null,
+            Value::Null,
+        ),
         (None, None, Value::Null, Value::Null),
     ];
     for (thinking, limit, expected, output_config) in cases {
         let body = body(items(), thinking.clone(), limit).await;
-        assert_eq!(body.get("thinking").cloned().unwrap_or(Value::Null), expected, "{thinking:?}");
-        assert_eq!(body.get("output_config").cloned().unwrap_or(Value::Null), output_config, "{thinking:?}");
+        assert_eq!(
+            body.get("thinking").cloned().unwrap_or(Value::Null),
+            expected,
+            "{thinking:?}"
+        );
+        assert_eq!(
+            body.get("output_config").cloned().unwrap_or(Value::Null),
+            output_config,
+            "{thinking:?}"
+        );
     }
 }
 
 #[tokio::test]
-async fn thinking_is_sent_back_only_when_this_provider_received_it_and_no_summary_replaced_its_history() {
+async fn thinking_is_sent_back_only_when_this_provider_received_it_and_no_summary_replaced_its_history()
+ {
     let model = || "claude-opus-4-8".to_owned();
     let body = body(
         vec![
             // Reasoning compaction kept after a summary would fail the
             // vendor's check of the history before it.
-            InferenceItem::UserMessage { content: text("Previous conversation summary:\nthe user said hello") },
-            InferenceItem::AssistantThinking { model_id: model(), text: "kept".into(), signature: Some("anthropic:sig-0".into()), kept_past_summary: true },
-            InferenceItem::AssistantRedactedThinking { model_id: model(), data: "anthropic:kept-opaque".into(), kept_past_summary: true },
-            InferenceItem::AssistantText { model_id: model(), text: "hello".into() },
-            InferenceItem::UserMessage { content: text("hi") },
-            InferenceItem::AssistantThinking { model_id: model(), text: "plan".into(), signature: Some("anthropic:sig-1".into()), kept_past_summary: false },
-            InferenceItem::AssistantThinking { model_id: model(), text: "theirs".into(), signature: Some("google:sig-2".into()), kept_past_summary: false },
-            InferenceItem::AssistantThinking { model_id: model(), text: "unsigned".into(), signature: None, kept_past_summary: false },
-            InferenceItem::AssistantRedactedThinking { model_id: model(), data: "anthropic:opaque".into(), kept_past_summary: false },
-            InferenceItem::AssistantRedactedThinking { model_id: model(), data: "opaque-elsewhere".into(), kept_past_summary: false },
-            InferenceItem::ToolUse { model_id: model(), tool_use_id: "toolu-1".into(), tool_name: "ls".into(), input: json!({}) },
+            InferenceItem::UserMessage {
+                content: text("Previous conversation summary:\nthe user said hello"),
+            },
+            InferenceItem::AssistantThinking {
+                model_id: model(),
+                text: "kept".into(),
+                signature: Some("anthropic:sig-0".into()),
+                kept_past_summary: true,
+            },
+            InferenceItem::AssistantRedactedThinking {
+                model_id: model(),
+                data: "anthropic:kept-opaque".into(),
+                kept_past_summary: true,
+            },
+            InferenceItem::AssistantText {
+                model_id: model(),
+                text: "hello".into(),
+            },
+            InferenceItem::UserMessage {
+                content: text("hi"),
+            },
+            InferenceItem::AssistantThinking {
+                model_id: model(),
+                text: "plan".into(),
+                signature: Some("anthropic:sig-1".into()),
+                kept_past_summary: false,
+            },
+            InferenceItem::AssistantThinking {
+                model_id: model(),
+                text: "theirs".into(),
+                signature: Some("google:sig-2".into()),
+                kept_past_summary: false,
+            },
+            InferenceItem::AssistantThinking {
+                model_id: model(),
+                text: "unsigned".into(),
+                signature: None,
+                kept_past_summary: false,
+            },
+            InferenceItem::AssistantRedactedThinking {
+                model_id: model(),
+                data: "anthropic:opaque".into(),
+                kept_past_summary: false,
+            },
+            InferenceItem::AssistantRedactedThinking {
+                model_id: model(),
+                data: "opaque-elsewhere".into(),
+                kept_past_summary: false,
+            },
+            InferenceItem::ToolUse {
+                model_id: model(),
+                tool_use_id: "toolu-1".into(),
+                tool_name: "ls".into(),
+                input: json!({}),
+            },
         ],
         None,
         None,
     )
     .await;
-    assert_eq!(body["messages"][1], json!({ "role": "assistant", "content": [{ "type": "text", "text": "hello" }] }));
+    assert_eq!(
+        body["messages"][1],
+        json!({ "role": "assistant", "content": [{ "type": "text", "text": "hello" }] })
+    );
     assert_eq!(
         body["messages"][3],
         json!({ "role": "assistant", "content": [
@@ -360,7 +517,12 @@ async fn media_travels_inline_and_what_the_api_cannot_read_becomes_text() {
                     UserPart::Video(Medium::Bytes(bytes(&[0x89, b'P', b'N', b'G'], "video/mp4"))),
                 ],
             },
-            InferenceItem::ToolUse { model_id: "m".into(), tool_use_id: "toolu-1".into(), tool_name: "shot".into(), input: json!({}) },
+            InferenceItem::ToolUse {
+                model_id: "m".into(),
+                tool_use_id: "toolu-1".into(),
+                tool_name: "shot".into(),
+                input: json!({}),
+            },
             InferenceItem::ToolResult {
                 tool_use_id: "toolu-1".into(),
                 output: vec![

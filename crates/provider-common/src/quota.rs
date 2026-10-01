@@ -176,7 +176,10 @@ impl MemorySnapshots {
 
 impl QuotaSnapshotStore for MemorySnapshots {
     fn latest(&self) -> Option<Arc<QuotaSnapshot>> {
-        self.latest.lock().unwrap_or_else(PoisonError::into_inner).clone()
+        self.latest
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     fn update(
@@ -202,7 +205,11 @@ enum Update {
 /// sets the plan and the account label; an observation keeps them; either
 /// replaces the windows it names, keeps the others, and adds new ones after
 /// them in the order it read them.
-fn merge(previous: Option<&QuotaSnapshot>, update: Update, observed_at: Timestamp) -> QuotaSnapshot {
+fn merge(
+    previous: Option<&QuotaSnapshot>,
+    update: Update,
+    observed_at: Timestamp,
+) -> QuotaSnapshot {
     let (source, plan, account_label, windows) = match update {
         Update::Probe(reading) => (
             SnapshotSource::Probe,
@@ -217,7 +224,9 @@ fn merge(previous: Option<&QuotaSnapshot>, update: Update, observed_at: Timestam
             windows,
         ),
     };
-    let mut merged: Vec<QuotaWindow> = previous.map(|snapshot| snapshot.windows.clone()).unwrap_or_default();
+    let mut merged: Vec<QuotaWindow> = previous
+        .map(|snapshot| snapshot.windows.clone())
+        .unwrap_or_default();
     for window in windows {
         match merged.iter_mut().find(|kept| kept.id == window.id) {
             Some(kept) => *kept = window,

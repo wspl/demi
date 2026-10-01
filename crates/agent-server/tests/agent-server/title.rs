@@ -8,11 +8,11 @@ use demi_agent_server::title::{
     title_from_response, title_input,
 };
 use demi_agent_store::testing::test_model;
-use demi_shared_types::{ThinkingCapability, ThinkingConfig, ThinkingSummary};
 use demi_provider_common::{
     InferenceItem, PromptCache, ProviderEvent, ProviderFailure, UserPart,
     testing::{ScriptedRuntime, Turn, event},
 };
+use demi_shared_types::{ThinkingCapability, ThinkingConfig, ThinkingSummary};
 use tokio_util::sync::CancellationToken;
 
 #[test]

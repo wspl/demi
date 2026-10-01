@@ -10,11 +10,11 @@ use std::rc::Weak;
 use bytes::Bytes;
 use demi_agent_store::{COMMAND_OUTPUT_DAYS, StoredOutput};
 use demi_agent_tools::{AgentHarness, PAGE_CHARS};
-use demi_shared_types::{CommandId, StreamKind};
 use demi_host_interface::{
     GroupBuilder, LeafBuilder, OutputText, Piece, RpcError, RpcPort, Seen, ShellError, Streams,
     TypedRpc, WholeOutput,
 };
+use demi_shared_types::{CommandId, StreamKind};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -99,7 +99,9 @@ async fn output<H: AgentHarness>(
         (Some(lines), None) => match range(lines) {
             Some((from, to)) => Reading::Lines { from, to },
             None => {
-                let reason = format!("--lines {lines}: lines count from 1, and a range ends at or after its start");
+                let reason = format!(
+                    "--lines {lines}: lines count from 1, and a range ends at or after its start"
+                );
                 return fail(&port, &reason).await;
             }
         },
@@ -108,7 +110,11 @@ async fn output<H: AgentHarness>(
     };
     let raw = args.raw == Some(true);
     if raw && !matches!(reading, Reading::Page) {
-        return fail(&port, "--raw prints all of the output; take part of it with sed or tail").await;
+        return fail(
+            &port,
+            "--raw prints all of the output; take part of it with sed or tail",
+        )
+        .await;
     }
     let found = match find(&call.tree, id).await {
         Ok(found) => found,

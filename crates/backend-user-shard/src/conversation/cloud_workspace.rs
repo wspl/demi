@@ -6,20 +6,29 @@
 use demi_backend_database::workspaces::{WorkspaceRecord, new_workspace_id};
 use demi_host_interface::{HostFs, MkdirOptions};
 
-use demi_backend_host_access::access::{HostAccessError, Refusal};
 use crate::shard::Shard;
+use demi_backend_host_access::access::{HostAccessError, Refusal};
 
 impl Shard {
     /// Makes `~/projects/<id>` on the user's Cloud, then the workspace `name`
     /// over it. Every project of the user is a directory on the same Cloud.
-    pub async fn create_cloud_workspace(&self, name: String) -> Result<WorkspaceRecord, HostAccessError> {
+    pub async fn create_cloud_workspace(
+        &self,
+        name: String,
+    ) -> Result<WorkspaceRecord, HostAccessError> {
         let id = new_workspace_id();
         let access = self.cloud_shard().machine_access().await?;
         let path = format!("{}/projects/{id}", access.home);
         HostFs::mkdir(&access.host, &path, MkdirOptions { recursive: true }).await?;
         self.services()
             .control
-            .create_workspace(id, self.user().clone(), access.device.id.clone(), path, name)
+            .create_workspace(
+                id,
+                self.user().clone(),
+                access.device.id.clone(),
+                path,
+                name,
+            )
             .await?
             .ok_or_else(|| Refusal::DeviceGone.into())
     }

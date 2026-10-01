@@ -143,7 +143,10 @@ impl Transport {
                     code: CloseCode::Away,
                     reason: "runner stopping".into(),
                 };
-                writer.send(Message::Close(Some(frame))).await.map_err(io::Error::other)?;
+                writer
+                    .send(Message::Close(Some(frame)))
+                    .await
+                    .map_err(io::Error::other)?;
                 while let Some(message) = reader.next().await {
                     if matches!(message, Ok(Message::Close(_)) | Err(_)) {
                         break;
@@ -188,7 +191,10 @@ where
     if bytes.len() > wire::MAX_MESSAGE_BYTES {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            format!("runner outbound message exceeds {} bytes", wire::MAX_MESSAGE_BYTES),
+            format!(
+                "runner outbound message exceeds {} bytes",
+                wire::MAX_MESSAGE_BYTES
+            ),
         ));
     }
     tokio::time::timeout(WRITE_TIMEOUT, writer.send(Message::Binary(bytes.into())))

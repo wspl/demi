@@ -12,9 +12,9 @@ use serde_with::rust::unwrap_or_skip;
 use super::{
     AssetKind, BrowserFailure, BrowserNode, BrowserTab, BrowserTarget, BrowserTreeNode,
     BrowserViewport, ClipboardFormat, ClipboardMime, ContentFormat, Dialog, DialogOutcome,
-    DialogType, ElementState, FETCH_URLS, InspectView, LOCATOR_LENGTH, Load, LogLevel,
-    MAX_NODES, MAX_TIMEOUT_MS, Modifier, MouseButton, NodeRef, ReadProperty, STDIN_BYTES,
-    TIMEOUT_MS, TabId, TextCursor,
+    DialogType, ElementState, FETCH_URLS, InspectView, LOCATOR_LENGTH, Load, LogLevel, MAX_NODES,
+    MAX_TIMEOUT_MS, Modifier, MouseButton, NodeRef, ReadProperty, STDIN_BYTES, TIMEOUT_MS, TabId,
+    TextCursor,
 };
 
 /// What every operation's input answers about itself.
@@ -175,10 +175,18 @@ impl BrowserInput for OpenInput {
 pub struct OpenResult {
     pub tab: TabId,
     pub url: String,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "String")]
     pub title: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "BrowserViewport")]
     pub viewport: Option<BrowserViewport>,
 }
@@ -217,7 +225,11 @@ pub struct InfoResult {
     pub url: String,
     pub title: String,
     pub viewport: BrowserViewport,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "Dialog")]
     pub dialog: Option<Dialog>,
 }
@@ -275,7 +287,11 @@ input! {
 pub struct NavigationResult {
     pub tab: TabId,
     pub url: String,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "String")]
     pub title: Option<String>,
 }
@@ -494,7 +510,11 @@ input! {
 pub struct ProbeResult {
     pub matches: Vec<BrowserNode>,
     pub viewport: BrowserViewport,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "String")]
     pub path: Option<String>,
     pub truncated: bool,
@@ -678,17 +698,33 @@ input! {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ActionResult {
     pub operation: String,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "String")]
     pub target: Option<String>,
     pub result: Value,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "String")]
     pub url: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "Vec<TabId>")]
     pub opened_tabs: Option<Vec<TabId>>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "Dialog")]
     pub dialog: Option<Dialog>,
 }
@@ -733,10 +769,18 @@ input! {
 pub struct WaitResult {
     pub condition: String,
     pub matched: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "String")]
     pub url: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "NodeRef")]
     pub r#ref: Option<NodeRef>,
 }
@@ -897,7 +941,11 @@ pub struct LogEntry {
     pub sequence: u64,
     pub level: LogLevel,
     pub text: String,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "String")]
     pub url: Option<String>,
     /// Milliseconds since the Unix epoch.
@@ -1146,7 +1194,11 @@ pub struct FetchedPage {
     pub url: String,
     pub title: String,
     pub content: String,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "BrowserFailure")]
     pub error: Option<BrowserFailure>,
 }
@@ -1171,7 +1223,11 @@ pub struct Asset {
     pub id: String,
     pub kind: AssetKind,
     pub url: String,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "String")]
     pub mime_type: Option<String>,
 }
@@ -1245,10 +1301,18 @@ input! {
 pub struct Capability {
     pub id: String,
     pub available: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "String")]
     pub reason: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "Value")]
     pub schema: Option<Value>,
 }
@@ -1271,7 +1335,11 @@ pub struct WebmcpTool {
     pub name: String,
     pub description: String,
     pub input_schema: Value,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "Value")]
     pub output_schema: Option<Value>,
 }

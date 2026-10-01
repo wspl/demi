@@ -17,9 +17,9 @@ use demi_backend_database::conversation_index::{ConversationRecord, Creation};
 use demi_backend_database::tree;
 use demi_backend_page_sync::Part;
 use demi_web_api_protocol::conversations::{
-    BatchAnswer, BatchResult, ConversationAnswer, ConversationBatch, ConversationPatch, ConversationUpdate, Conversations,
-    ConversationsQuery, CreateConversation, FieldResult, ForkAnswer, ForkRequest, ReadRequest, SubagentHistory,
-    Transcript,
+    BatchAnswer, BatchResult, ConversationAnswer, ConversationBatch, ConversationPatch,
+    ConversationUpdate, Conversations, ConversationsQuery, CreateConversation, FieldResult,
+    ForkAnswer, ForkRequest, ReadRequest, SubagentHistory, Transcript,
 };
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
@@ -29,17 +29,25 @@ use super::body::JsonBody;
 use super::error::ApiError;
 use super::gate::AuthUser;
 use super::query::QueryParams;
-use demi_backend_user_shard::services::Services;
 use demi_backend_user_shard::conversation::titles::TitleRefusal;
 use demi_backend_user_shard::conversation::{ForkRefusal, failure_facts};
+use demi_backend_user_shard::services::Services;
 
 fn not_found() -> ApiError {
-    ApiError::new(StatusCode::NOT_FOUND, ErrorCode::ConversationNotFound, "No such conversation")
+    ApiError::new(
+        StatusCode::NOT_FOUND,
+        ErrorCode::ConversationNotFound,
+        "No such conversation",
+    )
 }
 
 /// The caller's conversation the path names; one of another user answers
 /// like a missing one, so a request only ever reaches its owner's shard.
-pub(super) async fn owned(services: &Services, user: &UserId, id: &str) -> Result<ConversationRecord, ApiError> {
+pub(super) async fn owned(
+    services: &Services,
+    user: &UserId,
+    id: &str,
+) -> Result<ConversationRecord, ApiError> {
     let id = ConversationId::try_from(id).map_err(|_| not_found())?;
     services
         .control
@@ -73,7 +81,11 @@ pub(super) async fn create(
     AuthUser(user): AuthUser,
     JsonBody(CreateConversation { id }): JsonBody<CreateConversation>,
 ) -> Result<(StatusCode, Json<ConversationAnswer>), ApiError> {
-    let creation = state.services.control.create_conversation(user.id.clone(), id).await?;
+    let creation = state
+        .services
+        .control
+        .create_conversation(user.id.clone(), id)
+        .await?;
     let (status, record) = match creation {
         Creation::Created(record) => {
             let sync = &state.services.sync;
@@ -155,8 +167,20 @@ pub(super) async fn patch(
         .iter()
         .filter(|result| matches!(result, FieldResult::Failed { .. }))
         .collect();
-    if let ([FieldResult::Failed { code, message, http_status, .. }], 1) = (failures.as_slice(), update.results.len()) {
-        let status = StatusCode::from_u16(*http_status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    if let (
+        [
+            FieldResult::Failed {
+                code,
+                message,
+                http_status,
+                ..
+            },
+        ],
+        1,
+    ) = (failures.as_slice(), update.results.len())
+    {
+        let status =
+            StatusCode::from_u16(*http_status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         return Err(ApiError::new(status, *code, message.clone()));
     }
     let status = if failures.is_empty() {
@@ -182,9 +206,12 @@ pub(super) async fn batch(
             let mut results = Vec::with_capacity(items.len());
             for item in items {
                 let result = match shard.apply_patch(&item.id, item.patch).await? {
-                    Some(ConversationUpdate { conversation, results }) => BatchResult::Updated {
-                        id: item.id,
+                    Some(ConversationUpdate {
                         conversation,
+                        results,
+                    }) => BatchResult::Updated {
+                        id: item.id,
+                        conversation: Box::new(conversation),
                         results,
                     },
                     None => BatchResult::Refused {
@@ -221,7 +248,11 @@ pub(super) async fn fork(
         })
         .await?
         .map_err(fork_refused)?;
-    let status = if forked.created { StatusCode::CREATED } else { StatusCode::OK };
+    let status = if forked.created {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
     Ok((status, Json(ForkAnswer { conversation })))
 }
 
@@ -229,11 +260,23 @@ fn fork_refused(refusal: ForkRefusal) -> ApiError {
     let message = refusal.to_string();
     match refusal {
         ForkRefusal::SourceNotFound => not_found(),
-        ForkRefusal::Conflict => ApiError::new(StatusCode::CONFLICT, ErrorCode::ForkConflict, message),
-        ForkRefusal::Unavailable => ApiError::new(StatusCode::CONFLICT, ErrorCode::IdUnavailable, message),
-        ForkRefusal::Target(_) => ApiError::new(StatusCode::BAD_REQUEST, ErrorCode::InvalidForkTarget, message),
+        ForkRefusal::Conflict => {
+            ApiError::new(StatusCode::CONFLICT, ErrorCode::ForkConflict, message)
+        }
+        ForkRefusal::Unavailable => {
+            ApiError::new(StatusCode::CONFLICT, ErrorCode::IdUnavailable, message)
+        }
+        ForkRefusal::Target(_) => ApiError::new(
+            StatusCode::BAD_REQUEST,
+            ErrorCode::InvalidForkTarget,
+            message,
+        ),
         ForkRefusal::Storage(error) => error.into(),
-        ForkRefusal::Failed(_) => ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::InternalError, message),
+        ForkRefusal::Failed(_) => ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            ErrorCode::InternalError,
+            message,
+        ),
     }
 }
 
@@ -259,10 +302,20 @@ fn title_refused(refusal: TitleRefusal) -> ApiError {
     let message = refusal.to_string();
     match refusal {
         TitleRefusal::NotFound => not_found(),
-        TitleRefusal::Archived => ApiError::new(StatusCode::CONFLICT, ErrorCode::ConversationArchived, message),
-        TitleRefusal::ProviderNotFound => ApiError::new(StatusCode::NOT_FOUND, ErrorCode::ProviderNotFound, message),
-        TitleRefusal::ModelNotSelected => ApiError::new(StatusCode::CONFLICT, ErrorCode::ModelNotSelected, message),
-        TitleRefusal::NoMessages => ApiError::new(StatusCode::CONFLICT, ErrorCode::NoMessages, message),
+        TitleRefusal::Archived => ApiError::new(
+            StatusCode::CONFLICT,
+            ErrorCode::ConversationArchived,
+            message,
+        ),
+        TitleRefusal::ProviderNotFound => {
+            ApiError::new(StatusCode::NOT_FOUND, ErrorCode::ProviderNotFound, message)
+        }
+        TitleRefusal::ModelNotSelected => {
+            ApiError::new(StatusCode::CONFLICT, ErrorCode::ModelNotSelected, message)
+        }
+        TitleRefusal::NoMessages => {
+            ApiError::new(StatusCode::CONFLICT, ErrorCode::NoMessages, message)
+        }
         TitleRefusal::Storage(error) => error.into(),
     }
 }
@@ -290,7 +343,10 @@ pub(super) async fn read(
             "Cannot read beyond current output",
         ));
     }
-    services.control.mark_conversation_read(record.id.clone(), revision).await?;
+    services
+        .control
+        .mark_conversation_read(record.id.clone(), revision)
+        .await?;
     services.sync.mark(&user.id, Part::Conversation(record.id));
     Ok(StatusCode::NO_CONTENT)
 }

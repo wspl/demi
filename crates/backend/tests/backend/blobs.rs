@@ -26,39 +26,67 @@ async fn a_blob_is_served_from_the_callers_namespace_inert_and_immutable() {
     let bytes = b"\x89PNG\r\n\x1a\n not really an image";
     let name = store_blob(&harness, master.user.id.as_str(), bytes);
 
-    let download = backend.get(&format!("/api/blobs/{name}"), Some(&master)).await;
+    let download = backend
+        .get(&format!("/api/blobs/{name}"), Some(&master))
+        .await;
     assert_eq!(download.status, StatusCode::OK);
     assert_eq!(download.body, bytes);
-    assert_eq!(download.headers["cache-control"], "private, max-age=31536000, immutable");
+    assert_eq!(
+        download.headers["cache-control"],
+        "private, max-age=31536000, immutable"
+    );
     assert_eq!(download.headers["vary"], "Cookie");
     assert_eq!(download.headers["x-content-type-options"], "nosniff");
     assert_eq!(download.headers["content-type"], "application/octet-stream");
     assert_eq!(download.headers["content-disposition"], "attachment");
 
-    let image = backend.get(&format!("/api/blobs/{name}?type=image%2Fpng"), Some(&master)).await;
+    let image = backend
+        .get(
+            &format!("/api/blobs/{name}?type=image%2Fpng"),
+            Some(&master),
+        )
+        .await;
     assert_eq!(image.headers["content-type"], "image/png");
     assert_eq!(
         image.headers["content-security-policy"],
         "default-src 'none'; style-src 'unsafe-inline'; sandbox"
     );
     assert!(image.headers.get("content-disposition").is_none());
-    let video = backend.get(&format!("/api/blobs/{name}?type=video/mp4"), Some(&master)).await;
+    let video = backend
+        .get(&format!("/api/blobs/{name}?type=video/mp4"), Some(&master))
+        .await;
     assert_eq!(video.headers["content-type"], "video/mp4");
     assert!(video.headers.get("content-security-policy").is_none());
     // A type the page does not show in place leaves the blob a download.
-    let page = backend.get(&format!("/api/blobs/{name}?type=text/html"), Some(&master)).await;
+    let page = backend
+        .get(&format!("/api/blobs/{name}?type=text/html"), Some(&master))
+        .await;
     assert_eq!(page.status, StatusCode::OK);
     assert_eq!(page.headers["content-type"], "application/octet-stream");
     assert_eq!(page.headers["content-disposition"], "attachment");
 
     // Another user's name reaches nothing, and neither does a malformed one.
     let theirs = store_blob(&harness, "someone-else", b"their bytes");
-    for missing in [theirs, name.to_uppercase(), "not-a-hash".to_owned(), "0".repeat(64)] {
-        let refused = backend.get(&format!("/api/blobs/{missing}"), Some(&master)).await;
-        assert_eq!(refused.refusal(), (StatusCode::NOT_FOUND, ErrorCode::NotFound), "{missing}");
+    for missing in [
+        theirs,
+        name.to_uppercase(),
+        "not-a-hash".to_owned(),
+        "0".repeat(64),
+    ] {
+        let refused = backend
+            .get(&format!("/api/blobs/{missing}"), Some(&master))
+            .await;
+        assert_eq!(
+            refused.refusal(),
+            (StatusCode::NOT_FOUND, ErrorCode::NotFound),
+            "{missing}"
+        );
     }
     let anonymous = backend.get(&format!("/api/blobs/{name}"), None).await;
-    assert_eq!(anonymous.refusal(), (StatusCode::UNAUTHORIZED, ErrorCode::Unauthenticated));
+    assert_eq!(
+        anonymous.refusal(),
+        (StatusCode::UNAUTHORIZED, ErrorCode::Unauthenticated)
+    );
     backend.close().await;
 }
 
@@ -72,19 +100,40 @@ async fn a_blob_is_served_by_byte_range_so_a_player_can_play_and_seek_a_video() 
     let video = format!("/api/blobs/{name}?type=video%2Fmp4");
 
     let whole = backend.get(&video, Some(&master)).await;
-    assert_eq!((whole.status, whole.body.as_slice()), (StatusCode::OK, bytes.as_slice()));
+    assert_eq!(
+        (whole.status, whole.body.as_slice()),
+        (StatusCode::OK, bytes.as_slice())
+    );
     assert_eq!(whole.headers["accept-ranges"], "bytes");
     // Safari asks for the first two bytes before it plays anything.
-    let probe = backend.get_with(&video, &master, &[("range", "bytes=0-1")]).await;
-    assert_eq!((probe.status, probe.body.as_slice()), (StatusCode::PARTIAL_CONTENT, &bytes[..2]));
+    let probe = backend
+        .get_with(&video, &master, &[("range", "bytes=0-1")])
+        .await;
+    assert_eq!(
+        (probe.status, probe.body.as_slice()),
+        (StatusCode::PARTIAL_CONTENT, &bytes[..2])
+    );
     assert_eq!(probe.headers["content-range"], "bytes 0-1/1000");
-    let seek = backend.get_with(&video, &master, &[("range", "bytes=600-")]).await;
-    assert_eq!((seek.status, seek.body.as_slice()), (StatusCode::PARTIAL_CONTENT, &bytes[600..]));
+    let seek = backend
+        .get_with(&video, &master, &[("range", "bytes=600-")])
+        .await;
+    assert_eq!(
+        (seek.status, seek.body.as_slice()),
+        (StatusCode::PARTIAL_CONTENT, &bytes[600..])
+    );
     assert_eq!(seek.headers["content-range"], "bytes 600-999/1000");
     assert_eq!(seek.headers["content-type"], "video/mp4");
-    assert_eq!(seek.headers["cache-control"], "private, max-age=31536000, immutable");
-    let past = backend.get_with(&video, &master, &[("range", "bytes=1000-")]).await;
-    assert_eq!((past.status, past.body.len()), (StatusCode::RANGE_NOT_SATISFIABLE, 0));
+    assert_eq!(
+        seek.headers["cache-control"],
+        "private, max-age=31536000, immutable"
+    );
+    let past = backend
+        .get_with(&video, &master, &[("range", "bytes=1000-")])
+        .await;
+    assert_eq!(
+        (past.status, past.body.len()),
+        (StatusCode::RANGE_NOT_SATISFIABLE, 0)
+    );
     assert_eq!(past.headers["content-range"], "bytes */1000");
     backend.close().await;
 }

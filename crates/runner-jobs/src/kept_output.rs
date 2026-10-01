@@ -66,10 +66,8 @@ impl KeptOutput {
         tokio::fs::create_dir(&directory).await?;
         let head = directory.join("head");
         // Out of open files, the output waits for one (`runner.md` § Load).
-        let file = demi_command_sdk::descriptors::retry(cancel, || {
-            tokio::fs::File::create(&head)
-        })
-        .await?;
+        let file =
+            demi_command_sdk::descriptors::retry(cancel, || tokio::fs::File::create(&head)).await?;
         Ok(Self {
             directory,
             head: Some(file),

@@ -17,10 +17,10 @@ mod host_commands {
 
     use crate::services::Services;
     use crate::shard::{ShardPlacement, ShardPool};
-    use demi_backend_runners::command_context::default_locale;
     use demi_backend_database::accounts::TokenHash;
     use demi_backend_database::control::testing;
     use demi_backend_database::conversation_index::{AttachedHostRecord, Creation, RecordChange};
+    use demi_backend_runners::command_context::default_locale;
     use demi_runner_protocol::wire::RunnerPlatform;
 
     const ID: &str = "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01";

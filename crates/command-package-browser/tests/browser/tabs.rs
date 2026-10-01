@@ -24,9 +24,7 @@ async fn commands_on_another_tab_run_while_one_tab_is_held() {
             fixture.wait_until_busy(&held).await;
             let info = fixture.call("browser.info", json!({"tab": other})).await;
             assert_eq!(info["tab"], other);
-            fixture
-                .call("browser.inspect", json!({"tab": other}))
-                .await;
+            fixture.call("browser.inspect", json!({"tab": other})).await;
             let tabs = fixture.call("browser.tabs", json!({})).await;
             let ids: Vec<_> = tabs["tabs"]
                 .as_array()
@@ -37,7 +35,11 @@ async fn commands_on_another_tab_run_while_one_tab_is_held() {
             assert_eq!(ids, [held.clone(), other.clone()]);
             // The wait still holds its tab: the commands above ran beside it.
             let (_, busy) = fixture
-                .result("browser.info", json!({"tab": held}), CancellationToken::new())
+                .result(
+                    "browser.info",
+                    json!({"tab": held}),
+                    CancellationToken::new(),
+                )
                 .await;
             assert_eq!(busy["error"]["code"], "tab_busy", "{busy}");
             cancel.cancel();
@@ -113,7 +115,10 @@ async fn an_action_works_in_the_older_of_two_open_tabs() {
             .call("browser.click", json!({"tab": older, "css": "#stay"}))
             .await;
         let clicks = fixture
-            .call("browser.eval", json!({"tab": older, "expression": "window.stays"}))
+            .call(
+                "browser.eval",
+                json!({"tab": older, "expression": "window.stays"}),
+            )
             .await;
         assert_eq!(clicks["value"], 1);
         // Neither tab came to the front.
@@ -159,20 +164,28 @@ async fn commands_answer_readable_text_unless_json_is_asked() {
         std::fs::write(&path, "<!doctype html><title>Readable page</title>").unwrap();
         let url = url::Url::from_file_path(path).unwrap();
         let text = async |operation: &str, args: serde_json::Value| {
-            let (code, answer) = readable.result(operation, args, CancellationToken::new()).await;
+            let (code, answer) = readable
+                .result(operation, args, CancellationToken::new())
+                .await;
             assert_eq!(code, 0, "{operation}: {answer}");
             answer["diagnostic"].as_str().unwrap().to_owned()
         };
         let opened = text("browser.open", json!({"url": url.as_str()})).await;
-        let tab = opened.lines().next().and_then(|line| line.strip_prefix("Tab: ")).unwrap();
+        let tab = opened
+            .lines()
+            .next()
+            .and_then(|line| line.strip_prefix("Tab: "))
+            .unwrap();
         assert!(opened.contains("\nTitle: Readable page\n"), "{opened}");
         let listed = text("browser.tabs", json!({})).await;
         let row = listed.lines().nth(1).unwrap();
-        assert!(row.starts_with(tab) && row.contains("Readable page"), "{listed}");
+        assert!(
+            row.starts_with(tab) && row.contains("Readable page"),
+            "{listed}"
+        );
         let info = fixture.call("browser.info", json!({"tab": tab})).await;
         assert_eq!(info["title"], "Readable page");
         fixture
     })
     .await;
 }
-

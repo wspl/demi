@@ -15,8 +15,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use demi_machine_manager_protocol::{
-    DeviceId, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse, Operation, ReconcileParams,
-    decode_response, encode_line,
+    DeviceId, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse, Operation,
+    ReconcileParams, decode_response, encode_line,
 };
 use futures_util::StreamExt as _;
 use tokio::io::AsyncWriteExt as _;
@@ -41,13 +41,19 @@ pub enum MachinesError {
     /// The manager could not be reached, or the connection dropped before it
     /// answered: whether the operation ran is not known.
     #[error("Machine manager unavailable during {operation}: {reason}")]
-    Unavailable { operation: &'static str, reason: String },
+    Unavailable {
+        operation: &'static str,
+        reason: String,
+    },
     /// The manager ran the operation and it failed.
     #[error("{0}")]
     Failed(String),
     /// The manager answered with a result the operation does not have.
     #[error("the machine manager answered {operation} with an unexpected result: {reason}")]
-    Result { operation: &'static str, reason: String },
+    Result {
+        operation: &'static str,
+        reason: String,
+    },
 }
 
 /// A handle on the machine manager's socket. `Send + Sync`: it is a service
@@ -109,7 +115,12 @@ impl MachinesClient {
             reconciled => reconciled,
         };
         let (done, disconnected) = oneshot::channel();
-        if self.commands.send(Command::Disconnect { done }).await.is_ok() {
+        if self
+            .commands
+            .send(Command::Disconnect { done })
+            .await
+            .is_ok()
+        {
             // The supervisor answers once the connection is gone; if it
             // ended, so did the connection.
             let _ = disconnected.await;
@@ -117,7 +128,11 @@ impl MachinesClient {
         reconciled
     }
 
-    async fn send<O: Operation>(&self, params: O, live_only: bool) -> Result<O::Output, MachinesError> {
+    async fn send<O: Operation>(
+        &self,
+        params: O,
+        live_only: bool,
+    ) -> Result<O::Output, MachinesError> {
         let call: MachineCall = params.into();
         let operation = call.name();
         let (answer, answered) = oneshot::channel();
@@ -126,7 +141,11 @@ impl MachinesClient {
             reason: "the machine manager's client is closed".into(),
         };
         self.commands
-            .send(Command::Call { call, live_only, answer })
+            .send(Command::Call {
+                call,
+                live_only,
+                answer,
+            })
             .await
             .map_err(|_| unavailable())?;
         let result = answered.await.map_err(|_| unavailable())??;
@@ -215,9 +234,15 @@ impl Supervisor {
         }
         let id = self.next_id.to_string();
         self.next_id += 1;
-        let line = encode_line(&MachineRequest { id: id.clone(), call });
+        let line = encode_line(&MachineRequest {
+            id: id.clone(),
+            call,
+        });
         self.pending.insert(id, Pending { operation, answer });
-        let connection = self.connection.as_mut().expect("the connection was just opened");
+        let connection = self
+            .connection
+            .as_mut()
+            .expect("the connection was just opened");
         if let Err(error) = connection.writer.write_all(&line).await {
             self.dropped(&error.to_string());
         }
@@ -242,7 +267,9 @@ impl Supervisor {
                     Ok(device) => {
                         let _ = self.deaths.send(device).await;
                     }
-                    Err(error) => tracing::warn!("the machine manager reported the death of {error}"),
+                    Err(error) => {
+                        tracing::warn!("the machine manager reported the death of {error}")
+                    }
                 }
                 return;
             }
@@ -255,7 +282,10 @@ impl Supervisor {
                 // ran all the same.
                 let _ = pending.answer.send(result);
             }
-            None => tracing::warn!(id, "the machine manager answered a request this backend did not send"),
+            None => tracing::warn!(
+                id,
+                "the machine manager answered a request this backend did not send"
+            ),
         }
     }
 
@@ -264,7 +294,10 @@ impl Supervisor {
     fn dropped(&mut self, reason: &str) {
         self.connection = None;
         if !self.pending.is_empty() {
-            tracing::warn!(calls = self.pending.len(), "the machine manager's connection dropped: {reason}");
+            tracing::warn!(
+                calls = self.pending.len(),
+                "the machine manager's connection dropped: {reason}"
+            );
         }
         for (_, pending) in self.pending.drain() {
             let error = MachinesError::Unavailable {

@@ -13,7 +13,6 @@ use std::{
     sync::Arc,
 };
 
-use demi_conversation_socket_protocol::AbortTarget;
 use demi_agent_store::{
     BoundaryEdge, CheckpointState, CheckpointUpdate, CommandStateHistory, CommandStateSnapshot,
     CommandStorageKey, CommandVersion, EditReceipt, PendingAgentInput, ScheduledWakeup,
@@ -23,14 +22,15 @@ use demi_agent_transcript::{
     INTERRUPTED_CODE, INTERRUPTED_TURN_MESSAGE, IdSource, RequestView, TranscriptLog,
     opens_input_turn, replay, replay_start,
 };
+use demi_conversation_socket_protocol::AbortTarget;
+use demi_provider_common::{
+    InferenceRequest, PromptCache, ProviderEvent, ProviderFailure, ProviderRuntime, RequestLimits,
+    ToolDefinition,
+};
 use demi_shared_types::{
     AgentMessage, BlobRef, Block, BlockId, Clock, FailureSource, ModelSelection, NodeId,
     PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase, ToolResultContentBlock,
     ToolView, TurnId, UserContentBlock, WakeupId, WakeupPlacement,
-};
-use demi_provider_common::{
-    InferenceRequest, PromptCache, ProviderEvent, ProviderFailure, ProviderRuntime, RequestLimits,
-    ToolDefinition,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -1082,7 +1082,7 @@ impl SessionCore {
             .or(self.provider.as_deref())
             .expect("the provider runtime is in its slot between runs");
         let limits = runtime.request_limits(&switch.model.model);
-        Some((switch.model.clone(), limits))
+        Some((ModelSelection::clone(&switch.model), limits))
     }
 
     /// Makes the recorded switch current, and returns the runtimes it
@@ -1096,8 +1096,8 @@ impl SessionCore {
         if let Some(runtime) = switch.runtime {
             replaced.extend(self.provider.replace(runtime));
         }
-        if self.model != switch.model {
-            self.model = switch.model;
+        if self.model != *switch.model {
+            self.model = *switch.model;
             self.persist.dirty = true;
             self.requests.save = true;
         }
@@ -1211,7 +1211,7 @@ impl SessionCore {
             &self.model,
             failure.message.clone(),
             failure.code.as_ref().map(|code| code.as_str().to_owned()),
-            failure.diagnostics.clone(),
+            failure.diagnostics.as_deref().cloned(),
         );
     }
 
@@ -1601,15 +1601,17 @@ fn wakeup_block_id(id: &WakeupId) -> BlockId {
 /// attempt's client request id, and the source `unknown` when the provider
 /// named none.
 pub(super) fn with_request_id(mut failure: ProviderFailure, request_id: &str) -> ProviderFailure {
-    let diagnostics = failure.diagnostics.get_or_insert(ProviderErrorDiagnostics {
-        source: FailureSource::Unknown,
-        client_request_id: None,
-        provider_request_id: None,
-        provider_response_id: None,
-        provider_code: None,
-        http_status: None,
-        upstream: None,
-    });
+    let diagnostics = failure
+        .diagnostics
+        .get_or_insert(Box::new(ProviderErrorDiagnostics {
+            source: FailureSource::Unknown,
+            client_request_id: None,
+            provider_request_id: None,
+            provider_response_id: None,
+            provider_code: None,
+            http_status: None,
+            upstream: None,
+        }));
     diagnostics.client_request_id = Some(request_id.to_owned());
     failure
 }

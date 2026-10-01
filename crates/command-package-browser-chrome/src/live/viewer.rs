@@ -12,11 +12,11 @@ use tokio::{
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 use crate::driver::operation::{BrowserError, CONTROL_TIMEOUT, Result as BrowserResult};
+use crate::tabs::{environment::BrowserEnvironment, tab::BrowserTab};
 use demi_command_package_browser_protocol::live::{
     EndReason, LiveControl, LiveDialog, LiveModuleMessage, LiveTab, LiveViewerMessage, Platform,
     PointerAction, STALL_MS, ViewerMode,
 };
-use crate::tabs::{environment::BrowserEnvironment, tab::BrowserTab};
 use demi_command_protocol::{CommandError, Completion};
 use demi_command_sdk::{Input as ServiceInput, InvocationContext, ServiceError};
 
@@ -749,12 +749,18 @@ impl Session<'_> {
             }
             Update::Picture(Event::Unavailable(reason)) => {
                 self.writer
-                    .notice(demi_command_package_browser_protocol::live::CAPTURE_UNAVAILABLE, &reason)
+                    .notice(
+                        demi_command_package_browser_protocol::live::CAPTURE_UNAVAILABLE,
+                        &reason,
+                    )
                     .await;
             }
             Update::Picture(Event::Failed(reason)) => {
                 self.writer
-                    .notice(demi_command_package_browser_protocol::live::CAPTURE_FAILED, &reason)
+                    .notice(
+                        demi_command_package_browser_protocol::live::CAPTURE_FAILED,
+                        &reason,
+                    )
                     .await;
             }
             Update::StreamEnded => watched.stream = None,

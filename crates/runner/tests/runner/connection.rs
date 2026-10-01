@@ -33,15 +33,17 @@ async fn the_socket_is_the_backend_urls_path_or_the_runner_route() {
             );
             let (stream, _) = listener.accept().await.unwrap();
             let mut uri = None;
-            let socket = tokio_tungstenite::accept_hdr_async(
-                stream,
-                |request: &Request, response: Response| {
-                    uri = Some(request.uri().to_string());
-                    Ok(response)
-                },
-            )
-            .await
-            .unwrap();
+            #[allow(
+                clippy::result_large_err,
+                reason = "tungstenite's handshake callback fixes this signature, its error response included"
+            )]
+            let record = |request: &Request, response: Response| {
+                uri = Some(request.uri().to_string());
+                Ok(response)
+            };
+            let socket = tokio_tungstenite::accept_hdr_async(stream, record)
+                .await
+                .unwrap();
             assert_eq!(uri.as_deref(), Some(requested), "{backend}");
             drop(socket);
             process.stop().await;

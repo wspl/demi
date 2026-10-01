@@ -115,10 +115,21 @@ mod tests {
     #[test]
     fn a_reset_names_its_operation_by_a_uuid_and_nothing_else() {
         let reset: CloudReset =
-            demi_shared_types::decode(r#"{"operationId":"0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b"}"#).unwrap();
-        assert_eq!(reset.operation_id.as_str(), "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b");
-        for refused in [r#"{"operationId":"reset-1"}"#, r#"{"operationId":""}"#, "{}"] {
-            assert!(demi_shared_types::decode::<CloudReset>(refused).is_err(), "{refused}");
+            demi_shared_types::decode(r#"{"operationId":"0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b"}"#)
+                .unwrap();
+        assert_eq!(
+            reset.operation_id.as_str(),
+            "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b"
+        );
+        for refused in [
+            r#"{"operationId":"reset-1"}"#,
+            r#"{"operationId":""}"#,
+            "{}",
+        ] {
+            assert!(
+                demi_shared_types::decode::<CloudReset>(refused).is_err(),
+                "{refused}"
+            );
         }
         let extra = r#"{"operationId":"0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b","base":"x"}"#;
         assert!(demi_shared_types::decode::<CloudReset>(extra).is_err());

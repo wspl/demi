@@ -9,16 +9,16 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use demi_backend_database::StorageError;
-use demi_shared_types::Clock;
+use demi_provider_claude_code::Placement;
 use demi_provider_common::credentials::CredentialPool;
 use demi_provider_common::{Provider, ProviderRuntime};
-use demi_provider_claude_code::Placement;
+use demi_shared_types::Clock;
 use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 
 use super::catalog_cache::ModelCatalogCache;
 use super::families::{
-    AccountBinding, ApiKeyArgs, FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily,
-    SubscriptionArgs,
+    AccountBinding, ApiKeyArgs, FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry,
+    ProviderFamily, SubscriptionArgs,
 };
 use super::vendors::VendorCatalog;
 use crate::vault::entries::{EntryCredential, ProviderEntry, Vault};
@@ -110,7 +110,10 @@ impl ProviderAssembly {
     /// The provider of `entry`, a fresh read of the entry, for its active
     /// account: the one built before while the entry is unchanged, otherwise
     /// a new one.
-    pub async fn provider_for(&self, entry: &ProviderEntry) -> Result<Arc<dyn Provider>, AssemblyError> {
+    pub async fn provider_for(
+        &self,
+        entry: &ProviderEntry,
+    ) -> Result<Arc<dyn Provider>, AssemblyError> {
         let reused = self
             .lock()
             .get(&entry.id)
@@ -121,7 +124,8 @@ impl ProviderAssembly {
         }
         let provider = self.build(entry, entry.active()).await?;
         // Two builds for one entry race only to insert the same provider.
-        self.lock().insert(entry.id.clone(), (entry.clone(), provider.clone()));
+        self.lock()
+            .insert(entry.id.clone(), (entry.clone(), provider.clone()));
         Ok(provider)
     }
 
@@ -135,7 +139,10 @@ impl ProviderAssembly {
         if entry.active() == Some(account) {
             return self.provider_for(entry).await.map(Some);
         }
-        let stored = self.vault.account(entry.id.clone(), account.clone()).await?;
+        let stored = self
+            .vault
+            .account(entry.id.clone(), account.clone())
+            .await?;
         if stored.is_none() {
             return Ok(None);
         }
@@ -152,7 +159,10 @@ impl ProviderAssembly {
         pool: Arc<dyn CredentialPool>,
     ) -> Result<Arc<dyn Provider>, AssemblyError> {
         let registered = self.family(family)?;
-        let credential = FamilyCredential::Subscription(SubscriptionArgs { pool, account: None });
+        let credential = FamilyCredential::Subscription(SubscriptionArgs {
+            pool,
+            account: None,
+        });
         Ok(registered.provider(self.args(id.to_owned(), label.to_owned(), credential))?)
     }
 
@@ -216,11 +226,18 @@ impl ProviderAssembly {
 
     /// What `entry`'s family builds from for `account`: the entry's settings,
     /// or its pool with the account and its quota store.
-    async fn entry_args(&self, entry: &ProviderEntry, account: Option<&CredentialId>) -> Result<FamilyArgs, AssemblyError> {
+    async fn entry_args(
+        &self,
+        entry: &ProviderEntry,
+        account: Option<&CredentialId>,
+    ) -> Result<FamilyArgs, AssemblyError> {
         let credential = match &entry.credential {
             EntryCredential::ApiKey(config) => FamilyCredential::ApiKey(ApiKeyArgs {
                 api_key: config.api_key.clone(),
-                base_url: config.base_url.as_ref().map(|endpoint| endpoint.url().clone()),
+                base_url: config
+                    .base_url
+                    .as_ref()
+                    .map(|endpoint| endpoint.url().clone()),
                 wire_api: config.wire_api,
                 vendor: self.vendors.policy(config.vendor_id.as_deref()),
             }),
@@ -242,7 +259,11 @@ impl ProviderAssembly {
                 })
             }
         };
-        Ok(self.args(entry.id.as_str().to_owned(), entry.label.clone(), credential))
+        Ok(self.args(
+            entry.id.as_str().to_owned(),
+            entry.label.clone(),
+            credential,
+        ))
     }
 
     fn args(&self, entry_id: String, label: String, credential: FamilyCredential) -> FamilyArgs {

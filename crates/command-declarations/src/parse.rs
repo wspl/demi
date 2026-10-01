@@ -143,9 +143,7 @@ impl Selected<'_> {
                     let value = argv
                         .get(index)
                         .filter(|value| !value.starts_with("--"))
-                        .ok_or_else(|| {
-                            UsageError(format!("Missing value for \"--{field}\""))
-                        })?;
+                        .ok_or_else(|| UsageError(format!("Missing value for \"--{field}\"")))?;
                     index += 1;
                     Value::String(value.clone())
                 };
@@ -156,9 +154,7 @@ impl Selected<'_> {
                 .positionals
                 .as_ref()
                 .and_then(|fields| fields.get(positional))
-                .ok_or_else(|| {
-                    UsageError(format!("Unexpected positional argument \"{token}\""))
-                })?;
+                .ok_or_else(|| UsageError(format!("Unexpected positional argument \"{token}\"")))?;
             positional += 1;
             let schema = &properties.expect("validated positional schema")[field];
             set_value(

@@ -13,8 +13,8 @@ use demi_backend_providers::vault::accounts;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{CredentialId, LoginId};
 use demi_web_api_protocol::providers::{
-    Accounts, ActivateAccount, ActiveAccount, AddToken, AddedAccount, CredentialKind, LoginAnswer, LoginStarted,
-    PendingStatus, ProviderAnswer, SetupTokenImport, StartedLogin, SubscriptionLogin,
+    Accounts, ActivateAccount, ActiveAccount, AddToken, AddedAccount, CredentialKind, LoginAnswer,
+    LoginStarted, PendingStatus, ProviderAnswer, SetupTokenImport, StartedLogin, SubscriptionLogin,
 };
 
 use super::body::JsonBody;
@@ -43,7 +43,12 @@ pub(super) async fn import_setup_token(
     )
     .await?;
     install_for_account(&services, &shards, &user, &entry).await;
-    Ok((StatusCode::CREATED, Json(ProviderAnswer { provider: entry.dto() })))
+    Ok((
+        StatusCode::CREATED,
+        Json(ProviderAnswer {
+            provider: entry.dto(),
+        }),
+    ))
 }
 
 /// The entry's accounts; a user who only infers sees none.
@@ -54,7 +59,9 @@ pub(super) async fn list(
 ) -> Result<Json<Accounts>, ApiError> {
     let entry = scoped(&services, &user, &id).await?;
     let disclose = services.vault.configures(&user);
-    Ok(Json(accounts::list(&services.assembly, &entry, disclose).await?))
+    Ok(Json(
+        accounts::list(&services.assembly, &entry, disclose).await?,
+    ))
 }
 
 /// Adds another account to the entry from a setup token, and starts the
@@ -125,7 +132,10 @@ pub(super) async fn start_login(
         None => format!("{family} subscription"),
     };
     let owner = services.vault.owner_for(&user.id).await?;
-    let id = services.logins.start(owner, user.id, family, label, None).await?;
+    let id = services
+        .logins
+        .start(owner, user.id, family, label, None)
+        .await?;
     Ok(started(id))
 }
 
@@ -156,7 +166,11 @@ pub(super) async fn login_into(
 }
 
 fn login_not_found() -> ApiError {
-    ApiError::new(StatusCode::NOT_FOUND, ErrorCode::LoginNotFound, "No such login")
+    ApiError::new(
+        StatusCode::NOT_FOUND,
+        ErrorCode::LoginNotFound,
+        "No such login",
+    )
 }
 
 /// Where the caller's login is.
@@ -166,7 +180,10 @@ pub(super) async fn login_state(
     Path(id): Path<String>,
 ) -> Result<Json<LoginAnswer>, ApiError> {
     let id = LoginId::try_from(id).map_err(|_| login_not_found())?;
-    let login = services.logins.state(&id, &user.id).ok_or_else(login_not_found)?;
+    let login = services
+        .logins
+        .state(&id, &user.id)
+        .ok_or_else(login_not_found)?;
     Ok(Json(LoginAnswer { login }))
 }
 

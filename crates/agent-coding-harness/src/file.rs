@@ -2,8 +2,8 @@
 //! `demi.file` package beside the file, its arguments declared from the
 //! `command-package-file-protocol` types (`commands.md` § File commands).
 
-use demi_command_package_file_protocol::{CreateArgs, EditArgs, PACKAGE, PatchArgs, ReadArgs};
 use demi_command_declarations::NativeOperation;
+use demi_command_package_file_protocol::{CreateArgs, EditArgs, PACKAGE, PatchArgs, ReadArgs};
 use demi_host_interface::{GroupBuilder, LeafBuilder};
 
 pub(crate) fn file_group() -> GroupBuilder {

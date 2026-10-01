@@ -95,10 +95,7 @@ impl Job {
         } = Pipes::open(shell, &scope).await?;
         env.remove(LIVE_INPUT_ENV);
         if live {
-            env.insert(
-                LIVE_INPUT_ENV.into(),
-                live_reference(&input_reference)?,
-            );
+            env.insert(LIVE_INPUT_ENV.into(), live_reference(&input_reference)?);
         }
         let (input, receiver) = mpsc::channel(4);
         let (sender, output) = mpsc::channel(4);
@@ -117,7 +114,13 @@ impl Job {
                 sender.clone(),
                 cancel.clone(),
             ),
-            pump(shell, error_reader, OutputStream::Stderr, sender, cancel.clone()),
+            pump(
+                shell,
+                error_reader,
+                OutputStream::Stderr,
+                sender,
+                cancel.clone(),
+            ),
         ];
         let worker = shell.spawn_blocking(move || {
             let _input_reference = input_reference;
@@ -221,7 +224,6 @@ impl Job {
             requested_signal,
         })
     }
-
 }
 
 impl ShellJob for Job {

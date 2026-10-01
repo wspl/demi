@@ -438,7 +438,8 @@ impl Mapper {
                     Some(ResponsesItem::Reasoning(_)) => out.push(ProviderEvent::ThinkingStart),
                     Some(ResponsesItem::FunctionCall(call)) => {
                         if let Some(id) = call.id {
-                            self.arguments.insert(id.clone(), call.arguments.unwrap_or_default());
+                            self.arguments
+                                .insert(id.clone(), call.arguments.unwrap_or_default());
                             self.current_call = Some(id);
                         }
                     }
@@ -446,7 +447,8 @@ impl Mapper {
                 }
                 false
             }
-            ResponsesEvent::ReasoningSummaryDelta(delta) | ResponsesEvent::ReasoningTextDelta(delta) => {
+            ResponsesEvent::ReasoningSummaryDelta(delta)
+            | ResponsesEvent::ReasoningTextDelta(delta) => {
                 self.reasoning_streamed = true;
                 if !delta.delta.is_empty() {
                     out.push(ProviderEvent::ThinkingDelta(delta.delta));
@@ -487,7 +489,14 @@ impl Mapper {
                 let response_id = response.as_ref().and_then(|response| response.id.0.clone());
                 let error = response.and_then(|response| response.error);
                 let fallback = format!("{} response failed", self.vendor.label);
-                let failure = self.failure(error.as_ref(), None, None, fallback, response_id, &received.text);
+                let failure = self.failure(
+                    error.as_ref(),
+                    None,
+                    None,
+                    fallback,
+                    response_id,
+                    &received.text,
+                );
                 out.push(ProviderEvent::Error(failure));
                 true
             }
@@ -509,7 +518,12 @@ impl Mapper {
                 let failure = ProviderFailure {
                     message,
                     code: Some(code),
-                    diagnostics: Some(stream_diagnostics(None, None, None, &received.text)),
+                    diagnostics: Some(Box::new(stream_diagnostics(
+                        None,
+                        None,
+                        None,
+                        &received.text,
+                    ))),
                     retry_after: None,
                 };
                 out.push(ProviderEvent::Error(failure));
@@ -545,7 +559,10 @@ impl Mapper {
                 // A reasoning item is strings and JSON values, which always
                 // serialize.
                 let json = serde_json::to_string(&item).expect("a reasoning item serializes");
-                out.push(ProviderEvent::ThinkingSignature(format!("{}{json}", self.signature_tag)));
+                out.push(ProviderEvent::ThinkingSignature(format!(
+                    "{}{json}",
+                    self.signature_tag
+                )));
                 self.reasoning_streamed = false;
             }
             Some(ResponsesItem::Message(item)) => {
@@ -560,7 +577,8 @@ impl Mapper {
             Some(ResponsesItem::FunctionCall(call)) => {
                 let item_id = call.id.or(done.item_id);
                 let call_id = call.call_id.or(done.call_id);
-                if let (Some(item_id), Some(call_id), Some(name)) = (&item_id, &call_id, call.name) {
+                if let (Some(item_id), Some(call_id), Some(name)) = (&item_id, &call_id, call.name)
+                {
                     let arguments = self
                         .arguments
                         .get(item_id)
@@ -604,12 +622,23 @@ impl Mapper {
             .or_else(|| error.and_then(|error| error.code.0.clone()))
             .or_else(|| error.and_then(|error| error.kind.0.clone()));
         let request_id = error
-            .and_then(|error| error.request_id.0.clone().or_else(|| error.request_id_camel.0.clone()))
+            .and_then(|error| {
+                error
+                    .request_id
+                    .0
+                    .clone()
+                    .or_else(|| error.request_id_camel.0.clone())
+            })
             .or_else(|| request_id_in(&message));
         let failure = ProviderFailure {
             code: ErrorCode::classify(code.as_deref(), &message),
             message,
-            diagnostics: Some(stream_diagnostics(code, request_id, response_id, text)),
+            diagnostics: Some(Box::new(stream_diagnostics(
+                code,
+                request_id,
+                response_id,
+                text,
+            ))),
             retry_after: None,
         };
         failure.with_retry_wait(self.vendor.reader, self.vendor.clock.now())

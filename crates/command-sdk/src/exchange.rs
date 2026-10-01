@@ -83,8 +83,12 @@ impl Exchange {
             let mut completion = None;
             while let Some(record) = output.next().await.map_err(ExchangeError::Service)? {
                 match record {
-                    Record::Stdout(bytes) => sink.stdout(bytes).await.map_err(ExchangeError::Output)?,
-                    Record::Stderr(bytes) => sink.stderr(bytes).await.map_err(ExchangeError::Output)?,
+                    Record::Stdout(bytes) => {
+                        sink.stdout(bytes).await.map_err(ExchangeError::Output)?
+                    }
+                    Record::Stderr(bytes) => {
+                        sink.stderr(bytes).await.map_err(ExchangeError::Output)?
+                    }
                     Record::InputPull => pull.try_send(()).map_err(|_| {
                         ExchangeError::Service(
                             ProtocolError::Invalid("overlapping input demands".into()).into(),

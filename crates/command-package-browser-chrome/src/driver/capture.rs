@@ -128,6 +128,10 @@ impl CaptureServer {
                 let ended = ended.clone();
                 connections.spawn(async move {
                     let expected = format!("token={token}");
+                    #[allow(
+                        clippy::result_large_err,
+                        reason = "tungstenite's handshake callback fixes this signature, its error response included"
+                    )]
                     let authorized = |request: &Request, response: Response| {
                         if request.uri().query() == Some(expected.as_str()) {
                             Ok(response)
@@ -147,7 +151,7 @@ impl CaptureServer {
                     // The channel ends with the environment, as this does.
                     let _ended = channel
                         .requests
-                        .send(ChannelRequest::Connected(socket))
+                        .send(ChannelRequest::Connected(Box::new(socket)))
                         .await;
                 });
             }
@@ -168,7 +172,7 @@ const EXTENSION_COMMANDS: usize = 64;
 
 enum ChannelRequest {
     /// The extension connected.
-    Connected(WebSocketStream<TcpStream>),
+    Connected(Box<WebSocketStream<TcpStream>>),
     Start {
         target: String,
         width: u32,
@@ -361,7 +365,7 @@ impl Owner {
 
     fn request(&mut self, request: ChannelRequest) {
         match request {
-            ChannelRequest::Connected(socket) => self.connected(socket),
+            ChannelRequest::Connected(socket) => self.connected(*socket),
             ChannelRequest::Start {
                 target,
                 width,

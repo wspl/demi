@@ -43,7 +43,8 @@ impl S3Config {
     /// The configuration in the JSON file at `path`, checked.
     pub async fn read(path: &Path) -> Result<Self, S3ConfigError> {
         let bytes = tokio::fs::read(path).await?;
-        let config: Self = serde_json::from_slice(&bytes).map_err(|error| S3ConfigError::Invalid(error.to_string()))?;
+        let config: Self = serde_json::from_slice(&bytes)
+            .map_err(|error| S3ConfigError::Invalid(error.to_string()))?;
         config.check()?;
         Ok(config)
     }
@@ -52,10 +53,18 @@ impl S3Config {
     /// HTTPS endpoint.
     pub fn check(&self) -> Result<(), S3ConfigError> {
         if self.bucket.is_empty() || self.region.is_empty() {
-            return Err(S3ConfigError::Invalid("bucket and region must not be empty".into()));
+            return Err(S3ConfigError::Invalid(
+                "bucket and region must not be empty".into(),
+            ));
         }
-        if self.endpoint.as_ref().is_some_and(|endpoint| endpoint.scheme() != "https") {
-            return Err(S3ConfigError::Invalid("the endpoint must be an HTTPS URL".into()));
+        if self
+            .endpoint
+            .as_ref()
+            .is_some_and(|endpoint| endpoint.scheme() != "https")
+        {
+            return Err(S3ConfigError::Invalid(
+                "the endpoint must be an HTTPS URL".into(),
+            ));
         }
         Ok(())
     }
@@ -74,7 +83,11 @@ impl S3Config {
             Some(endpoint) => {
                 // A virtual-hosted endpoint names the bucket in its host.
                 let mut hosted = endpoint.clone();
-                let host = format!("{}.{}", self.bucket, endpoint.host_str().unwrap_or_default());
+                let host = format!(
+                    "{}.{}",
+                    self.bucket,
+                    endpoint.host_str().unwrap_or_default()
+                );
                 // A URL that has a host takes another.
                 let _ = hosted.set_host(Some(&host));
                 builder
@@ -87,13 +100,17 @@ impl S3Config {
 }
 
 /// The object store: the S3 bucket `s3` names, or the data directory.
-pub async fn open(data_dir: &Path, s3: Option<&S3Config>) -> Result<Arc<dyn ObjectStore>, ObjectError> {
+pub async fn open(
+    data_dir: &Path,
+    s3: Option<&S3Config>,
+) -> Result<Arc<dyn ObjectStore>, ObjectError> {
     if let Some(config) = s3 {
         return Ok(Arc::new(config.builder().build()?));
     }
     let root = data_dir.to_owned();
     // Resolving the directory is file system work.
-    let local = tokio::task::spawn_blocking(move || LocalFileSystem::new_with_prefix(root)).await??;
+    let local =
+        tokio::task::spawn_blocking(move || LocalFileSystem::new_with_prefix(root)).await??;
     Ok(Arc::new(local))
 }
 
@@ -114,12 +131,16 @@ mod tests {
     async fn an_s3_bucket_holds_each_blob_once_under_its_users_namespace() {
         let fake = FakeS3::start().await;
         let objects: Arc<dyn ObjectStore> = Arc::new(fake.client());
-        let blobs = BlobStores::new(objects, Arc::new(demi_shared_types::SystemClock)).for_user(&UserId::try_from("ana").unwrap());
+        let blobs = BlobStores::new(objects, Arc::new(demi_shared_types::SystemClock))
+            .for_user(&UserId::try_from("ana").unwrap());
         let first = blobs.put(Bytes::from_static(b"picture")).await.unwrap();
         // The same bytes again are the same blob, created once.
         let again = blobs.put(Bytes::from_static(b"picture")).await.unwrap();
         assert_eq!(first, again);
-        assert_eq!(blobs.get(&first).await.unwrap(), Some(Bytes::from_static(b"picture")));
+        assert_eq!(
+            blobs.get(&first).await.unwrap(),
+            Some(Bytes::from_static(b"picture"))
+        );
         assert_eq!(fake.written(), [format!("blobs/ana/{first}")]);
     }
 
@@ -128,7 +149,9 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("s3.json");
         let write = |text: &str| std::fs::write(&path, text).unwrap();
-        write(r#"{"bucket":"demi","region":"eu-west-1","endpoint":"https://objects.example.com","forcePathStyle":true}"#);
+        write(
+            r#"{"bucket":"demi","region":"eu-west-1","endpoint":"https://objects.example.com","forcePathStyle":true}"#,
+        );
         let config = S3Config::read(&path).await.unwrap();
         assert!(config.force_path_style);
         for refused in [

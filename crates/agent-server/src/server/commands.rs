@@ -7,10 +7,10 @@
 use std::rc::{Rc, Weak};
 
 use demi_agent_tools::{AgentHarness, Profile};
-use demi_shared_types::{NodeId, is_blank, trim};
 use demi_host_interface::{
     Call, CommandSet, GroupBuilder, LeafBuilder, RegisterError, RpcError, RpcPort, TypedRpc,
 };
+use demi_shared_types::{NodeId, is_blank, trim};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -278,7 +278,9 @@ where
                 .caller
                 .as_ref()
                 .map(|caller| caller.node.clone())
-                .ok_or_else(|| RpcError::Failed("the command runs only in an agent's job".into()))?;
+                .ok_or_else(|| {
+                    RpcError::Failed("the command runs only in an agent's job".into())
+                })?;
             let tree = server
                 .tree(&root)
                 .ok_or_else(|| RpcError::Failed(format!("the conversation {root} is not open")))?;

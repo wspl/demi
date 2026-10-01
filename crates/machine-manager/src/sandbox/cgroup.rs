@@ -38,7 +38,8 @@ fn sandboxes() -> PathBuf {
 /// there; an error names every one that is missing.
 pub async fn prepare() -> Result<(), CgroupError> {
     blocking::run(|_| {
-        let available = match fs_err::read_to_string(PathBuf::from(ROOT).join("cgroup.controllers")) {
+        let available = match fs_err::read_to_string(PathBuf::from(ROOT).join("cgroup.controllers"))
+        {
             Ok(available) => available,
             // A root that is no cgroup v2 hierarchy offers no controller.
             Err(error) if error.kind() == io::ErrorKind::NotFound => String::new(),

@@ -3,10 +3,12 @@
 //! device, and each stands for the account an entry binds it to.
 
 use demi_backend_providers::llm::families::SubscriptionArgs;
-use demi_shared_types::{AuthState, Clock, QuotaSnapshot, SnapshotSource};
-use demi_provider_common::credentials::{AccountMeta, AccountsCapability, CredentialPool, MemoryCredentialPool};
+use demi_provider_common::credentials::{
+    AccountMeta, AccountsCapability, CredentialPool, MemoryCredentialPool,
+};
 use demi_provider_common::models_dev::ModelsDevClient;
 use demi_provider_common::testing::{FixedClock, jwt};
+use demi_shared_types::{AuthState, Clock, QuotaSnapshot, SnapshotSource};
 use serde_json::json;
 
 use std::sync::Arc;
@@ -20,7 +22,11 @@ const NOW: &str = "2026-09-18T14:00:00.000Z";
 
 /// A provider of the built-in `family` over `pool`, for `account`. No
 /// test here makes a request.
-fn built(family: &str, pool: &MemoryCredentialPool, account: Option<AccountBinding>) -> Arc<dyn Provider> {
+fn built(
+    family: &str,
+    pool: &MemoryCredentialPool,
+    account: Option<AccountBinding>,
+) -> Arc<dyn Provider> {
     let clock: Arc<dyn Clock> = Arc::new(FixedClock(NOW.parse().unwrap()));
     let url = ModelsDevClient::DEFAULT_URL.parse().unwrap();
     let args = FamilyArgs {
@@ -89,7 +95,11 @@ async fn the_subscription_families_log_in_by_device_and_stand_for_their_bound_ac
             login: true,
             add: false,
         };
-        assert_eq!(login.accounts().unwrap().capability(), device_login, "{family}");
+        assert_eq!(
+            login.accounts().unwrap().capability(),
+            device_login,
+            "{family}"
+        );
         let unauthenticated = AuthState::Unauthenticated {
             message: Some(format!("No {name} account is signed in")),
         };
@@ -104,6 +114,10 @@ async fn the_subscription_families_log_in_by_device_and_stand_for_their_bound_ac
             account_label: Some("user@example.com".into()),
         };
         assert_eq!(provider.auth_status().await, signed_in, "{family}");
-        assert_eq!(provider.quota().unwrap().latest(), quota.latest(), "{family}");
+        assert_eq!(
+            provider.quota().unwrap().latest(),
+            quota.latest(),
+            "{family}"
+        );
     }
 }

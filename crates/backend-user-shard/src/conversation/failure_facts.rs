@@ -8,8 +8,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use demi_conversation_socket_protocol::Failures;
-use demi_shared_types::Block;
 use demi_provider_common::Provider;
+use demi_shared_types::Block;
 use demi_web_api_protocol::ids::ProviderId;
 
 use demi_backend_providers::llm::assembly::ProviderAssembly;
@@ -24,7 +24,11 @@ pub async fn failure_facts(assembly: &ProviderAssembly, blocks: &[Block]) -> Opt
         let Block::Error(error) = block else {
             continue;
         };
-        let Some(diagnostics) = error.diagnostics.as_ref().filter(|diagnostics| diagnostics.upstream.is_some()) else {
+        let Some(diagnostics) = error
+            .diagnostics
+            .as_ref()
+            .filter(|diagnostics| diagnostics.upstream.is_some())
+        else {
             continue;
         };
         let provider = &error.model.provider_id;
@@ -33,7 +37,10 @@ pub async fn failure_facts(assembly: &ProviderAssembly, blocks: &[Block]) -> Opt
             readers.insert(provider.clone(), reader);
         }
         if let Some(Some(reader)) = readers.get(provider) {
-            failures.insert(error.id.clone(), reader.read_failure(diagnostics, error.created_at));
+            failures.insert(
+                error.id.clone(),
+                reader.read_failure(diagnostics, error.created_at),
+            );
         }
     }
     (!failures.is_empty()).then_some(failures)
@@ -47,7 +54,11 @@ async fn reader(assembly: &ProviderAssembly, provider: &str) -> Option<Arc<dyn P
     let entry = match assembly.vault().entry(id).await {
         Ok(entry) => entry?,
         Err(error) => {
-            tracing::warn!(provider, error = &error as &dyn std::error::Error, "a failure's provider entry was not read");
+            tracing::warn!(
+                provider,
+                error = &error as &dyn std::error::Error,
+                "a failure's provider entry was not read"
+            );
             return None;
         }
     };

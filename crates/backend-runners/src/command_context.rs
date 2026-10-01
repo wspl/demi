@@ -35,7 +35,13 @@ pub async fn provider_context(
     user: &UserId,
     provider: &ProviderId,
 ) -> Result<CommandContext, StorageError> {
-    context(control, user, format!("provider-{provider}"), CommandCaller::User {}).await
+    context(
+        control,
+        user,
+        format!("provider-{provider}"),
+        CommandCaller::User {},
+    )
+    .await
 }
 
 async fn context(

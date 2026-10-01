@@ -12,11 +12,11 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
+use crate::driver::operation::{BrowserError, Result};
 use crate::page::protocol::{
     BrowserOperation, CLIPBOARD_PNG_BYTES, CLIPBOARD_PNG_PIXELS, Capability, ClipboardItem,
     ClipboardMime, ClipboardReadResult, ClipboardWriteResult, STDIN_BYTES,
 };
-use crate::driver::operation::{BrowserError, Result};
 use crate::tabs::{environment::BrowserEnvironment, tab::BrowserTab};
 
 /// Why the pinned headless clipboard may not be the browser's own, or none

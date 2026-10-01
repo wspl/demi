@@ -16,7 +16,10 @@ use super::{SessionShared, TurnError, cancel::TurnCancel, core::SessionCore};
 /// Steers, agent messages and queued messages wait outside the transcript
 /// until that action writes them, and what the session holds only grows
 /// meanwhile.
-pub(super) async fn model_view(s: &SessionShared, cancel: &TurnCancel) -> Result<ModelView, TurnError> {
+pub(super) async fn model_view(
+    s: &SessionShared,
+    cancel: &TurnCancel,
+) -> Result<ModelView, TurnError> {
     s.update(SessionCore::release_media);
     let unheld = match s.read(SessionCore::model_view) {
         Ok(view) => return Ok(view),

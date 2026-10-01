@@ -25,7 +25,13 @@ pub enum Tool {
 
 impl Tool {
     /// The programs found on `PATH`; runsc is configured.
-    const ON_PATH: [Tool; 5] = [Self::Mke2fs, Self::E2fsck, Self::Resize2fs, Self::Bsdtar, Self::Nft];
+    const ON_PATH: [Tool; 5] = [
+        Self::Mke2fs,
+        Self::E2fsck,
+        Self::Resize2fs,
+        Self::Bsdtar,
+        Self::Nft,
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -70,7 +76,11 @@ pub enum ToolError {
     #[error("{tool} did not finish within {} s", deadline.as_secs())]
     Deadline { tool: Tool, deadline: Duration },
     #[error("{tool} exited {}: {}", describe(*status), output.message())]
-    Failed { tool: Tool, status: ExitStatus, output: Output },
+    Failed {
+        tool: Tool,
+        status: ExitStatus,
+        output: Output,
+    },
 }
 
 /// What a program wrote, decoded lossily: tools write text.
@@ -155,7 +165,9 @@ impl Tools {
     /// The programs on `PATH`, for tests that do not run runsc.
     #[cfg(all(test, target_os = "linux"))]
     pub(crate) fn on_path() -> Self {
-        let find = |tool: Tool| which::which(tool.name()).unwrap_or_else(|_| panic!("{tool} is not installed"));
+        let find = |tool: Tool| {
+            which::which(tool.name()).unwrap_or_else(|_| panic!("{tool} is not installed"))
+        };
         Self {
             runsc: PathBuf::from("runsc"),
             mke2fs: find(Tool::Mke2fs),
@@ -198,7 +210,10 @@ impl Tools {
         deadline: Option<Duration>,
     ) -> Result<Output, ToolError> {
         let mut command = self.command(tool);
-        command.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
+        command
+            .args(args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
         let child = command
             .spawn()
             .map_err(|source| ToolError::Spawn { tool, source })?;
@@ -237,7 +252,11 @@ impl Tools {
 
     /// Requires `output` of `tool` to have exited with one of `codes`.
     pub fn accept(tool: Tool, output: Output, codes: &[i32]) -> Result<Output, ToolError> {
-        if output.status.code().is_some_and(|code| codes.contains(&code)) {
+        if output
+            .status
+            .code()
+            .is_some_and(|code| codes.contains(&code))
+        {
             return Ok(output);
         }
         Err(ToolError::Failed {

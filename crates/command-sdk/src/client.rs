@@ -73,7 +73,9 @@ impl Client {
     /// Opens the service's numbers stream (`native-runtime.md`
     /// § Conversation numbers), which the caller answers.
     pub async fn numbers(&self) -> Result<NumbersStream, ServiceError> {
-        let (input, output) = self.invoke_at(NUMBERS_PATH, NumbersOpen {}.encode()?).await?;
+        let (input, output) = self
+            .invoke_at(NUMBERS_PATH, NumbersOpen {}.encode()?)
+            .await?;
         Ok(NumbersStream { input, output })
     }
 

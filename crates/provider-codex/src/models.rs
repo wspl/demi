@@ -5,11 +5,11 @@
 
 use std::num::NonZeroU32;
 
-use demi_shared_types::{Clock, ProviderModel, ProviderModelList, ServiceTier};
 use demi_provider_common::{
     CatalogError,
     wire::{NonEmpty, decode_untagged},
 };
+use demi_shared_types::{Clock, ProviderModel, ProviderModelList, ServiceTier};
 use http::{HeaderValue, StatusCode, header::ACCEPT};
 use reqwest::Url;
 use serde::{Deserialize, Deserializer};

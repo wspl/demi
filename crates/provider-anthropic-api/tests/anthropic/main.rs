@@ -11,12 +11,12 @@ mod stream;
 
 use std::sync::Arc;
 
+use demi_provider_anthropic_api::{AnthropicConfig, AnthropicProvider};
+pub(crate) use demi_provider_common::testing::run;
 use demi_provider_common::{
     Provider, ProviderRuntime, RuntimeEnv, Secret,
     testing::{FixedClock, MockResponse, MockVendor},
 };
-use demi_provider_anthropic_api::{AnthropicConfig, AnthropicProvider};
-pub(crate) use demi_provider_common::testing::run;
 
 /// When the scripted vendor answers.
 pub(crate) const NOW: &str = "2026-09-18T14:00:00.000Z";
@@ -44,7 +44,12 @@ pub(crate) fn runtime(vendor: &MockVendor) -> Box<dyn ProviderRuntime> {
 pub(crate) fn recorded(payloads: &[serde_json::Value]) -> MockResponse {
     let text: String = payloads
         .iter()
-        .map(|payload| format!("event: {}\ndata: {payload}\n\n", payload["type"].as_str().unwrap()))
+        .map(|payload| {
+            format!(
+                "event: {}\ndata: {payload}\n\n",
+                payload["type"].as_str().unwrap()
+            )
+        })
         .collect();
     MockResponse::event_stream(text)
 }

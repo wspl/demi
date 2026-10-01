@@ -12,8 +12,8 @@ mod pool;
 mod refresh;
 
 pub use accounts::{
-    AccountKit, AccountLabel, Accounts, AccountsCapability, AccountsError, AddAccount,
-    LoginError, NewAccount, SubscriptionAccounts,
+    AccountKit, AccountLabel, Accounts, AccountsCapability, AccountsError, AddAccount, LoginError,
+    NewAccount, SubscriptionAccounts,
 };
 pub use failure::{AuthFailure, AuthReason};
 pub use memory::MemoryCredentialPool;

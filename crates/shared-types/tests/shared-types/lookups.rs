@@ -34,7 +34,11 @@ fn a_file_is_known_by_its_extension_whatever_its_case_or_separator() {
 #[test]
 fn the_page_shows_media_in_place_and_renders_markdown_from_its_text() {
     for (media_type, expected) in file_type_cases("showsInPlace") {
-        assert_eq!(shows_in_place(&media_type), expected.as_bool().unwrap(), "{media_type}");
+        assert_eq!(
+            shows_in_place(&media_type),
+            expected.as_bool().unwrap(),
+            "{media_type}"
+        );
     }
 }
 
@@ -65,13 +69,28 @@ fn model_media_is_recognized_by_its_magic_numbers_and_nothing_else() {
     assert_eq!(sniffed(&bytes(&[b"\x89PNG\r\n\x1a\n"])), Some("image/png"));
     assert_eq!(sniffed(&bytes(&[b"\xff\xd8\xff\xe0"])), Some("image/jpeg"));
     assert_eq!(sniffed(&bytes(&[b"GIF89a"])), Some("image/gif"));
-    assert_eq!(sniffed(&bytes(&[b"RIFF", b"\x01\x02\x03\x04", b"WEBP"])), Some("image/webp"));
+    assert_eq!(
+        sniffed(&bytes(&[b"RIFF", b"\x01\x02\x03\x04", b"WEBP"])),
+        Some("image/webp")
+    );
     assert_eq!(sniffed(&bytes(&[b"\x1a\x45\xdf\xa3"])), Some("video/webm"));
-    assert_eq!(sniffed(&bytes(&[b"\0\0\0\x20", b"ftypisom"])), Some("video/mp4"));
-    assert_eq!(sniffed(&bytes(&[b"\0\0\0\x20", b"ftypqt  "])), Some("video/quicktime"));
-    assert_eq!(sniffed(&bytes(&[b"\0\0\0\x20", b"ftypM4V "])), Some("video/x-m4v"));
+    assert_eq!(
+        sniffed(&bytes(&[b"\0\0\0\x20", b"ftypisom"])),
+        Some("video/mp4")
+    );
+    assert_eq!(
+        sniffed(&bytes(&[b"\0\0\0\x20", b"ftypqt  "])),
+        Some("video/quicktime")
+    );
+    assert_eq!(
+        sniffed(&bytes(&[b"\0\0\0\x20", b"ftypM4V "])),
+        Some("video/x-m4v")
+    );
     let png = sniff_model_media_type(&bytes(&[b"\x89PNG"])).unwrap();
-    assert_eq!((png.kind, png.extension), (ModelMediaKind::Image, FileExtension::Png));
+    assert_eq!(
+        (png.kind, png.extension),
+        (ModelMediaKind::Image, FileExtension::Png)
+    );
 
     // Outside the closed set, and too short to tell: no guessing.
     assert_eq!(sniffed(&bytes(&[b"%PDF-1.7"])), None);

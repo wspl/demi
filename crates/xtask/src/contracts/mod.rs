@@ -38,7 +38,10 @@ pub enum Error {
     #[error("{0}")]
     Definitions(String),
     #[error("{path}: {source}")]
-    Write { path: PathBuf, source: std::io::Error },
+    Write {
+        path: PathBuf,
+        source: std::io::Error,
+    },
 }
 
 /// Generates every module and answers the files it wrote, relative to the
@@ -52,7 +55,11 @@ pub fn run() -> Result<Vec<PathBuf>, Error> {
         (WEB_DIRECTORY, generated.web),
     ] {
         replace_directory(&repository.join(directory), &files)?;
-        written.extend(files.iter().map(|(name, _)| Path::new(directory).join(name)));
+        written.extend(
+            files
+                .iter()
+                .map(|(name, _)| Path::new(directory).join(name)),
+        );
     }
     Ok(written)
 }
@@ -72,20 +79,35 @@ fn generate() -> Result<Generated, Error> {
 
     let received = received(
         &definitions,
-        protocol_roots.iter().chain(&web_roots).filter(|(_, direction)| *direction == Direction::Receives),
+        protocol_roots
+            .iter()
+            .chain(&web_roots)
+            .filter(|(_, direction)| *direction == Direction::Receives),
     );
     let (protocol, protocol_imports) = module(&definitions, &received, &protocol_names)?;
     if let Some(name) = protocol_imports.iter().next() {
-        return Err(Error::Definitions(format!("{name} is referred to by @demicodes/protocol but declared outside it")));
+        return Err(Error::Definitions(format!(
+            "{name} is referred to by @demicodes/protocol but declared outside it"
+        )));
     }
-    let web_names: BTreeSet<String> = definitions.keys().filter(|name| !protocol_names.contains(*name)).cloned().collect();
+    let web_names: BTreeSet<String> = definitions
+        .keys()
+        .filter(|name| !protocol_names.contains(*name))
+        .cloned()
+        .collect();
     let (web, web_imports) = module(&definitions, &received, &web_names)?;
 
     let mut web_source = String::from(HEADER);
     web_source.push_str("import { z } from \"zod\"\n");
     if !web_imports.is_empty() {
-        let names: Vec<String> = web_imports.iter().map(|name| zod::schema_name(name)).collect();
-        web_source.push_str(&format!("import {{ {} }} from \"{PROTOCOL_MODULE}\"\n", names.join(", ")));
+        let names: Vec<String> = web_imports
+            .iter()
+            .map(|name| zod::schema_name(name))
+            .collect();
+        web_source.push_str(&format!(
+            "import {{ {} }} from \"{PROTOCOL_MODULE}\"\n",
+            names.join(", ")
+        ));
     }
     web_source.push_str(&web);
 
@@ -93,14 +115,20 @@ fn generate() -> Result<Generated, Error> {
     contracts.push_str("import { z } from \"zod\"\n");
     contracts.push_str(&protocol);
     Ok(Generated {
-        protocol: vec![("contracts.ts", contracts), ("tables.ts", tables::module(HEADER))],
+        protocol: vec![
+            ("contracts.ts", contracts),
+            ("tables.ts", tables::module(HEADER)),
+        ],
         web: vec![("web-api.ts", web_source)],
     })
 }
 
 /// Adds each root's schema to the generator and answers the definition each
 /// root is, with its direction.
-fn register(generator: &mut SchemaGenerator, roots: Vec<Root>) -> Result<Vec<(String, Direction)>, Error> {
+fn register(
+    generator: &mut SchemaGenerator,
+    roots: Vec<Root>,
+) -> Result<Vec<(String, Direction)>, Error> {
     roots
         .into_iter()
         .map(|root| {
@@ -109,7 +137,9 @@ fn register(generator: &mut SchemaGenerator, roots: Vec<Root>) -> Result<Vec<(St
                 .get("$ref")
                 .and_then(Value::as_str)
                 .and_then(|reference| reference.strip_prefix("#/$defs/"))
-                .ok_or_else(|| Error::Definitions(format!("a root is not a named type: {}", schema.as_value())))?;
+                .ok_or_else(|| {
+                    Error::Definitions(format!("a root is not a named type: {}", schema.as_value()))
+                })?;
             Ok((name.to_owned(), root.direction))
         })
         .collect()
@@ -121,7 +151,9 @@ struct Definition {
     description: Option<String>,
 }
 
-fn read_definitions(schemas: serde_json::Map<String, Value>) -> Result<BTreeMap<String, Definition>, Error> {
+fn read_definitions(
+    schemas: serde_json::Map<String, Value>,
+) -> Result<BTreeMap<String, Definition>, Error> {
     let names: HashSet<&str> = schemas.keys().map(String::as_str).collect();
     for name in &names {
         check_name(name, &names)?;
@@ -142,14 +174,23 @@ fn read_definitions(schemas: serde_json::Map<String, Value>) -> Result<BTreeMap<
 /// identifier; and schemars numbers the second of two types with one name
 /// (`Model2`), which would publish one of them under a name nobody chose.
 fn check_name(name: &str, names: &HashSet<&str>) -> Result<(), Error> {
-    let identifier = name.chars().next().is_some_and(|first| first.is_ascii_uppercase())
-        && name.chars().all(|character| character.is_ascii_alphanumeric());
+    let identifier = name
+        .chars()
+        .next()
+        .is_some_and(|first| first.is_ascii_uppercase())
+        && name
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric());
     if !identifier {
-        return Err(Error::Definitions(format!("the type name {name:?} is not a TypeScript identifier")));
+        return Err(Error::Definitions(format!(
+            "the type name {name:?} is not a TypeScript identifier"
+        )));
     }
     let stem = name.trim_end_matches(|character: char| character.is_ascii_digit());
     if stem.len() < name.len() && names.contains(stem) {
-        return Err(Error::Definitions(format!("two types are named {stem}; schemars called the second {name}")));
+        return Err(Error::Definitions(format!(
+            "two types are named {stem}; schemars called the second {name}"
+        )));
     }
     Ok(())
 }
@@ -183,7 +224,9 @@ fn references(shape: &Shape) -> Vec<String> {
 fn collect_references(shape: &Shape, names: &mut Vec<String>) {
     match shape {
         Shape::Ref(name) => names.push(name.clone()),
-        Shape::Array { items: inner, .. } | Shape::Record(inner) | Shape::Nullable(inner) => collect_references(inner, names),
+        Shape::Array { items: inner, .. } | Shape::Record(inner) | Shape::Nullable(inner) => {
+            collect_references(inner, names)
+        }
         Shape::Object(object) => {
             for property in &object.properties {
                 collect_references(&property.shape, names);
@@ -197,7 +240,13 @@ fn collect_references(shape: &Shape, names: &mut Vec<String>) {
                 }
             }
         }
-        Shape::String(_) | Shape::Integer { .. } | Shape::Number { .. } | Shape::Boolean | Shape::Literal(_) | Shape::Enum(_) | Shape::Json => {}
+        Shape::String(_)
+        | Shape::Integer { .. }
+        | Shape::Number { .. }
+        | Shape::Boolean
+        | Shape::Literal(_)
+        | Shape::Enum(_)
+        | Shape::Json => {}
     }
 }
 

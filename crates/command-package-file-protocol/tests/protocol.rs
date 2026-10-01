@@ -14,7 +14,10 @@ fn file_arguments_refuse_empty_old_text_and_zero_positions() {
         json!({"path": "a", "old": "x", "new": "y", "context": null}),
         json!({"path": "a", "old": "x"}),
     ] {
-        assert!(matches!(edit(invalid.clone()), Err(OperationError::Invalid(_))), "{invalid}");
+        assert!(
+            matches!(edit(invalid.clone()), Err(OperationError::Invalid(_))),
+            "{invalid}"
+        );
     }
     assert!(matches!(
         Operation::parse("file.read", json!({"path": "a", "extra": true})),
@@ -26,9 +29,18 @@ fn file_arguments_refuse_empty_old_text_and_zero_positions() {
 /// and a name outside the package is unknown to it.
 #[test]
 fn the_listed_operations_are_the_ones_the_package_decodes() {
-    assert_eq!(OPERATIONS, ["file.read", "file.create", "file.edit", "file.patch"]);
+    assert_eq!(
+        OPERATIONS,
+        ["file.read", "file.create", "file.edit", "file.patch"]
+    );
     for name in OPERATIONS {
-        assert!(!matches!(Operation::parse(name, json!({})), Err(OperationError::Unknown(_))), "{name}");
+        assert!(
+            !matches!(
+                Operation::parse(name, json!({})),
+                Err(OperationError::Unknown(_))
+            ),
+            "{name}"
+        );
     }
     for other in ["file.remove", "browser.tabs"] {
         assert!(

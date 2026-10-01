@@ -37,7 +37,7 @@ pub(crate) type Events = LocalBoxStream<'static, Result<Received, ProviderFailur
 /// Why a request did not open.
 pub(crate) enum OpenError {
     /// The service answered with a failure status.
-    Refused(Refusal),
+    Refused(Box<Refusal>),
     /// No answer: the connection failed or timed out.
     Failed(ProviderFailure),
 }
@@ -128,11 +128,11 @@ async fn sse(
         // An unreadable body counts as empty; the status and headers still
         // say what failed.
         let body = response.text().await.unwrap_or_default();
-        return Err(OpenError::Refused(Refusal {
+        return Err(OpenError::Refused(Box::new(Refusal {
             status,
             headers,
             body,
-        }));
+        })));
     }
     Ok(sse_events(response.bytes_stream(), LABEL, cancel.clone()).boxed_local())
 }
@@ -191,7 +191,7 @@ async fn websocket(
                 headers: parts.headers,
                 body,
             };
-            return Err(OpenError::Refused(refusal));
+            return Err(OpenError::Refused(Box::new(refusal)));
         }
         Ok(Err(error)) => {
             let failure =

@@ -71,7 +71,10 @@ pub enum SummaryOff {
 /// thinking turned off; adaptive thinking at an effort with an `auto`
 /// summary; the effort `none` alone; otherwise the effort with the summary
 /// asked for, `auto` when unset.
-pub fn responses_reasoning(thinking: Option<&ThinkingConfig>, off: SummaryOff) -> Option<Reasoning<'_>> {
+pub fn responses_reasoning(
+    thinking: Option<&ThinkingConfig>,
+    off: SummaryOff,
+) -> Option<Reasoning<'_>> {
     match thinking? {
         ThinkingConfig::Budget { .. } | ThinkingConfig::Disabled {} => None,
         ThinkingConfig::Adaptive { effort } => Some(Reasoning {
@@ -80,11 +83,16 @@ pub fn responses_reasoning(thinking: Option<&ThinkingConfig>, off: SummaryOff) -
         }),
         ThinkingConfig::Effort { effort, summary } => {
             if effort == "none" {
-                return Some(Reasoning { effort, summary: None });
+                return Some(Reasoning {
+                    effort,
+                    summary: None,
+                });
             }
             let summary = match (summary, off) {
                 (Some(ThinkingSummary::Off), SummaryOff::Omitted) => None,
-                (Some(ThinkingSummary::Off), SummaryOff::Auto) | (None, _) => Some(ThinkingSummary::Auto),
+                (Some(ThinkingSummary::Off), SummaryOff::Auto) | (None, _) => {
+                    Some(ThinkingSummary::Auto)
+                }
                 (Some(summary), _) => Some(*summary),
             };
             Some(Reasoning { effort, summary })
@@ -231,9 +239,17 @@ pub enum ToolOutput<'a> {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum InputPart<'a> {
-    InputText { text: Cow<'a, str> },
-    InputImage { image_url: Cow<'a, str>, detail: &'static str },
-    InputFile { filename: &'a str, file_data: String },
+    InputText {
+        text: Cow<'a, str>,
+    },
+    InputImage {
+        image_url: Cow<'a, str>,
+        detail: &'static str,
+    },
+    InputFile {
+        filename: &'a str,
+        file_data: String,
+    },
 }
 
 /// The transcript as a Responses request's `input`, in `dialect`.
@@ -302,7 +318,9 @@ pub fn responses_input<'a>(
                 }));
             }
             InferenceItem::ToolResult {
-                tool_use_id, output, ..
+                tool_use_id,
+                output,
+                ..
             } => {
                 let (call_id, _) = split_tool_use_id(tool_use_id);
                 push_tool_result(&mut input, call_id, output, dialect.tool_media);
@@ -335,7 +353,12 @@ fn push_tool_result<'a>(
                 .collect();
             if !parts.is_empty() {
                 let note = format!("[media returned by tool call {call_id}]");
-                parts.insert(0, InputPart::InputText { text: Cow::Owned(note) });
+                parts.insert(
+                    0,
+                    InputPart::InputText {
+                        text: Cow::Owned(note),
+                    },
+                );
                 input.push(InputItem::User(UserInput {
                     role: "user",
                     content: parts,
@@ -366,7 +389,9 @@ fn push_tool_result<'a>(
             } else {
                 let mut parts = Vec::with_capacity(images.len() + 1);
                 if !text.is_empty() {
-                    parts.push(InputPart::InputText { text: Cow::Owned(text) });
+                    parts.push(InputPart::InputText {
+                        text: Cow::Owned(text),
+                    });
                 }
                 parts.extend(images);
                 ToolOutput::Parts(parts)
@@ -568,7 +593,9 @@ pub fn chat_messages<'a>(
                 });
             }
             InferenceItem::ToolResult {
-                tool_use_id, output, ..
+                tool_use_id,
+                output,
+                ..
             } => {
                 turn.flush(&mut messages, dialect);
                 messages.push(ChatMessage::Tool {
@@ -712,7 +739,12 @@ fn push_tool_media<'a>(
         .collect();
     if !parts.is_empty() {
         let note = format!("[media returned by tool call {tool_use_id}]");
-        parts.insert(0, ChatPart::Text { text: Cow::Owned(note) });
+        parts.insert(
+            0,
+            ChatPart::Text {
+                text: Cow::Owned(note),
+            },
+        );
         messages.push(ChatMessage::User {
             content: ChatContent::Parts(parts),
         });

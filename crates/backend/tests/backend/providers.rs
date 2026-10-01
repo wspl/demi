@@ -9,15 +9,16 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
 use demi_backend_providers::llm::families::FamilyRegistry;
-use demi_shared_types::WireApi;
+use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
 use demi_provider_common::CatalogError;
 use demi_provider_common::testing::{MockResponse, MockVendor, RecordedRequest, sse_body};
+use demi_shared_types::WireApi;
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::providers::{
-    Availability, CredentialKind, ModelCatalog, ProviderAnswer, ProviderDto, Providers, TestResult, VendorCatalog,
+    Availability, CredentialKind, ModelCatalog, ProviderAnswer, ProviderDto, Providers, TestResult,
+    VendorCatalog,
 };
 use demi_web_api_protocol::settings::InstanceMode;
 use jiff::SignedDuration;
@@ -52,7 +53,9 @@ async fn create(backend: &TestBackend, session: &Session, body: Value) -> Provid
 }
 
 async fn catalog_of(backend: &TestBackend, session: &Session, query: &str) -> ModelCatalog {
-    let answer = backend.get(&format!("/api/models{query}"), Some(session)).await;
+    let answer = backend
+        .get(&format!("/api/models{query}"), Some(session))
+        .await;
     assert_eq!(
         answer.status,
         StatusCode::OK,
@@ -84,7 +87,9 @@ async fn an_api_key_entry_is_sealed_at_rest_and_answered_without_its_key() {
             process_host: false,
         },
     );
-    let harness = Harness::new().with_mode(InstanceMode::Isolated).with_families(families);
+    let harness = Harness::new()
+        .with_mode(InstanceMode::Isolated)
+        .with_families(families);
     let (backend, master) = harness.start_set_up().await;
     let created = create(
         &backend,
@@ -96,7 +101,11 @@ async fn an_api_key_entry_is_sealed_at_rest_and_answered_without_its_key() {
     )
     .await;
     assert_eq!(
-        (created.kind, created.provider_type.as_str(), created.label.as_str()),
+        (
+            created.kind,
+            created.provider_type.as_str(),
+            created.label.as_str()
+        ),
         (CredentialKind::ApiKey, "anthropic", "Work")
     );
     assert_eq!(
@@ -104,9 +113,15 @@ async fn an_api_key_entry_is_sealed_at_rest_and_answered_without_its_key() {
         Some("https://proxy.example/v1")
     );
     assert_eq!((created.wire_api, created.vendor_id.clone()), (None, None));
-    assert_eq!(created.models.as_ref().unwrap().0[0].id.as_str(), "claude-work");
+    assert_eq!(
+        created.models.as_ref().unwrap().0[0].id.as_str(),
+        "claude-work"
+    );
     let listed = backend.get("/api/providers", Some(&master)).await;
-    assert_eq!(listed.json::<Providers>().providers, std::slice::from_ref(&created));
+    assert_eq!(
+        listed.json::<Providers>().providers,
+        std::slice::from_ref(&created)
+    );
     assert!(!String::from_utf8_lossy(&listed.body).contains("sk-ant-secret-1"));
     // The database holds the configuration sealed.
     let sealed: Vec<u8> = harness
@@ -117,7 +132,11 @@ async fn an_api_key_entry_is_sealed_at_rest_and_answered_without_its_key() {
             |row| row.get(0),
         )
         .unwrap();
-    assert!(!sealed.windows(15).any(|window| window == b"sk-ant-secret-1"));
+    assert!(
+        !sealed
+            .windows(15)
+            .any(|window| window == b"sk-ant-secret-1")
+    );
 
     for (body, refusal) in [
         (
@@ -145,8 +164,14 @@ async fn an_api_key_entry_is_sealed_at_rest_and_answered_without_its_key() {
             ErrorCode::InvalidBody,
         ),
     ] {
-        let answer = backend.post("/api/providers", Some(&master), body.clone()).await;
-        assert_eq!(answer.refusal(), (StatusCode::BAD_REQUEST, refusal), "{body}");
+        let answer = backend
+            .post("/api/providers", Some(&master), body.clone())
+            .await;
+        assert_eq!(
+            answer.refusal(),
+            (StatusCode::BAD_REQUEST, refusal),
+            "{body}"
+        );
     }
 
     // An edit replaces the key and returns to the family's endpoint and the
@@ -163,7 +188,11 @@ async fn an_api_key_entry_is_sealed_at_rest_and_answered_without_its_key() {
     assert!(!String::from_utf8_lossy(&edited.body).contains("sk-ant-secret"));
     let edited = edited.json::<ProviderAnswer>().provider;
     assert_eq!(
-        (edited.label.as_str(), edited.base_url.clone(), edited.models.clone()),
+        (
+            edited.label.as_str(),
+            edited.base_url.clone(),
+            edited.models.clone()
+        ),
         ("Personal", None, None)
     );
     let live = catalog_of(&backend, &master, "").await;
@@ -180,7 +209,9 @@ async fn an_api_key_entry_is_sealed_at_rest_and_answered_without_its_key() {
     );
     assert_ne!(second.id, third.id);
     for extra in [second, third] {
-        backend.delete(&format!("/api/providers/{}", extra.id), &master).await;
+        backend
+            .delete(&format!("/api/providers/{}", extra.id), &master)
+            .await;
     }
 
     // Another user of an isolated instance reaches none of it, and keeps a
@@ -204,19 +235,31 @@ async fn an_api_key_entry_is_sealed_at_rest_and_answered_without_its_key() {
             )
             .await;
         assert_eq!(imported.status, StatusCode::CREATED);
-        let path = format!("/api/providers/{}", imported.json::<ProviderAnswer>().provider.id);
-        assert_eq!(backend.delete(&path, user).await.status, StatusCode::NO_CONTENT);
+        let path = format!(
+            "/api/providers/{}",
+            imported.json::<ProviderAnswer>().provider.id
+        );
+        assert_eq!(
+            backend.delete(&path, user).await.status,
+            StatusCode::NO_CONTENT
+        );
     }
     assert_eq!(
         backend.delete(&path, &alice).await.refusal(),
         (StatusCode::NOT_FOUND, ErrorCode::ProviderNotFound)
     );
     assert_eq!(
-        backend.get(&format!("{path}/status"), Some(&alice)).await.refusal(),
+        backend
+            .get(&format!("{path}/status"), Some(&alice))
+            .await
+            .refusal(),
         (StatusCode::NOT_FOUND, ErrorCode::ProviderNotFound)
     );
 
-    assert_eq!(backend.delete(&path, &master).await.status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        backend.delete(&path, &master).await.status,
+        StatusCode::NO_CONTENT
+    );
     assert_eq!(
         backend
             .get("/api/providers", Some(&master))
@@ -247,8 +290,13 @@ async fn on_a_shared_instance_only_the_master_configures_and_everyone_infers_wit
     let bob = backend.login("bob@example.test", "bob-pass-1").await;
     let body = json!({ "source": "custom", "providerType": "scripted", "label": "Instance", "apiKey": "k", "models": [configured("m")] });
     for user in [&admin, &bob] {
-        let refused = backend.post("/api/providers", Some(user), body.clone()).await;
-        assert_eq!(refused.refusal(), (StatusCode::FORBIDDEN, ErrorCode::Forbidden));
+        let refused = backend
+            .post("/api/providers", Some(user), body.clone())
+            .await;
+        assert_eq!(
+            refused.refusal(),
+            (StatusCode::FORBIDDEN, ErrorCode::Forbidden)
+        );
     }
     let shared = create(&backend, &master, body).await;
     let listed = backend
@@ -267,7 +315,11 @@ async fn on_a_shared_instance_only_the_master_configures_and_everyone_infers_wit
     );
     assert_eq!(
         backend
-            .post(&format!("{path}/test"), Some(&bob), json!({ "modelId": "m" }))
+            .post(
+                &format!("{path}/test"),
+                Some(&bob),
+                json!({ "modelId": "m" })
+            )
             .await
             .refusal(),
         (StatusCode::FORBIDDEN, ErrorCode::Forbidden)
@@ -278,7 +330,10 @@ async fn on_a_shared_instance_only_the_master_configures_and_everyone_infers_wit
     let mut socket = Socket::connect(&backend, &bob, FIRST).await;
     socket.open().await;
     let turn = socket.chat("m1", "hello").await;
-    assert!(serde_json::to_string(&turn).unwrap().contains("\"ok\""), "{turn:?}");
+    assert!(
+        serde_json::to_string(&turn).unwrap().contains("\"ok\""),
+        "{turn:?}"
+    );
     drop(socket);
     backend.close().await;
 
@@ -301,7 +356,10 @@ async fn on_a_shared_instance_only_the_master_configures_and_everyone_infers_wit
             json!({ "model": { "providerId": shared.id, "modelId": "m" } }),
         )
         .await;
-    assert_eq!(chosen.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ProviderNotFound));
+    assert_eq!(
+        chosen.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::ProviderNotFound)
+    );
     drop(socket);
     assert_eq!(
         backend
@@ -360,7 +418,8 @@ fn served(document: &Value) -> MockResponse {
 }
 
 #[tokio::test]
-async fn a_vendor_entry_takes_its_family_wire_and_endpoint_from_models_dev_and_reads_its_live_models() {
+async fn a_vendor_entry_takes_its_family_wire_and_endpoint_from_models_dev_and_reads_its_live_models()
+ {
     let vendor = MockVendor::start().await;
     let directory = Arc::new(Directory::default());
     let families = demi_backend::families::builtin().with(
@@ -405,7 +464,10 @@ async fn a_vendor_entry_takes_its_family_wire_and_endpoint_from_models_dev_and_r
             json!({ "source": "vendor", "vendorId": "amazon-bedrock", "label": "x", "apiKey": "k" }),
         )
         .await;
-    assert_eq!(unknown.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::UnknownVendor));
+    assert_eq!(
+        unknown.refusal(),
+        (StatusCode::BAD_REQUEST, ErrorCode::UnknownVendor)
+    );
 
     let deepseek = create(
         &backend,
@@ -429,7 +491,10 @@ async fn a_vendor_entry_takes_its_family_wire_and_endpoint_from_models_dev_and_r
     // models.dev with the copy's validator.
     vendor.respond(MockResponse::status(304));
     let live = catalog_of(&backend, &master, "").await;
-    assert_eq!(vendor.requests()[1].header("if-none-match"), Some("\"fixture\""));
+    assert_eq!(
+        vendor.requests()[1].header("if-none-match"),
+        Some("\"fixture\"")
+    );
     let models: Vec<&str> = live.providers[0]
         .models
         .iter()
@@ -446,7 +511,10 @@ async fn a_vendor_entry_takes_its_family_wire_and_endpoint_from_models_dev_and_r
         (Some(128_000), Some(32_000), Some(true))
     );
     assert_eq!(
-        (v4.selection.provider_id.as_str(), v4.selection.model.context_window),
+        (
+            v4.selection.provider_id.as_str(),
+            v4.selection.model.context_window
+        ),
         (deepseek.id.as_str(), 128_000)
     );
     assert!(!live.providers[0].stale);
@@ -459,12 +527,22 @@ async fn a_vendor_entry_takes_its_family_wire_and_endpoint_from_models_dev_and_r
     // A typed list replaces the live one, and removing it returns to it.
     let path = format!("/api/providers/{}", deepseek.id);
     backend
-        .patch(&path, &master, json!({ "models": [configured("deepseek-v4")] }))
+        .patch(
+            &path,
+            &master,
+            json!({ "models": [configured("deepseek-v4")] }),
+        )
         .await;
     let typed = catalog_of(&backend, &master, "?refresh=true").await;
     assert_eq!(typed.providers[0].models.len(), 1);
-    assert_eq!(vendor.requests().len(), 2, "a configured list is never fetched");
-    backend.patch(&path, &master, json!({ "models": null })).await;
+    assert_eq!(
+        vendor.requests().len(),
+        2,
+        "a configured list is never fetched"
+    );
+    backend
+        .patch(&path, &master, json!({ "models": null }))
+        .await;
     vendor.respond(MockResponse::status(304));
     let again = catalog_of(&backend, &master, "").await;
     assert_eq!(again.providers[0].models.len(), 2);
@@ -500,10 +578,16 @@ async fn a_directory_catalog_is_cached_refreshed_on_demand_and_kept_after_a_fail
         "2026-09-24T07:00:00.000Z".parse().unwrap()
     );
     catalog_of(&backend, &master, "").await;
-    assert_eq!(directory.reads(), 1, "a fresh record answers without the source");
+    assert_eq!(
+        directory.reads(),
+        1,
+        "a fresh record answers without the source"
+    );
 
     for query in ["?refresh=1", "?refresh=TRUE", "?refresh="] {
-        let refused = backend.get(&format!("/api/models{query}"), Some(&master)).await;
+        let refused = backend
+            .get(&format!("/api/models{query}"), Some(&master))
+            .await;
         assert_eq!(
             refused.refusal(),
             (StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery),
@@ -511,8 +595,13 @@ async fn a_directory_catalog_is_cached_refreshed_on_demand_and_kept_after_a_fail
         );
     }
     directory.answer(Ok(catalog(&["a", "b", "c"])));
-    assert_eq!(ids(&catalog_of(&backend, &master, "?refresh=true").await).len(), 3);
-    directory.answer(Err(CatalogError::Unavailable("the directory is down".into())));
+    assert_eq!(
+        ids(&catalog_of(&backend, &master, "?refresh=true").await).len(),
+        3
+    );
+    directory.answer(Err(CatalogError::Unavailable(
+        "the directory is down".into(),
+    )));
     let failed = catalog_of(&backend, &master, "?refresh=true").await;
     assert_eq!((ids(&failed).len(), failed.providers[0].stale), (3, true));
     assert_eq!(failed.providers[0].warnings, ["the directory is down"]);
@@ -537,7 +626,11 @@ async fn a_directory_catalog_is_cached_refreshed_on_demand_and_kept_after_a_fail
         refreshed = catalog_of(&backend, &master, "").await;
     }
     assert_eq!(
-        (ids(&refreshed), refreshed.providers[0].stale, directory.reads()),
+        (
+            ids(&refreshed),
+            refreshed.providers[0].stale,
+            directory.reads()
+        ),
         (vec!["d".to_owned()], false, 4)
     );
 
@@ -551,7 +644,10 @@ async fn a_directory_catalog_is_cached_refreshed_on_demand_and_kept_after_a_fail
         (ids(&typed), typed.providers[0].stale, directory.reads()),
         (vec!["typed".to_owned()], false, 4)
     );
-    assert_eq!(typed.providers[0].source_fetched_at, demi_shared_types::Timestamp::UNIX_EPOCH);
+    assert_eq!(
+        typed.providers[0].source_fetched_at,
+        demi_shared_types::Timestamp::UNIX_EPOCH
+    );
     let model = &typed.providers[0].models[0];
     assert_eq!(
         (
@@ -559,7 +655,11 @@ async fn a_directory_catalog_is_cached_refreshed_on_demand_and_kept_after_a_fail
             model.model.service_tiers[0].id.as_str(),
             model.model.accepted_extensions.clone()
         ),
-        (Some(4_000), "priority", Some(vec![demi_shared_types::FileExtension::Pdf]))
+        (
+            Some(4_000),
+            "priority",
+            Some(vec![demi_shared_types::FileExtension::Pdf])
+        )
     );
     backend.close().await;
 }
@@ -608,7 +708,12 @@ fn answered() -> MockResponse {
     ];
     let text: String = frames
         .iter()
-        .map(|frame| format!("event: {}\ndata: {frame}\n\n", frame["type"].as_str().unwrap()))
+        .map(|frame| {
+            format!(
+                "event: {}\ndata: {frame}\n\n",
+                frame["type"].as_str().unwrap()
+            )
+        })
         .collect();
     MockResponse::event_stream(text)
 }
@@ -627,7 +732,11 @@ async fn the_provider_test_sends_one_real_request_through_the_entrys_family() {
     let path = format!("/api/providers/{}/test", entry.id);
     vendor.respond(answered());
     let passed = backend
-        .post(&path, Some(&master), json!({ "modelId": "claude-opus-4-8" }))
+        .post(
+            &path,
+            Some(&master),
+            json!({ "modelId": "claude-opus-4-8" }),
+        )
         .await;
     assert_eq!(
         passed.json::<TestResult>(),
@@ -643,15 +752,21 @@ async fn the_provider_test_sends_one_real_request_through_the_entrys_family() {
     // No later request extends a connection test, so nothing in it is
     // marked for the vendor's cache.
     let body = sent.json();
-    assert_eq!(body["system"], json!([{ "type": "text", "text": "Reply with the word ok." }]));
+    assert_eq!(
+        body["system"],
+        json!([{ "type": "text", "text": "Reply with the word ok." }])
+    );
     assert!(!body.to_string().contains("cache_control"), "{body}");
 
-    vendor.respond(
-        MockResponse::status(401)
-            .chunk(r#"{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}"#),
-    );
+    vendor.respond(MockResponse::status(401).chunk(
+        r#"{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}"#,
+    ));
     let refused = backend
-        .post(&path, Some(&master), json!({ "modelId": "claude-opus-4-8" }))
+        .post(
+            &path,
+            Some(&master),
+            json!({ "modelId": "claude-opus-4-8" }),
+        )
         .await
         .json::<TestResult>();
     let TestResult::Failed { message, model } = refused else {
@@ -681,7 +796,10 @@ async fn the_provider_test_sends_one_real_request_through_the_entrys_family() {
             json!({ "modelId": "claude-opus-4-8", "credentialId": "cred-1" }),
         )
         .await;
-    assert_eq!(account.refusal(), (StatusCode::NOT_FOUND, ErrorCode::AccountNotFound));
+    assert_eq!(
+        account.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::AccountNotFound)
+    );
     assert_eq!(vendor.requests().len(), 2);
 
     // The other API-key families build from their entries alike: an

@@ -149,7 +149,9 @@ pub async fn configure(
         serde_json::to_vec(&serde_json::json!({
             "intl": { "accept_languages": locale.languages.join(",") }
         }))
-        .map_err(|error| crate::driver::operation::BrowserError::Configuration(error.to_string()))?,
+        .map_err(|error| {
+            crate::driver::operation::BrowserError::Configuration(error.to_string())
+        })?,
     )
     .await?;
     let mut builder = builder

@@ -159,7 +159,8 @@ impl RunnerState {
 
     pub async fn active(&self) -> io::Result<ActiveRunner> {
         let bytes = tokio::fs::read(self.root.join("active.json")).await?;
-        serde_json::from_slice(&bytes).map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+        serde_json::from_slice(&bytes)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
     }
 }
 

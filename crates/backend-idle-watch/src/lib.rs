@@ -218,7 +218,8 @@ mod tests {
     }
 
     #[tokio::test(flavor = "local", start_paused = true)]
-    async fn maintenance_postpones_a_retirement_without_restarting_its_window_which_follows_the_release() {
+    async fn maintenance_postpones_a_retirement_without_restarting_its_window_which_follows_the_release()
+     {
         let (gated, retired) = counted();
         let tasks = TaskTracker::new();
         let started = Instant::now();
@@ -250,7 +251,11 @@ mod tests {
         let retired = retired.borrow();
         assert_eq!(retired.len(), 1);
         // A full window after the demand ended, read at the watch's poll.
-        assert!(retired[0] - ended >= WINDOW && retired[0] - ended <= WINDOW + POLL, "{:?}", retired[0] - ended);
+        assert!(
+            retired[0] - ended >= WINDOW && retired[0] - ended <= WINDOW + POLL,
+            "{:?}",
+            retired[0] - ended
+        );
     }
 
     #[tokio::test(flavor = "local", start_paused = true)]

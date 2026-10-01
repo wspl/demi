@@ -4,12 +4,12 @@
 
 use std::{sync::Arc, time::Duration};
 
-use demi_shared_types::{FailureSource, WireApi};
 use demi_provider_common::{
     ErrorCode, Provider, ProviderEvent, RuntimeEnv, Secret,
     testing::{FixedClock, MockResponse, MockVendor, inference_request},
 };
 use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider, VendorPolicy};
+use demi_shared_types::{FailureSource, WireApi};
 
 use crate::{NOW, run, runtime};
 

@@ -3,9 +3,9 @@
 //! backend stores as the command's output (`storage.md` § Command outputs).
 
 use bytes::Bytes;
-use demi_shared_types::StreamKind;
-use demi_runner_protocol::wire::{self, KeptRecord, OutputStream, WireBytes, WireError};
 use demi_host_interface::{Missing, OutputRecord, WholeOutput};
+use demi_runner_protocol::wire::{self, KeptRecord, OutputStream, WireBytes, WireError};
+use demi_shared_types::StreamKind;
 
 /// The output `bytes` hold, records of a kept output, which the `missing`
 /// bytes follow.

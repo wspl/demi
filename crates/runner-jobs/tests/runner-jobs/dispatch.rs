@@ -16,7 +16,10 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
-use tokio::{io::{AsyncRead, ReadBuf}, sync::watch};
+use tokio::{
+    io::{AsyncRead, ReadBuf},
+    sync::watch,
+};
 use tokio_util::sync::CancellationToken;
 
 struct NeverRead;
@@ -48,9 +51,16 @@ impl Fixture {
         )
         .unwrap();
         let manifest = serde_json::to_value(manifest).unwrap();
-        let pipes = PipeClient::new(&"http://127.0.0.1:1".parse().unwrap(), watch::Sender::new(None).subscribe()).unwrap();
+        let pipes = PipeClient::new(
+            &"http://127.0.0.1:1".parse().unwrap(),
+            watch::Sender::new(None).subscribe(),
+        )
+        .unwrap();
         let dispatch = Dispatch::new(directory.path(), manifest, pipes).await;
-        Self { directory, dispatch }
+        Self {
+            directory,
+            dispatch,
+        }
     }
     async fn context(&self) -> (Arc<ExecutionContext>, ContextGuard) {
         self.dispatch.context("job", command_context()).await

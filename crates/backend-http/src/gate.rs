@@ -37,7 +37,11 @@ const SEC_FETCH_SITE: HeaderName = HeaderName::from_static("sec-fetch-site");
 /// web browser, such as curl, which could send any origin it liked. A web
 /// browser's request without `Origin` lost it at a proxy, which turns the
 /// check off: it passes too, and the edge warns about the proxy once.
-pub(super) async fn product_pages(State(site): State<Arc<Site>>, request: Request, next: Next) -> Response {
+pub(super) async fn product_pages(
+    State(site): State<Arc<Site>>,
+    request: Request,
+    next: Next,
+) -> Response {
     let headers = request.headers();
     let acts = !request.method().is_safe() || headers.contains_key(UPGRADE);
     if acts {
@@ -96,7 +100,9 @@ fn is_product(origin: &HeaderValue, headers: &HeaderMap, public_url: Option<&Url
         Some(port) => format!("{host}:{port}"),
         None => host.to_owned(),
     };
-    headers.get(HOST).is_some_and(|sent_to| sent_to.as_bytes() == authority.as_bytes())
+    headers
+        .get(HOST)
+        .is_some_and(|sent_to| sent_to.as_bytes() == authority.as_bytes())
 }
 
 /// The signed-in caller, which the gate resolved from the session cookie.
@@ -126,7 +132,9 @@ impl<S: Send + Sync> FromRequestParts<S> for AdminUser {
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, ApiError> {
         let AuthUser(user) = AuthUser::from_request_parts(parts, state).await?;
         if !user.role.outranks(Role::User) {
-            return Err(ApiError::forbidden("Account administration is for administrators"));
+            return Err(ApiError::forbidden(
+                "Account administration is for administrators",
+            ));
         }
         Ok(Self(user))
     }
@@ -143,12 +151,17 @@ pub(super) async fn session(
     next: Next,
 ) -> Response {
     let https = cookies::over_https(request.uri(), request.headers());
-    let Some(token) = jar.get(SESSION_COOKIE).map(|cookie| cookie.value().to_owned()) else {
+    let Some(token) = jar
+        .get(SESSION_COOKIE)
+        .map(|cookie| cookie.value().to_owned())
+    else {
         return ApiError::unauthenticated().into_response();
     };
     let session = match services.sessions.resolve(&token).await {
         Ok(Some(session)) => session,
-        Ok(None) => return (cookies::remove(jar, https), ApiError::unauthenticated()).into_response(),
+        Ok(None) => {
+            return (cookies::remove(jar, https), ApiError::unauthenticated()).into_response();
+        }
         Err(error) => return ApiError::from(error).into_response(),
     };
     request.extensions_mut().insert(AuthUser(session.user));
@@ -188,21 +201,37 @@ mod tests {
         let origin = |origin: &str| Some(HeaderValue::from_str(origin).unwrap());
         let public: Url = "https://demi.example.com/".parse().unwrap();
         for (origin, host, public_url) in [
-            (origin("https://demi.example.com"), "10.0.0.2:3271", Some(&public)),
+            (
+                origin("https://demi.example.com"),
+                "10.0.0.2:3271",
+                Some(&public),
+            ),
             (origin("http://127.0.0.1:3271"), "127.0.0.1:3271", None),
             (origin("https://demi.example.com"), "demi.example.com", None),
         ] {
-            assert!(!from_another_page(&headers(origin.clone(), host), public_url), "{origin:?}");
+            assert!(
+                !from_another_page(&headers(origin.clone(), host), public_url),
+                "{origin:?}"
+            );
         }
         for (origin, host) in [
             (origin("https://elsewhere.example"), "127.0.0.1:3271"),
-            (origin("https://a1b2.expose.demi.example.com"), "demi.example.com"),
+            (
+                origin("https://a1b2.expose.demi.example.com"),
+                "demi.example.com",
+            ),
             (origin("http://127.0.0.1:9999"), "127.0.0.1:3271"),
             (origin("null"), "127.0.0.1:3271"),
             // An origin that is there but unreadable is not a missing one.
-            (Some(HeaderValue::from_bytes(b"https://demi.example.com\xff").unwrap()), "demi.example.com"),
+            (
+                Some(HeaderValue::from_bytes(b"https://demi.example.com\xff").unwrap()),
+                "demi.example.com",
+            ),
         ] {
-            assert!(from_another_page(&headers(origin.clone(), host), Some(&public)), "{origin:?}");
+            assert!(
+                from_another_page(&headers(origin.clone(), host), Some(&public)),
+                "{origin:?}"
+            );
         }
     }
 }

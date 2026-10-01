@@ -99,7 +99,9 @@ impl JobDirectories {
                 builder.permissions(std::fs::Permissions::from_mode(0o700));
             }
             let path = builder.tempdir_in(&root)?.keep();
-            let scratch = tempfile::Builder::new().prefix(".work-").tempdir_in(&path)?;
+            let scratch = tempfile::Builder::new()
+                .prefix(".work-")
+                .tempdir_in(&path)?;
             Ok::<_, io::Error>((path, scratch))
         })
         .await

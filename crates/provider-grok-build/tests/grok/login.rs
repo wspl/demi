@@ -8,12 +8,12 @@ use std::{
     time::Duration,
 };
 
-use demi_shared_types::LoginPending;
 use demi_provider_common::{
     Provider,
     credentials::{AccountsCapability, CredentialPool, LoginError, MemoryCredentialPool},
     testing::{MockResponse, MockVendor},
 };
+use demi_shared_types::LoginPending;
 use serde_json::{Value, json};
 use tokio::sync::Notify;
 

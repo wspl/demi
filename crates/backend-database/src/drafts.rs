@@ -4,7 +4,9 @@
 //! replaced. Every change reads the row and writes it in one transaction, so
 //! two saves never build on the same revision.
 
-use demi_web_api_protocol::drafts::{ConversationDraft, DRAFT_BYTES_MAX, DraftFile, ReplacedAction, ReplacedDraft};
+use demi_web_api_protocol::drafts::{
+    ConversationDraft, DRAFT_BYTES_MAX, DraftFile, ReplacedAction, ReplacedDraft,
+};
 use demi_web_api_protocol::ids::{AttachmentId, ConversationId, UserId};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
@@ -85,9 +87,13 @@ impl Stored {
 impl ControlService {
     /// The conversation's draft: the empty one at revision 0 before its first
     /// save.
-    pub async fn draft(&self, conversation: ConversationId) -> Result<ConversationDraft, StorageError> {
+    pub async fn draft(
+        &self,
+        conversation: ConversationId,
+    ) -> Result<ConversationDraft, StorageError> {
         self.call(move |connection, _| {
-            Ok(stored(connection, &conversation)?.map_or_else(ConversationDraft::empty, Stored::present))
+            Ok(stored(connection, &conversation)?
+                .map_or_else(ConversationDraft::empty, Stored::present))
         })
         .await
     }
@@ -114,7 +120,8 @@ impl ControlService {
             for file in files {
                 presented.push(match file {
                     StagedFile::Upload { id, file_name } => {
-                        let upload = attachment_by_id(&transaction, &id)?.filter(|upload| upload.owner == owner);
+                        let upload = attachment_by_id(&transaction, &id)?
+                            .filter(|upload| upload.owner == owner);
                         let Some(upload) = upload else {
                             return Ok(Err(DraftRefusal::UploadNotFound(id)));
                         };
@@ -126,10 +133,15 @@ impl ControlService {
                             snippet: upload.snippet,
                         }
                     }
-                    StagedFile::Remote { device_id, path } => DraftFile::RemoteFile { device_id, path },
+                    StagedFile::Remote { device_id, path } => {
+                        DraftFile::RemoteFile { device_id, path }
+                    }
                 });
             }
-            let version = Version { text, files: presented };
+            let version = Version {
+                text,
+                files: presented,
+            };
             if to_json(&version).len() > DRAFT_BYTES_MAX {
                 return Ok(Err(DraftRefusal::TooLarge));
             }
@@ -143,7 +155,9 @@ impl ControlService {
                 Some(current) => {
                     // A save built on a revision older than the draft's text
                     // replaces a text its page never showed.
-                    let unseen = base < current.written && !current.version.is_empty() && current.version != version;
+                    let unseen = base < current.written
+                        && !current.version.is_empty()
+                        && current.version != version;
                     Stored {
                         revision: current.revision + 1,
                         // The text a save repeats is not written again.
@@ -195,7 +209,8 @@ impl ControlService {
                 ReplacedAction::Restore => Stored {
                     revision: current.revision + 1,
                     written: current.revision + 1,
-                    replaced: (!current.version.is_empty()).then_some((current.revision, current.version)),
+                    replaced: (!current.version.is_empty())
+                        .then_some((current.revision, current.version)),
                     version: replaced,
                 },
                 ReplacedAction::Dismiss => Stored {
@@ -223,7 +238,10 @@ fn archived(connection: &Connection, conversation: &ConversationId) -> Result<bo
 }
 
 /// The conversation's draft row, when it has one.
-fn stored(connection: &Connection, conversation: &ConversationId) -> Result<Option<Stored>, StorageError> {
+fn stored(
+    connection: &Connection,
+    conversation: &ConversationId,
+) -> Result<Option<Stored>, StorageError> {
     connection
         .query_row(
             "SELECT revision, document, written, replaced_revision, replaced FROM conversation_drafts
@@ -236,9 +254,17 @@ fn stored(connection: &Connection, conversation: &ConversationId) -> Result<Opti
 }
 
 fn stored_row(row: &Row<'_>) -> Result<Stored, StorageError> {
-    let revision = decode(TABLE, "revision", u64::try_from(row.get::<_, i64>("revision")?))?;
+    let revision = decode(
+        TABLE,
+        "revision",
+        u64::try_from(row.get::<_, i64>("revision")?),
+    )?;
     let version = json(TABLE, "document", &row.get::<_, String>("document")?)?;
-    let written = decode(TABLE, "written", u64::try_from(row.get::<_, i64>("written")?))?;
+    let written = decode(
+        TABLE,
+        "written",
+        u64::try_from(row.get::<_, i64>("written")?),
+    )?;
     let replaced_revision: Option<i64> = row.get("replaced_revision")?;
     let replaced_version: Option<String> = row.get("replaced")?;
     let replaced = match (replaced_revision, replaced_version) {
@@ -251,7 +277,8 @@ fn stored_row(row: &Row<'_>) -> Result<Stored, StorageError> {
             return Err(StorageError::Corrupt {
                 table: TABLE,
                 column: "replaced",
-                reason: "a replaced version and its revision are stored together or not at all".into(),
+                reason: "a replaced version and its revision are stored together or not at all"
+                    .into(),
             });
         }
     };
@@ -263,10 +290,16 @@ fn stored_row(row: &Row<'_>) -> Result<Stored, StorageError> {
     })
 }
 
-fn write(connection: &Connection, conversation: &ConversationId, draft: &Stored, now: i64) -> Result<(), StorageError> {
+fn write(
+    connection: &Connection,
+    conversation: &ConversationId,
+    draft: &Stored,
+    now: i64,
+) -> Result<(), StorageError> {
     // A revision grows by one with each change, so it stays far below the
     // column's range.
-    let column = |revision: u64| i64::try_from(revision).expect("a draft's revision fits its column");
+    let column =
+        |revision: u64| i64::try_from(revision).expect("a draft's revision fits its column");
     let (replaced_revision, replaced) = match &draft.replaced {
         Some((revision, version)) => (Some(column(*revision)), Some(to_json(version))),
         None => (None, None),

@@ -75,7 +75,8 @@ fn an_artifact_url_is_http_or_https_without_credentials() {
 /// Decodes and validates invocation metadata as the service boundary does.
 fn decode_invocation(value: serde_json::Value) -> Result<(), String> {
     use demi_command_protocol::{Invocation, Metadata};
-    let invocation: Invocation = serde_json::from_value(value).map_err(|error| error.to_string())?;
+    let invocation: Invocation =
+        serde_json::from_value(value).map_err(|error| error.to_string())?;
     invocation.validate().map_err(|error| error.to_string())
 }
 

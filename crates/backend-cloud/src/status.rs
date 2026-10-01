@@ -6,7 +6,9 @@
 use demi_backend_database::StorageError;
 use demi_backend_database::managed::ManagedOperation;
 use demi_machine_manager_protocol::ImageStateParams;
-use demi_web_api_protocol::cloud::{CloudDevice, CloudOperation, CloudState, CloudStatus, CloudVolumes};
+use demi_web_api_protocol::cloud::{
+    CloudDevice, CloudOperation, CloudState, CloudStatus, CloudVolumes,
+};
 
 use crate::CloudShard;
 

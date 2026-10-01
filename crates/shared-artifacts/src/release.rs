@@ -40,14 +40,24 @@ pub async fn publish_release(
     files: &[ReleaseFile],
     cancel: &CancellationToken,
 ) -> Result<(), Error> {
-    let invalid = |reason: &str| Error::Io(std::io::Error::new(std::io::ErrorKind::InvalidInput, reason.to_owned()));
+    let invalid = |reason: &str| {
+        Error::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            reason.to_owned(),
+        ))
+    };
     let mut record_name = Path::new(record.name).components();
-    if !matches!((record_name.next(), record_name.next()), (Some(Component::Normal(_)), None)) {
+    if !matches!(
+        (record_name.next(), record_name.next()),
+        (Some(Component::Normal(_)), None)
+    ) {
         return Err(invalid("a release record is one file name"));
     }
     let inside = |path: &Path| {
         path.components().next().is_some()
-            && path.components().all(|component| matches!(component, Component::Normal(_)))
+            && path
+                .components()
+                .all(|component| matches!(component, Component::Normal(_)))
     };
     if !files.iter().all(|file| inside(&file.path)) {
         return Err(invalid("a release file's path stays inside its release"));
@@ -60,9 +70,11 @@ pub async fn publish_release(
     let prefix = format!(".{}-stage-", name.to_string_lossy());
     let stage = {
         let parent = parent.to_owned();
-        tokio::task::spawn_blocking(move || tempfile::Builder::new().prefix(&prefix).tempdir_in(parent))
-            .await
-            .map_err(std::io::Error::other)??
+        tokio::task::spawn_blocking(move || {
+            tempfile::Builder::new().prefix(&prefix).tempdir_in(parent)
+        })
+        .await
+        .map_err(std::io::Error::other)??
     };
     let mut directories = vec![stage.path().to_owned()];
     for file in files {
@@ -108,7 +120,11 @@ pub async fn publish_release(
 }
 
 /// Copies `file` to `destination`, checking its bytes as they are copied.
-async fn stage_file(file: &ReleaseFile, destination: &Path, cancel: &CancellationToken) -> Result<(), Error> {
+async fn stage_file(
+    file: &ReleaseFile,
+    destination: &Path,
+    cancel: &CancellationToken,
+) -> Result<(), Error> {
     if let Some(parent) = destination.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
@@ -137,7 +153,9 @@ async fn in_place(
     match tokio::fs::read(&path).await {
         Ok(bytes) if bytes == record.bytes => {}
         Ok(_) => return Err(Error::Conflict(path)),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Err(Error::Conflict(path)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(Error::Conflict(path));
+        }
         Err(error) => return Err(error.into()),
     }
     for file in files {

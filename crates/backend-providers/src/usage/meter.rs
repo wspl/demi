@@ -11,10 +11,11 @@ use std::rc::Rc;
 
 use demi_backend_database::control::ControlService;
 use demi_backend_database::usage::UsageRow;
-use demi_shared_types::{Model, TokenUsage};
 use demi_provider_common::{
-    ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun, ProviderRuntime, RequestLimits,
+    ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun, ProviderRuntime,
+    RequestLimits,
 };
+use demi_shared_types::{Model, TokenUsage};
 use demi_web_api_protocol::ids::{ConversationId, ProviderId, UserId};
 use futures_util::future::LocalBoxFuture;
 use futures_util::{StreamExt, stream};
@@ -133,11 +134,15 @@ mod tests {
     use super::*;
 
     #[tokio::test(start_paused = true)]
-    async fn answered_requests_are_ledger_rows_before_their_response_and_the_limit_refuses_the_rest() {
+    async fn answered_requests_are_ledger_rows_before_their_response_and_the_limit_refuses_the_rest()
+     {
         let data = tempfile::tempdir().unwrap();
-        let control = ControlService::open(&data.path().join("control.sqlite"), Arc::new(demi_shared_types::SystemClock))
-            .await
-            .unwrap();
+        let control = ControlService::open(
+            &data.path().join("control.sqlite"),
+            Arc::new(demi_shared_types::SystemClock),
+        )
+        .await
+        .unwrap();
         let master = testing::master(&control).await;
         let ledger = Ledger {
             control: control.clone(),
@@ -177,10 +182,18 @@ mod tests {
             .filter(|events| matches!(events.as_slice(), [ProviderEvent::Error(failure)] if failure.code == Some(ErrorCode::RateLimited)))
             .collect();
         assert_eq!(refused.len(), 1, "{outcomes:?}");
-        assert_eq!(script.remaining(), 1, "a refused request never reaches the vendor");
+        assert_eq!(
+            script.remaining(),
+            1,
+            "a refused request never reaches the vendor"
+        );
         let totals = requests().await;
         assert_eq!(
-            (totals[0].requests, totals[0].input_tokens, totals[0].output_tokens),
+            (
+                totals[0].requests,
+                totals[0].input_tokens,
+                totals[0].output_tokens
+            ),
             (3, 303, 30)
         );
         assert_eq!(

@@ -43,12 +43,17 @@ pub fn digest(bytes: &[u8]) -> String {
 }
 
 impl CloudImage {
-    pub fn new(entries: &[(&str, Entry)], executables: &[(&str, &[u8])], architecture: Architecture) -> Self {
+    pub fn new(
+        entries: &[(&str, Entry)],
+        executables: &[(&str, &[u8])],
+        architecture: Architecture,
+    ) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let archive = directory.path().join("rootfs.tar.zst");
-        let encoder = zstd::stream::write::Encoder::new(std::fs::File::create(&archive).unwrap(), 0)
-            .unwrap()
-            .auto_finish();
+        let encoder =
+            zstd::stream::write::Encoder::new(std::fs::File::create(&archive).unwrap(), 0)
+                .unwrap()
+                .auto_finish();
         let mut builder = tar::Builder::new(encoder);
         for (path, entry) in entries {
             let mut header = tar::Header::new_gnu();
@@ -72,7 +77,12 @@ impl CloudImage {
         let runner = json!({ "sha256": digest(RUNNER.1), "size": RUNNER.1.len() });
         let executables: serde_json::Map<_, _> = executables
             .iter()
-            .map(|(path, bytes)| ((*path).to_owned(), json!({ "sha256": digest(bytes), "size": bytes.len() })))
+            .map(|(path, bytes)| {
+                (
+                    (*path).to_owned(),
+                    json!({ "sha256": digest(bytes), "size": bytes.len() }),
+                )
+            })
             .collect();
         let manifest = json!({
             "formatVersion": 1,
@@ -91,7 +101,11 @@ impl CloudImage {
             },
             "tools": [],
         });
-        std::fs::write(directory.path().join("manifest.json"), serde_json::to_vec_pretty(&manifest).unwrap()).unwrap();
+        std::fs::write(
+            directory.path().join("manifest.json"),
+            serde_json::to_vec_pretty(&manifest).unwrap(),
+        )
+        .unwrap();
         Self { directory }
     }
 
@@ -102,7 +116,8 @@ impl CloudImage {
     /// Changes the manifest, for a release that fails a check.
     pub fn edit(&self, change: impl FnOnce(&mut serde_json::Value)) {
         let path = self.path().join("manifest.json");
-        let mut manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let mut manifest: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         change(&mut manifest);
         std::fs::write(path, serde_json::to_vec_pretty(&manifest).unwrap()).unwrap();
     }

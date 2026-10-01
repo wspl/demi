@@ -5,9 +5,9 @@
 //! replacement's turn fails.
 
 use demi_agent_transcript::testing::RESUME_TEXT;
-use demi_shared_types::BlockId;
-use demi_provider_common::testing::TokioClock;
 use demi_host_interface::{PortError, StorageOp};
+use demi_provider_common::testing::TokioClock;
+use demi_shared_types::BlockId;
 
 use super::*;
 
@@ -31,7 +31,9 @@ fn published(session: &AgentSession) -> (Subscription, Rc<RefCell<Vec<Transcript
 
 /// Stops the running action in a task of its own; the task ends once the
 /// stop is recorded.
-fn spawn_abort(session: &AgentSession) -> JoinHandle<demi_conversation_socket_protocol::AbortResult> {
+fn spawn_abort(
+    session: &AgentSession,
+) -> JoinHandle<demi_conversation_socket_protocol::AbortResult> {
     let session = session.clone();
     tokio::task::spawn_local(async move { session.abort().await })
 }
@@ -121,7 +123,7 @@ async fn while_an_edit_saves_nothing_of_it_shows_and_the_session_admits_only_the
         Err(SteerError::Editing)
     );
     let switch = ModelSwitch {
-        model: model_of("stub", "other-model"),
+        model: Box::new(model_of("stub", "other-model")),
         runtime: None,
     };
     session.update_model(switch).unwrap();
@@ -419,7 +421,7 @@ async fn an_accepted_edit_stays_accepted_when_its_turn_fails_and_neither_a_repea
     assert!(matches!(&blocks[0], Block::User(user) if user.turn_id == receipt.turn_id));
     assert_eq!(
         store.checkpoint(&root()).unwrap().state.edits,
-        [receipt.clone()]
+        std::slice::from_ref(&receipt)
     );
     // The same request again is answered from its receipt: no rewrite, no
     // request.

@@ -71,12 +71,17 @@ impl SavedNamespace {
     /// failed recovery keeps the handle for the next start.
     pub async fn recover(&self, lock: &ManagerLock) -> Result<(), NamespaceError> {
         let handle = self.handle.clone();
-        let saved = thread_ns::run(Namespace::HostMount, move |off| -> io::Result<Option<OwnedFd>> {
-            if mount::mount_root(off, &handle)? != Some(true) {
-                return Ok(None);
-            }
-            Ok(Some(OwnedFd::from(fs_err::File::open(&handle)?.into_parts().0)))
-        })
+        let saved = thread_ns::run(
+            Namespace::HostMount,
+            move |off| -> io::Result<Option<OwnedFd>> {
+                if mount::mount_root(off, &handle)? != Some(true) {
+                    return Ok(None);
+                }
+                Ok(Some(OwnedFd::from(
+                    fs_err::File::open(&handle)?.into_parts().0,
+                )))
+            },
+        )
         .await?;
         let Some(saved) = saved else {
             return Ok(());
@@ -119,14 +124,26 @@ impl SavedNamespace {
         let data = self.data.clone();
         blocking::run(move |off| -> io::Result<()> {
             use fs_err::os::unix::fs::OpenOptionsExt;
-            fs_err::OpenOptions::new().write(true).create(true).mode(0o600).open(&handle)?;
+            fs_err::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .mode(0o600)
+                .open(&handle)?;
             write_json(off, &owner, &Owner { data_dir: data })?;
-            sync(off, owner.parent().expect("the owner record lies in the runtime directory"))
+            sync(
+                off,
+                owner
+                    .parent()
+                    .expect("the owner record lies in the runtime directory"),
+            )
         })
         .await?;
         let handle = self.handle.clone();
         let own = PathBuf::from(format!("/proc/{}/ns/mnt", std::process::id()));
-        thread_ns::run(Namespace::HostMount, move |off| mount::bind(off, &own, &handle)).await?;
+        thread_ns::run(Namespace::HostMount, move |off| {
+            mount::bind(off, &own, &handle)
+        })
+        .await?;
         Ok(())
     }
 
@@ -184,7 +201,10 @@ fn recovery_process(namespace: &OwnedFd, lock: &ManagerLock) -> tokio::process::
             rustix::thread::move_into_link_name_space(namespace, Some(LinkNameSpaceType::Mount))?;
             if lock == INHERITED {
                 // dup2 onto itself would keep close-on-exec set.
-                rustix::io::fcntl_setfd(BorrowedFd::borrow_raw(lock), rustix::io::FdFlags::empty())?;
+                rustix::io::fcntl_setfd(
+                    BorrowedFd::borrow_raw(lock),
+                    rustix::io::FdFlags::empty(),
+                )?;
             } else {
                 let mut inherited = std::mem::ManuallyDrop::new(OwnedFd::from_raw_fd(INHERITED));
                 rustix::io::dup2(BorrowedFd::borrow_raw(lock), &mut inherited)?;

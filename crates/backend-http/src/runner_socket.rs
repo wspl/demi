@@ -29,10 +29,23 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
             return;
         }
     };
-    let Hello { protocol, token, runner } = hello;
+    let Hello {
+        protocol,
+        token,
+        runner,
+    } = hello;
     if protocol != wire::VERSION {
-        let reason = format!("unsupported protocol {protocol}; this backend speaks {}", wire::VERSION);
-        refuse(socket, &runner, HelloErrorCode::UnsupportedProtocol, &reason).await;
+        let reason = format!(
+            "unsupported protocol {protocol}; this backend speaks {}",
+            wire::VERSION
+        );
+        refuse(
+            socket,
+            &runner,
+            HelloErrorCode::UnsupportedProtocol,
+            &reason,
+        )
+        .await;
         return;
     }
     let Some(token) = token else {
@@ -48,8 +61,14 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
     };
     let lookup = async {
         #[cfg(feature = "testing")]
-        services.hellos.pass(demi_backend_user_shard::holds::HelloStep::TokenLookup).await;
-        services.control.device_by_token(TokenHash::of(token.expose())).await
+        services
+            .hellos
+            .pass(demi_backend_user_shard::holds::HelloStep::TokenLookup)
+            .await;
+        services
+            .control
+            .device_by_token(TokenHash::of(token.expose()))
+            .await
     };
     let device = tokio::select! {
         device = lookup => device,
@@ -60,12 +79,27 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
     let device = match device {
         Ok(Some(device)) => device,
         Ok(None) => {
-            refuse(socket, &runner, HelloErrorCode::UnknownDevice, "unknown device").await;
+            refuse(
+                socket,
+                &runner,
+                HelloErrorCode::UnknownDevice,
+                "unknown device",
+            )
+            .await;
             return;
         }
         Err(error) => {
-            tracing::error!(error = &error as &dyn std::error::Error, "a runner's device could not be read");
-            refuse(socket, &runner, HelloErrorCode::Internal, "the device could not be read").await;
+            tracing::error!(
+                error = &error as &dyn std::error::Error,
+                "a runner's device could not be read"
+            );
+            refuse(
+                socket,
+                &runner,
+                HelloErrorCode::Internal,
+                "the device could not be read",
+            )
+            .await;
             return;
         }
     };
@@ -205,14 +239,15 @@ async fn await_claim(
 /// Gives the claimed runner its token and moves its socket into the shard
 /// of the user who claimed it. A runner lost on the way leaves the grant
 /// unanswered, and the claim then deletes the device it made.
-async fn hand_over(
-    shards: &Shards,
-    mut socket: WebSocket,
-    runner: RunnerInfo,
-    grant: ClaimGrant,
-) {
-    let ClaimGrant { device, token, bound } = grant;
-    let claimed = Inbound::Claimed { device_token: token };
+async fn hand_over(shards: &Shards, mut socket: WebSocket, runner: RunnerInfo, grant: ClaimGrant) {
+    let ClaimGrant {
+        device,
+        token,
+        bound,
+    } = grant;
+    let claimed = Inbound::Claimed {
+        device_token: token,
+    };
     if send(&mut socket, &claimed).await.is_err() {
         return;
     }

@@ -3,9 +3,9 @@
 //! messages, the lines and blocks it skips, and the failures of lines it
 //! cannot read.
 
-use demi_shared_types::TokenUsage;
-use demi_provider_common::{ErrorCode, ProviderEvent, ProviderFailure};
 use demi_host_interface::Signal;
+use demi_provider_common::{ErrorCode, ProviderEvent, ProviderFailure};
+use demi_shared_types::TokenUsage;
 use serde_json::{Value, json};
 
 use crate::cli::*;
@@ -224,11 +224,18 @@ async fn a_call_the_vendor_refused_fails_the_run_once_with_the_code_of_its_http_
     let failed = failure(&events);
     assert_eq!(failed.message, "API Error: 400 The request is refused.");
     assert_eq!(failed.code, None, "a refused request is not retried");
-    let status = failed.diagnostics.as_ref().and_then(|diagnostics| diagnostics.http_status);
+    let status = failed
+        .diagnostics
+        .as_ref()
+        .and_then(|diagnostics| diagnostics.http_status);
     assert_eq!(status, Some(400));
     assert!(signals.is_empty());
     for (status, words, code) in [
-        (400, "prompt is too long: 250000 tokens", ErrorCode::ContextLengthExceeded),
+        (
+            400,
+            "prompt is too long: 250000 tokens",
+            ErrorCode::ContextLengthExceeded,
+        ),
         (401, "OAuth token has expired", ErrorCode::AuthExpired),
         (429, "Too many requests", ErrorCode::RateLimit),
         (529, "Overloaded", ErrorCode::Overloaded),

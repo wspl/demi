@@ -7,11 +7,6 @@ use demi_agent_server::{
     ServerConfig,
     testing::{TestClient, TestFiles, client_text, waiting_frames},
 };
-use demi_conversation_socket_protocol::MediaRef;
-use demi_conversation_socket_protocol::{
-    ClientContent, ClientFrame, EditOutcome, EditRequest, ServerFrame, TranscriptPatch,
-    TranscriptVersion,
-};
 use demi_agent_session::ForkError;
 use demi_agent_store::{
     AgentTreeStore, ClosePhase, NodeClose,
@@ -22,23 +17,28 @@ use demi_agent_store::{
     testing::MemoryBlobs,
 };
 use demi_agent_transcript::CutError;
-use demi_shared_types::{
-    Attachment, B64Bytes, BlobRef, Block, BlockId, DocumentSource, FileExtension, MediaSource,
-    NodeId, OperationId, SessionPhase, Timestamp, TurnId, UserContentBlock, attachment_tag,
+use demi_conversation_socket_protocol::MediaRef;
+use demi_conversation_socket_protocol::{
+    ClientContent, ClientFrame, EditOutcome, EditRequest, ServerFrame, TranscriptPatch,
+    TranscriptVersion,
 };
+use demi_host_interface::{PortError, Revision, StorageOp, StorageReply};
 use demi_provider_common::{
     InferenceItem, MediaBytes, Medium, UserPart,
     testing::{ScriptedRuntime, Turn, event},
 };
-use demi_host_interface::{PortError, Revision, StorageOp, StorageReply};
+use demi_shared_types::{
+    Attachment, B64Bytes, BlobRef, Block, BlockId, DocumentSource, FileExtension, MediaSource,
+    NodeId, OperationId, SessionPhase, Timestamp, TurnId, UserContentBlock, attachment_tag,
+};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
     subagents::{checkpoint, child_record},
     support::{
-        Fixture, Gate, Model, TestHarness, agent, command_storage, conversation,
-        held, is_idle, kinds, named_node, open, send, session_of, switch, until,
+        Fixture, Gate, Model, TestHarness, agent, command_storage, conversation, held, is_idle,
+        kinds, named_node, open, send, session_of, switch, until,
     },
 };
 
@@ -266,7 +266,9 @@ async fn an_edit_replaces_its_message_and_what_follows_once_and_infers_on_a_fres
     // A snapshot taken before a restart is stale after it, and an accepted
     // operation keeps its receipt.
     client.send(ClientFrame::Close {}).await;
-    client.next_until(|frame| *frame == ServerFrame::Closed).await;
+    client
+        .next_until(|frame| *frame == ServerFrame::Closed)
+        .await;
     let mut reopened = fixture.client();
     reopened.send(open()).await;
     reopened.received();
@@ -519,10 +521,7 @@ async fn an_edit_keeps_the_files_its_message_holds_and_refuses_one_it_does_not()
         (vec![uploaded_image, record.clone()], held(&png_blob, &png)),
     );
     files.upload("upload-2", (vec![uploaded_video], held(&mp4_blob, &mp4)));
-    files.upload(
-        "upload-3",
-        (vec![uploaded_document], held(&pdf_blob, &pdf)),
-    );
+    files.upload("upload-3", (vec![uploaded_document], held(&pdf_blob, &pdf)));
     // Another message's image: the caller's own blob, which this message
     // does not hold.
     let elsewhere = blobs.put(B64Bytes::new(b"GIF89a".to_vec())).await.unwrap();
@@ -715,7 +714,9 @@ async fn a_fork_seed_keeps_the_history_through_a_completed_text_from_a_live_or_a
         .unwrap();
     let not_text = fixture.server.prepare_fork(&conversation(), &user_b).await;
     client.send(ClientFrame::Close {}).await;
-    client.next_until(|frame| *frame == ServerFrame::Closed).await;
+    client
+        .next_until(|frame| *frame == ServerFrame::Closed)
+        .await;
     let cold = fixture
         .server
         .prepare_fork(&conversation(), &answer_a)

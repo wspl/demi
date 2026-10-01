@@ -32,7 +32,10 @@ fn every_client_frame_decodes_from_its_wire_shape() {
 /// `value` with the field at `pointer` set to `field`, adding it if absent.
 fn with(mut value: Value, pointer: &str, field: Value) -> Value {
     let (parent, key) = pointer.rsplit_once('/').unwrap();
-    match value.pointer_mut(parent).unwrap_or_else(|| panic!("{parent}")) {
+    match value
+        .pointer_mut(parent)
+        .unwrap_or_else(|| panic!("{parent}"))
+    {
         Value::Object(object) => {
             object.insert(key.to_owned(), field);
         }
@@ -62,7 +65,8 @@ fn mutated(case: &Value) -> Value {
 }
 
 fn mutations(kind: &str) -> Vec<(String, Value)> {
-    let table: Value = serde_json::from_str(include_str!("fixtures/client-frames-mutations.json")).unwrap();
+    let table: Value =
+        serde_json::from_str(include_str!("fixtures/client-frames-mutations.json")).unwrap();
     table[kind]
         .as_array()
         .unwrap()
@@ -87,25 +91,42 @@ fn client_frames_refuse_unknown_fields_nulls_and_values_outside_their_bounds() {
 #[test]
 fn client_frames_accept_values_at_their_bounds() {
     for (why, frame) in mutations("accepted") {
-        assert!(decode_client_frame(&frame.to_string()).is_ok(), "{why}: {frame}");
+        assert!(
+            decode_client_frame(&frame.to_string()).is_ok(),
+            "{why}: {frame}"
+        );
     }
 }
 
 #[test]
 fn a_message_that_is_not_json_is_told_from_an_invalid_frame() {
     for text in ["not json", "{\"type\":", ""] {
-        assert!(matches!(decode_client_frame(text), Err(FrameError::NotJson(_))), "{text:?}");
+        assert!(
+            matches!(decode_client_frame(text), Err(FrameError::NotJson(_))),
+            "{text:?}"
+        );
     }
     for text in ["[1, 2]", "{\"type\": \"nope\"}", "null"] {
-        assert!(matches!(decode_client_frame(text), Err(FrameError::Invalid(_))), "{text:?}");
+        assert!(
+            matches!(decode_client_frame(text), Err(FrameError::Invalid(_))),
+            "{text:?}"
+        );
     }
-    let error = decode_client_frame(&with(fixture("send"), "/content/2/fileName", json!("..")).to_string())
-        .unwrap_err()
-        .to_string();
+    let error =
+        decode_client_frame(&with(fixture("send"), "/content/2/fileName", json!("..")).to_string())
+            .unwrap_err()
+            .to_string();
     assert!(error.contains("content[2].file_name"), "{error}");
-    let error = decode_client_frame(&with(fixture("send"), "/content/0", json!({"type": "attachment", "path": "/a"})).to_string())
-        .unwrap_err()
-        .to_string();
+    let error = decode_client_frame(
+        &with(
+            fixture("send"),
+            "/content/0",
+            json!({"type": "attachment", "path": "/a"}),
+        )
+        .to_string(),
+    )
+    .unwrap_err()
+    .to_string();
     assert!(error.contains("content[0]"), "{error}");
 }
 
@@ -113,6 +134,10 @@ fn a_message_that_is_not_json_is_told_from_an_invalid_frame() {
 fn client_frames_are_strict_in_their_schema() {
     let schema = serde_json::to_value(schemars::schema_for!(ClientFrame)).unwrap();
     for variant in schema["oneOf"].as_array().unwrap() {
-        assert_eq!(variant["additionalProperties"], false, "{}", variant["properties"]["type"]);
+        assert_eq!(
+            variant["additionalProperties"], false,
+            "{}",
+            variant["properties"]["type"]
+        );
     }
 }

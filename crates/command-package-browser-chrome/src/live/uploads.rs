@@ -12,8 +12,8 @@ use crate::driver::{
     handles,
     operation::{BrowserError, Result},
 };
-use demi_command_package_browser_protocol::live::{ControlToken, LiveModuleMessage, UploadFile};
 use crate::tabs::environment::BrowserEnvironment;
+use demi_command_package_browser_protocol::live::{ControlToken, LiveModuleMessage, UploadFile};
 
 use crate::live::{commands::find, hub::Membership, observers, protocol::TabId, writer::Writer};
 

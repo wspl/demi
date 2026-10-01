@@ -10,6 +10,7 @@ use crate::{
     management::{Endpoint, Management, Phase},
     state::{ActiveRunner, RunnerConfig, RunnerState},
 };
+use demi_runner_command_packages::ServiceRegistry;
 use demi_runner_host::volumes::ManagedVolume;
 use demi_runner_jobs::commands::{
     contexts::{ContextPaths, Contexts},
@@ -22,7 +23,6 @@ use demi_runner_protocol::{
     values::{BackendUrl, DeviceToken},
     wire,
 };
-use demi_runner_command_packages::ServiceRegistry;
 use std::{collections::BTreeMap, io, path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
@@ -50,7 +50,8 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
     let mut lease = state.lock()?;
     let saved = state.config().await?;
     if let Some(saved) = &saved
-        && crate::state::instance_id(&saved.backend_url) != crate::state::instance_id(&options.backend)
+        && crate::state::instance_id(&saved.backend_url)
+            != crate::state::instance_id(&options.backend)
     {
         return Err(io::Error::other(
             "installation is registered to another backend",
@@ -134,8 +135,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
         volumes: options.volumes,
     };
     let outcome = reconnect(&registered).await;
-    if registered.management.draining.is_cancelled() && !registered.management.stop.is_cancelled()
-    {
+    if registered.management.draining.is_cancelled() && !registered.management.stop.is_cancelled() {
         server.wait_idle().await;
     }
     registry.close().await;

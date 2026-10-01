@@ -68,7 +68,9 @@ pub fn counting_numbers() -> Numbers {
 /// Opens the numbers stream of the service `client` drives and answers it
 /// from counters, as a runner answers it from the backend's sequences, until
 /// the service ends it.
-pub async fn answer_numbers(client: &Client) -> Result<JoinHandle<Result<(), ServiceError>>, ServiceError> {
+pub async fn answer_numbers(
+    client: &Client,
+) -> Result<JoinHandle<Result<(), ServiceError>>, ServiceError> {
     let stream = client.numbers().await?;
     Ok(tokio::spawn(async move {
         let counters = std::sync::Mutex::new(Counters::default());

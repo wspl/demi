@@ -227,7 +227,10 @@ pub async fn execute(
         Ok(())
     }
     .await;
-    let cleanup = after_cleanup(file_cleanup, crate::page::element::release_objects(tab).await);
+    let cleanup = after_cleanup(
+        file_cleanup,
+        crate::page::element::release_objects(tab).await,
+    );
     drop(beginnings);
     drop(progress);
     drop(responses);

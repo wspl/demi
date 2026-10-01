@@ -11,7 +11,9 @@ use std::sync::Arc;
 
 use demi_backend_providers::llm::catalog::configured_selection;
 use demi_backend_providers::vault::entries::ProviderEntry;
-use demi_provider_common::{InferenceItem, InferenceRequest, PromptCache, Provider, ProviderEvent, RuntimeEnv, UserPart};
+use demi_provider_common::{
+    InferenceItem, InferenceRequest, PromptCache, Provider, ProviderEvent, RuntimeEnv, UserPart,
+};
 use demi_web_api_protocol::ids::CredentialId;
 use demi_web_api_protocol::providers::TestResult;
 use futures_util::StreamExt;
@@ -34,8 +36,14 @@ impl Shard {
         cancel: CancellationToken,
     ) -> TestResult {
         let assembly = &self.services().assembly;
-        let catalog = assembly.entry_catalog(&entry, &Ok(provider.clone()), false).await;
-        let Some(model) = catalog.models.into_iter().find(|model| model.id == model_id) else {
+        let catalog = assembly
+            .entry_catalog(&entry, &Ok(provider.clone()), false)
+            .await;
+        let Some(model) = catalog
+            .models
+            .into_iter()
+            .find(|model| model.id == model_id)
+        else {
             return TestResult::Failed {
                 message: format!("This provider lists no model {model_id}"),
                 model: None,
@@ -48,13 +56,14 @@ impl Shard {
         };
         // The model the catalog lists is also the configured one, when the
         // entry configures its list.
-        let selection = match configured_selection(&entry, model.selection(entry.id.as_str(), None, None)) {
-            Ok(selection) => selection,
-            Err(error) => return failed(error.to_string()),
-        };
+        let selection =
+            match configured_selection(&entry, model.selection(entry.id.as_str(), None, None)) {
+                Ok(selection) => selection,
+                Err(error) => return failed(error.to_string()),
+            };
         let runtime = if provider.capabilities().process_host {
             let work = ProcessWork::Account(entry.id.clone());
-            let placement = CloudPlacement::new(Rc::downgrade(&self.this()), work);
+            let placement = CloudPlacement::placement(Rc::downgrade(&self.this()), work);
             let account = account.as_ref().or(entry.active());
             assembly
                 .process_runtime(&entry, account, placement)

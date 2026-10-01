@@ -36,19 +36,31 @@ serde_plain::derive_display_from_serialize!(WireApi);
 )]
 pub enum AuthState {
     Unknown {
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         #[schemars(with = "String")]
         message: Option<String>,
     },
     Authenticated {
         /// The account the credential acts for, when the provider can name
         /// it.
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         #[schemars(with = "String")]
         account_label: Option<String>,
     },
     Unauthenticated {
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         #[schemars(with = "String")]
         message: Option<String>,
     },
@@ -66,12 +78,20 @@ pub enum AuthState {
 )]
 pub enum RuntimeState {
     Unknown {
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         #[schemars(with = "String")]
         message: Option<String>,
     },
     Ready {
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         #[schemars(with = "String")]
         message: Option<String>,
     },

@@ -9,9 +9,9 @@ mod patch;
 
 use std::{future::Future, pin::Pin};
 
+use demi_command_package_file_protocol::{OPERATIONS, Operation, OperationError};
 use demi_command_protocol::{Completion, Invocation};
 use demi_command_sdk::{Handler, InvocationContext, ServiceError};
-use demi_command_package_file_protocol::{OPERATIONS, Operation, OperationError};
 use demi_shared_gates::SerialGate;
 
 /// The service.

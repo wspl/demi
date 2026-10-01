@@ -11,6 +11,7 @@ use std::{
     time::Duration,
 };
 
+use demi_runner_command_packages::ServiceHandle;
 use demi_runner_host::{
     host::HostServer,
     volumes::{ManagedVolume, Volumes},
@@ -34,7 +35,6 @@ use demi_runner_protocol::{
     values::{BackendUrl, DeviceToken},
     wire::{self, Inbound},
 };
-use demi_runner_command_packages::ServiceHandle;
 use tokio::{
     sync::{mpsc, watch},
     task::JoinSet,
@@ -506,7 +506,7 @@ impl Owner<'_> {
         };
         match message {
             Inbound::JobStart { .. } | Inbound::Spawn { .. } if draining => {
-                return Err(io::Error::other("runner is draining for upgrade"));
+                Err(io::Error::other("runner is draining for upgrade"))
             }
             Inbound::Spawn {
                 spawn_id,
@@ -574,9 +574,7 @@ impl Owner<'_> {
                         script: script.clone(),
                         stdin: stdin.clone(),
                         stdout: stdout.clone(),
-                        commands: manifest_hash
-                            .clone()
-                            .map(|hash| (hash, context.clone())),
+                        commands: manifest_hash.clone().map(|hash| (hash, context.clone())),
                     },
                 })
             }

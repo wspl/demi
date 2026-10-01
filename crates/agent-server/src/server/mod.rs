@@ -25,10 +25,10 @@ use demi_agent_store::{
 };
 use demi_agent_tools::{AgentHarness, ShellEnvironmentFactory};
 use demi_agent_transcript::IdSource;
-use demi_shared_types::{BlockId, Clock, ModelSelection, NodeId, SessionPhase};
-use demi_shared_gates::KeyedSerialGate;
-use demi_provider_common::ProviderRuntime;
 use demi_host_interface::{JobCaller, PortError, StorageOp, StorageReply};
+use demi_provider_common::ProviderRuntime;
+use demi_shared_gates::KeyedSerialGate;
+use demi_shared_types::{BlockId, Clock, ModelSelection, NodeId, SessionPhase};
 use futures_util::future::{LocalBoxFuture, join_all};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
@@ -177,7 +177,10 @@ impl<H: AgentHarness> AgentServer<H> {
         } else {
             None
         };
-        Ok(Some(ModelSwitch { model, runtime }))
+        Ok(Some(ModelSwitch {
+            model: Box::new(model),
+            runtime,
+        }))
     }
 
     /// Switches the conversation `root`'s live tree to a prepared switch; it

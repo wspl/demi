@@ -1,10 +1,10 @@
 //! The events a run makes of recorded Messages API event streams.
 
-use demi_shared_types::{FailureSource, TokenUsage};
 use demi_provider_common::{
     ErrorCode, ProviderEvent, ToolCall,
     testing::{MockResponse, MockVendor, inference_request},
 };
+use demi_shared_types::{FailureSource, TokenUsage};
 use serde_json::{Value, json};
 
 use crate::{recorded, run, runtime};
@@ -80,12 +80,21 @@ async fn a_stream_maps_thinking_text_tool_use_and_usage() {
 #[tokio::test]
 async fn a_tool_input_comes_from_its_deltas_else_its_start_else_is_an_empty_object() {
     let events = events_of(recorded(&[
-        block_start(0, json!({ "type": "tool_use", "id": "t0", "name": "a", "input": { "q": 1 } })),
+        block_start(
+            0,
+            json!({ "type": "tool_use", "id": "t0", "name": "a", "input": { "q": 1 } }),
+        ),
         block_stop(0),
         block_start(1, json!({ "type": "tool_use", "id": "t1", "name": "b" })),
         block_stop(1),
-        block_start(2, json!({ "type": "tool_use", "id": "t2", "name": "c", "input": {} })),
-        delta(2, json!({ "type": "input_json_delta", "partial_json": "{\"path\":" })),
+        block_start(
+            2,
+            json!({ "type": "tool_use", "id": "t2", "name": "c", "input": {} }),
+        ),
+        delta(
+            2,
+            json!({ "type": "input_json_delta", "partial_json": "{\"path\":" }),
+        ),
         block_stop(2),
         message_stop(),
     ]))
@@ -104,12 +113,18 @@ async fn a_tool_input_comes_from_its_deltas_else_its_start_else_is_an_empty_obje
 #[tokio::test]
 async fn redacted_thinking_is_kept_as_received() {
     let events = events_of(recorded(&[
-        block_start(0, json!({ "type": "redacted_thinking", "data": "EmwKAhgB" })),
+        block_start(
+            0,
+            json!({ "type": "redacted_thinking", "data": "EmwKAhgB" }),
+        ),
         block_stop(0),
         message_stop(),
     ]))
     .await;
-    assert_eq!(events[0], ProviderEvent::RedactedThinking("anthropic:EmwKAhgB".into()));
+    assert_eq!(
+        events[0],
+        ProviderEvent::RedactedThinking("anthropic:EmwKAhgB".into())
+    );
 }
 
 #[tokio::test]
@@ -119,8 +134,17 @@ async fn a_stream_that_ends_without_message_stop_still_responds_with_its_usage()
         delta(0, json!({ "type": "text_delta", "text": "partial" })),
     ]))
     .await;
-    let usage = TokenUsage { input_tokens: 7, ..TokenUsage::default() };
-    assert_eq!(events, [ProviderEvent::TextDelta("partial".into()), ProviderEvent::Response(usage)]);
+    let usage = TokenUsage {
+        input_tokens: 7,
+        ..TokenUsage::default()
+    };
+    assert_eq!(
+        events,
+        [
+            ProviderEvent::TextDelta("partial".into()),
+            ProviderEvent::Response(usage)
+        ]
+    );
 }
 
 #[tokio::test]
@@ -143,9 +167,18 @@ async fn events_and_blocks_the_provider_does_not_map_are_skipped() {
 async fn a_malformed_known_event_is_a_protocol_failure_that_names_its_field() {
     let cases = [
         (delta_without_index(), "index"),
-        (block_start(0, json!({ "type": "text", "text": 42 })), "text"),
-        (block_start(0, json!({ "type": "tool_use", "id": "", "name": "a" })), "id"),
-        (json!({ "type": "message_delta", "usage": { "output_tokens": 1.5 } }), "output_tokens"),
+        (
+            block_start(0, json!({ "type": "text", "text": 42 })),
+            "text",
+        ),
+        (
+            block_start(0, json!({ "type": "tool_use", "id": "", "name": "a" })),
+            "id",
+        ),
+        (
+            json!({ "type": "message_delta", "usage": { "output_tokens": 1.5 } }),
+            "output_tokens",
+        ),
     ];
     for (frame, field) in cases {
         let events = events_of(recorded(&[frame.clone(), message_stop()])).await;
@@ -153,10 +186,17 @@ async fn a_malformed_known_event_is_a_protocol_failure_that_names_its_field() {
             panic!("{frame}: {events:?}");
         };
         assert_eq!(failure.code, None, "{frame}");
-        assert!(failure.message.contains(field), "{field}: {}", failure.message);
+        assert!(
+            failure.message.contains(field),
+            "{field}: {}",
+            failure.message
+        );
         let diagnostics = failure.diagnostics.as_ref().unwrap();
         assert_eq!(diagnostics.source, FailureSource::Stream);
-        assert_eq!(diagnostics.upstream.as_deref(), Some(frame.to_string().as_str()));
+        assert_eq!(
+            diagnostics.upstream.as_deref(),
+            Some(frame.to_string().as_str())
+        );
     }
 }
 
@@ -176,24 +216,49 @@ async fn an_error_event_ends_the_run_with_its_classified_failure() {
     let [ProviderEvent::TextDelta(_), ProviderEvent::Error(failure)] = events.as_slice() else {
         panic!("{events:?}");
     };
-    assert_eq!((failure.message.as_str(), failure.code.clone()), ("Overloaded", Some(ErrorCode::Overloaded)));
+    assert_eq!(
+        (failure.message.as_str(), failure.code.clone()),
+        ("Overloaded", Some(ErrorCode::Overloaded))
+    );
     assert_eq!(failure.retry_after, None);
     let diagnostics = failure.diagnostics.as_ref().unwrap();
     assert_eq!(diagnostics.source, FailureSource::Stream);
-    assert_eq!(diagnostics.provider_code.as_deref(), Some("overloaded_error"));
-    assert_eq!(diagnostics.upstream.as_deref(), Some(overloaded.to_string().as_str()));
+    assert_eq!(
+        diagnostics.provider_code.as_deref(),
+        Some("overloaded_error")
+    );
+    assert_eq!(
+        diagnostics.upstream.as_deref(),
+        Some(overloaded.to_string().as_str())
+    );
 
     let cases = [
-        (json!({ "type": "error", "error": { "type": "rate_limit_error", "message": "Number of requests exceeded" } }), "Number of requests exceeded", Some(ErrorCode::RateLimit)),
-        (json!({ "type": "error", "error": { "type": "invalid_request_error", "message": 42 } }), "Anthropic API stream error", Some(ErrorCode::Vendor("invalid_request_error".into()))),
-        (json!({ "type": "error", "message": "stream closed by the service" }), "stream closed by the service", Some(ErrorCode::Vendor("error".into()))),
+        (
+            json!({ "type": "error", "error": { "type": "rate_limit_error", "message": "Number of requests exceeded" } }),
+            "Number of requests exceeded",
+            Some(ErrorCode::RateLimit),
+        ),
+        (
+            json!({ "type": "error", "error": { "type": "invalid_request_error", "message": 42 } }),
+            "Anthropic API stream error",
+            Some(ErrorCode::Vendor("invalid_request_error".into())),
+        ),
+        (
+            json!({ "type": "error", "message": "stream closed by the service" }),
+            "stream closed by the service",
+            Some(ErrorCode::Vendor("error".into())),
+        ),
     ];
     for (frame, message, code) in cases {
-        let events = events_of(recorded(&[frame.clone()])).await;
+        let events = events_of(recorded(std::slice::from_ref(&frame))).await;
         let [ProviderEvent::Error(failure)] = events.as_slice() else {
             panic!("{frame}: {events:?}");
         };
-        assert_eq!((failure.message.as_str(), failure.code.clone()), (message, code), "{frame}");
+        assert_eq!(
+            (failure.message.as_str(), failure.code.clone()),
+            (message, code),
+            "{frame}"
+        );
     }
 }
 
@@ -201,14 +266,31 @@ async fn an_error_event_ends_the_run_with_its_classified_failure() {
 async fn every_stop_reason_ends_the_run_with_its_response() {
     // A stop reason says why the model stopped; it is not a failure, and the
     // calls a stopped turn made are still the turn's calls.
-    for reason in ["end_turn", "tool_use", "max_tokens", "stop_sequence", "refusal", "pause_turn"] {
+    for reason in [
+        "end_turn",
+        "tool_use",
+        "max_tokens",
+        "stop_sequence",
+        "refusal",
+        "pause_turn",
+    ] {
         let events = events_of(recorded(&[
             delta(0, json!({ "type": "text_delta", "text": "done" })),
             json!({ "type": "message_delta", "delta": { "stop_reason": reason }, "usage": { "output_tokens": 2 } }),
             message_stop(),
         ]))
         .await;
-        let usage = TokenUsage { output_tokens: 2, ..TokenUsage::default() };
-        assert_eq!(events, [ProviderEvent::TextDelta("done".into()), ProviderEvent::Response(usage)], "{reason}");
+        let usage = TokenUsage {
+            output_tokens: 2,
+            ..TokenUsage::default()
+        };
+        assert_eq!(
+            events,
+            [
+                ProviderEvent::TextDelta("done".into()),
+                ProviderEvent::Response(usage)
+            ],
+            "{reason}"
+        );
     }
 }

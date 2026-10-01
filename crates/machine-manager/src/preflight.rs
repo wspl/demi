@@ -25,7 +25,9 @@ pub enum PreflightError {
     SharedNamespace,
     #[error("Cloud requires runsc {0}")]
     Runsc(String),
-    #[error("DEMI_MACHINE_MANAGER_DATA must be one filesystem: {0} and {1} are on different filesystems")]
+    #[error(
+        "DEMI_MACHINE_MANAGER_DATA must be one filesystem: {0} and {1} are on different filesystems"
+    )]
     Filesystems(String, String),
     #[error(transparent)]
     Tool(#[from] ToolError),
@@ -66,7 +68,11 @@ pub async fn require_runsc(core: &Core) -> Result<(), PreflightError> {
 
 /// Requires the working and image directories on one filesystem, because
 /// publication links images between them.
-pub fn require_one_filesystem(_: &OffLoop, working: &Path, images: &Path) -> Result<(), PreflightError> {
+pub fn require_one_filesystem(
+    _: &OffLoop,
+    working: &Path,
+    images: &Path,
+) -> Result<(), PreflightError> {
     fs_err::create_dir_all(working)?;
     fs_err::create_dir_all(images)?;
     if fs_err::metadata(working)?.dev() != fs_err::metadata(images)?.dev() {
@@ -82,7 +88,10 @@ pub fn require_one_filesystem(_: &OffLoop, working: &Path, images: &Path) -> Res
 /// writes through the overlay, freezes the filesystem and copies the image;
 /// the probe is released whatever happens.
 pub async fn probe_storage(core: &Core) -> Result<(), PreflightError> {
-    let stage = core.config.data.join(format!("{PROBE_PREFIX}{}", uuid::Uuid::new_v4()));
+    let stage = core
+        .config
+        .data
+        .join(format!("{PROBE_PREFIX}{}", uuid::Uuid::new_v4()));
     let probed = probe(core, &stage).await;
     let released = {
         let stage = stage.clone();
@@ -143,7 +152,11 @@ pub async fn release_probes(data: &Path) -> Result<(), PreflightError> {
     blocking::run(move |off| -> io::Result<()> {
         for entry in fs_err::read_dir(&data)? {
             let entry = entry?;
-            if entry.file_name().to_string_lossy().starts_with(PROBE_PREFIX) {
+            if entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with(PROBE_PREFIX)
+            {
                 release(off, &entry.path())?;
             }
         }

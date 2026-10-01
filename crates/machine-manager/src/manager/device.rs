@@ -5,7 +5,9 @@
 
 use std::{num::NonZeroU64, path::Path, rc::Rc};
 
-use demi_machine_manager_protocol::{BaseVersion, DeviceId, MachineImageState, RuntimeState, Volume};
+use demi_machine_manager_protocol::{
+    BaseVersion, DeviceId, MachineImageState, RuntimeState, Volume,
+};
 use demi_runner_protocol::boot::ManagedBoot;
 use tokio::sync::{mpsc, oneshot};
 
@@ -14,8 +16,7 @@ use super::{
     errors::{OpError, Parts},
 };
 use crate::{
-    blocking,
-    fault,
+    blocking, fault,
     sandbox::Sandbox,
     server::chain,
     storage::{
@@ -46,7 +47,10 @@ pub enum DeviceOp {
     Hibernate,
     Checkpoint,
     Grow(Volume, NonZeroU64),
-    Reset { operation: String, base: BaseVersion },
+    Reset {
+        operation: String,
+        base: BaseVersion,
+    },
 }
 
 pub struct DeviceWorker {
@@ -67,7 +71,10 @@ struct Stage {
 
 impl Stage {
     async fn create(core: &Core, prefix: &str) -> Result<Self, OpError> {
-        let path = core.config.working().join(format!(".{prefix}-{}", uuid::Uuid::new_v4()));
+        let path = core
+            .config
+            .working()
+            .join(format!(".{prefix}-{}", uuid::Uuid::new_v4()));
         let created = path.clone();
         blocking::run(move |_| fs_err::create_dir(created)).await?;
         Ok(Self { path })
@@ -88,7 +95,12 @@ impl Stage {
 }
 
 impl DeviceWorker {
-    pub fn new(device: DeviceId, core: Rc<Core>, base: BaseVersion, deaths: mpsc::Sender<DeviceId>) -> Self {
+    pub fn new(
+        device: DeviceId,
+        core: Rc<Core>,
+        base: BaseVersion,
+        deaths: mpsc::Sender<DeviceId>,
+    ) -> Self {
         Self {
             working: WorkingPair::new(&core.config.working(), &device),
             device,
@@ -196,7 +208,9 @@ impl DeviceWorker {
         if self.runtime.is_some() {
             return Err(OpError::ActiveWriter);
         }
-        self.working.save(&self.core.tools, &self.core.store, &self.device).await?;
+        self.working
+            .save(&self.core.tools, &self.core.store, &self.device)
+            .await?;
         Ok(())
     }
 
@@ -218,7 +232,12 @@ impl DeviceWorker {
         fault::point("working-staged");
         let lease = self.core.slots.take()?;
         let mut sandbox = Sandbox::new(&self.core, lease);
-        let base = self.core.store.bases().join(&state.base_version).join("rootfs");
+        let base = self
+            .core
+            .store
+            .bases()
+            .join(&state.base_version)
+            .join("rootfs");
         let started = sandbox.start(&self.core, &self.working, &base, boot).await;
         let Err(error) = started else {
             self.runtime = Some(sandbox);
@@ -228,7 +247,10 @@ impl DeviceWorker {
             Ok(()) => Err(error.into()),
             Err(cleanup) => {
                 self.runtime = Some(sandbox);
-                Err(OpError::StartAndCleanup(Parts(vec![error.into(), cleanup.into()])))
+                Err(OpError::StartAndCleanup(Parts(vec![
+                    error.into(),
+                    cleanup.into(),
+                ])))
             }
         }
     }
@@ -249,7 +271,12 @@ impl DeviceWorker {
             write_json(off, &stage.join("manifest.json"), &state)?;
             sync(off, &stage)?;
             fs_err::rename(&stage, &working)?;
-            sync(off, working.parent().expect("a working pair lies in the working directory"))
+            sync(
+                off,
+                working
+                    .parent()
+                    .expect("a working pair lies in the working directory"),
+            )
         })
         .await?;
         Ok(())
@@ -264,7 +291,11 @@ impl DeviceWorker {
         made
     }
 
-    async fn make_first_generation(&self, base: &BaseVersion, stage: &Path) -> Result<MachineImageState, OpError> {
+    async fn make_first_generation(
+        &self,
+        base: &BaseVersion,
+        stage: &Path,
+    ) -> Result<MachineImageState, OpError> {
         let skeleton = self.core.store.bases().join(base).join("rootfs/etc/skel");
         let root = stage.join("mkhome");
         let prepared = root.clone();
@@ -317,8 +348,15 @@ impl DeviceWorker {
         published
     }
 
-    async fn checkpoint_into(&mut self, state: MachineImageState, stage: &Path) -> Result<(), OpError> {
-        let sandbox = self.runtime.as_ref().expect("the checkpoint checked for a sandbox");
+    async fn checkpoint_into(
+        &mut self,
+        state: MachineImageState,
+        stage: &Path,
+    ) -> Result<(), OpError> {
+        let sandbox = self
+            .runtime
+            .as_ref()
+            .expect("the checkpoint checked for a sandbox");
         let (captured, mut cleanup) = match sandbox.pause(&self.core).await {
             // Pausing failed: nothing is frozen, and the failure is reported
             // once the sandbox is resumed.
@@ -369,7 +407,9 @@ impl DeviceWorker {
         if bytes <= state.bytes(volume) {
             return Ok(());
         }
-        let capacity = sandbox.grow(&self.core, &self.working, volume, bytes).await?;
+        let capacity = sandbox
+            .grow(&self.core, &self.working, volume, bytes)
+            .await?;
         let grown = state.with_bytes(volume, capacity);
         let pair = self.working.clone();
         blocking::run(move |off| pair.write_manifest(off, &grown)).await?;
@@ -398,7 +438,9 @@ impl DeviceWorker {
             return Ok(());
         }
         let stage = Stage::create(&self.core, "reset").await?;
-        let published = self.publish_reset(state, operation, base, stage.path()).await;
+        let published = self
+            .publish_reset(state, operation, base, stage.path())
+            .await;
         stage.remove().await;
         published
     }

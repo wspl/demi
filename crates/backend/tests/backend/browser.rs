@@ -23,8 +23,15 @@ const ABSENT: &str = "t999999";
 
 async fn conversation(backend: &TestBackend, master: &Session) -> String {
     let id = uuid::Uuid::new_v4().to_string();
-    let created = backend.post("/api/conversations", Some(master), json!({ "id": id })).await;
-    assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
+    let created = backend
+        .post("/api/conversations", Some(master), json!({ "id": id }))
+        .await;
+    assert_eq!(
+        created.status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&created.body)
+    );
     id
 }
 
@@ -42,52 +49,124 @@ async fn the_tab_routes_run_the_browsers_operations_as_the_user_on_the_conversat
     let id = conversation(&backend, &master).await;
     let home = laptop.runner.home_dir().to_str().unwrap().to_owned();
     let target = json!({ "target": { "kind": "device", "deviceId": laptop.id(), "path": home } });
-    let moved = backend.patch(&format!("/api/conversations/{id}"), &master, target).await;
-    assert_eq!(moved.status, StatusCode::OK, "{}", String::from_utf8_lossy(&moved.body));
+    let moved = backend
+        .patch(&format!("/api/conversations/{id}"), &master, target)
+        .await;
+    assert_eq!(
+        moved.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&moved.body)
+    );
 
     // A browser that does not run has no tabs, and nothing to close.
     let listed = backend.get(&tabs(&id), Some(&master)).await;
-    assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
+    assert_eq!(
+        listed.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&listed.body)
+    );
     assert_eq!(listed.json::<Value>(), json!({ "tabs": [] }));
-    assert_eq!(backend.delete(&format!("{}/{ABSENT}", tabs(&id)), &master).await.status, StatusCode::NO_CONTENT);
-    assert_eq!(backend.delete(&format!("{}/not-a-tab", tabs(&id)), &master).await.status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        backend
+            .delete(&format!("{}/{ABSENT}", tabs(&id)), &master)
+            .await
+            .status,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        backend
+            .delete(&format!("{}/not-a-tab", tabs(&id)), &master)
+            .await
+            .status,
+        StatusCode::NO_CONTENT
+    );
     // A tab the browser does not have is the browser's answer.
     let navigate = format!("{}/{ABSENT}/navigate", tabs(&id));
-    let missing = backend.post(&navigate, Some(&master), json!({ "url": "https://example.test/" })).await;
-    assert_eq!(missing.refusal(), (StatusCode::NOT_FOUND, ErrorCode::TabNotFound));
-    let history = format!("{}/{ABSENT}/history", tabs(&id));
-    let reload = backend.post(&history, Some(&master), json!({ "action": "reload" })).await;
-    assert_eq!(reload.refusal(), (StatusCode::NOT_FOUND, ErrorCode::TabNotFound));
-    let malformed = backend
-        .post(&format!("{}/not-a-tab/history", tabs(&id)), Some(&master), json!({ "action": "back" }))
+    let missing = backend
+        .post(
+            &navigate,
+            Some(&master),
+            json!({ "url": "https://example.test/" }),
+        )
         .await;
-    assert_eq!(malformed.refusal(), (StatusCode::NOT_FOUND, ErrorCode::TabNotFound));
+    assert_eq!(
+        missing.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::TabNotFound)
+    );
+    let history = format!("{}/{ABSENT}/history", tabs(&id));
+    let reload = backend
+        .post(&history, Some(&master), json!({ "action": "reload" }))
+        .await;
+    assert_eq!(
+        reload.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::TabNotFound)
+    );
+    let malformed = backend
+        .post(
+            &format!("{}/not-a-tab/history", tabs(&id)),
+            Some(&master),
+            json!({ "action": "back" }),
+        )
+        .await;
+    assert_eq!(
+        malformed.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::TabNotFound)
+    );
     for (path, body) in [
         (&navigate, json!({})),
         (&history, json!({ "action": "sideways" })),
         (&tabs(&id), json!({ "url": "" })),
     ] {
         let refused = backend.post(path, Some(&master), body.clone()).await;
-        assert_eq!(refused.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody), "{path} {body}");
+        assert_eq!(
+            refused.refusal(),
+            (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody),
+            "{path} {body}"
+        );
     }
 
     // Without its runner the device answers nothing.
     laptop.runner.kill().await;
     backend.until_online(&master, laptop.id(), false).await;
     let offline = backend.get(&tabs(&id), Some(&master)).await;
-    assert_eq!(offline.refusal(), (StatusCode::CONFLICT, ErrorCode::DeviceOffline));
+    assert_eq!(
+        offline.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::DeviceOffline)
+    );
 
     // An archived conversation's browser is not operated.
     let archived = backend
-        .patch(&format!("/api/conversations/{id}"), &master, json!({ "archived": true }))
+        .patch(
+            &format!("/api/conversations/{id}"),
+            &master,
+            json!({ "archived": true }),
+        )
         .await;
-    assert_eq!(archived.status, StatusCode::OK, "{}", String::from_utf8_lossy(&archived.body));
+    assert_eq!(
+        archived.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&archived.body)
+    );
     let listed = backend.get(&tabs(&id), Some(&master)).await;
-    assert_eq!(listed.refusal(), (StatusCode::CONFLICT, ErrorCode::ConversationArchived));
+    assert_eq!(
+        listed.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::ConversationArchived)
+    );
     let opened = backend.post(&tabs(&id), Some(&master), json!({})).await;
-    assert_eq!(opened.refusal(), (StatusCode::CONFLICT, ErrorCode::ConversationArchived));
-    let unknown = backend.get(&tabs(&uuid::Uuid::new_v4().to_string()), Some(&master)).await;
-    assert_eq!(unknown.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ConversationNotFound));
+    assert_eq!(
+        opened.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::ConversationArchived)
+    );
+    let unknown = backend
+        .get(&tabs(&uuid::Uuid::new_v4().to_string()), Some(&master))
+        .await;
+    assert_eq!(
+        unknown.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::ConversationNotFound)
+    );
     backend.close().await;
 }
 
@@ -98,15 +177,40 @@ async fn a_stopped_cloud_is_not_woken_to_list_close_or_move_its_tabs() {
     // A new conversation works on the Cloud, which never started.
     let id = conversation(&backend, &master).await;
     let listed = backend.get(&tabs(&id), Some(&master)).await;
-    assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
+    assert_eq!(
+        listed.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&listed.body)
+    );
     assert_eq!(listed.json::<Value>(), json!({ "tabs": [] }));
-    assert_eq!(backend.delete(&format!("{}/{ABSENT}", tabs(&id)), &master).await.status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        backend
+            .delete(&format!("{}/{ABSENT}", tabs(&id)), &master)
+            .await
+            .status,
+        StatusCode::NO_CONTENT
+    );
     let navigate = format!("{}/{ABSENT}/navigate", tabs(&id));
-    let stopped = backend.post(&navigate, Some(&master), json!({ "url": "https://example.test/" })).await;
-    assert_eq!(stopped.refusal(), (StatusCode::CONFLICT, ErrorCode::HostStopped));
+    let stopped = backend
+        .post(
+            &navigate,
+            Some(&master),
+            json!({ "url": "https://example.test/" }),
+        )
+        .await;
+    assert_eq!(
+        stopped.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::HostStopped)
+    );
     let history = format!("{}/{ABSENT}/history", tabs(&id));
-    let stopped = backend.post(&history, Some(&master), json!({ "action": "forward" })).await;
-    assert_eq!(stopped.refusal(), (StatusCode::CONFLICT, ErrorCode::HostStopped));
+    let stopped = backend
+        .post(&history, Some(&master), json!({ "action": "forward" }))
+        .await;
+    assert_eq!(
+        stopped.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::HostStopped)
+    );
     // Looking made no Cloud.
     let devices: Value = backend.get("/api/devices", Some(&master)).await.json();
     assert_eq!(devices["devices"], json!([]));
@@ -126,16 +230,34 @@ async fn listing_a_running_clouds_tabs_does_not_keep_it_awake() {
     let (backend, master) = harness.start_set_up().await;
     let id = conversation(&backend, &master).await;
     // Reading the conversation's files wakes the Cloud it works on.
-    let listed = backend.get(&format!("/api/conversations/{id}/fs"), Some(&master)).await;
-    assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
+    let listed = backend
+        .get(&format!("/api/conversations/{id}/fs"), Some(&master))
+        .await;
+    assert_eq!(
+        listed.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&listed.body)
+    );
     let device = the_cloud(&harness);
     // Closing a tab starts the browser's service, which the Cloud's runner
     // installs first. The close restarts the window as it is admitted and is
     // no activity after that, so a lease of the conversation's file gate,
     // which is its work, keeps the Cloud up meanwhile.
-    let working = backend.file_gate(&master, &id).await.enter(Purpose::Demand).await;
-    let closed = backend.delete(&format!("{}/{ABSENT}", tabs(&id)), &master).await;
-    assert_eq!(closed.status, StatusCode::NO_CONTENT, "{}", String::from_utf8_lossy(&closed.body));
+    let working = backend
+        .file_gate(&master, &id)
+        .await
+        .enter(Purpose::Demand)
+        .await;
+    let closed = backend
+        .delete(&format!("{}/{ABSENT}", tabs(&id)), &master)
+        .await;
+    assert_eq!(
+        closed.status,
+        StatusCode::NO_CONTENT,
+        "{}",
+        String::from_utf8_lossy(&closed.body)
+    );
     let rested = Instant::now();
     drop(working);
     // The page lists the tabs again and again, and the Cloud idles and
@@ -172,6 +294,9 @@ async fn a_backend_whose_catalog_serves_no_browser_has_no_tab_routes() {
     let (backend, master) = harness.start_set_up().await;
     let id = conversation(&backend, &master).await;
     let listed = backend.get(&tabs(&id), Some(&master)).await;
-    assert_eq!(listed.refusal(), (StatusCode::NOT_FOUND, ErrorCode::NotFound));
+    assert_eq!(
+        listed.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::NotFound)
+    );
     backend.close().await;
 }

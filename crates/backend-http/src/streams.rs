@@ -26,7 +26,11 @@ pub(super) async fn open(
     upgrade: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
 ) -> Result<Response, ApiError> {
     let Some(binding) = state.services.user_streams.get(&name).cloned() else {
-        return Err(ApiError::new(StatusCode::NOT_FOUND, ErrorCode::UnknownStream, "No stream has that name"));
+        return Err(ApiError::new(
+            StatusCode::NOT_FOUND,
+            ErrorCode::UnknownStream,
+            "No stream has that name",
+        ));
     };
     let record = owned(&state.services, &user.id, &id).await?;
     let upgrade = upgrade.map_err(|_| {
@@ -39,7 +43,12 @@ pub(super) async fn open(
     let stream = state
         .shards
         .of(&user.id)
-        .call(move |shard, cancel| async move { shard.host_shard().open_user_stream(&record.id, &binding, &cancel).await })
+        .call(move |shard, cancel| async move {
+            shard
+                .host_shard()
+                .open_user_stream(&record.id, &binding, &cancel)
+                .await
+        })
         .await??;
     // An upgrade that never completes drops the stream, which ends it.
     Ok(upgrade.on_upgrade(move |socket| relay(socket, stream)))

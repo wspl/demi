@@ -11,9 +11,9 @@ use std::{
 };
 
 use demi_agent_session::ToolOutcome;
-use demi_shared_types::{CommandId, ShellId, ToolView};
-use demi_provider_common::ResultPart;
 use demi_host_interface::{HostError, HostKey, PageView, ShellEnvironment};
+use demi_provider_common::ResultPart;
+use demi_shared_types::{CommandId, ShellId, ToolView};
 use futures_util::future::join_all;
 use tokio::{sync::OnceCell, time::Instant};
 

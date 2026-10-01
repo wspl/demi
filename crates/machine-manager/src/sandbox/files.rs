@@ -46,11 +46,19 @@ impl SandboxId {
     }
 }
 
+impl Default for SandboxId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TryFrom<String> for SandboxId {
     type Error = InvalidSandboxId;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        let valid = value.strip_prefix("demi-").is_some_and(demi_machine_manager_protocol::is_image_name);
+        let valid = value
+            .strip_prefix("demi-")
+            .is_some_and(demi_machine_manager_protocol::is_image_name);
         if !valid {
             return Err(InvalidSandboxId(value));
         }
@@ -181,10 +189,22 @@ impl RuntimeDirectory {
     /// with its mode set whatever the service's umask: the boot record
     /// readable by the sandbox's user alone, the resolver and hosts files by
     /// everyone.
-    pub fn write_credentials(&self, _: &OffLoop, boot: &ManagedBoot, dns: &[Ipv4Addr]) -> io::Result<()> {
-        let resolver: String = dns.iter().map(|address| format!("nameserver {address}\n")).collect();
+    pub fn write_credentials(
+        &self,
+        _: &OffLoop,
+        boot: &ManagedBoot,
+        dns: &[Ipv4Addr],
+    ) -> io::Result<()> {
+        let resolver: String = dns
+            .iter()
+            .map(|address| format!("nameserver {address}\n"))
+            .collect();
         create(&self.resolver(), resolver.as_bytes(), 0o444)?;
-        create(&self.hosts(), b"127.0.0.1 localhost\n127.0.1.1 demi-cloud\n", 0o444)?;
+        create(
+            &self.hosts(),
+            b"127.0.0.1 localhost\n127.0.1.1 demi-cloud\n",
+            0o444,
+        )?;
         create(&self.boot(), &serde_json::to_vec(boot)?, 0o400)?;
         fs_err::os::unix::fs::chown(self.boot(), Some(USER_ID), Some(USER_ID))
     }
@@ -210,7 +230,8 @@ mod tests {
     #[test]
     fn a_record_names_one_boot_and_its_slot() {
         let record: SandboxRecord =
-            serde_json::from_str(r#"{"id":"demi-0f6c3d4e-8a9b-4c1d-9e2f-3a4b5c6d7e8f","slot":3}"#).unwrap();
+            serde_json::from_str(r#"{"id":"demi-0f6c3d4e-8a9b-4c1d-9e2f-3a4b5c6d7e8f","slot":3}"#)
+                .unwrap();
         assert_eq!(record.slot, 3);
         for invalid in [
             r#"{"id":"0f6c3d4e","slot":3}"#,
@@ -218,7 +239,10 @@ mod tests {
             r#"{"id":"demi-a","slot":-1}"#,
             r#"{"id":"demi-a","slot":3,"token":"x"}"#,
         ] {
-            assert!(serde_json::from_str::<SandboxRecord>(invalid).is_err(), "{invalid}");
+            assert!(
+                serde_json::from_str::<SandboxRecord>(invalid).is_err(),
+                "{invalid}"
+            );
         }
         assert!(SandboxId::new().as_str().starts_with("demi-"));
     }
@@ -229,7 +253,10 @@ mod tests {
         let temporary = tempfile::tempdir().unwrap();
         let directory = RuntimeDirectory::new(temporary.path(), "demi-test");
         directory.create(&off).unwrap();
-        let boot = ManagedBoot::decode(br#"{"backendUrl":"https://backend.example.com","deviceToken":"tok"}"#).unwrap();
+        let boot = ManagedBoot::decode(
+            br#"{"backendUrl":"https://backend.example.com","deviceToken":"tok"}"#,
+        )
+        .unwrap();
         // Giving the record to the sandbox's user needs root, and comes last.
         let written = directory.write_credentials(&off, &boot, &[Ipv4Addr::new(1, 1, 1, 1)]);
         if let Err(error) = &written {
@@ -242,8 +269,14 @@ mod tests {
         if written.is_ok() {
             assert_eq!(metadata(directory.boot()).uid(), USER_ID);
         }
-        assert_eq!(std::fs::read_to_string(directory.resolver()).unwrap(), "nameserver 1.1.1.1\n");
-        assert_eq!(ManagedBoot::decode(&std::fs::read(directory.boot()).unwrap()).unwrap(), boot);
+        assert_eq!(
+            std::fs::read_to_string(directory.resolver()).unwrap(),
+            "nameserver 1.1.1.1\n"
+        );
+        assert_eq!(
+            ManagedBoot::decode(&std::fs::read(directory.boot()).unwrap()).unwrap(),
+            boot
+        );
     }
 
     #[test]
@@ -256,7 +289,10 @@ mod tests {
         // A file inside a mount point stands for a mount that survived.
         std::fs::write(directory.home().join("project"), "work").unwrap();
         assert!(directory.remove(&off).is_err());
-        assert_eq!(std::fs::read_to_string(directory.home().join("project")).unwrap(), "work");
+        assert_eq!(
+            std::fs::read_to_string(directory.home().join("project")).unwrap(),
+            "work"
+        );
         std::fs::remove_file(directory.home().join("project")).unwrap();
         directory.remove(&off).unwrap();
         assert!(!directory.root().exists());

@@ -16,7 +16,9 @@ use super::gate::AuthUser;
 use demi_backend_user_shard::services::Services;
 
 pub(super) async fn settings(State(services): State<Arc<Services>>) -> Json<Settings> {
-    Json(Settings { mode: services.mode })
+    Json(Settings {
+        mode: services.mode,
+    })
 }
 
 pub(super) async fn preferences(
@@ -34,9 +36,13 @@ pub(super) async fn patch_preferences(
     AuthUser(user): AuthUser,
     JsonBody(patch): JsonBody<PreferencesPatch>,
 ) -> Result<Json<UserPreferences>, ApiError> {
-    let patch = settings::check(patch).map_err(|error| ApiError::invalid_body(error.to_string()))?;
+    let patch =
+        settings::check(patch).map_err(|error| ApiError::invalid_body(error.to_string()))?;
     let merge = move |saved| settings::merge(saved, patch);
-    let preferences = services.control.patch_preferences(user.id.clone(), merge).await?;
+    let preferences = services
+        .control
+        .patch_preferences(user.id.clone(), merge)
+        .await?;
     services.sync.mark(&user.id, Part::Preferences);
     Ok(Json(UserPreferences { preferences }))
 }

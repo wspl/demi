@@ -23,8 +23,8 @@ use tokio::sync::{broadcast, watch};
 use tokio_util::task::TaskTracker;
 
 use crate::driver::operation::{BrowserError, Result};
-use demi_command_package_browser_protocol::live::{ControlToken, LiveControl};
 use crate::tabs::tab::BrowserTab;
+use demi_command_package_browser_protocol::live::{ControlToken, LiveControl};
 
 /// The isolated world's name, shared by its script and its binding.
 const WORLD: &str = "demi-live";

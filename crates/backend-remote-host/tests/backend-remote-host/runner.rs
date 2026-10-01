@@ -11,9 +11,6 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_command_protocol::{CommandCaller, CommandContext};
-use demi_command_declarations::NativeOperation;
-use demi_shared_types::{NodeId, StreamKind};
 use demi_backend_remote_host::{
     CommandCatalog, CommandSelection, ContextSource, EnvironmentOptions, JobStart, LogPage, Pipe,
     PipeFailure, PipeReader, RemoteHost, RemoteShellEnvironment, ServiceCallError, ServiceRequest,
@@ -23,9 +20,8 @@ use demi_backend_remote_host::{
         runner_binary,
     },
 };
-use demi_runner_protocol::wire::{
-    self, ArtifactOwner, JOB_VIEW_BYTES, MAX_MESSAGE_BYTES, Outbound, PipeRef, STDIN_CHUNK_BYTES,
-};
+use demi_command_declarations::NativeOperation;
+use demi_command_protocol::{CommandCaller, CommandContext};
 use demi_host_interface::{
     ByteRange, Call, CommandSet, CommandState, CommandStatus, ExecRequest, FileContents,
     GroupBuilder, Host, HostError, HostErrorKind, JobCaller, LeafBuilder, ObservationWindow,
@@ -33,6 +29,10 @@ use demi_host_interface::{
     Signal, SpawnEnv, SpawnRequest, StorageOp, StorageReply, Streams, TypedRpc, WriteOptions,
     testing::{CountingNumbers, TestPages, host_conformance_cases, test_command_context},
 };
+use demi_runner_protocol::wire::{
+    self, ArtifactOwner, JOB_VIEW_BYTES, MAX_MESSAGE_BYTES, Outbound, PipeRef, STDIN_CHUNK_BYTES,
+};
+use demi_shared_types::{NodeId, StreamKind};
 use futures_util::{Stream, StreamExt};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -71,7 +71,12 @@ fn shell_on(
     commands: Option<CommandSelection>,
 ) -> RemoteShellEnvironment {
     let context: ContextSource = Rc::new(|| Box::pin(async { Ok(test_command_context()) }));
-    let mut options = EnvironmentOptions::new(host, context, TestPages::new(false), Rc::new(CountingNumbers::default()));
+    let mut options = EnvironmentOptions::new(
+        host,
+        context,
+        TestPages::new(false),
+        Rc::new(CountingNumbers::default()),
+    );
     options.initial_env = [("PATH", "/usr/bin:/bin")]
         .iter()
         .chain(env)
@@ -522,7 +527,11 @@ async fn a_command_beyond_its_views_ends_with_its_whole_output_and_leaves_nothin
     let printed: String = (0..=last).map(|number| format!("{number:09}\n")).collect();
     let stream = |status: &CommandStatus, stream| {
         let whole = status.whole.as_ref().expect("the whole output");
-        whole.output.text(Streams::Only(stream), None, Seen::default()).bytes().to_vec()
+        whole
+            .output
+            .text(Streams::Only(stream), None, Seen::default())
+            .bytes()
+            .to_vec()
     };
 
     let result = run(&shell, &format!("seq -f '%09g' 0 {last}; echo done >&2")).await;
@@ -530,7 +539,10 @@ async fn a_command_beyond_its_views_ends_with_its_whole_output_and_leaves_nothin
     assert_eq!(result.stdout.bytes, total as u64);
     assert_eq!(stream(&result, StreamKind::Stdout), printed.as_bytes());
     assert_eq!(stream(&result, StreamKind::Stderr), b"done\n");
-    until("the job's directory to go", || fixture.job_directories().is_empty().then_some(())).await;
+    until("the job's directory to go", || {
+        fixture.job_directories().is_empty().then_some(())
+    })
+    .await;
 
     let running = shell
         .exec(
@@ -728,7 +740,10 @@ async fn file_contents_travel_whole_or_in_ranges_and_never_in_a_message() {
 
     // An empty directory lists as no entries.
     std::fs::create_dir(format!("{home}/empty")).unwrap();
-    assert_eq!(host.fs().read_dir(&format!("{home}/empty")).await.unwrap(), []);
+    assert_eq!(
+        host.fs().read_dir(&format!("{home}/empty")).await.unwrap(),
+        []
+    );
 
     // A message over the limit fails its own request, in either direction.
     let request = host
@@ -1073,7 +1088,10 @@ async fn declared_commands_call_back_with_storage_input_and_cancellation() {
     let script = "probe spew | head -n 1; echo \"status=${PIPESTATUS[0]}\"";
     let headed = run(&shell, &format!("{script}; bash -c '{script}'")).await;
     assert_eq!(exited(&headed), 0);
-    assert_eq!(headed.stdout.delta, "line 1\nstatus=141\nline 1\nstatus=141\n");
+    assert_eq!(
+        headed.stdout.delta,
+        "line 1\nstatus=141\nline 1\nstatus=141\n"
+    );
     assert_eq!(headed.stderr.delta, "");
     // Live input reaches the handler as it is written, with the job's
     // context.
@@ -1824,7 +1842,11 @@ async fn user_calls_reuse_the_service_of_the_release_the_connection_bound_last()
     let fixture = RunnerFixture::start(FixtureOptions::default()).await;
     let host = fixture.host();
     let call = |native: &NativeFixture| {
-        host.call_service(service(&fixture, native, "where", None), Bytes::new(), 64 * 1024)
+        host.call_service(
+            service(&fixture, native, "where", None),
+            Bytes::new(),
+            64 * 1024,
+        )
     };
     // Consecutive calls, and a stream after them, reach one service.
     call(&first).await.unwrap();

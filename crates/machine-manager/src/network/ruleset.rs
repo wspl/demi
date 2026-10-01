@@ -23,7 +23,10 @@ use std::{borrow::Cow, collections::HashSet, net::Ipv4Addr};
 use ipnet::Ipv4Net;
 use nftables::{
     batch::Batch,
-    expr::{Expression, Fib, FibFlag, FibResult, Meta, MetaKey, NamedExpression, Payload, PayloadField, Prefix, SetItem, CT},
+    expr::{
+        CT, Expression, Fib, FibFlag, FibResult, Meta, MetaKey, NamedExpression, Payload,
+        PayloadField, Prefix, SetItem,
+    },
     schema::{Chain, Element, NfListObject, Nftables, Rule, Set, SetType, SetTypeValue, Table},
     stmt::{JumpTarget, Match, Operator, Statement},
     types::{NfChainPolicy, NfChainType, NfFamily, NfHook},
@@ -78,17 +81,37 @@ pub fn table(policy: &Policy<'_>) -> Nftables<'static> {
     batch.add(set());
     let chains = [
         base_chain("input", NfChainType::Filter, NfHook::Input, FILTER_PRIORITY),
-        base_chain("forward", NfChainType::Filter, NfHook::Forward, FILTER_PRIORITY),
+        base_chain(
+            "forward",
+            NfChainType::Filter,
+            NfHook::Forward,
+            FILTER_PRIORITY,
+        ),
         regular_chain("ingress"),
-        base_chain("nat", NfChainType::NAT, NfHook::Postrouting, SOURCE_NAT_PRIORITY),
+        base_chain(
+            "nat",
+            NfChainType::NAT,
+            NfHook::Postrouting,
+            SOURCE_NAT_PRIORITY,
+        ),
     ];
     for chain in chains {
         batch.add(NfListObject::Chain(chain));
     }
-    let jump = || Statement::Jump(JumpTarget { target: "ingress".into() });
+    let jump = || {
+        Statement::Jump(JumpTarget {
+            target: "ingress".into(),
+        })
+    };
     let rules = [
-        ("input", vec![matches(meta(MetaKey::Iifname), text(INTERFACES)), jump()]),
-        ("forward", vec![matches(meta(MetaKey::Iifname), text(INTERFACES)), jump()]),
+        (
+            "input",
+            vec![matches(meta(MetaKey::Iifname), text(INTERFACES)), jump()],
+        ),
+        (
+            "forward",
+            vec![matches(meta(MetaKey::Iifname), text(INTERFACES)), jump()],
+        ),
         (
             "forward",
             vec![
@@ -105,13 +128,28 @@ pub fn table(policy: &Policy<'_>) -> Nftables<'static> {
                 Statement::Accept(None),
             ],
         ),
-        ("forward", vec![matches(meta(MetaKey::Oifname), text(INTERFACES)), Statement::Drop(None)]),
-        ("ingress", vec![differs(meta(MetaKey::Nfproto), text("ipv4")), Statement::Drop(None)]),
+        (
+            "forward",
+            vec![
+                matches(meta(MetaKey::Oifname), text(INTERFACES)),
+                Statement::Drop(None),
+            ],
+        ),
+        (
+            "ingress",
+            vec![
+                differs(meta(MetaKey::Nfproto), text("ipv4")),
+                Statement::Drop(None),
+            ],
+        ),
         (
             "ingress",
             vec![
                 differs(
-                    Expression::Named(NamedExpression::Concat(vec![meta(MetaKey::Iifname), payload("ip", "saddr")])),
+                    Expression::Named(NamedExpression::Concat(vec![
+                        meta(MetaKey::Iifname),
+                        payload("ip", "saddr"),
+                    ])),
                     text(&format!("@{SET}")),
                 ),
                 Statement::Drop(None),
@@ -121,7 +159,10 @@ pub fn table(policy: &Policy<'_>) -> Nftables<'static> {
             "ingress",
             vec![
                 matches(payload("ip", "daddr"), addresses(policy.backend)),
-                matches(payload("tcp", "dport"), Expression::Number(u32::from(policy.backend_port))),
+                matches(
+                    payload("tcp", "dport"),
+                    Expression::Number(u32::from(policy.backend_port)),
+                ),
                 Statement::Accept(None),
             ],
         ),
@@ -129,7 +170,10 @@ pub fn table(policy: &Policy<'_>) -> Nftables<'static> {
             "ingress",
             vec![
                 matches(payload("ip", "daddr"), addresses(policy.dns)),
-                matches(meta(MetaKey::L4proto), set_of(vec![text("tcp"), text("udp")])),
+                matches(
+                    meta(MetaKey::L4proto),
+                    set_of(vec![text("tcp"), text("udp")]),
+                ),
                 matches(payload("th", "dport"), Expression::Number(53)),
                 Statement::Accept(None),
             ],
@@ -152,7 +196,12 @@ pub fn table(policy: &Policy<'_>) -> Nftables<'static> {
             vec![
                 matches(
                     payload("ip", "daddr"),
-                    set_of(DENIED.iter().map(|(address, length)| prefix(*address, *length)).collect()),
+                    set_of(
+                        DENIED
+                            .iter()
+                            .map(|(address, length)| prefix(*address, *length))
+                            .collect(),
+                    ),
                 ),
                 Statement::Drop(None),
             ],
@@ -161,7 +210,10 @@ pub fn table(policy: &Policy<'_>) -> Nftables<'static> {
         (
             "nat",
             vec![
-                matches(payload("ip", "saddr"), prefix(policy.pool.network(), u32::from(policy.pool.prefix_len()))),
+                matches(
+                    payload("ip", "saddr"),
+                    prefix(policy.pool.network(), u32::from(policy.pool.prefix_len())),
+                ),
                 differs(meta(MetaKey::Oifname), text(INTERFACES)),
                 Statement::Masquerade(None),
             ],
@@ -268,10 +320,12 @@ fn meta(key: MetaKey) -> Expression<'static> {
 }
 
 fn payload(protocol: &'static str, field: &'static str) -> Expression<'static> {
-    Expression::Named(NamedExpression::Payload(Payload::PayloadField(PayloadField {
-        protocol: protocol.into(),
-        field: field.into(),
-    })))
+    Expression::Named(NamedExpression::Payload(Payload::PayloadField(
+        PayloadField {
+            protocol: protocol.into(),
+            field: field.into(),
+        },
+    )))
 }
 
 fn prefix(address: Ipv4Addr, length: u32) -> Expression<'static> {
@@ -282,11 +336,18 @@ fn prefix(address: Ipv4Addr, length: u32) -> Expression<'static> {
 }
 
 fn set_of(items: Vec<Expression<'static>>) -> Expression<'static> {
-    Expression::Named(NamedExpression::Set(items.into_iter().map(SetItem::Element).collect()))
+    Expression::Named(NamedExpression::Set(
+        items.into_iter().map(SetItem::Element).collect(),
+    ))
 }
 
 fn addresses(addresses: &[Ipv4Addr]) -> Expression<'static> {
-    set_of(addresses.iter().map(|address| text(&address.to_string())).collect())
+    set_of(
+        addresses
+            .iter()
+            .map(|address| text(&address.to_string()))
+            .collect(),
+    )
 }
 
 fn matches(left: Expression<'static>, right: Expression<'static>) -> Statement<'static> {

@@ -164,7 +164,11 @@ fn parts(items: &[InferenceItem]) -> Vec<Message<'_>> {
                 let text = format!(
                     "[Earlier in this conversation I called the tool {tool_name} with input: {input}."
                 );
-                append(&mut parts, Role::Assistant, vec![Block::Text { text: text.into() }]);
+                append(
+                    &mut parts,
+                    Role::Assistant,
+                    vec![Block::Text { text: text.into() }],
+                );
             }
             InferenceItem::ToolResult {
                 tool_use_id,
@@ -180,7 +184,11 @@ fn parts(items: &[InferenceItem]) -> Vec<Message<'_>> {
                 } else {
                     format!("It returned{from}: {body}]")
                 };
-                append(&mut parts, Role::Assistant, vec![Block::Text { text: text.into() }]);
+                append(
+                    &mut parts,
+                    Role::Assistant,
+                    vec![Block::Text { text: text.into() }],
+                );
             }
             InferenceItem::AssistantText { .. }
             | InferenceItem::AssistantThinking { .. }

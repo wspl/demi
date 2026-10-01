@@ -6,16 +6,19 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use demi_backend_expose::records::ExposeError;
 use demi_web_api_protocol::exposes::{CreateExpose, ExposeAnswer, Exposes};
 use demi_web_api_protocol::ids::ExposeId;
-use demi_backend_expose::records::ExposeError;
 
 use super::AppState;
 use super::body::JsonBody;
 use super::error::ApiError;
 use super::gate::AuthUser;
 
-pub(super) async fn list(State(state): State<AppState>, AuthUser(user): AuthUser) -> Result<Json<Exposes>, ApiError> {
+pub(super) async fn list(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+) -> Result<Json<Exposes>, ApiError> {
     let exposes = state
         .shards
         .of(&user.id)
@@ -29,11 +32,14 @@ pub(super) async fn create(
     AuthUser(user): AuthUser,
     JsonBody(CreateExpose { device_id, address }): JsonBody<CreateExpose>,
 ) -> Result<(StatusCode, Json<ExposeAnswer>), ApiError> {
-    let expose = state
-        .shards
-        .of(&user.id)
-        .call(move |shard, _| async move { shard.expose_shard().add_expose(&device_id, address).await })
-        .await??;
+    let expose =
+        state
+            .shards
+            .of(&user.id)
+            .call(move |shard, _| async move {
+                shard.expose_shard().add_expose(&device_id, address).await
+            })
+            .await??;
     Ok((StatusCode::CREATED, Json(ExposeAnswer { expose })))
 }
 

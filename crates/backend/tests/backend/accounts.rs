@@ -11,15 +11,15 @@ use std::time::Duration;
 
 use demi_backend_providers::llm::families::FamilyRegistry;
 use demi_backend_providers::vault::logins::LoginTiming;
-use demi_shared_types::{QuotaWindow, SnapshotSource};
 use demi_provider_common::quota::ProbeCost;
 use demi_provider_common::testing::{MockResponse, MockVendor};
+use demi_shared_types::{QuotaWindow, SnapshotSource};
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::providers::{
     Accounts, ActiveAccount, AddedAccount, CredentialKind, LoginAnswer, LoginStarted, LoginState,
-    ProbeCost as ProbeCostDto, ProviderAnswer, ProviderDetails, ProviderDto, Providers, QuotaAnswer, QuotaCapability,
-    VendorCatalog,
+    ProbeCost as ProbeCostDto, ProviderAnswer, ProviderDetails, ProviderDto, Providers,
+    QuotaAnswer, QuotaCapability, VendorCatalog,
 };
 use demi_web_api_protocol::settings::InstanceMode;
 use reqwest::StatusCode;
@@ -62,7 +62,12 @@ pub(crate) fn scripts(cost: Option<ProbeCost>) -> Scripts {
     Scripts { login, families }
 }
 
-async fn start_login(backend: &TestBackend, session: &Session, path: &str, body: serde_json::Value) -> String {
+async fn start_login(
+    backend: &TestBackend,
+    session: &Session,
+    path: &str,
+    body: serde_json::Value,
+) -> String {
     let answer = backend.post(path, Some(session), body).await;
     assert_eq!(
         answer.status,
@@ -77,7 +82,10 @@ async fn start_login(backend: &TestBackend, session: &Session, path: &str, body:
 
 async fn login_state(backend: &TestBackend, session: &Session, id: &str) -> LoginState {
     backend
-        .get(&format!("/api/providers/subscription-login/{id}"), Some(session))
+        .get(
+            &format!("/api/providers/subscription-login/{id}"),
+            Some(session),
+        )
         .await
         .json::<LoginAnswer>()
         .login
@@ -130,7 +138,10 @@ async fn a_setup_token_becomes_a_sealed_account_that_no_answer_returns() {
             json!({ "token": "fixture-token-c", "label": "Again" }),
         )
         .await;
-    assert_eq!(again.refusal(), (StatusCode::CONFLICT, ErrorCode::ProviderExists));
+    assert_eq!(
+        again.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::ProviderExists)
+    );
 
     let path = format!("/api/providers/{}/accounts", entry.id);
     let added = backend
@@ -155,7 +166,9 @@ async fn a_setup_token_becomes_a_sealed_account_that_no_answer_returns() {
     assert_ne!(first.as_str(), second.id);
     let secrets: Vec<Vec<u8>> = {
         let database = harness.control_database();
-        let mut statement = database.prepare("SELECT secret FROM provider_credentials").unwrap();
+        let mut statement = database
+            .prepare("SELECT secret FROM provider_credentials")
+            .unwrap();
         statement
             .query_map([], |row| row.get(0))
             .unwrap()
@@ -176,10 +189,17 @@ async fn a_setup_token_becomes_a_sealed_account_that_no_answer_returns() {
         (StatusCode::CONFLICT, ErrorCode::ActiveAccount)
     );
     let switched = backend
-        .put(&format!("{path}/active"), &master, json!({ "credentialId": second.id }))
+        .put(
+            &format!("{path}/active"),
+            &master,
+            json!({ "credentialId": second.id }),
+        )
         .await;
     assert_eq!(switched.json::<ActiveAccount>().active.as_str(), second.id);
-    assert_eq!(backend.delete(&active, &master).await.status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        backend.delete(&active, &master).await.status,
+        StatusCode::NO_CONTENT
+    );
     let missing = backend
         .put(
             &format!("{path}/active"),
@@ -187,14 +207,23 @@ async fn a_setup_token_becomes_a_sealed_account_that_no_answer_returns() {
             json!({ "credentialId": "cred-missing" }),
         )
         .await;
-    assert_eq!(missing.refusal(), (StatusCode::NOT_FOUND, ErrorCode::AccountNotFound));
+    assert_eq!(
+        missing.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::AccountNotFound)
+    );
     let status = backend
-        .get(&format!("/api/providers/{}/status", entry.id), Some(&master))
+        .get(
+            &format!("/api/providers/{}/status", entry.id),
+            Some(&master),
+        )
         .await;
     assert!(!String::from_utf8_lossy(&status.body).contains("fixture-token"));
     let status = status.json::<ProviderDetails>();
     assert_eq!(
-        (status.accounts.len(), status.active.as_ref().map(|id| id.as_str())),
+        (
+            status.accounts.len(),
+            status.active.as_ref().map(|id| id.as_str())
+        ),
         (1, Some(second.id.as_str()))
     );
 
@@ -205,18 +234,29 @@ async fn a_setup_token_becomes_a_sealed_account_that_no_answer_returns() {
     let refused = backend
         .post(&path, Some(&reader), json!({ "token": "not-allowed" }))
         .await;
-    assert_eq!(refused.refusal(), (StatusCode::FORBIDDEN, ErrorCode::Forbidden));
+    assert_eq!(
+        refused.refusal(),
+        (StatusCode::FORBIDDEN, ErrorCode::Forbidden)
+    );
     let hidden = backend.get(&path, Some(&reader)).await.json::<Accounts>();
     assert_eq!((hidden.accounts.len(), hidden.active), (0, None));
     let seen = backend
-        .get(&format!("/api/providers/{}/status", entry.id), Some(&reader))
+        .get(
+            &format!("/api/providers/{}/status", entry.id),
+            Some(&reader),
+        )
         .await
         .json::<ProviderDetails>();
     assert_eq!(
         (seen.accounts.len(), seen.active.clone(), seen.quota.clone()),
         (0, None, None)
     );
-    assert_eq!(seen.auth, demi_shared_types::AuthState::Authenticated { account_label: None });
+    assert_eq!(
+        seen.auth,
+        demi_shared_types::AuthState::Authenticated {
+            account_label: None
+        }
+    );
     backend.close().await;
 }
 
@@ -247,7 +287,10 @@ async fn concurrent_device_logins_publish_one_entry_and_the_other_stores_nothing
         ),
     ] {
         assert_eq!(
-            backend.post(login, Some(&master), body.clone()).await.refusal(),
+            backend
+                .post(login, Some(&master), body.clone())
+                .await
+                .refusal(),
             refusal,
             "{body}"
         );
@@ -312,23 +355,35 @@ async fn concurrent_device_logins_publish_one_entry_and_the_other_stores_nothing
         .json::<Providers>()
         .providers;
     assert_eq!(
-        providers.iter().map(|provider| &provider.id).collect::<Vec<_>>(),
+        providers
+            .iter()
+            .map(|provider| &provider.id)
+            .collect::<Vec<_>>(),
         [provider_id]
     );
     let accounts = backend
-        .get(&format!("/api/providers/{provider_id}/accounts"), Some(&master))
+        .get(
+            &format!("/api/providers/{provider_id}/accounts"),
+            Some(&master),
+        )
         .await
         .json::<Accounts>();
     assert_eq!(
-        accounts.accounts.iter().map(|account| &account.id).collect::<Vec<_>>(),
+        accounts
+            .accounts
+            .iter()
+            .map(|account| &account.id)
+            .collect::<Vec<_>>(),
         [credential_id.as_str()]
     );
     assert_eq!(accounts.active.as_ref(), Some(credential_id));
     let stored: (i64, Vec<u8>) = harness
         .control_database()
-        .query_row("SELECT COUNT(*), MAX(secret) FROM provider_credentials", [], |row| {
-            Ok((row.get(0)?, row.get(1)?))
-        })
+        .query_row(
+            "SELECT COUNT(*), MAX(secret) FROM provider_credentials",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
         .unwrap();
     assert_eq!(stored.0, 1);
     assert!(!stored.1.windows(12).any(|window| window == b"login-secret"));
@@ -345,27 +400,46 @@ async fn concurrent_device_logins_publish_one_entry_and_the_other_stores_nothing
     let again = backend
         .post(login, Some(&master), json!({ "providerType": "device" }))
         .await;
-    assert_eq!(again.refusal(), (StatusCode::CONFLICT, ErrorCode::ProviderExists));
+    assert_eq!(
+        again.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::ProviderExists)
+    );
     // A subscription entry takes a new label and nothing else.
     let path = format!("/api/providers/{provider_id}");
-    let relabelled = backend.patch(&path, &master, json!({ "label": "Personal" })).await;
-    assert_eq!(relabelled.json::<ProviderAnswer>().provider.label, "Personal");
-    let rekeyed = backend.patch(&path, &master, json!({ "apiKey": "k" })).await;
+    let relabelled = backend
+        .patch(&path, &master, json!({ "label": "Personal" }))
+        .await;
+    assert_eq!(
+        relabelled.json::<ProviderAnswer>().provider.label,
+        "Personal"
+    );
+    let rekeyed = backend
+        .patch(&path, &master, json!({ "apiKey": "k" }))
+        .await;
     assert_eq!(
         rekeyed.refusal(),
         (StatusCode::BAD_REQUEST, ErrorCode::SubscriptionOnly)
     );
-    assert_eq!(backend.delete(&path, &master).await.status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        backend.delete(&path, &master).await.status,
+        StatusCode::NO_CONTENT
+    );
     let left: i64 = harness
         .control_database()
-        .query_row("SELECT COUNT(*) FROM provider_credentials", [], |row| row.get(0))
+        .query_row("SELECT COUNT(*) FROM provider_credentials", [], |row| {
+            row.get(0)
+        })
         .unwrap();
     assert_eq!(left, 0);
     backend.close().await;
 }
 
 /// An entry of the `device` family with one account, from a login.
-pub(crate) async fn device_entry(backend: &TestBackend, session: &Session, scripts: &Scripts) -> ProviderDto {
+pub(crate) async fn device_entry(
+    backend: &TestBackend,
+    session: &Session,
+    scripts: &Scripts,
+) -> ProviderDto {
     scripts.login.approve(true);
     let id = start_login(
         backend,
@@ -392,12 +466,23 @@ async fn a_login_into_an_entry_holds_it_until_it_ends_and_cancelling_stops_it_at
     let entry = device_entry(&backend, &master, &scripts).await;
     scripts.login.approve(false);
     let path = format!("/api/providers/{}", entry.id);
-    let id = start_login(&backend, &master, &format!("{path}/accounts/login"), json!({})).await;
+    let id = start_login(
+        &backend,
+        &master,
+        &format!("{path}/accounts/login"),
+        json!({}),
+    )
+    .await;
     for busy in [
-        backend.patch(&path, &master, json!({ "label": "Busy" })).await,
+        backend
+            .patch(&path, &master, json!({ "label": "Busy" }))
+            .await,
         backend.delete(&path, &master).await,
     ] {
-        assert_eq!(busy.refusal(), (StatusCode::CONFLICT, ErrorCode::ProviderBusy));
+        assert_eq!(
+            busy.refusal(),
+            (StatusCode::CONFLICT, ErrorCode::ProviderBusy)
+        );
     }
     let cancelled = backend
         .delete(&format!("/api/providers/subscription-login/{id}"), &master)
@@ -411,13 +496,19 @@ async fn a_login_into_an_entry_holds_it_until_it_ends_and_cancelling_stops_it_at
         }
     );
     assert_eq!(
-        backend.patch(&path, &master, json!({ "label": "Ready" })).await.status,
+        backend
+            .patch(&path, &master, json!({ "label": "Ready" }))
+            .await
+            .status,
         StatusCode::OK
     );
     let unknown = backend
         .delete("/api/providers/subscription-login/no-such-login", &master)
         .await;
-    assert_eq!(unknown.refusal(), (StatusCode::NOT_FOUND, ErrorCode::LoginNotFound));
+    assert_eq!(
+        unknown.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::LoginNotFound)
+    );
     backend.close().await;
 }
 
@@ -428,7 +519,9 @@ async fn a_login_expires_and_its_result_goes_after_the_retention() {
         lifetime: Duration::from_millis(100),
         retention: Duration::from_millis(300),
     };
-    let harness = Harness::new().with_families(scripts.families).with_logins(timing);
+    let harness = Harness::new()
+        .with_families(scripts.families)
+        .with_logins(timing);
     let (backend, master) = harness.start_set_up().await;
     let started = tokio::time::Instant::now();
     let id = start_login(
@@ -465,9 +558,16 @@ async fn a_login_expires_and_its_result_goes_after_the_retention() {
         backend.get(&path, Some(&master)).await.status == StatusCode::NOT_FOUND
     })
     .await;
-    assert!(started.elapsed() >= timing.lifetime + timing.retention, "{:?}", started.elapsed());
+    assert!(
+        started.elapsed() >= timing.lifetime + timing.retention,
+        "{:?}",
+        started.elapsed()
+    );
     let gone = backend.get(&path, Some(&master)).await;
-    assert_eq!(gone.refusal(), (StatusCode::NOT_FOUND, ErrorCode::LoginNotFound));
+    assert_eq!(
+        gone.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::LoginNotFound)
+    );
     backend.close().await;
 }
 
@@ -522,7 +622,10 @@ async fn a_free_probe_fills_the_accounts_snapshot_which_outlives_a_restart() {
             json!({ "credentialId": "cred-missing" }),
         )
         .await;
-    assert_eq!(missing.refusal(), (StatusCode::NOT_FOUND, ErrorCode::AccountNotFound));
+    assert_eq!(
+        missing.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::AccountNotFound)
+    );
 
     // The snapshot is the account's record, which a restart reads back.
     backend.close().await;
@@ -544,7 +647,11 @@ async fn a_probe_that_would_spend_inference_is_refused_and_an_api_key_entry_has_
     let (backend, master) = harness.start_set_up().await;
     let entry = device_entry(&backend, &master, &scripts).await;
     let refused = backend
-        .post(&format!("/api/providers/{}/quota", entry.id), Some(&master), json!({}))
+        .post(
+            &format!("/api/providers/{}/quota", entry.id),
+            Some(&master),
+            json!({}),
+        )
         .await;
     assert_eq!(
         refused.refusal(),
@@ -560,11 +667,18 @@ async fn a_probe_that_would_spend_inference_is_refused_and_an_api_key_entry_has_
         .json::<ProviderAnswer>()
         .provider;
     let quota = backend
-        .post(&format!("/api/providers/{}/quota", keyed.id), Some(&master), json!({}))
+        .post(
+            &format!("/api/providers/{}/quota", keyed.id),
+            Some(&master),
+            json!({}),
+        )
         .await;
     assert_eq!(quota.json::<QuotaAnswer>().quota, None);
     let status = backend
-        .get(&format!("/api/providers/{}/status", keyed.id), Some(&master))
+        .get(
+            &format!("/api/providers/{}/status", keyed.id),
+            Some(&master),
+        )
         .await
         .json::<ProviderDetails>();
     assert_eq!(

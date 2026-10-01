@@ -14,12 +14,12 @@ use demi_web_api_protocol::text::EmailAddress;
 use jiff::SignedDuration;
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 
+use super::accounts::{
+    Account, ChallengeIssue, ChallengeOutcome, ChallengePolicy, CodeHash, PasswordHash,
+    ResolvedSession, SessionPolicy, TokenHash,
+};
 use super::columns::{decode, instant, json, to_json};
 use super::{StorageError, schema, sqlite};
-use super::accounts::{
-    Account, ChallengeIssue, ChallengeOutcome, ChallengePolicy, CodeHash, PasswordHash, ResolvedSession, SessionPolicy,
-    TokenHash,
-};
 
 #[derive(Clone)]
 pub struct ControlService {
@@ -64,7 +64,8 @@ impl ControlService {
 
     pub async fn has_users(&self) -> Result<bool, StorageError> {
         self.call(|connection, _| {
-            let found = connection.query_row("SELECT EXISTS (SELECT 1 FROM users)", [], |row| row.get(0))?;
+            let found = connection
+                .query_row("SELECT EXISTS (SELECT 1 FROM users)", [], |row| row.get(0))?;
             Ok(found)
         })
         .await
@@ -81,7 +82,8 @@ impl ControlService {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
             let set_up: bool =
-                transaction.query_row("SELECT EXISTS (SELECT 1 FROM users)", [], |row| row.get(0))?;
+                transaction
+                    .query_row("SELECT EXISTS (SELECT 1 FROM users)", [], |row| row.get(0))?;
             if set_up {
                 return Ok(None);
             }
@@ -109,7 +111,10 @@ impl ControlService {
     }
 
     /// The login lookup.
-    pub async fn account_by_email(&self, email: EmailAddress) -> Result<Option<Account>, StorageError> {
+    pub async fn account_by_email(
+        &self,
+        email: EmailAddress,
+    ) -> Result<Option<Account>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection.prepare_cached(&format!(
                 "SELECT {USER_COLUMNS}, password_hash FROM users WHERE email = ?1"
@@ -134,8 +139,9 @@ impl ControlService {
     /// Every account, in the order they were created.
     pub async fn users(&self) -> Result<Vec<UserDto>, StorageError> {
         self.call(|connection, _| {
-            let mut statement =
-                connection.prepare_cached(&format!("SELECT {USER_COLUMNS} FROM users ORDER BY created_at, rowid"))?;
+            let mut statement = connection.prepare_cached(&format!(
+                "SELECT {USER_COLUMNS} FROM users ORDER BY created_at, rowid"
+            ))?;
             let mut rows = statement.query([])?;
             let mut users = Vec::new();
             while let Some(row) = rows.next()? {
@@ -191,7 +197,11 @@ impl ControlService {
     }
 
     /// Sets the nickname and answers the account as it now is.
-    pub async fn set_nickname(&self, user: UserId, nickname: String) -> Result<Option<UserDto>, StorageError> {
+    pub async fn set_nickname(
+        &self,
+        user: UserId,
+        nickname: String,
+    ) -> Result<Option<UserDto>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection.prepare_cached(&format!(
                 "UPDATE users SET nickname = ?1 WHERE id = ?2 RETURNING {USER_COLUMNS}"
@@ -202,7 +212,11 @@ impl ControlService {
         .await
     }
 
-    pub async fn set_password(&self, user: UserId, password_hash: PasswordHash) -> Result<(), StorageError> {
+    pub async fn set_password(
+        &self,
+        user: UserId,
+        password_hash: PasswordHash,
+    ) -> Result<(), StorageError> {
         self.call(move |connection, _| {
             connection.execute(
                 "UPDATE users SET password_hash = ?1 WHERE id = ?2",
@@ -215,7 +229,8 @@ impl ControlService {
 
     /// The user's saved preferences; a user who saved none has no overrides.
     pub async fn preferences(&self, user: UserId) -> Result<Preferences, StorageError> {
-        self.call(move |connection, _| saved_preferences(connection, &user)).await
+        self.call(move |connection, _| saved_preferences(connection, &user))
+            .await
     }
 
     /// Merges a patch into the user's preferences with `merge`, which takes
@@ -284,7 +299,9 @@ impl ControlService {
                 )?;
                 let mut rows = statement.query([token.as_str()])?;
                 match rows.next()? {
-                    Some(row) => Some((instant(row, "web_sessions", "expires_at")?, user_row(row)?)),
+                    Some(row) => {
+                        Some((instant(row, "web_sessions", "expires_at")?, user_row(row)?))
+                    }
                     None => None,
                 }
             };
@@ -292,7 +309,10 @@ impl ControlService {
                 return Ok(None);
             };
             if expires_at <= now {
-                transaction.execute("DELETE FROM web_sessions WHERE token_hash = ?1", [token.as_str()])?;
+                transaction.execute(
+                    "DELETE FROM web_sessions WHERE token_hash = ?1",
+                    [token.as_str()],
+                )?;
                 transaction.commit()?;
                 return Ok(None);
             }
@@ -319,7 +339,10 @@ impl ControlService {
 
     pub async fn close_web_session(&self, token: TokenHash) -> Result<(), StorageError> {
         self.call(move |connection, _| {
-            connection.execute("DELETE FROM web_sessions WHERE token_hash = ?1", [token.as_str()])?;
+            connection.execute(
+                "DELETE FROM web_sessions WHERE token_hash = ?1",
+                [token.as_str()],
+            )?;
             Ok(())
         })
         .await
@@ -336,15 +359,17 @@ impl ControlService {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
             let previous = {
-                let mut statement =
-                    transaction.prepare_cached("SELECT sent_at FROM email_challenges WHERE user_id = ?1")?;
+                let mut statement = transaction
+                    .prepare_cached("SELECT sent_at FROM email_challenges WHERE user_id = ?1")?;
                 let mut rows = statement.query([issue.user.as_str()])?;
                 match rows.next()? {
                     Some(row) => Some(instant(row, "email_challenges", "sent_at")?),
                     None => None,
                 }
             };
-            if previous.is_some_and(|sent_at| now.to_jiff().duration_since(sent_at.to_jiff()) < policy.cooldown) {
+            if previous.is_some_and(|sent_at| {
+                now.to_jiff().duration_since(sent_at.to_jiff()) < policy.cooldown
+            }) {
                 return Ok(None);
             }
             let expires_at = later(now, policy.lifetime)?;
@@ -372,7 +397,11 @@ impl ControlService {
         .await
     }
 
-    pub async fn delete_email_challenge(&self, user: UserId, id: String) -> Result<(), StorageError> {
+    pub async fn delete_email_challenge(
+        &self,
+        user: UserId,
+        id: String,
+    ) -> Result<(), StorageError> {
         self.call(move |connection, _| {
             connection.execute(
                 "DELETE FROM email_challenges WHERE user_id = ?1 AND id = ?2",
@@ -399,7 +428,11 @@ impl ControlService {
             };
             // A password change since the challenge was issued ends it.
             let current: Option<String> = transaction
-                .query_row("SELECT password_hash FROM users WHERE id = ?1", [user.as_str()], |row| row.get(0))
+                .query_row(
+                    "SELECT password_hash FROM users WHERE id = ?1",
+                    [user.as_str()],
+                    |row| row.get(0),
+                )
                 .optional()?;
             if challenge.expires_at <= now
                 || challenge.attempts >= attempts
@@ -433,7 +466,10 @@ impl ControlService {
                     None => return Ok(ChallengeOutcome::InvalidCode),
                 }
             };
-            transaction.execute("DELETE FROM email_challenges WHERE user_id = ?1", [user.as_str()])?;
+            transaction.execute(
+                "DELETE FROM email_challenges WHERE user_id = ?1",
+                [user.as_str()],
+            )?;
             transaction.commit()?;
             Ok(ChallengeOutcome::Changed(changed))
         })
@@ -463,7 +499,11 @@ fn pending_challenge(
         return Ok(None);
     };
     Ok(Some(PendingChallenge {
-        email: decode("email_challenges", "email", EmailAddress::try_from(row.get::<_, String>("email")?))?,
+        email: decode(
+            "email_challenges",
+            "email",
+            EmailAddress::try_from(row.get::<_, String>("email")?),
+        )?,
         password_hash: row.get("password_hash")?,
         code_hash: row.get("code_hash")?,
         expires_at: instant(row, "email_challenges", "expires_at")?,
@@ -489,9 +529,17 @@ fn saved_preferences(connection: &Connection, user: &UserId) -> Result<Preferenc
 fn user_row(row: &Row<'_>) -> Result<UserDto, StorageError> {
     Ok(UserDto {
         id: decode("users", "id", UserId::try_from(row.get::<_, String>("id")?))?,
-        email: decode("users", "email", EmailAddress::try_from(row.get::<_, String>("email")?))?,
+        email: decode(
+            "users",
+            "email",
+            EmailAddress::try_from(row.get::<_, String>("email")?),
+        )?,
         nickname: row.get("nickname")?,
-        role: decode("users", "role", row.get::<_, String>("role")?.parse::<Role>())?,
+        role: decode(
+            "users",
+            "role",
+            row.get::<_, String>("role")?.parse::<Role>(),
+        )?,
         created_at: instant(row, "users", "created_at")?,
     })
 }
@@ -499,7 +547,11 @@ fn user_row(row: &Row<'_>) -> Result<UserDto, StorageError> {
 fn account(row: &Row<'_>) -> Result<Account, StorageError> {
     Ok(Account {
         user: user_row(row)?,
-        password_hash: decode("users", "password_hash", PasswordHash::parse(row.get("password_hash")?))?,
+        password_hash: decode(
+            "users",
+            "password_hash",
+            PasswordHash::parse(row.get("password_hash")?),
+        )?,
     })
 }
 
@@ -571,8 +623,12 @@ mod tests {
     #[tokio::test]
     async fn expired_web_sessions_are_swept_when_a_session_opens() {
         let data = tempfile::tempdir().unwrap();
-        let clock = Arc::new(TestClock(Mutex::new(jiff::Timestamp::from_second(1_790_000_000).unwrap())));
-        let control = ControlService::open(&data.path().join("control.sqlite"), clock.clone()).await.unwrap();
+        let clock = Arc::new(TestClock(Mutex::new(
+            jiff::Timestamp::from_second(1_790_000_000).unwrap(),
+        )));
+        let control = ControlService::open(&data.path().join("control.sqlite"), clock.clone())
+            .await
+            .unwrap();
         let user = master(&control).await;
         for token in ["first", "second"] {
             control
@@ -587,7 +643,8 @@ mod tests {
             .unwrap();
         let sessions: i64 = control
             .call(|connection, _| {
-                Ok(connection.query_row("SELECT COUNT(*) FROM web_sessions", [], |row| row.get(0))?)
+                Ok(connection
+                    .query_row("SELECT COUNT(*) FROM web_sessions", [], |row| row.get(0))?)
             })
             .await
             .unwrap();
@@ -606,9 +663,12 @@ mod tests {
         use demi_web_api_protocol::settings::Theme;
 
         let data = tempfile::tempdir().unwrap();
-        let control = ControlService::open(&data.path().join("control.sqlite"), Arc::new(demi_shared_types::SystemClock))
-            .await
-            .unwrap();
+        let control = ControlService::open(
+            &data.path().join("control.sqlite"),
+            Arc::new(demi_shared_types::SystemClock),
+        )
+        .await
+        .unwrap();
         let master = master(&control).await;
         let other = UserId::try_from("other-user").unwrap();
         let other_id = other.clone();
@@ -627,21 +687,37 @@ mod tests {
             preferences.appearance.theme = Some(Theme::Dark);
             preferences
         };
-        let saved = control.patch_preferences(master.id.clone(), dark).await.unwrap();
+        let saved = control
+            .patch_preferences(master.id.clone(), dark)
+            .await
+            .unwrap();
         assert_eq!(saved.appearance.theme, Some(Theme::Dark));
         assert_eq!(control.preferences(master.id.clone()).await.unwrap(), saved);
-        assert_eq!(control.preferences(other.clone()).await.unwrap(), Preferences::default());
+        assert_eq!(
+            control.preferences(other.clone()).await.unwrap(),
+            Preferences::default()
+        );
 
         control
             .call(|connection, _| {
-                connection.execute("UPDATE user_preferences SET preferences = '{\"appearance\":{}}'", [])?;
+                connection.execute(
+                    "UPDATE user_preferences SET preferences = '{\"appearance\":{}}'",
+                    [],
+                )?;
                 Ok(())
             })
             .await
             .unwrap();
         let refused = control.preferences(master.id).await.unwrap_err();
         assert!(
-            matches!(refused, StorageError::Corrupt { table: "user_preferences", column: "preferences", .. }),
+            matches!(
+                refused,
+                StorageError::Corrupt {
+                    table: "user_preferences",
+                    column: "preferences",
+                    ..
+                }
+            ),
             "{refused}"
         );
         control.close().await.unwrap();

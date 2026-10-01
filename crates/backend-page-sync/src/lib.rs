@@ -88,7 +88,10 @@ impl SyncRegistry {
             marked: Mutex::default(),
             wake: Notify::new(),
         });
-        self.lock().entry(user.clone()).or_default().push(channel.clone());
+        self.lock()
+            .entry(user.clone())
+            .or_default()
+            .push(channel.clone());
         Registration {
             registry: self.clone(),
             user: user.clone(),
@@ -128,7 +131,10 @@ impl SyncRegistry {
     /// `session`, which was signed out.
     pub fn end_session(&self, user: &UserId, session: &TokenHash) {
         if let Some(channels) = self.lock().get(user) {
-            for channel in channels.iter().filter(|channel| channel.session == *session) {
+            for channel in channels
+                .iter()
+                .filter(|channel| channel.session == *session)
+            {
                 channel.lock().session_ended = true;
                 channel.wake.notify_one();
             }

@@ -59,12 +59,20 @@ pub struct EditArgs {
     #[garde(skip)]
     pub new: String,
     /// 1-based occurrence to replace
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "usize")]
     #[garde(range(min = 1))]
     pub occurrence: Option<usize>,
     /// Line number used to choose the nearest occurrence
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "usize")]
     #[garde(range(min = 1))]
     pub context: Option<usize>,

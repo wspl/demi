@@ -4,9 +4,9 @@
 
 use demi_command_protocol::LocalInvocation;
 use demi_command_sdk::{Handler, ServiceError};
+use demi_runner_process::command_client::Stream;
 #[cfg(unix)]
 use demi_runner_process::{command_client::ALIVE, private_files::chmod};
-use demi_runner_process::command_client::Stream;
 use std::io;
 use std::sync::Arc;
 use tokio::sync::watch;
@@ -210,4 +210,3 @@ impl Listener {
         }
     }
 }
-

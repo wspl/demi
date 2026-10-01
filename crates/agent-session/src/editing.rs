@@ -6,17 +6,17 @@
 
 use std::rc::Rc;
 
-use demi_conversation_socket_protocol::{EditRequest, MediaRef, TranscriptVersion};
 use demi_agent_store::{
     BoundaryEdge, Checkpoint, CheckpointState, CheckpointUpdate, CommandStateHistory, CommitGuard,
     EditReceipt,
 };
 use demi_agent_transcript::{CutError, TranscriptLog, before_user, through_assistant};
 use demi_command_protocol::canonical_digest;
+use demi_conversation_socket_protocol::{EditRequest, MediaRef, TranscriptVersion};
+use demi_provider_common::ProviderRuntime;
 use demi_shared_types::{
     BlobRef, Block, BlockId, DocumentSource, MediaSource, OperationId, UserContentBlock,
 };
-use demi_provider_common::ProviderRuntime;
 use tokio::sync::watch;
 
 use super::{

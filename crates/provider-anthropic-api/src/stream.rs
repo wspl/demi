@@ -3,12 +3,12 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use demi_shared_types::{Clock, FailureSource, ProviderErrorDiagnostics, TokenUsage};
 use demi_provider_common::{
     ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ToolCall, encode_body,
     http_failure, read_http_failure, tagged_wire,
     wire::{NonEmpty, ReportedString, Tagged, decode_tagged, sse_data},
 };
+use demi_shared_types::{Clock, FailureSource, ProviderErrorDiagnostics, TokenUsage};
 use futures_util::{Stream, StreamExt};
 use reqwest::header::{ACCEPT, CONTENT_TYPE};
 use serde::Deserialize;
@@ -154,11 +154,15 @@ impl Mapper {
             Ok(None) => return Next::Nothing,
             Err(error) => {
                 let message = format!("{LABEL} API stream sent a frame Demi cannot read: {error}");
-                return Next::Last(ProviderEvent::Error(ProviderFailure::protocol(message, data)));
+                return Next::Last(ProviderEvent::Error(ProviderFailure::protocol(
+                    message, data,
+                )));
             }
         };
         match event {
-            StreamEvent::Error(event) => Next::Last(ProviderEvent::Error(self.failure(event, data))),
+            StreamEvent::Error(event) => {
+                Next::Last(ProviderEvent::Error(self.failure(event, data)))
+            }
             StreamEvent::MessageStart(start) => {
                 merge(&mut self.usage, start.message.usage.as_ref());
                 Next::Nothing
@@ -241,7 +245,7 @@ impl Mapper {
         let failure = ProviderFailure {
             code: ErrorCode::classify(Some(vendor_code.unwrap_or("error")), &message),
             message,
-            diagnostics: Some(ProviderErrorDiagnostics {
+            diagnostics: Some(Box::new(ProviderErrorDiagnostics {
                 source: FailureSource::Stream,
                 client_request_id: None,
                 provider_request_id: None,
@@ -249,7 +253,7 @@ impl Mapper {
                 provider_code: vendor_code.map(str::to_owned),
                 http_status: None,
                 upstream: Some(data.to_owned()),
-            }),
+            })),
             retry_after: None,
         };
         failure.with_retry_wait(read_http_failure, self.clock.now())
@@ -291,11 +295,15 @@ fn merge(total: &mut TokenUsage, reported: Option<&Usage>) {
     let Some(reported) = reported else {
         return;
     };
-    let keep = |current: u64, count: Option<u64>| count.filter(|count| *count > 0).unwrap_or(current);
+    let keep =
+        |current: u64, count: Option<u64>| count.filter(|count| *count > 0).unwrap_or(current);
     total.input_tokens = keep(total.input_tokens, reported.input_tokens);
     total.output_tokens = keep(total.output_tokens, reported.output_tokens);
     total.cache_read_tokens = keep(total.cache_read_tokens, reported.cache_read_input_tokens);
-    total.cache_write_tokens = keep(total.cache_write_tokens, reported.cache_creation_input_tokens);
+    total.cache_write_tokens = keep(
+        total.cache_write_tokens,
+        reported.cache_creation_input_tokens,
+    );
 }
 
 tagged_wire! {
@@ -432,4 +440,3 @@ struct SignatureDelta {
 struct InputJsonDelta {
     partial_json: String,
 }
-

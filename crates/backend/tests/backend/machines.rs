@@ -16,11 +16,11 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use demi_backend_remote_host::testing::{RunnerProcess, RunnerProcessOptions};
-use demi_machine_manager_protocol::{
-    BaseVersion, GenerationId, MachineCall, MachineImageState, MachineResponse, RuntimeState, decode_request,
-    encode_line,
-};
 use demi_host_interface::SpawnEnv;
+use demi_machine_manager_protocol::{
+    BaseVersion, GenerationId, MachineCall, MachineImageState, MachineResponse, RuntimeState,
+    decode_request, encode_line,
+};
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{Notify, Semaphore, broadcast, mpsc, watch};
@@ -128,7 +128,12 @@ impl ScriptedManager {
 
     /// Every call so far, such as `wake:<device>`, in arrival order.
     pub fn calls(&self) -> Vec<String> {
-        self.shared.lock().calls.iter().map(|(call, _)| call.clone()).collect()
+        self.shared
+            .lock()
+            .calls
+            .iter()
+            .map(|(call, _)| call.clone())
+            .collect()
     }
 
     /// When `call` first arrived, once it has, such as the
@@ -138,7 +143,13 @@ impl ScriptedManager {
         let mut arrived = self.shared.arrived.subscribe();
         let first = async {
             loop {
-                let found = self.shared.lock().calls.iter().find(|(name, _)| name == call).map(|(_, at)| *at);
+                let found = self
+                    .shared
+                    .lock()
+                    .calls
+                    .iter()
+                    .find(|(name, _)| name == call)
+                    .map(|(_, at)| *at);
                 if let Some(at) = found {
                     return at;
                 }
@@ -154,7 +165,10 @@ impl ScriptedManager {
 
     /// How many calls so far are `call`.
     pub fn count(&self, call: &str) -> usize {
-        self.calls().iter().filter(|recorded| *recorded == call).count()
+        self.calls()
+            .iter()
+            .filter(|recorded| *recorded == call)
+            .count()
     }
 
     /// Changes what the manager does from now on.
@@ -235,7 +249,10 @@ impl ScriptedManager {
 async fn serve(listener: UnixListener, shared: Arc<Shared>) {
     let mut connections = Vec::new();
     while let Ok((stream, _)) = listener.accept().await {
-        connections.push(AbortOnDropHandle::new(tokio::spawn(connection(stream, shared.clone()))));
+        connections.push(AbortOnDropHandle::new(tokio::spawn(connection(
+            stream,
+            shared.clone(),
+        ))));
     }
 }
 
@@ -276,8 +293,14 @@ async fn connection(stream: UnixStream, shared: Arc<Shared>) {
         let (shared, lines) = (shared.clone(), lines.clone());
         requests.push(AbortOnDropHandle::new(tokio::spawn(async move {
             let response = match handle(&shared, request.call).await {
-                Ok(result) => MachineResponse::Ok { id: request.id, result },
-                Err(message) => MachineResponse::Error { id: request.id, message },
+                Ok(result) => MachineResponse::Ok {
+                    id: request.id,
+                    result,
+                },
+                Err(message) => MachineResponse::Error {
+                    id: request.id,
+                    message,
+                },
             };
             // A connection that closed discards its replies.
             let _ = lines.send(encode_line(&response)).await;
@@ -306,7 +329,11 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
         }
         MachineCall::CurrentBaseVersion(_) => json(serde_json::json!(BASE)),
         MachineCall::ImageState(params) => {
-            let image = shared.lock().guests.get(&params.device_id).map(|guest| guest.image.clone());
+            let image = shared
+                .lock()
+                .guests
+                .get(&params.device_id)
+                .map(|guest| guest.image.clone());
             json(serde_json::to_value(image).unwrap())
         }
         MachineCall::RuntimeState(params) => {
@@ -318,7 +345,11 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
                 .get_mut(&params.device_id)
                 .and_then(|guest| guest.runner.as_mut())
                 .is_some_and(RunnerProcess::running);
-            let state = if running { RuntimeState::Running } else { RuntimeState::Stopped };
+            let state = if running {
+                RuntimeState::Running
+            } else {
+                RuntimeState::Stopped
+            };
             json(serde_json::to_value(state).unwrap())
         }
         MachineCall::Wake(params) => {
@@ -392,7 +423,10 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
             let _turn = worker.acquire().await.unwrap();
             shared.record(format!("grow:{device}:{}:{}", params.volume, params.bytes));
             let mut state = shared.lock();
-            let guest = state.guests.get_mut(&device).ok_or("the device has no storage")?;
+            let guest = state
+                .guests
+                .get_mut(&device)
+                .ok_or("the device has no storage")?;
             if params.bytes.get() > guest.image.bytes(params.volume).get() {
                 guest.image = guest.image.clone().with_bytes(params.volume, params.bytes);
             }
@@ -402,7 +436,10 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
             let device = params.device_id;
             let worker = shared.worker(&device);
             let _turn = worker.acquire().await.unwrap();
-            shared.record(format!("reset:{device}:{}:{}", params.operation_id, params.base_version));
+            shared.record(format!(
+                "reset:{device}:{}:{}",
+                params.operation_id, params.base_version
+            ));
             let hold = shared.lock().script.hold_reset.clone();
             if let Some((rebuilding, proceed)) = hold {
                 rebuilding.notify_one();
@@ -412,7 +449,11 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
                 return Err(message);
             }
             stop_runner(shared, &device).await;
-            let taken = shared.lock().guests.get_mut(&device).and_then(|guest| guest.runner.take());
+            let taken = shared
+                .lock()
+                .guests
+                .get_mut(&device)
+                .and_then(|guest| guest.runner.take());
             if let Some(mut runner) = taken {
                 // A reset replaces the system layer, the log and the job
                 // directories with it.
@@ -438,7 +479,11 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
 /// log and its job directories, as a stop takes a Cloud's temporary mounts
 /// and keeps its system image; the caller holds the device's turn.
 async fn stop_runner(shared: &Shared, device: &str) {
-    let taken = shared.lock().guests.get_mut(device).and_then(|guest| guest.runner.take());
+    let taken = shared
+        .lock()
+        .guests
+        .get_mut(device)
+        .and_then(|guest| guest.runner.take());
     let Some(mut runner) = taken else {
         return;
     };

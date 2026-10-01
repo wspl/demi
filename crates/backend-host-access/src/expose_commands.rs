@@ -7,19 +7,20 @@
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
+use demi_backend_expose::records::ExposeError;
+use demi_backend_expose::records::LIFETIME;
 use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
 use demi_web_api_protocol::exposes::{ExposeAddress, ExposeAnswer, Exposes};
 use demi_web_api_protocol::ids::ExposeId;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use demi_backend_expose::records::ExposeError;
-use demi_backend_expose::records::LIFETIME;
 
 use crate::HostShard;
 use crate::access::HostRole;
 use crate::host_commands::{NoArgs, conversation_of, named_host, reachable, verb};
 
-const SUMMARY: &str = "Give a service on a host a public URL for one hour: add, list, renew, remove.";
+const SUMMARY: &str =
+    "Give a service on a host a public URL for one hour: add, list, renew, remove.";
 
 const ADD_SUMMARY: &str = "Expose a service on a host under a fresh public URL for one hour: `demi host expose add <host:port|port> [--host <name|id>]`.";
 
@@ -29,8 +30,7 @@ const RENEW_SUMMARY: &str = "Set an expose's expiry to one hour from now.";
 
 const REMOVE_SUMMARY: &str = "Destroy an expose at once; its URL no longer works.";
 
-const NOT_FOUND_OUTPUT: &str =
-    "expose_not_found when the number names none of this user's live exposes; writes the reason to stderr and exits non-zero";
+const NOT_FOUND_OUTPUT: &str = "expose_not_found when the number names none of this user's live exposes; writes the reason to stderr and exits non-zero";
 
 /// The input of `demi host expose add`.
 #[derive(Deserialize, JsonSchema)]
@@ -91,7 +91,10 @@ pub(crate) fn expose_group(shard: &Weak<dyn HostShard>) -> GroupBuilder {
 
 async fn add(shard: Rc<dyn HostShard>, call: Call<AddArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let Call {
-        args: AddArgs { address, host: wanted },
+        args: AddArgs {
+            address,
+            host: wanted,
+        },
         invocation,
     } = call;
     let conversation = conversation_of(&invocation)?;
@@ -111,11 +114,16 @@ async fn add(shard: Rc<dyn HostShard>, call: Call<AddArgs>, port: RpcPort) -> Re
     let address = match ExposeAddress::try_from(address) {
         Ok(address) => address,
         Err(error) => {
-            port.stderr(format!("expose add: the address {error}\n")).await?;
+            port.stderr(format!("expose add: the address {error}\n"))
+                .await?;
             return Ok(1);
         }
     };
-    let expose = match shard.expose_shard().add_expose(&target.device, address).await {
+    let expose = match shard
+        .expose_shard()
+        .add_expose(&target.device, address)
+        .await
+    {
         Ok(expose) => expose,
         Err(error) => return refused(&port, "add", error).await,
     };
@@ -161,7 +169,11 @@ async fn list(shard: Rc<dyn HostShard>, call: Call<NoArgs>, port: RpcPort) -> Re
     let now = shard.clock().now();
     let mut rows = vec![["Expose", "Device", "Address", "Expires", "URL"].map(str::to_owned)];
     for expose in &exposes {
-        let left = expose.expires_at.as_millisecond().saturating_sub(now.as_millisecond()).max(0);
+        let left = expose
+            .expires_at
+            .as_millisecond()
+            .saturating_sub(now.as_millisecond())
+            .max(0);
         rows.push([
             expose.number.to_string(),
             names[&expose.device_id].clone(),
@@ -174,10 +186,18 @@ async fn list(shard: Rc<dyn HostShard>, call: Call<NoArgs>, port: RpcPort) -> Re
     Ok(0)
 }
 
-async fn renew(shard: Rc<dyn HostShard>, call: Call<ExposeArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn renew(
+    shard: Rc<dyn HostShard>,
+    call: Call<ExposeArgs>,
+    port: RpcPort,
+) -> Result<u8, RpcError> {
     let number = call.args.number;
     let renewed = match numbered(&*shard, number).await {
-        Ok(id) => shard.expose_shard().renew_expose(&id).await.map_err(|error| named(error, number)),
+        Ok(id) => shard
+            .expose_shard()
+            .renew_expose(&id)
+            .await
+            .map_err(|error| named(error, number)),
         Err(error) => Err(error),
     };
     let expose = match renewed {
@@ -187,21 +207,35 @@ async fn renew(shard: Rc<dyn HostShard>, call: Call<ExposeArgs>, port: RpcPort) 
     let text = if call.invocation.json {
         json(&ExposeAnswer { expose })?
     } else {
-        format!("Expose {number} expires in {} minutes.\n", LIFETIME.as_mins())
+        format!(
+            "Expose {number} expires in {} minutes.\n",
+            LIFETIME.as_mins()
+        )
     };
     port.stdout(text).await?;
     Ok(0)
 }
 
-async fn remove(shard: Rc<dyn HostShard>, call: Call<ExposeArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn remove(
+    shard: Rc<dyn HostShard>,
+    call: Call<ExposeArgs>,
+    port: RpcPort,
+) -> Result<u8, RpcError> {
     let number = call.args.number;
     let removed = match numbered(&*shard, number).await {
-        Ok(id) => shard.expose_shard().remove_expose(&id).await.map_err(|error| named(error, number)),
+        Ok(id) => shard
+            .expose_shard()
+            .remove_expose(&id)
+            .await
+            .map_err(|error| named(error, number)),
         Err(error) => Err(error),
     };
     match removed {
         Ok(()) => {
-            port.stdout(format!("Removed expose {number}; its URL no longer works.\n")).await?;
+            port.stdout(format!(
+                "Removed expose {number}; its URL no longer works.\n"
+            ))
+            .await?;
             Ok(0)
         }
         Err(error) => refused(&port, "remove", error).await,
@@ -233,7 +267,8 @@ async fn refused(port: &RpcPort, leaf: &str, error: ExposeError) -> Result<u8, R
     let Some((code, _)) = error.code() else {
         return Err(failed(error));
     };
-    port.stderr(format!("expose {leaf}: {error} ({code})\n")).await?;
+    port.stderr(format!("expose {leaf}: {error} ({code})\n"))
+        .await?;
     Ok(1)
 }
 

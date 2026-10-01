@@ -77,7 +77,10 @@ impl PendingClaims {
         let now = Instant::now();
         let mut state = self.lock();
         let attempts = state.attempts.entry(user.clone()).or_default();
-        while attempts.front().is_some_and(|at| now.duration_since(*at) >= ATTEMPT_WINDOW) {
+        while attempts
+            .front()
+            .is_some_and(|at| now.duration_since(*at) >= ATTEMPT_WINDOW)
+        {
             attempts.pop_front();
         }
         if attempts.len() >= self.attempts_per_minute {
@@ -99,7 +102,11 @@ impl PendingClaims {
 
     /// Puts `runner` up for claiming under `code`; none once the backend is
     /// shutting down.
-    pub fn wait(&self, code: ClaimCode, runner: RunnerInfo) -> Option<oneshot::Receiver<ClaimGrant>> {
+    pub fn wait(
+        &self,
+        code: ClaimCode,
+        runner: RunnerInfo,
+    ) -> Option<oneshot::Receiver<ClaimGrant>> {
         let mut state = self.lock();
         if state.closed {
             return None;
@@ -133,7 +140,11 @@ impl PendingRunner {
         let (bound, answer) = oneshot::channel();
         // A runner that went away dropped its end, and `answer` then resolves
         // without a device.
-        let _ = self.grant.send(ClaimGrant { device, token, bound });
+        let _ = self.grant.send(ClaimGrant {
+            device,
+            token,
+            bound,
+        });
         answer
     }
 }

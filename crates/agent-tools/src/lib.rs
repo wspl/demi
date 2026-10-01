@@ -22,18 +22,18 @@ use std::{
 use bytes::Bytes;
 use demi_agent_session::{ToolEffect, ToolFailure, ToolInvocation, ToolOutcome};
 use demi_agent_store::AgentTreeStore;
-use demi_shared_types::{CommandId, ModelSelection, NodeId, Sequence};
-use demi_provider_common::{RequestLimits, ToolDefinition};
 use demi_host_interface::{
     CommandSet, CommandState, CommandStatus, ExecRequest, Host, HostError, JobCaller, Numbers,
     ObservationWindow, PageFeed, ShellEnvironment, ShellError, ShellTarget,
 };
+use demi_provider_common::{RequestLimits, ToolDefinition};
+use demi_shared_types::{CommandId, ModelSelection, NodeId, Sequence};
 use futures_util::future::LocalBoxFuture;
 
 pub use environments::Environments;
 use environments::Handle;
 pub use frames::{shell_output, stored_running_commands};
-pub use harness::{AgentHarness, Profile, PromptContext};
+pub use harness::{AgentHarness, CommandNarrowing, Profile, ProfilePrompt, PromptContext};
 use input::{CommandInput, ShellExecInput, ShellWriteInput, YieldInput, parse};
 
 /// The most characters a page of `demi shell output` takes, so that a tool

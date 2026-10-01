@@ -14,8 +14,14 @@ use demi_command_sdk::{Client, testing::ServiceProcess};
 /// `cwd`.
 fn edits(cwd: &str) -> EditContext {
     EditContext {
-        directory: Path::new(cwd).join("changes").to_string_lossy().into_owned(),
-        lock: Path::new(cwd).join("edits.lock").to_string_lossy().into_owned(),
+        directory: Path::new(cwd)
+            .join("changes")
+            .to_string_lossy()
+            .into_owned(),
+        lock: Path::new(cwd)
+            .join("edits.lock")
+            .to_string_lossy()
+            .into_owned(),
     }
 }
 
@@ -72,22 +78,22 @@ async fn the_resident_program_serves_every_file_operation_and_records_its_edits(
         let pid = service.id().unwrap();
         let client = service.client();
         assert!(client.info().await.unwrap().operations.contains(&"file.read".into()));
-        let (result, output, _) = call(&client, cwd, "file.create", serde_json::json!({"path":"nested/a.txt", "content":"alpha\nbeta\n"})).await;
+        let (result, output, _) = call(client, cwd, "file.create", serde_json::json!({"path":"nested/a.txt", "content":"alpha\nbeta\n"})).await;
         assert_eq!(result.exit_code, 0);
         assert_eq!(output, b"Created nested/a.txt\n");
-        let (result, _, _) = call(&client, cwd, "file.create", serde_json::json!({"path":"nested/a.txt", "content":"overwrite"})).await;
+        let (result, _, _) = call(client, cwd, "file.create", serde_json::json!({"path":"nested/a.txt", "content":"overwrite"})).await;
         assert_eq!(result.exit_code, 1);
-        let (result, _, _) = call(&client, cwd, "file.edit", serde_json::json!({"path":"nested/a.txt", "old":"beta", "new":"gamma"})).await;
+        let (result, _, _) = call(client, cwd, "file.edit", serde_json::json!({"path":"nested/a.txt", "old":"beta", "new":"gamma"})).await;
         assert_eq!(result.exit_code, 0);
         let patch = "--- a/nested/a.txt\n+++ b/nested/a.txt\n@@ -1,2 +1,2 @@\n alpha\n-gamma\n+delta\n--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1 @@\n+created\n";
-        let (result, output, error) = call(&client, cwd, "file.patch", serde_json::json!({"patch":patch})).await;
+        let (result, output, error) = call(client, cwd, "file.patch", serde_json::json!({"patch":patch})).await;
         assert_eq!(result.exit_code, 0, "{}", String::from_utf8_lossy(&error));
         assert_eq!(output, b"Patched 2 file(s)\n");
-        let (_, output, _) = call(&client, cwd, "file.read", serde_json::json!({"path":"nested/a.txt"})).await;
+        let (_, output, _) = call(client, cwd, "file.read", serde_json::json!({"path":"nested/a.txt"})).await;
         assert_eq!(output, b"alpha\ndelta\n");
         let binary = [0, 255, 10, 13, 128];
         std::fs::write(root.path().join("image.bin"), binary).unwrap();
-        let (result, output, _) = call(&client, cwd, "file.read", serde_json::json!({"path":"image.bin"})).await;
+        let (result, output, _) = call(client, cwd, "file.read", serde_json::json!({"path":"image.bin"})).await;
         assert_eq!(result.exit_code, 0);
         assert_eq!(output, binary);
         let recorder = demi_command_sdk::edits::Recorder::new(demi_command_protocol::EditContext {
@@ -102,7 +108,7 @@ async fn the_resident_program_serves_every_file_operation_and_records_its_edits(
             ("file.edit", serde_json::json!({"path":"large.txt", "old":"absent", "new":"replacement"})),
             ("file.patch", serde_json::json!({"patch":"--- a/large.txt\n+++ b/large.txt\n@@ -1 +1 @@\n-absent\n+replacement\n"})),
         ] {
-            let (result, _, _) = call(&client, cwd, operation, args).await;
+            let (result, _, _) = call(client, cwd, operation, args).await;
             assert_eq!(result.exit_code, 1);
         }
         assert_eq!(recorder.report().unwrap().files.len(), 2);
@@ -119,7 +125,6 @@ async fn the_resident_program_serves_every_file_operation_and_records_its_edits(
         assert!(status.success());
     }).await.unwrap();
 }
-
 
 /// A patch whose later file cannot be written leaves every file as it was:
 /// the earlier one it wrote is restored, and no edit is recorded.

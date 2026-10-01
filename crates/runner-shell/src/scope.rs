@@ -48,7 +48,8 @@ impl Activity {
 
     /// Counts a unit as waiting until the guard drops.
     fn wait(&self) -> Waiting<'_> {
-        self.waiting.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.waiting
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Waiting(self)
     }
 }
@@ -59,7 +60,9 @@ struct Waiting<'a>(&'a Activity);
 #[cfg(feature = "testing")]
 impl Drop for Waiting<'_> {
     fn drop(&mut self) {
-        self.0.waiting.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+        self.0
+            .waiting
+            .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -276,7 +279,11 @@ impl Scope {
         use rustix::event::{PollFd, PollFlags};
         self.check()?;
         let interrupt = self.interrupt()?;
-        let events = if writing { PollFlags::OUT } else { PollFlags::IN };
+        let events = if writing {
+            PollFlags::OUT
+        } else {
+            PollFlags::IN
+        };
         loop {
             let mut descriptors = [
                 PollFd::new(file, events),
@@ -362,9 +369,7 @@ impl Scope {
                     if error.raw_os_error()
                         != Some(windows_sys::Win32::Foundation::ERROR_NOT_FOUND as i32)
                     {
-                        tracing::warn!(
-                            "shell IO cancellation failed: {error}"
-                        );
+                        tracing::warn!("shell IO cancellation failed: {error}");
                         return;
                     }
                 }
@@ -585,7 +590,10 @@ pub fn resolve_path(path: &Path, cwd: &Path) -> PathBuf {
 /// the shell that ran it for the programs it starts.
 pub(crate) struct UtilityControl {
     pub(crate) scope: Scope,
-    #[cfg_attr(not(unix), expect(dead_code, reason = "only Unix applies a umask and limits to a child"))]
+    #[cfg_attr(
+        not(unix),
+        expect(dead_code, reason = "only Unix applies a umask and limits to a child")
+    )]
     pub(crate) attributes: ChildAttributes,
 }
 

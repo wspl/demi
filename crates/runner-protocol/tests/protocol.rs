@@ -3,8 +3,8 @@
 
 use std::path::Path;
 
-use demi_command_protocol::PackageDescriptor;
 use demi_command_declarations::{NativeOperation, Node};
+use demi_command_protocol::PackageDescriptor;
 use demi_runner_protocol::manifest::Manifest;
 use demi_runner_protocol::wire::{
     self, Inbound, KeptRecord, LogLine, Outbound, OutputStream, Timestamp, WireBytes,
@@ -49,7 +49,11 @@ fn every_backend_frame_decodes_and_encodes_to_the_same_bytes() {
     for (name, bytes) in frames {
         let message: Inbound =
             wire::decode(&bytes).unwrap_or_else(|error| panic!("{name}: {error}"));
-        assert_eq!(wire::encode(&message).unwrap().into_bytes(), bytes, "{name}");
+        assert_eq!(
+            wire::encode(&message).unwrap().into_bytes(),
+            bytes,
+            "{name}"
+        );
     }
 }
 
@@ -60,7 +64,11 @@ fn every_runner_frame_decodes_and_encodes_to_the_same_bytes() {
     for (name, bytes) in frames {
         let message: Outbound =
             wire::decode(&bytes).unwrap_or_else(|error| panic!("{name}: {error}"));
-        assert_eq!(wire::encode(&message).unwrap().into_bytes(), bytes, "{name}");
+        assert_eq!(
+            wire::encode(&message).unwrap().into_bytes(),
+            bytes,
+            "{name}"
+        );
     }
 }
 
@@ -111,7 +119,10 @@ fn refuses_disguised_binary_unknown_fields_trailing_data_and_optional_nulls() {
             "input": {"id": "i", "url": "/i"}, "output": {"id": "o", "url": "/o"}}),
     ];
     for message in invalid {
-        assert!(wire::decode::<Inbound>(&msgpack(&message)).is_err(), "{message}");
+        assert!(
+            wire::decode::<Inbound>(&msgpack(&message)).is_err(),
+            "{message}"
+        );
     }
     let valid = json!({"type": "fs_stat", "id": "file", "path": "/work"});
     assert!(wire::decode::<Inbound>(&msgpack(&valid)).is_ok());
@@ -167,9 +178,14 @@ fn a_conversation_name_is_letters_digits_dashes_and_underscores() {
         });
         let job = json!({"type": "job_start", "jobId": "job", "context": context, "script": "true",
             "cwd": "/", "env": {}});
-        let release = json!({"type": "conversation_release", "id": "release", "conversationId": name});
+        let release =
+            json!({"type": "conversation_release", "id": "release", "conversationId": name});
         for message in [job, release] {
-            assert_eq!(wire::decode::<Inbound>(&msgpack(&message)).is_ok(), valid, "{message}");
+            assert_eq!(
+                wire::decode::<Inbound>(&msgpack(&message)).is_ok(),
+                valid,
+                "{message}"
+            );
         }
     }
 }
@@ -226,7 +242,10 @@ fn replies_name_their_operation_before_its_result() {
         json!({"type": "git_ok", "id": "git", "op": "show", "result": {}}),
     ];
     for message in invalid {
-        assert!(wire::decode::<Outbound>(&msgpack(&message)).is_err(), "{message}");
+        assert!(
+            wire::decode::<Outbound>(&msgpack(&message)).is_err(),
+            "{message}"
+        );
     }
     let nullable = json!({"type": "spawn_exit", "spawnId": "spawn"});
     assert!(wire::decode::<Outbound>(&msgpack(&nullable)).is_err());
@@ -241,10 +260,16 @@ fn a_working_tree_change_carries_a_pair_git_status_prints() {
         }})
     };
     for status in ["M ", " M", "??", "UU", "R "] {
-        assert!(wire::decode::<Outbound>(&msgpack(&changes(status))).is_ok(), "{status}");
+        assert!(
+            wire::decode::<Outbound>(&msgpack(&changes(status))).is_ok(),
+            "{status}"
+        );
     }
     for status in ["XY", "M", "  ", "???"] {
-        assert!(wire::decode::<Outbound>(&msgpack(&changes(status))).is_err(), "{status}");
+        assert!(
+            wire::decode::<Outbound>(&msgpack(&changes(status))).is_err(),
+            "{status}"
+        );
     }
 }
 
@@ -338,15 +363,23 @@ fn a_built_manifest_pins_its_native_commands_and_hashes_as_the_recorded_one() {
     assert_eq!(serde_json::to_value(&built).unwrap(), recorded);
 
     let native = |package: &str, operation: &str| {
-        declaration(json!({"name": "native", "summary": "Native", "kind": "native",
-            "binding": {"package": package, "operation": operation}}))
+        declaration(
+            json!({"name": "native", "summary": "Native", "kind": "native",
+            "binding": {"package": package, "operation": operation}}),
+        )
     };
     let rpc = || declaration(json!({"name": "rpc", "summary": "Rpc", "kind": "rpc"}));
     let refusal = |roots: Vec<Node<NativeOperation>>, packages: Vec<PackageDescriptor>| {
         Manifest::build(roots, packages).unwrap_err().to_string()
     };
-    assert!(refusal(vec![native("demicodes.other", "file.read")], packages()).contains("not configured"));
-    assert!(refusal(vec![native("demicodes.fixture", "file.gone")], packages()).contains("no operation"));
+    assert!(
+        refusal(vec![native("demicodes.other", "file.read")], packages())
+            .contains("not configured")
+    );
+    assert!(
+        refusal(vec![native("demicodes.fixture", "file.gone")], packages())
+            .contains("no operation")
+    );
     assert!(refusal(vec![rpc(), rpc()], vec![]).contains("duplicate root"));
     let twice = packages().into_iter().chain(packages()).collect();
     assert!(refusal(vec![], twice).contains("duplicate command package"));
@@ -372,12 +405,14 @@ fn a_built_manifest_pins_its_native_commands_and_hashes_as_the_recorded_one() {
     assert_ne!(hash(vec![rpc()], released), hash(vec![rpc()], packages()));
 }
 
-
 /// A command's output as a runner kept it and the backend stores it for 30
 /// days: records written by one version decode in the next.
 #[test]
 fn a_kept_output_decodes_from_its_recorded_bytes() {
-    let bytes = std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/kept/output.msgpack")).unwrap();
+    let bytes = std::fs::read(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/kept/output.msgpack"),
+    )
+    .unwrap();
     let records = wire::decode_records(&bytes).unwrap();
     assert_eq!(
         records,
@@ -407,18 +442,31 @@ fn record() -> String {
 #[test]
 fn a_release_record_is_checked_in_every_field() {
     let record = record();
-    demi_runner_protocol::release::RunnerRelease::decode(record.as_bytes()).expect("the record as written is valid");
+    demi_runner_protocol::release::RunnerRelease::decode(record.as_bytes())
+        .expect("the record as written is valid");
     let wire = format!(r#""wire":{}"#, wire::VERSION);
     for (from, to) in [
-        (r#""release":"317dd84e"#.to_owned(), r#""release":"317DD84E"#.to_owned()),
+        (
+            r#""release":"317dd84e"#.to_owned(),
+            r#""release":"317DD84E"#.to_owned(),
+        ),
         (wire.clone(), format!(r#""wire":{}"#, wire::VERSION - 1)),
-        (r#""commandProtocol":1"#.to_owned(), r#""commandProtocol":2"#.to_owned()),
-        ("aarch64-apple-darwin".to_owned(), "aarch64-apple-ios".to_owned()),
+        (
+            r#""commandProtocol":1"#.to_owned(),
+            r#""commandProtocol":2"#.to_owned(),
+        ),
+        (
+            "aarch64-apple-darwin".to_owned(),
+            "aarch64-apple-ios".to_owned(),
+        ),
         (r#""size":38772096"#.to_owned(), r#""size":0"#.to_owned()),
         (wire.clone(), format!(r#"{wire},"channel":"beta""#)),
     ] {
         let changed = record.replacen(&from, &to, 1);
-        assert!(demi_runner_protocol::release::RunnerRelease::decode(changed.as_bytes()).is_err(), "{changed}");
+        assert!(
+            demi_runner_protocol::release::RunnerRelease::decode(changed.as_bytes()).is_err(),
+            "{changed}"
+        );
     }
 }
 
@@ -442,7 +490,11 @@ fn records_round_trip_and_a_second_gap_is_refused() {
         .flat_map(|record| wire::encode_record(record).unwrap())
         .collect();
     assert_eq!(wire::decode_records(&bytes).unwrap(), records);
-    let twice = [bytes.clone(), wire::encode_record(&KeptRecord::LeftOut(1)).unwrap()].concat();
+    let twice = [
+        bytes.clone(),
+        wire::encode_record(&KeptRecord::LeftOut(1)).unwrap(),
+    ]
+    .concat();
     assert!(wire::decode_records(&twice).is_err());
     assert!(wire::decode_records(&bytes[..bytes.len() - 1]).is_err());
 }
@@ -454,7 +506,11 @@ fn records_round_trip_and_a_second_gap_is_refused() {
 fn a_backend_url_names_a_host_without_credentials_or_a_fragment() {
     use demi_runner_protocol::values::BackendUrl;
 
-    for accepted in ["https://demi.example.com", "http://10.0.0.5:3271", "wss://demi.example.com/runner"] {
+    for accepted in [
+        "https://demi.example.com",
+        "http://10.0.0.5:3271",
+        "wss://demi.example.com/runner",
+    ] {
         assert!(accepted.parse::<BackendUrl>().is_ok(), "{accepted}");
     }
     for refused in [

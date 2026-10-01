@@ -35,7 +35,9 @@ pub enum Ext4Error {
     /// `resize2fs` failed, and the programs the manager starts cannot hold
     /// `CAP_SYS_RESOURCE`, without which the kernel grows no mounted ext4
     /// filesystem (`setup.md` § Linux requirements).
-    #[error("growing a mounted ext4 filesystem needs CAP_SYS_RESOURCE; this host's manager lacks it")]
+    #[error(
+        "growing a mounted ext4 filesystem needs CAP_SYS_RESOURCE; this host's manager lacks it"
+    )]
     GrowthCapability(#[source] ToolError),
 }
 
@@ -50,7 +52,11 @@ pub fn capacity(_: &OffLoop, image: &Path) -> Result<NonZeroU64, Ext4Error> {
 
 fn parse_capacity(superblock: &[u8; SUPERBLOCK_BYTES]) -> Option<NonZeroU64> {
     let u32_at = |offset: usize| {
-        u32::from_le_bytes(superblock[offset..offset + 4].try_into().expect("four bytes"))
+        u32::from_le_bytes(
+            superblock[offset..offset + 4]
+                .try_into()
+                .expect("four bytes"),
+        )
     };
     let magic = u16::from_le_bytes([superblock[0x38], superblock[0x39]]);
     let log_block_size = u32_at(0x18);
@@ -90,7 +96,12 @@ pub async fn make_system(tools: &Tools, image: &Path, bytes: NonZeroU64) -> Resu
 
 /// A home filesystem whose root is populated from `root`, ownership and
 /// modes included.
-pub async fn make_home(tools: &Tools, root: &Path, image: &Path, bytes: NonZeroU64) -> Result<(), Ext4Error> {
+pub async fn make_home(
+    tools: &Tools,
+    root: &Path,
+    image: &Path,
+    bytes: NonZeroU64,
+) -> Result<(), Ext4Error> {
     let size = kibibytes(bytes);
     let args = [
         OsStr::new("-q"),
@@ -162,7 +173,12 @@ async fn check(tools: &Tools, image: &Path, mode: &str) -> Result<(), Ext4Error>
 mod tests {
     use super::*;
 
-    fn superblock(blocks_lo: u32, blocks_hi: u32, log: u32, incompat: u32) -> [u8; SUPERBLOCK_BYTES] {
+    fn superblock(
+        blocks_lo: u32,
+        blocks_hi: u32,
+        log: u32,
+        incompat: u32,
+    ) -> [u8; SUPERBLOCK_BYTES] {
         let mut block = [0; SUPERBLOCK_BYTES];
         block[0x04..0x08].copy_from_slice(&blocks_lo.to_le_bytes());
         block[0x18..0x1c].copy_from_slice(&log.to_le_bytes());
@@ -174,7 +190,10 @@ mod tests {
 
     #[test]
     fn a_capacity_is_blocks_times_block_size() {
-        assert_eq!(parse_capacity(&superblock(262_144, 0, 2, 0)).map(NonZeroU64::get), Some(1 << 30));
+        assert_eq!(
+            parse_capacity(&superblock(262_144, 0, 2, 0)).map(NonZeroU64::get),
+            Some(1 << 30)
+        );
         // The high word counts only with the 64-bit feature.
         assert_eq!(parse_capacity(&superblock(0, 1, 2, 0)), None);
         assert_eq!(
@@ -205,7 +224,9 @@ mod tests {
             let tools = Tools::on_path();
             let directory = tempfile::tempdir().unwrap();
             let image = directory.path().join("system.ext4");
-            make_system(&tools, &image, NonZeroU64::new(48 << 20).unwrap()).await.unwrap();
+            make_system(&tools, &image, NonZeroU64::new(48 << 20).unwrap())
+                .await
+                .unwrap();
             let printed = output("dumpe2fs", &[OsStr::new("-h"), image.as_os_str()]);
             let printed = String::from_utf8_lossy(&printed.stdout);
             let field = |name: &str| -> u64 {
@@ -217,7 +238,9 @@ mod tests {
             };
             let expected = field("Block count:") * field("Block size:");
             let path = image.clone();
-            let read = blocking::run(move |off| capacity(off, &path)).await.unwrap();
+            let read = blocking::run(move |off| capacity(off, &path))
+                .await
+                .unwrap();
             assert_eq!(read.get(), expected);
             assert_eq!(expected, 48 << 20);
         }
@@ -228,13 +251,16 @@ mod tests {
             isolate();
             // As on a host that drops it: this thread, and resize2fs, which
             // it starts, cannot hold the capability from here on.
-            rustix::thread::remove_capability_from_bounding_set(CapabilitySet::SYS_RESOURCE).unwrap();
+            rustix::thread::remove_capability_from_bounding_set(CapabilitySet::SYS_RESOURCE)
+                .unwrap();
             let tools = Tools::on_path();
             let off = OffLoop::in_test();
             let directory = tempfile::tempdir().unwrap();
             let image = directory.path().join("volume.ext4");
             let nominal = 32 << 20;
-            make_system(&tools, &image, NonZeroU64::new(nominal).unwrap()).await.unwrap();
+            make_system(&tools, &image, NonZeroU64::new(nominal).unwrap())
+                .await
+                .unwrap();
             let target = directory.path().join("volume");
             std::fs::create_dir(&target).unwrap();
             let device = loopdev::attach(&off, &image).unwrap();
@@ -267,11 +293,17 @@ mod tests {
             std::fs::write(root.join("demi/work/a.txt"), "alpha\n").unwrap();
             let image = directory.path().join("home.ext4");
             let nominal = 64 << 20;
-            make_home(&tools, &root, &image, NonZeroU64::new(nominal).unwrap()).await.unwrap();
+            make_home(&tools, &root, &image, NonZeroU64::new(nominal).unwrap())
+                .await
+                .unwrap();
             assert_eq!(std::fs::metadata(&image).unwrap().len(), nominal);
             let listed = output(
                 "debugfs",
-                &[OsStr::new("-R"), OsStr::new("cat /demi/work/a.txt"), image.as_os_str()],
+                &[
+                    OsStr::new("-R"),
+                    OsStr::new("cat /demi/work/a.txt"),
+                    image.as_os_str(),
+                ],
             );
             assert_eq!(String::from_utf8_lossy(&listed.stdout), "alpha\n");
 
@@ -283,7 +315,11 @@ mod tests {
                 .unwrap();
             assert_eq!(recover(&tools, &image).await.unwrap().get(), nominal * 2);
             // The filesystem now fills its file and is consistent.
-            assert!(output("e2fsck", &[OsStr::new("-fn"), image.as_os_str()]).status.success());
+            assert!(
+                output("e2fsck", &[OsStr::new("-fn"), image.as_os_str()])
+                    .status
+                    .success()
+            );
         }
     }
 }

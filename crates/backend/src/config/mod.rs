@@ -9,25 +9,27 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use demi_command_package_browser_protocol::{PACKAGE as BROWSER_PACKAGE, live};
 use demi_command_declarations::NativeOperation;
+use demi_command_package_browser_protocol::{PACKAGE as BROWSER_PACKAGE, live};
 use demi_shared_types::{Clock, SystemClock};
 use demi_web_api_protocol::settings::InstanceMode;
 use tracing_subscriber::filter::Targets;
 use url::Url;
 
 use demi_backend_accounts::email_change::AccountMail;
+use demi_backend_cloud::tuning::CloudTuning;
+use demi_backend_expose::domain::ExposeDomain;
 use demi_backend_providers::llm::claude_releases::DEFAULT_RELEASES_URL;
 use demi_backend_providers::llm::families::FamilyRegistry;
 use demi_backend_providers::vault::logins::LoginTiming;
-use demi_provider_common::models_dev::ModelsDevClient;
-use demi_backend_cloud::tuning::CloudTuning;
-use demi_backend_expose::domain::ExposeDomain;
 use demi_backend_runners::native::NativeCatalog;
+use demi_provider_common::models_dev::ModelsDevClient;
 
 use demi_backend_host_access::stream::BROWSER_STREAM;
 use demi_backend_user_shard::shard::ShardPlacement;
-use demi_backend_user_shard::tuning::{ConversationTuning, ExposeTuning, LifecycleTuning, PageTuning, RunnerTuning};
+use demi_backend_user_shard::tuning::{
+    ConversationTuning, ExposeTuning, LifecycleTuning, PageTuning, RunnerTuning,
+};
 
 use self::secret::InstanceSecret;
 
@@ -53,16 +55,28 @@ pub struct Config {
     #[arg(long, env = "DEMI_INSTANCE_MODE", value_name = "DEMI_INSTANCE_MODE")]
     pub mode: InstanceMode,
     /// The URL runners and Cloud guests connect to
-    #[arg(long, env = "DEMI_BACKEND_PUBLIC_URL", value_name = "DEMI_BACKEND_PUBLIC_URL")]
+    #[arg(
+        long,
+        env = "DEMI_BACKEND_PUBLIC_URL",
+        value_name = "DEMI_BACKEND_PUBLIC_URL"
+    )]
     pub public_url: Url,
     /// The machine manager's Unix socket
-    #[arg(long, env = "DEMI_MACHINE_MANAGER_SOCKET", value_name = "DEMI_MACHINE_MANAGER_SOCKET")]
+    #[arg(
+        long,
+        env = "DEMI_MACHINE_MANAGER_SOCKET",
+        value_name = "DEMI_MACHINE_MANAGER_SOCKET"
+    )]
     pub machines_socket: PathBuf,
     /// The native command releases and the object storage they are published to
     #[arg(long, env = "DEMI_NATIVE_CONFIG", value_name = "DEMI_NATIVE_CONFIG")]
     pub native_config: PathBuf,
     /// A JSON file that puts the object store in an S3 bucket
-    #[arg(long, env = "DEMI_OBJECT_STORE_CONFIG", value_name = "DEMI_OBJECT_STORE_CONFIG")]
+    #[arg(
+        long,
+        env = "DEMI_OBJECT_STORE_CONFIG",
+        value_name = "DEMI_OBJECT_STORE_CONFIG"
+    )]
     pub object_store_config: Option<PathBuf>,
     /// The instance secret as 64 hexadecimal digits [default: generated into the data directory]
     #[arg(
@@ -79,7 +93,11 @@ pub struct Config {
     #[arg(long, env = "DEMI_WEB_DIRECTORY", value_name = "DEMI_WEB_DIRECTORY")]
     pub web_directory: Option<PathBuf>,
     /// The runner releases the installer routes serve
-    #[arg(long, env = "DEMI_RUNNER_RELEASE_DIR", value_name = "DEMI_RUNNER_RELEASE_DIR")]
+    #[arg(
+        long,
+        env = "DEMI_RUNNER_RELEASE_DIR",
+        value_name = "DEMI_RUNNER_RELEASE_DIR"
+    )]
     pub runner_release_dir: Option<PathBuf>,
     /// The Claude Code distribution whose newest release the CLI on each Cloud follows
     #[arg(
@@ -91,7 +109,12 @@ pub struct Config {
     pub claude_releases_url: Url,
     /// What the backend logs: a level, and a level per target, comma-separated,
     /// such as `info,demi::provider::claude_code::wire=trace`
-    #[arg(long, env = "DEMI_LOG", value_name = "DEMI_LOG", default_value = "info")]
+    #[arg(
+        long,
+        env = "DEMI_LOG",
+        value_name = "DEMI_LOG",
+        default_value = "info"
+    )]
     pub log: Targets,
 }
 
@@ -103,7 +126,9 @@ pub enum ConfigError {
     /// The value itself is secret, so the error leaves it out.
     #[error("DEMI_INSTANCE_SECRET must be 64 hexadecimal digits")]
     InstanceSecret,
-    #[error("DEMI_BACKEND_PUBLIC_URL must be an HTTP or HTTPS URL without a user, a password, a query or a fragment")]
+    #[error(
+        "DEMI_BACKEND_PUBLIC_URL must be an HTTP or HTTPS URL without a user, a password, a query or a fragment"
+    )]
     PublicUrl,
 }
 
@@ -121,7 +146,10 @@ impl Config {
         let instance_secret = self
             .instance_secret
             .as_deref()
-            .map(|text| text.parse::<InstanceSecret>().map_err(|_| ConfigError::InstanceSecret))
+            .map(|text| {
+                text.parse::<InstanceSecret>()
+                    .map_err(|_| ConfigError::InstanceSecret)
+            })
             .transpose()?;
         let mut config = BackendConfig::new(
             data_dir,
@@ -132,7 +160,8 @@ impl Config {
         config.instance_secret = instance_secret;
         config.web_directory = self.web_directory.clone();
         config.expose_domain = self.expose_domain.clone();
-        let public_url = demi_backend_runners::install::backend_url(&self.public_url).map_err(|_| ConfigError::PublicUrl)?;
+        let public_url = demi_backend_runners::install::backend_url(&self.public_url)
+            .map_err(|_| ConfigError::PublicUrl)?;
         config.public_url = Some(public_url);
         config.runner_releases = self.runner_release_dir.clone();
         config.object_store = self.object_store_config.clone();
@@ -214,7 +243,12 @@ impl BackendConfig {
     /// built-in families, the published models.dev document, no web
     /// directory and no mail sender, whose Clouds the machine manager at
     /// `machines_socket` runs.
-    pub fn new(data_dir: PathBuf, address: SocketAddr, mode: InstanceMode, machines_socket: PathBuf) -> Self {
+    pub fn new(
+        data_dir: PathBuf,
+        address: SocketAddr,
+        mode: InstanceMode,
+        machines_socket: PathBuf,
+    ) -> Self {
         Self {
             data_dir,
             machines_socket,
@@ -230,8 +264,12 @@ impl BackendConfig {
             clock: Arc::new(SystemClock),
             shards: ShardPlacement::Threads(NonZeroUsize::MIN),
             families: crate::families::builtin(),
-            models_dev_url: ModelsDevClient::DEFAULT_URL.parse().expect("the models.dev address parses"),
-            claude_releases: DEFAULT_RELEASES_URL.parse().expect("the Claude Code distribution's address parses"),
+            models_dev_url: ModelsDevClient::DEFAULT_URL
+                .parse()
+                .expect("the models.dev address parses"),
+            claude_releases: DEFAULT_RELEASES_URL
+                .parse()
+                .expect("the Claude Code distribution's address parses"),
             logins: LoginTiming::default(),
             runners: RunnerTuning::default(),
             conversations: ConversationTuning::default(),

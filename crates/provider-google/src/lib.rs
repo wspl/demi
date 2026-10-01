@@ -11,13 +11,13 @@ mod stream;
 
 use std::sync::Arc;
 
-use demi_shared_types::{
-    AuthState, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
-    RuntimeState, Timestamp,
-};
 use demi_provider_common::{
     Capabilities, CatalogError, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
     RequestLimits, RuntimeEnv, RuntimeError, Secret, read_http_failure,
+};
+use demi_shared_types::{
+    AuthState, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
+    RuntimeState, Timestamp,
 };
 use futures_util::{
     StreamExt,

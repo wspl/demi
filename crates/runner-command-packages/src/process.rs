@@ -130,9 +130,7 @@ impl ResidentService {
             });
         }
         owner_stop.cancel();
-        let ended = owner
-            .await
-            .expect("the service owner does not panic");
+        let ended = owner.await.expect("the service owner does not panic");
         if stop.is_cancelled() {
             return Err(RuntimeError::Cancelled);
         }

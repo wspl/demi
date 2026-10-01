@@ -143,7 +143,10 @@ async fn stopped(resident: &Resident) {
 }
 
 /// The registry's next decision about the service of `digest`.
-async fn decided(decisions: &mut broadcast::Receiver<(String, Decision)>, digest: &str) -> Decision {
+async fn decided(
+    decisions: &mut broadcast::Receiver<(String, Decision)>,
+    digest: &str,
+) -> Decision {
     loop {
         let (about, decision) = decisions.recv().await.expect("the registry decides");
         if about == digest {
@@ -152,9 +155,18 @@ async fn decided(decisions: &mut broadcast::Receiver<(String, Decision)>, digest
     }
 }
 
-async fn acquire(services: &ServiceHandle, descriptor: &PackageDescriptor, resolver: Arc<Local>) -> Resident {
+async fn acquire(
+    services: &ServiceHandle,
+    descriptor: &PackageDescriptor,
+    resolver: Arc<Local>,
+) -> Resident {
     services
-        .acquire(descriptor, resolver, Arc::new(NoNumbers), &CancellationToken::new())
+        .acquire(
+            descriptor,
+            resolver,
+            Arc::new(NoNumbers),
+            &CancellationToken::new(),
+        )
         .await
         .unwrap()
 }
@@ -392,7 +404,12 @@ async fn a_caller_that_gives_up_leaves_the_shared_start_to_the_others() {
             let descriptor = descriptor.clone();
             let resolver = resolver.clone();
             let impatient = impatient.clone();
-            async move { services.acquire(&descriptor, resolver, Arc::new(NoNumbers), &impatient).await.map(|_| ()) }
+            async move {
+                services
+                    .acquire(&descriptor, resolver, Arc::new(NoNumbers), &impatient)
+                    .await
+                    .map(|_| ())
+            }
         });
         let (started, proceed) = resolver.gate.as_ref().unwrap();
         started.notified().await;
@@ -402,13 +419,21 @@ async fn a_caller_that_gives_up_leaves_the_shared_start_to_the_others() {
             let resolver = resolver.clone();
             async move {
                 services
-                    .acquire(&descriptor, resolver, Arc::new(NoNumbers), &CancellationToken::new())
+                    .acquire(
+                        &descriptor,
+                        resolver,
+                        Arc::new(NoNumbers),
+                        &CancellationToken::new(),
+                    )
                     .await
             }
         });
         tokio::time::sleep(Duration::from_millis(100)).await;
         impatient.cancel();
-        assert!(matches!(first.await.unwrap().unwrap_err().as_ref(), RuntimeError::Cancelled));
+        assert!(matches!(
+            first.await.unwrap().unwrap_err().as_ref(),
+            RuntimeError::Cancelled
+        ));
         proceed.notify_one();
         let resident = second.await.unwrap().unwrap();
         assert!(resident.client().info().await.is_ok());
@@ -439,7 +464,12 @@ async fn a_start_nobody_waits_for_stops() {
             let descriptor = descriptor.clone();
             let resolver = resolver.clone();
             let impatient = impatient.clone();
-            async move { services.acquire(&descriptor, resolver, Arc::new(NoNumbers), &impatient).await.map(|_| ()) }
+            async move {
+                services
+                    .acquire(&descriptor, resolver, Arc::new(NoNumbers), &impatient)
+                    .await
+                    .map(|_| ())
+            }
         });
         let (started, proceed) = resolver.gate.as_ref().unwrap();
         started.notified().await;
@@ -451,7 +481,12 @@ async fn a_start_nobody_waits_for_stops() {
             let resolver = resolver.clone();
             async move {
                 services
-                    .acquire(&descriptor, resolver, Arc::new(NoNumbers), &CancellationToken::new())
+                    .acquire(
+                        &descriptor,
+                        resolver,
+                        Arc::new(NoNumbers),
+                        &CancellationToken::new(),
+                    )
                     .await
             }
         });
@@ -487,7 +522,17 @@ async fn stopping_all_services_ends_every_one_and_closing_ends_the_registry() {
         }
         registry.close().await;
         let (descriptor, path) = fixture(root.path(), 0).await;
-        assert!(services.acquire(&descriptor, local(path), Arc::new(NoNumbers), &CancellationToken::new()).await.is_err());
+        assert!(
+            services
+                .acquire(
+                    &descriptor,
+                    local(path),
+                    Arc::new(NoNumbers),
+                    &CancellationToken::new()
+                )
+                .await
+                .is_err()
+        );
     })
     .await
     .unwrap();

@@ -13,8 +13,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_command_protocol::{ArtifactLocation, ArtifactUrl, PackageArtifact};
 use demi_backend_remote_host::ArtifactResolver;
+use demi_command_protocol::{ArtifactLocation, ArtifactUrl, PackageArtifact};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 
@@ -66,11 +66,15 @@ impl LocalArtifacts {
                 let path = file.path.clone();
                 async move {
                     tokio::task::spawn_blocking(move || {
-                        let bytes = std::fs::read(&path)
-                            .map_err(|error| io::Error::new(error.kind(), format!("{}: {error}", path.display())))?;
-                        demi_shared_artifacts::encode_blocking(&bytes, demi_shared_artifacts::Effort::Development)
-                            .map(Bytes::from)
-                            .map_err(io::Error::other)
+                        let bytes = std::fs::read(&path).map_err(|error| {
+                            io::Error::new(error.kind(), format!("{}: {error}", path.display()))
+                        })?;
+                        demi_shared_artifacts::encode_blocking(
+                            &bytes,
+                            demi_shared_artifacts::Effort::Development,
+                        )
+                        .map(Bytes::from)
+                        .map_err(io::Error::other)
                     })
                     .await
                     .map_err(io::Error::other)?
@@ -81,7 +85,11 @@ impl LocalArtifacts {
     }
 
     /// Where a runner downloads `artifact`: from `backend`, which serves it.
-    fn location(&self, artifact: &PackageArtifact, backend: &PublicUrl) -> Result<ArtifactLocation, String> {
+    fn location(
+        &self,
+        artifact: &PackageArtifact,
+        backend: &PublicUrl,
+    ) -> Result<ArtifactLocation, String> {
         let carried = self
             .files
             .get(&artifact.sha256)

@@ -9,9 +9,9 @@ use std::{
 };
 
 use demi_command_protocol::{CommandContext, EditContext};
+use demi_runner_command_packages::ServiceRegistry;
 use demi_runner_process::pipes::PipeClient;
 use demi_runner_protocol::{manifest::Manifest, wire};
-use demi_runner_command_packages::ServiceRegistry;
 use tokio::{
     sync::{mpsc, watch},
     task::JoinSet,

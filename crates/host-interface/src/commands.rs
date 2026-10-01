@@ -5,7 +5,9 @@
 
 use std::{collections::HashMap, rc::Rc};
 
-use demi_command_declarations::{HELP_DEFAULTS, Leaf, LeafKind, NativeOperation, Node, check_input_subset};
+use demi_command_declarations::{
+    HELP_DEFAULTS, Leaf, LeafKind, NativeOperation, Node, check_input_subset,
+};
 
 use crate::{RpcError, RpcHandler, RpcInvocation, RpcPort, reserved::is_reserved};
 

@@ -142,7 +142,11 @@ pub struct Attachment {
     #[garde(skip)]
     pub sha256: BlobRef,
     /// The opening of a text file, for the tile that shows it as a page.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "String")]
     #[garde(skip)]
     pub snippet: Option<String>,

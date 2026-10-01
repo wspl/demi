@@ -8,11 +8,11 @@
 
 use std::collections::{HashMap, HashSet};
 
+use demi_provider_common::{MediaBytes, ResultPart};
 use demi_shared_types::{
     B64Bytes, BlobRef, Block, DocumentSource, GoneCause, MediaSource, ModelMediaKind,
     ToolCallBlock, ToolMediaSource, ToolResultContentBlock, ToolView, UserContentBlock,
 };
-use demi_provider_common::{MediaBytes, ResultPart};
 use futures_util::{StreamExt as _, TryStreamExt as _, future::LocalBoxFuture, stream};
 
 use super::StoreError;
@@ -108,11 +108,7 @@ impl ModelView {
     /// The view of `blocks`, which start at `start` in the transcript, with
     /// what `held` holds for their media. When nothing is held for some of
     /// them, there is no view yet: the blobs to read first.
-    pub fn of(
-        start: usize,
-        blocks: &[Block],
-        held: &HeldMedia,
-    ) -> Result<Self, Vec<BlobRef>> {
+    pub fn of(start: usize, blocks: &[Block], held: &HeldMedia) -> Result<Self, Vec<BlobRef>> {
         let unheld = held.unheld(blocks);
         if !unheld.is_empty() {
             return Err(unheld);

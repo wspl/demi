@@ -58,8 +58,8 @@ pub fn file_extension_support(
         FileExtension::Jpeg => Some(FileExtension::Jpg),
         _ => None,
     };
-    let listed = accepted.contains(&extension)
-        || alias.is_some_and(|alias| accepted.contains(&alias));
+    let listed =
+        accepted.contains(&extension) || alias.is_some_and(|alias| accepted.contains(&alias));
     Some(listed)
 }
 
@@ -250,4 +250,3 @@ pub struct TokenUsage {
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub cache_write_tokens: u64,
 }
-

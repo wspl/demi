@@ -20,8 +20,8 @@ use futures_util::StreamExt as _;
 
 use super::error::ApiError;
 use super::listener::ConnectionWatch;
-use demi_backend_host_access::transfer::OpenUpload;
 use demi_backend_host_access::lease::Lease;
+use demi_backend_host_access::transfer::OpenUpload;
 
 /// How long a transfer waits for the user's browser, and a connection for
 /// any byte, before it ends: the stalled-client timeout web servers use,
@@ -118,7 +118,9 @@ pub(super) async fn copy_upload(body: Body, upload: OpenUpload) -> UploadEnd {
             Ok(None) => break,
             Ok(Some(Err(error))) => {
                 writer.fail("the upload was cut short");
-                return UploadEnd::Refused(ApiError::invalid_body(format!("The upload was cut short: {error}")));
+                return UploadEnd::Refused(ApiError::invalid_body(format!(
+                    "The upload was cut short: {error}"
+                )));
             }
             Ok(Some(Ok(chunk))) => chunk,
         };
@@ -186,7 +188,11 @@ mod tests {
         let (mut writer, reader, _pipes) = pipe();
         let (lease, released) = Lease::new(CancellationToken::new());
         let control = ConnectionControl::detached();
-        let body = paced_body(reader, lease, control.watch(TRANSFER_IDLE, CancellationToken::new()));
+        let body = paced_body(
+            reader,
+            lease,
+            control.watch(TRANSFER_IDLE, CancellationToken::new()),
+        );
         let filling = tokio::task::spawn_local(async move {
             writer.write(Bytes::from_static(b"one ")).await.unwrap();
             writer.write(Bytes::from_static(b"two")).await.unwrap();
@@ -199,7 +205,11 @@ mod tests {
         // A read that fails cuts the body short.
         let (mut writer, reader, _pipes) = pipe();
         let (lease, _released) = Lease::new(CancellationToken::new());
-        let body = paced_body(reader, lease, control.watch(TRANSFER_IDLE, CancellationToken::new()));
+        let body = paced_body(
+            reader,
+            lease,
+            control.watch(TRANSFER_IDLE, CancellationToken::new()),
+        );
         let failing = tokio::task::spawn_local(async move {
             writer.write(Bytes::from_static(b"part")).await.unwrap();
             writer.fail("the device went away");
@@ -223,7 +233,8 @@ mod tests {
     }
 
     #[tokio::test(flavor = "local", start_paused = true)]
-    async fn a_connection_nothing_moves_on_is_closed_and_a_web_browser_that_leaves_releases_the_transfer() {
+    async fn a_connection_nothing_moves_on_is_closed_and_a_web_browser_that_leaves_releases_the_transfer()
+     {
         let control = ConnectionControl::detached();
         let watch = control.watch(TRANSFER_IDLE, CancellationToken::new());
         tokio::time::sleep(TRANSFER_IDLE / 2).await;
@@ -239,22 +250,43 @@ mod tests {
         // lease and stops the read.
         let (mut writer, reader, _pipes) = pipe();
         let (lease, released) = Lease::new(CancellationToken::new());
-        let body = paced_body(reader, lease, ConnectionControl::detached().watch(TRANSFER_IDLE, CancellationToken::new()));
+        let body = paced_body(
+            reader,
+            lease,
+            ConnectionControl::detached().watch(TRANSFER_IDLE, CancellationToken::new()),
+        );
         drop(body);
         released.await;
         assert!(writer.write(Bytes::from_static(b"late")).await.is_err());
     }
 
-    fn upload() -> (OpenUpload, PipeReader, oneshot::Sender<Result<(), HostError>>, CancellationToken, Pipes) {
+    fn upload() -> (
+        OpenUpload,
+        PipeReader,
+        oneshot::Sender<Result<(), HostError>>,
+        CancellationToken,
+        Pipes,
+    ) {
         let (writer, reader, pipes) = pipe();
         let (done, written) = oneshot::channel();
         let ending = CancellationToken::new();
         let (lease, _released) = Lease::new(ending.clone());
-        (OpenUpload { writer, written, lease }, reader, done, ending, pipes)
+        (
+            OpenUpload {
+                writer,
+                written,
+                lease,
+            },
+            reader,
+            done,
+            ending,
+            pipes,
+        )
     }
 
     #[tokio::test(flavor = "local", start_paused = true)]
-    async fn an_upload_is_read_as_the_host_writes_and_the_host_time_does_not_count_against_the_web_browser() {
+    async fn an_upload_is_read_as_the_host_writes_and_the_host_time_does_not_count_against_the_web_browser()
+     {
         let (open, mut reader, done, _ending, _pipes) = upload();
         let body = Body::from_stream(futures_util::stream::iter([
             Ok::<_, io::Error>(Bytes::from_static(b"one ")),
@@ -284,7 +316,10 @@ mod tests {
         let (open, mut reader, _done, _ending, _pipes) = upload();
         let quiet = Body::from_stream(futures_util::stream::pending::<Result<Bytes, io::Error>>());
         let copied = copy_upload(quiet, open).await;
-        assert!(matches!(&copied, UploadEnd::Refused(error) if error.code() == ErrorCode::TransferStalled), "{copied:?}");
+        assert!(
+            matches!(&copied, UploadEnd::Refused(error) if error.code() == ErrorCode::TransferStalled),
+            "{copied:?}"
+        );
         assert!(reader.next().await.unwrap().is_err());
 
         let (open, _reader, _done, ending, _pipes) = upload();
@@ -293,6 +328,9 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(1)).await;
         ending.cancel();
         let copied = copying.await.unwrap();
-        assert!(matches!(&copied, UploadEnd::Refused(error) if error.code() == ErrorCode::ConversationBusy), "{copied:?}");
+        assert!(
+            matches!(&copied, UploadEnd::Refused(error) if error.code() == ErrorCode::ConversationBusy),
+            "{copied:?}"
+        );
     }
 }

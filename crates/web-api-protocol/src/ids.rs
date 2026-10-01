@@ -53,7 +53,8 @@ const UUID_PATTERN: &str = "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-
 pub struct NotUuid;
 
 fn uuid(text: &str) -> Result<(), NotUuid> {
-    static PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(UUID_PATTERN).expect("the UUID pattern compiles"));
+    static PATTERN: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(UUID_PATTERN).expect("the UUID pattern compiles"));
     if PATTERN.is_match(text) {
         Ok(())
     } else {
@@ -135,7 +136,10 @@ mod tests {
             "00000000-0000-0000-0000-000000000000",
             "ffffffff-ffff-ffff-ffff-ffffffffffff",
         ] {
-            assert_eq!(ConversationId::try_from(accepted).unwrap().as_str(), accepted);
+            assert_eq!(
+                ConversationId::try_from(accepted).unwrap().as_str(),
+                accepted
+            );
         }
         for refused in [
             "",

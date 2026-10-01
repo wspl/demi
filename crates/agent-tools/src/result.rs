@@ -5,12 +5,12 @@
 use demi_agent_session::ToolOutcome;
 use demi_agent_store::images;
 use demi_agent_transcript::REPLAY_CHARS;
+use demi_host_interface::{BinaryOutput, CommandState, CommandStatus, OutputText, Piece, Streams};
+use demi_provider_common::{MediaBytes, RequestLimits, ResultPart};
 use demi_shared_types::{
     B64Bytes, CommandId, Model, ModelMediaKind, OutputChunk, ShellToolView, ShellViewStatus,
     ToolView, model_accepts_media_type, sniff_model_media_type,
 };
-use demi_provider_common::{MediaBytes, RequestLimits, ResultPart};
-use demi_host_interface::{BinaryOutput, CommandState, CommandStatus, OutputText, Piece, Streams};
 
 use super::PAGE_CHARS;
 
@@ -401,7 +401,9 @@ fn view_status(state: &CommandState) -> ShellViewStatus {
 fn shell_view(status: &CommandStatus, text: &OutputText) -> ShellToolView {
     let (chunks, cut) = match &status.whole {
         Some(_) => {
-            let chunks = text.unseen().map_or_else(Vec::new, |from| text.chunks(from));
+            let chunks = text
+                .unseen()
+                .map_or_else(Vec::new, |from| text.chunks(from));
             tail_window(&chunks, VIEW_CHARS)
         }
         None => {
@@ -468,8 +470,8 @@ mod tests {
     use std::sync::Arc;
 
     use bytes::Bytes;
-    use demi_shared_types::{BinaryStdout, FileExtension, OutputView, StreamKind, StreamView};
     use demi_host_interface::{OutputRecord, Seen, WholeOutput, WholeView};
+    use demi_shared_types::{BinaryStdout, FileExtension, OutputView, StreamKind, StreamView};
 
     use super::*;
     use demi_agent_store::testing::test_model;
@@ -536,8 +538,7 @@ mod tests {
     }
 
     async fn result(status: &CommandStatus) -> String {
-        let outcome =
-            shell_outcome(status, &test_model().model, RequestLimits::default()).await;
+        let outcome = shell_outcome(status, &test_model().model, RequestLimits::default()).await;
         text_of(&outcome)[0].to_owned()
     }
 
@@ -608,7 +609,9 @@ mod tests {
         assert_eq!(lines[4], "1");
         assert_eq!(*lines.last().unwrap(), "5000");
         let (first, last) = (before + 1, after - 1);
-        let bytes: usize = (first..=last).map(|number| format!("{number}\n").len()).sum();
+        let bytes: usize = (first..=last)
+            .map(|number| format!("{number}\n").len())
+            .sum();
         assert_eq!(
             lines[marker],
             format!(
@@ -665,7 +668,11 @@ mod tests {
         running.state = CommandState::Running {
             hint: Some("waiting for input: answer with shell_write".into()),
         };
-        assert!(result(&running).await.ends_with("\nwaiting for input: answer with shell_write"));
+        assert!(
+            result(&running)
+                .await
+                .ends_with("\nwaiting for input: answer with shell_write")
+        );
         let mut aborted = exited("");
         aborted.state = CommandState::Aborted;
         assert_eq!(
@@ -715,7 +722,10 @@ mod tests {
         let size = |bytes: &Bytes| bytes.len() as u64;
         assert_eq!(
             verdict(&model, limits, &png, false, size(&png)).await,
-            format!("<image> | Attached stdout as image/png ({} bytes).", png.len())
+            format!(
+                "<image> | Attached stdout as image/png ({} bytes).",
+                png.len()
+            )
         );
         // An image enters fitted, and the note says from what.
         let fitted = verdict(&model, limits, &wide, false, size(&wide)).await;
@@ -738,7 +748,9 @@ mod tests {
         assert!(unread.ends_with(&format!("; {save}.")), "{unread}");
         assert_eq!(
             verdict(&model, limits, &mp4, false, 14).await,
-            format!("Binary stdout is video/mp4, which this model does not accept natively; {save}.")
+            format!(
+                "Binary stdout is video/mp4, which this model does not accept natively; {save}."
+            )
         );
         // A video within the cap is attached while its base64 takes at most
         // half of the body limit: its 14 bytes are 20 as base64.

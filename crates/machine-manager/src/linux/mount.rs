@@ -17,8 +17,14 @@ use crate::blocking::OffLoop;
 pub fn mount_root(_: &OffLoop, path: &Path) -> io::Result<Option<bool>> {
     let flags = AtFlags::NO_AUTOMOUNT | AtFlags::SYMLINK_NOFOLLOW;
     match rustix::fs::statx(CWD, path, flags, StatxFlags::empty()) {
-        Ok(status) if status.stx_attributes_mask.contains(StatxAttributes::MOUNT_ROOT) => {
-            Ok(Some(status.stx_attributes.contains(StatxAttributes::MOUNT_ROOT)))
+        Ok(status)
+            if status
+                .stx_attributes_mask
+                .contains(StatxAttributes::MOUNT_ROOT) =>
+        {
+            Ok(Some(
+                status.stx_attributes.contains(StatxAttributes::MOUNT_ROOT),
+            ))
         }
         Ok(_) => Err(io::Error::new(
             io::ErrorKind::Unsupported,
@@ -42,15 +48,27 @@ pub fn remount_read_only(_: &OffLoop, target: &Path) -> io::Result<()> {
 
 /// Mounts the ext4 filesystem on `device` at `target`, without device files.
 pub fn ext4(_: &OffLoop, device: &Path, target: &Path) -> io::Result<()> {
-    rustix::mount::mount(device, target, "ext4", MountFlags::NODEV, None::<&std::ffi::CStr>)
-        .map_err(|error| failed("mounting", target, error))
+    rustix::mount::mount(
+        device,
+        target,
+        "ext4",
+        MountFlags::NODEV,
+        None::<&std::ffi::CStr>,
+    )
+    .map_err(|error| failed("mounting", target, error))
 }
 
 /// Mounts a tmpfs at `target` with `options`, such as `size=1m,mode=0700`.
 pub fn tmpfs(_: &OffLoop, target: &Path, options: &str) -> io::Result<()> {
     let data = CString::new(options).map_err(io::Error::other)?;
-    rustix::mount::mount("tmpfs", target, "tmpfs", MountFlags::empty(), Some(data.as_c_str()))
-        .map_err(|error| failed("mounting", target, error))
+    rustix::mount::mount(
+        "tmpfs",
+        target,
+        "tmpfs",
+        MountFlags::empty(),
+        Some(data.as_c_str()),
+    )
+    .map_err(|error| failed("mounting", target, error))
 }
 
 /// Mounts the system overlay: the read-only `base` below the upper and
@@ -85,8 +103,14 @@ fn overlay(_: &OffLoop, lower: &Path, upper: &Path, work: &Path, target: &Path) 
         work.display()
     );
     let data = CString::new(options).map_err(io::Error::other)?;
-    rustix::mount::mount("overlay", target, "overlay", MountFlags::empty(), Some(data.as_c_str()))
-        .map_err(|error| failed("mounting", target, error))
+    rustix::mount::mount(
+        "overlay",
+        target,
+        "overlay",
+        MountFlags::empty(),
+        Some(data.as_c_str()),
+    )
+    .map_err(|error| failed("mounting", target, error))
 }
 
 /// Unmounts `target`.
@@ -122,7 +146,11 @@ mod tests {
             .arg("32m")
             .output()
             .unwrap();
-        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     #[test]
@@ -133,7 +161,11 @@ mod tests {
         // The service runs with umask 077; this thread has its own now.
         rustix::process::umask(rustix::fs::Mode::from_raw_mode(0o077));
         let directory = tempfile::tempdir().unwrap();
-        let (base, volume, root) = (directory.path().join("base"), directory.path().join("volume"), directory.path().join("root"));
+        let (base, volume, root) = (
+            directory.path().join("base"),
+            directory.path().join("volume"),
+            directory.path().join("root"),
+        );
         for path in [&base, &volume, &root] {
             std::fs::create_dir(path).unwrap();
         }
@@ -174,12 +206,18 @@ mod tests {
         assert!(loop_detaches(&image));
         // An image that is not ext4 fails to mount and leaves no device.
         let garbage = directory.path().join("garbage.img");
-        std::fs::File::create(&garbage).unwrap().set_len(8 << 20).unwrap();
+        std::fs::File::create(&garbage)
+            .unwrap()
+            .set_len(8 << 20)
+            .unwrap();
         let device = loopdev::attach(&off, &garbage).unwrap();
         assert!(ext4(&off, &device.path(), &target).is_err());
         drop(device);
         assert!(loop_detaches(&garbage));
-        assert_eq!(mount_root(&off, &directory.path().join("absent")).unwrap(), None);
+        assert_eq!(
+            mount_root(&off, &directory.path().join("absent")).unwrap(),
+            None
+        );
     }
 
     #[test]
@@ -194,7 +232,10 @@ mod tests {
         tmpfs(&off, &directory.home(), "size=1m").unwrap();
         std::fs::write(directory.home().join("project"), "work").unwrap();
         assert!(directory.remove(&off).is_err());
-        assert_eq!(std::fs::read_to_string(directory.home().join("project")).unwrap(), "work");
+        assert_eq!(
+            std::fs::read_to_string(directory.home().join("project")).unwrap(),
+            "work"
+        );
         unmount(&off, &directory.home()).unwrap();
         directory.remove(&off).unwrap();
     }

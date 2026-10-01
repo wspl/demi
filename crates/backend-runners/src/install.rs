@@ -55,7 +55,12 @@ pub fn shell_script(backend: &Url, release: &RunnerRelease) -> String {
     let cases: Vec<String> = release
         .targets
         .iter()
-        .map(|(target, artifact)| format!("\n  {target})\n    runner_hash={}\n    ;;", sh(&artifact.sha256)))
+        .map(|(target, artifact)| {
+            format!(
+                "\n  {target})\n    runner_hash={}\n    ;;",
+                sh(&artifact.sha256)
+            )
+        })
         .collect();
     SHELL_SCRIPT
         .replace("@BACKEND@", &sh(backend.as_str()))
@@ -83,7 +88,10 @@ pub fn powershell_script(backend: &Url, release: &RunnerRelease) -> String {
         .collect();
     POWERSHELL_SCRIPT
         .replace("@BACKEND@", &powershell(backend.as_str()))
-        .replace("@BASE@", &powershell(&backend.origin().ascii_serialization()))
+        .replace(
+            "@BASE@",
+            &powershell(&backend.origin().ascii_serialization()),
+        )
         .replace("@RELEASE@", &powershell(&release.release))
         .replace("@REGISTRATION@", &powershell(&registration(backend)))
         .replace("@ARTIFACTS@", &artifacts.join("\n"))
@@ -356,7 +364,10 @@ mod tests {
     #[test]
     fn a_backend_url_names_an_http_origin_and_nothing_to_leak() {
         for usable in ["http://localhost:3271/", "https://demi.example.com/base"] {
-            assert!(backend_url(&Url::parse(usable).unwrap()).is_ok(), "{usable}");
+            assert!(
+                backend_url(&Url::parse(usable).unwrap()).is_ok(),
+                "{usable}"
+            );
         }
         for refused in [
             "ftp://demi.example.com/",
@@ -365,7 +376,10 @@ mod tests {
             "https://demi.example.com/?token=1",
             "https://demi.example.com/#fragment",
         ] {
-            assert!(backend_url(&Url::parse(refused).unwrap()).is_err(), "{refused}");
+            assert!(
+                backend_url(&Url::parse(refused).unwrap()).is_err(),
+                "{refused}"
+            );
         }
     }
 }

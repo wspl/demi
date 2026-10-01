@@ -15,12 +15,12 @@ use axum::extract::{Path, State};
 use axum::http::header::{CACHE_CONTROL, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE, HOST};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
+use demi_backend_runners::install::{backend_url, powershell_script, shell_script};
 use demi_command_protocol::{is_digest, is_target};
 use demi_runner_protocol::release::RunnerRelease;
 use demi_web_api_protocol::error::ErrorCode;
 use tokio_util::io::ReaderStream;
 use url::Url;
-use demi_backend_runners::install::{backend_url, powershell_script, shell_script};
 
 use super::AppState;
 use super::cookies::Https;
@@ -52,12 +52,34 @@ const ARTIFACT_READ: usize = 256 * 1024;
 /// The caching of an immutable executable's download: a year.
 const IMMUTABLE: &str = "public, max-age=31536000, immutable";
 
-pub(super) async fn shell(State(state): State<AppState>, https: Https, headers: HeaderMap) -> Result<Response, ApiError> {
-    installer(&state, https, &headers, shell_script, "text/x-shellscript; charset=utf-8").await
+pub(super) async fn shell(
+    State(state): State<AppState>,
+    https: Https,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    installer(
+        &state,
+        https,
+        &headers,
+        shell_script,
+        "text/x-shellscript; charset=utf-8",
+    )
+    .await
 }
 
-pub(super) async fn powershell(State(state): State<AppState>, https: Https, headers: HeaderMap) -> Result<Response, ApiError> {
-    installer(&state, https, &headers, powershell_script, "text/plain; charset=utf-8").await
+pub(super) async fn powershell(
+    State(state): State<AppState>,
+    https: Https,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    installer(
+        &state,
+        https,
+        &headers,
+        powershell_script,
+        "text/plain; charset=utf-8",
+    )
+    .await
 }
 
 /// The installer `script` writes for the current release, as `media_type`.
@@ -74,12 +96,15 @@ async fn installer(
     };
     let release = read_release(releases.join("manifest.json"))
         .await?
-        .ok_or_else(|| ApiError::internal_message("the runner release directory has no manifest.json"))?;
+        .ok_or_else(|| {
+            ApiError::internal_message("the runner release directory has no manifest.json")
+        })?;
     let backend = match &site.public_url {
         Some(url) => url.clone(),
         None => request_origin(https, headers)?,
     };
-    let backend = backend_url(&backend).map_err(|error| ApiError::internal_message(error.to_string()))?;
+    let backend =
+        backend_url(&backend).map_err(|error| ApiError::internal_message(error.to_string()))?;
     let answer = (
         [
             (CONTENT_TYPE, HeaderValue::from_static(media_type)),
@@ -97,7 +122,8 @@ fn request_origin(https: bool, headers: &HeaderMap) -> Result<Url, ApiError> {
         .and_then(|value| value.to_str().ok())
         .ok_or_else(|| ApiError::invalid_query("The request names no host"))?;
     let scheme = if https { "https" } else { "http" };
-    Url::parse(&format!("{scheme}://{host}/")).map_err(|_| ApiError::invalid_query("The request's host is no URL"))
+    Url::parse(&format!("{scheme}://{host}/"))
+        .map_err(|_| ApiError::invalid_query("The request's host is no URL"))
 }
 
 /// A release's executable for one target, immutable once published.
@@ -105,7 +131,13 @@ pub(super) async fn artifact(
     State(state): State<AppState>,
     Path((release, target, file)): Path<(String, String, String)>,
 ) -> Result<Response, ApiError> {
-    let not_found = || ApiError::new(StatusCode::NOT_FOUND, ErrorCode::NotFound, "No such runner artifact");
+    let not_found = || {
+        ApiError::new(
+            StatusCode::NOT_FOUND,
+            ErrorCode::NotFound,
+            "No such runner artifact",
+        )
+    };
     let Some(releases) = &state.site.runner_releases else {
         return Err(not_found());
     };
@@ -118,7 +150,9 @@ pub(super) async fn artifact(
         return Err(not_found());
     }
     let directory = releases.join(&release);
-    let manifest = read_release(directory.join("manifest.json")).await?.ok_or_else(not_found)?;
+    let manifest = read_release(directory.join("manifest.json"))
+        .await?
+        .ok_or_else(not_found)?;
     if manifest.release != release || !manifest.targets.contains_key(&target) {
         return Err(not_found());
     }
@@ -138,12 +172,22 @@ pub(super) async fn native_artifact(
     Path(sha256): Path<String>,
 ) -> Result<Response, ApiError> {
     let Some(encoded) = state.services.native.local_encoded(&sha256).await else {
-        return Err(ApiError::new(StatusCode::NOT_FOUND, ErrorCode::NotFound, "No such native artifact"));
+        return Err(ApiError::new(
+            StatusCode::NOT_FOUND,
+            ErrorCode::NotFound,
+            "No such native artifact",
+        ));
     };
     let encoded = encoded.map_err(|error| ApiError::internal_message(error.to_string()))?;
     let headers = [
-        (CONTENT_TYPE, HeaderValue::from_static("application/octet-stream")),
-        (CONTENT_ENCODING, HeaderValue::from_static(demi_shared_artifacts::CONTENT_CODING)),
+        (
+            CONTENT_TYPE,
+            HeaderValue::from_static("application/octet-stream"),
+        ),
+        (
+            CONTENT_ENCODING,
+            HeaderValue::from_static(demi_shared_artifacts::CONTENT_CODING),
+        ),
         (CACHE_CONTROL, HeaderValue::from_static(IMMUTABLE)),
     ];
     Ok((headers, encoded).into_response())
@@ -158,11 +202,18 @@ async fn immutable_download(file: tokio::fs::File) -> Result<Response, ApiError>
         .map_err(|error| ApiError::internal_message(error.to_string()))?
         .len();
     let headers = [
-        (CONTENT_TYPE, HeaderValue::from_static("application/octet-stream")),
+        (
+            CONTENT_TYPE,
+            HeaderValue::from_static("application/octet-stream"),
+        ),
         (CACHE_CONTROL, HeaderValue::from_static(IMMUTABLE)),
         (CONTENT_LENGTH, HeaderValue::from(size)),
     ];
-    Ok((headers, Body::from_stream(ReaderStream::with_capacity(file, ARTIFACT_READ))).into_response())
+    Ok((
+        headers,
+        Body::from_stream(ReaderStream::with_capacity(file, ARTIFACT_READ)),
+    )
+        .into_response())
 }
 
 /// The release record at `path`, when there is one; a record that does not

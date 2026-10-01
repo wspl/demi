@@ -125,7 +125,9 @@ impl ServiceRegistry {
     pub async fn close(self) {
         // An owner that has ended already has nothing left to stop.
         let _closed = self.handle.requests.send(Request::Close).await;
-        self.owner.await.expect("the service registry does not panic");
+        self.owner
+            .await
+            .expect("the service registry does not panic");
     }
 }
 
@@ -442,7 +444,9 @@ impl Owner {
                 let ending = self.retire_where(|_| true);
                 self.work.spawn(async move {
                     for mut state in ending {
-                        let _ended = state.wait_for(|state| matches!(state, State::Ended(_))).await;
+                        let _ended = state
+                            .wait_for(|state| matches!(state, State::Ended(_)))
+                            .await;
                     }
                     Work::StoppedAll { reply }
                 });
@@ -470,7 +474,10 @@ impl Owner {
         // with nothing holding it.
         let (waiting, alive) = ServiceLease::new();
         self.lease(digest.clone(), alive);
-        let entry = self.entries.get_mut(&digest).expect("the lease made the entry");
+        let entry = self
+            .entries
+            .get_mut(&digest)
+            .expect("the lease made the entry");
         // A service that has just ended, before its owner reported it, is
         // one to start again.
         if let Some(current) = &entry.current
@@ -701,7 +708,9 @@ impl Owner {
                 };
                 self.work.spawn(async move {
                     for mut state in ending {
-                        let _ended = state.wait_for(|state| matches!(state, State::Ended(_))).await;
+                        let _ended = state
+                            .wait_for(|state| matches!(state, State::Ended(_)))
+                            .await;
                     }
                     Work::Retired { result, reply }
                 });
@@ -795,11 +804,7 @@ async fn live(
             return;
         }
     };
-    tracing::info!(
-        "service {} started (pid {})",
-        descriptor.id,
-        service.pid()
-    );
+    tracing::info!("service {} started (pid {})", descriptor.id, service.pid());
     state.send_replace(State::Ready {
         client: service.client().clone(),
         info: Arc::new(service.info().clone()),
@@ -817,10 +822,7 @@ async fn live(
                 stderr: ended.stderr,
             };
             // Its standard error is in the log already, line by line.
-            tracing::warn!(
-                "service {} {}",
-                exit.service, exit.reason
-            );
+            tracing::warn!("service {} {}", exit.service, exit.reason);
             exit.into()
         }
     };

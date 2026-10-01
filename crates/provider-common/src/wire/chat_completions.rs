@@ -94,7 +94,9 @@ pub struct PromptTokensDetails {
 impl Usage {
     /// The run's usage, with the cached prefix kept apart from the input.
     pub fn token_usage(&self) -> TokenUsage {
-        let cached = self.prompt_tokens_details.and_then(|details| details.cached_tokens);
+        let cached = self
+            .prompt_tokens_details
+            .and_then(|details| details.cached_tokens);
         usage_with_cached_input(self.prompt_tokens, self.completion_tokens, cached, None)
     }
 }
@@ -187,7 +189,11 @@ impl Mapper {
         let chunk = match decode_chunk(data) {
             Ok(chunk) => chunk,
             Err(error) => {
-                out.push(ProviderEvent::Error(undecodable(vendor.label, &error, data)));
+                out.push(ProviderEvent::Error(undecodable(
+                    vendor.label,
+                    &error,
+                    data,
+                )));
                 return true;
             }
         };
@@ -286,7 +292,7 @@ fn failure(error: ChunkError, vendor: &Vendor, data: &str) -> ProviderFailure {
     let failure = ProviderFailure {
         code: ErrorCode::classify(code.as_deref(), &message),
         message,
-        diagnostics: Some(ProviderErrorDiagnostics {
+        diagnostics: Some(Box::new(ProviderErrorDiagnostics {
             source: FailureSource::Stream,
             client_request_id: None,
             provider_request_id: None,
@@ -294,7 +300,7 @@ fn failure(error: ChunkError, vendor: &Vendor, data: &str) -> ProviderFailure {
             provider_code: code,
             http_status: None,
             upstream: Some(data.to_owned()),
-        }),
+        })),
         retry_after: None,
     };
     failure.with_retry_wait(vendor.reader, vendor.clock.now())

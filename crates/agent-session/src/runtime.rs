@@ -5,9 +5,9 @@
 
 use std::sync::Arc;
 
-use demi_shared_types::{ModelSelection, ToolView};
-use demi_shared_gates::{GateLease, Reservation};
 use demi_provider_common::{RequestLimits, ResultPart, ToolDefinition};
+use demi_shared_gates::{GateLease, Reservation};
+use demi_shared_types::{ModelSelection, ToolView};
 use futures_util::future::LocalBoxFuture;
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;

@@ -15,13 +15,15 @@
 //! the idle tree; host access holds the rest and runs the transition's steps
 //! (`demi_backend_host_access::transition`).
 
-use demi_backend_host_access::root_of;
-use demi_backend_host_access::transition::ChangeRefusal;
 use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::{ConversationChange, RecordChange, SettingsChange};
+use demi_backend_host_access::root_of;
+use demi_backend_host_access::transition::ChangeRefusal;
 use demi_backend_page_sync::Part;
 use demi_shared_gates::{Purpose, Reservation};
-use demi_web_api_protocol::conversations::{ConversationPatch, ConversationUpdate, FieldResult, PatchField};
+use demi_web_api_protocol::conversations::{
+    ConversationPatch, ConversationUpdate, FieldResult, PatchField,
+};
 use demi_web_api_protocol::ids::ConversationId;
 
 use crate::shard::Shard;
@@ -37,7 +39,11 @@ impl Shard {
     /// Applies `change` to the user's conversation `id`, and shows it on the
     /// user's pages: the conversation's summary, and the order after a pin
     /// or an archive.
-    pub async fn transition(&self, id: &ConversationId, change: ConversationChange) -> Result<(), ChangeRefusal> {
+    pub async fn transition(
+        &self,
+        id: &ConversationId,
+        change: ConversationChange,
+    ) -> Result<(), ChangeRefusal> {
         let reorders = matches!(
             change,
             ConversationChange::Record(RecordChange::Pinned(_) | RecordChange::Archived(_))
@@ -50,7 +56,11 @@ impl Shard {
         Ok(())
     }
 
-    async fn apply_change(&self, id: &ConversationId, change: ConversationChange) -> Result<(), ChangeRefusal> {
+    async fn apply_change(
+        &self,
+        id: &ConversationId,
+        change: ConversationChange,
+    ) -> Result<(), ChangeRefusal> {
         let host = self.host_shard();
         let record = self.services().control.conversation(id.clone()).await?;
         let Some(record) = record.filter(|record| record.owner == *self.user()) else {
@@ -58,7 +68,12 @@ impl Shard {
         };
         // An archived conversation takes nothing but its restore; the index
         // transaction checks again when it applies the change.
-        if record.archived && !matches!(change, ConversationChange::Record(RecordChange::Archived(_))) {
+        if record.archived
+            && !matches!(
+                change,
+                ConversationChange::Record(RecordChange::Archived(_))
+            )
+        {
             return Err(ChangeRefusal::Archived);
         }
         match &change {
@@ -80,7 +95,12 @@ impl Shard {
             ConversationChange::Record(change) if !change_is_transition(&change) => {
                 // A field update waits while a transition holds the
                 // conversation, and applies as if it arrived afterwards.
-                let _admitted = self.conversations().slot(&record.id).file_gate().enter(Purpose::Demand).await;
+                let _admitted = self
+                    .conversations()
+                    .slot(&record.id)
+                    .file_gate()
+                    .enter(Purpose::Demand)
+                    .await;
                 if let RecordChange::Attach(attached) = &change {
                     let target = host.resolve_target(&record).await?;
                     if target.device() == Some(&attached.device) {
@@ -112,9 +132,13 @@ impl Shard {
                 }
                 archived
             }
-            ConversationChange::Record(RecordChange::Detach(device)) => host.detach(&record, device).await,
+            ConversationChange::Record(RecordChange::Detach(device)) => {
+                host.detach(&record, device).await
+            }
             ConversationChange::Record(change) => host.commit(&record.id, change).await,
-            ConversationChange::Settings(_) => unreachable!("a settings change is applied before the hold"),
+            ConversationChange::Settings(_) => {
+                unreachable!("a settings change is applied before the hold")
+            }
         };
         drop(hold);
         committed
@@ -132,7 +156,10 @@ impl Shard {
         if !tree.is_quiescent() {
             return Err(ChangeRefusal::TurnInFlight);
         }
-        tree.admission().try_reserve().map(Some).ok_or(ChangeRefusal::TurnInFlight)
+        tree.admission()
+            .try_reserve()
+            .map(Some)
+            .ok_or(ChangeRefusal::TurnInFlight)
     }
 }
 
@@ -147,19 +174,31 @@ impl Shard {
         patch: ConversationPatch,
     ) -> Result<Option<ConversationUpdate>, StorageError> {
         let control = &self.services().control;
-        let owned = control.conversation(id.clone()).await?.filter(|record| record.owner == *self.user());
+        let owned = control
+            .conversation(id.clone())
+            .await?
+            .filter(|record| record.owner == *self.user());
         if owned.is_none() {
             return Ok(None);
         }
         let mut changes: Vec<(Vec<PatchField>, ConversationChange)> = Vec::new();
         if let Some(archived) = patch.archived {
-            changes.push((vec![PatchField::Archived], RecordChange::Archived(archived).into()));
+            changes.push((
+                vec![PatchField::Archived],
+                RecordChange::Archived(archived).into(),
+            ));
         }
         if let Some(title) = patch.title {
-            changes.push((vec![PatchField::Title], RecordChange::Title(title.into_string()).into()));
+            changes.push((
+                vec![PatchField::Title],
+                RecordChange::Title(title.into_string()).into(),
+            ));
         }
         if let Some(pinned) = patch.pinned {
-            changes.push((vec![PatchField::Pinned], RecordChange::Pinned(pinned).into()));
+            changes.push((
+                vec![PatchField::Pinned],
+                RecordChange::Pinned(pinned).into(),
+            ));
         }
         // The model settings a patch names are one change, which each of its
         // fields reports.
@@ -197,13 +236,20 @@ impl Shard {
             return Ok(None);
         };
         let conversation = self.conversation_summary(record).await?;
-        Ok(Some(ConversationUpdate { conversation, results }))
+        Ok(Some(ConversationUpdate {
+            conversation,
+            results,
+        }))
     }
 }
 
 fn failed(field: PatchField, refusal: &ChangeRefusal) -> FieldResult {
     if let ChangeRefusal::Storage(error) = refusal {
-        tracing::error!(?field, error = error as &dyn std::error::Error, "a conversation change failed");
+        tracing::error!(
+            ?field,
+            error = error as &dyn std::error::Error,
+            "a conversation change failed"
+        );
     }
     let (code, http_status) = refusal.code();
     FieldResult::Failed {
@@ -224,12 +270,12 @@ mod tests {
     use demi_web_api_protocol::ids::{DeviceId, UserId};
 
     use super::*;
-    use demi_runner_protocol::wire::RunnerPlatform;
-    use demi_backend_database::accounts::TokenHash;
     use crate::services::Services;
     use crate::shard::{ShardPlacement, ShardPool};
+    use demi_backend_database::accounts::TokenHash;
     use demi_backend_database::control::testing;
     use demi_backend_database::conversation_index::{AttachedHostRecord, Creation};
+    use demi_runner_protocol::wire::RunnerPlatform;
 
     const ID: &str = "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01";
 
@@ -241,15 +287,25 @@ mod tests {
         let owner: UserId = testing::master(&control).await.id;
         let id = ConversationId::try_from(ID).unwrap();
         assert!(matches!(
-            control.create_conversation(owner.clone(), id.clone()).await.unwrap(),
+            control
+                .create_conversation(owner.clone(), id.clone())
+                .await
+                .unwrap(),
             Creation::Created(_)
         ));
         let laptop = control
-            .create_device(owner.clone(), "laptop".into(), RunnerPlatform::Linux, TokenHash::of("laptop"))
+            .create_device(
+                owner.clone(),
+                "laptop".into(),
+                RunnerPlatform::Linux,
+                TokenHash::of("laptop"),
+            )
             .await
             .unwrap()
             .id;
-        let pool = ShardPool::start(ShardPlacement::Inline, services).await.unwrap();
+        let pool = ShardPool::start(ShardPlacement::Inline, services)
+            .await
+            .unwrap();
         let refusals = pool
             .shards()
             .of(&owner)
@@ -268,7 +324,12 @@ mod tests {
                     RecordChange::Archived(true).into(),
                     RecordChange::Detach(laptop.clone()).into(),
                 ] {
-                    refusals.push(shard.transition(&id, change).await.map_err(|refusal| refusal.code().0));
+                    refusals.push(
+                        shard
+                            .transition(&id, change)
+                            .await
+                            .map_err(|refusal| refusal.code().0),
+                    );
                 }
                 drop(operation);
                 // A transition holds the conversation: a rename waits for it,
@@ -283,14 +344,21 @@ mod tests {
                     let shard = shard.clone();
                     let id = id.clone();
                     tokio::task::spawn_local(async move {
-                        shard.transition(&id, RecordChange::Title("Renamed".into()).into()).await
+                        shard
+                            .transition(&id, RecordChange::Title("Renamed".into()).into())
+                            .await
                     })
                 };
                 let control = &shard.services().control;
                 tokio::task::yield_now().await;
                 control.conversation(id.clone()).await.unwrap();
                 tokio::task::yield_now().await;
-                let held_title = control.conversation(id.clone()).await.unwrap().unwrap().title;
+                let held_title = control
+                    .conversation(id.clone())
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .title;
                 let waited = !renaming.is_finished();
                 drop(held);
                 renaming.await.unwrap().unwrap();
@@ -302,7 +370,10 @@ mod tests {
         let (refusals, waited, held_title, title) = refusals;
         assert_eq!(refusals, [Err(ErrorCode::TurnInFlight); 3]);
         assert!(waited);
-        assert_ne!(held_title, "Renamed", "the rename applied while a transition held the conversation");
+        assert_ne!(
+            held_title, "Renamed",
+            "the rename applied while a transition held the conversation"
+        );
         assert_eq!(title, "Renamed");
         pool.close().await;
     }
@@ -326,7 +397,11 @@ mod tests {
         shard.play_runner_for_tests(device, "/home/ana", move |conversation| {
             let (control, device, log) = (control.clone(), device_id.clone(), log.clone());
             Box::pin(async move {
-                let record = control.conversation(conversation.clone()).await.unwrap().unwrap();
+                let record = control
+                    .conversation(conversation.clone())
+                    .await
+                    .unwrap()
+                    .unwrap();
                 let attached = control.attached_hosts(conversation).await.unwrap();
                 log.borrow_mut().push(Released {
                     device,
@@ -339,25 +414,36 @@ mod tests {
     }
 
     #[tokio::test(flavor = "local")]
-    async fn a_switch_a_detach_and_an_archive_release_the_conversation_before_they_change_its_binding() {
+    async fn a_switch_a_detach_and_an_archive_release_the_conversation_before_they_change_its_binding()
+     {
         let data = tempfile::tempdir().unwrap();
         let services = Services::start_for_tests(data.path()).await;
         let control = services.control.clone();
         let owner: UserId = testing::master(&control).await.id;
         let id = ConversationId::try_from(ID).unwrap();
         assert!(matches!(
-            control.create_conversation(owner.clone(), id.clone()).await.unwrap(),
+            control
+                .create_conversation(owner.clone(), id.clone())
+                .await
+                .unwrap(),
             Creation::Created(_)
         ));
         let mut devices = Vec::new();
         for name in ["one", "two"] {
             let device = control
-                .create_device(owner.clone(), name.into(), RunnerPlatform::Linux, TokenHash::of(name))
+                .create_device(
+                    owner.clone(),
+                    name.into(),
+                    RunnerPlatform::Linux,
+                    TokenHash::of(name),
+                )
                 .await
                 .unwrap();
             devices.push(device.id);
         }
-        let pool = ShardPool::start(ShardPlacement::Inline, services).await.unwrap();
+        let pool = ShardPool::start(ShardPlacement::Inline, services)
+            .await
+            .unwrap();
         pool.shards()
             .of(&owner)
             .call(move |shard, _| async move {
@@ -370,18 +456,33 @@ mod tests {
                     path: "/work".into(),
                 };
                 // From the Cloud, which was never made, nothing is released.
-                shard.transition(&id, ConversationChange::Target(on(&one))).await.unwrap();
+                shard
+                    .transition(&id, ConversationChange::Target(on(&one)))
+                    .await
+                    .unwrap();
                 assert!(log.borrow().is_empty());
-                let released = |device: &DeviceId, target: ConversationTarget, attached: &[DeviceId], archived| Released {
+                let released = |device: &DeviceId,
+                                target: ConversationTarget,
+                                attached: &[DeviceId],
+                                archived| Released {
                     device: device.clone(),
                     target,
                     attached: attached.to_vec(),
                     archived,
                 };
-                shard.transition(&id, ConversationChange::Target(on(&two))).await.unwrap();
+                shard
+                    .transition(&id, ConversationChange::Target(on(&two)))
+                    .await
+                    .unwrap();
                 assert_eq!(*log.borrow(), [released(&one, on(&one), &[], false)]);
-                shard.transition(&id, RecordChange::Detach(one.clone()).into()).await.unwrap();
-                assert_eq!(log.borrow()[1], released(&one, on(&two), &[one.clone()], false));
+                shard
+                    .transition(&id, RecordChange::Detach(one.clone()).into())
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    log.borrow()[1],
+                    released(&one, on(&two), std::slice::from_ref(&one), false)
+                );
                 // An archive releases it on the main Host and the attached
                 // ones.
                 let attach = RecordChange::Attach(AttachedHostRecord {
@@ -390,11 +491,17 @@ mod tests {
                     cwd: None,
                 });
                 shard.transition(&id, attach.into()).await.unwrap();
-                shard.transition(&id, RecordChange::Archived(true).into()).await.unwrap();
+                shard
+                    .transition(&id, RecordChange::Archived(true).into())
+                    .await
+                    .unwrap();
                 let attached = [one.clone()];
                 assert_eq!(
                     log.borrow()[2..],
-                    [released(&two, on(&two), &attached, false), released(&one, on(&two), &attached, false)]
+                    [
+                        released(&two, on(&two), &attached, false),
+                        released(&one, on(&two), &attached, false)
+                    ]
                 );
             })
             .await

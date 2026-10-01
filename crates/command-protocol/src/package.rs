@@ -89,7 +89,11 @@ impl PackageDescriptor {
 pub struct ArtifactUrl {
     #[garde(custom(download_url))]
     pub url: String,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[garde(skip)]
     pub expires_at: Option<i64>,
 }
@@ -143,7 +147,10 @@ fn download_url(value: &str, _: &()) -> garde::Result {
 /// Whether `value` is a SHA-256 digest in lowercase hexadecimal, the form of
 /// every artifact and descriptor identity.
 pub fn is_digest(value: &str) -> bool {
-    value.len() == 64 && value.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
 }
 
 /// Whether `target` is one of the [`TARGETS`].

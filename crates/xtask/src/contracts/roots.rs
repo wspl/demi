@@ -3,8 +3,8 @@
 //! (`contracts.md` § Generated TypeScript). Every type they refer to is
 //! emitted with them.
 
-use demi_conversation_socket_protocol as frames;
 use demi_command_package_browser_protocol::live;
+use demi_conversation_socket_protocol as frames;
 use demi_shared_types as core;
 use demi_web_api_protocol as api;
 use schemars::{JsonSchema, Schema, SchemaGenerator};
@@ -68,8 +68,8 @@ pub fn protocol() -> Vec<Root> {
 /// `packages/web/src/api/generated`: every REST request and response body.
 pub fn web() -> Vec<Root> {
     use api::{
-        attachments, auth, browser, cloud, conversations, devices, drafts, error, exposes, files, hosts, panel, providers,
-        settings, sidebar, state, usage, users, workspaces,
+        attachments, auth, browser, cloud, conversations, devices, drafts, error, exposes, files,
+        hosts, panel, providers, settings, sidebar, state, usage, users, workspaces,
     };
     vec![
         receives::<error::ErrorBody>(),

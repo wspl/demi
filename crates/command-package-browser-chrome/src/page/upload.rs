@@ -8,9 +8,7 @@ use futures_util::StreamExt;
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
-use crate::driver::operation::{
-    BrowserError, CONTROL_TIMEOUT, Operation, Result, after_cleanup,
-};
+use crate::driver::operation::{BrowserError, CONTROL_TIMEOUT, Operation, Result, after_cleanup};
 use crate::tabs::{environment::BrowserEnvironment, tab::BrowserTab};
 use demi_command_sdk::InvocationContext;
 

@@ -8,9 +8,7 @@ use chromiumoxide::{
 };
 use serde_json::json;
 
-use crate::driver::operation::{
-    BrowserError, CONTROL_TIMEOUT, Operation, Result, after_cleanup,
-};
+use crate::driver::operation::{BrowserError, CONTROL_TIMEOUT, Operation, Result, after_cleanup};
 use crate::tabs::{session::References, tab::BrowserTab};
 
 use crate::page::{
@@ -532,7 +530,7 @@ pub(crate) async fn type_focused(
         details.delivered = Some(delivered);
         BrowserError::Action {
             source: Box::new(error),
-            details,
+            details: Box::new(details),
         }
     })
 }

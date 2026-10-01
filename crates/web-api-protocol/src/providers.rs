@@ -4,8 +4,8 @@
 //! material.
 
 use demi_shared_types::{
-    AccountInfo, AuthState, FileExtension, ModelSelection, Nullable, ProviderModel, QuotaSnapshot, RuntimeState,
-    Timestamp, WireApi,
+    AccountInfo, AuthState, FileExtension, ModelSelection, Nullable, ProviderModel, QuotaSnapshot,
+    RuntimeState, Timestamp, WireApi,
 };
 use garde::Validate;
 use schemars::JsonSchema;
@@ -74,7 +74,9 @@ pub struct ConfiguredModel {
 /// An output limit is at most the context window.
 fn within(context_window: u32) -> impl FnOnce(&Option<u32>, &()) -> garde::Result {
     move |output_limit, ()| match output_limit {
-        Some(limit) if *limit > context_window => Err(garde::Error::new("the output limit exceeds the context window")),
+        Some(limit) if *limit > context_window => Err(garde::Error::new(
+            "the output limit exceeds the context window",
+        )),
         _ => Ok(()),
     }
 }
@@ -84,7 +86,9 @@ fn within(context_window: u32) -> impl FnOnce(&Option<u32>, &()) -> garde::Resul
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(transparent)]
 #[garde(transparent)]
-pub struct ConfiguredModels(#[garde(length(min = 1, max = 1000), dive, custom(distinct_ids))] pub Vec<ConfiguredModel>);
+pub struct ConfiguredModels(
+    #[garde(length(min = 1, max = 1000), dive, custom(distinct_ids))] pub Vec<ConfiguredModel>,
+);
 
 fn distinct_ids(models: &[ConfiguredModel], (): &()) -> garde::Result {
     let mut seen = std::collections::HashSet::new();
@@ -333,14 +337,22 @@ pub struct TestRequest {
 /// What a test found. A test that ran and failed is a result, with the
 /// provider's own reason.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "type", rename_all = "snake_case", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum TestResult {
     /// The model answered; `model` is its display name.
     Passed { model: String },
     Failed {
         message: String,
         /// The model's display name, when the catalog lists it.
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         #[schemars(with = "String")]
         model: Option<String>,
     },
@@ -370,7 +382,11 @@ pub struct Vendor {
     pub name: String,
     /// The family that speaks the vendor's protocol.
     pub provider_type: String,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "WireApi")]
     pub wire_api: Option<WireApi>,
     /// The endpoint an entry starts with.
@@ -472,7 +488,11 @@ pub struct LoginAnswer {
 
 /// Where a device login is; a finished one is kept for ten minutes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "status", rename_all = "snake_case", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "status",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum LoginState {
     /// Waiting for the user, who opens the address and enters the code;
     /// both are null until the vendor names them.
@@ -546,7 +566,10 @@ pub struct CatalogModel {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Availability {
     Available {},
-    Unavailable { reason: UnavailableReason, message: String },
+    Unavailable {
+        reason: UnavailableReason,
+        message: String,
+    },
 }
 
 /// What makes an entry's models unavailable.
@@ -575,7 +598,11 @@ pub struct ProviderCli {
 
 /// The vendor's newest version, or why it could not be read.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "type", rename_all = "snake_case", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum NewestVersion {
     Read { version: String },
     Unreadable { message: String },
@@ -583,12 +610,20 @@ pub enum NewestVersion {
 
 /// Where an install of the tool stands.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "state", rename_all = "snake_case", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "state",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum CliInstall {
     Installing {},
     /// `path` is the executable on the Cloud.
-    Installed { path: String },
-    Failed { message: String },
+    Installed {
+        path: String,
+    },
+    Failed {
+        message: String,
+    },
 }
 
 /// A machine the tool runs on, with the versions it has, newest first;
@@ -616,7 +651,8 @@ mod tests {
     use super::*;
 
     fn model(value: serde_json::Value) -> Result<ConfiguredModel, String> {
-        let model: ConfiguredModel = serde_json::from_value(value).map_err(|error| error.to_string())?;
+        let model: ConfiguredModel =
+            serde_json::from_value(value).map_err(|error| error.to_string())?;
         model.validate().map_err(|report| report.to_string())?;
         Ok(model)
     }
@@ -667,7 +703,9 @@ mod tests {
         };
         assert!(list(vec![configured()]).is_ok());
         assert!(list(Vec::new()).is_err());
-        let twice = list(vec![configured(), configured()]).unwrap_err().to_string();
+        let twice = list(vec![configured(), configured()])
+            .unwrap_err()
+            .to_string();
         assert!(twice.contains("appears twice"), "{twice}");
     }
 
@@ -677,7 +715,9 @@ mod tests {
             "source": "vendor", "vendorId": "deepseek", "label": " DeepSeek ", "apiKey": "sk-1"
         }))
         .unwrap();
-        assert!(matches!(vendor, CreateProvider::Vendor { ref label, .. } if label.as_str() == "DeepSeek"));
+        assert!(
+            matches!(vendor, CreateProvider::Vendor { ref label, .. } if label.as_str() == "DeepSeek")
+        );
         for refused in [
             json!({ "vendorId": "deepseek", "label": "x", "apiKey": "k" }),
             json!({ "source": "vendor", "vendorId": "deepseek", "label": "x", "apiKey": "k", "wireApi": "responses" }),
@@ -689,7 +729,8 @@ mod tests {
                 "{refused}"
             );
         }
-        let patch: ProviderPatch = serde_json::from_value(json!({ "baseUrl": null, "label": "Work" })).unwrap();
+        let patch: ProviderPatch =
+            serde_json::from_value(json!({ "baseUrl": null, "label": "Work" })).unwrap();
         assert_eq!((patch.base_url, patch.models.is_none()), (Some(None), true));
         assert_eq!(patch.label.unwrap().as_str(), "Work");
     }

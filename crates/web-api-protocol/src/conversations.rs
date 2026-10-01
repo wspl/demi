@@ -34,7 +34,11 @@ pub enum ConversationTarget {
     Cloud {
         /// An absolute directory on the Cloud; the conversation's session
         /// directory without it.
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         #[schemars(with = "String")]
         #[garde(length(min = 1), pattern(r"^/"))]
         path: Option<String>,
@@ -168,7 +172,9 @@ pub struct ConversationsQuery {
 }
 
 /// `POST /conversations/:id/read`: the output revision the page showed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate,
+)]
 #[serde(deny_unknown_fields)]
 pub struct ReadRequest {
     #[garde(range(max = MAX_SAFE_INTEGER))]
@@ -185,7 +191,11 @@ pub struct Transcript {
     pub blocks: Vec<Block>,
     /// The facts of the root's error blocks, by block id; absent when none
     /// yields one.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "Failures")]
     pub failures: Option<Failures>,
     /// Every subagent of the tree, in spawn order under each parent.
@@ -198,50 +208,84 @@ pub struct Transcript {
 pub struct SubagentHistory {
     pub subagent: SubagentJob,
     pub blocks: Vec<Block>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "Failures")]
     pub failures: Option<Failures>,
 }
 
 /// `PATCH /conversations/:id`: the fields to change, each applied on its
 /// own; an absent field stays as it is.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[derive(
+    Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate,
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ConversationPatch {
     /// A rename: 1 to 256 characters after trimming.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "Trimmed")]
     #[garde(length(chars, min = 1, max = TITLE_MAX))]
     pub title: Option<Trimmed>,
     /// Archive, or restore.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "bool")]
     #[garde(skip)]
     pub archived: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "bool")]
     #[garde(skip)]
     pub pinned: Option<bool>,
     /// A switch to this model, with the effort and the tier this patch
     /// names and the model's defaults for a part it leaves out.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "ModelChoice")]
     #[garde(dive)]
     pub model: Option<ModelChoice>,
     /// The conversation's thinking effort: one its model lists, `disabled`
     /// for thinking off, or null for the model's default.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "double_option")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "double_option"
+    )]
     #[schemars(with = "Option<String>")]
     #[garde(length(chars, min = 1))]
     pub thinking_effort: Option<Option<String>>,
     /// The conversation's service tier: one its model lists, or null for the
     /// vendor's default.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "double_option")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "double_option"
+    )]
     #[schemars(with = "Option<String>")]
     #[garde(length(chars, min = 1))]
     pub service_tier_id: Option<Option<String>>,
     /// A switch of the conversation's execution target.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "ConversationTarget")]
     #[garde(dive)]
     pub target: Option<ConversationTarget>,
@@ -273,7 +317,11 @@ pub enum PatchField {
 /// How one field of a patch went: applied, or refused with the code and
 /// the HTTP status it would answer alone.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "status", rename_all = "snake_case", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "status",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum FieldResult {
     Applied {
         field: PatchField,
@@ -321,11 +369,15 @@ pub struct BatchAnswer {
 /// One item's outcome: its patch's answer, or why the item was refused,
 /// such as a conversation the caller does not have.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "status", rename_all = "snake_case", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "status",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum BatchResult {
     Updated {
         id: ConversationId,
-        conversation: ConversationSummary,
+        conversation: Box<ConversationSummary>,
         results: Vec<FieldResult>,
     },
     Refused {
@@ -368,7 +420,10 @@ mod tests {
             r#"{"kind":"workspace","workspaceId":"w1","path":"/work"}"#,
             r#"{"kind":"elsewhere"}"#,
         ] {
-            assert!(demi_shared_types::decode::<ConversationTarget>(refused).is_err(), "{refused}");
+            assert!(
+                demi_shared_types::decode::<ConversationTarget>(refused).is_err(),
+                "{refused}"
+            );
         }
     }
 }

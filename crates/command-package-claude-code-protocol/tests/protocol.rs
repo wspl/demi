@@ -1,6 +1,8 @@
 //! The `demi.claude-code` records and documents.
 
-use demi_command_package_claude_code_protocol::{ErrorCode, Failure, Installed, Release, Reply, Status, is_version};
+use demi_command_package_claude_code_protocol::{
+    ErrorCode, Failure, Installed, Release, Reply, Status, is_version,
+};
 use serde_json::json;
 
 fn record(version: &str, url: &str, size: u64, sha256: &str) -> Vec<u8> {
@@ -14,7 +16,13 @@ fn record(version: &str, url: &str, size: u64, sha256: &str) -> Vec<u8> {
 #[test]
 fn a_release_record_is_checked_in_every_entry() {
     let digest = "a".repeat(64);
-    let release = Release::parse(&record("2.1.3-beta.1", "https://example.test/claude", 3, &digest)).unwrap();
+    let release = Release::parse(&record(
+        "2.1.3-beta.1",
+        "https://example.test/claude",
+        3,
+        &digest,
+    ))
+    .unwrap();
     assert_eq!(release.platforms["darwin-arm64"].size, 3);
     for invalid in [
         record("2.1", "https://example.test/claude", 3, &digest),
@@ -32,7 +40,15 @@ fn versions_are_three_numbers_and_an_optional_prerelease() {
     for valid in ["1.0.0", "10.20.30-rc.1", "0.0.1-alpha-2"] {
         assert!(is_version(valid), "{valid}");
     }
-    for invalid in ["1.0", "1.0.0-", "1.0.0+build", "v1.0.0", "1..0", "../1.0.0", "01.0.0"] {
+    for invalid in [
+        "1.0",
+        "1.0.0-",
+        "1.0.0+build",
+        "v1.0.0",
+        "1..0",
+        "../1.0.0",
+        "01.0.0",
+    ] {
         assert!(!is_version(invalid), "{invalid}");
     }
 }
@@ -41,7 +57,10 @@ fn versions_are_three_numbers_and_an_optional_prerelease() {
 fn replies_carry_ok_beside_the_answer() {
     let status = Reply::Done(Status {
         platform: "darwin-arm64".into(),
-        installed: vec![Installed { version: "2.1.3".into(), path: "/opt/claude".into() }],
+        installed: vec![Installed {
+            version: "2.1.3".into(),
+            path: "/opt/claude".into(),
+        }],
     });
     let printed = serde_json::to_value(&status).unwrap();
     assert_eq!(
@@ -49,13 +68,24 @@ fn replies_carry_ok_beside_the_answer() {
         json!({"ok": true, "platform": "darwin-arm64",
             "installed": [{"version": "2.1.3", "path": "/opt/claude"}]}),
     );
-    assert_eq!(serde_json::from_value::<Reply<Status>>(printed).unwrap(), status);
+    assert_eq!(
+        serde_json::from_value::<Reply<Status>>(printed).unwrap(),
+        status
+    );
     let failed: Reply<Status> = Reply::Failed(Failure {
         code: ErrorCode::VerificationFailed,
         message: "digest differs".into(),
     });
     let printed = serde_json::to_value(&failed).unwrap();
-    assert_eq!(printed, json!({"ok": false, "code": "verification_failed", "message": "digest differs"}));
-    assert_eq!(serde_json::from_value::<Reply<Status>>(printed).unwrap(), failed);
-    assert!(serde_json::from_value::<Reply<Status>>(json!({"platform": "x", "installed": []})).is_err());
+    assert_eq!(
+        printed,
+        json!({"ok": false, "code": "verification_failed", "message": "digest differs"})
+    );
+    assert_eq!(
+        serde_json::from_value::<Reply<Status>>(printed).unwrap(),
+        failed
+    );
+    assert!(
+        serde_json::from_value::<Reply<Status>>(json!({"platform": "x", "installed": []})).is_err()
+    );
 }

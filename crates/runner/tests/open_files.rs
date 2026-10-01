@@ -13,6 +13,9 @@ use demi_command_protocol::{
     PackageDescriptor, host_target, testing::built_program,
 };
 use demi_command_sdk::testing::pauses;
+use demi_runner_command_packages::{
+    ArtifactResolver, ArtifactSource, RuntimeError, ServiceRegistry, testing::NoNumbers,
+};
 use demi_runner_host::host::HostServer;
 use demi_runner_jobs::testing::Dispatch;
 use demi_runner_process::{
@@ -22,9 +25,6 @@ use demi_runner_process::{
     process::{ChildProcess, ProcessInput, SpawnOptions},
 };
 use demi_runner_protocol::wire::{self, Inbound, OutputStream, PipeRef};
-use demi_runner_command_packages::{
-    ArtifactResolver, ArtifactSource, RuntimeError, ServiceRegistry, testing::NoNumbers,
-};
 use demi_runner_shell::{
     ShellRuntime,
     testing::{Job, Scope},
@@ -420,7 +420,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
             host.handle_net(Inbound::NetOpen {
                 stream_id: "n".into(),
                 host: "127.0.0.1".into(),
-                port: service_port.into(),
+                port: service_port,
                 input: PipeRef {
                     id: "in".into(),
                     url: "/pipe/net-in".into(),
@@ -478,7 +478,9 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
             .await
             .map_err(|error| error.to_string())?;
             let (exit, _) = job.wait().await;
-            (exit.code == Some(0)).then_some(()).ok_or(format!("{exit:?}"))
+            (exit.code == Some(0))
+                .then_some(())
+                .ok_or(format!("{exit:?}"))
         })
         .await;
     }
@@ -493,8 +495,14 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
         )
         .await;
         starved_job("a running job", job, b"go\n").await;
-        assert_eq!(std::fs::read_to_string(cwd.join("piped.txt")).unwrap(), "one\n");
-        assert_eq!(std::fs::read_to_string(cwd.join("here.txt")).unwrap(), "two\n");
+        assert_eq!(
+            std::fs::read_to_string(cwd.join("piped.txt")).unwrap(),
+            "one\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(cwd.join("here.txt")).unwrap(),
+            "two\n"
+        );
     }
     {
         // A utility's child program waits too: `xargs` has its descriptors
@@ -503,7 +511,10 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
         let cwd = root_path.join("utility");
         let job = ready_job(&cwd, "printf ready; xargs /usr/bin/printf > child.txt").await;
         starved_job("a utility's child program", job, b"three\n").await;
-        assert_eq!(std::fs::read_to_string(cwd.join("child.txt")).unwrap(), "three");
+        assert_eq!(
+            std::fs::read_to_string(cwd.join("child.txt")).unwrap(),
+            "three"
+        );
     }
     {
         // A job that waits for descriptors ends when it is cancelled, with
@@ -531,9 +542,14 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
     // A resident native service.
     {
         let cache = root_path.join("native");
-        let services = ServiceRegistry::new(cache.join("cache"), None, root_path.clone(), BTreeMap::new())
-            .await
-            .unwrap();
+        let services = ServiceRegistry::new(
+            cache.join("cache"),
+            None,
+            root_path.clone(),
+            BTreeMap::new(),
+        )
+        .await
+        .unwrap();
         let bytes = std::fs::read(built_program("demi-native-fixture")).unwrap();
         let path = cache.join("fixture");
         std::fs::write(&path, &bytes).unwrap();
@@ -579,9 +595,11 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
         "name": "fixture", "summary": "Test callback.", "kind": "rpc", "runningHint": "Working",
         "input": {"type": "object", "properties": {"body": {"type": "string"}}, "required": ["body"]}, "stdinField": "body"
     });
-    let manifest =
-        demi_runner_protocol::manifest::Manifest::build([serde_json::from_value(tree).unwrap()], [])
-            .unwrap();
+    let manifest = demi_runner_protocol::manifest::Manifest::build(
+        [serde_json::from_value(tree).unwrap()],
+        [],
+    )
+    .unwrap();
     let manifest = serde_json::to_value(manifest).unwrap();
     let mut dispatch = Dispatch::new(&root_path, manifest, pipes.clone()).await;
     let mut outgoing = std::mem::replace(&mut dispatch.outgoing, mpsc::channel(1).1);

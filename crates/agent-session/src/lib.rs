@@ -38,19 +38,19 @@ use std::{
     time::Duration,
 };
 
-use demi_conversation_socket_protocol::{AbortResult, TranscriptPatch, TranscriptVersion};
 use demi_agent_store::{
     Checkpoint, CheckpointUpdate, CommandStateError, CommandStateHistory, SessionStore, StoreError,
     media::HeldMedia,
 };
 use demi_agent_transcript::{IdSource, TranscriptLog, last_assistant_text};
+use demi_conversation_socket_protocol::{AbortResult, TranscriptPatch, TranscriptVersion};
+use demi_provider_common::{ProviderFailure, ProviderRuntime};
+use demi_shared_gates::SerialGate;
 use demi_shared_types::{
     AgentMessage, Block, BlockId, Clock, ModelSelection, NodeId, PendingSteer,
     ProviderErrorDiagnostics, QueuedMessage, SessionPhase, ToolResultContentBlock, TurnId,
     UserContentBlock,
 };
-use demi_shared_gates::SerialGate;
-use demi_provider_common::{ProviderFailure, ProviderRuntime};
 use schemars::JsonSchema;
 use serde::Serialize;
 use tokio::sync::{Notify, oneshot, watch};
@@ -121,7 +121,7 @@ pub struct Continuation {
 /// A change of the model selection (`runtime.md` § Model switch), with the
 /// runtime it needs when its model belongs to another provider.
 pub struct ModelSwitch {
-    pub model: ModelSelection,
+    pub model: Box<ModelSelection>,
     /// A new runtime when the model belongs to another provider than the
     /// selection before it.
     pub runtime: Option<Box<dyn ProviderRuntime>>,
@@ -268,7 +268,7 @@ impl From<&ProviderFailure> for ErrorReport {
         Self {
             message: failure.message.clone(),
             code: failure.code.as_ref().map(|code| code.as_str().to_owned()),
-            diagnostics: failure.diagnostics.clone(),
+            diagnostics: failure.diagnostics.as_deref().cloned(),
         }
     }
 }

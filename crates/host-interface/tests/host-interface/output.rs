@@ -2,8 +2,8 @@
 //! a gap, and what counts as binary.
 
 use bytes::Bytes;
-use demi_shared_types::StreamKind;
 use demi_host_interface::{Missing, OutputRecord, Piece, Seen, Streams, WholeOutput};
+use demi_shared_types::StreamKind;
 
 fn lines<'a>(pieces: impl Iterator<Item = Piece<'a>>) -> Vec<String> {
     pieces

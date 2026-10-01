@@ -1,8 +1,8 @@
 //! Devices: the list, pairing, and a Host's log (`web-api.md` § Workspaces,
 //! devices, and attached hosts, § Device log).
 
-use demi_shared_types::{MAX_SAFE_INTEGER, Nullable, Timestamp};
 use demi_runner_protocol::wire::RunnerPlatform;
+use demi_shared_types::{MAX_SAFE_INTEGER, Nullable, Timestamp};
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -71,7 +71,11 @@ pub struct DeviceLogLine {
     pub at: Timestamp,
     pub source: String,
     /// The conversation the work belonged to, when it belonged to one.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "String")]
     pub conversation_id: Option<String>,
     pub text: String,

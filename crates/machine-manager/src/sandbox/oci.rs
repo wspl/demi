@@ -82,12 +82,25 @@ pub fn spec(boot: &Boot<'_>) -> Result<Spec, OciSpecError> {
         .terminal(false)
         // The runner and its jobs make files with the usual mask 022, not the
         // manager's own 077 (`runner.md` § Builtins that act on a process).
-        .user(UserBuilder::default().uid(USER_ID).gid(USER_ID).umask(0o022u32).build()?)
+        .user(
+            UserBuilder::default()
+                .uid(USER_ID)
+                .gid(USER_ID)
+                .umask(0o022u32)
+                .build()?,
+        )
         .cwd("/home/demi")
         .args(
-            [INIT_PATH, "--", RUNNER_PATH, "run", "--managed-boot", BOOT_RECORD]
-                .map(String::from)
-                .to_vec(),
+            [
+                INIT_PATH,
+                "--",
+                RUNNER_PATH,
+                "run",
+                "--managed-boot",
+                BOOT_RECORD,
+            ]
+            .map(String::from)
+            .to_vec(),
         )
         .env(
             [
@@ -132,15 +145,30 @@ pub fn spec(boot: &Boot<'_>) -> Result<Spec, OciSpecError> {
     let linux = match &boot.cgroup {
         Some(cgroup) => {
             let quota = i64::from(cgroup.limits.cpus.get()) * CPU_PERIOD as i64;
-            let memory = i64::try_from(cgroup.limits.memory_bytes().get()).expect("a memory limit fits in i64");
+            let memory = i64::try_from(cgroup.limits.memory_bytes().get())
+                .expect("a memory limit fits in i64");
             linux
                 .cgroups_path(format!("/demi-cloud/{}", cgroup.name))
                 .resources(
                     LinuxResourcesBuilder::default()
-                        .cpu(LinuxCpuBuilder::default().period(CPU_PERIOD).quota(quota).build()?)
+                        .cpu(
+                            LinuxCpuBuilder::default()
+                                .period(CPU_PERIOD)
+                                .quota(quota)
+                                .build()?,
+                        )
                         // The same limit for memory and memory with swap: no swap.
-                        .memory(LinuxMemoryBuilder::default().limit(memory).swap(memory).build()?)
-                        .pids(LinuxPidsBuilder::default().limit(PROCESS_LIMIT as i64).build()?)
+                        .memory(
+                            LinuxMemoryBuilder::default()
+                                .limit(memory)
+                                .swap(memory)
+                                .build()?,
+                        )
+                        .pids(
+                            LinuxPidsBuilder::default()
+                                .limit(PROCESS_LIMIT as i64)
+                                .build()?,
+                        )
                         .build()?,
                 )
         }
@@ -172,7 +200,12 @@ fn mounts(directory: &RuntimeDirectory) -> Result<Vec<Mount>, OciSpecError> {
             .destination(destination)
             .typ(typ)
             .source(source)
-            .options(options.iter().map(|option| (*option).to_owned()).collect::<Vec<_>>())
+            .options(
+                options
+                    .iter()
+                    .map(|option| (*option).to_owned())
+                    .collect::<Vec<_>>(),
+            )
             .build()
     };
     let bind = |source: std::path::PathBuf, destination: &str, options: &[&str]| {
@@ -180,29 +213,67 @@ fn mounts(directory: &RuntimeDirectory) -> Result<Vec<Mount>, OciSpecError> {
             .destination(destination)
             .typ("bind")
             .source(source)
-            .options(options.iter().map(|option| (*option).to_owned()).collect::<Vec<_>>())
+            .options(
+                options
+                    .iter()
+                    .map(|option| (*option).to_owned())
+                    .collect::<Vec<_>>(),
+            )
             .build()
     };
     Ok(vec![
         mount("/proc", "proc", "proc", &["nosuid", "nodev", "noexec"])?,
-        mount("/dev", "tmpfs", "tmpfs", &["nosuid", "mode=755", "size=65536k"])?,
+        mount(
+            "/dev",
+            "tmpfs",
+            "tmpfs",
+            &["nosuid", "mode=755", "size=65536k"],
+        )?,
         mount(
             "/dev/pts",
             "devpts",
             "devpts",
-            &["nosuid", "noexec", "newinstance", "ptmxmode=0666", "mode=0620", "gid=5"],
+            &[
+                "nosuid",
+                "noexec",
+                "newinstance",
+                "ptmxmode=0666",
+                "mode=0620",
+                "gid=5",
+            ],
         )?,
-        mount("/dev/shm", "tmpfs", "tmpfs", &["nosuid", "nodev", "size=256m", "mode=1777"])?,
-        mount("/tmp", "tmpfs", "tmpfs", &["nosuid", "nodev", "size=256m", "mode=1777"])?,
+        mount(
+            "/dev/shm",
+            "tmpfs",
+            "tmpfs",
+            &["nosuid", "nodev", "size=256m", "mode=1777"],
+        )?,
+        mount(
+            "/tmp",
+            "tmpfs",
+            "tmpfs",
+            &["nosuid", "nodev", "size=256m", "mode=1777"],
+        )?,
         mount(
             "/run",
             "tmpfs",
             "tmpfs",
-            &["nosuid", "nodev", "size=256m", "mode=0755", "uid=1000", "gid=1000"],
+            &[
+                "nosuid",
+                "nodev",
+                "size=256m",
+                "mode=0755",
+                "uid=1000",
+                "gid=1000",
+            ],
         )?,
         bind(directory.home(), "/home", &["bind", "nodev"])?,
         bind(directory.boot(), BOOT_RECORD, &["bind", "ro", "nodev"])?,
-        bind(directory.resolver(), "/etc/resolv.conf", &["bind", "ro", "nodev"])?,
+        bind(
+            directory.resolver(),
+            "/etc/resolv.conf",
+            &["bind", "ro", "nodev"],
+        )?,
         bind(directory.hosts(), "/etc/hosts", &["bind", "ro", "nodev"])?,
     ])
 }

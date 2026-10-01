@@ -8,8 +8,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use demi_backend_database::providers::CredentialRow;
-use demi_shared_types::QuotaSnapshot;
 use demi_provider_common::quota::QuotaSnapshotStore;
+use demi_shared_types::QuotaSnapshot;
 use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 use tokio_util::task::TaskTracker;
 
@@ -131,7 +131,10 @@ impl QuotaSnapshotStore for AccountQuota {
         self.quotas.lock().get(&self.account).cloned().flatten()
     }
 
-    fn update(&self, next: &mut dyn FnMut(Option<&QuotaSnapshot>) -> QuotaSnapshot) -> Arc<QuotaSnapshot> {
+    fn update(
+        &self,
+        next: &mut dyn FnMut(Option<&QuotaSnapshot>) -> QuotaSnapshot,
+    ) -> Arc<QuotaSnapshot> {
         let snapshot = {
             let mut held = self.quotas.lock();
             let kept = held.entry(self.account.clone()).or_default();

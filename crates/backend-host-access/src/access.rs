@@ -13,14 +13,14 @@ use std::future::Future;
 use std::rc::Rc;
 
 use demi_backend_blobs::ObjectError;
+use demi_backend_cloud::machine::{CloudAdmission, CloudError};
 use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::{ConversationRecord, ExecutionTarget};
 use demi_backend_database::devices::DeviceRecord;
-use demi_backend_cloud::machine::{CloudAdmission, CloudError};
-use demi_backend_runners::file_gate::{FileGate, FileLease};
-use demi_shared_gates::{ActivityGate, GateLease, Purpose, SerialGate};
 use demi_backend_remote_host::{Admission, RemoteHost};
+use demi_backend_runners::file_gate::{FileGate, FileLease};
 use demi_host_interface::{HostError, HostErrorKind, HostFs, MkdirOptions};
+use demi_shared_gates::{ActivityGate, GateLease, Purpose, SerialGate};
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
@@ -132,7 +132,9 @@ impl HostAccessError {
             Self::Refused(Refusal::DeviceGone) => (ErrorCode::DeviceNotFound, 404),
             Self::Cloud(error) => error.code(),
             Self::Host(error) => host_error_code(error),
-            Self::Cancelled | Self::Storage(_) | Self::Objects(_) | Self::Store(_) => (ErrorCode::InternalError, 500),
+            Self::Cancelled | Self::Storage(_) | Self::Objects(_) | Self::Store(_) => {
+                (ErrorCode::InternalError, 500)
+            }
         }
     }
 }
@@ -150,7 +152,9 @@ pub fn host_error_code(error: &HostError) -> (ErrorCode, u16) {
             Some("EACCES" | "EPERM") => (ErrorCode::FsError, 403),
             _ => (ErrorCode::HostOperationFailed, 500),
         },
-        HostErrorKind::Protocol | HostErrorKind::Interrupted => (ErrorCode::HostOperationFailed, 500),
+        HostErrorKind::Protocol | HostErrorKind::Interrupted => {
+            (ErrorCode::HostOperationFailed, 500)
+        }
     }
 }
 
@@ -231,7 +235,10 @@ pub struct Waits<'a> {
 
 impl<'a> Waits<'a> {
     pub fn request(cancel: &'a CancellationToken) -> Self {
-        Self { cancel, ended: None }
+        Self {
+            cancel,
+            ended: None,
+        }
     }
 
     /// `work`'s outcome, unless the requester leaves or a transition ends
@@ -282,7 +289,10 @@ impl dyn HostShard + '_ {
     /// conversation of another user answers as a missing one. Every shard
     /// entry that names a conversation starts here, which makes it the one
     /// check that a request reaches its owner's conversation.
-    pub async fn owned_conversation(&self, id: &ConversationId) -> Result<ConversationRecord, HostAccessError> {
+    pub async fn owned_conversation(
+        &self,
+        id: &ConversationId,
+    ) -> Result<ConversationRecord, HostAccessError> {
         let record = self.control().conversation(id.clone()).await?;
         record
             .filter(|record| record.owner == *self.user())
@@ -327,7 +337,9 @@ impl dyn HostShard + '_ {
                     cloud = None;
                     true
                 }
-                DeviceKind::Managed => cloud.as_ref().is_some_and(|cloud| cloud.device == selected.device.id),
+                DeviceKind::Managed => cloud
+                    .as_ref()
+                    .is_some_and(|cloud| cloud.device == selected.device.id),
             };
             if !admitted {
                 // Waiting for the Cloud holds no file lease: a reset takes
@@ -437,22 +449,36 @@ impl dyn HostShard + '_ {
         };
         let found = match (&named, &target) {
             (Some(host), _) => control.device(host.device.clone()).await?,
-            (None, ExecutionTarget::Cloud { .. }) if allocate => Some(self.cloud_shard().cloud_device().await?),
-            (None, ExecutionTarget::Cloud { .. }) => {
-                Some(control.managed_device(record.owner.clone()).await?.ok_or(Refusal::Stopped)?)
+            (None, ExecutionTarget::Cloud { .. }) if allocate => {
+                Some(self.cloud_shard().cloud_device().await?)
             }
-            (None, ExecutionTarget::Device { device_id, .. } | ExecutionTarget::Workspace { device_id, .. }) => {
-                control.device(device_id.clone()).await?
-            }
+            (None, ExecutionTarget::Cloud { .. }) => Some(
+                control
+                    .managed_device(record.owner.clone())
+                    .await?
+                    .ok_or(Refusal::Stopped)?,
+            ),
+            (
+                None,
+                ExecutionTarget::Device { device_id, .. }
+                | ExecutionTarget::Workspace { device_id, .. },
+            ) => control.device(device_id.clone()).await?,
         };
         let device = found
             .filter(|device| device.user == record.owner)
             .ok_or(Refusal::DeviceGone)?;
         let (root, prepare) = match named.filter(|host| host.role == HostRole::Attached) {
             Some(attached) => (attached.path, false),
-            None => (target.path().to_owned(), matches!(target, ExecutionTarget::Cloud { .. })),
+            None => (
+                target.path().to_owned(),
+                matches!(target, ExecutionTarget::Cloud { .. }),
+            ),
         };
-        Ok(Selected { device, root, prepare })
+        Ok(Selected {
+            device,
+            root,
+            prepare,
+        })
     }
 
     /// The admitted Host of the operation that holds `files`, its Cloud
@@ -465,9 +491,9 @@ impl dyn HostShard + '_ {
     ) -> Result<ConversationHost, HostAccessError> {
         let device = &selected.device.id;
         let admission = cloud.map_or(Admission::Free, |cloud| cloud.per_operation.clone());
-        let host = self
-            .devices()
-            .conversation_host(device, files, selected.root.clone(), admission);
+        let host =
+            self.devices()
+                .conversation_host(device, files, selected.root.clone(), admission);
         if selected.prepare {
             HostFs::mkdir(&host, &selected.root, MkdirOptions { recursive: true }).await?;
         }

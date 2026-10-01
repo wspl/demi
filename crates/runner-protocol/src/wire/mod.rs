@@ -14,8 +14,8 @@ pub use kept::{
 pub use messages::{
     ArtifactOwner, ChangeKind, DirEntry, FileStat, GitChange, GitChanges, HelloErrorCode,
     HostIdentity, Inbound, JobArtifactOwner, JobFileChange, LogLine, NetErrorCode, Outbound,
-    OutputLengths, OutputStream, PipeRef, RunnerInfo, RunnerPlatform, ServiceErrorCode,
-    Signal, SpawnError, SpawnErrorKind, StreamArtifactOwner, VolumeName,
+    OutputLengths, OutputStream, PipeRef, RunnerInfo, RunnerPlatform, ServiceErrorCode, Signal,
+    SpawnError, SpawnErrorKind, StreamArtifactOwner, VolumeName,
 };
 pub use replies::{FsOk, FsResult, GitOk, GitResult};
 
@@ -78,7 +78,9 @@ impl Frame {
 
 /// Validates and encodes a message. The size limit is the sender's to apply
 /// ([`within_limit`]), because an oversized reply fails its own request.
-pub fn encode<M: Serialize + garde::Validate<Context = ()>>(message: &M) -> Result<Frame, WireError> {
+pub fn encode<M: Serialize + garde::Validate<Context = ()>>(
+    message: &M,
+) -> Result<Frame, WireError> {
     message
         .validate()
         .map_err(|report| WireError::Invalid(report.to_string()))?;
@@ -86,7 +88,9 @@ pub fn encode<M: Serialize + garde::Validate<Context = ()>>(message: &M) -> Resu
 }
 
 /// Decodes and validates one message; bytes after it are refused.
-pub fn decode<M: DeserializeOwned + garde::Validate<Context = ()>>(bytes: &[u8]) -> Result<M, WireError> {
+pub fn decode<M: DeserializeOwned + garde::Validate<Context = ()>>(
+    bytes: &[u8],
+) -> Result<M, WireError> {
     let mut decoder = rmp_serde::Deserializer::new(std::io::Cursor::new(bytes));
     let message = M::deserialize(&mut decoder)?;
     if decoder.position() != bytes.len() as u64 {

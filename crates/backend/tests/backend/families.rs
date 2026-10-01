@@ -8,19 +8,25 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use demi_backend_providers::llm::families::{FamilyArgs, FamilyCredential, FamilyError, ProviderFamily};
-use demi_shared_types::{
-    AuthState, LoginPending, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModel, ProviderModelList,
-    QuotaWindow, RuntimeState, Timestamp, WireApi,
+use demi_backend_providers::llm::families::{
+    FamilyArgs, FamilyCredential, FamilyError, ProviderFamily,
 };
-use demi_provider_common::credentials::{
-    AccountKit, AccountLabel, Accounts, AccountsCapability, AccountsError, AddAccount, LoginError, NewAccount,
-    SubscriptionAccounts,
-};
-use demi_provider_common::quota::{Observation, ProbeCost, ProbeReading, ProviderQuota, QuotaError, QuotaSource};
-use demi_provider_common::testing::{ScriptedRuntime, Turn, event};
-use demi_provider_common::{Capabilities, CatalogError, Provider, ProviderRuntime, RuntimeEnv, RuntimeError};
 use demi_provider_claude_code::Placement;
+use demi_provider_common::credentials::{
+    AccountKit, AccountLabel, Accounts, AccountsCapability, AccountsError, AddAccount, LoginError,
+    NewAccount, SubscriptionAccounts,
+};
+use demi_provider_common::quota::{
+    Observation, ProbeCost, ProbeReading, ProviderQuota, QuotaError, QuotaSource,
+};
+use demi_provider_common::testing::{ScriptedRuntime, Turn, event};
+use demi_provider_common::{
+    Capabilities, CatalogError, Provider, ProviderRuntime, RuntimeEnv, RuntimeError,
+};
+use demi_shared_types::{
+    AuthState, LoginPending, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModel,
+    ProviderModelList, QuotaWindow, RuntimeState, Timestamp, WireApi,
+};
 use demi_web_api_protocol::providers::CredentialKind;
 use futures_util::future::BoxFuture;
 use tokio::sync::watch;
@@ -76,7 +82,11 @@ impl Directory {
     fn read(&self) -> Result<ProviderModelList, CatalogError> {
         self.reads.fetch_add(1, Ordering::SeqCst);
         let answer = self.answers.lock().unwrap().pop_front();
-        answer.unwrap_or_else(|| Err(CatalogError::Unavailable("the directory has no answer scripted".into())))
+        answer.unwrap_or_else(|| {
+            Err(CatalogError::Unavailable(
+                "the directory has no answer scripted".into(),
+            ))
+        })
     }
 }
 
@@ -221,7 +231,10 @@ impl Drop for Cancelled {
 
 impl AccountKit for Kit {
     fn capability(&self) -> AccountsCapability {
-        AccountsCapability { login: true, add: true }
+        AccountsCapability {
+            login: true,
+            add: true,
+        }
     }
 
     fn login<'a>(
@@ -255,7 +268,9 @@ impl AccountKit for Kit {
         let token = token.expose();
         if token.starts_with("bad") {
             // A family's own message may quote what it was given.
-            return Some(Err(AccountsError::Invalid(format!("{token} is not a setup token"))));
+            return Some(Err(AccountsError::Invalid(format!(
+                "{token} is not a setup token"
+            ))));
         }
         Some(Ok(NewAccount {
             secret: serde_json::json!({ "setupToken": token }).to_string(),

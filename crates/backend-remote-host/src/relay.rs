@@ -11,12 +11,12 @@
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
 use bytes::Bytes;
-use demi_shared_types::B64Bytes;
-use demi_shared_gates::SerialGate;
-use demi_runner_protocol::wire::{Inbound, STDIN_CHUNK_BYTES, WireBytes};
 use demi_host_interface::{
     PortError, PortRequest, PortResponse, PortTransport, RelayedPipes, RpcInvocation, RpcPort,
 };
+use demi_runner_protocol::wire::{Inbound, STDIN_CHUNK_BYTES, WireBytes};
+use demi_shared_gates::SerialGate;
+use demi_shared_types::B64Bytes;
 use futures_util::future::LocalBoxFuture;
 use serde_json::{Map, Value};
 use tokio::sync::oneshot;

@@ -131,7 +131,13 @@ impl Workspace {
 static WORKSPACE: LazyLock<Workspace> = LazyLock::new(|| {
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let output = Command::new(cargo)
-        .args(["metadata", "--format-version", "1", "--no-deps", "--manifest-path"])
+        .args([
+            "metadata",
+            "--format-version",
+            "1",
+            "--no-deps",
+            "--manifest-path",
+        ])
         .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/../../Cargo.toml"))
         .output()
         .expect("cargo starts");
@@ -294,7 +300,11 @@ fn no_member_has_a_dev_dependency_on_a_member_that_depends_on_it() {
     for (name, dependencies) in &workspace.members {
         // A member's dev-dependency on itself turns on its own `testing`
         // feature for its tests; it depends on nothing above the member.
-        for dependency in dependencies.development.iter().filter(|dependency| *dependency != name) {
+        for dependency in dependencies
+            .development
+            .iter()
+            .filter(|dependency| *dependency != name)
+        {
             if workspace.depends_on(dependency, name) {
                 violations.push(format!(
                     "{name} has a dev-dependency on {dependency}, which depends on {name}"
@@ -328,9 +338,7 @@ fn the_graph_is_acyclic() {
         let depended_on: BTreeSet<&str> = remaining.values().flatten().copied().collect();
         let loose: Vec<&str> = remaining
             .iter()
-            .filter(|(name, dependencies)| {
-                dependencies.is_empty() || !depended_on.contains(*name)
-            })
+            .filter(|(name, dependencies)| dependencies.is_empty() || !depended_on.contains(*name))
             .map(|(name, _)| *name)
             .collect();
         if loose.is_empty() {
@@ -362,13 +370,18 @@ fn each_member_has_one_test_binary() {
             if target.is("lib") && target.doctest {
                 violations.push(format!("{}'s library runs doc tests", package.name));
             }
-            let builds_tests = target.test && (target.is("lib") || target.is("bin") || target.is("test"));
+            let builds_tests =
+                target.test && (target.is("lib") || target.is("bin") || target.is("test"));
             if builds_tests && !(target.is("test") && target.is_its_own_binary()) {
                 binaries.push(target.name.as_str());
             }
         }
         if binaries.len() > 1 {
-            violations.push(format!("{} has the test binaries {}", package.name, listed(binaries)));
+            violations.push(format!(
+                "{} has the test binaries {}",
+                package.name,
+                listed(binaries)
+            ));
         }
     }
     assert_none(violations);

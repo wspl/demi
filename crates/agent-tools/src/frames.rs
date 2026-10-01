@@ -4,8 +4,8 @@
 //! fresh transcript receives with the ones that run.
 
 use demi_conversation_socket_protocol::{CommandView, ServerFrame, ShellStatus};
-use demi_shared_types::{Block, CommandId, NodeId, ShellViewStatus, ToolView};
 use demi_host_interface::{PageState, PageView};
+use demi_shared_types::{Block, CommandId, NodeId, ShellViewStatus, ToolView};
 
 /// The `shell_output` frame of `view`, a command of the subagent `subagent`,
 /// or of the root when none.

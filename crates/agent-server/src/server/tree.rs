@@ -16,14 +16,14 @@ use std::{
     time::Duration,
 };
 
-use demi_conversation_socket_protocol::ServerFrame;
 use demi_agent_session::{Continuation, ModelSwitch, SessionEvent, Settle, Status, Subscription};
 use demi_agent_store::{AgentTreeStore, NodeRecord, StoreError};
 use demi_agent_tools::{AgentHarness, Profile, shell_output};
 use demi_agent_transcript::IdSource;
-use demi_shared_types::{Clock, CommandId, NodeId};
-use demi_shared_gates::{ActivityGate, KeyedSerialGate, Reservation};
+use demi_conversation_socket_protocol::ServerFrame;
 use demi_host_interface::RegisterError;
+use demi_shared_gates::{ActivityGate, KeyedSerialGate, Reservation};
+use demi_shared_types::{Clock, CommandId, NodeId};
 use futures_util::future::join_all;
 use tokio::sync::watch;
 use tokio_util::task::{AbortOnDropHandle, TaskTracker};
@@ -175,7 +175,8 @@ impl FrameSink {
             return;
         }
         let attached = !self.attachments.borrow().is_empty();
-        self.attached.send_if_modified(|current| std::mem::replace(current, attached) != attached);
+        self.attached
+            .send_if_modified(|current| std::mem::replace(current, attached) != attached);
     }
 }
 
@@ -252,7 +253,7 @@ impl<H: AgentHarness> Tree<H> {
             // restored is not closing, so it takes the switch, which holds no
             // runtime to close either way.
             let _ = session.update_model(ModelSwitch {
-                model,
+                model: Box::new(model),
                 runtime: None,
             });
         }

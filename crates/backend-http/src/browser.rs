@@ -12,13 +12,16 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use bytes::Bytes;
 use demi_backend_database::conversation_index::ConversationRecord;
-use demi_command_package_browser_protocol::browser::{
-    BackInput, BrowserCreatedBy, BrowserErrorCode, BrowserFailure, BrowserOperation, BrowserTab, CloseInput,
-    FailureDocument, ForwardInput, GotoInput, OpenInput, OpenResult, PREFIX, ReloadInput, TabId, TabsInput, TabsResult,
-};
 use demi_backend_remote_host::ServiceCallError;
+use demi_command_package_browser_protocol::browser::{
+    BackInput, BrowserCreatedBy, BrowserErrorCode, BrowserFailure, BrowserOperation, BrowserTab,
+    CloseInput, FailureDocument, ForwardInput, GotoInput, OpenInput, OpenResult, PREFIX,
+    ReloadInput, TabId, TabsInput, TabsResult,
+};
 use demi_host_interface::HostErrorKind;
-use demi_web_api_protocol::browser::{BrowserTabs, HistoryAction, NavigateTab, OpenTab, TabHistory};
+use demi_web_api_protocol::browser::{
+    BrowserTabs, HistoryAction, NavigateTab, OpenTab, TabHistory,
+};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::UserId;
 use serde::Serialize;
@@ -30,7 +33,9 @@ use super::conversations::owned;
 use super::error::ApiError;
 use super::gate::AuthUser;
 use demi_backend_host_access::access::{HostAccessError, Refusal};
-use demi_backend_host_access::stream::{BROWSER_STREAM, ServiceBinding, ServiceCall, UserCallError, UserCallKind};
+use demi_backend_host_access::stream::{
+    BROWSER_STREAM, ServiceBinding, ServiceCall, UserCallError, UserCallKind,
+};
 
 /// The most bytes of an operation's JSON answer.
 const ANSWER_MAX_BYTES: usize = 1024 * 1024;
@@ -46,7 +51,15 @@ pub(super) async fn list(
         limit: None,
         timeout: None,
     };
-    let listed = call(&state, &user.id, record, UserCallKind::Looks, BrowserOperation::Tabs, input).await?;
+    let listed = call(
+        &state,
+        &user.id,
+        record,
+        UserCallKind::Looks,
+        BrowserOperation::Tabs,
+        input,
+    )
+    .await?;
     // A stopped Cloud runs no browser.
     let tabs = match stopped_is_none(listed)? {
         Some(answer) => decode::<TabsResult>(&answer)?.tabs,
@@ -69,9 +82,16 @@ pub(super) async fn open(
         load: None,
         timeout: None,
     };
-    let answer = call(&state, &user.id, record, UserCallKind::Starts, BrowserOperation::Open, input)
-        .await?
-        .map_err(refused)?;
+    let answer = call(
+        &state,
+        &user.id,
+        record,
+        UserCallKind::Starts,
+        BrowserOperation::Open,
+        input,
+    )
+    .await?
+    .map_err(refused)?;
     let opened = decode::<OpenResult>(&answer)?;
     Ok(Json(BrowserTab {
         id: opened.tab,
@@ -93,9 +113,23 @@ pub(super) async fn close(
         return Ok(StatusCode::NO_CONTENT);
     };
     let input = CloseInput { tab, timeout: None };
-    match call(&state, &user.id, record, UserCallKind::Operates, BrowserOperation::Close, input).await? {
-        Ok(_) | Err(UserCallError::Access(HostAccessError::Refused(Refusal::Stopped))) => Ok(StatusCode::NO_CONTENT),
-        Err(error) if browser_failure(&error).is_some_and(|failure| failure.code == BrowserErrorCode::TabNotFound) => {
+    match call(
+        &state,
+        &user.id,
+        record,
+        UserCallKind::Operates,
+        BrowserOperation::Close,
+        input,
+    )
+    .await?
+    {
+        Ok(_) | Err(UserCallError::Access(HostAccessError::Refused(Refusal::Stopped))) => {
+            Ok(StatusCode::NO_CONTENT)
+        }
+        Err(error)
+            if browser_failure(&error)
+                .is_some_and(|failure| failure.code == BrowserErrorCode::TabNotFound) =>
+        {
             Ok(StatusCode::NO_CONTENT)
         }
         Err(error) => Err(refused(error)),
@@ -115,7 +149,17 @@ pub(super) async fn navigate(
         load: None,
         timeout: None,
     };
-    on_tab(call(&state, &user.id, record, UserCallKind::Operates, BrowserOperation::Goto, input).await?)
+    on_tab(
+        call(
+            &state,
+            &user.id,
+            record,
+            UserCallKind::Operates,
+            BrowserOperation::Goto,
+            input,
+        )
+        .await?,
+    )
 }
 
 pub(super) async fn history(
@@ -133,7 +177,15 @@ pub(super) async fn history(
                 load: None,
                 timeout: None,
             };
-            call(&state, &user.id, record, UserCallKind::Operates, BrowserOperation::Back, input).await?
+            call(
+                &state,
+                &user.id,
+                record,
+                UserCallKind::Operates,
+                BrowserOperation::Back,
+                input,
+            )
+            .await?
         }
         HistoryAction::Forward => {
             let input = ForwardInput {
@@ -141,7 +193,15 @@ pub(super) async fn history(
                 load: None,
                 timeout: None,
             };
-            call(&state, &user.id, record, UserCallKind::Operates, BrowserOperation::Forward, input).await?
+            call(
+                &state,
+                &user.id,
+                record,
+                UserCallKind::Operates,
+                BrowserOperation::Forward,
+                input,
+            )
+            .await?
         }
         HistoryAction::Reload => {
             let input = ReloadInput {
@@ -149,14 +209,26 @@ pub(super) async fn history(
                 load: None,
                 timeout: None,
             };
-            call(&state, &user.id, record, UserCallKind::Operates, BrowserOperation::Reload, input).await?
+            call(
+                &state,
+                &user.id,
+                record,
+                UserCallKind::Operates,
+                BrowserOperation::Reload,
+                input,
+            )
+            .await?
         }
     };
     on_tab(answered)
 }
 
 /// The user's conversation that is not archived.
-async fn open_conversation(state: &AppState, user: &UserId, id: &str) -> Result<ConversationRecord, ApiError> {
+async fn open_conversation(
+    state: &AppState,
+    user: &UserId,
+    id: &str,
+) -> Result<ConversationRecord, ApiError> {
     let record = owned(&state.services, user, id).await?;
     if record.archived {
         return Err(ApiError::new(
@@ -185,7 +257,13 @@ async fn call<I: Serialize>(
         .services
         .user_streams
         .get(BROWSER_STREAM)
-        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, ErrorCode::NotFound, "This backend runs no conversation browser"))?;
+        .ok_or_else(|| {
+            ApiError::new(
+                StatusCode::NOT_FOUND,
+                ErrorCode::NotFound,
+                "This backend runs no conversation browser",
+            )
+        })?;
     let args = match serde_json::to_value(&input) {
         Ok(serde_json::Value::Object(args)) => args,
         _ => unreachable!("a browser operation's input serializes to an object"),
@@ -201,7 +279,12 @@ async fn call<I: Serialize>(
     let answered = state
         .shards
         .of(user)
-        .call(move |shard, cancel| async move { shard.host_shard().user_call(&record.id, kind, &call, &cancel).await })
+        .call(move |shard, cancel| async move {
+            shard
+                .host_shard()
+                .user_call(&record.id, kind, &call, &cancel)
+                .await
+        })
         .await?;
     Ok(answered)
 }
@@ -235,8 +318,11 @@ fn tab_not_found(message: impl Into<String>) -> ApiError {
 /// An operation's answer as its type: one the backend cannot read is the
 /// browser's failure.
 fn decode<T: DeserializeOwned>(answer: &[u8]) -> Result<T, ApiError> {
-    serde_json::from_slice(answer)
-        .map_err(|error| browser_failed(format!("The browser answered what the backend cannot read: {error}")))
+    serde_json::from_slice(answer).map_err(|error| {
+        browser_failed(format!(
+            "The browser answered what the backend cannot read: {error}"
+        ))
+    })
 }
 
 fn browser_failed(message: String) -> ApiError {
@@ -264,7 +350,9 @@ fn refused(error: UserCallError) -> ApiError {
     }
     match error {
         UserCallError::Access(error) => error.into(),
-        UserCallError::Call(ServiceCallError::Host(error)) if matches!(error.kind, HostErrorKind::Offline) => {
+        UserCallError::Call(ServiceCallError::Host(error))
+            if matches!(error.kind, HostErrorKind::Offline) =>
+        {
             HostAccessError::Host(error).into()
         }
         UserCallError::Call(error) => browser_failed(error.to_string()),

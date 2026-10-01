@@ -9,17 +9,17 @@ use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
 use bytes::{Bytes, BytesMut};
 use demi_command_protocol::{CommandContext, PackageDescriptor};
-use demi_shared_types::Timestamp;
-use demi_shared_gates::GateLease;
-use demi_runner_protocol::wire::{
-    self, FsResult, GitChanges, GitResult, Inbound, LogLine, PipeRef, STDIN_CHUNK_BYTES, WireBytes,
-};
 use demi_host_interface::{
     ByteRange, ByteStream, CpOptions, DirEntry, FileContents, FileKind, FileStat, Host, HostError,
     HostErrorKind, HostFs, HostIdentity, HostKey, HostProcess, JobCaller, MkdirOptions, Process,
     ProcessControl, ProcessEnd, ProcessOutput, RmOptions, Signal, SpawnEnv, SpawnRequest,
     WholeOutput, WriteOptions,
 };
+use demi_runner_protocol::wire::{
+    self, FsResult, GitChanges, GitResult, Inbound, LogLine, PipeRef, STDIN_CHUNK_BYTES, WireBytes,
+};
+use demi_shared_gates::GateLease;
+use demi_shared_types::Timestamp;
 use futures_util::{StreamExt, future::LocalBoxFuture};
 use serde_json::{Map, Value};
 use tokio::sync::{oneshot, watch};
@@ -756,7 +756,11 @@ impl Host for RemoteHost {
 impl HostFs for RemoteHost {
     fn read_file<'a>(&'a self, path: &'a str) -> LocalBoxFuture<'a, Result<Bytes, HostError>> {
         Box::pin(async move {
-            collect(self.read_pipe(path, ByteRange::default()).await?, usize::MAX).await
+            collect(
+                self.read_pipe(path, ByteRange::default()).await?,
+                usize::MAX,
+            )
+            .await
         })
     }
 
@@ -1205,7 +1209,9 @@ async fn collect(mut reader: PipeReader, limit: usize) -> Result<Bytes, HostErro
     while let Some(chunk) = reader.next().await {
         let chunk = chunk.map_err(|failure| HostError::interrupted(failure.to_string()))?;
         if bytes.len() + chunk.len() > limit {
-            return Err(protocol(&format!("the runner sent more than {limit} bytes")));
+            return Err(protocol(&format!(
+                "the runner sent more than {limit} bytes"
+            )));
         }
         bytes.extend_from_slice(&chunk);
     }

@@ -19,8 +19,8 @@ use demi_web_api_protocol::error::ErrorCode;
 use super::content::content_headers;
 use super::error::ApiError;
 use super::gate::AuthUser;
-use demi_backend_user_shard::services::Services;
 use demi_backend_host_access::transfer::RangeAnswer;
+use demi_backend_user_shard::services::Services;
 
 pub(super) async fn blob(
     State(services): State<Arc<Services>>,
@@ -51,7 +51,10 @@ pub(super) async fn blob(
     let range = request.get(RANGE).and_then(|value| value.to_str().ok());
     let part = RangeAnswer::of(range, size);
     let mut headers = content_headers(requested.as_deref(), false, None);
-    headers.insert(CACHE_CONTROL, HeaderValue::from_static("private, max-age=31536000, immutable"));
+    headers.insert(
+        CACHE_CONTROL,
+        HeaderValue::from_static("private, max-age=31536000, immutable"),
+    );
     headers.insert(VARY, HeaderValue::from_static("Cookie"));
     headers.extend(part.headers());
     Ok(match part.part_of(&bytes) {

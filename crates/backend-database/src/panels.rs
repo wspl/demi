@@ -14,7 +14,10 @@ impl ControlService {
     /// The conversation's saved panel; `None` when it never saved one. A
     /// stored document that no longer matches the panel's shape is corrupt,
     /// not repaired.
-    pub async fn panel(&self, conversation: ConversationId) -> Result<Option<WorkPanel>, StorageError> {
+    pub async fn panel(
+        &self,
+        conversation: ConversationId,
+    ) -> Result<Option<WorkPanel>, StorageError> {
         self.call(move |connection, _| {
             let document: Option<String> = connection
                 .query_row(
@@ -31,7 +34,11 @@ impl ControlService {
     }
 
     /// Replaces the conversation's panel with `document`, the panel's JSON.
-    pub async fn save_panel(&self, conversation: ConversationId, document: String) -> Result<(), StorageError> {
+    pub async fn save_panel(
+        &self,
+        conversation: ConversationId,
+        document: String,
+    ) -> Result<(), StorageError> {
         self.call(move |connection, now| {
             connection.execute(
                 "INSERT INTO conversation_panels (conversation_id, document, updated_at) VALUES (?1, ?2, ?3)

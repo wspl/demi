@@ -43,7 +43,7 @@ use demi_shared_types::DecodeError;
 /// operation's checked arguments.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Operation {
-    Browser(browser::BrowserOperation),
+    Browser(Box<browser::BrowserOperation>),
     /// `browser.live`: a viewer of the conversation's browser.
     Live,
 }
@@ -72,7 +72,8 @@ impl Operation {
                 .map_err(OperationError::Invalid);
         }
         match name.strip_prefix(browser::PREFIX) {
-            Some(browser) => browser::BrowserOperation::parse(browser, args).map(Self::Browser),
+            Some(browser) => browser::BrowserOperation::parse(browser, args)
+                .map(|operation| Self::Browser(Box::new(operation))),
             None => Err(OperationError::Unknown(name.to_owned())),
         }
     }
@@ -80,6 +81,9 @@ impl Operation {
     /// Every operation the package serves, as its descriptor lists them: the
     /// browser operations and the live view.
     pub fn names() -> impl Iterator<Item = &'static str> {
-        browser::OPERATIONS.iter().chain([&live::OPERATION]).copied()
+        browser::OPERATIONS
+            .iter()
+            .chain([&live::OPERATION])
+            .copied()
     }
 }

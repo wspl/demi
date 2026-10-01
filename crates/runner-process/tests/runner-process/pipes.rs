@@ -88,7 +88,11 @@ async fn explicit_cancel_interrupts_quiet_input_and_urls_cannot_change_origin() 
     tokio::time::timeout(Duration::from_secs(60), async {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let origin = format!("http://{}", listener.local_addr().unwrap());
-        let client = PipeClient::new(&origin.parse().unwrap(), tokio::sync::watch::Sender::new(Some("token".parse().unwrap())).subscribe()).unwrap();
+        let client = PipeClient::new(
+            &origin.parse().unwrap(),
+            tokio::sync::watch::Sender::new(Some("token".parse().unwrap())).subscribe(),
+        )
+        .unwrap();
         for path in ["//elsewhere/pipe", "https://elsewhere/pipe", "/\\elsewhere"] {
             assert_eq!(
                 client

@@ -5,11 +5,11 @@
 
 use std::sync::Arc;
 
-use demi_shared_types::{QuotaPlan, QuotaUnit, QuotaWindow};
 use demi_provider_common::quota::{
     Observation, ProbeCost, ProbeReading, QuotaError, QuotaSource, clamp_used_percent,
     header_number, severity, unix_seconds,
 };
+use demi_shared_types::{QuotaPlan, QuotaUnit, QuotaWindow};
 use futures_util::future::BoxFuture;
 use http::{HeaderMap, HeaderValue, header::ACCEPT};
 use reqwest::Url;

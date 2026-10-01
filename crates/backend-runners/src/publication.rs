@@ -23,15 +23,17 @@ use std::time::Duration;
 use axum::http::Method;
 use bytes::Bytes;
 use demi_backend_blobs::store::S3Config;
+use demi_backend_remote_host::ArtifactResolver;
 use demi_command_protocol::{
     ArtifactLocation, ArtifactUrl, PackageArtifact, PackageDescriptor, TARGETS,
 };
-use demi_backend_remote_host::ArtifactResolver;
 use futures_util::TryStreamExt as _;
 use futures_util::future::LocalBoxFuture;
 use object_store::path::Path;
 use object_store::signer::Signer;
-use object_store::{Attribute, Attributes, GetOptions, ObjectStore, PutMode, PutOptions, PutPayload};
+use object_store::{
+    Attribute, Attributes, GetOptions, ObjectStore, PutMode, PutOptions, PutPayload,
+};
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
@@ -139,7 +141,10 @@ pub enum PublicationError {
 /// storage, or, for the local store, to the backend's own route, which
 /// uploads nothing. The backend accepts requests only once this completed;
 /// `cancel` interrupts it.
-pub async fn publish_native(path: &FilePath, cancel: &CancellationToken) -> Result<NativeCatalog, PublicationError> {
+pub async fn publish_native(
+    path: &FilePath,
+    cancel: &CancellationToken,
+) -> Result<NativeCatalog, PublicationError> {
     let config = NativeConfig::read(path).await?;
     let catalog = match &config.store {
         NativeStore::S3(s3) => {
@@ -149,8 +154,15 @@ pub async fn publish_native(path: &FilePath, cancel: &CancellationToken) -> Resu
         }
         NativeStore::Local(LocalStore {}) => {
             let verified = verify_all(&config.releases, Targets::Named, cancel).await?;
-            let artifacts = LocalArtifacts::new(verified.iter().flat_map(|release| release.executables.iter().cloned()));
-            let packages: Vec<PackageDescriptor> = verified.into_iter().map(|release| release.descriptor).collect();
+            let artifacts = LocalArtifacts::new(
+                verified
+                    .iter()
+                    .flat_map(|release| release.executables.iter().cloned()),
+            );
+            let packages: Vec<PackageDescriptor> = verified
+                .into_iter()
+                .map(|release| release.descriptor)
+                .collect();
             tracing::info!(
                 packages = packages.len(),
                 "the development store serves the native releases' executables itself"
@@ -165,20 +177,27 @@ impl NativeConfig {
     /// The configuration in the JSON file at `path`; relative release
     /// directories resolve against the file's directory.
     async fn read(path: &FilePath) -> Result<Self, PublicationError> {
-        let invalid = |reason: String| PublicationError::Config(format!("{}: {reason}", path.display()));
-        let bytes = tokio::fs::read(path).await.map_err(|error| invalid(error.to_string()))?;
-        let mut config: Self = serde_json::from_slice(&bytes).map_err(|error| invalid(error.to_string()))?;
+        let invalid =
+            |reason: String| PublicationError::Config(format!("{}: {reason}", path.display()));
+        let bytes = tokio::fs::read(path)
+            .await
+            .map_err(|error| invalid(error.to_string()))?;
+        let mut config: Self =
+            serde_json::from_slice(&bytes).map_err(|error| invalid(error.to_string()))?;
         match (&config.store, &config.prefix) {
             (NativeStore::S3(s3), _) => {
                 let prefix = config.prefix();
                 // Segments of letters, digits, `_` and `-`, beginning with a
                 // letter or digit.
-                let prefix_ok = prefix.bytes().next().is_some_and(|byte| byte.is_ascii_alphanumeric())
+                let prefix_ok = prefix
+                    .bytes()
+                    .next()
+                    .is_some_and(|byte| byte.is_ascii_alphanumeric())
                     && prefix.split('/').all(|segment| {
                         !segment.is_empty()
-                            && segment
-                                .bytes()
-                                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+                            && segment.bytes().all(|byte| {
+                                byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-')
+                            })
                     });
                 if !prefix_ok {
                     return Err(invalid(format!("{prefix} is no object key prefix")));
@@ -186,7 +205,9 @@ impl NativeConfig {
                 s3.check().map_err(|error| invalid(error.to_string()))?;
             }
             (NativeStore::Local(_), Some(_)) => {
-                return Err(invalid("prefix names object storage keys, and the local store has none".into()));
+                return Err(invalid(
+                    "prefix names object storage keys, and the local store has none".into(),
+                ));
             }
             (NativeStore::Local(_), None) => {}
         }
@@ -198,7 +219,10 @@ impl NativeConfig {
                     .bytes()
                     .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'));
             if !basename {
-                return Err(invalid(format!("{} is no executable basename", release.executable)));
+                return Err(invalid(format!(
+                    "{} is no executable basename",
+                    release.executable
+                )));
             }
             release.directory = base.join(&release.directory);
         }
@@ -263,20 +287,24 @@ where
                 let bytes = Bytes::from(read.map_err(|error| refused(error.to_string()))?);
                 // What is uploaded is what was verified, whatever changed the
                 // file since.
-                let mut verifier = demi_shared_artifacts::Verifier::new(&demi_shared_artifacts::Digest {
-                    size: artifact.size,
-                    sha256: artifact.sha256.clone(),
-                });
+                let mut verifier =
+                    demi_shared_artifacts::Verifier::new(&demi_shared_artifacts::Digest {
+                        size: artifact.size,
+                        sha256: artifact.sha256.clone(),
+                    });
                 verifier
                     .update(&bytes)
                     .and_then(|()| verifier.finish())
                     .map_err(|error| refused(error.to_string()))?;
                 let encoded = tokio::task::spawn_blocking(move || {
-                    demi_shared_artifacts::encode_blocking(&bytes, demi_shared_artifacts::Effort::Published)
+                    demi_shared_artifacts::encode_blocking(
+                        &bytes,
+                        demi_shared_artifacts::Effort::Published,
+                    )
                 })
-                    .await
-                    .map_err(|error| refused(error.to_string()))?
-                    .map_err(|error| refused(error.to_string()))?;
+                .await
+                .map_err(|error| refused(error.to_string()))?
+                .map_err(|error| refused(error.to_string()))?;
                 let coding = Some(demi_shared_artifacts::CONTENT_CODING);
                 put_immutable(store, &key, Bytes::from(encoded), &artifact, coding, cancel).await
             }
@@ -284,7 +312,8 @@ where
         .await?;
     for release in &verified {
         let descriptor = &release.descriptor;
-        let body = serde_json_canonicalizer::to_vec(descriptor).map_err(|error| PublicationError::Config(error.to_string()))?;
+        let body = serde_json_canonicalizer::to_vec(descriptor)
+            .map_err(|error| PublicationError::Config(error.to_string()))?;
         let digest = descriptor
             .digest()
             .map_err(|error| PublicationError::Config(error.to_string()))?;
@@ -298,11 +327,17 @@ where
         // The package and version's meaning, published last: a conflicting
         // descriptor fails instead of changing what the version names.
         let version = utf8_percent_encode(&descriptor.version, COMPONENT);
-        let claim = object(format!("{prefix}/packages/{}/{version}.json", descriptor.id))?;
+        let claim = object(format!(
+            "{prefix}/packages/{}/{version}.json",
+            descriptor.id
+        ))?;
         put_immutable(&*store, &claim, body, &artifact, None, cancel).await?;
     }
     Ok(Published {
-        packages: verified.into_iter().map(|release| release.descriptor).collect(),
+        packages: verified
+            .into_iter()
+            .map(|release| release.descriptor)
+            .collect(),
         artifacts: SignedArtifacts {
             signer: store,
             prefix: prefix.to_owned(),
@@ -323,7 +358,10 @@ async fn verify_all(
     for release in releases {
         let release = verify(release, targets, cancel).await?;
         if !ids.insert(release.descriptor.id.clone()) {
-            return Err(PublicationError::Config(format!("{} is released twice", release.descriptor.id)));
+            return Err(PublicationError::Config(format!(
+                "{} is released twice",
+                release.descriptor.id
+            )));
         }
         verified.push(release);
     }
@@ -332,7 +370,11 @@ async fn verify_all(
 
 /// Reads a release's descriptor and checks the executable of each target it
 /// must carry against it.
-async fn verify(release: &Release, targets: Targets, cancel: &CancellationToken) -> Result<Verified, PublicationError> {
+async fn verify(
+    release: &Release,
+    targets: Targets,
+    cancel: &CancellationToken,
+) -> Result<Verified, PublicationError> {
     let refused = |reason: String| PublicationError::Release {
         directory: release.directory.clone(),
         reason,
@@ -340,8 +382,10 @@ async fn verify(release: &Release, targets: Targets, cancel: &CancellationToken)
     let text = tokio::fs::read(release.directory.join("descriptor.json"))
         .await
         .map_err(|error| refused(format!("descriptor.json: {error}")))?;
-    let value = serde_json::from_slice(&text).map_err(|error| refused(format!("descriptor.json: {error}")))?;
-    let descriptor = PackageDescriptor::parse(value).map_err(|error| refused(format!("descriptor.json: {error}")))?;
+    let value = serde_json::from_slice(&text)
+        .map_err(|error| refused(format!("descriptor.json: {error}")))?;
+    let descriptor = PackageDescriptor::parse(value)
+        .map_err(|error| refused(format!("descriptor.json: {error}")))?;
     let carried: Vec<&str> = match targets {
         Targets::All => TARGETS.to_vec(),
         Targets::Named => descriptor.targets.keys().map(String::as_str).collect(),
@@ -355,7 +399,11 @@ async fn verify(release: &Release, targets: Targets, cancel: &CancellationToken)
             .targets
             .get(target)
             .ok_or_else(|| refused(format!("it lacks a target: {target}")))?;
-        let suffix = if target.contains("windows") { ".exe" } else { "" };
+        let suffix = if target.contains("windows") {
+            ".exe"
+        } else {
+            ""
+        };
         let path = release
             .directory
             .join(target)
@@ -367,7 +415,9 @@ async fn verify(release: &Release, targets: Targets, cancel: &CancellationToken)
                 error => refused(format!("{target}: {error}")),
             })?;
         if found.size != expected.size || found.sha256 != expected.sha256 {
-            return Err(refused(format!("{target}: the executable does not match the descriptor")));
+            return Err(refused(format!(
+                "{target}: the executable does not match the descriptor"
+            )));
         }
         executables.push((path, expected.clone()));
     }
@@ -400,8 +450,14 @@ async fn put_immutable(
     cancel: &CancellationToken,
 ) -> Result<(), PublicationError> {
     let mut attributes = Attributes::new();
-    attributes.insert(Attribute::Metadata(SHA256.into()), artifact.sha256.clone().into());
-    attributes.insert(Attribute::Metadata(SIZE.into()), artifact.size.to_string().into());
+    attributes.insert(
+        Attribute::Metadata(SHA256.into()),
+        artifact.sha256.clone().into(),
+    );
+    attributes.insert(
+        Attribute::Metadata(SIZE.into()),
+        artifact.size.to_string().into(),
+    );
     attributes.insert(Attribute::ContentType, "application/octet-stream".into());
     if let Some(coding) = coding {
         attributes.insert(Attribute::ContentEncoding, coding.into());
@@ -417,7 +473,9 @@ async fn put_immutable(
     };
     match put {
         Ok(_) => Ok(()),
-        Err(object_store::Error::AlreadyExists { .. }) => in_place(store, path, artifact, cancel).await.map(drop),
+        Err(object_store::Error::AlreadyExists { .. }) => {
+            in_place(store, path, artifact, cancel).await.map(drop)
+        }
         Err(error) => Err(error.into()),
     }
 }
@@ -526,9 +584,17 @@ mod tests {
         let mut artifacts = serde_json::Map::new();
         for target in targets {
             let bytes = format!("test-only artifact {target}");
-            let suffix = if target.contains("windows") { ".exe" } else { "" };
+            let suffix = if target.contains("windows") {
+                ".exe"
+            } else {
+                ""
+            };
             std::fs::create_dir_all(directory.join(target)).unwrap();
-            std::fs::write(directory.join(target).join(format!("commands{suffix}")), &bytes).unwrap();
+            std::fs::write(
+                directory.join(target).join(format!("commands{suffix}")),
+                &bytes,
+            )
+            .unwrap();
             let artifact = serde_json::json!({ "sha256": hex::encode(Sha256::digest(&bytes)), "size": bytes.len() });
             artifacts.insert((*target).to_owned(), artifact);
         }
@@ -546,17 +612,25 @@ mod tests {
     const CLAIM: &str = "native/packages/example.commands/1.0.0%2Bbuild.json";
 
     #[tokio::test]
-    async fn the_six_executables_precede_the_immutable_descriptor_and_a_version_keeps_its_meaning() {
+    async fn the_six_executables_precede_the_immutable_descriptor_and_a_version_keeps_its_meaning()
+    {
         let fake = FakeS3::start().await;
         let store = Arc::new(fake.client());
         let directory = tempfile::tempdir().unwrap();
         let releases = [release(directory.path(), TARGETS)];
         let cancel = CancellationToken::new();
-        let published = publish(&releases, "native", store.clone(), &cancel).await.unwrap();
+        let published = publish(&releases, "native", store.clone(), &cancel)
+            .await
+            .unwrap();
         assert_eq!(published.packages[0].id, "example.commands");
         let written = fake.written();
         assert_eq!(written.len(), 8, "{written:?}");
-        assert!(written[..6].iter().all(|key| key.starts_with("native/blobs/")), "{written:?}");
+        assert!(
+            written[..6]
+                .iter()
+                .all(|key| key.starts_with("native/blobs/")),
+            "{written:?}"
+        );
         assert!(written[6].starts_with("native/descriptors/"), "{written:?}");
         assert_eq!(written[7], CLAIM);
         // An executable is stored in its content coding and downloads as
@@ -576,7 +650,9 @@ mod tests {
             .unwrap();
         assert_eq!(downloaded, bytes);
         // A second start finds its objects in place.
-        publish(&releases, "native", store.clone(), &cancel).await.unwrap();
+        publish(&releases, "native", store.clone(), &cancel)
+            .await
+            .unwrap();
         assert_eq!(fake.written().len(), 8);
 
         // The same version naming other operations is refused, and the
@@ -586,8 +662,13 @@ mod tests {
             .replace(r#"["fixture"]"#, r#"["fixture","changed"]"#);
         std::fs::write(directory.path().join("descriptor.json"), changed).unwrap();
         let refused = publish(&releases, "native", store, &cancel).await;
-        assert!(matches!(refused, Err(PublicationError::Conflict(_))), "{:?}", refused.err());
-        let claim: serde_json::Value = serde_json::from_slice(&fake.object(CLAIM).unwrap()).unwrap();
+        assert!(
+            matches!(refused, Err(PublicationError::Conflict(_))),
+            "{:?}",
+            refused.err()
+        );
+        let claim: serde_json::Value =
+            serde_json::from_slice(&fake.object(CLAIM).unwrap()).unwrap();
         assert_eq!(claim["operations"], serde_json::json!(["fixture"]));
     }
 
@@ -601,17 +682,37 @@ mod tests {
         let windows = directory.path().join(TARGETS[5]).join("commands.exe");
         let bytes = std::fs::read(&windows).unwrap();
         std::fs::write(&windows, "corrupt").unwrap();
-        let corrupt = publish(&releases, "native", store.clone(), &cancel).await.err().unwrap();
-        assert!(corrupt.to_string().contains("does not match the descriptor"), "{corrupt}");
+        let corrupt = publish(&releases, "native", store.clone(), &cancel)
+            .await
+            .err()
+            .unwrap();
+        assert!(
+            corrupt
+                .to_string()
+                .contains("does not match the descriptor"),
+            "{corrupt}"
+        );
         std::fs::remove_file(&windows).unwrap();
-        assert!(publish(&releases, "native", store.clone(), &cancel).await.is_err());
+        assert!(
+            publish(&releases, "native", store.clone(), &cancel)
+                .await
+                .is_err()
+        );
         assert!(fake.written().is_empty(), "{:?}", fake.written());
 
         // A development release of fewer targets.
         let development = tempfile::tempdir().unwrap();
         let partial = [release(development.path(), &TARGETS[..2])];
-        let refused = publish(&partial, "native", store.clone(), &cancel).await.err().unwrap();
-        assert!(refused.to_string().contains(&format!("it lacks a target: {}", TARGETS[2])), "{refused}");
+        let refused = publish(&partial, "native", store.clone(), &cancel)
+            .await
+            .err()
+            .unwrap();
+        assert!(
+            refused
+                .to_string()
+                .contains(&format!("it lacks a target: {}", TARGETS[2])),
+            "{refused}"
+        );
         assert!(fake.written().is_empty(), "{:?}", fake.written());
 
         // An executable's object that holds other bytes stops the release
@@ -619,10 +720,23 @@ mod tests {
         std::fs::write(&windows, &bytes).unwrap();
         let sha256 = hex::encode(Sha256::digest(&bytes));
         let squatted = Path::parse(format!("native/blobs/{sha256}")).unwrap();
-        store.put(&squatted, PutPayload::from_static(b"other bytes")).await.unwrap();
+        store
+            .put(&squatted, PutPayload::from_static(b"other bytes"))
+            .await
+            .unwrap();
         let conflict = publish(&releases, "native", store, &cancel).await;
-        assert!(matches!(conflict, Err(PublicationError::Conflict(_))), "{:?}", conflict.err());
-        assert!(fake.written().iter().all(|key| key.starts_with("native/blobs/")), "{:?}", fake.written());
+        assert!(
+            matches!(conflict, Err(PublicationError::Conflict(_))),
+            "{:?}",
+            conflict.err()
+        );
+        assert!(
+            fake.written()
+                .iter()
+                .all(|key| key.starts_with("native/blobs/")),
+            "{:?}",
+            fake.written()
+        );
     }
 
     #[tokio::test]
@@ -649,8 +763,16 @@ mod tests {
         };
         let url = url::Url::parse(&location.url).unwrap();
         assert_eq!(url.scheme(), "https");
-        assert!(url.path().ends_with(&format!("/native/blobs/{}", artifact.sha256)), "{url}");
-        assert!(url.query_pairs().any(|(key, value)| key == "X-Amz-Expires" && value == "300"), "{url}");
+        assert!(
+            url.path()
+                .ends_with(&format!("/native/blobs/{}", artifact.sha256)),
+            "{url}"
+        );
+        assert!(
+            url.query_pairs()
+                .any(|(key, value)| key == "X-Amz-Expires" && value == "300"),
+            "{url}"
+        );
         let valid_for = location.expires_at.unwrap() - asked.as_millisecond();
         assert!((300_000..301_000).contains(&valid_for), "{valid_for}");
         let unpublished = PackageArtifact {
@@ -666,11 +788,18 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("native.json");
         let write = |text: &str| std::fs::write(&path, text).unwrap();
-        write(r#"{"releases":[{"directory":"./demi-file","executable":"demi-file"}],"store":{"provider":"s3","bucket":"demi-native","region":"us-east-1"}}"#);
+        write(
+            r#"{"releases":[{"directory":"./demi-file","executable":"demi-file"}],"store":{"provider":"s3","bucket":"demi-native","region":"us-east-1"}}"#,
+        );
         let config = NativeConfig::read(&path).await.unwrap();
         assert_eq!(config.prefix(), "native");
-        assert_eq!(config.releases[0].directory, directory.path().join("./demi-file"));
-        write(r#"{"releases":[{"directory":"demi-file","executable":"demi-file"}],"store":{"provider":"local"}}"#);
+        assert_eq!(
+            config.releases[0].directory,
+            directory.path().join("./demi-file")
+        );
+        write(
+            r#"{"releases":[{"directory":"demi-file","executable":"demi-file"}],"store":{"provider":"local"}}"#,
+        );
         let config = NativeConfig::read(&path).await.unwrap();
         assert_eq!(config.store, NativeStore::Local(LocalStore {}));
         for refused in [
@@ -693,7 +822,9 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("native.json");
         std::fs::write(&path, r#"{"releases":[],"store":{"provider":"s3","bucket":"demi-native","region":"us-east-1"}}"#).unwrap();
-        let catalog = publish_native(&path, &CancellationToken::new()).await.unwrap();
+        let catalog = publish_native(&path, &CancellationToken::new())
+            .await
+            .unwrap();
         assert!(catalog.package(BROWSER_PACKAGE).is_none());
         assert!(!catalog.serves(BROWSER_PACKAGE, &[]));
     }

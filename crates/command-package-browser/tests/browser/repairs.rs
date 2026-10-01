@@ -1,6 +1,7 @@
 //! Round-one regression specifications. These compile without launching Chrome.
 
 use demi_command_package_browser_chrome::driver::operation::{BrowserError, Result};
+use demi_command_package_browser_chrome::page::evaluation;
 use demi_command_package_browser_chrome::tabs::tab::BrowserTab;
 use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
@@ -16,8 +17,13 @@ async fn command(tab: &BrowserTab, operation: &str, mut args: Value) -> Result<V
     if args.get("timeout").is_none() {
         args["timeout"] = json!(10_000);
     }
-    let result = demi_command_package_browser_chrome::page::actions::execute(tab, operation, args.clone(), &CancellationToken::new())
-        .await;
+    let result = demi_command_package_browser_chrome::page::actions::execute(
+        tab,
+        operation,
+        args.clone(),
+        &CancellationToken::new(),
+    )
+    .await;
     if let Err(error) = &result {
         eprintln!("browser {operation} {args}: {error:?}");
     }
@@ -189,7 +195,7 @@ async fn targeted_keyboard_preserves_selection_and_stops_on_focus_loss() {
             "invalid_input",
             "not_started",
         );
-        let events = demi_command_package_browser_chrome::page::evaluation::evaluate(&tab, "keys", &CancellationToken::new(), TIMEOUT)
+        let events = evaluation::evaluate(&tab, "keys", &CancellationToken::new(), TIMEOUT)
             .await
             .expect("read the keyboard event log expression: keys");
         let events = events.as_array().unwrap();
@@ -396,8 +402,7 @@ async fn action_conditions_shadow_hits_and_shared_wait_states() {
         }
         command(&tab, "move", json!({"css": "#disabled-button"})).await?;
         assert_eq!(
-            demi_command_package_browser_chrome::page::evaluation::evaluate(&tab, "hovered", &CancellationToken::new(), TIMEOUT)
-                .await?,
+            evaluation::evaluate(&tab, "hovered", &CancellationToken::new(), TIMEOUT).await?,
             true
         );
         command(&tab, "scroll", json!({"css": "#disabled-button", "dy": 50})).await?;
@@ -630,7 +635,7 @@ async fn label_text_and_accessible_name_are_distinct_and_ambiguity_is_explicit()
         )
         .await?;
         assert_eq!(
-            demi_command_package_browser_chrome::page::evaluation::evaluate(&tab, "fallbackClicks", &CancellationToken::new(), TIMEOUT)
+            evaluation::evaluate(&tab, "fallbackClicks", &CancellationToken::new(), TIMEOUT)
                 .await?,
             1
         );
@@ -663,7 +668,7 @@ async fn label_text_and_accessible_name_are_distinct_and_ambiguity_is_explicit()
         );
         click(&tab, ".fallback").await?;
         assert_eq!(
-            demi_command_package_browser_chrome::page::evaluation::evaluate(&tab, "fallbackClicks", &CancellationToken::new(), TIMEOUT)
+            evaluation::evaluate(&tab, "fallbackClicks", &CancellationToken::new(), TIMEOUT)
                 .await?,
             2
         );
@@ -728,14 +733,19 @@ async fn explicit_navigation_tracks_documents_failures_and_history_boundaries() 
             .await?;
         command(&tab, "goto", json!({"url": format!("{base}/500")})).await?;
         assert_eq!(
-            demi_command_package_browser_chrome::page::evaluation::evaluate(&tab, "document.title", &CancellationToken::new(), TIMEOUT)
+            evaluation::evaluate(&tab, "document.title", &CancellationToken::new(), TIMEOUT)
                 .await?,
             "HTTP error document"
         );
         command(&tab, "goto", json!({"url": format!("{base}/redirect")})).await?;
         assert_eq!(
-            demi_command_package_browser_chrome::page::evaluation::evaluate(&tab, "location.pathname", &CancellationToken::new(), TIMEOUT)
-                .await?,
+            evaluation::evaluate(
+                &tab,
+                "location.pathname",
+                &CancellationToken::new(),
+                TIMEOUT
+            )
+            .await?,
             "/destination"
         );
         command(
@@ -746,14 +756,12 @@ async fn explicit_navigation_tracks_documents_failures_and_history_boundaries() 
         .await?;
         command(&tab, "back", json!({})).await?;
         assert_eq!(
-            demi_command_package_browser_chrome::page::evaluation::evaluate(&tab, "location.hash", &CancellationToken::new(), TIMEOUT)
-                .await?,
+            evaluation::evaluate(&tab, "location.hash", &CancellationToken::new(), TIMEOUT).await?,
             ""
         );
         command(&tab, "forward", json!({})).await?;
         assert_eq!(
-            demi_command_package_browser_chrome::page::evaluation::evaluate(&tab, "location.hash", &CancellationToken::new(), TIMEOUT)
-                .await?,
+            evaluation::evaluate(&tab, "location.hash", &CancellationToken::new(), TIMEOUT).await?,
             "#changed"
         );
         for load in ["commit", "domcontentloaded", "load"] {
@@ -833,14 +841,12 @@ async fn url_observation_delivers_input_and_observes_transient_matches() {
         )
         .await?;
         assert_eq!(
-            demi_command_package_browser_chrome::page::evaluation::evaluate(&tab, "noNavClicks", &CancellationToken::new(), TIMEOUT)
-                .await?,
+            evaluation::evaluate(&tab, "noNavClicks", &CancellationToken::new(), TIMEOUT).await?,
             1
         );
         click(&tab, "#no-nav").await?;
         assert_eq!(
-            demi_command_package_browser_chrome::page::evaluation::evaluate(&tab, "noNavClicks", &CancellationToken::new(), TIMEOUT)
-                .await?,
+            evaluation::evaluate(&tab, "noNavClicks", &CancellationToken::new(), TIMEOUT).await?,
             2
         );
         for css in ["#immediate", "#delayed"] {
@@ -859,8 +865,13 @@ async fn url_observation_delivers_input_and_observes_transient_matches() {
         )
         .await?;
         assert_eq!(
-            demi_command_package_browser_chrome::page::evaluation::evaluate(&tab, "location.pathname", &CancellationToken::new(), TIMEOUT)
-                .await?,
+            evaluation::evaluate(
+                &tab,
+                "location.pathname",
+                &CancellationToken::new(),
+                TIMEOUT
+            )
+            .await?,
             "/returned"
         );
         command(&tab, "goto", json!({"url": base})).await?;
@@ -1030,9 +1041,14 @@ async fn inspect_keeps_false_values_and_protects_passwords_and_handles_expire() 
             "stale_ref",
             "not_started",
         );
-        let failed = demi_command_package_browser_chrome::page::actions::execute(&tab, "info", json!({"tab": old_tab}), &CancellationToken::new())
-            .await
-            .unwrap_err();
+        let failed = demi_command_package_browser_chrome::page::actions::execute(
+            &tab,
+            "info",
+            json!({"tab": old_tab}),
+            &CancellationToken::new(),
+        )
+        .await
+        .unwrap_err();
         assert_eq!(failed.code().to_string(), "tab_not_found");
         Ok(())
     })
@@ -1054,18 +1070,18 @@ async fn input_and_animation_probes_clean_up_on_cancellation_and_dialogs() {
             }
         );
         assert_eq!(typing.unwrap_err().code().to_string(), "cancelled");
-        let events = demi_command_package_browser_chrome::page::evaluation::evaluate(&tab, "keys", &CancellationToken::new(), TIMEOUT).await?;
+        let events = evaluation::evaluate(&tab, "keys", &CancellationToken::new(), TIMEOUT).await?;
         let events = events.as_array().unwrap();
         assert!(!events.is_empty());
         assert_eq!(events.iter().filter(|event| event["type"] == "keydown").count(), events.iter().filter(|event| event["type"] == "keyup").count());
         let dialog = command(&tab, "key", json!({"css": "#key-dialog", "key": "Control+x"})).await.unwrap_err();
         assert_eq!(dialog.code().to_string(), "dialog_blocked");
         command(&tab, "dialog.dismiss", json!({})).await?;
-        let events = demi_command_package_browser_chrome::page::evaluation::evaluate(&tab, "keys", &CancellationToken::new(), TIMEOUT).await?;
+        let events = evaluation::evaluate(&tab, "keys", &CancellationToken::new(), TIMEOUT).await?;
         let events = events.as_array().unwrap();
         assert_eq!(events.iter().filter(|event| event["type"] == "keydown" && event["key"] == "Control").count(), events.iter().filter(|event| event["type"] == "keyup" && event["key"] == "Control").count());
         error(command(&tab, "click", json!({"css": "#moving", "timeout": 5000})).await, "not_actionable", "not_started");
-        assert_eq!(demi_command_package_browser_chrome::page::evaluation::evaluate(&tab, "Object.getOwnPropertyNames(document.querySelector('#moving')).filter(name => name.startsWith('probe_'))", &CancellationToken::new(), TIMEOUT).await?, json!([]));
+        assert_eq!(evaluation::evaluate(&tab, "Object.getOwnPropertyNames(document.querySelector('#moving')).filter(name => name.startsWith('probe_'))", &CancellationToken::new(), TIMEOUT).await?, json!([]));
         Ok(())
     }).await;
 }
@@ -1234,7 +1250,7 @@ async fn catalog_cross_origin_frames_scope_focus_and_references() {
         command(&tab,"click",json!({"frame":[outer],"css":"#cross-button"})).await?;
         let clicked = command(&tab,"read",json!({"frame":[outer],"css":"#cross-button","property":"text"})).await?["value"].clone();
         if clicked != "Cross clicked" {
-            let parent = demi_command_package_browser_chrome::page::evaluation::evaluate(&tab, "JSON.stringify({events:window.pointerEvents,scroll:[scrollX,scrollY]})", &CancellationToken::new(), TIMEOUT).await?;
+            let parent = evaluation::evaluate(&tab, "JSON.stringify({events:window.pointerEvents,scroll:[scrollX,scrollY]})", &CancellationToken::new(), TIMEOUT).await?;
             let child = command(&tab,"eval",json!({"frame":[outer],"css":"#cross-button","expression":"JSON.stringify({text:element.textContent,events:element.ownerDocument.defaultView.pointerEvents})"})).await?;
             tokio::time::sleep(Duration::from_millis(500)).await;
             let later = command(&tab,"read",json!({"frame":[outer],"css":"#cross-button","property":"text"})).await?;
@@ -1279,12 +1295,13 @@ async fn frame_pointer_actions_wait_for_composited_scroll() {
         let outer =
             command(&tab, "find", json!({"css": "#cross-frame"})).await?["matches"][0]["ref"]
                 .clone();
-        let viewport = demi_command_package_browser_chrome::page::evaluation::evaluate(&tab, 
-                "[innerWidth, innerHeight, devicePixelRatio]",
-                &CancellationToken::new(),
-                TIMEOUT,
-            )
-            .await?;
+        let viewport = evaluation::evaluate(
+            &tab,
+            "[innerWidth, innerHeight, devicePixelRatio]",
+            &CancellationToken::new(),
+            TIMEOUT,
+        )
+        .await?;
         for count in 1..=20 {
             // Centering these two controls moves their embedding page by 21px.
             // A stale browser-process transform presses the input, then releases
@@ -1314,7 +1331,8 @@ async fn frame_pointer_actions_wait_for_composited_scroll() {
             );
         }
         assert_eq!(
-            demi_command_package_browser_chrome::page::evaluation::evaluate(&tab, 
+            evaluation::evaluate(
+                &tab,
                 "[innerWidth, innerHeight, devicePixelRatio]",
                 &CancellationToken::new(),
                 TIMEOUT
@@ -1479,7 +1497,8 @@ async fn viewport_overrides_are_per_tab_and_survive_screenshots() {
                 expected
             );
             assert_eq!(
-                demi_command_package_browser_chrome::page::evaluation::evaluate(tab, 
+                evaluation::evaluate(
+                    tab,
                     "({width: innerWidth, height: innerHeight})",
                     &CancellationToken::new(),
                     TIMEOUT
@@ -1510,7 +1529,8 @@ async fn viewport_overrides_are_per_tab_and_survive_screenshots() {
         );
         for (tab, css) in [(&first, size(1280, 720)), (&second, size(640, 480))] {
             assert_eq!(
-                demi_command_package_browser_chrome::page::evaluation::evaluate(tab, 
+                evaluation::evaluate(
+                    tab,
                     "({width: innerWidth, height: innerHeight})",
                     &CancellationToken::new(),
                     TIMEOUT

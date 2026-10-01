@@ -4,7 +4,6 @@
 
 use std::{sync::Arc, time::Duration};
 
-use demi_shared_types::{Clock, Timestamp};
 use demi_provider_common::{
     Secret,
     credentials::{
@@ -14,6 +13,7 @@ use demi_provider_common::{
     oauth::{decode_json_response, jwt_claims},
     wire::{Reported, ReportedString},
 };
+use demi_shared_types::{Clock, Timestamp};
 use http::HeaderValue;
 use reqwest::{Url, header::CONTENT_TYPE};
 use serde::{Deserialize, Deserializer, Serialize, de};

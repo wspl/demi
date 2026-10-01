@@ -3,16 +3,16 @@
 //! of a runner's hello or pipe request through one index lookup. Whether a
 //! device is online is its runner connection's, not a record's.
 
-use demi_shared_types::Timestamp;
 use demi_runner_protocol::wire::RunnerPlatform;
+use demi_shared_types::Timestamp;
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::ids::{DeviceId, UserId};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use super::StorageError;
+use super::accounts::TokenHash;
 use super::columns::{decode, instant};
 use super::control::ControlService;
-use super::accounts::TokenHash;
 
 /// A `devices` row.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,21 +76,33 @@ impl ControlService {
     }
 
     /// The device whose current token has this hash.
-    pub async fn device_by_token(&self, token: TokenHash) -> Result<Option<DeviceRecord>, StorageError> {
+    pub async fn device_by_token(
+        &self,
+        token: TokenHash,
+    ) -> Result<Option<DeviceRecord>, StorageError> {
         self.call(move |connection, _| one(connection, "token_hash = ?1", token.as_str()))
             .await
     }
 
     /// The user's Cloud device, when its first use made it.
     pub async fn managed_device(&self, user: UserId) -> Result<Option<DeviceRecord>, StorageError> {
-        self.call(move |connection, _| one(connection, "kind = 'managed' AND user_id = ?1", user.as_str()))
-            .await
+        self.call(move |connection, _| {
+            one(
+                connection,
+                "kind = 'managed' AND user_id = ?1",
+                user.as_str(),
+            )
+        })
+        .await
     }
 
     /// The user's Cloud device, made on its first use. The partial unique
     /// index admits one per user, so concurrent first uses find the same
     /// one. Its token is issued when it boots.
-    pub async fn managed_device_or_create(&self, user: UserId) -> Result<DeviceRecord, StorageError> {
+    pub async fn managed_device_or_create(
+        &self,
+        user: UserId,
+    ) -> Result<DeviceRecord, StorageError> {
         let id = DeviceId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty");
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
@@ -145,7 +157,10 @@ impl ControlService {
     pub async fn delete_device(&self, device: DeviceId) -> Result<(), StorageError> {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
-            transaction.execute("DELETE FROM conversation_hosts WHERE device_id = ?1", [device.as_str()])?;
+            transaction.execute(
+                "DELETE FROM conversation_hosts WHERE device_id = ?1",
+                [device.as_str()],
+            )?;
             transaction.execute("DELETE FROM devices WHERE id = ?1", [device.as_str()])?;
             transaction.commit()?;
             Ok(())
@@ -167,8 +182,14 @@ impl ControlService {
 }
 
 /// The one device `condition` selects with `value`.
-fn one(connection: &Connection, condition: &str, value: &str) -> Result<Option<DeviceRecord>, StorageError> {
-    let mut statement = connection.prepare_cached(&format!("SELECT {DEVICE_COLUMNS} FROM devices WHERE {condition}"))?;
+fn one(
+    connection: &Connection,
+    condition: &str,
+    value: &str,
+) -> Result<Option<DeviceRecord>, StorageError> {
+    let mut statement = connection.prepare_cached(&format!(
+        "SELECT {DEVICE_COLUMNS} FROM devices WHERE {condition}"
+    ))?;
     statement
         .query_row([value], |row| Ok(device_row(row)))
         .optional()?
@@ -178,15 +199,35 @@ fn one(connection: &Connection, condition: &str, value: &str) -> Result<Option<D
 /// A `devices` row, read from its columns in `DEVICE_COLUMNS`.
 fn device_row(row: &Row<'_>) -> Result<DeviceRecord, StorageError> {
     let last_seen_at = match row.get::<_, Option<i64>>("last_seen_at")? {
-        Some(millisecond) => Some(decode("devices", "last_seen_at", Timestamp::from_millisecond(millisecond))?),
+        Some(millisecond) => Some(decode(
+            "devices",
+            "last_seen_at",
+            Timestamp::from_millisecond(millisecond),
+        )?),
         None => None,
     };
     Ok(DeviceRecord {
-        id: decode("devices", "id", DeviceId::try_from(row.get::<_, String>("id")?))?,
-        user: decode("devices", "user_id", UserId::try_from(row.get::<_, String>("user_id")?))?,
-        kind: decode("devices", "kind", row.get::<_, String>("kind")?.parse::<DeviceKind>())?,
+        id: decode(
+            "devices",
+            "id",
+            DeviceId::try_from(row.get::<_, String>("id")?),
+        )?,
+        user: decode(
+            "devices",
+            "user_id",
+            UserId::try_from(row.get::<_, String>("user_id")?),
+        )?,
+        kind: decode(
+            "devices",
+            "kind",
+            row.get::<_, String>("kind")?.parse::<DeviceKind>(),
+        )?,
         name: row.get("name")?,
-        platform: decode("devices", "platform", row.get::<_, String>("platform")?.parse::<RunnerPlatform>())?,
+        platform: decode(
+            "devices",
+            "platform",
+            row.get::<_, String>("platform")?.parse::<RunnerPlatform>(),
+        )?,
         claimed_at: instant(row, "devices", "claimed_at")?,
         last_seen_at,
     })

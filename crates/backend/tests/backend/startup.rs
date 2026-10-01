@@ -38,7 +38,10 @@ fn start(variables: &[(&str, &str)]) -> Output {
 const REQUIRED: [(&str, &str); 4] = [
     ("DEMI_INSTANCE_MODE", "shared"),
     ("DEMI_BACKEND_PUBLIC_URL", "http://127.0.0.1:3271"),
-    ("DEMI_MACHINE_MANAGER_SOCKET", "/nonexistent/demi-machine-manager.sock"),
+    (
+        "DEMI_MACHINE_MANAGER_SOCKET",
+        "/nonexistent/demi-machine-manager.sock",
+    ),
     ("DEMI_NATIVE_CONFIG", "/nonexistent/native.json"),
 ];
 
@@ -66,7 +69,10 @@ fn a_missing_public_url_stops_startup_naming_the_variable() {
 
 #[test]
 fn a_malformed_instance_secret_stops_startup_without_showing_it() {
-    let data = tempfile::Builder::new().prefix("demi-backend-").tempdir().unwrap();
+    let data = tempfile::Builder::new()
+        .prefix("demi-backend-")
+        .tempdir()
+        .unwrap();
     let mut variables = REQUIRED.to_vec();
     let data_dir = data.path().to_str().unwrap().to_owned();
     variables.push(("DEMI_BACKEND_DATA", &data_dir));
@@ -112,5 +118,9 @@ fn a_configured_secret_is_64_hex_digits() {
     assert!(digits.parse::<InstanceSecret>().is_ok());
     assert!(digits.to_uppercase().parse::<InstanceSecret>().is_ok());
     assert!(digits[1..].parse::<InstanceSecret>().is_err());
-    assert!(format!("{}zz", &digits[2..]).parse::<InstanceSecret>().is_err());
+    assert!(
+        format!("{}zz", &digits[2..])
+            .parse::<InstanceSecret>()
+            .is_err()
+    );
 }

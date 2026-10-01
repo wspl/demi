@@ -4,11 +4,11 @@
 
 use std::sync::Arc;
 
-use demi_shared_types::{QuotaSeverity, QuotaSnapshot, QuotaUnit, QuotaWindow};
 use demi_provider_common::{
     Provider,
     testing::{MockResponse, MockVendor, inference_request},
 };
+use demi_shared_types::{QuotaSeverity, QuotaSnapshot, QuotaUnit, QuotaWindow};
 use serde_json::{Value, json};
 
 use crate::{ACCOUNT, CHAT, chat, json_answer, pool_with, provider, run, runtime_of, secret};

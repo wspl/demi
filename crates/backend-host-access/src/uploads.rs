@@ -12,9 +12,9 @@ use std::path::Path;
 use bytes::Bytes;
 use demi_agent_store::attachments::{Upload, unavailable, upload_blocks};
 use demi_agent_store::media::HeldMedia;
-use demi_shared_types::{B64Bytes, UserContentBlock};
 use demi_backend_remote_host::RemoteHost;
 use demi_host_interface::{FileContents, Host as _, HostError, WriteOptions};
+use demi_shared_types::{B64Bytes, UserContentBlock};
 use demi_web_api_protocol::ids::{AttachmentId, ConversationId};
 
 use crate::HostShard;
@@ -87,8 +87,12 @@ async fn write_attachment(
         number += 1;
     }
     let path = format!("{directory}/{name}");
-    let options = WriteOptions { create_parents: true };
-    host.fs().write_file(&path, FileContents::Bytes(bytes), options).await?;
+    let options = WriteOptions {
+        create_parents: true,
+    };
+    host.fs()
+        .write_file(&path, FileContents::Bytes(bytes), options)
+        .await?;
     Ok(Written { name, path })
 }
 
@@ -98,7 +102,11 @@ fn numbered(file_name: &str, number: u32) -> String {
     let name = Path::new(file_name);
     match (name.file_stem(), name.extension()) {
         (Some(stem), Some(extension)) => {
-            format!("{}-{number}.{}", stem.to_string_lossy(), extension.to_string_lossy())
+            format!(
+                "{}-{number}.{}",
+                stem.to_string_lossy(),
+                extension.to_string_lossy()
+            )
         }
         _ => format!("{file_name}-{number}"),
     }

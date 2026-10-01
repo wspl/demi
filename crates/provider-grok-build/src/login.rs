@@ -6,7 +6,6 @@
 
 use std::{sync::Arc, time::Duration};
 
-use demi_shared_types::{Clock, LoginPending, Timestamp};
 use demi_provider_common::{
     Secret,
     credentials::{
@@ -16,6 +15,7 @@ use demi_provider_common::{
     oauth::{DEVICE_LOGIN_LIFETIME, Lifetime, PollInterval, ResponseError, decode_json_response},
     wire::{NonEmpty, Reported},
 };
+use demi_shared_types::{Clock, LoginPending, Timestamp};
 use futures_util::future::BoxFuture;
 use http::{HeaderMap, HeaderValue, header::AUTHORIZATION};
 use reqwest::Url;
@@ -168,7 +168,10 @@ impl GrokKit {
             }
             let response = self
                 .http
-                .post(demi_provider_common::endpoint_url(&self.issuer, "/oauth2/token"))
+                .post(demi_provider_common::endpoint_url(
+                    &self.issuer,
+                    "/oauth2/token",
+                ))
                 .headers(oauth_headers())
                 .form(&form)
                 .send()

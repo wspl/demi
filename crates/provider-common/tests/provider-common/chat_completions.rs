@@ -4,12 +4,12 @@
 use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_shared_types::{FailureSource, Timestamp, TokenUsage};
 use demi_provider_common::{
     ErrorCode, ProviderEvent, ProviderFailure, ToolCall, read_http_failure,
     testing::FixedClock,
     wire::{Vendor, chat_completions::map_sse},
 };
+use demi_shared_types::{FailureSource, Timestamp, TokenUsage};
 use futures_util::{StreamExt, stream};
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
@@ -18,7 +18,9 @@ fn vendor() -> Vendor {
     Vendor {
         label: "Grok Build",
         reader: read_http_failure,
-        clock: Arc::new(FixedClock("2026-09-18T14:00:00.000Z".parse::<Timestamp>().unwrap())),
+        clock: Arc::new(FixedClock(
+            "2026-09-18T14:00:00.000Z".parse::<Timestamp>().unwrap(),
+        )),
     }
 }
 
@@ -35,7 +37,9 @@ fn body(frames: &[Value]) -> impl futures_util::Stream<Item = reqwest::Result<By
 }
 
 async fn events(frames: &[Value]) -> Vec<ProviderEvent> {
-    map_sse(body(frames), vendor(), CancellationToken::new()).collect().await
+    map_sse(body(frames), vendor(), CancellationToken::new())
+        .collect()
+        .await
 }
 
 fn call(id: &str, name: &str, input: Value) -> ProviderEvent {
@@ -130,33 +134,70 @@ async fn tool_calls_assemble_by_index_and_flush_at_the_end_of_the_stream() {
         json!("[DONE]"),
     ])
     .await;
-    assert_eq!(sequential[..2], [call("a", "first", json!({})), call("b", "second", json!({}))]);
+    assert_eq!(
+        sequential[..2],
+        [
+            call("a", "first", json!({})),
+            call("b", "second", json!({}))
+        ]
+    );
 }
 
 #[tokio::test]
 async fn a_vendor_error_ends_the_run_with_the_chunk_as_its_record() {
     let frame = json!({ "error": { "message": "quota exceeded", "type": "insufficient_quota" } });
-    let failure = failure_of(events(&[frame.clone(), json!({ "choices": [{ "delta": { "content": "never read" } }] })]).await);
-    assert_eq!((failure.message.as_str(), failure.code), ("quota exceeded", Some(ErrorCode::RateLimit)));
+    let failure = failure_of(
+        events(&[
+            frame.clone(),
+            json!({ "choices": [{ "delta": { "content": "never read" } }] }),
+        ])
+        .await,
+    );
+    assert_eq!(
+        (failure.message.as_str(), failure.code),
+        ("quota exceeded", Some(ErrorCode::RateLimit))
+    );
     let diagnostics = failure.diagnostics.unwrap();
-    assert_eq!((diagnostics.source, diagnostics.provider_code.as_deref()), (FailureSource::Stream, Some("insufficient_quota")));
+    assert_eq!(
+        (diagnostics.source, diagnostics.provider_code.as_deref()),
+        (FailureSource::Stream, Some("insufficient_quota"))
+    );
     assert_eq!(diagnostics.upstream, Some(frame.to_string()));
 
     let unnamed = failure_of(events(&[json!({ "error": {} })]).await);
-    assert_eq!((unnamed.message.as_str(), unnamed.code), ("Grok Build stream error", None));
+    assert_eq!(
+        (unnamed.message.as_str(), unnamed.code),
+        ("Grok Build stream error", None)
+    );
 }
 
 #[tokio::test]
 async fn a_malformed_chunk_is_a_protocol_failure_that_names_its_field() {
     for (frame, field) in [
-        (json!({ "choices": [{ "delta": { "content": { "text": "hi" } } }] }), "content"),
-        (json!({ "choices": [{ "delta": { "tool_calls": "none" } }] }), "tool_calls"),
-        (json!({ "usage": { "prompt_tokens": "12" } }), "prompt_tokens"),
+        (
+            json!({ "choices": [{ "delta": { "content": { "text": "hi" } } }] }),
+            "content",
+        ),
+        (
+            json!({ "choices": [{ "delta": { "tool_calls": "none" } }] }),
+            "tool_calls",
+        ),
+        (
+            json!({ "usage": { "prompt_tokens": "12" } }),
+            "prompt_tokens",
+        ),
     ] {
         let failure = failure_of(events(std::slice::from_ref(&frame)).await);
         assert_eq!(failure.code, None, "{frame}");
-        assert!(failure.message.contains(field), "{frame}: {}", failure.message);
-        assert_eq!(failure.diagnostics.unwrap().upstream, Some(frame.to_string()));
+        assert!(
+            failure.message.contains(field),
+            "{frame}: {}",
+            failure.message
+        );
+        assert_eq!(
+            failure.diagnostics.unwrap().upstream,
+            Some(frame.to_string())
+        );
     }
 }
 

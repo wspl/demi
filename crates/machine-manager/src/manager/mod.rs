@@ -12,18 +12,18 @@ mod errors;
 mod tests;
 
 #[cfg(target_os = "linux")]
-pub use linux::{Core, Manager};
-#[cfg(target_os = "linux")]
 pub use errors::{OpError, Parts};
+#[cfg(target_os = "linux")]
+pub use linux::{Core, Manager};
 
 #[cfg(target_os = "linux")]
 mod linux {
     use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
     use demi_machine_manager_protocol::{
-        BaseVersion, CheckpointParams, CurrentBaseVersionParams, DeviceId, GrowVolumeParams, HibernateParams,
-        ImageStateParams, MachineCall, Operation, ReconcileParams, ResetParams, RuntimeState, RuntimeStateParams,
-        WakeParams,
+        BaseVersion, CheckpointParams, CurrentBaseVersionParams, DeviceId, GrowVolumeParams,
+        HibernateParams, ImageStateParams, MachineCall, Operation, ReconcileParams, ResetParams,
+        RuntimeState, RuntimeStateParams, WakeParams,
     };
     use tokio::{
         sync::{mpsc, oneshot},
@@ -36,8 +36,8 @@ mod linux {
         errors::{OpError, Parts},
     };
     use crate::{
-        blocking, config::Config, network::CloudNetwork, network::slots::SlotPool, recovery, sandbox::runsc::Runsc,
-        server::MachineService, storage::store::ImageStore, tools::Tools,
+        blocking, config::Config, network::CloudNetwork, network::slots::SlotPool, recovery,
+        sandbox::runsc::Runsc, server::MachineService, storage::store::ImageStore, tools::Tools,
     };
 
     /// Commands waiting for one device's worker. A full queue holds back the
@@ -105,7 +105,12 @@ mod linux {
                 return sender.clone();
             }
             let (sender, inbox) = mpsc::channel(DEVICE_QUEUE);
-            let worker = DeviceWorker::new(device.clone(), self.core.clone(), self.base.clone(), self.deaths.clone());
+            let worker = DeviceWorker::new(
+                device.clone(),
+                self.core.clone(),
+                self.base.clone(),
+                self.deaths.clone(),
+            );
             self.workers.borrow_mut().spawn_local(worker.run(inbox));
             devices.insert(device.clone(), sender.clone());
             sender
@@ -157,16 +162,17 @@ mod linux {
         /// whole gate, so no worker is running an operation.
         async fn drain(&self) -> Result<(), OpError> {
             let workers: Vec<_> = self.devices.borrow().values().cloned().collect();
-            let outcomes = futures_util::future::join_all(workers.into_iter().map(|worker| async move {
-                let (reply, answer) = oneshot::channel();
-                let op = DeviceOp::Hibernate;
-                worker
-                    .send(DeviceCommand::Run { op, reply })
-                    .await
-                    .map_err(|_| OpError::WorkerStopped)?;
-                answer.await.map_err(|_| OpError::WorkerStopped)?
-            }))
-            .await;
+            let outcomes =
+                futures_util::future::join_all(workers.into_iter().map(|worker| async move {
+                    let (reply, answer) = oneshot::channel();
+                    let op = DeviceOp::Hibernate;
+                    worker
+                        .send(DeviceCommand::Run { op, reply })
+                        .await
+                        .map_err(|_| OpError::WorkerStopped)?;
+                    answer.await.map_err(|_| OpError::WorkerStopped)?
+                }))
+                .await;
             let failures: Vec<OpError> = outcomes.into_iter().filter_map(Result::err).collect();
             if !failures.is_empty() {
                 return Err(OpError::Shutdown(Parts(failures)));
@@ -189,7 +195,9 @@ mod linux {
                     self.reconcile().await?;
                     Ok(reply::<ReconcileParams>(()))
                 }
-                MachineCall::CurrentBaseVersion(_) => Ok(reply::<CurrentBaseVersionParams>(self.base.clone())),
+                MachineCall::CurrentBaseVersion(_) => {
+                    Ok(reply::<CurrentBaseVersionParams>(self.base.clone()))
+                }
                 MachineCall::ImageState(params) => {
                     let device = DeviceId::parse(params.device_id)?;
                     let store = self.core.store.clone();
@@ -198,7 +206,9 @@ mod linux {
                 }
                 MachineCall::RuntimeState(params) => {
                     let device = DeviceId::parse(params.device_id)?;
-                    Ok(reply::<RuntimeStateParams>(self.runtime_state(&device).await?))
+                    Ok(reply::<RuntimeStateParams>(
+                        self.runtime_state(&device).await?,
+                    ))
                 }
                 MachineCall::Wake(params) => {
                     let device = DeviceId::parse(params.device_id)?;
@@ -217,7 +227,8 @@ mod linux {
                 }
                 MachineCall::GrowVolume(params) => {
                     let device = DeviceId::parse(params.device_id)?;
-                    self.run(&device, DeviceOp::Grow(params.volume, params.bytes)).await?;
+                    self.run(&device, DeviceOp::Grow(params.volume, params.bytes))
+                        .await?;
                     Ok(reply::<GrowVolumeParams>(()))
                 }
                 MachineCall::Reset(params) => {

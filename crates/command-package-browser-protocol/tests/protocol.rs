@@ -51,7 +51,10 @@ fn every_operation_decodes_its_smallest_input() {
         let expects_tab = !matches!(name, "open" | "tabs" | "content.fetch");
         assert_eq!(decoded.tab().is_some(), expects_tab, "{name}");
     }
-    assert!(matches!(parse("unknown", json!({})), Err(OperationError::Unserved(_))));
+    assert!(matches!(
+        parse("unknown", json!({})),
+        Err(OperationError::Unserved(_))
+    ));
 }
 
 #[test]
@@ -70,17 +73,32 @@ fn inputs_refuse_unknown_fields_nulls_and_values_outside_their_bounds() {
         ("click", json!({"tab": TAB, "nth": 1000})),
         ("tabs", json!({"limit": 0})),
         ("tabs", json!({"limit": 1001})),
-        ("goto", json!({"tab": TAB, "url": "about:blank", "load": "idle"})),
+        (
+            "goto",
+            json!({"tab": TAB, "url": "about:blank", "load": "idle"}),
+        ),
         ("drag", json!({"tab": TAB, "point": ["1,2"]})),
         ("content.fetch", json!({"url": []})),
-        ("content.fetch", json!({"url": vec!["https://example.test/"; 11]})),
-        ("viewport.set", json!({"tab": TAB, "width": 800, "height": 600, "scale": 5})),
+        (
+            "content.fetch",
+            json!({"url": vec!["https://example.test/"; 11]}),
+        ),
+        (
+            "viewport.set",
+            json!({"tab": TAB, "width": 800, "height": 600, "scale": 5}),
+        ),
         ("upload", json!({"tab": TAB, "file": [""]})),
         ("read", json!({"tab": TAB, "property": "outer-html"})),
-        ("type", json!({"tab": TAB, "text": "x".repeat(1024 * 1024 + 1)})),
+        (
+            "type",
+            json!({"tab": TAB, "text": "x".repeat(1024 * 1024 + 1)}),
+        ),
     ];
     for (operation, args) in invalid {
-        assert!(parse(operation, args.clone()).is_err(), "{operation} {args}");
+        assert!(
+            parse(operation, args.clone()).is_err(),
+            "{operation} {args}"
+        );
     }
     // A limit counts Unicode scalar values, as the page's schemas and JSON
     // Schema do: 😀 is one, though two UTF-16 units.
@@ -105,14 +123,21 @@ fn inputs_answer_their_tab_target_wait_and_deadline() {
     let target = click.target().unwrap();
     assert_eq!(target.role.as_deref(), Some("button"));
     assert_eq!(target.name_pattern.as_deref(), Some("^Save"));
-    assert_eq!(target.frame.as_deref(), Some(&[REF.parse::<NodeRef>().unwrap()][..]));
+    assert_eq!(
+        target.frame.as_deref(),
+        Some(&[REF.parse::<NodeRef>().unwrap()][..])
+    );
     assert_eq!(target.nth, Some(2));
-    let BrowserOperation::Click(input) = click else { panic!("not a click") };
+    let BrowserOperation::Click(input) = click else {
+        panic!("not a click")
+    };
     assert_eq!(input.button, Some(MouseButton::Right));
     // `open` may take a cold start; everything else has thirty seconds.
     let open = parse("open", json!({"url": "about:blank"})).unwrap();
     assert_eq!(open.timeout(), std::time::Duration::from_secs(300));
-    let BrowserOperation::Open(input) = open else { panic!("not an open") };
+    let BrowserOperation::Open(input) = open else {
+        panic!("not an open")
+    };
     assert_eq!(input.load.unwrap_or_default(), Load::DomContentLoaded);
     assert_eq!(input.timeout(), std::time::Duration::from_secs(300));
     let info = parse("info", json!({"tab": TAB})).unwrap();
@@ -196,7 +221,8 @@ fn results_and_failures_print_the_documented_names() {
         json!({"operation": "click", "result": "completed", "url": "https://example.test/",
             "openedTabs": [TAB]}),
     );
-    let read: ReadResult = serde_json::from_value(json!({"values": [1, "a"], "truncated": false})).unwrap();
+    let read: ReadResult =
+        serde_json::from_value(json!({"values": [1, "a"], "truncated": false})).unwrap();
     assert!(matches!(read, ReadResult::All { .. }));
     assert!(serde_json::from_value::<ReadResult>(json!({"value": 1, "extra": 2})).is_err());
     let export = AssetsExportResult {
@@ -213,7 +239,9 @@ fn results_and_failures_print_the_documented_names() {
         code: BrowserErrorCode::PartialFailure,
         message: "some browser items failed".into(),
         details: Some(ErrorDetails {
-            action: Some(demi_command_package_browser_protocol::browser::ActionProgress::NotStarted),
+            action: Some(
+                demi_command_package_browser_protocol::browser::ActionProgress::NotStarted,
+            ),
             tab: Some(TAB.into()),
             debugging_callers: Some(vec![1]),
             export: Some(export),
@@ -229,7 +257,10 @@ fn results_and_failures_print_the_documented_names() {
             "files": [{"id": "a", "path": "/out/a.png", "bytes": 3, "mimeType": "image/png"}],
         }}),
     );
-    assert_eq!(serde_json::from_value::<BrowserFailure>(printed).unwrap(), failure);
+    assert_eq!(
+        serde_json::from_value::<BrowserFailure>(printed).unwrap(),
+        failure
+    );
 }
 
 #[test]
@@ -300,17 +331,26 @@ fn frame_headers_have_their_documented_layout() {
     capture.extend_from_slice(&[0, 0, 0, 1]);
     let (frame, data) = FrameHeader::split(&capture).unwrap();
     assert_eq!((frame.capture, frame.sequence, frame.key), (3, 4, true));
-    assert_eq!((frame.timestamp, frame.width, frame.height), (2.5, 1280, 720));
+    assert_eq!(
+        (frame.timestamp, frame.width, frame.height),
+        (2.5, 1280, 720)
+    );
     assert_eq!(data, [0, 0, 0, 1]);
     assert!(FrameHeader::split(&capture[..31]).is_err());
 }
 
 #[test]
 fn capture_events_decode_and_unknown_events_are_refused() {
-    assert_eq!(CaptureEvent::decode(r#"{"type":"ready"}"#).unwrap(), CaptureEvent::Ready {});
+    assert_eq!(
+        CaptureEvent::decode(r#"{"type":"ready"}"#).unwrap(),
+        CaptureEvent::Ready {}
+    );
     assert_eq!(
         CaptureEvent::decode(r#"{"type":"error","capture":2,"message":"no track"}"#).unwrap(),
-        CaptureEvent::Error { capture: 2, message: "no track".into() },
+        CaptureEvent::Error {
+            capture: 2,
+            message: "no track".into()
+        },
     );
     for invalid in [
         r#"{"type":"paused","capture":1}"#,
@@ -325,7 +365,12 @@ fn capture_events_decode_and_unknown_events_are_refused() {
 #[test]
 fn release_records_are_checked() {
     let release = BrowserRelease::pinned().unwrap();
-    assert!(release.platforms.iter().any(|platform| platform.target == "aarch64-apple-darwin"));
+    assert!(
+        release
+            .platforms
+            .iter()
+            .any(|platform| platform.target == "aarch64-apple-darwin")
+    );
     let mut record = serde_json::to_value(&release).unwrap();
     record["version"] = json!("153.0.8010");
     assert!(BrowserRelease::parse(&record.to_string()).is_err());
@@ -343,7 +388,16 @@ fn tab_ids_and_references_are_a_letter_and_a_number_from_one() {
     assert_eq!(tab.as_str(), "t7");
     assert_eq!("t7".parse::<TabId>().unwrap(), tab);
     assert_eq!(NodeRef::numbered(37).as_str(), "e37");
-    for invalid in ["t", "t0", "t07", "e7", "t7a", "t-1", "t1234567890123456", "t_AAAAAAAAAAAAAAAAAAAAAA"] {
+    for invalid in [
+        "t",
+        "t0",
+        "t07",
+        "e7",
+        "t7a",
+        "t-1",
+        "t1234567890123456",
+        "t_AAAAAAAAAAAAAAAAAAAAAA",
+    ] {
         assert!(invalid.parse::<TabId>().is_err(), "{invalid}");
     }
     assert!("t7".parse::<NodeRef>().is_err());

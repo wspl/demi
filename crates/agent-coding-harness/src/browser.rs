@@ -3,11 +3,10 @@
 //! declared from the `command-package-browser-protocol` types, so the command line, the
 //! runner's check and the operation read one definition.
 
+use demi_command_declarations::NativeOperation;
 use demi_command_package_browser_protocol::PACKAGE;
 use demi_command_package_browser_protocol::browser::*;
-use demi_command_declarations::NativeOperation;
 use demi_host_interface::{GroupBuilder, LeafBuilder};
-
 
 /// The group's summary.
 const SUMMARY: &str = "Operate the conversation’s persistent browser tabs on the Host running this shell. Use inspect to obtain node references; never guess them.";
@@ -83,13 +82,13 @@ operations! {
 /// which takes the place of its first operation.
 pub(crate) fn browser_group() -> GroupBuilder {
     enum Entry {
-        Leaf(LeafBuilder),
+        Leaf(Box<LeafBuilder>),
         Group(&'static str, Vec<LeafBuilder>),
     }
     let mut entries: Vec<Entry> = Vec::new();
     for (name, leaf) in leaves() {
         let Some((group, _)) = name.split_once('.') else {
-            entries.push(Entry::Leaf(leaf));
+            entries.push(Entry::Leaf(Box::new(leaf)));
             continue;
         };
         let known = entries.iter_mut().find_map(|entry| match entry {
@@ -104,7 +103,7 @@ pub(crate) fn browser_group() -> GroupBuilder {
     entries.into_iter().fold(
         GroupBuilder::new("browser", SUMMARY),
         |root, entry| match entry {
-            Entry::Leaf(leaf) => root.leaf(leaf),
+            Entry::Leaf(leaf) => root.leaf(*leaf),
             Entry::Group(name, members) => root.group(members.into_iter().fold(
                 GroupBuilder::new(name, format!("Browser {name} operations.")),
                 GroupBuilder::leaf,

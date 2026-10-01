@@ -60,7 +60,12 @@ struct Cli {
     )]
     backend_url: url::Url,
     /// Whether sandboxes run under cgroup v2 CPU, memory and PID limits.
-    #[arg(long, env = "DEMI_MANAGED_LIMITS", value_name = "DEMI_MANAGED_LIMITS", default_value = "on")]
+    #[arg(
+        long,
+        env = "DEMI_MANAGED_LIMITS",
+        value_name = "DEMI_MANAGED_LIMITS",
+        default_value = "on"
+    )]
     limits: Switch,
     /// The CPU budget of one sandbox, with the limits on.
     #[arg(long, env = "DEMI_MANAGED_CPUS", value_name = "DEMI_MANAGED_CPUS", default_value = "2", value_parser = decimal::<NonZeroU32>)]
@@ -197,7 +202,10 @@ impl Config {
             }),
             Switch::Off => {
                 // A budget nothing would apply is refused, not ignored.
-                for (id, variable) in [("cpus", "DEMI_MANAGED_CPUS"), ("mem_mib", "DEMI_MANAGED_MEM_MIB")] {
+                for (id, variable) in [
+                    ("cpus", "DEMI_MANAGED_CPUS"),
+                    ("mem_mib", "DEMI_MANAGED_MEM_MIB"),
+                ] {
                     if matches.value_source(id) != Some(ValueSource::DefaultValue) {
                         return Err(ConfigError::LimitsOff(variable));
                     }
@@ -322,7 +330,10 @@ fn slots(value: &str) -> Result<u16, String> {
 /// multicast or broadcast.
 fn resolver(value: &str) -> Result<Ipv4Addr, String> {
     let address = Ipv4Addr::from_str(value).map_err(|error| error.to_string())?;
-    if address.octets()[0] == 0 || address.is_loopback() || address.is_multicast() || address.is_broadcast()
+    if address.octets()[0] == 0
+        || address.is_loopback()
+        || address.is_multicast()
+        || address.is_broadcast()
     {
         return Err("resolver must be reachable IPv4".into());
     }
@@ -347,7 +358,10 @@ mod tests {
             .iter()
             .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
             .collect();
-        values.push(("DEMI_MACHINE_MANAGER_SOCKET".into(), "/run/demi-cloud/machines.sock".into()));
+        values.push((
+            "DEMI_MACHINE_MANAGER_SOCKET".into(),
+            "/run/demi-cloud/machines.sock".into(),
+        ));
         for (name, value) in settings {
             values.retain(|(existing, _)| existing != name);
             values.push(((*name).to_owned(), (*value).to_owned()));
@@ -376,7 +390,10 @@ mod tests {
         assert_eq!(config.mode, Mode::Serve);
         assert_eq!(config.backend_url.as_str(), "https://backend.example.com/");
         assert_eq!(config.data, PathBuf::from("/var/lib/demi-machine-manager"));
-        assert_eq!(config.working(), PathBuf::from("/var/lib/demi-machine-manager/working"));
+        assert_eq!(
+            config.working(),
+            PathBuf::from("/var/lib/demi-machine-manager/working")
+        );
         let limits = config.limits.expect("the limits are on by default");
         assert_eq!(limits.cpus.get(), 2);
         assert_eq!(limits.memory_bytes().get(), 2 << 30);
@@ -384,7 +401,10 @@ mod tests {
         assert_eq!(config.home_bytes().get(), 1 << 30);
         assert_eq!(config.subnet.to_string(), "172.30.0.0/16");
         assert_eq!(config.slots, 256);
-        assert_eq!(config.dns, [Ipv4Addr::new(1, 1, 1, 1), Ipv4Addr::new(8, 8, 8, 8)]);
+        assert_eq!(
+            config.dns,
+            [Ipv4Addr::new(1, 1, 1, 1), Ipv4Addr::new(8, 8, 8, 8)]
+        );
     }
 
     #[test]
@@ -395,7 +415,10 @@ mod tests {
             &[("DEMI_MANAGED_SUBNET", "172.30.0.0/31")],
             &[("DEMI_MANAGED_SUBNET", "10.0.0.0/7")],
             // Two slots need eight addresses; a /30 holds four.
-            &[("DEMI_MANAGED_SUBNET", "172.30.0.0/30"), ("DEMI_MANAGED_SLOTS", "2")],
+            &[
+                ("DEMI_MANAGED_SUBNET", "172.30.0.0/30"),
+                ("DEMI_MANAGED_SLOTS", "2"),
+            ],
             &[("DEMI_MANAGED_DNS", "127.0.0.1")],
             &[("DEMI_MANAGED_DNS", "0.1.2.3")],
             &[("DEMI_MANAGED_DNS", "224.0.0.1")],
@@ -423,16 +446,27 @@ mod tests {
         assert_eq!(off.limits, None);
         for variable in ["DEMI_MANAGED_CPUS", "DEMI_MANAGED_MEM_MIB"] {
             // The default value, written out, is still a budget nothing applies.
-            let value = if variable == "DEMI_MANAGED_CPUS" { "2" } else { "2048" };
-            let error = parse(&[], &[("DEMI_MANAGED_LIMITS", "off"), (variable, value)]).expect_err("refused");
-            assert_eq!(error.to_string(), format!("{variable} applies only with DEMI_MANAGED_LIMITS=on"));
+            let value = if variable == "DEMI_MANAGED_CPUS" {
+                "2"
+            } else {
+                "2048"
+            };
+            let error = parse(&[], &[("DEMI_MANAGED_LIMITS", "off"), (variable, value)])
+                .expect_err("refused");
+            assert_eq!(
+                error.to_string(),
+                format!("{variable} applies only with DEMI_MANAGED_LIMITS=on")
+            );
         }
     }
 
     #[test]
     fn an_unknown_managed_variable_is_named() {
         let error = parse(&[], &[("DEMI_MANAGED_FIRECRACKER", "/old")]).expect_err("refused");
-        assert_eq!(error.to_string(), "DEMI_MANAGED_FIRECRACKER is not a Cloud manager setting");
+        assert_eq!(
+            error.to_string(),
+            "DEMI_MANAGED_FIRECRACKER is not a Cloud manager setting"
+        );
     }
 
     #[test]
@@ -450,7 +484,10 @@ mod tests {
         let recovering = Config::parse(args.clone(), Vec::new()).expect("recovery needs no socket");
         assert_eq!(recovering.mode, Mode::Recover);
         args.remove(1);
-        assert!(matches!(Config::parse(args, Vec::new()), Err(ConfigError::MissingSocket)));
+        assert!(matches!(
+            Config::parse(args, Vec::new()),
+            Err(ConfigError::MissingSocket)
+        ));
         assert!(parse(&["--recover", "--recover-namespace"], &[]).is_err());
     }
 
@@ -473,8 +510,15 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         // The state directory lives on its own ext4 filesystem.
         let image = directory.path().join("data.img");
-        std::fs::File::create(&image).unwrap().set_len(64 << 20).unwrap();
-        let formatted = Command::new("mkfs.ext4").args(["-q", "-F"]).arg(&image).status().unwrap();
+        std::fs::File::create(&image)
+            .unwrap()
+            .set_len(64 << 20)
+            .unwrap();
+        let formatted = Command::new("mkfs.ext4")
+            .args(["-q", "-F"])
+            .arg(&image)
+            .status()
+            .unwrap();
         assert!(formatted.success());
         let data = directory.path().join("data");
         std::fs::create_dir(&data).unwrap();
@@ -488,7 +532,10 @@ mod tests {
         std::fs::write(&manager, "#!/bin/sh\n").unwrap();
         std::fs::set_permissions(&manager, std::fs::Permissions::from_mode(0o755)).unwrap();
         let root = directory.path().join("root");
-        let script = concat!(env!("CARGO_MANIFEST_DIR"), "/scripts/install-managed-hosts.sh");
+        let script = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/scripts/install-managed-hosts.sh"
+        );
         let installed = Command::new("bash")
             .arg(script)
             .arg("--root")
@@ -497,12 +544,22 @@ mod tests {
             .arg(&manager)
             .arg("--image")
             .arg(&release)
-            .args(["--backend-url", "https://backend.example.com", "--dns", "1.1.1.1,8.8.8.8", "--data"])
+            .args([
+                "--backend-url",
+                "https://backend.example.com",
+                "--dns",
+                "1.1.1.1,8.8.8.8",
+                "--data",
+            ])
             .arg(&data)
             .args(["--slots", "16", "--limits", "off"])
             .output()
             .unwrap();
-        assert!(installed.status.success(), "{}", String::from_utf8_lossy(&installed.stderr));
+        assert!(
+            installed.status.success(),
+            "{}",
+            String::from_utf8_lossy(&installed.stderr)
+        );
 
         let unit_path = root.join("etc/systemd/system/demi-machine-manager.service");
         let unit = std::fs::read_to_string(&unit_path).unwrap();
@@ -519,16 +576,27 @@ mod tests {
             format!("ExecStart={manager}"),
             format!("ExecStopPost={manager} --recover"),
         ] {
-            assert!(unit.lines().any(|line| line == directive), "{directive} is missing:\n{unit}");
+            assert!(
+                unit.lines().any(|line| line == directive),
+                "{directive} is missing:\n{unit}"
+            );
         }
-        let verified = Command::new("systemd-analyze").arg("verify").arg(&unit_path).output().unwrap();
+        let verified = Command::new("systemd-analyze")
+            .arg("verify")
+            .arg(&unit_path)
+            .output()
+            .unwrap();
         let warnings = String::from_utf8_lossy(&verified.stderr);
         assert!(verified.status.success(), "{warnings}");
-        assert!(!warnings.contains("demi-machine-manager.service"), "{warnings}");
+        assert!(
+            !warnings.contains("demi-machine-manager.service"),
+            "{warnings}"
+        );
 
         // Each setting is one this manager knows, passed as the flag clap
         // gives it, and together they configure the manager.
-        let settings = std::fs::read_to_string(root.join("etc/demi-machine-manager/manager.env")).unwrap();
+        let settings =
+            std::fs::read_to_string(root.join("etc/demi-machine-manager/manager.env")).unwrap();
         let command = Cli::command();
         let mut args = vec![OsString::from("demi-machine-manager")];
         let mut vars = Vec::new();
@@ -546,12 +614,22 @@ mod tests {
         assert_eq!(config.mode, Mode::Serve);
         assert_eq!(config.data, data);
         assert_eq!(config.image, release);
-        assert_eq!(config.socket.as_deref(), Some(Path::new("/run/demi-cloud/machines.sock")));
+        assert_eq!(
+            config.socket.as_deref(),
+            Some(Path::new("/run/demi-cloud/machines.sock"))
+        );
         assert_eq!(config.backend_url.as_str(), "https://backend.example.com/");
-        assert_eq!(config.dns, [Ipv4Addr::new(1, 1, 1, 1), Ipv4Addr::new(8, 8, 8, 8)]);
+        assert_eq!(
+            config.dns,
+            [Ipv4Addr::new(1, 1, 1, 1), Ipv4Addr::new(8, 8, 8, 8)]
+        );
         assert_eq!(config.slots, 16);
         assert_eq!(config.limits, None);
-        assert!(config.runsc.starts_with("/opt/gvisor"), "{}", config.runsc.display());
+        assert!(
+            config.runsc.starts_with("/opt/gvisor"),
+            "{}",
+            config.runsc.display()
+        );
         mount::unmount(&off, &data).unwrap();
     }
 }

@@ -8,8 +8,8 @@
 use std::{collections::HashMap, io, sync::Arc, time::Duration};
 
 use demi_command_protocol::{ArtifactLocation, ServiceSequence, host_target};
-use demi_runner_protocol::wire::{self, Inbound};
 use demi_runner_command_packages::{NumberSource, RuntimeError, ServiceLease};
+use demi_runner_protocol::wire::{self, Inbound};
 use futures_util::future::BoxFuture;
 use tokio::{
     sync::{mpsc, oneshot},

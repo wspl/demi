@@ -11,8 +11,8 @@ use std::{
 };
 
 use demi_machine_manager_protocol::{
-    BaseVersion, DeviceId, GrowVolumeParams, HibernateParams, ImageStateParams, MachineCall, MachineImageState,
-    ReconcileParams, ResetParams, RuntimeStateParams, Volume,
+    BaseVersion, DeviceId, GrowVolumeParams, HibernateParams, ImageStateParams, MachineCall,
+    MachineImageState, ReconcileParams, ResetParams, RuntimeStateParams, Volume,
 };
 use tokio::sync::mpsc;
 
@@ -91,14 +91,17 @@ impl Fixture {
     }
 
     fn generation(&self, device: &str, state: &MachineImageState) -> ImagePair<PathBuf> {
-        self.core.store.images(&DeviceId::parse(device).unwrap(), &state.generation)
+        self.core
+            .store
+            .images(&DeviceId::parse(device).unwrap(), &state.generation)
     }
 
     fn generations(&self, device: &str) -> Vec<String> {
-        let mut names: Vec<_> = std::fs::read_dir(self.data.join("images").join(device).join("generations"))
-            .unwrap()
-            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
-            .collect();
+        let mut names: Vec<_> =
+            std::fs::read_dir(self.data.join("images").join(device).join("generations"))
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+                .collect();
         names.sort();
         names
     }
@@ -122,25 +125,41 @@ async fn a_reset_publishes_a_fresh_system_with_the_saved_home_once_per_operation
     isolate();
     let fixture = fixture();
     assert_eq!(fixture.state("dev-1").await, None);
-    fixture.call(reset("dev-1", "op-1", &fixture.base)).await.unwrap();
+    fixture
+        .call(reset("dev-1", "op-1", &fixture.base))
+        .await
+        .unwrap();
     let first = fixture.state("dev-1").await.expect("a generation");
     assert_eq!(first.reset_id.as_deref(), Some("op-1"));
     assert_eq!(first.base_version, fixture.base);
-    assert_eq!((first.system_bytes.get(), first.home_bytes.get()), (32 << 20, 32 << 20));
+    assert_eq!(
+        (first.system_bytes.get(), first.home_bytes.get()),
+        (32 << 20, 32 << 20)
+    );
     // The first use made the initial pair, which the reset replaced but for home.
     assert_eq!(fixture.generations("dev-1").len(), 2);
     let images = fixture.generation("dev-1", &first);
 
     // The same operation again changes nothing.
-    fixture.call(reset("dev-1", "op-1", &fixture.base)).await.unwrap();
+    fixture
+        .call(reset("dev-1", "op-1", &fixture.base))
+        .await
+        .unwrap();
     assert_eq!(fixture.state("dev-1").await.as_ref(), Some(&first));
 
-    fixture.call(reset("dev-1", "op-2", &fixture.base)).await.unwrap();
+    fixture
+        .call(reset("dev-1", "op-2", &fixture.base))
+        .await
+        .unwrap();
     let second = fixture.state("dev-1").await.expect("a generation");
     assert_eq!(second.reset_id.as_deref(), Some("op-2"));
     assert_ne!(second.generation, first.generation);
     let reset_images = fixture.generation("dev-1", &second);
-    assert_eq!(inode(&reset_images.home), inode(&images.home), "home is carried over, not copied");
+    assert_eq!(
+        inode(&reset_images.home),
+        inode(&images.home),
+        "home is carried over, not copied"
+    );
     assert_ne!(inode(&reset_images.system), inode(&images.system));
     // The current and the previous generation remain.
     let mut kept = vec![first.generation.to_string(), second.generation.to_string()];
@@ -148,8 +167,14 @@ async fn a_reset_publishes_a_fresh_system_with_the_saved_home_once_per_operation
     assert_eq!(fixture.generations("dev-1"), kept);
 
     let missing = BaseVersion::parse("c".repeat(64)).unwrap();
-    let error = fixture.call(reset("dev-1", "op-3", &missing)).await.unwrap_err();
-    assert_eq!(error.to_string(), format!("Cloud base {missing} is not imported"));
+    let error = fixture
+        .call(reset("dev-1", "op-3", &missing))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        format!("Cloud base {missing} is not imported")
+    );
     let invalid = fixture
         .call(ResetParams {
             base_version: "../b".into(),
@@ -165,7 +190,10 @@ async fn a_reset_publishes_a_fresh_system_with_the_saved_home_once_per_operation
 async fn recovery_publishes_the_working_pair_a_crash_left_and_removes_stages() {
     isolate();
     let fixture = fixture();
-    fixture.call(reset("dev-1", "op-1", &fixture.base)).await.unwrap();
+    fixture
+        .call(reset("dev-1", "op-1", &fixture.base))
+        .await
+        .unwrap();
     let committed = fixture.state("dev-1").await.unwrap();
     // A crash after wake staged the working pair: its images, its record and
     // a stage beside it.
@@ -174,9 +202,17 @@ async fn recovery_publishes_the_working_pair_a_crash_left_and_removes_stages() {
     std::fs::create_dir(&pair).unwrap();
     for volume in Volume::ALL {
         let file = format!("{volume}.ext4");
-        std::fs::copy(fixture.generation("dev-1", &committed).get(volume), pair.join(&file)).unwrap();
+        std::fs::copy(
+            fixture.generation("dev-1", &committed).get(volume),
+            pair.join(&file),
+        )
+        .unwrap();
     }
-    std::fs::write(pair.join("manifest.json"), serde_json::to_vec(&committed).unwrap()).unwrap();
+    std::fs::write(
+        pair.join("manifest.json"),
+        serde_json::to_vec(&committed).unwrap(),
+    )
+    .unwrap();
     std::fs::create_dir(working.join(".wake-0f6c3d4e")).unwrap();
     recovery::fence_and_save(&fixture.core).await.unwrap();
     let saved = fixture.state("dev-1").await.unwrap();
@@ -193,9 +229,16 @@ async fn recovery_publishes_the_working_pair_a_crash_left_and_removes_stages() {
 
     // A runtime record outside the configured pool stops recovery.
     std::fs::create_dir(&pair).unwrap();
-    std::fs::write(pair.join("sandbox.json"), r#"{"id":"demi-0f6c3d4e","slot":8}"#).unwrap();
+    std::fs::write(
+        pair.join("sandbox.json"),
+        r#"{"id":"demi-0f6c3d4e","slot":8}"#,
+    )
+    .unwrap();
     let error = recovery::fence_and_save(&fixture.core).await.unwrap_err();
-    assert_eq!(error.to_string(), "Existing Cloud slot exceeds configured pool");
+    assert_eq!(
+        error.to_string(),
+        "Existing Cloud slot exceeds configured pool"
+    );
 }
 
 #[tokio::test(flavor = "local")]

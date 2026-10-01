@@ -7,7 +7,6 @@ use std::{
     time::Duration,
 };
 
-use demi_shared_types::{LoginPending, Timestamp};
 use demi_provider_common::{
     credentials::{
         AccountError, AccountKit, AccountLabel, AccountMeta, Accounts, AccountsCapability,
@@ -17,6 +16,7 @@ use demi_provider_common::{
     },
     testing::FixedClock,
 };
+use demi_shared_types::{LoginPending, Timestamp};
 use futures_util::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 
@@ -57,7 +57,10 @@ async fn pool_with(id: &str, secret: &Tokens) -> MemoryCredentialPool {
 }
 
 async fn stored(pool: &MemoryCredentialPool, id: &str) -> Tokens {
-    read_secret::<Tokens>(&*pool.document(id)).await.unwrap().secret
+    read_secret::<Tokens>(&*pool.document(id))
+        .await
+        .unwrap()
+        .secret
 }
 
 #[tokio::test]
@@ -90,7 +93,10 @@ async fn refresh_turns_of_one_account_run_one_at_a_time_in_arrival_order() {
     drop(first);
     let second_turn = second.await.unwrap();
     tokio::task::yield_now().await;
-    assert!(!third.is_finished(), "the third refresher ran beside the second");
+    assert!(
+        !third.is_finished(),
+        "the third refresher ran beside the second"
+    );
     // A failed refresh releases its turn like a successful one: the turn
     // ends when its permit is dropped, however the refresh ended.
     drop(second_turn);
@@ -120,7 +126,9 @@ async fn a_due_secret_is_refreshed_and_stored_over_the_version_read() {
 
 /// A vendor that records the refresh tokens it spends and yields once, so
 /// that a concurrent refresher queues behind it.
-fn vendor(spent: &Arc<Mutex<Vec<String>>>) -> impl Fn(Tokens) -> BoxFuture<'static, Result<Tokens, String>> {
+fn vendor(
+    spent: &Arc<Mutex<Vec<String>>>,
+) -> impl Fn(Tokens) -> BoxFuture<'static, Result<Tokens, String>> {
     let spent = spent.clone();
     move |secret: Tokens| {
         let spent = spent.clone();
@@ -143,7 +151,10 @@ async fn a_refresher_that_waited_uses_the_tokens_it_finds_unless_its_rule_still_
         renew(&*one, due, vendor(&spent)),
         renew(&*two, due, vendor(&spent)),
     );
-    assert_eq!((first.unwrap().access, second.unwrap().access), ("new".into(), "new".into()));
+    assert_eq!(
+        (first.unwrap().access, second.unwrap().access),
+        ("new".into(), "new".into())
+    );
     assert_eq!(*spent.lock().unwrap(), ["r1"]);
 
     // A rule that still asks after the wait, as for new tokens that are due
@@ -164,34 +175,51 @@ async fn a_refresher_that_waited_uses_the_tokens_it_finds_unless_its_rule_still_
 #[tokio::test]
 async fn a_refusal_uses_the_tokens_another_writer_stored_and_fails_when_nobody_did() {
     let pool = pool_with("a", &tokens("old", "r1")).await;
-    let raced = renew(&*pool.document("a"), |_: &Tokens| true, |_| {
-        let pool = pool.clone();
-        async move {
-            // Another worker refreshed first and spent the token.
-            pool.write(meta("a"), tokens("winner", "rw").encode()).await.unwrap();
-            Err("refresh token already used".to_owned())
-        }
-    })
+    let raced = renew(
+        &*pool.document("a"),
+        |_: &Tokens| true,
+        |_| {
+            let pool = pool.clone();
+            async move {
+                // Another worker refreshed first and spent the token.
+                pool.write(meta("a"), tokens("winner", "rw").encode())
+                    .await
+                    .unwrap();
+                Err("refresh token already used".to_owned())
+            }
+        },
+    )
     .await;
     assert_eq!(raced, Ok(tokens("winner", "rw")));
 
-    let alone = renew(&*pool.document("a"), |_: &Tokens| true, |_| async {
-        Err::<Tokens, _>("refresh token revoked".to_owned())
-    })
+    let alone = renew(
+        &*pool.document("a"),
+        |_: &Tokens| true,
+        |_| async { Err::<Tokens, _>("refresh token revoked".to_owned()) },
+    )
     .await;
-    assert_eq!(alone, Err(RenewError::Refresh("refresh token revoked".to_owned())));
+    assert_eq!(
+        alone,
+        Err(RenewError::Refresh("refresh token revoked".to_owned()))
+    );
 }
 
 #[tokio::test]
 async fn a_refreshed_secret_whose_replace_loses_gives_way_to_the_winner() {
     let pool = pool_with("a", &tokens("old", "r1")).await;
-    let renewed = renew(&*pool.document("a"), |_: &Tokens| true, |_| {
-        let pool = pool.clone();
-        async move {
-            pool.write(meta("a"), tokens("winner", "rw").encode()).await.unwrap();
-            Ok::<_, String>(tokens("loser", "rl"))
-        }
-    })
+    let renewed = renew(
+        &*pool.document("a"),
+        |_: &Tokens| true,
+        |_| {
+            let pool = pool.clone();
+            async move {
+                pool.write(meta("a"), tokens("winner", "rw").encode())
+                    .await
+                    .unwrap();
+                Ok::<_, String>(tokens("loser", "rl"))
+            }
+        },
+    )
     .await;
     assert_eq!(renewed, Ok(tokens("winner", "rw")));
     assert_eq!(stored(&pool, "a").await, tokens("winner", "rw"));
@@ -201,15 +229,29 @@ async fn a_refreshed_secret_whose_replace_loses_gives_way_to_the_winner() {
 async fn a_corrupt_document_is_refused_by_its_path_and_never_quotes_a_value() {
     let pool = MemoryCredentialPool::new();
     let cases = [
-        (r#"{"access":"sk-secret-1","refresh":7}"#, "refresh", SecretFault::Shape),
+        (
+            r#"{"access":"sk-secret-1","refresh":7}"#,
+            "refresh",
+            SecretFault::Shape,
+        ),
         (r#"{"access":"sk-secret-1"}"#, ".", SecretFault::Shape),
-        (r#"{"access":"sk-secret-1","refresh":"r","extra":"sk-secret-2"}"#, "extra", SecretFault::Shape),
+        (
+            r#"{"access":"sk-secret-1","refresh":"r","extra":"sk-secret-2"}"#,
+            "extra",
+            SecretFault::Shape,
+        ),
         (r#"{"access":"sk-secret-1""#, ".", SecretFault::Syntax),
-        (r#"{"access":"sk-secret-1","refresh":"r"} trailing"#, ".", SecretFault::Syntax),
+        (
+            r#"{"access":"sk-secret-1","refresh":"r"} trailing"#,
+            ".",
+            SecretFault::Syntax,
+        ),
     ];
     for (text, path, fault) in cases {
         pool.write(meta("a"), text.into()).await.unwrap();
-        let error = read_secret::<Tokens>(&*pool.document("a")).await.unwrap_err();
+        let error = read_secret::<Tokens>(&*pool.document("a"))
+            .await
+            .unwrap_err();
         let expected = SecretDecodeError {
             path: path.into(),
             fault,
@@ -226,18 +268,41 @@ async fn a_memory_pool_keeps_accounts_by_id_with_a_versioned_document_and_an_act
     let pool = MemoryCredentialPool::new();
     pool.write(meta("b"), "{}".into()).await.unwrap();
     pool.write(meta("a"), "{}".into()).await.unwrap();
-    let ids: Vec<String> = pool.list().await.unwrap().into_iter().map(|account| account.id).collect();
+    let ids: Vec<String> = pool
+        .list()
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|account| account.id)
+        .collect();
     assert_eq!(ids, ["a", "b"]);
 
     let first = pool.document("a").read().await.unwrap().unwrap();
     let second = pool.document("a").read().await.unwrap().unwrap();
-    assert!(pool.document("a").replace("two".into(), first.version).await.unwrap());
-    assert!(!pool.document("a").replace("lost".into(), second.version).await.unwrap());
-    assert_eq!(pool.document("a").read().await.unwrap().unwrap().text, "two");
+    assert!(
+        pool.document("a")
+            .replace("two".into(), first.version)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !pool
+            .document("a")
+            .replace("lost".into(), second.version)
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        pool.document("a").read().await.unwrap().unwrap().text,
+        "two"
+    );
     assert!(pool.document("absent").read().await.unwrap().is_none());
 
     assert_eq!(pool.active().await.unwrap(), None);
-    assert_eq!(pool.set_active("zz").await, Err(PoolError::NotFound("zz".into())));
+    assert_eq!(
+        pool.set_active("zz").await,
+        Err(PoolError::NotFound("zz".into()))
+    );
     pool.set_active("b").await.unwrap();
     assert_eq!(pool.active().await.unwrap().as_deref(), Some("b"));
     pool.remove("b").await.unwrap();
@@ -252,9 +317,18 @@ async fn a_memory_pool_keeps_accounts_by_id_with_a_versioned_document_and_an_act
 
 #[test]
 fn an_account_id_is_derived_from_its_identity_or_else_its_label() {
-    assert_eq!(credential_id_for(Some("acct-1"), "a@example.com"), "cred-ba36a4edd92d37c6");
-    assert_eq!(credential_id_for(None, "label only"), "cred-db98004c5bc389e4");
-    assert_eq!(credential_id_for(Some(""), "label only"), "cred-db98004c5bc389e4");
+    assert_eq!(
+        credential_id_for(Some("acct-1"), "a@example.com"),
+        "cred-ba36a4edd92d37c6"
+    );
+    assert_eq!(
+        credential_id_for(None, "label only"),
+        "cred-db98004c5bc389e4"
+    );
+    assert_eq!(
+        credential_id_for(Some(""), "label only"),
+        "cred-db98004c5bc389e4"
+    );
 }
 
 /// A family whose device login hands out scripted accounts, or never ends.
@@ -317,7 +391,13 @@ async fn a_login_stores_its_account_by_identity_and_the_first_one_becomes_active
     };
     let clock = Arc::new(FixedClock(NOW.parse::<Timestamp>().unwrap()));
     let accounts = Accounts::new(Arc::new(pool.clone()), kit, clock);
-    assert_eq!(accounts.capability(), AccountsCapability { login: true, add: false });
+    assert_eq!(
+        accounts.capability(),
+        AccountsCapability {
+            login: true,
+            add: false
+        }
+    );
 
     let shown = Arc::new(Mutex::new(Vec::new()));
     let report = {
@@ -327,30 +407,60 @@ async fn a_login_stores_its_account_by_identity_and_the_first_one_becomes_active
     let first = accounts.login(&report).await.unwrap();
     assert_eq!(first.id, "cred-ba36a4edd92d37c6");
     let now: Timestamp = NOW.parse().unwrap();
-    assert_eq!((first.label.as_str(), first.updated_at), ("acct-1@example.com", Some(now)));
+    assert_eq!(
+        (first.label.as_str(), first.updated_at),
+        ("acct-1@example.com", Some(now))
+    );
     assert_eq!(*shown.lock().unwrap(), [Some("ABCD-1234".to_owned())]);
-    assert_eq!(accounts.active().await.unwrap().as_deref(), Some(first.id.as_str()));
+    assert_eq!(
+        accounts.active().await.unwrap().as_deref(),
+        Some(first.id.as_str())
+    );
 
     // Logging in again with the same account replaces its record.
     let again = accounts.login(&report).await.unwrap();
     assert_eq!(again.id, first.id);
-    assert_eq!(pool.document(&first.id).read().await.unwrap().unwrap().text, "second secret");
+    assert_eq!(
+        pool.document(&first.id).read().await.unwrap().unwrap().text,
+        "second secret"
+    );
     // Another account is added beside it and does not take over.
     let other = accounts.login(&report).await.unwrap();
     assert_ne!(other.id, first.id);
     assert_eq!(accounts.list().await.unwrap().len(), 2);
-    assert_eq!(accounts.active().await.unwrap().as_deref(), Some(first.id.as_str()));
-    assert_eq!(pool.meta(&other.id).await.unwrap().unwrap().source, "login:device");
+    assert_eq!(
+        accounts.active().await.unwrap().as_deref(),
+        Some(first.id.as_str())
+    );
+    assert_eq!(
+        pool.meta(&other.id).await.unwrap().unwrap().source,
+        "login:device"
+    );
 
     // The active account cannot be removed; another one can.
     assert_eq!(accounts.remove(&first.id).await, Err(AccountsError::Active));
     accounts.remove(&other.id).await.unwrap();
-    assert_eq!(accounts.remove("cred-absent").await, Err(AccountsError::NotFound("cred-absent".into())));
-    assert_eq!(accounts.set_active("cred-absent").await, Err(AccountsError::NotFound("cred-absent".into())));
-    let listed: Vec<String> = accounts.list().await.unwrap().into_iter().map(|info| info.id).collect();
+    assert_eq!(
+        accounts.remove("cred-absent").await,
+        Err(AccountsError::NotFound("cred-absent".into()))
+    );
+    assert_eq!(
+        accounts.set_active("cred-absent").await,
+        Err(AccountsError::NotFound("cred-absent".into()))
+    );
+    let listed: Vec<String> = accounts
+        .list()
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|info| info.id)
+        .collect();
     assert_eq!(listed, [first.id]);
     let setup_token = AddAccount::SetupToken("sk-ant-oat01-x".to_owned().try_into().unwrap());
-    assert_eq!(accounts.add(setup_token).await, Err(AccountsError::Unsupported));
+    assert_eq!(
+        accounts.add(setup_token).await,
+        Err(AccountsError::Unsupported)
+    );
 }
 
 #[tokio::test(start_paused = true)]

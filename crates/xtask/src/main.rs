@@ -62,7 +62,9 @@ fn interruptible<T, F>(work: impl FnOnce(CancellationToken) -> F) -> std::io::Re
 where
     F: Future<Output = T>,
 {
-    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
     Ok(runtime.block_on(async {
         let cancel = CancellationToken::new();
         let interrupt = tokio::spawn({

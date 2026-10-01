@@ -38,7 +38,10 @@ impl LoginLimiter {
 
     pub fn locked(&self, email: &EmailAddress) -> bool {
         let now = Instant::now();
-        let mut failures = self.failures.lock().expect("the login limiter's lock is not poisoned");
+        let mut failures = self
+            .failures
+            .lock()
+            .expect("the login limiter's lock is not poisoned");
         let Some(entry) = failures.get(email) else {
             return false;
         };
@@ -53,7 +56,10 @@ impl LoginLimiter {
 
     pub fn failed(&self, email: &EmailAddress) {
         let now = Instant::now();
-        let mut failures = self.failures.lock().expect("the login limiter's lock is not poisoned");
+        let mut failures = self
+            .failures
+            .lock()
+            .expect("the login limiter's lock is not poisoned");
         failures.retain(|_, entry| entry.forget_at > now);
         let entry = failures.entry(email.clone()).or_insert(Failures {
             count: 0,
@@ -73,6 +79,12 @@ impl LoginLimiter {
             .lock()
             .expect("the login limiter's lock is not poisoned")
             .remove(email);
+    }
+}
+
+impl Default for LoginLimiter {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

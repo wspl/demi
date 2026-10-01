@@ -118,20 +118,34 @@ mod tests {
         let b = pool.take().expect("slot 1");
         assert_eq!(
             (a.slot().index, a.slot().gateway, a.slot().address),
-            (0, Ipv4Addr::new(172, 30, 0, 1), Ipv4Addr::new(172, 30, 0, 2))
+            (
+                0,
+                Ipv4Addr::new(172, 30, 0, 1),
+                Ipv4Addr::new(172, 30, 0, 2)
+            )
         );
         assert_eq!(
             (b.slot().index, b.slot().gateway, b.slot().address),
-            (1, Ipv4Addr::new(172, 30, 0, 5), Ipv4Addr::new(172, 30, 0, 6))
+            (
+                1,
+                Ipv4Addr::new(172, 30, 0, 5),
+                Ipv4Addr::new(172, 30, 0, 6)
+            )
         );
         let far = pool.slot(64);
-        assert_eq!((far.gateway, far.address), (Ipv4Addr::new(172, 30, 1, 1), Ipv4Addr::new(172, 30, 1, 2)));
+        assert_eq!(
+            (far.gateway, far.address),
+            (Ipv4Addr::new(172, 30, 1, 1), Ipv4Addr::new(172, 30, 1, 2))
+        );
         assert_eq!(
             (far.host_interface(), far.peer_interface(), far.namespace()),
             ("demih64".into(), "demip64".into(), "demi-64".into())
         );
         let c = pool.take().expect("slot 2");
-        assert_eq!(pool.take().expect_err("exhausted").to_string(), "All Cloud network slots are in use");
+        assert_eq!(
+            pool.take().expect_err("exhausted").to_string(),
+            "All Cloud network slots are in use"
+        );
         let second = b.slot().clone();
         drop(b);
         let reused = pool.take().expect("slot 1 again");

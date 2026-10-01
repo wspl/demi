@@ -23,8 +23,8 @@ use demi_shared_types::{BlobRef, Block, NodeId, Timestamp};
 use rusqlite::{Connection, Transaction, params};
 
 use super::StorageError;
-use super::command_outputs;
 use super::columns::{count, decode, json, to_json};
+use super::command_outputs;
 use super::tree::blocks_of;
 
 /// The owner's blob namespace as the conversation database's commits use it
@@ -175,13 +175,17 @@ fn removed(
     Ok(())
 }
 
+/// The blocks the agent's rule retires in one node: the node, and each
+/// changed block's index in it with the block's retired form.
+pub type RetiredNode = (NodeId, Vec<(usize, Block)>);
+
 /// The blocks the agent's rule retires in the tree `connection` holds, by
 /// node (`runtime.md` § Retired tool media): only the nodes whose index
 /// holds a tool result's medium older than [`KEPT`] are read.
 pub fn retirable(
     connection: &Connection,
     retirement: Retirement,
-) -> Result<Vec<(NodeId, Vec<(usize, Block)>)>, StorageError> {
+) -> Result<Vec<RetiredNode>, StorageError> {
     // Thirty days before any time a clock gives is a time too.
     let expired = retirement
         .now
@@ -239,7 +243,9 @@ pub fn retire(
 /// blocks' media and edit copies, as the index names them, its nodes' queued
 /// messages', and its commands' outputs'.
 pub fn references(connection: &Connection) -> Result<BTreeSet<BlobRef>, StorageError> {
-    let mut references: BTreeSet<BlobRef> = command_outputs::references(connection)?.into_iter().collect();
+    let mut references: BTreeSet<BlobRef> = command_outputs::references(connection)?
+        .into_iter()
+        .collect();
     let mut statement = connection.prepare("SELECT DISTINCT blob FROM blob_refs")?;
     let mut rows = statement.query([])?;
     while let Some(row) = rows.next()? {

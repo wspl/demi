@@ -44,7 +44,10 @@ fn replace(
 }
 
 /// A builtin that refuses: why on standard error, and a general failure.
-fn refused(context: &ExecutionContext<'_>, why: &str) -> Result<ExecutionResult, brush_core::Error> {
+fn refused(
+    context: &ExecutionContext<'_>,
+    why: &str,
+) -> Result<ExecutionResult, brush_core::Error> {
     writeln!(context.stderr(), "{}: {why}", context.command_name)?;
     Ok(ExecutionResult::general_error())
 }
@@ -153,11 +156,14 @@ fn kill(
     args: Vec<CommandArg>,
 ) -> BoxFuture<'_, Result<ExecutionResult, brush_core::Error>> {
     let runner = kill_target(&args).is_some_and(|target| {
-        brush_core::int_utils::parse::<i32>(&target, 10)
-            .is_ok_and(|pid| pid == 0 || u32::try_from(pid).is_ok_and(|pid| pid == std::process::id()))
+        brush_core::int_utils::parse::<i32>(&target, 10).is_ok_and(|pid| {
+            pid == 0 || u32::try_from(pid).is_ok_and(|pid| pid == std::process::id())
+        })
     });
     if runner {
-        return Box::pin(async move { refused(&context, "a job cannot signal the runner it runs in") });
+        return Box::pin(
+            async move { refused(&context, "a job cannot signal the runner it runs in") },
+        );
     }
     let brush_kill = BRUSH_KILL
         .get()
@@ -240,27 +246,77 @@ mod unix {
     /// them and in the order `-a` shows them. The pipe size is no resource
     /// limit: `-p` only shows it.
     const RESOURCES: &[(char, Option<Resource>, &str, Unit)] = &[
-        ('b', Some(Resource::SBSIZE), "socket buffer size", Unit::Bytes),
+        (
+            'b',
+            Some(Resource::SBSIZE),
+            "socket buffer size",
+            Unit::Bytes,
+        ),
         ('c', Some(Resource::CORE), "core file size", Unit::Blocks),
         ('d', Some(Resource::DATA), "data seg size", Unit::Kbytes),
-        ('e', Some(Resource::NICE), "scheduling priority", Unit::Number),
+        (
+            'e',
+            Some(Resource::NICE),
+            "scheduling priority",
+            Unit::Number,
+        ),
         ('f', Some(Resource::FSIZE), "file size", Unit::Blocks),
-        ('i', Some(Resource::SIGPENDING), "pending signals", Unit::Number),
+        (
+            'i',
+            Some(Resource::SIGPENDING),
+            "pending signals",
+            Unit::Number,
+        ),
         ('k', Some(Resource::KQUEUES), "max kqueues", Unit::Number),
-        ('l', Some(Resource::MEMLOCK), "max locked memory", Unit::Kbytes),
+        (
+            'l',
+            Some(Resource::MEMLOCK),
+            "max locked memory",
+            Unit::Kbytes,
+        ),
         ('m', Some(Resource::RSS), "max memory size", Unit::Kbytes),
         ('n', Some(Resource::NOFILE), "open files", Unit::Number),
         ('p', None, "pipe size", Unit::HalfKbytes),
-        ('q', Some(Resource::MSGQUEUE), "POSIX message queues", Unit::Bytes),
-        ('r', Some(Resource::RTPRIO), "real-time priority", Unit::Number),
-        ('R', Some(Resource::RTTIME), "real-time non-blocking time", Unit::Microseconds),
+        (
+            'q',
+            Some(Resource::MSGQUEUE),
+            "POSIX message queues",
+            Unit::Bytes,
+        ),
+        (
+            'r',
+            Some(Resource::RTPRIO),
+            "real-time priority",
+            Unit::Number,
+        ),
+        (
+            'R',
+            Some(Resource::RTTIME),
+            "real-time non-blocking time",
+            Unit::Microseconds,
+        ),
         ('s', Some(Resource::STACK), "stack size", Unit::Kbytes),
         ('t', Some(Resource::CPU), "cpu time", Unit::Seconds),
-        ('u', Some(Resource::NPROC), "max user processes", Unit::Number),
+        (
+            'u',
+            Some(Resource::NPROC),
+            "max user processes",
+            Unit::Number,
+        ),
         ('v', Some(Resource::AS), "virtual memory", Unit::Kbytes),
         ('x', Some(Resource::LOCKS), "file locks", Unit::Number),
-        ('P', Some(Resource::NPTS), "number of pseudoterminals", Unit::Number),
-        ('T', Some(Resource::THREADS), "number of threads", Unit::Number),
+        (
+            'P',
+            Some(Resource::NPTS),
+            "number of pseudoterminals",
+            Unit::Number,
+        ),
+        (
+            'T',
+            Some(Resource::THREADS),
+            "number of threads",
+            Unit::Number,
+        ),
     ];
 
     /// What a `ulimit` command line asks for.
@@ -304,7 +360,10 @@ mod unix {
             }
         }
         if asked.all {
-            asked.resources = RESOURCES.iter().map(|&(option, ..)| (option, None)).collect();
+            asked.resources = RESOURCES
+                .iter()
+                .map(|&(option, ..)| (option, None))
+                .collect();
         } else if asked.resources.is_empty() {
             asked.resources.push(('f', None));
         }
@@ -355,10 +414,14 @@ mod unix {
                     .expect("the parse keeps only known options");
                 let Some(resource) = resource else {
                     if value.is_some() {
-                        writeln!(stderr, "ulimit: {description}: cannot modify limit: Invalid argument")?;
+                        writeln!(
+                            stderr,
+                            "ulimit: {description}: cannot modify limit: Invalid argument"
+                        )?;
                         return Ok(ExecutionResult::general_error());
                     }
-                    let pipe_size = u64::try_from(libc::PIPE_BUF).expect("a pipe buffer's size fits");
+                    let pipe_size =
+                        u64::try_from(libc::PIPE_BUF).expect("a pipe buffer's size fits");
                     showing.push((description, unit, option, shown(pipe_size, unit)));
                     continue;
                 };
@@ -379,7 +442,11 @@ mod unix {
                     "unlimited" => rlimit::INFINITY,
                     "hard" => hard,
                     "soft" => soft,
-                    number => match number.parse::<u64>().ok().and_then(|n| n.checked_mul(unit.scale())) {
+                    number => match number
+                        .parse::<u64>()
+                        .ok()
+                        .and_then(|n| n.checked_mul(unit.scale()))
+                    {
                         Some(limit) => limit,
                         None => {
                             writeln!(stderr, "ulimit: {number}: invalid number")?;
@@ -394,7 +461,10 @@ mod unix {
                 // job's own limit: the probe below starts from the runner's,
                 // which may be higher, as macOS's unlimited open files are.
                 if raised && !rustix::process::geteuid().is_root() {
-                    writeln!(stderr, "ulimit: {description}: cannot modify limit: Operation not permitted")?;
+                    writeln!(
+                        stderr,
+                        "ulimit: {description}: cannot modify limit: Operation not permitted"
+                    )?;
                     return Ok(ExecutionResult::general_error());
                 }
                 let soft = if asked.soft || both { limit } else { soft };
@@ -402,7 +472,10 @@ mod unix {
                 attributes.limits.retain(|&(set, ..)| set != resource);
                 attributes.limits.push((resource, soft, hard));
                 if let Err(error) = allowed(&context, &attributes).await {
-                    writeln!(stderr, "ulimit: {description}: cannot modify limit: {error}")?;
+                    writeln!(
+                        stderr,
+                        "ulimit: {description}: cannot modify limit: {error}"
+                    )?;
                     return Ok(ExecutionResult::general_error());
                 }
             }
@@ -425,7 +498,10 @@ mod unix {
     /// open files. A job's `ulimit` asks it the way its commands will meet
     /// it: it starts `/bin/sh -c :` with them, which exits at once, and the
     /// system refuses the start if it refuses a limit.
-    async fn allowed(context: &ExecutionContext<'_>, attributes: &ChildAttributes) -> std::io::Result<()> {
+    async fn allowed(
+        context: &ExecutionContext<'_>,
+        attributes: &ChildAttributes,
+    ) -> std::io::Result<()> {
         let scope = crate::interpreter::scope(&*context.shell)?;
         let mut command = tokio::process::Command::new("/bin/sh");
         command
@@ -461,7 +537,10 @@ mod unix {
             let mut symbolic = false;
             let mut mode = None;
             for arg in args.iter().skip(1).map(ToString::to_string) {
-                match arg.strip_prefix('-').filter(|options| !options.is_empty() && mode.is_none()) {
+                match arg
+                    .strip_prefix('-')
+                    .filter(|options| !options.is_empty() && mode.is_none())
+                {
                     Some(options) if options.chars().all(|option| matches!(option, 'p' | 'S')) => {
                         reusable |= options.contains('p');
                         symbolic |= options.contains('S');

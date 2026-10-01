@@ -10,21 +10,21 @@
 
 use demi_agent_session::testing::COMPACTION_SUMMARY_INSTRUCTION;
 use demi_agent_store::testing::png;
-use demi_shared_types::{BlobRef, FileExtension, MediaSource, WireApi};
+use demi_provider_anthropic_api::{AnthropicConfig, AnthropicProvider};
+use demi_provider_codex::{
+    CodexConfig, CodexProvider, TransportMode,
+    testing::{FakeWebSocket, Script, Step},
+};
 use demi_provider_common::{
     InferenceRequest, Provider, ProviderRun, ProviderRuntime, RequestLimits, RuntimeEnv, Secret,
     credentials::{AccountMeta, CredentialPool, MemoryCredentialPool},
     quota::MemorySnapshots,
     testing::{MockResponse, MockVendor, jwt},
 };
-use demi_provider_anthropic_api::{AnthropicConfig, AnthropicProvider};
-use demi_provider_codex::{
-    CodexConfig, CodexProvider, TransportMode,
-    testing::{FakeWebSocket, Script, Step},
-};
 use demi_provider_google::{GoogleConfig, GoogleProvider};
 use demi_provider_grok_build::{GrokConfig, GrokProvider};
 use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider, VendorPolicy};
+use demi_shared_types::{BlobRef, FileExtension, MediaSource, WireApi};
 use futures_util::{StreamExt as _, stream};
 use serde_json::Value;
 
@@ -124,7 +124,11 @@ impl Family {
 
     /// A runtime of this family's provider at `vendor`, or at `socket` for
     /// Codex's WebSocket.
-    async fn runtime(self, vendor: &MockVendor, socket: &FakeWebSocket) -> Box<dyn ProviderRuntime> {
+    async fn runtime(
+        self,
+        vendor: &MockVendor,
+        socket: &FakeWebSocket,
+    ) -> Box<dyn ProviderRuntime> {
         let clock: Arc<dyn demi_shared_types::Clock> = Arc::new(FixedClock(NOW.parse().unwrap()));
         let env = RuntimeEnv {
             http: reqwest::Client::new(),
@@ -168,13 +172,18 @@ impl Family {
                 let mut config = CodexConfig::new(Some("cred-c".into()));
                 config.auth_url = vendor.url("").parse().unwrap();
                 (config.backend_url, config.transport) = match self {
-                    Self::CodexWebSocket => {
-                        (socket.backend_url().parse().unwrap(), TransportMode::WebSocket)
-                    }
-                    _ => (vendor.url("/backend-api").parse().unwrap(), TransportMode::Sse),
+                    Self::CodexWebSocket => (
+                        socket.backend_url().parse().unwrap(),
+                        TransportMode::WebSocket,
+                    ),
+                    _ => (
+                        vendor.url("/backend-api").parse().unwrap(),
+                        TransportMode::Sse,
+                    ),
                 };
                 let snapshots = Arc::new(MemorySnapshots::new());
-                CodexProvider::new(config, pool, snapshots, reqwest::Client::new(), clock).runtime(env)
+                CodexProvider::new(config, pool, snapshots, reqwest::Client::new(), clock)
+                    .runtime(env)
             }
             Self::GrokBuild => {
                 let secret = serde_json::json!({
@@ -187,7 +196,8 @@ impl Family {
                 config.proxy_url = vendor.url("/v1").parse().unwrap();
                 config.issuer_url = vendor.url("").parse().unwrap();
                 let snapshots = Arc::new(MemorySnapshots::new());
-                GrokProvider::new(config, pool, snapshots, reqwest::Client::new(), clock).runtime(env)
+                GrokProvider::new(config, pool, snapshots, reqwest::Client::new(), clock)
+                    .runtime(env)
             }
         };
         runtime.expect("a provider with a signed-in account builds its runtime")
@@ -262,7 +272,10 @@ fn unmarked(value: &Value) -> Value {
 fn extends(family: Family, earlier: &Value, later: &Value, what: &str) {
     let (earlier_fixed, earlier_parts) = cached(family, earlier);
     let (later_fixed, later_parts) = cached(family, later);
-    assert_eq!(later_fixed, earlier_fixed, "{family:?}: {what}: the other fields");
+    assert_eq!(
+        later_fixed, earlier_fixed,
+        "{family:?}: {what}: the other fields"
+    );
     assert!(
         later_parts.len() > earlier_parts.len(),
         "{family:?}: {what}: {later_parts:#?}"
@@ -288,9 +301,11 @@ async fn conversation(family: Family) -> Vec<String> {
         "type": "response.completed",
         "response": { "usage": { "input_tokens": 1, "output_tokens": 1 } }
     });
-    let socket =
-        FakeWebSocket::start(vec![Script::Accept(vec![Step::Send(completed.to_string())]); 8], None)
-            .await;
+    let socket = FakeWebSocket::start(
+        vec![Script::Accept(vec![Step::Send(completed.to_string())]); 8],
+        None,
+    )
+    .await;
     let thinking = |name: &str| {
         vec![
             ProviderEvent::ThinkingStart,
@@ -364,7 +379,7 @@ async fn conversation(family: Family) -> Vec<String> {
     .await;
     session
         .update_model(ModelSwitch {
-            model: model_reading("stub", "model-a", &[FileExtension::Png]),
+            model: Box::new(model_reading("stub", "model-a", &[FileExtension::Png])),
             runtime: None,
         })
         .unwrap();
@@ -413,7 +428,7 @@ async fn conversation(family: Family) -> Vec<String> {
     });
     session
         .update_model(ModelSwitch {
-            model: deeper,
+            model: Box::new(deeper),
             runtime: None,
         })
         .unwrap();
@@ -444,7 +459,7 @@ async fn conversation(family: Family) -> Vec<String> {
 // 0.2 s each.
 #[tokio::test(flavor = "local")]
 async fn each_providers_requests_begin_with_the_one_before_and_a_summary_or_a_thinking_change_changes_only_what_it_must()
-{
+ {
     let mut over_events = Vec::new();
     for family in [
         Family::Anthropic,
@@ -476,13 +491,22 @@ async fn each_providers_requests_begin_with_the_one_before_and_a_summary_or_a_th
         let [first, second, third, summary, after, deeper] = bodies.as_slice() else {
             unreachable!()
         };
-        extends(family, first, second, "the tool results, the steer and the agent message");
+        extends(
+            family,
+            first,
+            second,
+            "the tool results, the steer and the agent message",
+        );
         extends(family, second, third, "the next message");
         // The summary request is the latest answered request, the third,
         // with the instruction alone after it.
         extends(family, third, summary, "the summary request");
         let summary_parts = cached(family, summary).1;
-        assert_eq!(summary_parts.len(), cached(family, third).1.len() + 1, "{family:?}");
+        assert_eq!(
+            summary_parts.len(),
+            cached(family, third).1.len() + 1,
+            "{family:?}"
+        );
         let instruction = summary_parts.last().unwrap().to_string();
         assert!(
             instruction.contains(COMPACTION_SUMMARY_INSTRUCTION.split('.').next().unwrap()),
@@ -496,9 +520,14 @@ async fn each_providers_requests_begin_with_the_one_before_and_a_summary_or_a_th
             family,
             Family::ChatCompletions | Family::GrokBuild
         ));
-        assert_eq!(after_parts[..system_messages], cached(family, third).1[..system_messages]);
+        assert_eq!(
+            after_parts[..system_messages],
+            cached(family, third).1[..system_messages]
+        );
         assert!(
-            after_parts[system_messages].to_string().contains("Previous conversation summary:"),
+            after_parts[system_messages]
+                .to_string()
+                .contains("Previous conversation summary:"),
             "{family:?}: {after_parts:#?}"
         );
         // The reasoning of the kept answer: Anthropic leaves it out, and the
@@ -520,7 +549,11 @@ async fn each_providers_requests_begin_with_the_one_before_and_a_summary_or_a_th
             }
             body
         };
-        assert_ne!(cached(family, deeper).0, cached(family, after).0, "{family:?}");
+        assert_ne!(
+            cached(family, deeper).0,
+            cached(family, after).0,
+            "{family:?}"
+        );
         extends(
             family,
             &without_thinking(after),

@@ -62,10 +62,15 @@ mod tests {
 
     /// An archive of `entries`: (type, path, hard-link target). Names are
     /// written into the header directly, so unsafe ones can be made.
-    fn archive(directory: &Path, entries: &[(EntryType, &str, Option<&str>)]) -> std::path::PathBuf {
+    fn archive(
+        directory: &Path,
+        entries: &[(EntryType, &str, Option<&str>)],
+    ) -> std::path::PathBuf {
         let path = directory.join("rootfs.tar.zst");
         let file = std::fs::File::create(&path).unwrap();
-        let encoder = zstd::stream::write::Encoder::new(file, 0).unwrap().auto_finish();
+        let encoder = zstd::stream::write::Encoder::new(file, 0)
+            .unwrap()
+            .auto_finish();
         let mut builder = tar::Builder::new(encoder);
         for (kind, name, target) in entries {
             let mut header = tar::Header::new_gnu();
@@ -99,13 +104,25 @@ mod tests {
         );
         vet(&off, &safe).unwrap();
         for (entries, error) in [
-            (vec![(EntryType::Regular, "/etc/passwd", None)], "unsafe path"),
-            (vec![(EntryType::Regular, "./../escape", None)], "unsafe path"),
+            (
+                vec![(EntryType::Regular, "/etc/passwd", None)],
+                "unsafe path",
+            ),
+            (
+                vec![(EntryType::Regular, "./../escape", None)],
+                "unsafe path",
+            ),
             (vec![(EntryType::Fifo, "./run/pipe", None)], "unsafe path"),
             (vec![(EntryType::Char, "./dev/null", None)], "unsafe path"),
             (vec![(EntryType::Block, "./dev/sda", None)], "unsafe path"),
-            (vec![(EntryType::Link, "./etc/shadow", Some("../../etc/shadow"))], "unsafe hardlink"),
-            (vec![(EntryType::Link, "./etc/shadow", Some("/etc/shadow"))], "unsafe hardlink"),
+            (
+                vec![(EntryType::Link, "./etc/shadow", Some("../../etc/shadow"))],
+                "unsafe hardlink",
+            ),
+            (
+                vec![(EntryType::Link, "./etc/shadow", Some("/etc/shadow"))],
+                "unsafe hardlink",
+            ),
         ] {
             let unsafe_archive = archive(directory.path(), &entries);
             let message = vet(&off, &unsafe_archive).expect_err("refused").to_string();

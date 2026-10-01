@@ -5,8 +5,8 @@
 //! holds the executable the record names, and writes the release record with
 //! command-package-browser-protocol's type, which `demi-browser` installs from.
 
-use demi_shared_artifacts::{Mode, Permissions, Publication};
 use demi_command_package_browser_protocol::release::{BrowserRelease, ReleasePlatform};
+use demi_shared_artifacts::{Mode, Permissions, Publication};
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
@@ -82,11 +82,17 @@ pub enum Error {
     #[error("the metadata of Chrome for Testing {version} is invalid: {reason}")]
     Metadata { version: String, reason: String },
     #[error("Chrome for Testing {version} has no {platform} archive")]
-    NoArchive { version: String, platform: &'static str },
+    NoArchive {
+        version: String,
+        platform: &'static str,
+    },
     #[error("the {platform} archive is not an official download: {url}")]
     Unofficial { platform: &'static str, url: String },
     #[error("the {platform} archive holds no {executable}")]
-    NoExecutable { platform: &'static str, executable: &'static str },
+    NoExecutable {
+        platform: &'static str,
+        executable: &'static str,
+    },
     #[error("the release record is invalid: {0}")]
     Record(String),
     #[error(transparent)]
@@ -110,7 +116,11 @@ pub fn run(options: Options) -> Result<(), Error> {
             durable: true,
         };
         demi_shared_artifacts::publish_bytes(&record, &bytes, publication).await?;
-        println!("Chrome for Testing {}: {}", options.version, record.display());
+        println!(
+            "Chrome for Testing {}: {}",
+            options.version,
+            record.display()
+        );
         Ok(())
     })?
 }
@@ -155,8 +165,10 @@ async fn prepare(
     };
     let url = format!("{}/{version}.json", sources.metadata);
     let mut bytes = Vec::new();
-    demi_shared_artifacts::download_measured(client, &url, METADATA_BYTES, &mut bytes, cancel).await?;
-    let metadata: Metadata = serde_json::from_slice(&bytes).map_err(|error| invalid(error.to_string()))?;
+    demi_shared_artifacts::download_measured(client, &url, METADATA_BYTES, &mut bytes, cancel)
+        .await?;
+    let metadata: Metadata =
+        serde_json::from_slice(&bytes).map_err(|error| invalid(error.to_string()))?;
     if metadata.version != version {
         return Err(invalid(format!("it describes {}", metadata.version)));
     }
@@ -181,7 +193,14 @@ async fn prepare(
         }
         let path = downloads.path().join(format!("{}.zip", platform.name));
         let mut file = tokio::fs::File::create(&path).await?;
-        let digest = demi_shared_artifacts::download_measured(client, &download.url, ARCHIVE_BYTES, &mut file, cancel).await?;
+        let digest = demi_shared_artifacts::download_measured(
+            client,
+            &download.url,
+            ARCHIVE_BYTES,
+            &mut file,
+            cancel,
+        )
+        .await?;
         drop(file);
         if !demi_shared_artifacts::zip_holds(&path, platform.executable).await? {
             return Err(Error::NoExecutable {
@@ -190,7 +209,10 @@ async fn prepare(
             });
         }
         tokio::fs::remove_file(&path).await?;
-        println!("Chrome for Testing {version}: {} archive, {} bytes", platform.name, digest.size);
+        println!(
+            "Chrome for Testing {version}: {} archive, {} bytes",
+            platform.name, digest.size
+        );
         platforms.push(ReleasePlatform {
             target: platform.target.to_owned(),
             url: download.url.clone(),
@@ -238,9 +260,15 @@ mod tests {
                 platform.executable
             };
             paths.push(format!("/{version}/{0}/chrome-{0}.zip", platform.name));
-            files.push(zip(&[(executable, platform.name.as_bytes()), ("LICENSE", b"license")]));
+            files.push(zip(&[
+                (executable, platform.name.as_bytes()),
+                ("LICENSE", b"license"),
+            ]));
         }
-        let answers = paths.iter().zip(&files).map(|(path, file)| (path.clone(), Answer::ok(file.clone())));
+        let answers = paths
+            .iter()
+            .zip(&files)
+            .map(|(path, file)| (path.clone(), Answer::ok(file.clone())));
         let archives = Server::start(answers).await;
         let chrome: Vec<serde_json::Value> = PLATFORMS
             .iter()
@@ -252,7 +280,11 @@ mod tests {
             "revision": "1500000",
             "downloads": {"chrome": chrome, "chromedriver": []},
         });
-        let metadata = Server::start([(format!("/{version}.json"), Answer::ok(described.to_string()))]).await;
+        let metadata = Server::start([(
+            format!("/{version}.json"),
+            Answer::ok(described.to_string()),
+        )])
+        .await;
         Fixture {
             metadata,
             archives,
@@ -280,13 +312,19 @@ mod tests {
         assert_eq!(release.version, version);
         assert_eq!(release.platforms.len(), PLATFORMS.len());
         let files = tempfile::tempdir().unwrap();
-        for ((recorded, platform), file) in release.platforms.iter().zip(&PLATFORMS).zip(&fixture.files) {
+        for ((recorded, platform), file) in
+            release.platforms.iter().zip(&PLATFORMS).zip(&fixture.files)
+        {
             let path = files.path().join(platform.name);
             std::fs::write(&path, file).unwrap();
-            let digest = demi_shared_artifacts::digest(&path, u64::MAX, &cancel).await.unwrap();
+            let digest = demi_shared_artifacts::digest(&path, u64::MAX, &cancel)
+                .await
+                .unwrap();
             let expected = ReleasePlatform {
                 target: platform.target.to_owned(),
-                url: fixture.archives.url(&format!("/{version}/{0}/chrome-{0}.zip", platform.name)),
+                url: fixture
+                    .archives
+                    .url(&format!("/{version}/{0}/chrome-{0}.zip", platform.name)),
                 size: digest.size,
                 sha256: digest.sha256,
                 executable: platform.executable.to_owned(),
@@ -300,7 +338,16 @@ mod tests {
             archives: "https://storage.googleapis.com/",
         };
         let refused = prepare(&client, &elsewhere, version, &cancel).await;
-        assert!(matches!(refused, Err(Error::Unofficial { platform: "mac-arm64", .. })), "{refused:?}");
+        assert!(
+            matches!(
+                refused,
+                Err(Error::Unofficial {
+                    platform: "mac-arm64",
+                    ..
+                })
+            ),
+            "{refused:?}"
+        );
         // So is an archive without the executable the record would name, and
         // metadata of another version.
         let lacking = chrome_for_testing(version, version, Some("linux64")).await;
@@ -311,7 +358,16 @@ mod tests {
             archives: &official,
         };
         let refused = prepare(&client, &sources, version, &cancel).await;
-        assert!(matches!(refused, Err(Error::NoExecutable { platform: "linux64", .. })), "{refused:?}");
+        assert!(
+            matches!(
+                refused,
+                Err(Error::NoExecutable {
+                    platform: "linux64",
+                    ..
+                })
+            ),
+            "{refused:?}"
+        );
         let other = chrome_for_testing(version, "153.0.8010.37", None).await;
         let metadata = other.metadata.url("");
         let official = other.archives.url("/");
@@ -320,7 +376,10 @@ mod tests {
             archives: &official,
         };
         let refused = prepare(&client, &sources, version, &cancel).await;
-        assert!(matches!(refused, Err(Error::Metadata { .. })), "{refused:?}");
+        assert!(
+            matches!(refused, Err(Error::Metadata { .. })),
+            "{refused:?}"
+        );
         assert_eq!(other.archives.requests(), 0);
     }
 }

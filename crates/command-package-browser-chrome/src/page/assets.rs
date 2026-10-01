@@ -273,10 +273,10 @@ pub async fn execute(
                 };
                 return Err(BrowserError::Action {
                     source: Box::new(cause),
-                    details: crate::page::protocol::ErrorDetails {
+                    details: Box::new(crate::page::protocol::ErrorDetails {
                         export: Some(result),
                         ..crate::page::protocol::ErrorDetails::default()
-                    },
+                    }),
                 });
             }
             if !failures.is_empty() {

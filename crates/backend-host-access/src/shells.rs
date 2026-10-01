@@ -15,24 +15,24 @@ use demi_agent_tools::{EnvironmentScope, ShellEnvironmentFactory};
 use demi_backend_blobs::blobs::UserBlobs;
 use demi_backend_database::command_outputs::{self, CommandOutput, OutputRow};
 use demi_backend_database::conversations::ConversationDb;
-use demi_command_protocol::CommandCaller;
-use demi_shared_types::{Clock, CommandId, EditCopies, EditedFile, ShellId};
 use demi_backend_remote_host::{
-    CommandCatalog, CommandKeeper, ContextSource, EnvironmentOptions, HostAccess, RemoteHost, RemoteShellEnvironment,
-    edited_file, encode_output,
+    CommandCatalog, CommandKeeper, ContextSource, EnvironmentOptions, HostAccess, RemoteHost,
+    RemoteShellEnvironment, edited_file, encode_output,
+};
+use demi_backend_runners::command_context::command_context;
+use demi_backend_runners::files::text_of;
+use demi_backend_runners::host_key::device_of;
+use demi_backend_runners::router::CommandRegistration;
+use demi_command_protocol::CommandCaller;
+use demi_host_interface::{
+    CommandStatus, ExecRequest, Host, HostError, HostErrorKind, HostFs, HostKey, PageView,
+    ShellEnvironment, ShellError, WholeOutput,
 };
 use demi_runner_protocol::wire::JobFileChange;
-use demi_host_interface::{
-    CommandStatus, ExecRequest, Host, HostError, HostErrorKind, HostFs, HostKey, PageView, ShellEnvironment,
-    ShellError, WholeOutput,
-};
+use demi_shared_types::{Clock, CommandId, EditCopies, EditedFile, ShellId};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
-use demi_backend_runners::command_context::command_context;
-use demi_backend_runners::host_key::device_of;
-use demi_backend_runners::files::text_of;
-use demi_backend_runners::router::CommandRegistration;
 
 use crate::access::{HostAccessError, Refusal};
 use crate::blobs::ConversationBlobs;
@@ -42,9 +42,14 @@ impl dyn HostShard + '_ {
     /// A node's Host: the conversation's current main Host. The host access
     /// admits it and lets it go at once; its later operations take only a
     /// Cloud's per-operation admission.
-    pub async fn conversation_host(&self, id: &ConversationId) -> Result<Rc<RemoteHost>, HostError> {
+    pub async fn conversation_host(
+        &self,
+        id: &ConversationId,
+    ) -> Result<Rc<RemoteHost>, HostError> {
         let host = self
-            .with_host(id, None, &CancellationToken::new(), async |host| host.host.clone())
+            .with_host(id, None, &CancellationToken::new(), async |host| {
+                host.host.clone()
+            })
             .await?;
         Ok(Rc::new(host))
     }
@@ -62,7 +67,12 @@ impl dyn HostShard + '_ {
     ) -> Result<(), HostError> {
         let device = device_of(host)
             .and_then(|device| DeviceId::try_from(device).ok())
-            .ok_or_else(|| HostError::new(HostErrorKind::Protocol, "the job's Host is no conversation's"))?;
+            .ok_or_else(|| {
+                HostError::new(
+                    HostErrorKind::Protocol,
+                    "the job's Host is no conversation's",
+                )
+            })?;
         self.with_host(id, Some(&device), cancel, async move |admitted| {
             if admitted.host.key() != *host {
                 return Err(HostError::new(
@@ -81,14 +91,20 @@ impl From<HostAccessError> for HostError {
     fn from(error: HostAccessError) -> Self {
         match error {
             HostAccessError::Host(error) => error,
-            HostAccessError::Cancelled => HostError::new(HostErrorKind::Interrupted, error.to_string()),
-            HostAccessError::Storage(_) | HostAccessError::Objects(_) | HostAccessError::Store(_) => {
-                HostError::failed(None, error.to_string())
+            HostAccessError::Cancelled => {
+                HostError::new(HostErrorKind::Interrupted, error.to_string())
             }
+            HostAccessError::Storage(_)
+            | HostAccessError::Objects(_)
+            | HostAccessError::Store(_) => HostError::failed(None, error.to_string()),
             HostAccessError::Missing
             | HostAccessError::Cloud(_)
             | HostAccessError::Refused(
-                Refusal::Archived | Refusal::NotAttached | Refusal::Busy | Refusal::Stopped | Refusal::DeviceGone,
+                Refusal::Archived
+                | Refusal::NotAttached
+                | Refusal::Busy
+                | Refusal::Stopped
+                | Refusal::DeviceGone,
             ) => HostError::new(HostErrorKind::Unavailable, error.to_string()),
         }
     }
@@ -138,7 +154,12 @@ impl ShellEnvironmentFactory<RemoteHost> for ShardShellEnvironments {
                     })
                 })
             };
-            let mut options = EnvironmentOptions::new((*host).clone(), context, scope.feed.clone(), scope.numbers.clone());
+            let mut options = EnvironmentOptions::new(
+                (*host).clone(),
+                context,
+                scope.feed.clone(),
+                scope.numbers.clone(),
+            );
             options.access = Some(Rc::new(JobAccess {
                 shard: self.shard.clone(),
                 conversation: conversation.clone(),
@@ -156,10 +177,12 @@ impl ShellEnvironmentFactory<RemoteHost> for ShardShellEnvironments {
                 .map_err(|error| HostError::new(HostErrorKind::Protocol, error.to_string()))?;
             options.commands = Some(selection.clone());
             let environment = RemoteShellEnvironment::new(options);
-            let registration =
-                shard
-                    .commands()
-                    .register(scope.node.as_str(), &conversation, scope.commands.clone(), selection);
+            let registration = shard.commands().register(
+                scope.node.as_str(),
+                &conversation,
+                scope.commands.clone(),
+                selection,
+            );
             Ok(Rc::new(Registered {
                 environment,
                 _registration: registration,
@@ -222,13 +245,22 @@ impl Keeper {
     /// Stores an edit segment's two sides as blobs: the Host's copy before
     /// it, empty for a segment that created the file, and its copy after
     /// it. Both must be text the change view can show.
-    async fn store_copies(&self, original: Option<&str>, modified: &str) -> Result<EditCopies, String> {
+    async fn store_copies(
+        &self,
+        original: Option<&str>,
+        modified: &str,
+    ) -> Result<EditCopies, String> {
         let before = match original {
             Some(path) => self.text_copy(path).await?,
             None => String::new(),
         };
         let after = self.text_copy(modified).await?;
-        let put = async |text: String| self.blobs.put(Bytes::from(text)).await.map_err(|error| error.to_string());
+        let put = async |text: String| {
+            self.blobs
+                .put(Bytes::from(text))
+                .await
+                .map_err(|error| error.to_string())
+        };
         Ok(EditCopies {
             original: put(before).await?,
             modified: put(after).await?,
@@ -246,7 +278,11 @@ impl Keeper {
 }
 
 impl CommandKeeper for Keeper {
-    fn retain<'a>(&'a self, command: &'a CommandId, files: &'a [JobFileChange]) -> LocalBoxFuture<'a, Vec<EditedFile>> {
+    fn retain<'a>(
+        &'a self,
+        command: &'a CommandId,
+        files: &'a [JobFileChange],
+    ) -> LocalBoxFuture<'a, Vec<EditedFile>> {
         Box::pin(async move {
             let mut retained = Vec::with_capacity(files.len());
             for file in files {
@@ -256,7 +292,9 @@ impl CommandKeeper for Keeper {
                         copies.push(None);
                         continue;
                     };
-                    let stored = self.store_copies(segment.original.as_deref(), modified).await;
+                    let stored = self
+                        .store_copies(segment.original.as_deref(), modified)
+                        .await;
                     if let Err(error) = &stored {
                         // The file's record stays in the list without this
                         // segment's copies.
@@ -270,7 +308,11 @@ impl CommandKeeper for Keeper {
         })
     }
 
-    fn keep_output<'a>(&'a self, command: &'a CommandId, output: &'a WholeOutput) -> LocalBoxFuture<'a, ()> {
+    fn keep_output<'a>(
+        &'a self,
+        command: &'a CommandId,
+        output: &'a WholeOutput,
+    ) -> LocalBoxFuture<'a, ()> {
         Box::pin(async move {
             let ended = self.clock.now();
             let stored = match self.put(output).await {
@@ -328,11 +370,18 @@ impl ShellEnvironment for Registered {
         self.environment.status(command)
     }
 
-    fn read_output<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<WholeOutput, ShellError>> {
+    fn read_output<'a>(
+        &'a self,
+        command: &'a CommandId,
+    ) -> LocalBoxFuture<'a, Result<WholeOutput, ShellError>> {
         self.environment.read_output(command)
     }
 
-    fn write<'a>(&'a self, command: &'a CommandId, stdin: Bytes) -> LocalBoxFuture<'a, Result<(), ShellError>> {
+    fn write<'a>(
+        &'a self,
+        command: &'a CommandId,
+        stdin: Bytes,
+    ) -> LocalBoxFuture<'a, Result<(), ShellError>> {
         self.environment.write(command, stdin)
     }
 

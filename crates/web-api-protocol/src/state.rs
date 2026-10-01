@@ -52,22 +52,42 @@ pub struct ProductState {
 pub enum SyncEvent {
     /// The whole product state, first on every connection; it replaces
     /// whatever the page held.
-    Snapshot { state: Box<ProductState> },
+    Snapshot {
+        state: Box<ProductState>,
+    },
     /// A conversation's summary, as the conversation lists carry it.
-    Conversation { conversation: Box<ConversationSummary> },
+    Conversation {
+        conversation: Box<ConversationSummary>,
+    },
     /// The id of every conversation, in the product state's order.
-    ConversationOrder { ids: Vec<ConversationId> },
-    Preferences { preferences: Preferences },
-    User { user: UserDto },
+    ConversationOrder {
+        ids: Vec<ConversationId>,
+    },
+    Preferences {
+        preferences: Preferences,
+    },
+    User {
+        user: UserDto,
+    },
     /// The user's workspaces, in the user's order.
-    Workspaces { workspaces: Vec<WorkspaceDto> },
+    Workspaces {
+        workspaces: Vec<WorkspaceDto>,
+    },
     /// The paired devices and the Cloud's.
-    Devices { devices: Vec<DeviceDto> },
+    Devices {
+        devices: Vec<DeviceDto>,
+    },
     /// The live exposes, soonest expiry first.
-    Exposes { exposes: Vec<ExposeDto> },
+    Exposes {
+        exposes: Vec<ExposeDto>,
+    },
     /// The entries the user infers with, each with what its provider says.
-    Providers { providers: Vec<ProviderState> },
-    Cloud { cloud: CloudStatus },
+    Providers {
+        providers: Vec<ProviderState>,
+    },
+    Cloud {
+        cloud: CloudStatus,
+    },
     /// Nothing else was sent for 30 seconds.
     Heartbeat,
 }

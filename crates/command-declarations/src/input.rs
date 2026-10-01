@@ -155,7 +155,9 @@ fn check_field(schema: &Value) -> Result<(), String> {
             check_field(items).map_err(|reason| format!("its items: {reason}"))
         }
         "object" => Err("is a nested object, which has no command-line form".into()),
-        other => Err(format!("has type \"{other}\", outside the command input subset")),
+        other => Err(format!(
+            "has type \"{other}\", outside the command input subset"
+        )),
     }
 }
 

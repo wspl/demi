@@ -13,15 +13,15 @@ use axum::http::StatusCode;
 use demi_backend_providers::llm::families::ProviderFamily;
 use demi_backend_providers::vault::entries::{ApiKeyConfig, EntryCredential, ProviderEntry};
 use demi_backend_providers::vault::operations::OperationGuard;
-use demi_shared_types::WireApi;
 use demi_provider_common::quota::QuotaError;
 use demi_provider_common::{Provider, Secret};
+use demi_shared_types::WireApi;
 use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 use demi_web_api_protocol::providers::{
-    CreateProvider, CredentialKind, ProviderAnswer, ProviderDetails, ProviderPatch, Providers, QuotaAnswer,
-    QuotaRequest, SubscriptionFamily, TestRequest, TestResult, VendorCatalog,
+    CreateProvider, CredentialKind, ProviderAnswer, ProviderDetails, ProviderPatch, Providers,
+    QuotaAnswer, QuotaRequest, SubscriptionFamily, TestRequest, TestResult, VendorCatalog,
 };
 use demi_web_api_protocol::text::EndpointUrl;
 
@@ -36,13 +36,19 @@ pub(super) fn configures(services: &Services, user: &UserDto) -> Result<(), ApiE
     if services.vault.configures(user) {
         Ok(())
     } else {
-        Err(ApiError::forbidden("Providers are configured by the instance owner"))
+        Err(ApiError::forbidden(
+            "Providers are configured by the instance owner",
+        ))
     }
 }
 
 /// The entry the path names, when it is one of the caller's scope; any
 /// other answers like a missing one.
-pub(super) async fn scoped(services: &Services, user: &UserDto, id: &str) -> Result<ProviderEntry, ApiError> {
+pub(super) async fn scoped(
+    services: &Services,
+    user: &UserDto,
+    id: &str,
+) -> Result<ProviderEntry, ApiError> {
     let id = ProviderId::try_from(id).map_err(|_| ApiError::provider_not_found())?;
     services
         .vault
@@ -52,7 +58,10 @@ pub(super) async fn scoped(services: &Services, user: &UserDto, id: &str) -> Res
 }
 
 /// Holds the entry for one change.
-pub(super) fn reserve(services: &Services, entry: &ProviderEntry) -> Result<OperationGuard, ApiError> {
+pub(super) fn reserve(
+    services: &Services,
+    entry: &ProviderEntry,
+) -> Result<OperationGuard, ApiError> {
     services
         .operations
         .reserve(&entry.id)
@@ -87,8 +96,15 @@ pub(super) async fn catalog(
             configured: entries.iter().any(|entry| entry.family == family),
         })
         .collect();
-    let vendors = assembly.vendors().vendors().await.map_err(catalog_unavailable)?;
-    Ok(Json(VendorCatalog { subscriptions, vendors }))
+    let vendors = assembly
+        .vendors()
+        .vendors()
+        .await
+        .map_err(catalog_unavailable)?;
+    Ok(Json(VendorCatalog {
+        subscriptions,
+        vendors,
+    }))
 }
 
 fn catalog_unavailable(error: impl ToString) -> ApiError {
@@ -168,13 +184,18 @@ pub(super) async fn create(
                     )
                 })?;
             api_key_family(&services, &vendor.provider_type, vendor.wire_api)?;
-            let base_url =
-                match base_url {
-                    Some(endpoint) => Some(endpoint),
-                    None => vendor.base_url.map(EndpointUrl::try_from).transpose().map_err(|_| {
-                        catalog_unavailable(format!("models.dev names no usable endpoint for {vendor_id}"))
+            let base_url = match base_url {
+                Some(endpoint) => Some(endpoint),
+                None => vendor
+                    .base_url
+                    .map(EndpointUrl::try_from)
+                    .transpose()
+                    .map_err(|_| {
+                        catalog_unavailable(format!(
+                            "models.dev names no usable endpoint for {vendor_id}"
+                        ))
                     })?,
-                };
+            };
             let config = ApiKeyConfig {
                 api_key: api_key(key)?,
                 base_url,
@@ -208,7 +229,12 @@ pub(super) async fn create(
         .vault
         .create_api_key(owner, family, label.into_string(), config)
         .await?;
-    Ok((StatusCode::CREATED, Json(ProviderAnswer { provider: entry.dto() })))
+    Ok((
+        StatusCode::CREATED,
+        Json(ProviderAnswer {
+            provider: entry.dto(),
+        }),
+    ))
 }
 
 /// Edits an entry: the label of any, and the key, endpoint and model list of
@@ -223,7 +249,8 @@ pub(super) async fn update(
     configures(&services, &user)?;
     let entry = scoped(&services, &user, &id).await?;
     let _held = reserve(&services, &entry)?;
-    let reconfigures = patch.api_key.is_some() || patch.base_url.is_some() || patch.models.is_some();
+    let reconfigures =
+        patch.api_key.is_some() || patch.base_url.is_some() || patch.models.is_some();
     let config = if reconfigures {
         let EntryCredential::ApiKey(config) = &entry.credential else {
             return Err(ApiError::new(
@@ -359,7 +386,11 @@ pub(super) async fn test(
     let model = request.model_id;
     let result = shards
         .of(&user.id)
-        .call(move |shard, cancel| async move { shard.test_provider(entry, provider, account, model, cancel).await })
+        .call(move |shard, cancel| async move {
+            shard
+                .test_provider(entry, provider, account, model, cancel)
+                .await
+        })
         .await?;
     Ok(Json(result))
 }

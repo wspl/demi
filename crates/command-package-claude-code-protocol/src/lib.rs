@@ -34,7 +34,9 @@ impl Operation {
 
     /// The operation named `name`, if the package has it.
     pub fn parse(name: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|operation| operation.name() == name)
+        Self::ALL
+            .into_iter()
+            .find(|operation| operation.name() == name)
     }
 }
 
@@ -182,7 +184,9 @@ impl<'de, T: DeserializeOwned> Deserialize<'de> for Reply<T> {
         let mut document = serde_json::Map::<String, Value>::deserialize(deserializer)?;
         let rest = |document| Value::Object(document);
         match document.remove("ok") {
-            Some(Value::Bool(true)) => T::deserialize(rest(document)).map(Self::Done).map_err(D::Error::custom),
+            Some(Value::Bool(true)) => T::deserialize(rest(document))
+                .map(Self::Done)
+                .map_err(D::Error::custom),
             Some(Value::Bool(false)) => Failure::deserialize(rest(document))
                 .map(Self::Failed)
                 .map_err(D::Error::custom),

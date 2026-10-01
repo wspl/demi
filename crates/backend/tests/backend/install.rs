@@ -8,8 +8,8 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 
-use demi_command_protocol::{TARGETS, VERSION, host_target};
 use demi_backend_remote_host::testing::{PAIRING_CODE, runner_binary};
+use demi_command_protocol::{TARGETS, VERSION, host_target};
 use demi_provider_common::testing::MockVendor;
 use demi_runner_protocol::wire;
 use demi_web_api_protocol::devices::ClaimedDevice;
@@ -37,7 +37,10 @@ impl Releases {
         let bytes = std::fs::read(&program).unwrap();
         let artifact = json!({ "sha256": sha(&bytes), "size": bytes.len() });
         Self {
-            directory: tempfile::Builder::new().prefix("demi-releases-").tempdir().unwrap(),
+            directory: tempfile::Builder::new()
+                .prefix("demi-releases-")
+                .tempdir()
+                .unwrap(),
             program,
             artifact,
         }
@@ -52,7 +55,12 @@ impl Releases {
     /// than copying it.
     fn publish(&self, name: &str) -> String {
         let release = sha(name.as_bytes());
-        let executable = self.directory.path().join(&release).join(host_target()).join("demi-runner");
+        let executable = self
+            .directory
+            .path()
+            .join(&release)
+            .join(host_target())
+            .join("demi-runner");
         std::fs::create_dir_all(executable.parent().unwrap()).unwrap();
         std::os::unix::fs::symlink(&self.program, &executable).unwrap();
         // Test-only: every target names this machine's runner.
@@ -67,7 +75,11 @@ impl Releases {
             "targets": targets,
         })
         .to_string();
-        std::fs::write(self.directory.path().join(&release).join("manifest.json"), &manifest).unwrap();
+        std::fs::write(
+            self.directory.path().join(&release).join("manifest.json"),
+            &manifest,
+        )
+        .unwrap();
         std::fs::write(self.directory.path().join("manifest.json"), &manifest).unwrap();
         release
     }
@@ -83,14 +95,21 @@ struct Installations {
 impl Installations {
     fn new() -> Self {
         Self {
-            home: tempfile::Builder::new().prefix("demi-install-home-").tempdir().unwrap(),
+            home: tempfile::Builder::new()
+                .prefix("demi-install-home-")
+                .tempdir()
+                .unwrap(),
             states: std::cell::RefCell::default(),
         }
     }
 
     /// The installation state of the backend at `url`.
     fn state(&self, url: &str) -> PathBuf {
-        let state = self.home.path().join(".demi/instances").join(sha(url.as_bytes()));
+        let state = self
+            .home
+            .path()
+            .join(".demi/instances")
+            .join(sha(url.as_bytes()));
         self.states.borrow_mut().push(state.clone());
         state
     }
@@ -116,9 +135,14 @@ impl Installations {
 
     /// The backend's installer, saved in the home.
     async fn script(&self, backend: &TestBackend) -> PathBuf {
-        let script = reqwest::get(format!("{}/install.sh", backend.url)).await.unwrap();
+        let script = reqwest::get(format!("{}/install.sh", backend.url))
+            .await
+            .unwrap();
         assert_eq!(script.status(), StatusCode::OK);
-        let path = self.home.path().join(format!("install-{}.sh", backend.address().port()));
+        let path = self
+            .home
+            .path()
+            .join(format!("install-{}.sh", backend.address().port()));
         std::fs::write(&path, script.bytes().await.unwrap()).unwrap();
         path
     }
@@ -176,17 +200,34 @@ fn succeeded(output: &Output) -> String {
 async fn an_installer_keeps_each_backend_apart_reuses_a_release_and_upgrades_only_its_own_runner() {
     let releases = Releases::new(runner_binary());
     let initial = releases.publish("initial");
-    let a = Harness::new().with_runner_releases(releases.path()).start().await;
-    let b = Harness::new().with_runner_releases(releases.path()).start().await;
+    let a = Harness::new()
+        .with_runner_releases(releases.path())
+        .start()
+        .await;
+    let b = Harness::new()
+        .with_runner_releases(releases.path())
+        .start()
+        .await;
     let installations = Installations::new();
     let state_a = installations.state(&format!("{}/", a.url));
     let state_b = installations.state(&format!("{}/", b.url));
 
     // The Windows installer names the release's Windows runners.
-    let windows = reqwest::get(format!("{}/install.ps1", a.url)).await.unwrap();
+    let windows = reqwest::get(format!("{}/install.ps1", a.url))
+        .await
+        .unwrap();
     assert_eq!(windows.status(), StatusCode::OK);
-    assert_eq!(windows.headers()["content-type"], "text/plain; charset=utf-8");
-    assert!(windows.text().await.unwrap().contains("aarch64-pc-windows-msvc"));
+    assert_eq!(
+        windows.headers()["content-type"],
+        "text/plain; charset=utf-8"
+    );
+    assert!(
+        windows
+            .text()
+            .await
+            .unwrap()
+            .contains("aarch64-pc-windows-msvc")
+    );
 
     succeeded(&installations.install(&a, &[]).await);
     succeeded(&installations.install(&b, &[]).await);
@@ -201,10 +242,16 @@ async fn an_installer_keeps_each_backend_apart_reuses_a_release_and_upgrades_onl
     assert_eq!(active(&state_a)["endpoint"], first_a["endpoint"]);
 
     // One backend's installer cannot take another backend's installation.
-    let script_b = installations.home.path().join(format!("install-{}.sh", b.address().port()));
+    let script_b = installations
+        .home
+        .path()
+        .join(format!("install-{}.sh", b.address().port()));
     let registration_a = sha(format!("{}/", a.url).as_bytes());
     let collision = installations
-        .run(&script_b, &[("DEMI_INSTALLATION_ID", registration_a.as_str())])
+        .run(
+            &script_b,
+            &[("DEMI_INSTALLATION_ID", registration_a.as_str())],
+        )
         .await;
     assert_eq!(collision.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&collision.stderr).contains("another backend"));
@@ -216,13 +263,20 @@ async fn an_installer_keeps_each_backend_apart_reuses_a_release_and_upgrades_onl
     let old = reqwest::Client::new()
         .request(
             Method::HEAD,
-            format!("{}/runner-artifacts/{initial}/{}/demi-runner", a.url, host_target()),
+            format!(
+                "{}/runner-artifacts/{initial}/{}/demi-runner",
+                a.url,
+                host_target()
+            ),
         )
         .send()
         .await
         .unwrap();
     assert_eq!(old.status(), StatusCode::OK);
-    assert_eq!(old.headers()["cache-control"], "public, max-age=31536000, immutable");
+    assert_eq!(
+        old.headers()["cache-control"],
+        "public, max-age=31536000, immutable"
+    );
     assert_eq!(active(&state_a)["release"], json!(upgraded));
     assert_ne!(active(&state_a)["endpoint"], first_a["endpoint"]);
     assert_eq!(active(&state_b)["endpoint"], first_b["endpoint"]);
@@ -266,10 +320,19 @@ async fn an_installed_runner_works_with_the_mask_of_the_shell_that_ran_the_insta
         async move { printed }
     })
     .await;
-    let claimed = backend.post("/api/devices/claim", Some(&master), json!({ "code": code })).await;
-    assert_eq!(claimed.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&claimed.body));
+    let claimed = backend
+        .post("/api/devices/claim", Some(&master), json!({ "code": code }))
+        .await;
+    assert_eq!(
+        claimed.status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&claimed.body)
+    );
     let device = claimed.json::<ClaimedDevice>().device;
-    backend.until_online(&master, device.id.as_str(), true).await;
+    backend
+        .until_online(&master, device.id.as_str(), true)
+        .await;
 
     // The agent's job reports the user's mask, and a file it makes has the
     // mode the user's own programs would give it.
@@ -277,14 +340,26 @@ async fn an_installed_runner_works_with_the_mask_of_the_shell_that_ran_the_insta
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
     let home = installations.home.path();
-    let target = json!({ "target": { "kind": "device", "deviceId": device.id.as_str(), "path": home } });
-    let moved = backend.patch(&format!("/api/conversations/{FIRST}"), &master, target).await;
-    assert_eq!(moved.status, StatusCode::OK, "{}", String::from_utf8_lossy(&moved.body));
+    let target =
+        json!({ "target": { "kind": "device", "deviceId": device.id.as_str(), "path": home } });
+    let moved = backend
+        .patch(&format!("/api/conversations/{FIRST}"), &master, target)
+        .await;
+    assert_eq!(
+        moved.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&moved.body)
+    );
     choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
     let script = "umask; echo made > made.txt";
-    vendor.respond(tool_use("mask", "shell_exec", &json!({ "script": script, "timeoutMs": 60_000 })));
+    vendor.respond(tool_use(
+        "mask",
+        "shell_exec",
+        &json!({ "script": script, "timeoutMs": 60_000 }),
+    ));
     vendor.respond(crate::conversations::answer(&["done"], 1, 1));
     socket.chat("m1", "show the mask").await;
     let requests = vendor.requests();
@@ -298,9 +373,17 @@ async fn an_installed_runner_works_with_the_mask_of_the_shell_that_ran_the_insta
 #[tokio::test]
 async fn without_runner_releases_the_installers_say_so_and_no_artifact_is_served() {
     let backend = Harness::new().start().await;
-    let script = answer(reqwest::get(format!("{}/install.sh", backend.url)).await.unwrap()).await;
+    let script = answer(
+        reqwest::get(format!("{}/install.sh", backend.url))
+            .await
+            .unwrap(),
+    )
+    .await;
     assert_eq!(script.status, StatusCode::SERVICE_UNAVAILABLE);
-    assert_eq!(script.body, b"Runner releases are not configured on this backend.\n");
+    assert_eq!(
+        script.body,
+        b"Runner releases are not configured on this backend.\n"
+    );
     let artifact = reqwest::get(format!(
         "{}/runner-artifacts/{}/{}/demi-runner",
         backend.url,
@@ -317,9 +400,17 @@ async fn without_runner_releases_the_installers_say_so_and_no_artifact_is_served
     std::fs::write(stand_in.path(), "a stand-in for the runner").unwrap();
     let releases = Releases::new(stand_in.path().to_owned());
     let release = releases.publish("initial");
-    let served = Harness::new().with_runner_releases(releases.path()).start().await;
-    let script = reqwest::get(format!("{}/install.sh", served.url)).await.unwrap();
-    assert_eq!(script.headers()["content-type"], "text/x-shellscript; charset=utf-8");
+    let served = Harness::new()
+        .with_runner_releases(releases.path())
+        .start()
+        .await;
+    let script = reqwest::get(format!("{}/install.sh", served.url))
+        .await
+        .unwrap();
+    assert_eq!(
+        script.headers()["content-type"],
+        "text/x-shellscript; charset=utf-8"
+    );
     assert_eq!(script.headers()["cache-control"], "no-store");
     let text = script.text().await.unwrap();
     assert!(text.contains(&format!("backend={}/", served.url)), "{text}");
@@ -329,14 +420,23 @@ async fn without_runner_releases_the_installers_say_so_and_no_artifact_is_served
         format!("{}/{}/demi-runner", sha(b"unpublished"), host_target()),
         format!("{}/{}/demi-runner", &release[..16], host_target()),
     ] {
-        let refused = reqwest::get(format!("{}/runner-artifacts/{wrong}", served.url)).await.unwrap();
+        let refused = reqwest::get(format!("{}/runner-artifacts/{wrong}", served.url))
+            .await
+            .unwrap();
         assert_eq!(refused.status(), StatusCode::NOT_FOUND, "{wrong}");
     }
-    let executable = reqwest::get(format!("{}/runner-artifacts/{release}/{}/demi-runner", served.url, host_target()))
-        .await
-        .unwrap();
+    let executable = reqwest::get(format!(
+        "{}/runner-artifacts/{release}/{}/demi-runner",
+        served.url,
+        host_target()
+    ))
+    .await
+    .unwrap();
     assert_eq!(executable.status(), StatusCode::OK);
-    assert_eq!(json!(executable.bytes().await.unwrap().len()), releases.artifact["size"]);
+    assert_eq!(
+        json!(executable.bytes().await.unwrap().len()),
+        releases.artifact["size"]
+    );
     backend.close().await;
     served.close().await;
 }

@@ -121,11 +121,17 @@ impl Settings {
             variables: vec![
                 ("PATH", "/usr/sbin:/usr/bin:/sbin:/bin".to_owned()),
                 ("NOTIFY_SOCKET", notify.display().to_string()),
-                ("DEMI_MACHINE_MANAGER_SOCKET", directory.join("machines.sock").display().to_string()),
+                (
+                    "DEMI_MACHINE_MANAGER_SOCKET",
+                    directory.join("machines.sock").display().to_string(),
+                ),
                 ("DEMI_MACHINE_MANAGER_DATA", data.display().to_string()),
                 ("DEMI_MANAGED_RUNSC", runsc.display().to_string()),
                 ("DEMI_MANAGED_IMAGE", image.display().to_string()),
-                ("DEMI_MANAGED_BACKEND_URL", "http://203.0.113.10:3271".to_owned()),
+                (
+                    "DEMI_MANAGED_BACKEND_URL",
+                    "http://203.0.113.10:3271".to_owned(),
+                ),
                 ("DEMI_MANAGED_DNS", "1.1.1.1".to_owned()),
                 ("DEMI_MANAGED_SLOTS", "4".to_owned()),
             ],
@@ -146,13 +152,22 @@ impl Host {
         // lower number (`namespace_cpu`: kernel/nstree.c, mnt_ns_loop).
         let mut unshare = Command::new("taskset")
             .args(["--cpu-list", &namespace_cpu(), "unshare"])
-            .args(["--mount", "--net", "--pid", "--fork", "--mount-proc", "--kill-child"])
+            .args([
+                "--mount",
+                "--net",
+                "--pid",
+                "--fork",
+                "--mount-proc",
+                "--kill-child",
+            ])
             .args(["--", "sh", "-c", INIT, "init", cgroups.mount()])
             .stdout(Stdio::piped())
             .spawn()
             .expect("unshare from util-linux");
         let mut line = String::new();
-        BufReader::new(unshare.stdout.take().unwrap()).read_line(&mut line).unwrap();
+        BufReader::new(unshare.stdout.take().unwrap())
+            .read_line(&mut line)
+            .unwrap();
         assert_eq!(line, "ready\n", "the host did not start");
         Self { unshare }
     }
@@ -160,7 +175,10 @@ impl Host {
     /// A file of the runtime directory in the host's mount namespace, which
     /// `unshare` shares with its init.
     fn runtime_file(&self, name: &str) -> PathBuf {
-        PathBuf::from(format!("/proc/{}/root{RUNTIME_DIRECTORY}/{name}", self.unshare.id()))
+        PathBuf::from(format!(
+            "/proc/{}/root{RUNTIME_DIRECTORY}/{name}",
+            self.unshare.id()
+        ))
     }
 
     /// The namespace the host's handle holds; `None` without a handle.
@@ -181,7 +199,14 @@ impl Host {
             // the manager can pin it (`namespace_cpu`: kernel/nstree.c,
             // mnt_ns_loop).
             .args(["--", "taskset", "--cpu-list", &namespace_cpu()])
-            .args(["unshare", "--mount", "--propagation", "slave", "--", MANAGER])
+            .args([
+                "unshare",
+                "--mount",
+                "--propagation",
+                "slave",
+                "--",
+                MANAGER,
+            ])
             .args(args)
             .env_clear()
             .envs(settings.variables.iter().map(|(name, value)| (name, value)))
@@ -244,7 +269,9 @@ impl Manager {
     /// Waits for the readiness the unit's Type=notify waits for, or for the
     /// manager to exit first.
     fn start(&mut self, notify: &UnixDatagram) -> Start {
-        notify.set_read_timeout(Some(Duration::from_millis(100))).unwrap();
+        notify
+            .set_read_timeout(Some(Duration::from_millis(100)))
+            .unwrap();
         let deadline = Instant::now() + READY_DEADLINE;
         let mut message = [0; 256];
         loop {
@@ -255,13 +282,17 @@ impl Manager {
                         return Start::Ready;
                     }
                 }
-                Err(error) if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {}
+                Err(error)
+                    if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {}
                 Err(error) => panic!("reading readiness: {error}"),
             }
             if let Some(status) = self.nsenter.try_wait().unwrap() {
                 return Start::Exited(status, stderr(&mut self.nsenter));
             }
-            assert!(Instant::now() < deadline, "the manager neither became ready nor exited within {READY_DEADLINE:?}");
+            assert!(
+                Instant::now() < deadline,
+                "the manager neither became ready nor exited within {READY_DEADLINE:?}"
+            );
         }
     }
 
@@ -278,7 +309,10 @@ impl Manager {
         kill_process(self.pid(), Signal::TERM).unwrap();
         let errors = stderr(&mut self.nsenter);
         let status = self.nsenter.wait().unwrap();
-        assert!(status.success(), "the manager's stop exited {status}: {errors}");
+        assert!(
+            status.success(),
+            "the manager's stop exited {status}: {errors}"
+        );
         errors
     }
 
@@ -316,22 +350,42 @@ fn the_next_start_recovers_and_releases_a_killed_managers_namespace() {
     let mut first = host.manager(&settings, &[]);
     first.wait_ready(&notify);
     let pinned = first.namespace();
-    assert_eq!(host.handle(), Some(pinned), "a serving manager pins its namespace");
-    let owner: serde_json::Value = serde_json::from_slice(&std::fs::read(host.runtime_file(OWNER)).unwrap()).unwrap();
+    assert_eq!(
+        host.handle(),
+        Some(pinned),
+        "a serving manager pins its namespace"
+    );
+    let owner: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(host.runtime_file(OWNER)).unwrap()).unwrap();
     assert_eq!(owner, serde_json::json!({ "dataDir": settings.data }));
     first.kill();
-    assert_eq!(host.handle(), Some(pinned), "a killed manager's namespace stays pinned");
+    assert_eq!(
+        host.handle(),
+        Some(pinned),
+        "a killed manager's namespace stays pinned"
+    );
 
     let mut second = host.manager(&settings, &[]);
     second.wait_ready(&notify);
     let own = second.namespace();
     assert_ne!(own, pinned);
-    assert_eq!(host.handle(), Some(own), "the next start released the handle it recovered through");
+    assert_eq!(
+        host.handle(),
+        Some(own),
+        "the next start released the handle it recovered through"
+    );
     second.kill();
 
     let (status, errors) = host.manager(&settings, &["--recover"]).finish();
-    assert!(status.success(), "the stop-post recovery exited {status}: {errors}");
-    assert_eq!(host.handle(), None, "the stop-post recovery released the handle");
+    assert!(
+        status.success(),
+        "the stop-post recovery exited {status}: {errors}"
+    );
+    assert_eq!(
+        host.handle(),
+        None,
+        "the stop-post recovery released the handle"
+    );
     assert!(!host.runtime_file(OWNER).exists());
 }
 
@@ -363,7 +417,9 @@ fn a_start_with_the_limits_off_needs_no_cgroup_and_says_so() {
     let directory = tempfile::tempdir().unwrap();
     let image = CloudImage::new(&entries(), &[RUNNER, TINI], Architecture::host().unwrap());
     let mut settings = Settings::new(directory.path(), image.path());
-    settings.variables.push(("DEMI_MANAGED_LIMITS", "off".to_owned()));
+    settings
+        .variables
+        .push(("DEMI_MANAGED_LIMITS", "off".to_owned()));
     let notify = UnixDatagram::bind(&settings.notify).unwrap();
     let host = Host::start(Cgroups::Absent);
 

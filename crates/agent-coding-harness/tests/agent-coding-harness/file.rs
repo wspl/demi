@@ -74,10 +74,7 @@ async fn demi_file_reads_and_creates_files_in_and_beyond_the_workspace() {
         assert_exit(&results[6], "0");
         assert_shows(
             &results[6],
-            &[
-                "<binary stdout: 11 bytes>\n",
-                "save it: demi shell output ",
-            ],
+            &["<binary stdout: 11 bytes>\n", "save it: demi shell output "],
         );
         assert_eq!(shown_output(&results[7]).trim(), "11");
         assert_shows(

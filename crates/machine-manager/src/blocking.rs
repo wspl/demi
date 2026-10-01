@@ -42,11 +42,13 @@ pub async fn run_on_new_thread<T: Send + 'static>(
     let (done, result) = tokio::sync::oneshot::channel();
     // The thread reports through `done` and ends right after, so nothing
     // joins it.
-    std::thread::Builder::new().name(name.to_owned()).spawn(move || {
-        let outcome = job(&OffLoop { _private: () });
-        // The caller may have stopped waiting; then no one needs the outcome.
-        let _ = done.send(outcome);
-    })?;
+    std::thread::Builder::new()
+        .name(name.to_owned())
+        .spawn(move || {
+            let outcome = job(&OffLoop { _private: () });
+            // The caller may have stopped waiting; then no one needs the outcome.
+            let _ = done.send(outcome);
+        })?;
     result
         .await
         .map_err(|_| std::io::Error::other("a thread ended without a result"))?

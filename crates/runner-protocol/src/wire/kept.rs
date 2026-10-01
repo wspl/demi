@@ -49,7 +49,9 @@ pub fn decode_records(bytes: &[u8]) -> Result<Vec<KeptRecord>, WireError> {
         let record = KeptRecord::deserialize(&mut decoder)?;
         match &record {
             KeptRecord::Output(_, output) if output.0.is_empty() => {
-                return Err(WireError::Invalid("the kept output holds an empty read".into()));
+                return Err(WireError::Invalid(
+                    "the kept output holds an empty read".into(),
+                ));
             }
             KeptRecord::Output(..) => kept += decoder.position() - start,
             KeptRecord::LeftOut(_) => gaps += 1,

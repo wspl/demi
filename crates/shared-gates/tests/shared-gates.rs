@@ -110,7 +110,10 @@ async fn the_state_counts_leases_by_purpose_and_records_when_demand_ends() {
     let demand = gate.enter(Purpose::Demand).await;
     assert!(state.has_changed().unwrap());
     let seen = *state.borrow_and_update();
-    assert_eq!((seen.demand, seen.maintenance, seen.last_demand_end), (1, 1, None));
+    assert_eq!(
+        (seen.demand, seen.maintenance, seen.last_demand_end),
+        (1, 1, None)
+    );
     tokio::time::advance(Duration::from_secs(5)).await;
     let ended = tokio::time::Instant::now();
     drop(demand);

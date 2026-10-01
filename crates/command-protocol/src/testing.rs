@@ -8,8 +8,18 @@ use std::path::PathBuf;
 /// (`crates/runner/tests/fixtures/service.rs`), which the runner's and
 /// backend-remote-host's tests name in its descriptors.
 pub const FIXTURE_OPERATIONS: [&str; 12] = [
-    "where", "echo", "first", "spin", "result", "retain", "stall_release", "held", "crash", "stalled",
-    "proceed", "number",
+    "where",
+    "echo",
+    "first",
+    "spin",
+    "result",
+    "retain",
+    "stall_release",
+    "held",
+    "crash",
+    "stalled",
+    "proceed",
+    "number",
 ];
 
 /// A program Cargo built into the target directory this test runs from,

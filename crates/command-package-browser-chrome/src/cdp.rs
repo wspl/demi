@@ -11,8 +11,8 @@ mod sessions;
 pub mod testing;
 pub mod webmcp;
 
-use chromiumoxide::Page;
 use crate::driver::operation::Result;
+use chromiumoxide::Page;
 use demi_command_package_browser_protocol::browser as protocol;
 
 use crate::cdp::protocol::Capability;
@@ -20,5 +20,8 @@ use crate::cdp::protocol::Capability;
 /// What the WebMCP and CDP command families offer in `page` (`browser.md` §
 /// Capabilities and WebMCP).
 pub async fn capabilities(page: &Page) -> Result<Vec<Capability>> {
-    Ok(vec![webmcp::capability(page).await?, commands::capability()])
+    Ok(vec![
+        webmcp::capability(page).await?,
+        commands::capability(),
+    ])
 }

@@ -20,7 +20,10 @@ pub(crate) fn cloud_session_directory(id: &ConversationId, home: Option<&str>) -
 impl dyn HostShard + '_ {
     /// The conversation's selection as its device and directory. Resolving
     /// never starts a machine.
-    pub async fn resolve_target(&self, record: &ConversationRecord) -> Result<ExecutionTarget, StorageError> {
+    pub async fn resolve_target(
+        &self,
+        record: &ConversationRecord,
+    ) -> Result<ExecutionTarget, StorageError> {
         let control = self.control();
         match &record.target {
             ConversationTarget::Workspace { workspace_id } => {
@@ -45,15 +48,23 @@ impl dyn HostShard + '_ {
                 path: path.clone(),
             }),
             ConversationTarget::Cloud { path } => {
-                let device = control.managed_device(record.owner.clone()).await?.map(|device| device.id);
+                let device = control
+                    .managed_device(record.owner.clone())
+                    .await?
+                    .map(|device| device.id);
                 let path = match path {
                     Some(path) => path.clone(),
                     None => {
-                        let home = device.as_ref().and_then(|device| self.devices().home(device));
+                        let home = device
+                            .as_ref()
+                            .and_then(|device| self.devices().home(device));
                         cloud_session_directory(&record.id, home.as_deref())
                     }
                 };
-                Ok(ExecutionTarget::Cloud { device_id: device, path })
+                Ok(ExecutionTarget::Cloud {
+                    device_id: device,
+                    path,
+                })
             }
         }
     }

@@ -5,9 +5,7 @@ use chromiumoxide::cdp::browser_protocol::input::{
 use chromiumoxide::layout::Point;
 use serde_json::json;
 
-use crate::driver::operation::{
-    BrowserError, CONTROL_TIMEOUT, Operation, Result, after_cleanup,
-};
+use crate::driver::operation::{BrowserError, CONTROL_TIMEOUT, Operation, Result, after_cleanup};
 use crate::tabs::{dialog::InputRelease, tab::BrowserTab};
 
 use crate::page::{

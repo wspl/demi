@@ -19,19 +19,19 @@ use demi_backend_providers::llm::catalog::configured_selection;
 use demi_backend_providers::usage::meter::{Ledger, MeteredRuntime};
 use demi_backend_providers::usage::rate_limit::RequestRateLimit;
 use demi_backend_providers::vault::entries::{EntryCredential, ProviderEntry};
-use demi_shared_types::{Model, ModelSelection, NodeId};
 use demi_provider_common::{
-    ErrorCode, InferenceRequest, Provider, ProviderEvent, ProviderFailure, ProviderRun, ProviderRuntime, RequestLimits,
-    RuntimeEnv,
+    ErrorCode, InferenceRequest, Provider, ProviderEvent, ProviderFailure, ProviderRun,
+    ProviderRuntime, RequestLimits, RuntimeEnv,
 };
+use demi_shared_types::{Model, ModelSelection, NodeId};
 use demi_web_api_protocol::ids::{ConversationId, ProviderId, UserId};
 use futures_util::future::LocalBoxFuture;
 use futures_util::{StreamExt as _, stream};
 
-use demi_backend_host_access::conversation_of;
-use crate::services::Services;
 use crate::conversation::claude_cli::{CloudPlacement, ProcessWork};
+use crate::services::Services;
 use crate::shard::Shard;
+use demi_backend_host_access::conversation_of;
 
 /// Where the user's sessions get their runtimes.
 pub(super) struct ConversationProviders {
@@ -65,7 +65,10 @@ impl ConversationProviders {
 impl ProviderResolver for ConversationProviders {
     /// The model selection the record of `root`'s conversation holds; a
     /// socket opens only a conversation that has one.
-    fn selection<'a>(&'a self, root: &'a NodeId) -> LocalBoxFuture<'a, Result<ModelSelection, ResolveError>> {
+    fn selection<'a>(
+        &'a self,
+        root: &'a NodeId,
+    ) -> LocalBoxFuture<'a, Result<ModelSelection, ResolveError>> {
         Box::pin(async move {
             let record = self
                 .services
@@ -89,7 +92,8 @@ impl ProviderResolver for ConversationProviders {
     ) -> LocalBoxFuture<'a, Result<Box<dyn ProviderRuntime>, ResolveError>> {
         Box::pin(async move {
             let unknown = || ResolveError::Unknown(model.provider_id.clone());
-            let provider = ProviderId::try_from(model.provider_id.as_str()).map_err(|_| unknown())?;
+            let provider =
+                ProviderId::try_from(model.provider_id.as_str()).map_err(|_| unknown())?;
             let scope = Rc::new(Scope {
                 shard: self.shard.clone(),
                 services: self.services.clone(),
@@ -167,20 +171,35 @@ impl ConversationRuntime {
     /// output limit, which the entry's configured model decides when it has
     /// a configured list; the request's own cap is not the model's, and
     /// stays (`models.md` § Output limit).
-    async fn admit(&mut self, request: &InferenceRequest) -> Result<Option<NonZeroU32>, ProviderFailure> {
+    async fn admit(
+        &mut self,
+        request: &InferenceRequest,
+    ) -> Result<Option<NonZeroU32>, ProviderFailure> {
         let scope = self.scope.clone();
-        let read = scope.services.vault.visible(&scope.user, &scope.provider).await;
+        let read = scope
+            .services
+            .vault
+            .visible(&scope.user, &scope.provider)
+            .await;
         let entry = match read {
             Ok(Some(entry)) => entry,
             Ok(None) => {
                 // The entry is gone: its runtime has nothing left to serve.
                 self.close_current().await;
                 return Err(refused(
-                    format!("Provider \"{}\" is no longer available to this conversation", scope.provider),
+                    format!(
+                        "Provider \"{}\" is no longer available to this conversation",
+                        scope.provider
+                    ),
                     None,
                 ));
             }
-            Err(error) => return Err(refused(format!("The provider entry could not be read: {error}"), None)),
+            Err(error) => {
+                return Err(refused(
+                    format!("The provider entry could not be read: {error}"),
+                    None,
+                ));
+            }
         };
         let requested = ModelSelection {
             provider_id: self.selection.provider_id.clone(),
@@ -199,11 +218,19 @@ impl ConversationRuntime {
     /// Makes the current runtime one of `entry`'s provider for `requested`:
     /// the one there is while the entry and the model are unchanged,
     /// otherwise a new one, and the one it replaces is closed.
-    async fn serve(&mut self, entry: &ProviderEntry, requested: ModelSelection) -> Result<(), ProviderFailure> {
+    async fn serve(
+        &mut self,
+        entry: &ProviderEntry,
+        requested: ModelSelection,
+    ) -> Result<(), ProviderFailure> {
         if let EntryCredential::Subscription { active: None } = &entry.credential {
-            return Err(refused("No subscription account configured", Some(ErrorCode::AuthMissing)));
+            return Err(refused(
+                "No subscription account configured",
+                Some(ErrorCode::AuthMissing),
+            ));
         }
-        let selection = configured_selection(entry, requested).map_err(|error| refused(error.to_string(), None))?;
+        let selection = configured_selection(entry, requested)
+            .map_err(|error| refused(error.to_string(), None))?;
         let scope = self.scope.clone();
         let provider = scope
             .services
@@ -211,17 +238,16 @@ impl ConversationRuntime {
             .provider_for(entry)
             .await
             .map_err(|error| refused(error.to_string(), None))?;
-        let kept = self
-            .current
-            .as_ref()
-            .is_some_and(|current| Arc::ptr_eq(&current.provider, &provider) && current.model == selection.model.id);
+        let kept = self.current.as_ref().is_some_and(|current| {
+            Arc::ptr_eq(&current.provider, &provider) && current.model == selection.model.id
+        });
         if !kept {
             // A provider that runs a process gets it on the user's Cloud,
             // whatever the conversation's target (`claude-code.md` § Where it
             // runs).
             let runtime = if provider.capabilities().process_host {
                 let work = ProcessWork::Conversation(scope.conversation.clone());
-                let placement = CloudPlacement::new(scope.shard.clone(), work);
+                let placement = CloudPlacement::placement(scope.shard.clone(), work);
                 scope
                     .services
                     .assembly
@@ -273,7 +299,10 @@ impl ProviderRuntime for ConversationRuntime {
             };
             match admitted {
                 Ok(output_limit) => {
-                    let request = InferenceRequest { output_limit, ..request };
+                    let request = InferenceRequest {
+                        output_limit,
+                        ..request
+                    };
                     match self.current.as_mut() {
                         Some(current) => current.runtime.run(request),
                         None => unreachable!("an admitted request has its runtime"),

@@ -5,8 +5,8 @@
 use demi_agent_session::testing::COMPACTION_SUMMARY_INSTRUCTION;
 use demi_agent_store::media::ModelView;
 use demi_agent_transcript::{RequestView, estimate::block_tokens, testing::RESUME_TEXT};
-use demi_shared_types::{BlockId, QueuedMessage, TokenUsage};
 use demi_provider_common::{PromptCache, ProviderFailure, RequestLimits};
+use demi_shared_types::{BlockId, QueuedMessage, TokenUsage};
 
 use super::*;
 
@@ -41,7 +41,7 @@ async fn small_session_with(
     let session = start(provider, tools, store, config).await;
     session
         .update_model(ModelSwitch {
-            model: small_model(),
+            model: Box::new(small_model()),
             runtime: None,
         })
         .unwrap();
@@ -266,7 +266,11 @@ async fn a_request_repeats_the_one_before_as_its_prefix_a_pass_restarts_it_at_it
     // instruction after it.
     assert_eq!(
         summary.items.as_ref(),
-        [b.items.to_vec(), vec![user_item(COMPACTION_SUMMARY_INSTRUCTION)]].concat()
+        [
+            b.items.to_vec(),
+            vec![user_item(COMPACTION_SUMMARY_INSTRUCTION)]
+        ]
+        .concat()
     );
     // Each request repeats the one before and its answer, with the same
     // system prompt and tools.
@@ -553,7 +557,7 @@ async fn a_switch_to_a_smaller_window_compacts_with_the_model_before_it() {
         .unwrap();
     session
         .update_model(ModelSwitch {
-            model: small_model(),
+            model: Box::new(small_model()),
             runtime: None,
         })
         .unwrap();
@@ -566,7 +570,7 @@ async fn a_switch_to_a_smaller_window_compacts_with_the_model_before_it() {
     // A switch back to the larger window compacts nothing.
     session
         .update_model(ModelSwitch {
-            model: test_model(),
+            model: Box::new(test_model()),
             runtime: None,
         })
         .unwrap();
@@ -621,7 +625,7 @@ async fn a_switch_inside_a_turn_to_a_smaller_window_compacts_with_the_model_befo
 
     session
         .update_model(ModelSwitch {
-            model: small_model(),
+            model: Box::new(small_model()),
             runtime: None,
         })
         .unwrap();
@@ -1023,7 +1027,11 @@ async fn input_too_large_for_the_model_on_its_own_is_never_summarized_and_its_re
     ]);
     let store = MemoryTreeStore::new();
     let session = small_session(&provider, Vec::new(), &store).await;
-    session.send(text("one"), turn("t1")).unwrap().await.unwrap();
+    session
+        .send(text("one"), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
     // Twice the model's window.
     let huge = "h".repeat(8_000);
 
@@ -1104,7 +1112,7 @@ async fn a_resume_with_a_pending_switch_to_a_smaller_window_unwinds_then_compact
     let session = restore_compacting(&store, &provider);
     session
         .update_model(ModelSwitch {
-            model: small_model(),
+            model: Box::new(small_model()),
             runtime: None,
         })
         .unwrap();
@@ -1252,7 +1260,11 @@ async fn a_pass_with_nothing_to_summarize_but_the_last_summary_sends_no_request(
     // pass summarizes the summary and the answer kept with it, and keeps
     // the failed message: the pass after it would hold the last summary
     // alone.
-    session.send(text("one"), turn("t1")).unwrap().await.unwrap();
+    session
+        .send(text("one"), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
     session.compact().unwrap().await.unwrap();
     let failed = session.send(text("two"), turn("t2")).unwrap().await;
     assert!(failed.is_err());
@@ -1669,10 +1681,7 @@ async fn a_pass_after_an_edit_summarizes_only_the_history_the_edit_kept() {
     };
     assert_eq!(
         summary.items.as_ref(),
-        [
-            user_item(&first),
-            user_item(COMPACTION_SUMMARY_INSTRUCTION),
-        ]
+        [user_item(&first), user_item(COMPACTION_SUMMARY_INSTRUCTION),]
     );
     assert_eq!(
         replacement.items.as_ref(),
@@ -1728,7 +1737,7 @@ async fn screenshots_toward_the_vendors_image_limit_compact_before_a_request_wou
     let session = start(&provider, vec![shoot], &store, SessionConfig::default()).await;
     session
         .update_model(ModelSwitch {
-            model: model_reading("stub", "test-model", &[FileExtension::Png]),
+            model: Box::new(model_reading("stub", "test-model", &[FileExtension::Png])),
             runtime: None,
         })
         .unwrap();
@@ -1787,9 +1796,17 @@ async fn a_request_refused_as_too_large_compacts_once_and_goes_again_and_a_secon
             }
         }
     });
-    session.send(text("one"), turn("t1")).unwrap().await.unwrap();
+    session
+        .send(text("one"), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
 
-    session.send(text("two"), turn("t2")).unwrap().await.unwrap();
+    session
+        .send(text("two"), turn("t2"))
+        .unwrap()
+        .await
+        .unwrap();
 
     // The refused request left nothing behind; the pass summarized what the
     // first request carried, and the request went again from the summary.
@@ -1799,11 +1816,19 @@ async fn a_request_refused_as_too_large_compacts_once_and_goes_again_and_a_secon
     };
     assert_eq!(
         summary.items.as_ref(),
-        [first.items.to_vec(), vec![user_item(COMPACTION_SUMMARY_INSTRUCTION)]].concat()
+        [
+            first.items.to_vec(),
+            vec![user_item(COMPACTION_SUMMARY_INSTRUCTION)]
+        ]
+        .concat()
     );
     assert_eq!(
         refused.items.as_ref(),
-        [user_item("one"), answer_item("small-model", "first"), user_item("two")]
+        [
+            user_item("one"),
+            answer_item("small-model", "first"),
+            user_item("two")
+        ]
     );
     assert_eq!(
         again.items.as_ref(),
@@ -1825,7 +1850,9 @@ async fn a_request_refused_as_too_large_compacts_once_and_goes_again_and_a_secon
     );
     assert_eq!(provider.remaining(), 0);
     assert_eq!(
-        kinds(&session.transcript().blocks).last().map(String::as_str),
+        kinds(&session.transcript().blocks)
+            .last()
+            .map(String::as_str),
         Some("error")
     );
 }
@@ -1869,7 +1896,7 @@ async fn a_switch_to_a_vendor_that_takes_fewer_images_compacts_with_the_model_be
     let reads = [FileExtension::Png];
     session
         .update_model(ModelSwitch {
-            model: model_reading("stub", "model-a", &reads),
+            model: Box::new(model_reading("stub", "model-a", &reads)),
             runtime: None,
         })
         .unwrap();
@@ -1880,7 +1907,7 @@ async fn a_switch_to_a_vendor_that_takes_fewer_images_compacts_with_the_model_be
         .unwrap();
     session
         .update_model(ModelSwitch {
-            model: model_reading("other", "model-b", &reads),
+            model: Box::new(model_reading("other", "model-b", &reads)),
             runtime: Some(Box::new(second.clone())),
         })
         .unwrap();
@@ -1901,7 +1928,11 @@ async fn a_switch_to_a_vendor_that_takes_fewer_images_compacts_with_the_model_be
     assert_eq!(summary.model_id, "model-a");
     assert_eq!(
         summary.items.as_ref(),
-        [last.items.to_vec(), vec![user_item(COMPACTION_SUMMARY_INSTRUCTION)]].concat()
+        [
+            last.items.to_vec(),
+            vec![user_item(COMPACTION_SUMMARY_INSTRUCTION)]
+        ]
+        .concat()
     );
     assert_eq!(
         second.requests()[0].items.as_ref(),

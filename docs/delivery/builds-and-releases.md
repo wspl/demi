@@ -341,10 +341,12 @@ its own copy of every shared dependency.
 | Command | What it runs |
 | --- | --- |
 | `cargo check --workspace --all-targets --features demi-runner/test-fixtures` | The type check of every crate, test and example |
+| `cargo fmt --all --check` | The formatting of every crate, which `rustfmt`'s defaults decide; `cargo fmt --all` applies it |
+| `cargo clippy --workspace --all-targets --features demi-runner/test-fixtures` | Clippy's default lints over the same selection, which pass with no warning; a lint that is wrong at one place is allowed there with its reason (`#[allow(clippy::<lint>, reason = "...")]`) |
 | `cargo test --workspace --features demi-runner/test-fixtures` | The Rust tests, the crate boundary check among them ([Boundary checks](../architecture/crates-and-packages.md#boundary-checks)); `--test <name>` runs one test target |
 | `DEMI_TEST_CHROME=<chrome> cargo test --workspace --features demi-runner/test-fixtures,demi-browser/testing --test browser -- --include-ignored --test-threads=1` | The tests that start Chrome, one at a time, with the executable of the pinned Chrome for Testing release; the selection adds the page-driving helpers of the browser crates |
 | `DEMI_TEST_CLAUDE_CODE=<claude> SSL_CERT_FILE=$PWD/crates/backend/tests/backend/claude_code/distribution-ca.pem cargo test --workspace --features demi-runner/test-fixtures --test backend -- --ignored claude_code` | The Claude Code suite, with the executable of the vendor's CLI and the CA of the suite's local distribution |
-| `bun run test` | The TypeScript tests, the package boundary check among them ([Boundary checks](../architecture/crates-and-packages.md#boundary-checks)), and the test of the capture extension's JavaScript, which sits beside the extension in `browser-driver`; it first builds the programs the tests start, with the same selection |
+| `bun run test` | The TypeScript tests, the package boundary check among them ([Boundary checks](../architecture/crates-and-packages.md#boundary-checks)), and the test of the capture extension's JavaScript, which sits beside the extension in `command-package-browser-chrome`; it first builds the programs the tests start, with the same selection |
 | `sudo bash crates/machine-manager/scripts/cloud-suite.sh --image <release> --native <configuration> --work <directory>` | The Cloud suite on Linux, as root, against a machine manager with its resource limits off that the script starts in a stand-in execution host; against an installed manager, the suite's variables and its `cargo test` command instead ([Cloud suite](scenarios.md#cloud-suite)) |
 
 A test that starts another program, such as a runner or `demi-file`,

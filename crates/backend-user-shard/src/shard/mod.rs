@@ -25,13 +25,13 @@ use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
 use demi_agent_server::AgentServer;
-use demi_backend_providers::usage::rate_limit::RequestRateLimit;
 use demi_backend_cloud::machine::Cloud;
 use demi_backend_expose::relay::Exposes;
+use demi_backend_providers::usage::rate_limit::RequestRateLimit;
+use demi_backend_remote_host::{ARRIVAL, Pipes};
 use demi_backend_runners::devices::Devices;
 use demi_backend_runners::router::CommandRouter;
 use demi_shared_gates::KeyedSerialGate;
-use demi_backend_remote_host::{ARRIVAL, Pipes};
 use demi_web_api_protocol::ids::UserId;
 use futures_util::future::LocalBoxFuture;
 use sha2::{Digest, Sha256};
@@ -39,12 +39,12 @@ use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
-use crate::services::Services;
-use demi_backend_host_access::access::Conversations;
+use crate::conversation::claude_cli::ClaudeCli;
 use crate::conversation::titles::Titles;
 use crate::conversation::{self, ConversationHarness, ConversationParts};
-use crate::conversation::claude_cli::ClaudeCli;
 use crate::lifecycle::conversations::ConversationWatches;
+use crate::services::Services;
+use demi_backend_host_access::access::Conversations;
 
 /// Where the shards run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,13 +106,23 @@ pub struct Shard {
 
 impl Shard {
     /// The shard of `user`, whose agent server reaches it through `shard`.
-    fn new(shard: Weak<Shard>, user: UserId, services: Arc<Services>, http: reqwest::Client) -> Self {
+    fn new(
+        shard: Weak<Shard>,
+        user: UserId,
+        services: Arc<Services>,
+        http: reqwest::Client,
+    ) -> Self {
         // The user's request rate limit, which every runtime of the user's
         // conversations counts against.
         let limit = services.conversation_tuning.requests_per_minute;
         let rate_limit = Rc::new(RefCell::new(RequestRateLimit::new(limit)));
-        let ConversationParts { agent, titles } =
-            conversation::conversation_parts(shard.clone(), user.clone(), services.clone(), http.clone(), rate_limit);
+        let ConversationParts { agent, titles } = conversation::conversation_parts(
+            shard.clone(),
+            user.clone(),
+            services.clone(),
+            http.clone(),
+            rate_limit,
+        );
         Self {
             user,
             this: shard,
@@ -139,7 +149,9 @@ impl Shard {
     /// The shard, for a task that outlives the call that starts it. A
     /// method of the shard runs while its caller holds it.
     pub fn this(&self) -> Rc<Shard> {
-        self.this.upgrade().expect("a shard's method runs while the shard lives")
+        self.this
+            .upgrade()
+            .expect("a shard's method runs while the shard lives")
     }
 
     pub(crate) fn claude_cli(&self) -> &ClaudeCli {
@@ -238,7 +250,9 @@ impl Shard {
         self.tasks.close();
         self.tasks.wait().await;
         self.pipes.close().await;
-        saved.err().map(|error| format!("the Cloud of {}: {error}", self.user))
+        saved
+            .err()
+            .map(|error| format!("the Cloud of {}: {error}", self.user))
     }
 }
 
@@ -268,7 +282,11 @@ pub struct ShardRef<'a> {
 impl Shards {
     pub fn of<'a>(&'a self, user: &'a UserId) -> ShardRef<'a> {
         let digest = Sha256::digest(user.as_str().as_bytes());
-        let hash = u64::from_be_bytes(digest[..8].try_into().expect("a SHA-256 digest has 8 bytes"));
+        let hash = u64::from_be_bytes(
+            digest[..8]
+                .try_into()
+                .expect("a SHA-256 digest has 8 bytes"),
+        );
         let count = u64::try_from(self.queues.len()).expect("the shard count fits u64");
         let index = usize::try_from(hash % count).expect("a shard index fits usize");
         ShardRef {
@@ -386,7 +404,10 @@ where
 
     fn run(self: Box<Self>, shard: Rc<Shard>) -> LocalBoxFuture<'static, ()> {
         let CallJob {
-            work, cancel, answer, ..
+            work,
+            cancel,
+            answer,
+            ..
         } = *self;
         Box::pin(async move {
             let value = work(shard, cancel).await;
@@ -454,7 +475,9 @@ impl ShardPool {
             ShardPlacement::Inline => {
                 let (queue, receiver) = mpsc::channel(QUEUE);
                 queues.push(queue);
-                workers.push(Worker::Inline(tokio::task::spawn_local(serve(receiver, services))));
+                workers.push(Worker::Inline(tokio::task::spawn_local(serve(
+                    receiver, services,
+                ))));
             }
             ShardPlacement::Threads(count) => {
                 for index in 0..count.get() {
@@ -506,7 +529,10 @@ impl ShardPool {
             match worker {
                 Worker::Inline(task) => {
                     if let Err(error) = task.await {
-                        tracing::error!(error = &error as &dyn std::error::Error, "the shard loop failed");
+                        tracing::error!(
+                            error = &error as &dyn std::error::Error,
+                            "the shard loop failed"
+                        );
                     }
                 }
                 Worker::Thread(thread) => {
@@ -548,7 +574,9 @@ async fn spawn_thread(
     match running.await {
         Ok(Ok(())) => Ok(thread),
         Ok(Err(error)) => Err(error),
-        Err(_) => Err(io::Error::other("a shard thread ended before its runtime started")),
+        Err(_) => Err(io::Error::other(
+            "a shard thread ended before its runtime started",
+        )),
     }
 }
 
@@ -567,7 +595,9 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
                 let shard = shards
                     .entry(job.user().clone())
                     .or_insert_with_key(|user| {
-                        Rc::new_cyclic(|shard| Shard::new(shard.clone(), user.clone(), services.clone(), http.clone()))
+                        Rc::new_cyclic(|shard| {
+                            Shard::new(shard.clone(), user.clone(), services.clone(), http.clone())
+                        })
                     })
                     .clone();
                 calls.spawn_local(job.run(shard));
@@ -637,7 +667,11 @@ mod tests {
         let shards = pool.shards();
         let ana = user("ana");
         let place = |shard: Rc<Shard>, _| async move {
-            (std::thread::current().name().map(str::to_owned), Rc::as_ptr(&shard) as usize, shard.user().clone())
+            (
+                std::thread::current().name().map(str::to_owned),
+                Rc::as_ptr(&shard) as usize,
+                shard.user().clone(),
+            )
         };
         let first = shards.of(&ana).call(place).await.unwrap();
         let second = shards.of(&ana).call(place).await.unwrap();
@@ -658,7 +692,11 @@ mod tests {
             cancel.cancelled().await;
             finished.send("cancelled, then finished").unwrap();
         });
-        assert!(tokio::time::timeout(Duration::from_millis(50), call).await.is_err());
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), call)
+                .await
+                .is_err()
+        );
         assert_eq!(observed.await.unwrap(), "cancelled, then finished");
         pool.close().await;
     }
@@ -668,7 +706,10 @@ mod tests {
         let (pool, _data) = pool(ShardPlacement::Inline).await;
         let shards = pool.shards();
         let ana = user("ana");
-        let failed = shards.of(&ana).call(|_, _| async { panic!("the call fails") }).await;
+        let failed = shards
+            .of(&ana)
+            .call(|_, _| async { panic!("the call fails") })
+            .await;
         assert_eq!(failed, Err::<(), _>(ShardUnavailable::Failed));
         assert_eq!(shards.of(&ana).call(|_, _| async { 7 }).await, Ok(7));
         pool.close().await;

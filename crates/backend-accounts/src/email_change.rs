@@ -5,7 +5,9 @@
 use std::sync::Arc;
 
 use demi_backend_database::StorageError;
-use demi_backend_database::accounts::{ChallengeIssue, ChallengeOutcome, ChallengePolicy, CodeHash};
+use demi_backend_database::accounts::{
+    ChallengeIssue, ChallengeOutcome, ChallengePolicy, CodeHash,
+};
 use demi_backend_database::control::ControlService;
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::auth::{EmailChallengeDto, Password};
@@ -20,7 +22,10 @@ use crate::passwords::{HashError, PasswordHasher};
 /// Delivers verification codes. A deployment supplies it; tests capture the
 /// mail instead of sending it.
 pub trait AccountMail: Send + Sync + 'static {
-    fn send_verification(&self, mail: VerificationMail) -> BoxFuture<'static, Result<(), MailError>>;
+    fn send_verification(
+        &self,
+        mail: VerificationMail,
+    ) -> BoxFuture<'static, Result<(), MailError>>;
 }
 
 /// A verification code on its way to the address it proves.
@@ -114,7 +119,11 @@ impl EmailChanges {
             return Ok(StartOutcome::Refused(StartRefusal::InvalidCredentials));
         };
         let password_hash = account.password_hash;
-        if !self.hasher.verify(password, Some(password_hash.clone())).await? {
+        if !self
+            .hasher
+            .verify(password, Some(password_hash.clone()))
+            .await?
+        {
             return Ok(StartOutcome::Refused(StartRefusal::InvalidCredentials));
         }
         if self.control.email_in_use(email.clone()).await? {
@@ -129,7 +138,11 @@ impl EmailChanges {
             password_hash,
             code_hash: CodeHash::of(&self.key.0, &id, &code),
         };
-        let Some(expires_at) = self.control.issue_email_challenge(issue, CHALLENGE_POLICY).await? else {
+        let Some(expires_at) = self
+            .control
+            .issue_email_challenge(issue, CHALLENGE_POLICY)
+            .await?
+        else {
             return Ok(StartOutcome::Refused(StartRefusal::CoolingDown));
         };
         let verification = VerificationMail {
@@ -138,13 +151,20 @@ impl EmailChanges {
             expires_at,
         };
         if let Err(error) = mail.send_verification(verification).await {
-            tracing::warn!(error = &error as &dyn std::error::Error, "a verification mail was not delivered");
+            tracing::warn!(
+                error = &error as &dyn std::error::Error,
+                "a verification mail was not delivered"
+            );
             // A code that never arrived must not stay usable or hold back
             // the retry.
             self.control.delete_email_challenge(user, id).await?;
             return Ok(StartOutcome::Refused(StartRefusal::MailFailed));
         }
-        Ok(StartOutcome::Issued(EmailChallengeDto { id, email, expires_at }))
+        Ok(StartOutcome::Issued(EmailChallengeDto {
+            id,
+            email,
+            expires_at,
+        }))
     }
 
     /// Changes the address when `code` is the one the challenge sent.

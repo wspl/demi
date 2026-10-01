@@ -9,12 +9,12 @@ mod stream;
 
 use std::sync::Arc;
 
+pub(crate) use demi_provider_common::testing::run;
 use demi_provider_common::{
     InferenceRequest, Provider, ProviderRuntime, RuntimeEnv, Secret,
     testing::{FixedClock, MockResponse, MockVendor, sse_body},
 };
 use demi_provider_google::{GoogleConfig, GoogleProvider};
-pub(crate) use demi_provider_common::testing::run;
 
 pub(crate) const NOW: &str = "2026-09-18T14:00:00.000Z";
 

@@ -13,15 +13,15 @@ use std::time::Duration;
 use demi_agent_store::COMMAND_OUTPUT_DAYS;
 use demi_agent_transcript::retire::{KEPT, Retirement};
 use demi_backend_database::{blob_refs, command_outputs};
-use demi_shared_types::{BlobRef, Timestamp};
 use demi_shared_gates::Reservation;
+use demi_shared_types::{BlobRef, Timestamp};
 use demi_web_api_protocol::ids::ConversationId;
 use jiff::SignedDuration;
 
 use crate::services::Services;
-use demi_backend_host_access::root_of;
 use crate::shard::{Shard, Shards};
 use demi_backend_host_access::blobs::ConversationBlobs;
+use demi_backend_host_access::root_of;
 
 /// How long an unreferenced blob, and its last use, must be old before a
 /// collection deletes it: longer than a medium that was put waits for the
@@ -47,7 +47,10 @@ pub async fn schedule(services: Arc<Services>, shards: Shards, interval: Duratio
                 }
             }
             Err(error) => {
-                tracing::error!(error = &error as &dyn std::error::Error, "the retention pass cannot list the users");
+                tracing::error!(
+                    error = &error as &dyn std::error::Error,
+                    "the retention pass cannot list the users"
+                );
             }
         }
         tokio::time::sleep(interval).await;
@@ -82,7 +85,11 @@ impl Shard {
             }
             let retired = if self.agent().tree(&root_of(&id)).is_some() {
                 let now = self.services().clock.now();
-                control.mark_live(id.clone(), now).await.map(|()| 0).map_err(|error| error.to_string())
+                control
+                    .mark_live(id.clone(), now)
+                    .await
+                    .map(|()| 0)
+                    .map_err(|error| error.to_string())
             } else {
                 self.retire_tool_media(&id, false).await
             };
@@ -92,8 +99,12 @@ impl Shard {
         }
         match self.collect_blobs().await {
             Ok(0) => {}
-            Ok(deleted) => tracing::info!(user = %self.user(), deleted, "unreferenced blobs deleted"),
-            Err(why) => tracing::warn!(user = %self.user(), "the collection deleted nothing: {why}"),
+            Ok(deleted) => {
+                tracing::info!(user = %self.user(), deleted, "unreferenced blobs deleted")
+            }
+            Err(why) => {
+                tracing::warn!(user = %self.user(), "the collection deleted nothing: {why}")
+            }
         }
     }
 
@@ -130,7 +141,9 @@ impl Shard {
             let retirement = self.retirement(id).await?;
             services
                 .conversations
-                .read(id, move |connection| blob_refs::retirable(connection, retirement))
+                .read(id, move |connection| {
+                    blob_refs::retirable(connection, retirement)
+                })
                 .await
                 .map_err(|error| error.to_string())?
         };
@@ -177,7 +190,9 @@ impl Shard {
         let expired = Timestamp::truncate(expired);
         let due = services
             .conversations
-            .read(id, move |connection| command_outputs::expired(connection, expired))
+            .read(id, move |connection| {
+                command_outputs::expired(connection, expired)
+            })
             .await
             .map_err(|error| error.to_string())?;
         if due != Some(true) {
@@ -187,7 +202,9 @@ impl Shard {
         services
             .conversations
             .db(id)
-            .call(move |connection| command_outputs::remove_expired(connection, &blobs, expired, now))
+            .call(move |connection| {
+                command_outputs::remove_expired(connection, &blobs, expired, now)
+            })
             .await
             .map_err(|error| error.to_string())?
             .map_err(|refused| refused.to_string())
@@ -308,7 +325,9 @@ impl Shard {
                 .conversations
                 .read(&id, blob_refs::references)
                 .await
-                .map_err(|error| format!("the database of conversation {id} cannot be read: {error}"))?;
+                .map_err(|error| {
+                    format!("the database of conversation {id} cannot be read: {error}")
+                })?;
             references.extend(named.into_iter().flatten());
         }
         Ok(references)

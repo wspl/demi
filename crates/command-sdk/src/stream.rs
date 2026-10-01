@@ -86,7 +86,9 @@ impl Input {
     pub fn from_stream(
         stream: impl futures_util::Stream<Item = Result<Bytes, ServiceError>> + Send + 'static,
     ) -> Self {
-        Self(InputSource::Local(sync_wrapper::SyncWrapper::new(Box::pin(stream))))
+        Self(InputSource::Local(sync_wrapper::SyncWrapper::new(
+            Box::pin(stream),
+        )))
     }
 
     /// The input of an invocation whose metadata `input` has read.

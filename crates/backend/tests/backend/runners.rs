@@ -6,13 +6,14 @@
 
 use std::time::Duration;
 
-use demi_conversation_socket_protocol::ClientFrame;
+use demi_backend_remote_host::testing::{RunnerProcess, RunnerProcessOptions};
 use demi_backend_user_shard::holds::HelloStep;
 use demi_command_protocol::ServiceSequence;
-use demi_backend_remote_host::testing::{RunnerProcess, RunnerProcessOptions};
+use demi_conversation_socket_protocol::ClientFrame;
 use demi_runner_protocol::values::DeviceToken;
 use demi_runner_protocol::wire::{
-    self, ArtifactOwner, HelloErrorCode, HostIdentity, Inbound, Outbound, RunnerInfo, RunnerPlatform, StreamArtifactOwner,
+    self, ArtifactOwner, HelloErrorCode, HostIdentity, Inbound, Outbound, RunnerInfo,
+    RunnerPlatform, StreamArtifactOwner,
 };
 use demi_web_api_protocol::devices::{ClaimedDevice, DeviceKind, DeviceLog};
 use demi_web_api_protocol::error::ErrorCode;
@@ -38,19 +39,34 @@ async fn a_claimed_runner_reconnects_with_its_token_until_its_device_is_revoked(
         },
     );
     let code = runner.pairing_code(0).await;
-    let claim = |code: String| backend.post("/api/devices/claim", Some(&master), json!({ "code": code }));
+    let claim =
+        |code: String| backend.post("/api/devices/claim", Some(&master), json!({ "code": code }));
 
     let wrong = claim("AAAA-BBBB".into()).await;
-    assert_eq!(wrong.refusal(), (StatusCode::NOT_FOUND, ErrorCode::InvalidCode));
+    assert_eq!(
+        wrong.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::InvalidCode)
+    );
     // Entered messy, the code still names the runner.
     let claimed = claim(format!(" {} ", code.to_lowercase())).await;
-    assert_eq!(claimed.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&claimed.body));
+    assert_eq!(
+        claimed.status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&claimed.body)
+    );
     let device = claimed.json::<ClaimedDevice>().device;
-    assert_eq!((device.name.as_str(), device.kind), ("laptop", DeviceKind::User));
+    assert_eq!(
+        (device.name.as_str(), device.kind),
+        ("laptop", DeviceKind::User)
+    );
     assert!(device.online);
     assert_eq!(device.home.as_deref(), Some(runner.home()));
     // A code is single use.
-    assert_eq!(claim(code).await.refusal(), (StatusCode::NOT_FOUND, ErrorCode::InvalidCode));
+    assert_eq!(
+        claim(code).await.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::InvalidCode)
+    );
     let listed = backend.devices(&master).await;
     assert_eq!(listed.len(), 1);
     assert_eq!((&listed[0].id, listed[0].online), (&device.id, true));
@@ -59,13 +75,19 @@ async fn a_claimed_runner_reconnects_with_its_token_until_its_device_is_revoked(
     // online.
     stored_token(&runner).await;
     runner.stop().await;
-    backend.until_online(&master, device.id.as_str(), false).await;
+    backend
+        .until_online(&master, device.id.as_str(), false)
+        .await;
     runner.start_again();
-    backend.until_online(&master, device.id.as_str(), true).await;
+    backend
+        .until_online(&master, device.id.as_str(), true)
+        .await;
     assert_eq!(backend.devices(&master).await.len(), 1);
 
     // Revoked, the device is gone, and its runner hears why and stops.
-    let revoked = backend.delete(&format!("/api/devices/{}", device.id), &master).await;
+    let revoked = backend
+        .delete(&format!("/api/devices/{}", device.id), &master)
+        .await;
     assert_eq!(revoked.status, StatusCode::NO_CONTENT);
     eventually("the revoked runner stops", || {
         let stopped = !runner.running();
@@ -74,8 +96,13 @@ async fn a_claimed_runner_reconnects_with_its_token_until_its_device_is_revoked(
     .await;
     assert!(runner.output().contains("revoked"), "{}", runner.output());
     assert!(backend.devices(&master).await.is_empty());
-    let again = backend.delete(&format!("/api/devices/{}", device.id), &master).await;
-    assert_eq!(again.refusal(), (StatusCode::NOT_FOUND, ErrorCode::DeviceNotFound));
+    let again = backend
+        .delete(&format!("/api/devices/{}", device.id), &master)
+        .await;
+    assert_eq!(
+        again.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::DeviceNotFound)
+    );
     backend.close().await;
 }
 
@@ -90,29 +117,50 @@ async fn a_waiting_runners_code_changes_while_it_waits_and_claims_are_limited() 
     let first = runner.pairing_code(0).await;
     let second = runner.pairing_code(1).await;
     assert_ne!(first, second);
-    let claim = |code: &str| backend.post("/api/devices/claim", Some(&master), json!({ "code": code }));
+    let claim =
+        |code: &str| backend.post("/api/devices/claim", Some(&master), json!({ "code": code }));
 
     // The expired code is dead; the one the runner printed last claims it.
     let claimed = claim(&second).await;
-    assert_eq!(claimed.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&claimed.body));
-    assert_eq!(claim(&first).await.refusal(), (StatusCode::NOT_FOUND, ErrorCode::InvalidCode));
+    assert_eq!(
+        claimed.status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&claimed.body)
+    );
+    assert_eq!(
+        claim(&first).await.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::InvalidCode)
+    );
     let device = claimed.json::<ClaimedDevice>().device;
-    backend.until_online(&master, device.id.as_str(), true).await;
+    backend
+        .until_online(&master, device.id.as_str(), true)
+        .await;
 
     // Three attempts a minute: the fourth is refused before any code is
     // looked at, and a body that names no code is no attempt.
     assert_eq!(claim("").await.refusal().1, ErrorCode::InvalidBody);
-    assert_eq!(claim("NOPE-NOPE").await.refusal(), (StatusCode::NOT_FOUND, ErrorCode::InvalidCode));
-    assert_eq!(claim("NOPE-NOPE").await.refusal(), (StatusCode::TOO_MANY_REQUESTS, ErrorCode::RateLimited));
+    assert_eq!(
+        claim("NOPE-NOPE").await.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::InvalidCode)
+    );
+    assert_eq!(
+        claim("NOPE-NOPE").await.refusal(),
+        (StatusCode::TOO_MANY_REQUESTS, ErrorCode::RateLimited)
+    );
     backend.close().await;
 }
 
 /// A runner's side of the socket, spoken by the test.
-struct RawRunner(tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>);
+struct RawRunner(
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+);
 
 impl RawRunner {
     async fn connect(backend: &TestBackend) -> Self {
-        let (socket, _) = tokio_tungstenite::connect_async(backend.ws_url("/api/runner")).await.unwrap();
+        let (socket, _) = tokio_tungstenite::connect_async(backend.ws_url("/api/runner"))
+            .await
+            .unwrap();
         Self(socket)
     }
 
@@ -124,7 +172,10 @@ impl RawRunner {
     /// The next message the backend sends; none once it closed the socket.
     async fn next(&mut self) -> Option<Inbound> {
         loop {
-            match tokio::time::timeout(Duration::from_secs(10), self.0.next()).await.unwrap() {
+            match tokio::time::timeout(Duration::from_secs(10), self.0.next())
+                .await
+                .unwrap()
+            {
                 Some(Ok(Message::Binary(frame))) => return Some(wire::decode(&frame).unwrap()),
                 Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
                 Some(Ok(Message::Close(_)) | Err(_)) | None => return None,
@@ -161,23 +212,45 @@ async fn a_runner_that_breaks_the_protocol_or_names_no_device_is_refused() {
     let backend = harness.start().await;
 
     let mut text = RawRunner::connect(&backend).await;
-    text.0.send(Message::Text("{\"type\":\"not-a-runner-frame\"}".into())).await.unwrap();
+    text.0
+        .send(Message::Text("{\"type\":\"not-a-runner-frame\"}".into()))
+        .await
+        .unwrap();
     assert_eq!(text.next().await, None);
 
     let mut garbage = RawRunner::connect(&backend).await;
-    garbage.0.send(Message::Binary(vec![0xc1, 0x00].into())).await.unwrap();
+    garbage
+        .0
+        .send(Message::Binary(vec![0xc1, 0x00].into()))
+        .await
+        .unwrap();
     assert_eq!(garbage.next().await, None);
 
     let refused = [
-        (hello(wire::VERSION, Some("not-a-real-token"), None), HelloErrorCode::UnknownDevice, "unknown device"),
-        (hello(wire::VERSION + 1, None, None), HelloErrorCode::UnsupportedProtocol, "unsupported protocol"),
-        (hello(wire::VERSION, None, Some(true)), HelloErrorCode::UnknownDevice, "never paired"),
+        (
+            hello(wire::VERSION, Some("not-a-real-token"), None),
+            HelloErrorCode::UnknownDevice,
+            "unknown device",
+        ),
+        (
+            hello(wire::VERSION + 1, None, None),
+            HelloErrorCode::UnsupportedProtocol,
+            "unsupported protocol",
+        ),
+        (
+            hello(wire::VERSION, None, Some(true)),
+            HelloErrorCode::UnknownDevice,
+            "never paired",
+        ),
     ];
     for (message, code, words) in refused {
         let mut runner = RawRunner::connect(&backend).await;
         runner.send(&message).await;
         match runner.next().await {
-            Some(Inbound::HelloError { code: refused, reason }) => {
+            Some(Inbound::HelloError {
+                code: refused,
+                reason,
+            }) => {
                 assert_eq!(refused, code);
                 assert!(reason.contains(words), "{reason}");
             }
@@ -190,7 +263,11 @@ async fn a_runner_that_breaks_the_protocol_or_names_no_device_is_refused() {
     let mut silent = RawRunner::connect(&backend).await;
     let started = tokio::time::Instant::now();
     assert_eq!(silent.next().await, None);
-    assert!(started.elapsed() >= Duration::from_millis(250), "{:?}", started.elapsed());
+    assert!(
+        started.elapsed() >= Duration::from_millis(250),
+        "{:?}",
+        started.elapsed()
+    );
     backend.close().await;
 }
 
@@ -237,7 +314,8 @@ async fn hellos_with_one_token_at_once_bind_one_socket_and_a_repeated_hello_chan
     laptop.runner.stop().await;
     backend.until_online(&master, laptop.id(), false).await;
 
-    let (mut one, mut other) = tokio::join!(RawRunner::connect(&backend), RawRunner::connect(&backend));
+    let (mut one, mut other) =
+        tokio::join!(RawRunner::connect(&backend), RawRunner::connect(&backend));
     let message = hello(wire::VERSION, Some(&token), None);
     tokio::join!(one.send(&message), other.send(&message));
     let (first, second) = tokio::join!(one.next(), other.next());
@@ -247,7 +325,13 @@ async fn hellos_with_one_token_at_once_bind_one_socket_and_a_repeated_hello_chan
         answers => panic!("expected one welcome, got {answers:?}"),
     };
     assert!(
-        matches!(&refused, Some(Inbound::HelloError { code: HelloErrorCode::AlreadyConnected, .. })),
+        matches!(
+            &refused,
+            Some(Inbound::HelloError {
+                code: HelloErrorCode::AlreadyConnected,
+                ..
+            })
+        ),
         "{refused:?}"
     );
     assert!(backend.online(&master, laptop.id()).await);
@@ -267,7 +351,9 @@ async fn hellos_with_one_token_at_once_bind_one_socket_and_a_repeated_hello_chan
     };
     bound.send(&after).await;
     match bound.next().await {
-        Some(Inbound::ArtifactLocation { id, error: Some(_), .. }) if id == "after-hello" => {}
+        Some(Inbound::ArtifactLocation {
+            id, error: Some(_), ..
+        }) if id == "after-hello" => {}
         answer => panic!("expected the refusal of the later request first, got {answer:?}"),
     }
     assert!(backend.online(&master, laptop.id()).await);
@@ -289,8 +375,15 @@ async fn a_runner_reserves_numbers_only_of_its_users_conversations_that_reach_it
     create(&backend, &master, &here).await;
     let home = laptop.runner.home_dir().to_str().unwrap().to_owned();
     let target = json!({ "target": { "kind": "device", "deviceId": laptop.id(), "path": home } });
-    let moved = backend.patch(&format!("/api/conversations/{here}"), &master, target).await;
-    assert_eq!(moved.status, StatusCode::OK, "{}", String::from_utf8_lossy(&moved.body));
+    let moved = backend
+        .patch(&format!("/api/conversations/{here}"), &master, target)
+        .await;
+    assert_eq!(
+        moved.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&moved.body)
+    );
     // A conversation on the Cloud does not reach the laptop.
     let elsewhere = uuid::Uuid::new_v4().to_string();
     create(&backend, &master, &elsewhere).await;
@@ -312,11 +405,17 @@ async fn a_runner_reserves_numbers_only_of_its_users_conversations_that_reach_it
             .await;
         loop {
             match runner.next().await {
-                Some(Inbound::NumbersReserved { id: answered, first, error }) if answered == id => {
+                Some(Inbound::NumbersReserved {
+                    id: answered,
+                    first,
+                    error,
+                }) if answered == id => {
                     break match (first, error) {
                         (Some(first), None) => Ok(first),
                         (None, Some(error)) => Err(error),
-                        answer => panic!("an answer carries its first number or its error: {answer:?}"),
+                        answer => {
+                            panic!("an answer carries its first number or its error: {answer:?}")
+                        }
                     };
                 }
                 Some(_) => {}
@@ -391,7 +490,10 @@ async fn a_runner_whose_hello_meets_the_shutdown_is_never_welcomed() {
         answer
     };
     let ((), answer) = tokio::join!(backend.close(), answered);
-    assert_eq!(answer, None, "the backend welcomed a runner while it shut down");
+    assert_eq!(
+        answer, None,
+        "the backend welcomed a runner while it shut down"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -406,9 +508,16 @@ async fn a_claim_whose_runner_went_away_makes_no_device() {
     runner.0.close(None).await.unwrap();
     drop(runner);
     let claimed = backend
-        .post("/api/devices/claim", Some(&master), json!({ "code": claim_token }))
+        .post(
+            "/api/devices/claim",
+            Some(&master),
+            json!({ "code": claim_token }),
+        )
         .await;
-    assert_eq!(claimed.refusal(), (StatusCode::NOT_FOUND, ErrorCode::InvalidCode));
+    assert_eq!(
+        claimed.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::InvalidCode)
+    );
     assert!(backend.devices(&master).await.is_empty());
     backend.close().await;
 }
@@ -426,10 +535,22 @@ async fn a_pipe_is_reached_only_with_a_device_token() {
         let answer = request.try_clone().unwrap().send().await.unwrap();
         assert_eq!(answer.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(answer.text().await.unwrap(), "device token required");
-        let bogus = request.try_clone().unwrap().bearer_auth("not-a-token").send().await.unwrap();
+        let bogus = request
+            .try_clone()
+            .unwrap()
+            .bearer_auth("not-a-token")
+            .send()
+            .await
+            .unwrap();
         assert_eq!(bogus.status(), StatusCode::UNAUTHORIZED);
         // The user's session cookie is not a device's credential.
-        let cookie = request.try_clone().unwrap().header("cookie", &master.cookie).send().await.unwrap();
+        let cookie = request
+            .try_clone()
+            .unwrap()
+            .header("cookie", &master.cookie)
+            .send()
+            .await
+            .unwrap();
         assert_eq!(cookie.status(), StatusCode::UNAUTHORIZED);
         let unknown = request.bearer_auth(&token).send().await.unwrap();
         assert_eq!(unknown.status(), StatusCode::NOT_FOUND);
@@ -445,27 +566,60 @@ async fn a_paired_device_is_browsed_and_its_log_read_through_device_access() {
     let home = laptop.runner.home().to_owned();
     std::fs::write(laptop.runner.home_dir().join("hello.txt"), "hi").unwrap();
 
-    let browsed = backend.get(&format!("/api/devices/{}/fs", laptop.id()), Some(&master)).await;
-    assert_eq!(browsed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&browsed.body));
+    let browsed = backend
+        .get(&format!("/api/devices/{}/fs", laptop.id()), Some(&master))
+        .await;
+    assert_eq!(
+        browsed.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&browsed.body)
+    );
     let listing = browsed.json::<Directory>();
     assert_eq!(listing.path, home);
     assert_eq!(listing.home.as_deref(), Some(home.as_str()));
-    let hello = listing.entries.iter().find(|entry| entry.name == "hello.txt").unwrap();
-    assert_eq!((hello.is_directory, hello.is_symbolic_link, hello.size), (false, false, 2));
+    let hello = listing
+        .entries
+        .iter()
+        .find(|entry| entry.name == "hello.txt")
+        .unwrap();
+    assert_eq!(
+        (hello.is_directory, hello.is_symbolic_link, hello.size),
+        (false, false, 2)
+    );
     let made = format!("{home}/made/by/web");
     let created = backend
-        .post(&format!("/api/devices/{}/fs", laptop.id()), Some(&master), json!({ "path": made }))
+        .post(
+            &format!("/api/devices/{}/fs", laptop.id()),
+            Some(&master),
+            json!({ "path": made }),
+        )
         .await;
     assert_eq!(created.status, StatusCode::CREATED);
     assert!(laptop.runner.home_dir().join("made/by/web").is_dir());
     for refused in ["?path=relative", "?path="] {
-        let answer = backend.get(&format!("/api/devices/{}/fs{refused}", laptop.id()), Some(&master)).await;
-        assert_eq!(answer.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery), "{refused}");
+        let answer = backend
+            .get(
+                &format!("/api/devices/{}/fs{refused}", laptop.id()),
+                Some(&master),
+            )
+            .await;
+        assert_eq!(
+            answer.refusal(),
+            (StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery),
+            "{refused}"
+        );
     }
     let missing = backend
-        .get(&format!("/api/devices/{}/fs?path={home}/nothing", laptop.id()), Some(&master))
+        .get(
+            &format!("/api/devices/{}/fs?path={home}/nothing", laptop.id()),
+            Some(&master),
+        )
         .await;
-    assert_eq!(missing.refusal(), (StatusCode::NOT_FOUND, ErrorCode::FsError));
+    assert_eq!(
+        missing.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::FsError)
+    );
 
     // The log answers by cursor, limit and source; the runner writes a line
     // to its files a moment after the event, so the read is repeated until
@@ -479,37 +633,92 @@ async fn a_paired_device_is_browsed_and_its_log_read_through_device_access() {
         tokio::time::sleep(Duration::from_millis(10)).await;
         tail = backend.get(&path, Some(&master)).await.json::<DeviceLog>();
     }
-    assert!(tail.lines.iter().any(|line| line.text == "online"), "{:?}", tail.lines);
-    assert!(tail.lines.iter().any(|line| line.text == "waiting to be paired"));
+    assert!(
+        tail.lines.iter().any(|line| line.text == "online"),
+        "{:?}",
+        tail.lines
+    );
+    assert!(
+        tail.lines
+            .iter()
+            .any(|line| line.text == "waiting to be paired")
+    );
     assert!(tail.lines.iter().all(|line| line.source == "runner"));
     let code = laptop.runner.pairing_code(0).await;
     // The pairing code is for the console alone.
     assert!(!tail.lines.iter().any(|line| line.text.contains(&code)));
-    let after = backend.get(&format!("{path}?since={}", tail.next), Some(&master)).await;
-    assert_eq!(after.json::<DeviceLog>(), DeviceLog { lines: Vec::new(), next: tail.next });
-    let first = backend.get(&format!("{path}?since=0&limit=1"), Some(&master)).await.json::<DeviceLog>();
+    let after = backend
+        .get(&format!("{path}?since={}", tail.next), Some(&master))
+        .await;
+    assert_eq!(
+        after.json::<DeviceLog>(),
+        DeviceLog {
+            lines: Vec::new(),
+            next: tail.next
+        }
+    );
+    let first = backend
+        .get(&format!("{path}?since=0&limit=1"), Some(&master))
+        .await
+        .json::<DeviceLog>();
     assert_eq!(first.lines, tail.lines[..1]);
     let second = backend
-        .get(&format!("{path}?since={}&limit=1", first.next), Some(&master))
+        .get(
+            &format!("{path}?since={}&limit=1", first.next),
+            Some(&master),
+        )
         .await
         .json::<DeviceLog>();
     assert_eq!(second.lines, tail.lines[1..2]);
-    let other = backend.get(&format!("{path}?since=0&source=service%3Anone"), Some(&master)).await;
-    assert_eq!(other.json::<DeviceLog>(), DeviceLog { lines: Vec::new(), next: tail.next });
-    for query in ["limit=0", "limit=1001", "limit=many", "since=-1", "since=1.5", "source="] {
+    let other = backend
+        .get(
+            &format!("{path}?since=0&source=service%3Anone"),
+            Some(&master),
+        )
+        .await;
+    assert_eq!(
+        other.json::<DeviceLog>(),
+        DeviceLog {
+            lines: Vec::new(),
+            next: tail.next
+        }
+    );
+    for query in [
+        "limit=0",
+        "limit=1001",
+        "limit=many",
+        "since=-1",
+        "since=1.5",
+        "source=",
+    ] {
         let refused = backend.get(&format!("{path}?{query}"), Some(&master)).await;
-        assert_eq!(refused.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery), "{query}");
+        assert_eq!(
+            refused.refusal(),
+            (StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery),
+            "{query}"
+        );
     }
     let unknown = backend.get("/api/devices/none/log", Some(&master)).await;
-    assert_eq!(unknown.refusal(), (StatusCode::NOT_FOUND, ErrorCode::DeviceNotFound));
+    assert_eq!(
+        unknown.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::DeviceNotFound)
+    );
 
     // Offline, the device answers 409 instead of waking anything.
     laptop.runner.stop().await;
     backend.until_online(&master, laptop.id(), false).await;
     let offline = backend.get(&path, Some(&master)).await;
-    assert_eq!(offline.refusal(), (StatusCode::CONFLICT, ErrorCode::DeviceOffline));
-    let offline = backend.get(&format!("/api/devices/{}/fs", laptop.id()), Some(&master)).await;
-    assert_eq!(offline.refusal(), (StatusCode::CONFLICT, ErrorCode::DeviceOffline));
+    assert_eq!(
+        offline.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::DeviceOffline)
+    );
+    let offline = backend
+        .get(&format!("/api/devices/{}/fs", laptop.id()), Some(&master))
+        .await;
+    assert_eq!(
+        offline.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::DeviceOffline)
+    );
     backend.close().await;
 }
 

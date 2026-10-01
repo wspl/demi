@@ -12,7 +12,9 @@ use demi_backend_database::workspaces::{WorkspaceDeletion, new_workspace_id};
 use demi_backend_page_sync::Part;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::WorkspaceId;
-use demi_web_api_protocol::workspaces::{CreateWorkspace, RenameWorkspace, WorkspaceAnswer, Workspaces};
+use demi_web_api_protocol::workspaces::{
+    CreateWorkspace, RenameWorkspace, WorkspaceAnswer, Workspaces,
+};
 
 use super::AppState;
 use super::body::JsonBody;
@@ -26,7 +28,10 @@ pub(super) async fn list(
 ) -> Result<Json<Workspaces>, ApiError> {
     let workspaces = services.control.workspaces(user.id).await?;
     Ok(Json(Workspaces {
-        workspaces: workspaces.into_iter().map(|workspace| workspace.dto()).collect(),
+        workspaces: workspaces
+            .into_iter()
+            .map(|workspace| workspace.dto())
+            .collect(),
     }))
 }
 
@@ -38,7 +43,11 @@ pub(super) async fn create(
     JsonBody(request): JsonBody<CreateWorkspace>,
 ) -> Result<(StatusCode, Json<WorkspaceAnswer>), ApiError> {
     let workspace = match request {
-        CreateWorkspace::Device { device_id, path, name } => state
+        CreateWorkspace::Device {
+            device_id,
+            path,
+            name,
+        } => state
             .services
             .control
             .create_workspace(
@@ -49,7 +58,13 @@ pub(super) async fn create(
                 name.into_string(),
             )
             .await?
-            .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, ErrorCode::DeviceNotFound, "No such device"))?,
+            .ok_or_else(|| {
+                ApiError::new(
+                    StatusCode::NOT_FOUND,
+                    ErrorCode::DeviceNotFound,
+                    "No such device",
+                )
+            })?,
         CreateWorkspace::Cloud { name } => {
             let name = name.into_string();
             state
@@ -92,7 +107,11 @@ pub(super) async fn delete(
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let id = workspace_id(id)?;
-    match services.control.delete_workspace(user.id.clone(), id).await? {
+    match services
+        .control
+        .delete_workspace(user.id.clone(), id)
+        .await?
+    {
         WorkspaceDeletion::Deleted => {
             services.sync.mark(&user.id, Part::Workspaces);
             Ok(StatusCode::NO_CONTENT)
@@ -111,5 +130,9 @@ fn workspace_id(id: String) -> Result<WorkspaceId, ApiError> {
 }
 
 fn not_found() -> ApiError {
-    ApiError::new(StatusCode::NOT_FOUND, ErrorCode::WorkspaceNotFound, "No such workspace")
+    ApiError::new(
+        StatusCode::NOT_FOUND,
+        ErrorCode::WorkspaceNotFound,
+        "No such workspace",
+    )
 }

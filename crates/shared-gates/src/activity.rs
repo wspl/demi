@@ -136,7 +136,12 @@ impl ActivityGate {
 
     /// Holds the gate alone now, or none while anything holds or waits for it.
     pub fn try_reserve(&self) -> Option<Reservation> {
-        let permits = self.0.permits.clone().try_acquire_many_owned(PERMITS).ok()?;
+        let permits = self
+            .0
+            .permits
+            .clone()
+            .try_acquire_many_owned(PERMITS)
+            .ok()?;
         Some(Reservation::hold(self.0.clone(), permits))
     }
 

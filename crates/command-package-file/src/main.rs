@@ -14,7 +14,9 @@ async fn main() {
         .without_time()
         .with_target(false)
         .init();
-    if let Err(error) = demi_command_sdk::serve_stdio(Arc::new(demi_file::DemiFile::default())).await {
+    if let Err(error) =
+        demi_command_sdk::serve_stdio(Arc::new(demi_file::DemiFile::default())).await
+    {
         eprintln!("demi-file: {error}");
         std::process::exit(1);
     }

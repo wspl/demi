@@ -7,7 +7,9 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_backend_database::conversation_index::{AttachedHostRecord, ConversationChange, RecordChange};
+use demi_backend_database::conversation_index::{
+    AttachedHostRecord, ConversationChange, RecordChange,
+};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::hosts::{AttachHost, AttachedHost, AttachedHosts, RenameHost};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
@@ -42,14 +44,23 @@ pub(super) async fn attach(
         .device(device_id)
         .await?
         .filter(|device| device.user == user.id)
-        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, ErrorCode::DeviceNotFound, "No such device"))?;
+        .ok_or_else(|| {
+            ApiError::new(
+                StatusCode::NOT_FOUND,
+                ErrorCode::DeviceNotFound,
+                "No such device",
+            )
+        })?;
     let host = AttachedHostRecord {
         device: device.id,
         name: device.name,
         cwd: None,
     };
     change(&state, &user.id, &id, RecordChange::Attach(host).into()).await?;
-    Ok((StatusCode::CREATED, Json(hosts(&state, &user.id, id).await?)))
+    Ok((
+        StatusCode::CREATED,
+        Json(hosts(&state, &user.id, id).await?),
+    ))
 }
 
 /// Renames an attached host, uniquely within the conversation.
@@ -85,7 +96,12 @@ pub(super) async fn detach(
 }
 
 /// Applies `change` through the conversation's transition.
-async fn change(state: &AppState, user: &UserId, id: &ConversationId, change: ConversationChange) -> Result<(), ApiError> {
+async fn change(
+    state: &AppState,
+    user: &UserId,
+    id: &ConversationId,
+    change: ConversationChange,
+) -> Result<(), ApiError> {
     let id = id.clone();
     state
         .shards
@@ -96,13 +112,21 @@ async fn change(state: &AppState, user: &UserId, id: &ConversationId, change: Co
 }
 
 /// The conversation's attached hosts, each with its device's connection.
-async fn hosts(state: &AppState, user: &UserId, id: ConversationId) -> Result<AttachedHosts, ApiError> {
+async fn hosts(
+    state: &AppState,
+    user: &UserId,
+    id: ConversationId,
+) -> Result<AttachedHosts, ApiError> {
     state
         .shards
         .of(user)
         .call(move |shard, _| async move {
             let record = shard.host_shard().owned_conversation(&id).await?;
-            let listed = shard.services().control.attached_host_listing(record.id).await?;
+            let listed = shard
+                .services()
+                .control
+                .attached_host_listing(record.id)
+                .await?;
             let hosts = listed
                 .into_iter()
                 .map(|(host, attached_at)| AttachedHost {

@@ -7,28 +7,28 @@ use std::{
     cell::RefCell, collections::BTreeMap, future::Future, rc::Rc, sync::Arc, time::Duration,
 };
 
+use demi_agent_coding_harness::{CodingHarness, DemiOptions, HostResolver, demi_root};
 use demi_agent_server::{
     AgentServer, ServerConfig, ServerDeps,
     testing::{ScriptedProviders, TestClient, client_text},
 };
-use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
 use demi_agent_store::{AgentTreeStore, testing::MemoryTreeStore};
 use demi_agent_tools::{EnvironmentScope, PromptContext, ShellEnvironmentFactory};
 use demi_agent_transcript::testing::SequentialIds;
-use demi_agent_coding_harness::{CodingHarness, DemiOptions, HostResolver, demi_root};
-use demi_command_protocol::testing::built_program;
-use demi_shared_types::{Block, CommandId, NodeId, SessionPhase, ToolView, TurnId};
 use demi_backend_remote_host::{
     CommandCatalog, ContextSource, EnvironmentOptions, RemoteHost, RemoteShellEnvironmentFactory,
     testing::{FixtureOptions, NativeFixture, RunnerFixture},
+};
+use demi_command_protocol::testing::built_program;
+use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
+use demi_host_interface::{
+    CommandSet, HostError, HostErrorKind, ShellEnvironment, testing::test_command_context,
 };
 use demi_provider_common::{
     InferenceItem, InferenceRequest, ProviderEvent, ResultPart,
     testing::{ScriptedRuntime, TokioClock, Turn, event},
 };
-use demi_host_interface::{
-    CommandSet, HostError, HostErrorKind, ShellEnvironment, testing::test_command_context,
-};
+use demi_shared_types::{Block, CommandId, NodeId, SessionPhase, ToolView, TurnId};
 use futures_util::future::LocalBoxFuture;
 use serde_json::json;
 
@@ -57,8 +57,12 @@ impl ShellEnvironmentFactory<RemoteHost> for RunnerShells {
         host: Rc<RemoteHost>,
     ) -> LocalBoxFuture<'a, Result<Rc<dyn ShellEnvironment>, HostError>> {
         let context: ContextSource = Rc::new(|| Box::pin(async { Ok(test_command_context()) }));
-        let mut options =
-            EnvironmentOptions::new(RemoteHost::clone(&host), context, scope.feed.clone(), scope.numbers.clone());
+        let mut options = EnvironmentOptions::new(
+            RemoteHost::clone(&host),
+            context,
+            scope.feed.clone(),
+            scope.numbers.clone(),
+        );
         options.initial_env = BTreeMap::from([("PATH".to_owned(), "/usr/bin:/bin".to_owned())]);
         let made = self
             .0
@@ -104,7 +108,9 @@ impl Fixture {
         let file = NativeFixture::package(
             demi_command_package_file_protocol::PACKAGE,
             built_program("demi-file"),
-            demi_command_package_file_protocol::OPERATIONS.iter().copied(),
+            demi_command_package_file_protocol::OPERATIONS
+                .iter()
+                .copied(),
         );
         let catalog = CommandCatalog::new(vec![file.descriptor.clone()], file.resolver()).unwrap();
         let store = MemoryTreeStore::new();

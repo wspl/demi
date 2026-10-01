@@ -9,11 +9,11 @@ use std::{
     time::Duration,
 };
 
-use demi_conversation_socket_protocol::{ClientContent, ClientFrame, ServerFrame};
 use demi_agent_store::{media::HeldMedia, testing::test_model};
 use demi_agent_tools::AgentHarness;
-use demi_shared_types::{ModelSelection, NodeId, UserContentBlock};
+use demi_conversation_socket_protocol::{ClientContent, ClientFrame, ServerFrame};
 use demi_provider_common::{ProviderRuntime, testing::ScriptedRuntime};
+use demi_shared_types::{ModelSelection, NodeId, UserContentBlock};
 use futures_util::future::LocalBoxFuture;
 
 use crate::{

@@ -101,7 +101,7 @@ impl Volumes {
             if self.pending.contains_key(&volume.name) {
                 continue;
             }
-            self.pending.insert(volume.name.clone(), Pending::Checking);
+            self.pending.insert(volume.name, Pending::Checking);
             let volume = volume.clone();
             self.checks.spawn(async move {
                 let mount = volume.mount.clone();
@@ -134,7 +134,7 @@ impl Volumes {
             return Some(());
         };
         let id = uuid::Uuid::new_v4().simple().to_string();
-        self.pending.insert(volume.clone(), Pending::Requested(id.clone()));
+        self.pending.insert(volume, Pending::Requested(id.clone()));
         let request = wire::encode(&wire::Outbound::VolumeGrow { id, volume, bytes });
         send(&self.output, request, &self.stop).await;
         Some(())

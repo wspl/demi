@@ -7,10 +7,7 @@ use std::{
 
 fn options(root: &Path, output: std::fs::File) -> ShellOptions {
     ShellOptions {
-        scope: Scope::new(
-            tokio_util::sync::CancellationToken::new(),
-            None,
-        ),
+        scope: Scope::new(tokio_util::sync::CancellationToken::new(), None),
         login: false,
         cwd: root.into(),
         env: BTreeMap::new(),
@@ -105,9 +102,12 @@ async fn wc_counts_a_file_of_whole_pages_whole() {
     // Whole pages for page sizes of 4, 16 and 64 KiB.
     std::fs::write(root.path().join("pages.bin"), vec![7_u8; 5 * 65536]).unwrap();
     let output = tempfile::NamedTempFile::new().unwrap();
-    let result = execute("wc -c pages.bin", options(root.path(), output.reopen().unwrap()))
-        .await
-        .unwrap();
+    let result = execute(
+        "wc -c pages.bin",
+        options(root.path(), output.reopen().unwrap()),
+    )
+    .await
+    .unwrap();
     assert_eq!(result.code, 0);
     assert_eq!(
         std::fs::read_to_string(output.path()).unwrap().trim(),
@@ -252,7 +252,10 @@ async fn ulimit_limits_the_jobs_own_processes_only() {
     let (code, output, errors) = job(root.path(), script).await;
     assert_eq!(code, 0, "{errors}");
     assert_eq!(output, "64\n64\nrefused 1\n64\n");
-    assert!(errors.contains("open files: cannot modify limit"), "{errors}");
+    assert!(
+        errors.contains("open files: cannot modify limit"),
+        "{errors}"
+    );
     assert_eq!(rlimit::getrlimit(rlimit::Resource::NOFILE).unwrap(), runner);
     let (_, output, _) = job(root.path(), "ulimit -n; /bin/sh -c 'ulimit -n'").await;
     let (soft, _) = demi_runner_process::process::child_limit(rlimit::Resource::NOFILE).unwrap();
@@ -298,7 +301,13 @@ async fn kill_refuses_the_runner() {
     let (code, output, errors) = job(root.path(), script).await;
     assert_eq!(code, 0, "{errors}");
     assert_eq!(output, "runner 1\ngroup 1\n");
-    assert_eq!(errors.matches("a job cannot signal the runner it runs in").count(), 2, "{errors}");
+    assert_eq!(
+        errors
+            .matches("a job cannot signal the runner it runs in")
+            .count(),
+        2,
+        "{errors}"
+    );
 }
 
 /// A job's `suspend` would stop the runner; it refuses. Before, it stopped
@@ -310,7 +319,10 @@ async fn suspend_refuses() {
     let (code, output, errors) = job(root.path(), "suspend -f; echo \"suspend $?\"").await;
     assert_eq!(code, 0, "{errors}");
     assert_eq!(output, "suspend 1\n");
-    assert!(errors.contains("a job cannot suspend the runner it runs in"), "{errors}");
+    assert!(
+        errors.contains("a job cannot suspend the runner it runs in"),
+        "{errors}"
+    );
 }
 
 /// A job has no job control, as a bash script has none: `fg` would give the

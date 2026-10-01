@@ -17,14 +17,16 @@ use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use demi_shared_artifacts::{Archive, Digest, Mode, Permissions, Publication, ReleaseFile, ReleaseRecord, Staged};
 use demi_command_package_browser_protocol::release::{BrowserRelease, IMAGE_BROWSERS};
 use demi_command_protocol::{PackageArtifact, PackageDescriptor};
 use demi_machine_manager_protocol::image::{
-    Architecture, CloudImageManifest, FormatVersion, INIT_PATH, InstalledPackage, ManifestError, Os, RUNNER_PATH,
-    RootfsArchive, RootfsFile, StandaloneTool,
+    Architecture, CloudImageManifest, FormatVersion, INIT_PATH, InstalledPackage, ManifestError,
+    Os, RUNNER_PATH, RootfsArchive, RootfsFile, StandaloneTool,
 };
 use demi_runner_protocol::{image::ARTIFACTS_PATH, release::RunnerRelease};
+use demi_shared_artifacts::{
+    Archive, Digest, Mode, Permissions, Publication, ReleaseFile, ReleaseRecord, Staged,
+};
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
@@ -77,11 +79,17 @@ pub enum Error {
     #[error("the pinned {name} release is invalid: {reason}")]
     Pin { name: &'static str, reason: String },
     #[error("{}: {source}", path.display())]
-    File { path: PathBuf, source: demi_shared_artifacts::Error },
+    File {
+        path: PathBuf,
+        source: demi_shared_artifacts::Error,
+    },
     #[error("{} {reason}", path.display())]
     Invalid { path: PathBuf, reason: String },
     #[error("{release} carries nothing for {target}")]
-    NotCarried { release: String, target: &'static str },
+    NotCarried {
+        release: String,
+        target: &'static str,
+    },
     #[error("the command package {0} is named twice")]
     Twice(String),
     #[error("the uv archive {url} {reason}")]
@@ -162,7 +170,8 @@ struct UvArchive {
 impl UvRelease {
     fn parse(json: &str) -> Result<Self, String> {
         let release: Self = serde_json::from_str(json).map_err(|error| error.to_string())?;
-        garde::Validate::validate(&release).map_err(|report| report.to_string().trim_end().to_owned())?;
+        garde::Validate::validate(&release)
+            .map_err(|report| report.to_string().trim_end().to_owned())?;
         Ok(release)
     }
 
@@ -194,29 +203,50 @@ async fn package(
     let mut releases: Vec<(PackageDescriptor, PackageArtifact)> = Vec::new();
     for directory in &options.packages {
         let (descriptor, artifact) = package_release(directory, target).await?;
-        if releases.iter().any(|(release, _)| release.id == descriptor.id) {
+        if releases
+            .iter()
+            .any(|(release, _)| release.id == descriptor.id)
+        {
             return Err(Error::Twice(descriptor.id));
         }
         releases.push((descriptor, artifact));
     }
 
     let mut executables = BTreeMap::new();
-    install_runner(&root, &options.runners, &runner, &runner_artifact, target, cancel).await?;
+    install_runner(
+        &root,
+        &options.runners,
+        &runner,
+        &runner_artifact,
+        target,
+        cancel,
+    )
+    .await?;
     executables.insert(RUNNER_PATH.to_owned(), runner_artifact);
     for (directory, (descriptor, artifact)) in options.packages.iter().zip(&releases) {
         let path = install_package(&root, directory, descriptor, artifact, target, cancel).await?;
         executables.insert(path, artifact.clone());
     }
-    let (chrome_path, chrome, chrome_tool) = install_chrome(&root, &pins.chrome, target, client, cancel).await?;
+    let (chrome_path, chrome, chrome_tool) =
+        install_chrome(&root, &pins.chrome, target, client, cancel).await?;
     executables.insert(chrome_path, chrome);
     let (uv, uv_tool) = install_uv(&root, &pins.uv, architecture, client, cancel).await?;
     executables.extend(uv);
-    executables.insert(INIT_PATH.to_owned(), measure(&in_tree(&root, INIT_PATH), cancel).await?);
+    executables.insert(
+        INIT_PATH.to_owned(),
+        measure(&in_tree(&root, INIT_PATH), cancel).await?,
+    );
 
-    let parent = output.parent().expect("an absolute release directory has a parent");
-    tokio::fs::create_dir_all(parent).await.map_err(at(parent))?;
+    let parent = output
+        .parent()
+        .expect("an absolute release directory has a parent");
+    tokio::fs::create_dir_all(parent)
+        .await
+        .map_err(at(parent))?;
     // The archive is written beside the release, then published into it.
-    let written = tempfile::Builder::new().prefix(".cloud-image-").tempdir_in(parent)?;
+    let written = tempfile::Builder::new()
+        .prefix(".cloud-image-")
+        .tempdir_in(parent)?;
     let archive = written.path().join(RootfsFile::TarZst.name());
     eprintln!("Cloud image: writing {}", RootfsFile::TarZst.name());
     let writing = {
@@ -239,7 +269,10 @@ async fn package(
         ubuntu,
         packages,
         executables,
-        releases: releases.into_iter().map(|(descriptor, _)| descriptor).collect(),
+        releases: releases
+            .into_iter()
+            .map(|(descriptor, _)| descriptor)
+            .collect(),
         runner,
         tools: vec![uv_tool, chrome_tool],
     };
@@ -259,16 +292,21 @@ async fn package(
     demi_shared_artifacts::publish_release(&output, record, &files, cancel).await?;
     eprintln!("Cloud image: {}", output.display());
     // The base version names the manifest's bytes as published.
-    let published = demi_shared_artifacts::digest(&output.join(IMAGE_MANIFEST), u64::MAX, cancel).await?;
+    let published =
+        demi_shared_artifacts::digest(&output.join(IMAGE_MANIFEST), u64::MAX, cancel).await?;
     Ok(published.sha256)
 }
 
 /// The runner release the manifest of `runners` names, and its executable
 /// for `target`.
-async fn runner_release(runners: &Path, target: &'static str) -> Result<(RunnerRelease, PackageArtifact), Error> {
+async fn runner_release(
+    runners: &Path,
+    target: &'static str,
+) -> Result<(RunnerRelease, PackageArtifact), Error> {
     let pointer = runners.join(MANIFEST);
     let bytes = tokio::fs::read(&pointer).await.map_err(at(&pointer))?;
-    let release = RunnerRelease::decode(&bytes).map_err(|error| invalid(&pointer, format!("is invalid: {error}")))?;
+    let release = RunnerRelease::decode(&bytes)
+        .map_err(|error| invalid(&pointer, format!("is invalid: {error}")))?;
     let artifact = release
         .targets
         .get(target)
@@ -282,17 +320,25 @@ async fn runner_release(runners: &Path, target: &'static str) -> Result<(RunnerR
 
 /// The command package release at `directory`, and its executable for
 /// `target`.
-async fn package_release(directory: &Path, target: &'static str) -> Result<(PackageDescriptor, PackageArtifact), Error> {
+async fn package_release(
+    directory: &Path,
+    target: &'static str,
+) -> Result<(PackageDescriptor, PackageArtifact), Error> {
     let path = directory.join(DESCRIPTOR);
     let bytes = tokio::fs::read(&path).await.map_err(at(&path))?;
-    let value = serde_json::from_slice(&bytes).map_err(|error| invalid(&path, format!("is invalid: {error}")))?;
-    let descriptor = PackageDescriptor::parse(value).map_err(|error| invalid(&path, format!("is invalid: {error}")))?;
+    let value = serde_json::from_slice(&bytes)
+        .map_err(|error| invalid(&path, format!("is invalid: {error}")))?;
+    let descriptor = PackageDescriptor::parse(value)
+        .map_err(|error| invalid(&path, format!("is invalid: {error}")))?;
     let artifact = descriptor
         .targets
         .get(target)
         .cloned()
         .ok_or_else(|| Error::NotCarried {
-            release: format!("the command package {}@{}", descriptor.id, descriptor.version),
+            release: format!(
+                "the command package {}@{}",
+                descriptor.id, descriptor.version
+            ),
             target,
         })?;
     Ok((descriptor, artifact))
@@ -303,7 +349,9 @@ async fn package_release(directory: &Path, target: &'static str) -> Result<(Pack
 /// § Packaging).
 async fn release_executable(release: &Path, target: &str) -> Result<PathBuf, Error> {
     let directory = release.join(target);
-    let mut entries = tokio::fs::read_dir(&directory).await.map_err(at(&directory))?;
+    let mut entries = tokio::fs::read_dir(&directory)
+        .await
+        .map_err(at(&directory))?;
     let mut files = Vec::new();
     while let Some(entry) = entries.next_entry().await.map_err(at(&directory))? {
         files.push(entry.path());
@@ -328,7 +376,9 @@ async fn install_runner(
     let installed = in_tree(root, RUNNER_PATH);
     install_executable(&source, artifact, &installed, cancel).await?;
     // `demi` is the runner by another name, beside it.
-    let name = installed.file_name().expect("the runner's path names a file");
+    let name = installed
+        .file_name()
+        .expect("the runner's path names a file");
     symlink(name, &installed.with_file_name(RUNNER_ALIAS)).await?;
     eprintln!("Cloud image: runner release {}", release.release);
     Ok(())
@@ -351,10 +401,17 @@ async fn install_package(
         .ok_or_else(|| invalid(&source, "is not named in UTF-8"))?;
     let path = format!("{ARTIFACTS_PATH}/{}/{name}", artifact.sha256);
     let installed = in_tree(root, &path);
-    let parent = installed.parent().expect("an artifact's path has a directory");
-    tokio::fs::create_dir_all(parent).await.map_err(at(parent))?;
+    let parent = installed
+        .parent()
+        .expect("an artifact's path has a directory");
+    tokio::fs::create_dir_all(parent)
+        .await
+        .map_err(at(parent))?;
     install_executable(&source, artifact, &installed, cancel).await?;
-    eprintln!("Cloud image: command package {}@{}", descriptor.id, descriptor.version);
+    eprintln!(
+        "Cloud image: command package {}@{}",
+        descriptor.id, descriptor.version
+    );
     Ok(path)
 }
 
@@ -377,7 +434,9 @@ async fn install_executable(
         permissions: Permissions::Executable,
         durable: false,
     };
-    let mut staged = Staged::new(destination, publication).await.map_err(at(destination))?;
+    let mut staged = Staged::new(destination, publication)
+        .await
+        .map_err(at(destination))?;
     demi_shared_artifacts::copy(&mut input, &expected, staged.file(), cancel)
         .await
         .map_err(at(source))?;
@@ -423,12 +482,16 @@ async fn install_chrome(
         executable: platform.executable.clone(),
     };
     let browsers = in_tree(root, IMAGE_BROWSERS);
-    let executable = demi_shared_artifacts::install_archive(client, &browsers, &archive, cancel).await?;
+    let executable =
+        demi_shared_artifacts::install_archive(client, &browsers, &archive, cancel).await?;
     // The installation's lock serves installers running at once on one
     // machine; an image starts with none running.
     let lock = browsers.join(format!("{}.lock", platform.sha256));
     tokio::fs::remove_file(&lock).await.map_err(at(&lock))?;
-    let path = format!("{IMAGE_BROWSERS}/{}/{}", platform.sha256, platform.executable);
+    let path = format!(
+        "{IMAGE_BROWSERS}/{}/{}",
+        platform.sha256, platform.executable
+    );
     let measured = measure(&executable, cancel).await?;
     let tool = StandaloneTool {
         name: "chrome".to_owned(),
@@ -469,7 +532,10 @@ async fn install_uv(
     let names = unpacking.await.map_err(std::io::Error::other)??;
     let mut installed = Vec::new();
     for name in names {
-        installed.push((format!("{TOOLS_PATH}/{name}"), measure(&tools.join(&name), cancel).await?));
+        installed.push((
+            format!("{TOOLS_PATH}/{name}"),
+            measure(&tools.join(&name), cancel).await?,
+        ));
     }
     let tool = StandaloneTool {
         name: "uv".to_owned(),
@@ -483,7 +549,12 @@ async fn install_uv(
 /// Installs the regular files at `paths` in the gzip-compressed tar archive
 /// at `archive`, downloaded from `url`, as executables in `directory`, each
 /// under its file name, and returns those names.
-fn unpack(url: &str, archive: &Path, paths: &[String], directory: &Path) -> Result<Vec<String>, Error> {
+fn unpack(
+    url: &str,
+    archive: &Path,
+    paths: &[String],
+    directory: &Path,
+) -> Result<Vec<String>, Error> {
     let fails = |reason: String| Error::Uv {
         url: url.to_owned(),
         reason,
@@ -499,7 +570,9 @@ fn unpack(url: &str, archive: &Path, paths: &[String], directory: &Path) -> Resu
             continue;
         };
         if !entry.header().entry_type().is_file() {
-            return Err(fails(format!("holds {named} as something other than a file")));
+            return Err(fails(format!(
+                "holds {named} as something other than a file"
+            )));
         }
         let name = path
             .file_name()
@@ -531,7 +604,9 @@ async fn measure(path: &Path, cancel: &CancellationToken) -> Result<PackageArtif
     if !metadata.is_file() {
         return Err(invalid(path, "is not a regular file"));
     }
-    let digest = demi_shared_artifacts::digest(path, u64::MAX, cancel).await.map_err(at(path))?;
+    let digest = demi_shared_artifacts::digest(path, u64::MAX, cancel)
+        .await
+        .map_err(at(path))?;
     Ok(PackageArtifact {
         sha256: digest.sha256,
         size: digest.size,
@@ -596,7 +671,12 @@ fn installed(stanza: Stanza<'_>, database: &Path) -> Result<Option<InstalledPack
             status: Some(status),
             ..
         } => (package, status),
-        _ => return Err(invalid(database, "lists a package without its name or status")),
+        _ => {
+            return Err(invalid(
+                database,
+                "lists a package without its name or status",
+            ));
+        }
     };
     // The status is the wanted action, a flag and the package's state.
     let words: Vec<&str> = status.split_whitespace().collect();
@@ -658,7 +738,11 @@ fn write_archive(root: &Path, archive: &Path, cancel: &CancellationToken) -> Res
 
 /// Compresses what `input` yields into a new file at `archive` with zstd,
 /// until `input` ends or `cancel` fires.
-fn compress(mut input: impl std::io::Read, archive: &Path, cancel: &CancellationToken) -> Result<(), Error> {
+fn compress(
+    mut input: impl std::io::Read,
+    archive: &Path,
+    cancel: &CancellationToken,
+) -> Result<(), Error> {
     let file = std::fs::File::create_new(archive).map_err(at(archive))?;
     // Level 0 is zstd's default level.
     let mut encoder = zstd::stream::write::Encoder::new(file, 0)?;
@@ -705,8 +789,8 @@ fn invalid(path: &Path, reason: impl ToString) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use demi_shared_artifacts::testing::{Answer, Server, zip};
     use demi_command_package_browser_protocol::release::ReleasePlatform;
+    use demi_shared_artifacts::testing::{Answer, Server, zip};
 
     use super::*;
 
@@ -716,7 +800,10 @@ mod tests {
     /// Chrome's executable in its archive.
     const CHROME: &str = "chrome-linux-arm64/chrome";
     /// uv's executables in its archive.
-    const UV_EXECUTABLES: [&str; 2] = ["uv-aarch64-unknown-linux-gnu/uv", "uv-aarch64-unknown-linux-gnu/uvx"];
+    const UV_EXECUTABLES: [&str; 2] = [
+        "uv-aarch64-unknown-linux-gnu/uv",
+        "uv-aarch64-unknown-linux-gnu/uvx",
+    ];
 
     /// A dpkg database as a build leaves it: two installed packages, and one
     /// removed with its configuration kept, which is not installed.
@@ -750,7 +837,9 @@ Version: 0.19.0-3
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("measured");
         std::fs::write(&path, bytes).unwrap();
-        let digest = demi_shared_artifacts::digest(&path, u64::MAX, &CancellationToken::new()).await.unwrap();
+        let digest = demi_shared_artifacts::digest(&path, u64::MAX, &CancellationToken::new())
+            .await
+            .unwrap();
         PackageArtifact {
             sha256: digest.sha256,
             size: digest.size,
@@ -773,7 +862,13 @@ Version: 0.19.0-3
 
     /// A command package release at `directory` whose descriptor records
     /// `recorded` as its executable `name`, and whose file holds `bytes`.
-    async fn command_package(directory: &Path, id: &str, name: &str, recorded: &[u8], bytes: &[u8]) -> PackageDescriptor {
+    async fn command_package(
+        directory: &Path,
+        id: &str,
+        name: &str,
+        recorded: &[u8],
+        bytes: &[u8],
+    ) -> PackageDescriptor {
         let descriptor = PackageDescriptor {
             id: id.to_owned(),
             version: "0.1.3".to_owned(),
@@ -782,7 +877,10 @@ Version: 0.19.0-3
             targets: BTreeMap::from([(TARGET.to_owned(), measured(recorded).await)]),
         };
         write(&directory.join(TARGET).join(name), bytes);
-        write(&directory.join(DESCRIPTOR), &crate::record(&descriptor).unwrap());
+        write(
+            &directory.join(DESCRIPTOR),
+            &crate::record(&descriptor).unwrap(),
+        );
         descriptor
     }
 
@@ -805,7 +903,10 @@ Version: 0.19.0-3
             let path = directory.path();
             let root = path.join("root");
             write(&root.join("usr/bin/tini"), b"tini");
-            write(&root.join("usr/lib/os-release"), b"NAME=\"Ubuntu\"\nVERSION_ID=\"26.04\"\nID=ubuntu\n");
+            write(
+                &root.join("usr/lib/os-release"),
+                b"NAME=\"Ubuntu\"\nVERSION_ID=\"26.04\"\nID=ubuntu\n",
+            );
             write(&root.join("var/lib/dpkg/status"), database.as_bytes());
             std::fs::create_dir_all(root.join("usr/local/bin")).unwrap();
             let runners = path.join("runners");
@@ -816,16 +917,39 @@ Version: 0.19.0-3
                 targets: BTreeMap::from([(TARGET.to_owned(), measured(b"runner").await)]),
             };
             let record = crate::record(&runner).unwrap();
-            write(&runners.join(&runner.release).join(TARGET).join("demi-runner"), b"runner");
+            write(
+                &runners
+                    .join(&runner.release)
+                    .join(TARGET)
+                    .join("demi-runner"),
+                b"runner",
+            );
             write(&runners.join(&runner.release).join(MANIFEST), &record);
             write(&runners.join(MANIFEST), &record);
             let browser = path.join("demi-browser");
             let claude = path.join("demi-claude-code");
             let releases = vec![
-                command_package(&browser, demi_command_package_browser_protocol::PACKAGE, "demi-browser", b"browser", browser_program).await,
-                command_package(&claude, demi_command_package_claude_code_protocol::PACKAGE, "demi-claude-code", b"claude", b"claude").await,
+                command_package(
+                    &browser,
+                    demi_command_package_browser_protocol::PACKAGE,
+                    "demi-browser",
+                    b"browser",
+                    browser_program,
+                )
+                .await,
+                command_package(
+                    &claude,
+                    demi_command_package_claude_code_protocol::PACKAGE,
+                    "demi-claude-code",
+                    b"claude",
+                    b"claude",
+                )
+                .await,
             ];
-            let chrome = zip(&[(CHROME, b"chrome"), ("chrome-linux-arm64/LICENSE", b"license")]);
+            let chrome = zip(&[
+                (CHROME, b"chrome"),
+                ("chrome-linux-arm64/LICENSE", b"license"),
+            ]);
             let uv = gzip_tar(&[(UV_EXECUTABLES[0], b"uv"), (UV_EXECUTABLES[1], b"uvx")]);
             let chrome_artifact = measured(&chrome).await;
             let uv_artifact = measured(&uv).await;
@@ -877,13 +1001,17 @@ Version: 0.19.0-3
     /// Each entry of the root archive at `archive` by its path without the
     /// leading `./`: its type, its link's target and its bytes.
     fn entries(archive: &Path) -> BTreeMap<String, (tar::EntryType, Option<PathBuf>, Vec<u8>)> {
-        let decoder = zstd::stream::read::Decoder::new(std::fs::File::open(archive).unwrap()).unwrap();
+        let decoder =
+            zstd::stream::read::Decoder::new(std::fs::File::open(archive).unwrap()).unwrap();
         let mut archive = tar::Archive::new(decoder);
         let mut entries = BTreeMap::new();
         for entry in archive.entries().unwrap() {
             let mut entry = entry.unwrap();
             let path = entry.path().unwrap().to_string_lossy().into_owned();
-            let path = path.trim_start_matches("./").trim_end_matches('/').to_owned();
+            let path = path
+                .trim_start_matches("./")
+                .trim_end_matches('/')
+                .to_owned();
             let kind = entry.header().entry_type();
             let link = entry.link_name().unwrap().map(|target| target.into_owned());
             let mut bytes = Vec::new();
@@ -900,9 +1028,15 @@ Version: 0.19.0-3
         let fixture = Fixture::new(DATABASE, b"browser").await;
         let client = demi_shared_artifacts::client_allowing_http().unwrap();
         let cancel = CancellationToken::new();
-        let base = package(&fixture.options, ARCHITECTURE, &fixture.pins, &client, &cancel)
-            .await
-            .unwrap();
+        let base = package(
+            &fixture.options,
+            ARCHITECTURE,
+            &fixture.pins,
+            &client,
+            &cancel,
+        )
+        .await
+        .unwrap();
         let output = &fixture.options.output;
         let mut published: Vec<String> = std::fs::read_dir(output)
             .unwrap()
@@ -920,24 +1054,45 @@ Version: 0.19.0-3
             .iter()
             .map(|package| (package.name.as_str(), package.version.as_str()))
             .collect();
-        assert_eq!(packages, [("base-files", "14ubuntu1"), ("tini", "0.19.0-3")]);
+        assert_eq!(
+            packages,
+            [("base-files", "14ubuntu1"), ("tini", "0.19.0-3")]
+        );
         assert_eq!(manifest.runner, fixture.runner);
         assert_eq!(manifest.releases, fixture.releases);
         let chrome = &fixture.pins.chrome.platforms[0];
         let uv = &fixture.pins.uv.arm64;
-        let tools = [("uv", "0.12.13", uv.sha256.as_str()), ("chrome", "153.0.8010.36", chrome.sha256.as_str())];
+        let tools = [
+            ("uv", "0.12.13", uv.sha256.as_str()),
+            ("chrome", "153.0.8010.36", chrome.sha256.as_str()),
+        ];
         let recorded: Vec<(&str, &str, &str)> = manifest
             .tools
             .iter()
-            .map(|tool| (tool.name.as_str(), tool.version.as_str(), tool.sha256.as_str()))
+            .map(|tool| {
+                (
+                    tool.name.as_str(),
+                    tool.version.as_str(),
+                    tool.sha256.as_str(),
+                )
+            })
             .collect();
         assert_eq!(recorded, tools);
         let browser = measured(b"browser").await;
         let claude = measured(b"claude").await;
         let executables = BTreeMap::from([
-            (format!("{ARTIFACTS_PATH}/{}/demi-claude-code", claude.sha256), claude.clone()),
-            (format!("{ARTIFACTS_PATH}/{}/demi-browser", browser.sha256), browser.clone()),
-            (format!("{IMAGE_BROWSERS}/{}/{CHROME}", chrome.sha256), measured(b"chrome").await),
+            (
+                format!("{ARTIFACTS_PATH}/{}/demi-claude-code", claude.sha256),
+                claude.clone(),
+            ),
+            (
+                format!("{ARTIFACTS_PATH}/{}/demi-browser", browser.sha256),
+                browser.clone(),
+            ),
+            (
+                format!("{IMAGE_BROWSERS}/{}/{CHROME}", chrome.sha256),
+                measured(b"chrome").await,
+            ),
             (RUNNER_PATH.to_owned(), measured(b"runner").await),
             (INIT_PATH.to_owned(), measured(b"tini").await),
             (format!("{TOOLS_PATH}/uv"), measured(b"uv").await),
@@ -946,7 +1101,10 @@ Version: 0.19.0-3
         assert_eq!(manifest.executables, executables);
         let archive = output.join(RootfsFile::TarZst.name());
         let rootfs = measured(&std::fs::read(&archive).unwrap()).await;
-        assert_eq!((manifest.rootfs.sha256.as_str(), manifest.rootfs.size), (rootfs.sha256.as_str(), rootfs.size));
+        assert_eq!(
+            (manifest.rootfs.sha256.as_str(), manifest.rootfs.size),
+            (rootfs.sha256.as_str(), rootfs.size)
+        );
         // The archive holds every executable with the bytes the manifest
         // names, the `demi` alias, Chrome's receipt without its install lock,
         // and only the kinds of entry the manager's import accepts.
@@ -957,37 +1115,67 @@ Version: 0.19.0-3
             assert_eq!(measured(bytes).await, *artifact, "{path}");
         }
         let (kind, link, _) = &entries["usr/bin/demi"];
-        assert_eq!((*kind, link.as_deref()), (tar::EntryType::Symlink, Some(Path::new("demi-runner"))));
+        assert_eq!(
+            (*kind, link.as_deref()),
+            (tar::EntryType::Symlink, Some(Path::new("demi-runner")))
+        );
         let browsers = IMAGE_BROWSERS.trim_start_matches('/');
         assert!(entries.contains_key(&format!("{browsers}/{}/receipt.json", chrome.sha256)));
         let paths: Vec<&String> = entries.keys().collect();
-        assert!(!paths.iter().any(|path| path.ends_with(".lock")), "{paths:?}");
+        assert!(
+            !paths.iter().any(|path| path.ends_with(".lock")),
+            "{paths:?}"
+        );
         let accepted = [
             tar::EntryType::Regular,
             tar::EntryType::Directory,
             tar::EntryType::Symlink,
             tar::EntryType::Link,
         ];
-        assert!(entries.values().all(|(kind, ..)| accepted.contains(kind)), "{paths:?}");
+        assert!(
+            entries.values().all(|(kind, ..)| accepted.contains(kind)),
+            "{paths:?}"
+        );
     }
 
     #[tokio::test]
-    async fn an_artifact_unlike_its_release_or_an_unfinished_package_fails_the_image_and_publishes_nothing() {
+    async fn an_artifact_unlike_its_release_or_an_unfinished_package_fails_the_image_and_publishes_nothing()
+     {
         let client = demi_shared_artifacts::client_allowing_http().unwrap();
         let cancel = CancellationToken::new();
         // demi-browser's file is not the executable its descriptor records.
         let corrupt = Fixture::new(DATABASE, b"BROWSER").await;
-        let refused = package(&corrupt.options, ARCHITECTURE, &corrupt.pins, &client, &cancel).await;
+        let refused = package(
+            &corrupt.options,
+            ARCHITECTURE,
+            &corrupt.pins,
+            &client,
+            &cancel,
+        )
+        .await;
         assert!(
             matches!(&refused, Err(Error::File { path, source: demi_shared_artifacts::Error::Digest }) if path.ends_with("demi-browser")),
             "{refused:?}"
         );
         assert!(!corrupt.options.output.exists());
         // dpkg lists a package whose installation did not finish.
-        let database = DATABASE.replace("Status: install ok installed\nArchitecture", "Status: install ok half-configured\nArchitecture");
+        let database = DATABASE.replace(
+            "Status: install ok installed\nArchitecture",
+            "Status: install ok half-configured\nArchitecture",
+        );
         let unfinished = Fixture::new(&database, b"browser").await;
-        let refused = package(&unfinished.options, ARCHITECTURE, &unfinished.pins, &client, &cancel).await;
-        assert!(matches!(&refused, Err(Error::Unfinished { package, .. }) if package == "tini"), "{refused:?}");
+        let refused = package(
+            &unfinished.options,
+            ARCHITECTURE,
+            &unfinished.pins,
+            &client,
+            &cancel,
+        )
+        .await;
+        assert!(
+            matches!(&refused, Err(Error::Unfinished { package, .. }) if package == "tini"),
+            "{refused:?}"
+        );
         assert!(!unfinished.options.output.exists());
     }
 }

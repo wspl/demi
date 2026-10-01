@@ -3,14 +3,14 @@
 
 use std::sync::Arc;
 
-use demi_shared_types::{AuthState, QuotaScope, QuotaSeverity, RuntimeState, SnapshotSource};
+use demi_provider_claude_code::{ClaudeCodeConfig, ClaudeCodeProvider};
 use demi_provider_common::credentials::{
     AccountsCapability, AddAccount, CredentialPool, LoginError, MemoryCredentialPool,
 };
 use demi_provider_common::quota::{MemorySnapshots, QuotaError};
 use demi_provider_common::testing::{MockResponse, MockVendor};
 use demi_provider_common::{CatalogError, Provider, RuntimeEnv, RuntimeError, Secret};
-use demi_provider_claude_code::{ClaudeCodeConfig, ClaudeCodeProvider};
+use demi_shared_types::{AuthState, QuotaScope, QuotaSeverity, RuntimeState, SnapshotSource};
 use serde_json::json;
 
 use crate::cli::*;

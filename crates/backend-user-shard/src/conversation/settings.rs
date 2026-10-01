@@ -13,9 +13,9 @@ use demi_backend_database::conversation_index::{RecordChange, SettingsChange};
 use demi_shared_types::{ModelSelection, ProviderModel};
 use demi_web_api_protocol::ids::{ConversationId, ProviderId};
 
+use crate::shard::Shard;
 use demi_backend_host_access::root_of;
 use demi_backend_host_access::transition::ChangeRefusal;
-use crate::shard::Shard;
 
 impl Shard {
     /// Applies `change` to the model settings of the user's conversation
@@ -44,7 +44,10 @@ impl Shard {
             .prepare_switch(&root, selection.clone())
             .await
             .map_err(runtime_refused)?;
-        let committed = self.host_shard().commit(id, RecordChange::Model(selection)).await;
+        let committed = self
+            .host_shard()
+            .commit(id, RecordChange::Model(selection))
+            .await;
         if let Some(switch) = switch {
             if committed.is_ok() {
                 self.agent().switch_model(&root, switch).await;

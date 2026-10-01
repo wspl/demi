@@ -6,8 +6,8 @@
 
 use std::sync::Arc;
 
-use demi_shared_types::{ModelSelection, ProviderModel, ProviderModelList, ServiceTier, Timestamp};
 use demi_provider_common::Provider;
+use demi_shared_types::{ModelSelection, ProviderModel, ProviderModelList, ServiceTier, Timestamp};
 use demi_web_api_protocol::providers::{CatalogModel, CatalogProvider, ConfiguredModel};
 use futures_util::future::join_all;
 use sha2::{Digest, Sha256};
@@ -33,7 +33,10 @@ pub fn configured_model(model: &ConfiguredModel) -> ProviderModel {
         context_window: Some(model.context_window),
         output_limit: model.output_limit,
         supports_tools: Some(true),
-        supports_attachments: model.accepted_extensions.as_ref().map(|accepted| !accepted.is_empty()),
+        supports_attachments: model
+            .accepted_extensions
+            .as_ref()
+            .map(|accepted| !accepted.is_empty()),
         supports_video: None,
         accepted_extensions: model.accepted_extensions.clone(),
         supports_reasoning: Some(!efforts.is_empty()),
@@ -70,10 +73,18 @@ pub fn configured_selection(
     let Some(models) = &config.models else {
         return Ok(selection);
     };
-    let Some(model) = models.0.iter().find(|model| model.id.as_str() == selection.model.id) else {
+    let Some(model) = models
+        .0
+        .iter()
+        .find(|model| model.id.as_str() == selection.model.id)
+    else {
         return Err(NotConfigured(selection.model.id));
     };
-    Ok(configured_model(model).selection(entry.id.as_str(), selection.thinking, selection.service_tier_id))
+    Ok(configured_model(model).selection(
+        entry.id.as_str(),
+        selection.thinking,
+        selection.service_tier_id,
+    ))
 }
 
 /// A list never fetched: a configured list, or an empty catalog.
@@ -115,7 +126,12 @@ impl ProviderAssembly {
             (None, Ok(provider)) => {
                 let provider = provider.clone();
                 Box::new(move || {
-                    Box::pin(async move { provider.list_models().await.map_err(|error| error.to_string()) })
+                    Box::pin(async move {
+                        provider
+                            .list_models()
+                            .await
+                            .map_err(|error| error.to_string())
+                    })
                 })
             }
             (None, Err(error)) => return unfetched(Vec::new(), vec![error.to_string()]),
@@ -132,8 +148,17 @@ impl ProviderAssembly {
 
     /// The catalog of every entry in `entries`, each with its provider's
     /// health: one entry's failure leaves the others intact.
-    pub async fn model_catalog(&self, entries: &[ProviderEntry], refresh: bool) -> Vec<CatalogProvider> {
-        join_all(entries.iter().map(|entry| self.catalog_provider(entry, refresh))).await
+    pub async fn model_catalog(
+        &self,
+        entries: &[ProviderEntry],
+        refresh: bool,
+    ) -> Vec<CatalogProvider> {
+        join_all(
+            entries
+                .iter()
+                .map(|entry| self.catalog_provider(entry, refresh)),
+        )
+        .await
     }
 
     async fn catalog_provider(&self, entry: &ProviderEntry, refresh: bool) -> CatalogProvider {
@@ -182,14 +207,15 @@ fn catalog_key(entry: &ProviderEntry) -> String {
         "config": config,
         "account": entry.active().map(|account| account.as_str()),
     });
-    let canonical = serde_json_canonicalizer::to_string(&identity).expect("a JSON value has a canonical form");
+    let canonical =
+        serde_json_canonicalizer::to_string(&identity).expect("a JSON value has a canonical form");
     hex::encode(Sha256::digest(canonical.as_bytes()))
 }
 
 #[cfg(test)]
 mod tests {
-    use demi_shared_types::{Model, ThinkingConfig};
     use demi_provider_common::Secret;
+    use demi_shared_types::{Model, ThinkingConfig};
     use demi_web_api_protocol::ids::{ProviderId, UserId};
     use demi_web_api_protocol::providers::ConfiguredModels;
 
@@ -197,7 +223,8 @@ mod tests {
     use crate::vault::entries::ApiKeyConfig;
 
     fn entry(models: Option<serde_json::Value>) -> ProviderEntry {
-        let models = models.map(|models| serde_json::from_value::<ConfiguredModels>(models).unwrap());
+        let models =
+            models.map(|models| serde_json::from_value::<ConfiguredModels>(models).unwrap());
         ProviderEntry {
             id: ProviderId::try_from("entry-1").unwrap(),
             owner: UserId::try_from("owner").unwrap(),
@@ -245,7 +272,9 @@ mod tests {
 
     #[test]
     fn every_request_takes_the_configured_facts_and_keeps_the_users_choices() {
-        let applied = configured_selection(&entry(Some(serde_json::json!([model(4_000)]))), chosen()).unwrap();
+        let applied =
+            configured_selection(&entry(Some(serde_json::json!([model(4_000)]))), chosen())
+                .unwrap();
         assert_eq!(
             (
                 applied.model.name.as_str(),
@@ -256,14 +285,19 @@ mod tests {
         );
         assert_eq!(
             applied.model.accepted_extensions,
-            Some(vec![demi_shared_types::FileExtension::Png, demi_shared_types::FileExtension::Pdf])
+            Some(vec![
+                demi_shared_types::FileExtension::Png,
+                demi_shared_types::FileExtension::Pdf
+            ])
         );
         assert_eq!(
             (applied.thinking, applied.service_tier_id),
             (chosen().thinking, chosen().service_tier_id)
         );
         // An edit of the list reaches the next request.
-        let edited = configured_selection(&entry(Some(serde_json::json!([model(8_000)]))), chosen()).unwrap();
+        let edited =
+            configured_selection(&entry(Some(serde_json::json!([model(8_000)]))), chosen())
+                .unwrap();
         assert_eq!(edited.model.output_limit, Some(8_000));
         // A model the list does not name fails the request; an entry without
         // a list keeps the selection as it is.

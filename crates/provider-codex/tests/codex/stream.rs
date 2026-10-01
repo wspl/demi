@@ -3,12 +3,12 @@
 
 use std::time::Duration;
 
-use demi_shared_types::{FailureSource, ProviderErrorDiagnostics, Timestamp, TokenUsage};
+use demi_provider_codex::{CodexConfig, CodexProvider, TransportMode, read_codex_failure};
 use demi_provider_common::{
     ErrorCode, HttpFailureRecord, ProviderEvent, ProviderFailure, ToolCall,
     testing::{MockResponse, MockVendor, inference_request, next_event},
 };
-use demi_provider_codex::{CodexConfig, CodexProvider, TransportMode, read_codex_failure};
+use demi_shared_types::{FailureSource, ProviderErrorDiagnostics, Timestamp, TokenUsage};
 use serde_json::json;
 
 use crate::{NOW, RESPONSES, fresh_token, pool_with, provider, run, runtime_of, secret, stream};
@@ -163,7 +163,9 @@ async fn response_headers_that_do_not_arrive_in_time_fail_the_run_as_overloaded(
     config.auth_url = vendor.url("").parse().unwrap();
     config.transport = TransportMode::Sse;
     config.header_timeout = Duration::from_millis(50);
-    let clock = std::sync::Arc::new(demi_provider_common::testing::FixedClock(NOW.parse().unwrap()));
+    let clock = std::sync::Arc::new(demi_provider_common::testing::FixedClock(
+        NOW.parse().unwrap(),
+    ));
     let snapshots = std::sync::Arc::new(demi_provider_common::quota::MemorySnapshots::new());
     let provider = CodexProvider::new(
         config,

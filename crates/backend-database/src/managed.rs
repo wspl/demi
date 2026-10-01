@@ -3,16 +3,16 @@
 //! boot mints, the announcement of a reset to the user's conversations, and
 //! which of the user's conversations use the Cloud.
 
-use demi_shared_types::ModelSelection;
 use demi_machine_manager_protocol::BaseVersion;
+use demi_shared_types::ModelSelection;
 use demi_web_api_protocol::cloud::ResetPhase;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, OperationId, ProviderId, UserId};
 use rusqlite::{OptionalExtension, Row, params};
 
 use super::StorageError;
+use super::accounts::TokenHash;
 use super::columns::{decode, json};
 use super::control::ControlService;
-use super::accounts::TokenHash;
 
 /// A reset of a Cloud, as its intent is kept: the base it selected when it
 /// was admitted, the phase it reached, and why it failed. A retry resumes
@@ -61,7 +61,10 @@ impl ControlService {
     }
 
     /// The device's reset written last: the one its status shows.
-    pub async fn latest_managed_operation(&self, device: DeviceId) -> Result<Option<ManagedOperation>, StorageError> {
+    pub async fn latest_managed_operation(
+        &self,
+        device: DeviceId,
+    ) -> Result<Option<ManagedOperation>, StorageError> {
         self.call(move |connection, _| {
             connection
                 .query_row(
@@ -110,7 +113,9 @@ impl ControlService {
     /// Every reset left between its admission and its end, with its
     /// device: what a backend that stopped in the middle of one finishes
     /// when it starts.
-    pub async fn unfinished_managed_operations(&self) -> Result<Vec<(DeviceId, ManagedOperation)>, StorageError> {
+    pub async fn unfinished_managed_operations(
+        &self,
+    ) -> Result<Vec<(DeviceId, ManagedOperation)>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection.prepare(&format!(
                 "SELECT device_id, {OPERATION_COLUMNS} FROM {TABLE}
@@ -119,7 +124,11 @@ impl ControlService {
             let mut rows = statement.query([])?;
             let mut unfinished = Vec::new();
             while let Some(row) = rows.next()? {
-                let device = decode(TABLE, "device_id", DeviceId::try_from(row.get::<_, String>("device_id")?))?;
+                let device = decode(
+                    TABLE,
+                    "device_id",
+                    DeviceId::try_from(row.get::<_, String>("device_id")?),
+                )?;
                 unfinished.push((device, operation_row(row)?));
             }
             Ok(unfinished)
@@ -129,7 +138,11 @@ impl ControlService {
 
     /// Replaces the token of the user's Cloud device with the one a boot
     /// minted: the token of an earlier boot opens no connection any more.
-    pub async fn rotate_device_token(&self, device: DeviceId, token: TokenHash) -> Result<(), StorageError> {
+    pub async fn rotate_device_token(
+        &self,
+        device: DeviceId,
+        token: TokenHash,
+    ) -> Result<(), StorageError> {
         self.call(move |connection, _| {
             let changed = connection.execute(
                 "UPDATE devices SET token_hash = ?1 WHERE id = ?2 AND kind = 'managed'",
@@ -150,7 +163,11 @@ impl ControlService {
     /// Tells every conversation of the user that its Cloud was reset by
     /// `operation`: each one's execution context advances once per reset,
     /// so every node reads the reset in its next context block.
-    pub async fn announce_cloud_reset(&self, user: UserId, operation: OperationId) -> Result<(), StorageError> {
+    pub async fn announce_cloud_reset(
+        &self,
+        user: UserId,
+        operation: OperationId,
+    ) -> Result<(), StorageError> {
         self.call(move |connection, _| {
             connection.execute(
                 "UPDATE conversations SET context_version = context_version + 1, cloud_reset_id = ?2
@@ -163,16 +180,27 @@ impl ControlService {
     }
 
     /// The Cloud reset the conversation was last told of.
-    pub async fn announced_cloud_reset(&self, id: ConversationId) -> Result<Option<OperationId>, StorageError> {
+    pub async fn announced_cloud_reset(
+        &self,
+        id: ConversationId,
+    ) -> Result<Option<OperationId>, StorageError> {
         self.call(move |connection, _| {
             let reset: Option<Option<String>> = connection
-                .query_row("SELECT cloud_reset_id FROM conversations WHERE id = ?1", [id.as_str()], |row| {
-                    row.get(0)
-                })
+                .query_row(
+                    "SELECT cloud_reset_id FROM conversations WHERE id = ?1",
+                    [id.as_str()],
+                    |row| row.get(0),
+                )
                 .optional()?;
             reset
                 .flatten()
-                .map(|reset| decode("conversations", "cloud_reset_id", OperationId::try_from(reset)))
+                .map(|reset| {
+                    decode(
+                        "conversations",
+                        "cloud_reset_id",
+                        OperationId::try_from(reset),
+                    )
+                })
                 .transpose()
         })
         .await
@@ -181,7 +209,11 @@ impl ControlService {
     /// The user's conversations that are not archived, as the Cloud's
     /// lifecycle weighs them; `cloud` is the user's Cloud device, once its
     /// first use made it.
-    pub async fn cloud_uses(&self, user: UserId, cloud: Option<DeviceId>) -> Result<Vec<CloudUseRecord>, StorageError> {
+    pub async fn cloud_uses(
+        &self,
+        user: UserId,
+        cloud: Option<DeviceId>,
+    ) -> Result<Vec<CloudUseRecord>, StorageError> {
         const TABLE: &str = "conversations";
         self.call(move |connection, _| {
             let cloud = cloud.as_ref().map(DeviceId::as_str);
@@ -224,9 +256,21 @@ impl ControlService {
 /// An operation's row, read from its columns in `OPERATION_COLUMNS`.
 fn operation_row(row: &Row<'_>) -> Result<ManagedOperation, StorageError> {
     Ok(ManagedOperation {
-        id: decode(TABLE, "operation_id", OperationId::try_from(row.get::<_, String>("operation_id")?))?,
-        base_version: decode(TABLE, "base_version", BaseVersion::parse(row.get::<_, String>("base_version")?))?,
-        phase: decode(TABLE, "phase", row.get::<_, String>("phase")?.parse::<ResetPhase>())?,
+        id: decode(
+            TABLE,
+            "operation_id",
+            OperationId::try_from(row.get::<_, String>("operation_id")?),
+        )?,
+        base_version: decode(
+            TABLE,
+            "base_version",
+            BaseVersion::parse(row.get::<_, String>("base_version")?),
+        )?,
+        phase: decode(
+            TABLE,
+            "phase",
+            row.get::<_, String>("phase")?.parse::<ResetPhase>(),
+        )?,
         error: row.get("error")?,
     })
 }

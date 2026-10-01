@@ -324,11 +324,9 @@ impl BrowserTab {
             Ok(url) => Ok(url),
             Err(error) => {
                 // A failed diagnostic must preserve the navigation's original cause.
-                if let Ok(Ok(Some(url))) = tokio::time::timeout(
-                    crate::driver::operation::CONTROL_TIMEOUT,
-                    self.page.url(),
-                )
-                .await
+                if let Ok(Ok(Some(url))) =
+                    tokio::time::timeout(crate::driver::operation::CONTROL_TIMEOUT, self.page.url())
+                        .await
                 {
                     observation.url = url;
                 }

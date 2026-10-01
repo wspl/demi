@@ -67,13 +67,19 @@ fn a_stored_catalog_and_quota_snapshot_refuse_what_their_contract_does_not_hold(
     unknown["models"][0]["providerId"] = json!("anthropic");
     refused.push(unknown);
     let mut absent = catalog();
-    absent["models"][0].as_object_mut().unwrap().remove("description");
+    absent["models"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("description");
     refused.push(absent);
     let mut zero = catalog();
     zero["models"][0]["outputLimit"] = json!(0);
     refused.push(zero);
     for value in refused {
-        assert!(decode::<ProviderModelList>(&value.to_string()).is_err(), "{value}");
+        assert!(
+            decode::<ProviderModelList>(&value.to_string()).is_err(),
+            "{value}"
+        );
     }
 
     let mut over = snapshot();
@@ -83,6 +89,9 @@ fn a_stored_catalog_and_quota_snapshot_refuse_what_their_contract_does_not_hold(
     let mut raw = snapshot();
     raw["raw"] = json!({ "plan_type": "pro" });
     for value in [over, cached, raw] {
-        assert!(decode::<QuotaSnapshot>(&value.to_string()).is_err(), "{value}");
+        assert!(
+            decode::<QuotaSnapshot>(&value.to_string()).is_err(),
+            "{value}"
+        );
     }
 }

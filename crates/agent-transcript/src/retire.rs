@@ -40,7 +40,9 @@ pub struct Retirement {
 pub fn retire(blocks: &[Block], retirement: Retirement) -> Vec<(usize, Block)> {
     let start = replay_start(blocks);
     let summarized = match blocks.get(start) {
-        Some(Block::CompactionBoundary(boundary)) => older_than(boundary.created_at, CACHE_LIFETIME, retirement.now),
+        Some(Block::CompactionBoundary(boundary)) => {
+            older_than(boundary.created_at, CACHE_LIFETIME, retirement.now)
+        }
         _ => false,
     };
     let mut changed = Vec::new();

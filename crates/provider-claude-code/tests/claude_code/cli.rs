@@ -9,25 +9,25 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_shared_types::{Clock, StreamKind};
-use demi_provider_common::credentials::{AddAccount, MemoryCredentialPool};
-use demi_provider_common::models_dev::ModelsDevClient;
-use demi_provider_common::quota::MemorySnapshots;
-pub use demi_provider_common::testing::{all_events, next_event};
-use demi_provider_common::testing::{FixedClock, guarded, inference_request};
-use demi_provider_common::{
-    InferenceItem, InferenceRequest, Provider, ProviderRuntime, ResultPart, Secret, ToolDefinition,
-    UserPart,
+use demi_host_interface::{
+    HostError, Process, ProcessControl, ProcessEnd, ProcessOutput, Signal, SpawnRequest,
 };
 use demi_provider_claude_code::{
     ClaudeCodeConfig, ClaudeCodeProvider, CliSite, Placement, StartError,
 };
-use demi_host_interface::{
-    HostError, Process, ProcessControl, ProcessEnd, ProcessOutput, Signal, SpawnRequest,
+use demi_provider_common::credentials::{AddAccount, MemoryCredentialPool};
+use demi_provider_common::models_dev::ModelsDevClient;
+use demi_provider_common::quota::MemorySnapshots;
+use demi_provider_common::testing::{FixedClock, guarded, inference_request};
+pub use demi_provider_common::testing::{all_events, next_event};
+use demi_provider_common::{
+    InferenceItem, InferenceRequest, Provider, ProviderRuntime, ResultPart, Secret, ToolDefinition,
+    UserPart,
 };
+use demi_shared_types::{Clock, StreamKind};
 use futures_channel::mpsc;
-use futures_util::future::LocalBoxFuture;
 use futures_util::StreamExt as _;
+use futures_util::future::LocalBoxFuture;
 use serde_json::{Value, json};
 use tokio::sync::watch;
 

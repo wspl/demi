@@ -88,15 +88,19 @@ struct Tag<'a> {
 
 /// Decodes one vendor payload: `Ok(None)` for an unregistered tag.
 pub fn decode_tagged<T: TaggedWire>(text: &str) -> Result<Option<T>, WireError> {
-    let Tag { tag } = serde_path_to_error::deserialize(&mut serde_json::Deserializer::from_str(text))
-        .map_err(WireError)?;
+    let Tag { tag } =
+        serde_path_to_error::deserialize(&mut serde_json::Deserializer::from_str(text))
+            .map_err(WireError)?;
     let mut json = serde_json::Deserializer::from_str(text);
     let mut track = serde_path_to_error::Track::new();
     let payload = serde_path_to_error::Deserializer::new(&mut json, &mut track);
     match T::decode_payload(&tag, payload) {
         None => Ok(None),
         Some(Ok(decoded)) => Ok(Some(decoded)),
-        Some(Err(error)) => Err(WireError(serde_path_to_error::Error::new(track.path(), error))),
+        Some(Err(error)) => Err(WireError(serde_path_to_error::Error::new(
+            track.path(),
+            error,
+        ))),
     }
 }
 
