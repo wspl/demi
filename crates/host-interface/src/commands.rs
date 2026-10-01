@@ -21,6 +21,28 @@ pub struct Declared {
     pub(crate) error: Option<String>,
 }
 
+impl Declared {
+    /// `tree`, every `rpc` leaf of it handled by `handler`, which tells the
+    /// leaves apart by the invocation's path: how declarations that arrive
+    /// as data, such as a plugin's, are served.
+    pub fn served(tree: Node<NativeOperation>, handler: Rc<dyn RpcHandler>) -> Self {
+        let mut handlers = Vec::new();
+        let mut path = Vec::new();
+        walk_leaves(&tree, &mut path, &mut |path, leaf| {
+            if leaf.kind == LeafKind::Rpc {
+                handlers.push((path.to_vec(), handler.clone()));
+            }
+            Ok(())
+        })
+        .expect("a visit that refuses nothing ends without an error");
+        Self {
+            tree,
+            handlers,
+            error: None,
+        }
+    }
+}
+
 /// A declaration the command set refuses; the text names the command and,
 /// when a field is at fault, the field.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

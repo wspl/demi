@@ -325,6 +325,18 @@ impl RpcPort {
     pub fn is_cancelled(&self) -> bool {
         self.cancel.is_cancelled()
     }
+
+    /// Sends `request` as it is: what a handler elsewhere, such as a plugin,
+    /// asks of the call through a port of its own.
+    pub async fn forward(&self, request: PortRequest) -> Result<PortResponse, PortError> {
+        self.transport.request(request).await
+    }
+
+    /// The call's cancellation, which a port that forwards to this one
+    /// shares.
+    pub fn cancellation(&self) -> CancellationToken {
+        self.cancel.clone()
+    }
 }
 
 fn written(response: PortResponse, asked: &'static str) -> Result<(), PortError> {

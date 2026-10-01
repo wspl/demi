@@ -584,7 +584,6 @@ pub mod store_contract {
                 wakeups: Vec::new(),
                 cwd: "/w".into(),
                 model: test_model(),
-                harness: "test".into(),
                 edits: Vec::new(),
             },
             command_state: Some(CommandStateSnapshot::initial()),

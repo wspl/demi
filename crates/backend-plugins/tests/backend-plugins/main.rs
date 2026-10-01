@@ -1,5 +1,6 @@
-//! The coding agent's scenarios: the harness in an agent server whose shells
-//! are real runner jobs, and whose model is a script.
+//! The plugin host's scenarios: the command set it composes from the `file`
+//! and `todo` plugins, in an agent server whose shells are real runner jobs
+//! and whose model is a script.
 //!
 //! A scenario that takes more than a second (`testing.md` § Cost) says above
 //! it which part of its contract takes the time. Measured alone on four
@@ -9,11 +10,9 @@
 //! starts the `demi.file` service, and the runner itself starts in a few
 //! hundred milliseconds.
 
-mod browser;
-mod command_line;
 mod file;
 mod frames;
 mod hosts;
 mod marathon;
+mod registry;
 mod support;
-mod todo;

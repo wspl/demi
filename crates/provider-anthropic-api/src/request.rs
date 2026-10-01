@@ -252,7 +252,7 @@ fn body(request: &InferenceRequest, policy: VendorPolicy) -> Body<'_> {
     }
 }
 
-/// Marks the end of what the nodes of one harness and profile share: the
+/// Marks the end of what the nodes of one product and profile share: the
 /// system prompt, or the last tool when the prompt is blank. Its entry serves
 /// a conversation's first request and each request after a summary.
 fn mark_shared_prefix(system: &mut [Content<'_>], tools: &mut [Tool<'_>]) {

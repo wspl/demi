@@ -40,6 +40,12 @@ impl GroupBuilder {
         self.children.push(group.into());
         self
     }
+
+    /// A child declared elsewhere, such as a plugin's tree.
+    pub fn child(mut self, child: Declared) -> Self {
+        self.children.push(child);
+        self
+    }
 }
 
 impl From<GroupBuilder> for Declared {

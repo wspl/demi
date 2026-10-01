@@ -28,7 +28,7 @@ use super::{
     input::{InputQueue, Wakeups},
     media::model_view,
     persist,
-    runtime::{SessionRuntime, ToolFailure, ToolInvocation, ToolOutcome},
+    runtime::{NewContext, SeenContext, SessionRuntime, ToolFailure, ToolInvocation, ToolOutcome},
 };
 
 /// The one text that exists for compaction: the user message a session copy
@@ -348,7 +348,6 @@ fn session_copy(s: &Rc<SessionShared>, window: Vec<Block>, media: HeldMedia) -> 
         CoreParts {
             id: core.id.clone(),
             cwd: core.cwd.clone(),
-            harness: core.harness.clone(),
             model: core.model.clone(),
             provider: core
                 .provider
@@ -394,10 +393,6 @@ struct CopyRuntime {
 }
 
 impl SessionRuntime for CopyRuntime {
-    fn harness_name(&self) -> &str {
-        self.session.harness_name()
-    }
-
     fn enter_action(&self) -> LocalBoxFuture<'_, GateLease> {
         Box::pin(self.admission.enter(Purpose::Demand))
     }
@@ -414,8 +409,12 @@ impl SessionRuntime for CopyRuntime {
         self.session.preamble()
     }
 
-    fn context<'a>(&'a self, _seen: &'a [&'a str]) -> LocalBoxFuture<'a, Option<String>> {
-        Box::pin(async { None })
+    fn context<'a>(
+        &'a self,
+        _seen: &'a [SeenContext<'a>],
+        _turn: &'a TurnId,
+    ) -> LocalBoxFuture<'a, Vec<NewContext>> {
+        Box::pin(async { Vec::new() })
     }
 
     fn tools(&self) -> Arc<[ToolDefinition]> {
