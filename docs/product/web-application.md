@@ -261,7 +261,7 @@ Each synced state follows the copy with its own rule:
 | Model settings | Each summary's `model` | A change names only the part its user changed ([Sidebar mutations and read state](web-api.md#sidebar-mutations-and-read-state)) |
 | Drafts | Each summary's `draftRevision` | A page that shows the conversation reads the draft when the revision is higher than its own ([Drafts](#drafts)) |
 | Preferences | `preferences` | A change shows at once, and the part it changed stays as the user set it until its write is answered |
-| The account, workspaces, devices, exposes, providers and the Cloud | Their parts | The page shows what the backend holds |
+| The account, workspaces, devices, providers, the Cloud and each plugin's state | Their parts | The page shows what the backend holds |
 
 **A page's own writes.** A write's answer carries the state as the write left
 it, and the page applies it to its copy at once, through the same module,

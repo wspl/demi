@@ -3,8 +3,14 @@
 An expose gives a service listening on a device a public URL for one hour.
 Anyone who has the URL reaches the service; the backend relays their requests
 through the device's runner connection, so the device needs no inbound
-network access. This document owns the expose record, its lifetime, the
-public relay, and the `demi host expose` commands. The runner's network stream
+network access.
+
+Two owners share it. The backend owns the mechanism: the expose record, its
+lifetime and the public relay (`backend-expose`), which know nothing of
+commands, numbers or pages. The `expose` [plugin](../architecture/plugins.md)
+(`plugin-expose`) owns the feature on top of it: the `demi expose` commands
+and their numbers, the one-hour policy, and the product surface, through its
+port's exposes operations. This document owns both. The runner's network stream
 belongs to [Runner](runner.md#network-streams); device access, the way the
 relay reaches a device without a conversation, belongs to
 [Sessions and targets](sessions-and-targets.md#every-way-to-a-host).
@@ -14,7 +20,7 @@ relay reaches a device without a conversation, belongs to
 An agent starts a development server on Cloud and runs:
 
 ```text
-$ demi host expose add 127.0.0.1:5173
+$ demi expose add 127.0.0.1:5173
 Exposed 127.0.0.1:5173 on cloud as https://k7x2maqw4p3s6tavaw2y4z6aab.expose.demi.example/
 Expires in 60 minutes (expose k7x2maqw4p3s6tavaw2y4z6aab).
 ```
@@ -50,11 +56,16 @@ An expose belongs to a user and a device, not to a conversation. It records:
 | Field | Meaning |
 | --- | --- |
 | `id` | 128 random bits as 26 lowercase base32 characters; a DNS label. It is the only credential: whoever knows it reaches the service. |
-| `number` | The expose's number among the user's exposes, `1`, `2`, … in order and never given twice. The commands take and print it, so the model never copies the credential ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)). |
 | `userId` | The owner. Only the owner lists, renews or removes it. |
 | `deviceId` | The paired device or the user's Cloud device the traffic goes to. |
 | `address` | The `host:port` the runner connects to, exactly as given. A bare port means `127.0.0.1:<port>`. Any host name or address the device can resolve and reach is accepted; the device's own network is the boundary, not Demi. |
-| `createdAt`, `expiresAt` | Creation time and the moment the expose is destroyed. |
+| `createdAt`, `expiresAt` | Creation time and the moment the expose is destroyed, which its creator sets and may move. |
+
+The record has no number. The `expose` plugin gives each expose of the user a
+number, `1`, `2`, … in order and never given twice, which it keeps in its
+values beside the expose's id. The commands take and print it, so the model
+never copies the credential
+([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)).
 
 The public hostname is `<id>.<expose domain>`. The expose domain is instance
 configuration ([deployment](#deployment)); when none is configured the
@@ -73,8 +84,9 @@ the device.
 
 ## Lifetime
 
-An expose lives **one hour** from creation. `renew` moves `expiresAt` to one
-hour from now; there is no cap on renewals. Expiry destroys the record;
+An expose lives **one hour** from creation: that is the `expose` plugin's
+policy, which creates every expose for an hour, and `renew` moves `expiresAt`
+to one hour from now; there is no cap on renewals. Expiry destroys the record;
 nothing revives it. Whoever needs the service reachable again creates a new
 expose and gets a new URL.
 
@@ -83,7 +95,7 @@ The record is destroyed by exactly these events:
 | Event | Result |
 | --- | --- |
 | `expiresAt` passes | Destroyed. A request that arrives after it is refused as unknown. |
-| `demi host expose remove <number>`, or the product's remove | Destroyed at once. |
+| `demi expose remove <number>`, or the product's remove | Destroyed at once. |
 | The Cloud device leaves the running state: idle stop, lifetime cap, reset, runtime loss, backend shutdown | Every expose on that device is destroyed with the machine. A checkpoint keeps the machine running, and its exposes with it. |
 | The paired device is revoked | Every expose on it is destroyed with its attachments. |
 
@@ -210,29 +222,29 @@ budget; there is no byte budget.
 
 ## Commands
 
-`demi host expose` is a subcommand group of the backend-contributed
-`demi host` group ([Sessions and targets](sessions-and-targets.md#attached-hosts)),
-declared through the [command contract](commands.md). Its leaves are `rpc`:
-the backend owns the records.
+`demi expose` is the `expose` plugin's group, declared through the
+[command contract](commands.md). Its leaves are `rpc`: the plugin handles
+them through its port, which creates, renews, removes and lists the records,
+and resolves `--host` among the conversation's Hosts.
 
 ```text
-$ demi host expose add 5173
+$ demi expose add 5173
 Exposed 127.0.0.1:5173 on laptop as https://k7x2….expose.demi.example/
 Expires in 60 minutes (expose 1).
 
-$ demi host expose add 127.0.0.1:8080 --host ci
+$ demi expose add 127.0.0.1:8080 --host ci
 Exposed 127.0.0.1:8080 on ci as https://m3n5….expose.demi.example/
 Expires in 60 minutes (expose 2).
 
-$ demi host expose list
+$ demi expose list
 Expose  Device  Address         Expires  URL
 1       laptop  127.0.0.1:5173  58 min   https://k7x2….expose.demi.example/
 2       ci      127.0.0.1:8080  60 min   https://m3n5….expose.demi.example/
 
-$ demi host expose renew 1
+$ demi expose renew 1
 Expose 1 expires in 60 minutes.
 
-$ demi host expose remove 1
+$ demi expose remove 1
 Removed expose 1; its URL no longer works.
 ```
 
@@ -243,9 +255,9 @@ Removed expose 1; its URL no longer works.
 | `renew <number>` | an expose's number | Sets the expiry to one hour from now, `--json` available. |
 | `remove <number>` | an expose's number | Destroys it. |
 
-A number that names none of the user's live exposes answers
-`expose_not_found` on every leaf. An `add` without a configured expose domain
-answers `expose_unavailable`. The URLs carry the whole label; the examples
+A number that names none of the user's live exposes fails every leaf with
+"no expose <number>". An `add` without a configured expose domain fails with
+"exposes are not available on this instance". The URLs carry the whole label; the examples
 abbreviate it.
 
 ## Product surface
@@ -264,14 +276,25 @@ at once. The button's icon carries a small green dot on its top-right corner,
 so a forgotten URL is visible without opening the menu. The devices settings
 do not list exposes.
 
-The page's [synchronization channel](../product/web-api.md#page-synchronization)
-carries the exposes and the domain, and the Web API adds create, renew and
-remove ([Web API](../product/web-api.md#exposes)).
-The agent prints the URL into the transcript, where it is a link; that link is
-where a URL is copied from.
+The surface is the plugin's page package, `@demicodes/plugin-expose`, a
+conversation header tool ([The page](../architecture/plugins.md#the-page)),
+which composes the menu from `web-ui` with gallery specimens. Its data is the
+plugin's state for the user's pages: whether the instance has an expose
+domain, and every live expose with its number, device, address, URL and
+expiry. The state follows the user's exposes, so every creation, renewal,
+removal and destruction, an expiry included, sends the new state to each of
+the user's pages. The menu's controls are two page methods:
 
-The behavior lives in `web-ui` with gallery specimens; `web` supplies the
-exposes, the host names and the request handlers.
+| Method | Parameters | Result |
+| --- | --- | --- |
+| `renew` | `expose`, its id | Nothing |
+| `remove` | `expose`, its id | Nothing; the expose's connections end |
+
+An expose the user does not have, or one that has expired, is refused. The
+menu opens a URL as a `browser` tab of the work panel with the expose glyph,
+through the slot's way to open a panel tab. The host names are the page's,
+which the product state carries. The agent prints the URL into the
+transcript, where it is a link; that link is where a URL is copied from.
 
 ## Deployment
 
@@ -366,7 +389,10 @@ model.
    leaves no socket behind.
 8. The concurrent-connection limit answers 503 for the 65th connection and
    admits again after one closes.
-9. Without `DEMI_EXPOSE_DOMAIN`, `add` answers `expose_unavailable` and the
-   product shows no expose controls.
+9. Without `DEMI_EXPOSE_DOMAIN`, `add` fails and says exposes are not
+   available, and the product shows no expose controls.
+10. The plugin's numbers count up and are never given twice, across a
+    destroyed expose and a backend restart; its state reaches every page of
+    the user at each change, an expiry included.
 
 Acceptance on a paired device and on Cloud, as every Host change requires.

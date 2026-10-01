@@ -15,7 +15,7 @@ not reach into the agent runtime: the browser is a [plugin](../architecture/plug
 It keeps its own state per conversation and ends it when the conversation is
 released, as [Conversation idle and Host resource release](../execution/resource-lifecycle.md)
 defines. Nothing in the agent, the backend, the runner, or their wire protocols
-holds browser logic: the backend's browser tab routes and its `browser` user
+holds browser logic: `plugin-browser`'s tab methods and its `browser` user
 stream only name the browser's own operations.
 
 ## Reading map
@@ -1963,7 +1963,9 @@ for the browser:
   them when the command package catalog provides the browser's operations
   ([Commands](../architecture/plugins.md#commands)).
 - the backend: builds the command context of every job and sends the generic
-  conversation release; declares the `browser` user stream; no browser module.
+  conversation release; no browser module, and no name of the browser.
+- `plugin-browser` also declares the `browser` user stream and the tab methods
+  of the [live view](live-view.md#the-tab-methods).
 - the runner's crates and `backend-remote-host`: the command context of every
   invocation, service residency, the release forward, cancellation, and
   transport; no webpage algorithms.

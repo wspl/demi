@@ -768,7 +768,7 @@ that replays it, and a short number is copied without a slip.
   hash.
 - **Credentials stay long.** An identifier that is also a credential stays
   unguessable, and the model names the thing by a short number: an expose's
-  host label is its URL's secret, and `demi host expose remove 2` names it.
+  host label is its URL's secret, and `demi expose remove 2` names it.
 - **Paths stay whole.** A path keeps the identifiers it is made of, since
   several backends and users can share one machine: an attachment's path on a
   Host names its conversation's full id

@@ -45,17 +45,15 @@ Partial conversation mutations use the explicit outcomes described below.
 | User streams | `WS /conversations/:id/streams/:name` opens a declared [user stream](#user-streams) |
 | Work panel | `GET/PUT /conversations/:id/panel` reads and saves the [work panel's state](#work-panel-state) |
 | Conversation draft | `GET/PUT /conversations/:id/draft` reads and saves the [draft](#conversation-drafts); `POST /conversations/:id/draft/replaced { action, revision }` restores or dismisses the version a save replaced |
-| Conversation browser | `GET/POST /conversations/:id/browser/tabs`, `DELETE /conversations/:id/browser/tabs/:tab`, `POST /conversations/:id/browser/tabs/:tab/navigate { url }`, `POST /conversations/:id/browser/tabs/:tab/history { action }`; see [Conversation browser tabs](#conversation-browser-tabs) |
 | Device log | `GET /devices/:id/log?since=<cursor>&limit=<n>&source=<source>` reads the [Host's log](../execution/runner.md#host-log) |
 | Sidebar | `POST /sidebar/reorder { kind, id, beforeId }` |
-| Plugins | `POST /plugins/:plugin/calls/:method` with the method's parameters calls a [plugin's page method](#plugin-calls) |
+| Plugins | `POST /plugins/:plugin/calls/:method` and `POST /conversations/:id/plugins/:plugin/calls/:method` with the method's parameters call a [plugin's page method](#plugin-calls), for the user or for one conversation |
 | Models | `GET /models?refresh=true\|false` returns the account-wide catalog |
 | Providers | `GET /providers/catalog`, `GET/POST /providers`, `PATCH/DELETE /providers/:id`, `GET /providers/:id/status`, `POST /providers/:id/test`, `POST /providers/:id/quota`; account routes below |
 | Usage | `GET /usage` for the caller; `GET /usage/instance` for admins in shared mode |
 | Devices | `GET /devices`, `POST /devices/claim { code }`, `DELETE /devices/:id`, `GET /devices/:id/fs?path=<absolute>`, `POST /devices/:id/fs { path }` |
 | Workspaces | `GET/POST /workspaces`, `PATCH /workspaces/:id { name }`, `DELETE /workspaces/:id` |
 | Cloud | `GET /cloud`, `POST /cloud/reset { operationId }` |
-| Exposes | `GET /exposes`, `POST /exposes { deviceId, address }`, `POST /exposes/:id/renew`, `DELETE /exposes/:id` |
 | Attachments | `POST /attachments` with raw bytes; `GET /blobs/:sha256?type=...` |
 | Attached hosts | `GET /conversations/:id/hosts`, `POST .../hosts { deviceId }`, `PATCH .../hosts/:deviceId { name }`, `DELETE .../hosts/:deviceId` |
 | Runner transport | `WS /runner`; device-authenticated `PUT/GET /pipes/:id` for source/sink streams |
@@ -73,7 +71,7 @@ Each route authenticates its caller in one of these ways
 | Every other path under `/api`, unknown paths included, except the runner transport | The session cookie, which the session gate checks |
 | The runner transport, `WS /runner` and `PUT/GET /pipes/:id` | A runner's device token; an unpaired runner's socket waits without one until a user claims its code |
 | The public installation routes and the [web app build](#serving-the-web-app-build) | None |
-| Every path on an expose hostname | None; the public relay answers it, never a route of this API ([Exposes](#exposes)) |
+| Every path on an expose hostname | None; the public relay answers it, never a route of this API ([Expose hostnames](#expose-hostnames)) |
 
 The first three rows are the web app's routes. Such a route answers 403
 `forbidden_origin` to a request that could act with the user's session and
@@ -270,8 +268,9 @@ Host handle while the Cloud was changing state
 
 `WS /api/conversations/:id/streams/:name` opens the declared
 [user stream](../execution/native-runtime.md#user-streams) `name` on the
-conversation's main Host; `browser` is the
-[live browser view](../browser/live-view.md). The upgrade requires the session
+conversation's main Host. A plugin declares each stream
+([Calling its command package](../architecture/plugins.md#calling-its-command-package)):
+`plugin-browser`'s `browser` is the [live browser view](../browser/live-view.md). The upgrade requires the session
 cookie and a conversation the user owns, and is refused from a page that is
 not the product's ([Authentication](#authentication)), which matters all the
 more here since the stream operates the conversation browser, which is signed in
@@ -391,39 +390,6 @@ archived conversation reads its draft and refuses the other operations with
 lasts as long as its conversation, and a Fork starts with an empty one
 ([Conversation Fork](../agent/conversation-fork.md)).
 
-## Conversation browser tabs
-
-These routes are how the page lists, opens, closes and navigates the tabs of
-the [conversation browser](../browser/browser.md) on the conversation's main
-Host. Each runs the operation the agent's command runs, `browser.tabs`,
-`browser.open`, `browser.close`, `browser.goto`, `browser.back`,
-`browser.forward` or `browser.reload`, with a `user` caller, as a
-[one-shot user call](../execution/native-runtime.md#user-streams) through the
-conversation's [host access](../execution/sessions-and-targets.md#host-operations).
-What happens inside a tab travels on the [`browser` user stream](#user-streams).
-A user waits in the panel, not in a script: for a `user` caller `open`, `goto`,
-`back`, `forward` and `reload` start their work and answer at once, without
-waiting for the page to load, and the tab's content shows the loading.
-
-| Route | Does | A stopped Cloud |
-| --- | --- | --- |
-| `GET …/browser/tabs` | Returns `{ tabs: [{ id, title, url, createdBy }] }`; a browser that does not run has none | Is not woken: answers `{ tabs: [] }` |
-| `POST …/browser/tabs { url? }` | Opens a tab, starting the environment when needed, and returns the tab; `url` defaults to `about:blank` | Is woken: opening a tab is ordinary demand |
-| `DELETE …/browser/tabs/:tab` | Closes the tab and answers 204, also when the browser no longer has it | Is not woken: answers 204 |
-| `POST …/browser/tabs/:tab/navigate { url }` | Starts loading the URL in the tab and answers 204 | Is not woken: answers 409 `host_stopped` |
-| `POST …/browser/tabs/:tab/history { action }` | `back`, `forward` or `reload`; answers 204 | Is not woken: answers 409 `host_stopped` |
-
-A tab the browser does not have answers 404 `tab_not_found`, and a backend
-whose native catalog serves no browser answers these routes 404 `not_found`.
-Other refusals
-follow the user stream's: 409 `conversation_archived`, `device_offline` and
-`conversation_busy`, and 502 `browser_failed` with the operation's own code
-and message when the browser refuses or cannot start. A call on a route that
-does not wake a stopped Cloud is admitted as a user stream is and ends as one
-does: when an archive, a target change or a detach ends the conversation's
-streams, a call still running answers 409 `conversation_busy`
-([Host operations](../execution/sessions-and-targets.md#host-operations)).
-
 ## Device log
 
 `GET /api/devices/:id/log` returns lines of the
@@ -436,28 +402,13 @@ stopped Cloud or an offline device answers 409 as
 [Host operations](../execution/sessions-and-targets.md#host-operations) do,
 and its log is read when it runs again, since the log outlives a restart.
 
-## Exposes
-
-An expose record carries `id`, `number` (its number among the caller's
-exposes, which the commands use; the routes take the `id`), `deviceId`,
-`address`, `url`, `createdAt` and `expiresAt`. `GET /api/exposes` returns
-`{ exposes }`, the caller's
-exposes soonest expiry first. `POST /api/exposes` takes `{ deviceId, address }`
-for a caller-owned, connected device and returns 201 with `{ expose }`; a
-device that is not the caller's answers 404 `device_not_found`, a device that
-is offline or a stopped Cloud answers 409 `device_offline`, and an instance
-without an expose domain answers 409 `expose_unavailable`.
-`POST /api/exposes/:id/renew` sets the expiry to one hour from now and
-returns `{ expose }`. `DELETE /api/exposes/:id` destroys it, ends its
-connections, and returns 204. An expose the caller does not own, or one that
-has expired, answers 404 `expose_not_found`. The product state
-([Page synchronization](#page-synchronization)) includes the same list and
-`exposeDomain`, null when the feature is unavailable.
+## Expose hostnames
 
 Requests whose `Host` header is an expose hostname are not part of this API:
 the backend answers them with the public relay, for every path and method,
-and never with product routes. Lifetime, relay behavior and the
-`demi host expose` commands are defined in [Host expose](../execution/expose.md).
+and never with product routes. The records, their lifetime, the relay, and the
+`expose` plugin's commands, state and page methods are defined in
+[Host expose](../execution/expose.md).
 
 ## Account API
 
@@ -744,7 +695,7 @@ it runs, and neither waits for other work. Running root or child work refuses
 archive with 409 `turn_in_flight`, and so does another transition, an
 asynchronous frame admission or a Host operation in progress, such as reading
 a file or opening a tab in the conversation browser. File transfers, user
-streams and the [conversation browser tab calls](#conversation-browser-tabs)
+streams and the [conversation browser's tab methods](../browser/live-view.md#the-tab-methods)
 that do not wake a stopped Cloud do not refuse it: archive ends them instead
 ([Host operations](../execution/sessions-and-targets.md#host-operations)). A
 target change refuses and ends the same way
@@ -850,7 +801,6 @@ later one is the current value of one part of it that changed:
 | `user` | `user` | The nickname or the email address changes |
 | `workspaces` | `workspaces`, in the user's order | A workspace is created, renamed, moved or deleted |
 | `devices` | `devices`, the paired ones and the Cloud's | A device is paired or revoked, its runner connects or disconnects, or the Cloud's device is made |
-| `exposes` | `exposes` | An expose is created, renewed or removed, or expires |
 | `providers` | `providers`, each with its details | An entry the user infers with, or an account of it, is created, changed or removed, a sign-in completes, an account's credential is renewed, or its quota snapshot is stored |
 | `cloud` | `cloud` | The Cloud's lifecycle or its reset moves |
 | `plugin` | `plugin`, the plugin's id, and `state`, its state for the user's pages | The plugin marks its part as changed ([The page](../architecture/plugins.md#the-page)) |
@@ -859,7 +809,7 @@ later one is the current value of one part of it that changed:
 The product state holds the current user, the instance mode, preferences, the
 provider entries of the user's scope, workspaces, devices (the paired ones and
 the user's Cloud device, which the file and working-tree routes address
-alike), exposes and their domain, the summaries of the active and then the
+alike), the summaries of the active and then the
 archived conversations, the Cloud's state, `plugins`, the state of each
 plugin that declares one for the user's pages, by plugin id, and `publicUrl`,
 the URL runners connect to (`DEMI_BACKEND_PUBLIC_URL`). Each provider entry carries its
@@ -882,8 +832,9 @@ older than an earlier one.
 
 **Changes no write makes.** Each message follows a change the backend
 commits, except one: an expose expires when its time comes, so the channel
-also sends `exposes` when the earliest expiry among the exposes it last sent
-passes. No other part changes with time alone. A provider entry's `details`
+also sends the `plugin` message of each plugin whose state follows the user's
+exposes, the `expose` plugin, when the earliest expiry passes. No other part
+changes with time alone. A provider entry's `details`
 report each account's sign-in as it is stored, whether or not the vendor
 would still take it: an API key the vendor revoked, a Codex or Grok Build
 sign-in whose refresh the vendor refuses, and a Claude Code setup token past
@@ -921,30 +872,39 @@ The channel never renews its session; only requests do
 
 ## Plugin calls
 
-A plugin's page calls its plugin through one route
+A plugin's page calls its plugin through one route, or, for a call about one
+conversation, through that conversation's
 ([The page](../architecture/plugins.md#the-page)). For example, the Skills
-settings section adds a source:
+settings section adds a source, and the work panel's `browser` kind opens a
+tab in a conversation's browser:
 
 ```text
 POST /api/plugins/skills/calls/add_source
 { "origin": "vercel-labs/agent-skills" }
 
 200 { "source": "src_7fq2" }
+
+POST /api/conversations/c_81/plugins/browser/calls/open
+{ "url": "https://example.com/" }
+
+200 { "tab": { "id": "t3", "title": "", "url": "https://example.com/", "createdBy": "user" } }
 ```
 
 The body is the method's parameters, and the response's body is its result.
 The plugin's manifest declares each method with a JSON Schema for its
 parameters and one for its result, and its page package's types are
-generated from the same Rust types. The route works like the other
-session routes ([Authentication](#authentication)):
+generated from the same Rust types. The routes work like the other
+session routes ([Authentication](#authentication)); the conversation's route
+also needs a conversation the user owns, as every conversation route does:
 
 | Situation | Answer |
 | --- | --- |
 | The backend has no plugin of that id | 404 `unknown_plugin` |
 | The plugin has no method of that name | 404 `unknown_plugin_method` |
 | The body is not JSON, or does not match the method's parameter schema | 400 `invalid_body`, naming the field and the reason |
-| The plugin refuses the call, such as a source already added | 409 `plugin_refused`, with the plugin's message |
-| The plugin fails, such as a value that does not read | 500 `plugin_failed`; the plugin's error is logged, not sent |
+| The plugin refuses the call, such as a source already added or a tab the browser does not have | 409 `plugin_refused`, with the plugin's own `reason`, a snake_case word such as `tab_not_found`, and its message |
+| A port operation the plugin made was refused by the conversation's host access, and the plugin passes the refusal on | That refusal's own answer: 409 `conversation_archived`, `device_offline`, `host_stopped` or `conversation_busy` |
+| The plugin fails, such as a value that does not read or a package call whose operation failed | 500 `plugin_failed`, with the plugin's message |
 
 A call changes only the calling user's state. What it changed reaches every
 page of the user as the plugin's new state on the synchronization channel

@@ -536,10 +536,11 @@ them. It is the same conversation state the agent's `demi browser` commands
 use, reached through the same port.
 
 Each user stream is declared by name with a native binding, beside the command
-tree and the way a command leaf binds an operation: the `browser` stream binds
-`demi.browser` operation `browser.live`. The declarations are fixed with the
-command tree for the backend's lifetime, and a page can open only a declared
-name.
+tree and the way a command leaf binds an operation, by the
+[plugin](../architecture/plugins.md#calling-its-command-package) whose commands
+bind the package: `plugin-browser`'s `browser` stream binds `demi.browser`
+operation `browser.live`. The declarations are fixed with the command tree for
+the backend's lifetime, and a page can open only a declared name.
 
 When the user opens a stream, the backend asks the conversation's Host runner
 for a [service stream](runner.md#service-streams). The runner invokes the
@@ -562,8 +563,9 @@ as `{ error: { code, message, details } }`. The failure also retains the bounded
 standard output, so a package whose contract puts its error document there can
 validate and report it without losing its cause
 ([Service streams](runner.md#service-streams)). The
-[conversation browser tab routes](../product/web-api.md#conversation-browser-tabs) call
-`browser.tabs`, `browser.open` and `browser.close` this way, so a tab the user
+[conversation browser's tab methods](../browser/live-view.md#the-tab-methods), a
+plugin's package calls, call `browser.tabs`, `browser.open` and `browser.close`
+this way, so a tab the user
 opens is the tab the agent's `open` would have made, created by `user`.
 
 The invocation's input is the bytes the page sends and its output is the bytes
