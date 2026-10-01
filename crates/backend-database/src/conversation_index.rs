@@ -2,7 +2,8 @@
 //! records): each conversation's owner, title, archive and pin state, place
 //! in the sidebar, read revision, target, execution-context revision and
 //! model selection, which is the conversation's model settings (`models.md`
-//! § A conversation's model settings). The agent tree itself is in the conversation's own
+//! § A conversation's model settings), and when the earliest wakeup its tree
+//! saved is due (`runtime.md` § Yield wakeups). The agent tree itself is in the conversation's own
 //! database. A conversation's id is the one the web app chose, kept in the
 //! case it arrived in and compared without case, so an id another
 //! conversation holds in any spelling is taken.
@@ -17,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use super::StorageError;
 use super::columns::{decode, instant, json, to_json};
 use super::control::ControlService;
+use super::tree::WakeupDue;
 
 /// A conversation as the index holds it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,6 +46,15 @@ pub struct ConversationRecord {
     pub updated_at: Timestamp,
     /// The revision of the conversation's draft, 0 before its first save.
     pub draft_revision: u64,
+}
+
+/// A conversation whose tree saved a yield wakeup, with its owner and when
+/// its earliest wakeup is due.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SavedWakeup {
+    pub conversation: ConversationId,
+    pub owner: UserId,
+    pub due: WakeupDue,
 }
 
 /// A change a user asks of a conversation, which `Shard::transition`
@@ -538,6 +549,54 @@ impl ControlService {
                 )
                 .optional()?
                 .transpose()
+        })
+        .await
+    }
+
+    /// Records when the earliest wakeup the conversation's tree saved is due,
+    /// or that it saved none (`runtime.md` § Yield wakeups).
+    pub async fn set_wakeup(
+        &self,
+        id: ConversationId,
+        wakeup: Option<WakeupDue>,
+    ) -> Result<(), StorageError> {
+        self.call(move |connection, _| {
+            connection.execute(
+                "UPDATE conversations SET wakeup_at = ?2 WHERE id = ?1",
+                params![id.as_str(), wakeup.map(WakeupDue::column)],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// The conversations that are not archived and whose tree saved a
+    /// wakeup, each with its owner and when its earliest wakeup is due,
+    /// earliest first.
+    pub async fn saved_wakeups(&self) -> Result<Vec<SavedWakeup>, StorageError> {
+        self.call(move |connection, _| {
+            let mut statement = connection.prepare(
+                "SELECT id, user_id, wakeup_at FROM conversations
+                 WHERE wakeup_at IS NOT NULL AND archived = 0 ORDER BY wakeup_at",
+            )?;
+            let mut rows = statement.query([])?;
+            let mut wakeups = Vec::new();
+            while let Some(row) = rows.next()? {
+                wakeups.push(SavedWakeup {
+                    conversation: decode(
+                        "conversations",
+                        "id",
+                        ConversationId::try_from(row.get::<_, String>(0)?),
+                    )?,
+                    owner: decode(
+                        "conversations",
+                        "user_id",
+                        UserId::try_from(row.get::<_, String>(1)?),
+                    )?,
+                    due: WakeupDue::from_column("conversations", row.get(2)?)?,
+                });
+            }
+            Ok(wakeups)
         })
         .await
     }
@@ -1075,6 +1134,56 @@ mod tests {
             "{refused}"
         );
         control.close().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn the_saved_wakeups_list_the_unarchived_conversations_earliest_first() {
+        let data = tempfile::tempdir().unwrap();
+        let control = ControlService::open(
+            &data.path().join("control.sqlite"),
+            Arc::new(demi_shared_types::SystemClock),
+        )
+        .await
+        .unwrap();
+        let master = testing::master(&control).await.id;
+        for number in 1..=4 {
+            control
+                .create_conversation(master.clone(), conversation(number))
+                .await
+                .unwrap();
+        }
+        let later = WakeupDue::At(Timestamp::from_millisecond(9_000).unwrap());
+        control
+            .set_wakeup(conversation(1), Some(later))
+            .await
+            .unwrap();
+        control
+            .set_wakeup(conversation(2), Some(WakeupDue::AtStart))
+            .await
+            .unwrap();
+        control
+            .set_wakeup(conversation(3), Some(later))
+            .await
+            .unwrap();
+        control
+            .change_conversation(conversation(3), RecordChange::Archived(true))
+            .await
+            .unwrap();
+        // A wakeup that fired leaves its conversation with none.
+        control
+            .set_wakeup(conversation(4), Some(later))
+            .await
+            .unwrap();
+        control.set_wakeup(conversation(4), None).await.unwrap();
+        let saved = |number, due| SavedWakeup {
+            conversation: conversation(number),
+            owner: master.clone(),
+            due,
+        };
+        assert_eq!(
+            control.saved_wakeups().await.unwrap(),
+            [saved(2, WakeupDue::AtStart), saved(1, later)]
+        );
     }
 
     #[tokio::test]

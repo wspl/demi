@@ -21,7 +21,7 @@ use serde_json::{Value, json};
 use crate::conversations::{
     Socket, answer, anthropic_at, choose, create, kinds, tool_use, transcript,
 };
-use crate::support::{Harness, Paired, Session, TestBackend};
+use crate::support::{Harness, Paired, Session, TestBackend, eventually};
 
 /// The conversation ids the scenarios create.
 const FIRST: &str = "1e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a01";
@@ -755,6 +755,22 @@ async fn moved_from_alpha_to_beta(
     (on_alpha, on_beta)
 }
 
+/// Waits until `device` holds no job directory: once the backend has what it
+/// needs of a far job, stopped or not, the runner removes its directory.
+async fn far_jobs_released(device: &Paired) {
+    let jobs = device.runner.state_dir().join("jobs");
+    eventually("the far job's directory is removed", async || {
+        std::fs::read_dir(&jobs).unwrap().all(|entry| {
+            !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with("job-")
+        })
+    })
+    .await;
+}
+
 // Several seconds: two real devices each install the builtin package, and `demi
 // host shell` runs jobs on both.
 #[tokio::test]
@@ -797,6 +813,7 @@ async fn demi_host_shell_carries_bytes_both_ways_through_pipes_and_keeps_the_far
     );
     assert!(result.contains("copied"), "{result}");
     assert!(std::fs::read(b.join("notes.bin")).unwrap() == payload);
+    far_jobs_released(&alpha).await;
 
     // The other way: the caller's pipe is the far job's standard input.
     let push = format!(
@@ -948,5 +965,6 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
         async move { !alive }
     })
     .await;
+    far_jobs_released(&alpha).await;
     backend.close().await;
 }

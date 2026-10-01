@@ -20,7 +20,7 @@ use crate::tabs::{session::References, tab::BrowserTab};
 
 use crate::page::{
     observation::{Observation, can_resample},
-    protocol::BrowserTarget,
+    protocol::{BrowserTarget, ResolvedElement},
 };
 
 // Chromiumoxide's Element constructor is private and resolves an existing backend
@@ -428,6 +428,14 @@ pub(crate) async fn release_objects(tab: &BrowserTab) -> Result<()> {
     }
 }
 
+/// An element a target resolved to that meets an action's conditions.
+pub(crate) struct Ready {
+    pub element: TargetElement,
+    pub state: ElementState,
+    /// What the page tree names the element, for the action's result.
+    pub named: ResolvedElement,
+}
+
 /// Resolve afresh while waiting; ambiguity is never an implicit first match.
 pub(crate) async fn ready(
     tab: &BrowserTab,
@@ -435,7 +443,7 @@ pub(crate) async fn ready(
     references: &mut References,
     conditions: &[&str],
     operation: &Operation<'_>,
-) -> Result<(TargetElement, ElementState)> {
+) -> Result<Ready> {
     ready_with_failure(tab, target, references, conditions, operation, &mut None).await
 }
 
@@ -447,7 +455,7 @@ pub(crate) async fn ready_with_failure(
     conditions: &[&str],
     operation: &Operation<'_>,
     last_failure: &mut Option<BrowserError>,
-) -> Result<(TargetElement, ElementState)> {
+) -> Result<Ready> {
     loop {
         let attempt = async {
             let observation = operation
@@ -483,7 +491,12 @@ pub(crate) async fn ready_with_failure(
                 )
                 .await?;
                 if state.failed.is_none() {
-                    return Ok(Some((element, state)));
+                    let named = observation.named(&element, references)?;
+                    return Ok(Some(Ready {
+                        element,
+                        state,
+                        named,
+                    }));
                 }
                 if state.permanent {
                     return Err(state.failure());

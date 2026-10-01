@@ -4,8 +4,9 @@
 //! backend applies to a vendor's models.
 
 use demi_provider_anthropic_api::AnthropicConfig;
+use demi_provider_common::VendorPolicy;
 use demi_provider_common::models_dev::{ModelsDevClient, ModelsDevError, ModelsDevVendor};
-use demi_provider_openai_api::{OpenAiConfig, VendorPolicy};
+use demi_provider_openai_api::OpenAiConfig;
 use demi_shared_types::{ProviderModelList, Timestamp, WireApi};
 use demi_web_api_protocol::providers::Vendor;
 use icu_collator::options::CollatorOptions;
@@ -28,14 +29,21 @@ const FAMILIES: [(&str, &str, Option<WireApi>); 4] = [
 /// an API key cannot satisfy.
 const NOT_OFFERED: [&str; 1] = ["github-copilot"];
 
-/// The request requirements of the vendors that have any.
+/// The request requirements of vendor `vendor_id`. Every vendor but
+/// Anthropic itself takes an effort on the Messages API as a token budget:
+/// adaptive thinking is Anthropic's own.
 fn policy_of(vendor_id: &str) -> VendorPolicy {
+    let effort_as_budget = vendor_id != "anthropic";
     match vendor_id {
         "deepseek" => VendorPolicy {
             pass_back_reasoning_content: true,
+            effort_as_budget,
             ..VendorPolicy::default()
         },
-        _ => VendorPolicy::default(),
+        _ => VendorPolicy {
+            effort_as_budget,
+            ..VendorPolicy::default()
+        },
     }
 }
 

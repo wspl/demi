@@ -34,6 +34,7 @@ use demi_command_package_browser_protocol::{
 };
 use demi_command_protocol::testing::built_program;
 use demi_command_protocol::{PackageDescriptor, host_target};
+pub use demi_provider_common::testing::ManualClock;
 use demi_shared_types::Clock;
 use demi_web_api_protocol::auth::{Identity, Role, UserDto};
 use demi_web_api_protocol::devices::{ClaimedDevice, DeviceDto, Devices};
@@ -41,7 +42,6 @@ use demi_web_api_protocol::error::{ErrorBody, ErrorCode};
 use demi_web_api_protocol::settings::InstanceMode;
 use demi_web_api_protocol::state::{ProductState, SyncEvent};
 use futures_util::{SinkExt as _, StreamExt as _};
-use jiff::{SignedDuration, Timestamp};
 use reqwest::header::{COOKIE, HeaderMap, SET_COOKIE};
 use reqwest::{Method, StatusCode};
 use serde::de::DeserializeOwned;
@@ -187,28 +187,6 @@ pub static FIXTURE: LazyLock<Built> = LazyLock::new(|| Built {
     published: OnceCell::new(),
 });
 
-/// Wall-clock time the test sets.
-pub struct ManualClock(Mutex<Timestamp>);
-
-impl Clock for ManualClock {
-    fn now(&self) -> demi_shared_types::Timestamp {
-        demi_shared_types::Timestamp::truncate(*self.0.lock().unwrap())
-    }
-}
-
-impl ManualClock {
-    pub fn advance(&self, by: SignedDuration) {
-        let mut now = self.0.lock().unwrap();
-        *now = now.checked_add(by).unwrap();
-    }
-
-    /// Sets the time to the system's, for a test that compares the backend's
-    /// times with those the file system gives the objects it writes.
-    pub fn follow_system(&self) {
-        *self.0.lock().unwrap() = jiff::Timestamp::now();
-    }
-}
-
 /// Captures verification mail, or refuses it while `failing` is set.
 #[derive(Default)]
 pub struct Mailbox {
@@ -285,9 +263,9 @@ impl Harness {
                 .prefix("demi-backend-")
                 .tempdir()
                 .unwrap(),
-            clock: Arc::new(ManualClock(Mutex::new(
-                "2026-09-24T08:00:00Z".parse::<Timestamp>().unwrap(),
-            ))),
+            clock: Arc::new(ManualClock::new(
+                "2026-09-24T08:00:00.000Z".parse().unwrap(),
+            )),
             mailbox: Arc::new(Mailbox::default()),
             mail: false,
             web_directory: None,

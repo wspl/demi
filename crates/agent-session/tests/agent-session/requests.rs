@@ -15,6 +15,7 @@ use demi_provider_codex::{
     CodexConfig, CodexProvider, TransportMode,
     testing::{FakeWebSocket, Script, Step},
 };
+use demi_provider_common::VendorPolicy;
 use demi_provider_common::{
     InferenceRequest, Provider, ProviderRun, ProviderRuntime, RequestLimits, RuntimeEnv, Secret,
     credentials::{AccountMeta, CredentialPool, MemoryCredentialPool},
@@ -23,7 +24,7 @@ use demi_provider_common::{
 };
 use demi_provider_google::{GoogleConfig, GoogleProvider};
 use demi_provider_grok_build::{GrokConfig, GrokProvider};
-use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider, VendorPolicy};
+use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider};
 use demi_shared_types::{BlobRef, FileExtension, MediaSource, WireApi};
 use futures_util::{StreamExt as _, stream};
 use serde_json::Value;
@@ -147,6 +148,7 @@ impl Family {
                 let config = AnthropicConfig {
                     api_key: Secret::try_from("sk-ant-test".to_owned()).unwrap(),
                     base_url: Some(vendor.url("/v1").parse().unwrap()),
+                    policy: VendorPolicy::default(),
                 };
                 AnthropicProvider::new(config, clock).runtime(env)
             }

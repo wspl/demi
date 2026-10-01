@@ -257,6 +257,43 @@ impl Clock for FixedClock {
     }
 }
 
+/// A wall clock that reads the moment the test last set.
+#[derive(Debug)]
+pub struct ManualClock(std::sync::Mutex<Timestamp>);
+
+impl ManualClock {
+    pub fn new(start: Timestamp) -> Self {
+        Self(std::sync::Mutex::new(start))
+    }
+
+    /// Moves the clock `by`, forward or back.
+    pub fn advance(&self, by: jiff::SignedDuration) {
+        let mut now = self.0.lock().unwrap();
+        let moved = now
+            .to_jiff()
+            .checked_add(by)
+            .expect("a test's time stays in range");
+        *now = Timestamp::truncate(moved);
+    }
+
+    /// Sets the clock to `to`.
+    pub fn set(&self, to: Timestamp) {
+        *self.0.lock().unwrap() = to;
+    }
+
+    /// Sets the clock to the system's time, for a test that compares times
+    /// with those the file system gives what it writes.
+    pub fn follow_system(&self) {
+        self.set(Timestamp::truncate(jiff::Timestamp::now()));
+    }
+}
+
+impl Clock for ManualClock {
+    fn now(&self) -> Timestamp {
+        *self.0.lock().unwrap()
+    }
+}
+
 /// A wall clock that moves with Tokio's, so that a test on the paused clock
 /// moves the times records carry too: `start` plus the Tokio time elapsed
 /// since the clock was made.

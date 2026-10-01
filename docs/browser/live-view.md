@@ -478,6 +478,18 @@ providers and never real models, on a macOS paired device, a Linux paired
 device and Cloud. The fixture server records what each page received, and the
 checks read it there.
 
+Where the live view has passed these checks against real Chrome:
+
+| Host | Verified |
+| --- | --- |
+| macOS arm64 paired device | Yes |
+| Linux arm64 and x86_64 paired devices | Yes |
+| Cloud (gVisor with systrap) | Yes |
+| Windows paired device | Not yet |
+
+A platform the table does not list, such as a macOS x86_64 device, has not
+been checked either.
+
 1. Pictures: a moving page shows continuously, a still page keeps its last
    picture, and a new viewer, a tab switch and a viewport change start from a
    key frame.

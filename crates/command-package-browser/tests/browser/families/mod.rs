@@ -222,14 +222,9 @@ impl BrowserFixture {
 pub async fn install_chrome(root: &std::path::Path) {
     let executable =
         std::path::PathBuf::from(std::env::var_os("DEMI_TEST_CHROME").expect("DEMI_TEST_CHROME"));
-    demi_shared_artifacts::testing::install_unpacked(
-        root,
-        &demi_command_package_browser_chrome::driver::installation::pinned_archive().unwrap(),
-        &executable,
-        &CancellationToken::new(),
-    )
-    .await
-    .expect("DEMI_TEST_CHROME names a readable installation of the pinned release");
+    demi_command_package_browser_chrome::driver::testing::install_pinned(root, &executable)
+        .await
+        .expect("DEMI_TEST_CHROME names a readable installation of the pinned release");
 }
 
 /// A browser directory holding the pinned Chrome for Testing
@@ -249,9 +244,19 @@ where
     F: FnOnce(BrowserFixture) -> W,
     W: Future<Output = BrowserFixture>,
 {
+    with_numbered_browser_fixture(demi_command_sdk::testing::counting_numbers(), exercise).await;
+}
+
+/// [`with_browser_fixture`] whose service draws its tab numbers from
+/// `numbers`, as from the runner's numbers stream.
+pub async fn with_numbered_browser_fixture<F, W>(numbers: demi_command_sdk::Numbers, exercise: F)
+where
+    F: FnOnce(BrowserFixture) -> W,
+    W: Future<Output = BrowserFixture>,
+{
     let (chrome, directories) = installed_chrome().await;
     let service = DemiBrowser::new(directories);
-    service.numbers(demi_command_sdk::testing::counting_numbers());
+    service.numbers(numbers);
     let fixture = BrowserFixture {
         service: Arc::new(service),
         _chrome: Arc::new(chrome),

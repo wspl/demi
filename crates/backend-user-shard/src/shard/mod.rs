@@ -86,9 +86,11 @@ pub struct Shard {
     agent: Rc<AgentServer<ConversationHarness>>,
     /// The title requests of the user's conversations.
     titles: Titles,
-    /// The conversation sockets being served, which the close ends before
-    /// the agent shuts down, so no frame reaches it after.
-    conversation_sockets: TaskTracker,
+    /// What opens a conversation's tree: the conversation sockets being
+    /// served and the restores of trees whose saved wakeup is due. The close
+    /// ends them before the agent shuts down, so no tree opens and no frame
+    /// reaches one after.
+    tree_openers: TaskTracker,
     /// The pages' synchronization channels being served, which the close
     /// ends first, so no page is sent what the steps after it change.
     sync_channels: TaskTracker,
@@ -136,7 +138,7 @@ impl Shard {
             closing: CancellationToken::new(),
             agent,
             titles,
-            conversation_sockets: TaskTracker::new(),
+            tree_openers: TaskTracker::new(),
             sync_channels: TaskTracker::new(),
             forks: KeyedSerialGate::new(),
             cloud: Cloud::default(),
@@ -212,8 +214,8 @@ impl Shard {
         &self.titles
     }
 
-    pub(crate) fn conversation_sockets(&self) -> &TaskTracker {
-        &self.conversation_sockets
+    pub(crate) fn tree_openers(&self) -> &TaskTracker {
+        &self.tree_openers
     }
 
     pub(crate) fn sync_channels(&self) -> &TaskTracker {
@@ -228,7 +230,8 @@ impl Shard {
     /// the synchronization channels close; the idle watches stop, and a
     /// retirement already running finishes;
     /// title requests are aborted and relayed expose connections end; the
-    /// conversation sockets end; open file transfers and user streams end,
+    /// conversation sockets end, and so do the restores of trees whose saved
+    /// wakeup is due; open file transfers and user streams end,
     /// and stay closed; the agent turns are aborted while their runners are
     /// still connected; the Cloud is saved and stopped; the runner
     /// connections close, their work ends with them, and then the pipes
@@ -241,8 +244,8 @@ impl Shard {
         self.cloud.stop();
         self.titles.abort_all();
         self.exposes.end_all();
-        self.conversation_sockets.close();
-        self.conversation_sockets.wait().await;
+        self.tree_openers.close();
+        self.tree_openers.wait().await;
         let _transfers_closed = self.conversations.end_transfers().await;
         self.agent.shutdown().await;
         let saved = self.cloud_shard().close_cloud().await;

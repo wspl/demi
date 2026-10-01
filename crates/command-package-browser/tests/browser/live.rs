@@ -1200,7 +1200,6 @@ async fn a_watched_tab_arrives_with_the_detail_of_the_viewers_ratio() {
 
 /// The capture extension runs beside the pages as soon as the browser does,
 /// and the tab registry never lists it (`live-view.md` § Capture).
-#[cfg(feature = "testing")]
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn the_capture_extension_runs_beside_the_pages_and_is_never_a_tab() {
@@ -1236,7 +1235,6 @@ async fn the_capture_extension_runs_beside_the_pages_and_is_never_a_tab() {
 
 /// A reload of the capture extension, as Chrome may do, keeps the pages as
 /// they were and brings its worker back each time (`live-view.md` § Capture).
-#[cfg(feature = "testing")]
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn capture_extension_reload_preserves_pages_and_recreates_its_worker() {

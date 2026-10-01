@@ -31,6 +31,15 @@ function testProgram(name: string): string {
   return join(resolve(repositoryRoot, directory), name)
 }
 
+/**
+ * The test process's environment without its `DEMI_` variables, such as
+ * `DEMI_TEST_PROGRAMS`, for a program the suite starts: those name the
+ * program's settings, and the backend refuses one that names none of them.
+ */
+function programEnvironment(): Record<string, string | undefined> {
+  return Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('DEMI_')))
+}
+
 /** A port nothing listens on now: the backend takes a port number, not 0. */
 function freePort(): number {
   const probe = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {} } })
@@ -164,7 +173,7 @@ async function launchBackend(root: string, socket: string): Promise<Backend> {
   const lines: string[] = []
   const child = Bun.spawn([testProgram('demi-backend')], {
     env: {
-      ...process.env,
+      ...programEnvironment(),
       DEMI_BACKEND_DATA: data,
       DEMI_BACKEND_PORT: String(port),
       DEMI_INSTANCE_MODE: 'shared',
@@ -224,15 +233,14 @@ export async function startRunner(root: string, origin: string, name: string): P
   // The runner keeps the test run's temporary directory, which the test
   // script removes: its command socket lives there, and a deeper path would
   // exceed the length a Unix socket's path may have.
-  const env: Record<string, string | undefined> = {
-    ...process.env,
+  // A paired device, not a managed Cloud guest: no `DEMI_RUNNER_MANAGED`.
+  const env = {
+    ...programEnvironment(),
     HOME: home,
     USERPROFILE: home,
     DEMI_HOME: join(root, `${name}-state`),
     DEMI_RUNNER_NAME: name,
   }
-  // A paired device, not a managed Cloud guest.
-  delete env.DEMI_RUNNER_MANAGED
   const child = Bun.spawn([testProgram('demi-runner'), 'run', '--backend', origin], {
     cwd: home,
     env,

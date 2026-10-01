@@ -1,18 +1,66 @@
-//! The schemas of the control database and of each conversation's database:
-//! one versioned step each, applied to a new database in a transaction
-//! (`storage.md`). Times are integer milliseconds since the Unix epoch; a
-//! closed set is text a CHECK limits; JSON columns are text their reader
-//! decodes and validates; sealed values are BLOBs.
+//! The schemas of the control database and of each conversation's database
+//! (`storage.md`): one SQL text each, applied to a new database in a
+//! transaction, whose digest is the version a database records. Times are
+//! integer milliseconds since the Unix epoch; a closed set is text a CHECK
+//! limits; JSON columns are text their reader decodes and validates; sealed
+//! values are BLOBs.
 
-use rusqlite_migration::{M, Migrations};
+use std::path::Path;
 
-pub(crate) const CONTROL: Migrations<'static> = Migrations::from_slice(CONTROL_STEPS);
+use rusqlite::{Connection, TransactionBehavior};
+use sha2::{Digest, Sha256};
 
-const CONTROL_STEPS: &[M<'static>] = &[M::up(CONTROL_V1)];
+use super::StorageError;
 
-pub(crate) const CONVERSATION: Migrations<'static> = Migrations::from_slice(CONVERSATION_STEPS);
+/// A database's schema: its SQL, whose digest names it.
+pub(crate) struct Schema(&'static str);
 
-const CONVERSATION_STEPS: &[M<'static>] = &[M::up(CONVERSATION_V1)];
+pub(crate) const CONTROL: Schema = Schema(CONTROL_V1);
+
+pub(crate) const CONVERSATION: Schema = Schema(CONVERSATION_V1);
+
+impl Schema {
+    /// The version a database of this schema records in `user_version`:
+    /// the first 31 bits of its SQL's SHA-256, never 0, which SQLite gives a
+    /// database that records none. Any edit of the SQL is another version.
+    pub(crate) fn version(&self) -> i32 {
+        let digest = Sha256::digest(self.0.as_bytes());
+        let bits = u32::from_be_bytes([digest[0], digest[1], digest[2], digest[3]]) >> 1;
+        let version = i32::try_from(bits).expect("31 bits fit");
+        version.max(1)
+    }
+
+    /// Gives a new database at `path` this schema, and accepts one that
+    /// records its version. A database that records another version, or
+    /// holds tables and records none, was made by another build of Demi: it
+    /// is refused, never changed (`storage.md` § Schemas).
+    pub(crate) fn apply(
+        &self,
+        connection: &mut Connection,
+        path: &Path,
+    ) -> Result<(), StorageError> {
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let recorded: i32 =
+            transaction.pragma_query_value(None, "user_version", |row| row.get(0))?;
+        if recorded == self.version() {
+            return Ok(());
+        }
+        let tables: i64 = transaction.query_row(
+            "SELECT count(*) FROM sqlite_schema WHERE type = 'table'",
+            [],
+            |row| row.get(0),
+        )?;
+        if recorded != 0 || tables > 0 {
+            return Err(StorageError::OtherSchema {
+                path: path.to_owned(),
+            });
+        }
+        transaction.execute_batch(self.0)?;
+        transaction.pragma_update(None, "user_version", self.version())?;
+        transaction.commit()?;
+        Ok(())
+    }
+}
 
 const CONTROL_V1: &str = r"
 -- Identity. One master: two concurrent setups cannot both create one.
@@ -122,6 +170,10 @@ CREATE TABLE conversations (
   -- When the conversation's agent tree was last seen live, from which the
   -- retention pass reads how long the conversation has been idle.
   live_at             INTEGER NOT NULL,
+  -- When the earliest yield wakeup its tree saved is due, which the next
+  -- start restores the tree at: 0 for one whose action had not ended, due
+  -- at start; null when it saved none.
+  wakeup_at           INTEGER CHECK (wakeup_at >= 0),
   CHECK (
     (target_kind = 'cloud'
       AND target_device_id IS NULL AND target_workspace_id IS NULL)
@@ -133,6 +185,7 @@ CREATE TABLE conversations (
 ) STRICT;
 CREATE INDEX conversations_sidebar ON conversations (user_id, archived, pinned, sort_order);
 CREATE INDEX conversations_workspace ON conversations (target_workspace_id);
+CREATE INDEX conversations_wakeup ON conversations (wakeup_at) WHERE wakeup_at IS NOT NULL;
 
 CREATE TABLE conversation_hosts (
   conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id),
@@ -279,6 +332,9 @@ CREATE TABLE nodes (
   block_count      INTEGER NOT NULL CHECK (block_count >= 0),
   command_revision INTEGER NOT NULL CHECK (command_revision >= 0),
   output_revision  INTEGER NOT NULL CHECK (output_revision >= 0),
+  -- When the earliest wakeup the state saves is due, as the index of
+  -- conversations holds it; null when it saves none.
+  wakeup_at        INTEGER CHECK (wakeup_at >= 0),
   CHECK ((closed_phase IS NULL) = (closed_at IS NULL)),
   CHECK (result IS NULL OR closed_phase = 'completed'),
   CHECK (failure IS NULL OR closed_phase = 'error')

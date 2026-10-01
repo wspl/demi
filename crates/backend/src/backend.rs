@@ -17,7 +17,7 @@ use demi_backend_cloud::client::MachinesClient;
 use demi_backend_cloud::reset::recover_resets;
 use demi_backend_database::StorageError;
 use demi_backend_http::{AppState, Edge, Site};
-use demi_backend_user_shard::conversation::recover_forks;
+use demi_backend_user_shard::conversation::{rearm_wakeups, recover_forks};
 use demi_backend_user_shard::lifecycle::retention;
 use demi_backend_user_shard::services::{
     CloseError, ProviderSetup, ServiceKeys, ServiceSettings, Services, ServicesError, Storage,
@@ -201,6 +201,16 @@ impl Backend {
             shards.close().await;
             services.close_providers().await;
             return Err(StartError::Storage(error));
+        }
+        // Each saved wakeup is armed again, so it fires with no page open
+        // (`runtime.md` § Yield wakeups). A failure does not stop the start:
+        // a wakeup not armed here still fires once a page opens its
+        // conversation.
+        if let Err(error) = rearm_wakeups(&services.control, &shards.shards()).await {
+            tracing::error!(
+                error = &error as &dyn std::error::Error,
+                "the saved wakeups cannot be listed"
+            );
         }
         let state = AppState {
             services: services.clone(),

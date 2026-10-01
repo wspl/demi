@@ -71,15 +71,14 @@ pub async fn execute(
     let mut work = async {
         let output = match &input.output {
             Some(output) => crate::driver::output::preflight(&context.request.cwd, output, input.overwrite == Some(true)).await?,
-            // Beside the profiles, on disk (`browser.md` § Upload, download, and clipboard).
-            None => crate::tabs::environment::DirectoryBases::host().profiles.join(crate::driver::handles::fresh("demi-download")?),
+            None => environment.saved_download()?,
         };
         let target = command.target();
         let point = match &input.xy {
             Some(xy) => operation.run(crate::page::actions::coordinates(tab, xy)).await?,
             None => {
                 let target = target.as_ref().ok_or_else(|| BrowserError::Configuration("download requires an element or --xy".into()))?;
-                crate::page::element::ready(tab, target, references, element::CLICK, &operation).await?.1.point()
+                crate::page::element::ready(tab, target, references, element::CLICK, &operation).await?.state.point()
             }
         };
         if input.xy.is_some() {

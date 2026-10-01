@@ -184,8 +184,8 @@ async fn the_quota_is_probed_with_the_accounts_token_and_observed_on_the_clis_li
         QuotaError::Unavailable("Claude usage request failed (401): token expired".into())
     );
 
-    // A line of the CLI's output that carries rate limits updates the
-    // windows it names and keeps the others.
+    // A `rate_limit_event` line, as Claude Code 2.1.286 prints it from the
+    // vendor's headers, updates the windows it names and keeps the others.
     let (placement, mut starts) = ScriptedPlacement::new();
     let mut runtime = runtime_of(&provider, &placement);
     let (_, ()) = tokio::join!(
@@ -194,33 +194,51 @@ async fn the_quota_is_probed_with_the_accounts_token_and_observed_on_the_clis_li
             let mut cli = starts.next().await;
             cli.read().await;
             cli.say(json!({
-                "type": "result",
-                "usage": { "input_tokens": 1, "output_tokens": 1 },
-                "rate_limits": {
-                    "five_hour": { "used_percentage": 33, "resets_at": "2026-09-24T10:00:00Z" },
-                    "seven_day": { "utilization": 50, "resets_at": 1790000000 },
+                "type": "rate_limit_event",
+                "rate_limit_info": {
+                    "status": "allowed_warning",
+                    "resetsAt": 1790855225,
+                    "rateLimitType": "seven_day_opus",
+                    "utilization": 0.97,
+                    "isUsingOverage": false,
+                    "surpassedThreshold": 0.95,
+                    "unifiedWindows": {
+                        "five_hour": { "utilization": 0.33, "resetsAt": 1790855225 },
+                        "seven_day": { "utilization": 0.5, "resetsAt": "soon" },
+                        "seven_day_overage_included": { "utilization": 0.1, "resetsAt": 1790855225 },
+                    },
                 },
+                "uuid": "f76bacdd-1275-43c0-bff9-c6405a86183a",
+                "session_id": "s",
             }));
+            cli.result(1, 1);
         }
     );
     let observed = quota.latest().unwrap();
     assert_eq!(observed.source, SnapshotSource::Observation);
-    let five_hour = observed
-        .windows
-        .iter()
-        .find(|window| window.id == "five_hour")
-        .unwrap();
-    assert_eq!(five_hour.used_percent, Some(33.0));
-    let seven_day = observed
-        .windows
-        .iter()
-        .find(|window| window.id == "seven_day")
-        .unwrap();
-    assert_eq!(seven_day.used_percent, Some(50.0));
-    // The unit of a reset time is RFC 3339 text; a number is an unknown
-    // reset time.
-    assert_eq!(seven_day.resets_at, None);
-    assert_eq!(observed.windows.len(), 4);
+    let window = |id: &str| {
+        observed
+            .windows
+            .iter()
+            .find(|window| window.id == id)
+            .unwrap()
+    };
+    // A utilization is a fraction and a reset time is Unix seconds.
+    assert_eq!(window("five_hour").used_percent, Some(33.0));
+    assert_eq!(
+        window("five_hour").resets_at,
+        Some("2026-10-01T11:47:05Z".parse().unwrap())
+    );
+    assert_eq!(window("seven_day").used_percent, Some(50.0));
+    assert_eq!(window("seven_day").resets_at, None);
+    // The binding window counts when the reported windows do not hold it.
+    assert_eq!(window("seven_day_opus").used_percent, Some(97.0));
+    assert_eq!(
+        window("seven_day_opus").severity,
+        Some(QuotaSeverity::Critical)
+    );
+    // The probe's limits stay; a window Demi does not name is left out.
+    assert_eq!(observed.windows.len(), 5);
 }
 
 #[tokio::test(flavor = "local")]

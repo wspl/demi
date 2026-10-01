@@ -9,7 +9,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use demi_backend_providers::llm::families::FamilyRegistry;
+use demi_backend_providers::llm::families::{
+    FamilyArgs, FamilyError, FamilyRegistry, ProviderFamily,
+};
 use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
 use demi_provider_common::CatalogError;
 use demi_provider_common::testing::{MockResponse, MockVendor, RecordedRequest, sse_body};
@@ -832,5 +834,123 @@ async fn the_provider_test_sends_one_real_request_through_the_entrys_family() {
         (google.uri.path(), google.header("x-goog-api-key")),
         ("/v1/models/m:streamGenerateContent", Some("sk-2"))
     );
+    backend.close().await;
+}
+
+/// An API-key family whose provider cannot be built, as an entry whose
+/// stored settings its family no longer takes.
+struct Refusing;
+
+impl ProviderFamily for Refusing {
+    fn credential(&self) -> CredentialKind {
+        CredentialKind::ApiKey
+    }
+
+    fn provider(
+        &self,
+        _: FamilyArgs,
+    ) -> Result<Arc<dyn demi_provider_common::Provider>, FamilyError> {
+        Err(FamilyError::Invalid("the scripted family refuses".into()))
+    }
+}
+
+#[tokio::test]
+async fn an_entry_whose_provider_cannot_be_built_answers_its_status_with_the_reason() {
+    let families = demi_backend::families::builtin().with("refusing", Refusing);
+    let harness = Harness::new().with_families(families);
+    let (backend, master) = harness.start_set_up().await;
+    let created = create(
+        &backend,
+        &master,
+        json!({
+            "source": "custom", "providerType": "refusing", "label": "Broken", "apiKey": "key",
+            "models": [configured("m")]
+        }),
+    )
+    .await;
+    let status = backend
+        .get(
+            &format!("/api/providers/{}/status", created.id.as_str()),
+            Some(&master),
+        )
+        .await;
+    assert_eq!(status.status, StatusCode::BAD_GATEWAY);
+    let body: Value = status.json();
+    assert_eq!(body["code"], "provider_status_failed");
+    assert_eq!(body["message"], "the scripted family refuses");
+    backend.close().await;
+}
+
+/// Adaptive thinking is Anthropic's own: a vendor from models.dev on
+/// `@ai-sdk/anthropic` receives an effort as its token budget, and an entry
+/// that names no vendor, Anthropic's, the effort itself (`models.md` §
+/// Thinking and service tiers).
+#[tokio::test]
+async fn an_anthropic_compatible_vendor_receives_an_effort_as_a_token_budget() {
+    let vendor = MockVendor::start().await;
+    let catalog = json!({
+        "moonshot": {
+            "id": "moonshot", "name": "Moonshot", "npm": "@ai-sdk/anthropic",
+            "api": "https://api.moonshot.example/anthropic", "models": {}
+        }
+    });
+    vendor.respond_at("/api.json", served(&catalog));
+    let harness = Harness::new().with_models_dev(vendor.url("/api.json"));
+    let (backend, master) = harness.start_set_up().await;
+    let leveled = json!({
+        "id": "m", "displayName": "M", "contextWindow": 100000, "outputLimit": 64000,
+        "thinkingEfforts": ["low", "high"], "acceptedExtensions": null, "fastTier": null
+    });
+    let compatible = create(
+        &backend,
+        &master,
+        json!({
+            "source": "vendor", "vendorId": "moonshot", "label": "Moonshot", "apiKey": "key",
+            "baseUrl": vendor.url("/v1"), "models": [leveled.clone()]
+        }),
+    )
+    .await;
+    let anthropic = create(
+        &backend,
+        &master,
+        json!({
+            "source": "custom", "providerType": "anthropic", "label": "Anthropic", "apiKey": "key",
+            "baseUrl": vendor.url("/v1"), "models": [leveled]
+        }),
+    )
+    .await;
+    conversations::create(&backend, &master, FIRST).await;
+    let path = format!("/api/conversations/{FIRST}");
+    let mut sent = Vec::new();
+    for provider in [&compatible, &anthropic] {
+        let body = json!({
+            "model": { "providerId": provider.id.as_str(), "modelId": "m" },
+            "thinkingEffort": "high"
+        });
+        assert_eq!(
+            backend.patch(&path, &master, body).await.status,
+            StatusCode::OK
+        );
+        let mut socket = Socket::connect(&backend, &master, FIRST).await;
+        socket.open().await;
+        vendor.respond(conversations::answer(&["Done."], 1, 1));
+        socket
+            .chat(&format!("m-{}", sent.len()), "Think hard.")
+            .await;
+        let request = vendor
+            .requests()
+            .into_iter()
+            .rfind(|request| request.uri.path() == "/v1/messages")
+            .expect("the turn reached the vendor")
+            .json();
+        sent.push(request);
+    }
+    assert_eq!(
+        sent[0]["thinking"],
+        json!({ "type": "enabled", "budget_tokens": 32_768 })
+    );
+    assert_eq!(sent[0].get("output_config"), None);
+    assert_eq!(sent[1]["thinking"]["type"], "adaptive");
+    assert_eq!(sent[1]["output_config"], json!({ "effort": "high" }));
     backend.close().await;
 }

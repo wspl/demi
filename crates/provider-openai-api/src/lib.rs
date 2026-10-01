@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use demi_provider_common::{
     Capabilities, CatalogError, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
-    RequestLimits, RuntimeEnv, RuntimeError, Secret, endpoint_url, read_http_failure,
+    RequestLimits, RuntimeEnv, RuntimeError, Secret, VendorPolicy, endpoint_url, read_http_failure,
 };
 use demi_shared_types::{
     AuthState, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
@@ -43,21 +43,6 @@ pub struct OpenAiConfig {
 impl OpenAiConfig {
     /// The base URL of an entry that names none (`providers.md` § Endpoints).
     pub const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
-}
-
-/// A vendor's request requirements, which the backend's vendor policy
-/// applies to every model of the vendor (`providers.md` § Vendors from
-/// models.dev).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct VendorPolicy {
-    /// Chat Completions: earlier thinking goes back as `reasoning_content`,
-    /// as DeepSeek's thinking mode requires on tool-call continuations.
-    /// OpenAI refuses the field.
-    pub pass_back_reasoning_content: bool,
-    /// Responses: replayed assistant messages carry `status: completed`,
-    /// which gateways that validate the full item schema require and relay
-    /// gateways refuse.
-    pub replay_assistant_status: bool,
 }
 
 /// An `openai` entry, shared by every user and request of the entry.

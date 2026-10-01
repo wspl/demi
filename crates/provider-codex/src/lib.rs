@@ -19,7 +19,7 @@ pub mod testing;
 mod transport;
 
 use std::{
-    sync::{Arc, atomic::AtomicBool},
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
@@ -114,9 +114,9 @@ struct Shared {
     header_timeout: Duration,
     connect_timeout: Duration,
     stream_idle_timeout: Option<Duration>,
-    /// Set once a WebSocket could not connect at all: the provider's later
-    /// requests go over server-sent events at once.
-    websocket_unreachable: AtomicBool,
+    /// Until when the provider's requests go over server-sent events at
+    /// once, set when a WebSocket could not connect at all.
+    websocket_unreachable_until: Mutex<Option<Timestamp>>,
     user_agent: HeaderValue,
     auth: Arc<CodexAuth>,
     quota: ProviderQuota,
@@ -173,7 +173,7 @@ impl CodexProvider {
                 header_timeout: config.header_timeout,
                 connect_timeout: config.connect_timeout,
                 stream_idle_timeout: config.stream_idle_timeout,
-                websocket_unreachable: AtomicBool::new(false),
+                websocket_unreachable_until: Mutex::new(None),
                 user_agent,
                 auth,
                 quota: ProviderQuota::new(Box::new(source), snapshots, clock.clone()),
