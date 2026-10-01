@@ -862,17 +862,34 @@ async fn a_jobs_pipes_carry_its_stdin_and_stdout_and_a_refused_end_stops_nothing
     );
     assert_eq!(tap.pipe_done(input.id()).await, (true, None));
     assert_eq!(tap.pipe_done(output.id()).await, (true, None));
-    let viewed: usize = tap
+    // The views stay bounded: the stream's first bytes, then its newest,
+    // each message at most `JOB_VIEW_BYTES`.
+    let views: Vec<(u64, usize)> = tap
         .drain()
         .iter()
         .filter_map(|message| match message {
-            Outbound::JobOutput { job_id, bytes, .. } if job_id == upper.id() => {
-                Some(bytes.0.len())
-            }
+            Outbound::JobOutput {
+                job_id,
+                offset,
+                bytes,
+                ..
+            } if job_id == upper.id() => Some((*offset, bytes.0.len())),
             _ => None,
         })
+        .collect();
+    let first: usize = views
+        .iter()
+        .filter(|(offset, _)| *offset < JOB_VIEW_BYTES as u64)
+        .map(|(_, bytes)| bytes)
         .sum();
-    assert!(viewed <= JOB_VIEW_BYTES, "the view stays bounded: {viewed}");
+    assert!(
+        first <= JOB_VIEW_BYTES,
+        "the first bytes stay bounded: {first}"
+    );
+    assert!(
+        views.iter().all(|(_, bytes)| *bytes <= JOB_VIEW_BYTES),
+        "each view stays bounded: {views:?}"
+    );
 
     // A refused standard output is reported, and the job runs to its end
     // rather than wait for a reader that is not there.

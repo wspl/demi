@@ -591,12 +591,31 @@ impl RemoteShellEnvironment {
                 Ok(output) => (output, String::new(), true),
                 Err(error) => {
                     tracing::warn!(%command, "could not read the command's kept output: {error}");
-                    let missing = Missing {
-                        bytes: unreceived,
+                    // The output ends with each stream's newest bytes the
+                    // runner sent, past what lies between them and the start.
+                    let newest = Received::newest_bytes(&streams);
+                    let kept: u64 = newest
+                        .iter()
+                        .map(|(left_out, _, bytes)| left_out + bytes.len() as u64)
+                        .sum();
+                    if !newest.is_empty() {
+                        let left_out = newest.iter().map(|(left_out, ..)| left_out).sum();
+                        received.push(OutputRecord::LeftOut(left_out));
+                        received.extend(
+                            newest
+                                .into_iter()
+                                .map(|(_, stream, bytes)| OutputRecord::Output(stream, bytes)),
+                        );
+                    }
+                    let missing = Some(Missing {
+                        bytes: unreceived.saturating_sub(kept),
                         reason: format!("not read from the Host: {}", error.message),
-                    };
-                    let page = format!("{}\n", missing.line());
-                    (WholeOutput::new(received, Some(missing)), page, false)
+                    })
+                    .filter(|missing| missing.bytes > 0);
+                    let page = missing
+                        .as_ref()
+                        .map_or_else(String::new, |missing| format!("{}\n", missing.line()));
+                    (WholeOutput::new(received, missing), page, false)
                 }
             }
         };
@@ -943,6 +962,10 @@ struct Received {
     /// Where the pages' view of the stream's next bytes starts.
     next: u64,
     text: Utf8Stream,
+    /// The stream's newest bytes beyond its first `JOB_VIEW_BYTES`, at most
+    /// `JOB_VIEW_BYTES` of them, and where they start.
+    newest: Vec<u8>,
+    newest_offset: u64,
 }
 
 impl Received {
@@ -973,6 +996,19 @@ impl Received {
         if chunk.bytes.is_empty() {
             return false;
         }
+        self.keep_newest(chunk.offset, &chunk.bytes);
+        record.borrow_mut().set_newest(
+            chunk.stream,
+            self.newest_offset,
+            self.newest_offset.saturating_sub(self.head),
+            whole_characters(&self.newest),
+        );
+        // The pages' view takes only the bytes it does not hold yet: a job
+        // nobody follows sends its newest bytes again with each message.
+        let held = usize::try_from(self.next.saturating_sub(chunk.offset)).unwrap_or(usize::MAX);
+        let Some(fresh) = chunk.bytes.get(held..).filter(|fresh| !fresh.is_empty()) else {
+            return false;
+        };
         let mut text = String::new();
         // The runner left out what lies between the previous bytes and these.
         let left_out = chunk.offset.saturating_sub(self.next);
@@ -980,9 +1016,27 @@ impl Received {
             text.push_str(&self.text.finish());
             text.push_str(&left_out_note(chunk.stream, left_out));
         }
-        text.push_str(&self.text.decode(&chunk.bytes));
+        text.push_str(&self.text.decode(fresh));
         self.next = end;
         record.borrow_mut().append_page_output(&text)
+    }
+
+    /// Adds `bytes` at `offset` to the stream's newest bytes: they continue
+    /// or overlap the ones before, or replace them; the newest
+    /// `JOB_VIEW_BYTES` stay.
+    fn keep_newest(&mut self, offset: u64, bytes: &[u8]) {
+        let end = self.newest_offset + self.newest.len() as u64;
+        if self.newest.is_empty() || offset < self.newest_offset || offset > end {
+            self.newest = bytes.to_vec();
+            self.newest_offset = offset;
+        } else {
+            self.newest
+                .truncate(usize::try_from(offset - self.newest_offset).expect("within the bytes"));
+            self.newest.extend_from_slice(bytes);
+        }
+        let excess = self.newest.len().saturating_sub(wire::JOB_VIEW_BYTES);
+        self.newest.drain(..excess);
+        self.newest_offset += excess as u64;
     }
 
     /// The bytes of the stream in the output the backend holds.
@@ -990,11 +1044,45 @@ impl Received {
         self.head
     }
 
+    /// Each stream's newest bytes beyond its start, with the bytes left out
+    /// between the start and them.
+    fn newest_bytes(streams: &[Received]) -> Vec<(u64, StreamKind, Bytes)> {
+        [StreamKind::Stdout, StreamKind::Stderr]
+            .into_iter()
+            .zip(streams)
+            .filter(|(_, stream)| !stream.newest.is_empty())
+            .map(|(kind, stream)| {
+                (
+                    stream.newest_offset.saturating_sub(stream.head),
+                    kind,
+                    Bytes::from(stream.newest.clone()),
+                )
+            })
+            .collect()
+    }
+
     /// The bytes of the stream the Host held beyond those, as far as its
     /// messages told.
     fn unreceived(&self) -> u64 {
         self.host.saturating_sub(self.head)
     }
+}
+
+/// The text of a stream's newest bytes: a character cut at their start or
+/// their end is left out, and other bytes that are not UTF-8 read as U+FFFD.
+fn whole_characters(bytes: &[u8]) -> String {
+    // A character's continuation bytes, which no character starts with.
+    let start = bytes
+        .iter()
+        .take(3)
+        .take_while(|byte| (**byte & 0b1100_0000) == 0b1000_0000)
+        .count();
+    let bytes = &bytes[start..];
+    let end = match std::str::from_utf8(bytes) {
+        Err(error) if error.error_len().is_none() => error.valid_up_to(),
+        _ => bytes.len(),
+    };
+    String::from_utf8_lossy(&bytes[..end]).into_owned()
 }
 
 /// The pages' note where the runner left out `bytes` of a stream.

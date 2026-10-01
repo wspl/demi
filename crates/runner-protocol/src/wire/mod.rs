@@ -28,9 +28,10 @@ use serde::de::DeserializeOwned;
 pub const VERSION: u32 = 24;
 /// The largest frame either end sends.
 pub const MAX_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
-/// How much of the start of each stream a job always sends: the model's view
-/// of it (`runner.md` § Pipes and output).
-pub const JOB_VIEW_BYTES: usize = 32 * 1024;
+/// How much of the start of each stream a job always sends, and how much of
+/// its newest bytes beyond them it sends while nobody follows it: the model's
+/// view of a running command (`runner.md` § Pipes and output).
+pub const JOB_VIEW_BYTES: usize = 8 * 1024;
 /// The most bytes one message beyond a stream's first [`JOB_VIEW_BYTES`]
 /// carries while the backend follows the job: 4,096 characters of up to four
 /// bytes each.
@@ -38,8 +39,8 @@ pub const JOB_LIVE_BYTES: usize = 16 * 1024;
 /// How often a followed job sends each stream's newest bytes beyond its
 /// first [`JOB_VIEW_BYTES`], at most.
 pub const JOB_LIVE_INTERVAL: Duration = Duration::from_millis(250);
-/// How often a job nobody follows says that a stream grows beyond its first
-/// [`JOB_VIEW_BYTES`], at most.
+/// How often a job nobody follows sends how long a stream grew beyond its
+/// first [`JOB_VIEW_BYTES`] and its newest [`JOB_VIEW_BYTES`], at most.
 pub const JOB_GROWTH_INTERVAL: Duration = Duration::from_secs(2);
 /// The most bytes of one live stdin frame.
 pub const STDIN_CHUNK_BYTES: usize = 64 * 1024;

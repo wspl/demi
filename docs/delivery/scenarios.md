@@ -163,9 +163,10 @@ cold transcript.
 
 The world does not bound the `job_output` bytes a job sends. The runner's wire
 test pins them where the runner sends them, in the job table's tests of
-`runner-jobs`: the first 32 KiB of each stream, and
+`runner-jobs`: the first 8 KiB of each stream, and
 beyond them, while the backend follows the job, at most 16 KiB of the newest
-bytes per stream and interval, the last before `job_exit`
+bytes per stream and interval, otherwise the newest 8 KiB every 2 seconds,
+the last before `job_exit`
 ([Pipes and output](../execution/runner.md#pipes-and-output)).
 
 The world does not record the runner's wire frames either. `job_exit` and

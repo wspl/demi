@@ -977,6 +977,61 @@ async fn a_stream_that_grows_beyond_its_view_keeps_its_command_from_idling() {
     );
 }
 
+/// While nobody follows a job, the runner sends each stream's newest bytes
+/// beyond its view, again with every message; the model's view of the
+/// running command holds the newest `JOB_VIEW_BYTES`, which continue,
+/// overlap or replace the ones before (`runner.md` § Pipes and output).
+#[tokio::test(flavor = "local")]
+async fn a_running_command_holds_each_streams_newest_bytes_beyond_its_view() {
+    let device = device();
+    let mut link = device.connect(None);
+    let shell = environment(device.host("/work", Admission::Free));
+    let started = shell
+        .exec(exec("build"), CancellationToken::new())
+        .await
+        .unwrap();
+    let Inbound::JobStart { job_id, .. } = link.next().await else {
+        panic!("expected a job")
+    };
+    let output = |offset: u64, bytes: &[u8]| Outbound::JobOutput {
+        job_id: job_id.clone(),
+        stream: OutputStream::Stdout,
+        offset,
+        bytes: WireBytes(bytes.to_vec()),
+    };
+    let view = JOB_VIEW_BYTES as u64;
+    let newest = |shell: &RemoteShellEnvironment| {
+        let status = shell.status(&started.command_id).unwrap();
+        let [newest] = status.newest.as_slice() else {
+            panic!("{:?}", status.newest)
+        };
+        (newest.offset, newest.left_out, newest.text.clone())
+    };
+    link.send(output(0, &vec![b'x'; JOB_VIEW_BYTES])).await;
+    link.send(output(view + 100, b"one\ntw")).await;
+    drain(&mut link).await;
+    assert_eq!(newest(&shell), (view + 100, 100, "one\ntw".into()));
+
+    // The next message repeats what the last one held and continues it.
+    link.send(output(view + 104, b"two\nthree\n")).await;
+    drain(&mut link).await;
+    assert_eq!(
+        newest(&shell),
+        (view + 100, 100, "one\ntwo\nthree\n".into())
+    );
+
+    // One beyond them replaces them, and the newest `JOB_VIEW_BYTES` stay.
+    let far = view * 10;
+    let mut bytes = vec![b'y'; JOB_VIEW_BYTES];
+    bytes.extend_from_slice(b"end\n");
+    link.send(output(far, &bytes)).await;
+    drain(&mut link).await;
+    let (offset, left_out, text) = newest(&shell);
+    assert_eq!((offset, left_out), (far + 4, far + 4 - view));
+    assert_eq!(text.len(), JOB_VIEW_BYTES);
+    assert!(text.ends_with("yend\n"));
+}
+
 #[tokio::test(flavor = "local")]
 async fn a_job_the_runner_could_not_run_ends_127_with_the_runners_reason() {
     let device = device();
@@ -1538,4 +1593,77 @@ async fn a_malformed_frame_ends_the_connection() {
     let link = device.connect(None);
     link.send_frame(b"not a message".to_vec()).await;
     assert!(matches!(link.ended().await, LinkEnd::Refused(_)));
+}
+
+/// When the kept output cannot be read once the job ended, the command's
+/// whole output is what the backend received: each stream's first bytes,
+/// then, beyond what was left out, its newest bytes, which the runner sent
+/// before the job's end; so the output's end, where a build says what
+/// failed, still shows (`runner.md` § Pipes and output).
+#[tokio::test(flavor = "local")]
+async fn an_unread_output_ends_with_the_newest_bytes_the_runner_sent() {
+    let device = device();
+    let mut link = device.connect(None);
+    let shell = environment(device.host("/work", Admission::Free));
+    let started = shell
+        .exec(exec("build"), CancellationToken::new())
+        .await
+        .unwrap();
+    let Inbound::JobStart { job_id, .. } = link.next().await else {
+        panic!("expected a job")
+    };
+    let output = |offset: u64, bytes: &[u8]| Outbound::JobOutput {
+        job_id: job_id.clone(),
+        stream: OutputStream::Stdout,
+        offset,
+        bytes: WireBytes(bytes.to_vec()),
+    };
+    let head = vec![b'x'; JOB_VIEW_BYTES];
+    let length = JOB_VIEW_BYTES as u64 * 4;
+    let newest = b"error: the build failed\n";
+    link.send(output(0, &head)).await;
+    link.send(output(length - newest.len() as u64, newest))
+        .await;
+    link.send(Outbound::JobExit {
+        job_id: job_id.clone(),
+        exit_code: Some(1),
+        signal: None,
+        spawn_error: None,
+        cwd: None,
+        output: Some(OutputLengths {
+            stdout_bytes: length,
+            stderr_bytes: 0,
+        }),
+        files: Vec::new(),
+        files_truncated: false,
+    })
+    .await;
+    let id = loop {
+        let message = tokio::time::timeout(Duration::from_secs(10), link.next())
+            .await
+            .expect("a read within the hang guard");
+        if let Inbound::JobRead { id, .. } = message {
+            break id;
+        }
+    };
+    link.send(Outbound::JobRead {
+        id,
+        error: Some("the job's output is gone".into()),
+    })
+    .await;
+    let whole = loop {
+        drain(&mut link).await;
+        if let Some(whole) = shell.status(&started.command_id).unwrap().whole {
+            break whole;
+        }
+    };
+    assert_eq!(
+        whole.output.records(),
+        [
+            OutputRecord::Output(StreamKind::Stdout, head.into()),
+            OutputRecord::LeftOut(length - JOB_VIEW_BYTES as u64 - newest.len() as u64),
+            OutputRecord::Output(StreamKind::Stdout, newest.to_vec().into()),
+        ]
+    );
+    assert_eq!(whole.output.missing(), None);
 }

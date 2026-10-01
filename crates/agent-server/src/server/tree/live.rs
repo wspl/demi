@@ -1,11 +1,13 @@
 //! A tree's live output (`runtime.md` § Live output): the commands whose
 //! pages' view changed and was not sent yet, the task that sends them to
 //! every attached connection at most every [`INTERVAL`] and an end at once,
-//! and the feed through which each node's shell environments report their
-//! commands and learn whether a page watches.
+//! the commands that run, which keep the tree from being idle, and the feed
+//! through which each node's shell environments report their commands and
+//! learn whether a page watches.
 
 use std::{
     cell::{Cell, RefCell},
+    collections::BTreeSet,
     rc::{Rc, Weak},
     time::Duration,
 };
@@ -33,6 +35,9 @@ pub(crate) struct LiveOutput {
     sent: Cell<Option<Instant>>,
     /// Wakes the sending task when a command starts to wait.
     wake: Notify,
+    /// The commands that run, in every node of the tree, whether or not a
+    /// connection is attached.
+    running: watch::Sender<BTreeSet<CommandId>>,
 }
 
 /// A command whose new output waits: its view is read when it is sent.
@@ -50,7 +55,18 @@ impl LiveOutput {
             waiting: RefCell::default(),
             sent: Cell::new(None),
             wake: Notify::new(),
+            running: watch::Sender::new(BTreeSet::new()),
         })
+    }
+
+    /// Whether a command of the tree runs.
+    pub(crate) fn runs_commands(&self) -> bool {
+        !self.running.borrow().is_empty()
+    }
+
+    /// Changes whenever a command of the tree starts or ends.
+    pub(crate) fn watch_running(&self) -> watch::Receiver<BTreeSet<CommandId>> {
+        self.running.subscribe()
     }
 
     /// The feed of a node: the subagent `subagent`, or the root when none.
@@ -66,13 +82,20 @@ impl LiveOutput {
     /// end goes at once, with nothing of the command after it. Without an
     /// attached connection nothing is sent or kept.
     fn changed(&self, subagent: &Option<NodeId>, record: &Rc<RefCell<CommandRecord>>) {
-        if !self.sink.attached() {
-            return;
-        }
         let (command, running) = {
             let record = record.borrow();
             (record.command_id().clone(), record.is_running())
         };
+        self.running.send_if_modified(|commands| {
+            if running {
+                commands.insert(command.clone())
+            } else {
+                commands.remove(&command)
+            }
+        });
+        if !self.sink.attached() {
+            return;
+        }
         let mut waiting = self.waiting.borrow_mut();
         let known = waiting.iter().position(|entry| entry.command == command);
         if running {

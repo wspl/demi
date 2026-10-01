@@ -10,7 +10,7 @@ mod supervisor;
 
 use std::{
     cell::{Cell, RefCell},
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     rc::{Rc, Weak},
     sync::Arc,
     time::Duration,
@@ -279,6 +279,7 @@ impl<H: AgentHarness> Tree<H> {
                 sink.attachments.subscribe(),
                 session.status_watch(),
                 changes.subscribe(),
+                live.watch_running(),
             ));
             let working = tokio::task::spawn_local(report_working(
                 tree.clone(),
@@ -389,11 +390,13 @@ impl<H: AgentHarness> Tree<H> {
         &self.sink
     }
 
-    /// Whether the tree does nothing by itself: no child is live, and the
-    /// root runs and waits for nothing and has no wakeup scheduled.
+    /// Whether the tree does nothing by itself: no child is live, no command
+    /// of it runs, and the root runs and waits for nothing and has no wakeup
+    /// scheduled.
     pub fn is_quiescent(&self) -> bool {
         self.children.borrow().is_empty()
             && self.starting.borrow().is_empty()
+            && !self.live.runs_commands()
             && quiescent(&self.root.session().status())
     }
 
@@ -616,11 +619,13 @@ async fn evict_when_idle<H: AgentHarness>(
     mut attachments: watch::Receiver<Vec<Attachment>>,
     mut status: watch::Receiver<Status>,
     mut changes: watch::Receiver<u64>,
+    mut running: watch::Receiver<BTreeSet<CommandId>>,
 ) {
     loop {
         attachments.mark_unchanged();
         status.mark_unchanged();
         changes.mark_unchanged();
+        running.mark_unchanged();
         let Some(live) = tree.upgrade() else {
             return;
         };
@@ -638,6 +643,7 @@ async fn evict_when_idle<H: AgentHarness>(
             changed = attachments.changed() => if changed.is_err() { return },
             changed = status.changed() => if changed.is_err() { return },
             changed = changes.changed() => if changed.is_err() { return },
+            changed = running.changed() => if changed.is_err() { return },
         }
     }
     let Some(live) = tree.upgrade() else {

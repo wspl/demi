@@ -253,8 +253,9 @@ fn stream_bytes(records: &[KeptRecord], stream: OutputStream) -> Vec<u8> {
 }
 
 /// A shell job keeps every read of its output, and sends the backend the
-/// first `JOB_VIEW_BYTES` of each stream and, unfollowed, only how long a
-/// stream grew beyond them; its end gives each stream's length and its last
+/// first `JOB_VIEW_BYTES` of each stream and, unfollowed, how long a stream
+/// grew beyond them with its newest `JOB_VIEW_BYTES`, the last of which
+/// leaves before its end; its end gives each stream's length and its last
 /// working directory, and its directory lasts until its release
 /// (`runner.md` § Pipes and output).
 #[tokio::test]
@@ -274,6 +275,10 @@ async fn a_shell_job_keeps_every_read_and_sends_only_its_views() {
     });
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
+    let printed_stdout = format!("{:060000}", 0).into_bytes();
+    let printed_stderr = format!("{:040000}", 1).into_bytes();
+    // Each stream's newest bytes beyond its first ones, as last sent.
+    let mut newest: [Option<(u64, Vec<u8>)>; 2] = [None, None];
     loop {
         let message = tokio::time::timeout(Duration::from_secs(10), receiver.recv())
             .await
@@ -295,11 +300,22 @@ async fn a_shell_job_keeps_every_read_and_sends_only_its_views() {
                     assert_eq!(offset, view.len() as u64);
                     view.extend(bytes.0);
                 } else {
-                    // Beyond them, a job nobody follows sends only how long
-                    // the stream grew.
-                    assert!(bytes.0.is_empty(), "{stream} at {offset}");
-                    let total = if stream == "stdout" { 60000 } else { 40000 };
-                    assert!(offset <= total, "{stream} at {offset}");
+                    // Beyond them, a job nobody follows sends how long the
+                    // stream grew with its newest bytes, at most as many as
+                    // its first ones.
+                    let (index, printed) = if stream == "stdout" {
+                        (0, &printed_stdout)
+                    } else {
+                        (1, &printed_stderr)
+                    };
+                    let end = offset as usize + bytes.0.len();
+                    assert!(bytes.0.len() <= JOB_VIEW_BYTES, "{stream} at {offset}");
+                    assert_eq!(
+                        bytes.0,
+                        printed[offset as usize..end],
+                        "{stream} at {offset}"
+                    );
+                    newest[index] = Some((offset, bytes.0));
                 }
             }
             Reply::Exit {
@@ -311,19 +327,23 @@ async fn a_shell_job_keeps_every_read_and_sends_only_its_views() {
                 assert_eq!(exit_code, Some(0.0), "{signal:?}");
                 assert_eq!(cwd.map(PathBuf::from), Some(root.path().join("child")));
                 let output = output.unwrap();
-                assert_eq!(stdout.len(), 32768);
-                assert_eq!(stderr.len(), 32768);
+                assert_eq!(stdout, printed_stdout[..JOB_VIEW_BYTES]);
+                assert_eq!(stderr, printed_stderr[..JOB_VIEW_BYTES]);
                 assert_eq!(output.stdout_bytes, 60000);
                 assert_eq!(output.stderr_bytes, 40000);
+                // Before the end, each stream's newest bytes up to its length.
+                let newest = newest.map(Option::unwrap);
+                assert_eq!(newest[0].0, 60000 - JOB_VIEW_BYTES as u64);
+                assert_eq!(newest[1].0, 40000 - JOB_VIEW_BYTES as u64);
+                assert_eq!(newest[0].1.len(), JOB_VIEW_BYTES);
+                assert_eq!(newest[1].1.len(), JOB_VIEW_BYTES);
                 break;
             }
         }
     }
     let records = kept(&directories, "job").await;
-    let mut printed = format!("{:060000}", 0).into_bytes();
-    assert_eq!(stream_bytes(&records, OutputStream::Stdout), printed);
-    printed = format!("{:040000}", 1).into_bytes();
-    assert_eq!(stream_bytes(&records, OutputStream::Stderr), printed);
+    assert_eq!(stream_bytes(&records, OutputStream::Stdout), printed_stdout);
+    assert_eq!(stream_bytes(&records, OutputStream::Stderr), printed_stderr);
     table.close().await;
     assert_eq!(table.len(), 0);
     directories.release("job").await;
@@ -442,8 +462,9 @@ async fn written(directories: &JobDirectories, bytes: usize) {
 /// While the backend follows a job, the job sends the newest bytes beyond
 /// each stream's first `JOB_VIEW_BYTES`: at once when following starts, then
 /// at most one message every `JOB_LIVE_INTERVAL`, each of at most
-/// `JOB_LIVE_BYTES`, and its last output before its exit; unfollowed, only
-/// how long a stream grew (`runner.md` § Pipes and output). About half a
+/// `JOB_LIVE_BYTES`, and its last output before its exit; unfollowed, how
+/// long a stream grew with its newest `JOB_VIEW_BYTES` (`runner.md` § Pipes
+/// and output). About half a
 /// second: the job prints a line every 10 ms for that long, so that its
 /// output spans a few intervals.
 #[tokio::test]
@@ -475,7 +496,8 @@ async fn a_followed_job_sends_its_newest_output_beyond_the_view() {
     let view = JOB_VIEW_BYTES as u64;
     let live = JOB_LIVE_BYTES as u64;
 
-    // Unfollowed: the first 32 KiB, then only how long the stream grew.
+    // Unfollowed: the first `JOB_VIEW_BYTES`, then how long the stream grew
+    // with its newest bytes, which end at its length.
     let mut head = 0;
     loop {
         match reply(&mut receiver).await {
@@ -484,9 +506,10 @@ async fn a_followed_job_sends_its_newest_output_beyond_the_view() {
                 head += bytes.0.len() as u64;
             }
             Reply::Output { offset, bytes, .. } => {
-                assert!(bytes.0.is_empty());
                 assert_eq!(head, view);
-                assert!(offset > view && offset <= 60_000, "{offset}");
+                let end = offset + bytes.0.len() as u64;
+                assert!(offset >= view && end <= 60_000, "{offset}");
+                assert_eq!(bytes.0.len() as u64, view.min(end - view), "{offset}");
                 break;
             }
             Reply::Exit { .. } => panic!("the job ended"),

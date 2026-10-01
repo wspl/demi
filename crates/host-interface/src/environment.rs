@@ -7,7 +7,8 @@ use std::{cell::RefCell, rc::Rc, sync::Arc, time::Duration};
 
 use bytes::Bytes;
 use demi_shared_types::{
-    BinaryStdout, CommandId, EditedFile, NodeId, OutputView, Sequence, ShellId, StreamView,
+    BinaryStdout, CommandId, EditedFile, NodeId, OutputView, Sequence, ShellId, StreamKind,
+    StreamView,
 };
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::watch;
@@ -177,6 +178,9 @@ pub struct CommandStatus {
     /// While the command runs, the bytes its Host holds beyond what the
     /// views hold (`runtime.md` § Results and previews).
     pub unreceived: u64,
+    /// While the command runs, the newest bytes of each stream that grew
+    /// beyond its start, as the runner last sent them.
+    pub newest: Vec<Newest>,
     /// Once the command ended, its whole output.
     pub whole: Option<WholeView>,
     pub running_ms: u64,
@@ -184,6 +188,19 @@ pub struct CommandStatus {
     pub state: CommandState,
     /// The files the command changed, once it ended having changed some.
     pub files: Option<EditedFiles>,
+}
+
+/// A stream's newest bytes beyond its start, which the runner sends while
+/// a command runs (`runner.md` § Pipes and output).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Newest {
+    pub stream: StreamKind,
+    /// Where they start in the stream, in bytes.
+    pub offset: u64,
+    /// The bytes between the stream's start the views hold and these.
+    pub left_out: u64,
+    /// Their text; a character cut at their start is left out.
+    pub text: String,
 }
 
 /// Where a command is.

@@ -617,9 +617,10 @@ impl JobConfig {
             failure = Some(error.to_string());
             child.cancel();
         }
-        // A followed job's last output leaves before its exit.
-        if followed && let Some((logs, ..)) = job.as_mut() {
-            logs.send_last(&id, &self.output, &closed).await?;
+        // A job's last output leaves before its exit: while followed, what
+        // the backend does not hold; otherwise each stream's newest bytes.
+        if let Some((logs, ..)) = job.as_mut() {
+            logs.send_last(&id, followed, &self.output, &closed).await?;
         }
         let (exit, cwd) = child.wait().await;
         drop(execution);
@@ -776,13 +777,21 @@ fn runner_failure(reason: String) -> wire::SpawnError {
     }
 }
 
+/// How many of a stream's last bytes a job keeps for its messages beyond the
+/// stream's first `JOB_VIEW_BYTES`: the most either kind of message carries.
+const TAIL_BYTES: usize = if wire::JOB_LIVE_BYTES > wire::JOB_VIEW_BYTES {
+    wire::JOB_LIVE_BYTES
+} else {
+    wire::JOB_VIEW_BYTES
+};
+
 /// One stream of a job: its length and last bytes, and what the backend
 /// was sent beyond its first `JOB_VIEW_BYTES`.
 struct Log {
     stream: OutputStream,
     /// The stream's length.
     bytes: u64,
-    /// Its last `JOB_VIEW_BYTES` bytes.
+    /// Its last `TAIL_BYTES` bytes.
     tail: Vec<u8>,
     /// Where the bytes the backend holds end: the first `JOB_VIEW_BYTES`,
     /// then each followed message's end.
@@ -822,12 +831,12 @@ impl Log {
         let offset = self.bytes;
         let remaining = wire::JOB_VIEW_BYTES.saturating_sub(self.bytes as usize);
         self.bytes += bytes.len() as u64;
-        if bytes.len() >= wire::JOB_VIEW_BYTES {
+        if bytes.len() >= TAIL_BYTES {
             self.tail.clear();
             self.tail
-                .extend_from_slice(&bytes[bytes.len() - wire::JOB_VIEW_BYTES..]);
+                .extend_from_slice(&bytes[bytes.len() - TAIL_BYTES..]);
         } else {
-            let remove = (self.tail.len() + bytes.len()).saturating_sub(wire::JOB_VIEW_BYTES);
+            let remove = (self.tail.len() + bytes.len()).saturating_sub(TAIL_BYTES);
             self.tail.drain(..remove);
             self.tail.extend_from_slice(bytes);
         }
@@ -856,20 +865,21 @@ impl Log {
 
     /// The message beyond the first `JOB_VIEW_BYTES`: while followed, the
     /// newest bytes the backend does not hold, at most `JOB_LIVE_BYTES`;
-    /// otherwise the stream's length alone.
+    /// otherwise the newest `JOB_VIEW_BYTES` beyond the first ones, which end
+    /// at the stream's length.
     fn beyond(&self, job: &str, followed: bool) -> Result<wire::Frame, wire::WireError> {
-        let (offset, bytes) = if followed {
-            let offset = self
-                .held
-                .max(self.bytes.saturating_sub(wire::JOB_LIVE_BYTES as u64));
-            // Past the first `JOB_VIEW_BYTES` the tail is whole, and it
-            // holds the newest `JOB_LIVE_BYTES`.
-            let start = self.bytes - self.tail.len() as u64;
-            let from = usize::try_from(offset - start).expect("the newest bytes are in the tail");
-            (offset, self.tail[from..].to_vec())
+        let offset = if followed {
+            self.held
+                .max(self.bytes.saturating_sub(wire::JOB_LIVE_BYTES as u64))
         } else {
-            (self.bytes, Vec::new())
+            (wire::JOB_VIEW_BYTES as u64)
+                .max(self.bytes.saturating_sub(wire::JOB_VIEW_BYTES as u64))
         };
+        // Past the first `JOB_VIEW_BYTES` the tail is whole, and it holds
+        // the newest `TAIL_BYTES`.
+        let start = self.bytes - self.tail.len() as u64;
+        let from = usize::try_from(offset - start).expect("the newest bytes are in the tail");
+        let bytes = self.tail[from..].to_vec();
         wire::encode(&wire::Outbound::JobOutput {
             job_id: job.to_owned(),
             stream: self.stream,
@@ -963,23 +973,24 @@ impl Logs {
         self.stderr.send_beyond(job, followed, due, output)
     }
 
-    /// Sends a followed job's last bytes that the backend does not hold,
-    /// waiting for room, before its exit goes.
+    /// Sends each stream's last message beyond its first `JOB_VIEW_BYTES`
+    /// that waits, waiting for room, before the job's exit goes.
     async fn send_last(
         &mut self,
         job: &str,
+        followed: bool,
         output: &mpsc::Sender<wire::Frame>,
         closed: &CancellationToken,
     ) -> io::Result<()> {
         for log in [&mut self.stdout, &mut self.stderr] {
-            if log.due(true).is_none() {
+            if log.due(followed).is_none() {
                 continue;
             }
-            let message = log.beyond(job, true).map_err(io::Error::other)?;
+            let message = log.beyond(job, followed).map_err(io::Error::other)?;
             tokio::select! {
                 // A disconnected backend no longer receives the job's output.
                 _ = closed.cancelled() => return Ok(()),
-                _ = output.send(message) => log.reported(true),
+                _ = output.send(message) => log.reported(followed),
             }
         }
         Ok(())

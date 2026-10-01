@@ -616,9 +616,9 @@ delivers its completion separately.
 **Eviction.** A connection that closes only detaches, and a tree that has been
 detached and quiescent for 10 minutes is disposed
 ([Connections and the live tree](runtime.md#connections-and-the-live-tree)). A
-tree with a live child is not quiescent, so eviction only ever disposes an idle
-root. Disposing it saves its checkpoint, and the next open restores the tree by
-the rules above, exactly as after a restart.
+tree with a live child or a running command is not quiescent, so eviction only
+ever disposes an idle root. Disposing it saves its checkpoint, and the next
+open restores the tree by the rules above, exactly as after a restart.
 
 ## Runtime
 
@@ -874,7 +874,7 @@ Persistence:
    saves only its own rows, and a stale completion that cannot mark a newer
    round delivered.
 3. A tree detached and quiescent for 10 minutes is disposed; a detached tree
-   with a live child or a scheduled wakeup is not. An evicted tree
+   with a live child, a running command or a scheduled wakeup is not. An evicted tree
    reopens with the same transcripts, command state, model selection, and
    archived children as before eviction.
 
