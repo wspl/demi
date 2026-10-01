@@ -47,7 +47,6 @@ use super::{
 pub(crate) struct SessionCore {
     pub(super) id: NodeId,
     pub(super) cwd: String,
-    pub(super) harness: String,
     /// The selection current now; every block records the one current when
     /// it was written.
     pub(super) model: ModelSelection,
@@ -226,7 +225,6 @@ pub(super) struct Effects {
 pub(super) struct CoreParts {
     pub(super) id: NodeId,
     pub(super) cwd: String,
-    pub(super) harness: String,
     pub(super) model: ModelSelection,
     pub(super) provider: Box<dyn ProviderRuntime>,
     pub(super) transcript: TranscriptLog,
@@ -247,7 +245,6 @@ impl SessionCore {
         let mut core = Self {
             id: parts.id,
             cwd: parts.cwd,
-            harness: parts.harness,
             model: parts.model,
             provider: Some(parts.provider),
             switch: None,
@@ -1142,9 +1139,10 @@ impl SessionCore {
         self.commit();
     }
 
-    pub(super) fn push_context(&mut self, text: String) {
+    pub(super) fn push_context(&mut self, source: String, text: String) {
         let turn = self.turn();
-        self.transcript.push_context(turn, &self.model, text);
+        self.transcript
+            .push_context(turn, &self.model, source, text);
         self.commit();
     }
 
@@ -1446,7 +1444,6 @@ impl SessionCore {
             wakeups: self.checkpoint_wakeups(),
             cwd: self.cwd.clone(),
             model: self.model.clone(),
-            harness: self.harness.clone(),
             edits: self.edits.clone(),
         }
     }

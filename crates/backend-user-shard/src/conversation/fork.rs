@@ -271,7 +271,6 @@ mod tests {
             wakeups: Vec::new(),
             cwd: "/work".into(),
             model: test_model(),
-            harness: "coding".into(),
             edits: Vec::new(),
         };
         let initial = CheckpointUpdate {

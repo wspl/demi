@@ -18,6 +18,7 @@ use demi_backend_database::conversations::{self, ConversationStores};
 use demi_backend_expose::domain::ExposeDomain;
 use demi_backend_host_access::stream::UserStreams;
 use demi_backend_page_sync::SyncRegistry;
+use demi_backend_plugins::{Registry, RegistryError};
 use demi_backend_providers::llm::assembly::ProviderAssembly;
 use demi_backend_providers::llm::catalog_cache::ModelCatalogCache;
 use demi_backend_providers::llm::claude_releases::ClaudeReleases;
@@ -32,6 +33,7 @@ use demi_backend_runners::claims::PendingClaims;
 use demi_backend_runners::native::NativeCatalog;
 use demi_backend_runners::public_url::PublicUrl;
 use demi_command_declarations::NativeOperation;
+use demi_plugin_interface::PluginFactory;
 use demi_provider_common::models_dev::ModelsDevClient;
 use demi_shared_types::Clock;
 use demi_web_api_protocol::settings::InstanceMode;
@@ -72,6 +74,9 @@ pub struct Services {
     pub pages: PageTuning,
     /// The command packages each shard's catalog is built from.
     pub native: NativeCatalog,
+    /// The backend's plugins, checked at startup (`plugins.md` § The plugin
+    /// host).
+    pub plugins: Registry,
     /// The user streams a page may open.
     pub user_streams: UserStreams,
     /// The machine manager's client, the Cloud capacity across users and
@@ -125,6 +130,8 @@ pub struct ServiceSettings<'a> {
     pub conversations: ConversationTuning,
     pub pages: PageTuning,
     pub native: NativeCatalog,
+    /// The plugins, in their order of registration.
+    pub plugins: Vec<Box<dyn PluginFactory>>,
     pub user_streams: &'a BTreeMap<String, NativeOperation>,
     pub cloud: CloudServices,
     pub lifecycle: LifecycleTuning,
@@ -139,6 +146,8 @@ pub enum ServicesError {
     Hashing(#[from] HashError),
     #[error("the HTTP client cannot start: {0}")]
     Http(reqwest::Error),
+    #[error("the plugins cannot start: {0}")]
+    Plugins(#[from] RegistryError),
 }
 
 /// The databases and the object store the services run on.
@@ -227,6 +236,10 @@ impl Services {
             conversations,
             blobs,
         } = storage;
+        let native = &settings.native;
+        let plugins = Registry::new(settings.plugins, |operation| {
+            native.serves(&operation.package, &[operation.operation.as_str()])
+        })?;
         let hasher = PasswordHasher::new().await?;
         let clock = providers.clock.clone();
         let edge = tokio::runtime::Handle::current();
@@ -281,6 +294,7 @@ impl Services {
             pages: settings.pages,
             user_streams: UserStreams::new(settings.user_streams, &settings.native),
             native: settings.native,
+            plugins,
             cloud: settings.cloud,
             public_url: PublicUrl::default(),
             lifecycle: settings.lifecycle,
@@ -341,6 +355,7 @@ impl Services {
             conversations: ConversationTuning::default(),
             pages: PageTuning::default(),
             native: NativeCatalog::unpublished(),
+            plugins: Vec::new(),
             user_streams: &BTreeMap::new(),
             cloud: CloudServices::new(machines, demi_backend_cloud::tuning::CloudTuning::default()),
             lifecycle,

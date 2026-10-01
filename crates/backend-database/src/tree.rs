@@ -1074,7 +1074,6 @@ mod tests {
             wakeups: Vec::new(),
             cwd: "/w".into(),
             model: test_model(),
-            harness: "test".into(),
             edits: Vec::new(),
         }
     }

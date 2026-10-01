@@ -1,20 +1,20 @@
 //! A node of a conversation's tree and its assembly (`subagents.md`
 //! § Runtime): every node, the root and each subagent, is one kind of node
 //! built by one assembly, which is the one place that creates a node's
-//! session. What differs between nodes is configuration: the prompt, the
-//! model, the commands, the spawn restriction, and the role that sets the
-//! lifecycle policy.
+//! session. What differs between nodes is configuration: the instructions,
+//! the model, the commands, the spawn restriction, and the role that sets
+//! the lifecycle policy.
 
 use std::{rc::Rc, sync::Arc};
 
 use demi_agent_session::{
-    AgentSession, Continuation, RestoreError, SessionConfig, SessionDeps, SessionInit,
-    SessionRuntime, ToolFailure, ToolInvocation, ToolOutcome,
+    AgentSession, Continuation, NewContext, RestoreError, SeenContext, SessionConfig, SessionDeps,
+    SessionInit, SessionRuntime, ToolFailure, ToolInvocation, ToolOutcome,
 };
 use demi_agent_store::{AgentTreeStore, NodeRecord, StoreError};
 use demi_agent_tools::{
-    AgentHarness, CallError, Environments, ProfilePrompt, PromptContext, ShellAccess,
-    ShellEnvironmentFactory, StoreNumbers, definitions, stored_running_commands,
+    CallError, ContextSource, Environments, HostResolver, NodeContext, ShellAccess,
+    ShellEnvironmentFactory, StoreNumbers, definitions, stored_running_commands, system_prompt,
 };
 use demi_agent_transcript::IdSource;
 use demi_host_interface::{
@@ -22,7 +22,7 @@ use demi_host_interface::{
 };
 use demi_provider_common::{ProviderRuntime, ToolDefinition};
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
-use demi_shared_types::{Clock, CommandId, ModelSelection, NodeId, QueuedMessage};
+use demi_shared_types::{Clock, CommandId, ModelSelection, NodeId, QueuedMessage, TurnId};
 use futures_util::future::LocalBoxFuture;
 
 /// A node's place in its tree, which sets its lifecycle policy: a child
@@ -35,14 +35,14 @@ pub(crate) enum NodeRole {
 }
 
 /// One live node: its record, its role and its session.
-pub struct Node<H: AgentHarness> {
+pub struct Node<H: HostResolver> {
     record: NodeRecord,
     role: NodeRole,
     session: AgentSession,
     runtime: Rc<NodeRuntime<H>>,
 }
 
-impl<H: AgentHarness> Node<H> {
+impl<H: HostResolver> Node<H> {
     pub fn id(&self) -> &NodeId {
         &self.record.id
     }
@@ -60,7 +60,7 @@ impl<H: AgentHarness> Node<H> {
         &self.runtime.cwd
     }
 
-    /// The commands the node's shell offers: its harness's, with the
+    /// The commands the node's shell offers: the product's, with the
     /// `demi agent` group grafted. The backend's command router dispatches
     /// the node's `rpc` calls through them.
     pub fn commands(&self) -> &Rc<CommandSet> {
@@ -132,16 +132,16 @@ impl<H: AgentHarness> Node<H> {
         self.runtime.environments.end_all().await;
     }
 
-    /// The harness commands a child of this node inherits: this node's,
+    /// The product's commands a child of this node inherits: this node's,
     /// before the `demi agent` graft.
     pub(crate) fn inherited_commands(&self) -> &Rc<CommandSet> {
         &self.runtime.inherited
     }
 
-    /// What the node speaks with, which a child without a profile prompt
-    /// inherits.
-    pub(crate) fn prompt(&self) -> &Prompt {
-        &self.runtime.prompt
+    /// The instructions of the node's system prompt, which a child without
+    /// a profile's inherits.
+    pub(crate) fn instructions(&self) -> &Rc<str> {
+        &self.runtime.instructions
     }
 
     /// Held by each start and close of the node's children, and reserved by
@@ -178,30 +178,24 @@ impl<H: AgentHarness> Node<H> {
     }
 }
 
-/// What a node speaks with.
-#[derive(Clone)]
-pub(crate) enum Prompt {
-    /// The harness's system prompt and preamble.
-    Harness,
-    /// A profile's system prompt, which drops the harness's preamble.
-    Profile(ProfilePrompt),
-}
-
-/// What the session calls in its node: the tree's admission, the prompts
-/// with the node's context and rendered command help, the tools, and the
-/// hold on its children that an edit needs.
-pub(crate) struct NodeRuntime<H: AgentHarness> {
+/// What the session calls in its node: the tree's admission, the system
+/// prompt rendered at assembly, the preamble, the context sources, the
+/// tools, and the hold on its children that an edit needs.
+pub(crate) struct NodeRuntime<H: HostResolver> {
     node: NodeId,
     root: NodeId,
     cwd: String,
-    harness: Rc<H>,
-    prompt: Prompt,
-    /// A child's identity, after the preamble it inherits.
-    preamble_suffix: Option<String>,
+    hosts: Rc<H>,
+    /// The instructions of its system prompt.
+    instructions: Rc<str>,
+    /// Its system prompt, rendered once.
+    system_prompt: String,
+    /// A child's identity, the text before each of its user turns.
+    preamble: Option<String>,
+    /// The product's context sources, in their order.
+    context: Rc<[Rc<dyn ContextSource>]>,
     inherited: Rc<CommandSet>,
     commands: Rc<CommandSet>,
-    /// The commands' help, rendered once.
-    help: String,
     admission: ActivityGate,
     lifecycle: ActivityGate,
     store: Rc<dyn AgentTreeStore>,
@@ -216,9 +210,9 @@ pub(crate) struct NodeRuntime<H: AgentHarness> {
     agent: u64,
 }
 
-impl<H: AgentHarness> NodeRuntime<H> {
-    fn prompt_context(&self) -> PromptContext<'_> {
-        PromptContext {
+impl<H: HostResolver> NodeRuntime<H> {
+    fn node_context(&self) -> NodeContext<'_> {
+        NodeContext {
             node: &self.node,
             root: &self.root,
             cwd: &self.cwd,
@@ -228,10 +222,10 @@ impl<H: AgentHarness> NodeRuntime<H> {
     /// What the standard tools reach the node's shells through.
     fn shell_access(&self) -> ShellAccess<'_, H> {
         ShellAccess {
-            harness: &self.harness,
+            hosts: &self.hosts,
             shells: self.shells.as_ref(),
             environments: &self.environments,
-            context: self.prompt_context(),
+            context: self.node_context(),
             agent: self.agent,
             commands: &self.commands,
             feed: &self.feed,
@@ -240,11 +234,7 @@ impl<H: AgentHarness> NodeRuntime<H> {
     }
 }
 
-impl<H: AgentHarness> SessionRuntime for NodeRuntime<H> {
-    fn harness_name(&self) -> &str {
-        self.harness.name()
-    }
-
+impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
     fn enter_action(&self) -> LocalBoxFuture<'_, GateLease> {
         Box::pin(self.admission.enter(Purpose::Demand))
     }
@@ -272,34 +262,47 @@ impl<H: AgentHarness> SessionRuntime for NodeRuntime<H> {
     }
 
     fn system_prompt(&self) -> LocalBoxFuture<'_, String> {
-        match &self.prompt {
-            Prompt::Harness => Box::pin(
-                self.harness
-                    .system_prompt(self.prompt_context(), &self.help),
-            ),
-            Prompt::Profile(prompt) => {
-                let text = prompt(self.prompt_context(), &self.help);
-                Box::pin(async move { text })
-            }
-        }
+        let text = self.system_prompt.clone();
+        Box::pin(async move { text })
     }
 
     fn preamble(&self) -> LocalBoxFuture<'_, Option<String>> {
-        Box::pin(async move {
-            let harness = match &self.prompt {
-                Prompt::Harness => self.harness.preamble(self.prompt_context()).await,
-                Prompt::Profile(_) => None,
-            };
-            match (harness, &self.preamble_suffix) {
-                (Some(harness), Some(suffix)) => Some(format!("{harness}\n\n{suffix}")),
-                (harness, None) => harness,
-                (None, Some(suffix)) => Some(suffix.clone()),
-            }
-        })
+        let text = self.preamble.clone();
+        Box::pin(async move { text })
     }
 
-    fn context<'a>(&'a self, seen: &'a [&'a str]) -> LocalBoxFuture<'a, Option<String>> {
-        Box::pin(self.harness.context(self.prompt_context(), seen))
+    /// Asks each source in turn with its own blocks. A source that fails
+    /// adds nothing: it is asked again before the next request.
+    fn context<'a>(
+        &'a self,
+        seen: &'a [SeenContext<'a>],
+        turn: &'a TurnId,
+    ) -> LocalBoxFuture<'a, Vec<NewContext>> {
+        Box::pin(async move {
+            let mut news = Vec::new();
+            for source in self.context.iter() {
+                let name = source.name();
+                let own: Vec<&str> = seen
+                    .iter()
+                    .filter(|seen| seen.source == name)
+                    .map(|seen| seen.text)
+                    .collect();
+                match source.context(self.node_context(), turn, &own).await {
+                    Ok(Some(text)) => news.push(NewContext {
+                        source: name.to_owned(),
+                        text,
+                    }),
+                    Ok(None) => {}
+                    Err(error) => tracing::warn!(
+                        node = %self.node,
+                        source = name,
+                        %error,
+                        "a context source failed; it is asked again before the next request"
+                    ),
+                }
+            }
+            news
+        })
     }
 
     /// The standard tools, and only these.
@@ -322,7 +325,7 @@ impl<H: AgentHarness> SessionRuntime for NodeRuntime<H> {
 }
 
 /// What makes a node itself, and what it is built with.
-pub(crate) struct NodeSpec<H: AgentHarness> {
+pub(crate) struct NodeSpec<H: HostResolver> {
     /// The record a new node is created with; a stored node keeps its own.
     pub(crate) record: NodeRecord,
     pub(crate) role: NodeRole,
@@ -330,10 +333,12 @@ pub(crate) struct NodeSpec<H: AgentHarness> {
     pub(crate) cwd: String,
     pub(crate) model: ModelSelection,
     pub(crate) runtime: Box<dyn ProviderRuntime>,
-    pub(crate) harness: Rc<H>,
-    pub(crate) prompt: Prompt,
-    pub(crate) preamble_suffix: Option<String>,
-    /// The harness commands, narrowed by a child's profile, before the
+    pub(crate) hosts: Rc<H>,
+    pub(crate) instructions: Rc<str>,
+    /// A child's identity, the text before each of its user turns.
+    pub(crate) preamble: Option<String>,
+    pub(crate) context: Rc<[Rc<dyn ContextSource>]>,
+    /// The product's commands, narrowed by a child's profile, before the
     /// `demi agent` graft: what the node's own children inherit.
     pub(crate) inherited: Rc<CommandSet>,
     /// `inherited` with the node's `demi agent` group grafted.
@@ -354,7 +359,7 @@ pub(crate) struct NodeSpec<H: AgentHarness> {
 
 /// A node, and what it has yet to run: what its restore handed back, or a new
 /// node's first message.
-pub(crate) struct Assembled<H: AgentHarness> {
+pub(crate) struct Assembled<H: HostResolver> {
     pub(crate) node: Node<H>,
     pub(crate) continuation: Option<Continuation>,
 }
@@ -373,7 +378,7 @@ pub(crate) enum AssembleError {
 /// commit. When assembly fails, the provider runtime it was given served no
 /// run, and dropping it releases what it holds, the provider contract's
 /// fallback for a runtime that is not closed.
-pub(crate) async fn assemble<H: AgentHarness>(
+pub(crate) async fn assemble<H: HostResolver>(
     spec: NodeSpec<H>,
 ) -> Result<Assembled<H>, AssembleError> {
     let NodeSpec {
@@ -383,9 +388,10 @@ pub(crate) async fn assemble<H: AgentHarness>(
         cwd,
         model,
         runtime,
-        harness,
-        prompt,
-        preamble_suffix,
+        hosts,
+        instructions,
+        preamble,
+        context,
         inherited,
         commands,
         first_message,
@@ -412,17 +418,18 @@ pub(crate) async fn assemble<H: AgentHarness>(
     let cwd = checkpoint
         .as_ref()
         .map_or(cwd, |checkpoint| checkpoint.state.cwd.clone());
-    let help = commands.render_help();
+    let system_prompt = system_prompt(&instructions, &commands.render_help());
     let node_runtime = Rc::new(NodeRuntime {
         node: record.id.clone(),
         root,
         cwd: cwd.clone(),
-        harness,
-        prompt,
-        preamble_suffix,
+        hosts,
+        instructions,
+        system_prompt,
+        preamble,
+        context,
         inherited,
         commands,
-        help,
         admission,
         lifecycle: ActivityGate::new(),
         numbers: Rc::new(StoreNumbers(store.clone())),
