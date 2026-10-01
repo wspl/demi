@@ -3,7 +3,7 @@
 
 use demi_agent_store::testing::test_model;
 use demi_agent_transcript::retire::{Retirement, retire};
-use demi_core::{
+use demi_shared_types::{
     BlobRef, Block, BlockId, CompactionBoundaryBlock, GoneCause, MediaSource, ModelMediaKind,
     Timestamp, ToolCallBlock, ToolCallStatus, ToolMediaSource, ToolResultContentBlock, UserBlock,
     UserContentBlock,

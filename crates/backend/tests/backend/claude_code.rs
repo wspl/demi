@@ -29,10 +29,10 @@ use std::collections::BTreeMap;
 use std::sync::LazyLock;
 
 use bytes::Bytes;
-use demi_agent_protocol::ServerFrame;
-use demi_core::{Block, TokenUsage, ToolCallStatus, ToolResultContentBlock};
-use demi_provider::testing::{MockResponse, MockVendor, RecordedRequest};
-use demi_web_api::providers::{CliInstall, NewestVersion, ProviderAnswer};
+use demi_conversation_socket_protocol::ServerFrame;
+use demi_shared_types::{Block, TokenUsage, ToolCallStatus, ToolResultContentBlock};
+use demi_provider_common::testing::{MockResponse, MockVendor, RecordedRequest};
+use demi_web_api_protocol::providers::{CliInstall, NewestVersion, ProviderAnswer};
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
@@ -118,7 +118,7 @@ fn version_of(path: &std::ffi::OsStr) -> String {
         .expect("the CLI starts");
     let printed = String::from_utf8_lossy(&output.stdout);
     let version = printed.split_whitespace().next().unwrap_or_default();
-    assert!(demi_claude_protocol::is_version(version), "the CLI printed no version: {printed}");
+    assert!(demi_command_package_claude_code_protocol::is_version(version), "the CLI printed no version: {printed}");
     version.to_owned()
 }
 

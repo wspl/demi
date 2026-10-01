@@ -1,0 +1,38 @@
+[package]
+name = "demi-shared-artifacts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+
+[lib]
+# One test binary, the integration tests' (`crates-and-packages.md`
+# § Module layout); no doc examples.
+test = false
+doctest = false
+bench = false
+
+[features]
+# Test support: a download client that also reaches a fixture server on 127.0.0.1.
+testing = []
+
+[dependencies]
+bytes.workspace = true
+futures-util.workspace = true
+# `zstd`: a command executable arrives in zstd content coding
+# (`native-runtime.md` § Publish artifacts before enabling commands).
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "zstd"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+tempfile = "3"
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+zip = { version = "6", default-features = false, features = ["deflate"] }
+zstd = { version = "0.13", default-features = false, features = ["zstdmt"] }
+
+[dev-dependencies]
+demi-shared-artifacts = { path = ".", features = ["testing"] }
+# A paused clock for the install lock's waits.
+tokio = { workspace = true, features = ["test-util"] }

@@ -9,15 +9,15 @@
 //! fails). The shard's `transition` is the one entry every change of a
 //! conversation goes through.
 
-use demi_backend_storage::StorageError;
-use demi_backend_storage::conversation_index::{
+use demi_backend_database::StorageError;
+use demi_backend_database::conversation_index::{
     ChangeOutcome, ConversationRecord, RecordChange, SwitchEnds, TargetSwitch,
 };
-use demi_gates::Reservation;
-use demi_web_api::conversations::ConversationTarget;
-use demi_web_api::devices::DeviceKind;
-use demi_web_api::error::ErrorCode;
-use demi_web_api::ids::{ConversationId, DeviceId};
+use demi_shared_gates::Reservation;
+use demi_web_api_protocol::conversations::ConversationTarget;
+use demi_web_api_protocol::devices::DeviceKind;
+use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 
 use crate::HostShard;
 use crate::transfer::TransfersClosed;
@@ -39,7 +39,7 @@ pub enum ChangeRefusal {
     #[error("The provider does not list that model")]
     ModelNotFound,
     #[error(transparent)]
-    SettingUnavailable(#[from] demi_core::UnavailableSetting),
+    SettingUnavailable(#[from] demi_shared_types::UnavailableSetting),
     /// An effort or a tier for a conversation without a model.
     #[error("Choose a model for the conversation first")]
     ModelNotSelected,

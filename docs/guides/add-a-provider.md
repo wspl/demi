@@ -24,8 +24,8 @@ process.
 ## Create the crate
 
 1. Create the library crate `crates/provider-<vendor>`.
-2. Depend on `provider`, which holds the contract and the shared building
-   blocks; a provider that starts a process also depends on `shell` for the
+2. Depend on `provider-common`, which holds the contract and the shared building
+   blocks; a provider that starts a process also depends on `host-interface` for the
    Host process interface. Never depend on what sits above a provider: the
    agent, the backend or a Host implementation.
 3. Add the crate and its edges to the Rust graph in
@@ -148,7 +148,7 @@ in it, so every other exit drops it and the Host kills it.
 Everything the vendor sends is untrusted input, decoded at the point of entry
 under the rules of
 [Reading vendor input](../providers/providers.md#reading-vendor-input). Reuse
-the building blocks of the `provider` crate instead of writing your own:
+the building blocks of the `provider-common` crate instead of writing your own:
 
 | Need | Use |
 |---|---|
@@ -206,7 +206,7 @@ entry's credential pool and the account's ID
    document (a label, a detail and the identity key), and your login flow or
    token import. Listing, selecting, importing and removing accounts are the
    shared `Accounts<K>` operations.
-5. Write a device login by hand on `provider::oauth`. Report the verification
+5. Write a device login by hand on `provider_common::oauth`. Report the verification
    address and code once, poll with `tokio::time::sleep` so that dropping the
    login's future cancels it at once, and return the new document
    ([Login and publication](../providers/providers.md#login-and-publication)).
@@ -242,7 +242,7 @@ Then:
 ## Test it
 
 No automated test calls a real model. Tests feed your code inline vendor
-streams, and the `provider` crate's `testing` feature supplies the fakes:
+streams, and the `provider-common` crate's `testing` feature supplies the fakes:
 
 | Fake | What it does |
 |---|---|

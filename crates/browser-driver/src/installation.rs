@@ -7,8 +7,8 @@ use std::path::PathBuf;
 use tokio::sync::OnceCell;
 use tokio_util::sync::CancellationToken;
 
-use demi_artifact::{Archive, Digest};
-use demi_browser_protocol::release::BrowserRelease;
+use demi_shared_artifacts::{Archive, Digest};
+use demi_command_package_browser_protocol::release::BrowserRelease;
 use demi_command_protocol::host_target;
 
 use crate::operation::{BrowserError, Result};
@@ -33,7 +33,7 @@ impl BrowserDirectories {
     pub fn host() -> Self {
         Self {
             image: cfg!(unix)
-                .then(|| PathBuf::from(demi_browser_protocol::release::IMAGE_BROWSERS)),
+                .then(|| PathBuf::from(demi_command_package_browser_protocol::release::IMAGE_BROWSERS)),
             install: std::env::home_dir()
                 .filter(|home| home.is_absolute())
                 .map(|home| home.join(HOME_ROOT)),
@@ -114,7 +114,7 @@ async fn install(directories: &BrowserDirectories, cancel: &CancellationToken) -
     let version = pinned_version()?;
     let archive = pinned_archive()?;
     if let Some(image) = &directories.image {
-        let found = demi_artifact::installed(&image.join(&archive.digest.sha256), &archive, cancel)
+        let found = demi_shared_artifacts::installed(&image.join(&archive.digest.sha256), &archive, cancel)
             .await
             .map_err(|error| failed(&version, error))?;
         if let Some(executable) = found {
@@ -126,15 +126,15 @@ async fn install(directories: &BrowserDirectories, cancel: &CancellationToken) -
             "{version} needs an absolute home directory to install into"
         ))
     })?;
-    let client = demi_artifact::client().map_err(|error| failed(&version, error))?;
-    demi_artifact::install_archive(&client, root, &archive, cancel)
+    let client = demi_shared_artifacts::client().map_err(|error| failed(&version, error))?;
+    demi_shared_artifacts::install_archive(&client, root, &archive, cancel)
         .await
         .map_err(|error| failed(&version, error))
 }
 
 /// What a failure of the verified-bytes library means for the install.
-fn failed(version: &str, error: demi_artifact::Error) -> BrowserError {
-    use demi_artifact::Error;
+fn failed(version: &str, error: demi_shared_artifacts::Error) -> BrowserError {
+    use demi_shared_artifacts::Error;
     match error {
         Error::Cancelled => BrowserError::Cancelled,
         Error::Io(error) => BrowserError::Io(error),

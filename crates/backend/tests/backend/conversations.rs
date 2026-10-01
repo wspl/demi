@@ -13,25 +13,25 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use demi_agent::testing::client_text;
-use demi_agent_protocol::{ClientFrame, EditOutcome, EditRequest, ServerFrame, TranscriptVersion};
+use demi_agent_server::testing::client_text;
+use demi_conversation_socket_protocol::{ClientFrame, EditOutcome, EditRequest, ServerFrame, TranscriptVersion};
 use demi_backend_providers::llm::families::{FamilyArgs, FamilyCredential, FamilyError, ProviderFamily};
-use demi_core::{
+use demi_shared_types::{
     AuthState, Block, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList, RuntimeState,
     SessionPhase, Timestamp, TokenUsage, TurnId,
 };
-use demi_provider::testing::{MockResponse, MockVendor};
-use demi_provider::{
+use demi_provider_common::testing::{MockResponse, MockVendor};
+use demi_provider_common::{
     Capabilities, CatalogError, InferenceRequest, Provider, ProviderEvent, ProviderRun, ProviderRuntime, RequestLimits,
     RuntimeEnv, RuntimeError,
 };
-use demi_web_api::conversations::{
+use demi_web_api_protocol::conversations::{
     BatchAnswer, BatchResult, ConversationAnswer, ConversationStatus, ConversationSummary, ConversationUpdate,
     Conversations, FieldResult, ModelSettings, PatchField, Transcript,
 };
-use demi_web_api::error::{ErrorBody, ErrorCode};
-use demi_web_api::providers::{CredentialKind, ProviderAnswer};
-use demi_web_api::usage::UsageTotals;
+use demi_web_api_protocol::error::{ErrorBody, ErrorCode};
+use demi_web_api_protocol::providers::{CredentialKind, ProviderAnswer};
+use demi_web_api_protocol::usage::UsageTotals;
 use futures_util::future::{BoxFuture, LocalBoxFuture};
 use futures_util::{SinkExt as _, StreamExt as _, stream};
 use reqwest::StatusCode;
@@ -430,7 +430,7 @@ pub(crate) fn last_text(blocks: &[Block]) -> String {
 async fn a_conversation_is_created_once_under_the_id_the_browser_chose_and_listed_for_its_owner() {
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
-    harness.add_user("ana@example.test", "ana-pass-1", demi_web_api::auth::Role::User);
+    harness.add_user("ana@example.test", "ana-pass-1", demi_web_api_protocol::auth::Role::User);
 
     let created = create(&backend, &master, FIRST).await;
     assert_eq!(
@@ -887,7 +887,7 @@ impl ProviderRuntime for KeyedRuntime {
         Box::pin(async {})
     }
 
-    fn request_limits(&self, _model: &demi_core::Model) -> RequestLimits {
+    fn request_limits(&self, _model: &demi_shared_types::Model) -> RequestLimits {
         RequestLimits::default()
     }
 }
@@ -1218,7 +1218,7 @@ async fn each_field_of_a_patch_applies_on_its_own_and_an_archived_conversation_t
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
-    harness.add_user("ana@example.test", "ana-pass-1", demi_web_api::auth::Role::User);
+    harness.add_user("ana@example.test", "ana-pass-1", demi_web_api_protocol::auth::Role::User);
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
     create(&backend, &master, SECOND).await;
@@ -1490,7 +1490,7 @@ async fn an_archive_refuses_running_work_and_holds_the_open_socket_until_the_res
 async fn a_batch_answers_each_item_on_its_own() {
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
-    harness.add_user("ana@example.test", "ana-pass-1", demi_web_api::auth::Role::User);
+    harness.add_user("ana@example.test", "ana-pass-1", demi_web_api_protocol::auth::Role::User);
     create(&backend, &master, FIRST).await;
     create(&backend, &master, SECOND).await;
     let ana = backend.login("ana@example.test", "ana-pass-1").await;

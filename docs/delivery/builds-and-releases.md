@@ -56,7 +56,7 @@ runtime.
 `xtask` itself is not released. It runs on the developer's machine. The Linux
 builder of the Cloud image runs a Linux musl build of it, which the developer's
 machine cross-compiles beside the native builds, for an arm64 builder with
-([guest image build](../../packages/guest-image/README.md)):
+([guest image build](../../cloud-guest-image/README.md)):
 
 ```sh
 cargo zigbuild --release --locked -p xtask \
@@ -233,8 +233,8 @@ Each executable has its own kind of release:
 - **Command packages.** Each command program is released on its own. Its
   release directory holds `descriptor.json` and one subdirectory per target
   with the executable. The descriptor's id and operations are the ones the
-  package's contract crate declares (`file-protocol` for `demi-file`,
-  `browser-protocol` for `demi-browser`, `claude-protocol` for
+  package's contract crate declares (`command-package-file-protocol` for `demi-file`,
+  `command-package-browser-protocol` for `demi-browser`, `command-package-claude-code-protocol` for
   `demi-claude`), the operation list the program routes by, so a release
   cannot advertise an operation the program does not serve; its version is
   the workspace version.
@@ -300,7 +300,7 @@ development store instead and serves their executables itself
 The Cloud image embeds a Linux runner release and the command package releases.
 `cargo xtask cloud-image package` assembles the image on a Linux builder of the
 image's architecture: [Cloud images](../cloud/images.md) defines the image, and
-the [guest image build](../../packages/guest-image/README.md) gives the steps.
+the [guest image build](../../cloud-guest-image/README.md) gives the steps.
 
 ## Chrome for Testing
 
@@ -316,7 +316,7 @@ It reads that version's official download metadata and, for each platform
 Demi supports, downloads the `chrome` archive from Chrome for Testing's
 download host through the artifact library, measures its size and SHA-256, and
 checks that it holds the executable the record names. It then writes the
-release record, `crates/browser-protocol/src/release/chrome.json`, which
+release record, `crates/command-package-browser-protocol/src/release/chrome.json`, which
 `browser-driver` compiles in and the Cloud image build installs from; commit it
 with the change that adopts the version. Chrome for Testing publishes no
 Windows arm64 build, so the record carries five of the six targets. The
@@ -345,7 +345,7 @@ its own copy of every shared dependency.
 | `DEMI_TEST_CHROME=<chrome> cargo test --workspace --features demi-runner/test-fixtures,demi-browser/testing --test browser -- --include-ignored --test-threads=1` | The tests that start Chrome, one at a time, with the executable of the pinned Chrome for Testing release; the selection adds the page-driving helpers of the browser crates |
 | `DEMI_TEST_CLAUDE_CODE=<claude> SSL_CERT_FILE=$PWD/crates/backend/tests/backend/claude_code/distribution-ca.pem cargo test --workspace --features demi-runner/test-fixtures --test backend -- --ignored claude_code` | The Claude Code suite, with the executable of the vendor's CLI and the CA of the suite's local distribution |
 | `bun run test` | The TypeScript tests, the package boundary check among them ([Boundary checks](../architecture/crates-and-packages.md#boundary-checks)), and the test of the capture extension's JavaScript, which sits beside the extension in `browser-driver`; it first builds the programs the tests start, with the same selection |
-| `sudo bash crates/machines/scripts/cloud-suite.sh --image <release> --native <configuration> --work <directory>` | The Cloud suite on Linux, as root, against a machine manager with its resource limits off that the script starts in a stand-in execution host; against an installed manager, the suite's variables and its `cargo test` command instead ([Cloud suite](scenarios.md#cloud-suite)) |
+| `sudo bash crates/machine-manager/scripts/cloud-suite.sh --image <release> --native <configuration> --work <directory>` | The Cloud suite on Linux, as root, against a machine manager with its resource limits off that the script starts in a stand-in execution host; against an installed manager, the suite's variables and its `cargo test` command instead ([Cloud suite](scenarios.md#cloud-suite)) |
 
 A test that starts another program, such as a runner or `demi-file`,
 starts the one Cargo built into the target directory the test runs from
@@ -406,9 +406,9 @@ Release acceptance also checks the artifacts and installers on each platform:
 - Each installer and publication fixture runs three times per platform to
   exercise repeated process startup and teardown.
 
-`crates/command-service/examples/benchmark.rs` is a standalone synthetic
+`crates/command-sdk/examples/benchmark.rs` is a standalone synthetic
 service and client. Build it with
-`cargo build --release -p demi-command-service --example benchmark`, then run
+`cargo build --release -p demi-command-sdk --example benchmark`, then run
 `target/release/examples/benchmark` to measure the machine and build it runs on.
 It never calls a model.
 

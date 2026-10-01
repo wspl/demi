@@ -7,8 +7,8 @@
 
 use std::collections::BTreeSet;
 
-use demi_agent_protocol::TranscriptPatch;
-use demi_core::{Block, BlockId};
+use demi_conversation_socket_protocol::TranscriptPatch;
+use demi_shared_types::{Block, BlockId};
 
 /// The patches of one commit, which advances the revision by one.
 #[derive(Debug, Clone, PartialEq)]

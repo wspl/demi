@@ -2,7 +2,7 @@
 
 use demi_agent_store::testing::test_model;
 use demi_agent_transcript::resume_point;
-use demi_core::{
+use demi_shared_types::{
     AbortBlock, Block, BlockId, ErrorBlock, ResponseBlock, TextBlock, ThinkingBlock, Timestamp,
     TokenUsage, ToolCallBlock, ToolCallStatus, TurnId, UserBlock,
 };

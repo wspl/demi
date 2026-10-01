@@ -10,18 +10,18 @@
 
 use std::sync::LazyLock;
 
-use demi_agent_protocol::{
+use demi_conversation_socket_protocol::{
     ClientContent, ClientFrame, EditOutcome, EditRequest, MediaRef, ServerFrame, SteerOutcome, TranscriptPatch,
 };
-use demi_backend_objects::counting::ObjectCounts;
-use demi_core::{
+use demi_backend_blobs::counting::ObjectCounts;
+use demi_shared_types::{
     Block, BlockId, GoneCause, MediaSource, ModelMediaKind, SessionPhase, ToolResultContentBlock, TurnId,
     UserContentBlock,
 };
-use demi_provider::testing::MockVendor;
-use demi_web_api::attachments::{ATTACHMENT_MAX_BYTES, AttachmentAnswer, AttachmentDto};
-use demi_web_api::auth::Role;
-use demi_web_api::error::ErrorCode;
+use demi_provider_common::testing::MockVendor;
+use demi_web_api_protocol::attachments::{ATTACHMENT_MAX_BYTES, AttachmentAnswer, AttachmentDto};
+use demi_web_api_protocol::auth::Role;
+use demi_web_api_protocol::error::ErrorCode;
 use reqwest::{Method, StatusCode};
 use serde_json::json;
 use sha2::{Digest as _, Sha256};
@@ -90,7 +90,7 @@ async fn a_repeated_upload_sends_the_object_store_no_bytes() {
 
 /// The model's shell call that waits until the file `go` appears where the
 /// conversation works.
-fn wait_for_go() -> demi_provider::testing::MockResponse {
+fn wait_for_go() -> demi_provider_common::testing::MockResponse {
     let script = "until [ -f go ]; do sleep 0.05; done";
     tool_use("toolu_wait", "shell_exec", &json!({ "description": "Wait", "script": script, "timeoutMs": 60_000 }))
 }
@@ -465,7 +465,7 @@ async fn a_restored_conversation_reads_each_replayed_blob_once_and_none_before_i
     // shot, and keeps what came after it, the nine shots
     // (`compaction.md` § One pass).
     let refusal = json!({ "type": "error", "error": { "type": "invalid_request_error", "message": "try later" } });
-    vendor.respond(demi_provider::testing::MockResponse::status(400).chunk(refusal.to_string()));
+    vendor.respond(demi_provider_common::testing::MockResponse::status(400).chunk(refusal.to_string()));
     let named: Vec<(&AttachmentDto, &str)> = shots.iter().map(|shot| (shot, "shot.png")).collect();
     socket.send(&with_upload("m2", "Look at these", &named)).await;
     socket.until_idle().await;

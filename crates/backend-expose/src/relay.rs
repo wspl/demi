@@ -9,11 +9,11 @@ use std::future::Future;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
-use demi_backend_storage::StorageError;
-use demi_backend_storage::exposes::ExposeRecord;
-use demi_core::{Clock, Timestamp};
-use demi_web_api::exposes::ExposeDto;
-use demi_web_api::ids::ExposeId;
+use demi_backend_database::StorageError;
+use demi_backend_database::exposes::ExposeRecord;
+use demi_shared_types::{Clock, Timestamp};
+use demi_web_api_protocol::exposes::ExposeDto;
+use demi_web_api_protocol::ids::ExposeId;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::AbortOnDropHandle;
 

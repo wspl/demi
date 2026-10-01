@@ -4,9 +4,9 @@
 
 use demi_agent_store::StoreError;
 use demi_agent_store::media::BlobStore;
-use demi_backend_objects::blobs::UserBlobs;
-use demi_backend_storage::blob_refs::OwnerBlobs;
-use demi_core::BlobRef;
+use demi_backend_blobs::blobs::UserBlobs;
+use demi_backend_database::blob_refs::OwnerBlobs;
+use demi_shared_types::BlobRef;
 
 /// The namespace and its record of blob uses, which the object store keeps
 /// and storage reads through `OwnerBlobs`.

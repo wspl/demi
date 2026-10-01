@@ -18,9 +18,9 @@ testing = []
 [dependencies]
 chromiumoxide = "=0.9.1"
 demi-browser-driver = { path = "../browser-driver" }
-demi-browser-protocol = { path = "../browser-protocol" }
+demi-command-package-browser-protocol = { path = "../command-package-browser-protocol" }
 demi-browser-tabs = { path = "../browser-tabs" }
-demi-command-service = { path = "../command-service" }
+demi-command-sdk = { path = "../command-sdk" }
 futures-util.workspace = true
 # Validate page tool schemas and the pinned CDP protocol without fetching external refs (MIT).
 jsonschema = { version = "0.56", default-features = false }

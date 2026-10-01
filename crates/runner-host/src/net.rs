@@ -154,7 +154,7 @@ async fn connect(host: &str, port: u16) -> Result<TcpStream, (NetErrorCode, Stri
             )));
         }
         TcpStream::connect(addrs.as_slice()).await.map_err(|error| {
-            if demi_command_service::descriptors::exhausted(&error) {
+            if demi_command_sdk::descriptors::exhausted(&error) {
                 return None;
             }
             Some(match error.kind() {
@@ -165,7 +165,7 @@ async fn connect(host: &str, port: u16) -> Result<TcpStream, (NetErrorCode, Stri
     };
     // Out of open files, the socket waits for one; the ten seconds count
     // only an attempt that has a socket.
-    let mut backoff = demi_command_service::descriptors::Backoff::default();
+    let mut backoff = demi_command_sdk::descriptors::Backoff::default();
     loop {
         match tokio::time::timeout(CONNECT_TIMEOUT, attempt()).await {
             Ok(Ok(stream)) => return Ok(stream),

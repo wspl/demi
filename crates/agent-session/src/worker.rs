@@ -8,7 +8,7 @@ use std::rc::{Rc, Weak};
 
 use demi_agent_store::BoundaryEdge;
 use demi_agent_transcript::{resume_point, rewind};
-use demi_core::Block;
+use demi_shared_types::Block;
 use tokio::sync::Notify;
 
 use super::{

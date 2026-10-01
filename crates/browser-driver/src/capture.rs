@@ -23,8 +23,8 @@ use tokio_tungstenite::{
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use demi_browser_protocol::capture::{self as extension, CaptureCommand};
-use demi_core::DecodeError;
+use demi_command_package_browser_protocol::capture::{self as extension, CaptureCommand};
+use demi_shared_types::DecodeError;
 
 use crate::operation::{BrowserError, Result};
 

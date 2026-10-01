@@ -4,10 +4,10 @@
 //! refresh turns. A pool is bound to its entry, so a provider given it cannot
 //! reach another entry's accounts.
 
-use demi_backend_storage::StorageError;
-use demi_backend_storage::providers::{CredentialRow, CredentialWrite};
-use demi_provider::credentials::{AccountDocument, AccountMeta, CredentialPool, PoolError, RefreshPermit, Revision};
-use demi_web_api::ids::{CredentialId, ProviderId};
+use demi_backend_database::StorageError;
+use demi_backend_database::providers::{CredentialRow, CredentialWrite};
+use demi_provider_common::credentials::{AccountDocument, AccountMeta, CredentialPool, PoolError, RefreshPermit, Revision};
+use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 use futures_util::future::BoxFuture;
 
 use super::entries::Vault;
@@ -223,10 +223,10 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use demi_backend_storage::control::{ControlService, testing};
-    use demi_core::Timestamp;
-    use demi_provider::credentials::{MemoryCredentialPool, SecretDocument, renew};
-    use demi_web_api::settings::InstanceMode;
+    use demi_backend_database::control::{ControlService, testing};
+    use demi_shared_types::Timestamp;
+    use demi_provider_common::credentials::{MemoryCredentialPool, SecretDocument, renew};
+    use demi_web_api_protocol::settings::InstanceMode;
     use serde::{Deserialize, Serialize};
 
     use super::*;
@@ -254,7 +254,7 @@ mod tests {
     #[tokio::test]
     async fn an_account_is_a_sealed_record_refreshed_only_over_the_version_it_was_read_at() {
         let data = tempfile::tempdir().unwrap();
-        let control = ControlService::open(&data.path().join("control.sqlite"), Arc::new(demi_core::SystemClock))
+        let control = ControlService::open(&data.path().join("control.sqlite"), Arc::new(demi_shared_types::SystemClock))
             .await
             .unwrap();
         let master = testing::master(&control).await;
@@ -262,7 +262,7 @@ mod tests {
             control.clone(),
             VaultKey::new([3; 32]),
             InstanceMode::Isolated,
-            demi_backend_sync::SyncRegistry::default(),
+            demi_backend_page_sync::SyncRegistry::default(),
         );
         let staged = MemoryCredentialPool::new();
         let entry = vault

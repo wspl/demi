@@ -6,18 +6,18 @@
 
 use std::sync::Arc;
 
-use demi_backend_storage::StorageError;
-use demi_backend_storage::control::ControlService;
-use demi_backend_storage::providers::{CredentialRow, CredentialWrite, NewProvider, ProviderRow};
-use demi_backend_sync::{Part, SyncRegistry};
-use demi_core::{Timestamp, WireApi};
-use demi_provider::Secret;
-use demi_provider::credentials::{CredentialPool, MemoryCredentialPool, RefreshGates, decode_secret};
-use demi_web_api::auth::{Role, UserDto};
-use demi_web_api::ids::{CredentialId, ProviderId, UserId};
-use demi_web_api::providers::{ConfiguredModels, CredentialKind, ProviderDto};
-use demi_web_api::settings::InstanceMode;
-use demi_web_api::text::EndpointUrl;
+use demi_backend_database::StorageError;
+use demi_backend_database::control::ControlService;
+use demi_backend_database::providers::{CredentialRow, CredentialWrite, NewProvider, ProviderRow};
+use demi_backend_page_sync::{Part, SyncRegistry};
+use demi_shared_types::{Timestamp, WireApi};
+use demi_provider_common::Secret;
+use demi_provider_common::credentials::{CredentialPool, MemoryCredentialPool, RefreshGates, decode_secret};
+use demi_web_api_protocol::auth::{Role, UserDto};
+use demi_web_api_protocol::ids::{CredentialId, ProviderId, UserId};
+use demi_web_api_protocol::providers::{ConfiguredModels, CredentialKind, ProviderDto};
+use demi_web_api_protocol::settings::InstanceMode;
+use demi_web_api_protocol::text::EndpointUrl;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;

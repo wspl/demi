@@ -11,7 +11,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_artifact::{Mode, Permissions, Publication, Staged};
+use demi_shared_artifacts::{Mode, Permissions, Publication, Staged};
 use futures_util::StreamExt;
 use tokio::{
     fs,
@@ -20,7 +20,7 @@ use tokio::{
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use demi_command_service::paths::resolve;
+use demi_command_sdk::paths::resolve;
 
 use demi_runner_process::{
     pipes::{PipeClient, report_pipe},
@@ -184,7 +184,7 @@ impl FileTransfers {
             let decoded = match root {
                 // Out of open files, the request waits for one (`runner.md` § Load).
                 Ok(root) => {
-                    demi_command_service::descriptors::retry(&transfer, || git.show(&root, &path, &transfer)).await
+                    demi_command_sdk::descriptors::retry(&transfer, || git.show(&root, &path, &transfer)).await
                 }
                 Err(error) => Err(crate::git::GitError::Io(error)),
             };
@@ -243,7 +243,7 @@ async fn open_range(
     let target = target?;
     // Out of open files, the transfer waits for one (`runner.md` § Load).
     let mut file =
-        demi_command_service::descriptors::retry(cancel, || fs::File::open(&target)).await?;
+        demi_command_sdk::descriptors::retry(cancel, || fs::File::open(&target)).await?;
     if !file.metadata().await?.is_file() {
         return Err(io::Error::new(
             io::ErrorKind::IsADirectory,
@@ -288,7 +288,7 @@ async fn write_from_pipe(
         durable: false,
     };
     // Out of open files, the write waits for one (`runner.md` § Load).
-    let mut staged = demi_command_service::descriptors::retry(cancel, || {
+    let mut staged = demi_command_sdk::descriptors::retry(cancel, || {
         Staged::new(target, publication)
     })
     .await

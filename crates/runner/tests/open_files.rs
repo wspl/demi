@@ -12,7 +12,7 @@ use demi_command_protocol::{
     CommandCaller, CommandContext, CommandLocale, LocalInvocation, PackageArtifact,
     PackageDescriptor, host_target, testing::built_program,
 };
-use demi_command_service::testing::pauses;
+use demi_command_sdk::testing::pauses;
 use demi_runner_host::host::HostServer;
 use demi_runner_jobs::testing::Dispatch;
 use demi_runner_process::{
@@ -22,7 +22,7 @@ use demi_runner_process::{
     process::{ChildProcess, ProcessInput, SpawnOptions},
 };
 use demi_runner_protocol::wire::{self, Inbound, OutputStream, PipeRef};
-use demi_runner_services::{
+use demi_runner_command_packages::{
     ArtifactResolver, ArtifactSource, RuntimeError, ServiceRegistry, testing::NoNumbers,
 };
 use demi_runner_shell::{

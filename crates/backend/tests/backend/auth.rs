@@ -5,9 +5,9 @@
 
 use std::sync::atomic::Ordering;
 
-use demi_web_api::auth::{EmailChangeStarted, Identity, Role, SetupStatus};
-use demi_web_api::error::ErrorCode;
-use demi_web_api::users::Users;
+use demi_web_api_protocol::auth::{EmailChangeStarted, Identity, Role, SetupStatus};
+use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::users::Users;
 use jiff::SignedDuration;
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};

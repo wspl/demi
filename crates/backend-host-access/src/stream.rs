@@ -14,12 +14,12 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use demi_command_protocol::{CommandCaller, PackageDescriptor};
-use demi_command_tree::NativeOperation;
-use demi_gates::GateLease;
-use demi_host_remote::{Pipe, PipeReader, PipeWriter, ServiceCallError, ServiceRequest, ServiceStream};
-use demi_shell::HostErrorKind;
-use demi_web_api::error::ErrorCode;
-use demi_web_api::ids::ConversationId;
+use demi_command_declarations::NativeOperation;
+use demi_shared_gates::GateLease;
+use demi_backend_remote_host::{Pipe, PipeReader, PipeWriter, ServiceCallError, ServiceRequest, ServiceStream};
+use demi_host_interface::HostErrorKind;
+use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::ids::ConversationId;
 use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
 use demi_backend_runners::command_context::command_context;

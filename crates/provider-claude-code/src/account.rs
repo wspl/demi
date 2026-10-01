@@ -5,9 +5,9 @@
 
 use std::sync::Arc;
 
-use demi_core::LoginPending;
-use demi_provider::Secret;
-use demi_provider::credentials::{
+use demi_shared_types::LoginPending;
+use demi_provider_common::Secret;
+use demi_provider_common::credentials::{
     AccountKit, AccountLabel, AccountsCapability, AccountsError, AddAccount, AuthFailure,
     AuthReason, CredentialPool, LoginError, NewAccount, SecretDocument, read_secret,
 };

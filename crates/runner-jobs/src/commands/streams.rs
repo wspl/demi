@@ -11,7 +11,7 @@ use std::{
 
 use bytes::Bytes;
 use demi_command_protocol::{Invocation, MAX_RECORD_BYTES};
-use demi_command_service::{Exchange, ExchangeError, InputSource, OutputSink};
+use demi_command_sdk::{Exchange, ExchangeError, InputSource, OutputSink};
 use futures_util::{StreamExt, stream::BoxStream};
 use tokio::sync::mpsc;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -23,7 +23,7 @@ use demi_runner_process::{
     tail::TailBuffer,
 };
 use demi_runner_protocol::wire::{self, ServiceErrorCode};
-use demi_runner_services::{ServiceHandle, ServiceLease};
+use demi_runner_command_packages::{ServiceHandle, ServiceLease};
 
 use crate::{commands::artifacts::StreamArtifacts, connection::ConnectionHandle};
 

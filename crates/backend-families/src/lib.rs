@@ -9,16 +9,16 @@ use demi_backend_providers::llm::families::{
     AccountBinding, FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily,
 };
 use demi_backend_providers::vault::accounts::SETUP_TOKEN_FAMILY;
-use demi_core::WireApi;
-use demi_provider::quota::{MemorySnapshots, QuotaSnapshotStore};
-use demi_provider::{Provider, ProviderRuntime};
+use demi_shared_types::WireApi;
+use demi_provider_common::quota::{MemorySnapshots, QuotaSnapshotStore};
+use demi_provider_common::{Provider, ProviderRuntime};
 use demi_provider_anthropic_api::{AnthropicConfig, AnthropicProvider};
 use demi_provider_claude_code::{ClaudeCodeConfig, ClaudeCodeProvider, Placement};
 use demi_provider_codex::{CodexConfig, CodexProvider};
 use demi_provider_google::{GoogleConfig, GoogleProvider};
 use demi_provider_grok_build::{GrokConfig, GrokProvider};
 use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider};
-use demi_web_api::providers::CredentialKind;
+use demi_web_api_protocol::providers::CredentialKind;
 
 /// The families built into the backend.
 pub fn builtin() -> FamilyRegistry {
@@ -193,10 +193,10 @@ fn bound(account: Option<AccountBinding>) -> (Option<String>, Arc<dyn QuotaSnaps
 #[cfg(test)]
 mod tests {
     use demi_backend_providers::llm::families::SubscriptionArgs;
-    use demi_core::{AuthState, Clock, QuotaSnapshot, SnapshotSource};
-    use demi_provider::credentials::{AccountMeta, AccountsCapability, CredentialPool, MemoryCredentialPool};
-    use demi_provider::models_dev::ModelsDevClient;
-    use demi_provider::testing::{FixedClock, jwt};
+    use demi_shared_types::{AuthState, Clock, QuotaSnapshot, SnapshotSource};
+    use demi_provider_common::credentials::{AccountMeta, AccountsCapability, CredentialPool, MemoryCredentialPool};
+    use demi_provider_common::models_dev::ModelsDevClient;
+    use demi_provider_common::testing::{FixedClock, jwt};
     use serde_json::json;
 
     use super::*;

@@ -15,12 +15,12 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use demi_host_remote::testing::{RunnerProcess, RunnerProcessOptions};
-use demi_machines_protocol::{
+use demi_backend_remote_host::testing::{RunnerProcess, RunnerProcessOptions};
+use demi_machine_manager_protocol::{
     BaseVersion, GenerationId, MachineCall, MachineImageState, MachineResponse, RuntimeState, decode_request,
     encode_line,
 };
-use demi_shell::SpawnEnv;
+use demi_host_interface::SpawnEnv;
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{Notify, Semaphore, broadcast, mpsc, watch};

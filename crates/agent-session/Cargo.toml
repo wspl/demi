@@ -14,17 +14,17 @@ bench = false
 [features]
 # What a session's tests read of it besides its public items
 # (`agent_session::testing`), with the test support of the crates below.
-testing = ["demi-agent-transcript/testing", "demi-provider/testing"]
+testing = ["demi-agent-transcript/testing", "demi-provider-common/testing"]
 
 [dependencies]
-demi-agent-protocol = { path = "../agent-protocol" }
+demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
 demi-agent-store = { path = "../agent-store" }
 demi-agent-transcript = { path = "../agent-transcript" }
 demi-command-protocol = { path = "../command-protocol" }
-demi-core = { path = "../core" }
-demi-gates = { path = "../gates" }
-demi-provider = { path = "../provider" }
-demi-shell = { path = "../shell" }
+demi-shared-types = { path = "../shared-types" }
+demi-shared-gates = { path = "../shared-gates" }
+demi-provider-common = { path = "../provider-common" }
+demi-host-interface = { path = "../host-interface" }
 futures-util.workspace = true
 garde.workspace = true
 rand = "0.9"

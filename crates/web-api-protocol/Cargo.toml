@@ -1,0 +1,28 @@
+[package]
+name = "demi-web-api-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+
+[lib]
+# No doc examples: rustdoc has nothing to test.
+doctest = false
+bench = false
+
+[dependencies]
+demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
+demi-command-package-browser-protocol = { path = "../command-package-browser-protocol" }
+demi-command-protocol = { path = "../command-protocol" }
+demi-shared-types = { path = "../shared-types" }
+demi-runner-protocol = { path = "../runner-protocol" }
+garde.workspace = true
+regex = "1"
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_plain.workspace = true
+serde_with.workspace = true
+thiserror.workspace = true
+typed-path = "0.12"
+url = "2"

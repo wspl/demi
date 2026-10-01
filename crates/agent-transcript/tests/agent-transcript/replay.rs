@@ -5,12 +5,12 @@ use demi_agent_store::{
     testing::test_model,
 };
 use demi_agent_transcript::{RequestView, replay};
-use demi_core::{
+use demi_shared_types::{
     Attachment, BlobRef, Block, BlockId, CompactionBoundaryBlock, CompactionMarkerBlock,
     RedactedThinkingBlock, ThinkingBlock, Timestamp, TurnId, UserBlock, UserContentBlock,
     attachment_tag,
 };
-use demi_provider::{InferenceItem, RequestLimits, UserPart};
+use demi_provider_common::{InferenceItem, RequestLimits, UserPart};
 
 /// What the model receives of a message of one text.
 fn replayed_text(text: &str) -> String {

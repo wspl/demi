@@ -124,13 +124,13 @@ current-thread runtime.
 
 ### demi-browser and demi-file
 
-`demi-file` runs one task per invocation (the command-service SDK), and its
+`demi-file` runs one task per invocation (the command-sdk), and its
 file mutations pass one `SerialGate`, with the work on the blocking pool.
 `demi-browser`:
 
 ```text
 multi-threaded runtime
-  one task per invocation (the command-service SDK), routed by operation
+  one task per invocation (the command-sdk SDK), routed by operation
   per conversation: a browser owner task (absent, starting, ready, closing)
     per running Chrome: tab registry, capture channel and live hub owner tasks,
       all joined through one TaskTracker when the browser retires
@@ -143,12 +143,12 @@ per-conversation threads would add nothing but a hop, and would pin a
 conversation's agent commands, live view frames and DevTools decoding to one
 thread.
 
-### demi-claude and the command-service SDK
+### demi-claude and the command-sdk
 
 `demi-claude` runs on a current-thread runtime. Hashing an installed
 executable and writing files each run in one blocking call.
 
-The command-service SDK does not choose a runtime. Handler futures are `Send`,
+The command-sdk does not choose a runtime. Handler futures are `Send`,
 which all three programs satisfy; the SDK runs one task per invocation and
 joins them with the connection.
 
@@ -252,7 +252,7 @@ no component holds a reference back to another. The components live in the
 shard, which cannot see `Shard`: a component whose operations need another
 component, such as the Cloud, whose reset holds the user's conversations,
 defines the narrow trait of what it needs of the shard (`CloudShard`) and
-writes those operations as methods of `dyn CloudShard`. `backend-shard`
+writes those operations as methods of `dyn CloudShard`. `backend-user-shard`
 implements each such trait for `Shard`, and its own behavior is written as
 `impl Shard` blocks, one per module.
 
@@ -268,7 +268,7 @@ no reader can hold up the registration.
 | Need | Tool | Examples |
 |---|---|---|
 | State shared by tasks | One owner: shard-local state, or a task that owns it and answers requests | The runner's job table belongs to its connection; `demi-browser`'s tab registry is an owner task |
-| Serializing an operation across awaits | A named gate from the `gates` crate, or a purpose-named gate built on a semaphore | A conversation's file gate; the file mutations of `demi-file`; a credential refresh that must run once |
+| Serializing an operation across awaits | A named gate from the `shared-gates` crate, or a purpose-named gate built on a semaphore | A conversation's file gate; the file mutations of `demi-file`; a credential refresh that must run once |
 | Read-mostly data | An immutable snapshot published through `watch` | The runner's device token; the tab snapshot commands look tabs up in, so commands on different tabs run in parallel |
 
 **Gates.** An `ActivityGate` is a first-in, first-out semaphore. A lease is one

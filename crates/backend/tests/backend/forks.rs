@@ -8,11 +8,11 @@
 //! calls a real model.
 
 use demi_agent_tools::testing::field;
-use demi_backend_objects::counting::ObjectCounts;
-use demi_core::{Block, BlockId, ToolView};
-use demi_provider::testing::{MockResponse, MockVendor};
-use demi_web_api::conversations::{ConversationStatus, ForkAnswer};
-use demi_web_api::error::ErrorCode;
+use demi_backend_blobs::counting::ObjectCounts;
+use demi_shared_types::{Block, BlockId, ToolView};
+use demi_provider_common::testing::{MockResponse, MockVendor};
+use demi_web_api_protocol::conversations::{ConversationStatus, ForkAnswer};
+use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 
@@ -44,14 +44,14 @@ async fn a_fork_keeps_the_history_through_the_chosen_text_while_the_source_runs_
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
-    harness.add_user("ana@example.test", "ana-pass-1", demi_web_api::auth::Role::User);
+    harness.add_user("ana@example.test", "ana-pass-1", demi_web_api_protocol::auth::Role::User);
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
     let source_path = format!("/api/conversations/{FIRST}");
     backend.patch(&source_path, &master, json!({ "title": "Build" })).await;
     choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let raised = backend.patch(&source_path, &master, json!({ "thinkingEffort": "high" })).await;
-    let settings = raised.json::<demi_web_api::conversations::ConversationUpdate>().conversation.model;
+    let settings = raised.json::<demi_web_api_protocol::conversations::ConversationUpdate>().conversation.model;
     let mut source = Socket::connect(&backend, &master, FIRST).await;
     source.open().await;
     vendor.respond(answer(&["A1"], 1, 1));

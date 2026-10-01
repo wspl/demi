@@ -4,8 +4,8 @@
 
 use std::sync::Arc;
 
-use demi_core::{QuotaSeverity, QuotaSnapshot, QuotaUnit, QuotaWindow};
-use demi_provider::{
+use demi_shared_types::{QuotaSeverity, QuotaSnapshot, QuotaUnit, QuotaWindow};
+use demi_provider_common::{
     Provider,
     testing::{MockResponse, MockVendor, inference_request},
 };

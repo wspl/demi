@@ -1,8 +1,8 @@
 //! The events a run makes of Gemini's stream (`providers.md` § A run,
 //! § Endpoints).
 
-use demi_core::{FailureSource, TokenUsage};
-use demi_provider::{
+use demi_shared_types::{FailureSource, TokenUsage};
+use demi_provider_common::{
     ErrorCode, ProviderEvent, ProviderFailure, ToolCall,
     testing::{MockResponse, MockVendor, inference_request, next_event},
 };

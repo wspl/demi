@@ -1,6 +1,6 @@
 //! What the provider says about itself: its catalog.
 
-use demi_provider::testing::{MockVendor, assert_built_in_catalog};
+use demi_provider_common::testing::{MockVendor, assert_built_in_catalog};
 
 use crate::provider_at;
 

@@ -10,9 +10,9 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
-use demi_host_remote::{CommandSelection, JobOrigin};
-use demi_shell::{CommandSet, RpcError, RpcInvocation, RpcPort};
-use demi_web_api::ids::ConversationId;
+use demi_backend_remote_host::{CommandSelection, JobOrigin};
+use demi_host_interface::{CommandSet, RpcError, RpcInvocation, RpcPort};
+use demi_web_api_protocol::ids::ConversationId;
 use futures_util::future::LocalBoxFuture;
 
 /// The registered nodes of one user's shard.

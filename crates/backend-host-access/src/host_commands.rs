@@ -14,12 +14,12 @@ use std::future::Future;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
-use demi_backend_storage::conversation_index::ExecutionTarget;
-use demi_core::StreamKind;
-use demi_host_remote::{JobEnd, JobStart, Pipe, RemoteJob};
+use demi_backend_database::conversation_index::ExecutionTarget;
+use demi_shared_types::StreamKind;
+use demi_backend_remote_host::{JobEnd, JobStart, Pipe, RemoteJob};
 use demi_runner_protocol::wire::Signal;
-use demi_shell::{Call, GroupBuilder, LeafBuilder, ProcessEnd, RpcError, RpcInvocation, RpcPort, TypedRpc};
-use demi_web_api::ids::ConversationId;
+use demi_host_interface::{Call, GroupBuilder, LeafBuilder, ProcessEnd, RpcError, RpcInvocation, RpcPort, TypedRpc};
+use demi_web_api_protocol::ids::ConversationId;
 use futures_util::future::LocalBoxFuture;
 use schemars::JsonSchema;
 use serde::Deserialize;

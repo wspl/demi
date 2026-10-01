@@ -4,9 +4,9 @@
 //! or delta of a type Demi does not read is skipped, so a CLI release that
 //! adds one does not break a run; one Demi reads that is malformed fails it.
 
-use demi_core::TokenUsage;
-use demi_provider::wire::{Reported, ReportedString, Tagged};
-use demi_provider::{ErrorCode, ProviderEvent, ToolCall, tagged_wire};
+use demi_shared_types::TokenUsage;
+use demi_provider_common::wire::{Reported, ReportedString, Tagged};
+use demi_provider_common::{ErrorCode, ProviderEvent, ToolCall, tagged_wire};
 use serde::Deserialize;
 
 tagged_wire! {

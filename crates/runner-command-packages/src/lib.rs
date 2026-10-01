@@ -1,0 +1,154 @@
+//! Resident native services (`native-runtime.md` § Invoke and retire a
+//! service): the verified executable cache, the service processes, and the
+//! registry that keeps each one resident while something holds a lease on it.
+
+pub mod cache;
+mod process;
+mod registry;
+#[cfg(feature = "testing")]
+pub mod testing;
+
+use std::{fmt, path::PathBuf, time::SystemTime};
+
+use demi_command_protocol::{ArtifactLocation, PackageArtifact, ServiceSequence};
+use futures_util::future::BoxFuture;
+use tokio_util::sync::CancellationToken;
+
+pub use registry::{Resident, ServiceHandle, ServiceLease, ServiceRegistry};
+#[cfg(feature = "testing")]
+pub use registry::Decision;
+
+/// Why a resident service could not be had, or why it ended.
+#[derive(Debug, thiserror::Error)]
+pub enum RuntimeError {
+    /// The executable could not be downloaded, copied or verified.
+    #[error("native artifact: {0}")]
+    Artifact(#[from] demi_shared_artifacts::Error),
+    /// The backend did not say where the artifact is, or said it wrongly.
+    #[error("native artifact location: {0}")]
+    Location(String),
+    #[error("native runtime was cancelled")]
+    Cancelled,
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Service(#[from] demi_command_sdk::ServiceError),
+    #[error("native service does not match its package descriptor")]
+    CatalogMismatch,
+    #[error("native service did not answer within its {0} deadline")]
+    Deadline(&'static str),
+    /// The registry shut the service down: nothing held it any longer, or
+    /// the backend connection ended.
+    #[error("native service was shut down")]
+    Stopped,
+    /// The service ended on its own.
+    #[error(transparent)]
+    Exited(#[from] ServiceExit),
+}
+
+/// How a resident service ended on its own, which every call that fails with
+/// it reports (`native-runtime.md` § Invocation protocol).
+#[derive(Debug, Clone, thiserror::Error)]
+pub struct ServiceExit {
+    /// The package, such as `demi.file`.
+    pub service: String,
+    pub reason: ExitReason,
+    /// The end of the service's standard error.
+    pub stderr: String,
+}
+
+impl fmt::Display for ServiceExit {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "native service {} {}", self.service, self.reason)?;
+        let stderr = self.stderr.trim_end();
+        if !stderr.is_empty() {
+            write!(formatter, "; its standard error ended with:\n{stderr}")?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum ExitReason {
+    #[error("exited with {0}")]
+    Exited(std::process::ExitStatus),
+    /// The runner stopped it after it broke the protocol.
+    #[error("broke the protocol ({0}) and was stopped")]
+    Protocol(String),
+    /// The runner stopped it after it missed a deadline while starting.
+    #[error("did not answer within its {0} deadline and was stopped")]
+    Deadline(&'static str),
+}
+
+/// Where the runner fetches an artifact from.
+pub enum ArtifactSource {
+    Local(PathBuf),
+    Url {
+        url: String,
+        expires_at: Option<SystemTime>,
+    },
+}
+
+impl ArtifactSource {
+    /// A location the backend returned: an HTTP or HTTPS URL, which the wire
+    /// checked as it was read, or a local path, which this machine's rules
+    /// make absolute or not.
+    pub fn from_location(location: ArtifactLocation) -> Result<Self, RuntimeError> {
+        match location {
+            ArtifactLocation::Url(location) => {
+                let expires_at = location
+                    .expires_at
+                    .map(|millis| {
+                        u64::try_from(millis)
+                            .ok()
+                            .and_then(|millis| {
+                                std::time::UNIX_EPOCH
+                                    .checked_add(std::time::Duration::from_millis(millis))
+                            })
+                            .ok_or_else(|| {
+                                RuntimeError::Location("invalid artifact URL expiry".into())
+                            })
+                    })
+                    .transpose()?;
+                Ok(ArtifactSource::Url {
+                    url: location.url,
+                    expires_at,
+                })
+            }
+            ArtifactLocation::Path(location) => {
+                let path = PathBuf::from(location.path);
+                if !path.is_absolute() {
+                    return Err(RuntimeError::Location(
+                        "local artifact path must be absolute".into(),
+                    ));
+                }
+                Ok(ArtifactSource::Local(path))
+            }
+        }
+    }
+}
+
+/// Resolves only an artifact authorized by the calling registration's catalog.
+/// URLs are resolved again for each download attempt and never become cache keys.
+pub trait ArtifactResolver: Send + Sync + 'static {
+    fn resolve<'a>(
+        &'a self,
+        artifact: &'a PackageArtifact,
+        cancel: &'a CancellationToken,
+    ) -> BoxFuture<'a, Result<ArtifactSource, RuntimeError>>;
+}
+
+/// Where a service's requests for conversation numbers go
+/// (`native-runtime.md` § Conversation numbers): the backend connection the
+/// service started under, which a lost connection ends together with the
+/// service.
+pub trait NumberSource: Send + Sync + 'static {
+    /// The first of `count` numbers of `conversation`'s `sequence`, or why
+    /// the backend gave none.
+    fn reserve(
+        &self,
+        conversation: String,
+        sequence: ServiceSequence,
+        count: u32,
+    ) -> BoxFuture<'_, Result<u64, String>>;
+}

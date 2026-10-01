@@ -3,8 +3,8 @@
 
 use std::sync::Arc;
 
-use demi_core::{B64Bytes, ThinkingConfig, TokenUsage};
-use demi_provider::{
+use demi_shared_types::{B64Bytes, ThinkingConfig, TokenUsage};
+use demi_provider_common::{
     ErrorCode, InferenceItem, InferenceRequest, MediaBytes, Medium, ProviderEvent, ResultPart,
     ToolCall, ToolDefinition, UserPart,
     testing::{MockResponse, MockVendor, inference_request, next_event},

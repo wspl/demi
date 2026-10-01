@@ -6,7 +6,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use demi_core::{Block, BlockId};
+use demi_shared_types::{Block, BlockId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 

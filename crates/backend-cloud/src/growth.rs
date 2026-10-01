@@ -4,10 +4,10 @@
 //! the machine manager grows the one working filesystem in the device's
 //! order, so it never overlaps a save or a reset.
 
-use demi_machines_protocol::{GrowVolumeParams, Volume};
+use demi_machine_manager_protocol::{GrowVolumeParams, Volume};
 use demi_runner_protocol::wire::VolumeName;
-use demi_web_api::devices::DeviceKind;
-use demi_web_api::ids::DeviceId;
+use demi_web_api_protocol::devices::DeviceKind;
+use demi_web_api_protocol::ids::DeviceId;
 
 use crate::CloudShard;
 
