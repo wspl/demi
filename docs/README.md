@@ -11,7 +11,7 @@ layout and interaction; these documents do not repeat it.
 - [Crates and packages](architecture/crates-and-packages.md): every Rust crate and TypeScript package, what it owns and must not do, both dependency graphs, module layout and boundary checks.
 - [Contracts](architecture/contracts.md): Rust types as the only contract definition, validation at entry, the generated TypeScript, the TypeScript boundary, and logic the web app and backend share.
 - [Concurrency](architecture/concurrency.md): the threads of each program, the user shard, locks, blocking work, cancellation and cleanup, and tests and time.
-- [Plugins](architecture/plugins.md): how a capability joins Demi: commands, prompt text and context, profiles, Host directories and a page, the contract every plugin uses in process and over a wire, and the plugin host.
+- [Plugins](architecture/plugins.md): how a capability joins Demi: commands, context, profiles, Host directories, Host file reads and a page, the contract every plugin uses in process and over a wire, the plugin host, and the built-in plugins.
 
 ## What can users do, and how does the web app talk to the backend?
 
@@ -34,7 +34,7 @@ layout and interaction; these documents do not repeat it.
 - [Message editing](agent/message-editing.md): editing and resending a message as one transaction.
 - [Conversation fork](agent/conversation-fork.md): forking a conversation from a block, with its seed, publication and subagents.
 - [Command state history](agent/command-state-history.md): versioned command storage, history boundaries and compare-and-set updates.
-- [Skills](agent/skills.md): skills from git sources, what the model sees of them, their directories on a Host and their settings section.
+- [Skills](agent/skills.md): the Agent Skills format, user skills from git sources, project skills from the repository, the catalog the model sees, and the settings section.
 
 ## Where does work execute, and how do commands run?
 

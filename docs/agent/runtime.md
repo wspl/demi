@@ -64,7 +64,7 @@ while a node runs:
 | The product supplies | What it is | Where it comes from in Demi |
 | --- | --- | --- |
 | The command set | The commands every node starts from; the runtime adds its own groups per node ([Tools](#tools)) | The plugins' commands and the `demi host` group ([Plugins](../architecture/plugins.md#commands)) |
-| Instructions | The text of the system prompt between the runtime's rules for its tools and the help of the node's commands | The product's instructions, then each plugin's system-prompt text ([Prompt text and context](../architecture/plugins.md#prompt-text-and-context)) |
+| Instructions | The text of the system prompt between the runtime's rules for its tools and the help of the node's commands | The product's instructions; a plugin adds only its commands' help ([Prompt text and context](../architecture/plugins.md#prompt-text-and-context)) |
 | Profiles | The named [subagent profiles](subagents.md#profiles), as data | The plugins' profiles |
 | The Host of a node | Where its shell tools run now, asked at each shell tool call | The conversation's host access ([Host operations](../execution/sessions-and-targets.md#host-operations)) |
 | Context sources | What the model must learn before a request, asked before each one ([Context](#context)) | The conversation's execution context, then each plugin that is a context source |
@@ -831,7 +831,8 @@ Before each provider request of a node, the session asks every context source
 the product supplies, in the product's order:
 
 - Each source is given the text of its own `context` blocks that the model
-  receives, those from the last `compaction_boundary` on, oldest first, and
+  receives, those from the last `compaction_boundary` on, oldest first, with
+  the node's working directory and the id of its current input turn, and
   answers new text or nothing. After a compaction, a source therefore tells
   the model again what the summary may have left out.
 - Each answer becomes one `context` block that names its source: `execution`

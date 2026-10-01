@@ -506,8 +506,8 @@ Each crate implements the provider contract for one vendor family.
 - **Owns:** the [plugin contract](plugins.md#the-contract) and nothing that
   implements it: the factory and instance traits (`PluginFactory`,
   `Plugin`); the manifest (`Manifest`): a plugin's id, its command groups and
-  roots as declarations with their placement, its system-prompt text, whether
-  it is a context source, its profiles as data, and its page state and page
+  roots as declarations with their placement, whether it is a context
+  source, its profiles as data, and its page state and page
   methods with their schemas; the requests and replies; the port
   (`PluginPort`) with its messages and the transport they travel through
   (`PluginTransport`), whose command operations are the rpc port's; and the
@@ -707,12 +707,13 @@ or on another plugin.
 - **Owns:** [skills](../agent/skills.md): sources with their fetch, pin and
   limits, through `gix` on the blocking pool; the skills they hold; the values
   and blobs it keeps of them; the Host directories of the skills that are on;
-  its system-prompt text and context blocks; and its page state and page
+  its context blocks with the catalog of the skills that are on; the project
+  skills it finds in a conversation's repository; and its page state and page
   methods.
 - **Public boundary:** its factory, and its page types, which `xtask
   contracts` generates into `@demicodes/plugin-skills`.
-- **Must not:** reach a Host, send a credential when it fetches, or block the
-  shard thread.
+- **Must not:** write to a Host, send a credential when it fetches, or block
+  the shard thread.
 
 ### Runner libraries
 
@@ -994,16 +995,18 @@ demi-backend (executable: configuration, composition)
   the registry of plugin factories with the checks of their manifests; the
   command set every node starts from, with its `demi` root, the plugins'
   groups and roots, and the groups left out for a package the startup catalog
-  does not serve; the plugins' system-prompt texts, profiles and context
+  does not serve; the plugins' profiles and context
   sources in registration order; each user's instances, with the `rpc`
   handlers that forward a command to its plugin; the port's operations over
-  the user's plugin values, blobs, Host directory sets and page-state marks;
+  the user's plugin values, blobs, Host directory sets, Host file reads and
+  page-state marks;
   and page state and page calls, with the validation of a call's parameters
   against its method's schema.
 - **Public boundary:** the registry, the user's plugins as the shard holds
   them, and the operations on `dyn PluginShard`, what the host needs of its
-  user's shard: the control service, the user's blobs and the user's change
-  marks.
+  user's shard: the control service, the user's blobs, the user's change
+  marks, and the reads of a conversation's files on its running main Host,
+  which the shard makes through host access.
 - **Must not:** see `Shard`, reach a Host, know an agent's session, or hold
   the logic of one plugin.
 

@@ -27,7 +27,7 @@ Contracts and crate boundaries
 | Native execution | Validated wire contracts, shell/job conformance, cancellation, independent installations, and resident service lifecycle work on the offered platforms | [Native runtime](../execution/native-runtime.md), [Runner](../execution/runner.md) |
 | Commands | Native operations run beside their files; RPC invokes the correct node's backend handler and scoped storage | [Commands](../execution/commands.md) |
 | Plugins | Every agent capability beyond the runtime's tools and groups and `demi host` is a plugin; each plugin passes its tests through the JSON loopback transport; the agent runtime names no plugin | [Plugins](../architecture/plugins.md) |
-| Skills | Sources fetch and pin, skills that are on reach every node as context, and their directories install on a Host before a job needs them | [Skills](../agent/skills.md#acceptance) |
+| Skills | Sources fetch and pin; a repository's own skills are found without waking a Host; the catalog of the skills that are available reaches every node as context; user skills' directories install on a Host before a job needs them | [Skills](../agent/skills.md#acceptance) |
 | Backend and storage | Scripted turns persist and recover; each user's work runs in that user's shard; metadata, journal, blobs, and command state respect ownership boundaries | [Backend](../backend/backend.md), [Storage](../backend/storage.md), [Concurrency](../architecture/concurrency.md) |
 | Providers | Configured entries, accounts, model catalogs, and reported usage work through scripted endpoints without credential disclosure | [Providers](../providers/providers.md), [Models](../providers/models.md), [Usage and quota](../providers/usage-and-quota.md) |
 | Devices and targets | Claim/reconnect/revoke and target exchange preserve attribution, context, and execution-tree admission | [Sessions and targets](../execution/sessions-and-targets.md) |
@@ -40,6 +40,26 @@ Contracts and crate boundaries
 | Host expose | A device service gets a one-hour public URL; HTTP, streaming, and WebSocket relay byte-faithfully on paired devices and Cloud; expiry, removal, Cloud stop, and revocation destroy it | [Host expose](../execution/expose.md#acceptance) |
 | Packaging | The released runner, command programs, backend, and machine manager install and start on their targets; shipped images run under gVisor/systrap on supported Linux hosts | [Builds and releases](builds-and-releases.md), [Cloud setup](../cloud/setup.md) |
 | Distributed deployment | Ownership loss fences stale writers before reassignment; metadata and disk generations recover consistently | [Backend](../backend/backend.md#deployment-and-user-ownership), [Storage](../backend/storage.md#multi-worker-storage-placement) |
+
+### Plugins
+
+The plugin design ([Plugins](../architecture/plugins.md#built-in-plugins)) is
+delivered in this order, each a checkpoint of its own:
+
+1. **The contract and its first plugin.** `plugin-interface` with its loopback
+   transport, `backend-plugins`, the runtime without a harness (the product's
+   dependencies, context sources that name their source and see only their
+   blocks since the last compaction, profiles as data, no harness name in a
+   checkpoint), and `plugin-todo`. `agent-coding-harness` is removed.
+2. **The command plugins.** `plugin-file` and `plugin-browser`, with the rule
+   that leaves out a group whose package the catalog does not serve.
+3. **Skills on the backend.** `plugin-skills` with its sources, its values and
+   blobs, the Host directories with their installation before a job, the Host
+   file reads that never wake a Host, project skills, the catalog, and the
+   page call route with the `plugin` sync message.
+4. **Skills on the page.** `PluginClient`, `usePlugin()` and the slots in
+   `web-ui`; `@demicodes/plugin-skills`; its registration in `web` and its
+   specimens in `web-gallery`.
 
 ## Evidence required at a checkpoint
 

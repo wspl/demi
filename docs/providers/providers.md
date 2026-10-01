@@ -361,8 +361,7 @@ models offer it.
 ### What keeps it
 
 - **The system prompt and the tools** follow from the runtime's rules, the
-  product's and the plugins' fixed instructions, the node's profile and its
-  commands, rendered once when the node is assembled. They hold no time, id,
+  product's fixed instructions, the node's profile and its commands, rendered once when the node is assembled. They hold no time, id,
   Host or state, and nothing that differs by user: what does reaches the model
   as a `context` block ([Context](../agent/runtime.md#context)). The tools are the five standard tools in one order
   ([Tools](../agent/runtime.md#tools)).
