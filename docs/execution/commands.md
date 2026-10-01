@@ -1,7 +1,7 @@
 # Command declarations and execution
 
 An agent supplies one command tree. Groups organize subcommands; leaves select a
-handler that runs in the backend (`rpc`) or a native package operation
+handler that runs in the backend (`rpc`) or a command package operation
 (`native`). The tree defines command names, help, argument schemas, and bindings
 for both embedded shell calls and external command clients.
 
@@ -184,7 +184,7 @@ accepted value has a declaration bug, not a usage error.
 A length bound counts Unicode scalar values, the rule JSON Schema gives
 `minLength` and `maxLength`, at both ends. For example, `𝄞` is one scalar value
 and two UTF-16 units, so it passes `maxLength: 1` as a command argument. Strings
-the browser validates count the same unit
+the web app validates count the same unit
 ([Validation at entry](../architecture/contracts.md#validation-at-entry)).
 
 ### Help
@@ -280,7 +280,7 @@ tree is at most 32 levels deep, and the manifest matches its own hash.
 
 External aliases forward raw argv and context to the runner. The runner validates
 the context, resolves the command, parses input, and dispatches the selected leaf.
-A native package never receives an unvalidated CLI request. An `rpc` leaf
+A command package never receives an unvalidated CLI request. An `rpc` leaf
 reaches the backend as an `rpc_call` that names only its job: the backend checks
 the call against its live record of that job
 ([Bind jobs to their caller](sessions-and-targets.md#bind-jobs-to-their-caller)),

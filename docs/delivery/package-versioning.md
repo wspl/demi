@@ -21,7 +21,7 @@ The fixed group contains the published packages:
   contract crates.
 - `@demicodes/conversation-client`: `AgentClient`, its WebSocket transport, and
   transcript patch application.
-- `@demicodes/utils`: generic helpers for the browser packages.
+- `@demicodes/utils`: generic helpers for the web app's packages.
 
 The private `@demicodes/web` and `@demicodes/web-gallery` belong to the group
 as well: they carry the shared version but are never published.

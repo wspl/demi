@@ -10,11 +10,11 @@ block works like this:
    rewrites the generated TypeScript in `packages/protocol/src/generated/`.
 3. `bun run typecheck:web` reports every place in the frontend that the new
    field breaks.
-4. The backend validates the field when it decodes a block, and the browser's
+4. The backend validates the field when it decodes a block, and the web app's
    generated Zod schema validates it when a block arrives.
 
 There is no second declaration to forget. The Rust type is the only
-definition; its JSON Schema, its TypeScript type and its browser-side
+definition; its JSON Schema, its TypeScript type and the web app's
 validator are derived from it.
 
 ## Contract crates
@@ -28,13 +28,13 @@ names each crate's items.
 
 | Wire or stored data | Contract crate | Ends |
 |---|---|---|
-| Browser HTTP requests and responses | `web-api-protocol` | Backend; `web`, through generated TypeScript |
+| Web app HTTP requests and responses | `web-api-protocol` | Backend; `web`, through generated TypeScript |
 | Conversation WebSocket frames, transcript blocks and patches, tool views | `conversation-socket-protocol`, `shared-types` | Backend; `conversation-client` and `web-ui`, through `@demicodes/protocol` |
 | Runner wire (MessagePack over a WebSocket) and command manifests | `runner-protocol`, with manifest nodes from `command-declarations` | Backend; runner |
 | Managed boot record | `runner-protocol` | Backend and machine manager; the runner in a Cloud sandbox reads it |
 | Command invocations between a runner and a command program | `command-protocol` | Runner; `demi-file`, `demi-browser`, `demi-claude-code` |
 | `demi.file` operations | `command-package-file-protocol` | `agent-coding-harness` declarations; `demi-file` |
-| `demi.browser` operations, live view messages, capture extension events | `command-package-browser-protocol` | `agent-coding-harness` declarations, the backend and the browser crates; the page reads live view messages through `@demicodes/protocol` |
+| `demi.browser` operations, live view messages, capture extension events | `command-package-browser-protocol` | `agent-coding-harness` declarations, the backend and the conversation browser's crates; the page reads live view messages through `@demicodes/protocol` |
 | `demi.claude-code` operations and the Claude Code release record | `command-package-claude-code-protocol` | Backend; `demi-claude-code` |
 | Machine-manager socket (one JSON document per line over a Unix socket) and the Cloud image manifest | `machine-manager-protocol` | Backend; machine manager; `xtask` writes the image manifest |
 | JSON stored in the control and conversation databases | The crate that owns the data, such as `shared-types` for blocks | Backend |
@@ -52,7 +52,7 @@ the two still agree.
 
 ### Encoding conventions
 
-Browser-facing types and JSON stored by the backend follow one serde
+Types the web app sees and JSON stored by the backend follow one serde
 convention:
 
 - Fields are camelCase.
@@ -68,12 +68,12 @@ convention:
   with three fractional digits, such as `2026-09-21T14:13:20.000Z`, so that
   the text of two times orders as the times do (`shared-types`'s `Timestamp`, whole
   milliseconds of a `jiff::Timestamp`); a finer time is refused.
-- Integers are integer types. An integer the browser reads is bounded to
+- Integers are integer types. An integer the web app reads is bounded to
   JavaScript's safe integer range in the Rust type as well: a 64-bit field
   carries garde's `range(max = MAX_SAFE_INTEGER)`, core's constant, so an end
-  that decodes it refuses what the browser cannot hold, and generation fails
+  that decodes it refuses what the web app cannot hold, and generation fails
   for a field without the bound. On a type only the backend sends, nothing in
-  Rust checks the attribute: it states the bound the browser's schema checks.
+  Rust checks the attribute: it states the bound the web app's schema checks.
 
 The runner wire has its own field names and MessagePack encoding, fixed by
 `runner-protocol` and its corpus; its optional and nullable fields follow the
@@ -112,7 +112,7 @@ Every value from outside a process follows the same rule:
   ([Parse input and render help](../execution/commands.md#parse-input-and-render-help)).
 
 A string length counts Unicode scalar values, garde's `chars` mode, wherever
-a bound is checked: in the browser's schemas and in command inputs alike.
+a bound is checked: in the web app's schemas and in command inputs alike.
 Zod 4 counts code points and JSON Schema counts characters, which are the
 same for every string serde accepts, while garde's default counts bytes and
 JavaScript's `length` counts UTF-16 code units. So the one attribute gives
@@ -126,9 +126,9 @@ These are the points where values enter, and what a failure does:
 
 | Where a value enters | Decoded by | When it fails |
 |---|---|---|
-| A browser request body or query | The edge's body and query extractors, into `web-api-protocol` types | 400 `invalid_body` or `invalid_query`, naming the field and the reason ([Web API](../product/web-api.md)) |
+| A web app request body or query | The edge's body and query extractors, into `web-api-protocol` types | 400 `invalid_body` or `invalid_query`, naming the field and the reason ([Web API](../product/web-api.md)) |
 | A frame on the conversation WebSocket | The conversation socket, into `ClientFrame` | An `error` frame with code `invalid_frame`, before any state changes; a message that is not JSON closes the socket ([Frame protocol](../agent/runtime.md#frame-protocol)) |
-| A frame or REST response the browser receives | The generated schemas, in `conversation-client` and `web` | `conversation-client` drops the connection and reports the field path; `web` validates a response before applying it to state |
+| A frame or REST response the web app receives | The generated schemas, in `conversation-client` and `web` | `conversation-client` drops the connection and reports the field path; `web` validates a response before applying it to state |
 | A runner message, at either end | `runner-protocol`'s codec | The connection closes ([Runner](../execution/runner.md)) |
 | Invocation metadata and records between a runner and a command program | `command-protocol` | [Validation and flow control](../execution/native-runtime.md#validation-and-flow-control) |
 | A command's arguments | The declaration's JSON Schema, at the dispatcher and again in a native handler before work | One usage error that names every field that failed |
@@ -143,7 +143,7 @@ These are the points where values enter, and what a failure does:
 
 ## Generated TypeScript
 
-The browser's contract types and validators are generated from the Rust types:
+The web app's contract types and validators are generated from the Rust types:
 
 ```text
 Rust type (serde + schemars + garde)
@@ -164,7 +164,7 @@ Zod source and z.infer types
   `test`) run generation first. Cargo builds never run the emitter and need
   no JavaScript tooling.
 - **What is emitted.** The emitter starts from a list of root types in
-  `xtask`, each with what the browser does with it: receives it or sends it.
+  `xtask`, each with what the web app does with it: receives it or sends it.
   Every type a root refers to is emitted with it. The roots of
   `@demicodes/protocol` are core's types, the socket's frames and the live
   view's messages; its schemas and types are in `generated/contracts.ts` and
@@ -195,9 +195,9 @@ Zod source and z.infer types
   recursively; strict and tolerant objects; and constant tables with
   generated lookups: the file-type table, the file types a model reads and
   the live view's frame constants. A pattern must not use what Rust's `regex`
-  and the browser's engine read differently: `\d`, `\w`, `\s`, `\b`, `.`,
+  and the user's browser read differently: `\d`, `\w`, `\s`, `\b`, `.`,
   groups other than `(?:`, Unicode properties or Rust's class syntax; the
-  browser matches patterns by code point (the `u` flag), as Rust does.
+  web app matches patterns by code point (the `u` flag), as Rust does.
   Anything else fails generation and names the type and the place.
 - **Rules only Rust checks.** garde `custom` rules are not in the schema and
   are not emitted. Such a rule is checked by the backend alone.
@@ -207,21 +207,21 @@ Zod source and z.infer types
   guards its state: model settings arrive in a preferences patch and leave in
   every conversation list, and a model selection travels in every block and
   is read back from the conversation database. In the
-  browser, the schema of every type the browser receives is a tolerant
+  web app, the schema of every type the web app receives is a tolerant
   object, including the blocks and selections inside server frames: a page
   left open across a deploy that adds a field keeps working and ignores the
-  field. The emitter writes a strict object only for a type the browser never
+  field. The emitter writes a strict object only for a type the web app never
   receives, such as a client frame, and refuses to generate one whose Rust
   type accepts unknown fields: the backend receives it.
-- **Tolerant values where the browser receives.** The same rule decides how
-  closely a value's schema follows its Rust type. Where the browser only
+- **Tolerant values where the web app receives.** The same rule decides how
+  closely a value's schema follows its Rust type. Where the web app only
   receives a value, its schema may accept more than the type holds, since the
   backend never sends the difference: a failure map's keys may be empty
   where a block id cannot, and an email address may carry capitals, which
-  `EmailAddress` lowercases. Where the browser sends a value, its schema
+  `EmailAddress` lowercases. Where the web app sends a value, its schema
   refuses whatever the backend refuses: a name the backend trims is trimmed
   before its length is checked, so blank text is refused, and an endpoint must
-  be an `http` or `https` URL. An email address the browser sends passes its
+  be an `http` or `https` URL. An email address the web app sends passes its
   schema only when it has no surrounding white space and has the form the
   backend checks, so the backend accepts every address the schema does.
 - **Checked on arrival.** `conversation-client` validates every frame it receives, and
@@ -244,7 +244,7 @@ the Rust runtime: a TypeScript program would be a client of serializable
 protocols, never a host of the Rust code. Two such protocols exist:
 
 - **The agent frame protocol.** `AgentClient` drives a session through it, as
-  the browser does.
+  the web app does.
 - **Application commands.** An `rpc` command leaf is a callback to the
   application that declared it. Another process could register such leaves
   and serve their invocations, so a command could be written in TypeScript.
@@ -261,9 +261,9 @@ rather than by a callback inside a transaction
 ([Command state history](../agent/command-state-history.md)). The port offers
 no Host operation until a handler needs one.
 
-## Logic the browser and backend share
+## Logic the web app and backend share
 
-Logic that both the browser and the backend need gets one owner, chosen case
+Logic that both the web app and the backend need gets one owner, chosen case
 by case:
 
 | Logic | Owner | How |
@@ -272,5 +272,5 @@ by case:
 | Whether an upload is text, and its short opening snippet | Backend | The upload response carries the snippet the composer's tile shows |
 | The media type a model receives for an upload | Backend | The upload response carries the sniffed media type; the message editor uploads files the way the main composer does |
 | Whether a message can be edited | The data model | `User` is the only editable block type; hidden inputs are `Context`, `Wakeup` and `AgentMessage` blocks |
-| The summary text of a queued message | Browser | The queue carries each message's content, and `web-ui` derives the summary |
-| Completion message ids | Backend | The rule that ties an id to its sender and round is a garde `custom` check, which is not emitted; the browser receives ids as data |
+| The summary text of a queued message | Web app | The queue carries each message's content, and `web-ui` derives the summary |
+| Completion message ids | Backend | The rule that ties an id to its sender and round is a garde `custom` check, which is not emitted; the web app receives ids as data |

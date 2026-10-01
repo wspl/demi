@@ -3,13 +3,13 @@
 The agent runtime runs the agents of every conversation. Each agent is a
 session: it keeps a transcript, asks a provider for the next response, runs the
 tools the model requests, and saves its checkpoint in the conversation's
-database. The browser follows and controls a conversation over one WebSocket
+database. The web app follows and controls a conversation over one WebSocket
 that carries agent frames.
 
 For example, a user sends "run the tests and fix what fails":
 
 ```text
-browser (AgentClient)        backend: the user's shard                   Host
+web app (AgentClient)        backend: the user's shard                   Host
 ---------------------        -------------------------                   ----
 send ----------------------> conversation socket
                                -> tree -> root session
@@ -28,7 +28,7 @@ The root session appends the message as a `user` block and asks the provider
 for a response. The model answers with some text and a `shell_exec` call. The
 session saves the call as executing, runs the command on the conversation's
 Host, records the result, and asks the provider again. When a response
-requests no tool, the turn ends. Each change reaches the browser as a
+requests no tool, the turn ends. Each change reaches the web app as a
 transcript patch and the conversation's database as changed rows.
 
 This document owns sessions and turns, their input, yield wakeups, the
@@ -715,8 +715,8 @@ that replays it, and a short number is copied without a slip.
 | A shell (`shellId`) | `3` | The conversation | The backend, when the shell starts |
 | An agent | `0` for the root, then `1`, `2`, … in spawn order | The conversation | The backend, when the agent is spawned ([Model-facing surface](subagents.md#model-facing-surface)) |
 | An agent's round | `1` for its first run, one more at each resume | The agent | The agent's supervisor |
-| A browser tab | `t7` | The conversation | The backend, when the tab is registered ([One tab registry](../browser/browser.md#one-tab-registry)) |
-| An element reference | `e37` | Its tab | The browser, as it observes the tab |
+| A conversation browser tab | `t7` | The conversation | The backend, when the tab is registered ([One tab registry](../browser/browser.md#one-tab-registry)) |
+| An element reference | `e37` | Its tab | The conversation browser, as it observes the tab |
 | A todo | `T3` | The agent's todo list | The todo command |
 | An expose | `2` | The user | The backend, when the expose is added ([Commands](../execution/expose.md#commands)) |
 | A host | Its name, as `demi host list` shows it | The conversation's hosts | The user ([Attached hosts](../execution/sessions-and-targets.md#attached-hosts)) |
@@ -1147,16 +1147,15 @@ advances. It names what the user will see, not how the tool works.
 
 ## Frame protocol
 
-The browser opens `WS /api/conversations/:id/stream` for a conversation
-([Web API](../product/web-api.md)), with the session cookie, from a page of
-the product
+A page of the web app opens `WS /api/conversations/:id/stream` for a
+conversation ([Web API](../product/web-api.md)), with the session cookie
 ([Authentication and ownership](../backend/backend.md#authentication-and-ownership)).
 The connection belongs to that one
 conversation: the backend supplies the session id and the working directory
 from the conversation's target, and the client never sends them. The types of
-every frame are Rust types, and the browser validates frames with the schemas
+every frame are Rust types, and the web app validates frames with the schemas
 generated from them ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
-`AgentClient`, in `@demicodes/conversation-client`, is the browser's client of this
+`AgentClient`, in `@demicodes/conversation-client`, is the web app's client of this
 protocol.
 
 For example, a page opens a conversation whose root is running:
@@ -1298,11 +1297,10 @@ steers.
 
 ### Connections and the live tree
 
-For example, a conversation is open in two browser tabs, A and B, each with
-its own connection. A sends a message: both tabs show it, the reply as it
-streams and the tool calls. B presses Stop while the turn runs: B alone
-receives the `abort_result`, and both receive the stopped marker and the
-phase `idle`.
+For example, a conversation is open in two pages, A and B, each with its own
+connection. A sends a message: both pages show it, the reply as it streams and
+the tool calls. B presses Stop while the turn runs: B alone receives the
+`abort_result`, and both receive the stopped marker and the phase `idle`.
 
 ```text
 connection A --+                    +--> A's outbox: events, and A's replies

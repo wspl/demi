@@ -1,4 +1,4 @@
-//! `GET /api/models` (`models.md` § What the browser receives): the catalog
+//! `GET /api/models` (`models.md` § What the web app receives): the catalog
 //! of every entry the caller infers with, each model with the selection the
 //! backend builds from it and each entry with its health. It wakes no Cloud
 //! and runs no model; `refresh=true` waits for a shared forced refresh.

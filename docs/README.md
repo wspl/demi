@@ -9,19 +9,19 @@ layout and interaction; these documents do not repeat it.
 
 - [Overview](overview.md): what Demi is, its system boundary, one conversation end to end, where data and credentials live, and terms.
 - [Crates and packages](architecture/crates-and-packages.md): every Rust crate and TypeScript package, what it owns and must not do, both dependency graphs, module layout and boundary checks.
-- [Contracts](architecture/contracts.md): Rust types as the only contract definition, validation at entry, the generated TypeScript, the TypeScript boundary, and logic the browser and backend share.
+- [Contracts](architecture/contracts.md): Rust types as the only contract definition, validation at entry, the generated TypeScript, the TypeScript boundary, and logic the web app and backend share.
 - [Concurrency](architecture/concurrency.md): the threads of each program, the user shard, locks, blocking work, cancellation and cleanup, and tests and time.
 
-## What can users do, and how does the browser talk to the backend?
+## What can users do, and how does the web app talk to the backend?
 
 - [Product](product/product.md): users, roles and instance mode; conversations and projects; writing a message; attachments; provider management; Cloud settings.
-- [Web application](product/web-application.md): the browser's packages, work panel, backend communication, [page synchronization](product/web-application.md#page-synchronization), authentication, persistence, [drafts](product/web-application.md#drafts) and development loop.
+- [Web application](product/web-application.md): the web app's packages, work panel, backend communication, [page synchronization](product/web-application.md#page-synchronization), authentication, persistence, [drafts](product/web-application.md#drafts) and development loop.
 - [Web API](product/web-api.md): every HTTP and WebSocket route with its request, response, status and error codes.
 - [File previews](product/file-previews.md): preview kinds and viewer choice, the byte path, ending transfers, inert content, [files named in messages](product/file-previews.md#files-named-in-messages), and [media a tool returned](product/file-previews.md#media-a-tool-returned).
 
 ## How does the backend serve requests and keep data?
 
-- [Backend](backend/backend.md): the backend binary's modules and runtime model, authentication and ownership, browser synchronization, media by reference, failure facts, startup and shutdown, configuration, a development backend with the native programs a developer built, and deployment and user placement.
+- [Backend](backend/backend.md): the backend binary's modules and runtime model, authentication and ownership, page synchronization, media by reference, failure facts, startup and shutdown, configuration, a development backend with the native programs a developer built, and deployment and user placement.
 - [Storage](backend/storage.md): the data directory, control and conversation databases, encodings and digests, passwords and credentials at rest, the object store for blobs, [retention](backend/storage.md#retention) of tool media and blobs, multi-worker placement, and open durability decisions.
 
 ## How does the agent run a conversation?
@@ -40,7 +40,7 @@ layout and interaction; these documents do not repeat it.
 - [Resource lifecycle](execution/resource-lifecycle.md): activity, the idle window and the conversation release.
 - [Runner](execution/runner.md): registration, Host operations, the Host log, [load](execution/runner.md#load), shell jobs, pipes and managed guests.
 - [Commands](execution/commands.md): declarations, input and help, dispatch surfaces and manifests, rpc calls, [external command clients](execution/commands.md#external-command-clients), IO, and the file commands.
-- [Native command execution](execution/native-runtime.md): native packages, installation, resident services, the command context, conversation-scoped state, user streams, the invocation protocol and publication.
+- [Native command execution](execution/native-runtime.md): command packages, installation, resident services, the command context, conversation-scoped state, user streams, the invocation protocol and publication.
 - [Edit tracking](execution/edit-tracking.md): recording what a job edited, the report, its copies as blobs and delivery to the conversation.
 - [Host expose](execution/expose.md): public URLs for services on a Host, their lifetime, relay and commands.
 
@@ -65,7 +65,7 @@ layout and interaction; these documents do not repeat it.
 ## How is Demi delivered, built and released?
 
 - [Roadmap](delivery/roadmap.md): dependency order, completion conditions, required evidence and open deployment decisions.
-- [Scenarios](delivery/scenarios.md): backend scenario acceptance, the browser-contract suite and real-machine acceptance.
+- [Scenarios](delivery/scenarios.md): backend scenario acceptance, the web app contract suite and real-machine acceptance.
 - [Testing](delivery/testing.md): what a test protects, its level, how it proves itself, time and stability, cost, resources and coverage.
 - [Builds and releases](delivery/builds-and-releases.md): the toolchain, cross builds, `cargo xtask` packaging, the Chrome for Testing pin, targets per executable and Cloud image refresh.
 - [Package versioning](delivery/package-versioning.md): the npm release set and changesets, and how the Rust executables are versioned.

@@ -17,7 +17,7 @@ The two share the file entry shape and the diff view and nothing else.
 
 The list travels with the transcript block. The file contents behind the diff
 do not: they are blobs the list names ([Edit copies](#edit-copies)), and the
-browser fetches them when a file is opened.
+web app fetches them when a file is opened.
 
 ## Scope
 
@@ -126,7 +126,7 @@ command writes, not filesystem isolation from other applications.
 
 | Field | Meaning |
 | --- | --- |
-| `path` | Absolute, as the target names it. The browser displays it relative to the workspace root when under it, absolute otherwise, with `/` separators. |
+| `path` | Absolute, as the target names it. The web app displays it relative to the workspace root when under it, absolute otherwise, with `/` separators. |
 | `kind` | `added` or `modified`. |
 | `added`, `removed` | Total line additions and removals across this job's retained edit segments. A segment without contents contributes zero. |
 | `edits` | Ordered segments for this file. Each has `original` and `modified` snapshot paths on the target. `original` is absent when that segment created the file. Both are absent when contents were not retained. |
@@ -162,7 +162,7 @@ while a block references it, which is as long as the conversation, archived
 or not, and is collected once nothing does. A Fork copies no bytes: its blocks
 reference the same blobs of the same namespace.
 
-The browser reads one segment's two sides from the blob route
+The web app reads one segment's two sides from the blob route
 ([Uploads and media](../product/web-api.md#uploads-and-media)) by the hashes in
 the view, without involving the Host; an added segment's original is empty.
 

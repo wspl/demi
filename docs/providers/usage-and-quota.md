@@ -278,7 +278,7 @@ for one:
   active one
   ([Web API](../product/web-api.md#model-configuration-and-provider-inspection)).
 
-The browser decides when to ask:
+The web app decides when to ask:
 
 - Every surface that shows an account's quota asks for a probe when that quota
   region becomes visible, including when the account has no snapshot yet,

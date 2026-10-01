@@ -1,5 +1,5 @@
 //! The conversation socket (`runtime.md` § Frame protocol, `backend.md`
-//! § Browser synchronization): `WS /api/conversations/:id/stream`, moved into
+//! § Page synchronization): `WS /api/conversations/:id/stream`, moved into
 //! the user's shard once upgraded. The socket decodes each message into a
 //! client frame and hands it to the conversation's agent connection, one at a
 //! time in arrival order; the connection's outbox carries every server frame
