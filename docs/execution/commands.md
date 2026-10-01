@@ -1,9 +1,12 @@
 # Command declarations and execution
 
-An agent supplies one command tree. Groups organize subcommands; leaves select a
-handler that runs in the backend (`rpc`) or a command package operation
-(`native`). The tree defines command names, help, argument schemas, and bindings
-for both embedded shell calls and external command clients.
+Each agent node has one command tree. Groups organize subcommands; leaves
+select a handler that runs in the backend (`rpc`) or a command package
+operation (`native`). The tree defines command names, help, argument schemas,
+and bindings for both embedded shell calls and external command clients. The
+plugins declare most of it, the product adds `demi host`, and the agent runtime
+grafts `demi agent` and `demi shell` per node
+([Commands](../architecture/plugins.md#commands)).
 
 The `demi browser` command family, including readable output, optional
 JSON, image bytes, targeting, and examples, is specified in
@@ -298,7 +301,10 @@ An `rpc` handler receives its call as data and acts only through messages;
 [The TypeScript boundary](../architecture/contracts.md#the-typescript-boundary)
 says why. For example, `demi todo add "Write tests"` in a job reaches the
 backend as an `rpc_call`. The backend builds an invocation from the call and its
-record of the job, and gives the handler that invocation and a port.
+record of the job, and gives the handler that invocation and a port. The
+handler of a plugin's leaf forwards both to its plugin as a command request,
+whose port offers these operations among the plugin's others
+([The contract](../architecture/plugins.md#the-contract)).
 
 The invocation carries:
 
