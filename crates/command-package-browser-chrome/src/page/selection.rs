@@ -32,15 +32,16 @@ pub(crate) async fn select_text(
     let mut last_failure = None;
     loop {
         let attempt = async {
-            let (element, _) = crate::page::element::ready_with_failure(
-                tab,
-                target,
-                refs,
-                &["visible"],
-                operation,
-                &mut last_failure,
-            )
-            .await?;
+            let crate::page::element::Ready { element, named, .. } =
+                crate::page::element::ready_with_failure(
+                    tab,
+                    target,
+                    refs,
+                    &["visible"],
+                    operation,
+                    &mut last_failure,
+                )
+                .await?;
             operation.begin_input();
             let selected: Selection = operation
                 .run(element::call(
@@ -64,7 +65,9 @@ pub(crate) async fn select_text(
                     let result = input
                         .cursor
                         .map_or("selected".to_owned(), |cursor| cursor.to_string());
-                    Ok(Some(ActionResult::new("select-text", json!(result))))
+                    let mut result = ActionResult::new("select-text", json!(result));
+                    result.target = Some(named);
+                    Ok(Some(result))
                 }
                 "missing" => {
                     last_failure = Some(BrowserError::NotActionable {

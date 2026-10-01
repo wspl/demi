@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
-import { ConversationClient } from '../client'
+import { MAX_PAGE_MESSAGE_BYTES } from '@demicodes/protocol'
+import { ConversationClient, SteerRejectedError } from '../client'
 import { createWebSocketTransport, type SocketClose, type SocketMessage, type WebSocketLike } from '../transport'
 import { text, user } from './harness'
 
@@ -102,4 +103,25 @@ test('a socket the server closes disconnects the client with the close code', ()
   })
   socket.end(4001, 'lagged')
   expect(endings).toEqual(['The agent socket closed (4001 lagged)'])
+})
+
+test('a frame over the backend limit is refused as the backend refuses a frame, and the socket stays', async () => {
+  const socket = new FakeSocket()
+  const client = new ConversationClient(createWebSocketTransport(socket))
+  const opening = client.open()
+  socket.message(JSON.stringify({ type: 'opened' }))
+  await opening
+  const huge = [{ type: 'text' as const, text: 'é'.repeat(MAX_PAGE_MESSAGE_BYTES / 2) }]
+  const written = socket.written.length
+
+  await expect(client.submit(huge, 'm1')).rejects.toThrow(`over the ${MAX_PAGE_MESSAGE_BYTES} bytes`)
+  await expect(client.steer(huge, 's1')).rejects.toThrow(SteerRejectedError)
+  expect(socket.written).toHaveLength(written)
+  expect(socket.closed).toBe(false)
+
+  // A frame within the limit still goes out.
+  const later = client.submit([{ type: 'text', text: 'hello' }], 'm2')
+  expect(JSON.parse(socket.written.at(-1) ?? '')).toMatchObject({ type: 'send', messageId: 'm2' })
+  client.disconnect()
+  await expect(later).rejects.toThrow('Agent connection closed')
 })

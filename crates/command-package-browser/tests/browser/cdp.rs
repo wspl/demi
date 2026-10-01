@@ -284,7 +284,7 @@ async fn element_wait_and_input_resample_nodes_inserted_during_locator_resolutio
             if state == "attached" {
                 assert_eq!(code, 0, "{result}");
                 assert_eq!(result["matched"], true);
-                assert!(result["ref"].is_string());
+                assert!(result["target"]["ref"].is_string(), "{result}");
             } else {
                 assert_ne!(code, 0);
                 assert_eq!(result["error"]["code"], "timeout", "{result}");

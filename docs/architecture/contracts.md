@@ -161,7 +161,7 @@ Zod source and z.infer types
 - **Generation.** `bun run contracts` builds the workspace with its one Cargo
   selection and runs `target/debug/xtask contracts`. Generated files are not
   committed; the scripts that need them (`typecheck`, `typecheck:web`,
-  `test`) run generation first. Cargo builds never run the emitter and need
+  `test`, `web:dev`, `web:gallery` and `web:build`) run generation first. Cargo builds never run the emitter and need
   no JavaScript tooling.
 - **What is emitted.** The emitter starts from a list of root types in
   `xtask`, each with what the web app does with it: receives it or sends it.

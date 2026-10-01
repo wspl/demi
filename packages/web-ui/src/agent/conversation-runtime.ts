@@ -1,6 +1,6 @@
 import { shallowRef, triggerRef } from 'vue'
 import { SessionError, SteerRejectedError, type ConversationClient, type ClientSessionEvent } from '@demicodes/conversation-client'
-import { asError } from '@demicodes/utils'
+import { asError, deferred } from '@demicodes/utils'
 import type { ClientContent, EditRequest, TranscriptVersion } from '@demicodes/protocol'
 import { ConversationSocketError } from '../transport/conversation-socket'
 import { waitToReconnect, type ReconnectWait } from '../transport/liveness'
@@ -148,7 +148,33 @@ export class ConversationRuntime {
       return
     }
     await this.abort()
+    // The backend answers the abort before the stopped turn has saved, and
+    // takes Continue only once the session is idle (`runtime.md` § Actions).
+    await this.idle()
     await this.resume()
+  }
+
+  /** Resolves once the server says the session is idle; rejects if the connection ends first. */
+  private async idle(): Promise<void> {
+    if (this.options.state.phase === 'idle') {
+      return
+    }
+    const client = await this.ensureOpen()
+    const idle = deferred()
+    const unsubscribe = client.subscribe((event) => {
+      if (event.type === 'phase' && event.phase === 'idle') {
+        idle.resolve()
+      } else if (event.type === 'disconnected') {
+        idle.reject(event.error)
+      } else if (event.type === 'closed') {
+        idle.reject(new Error('Agent connection closed'))
+      }
+    })
+    try {
+      await idle.promise
+    } finally {
+      unsubscribe()
+    }
   }
 
   async abort(): Promise<void> {

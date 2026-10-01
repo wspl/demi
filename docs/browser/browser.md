@@ -118,8 +118,20 @@ browser generations, releases, runner restarts and Cloud stops alike, so an
 old ID never refers to a newly created tab. The service takes each tab's
 number from the conversation's `tab` sequence in the backend
 ([Conversation numbers](../execution/native-runtime.md#conversation-numbers)).
-It reserves a few numbers ahead for the conversation, so most tabs take one
-without waiting, and a reserved number it never uses is a gap.
+It draws eight numbers at a time and keeps the rest at hand, so most tabs take
+one without waiting, and a number it never uses is a gap. A tab takes its
+number when the registry first sees it: a tab that `open` or the user creates
+once Chrome made its page, a popup when Chrome reports it.
+
+When no number is at hand, the step that needs one draws, and the backend has
+15 seconds to answer. A draw that fails or runs out of time fails only that
+step: `open` fails with `browser_unavailable` and the reason, and a popup the
+page opened is closed, so the action that opened it names no tab. The
+environment, its other tabs and its signed-in state stay, and the next step
+that needs a number draws again. For example, while the runner cannot reach
+the backend, `open` fails with `browser_unavailable: no tab numbers: ...`
+while `t1` to `t8` keep working; once the backend answers again, the next
+`open` succeeds.
 
 A node reference is `e` and a number, such as `e37`, unique within its tab:
 the tab numbers its references in order and never reuses one, so a reference
@@ -408,8 +420,9 @@ the directories they live in. For example, on a Linux device without `TMPDIR`:
   directories live in the short, fixed `/tmp` on Unix rather than in the
   service's own temporary directory, which the user can set to any length (a
   Mac's is about 49 characters): in `/tmp` the path stays under 80 bytes.
-- The profile holds Chrome's user data, the downloads, and the files the user
-  chose in the [live view](live-view.md#input), and it can grow large: Chrome
+- The profile holds Chrome's user data, the downloads, those saved without
+  `--output` among them, and the files the user chose in the
+  [live view](live-view.md#input), and it can grow large: Chrome
   also sizes its cache and each site's storage quota from the disk the profile
   is on. So on Unix profiles live in the service's `TMPDIR` when it is set to
   an absolute path, the Host user's choice, and otherwise in `/var/tmp`,
@@ -658,8 +671,10 @@ URL: http://localhost:3000/login
   - button "Sign in" [ref=e3]
 ```
 
-A simple action produces a short acknowledgement. Relevant navigation, dialogs,
-or opened tabs appear on additional lines. It does not automatically return
+A simple action produces a short acknowledgement that names the element it
+acted on as the tree above names it, such as
+`Clicked button "Sign in" [ref=e3].` Relevant navigation, dialogs, or opened
+tabs appear on additional lines. It does not automatically return
 the entire page tree or a screenshot after every action.
 
 Page titles, text, attributes, and errors are quoted data. Escape control
@@ -1134,19 +1149,19 @@ candidate elements, roles, names, bounds, and available locator information.
 
 ```text
 $ demi browser click t1 --ref e3
-Clicked [ref=e3].
+Clicked button "Sign in" [ref=e3].
 
 $ demi browser click t1 --role button --name 'Sign in'
-Clicked button "Sign in".
+Clicked button "Sign in" [ref=e3].
 
 $ demi browser click t1 --xy 420,300
 Clicked at 420,300.
 
 $ demi browser click t1 --ref e21 --count 2
-Double-clicked [ref=e21].
+Double-clicked row "Order 1042" [ref=e21].
 
 $ demi browser click t1 --ref e21 --button right
-Right-clicked [ref=e21].
+Right-clicked row "Order 1042" [ref=e21].
 
 $ demi browser move t1 --xy 420,300
 Pointer moved to 420,300.
@@ -1158,8 +1173,15 @@ $ demi browser scroll t1 --dy 600
 Scroll input delivered: dy=600.
 
 $ demi browser scroll t1 --ref e40 --dy 300
-Scroll input delivered to [ref=e40]: dy=300.
+Scroll input delivered to list "Results" [ref=e40]: dy=300.
 ```
+
+An action's text names the element its target resolved to, by its role, its
+accessible name and its reference, as `inspect` shows them, so the agent can
+see that `--role button --name 'Sign in'` reached the button it meant without
+inspecting again. A target that had no reference gets one. A role or name
+the accessibility tree does not give is left out: a `--css` match the tree
+ignores reads `Clicked [ref=e9].` An action at coordinates names none.
 
 Click count is 1 or 2; button is left, middle, or right. Pointer commands accept
 repeated `--modifier Alt|Control|ControlOrMeta|Meta|Shift`. A drag requires at
@@ -1180,47 +1202,49 @@ page moved: it may already be at a boundary. Observe again when that matters.
 
 ```text
 $ demi browser fill t1 --ref e1 --text test@example.com
-Filled [ref=e1].
+Filled textbox "Email" [ref=e1].
 
 $ demi browser type t1 --text hello
-Typed into [ref=e1].
+Typed into textbox "Email" [ref=e1].
 
 $ demi browser key t1 --key Escape
-Pressed Escape in [ref=e1].
+Pressed Escape in textbox "Email" [ref=e1].
 
 $ demi browser type t1 --ref e1 --text '.test'
-Typed into [ref=e1].
+Typed into textbox "Email" [ref=e1].
 
 $ demi browser key t1 --ref e1 --key Enter
-Pressed Enter in [ref=e1].
+Pressed Enter in textbox "Email" [ref=e1].
 
 $ demi browser key t1 --ref e1 --key ControlOrMeta+A
-Pressed ControlOrMeta+A in [ref=e1].
+Pressed ControlOrMeta+A in textbox "Email" [ref=e1].
 
 $ demi browser check t1 --ref e5 --value true
-Checkbox [ref=e5]: checked.
+Checked checkbox "Remember me" [ref=e5].
 
 $ demi browser check t1 --ref e5 --value false
-Checkbox [ref=e5]: unchecked.
+Unchecked checkbox "Remember me" [ref=e5].
 
 $ demi browser select t1 --ref e6 --option-label Singapore
-Selected: SG.
+Selected: Singapore (SG).
 
 $ demi browser select t1 --ref e6 --value SG --value JP
-Selected: SG, JP.
+Selected: Singapore (SG), Japan (JP).
 
 $ demi browser select-text t1 --ref e7 --text 'Replace this'
-Selected text in [ref=e7].
+Selected text in textbox "Message" [ref=e7].
 
 $ demi browser select-text t1 --ref e7 --text 'Replace this' --cursor before
-Cursor placed before the matching text in [ref=e7].
+Cursor placed before the matching text in textbox "Message" [ref=e7].
 ```
 
 Without a target, `type` and `key` deliver input to the tab's current focus,
 following focus into frames, without changing it and without checking element
 conditions: this is the keyboard, not an element action. The result names the
-focused element when the accessibility tree has a node for it and otherwise
-reports the document. Untargeted `key` still supports `--wait-url`.
+focused element when the accessibility tree has a node for it; otherwise it
+names none, and the text says the input went to the document, as in
+`Pressed Escape in the document.` Untargeted `key` still supports
+`--wait-url`.
 
 Fill handles the control's native type. Text-like inputs, textareas, and
 contenteditable elements are focused, their contents selected, and the text
@@ -1259,7 +1283,9 @@ selected by that candidate again. Every supplied candidate must have a match
 for a multi-select. A candidate that has not appeared yet is waited for until
 the deadline; a matching disabled option fails with `not_actionable`; a candidate
 that never appears fails with `target_not_found`. The control receives `input`
-and `change` events, and the result lists the values actually selected.
+and `change` events, and the result lists the options actually selected, each
+with its value and label; the text shows the label with the value in
+parentheses, or the value alone when the label is the same or empty.
 Select-text defaults
 to selecting the match; `--cursor before|after` positions a cursor instead.
 `--prefix` and `--suffix` disambiguate repeated text; remaining ambiguity fails.
@@ -1274,10 +1300,13 @@ a control is done with the pointer and keyboard commands.
 
 ```text
 $ demi browser wait t1 --role heading --name 'Welcome back' --state visible --timeout 10000
-Element [ref=e50] is visible.
+Matched heading "Welcome back" [ref=e50]. State: visible.
 
 $ demi browser wait t1 --ref e51 --state hidden --timeout 5000
-Element [ref=e51] is hidden.
+Matched status "Saving" [ref=e51]. State: hidden.
+
+$ demi browser wait t1 --css .spinner --state detached --timeout 5000
+No element matches. State: detached.
 
 $ demi browser wait t1 --url '**/dashboard' --timeout 10000
 URL matched: http://localhost:3000/dashboard.
@@ -1286,7 +1315,7 @@ $ demi browser wait t1 --load domcontentloaded
 Load state reached: domcontentloaded.
 
 $ demi browser click t1 --ref e3 --wait-url '**/dashboard' --timeout 10000
-Clicked [ref=e3].
+Clicked button "Sign in" [ref=e3].
 URL: http://localhost:3000/dashboard
 ```
 
@@ -1399,10 +1428,13 @@ by the application server.
 Download installs observation before the trigger and publishes the output only
 after completion. Supported media targets can download through the current page.
 Cancellation and failure remove partial files. If output is omitted, generate
-and return a path beside the profiles ([Native driver](#native-driver)), so that
-a large download does not fill a `/tmp` held in memory; the file stays there
-until someone removes it. Suggested filenames are data, never permission
-for path traversal.
+and return a path in the environment's download directory, inside its profile
+([Native driver](#native-driver)), so that a large download does not fill a
+`/tmp` held in memory. The file lasts as long as the environment: retirement
+removes it with the profile, and a service that ended without retiring its
+browser leaves it to the next service's startup sweep. A file the agent keeps
+is saved with `--output`. Suggested filenames are data, never permission for
+path traversal.
 
 An ordinary click may report an observed download, but that is not a completed
 file result. Workflows requiring a saved file use download. Never click again
@@ -1709,8 +1741,8 @@ field with a different meaning or type. A `viewport` value carries `width`,
 | read | `value`, or explicit-all `values, truncated`; mutually exclusive |
 | screenshot | `path, mimeType, width, height, viewport`, with `width` and `height` in CSS pixels; JSON requires file output |
 | probe | `matches, viewport, path?, truncated` |
-| Pointer/form actions, including `drag`, `select-text`, and untargeted `type`/`key` | `operation, target?, result`; optional observed `url, openedTabs, dialog` |
-| wait | `condition, matched, url?, ref?`; load waits carry neither `url` nor `ref` |
+| Pointer/form actions, including `drag`, `select-text`, and untargeted `type`/`key` | `operation, target?: {ref, role, name}, result`, where `target` is the element the target resolved to, or the focused element for untargeted `type`/`key`, and `select`'s `result` is `[{value, label}]`; optional observed `url, openedTabs, dialog` |
+| wait | `condition, matched, url?, target?: {ref, role, name}`; load waits carry neither `url` nor `target`, and an element wait carries `target` when an element matched |
 | dialog inspect | `dialog: null | {type, message}` |
 | dialog accept/dismiss | `type, outcome` |
 | upload | `files, attached` |
@@ -2007,7 +2039,11 @@ part of every acceptance that touches the browser, not an optional run.
     same holds after a service shutdown with several conversations' browsers
     open. After the service is killed, Chrome's main process ends with it on
     Linux, and the next service start removes the processes and profiles that
-    remain, while another running service's browsers keep working.
+    remain, downloads saved without `--output` among them, while another
+    running service's browsers keep working.
 16. While one conversation's browser starts or retires slowly, the service
     answers the runner's `status` at once, and other conversations' commands
     proceed.
+17. A tab number the backend does not give fails only the `open` or popup
+    that needed it; the environment keeps its tabs, and the next step draws
+    again ([One tab registry](#one-tab-registry)).

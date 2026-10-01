@@ -18,6 +18,6 @@
       "@demicodes/*": ["./packages/*/src/index.ts"]
     }
   },
-  "include": ["packages/*/src", "scripts/typecheck-vue.ts", "scripts/__tests__", "crates/command-package-browser-chrome/src/driver/capture"],
+  "include": ["packages/*/src", "scripts", "crates/command-package-browser-chrome/src/driver/capture"],
   "exclude": ["packages/web-ui", "packages/web-gallery", "packages/web"]
 }

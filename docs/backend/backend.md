@@ -439,8 +439,15 @@ At startup the backend:
    ([Managed hosts](../cloud/managed-hosts.md#system-reset)), and Fork
    creations whose destination root was committed are published
    ([Conversation Fork](../agent/conversation-fork.md#backend-creation-and-retries)).
+   Each saved yield wakeup is armed again: its conversation's shard restores
+   the tree when the wakeup is due
+   ([Yield wakeups](../agent/runtime.md#yield-wakeups)).
 7. Opens its listener, and starts the daily retention pass, whose first pass
    runs at once ([The retention pass](storage.md#the-retention-pass)).
+
+The backend watches for SIGINT and SIGTERM from its first step. A signal that
+comes during steps 3 to 7 is kept: the start finishes, and shutdown follows at
+once.
 
 Shutdown closes the listener first, so that no new work starts and no runner
 reconnects into a backend that is closing. A new request on a connection that
@@ -454,7 +461,8 @@ keep working, because the steps below need them:
    reads the state again from the next backend. Idle watches stop, and a
    retirement already running finishes. Title requests are aborted and expose
    connections end. Open file transfers and user streams end. Conversation sockets
-   close, so no frame reaches a tree after its shutdown. Agent turns are
+   close and the waits for saved wakeups end, so no tree opens and no frame
+   reaches a tree after its shutdown. Agent turns are
    aborted: a running turn records that its session was shut down, and its
    jobs are killed while their runners are still connected. Claude Code CLI
    installs are cancelled; the next need starts them again. A Cloud boot
@@ -491,7 +499,10 @@ without the close frame, and connects again as it does after any close
 The backend reads its configuration from command-line flags or `DEMI_*`
 environment variables through clap, which parses both into one typed
 configuration. The whole configuration is validated before anything starts,
-and an error names the variable. `demi-backend --help` lists the flags.
+and an error names the variable. A `DEMI_*` variable that no setting reads,
+such as a misspelt `DEMI_BACKEND_PORTT`, stops startup too, naming it, rather
+than leaving the setting at its default. `demi-backend --help` lists the
+flags.
 
 | Variable | Meaning | Defined in |
 |---|---|---|
@@ -513,7 +524,10 @@ and an error names the variable. `demi-backend --help` lists the flags.
 
 A developer runs the backend on their own machine with the native programs
 they just built, as development releases that the backend serves its runners
-itself. For example, on an x86_64 Linux machine that is also its own Cloud's
+itself. For work on the web app alone, one command starts a backend that
+needs no machine manager, Cloud image or model account
+([One-command development backend](#one-command-development-backend)).
+For example, on an x86_64 Linux machine that is also its own Cloud's
 execution host, the Hosts in use are the machine as a paired device and the
 Cloud guest, and both run `x86_64-unknown-linux-musl`:
 
@@ -596,6 +610,61 @@ without it, exposes are off.
 On a Mac, the machine manager runs in a Lima VM instead; the optional
 [Develop on a Mac with Lima](../guides/mac-development.md) guide gives the
 differences.
+
+### One-command development backend
+
+`cargo xtask dev` builds the one Cargo selection and runs, until Ctrl-C or a
+termination, a backend for the page to talk to. For example, a developer runs
+it, then starts the page with the command it prints, signs in with the
+account it prints, picks the model **Echo**, sends `hello`, and the answer
+`Echo: hello` streams in. It starts the backend with the scripted manager
+and in the order the
+[web app contract suite](../delivery/scenarios.md#web-app-contract-suite)
+uses:
+
+- A fresh temporary data directory, removed when the command ends, unless
+  `--keep` keeps it.
+- The backend scenarios' scripted machine manager, the backend crate's
+  example program `scripted_machines`. A conversation's Cloud is a runner it
+  starts on this machine, with a temporary home.
+- `target/debug/demi-backend` in isolated mode on port 3271 (`--port`
+  changes it), with the public URL `http://127.0.0.1:<port>`, the manager's
+  socket, and a native configuration with the development store and no
+  command release. The command passes on none of its own `DEMI_*`
+  variables.
+- An Anthropic-compatible Messages endpoint inside `xtask`, on a free port of
+  the loopback interface, that answers each request with
+  `Echo: <the last user message's text>` as a stream.
+
+Through the web API it seeds the master account
+`developer@example.test` with the password `development` and one provider
+entry of the `anthropic` family that points at the echo endpoint, with the one
+configured model `echo`; it selects nothing else. It prints the backend's URL,
+the account and the page's command, which names the backend in
+`DEMI_BACKEND_URL` and the account in `DEMI_DEV_EMAIL` and
+`DEMI_DEV_PASSWORD` for the sign-in page:
+
+```sh
+DEMI_BACKEND_URL=http://127.0.0.1:3271 DEMI_DEV_EMAIL=developer@example.test \
+  DEMI_DEV_PASSWORD=development bun run web:dev
+```
+
+The backend, the manager and the runners run in process groups of their
+own, so the terminal's interrupt reaches only `xtask`, which stops them in
+order on every exit, the failure of a start included: the backend first,
+since it hibernates the Cloud through the manager as it shuts down, then the
+manager, whose input it closes and which ends its runners with it; then it
+removes the data directory. A process that does not stop in time, 10 seconds
+for the backend and 5 for the manager, is killed. Only a kill of `xtask`
+itself leaves the backend running.
+
+It does not cover what needs the real services: the Cloud isolates nothing
+and has no image, so a Cloud reset or a guest's network rules do not behave
+as on a real machine; no command package is released, so the operations of
+`demi.file`, `demi.browser` and `demi.claude-code`, and with them the
+conversation browser and Claude Code entries, are unavailable; and no
+model runs, so a turn never calls a tool. The steps above give the full
+development backend for those.
 
 ## Deployment and user ownership
 

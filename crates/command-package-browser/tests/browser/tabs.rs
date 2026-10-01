@@ -3,7 +3,7 @@
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
-use crate::families::with_browser_fixture;
+use crate::families::{with_browser_fixture, with_numbered_browser_fixture};
 
 /// A command holding one tab does not hold up commands on another tab, and a
 /// second command on the held tab reports it busy (`browser.md` § Required
@@ -94,6 +94,99 @@ async fn an_action_names_the_tabs_it_opened() {
     .await;
 }
 
+/// A tab number the backend does not give fails only the step that needed
+/// it: the `open` answers why, a popup is closed, and the environment keeps
+/// its tabs; the next step draws again (`browser.md` § One tab registry).
+/// Here the backend gives the first draw's eight numbers, then fails twice,
+/// then gives numbers from 101. About 12 s on a small Linux VM, as long as
+/// `an_action_names_the_tabs_it_opened` there: most of it starts Chrome.
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn a_failed_number_draw_fails_only_the_step_that_needs_a_number() {
+    let (numbers, mut draws) = demi_command_sdk::Numbers::channel();
+    let unreachable = "the backend is unreachable";
+    let answering = tokio::spawn(async move {
+        let mut drawn = Vec::new();
+        for answer in [Ok(1), Err(unreachable), Err(unreachable), Ok(101)] {
+            let Some(draw) = draws.recv().await else {
+                break;
+            };
+            drawn.push(draw.count);
+            // A step that stopped waiting needs no answer.
+            let _left = draw.answer.send(answer.map_err(str::to_owned));
+        }
+        drawn
+    });
+    with_numbered_browser_fixture(numbers, |fixture| async move {
+        let page = url::Url::from_file_path(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/browser/popups.html"),
+        )
+        .unwrap();
+        let mut opened = Vec::new();
+        let refused = loop {
+            let (code, result) = fixture
+                .result(
+                    "browser.open",
+                    json!({"url": page.as_str()}),
+                    CancellationToken::new(),
+                )
+                .await;
+            if code != 0 {
+                break result;
+            }
+            opened.push(result["tab"].as_str().unwrap().to_owned());
+        };
+        assert_eq!(
+            opened,
+            (1..=8)
+                .map(|number| format!("t{number}"))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(refused["error"]["code"], "browser_unavailable", "{refused}");
+        let message = refused["error"]["message"].as_str().unwrap();
+        assert!(message.contains(unreachable), "{refused}");
+        // A popup that gets no number is closed; its opener stays.
+        let clicked = fixture
+            .call("browser.click", json!({"tab": "t1", "css": "#keep"}))
+            .await;
+        assert!(clicked.get("openedTabs").is_none(), "{clicked}");
+        // Chrome closes it after the click answered; read-only evaluation
+        // cannot wait in the page, so the opener asks until it sees it.
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                let closed = fixture
+                    .call(
+                        "browser.eval",
+                        json!({"tab": "t1", "expression": "window.opened.closed"}),
+                    )
+                    .await;
+                if closed["value"] == true {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("Chrome closes the popup");
+        let tabs = fixture.call("browser.tabs", json!({})).await;
+        let listed: Vec<_> = tabs["tabs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|tab| tab["id"].as_str().unwrap().to_owned())
+            .collect();
+        assert_eq!(listed, opened);
+        // The next step draws again.
+        let next = fixture
+            .call("browser.open", json!({"url": page.as_str()}))
+            .await;
+        assert_eq!(next["tab"], "t101");
+        fixture
+    })
+    .await;
+    assert_eq!(answering.await.unwrap(), [8, 8, 8, 8]);
+}
+
 /// An action works in a tab that is not the front tab of its window: its
 /// hidden document runs no animation frames (`browser.md` § Actionability
 /// and coordinates).
@@ -153,7 +246,8 @@ async fn the_tab_list_shows_the_title_a_page_has_now() {
 }
 
 /// A command answers readable text unless the agent asks for JSON, as its
-/// shell's `--json` does (`browser.md` § Default text).
+/// shell's `--json` does, and an action's or a wait's text names the element
+/// its target resolved to (`browser.md` § Default text).
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn commands_answer_readable_text_unless_json_is_asked() {
@@ -161,7 +255,14 @@ async fn commands_answer_readable_text_unless_json_is_asked() {
         let mut readable = fixture.clone();
         readable.json = false;
         let path = fixture.root.path().join("readable.html");
-        std::fs::write(&path, "<!doctype html><title>Readable page</title>").unwrap();
+        std::fs::write(
+            &path,
+            "<!doctype html><title>Readable page</title><h1>Welcome back</h1>\
+            <button>Sign in</button>\
+            <select aria-label=\"Country\"><option value=\"JP\">Japan</option>\
+            <option value=\"SG\">Singapore</option></select>",
+        )
+        .unwrap();
         let url = url::Url::from_file_path(path).unwrap();
         let text = async |operation: &str, args: serde_json::Value| {
             let (code, answer) = readable
@@ -185,6 +286,32 @@ async fn commands_answer_readable_text_unless_json_is_asked() {
         );
         let info = fixture.call("browser.info", json!({"tab": tab})).await;
         assert_eq!(info["title"], "Readable page");
+        let reference = regex::Regex::new(r"\[ref=e[0-9]+\]").unwrap();
+        let clicked = text(
+            "browser.click",
+            json!({"tab": tab, "role": "button", "name": "Sign in"}),
+        )
+        .await;
+        // A click also reports the URL it waited for.
+        assert_eq!(
+            reference.replace(clicked.lines().next().unwrap(), "[ref]"),
+            "Clicked button \"Sign in\" [ref]."
+        );
+        let selected = text(
+            "browser.select",
+            json!({"tab": tab, "role": "combobox", "name": "Country", "option-label": ["Singapore"]}),
+        )
+        .await;
+        assert_eq!(selected, "Selected: Singapore (SG).\n");
+        let matched = text(
+            "browser.wait",
+            json!({"tab": tab, "role": "heading", "name": "Welcome back", "state": "visible"}),
+        )
+        .await;
+        assert_eq!(
+            reference.replace(&matched, "[ref]"),
+            "Matched heading \"Welcome back\" [ref]. State: visible.\n"
+        );
         fixture
     })
     .await;

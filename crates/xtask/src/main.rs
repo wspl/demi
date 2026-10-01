@@ -7,6 +7,8 @@ mod boundaries;
 mod browser;
 mod cloud_image;
 mod contracts;
+#[cfg(unix)]
+mod dev;
 mod native;
 mod vendor;
 
@@ -38,6 +40,9 @@ enum Command {
     /// Compares the vendored crates with their upstream releases.
     #[command(subcommand)]
     Vendor(vendor::Command),
+    /// Runs a development backend with a scripted Cloud and an echo model.
+    #[cfg(unix)]
+    Dev(dev::Options),
 }
 
 /// The repository's root directory.
@@ -57,7 +62,9 @@ fn record(value: &impl serde::Serialize) -> serde_json::Result<Vec<u8>> {
 }
 
 /// Runs `work` on a runtime of this thread with a token that an interrupt
-/// cancels, so a publication it makes stops and leaves nothing behind.
+/// (or, on Unix, a termination or a hang-up) cancels, so a publication it
+/// makes stops and leaves nothing behind, and the processes `xtask dev`
+/// started are stopped.
 fn interruptible<T, F>(work: impl FnOnce(CancellationToken) -> F) -> std::io::Result<T>
 where
     F: Future<Output = T>,
@@ -65,20 +72,50 @@ where
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
-    Ok(runtime.block_on(async {
+    runtime.block_on(async {
+        // The handlers are in place before `work` starts anything.
+        let stop = stop_requested()?;
         let cancel = CancellationToken::new();
         let interrupt = tokio::spawn({
             let cancel = cancel.clone();
             async move {
-                if tokio::signal::ctrl_c().await.is_ok() {
-                    cancel.cancel();
-                }
+                stop.await;
+                cancel.cancel();
             }
         });
         let result = work(cancel).await;
         interrupt.abort();
-        result
-    }))
+        Ok(result)
+    })
+}
+
+/// A future that ends when the user interrupts the command, or when it is
+/// terminated or its terminal hangs up; the handlers it installs replace the
+/// signals' default of ending the process at once.
+#[cfg(unix)]
+fn stop_requested() -> std::io::Result<impl Future<Output = ()>> {
+    use tokio::signal::unix::{SignalKind, signal};
+    let mut interrupt = signal(SignalKind::interrupt())?;
+    let mut terminate = signal(SignalKind::terminate())?;
+    let mut hangup = signal(SignalKind::hangup())?;
+    Ok(async move {
+        tokio::select! {
+            _ = interrupt.recv() => {}
+            _ = terminate.recv() => {}
+            _ = hangup.recv() => {}
+        }
+    })
+}
+
+/// A future that ends when the user interrupts the command.
+#[cfg(not(unix))]
+fn stop_requested() -> std::io::Result<impl Future<Output = ()>> {
+    Ok(async {
+        // Without a handler, nothing interrupts the work; it runs to its end.
+        if tokio::signal::ctrl_c().await.is_err() {
+            std::future::pending::<()>().await;
+        }
+    })
 }
 
 fn main() -> ExitCode {
@@ -120,6 +157,14 @@ fn main() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
                 eprintln!("xtask vendor: {error}");
+                ExitCode::FAILURE
+            }
+        },
+        #[cfg(unix)]
+        Command::Dev(options) => match dev::run(options) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("xtask dev: {error}");
                 ExitCode::FAILURE
             }
         },

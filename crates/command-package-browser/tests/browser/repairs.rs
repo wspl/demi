@@ -281,7 +281,7 @@ async fn check_verifies_state_and_select_waits_for_ordered_options() {
         click(&tab, "#add-late").await?;
         assert_eq!(
             command(&tab, "select", json!({"css": "#late", "value": ["new"]})).await?["result"],
-            json!(["new"])
+            json!([{"value": "new", "label": "Late"}])
         );
         for candidate in ["bad", "group"] {
             error(
@@ -312,7 +312,7 @@ async fn check_verifies_state_and_select_waits_for_ordered_options() {
                 json!({"css": "#single", "value": ["two", "one"]})
             )
             .await?["result"],
-            json!(["one"])
+            json!([{"value": "one", "label": "First"}])
         );
         assert_eq!(
             command(
@@ -321,7 +321,7 @@ async fn check_verifies_state_and_select_waits_for_ordered_options() {
                 json!({"css": "#single", "value": ["missing", "two"]})
             )
             .await?["result"],
-            json!(["two"])
+            json!([{"value": "two", "label": "Second"}])
         );
         assert_eq!(
             command(
@@ -330,7 +330,7 @@ async fn check_verifies_state_and_select_waits_for_ordered_options() {
                 json!({"css": "#multi", "value": ["two", "one"]})
             )
             .await?["result"],
-            json!(["one", "two"])
+            json!([{"value": "one", "label": "First"}, {"value": "two", "label": "Second"}])
         );
         assert_eq!(
             command(
@@ -339,7 +339,7 @@ async fn check_verifies_state_and_select_waits_for_ordered_options() {
                 json!({"css": "#single", "option-label": ["Second"]})
             )
             .await?["result"],
-            json!(["two"])
+            json!([{"value": "two", "label": "Second"}])
         );
         assert_eq!(
             command(
@@ -348,7 +348,7 @@ async fn check_verifies_state_and_select_waits_for_ordered_options() {
                 json!({"css": "#hidden-select", "option-index": [1]})
             )
             .await?["result"],
-            json!(["two"])
+            json!([{"value": "two", "label": "Second"}])
         );
         error(
             command(
@@ -1190,7 +1190,7 @@ async fn catalog_untargeted_keys_selection_drag_and_console_cursors() {
         let tab = browser.open(&base, &CancellationToken::new(), TIMEOUT).await?;
         click(&tab,"#select-middle").await?;
         let typed = command(&tab,"type",json!({"text":"XY"})).await?;
-        assert!(typed["target"].as_str().unwrap().starts_with('e'));
+        assert!(typed["target"]["ref"].as_str().unwrap().starts_with('e'));
         assert_eq!(value(&tab,"#text").await?, json!("heXYo"));
         command(&tab,"key",json!({"key":"ControlOrMeta+A"})).await?;
         command(&tab,"type",json!({"text":"hello"})).await?;
@@ -1204,11 +1204,12 @@ async fn catalog_untargeted_keys_selection_drag_and_console_cursors() {
         command(&tab,"select-text",json!({"css":"#repeated-text","text":"word","prefix":"second ","suffix":"!"})).await?;
         assert_eq!(command(&tab,"eval",json!({"expression":"getSelection().toString()"})).await?["value"],"word");
         click(&tab,"#focus-document").await?;
-        assert_eq!(command(&tab,"key",json!({"key":"Escape"})).await?["target"],"document");
+        // Input that went to the document names no element.
+        assert!(command(&tab,"key",json!({"key":"Escape"})).await?.get("target").is_none());
         command(&tab, "key", json!({"css":"#key-navigate","key":"Shift"})).await?;
         let navigation = command(&tab, "key", json!({"key":"Enter","wait-url":"**/#key-focus"})).await?;
         assert!(navigation["url"].as_str().unwrap().ends_with("/#key-focus"));
-        assert!(navigation["target"].as_str().unwrap().starts_with('e'));
+        assert!(navigation["target"]["ref"].as_str().unwrap().starts_with('e'));
         command(&tab,"move",json!({"css":"#drag-area"})).await?;
         let rect = command(&tab,"eval",json!({"css":"#drag-area","expression":"({x:element.getBoundingClientRect().x,y:element.getBoundingClientRect().y})"})).await?["value"].clone();
         let x=rect["x"].as_f64().unwrap()+10.0;
@@ -1244,7 +1245,7 @@ async fn catalog_cross_origin_frames_scope_focus_and_references() {
         command(&tab,"fill",json!({"ref":input,"text":"cross"})).await?;
         assert_eq!(command(&tab,"read",json!({"ref":input,"property":"value"})).await?["value"],"cross");
         let typed=command(&tab,"type",json!({"text":"-focus"})).await?;
-        assert_eq!(typed["target"],input);
+        assert_eq!(typed["target"]["ref"],input);
         assert_eq!(command(&tab,"read",json!({"ref":input,"property":"value"})).await?["value"],"cross-focus");
         assert_eq!(command(&tab,"eval",json!({"ref":input,"expression":"element.value"})).await?["value"],"cross-focus");
         command(&tab,"click",json!({"frame":[outer],"css":"#cross-button"})).await?;

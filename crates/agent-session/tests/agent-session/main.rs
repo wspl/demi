@@ -1377,6 +1377,103 @@ async fn the_stream_becomes_blocks_and_each_delta_one_patch() {
     assert_eq!(appends, ["notes", "world"]);
 }
 
+/// What a streamed delta costs does not grow with the transcript: on a
+/// history of thousands of blocks, each delta's patch carries the delta
+/// alone, and neither the patches nor the saves touch the history.
+#[tokio::test(flavor = "local")]
+async fn a_streamed_delta_touches_only_its_turns_blocks_on_a_long_transcript() {
+    let first = ScriptedRuntime::new([Turn::Events(vec![
+        event::text("short"),
+        event::response(1, 1),
+    ])]);
+    let store = MemoryTreeStore::new();
+    let session = start(&first, Vec::new(), &store, SessionConfig::default()).await;
+    session
+        .send(text("begin"), turn("t0"))
+        .unwrap()
+        .await
+        .unwrap();
+    drop(session);
+    // The history again and again, each block with an id of its own.
+    let mut checkpoint = store.checkpoint(&root()).unwrap();
+    let turn_blocks = checkpoint.transcript.clone();
+    for round in 0..1_000 {
+        for block in &turn_blocks {
+            let mut block = block.clone();
+            let id = BlockId::try_from(format!("history-{round}-{}", block.id())).unwrap();
+            match &mut block {
+                Block::User(user) => user.id = id,
+                Block::Text(answer) => answer.id = id,
+                Block::Response(response) => response.id = id,
+                other => panic!("an unexpected block: {other:?}"),
+            }
+            checkpoint.transcript.push(block);
+        }
+    }
+    let history = checkpoint.transcript.len();
+    let deltas: Vec<String> = (0..200).map(|index| format!("d{index} ")).collect();
+    let mut events: Vec<ProviderEvent> = deltas.iter().map(|delta| event::text(delta)).collect();
+    events.push(event::response(1, 1));
+    let streaming = ScriptedRuntime::new([Turn::Events(events)]);
+    let (session, _) = restore_session(
+        checkpoint,
+        &store,
+        &streaming,
+        test_runtime(Vec::new()),
+        Arc::new(FixedClock(Timestamp::UNIX_EPOCH)),
+    );
+    let batches = Rc::new(RefCell::new(Vec::new()));
+    let _subscription = session.subscribe({
+        let batches = batches.clone();
+        move |event| {
+            if let SessionEvent::TranscriptChanged { patches, .. } = event {
+                batches.borrow_mut().push(patches.clone());
+            }
+        }
+    });
+    let saved_before = store.saves().len();
+
+    session
+        .send(text("stream"), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+
+    // Every patch past the turn's opening is one delta, as it came.
+    let appended: Vec<String> = batches
+        .borrow()
+        .iter()
+        .flatten()
+        .filter_map(|patch| match patch {
+            TranscriptPatch::AppendText { delta, .. } => Some(delta.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(appended.concat(), deltas[1..].concat());
+    // No patch carries a block of the history: each one changes the turn's
+    // own blocks, past it.
+    for patch in batches.borrow().iter().flatten() {
+        let index = match patch {
+            TranscriptPatch::Add { index, .. }
+            | TranscriptPatch::ReplaceBlock { index, .. }
+            | TranscriptPatch::AppendText { index, .. } => *index as usize,
+            TranscriptPatch::Replace { .. } => 0,
+        };
+        assert!(
+            index >= history,
+            "a patch at {index} of {history} blocks: {patch:?}"
+        );
+    }
+    // The saves write the turn's own rows, whatever came before them.
+    assert!(
+        store.saves()[saved_before..]
+            .iter()
+            .flat_map(|(_, update)| &update.changed_blocks)
+            .all(|(index, _)| *index >= history),
+        "a save rewrote the history"
+    );
+}
+
 #[tokio::test(flavor = "local")]
 async fn each_request_says_how_many_of_its_items_the_latest_answered_request_carried() {
     let provider = ScriptedRuntime::new([

@@ -11,9 +11,9 @@ use demi_provider_common::{
     ErrorCode, Provider, ProviderEvent,
     credentials::MemoryCredentialPool,
     quota::MemorySnapshots,
-    testing::{FixedClock, MockResponse, MockVendor, inference_request, next_event},
+    testing::{FixedClock, ManualClock, MockResponse, MockVendor, inference_request, next_event},
 };
-use demi_shared_types::TokenUsage;
+use demi_shared_types::{Clock, TokenUsage};
 use serde_json::{Value, json};
 
 use crate::{NOW, RESPONSES, completed, fresh_token, pool_with, run, runtime_of, secret};
@@ -35,12 +35,23 @@ fn provider(
     transport: TransportMode,
     idle: Option<Duration>,
 ) -> CodexProvider {
+    let clock = Arc::new(FixedClock(NOW.parse().unwrap()));
+    provider_at(socket, vendor, pool, transport, idle, clock)
+}
+
+fn provider_at(
+    socket: &FakeWebSocket,
+    vendor: &MockVendor,
+    pool: &MemoryCredentialPool,
+    transport: TransportMode,
+    idle: Option<Duration>,
+    clock: Arc<dyn Clock>,
+) -> CodexProvider {
     let mut config = CodexConfig::new(Some(crate::ACCOUNT.into()));
     config.backend_url = socket.backend_url().parse().unwrap();
     config.auth_url = vendor.url("").parse().unwrap();
     config.transport = transport;
     config.stream_idle_timeout = idle;
-    let clock = Arc::new(FixedClock(NOW.parse().unwrap()));
     CodexProvider::new(
         config,
         Arc::new(pool.clone()),
@@ -169,7 +180,8 @@ async fn a_websocket_that_closes_before_its_first_event_gives_way_to_server_sent
 }
 
 #[tokio::test]
-async fn a_websocket_that_cannot_connect_sends_later_requests_over_server_sent_events() {
+async fn a_websocket_that_cannot_connect_sends_the_next_ten_minutes_of_requests_over_server_sent_events()
+ {
     let vendor = MockVendor::start().await;
     vendor.respond_at(RESPONSES, completed());
     vendor.respond_at(RESPONSES, completed());
@@ -179,19 +191,37 @@ async fn a_websocket_that_cannot_connect_sends_later_requests_over_server_sent_e
     )
     .await;
     let pool = pool_with(secret(&fresh_token(), "refresh-1", NOW)).await;
-    let provider = provider(&socket, &vendor, &pool, TransportMode::Auto, None);
+    let clock = Arc::new(ManualClock::new(NOW.parse().unwrap()));
+    let provider = provider_at(
+        &socket,
+        &vendor,
+        &pool,
+        TransportMode::Auto,
+        None,
+        clock.clone(),
+    );
     let mut runtime = runtime_of(&provider);
     assert_eq!(
         run(runtime.as_mut(), inference_request()).await,
         [ProviderEvent::Response(usage())]
     );
-    // A new session of the same provider does not try the WebSocket again.
+    // A new session of the same provider does not try the WebSocket again
+    // within ten minutes.
+    clock.advance(jiff::SignedDuration::from_secs(599));
     let mut other = runtime_of(&provider);
     assert_eq!(
         run(other.as_mut(), inference_request()).await,
         [ProviderEvent::Response(usage())]
     );
     assert_eq!(socket.connections().len(), 1);
+    assert_eq!(vendor.requests().len(), 2);
+    // After them, a passing failure has cost the WebSocket no longer.
+    clock.advance(jiff::SignedDuration::from_secs(1));
+    assert_eq!(
+        run(other.as_mut(), inference_request()).await,
+        [ProviderEvent::Response(usage())]
+    );
+    assert_eq!(socket.connections().len(), 2);
     assert_eq!(vendor.requests().len(), 2);
 }
 

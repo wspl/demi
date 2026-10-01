@@ -31,8 +31,9 @@ use demi_agent_tools::{
 use demi_agent_transcript::{RandomIds, RequestView, estimate::context_tokens};
 use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
 use demi_host_interface::CommandSet;
+use demi_provider_common::VendorPolicy;
 use demi_provider_common::{Provider, ProviderRuntime, RequestLimits, RuntimeEnv, Secret};
-use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider, VendorPolicy};
+use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider};
 use demi_shared_types::{
     Block, Clock, Model, ModelSelection, NodeId, SessionPhase, SystemClock, TurnId, WireApi,
 };
@@ -143,7 +144,7 @@ fn deepseek() -> Result<Rc<OpenAiProvider>, String> {
         wire: WireApi::ChatCompletions,
         policy: VendorPolicy {
             pass_back_reasoning_content: true,
-            replay_assistant_status: false,
+            ..VendorPolicy::default()
         },
     };
     Ok(Rc::new(OpenAiProvider::new(config, Arc::new(SystemClock))))

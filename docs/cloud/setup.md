@@ -200,6 +200,22 @@ Publish a new image, restart the manager, and explicitly reset a device when it
 should use the new base. Restart alone does not upgrade pinned devices. A new
 runtime starts only after prior writers have stopped.
 
+### Upgrading from demi-machines
+
+The manager was called `demi-machines` before, with the service
+`demi-machines.service` and the state directory `/var/lib/demi-machines`. Its
+state directory has the layout the manager reads, so a host keeps its users'
+Clouds through the upgrade:
+
+1. Stop and disable the old service, whose stop-post recovery runs as it
+   stops: `systemctl stop demi-machines.service && systemctl disable
+   demi-machines.service`. Then remove its unit file. The installer refuses to
+   run while that unit is installed, because the two managers would share the
+   socket, the network names and the nftables table.
+2. Install the manager as above with `--data /var/lib/demi-machines`. Without
+   it, the manager starts from an empty state directory, and each user's Cloud
+   starts again from an empty home on its next wake.
+
 ## Acceptance before use
 
 Check that the proxy in front of the backend passes `Origin`: a request that

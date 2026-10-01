@@ -6,13 +6,16 @@ use serde_json::{Value, json};
 use crate::driver::operation::{BrowserError, Operation, Result};
 use crate::tabs::{session::References, tab::BrowserTab};
 
-use crate::page::{element, protocol::BrowserTarget};
+use crate::page::{
+    element,
+    protocol::{BrowserTarget, ResolvedElement, SelectedOption},
+};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SelectedOptions {
     status: SelectionStatus,
-    values: Vec<String>,
+    options: Vec<SelectedOption>,
 }
 
 #[derive(Deserialize)]
@@ -23,14 +26,16 @@ enum SelectionStatus {
     Missing,
 }
 
-/// Select browser options in document order within the command's shared deadline.
+/// Select browser options in document order within the command's shared
+/// deadline; the select element as the page tree names it, and the options
+/// it left selected.
 pub(crate) async fn select_options(
     tab: &BrowserTab,
     target: &BrowserTarget,
     references: &mut References,
     candidates: [Option<Value>; 3],
     operation: &Operation<'_>,
-) -> Result<Vec<String>> {
+) -> Result<(ResolvedElement, Vec<SelectedOption>)> {
     if candidates.iter().flatten().count() != 1
         || candidates
             .iter()
@@ -46,9 +51,9 @@ pub(crate) async fn select_options(
         .map(|candidate| candidate.unwrap_or(Value::Null))
         .collect();
     let mut last_failure = None;
-    let result: Result<Vec<String>> = async {
+    let result: Result<(ResolvedElement, Vec<SelectedOption>)> = async {
         loop {
-            let (element, _) = crate::page::element::ready_with_failure(
+            let element::Ready { element, named, .. } = crate::page::element::ready_with_failure(
                 tab,
                 target,
                 references,
@@ -83,7 +88,7 @@ pub(crate) async fn select_options(
                     .await?;
                 if matches!(selected.status, SelectionStatus::Ready) {
                     operation.complete_input();
-                    return Ok(selected.values);
+                    return Ok((named, selected.options));
                 }
                 // The algorithm reports missing/disabled before changing selection.
                 operation.input_not_delivered();

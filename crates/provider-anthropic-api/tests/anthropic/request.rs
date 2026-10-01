@@ -4,13 +4,13 @@ use std::{num::NonZeroU32, sync::Arc};
 
 use demi_provider_common::{
     InferenceItem, MediaBytes, Medium, PromptCache, Provider, ProviderEvent, ResultPart,
-    RuntimeEnv, ToolDefinition, UserPart,
+    RuntimeEnv, ToolDefinition, UserPart, VendorPolicy,
     testing::{MockVendor, inference_request},
 };
 use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingSummary, TokenUsage};
 use serde_json::{Value, json};
 
-use crate::{provider_at, run, runtime, stop};
+use crate::{provider_at, run, runtime, runtime_with, stop};
 
 fn text(text: &str) -> Vec<UserPart> {
     vec![UserPart::Text(text.into())]
@@ -23,13 +23,23 @@ async fn body(
     thinking: Option<ThinkingConfig>,
     output_limit: Option<u32>,
 ) -> Value {
+    body_for(items, thinking, output_limit, VendorPolicy::default()).await
+}
+
+/// The body a provider for a vendor of `policy` sends.
+async fn body_for(
+    items: Vec<InferenceItem>,
+    thinking: Option<ThinkingConfig>,
+    output_limit: Option<u32>,
+    policy: VendorPolicy,
+) -> Value {
     let vendor = MockVendor::start().await;
     vendor.respond(stop());
     let mut request = inference_request();
     request.items = items.into();
     request.thinking = thinking;
     request.output_limit = output_limit.and_then(NonZeroU32::new);
-    run(runtime(&vendor).as_mut(), request).await;
+    run(runtime_with(&vendor, policy).as_mut(), request).await;
     vendor.requests()[0].json()
 }
 
@@ -412,6 +422,48 @@ async fn thinking_maps_onto_a_budget_or_adaptive_thinking_at_an_effort() {
             output_config,
             "{thinking:?}"
         );
+    }
+
+    // A vendor that takes only budgets, as every Anthropic-compatible
+    // endpoint but Anthropic's own: an effort is its budget, kept within the
+    // same bounds, and an effort the ladder does not name thinks like medium.
+    let budgets = VendorPolicy {
+        effort_as_budget: true,
+        ..VendorPolicy::default()
+    };
+    let cases = [
+        (
+            ThinkingConfig::Effort {
+                effort: "high".into(),
+                summary: None,
+            },
+            Some(128_000),
+            32_768,
+        ),
+        (
+            ThinkingConfig::Adaptive {
+                effort: "max".into(),
+            },
+            Some(8_192),
+            7_168,
+        ),
+        (
+            ThinkingConfig::Effort {
+                effort: "minimal".into(),
+                summary: None,
+            },
+            Some(128_000),
+            16_384,
+        ),
+    ];
+    for (thinking, limit, budget_tokens) in cases {
+        let body = body_for(items(), Some(thinking.clone()), limit, budgets).await;
+        assert_eq!(
+            body["thinking"],
+            json!({ "type": "enabled", "budget_tokens": budget_tokens }),
+            "{thinking:?}"
+        );
+        assert_eq!(body.get("output_config"), None, "{thinking:?}");
     }
 }
 

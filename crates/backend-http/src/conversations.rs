@@ -25,7 +25,7 @@ use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 
 use super::AppState;
-use super::body::JsonBody;
+use super::body::{JsonBody, page_socket};
 use super::error::ApiError;
 use super::gate::AuthUser;
 use super::query::QueryParams;
@@ -375,7 +375,7 @@ pub(super) async fn stream(
             "The conversation stream is a WebSocket",
         )
     })?;
-    Ok(upgrade.on_upgrade(move |socket| async move {
+    Ok(page_socket(upgrade).on_upgrade(move |socket| async move {
         let adopted = state
             .shards
             .of(&user.id)
