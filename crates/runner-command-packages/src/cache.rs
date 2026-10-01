@@ -14,8 +14,8 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use demi_shared_artifacts::{Digest, Mode, Permissions, Publication, Staged};
 use demi_command_protocol::PackageArtifact;
+use demi_shared_artifacts::{Digest, Mode, Permissions, Publication, Staged};
 use tokio_util::sync::CancellationToken;
 
 use demi_runner_process::private_files::chmod;
@@ -197,7 +197,8 @@ impl ArtifactCache {
             match resolver.resolve(artifact, cancel).await? {
                 ArtifactSource::Local(path) => {
                     let mut input = tokio::fs::File::open(path).await?;
-                    demi_shared_artifacts::copy(&mut input, expected, staged.file(), cancel).await?;
+                    demi_shared_artifacts::copy(&mut input, expected, staged.file(), cancel)
+                        .await?;
                 }
                 ArtifactSource::Url { url, expires_at } => {
                     let expired = || expires_at.is_some_and(|expires| expires <= SystemTime::now());
@@ -210,9 +211,14 @@ impl ArtifactCache {
                         refreshed = true;
                         continue;
                     }
-                    let downloaded =
-                        demi_shared_artifacts::download(&self.http, &url, expected, staged.file(), cancel)
-                            .await;
+                    let downloaded = demi_shared_artifacts::download(
+                        &self.http,
+                        &url,
+                        expected,
+                        staged.file(),
+                        cancel,
+                    )
+                    .await;
                     match downloaded {
                         Err(demi_shared_artifacts::Error::Rejected { status: 403 })
                             if !refreshed && expired() =>
@@ -258,7 +264,8 @@ async fn check(
 /// Whether the attempt failed for want of an open file.
 fn out_of_files(error: &RuntimeError) -> bool {
     match error {
-        RuntimeError::Io(error) | RuntimeError::Artifact(demi_shared_artifacts::Error::Io(error)) => {
+        RuntimeError::Io(error)
+        | RuntimeError::Artifact(demi_shared_artifacts::Error::Io(error)) => {
             demi_command_sdk::descriptors::exhausted(error)
         }
         _ => false,

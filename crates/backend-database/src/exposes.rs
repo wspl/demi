@@ -87,8 +87,9 @@ impl ControlService {
     /// The expose `id`, expired or not.
     pub async fn expose(&self, id: ExposeId) -> Result<Option<ExposeRecord>, StorageError> {
         self.call(move |connection, _| {
-            let mut statement =
-                connection.prepare_cached(&format!("SELECT {EXPOSE_COLUMNS} FROM exposes WHERE id = ?1"))?;
+            let mut statement = connection.prepare_cached(&format!(
+                "SELECT {EXPOSE_COLUMNS} FROM exposes WHERE id = ?1"
+            ))?;
             statement
                 .query_row([id.as_str()], |row| Ok(expose_row(row)))
                 .optional()?
@@ -98,7 +99,11 @@ impl ControlService {
     }
 
     /// The expose of `user` the model knows by `number`, expired or not.
-    pub async fn numbered_expose(&self, user: UserId, number: u64) -> Result<Option<ExposeRecord>, StorageError> {
+    pub async fn numbered_expose(
+        &self,
+        user: UserId,
+        number: u64,
+    ) -> Result<Option<ExposeRecord>, StorageError> {
         self.call(move |connection, _| {
             let number = i64::try_from(number).unwrap_or(i64::MAX);
             let mut statement = connection.prepare_cached(&format!(
@@ -177,13 +182,21 @@ impl ControlService {
     }
 
     /// Deletes every expose on `device`; answers their ids.
-    pub async fn delete_device_exposes(&self, device: DeviceId) -> Result<Vec<ExposeId>, StorageError> {
+    pub async fn delete_device_exposes(
+        &self,
+        device: DeviceId,
+    ) -> Result<Vec<ExposeId>, StorageError> {
         self.call(move |connection, _| {
-            let mut statement = connection.prepare_cached("DELETE FROM exposes WHERE device_id = ?1 RETURNING id")?;
+            let mut statement = connection
+                .prepare_cached("DELETE FROM exposes WHERE device_id = ?1 RETURNING id")?;
             let mut rows = statement.query([device.as_str()])?;
             let mut ids = Vec::new();
             while let Some(row) = rows.next()? {
-                ids.push(decode("exposes", "id", ExposeId::try_from(row.get::<_, String>("id")?))?);
+                ids.push(decode(
+                    "exposes",
+                    "id",
+                    ExposeId::try_from(row.get::<_, String>("id")?),
+                )?);
             }
             Ok(ids)
         })
@@ -209,9 +222,21 @@ fn expose_row(row: &Row<'_>) -> Result<ExposeRecord, StorageError> {
     Ok(ExposeRecord {
         id: decode(TABLE, "id", ExposeId::try_from(row.get::<_, String>("id")?))?,
         number: decode(TABLE, "number", u64::try_from(row.get::<_, i64>("number")?))?,
-        user: decode(TABLE, "user_id", UserId::try_from(row.get::<_, String>("user_id")?))?,
-        device: decode(TABLE, "device_id", DeviceId::try_from(row.get::<_, String>("device_id")?))?,
-        address: decode(TABLE, "address", ExposeAddress::try_from(row.get::<_, String>("address")?))?,
+        user: decode(
+            TABLE,
+            "user_id",
+            UserId::try_from(row.get::<_, String>("user_id")?),
+        )?,
+        device: decode(
+            TABLE,
+            "device_id",
+            DeviceId::try_from(row.get::<_, String>("device_id")?),
+        )?,
+        address: decode(
+            TABLE,
+            "address",
+            ExposeAddress::try_from(row.get::<_, String>("address")?),
+        )?,
         created_at: instant(row, TABLE, "created_at")?,
         expires_at: instant(row, TABLE, "expires_at")?,
     })

@@ -98,7 +98,10 @@ mod tests {
             .expect("the second manager is refused");
         assert_eq!(
             error.to_string(),
-            format!("Another Cloud manager owns {}", data.path().join("manager.lock").display())
+            format!(
+                "Another Cloud manager owns {}",
+                data.path().join("manager.lock").display()
+            )
         );
         drop(first);
         ManagerLock::acquire(&off, data.path(), runtime.path()).unwrap();

@@ -11,20 +11,20 @@ use std::rc::Rc;
 
 use demi_agent_server::ProviderResolver as _;
 use demi_agent_server::title::{request_title, title_from_message};
-use demi_conversation_socket_protocol::ClientContent;
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::conversation_index::ConversationRecord;
 use demi_backend_database::tree;
 use demi_backend_page_sync::{Part, UserMarks};
+use demi_conversation_socket_protocol::ClientContent;
 use demi_shared_types::{Block, ModelSelection, UserContentBlock};
 use demi_web_api_protocol::ids::{ConversationId, ProviderId};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 use super::providers::ConversationProviders;
-use demi_backend_host_access::root_of;
 use crate::shard::Shard;
+use demi_backend_host_access::root_of;
 
 /// What one request reads, and the state it began from.
 pub(crate) struct TitleRequest {
@@ -84,7 +84,13 @@ impl Titles {
     /// Starts a request of the conversation `id` on `tasks` and returns at
     /// once, unless one is in flight already, which this joins. A failure
     /// is logged and writes nothing.
-    pub fn start(&self, tasks: &TaskTracker, id: ConversationId, selection: ModelSelection, request: TitleRequest) {
+    pub fn start(
+        &self,
+        tasks: &TaskTracker,
+        id: ConversationId,
+        selection: ModelSelection,
+        request: TitleRequest,
+    ) {
         if !self.enabled || self.generating(&id) {
             return;
         }
@@ -104,12 +110,16 @@ impl Titles {
         let marks = self.marks.clone();
         let in_flight = self.in_flight.clone();
         tasks.spawn_local(async move {
-            if let Err(failure) = generate(&providers, &control, &id, &selection, request, &cancel).await {
+            if let Err(failure) =
+                generate(&providers, &control, &id, &selection, request, &cancel).await
+            {
                 tracing::warn!(conversation = %id, %failure, "a title request wrote nothing");
             }
             let ended = {
                 let mut in_flight = in_flight.borrow_mut();
-                let ours = in_flight.get(&id).is_some_and(|request| request.request == number);
+                let ours = in_flight
+                    .get(&id)
+                    .is_some_and(|request| request.request == number);
                 if ours {
                     in_flight.remove(&id);
                 }
@@ -175,7 +185,9 @@ async fn generate(
     if cancel.is_cancelled() {
         return Ok(());
     }
-    control.generated_title(id.clone(), title, request.from, request.seen).await?;
+    control
+        .generated_title(id.clone(), title, request.from, request.seen)
+        .await?;
     Ok(())
 }
 
@@ -249,19 +261,27 @@ impl Shard {
             return Err(TitleRefusal::Archived);
         }
         let selection = record.model.clone().ok_or(TitleRefusal::ModelNotSelected)?;
-        let provider = ProviderId::try_from(selection.provider_id.as_str()).map_err(|_| TitleRefusal::ProviderNotFound)?;
-        if services.vault.visible(self.user(), &provider).await?.is_none() {
+        let provider = ProviderId::try_from(selection.provider_id.as_str())
+            .map_err(|_| TitleRefusal::ProviderNotFound)?;
+        if services
+            .vault
+            .visible(self.user(), &provider)
+            .await?
+            .is_none()
+        {
             return Err(TitleRefusal::ProviderNotFound);
         }
         // The live tree's history is newer than its last save.
         let blocks = match self.agent().tree(&root_of(&record.id)) {
             Some(tree) => tree.root().session().transcript().blocks,
-            None => services
-                .conversations
-                .read(&record.id, tree::history)
-                .await?
-                .unwrap_or_default()
-                .blocks,
+            None => {
+                services
+                    .conversations
+                    .read(&record.id, tree::history)
+                    .await?
+                    .unwrap_or_default()
+                    .blocks
+            }
         };
         let messages: Vec<String> = blocks.iter().filter_map(message_text).collect();
         if messages.is_empty() {
@@ -272,7 +292,8 @@ impl Shard {
             from: record.title,
             seen: record.user_messages,
         };
-        self.titles().start(self.tasks(), record.id, selection, request);
+        self.titles()
+            .start(self.tasks(), record.id, selection, request);
         Ok(())
     }
 }

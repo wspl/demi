@@ -139,7 +139,8 @@ impl Handler for Lifecycle {
         let cancelled = self.cancelled.clone();
         Box::pin(async move {
             started.notify_one();
-            if matches!(&context.request, ConversationRequest::Release { conversation } if conversation == "wait") {
+            if matches!(&context.request, ConversationRequest::Release { conversation } if conversation == "wait")
+            {
                 context.cancellation.cancelled().await;
                 cancelled.notify_one();
                 return Err(ServiceError::Cancelled);

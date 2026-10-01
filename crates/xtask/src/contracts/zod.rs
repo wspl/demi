@@ -4,7 +4,9 @@
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write as _;
 
-use super::shape::{Bound, MAX_SAFE_INTEGER, Object, Shape, StringFormat, StringShape, Unsupported, Variant};
+use super::shape::{
+    Bound, MAX_SAFE_INTEGER, Object, Shape, StringFormat, StringShape, Unsupported, Variant,
+};
 
 /// A definition the module declares.
 pub struct Definition<'a> {
@@ -21,7 +23,11 @@ pub struct Definition<'a> {
 pub fn schema_name(definition: &str) -> String {
     let mut characters = definition.chars();
     let first = characters.next().map(|first| first.to_ascii_lowercase());
-    first.into_iter().chain(characters).chain("Schema".chars()).collect()
+    first
+        .into_iter()
+        .chain(characters)
+        .chain("Schema".chars())
+        .collect()
 }
 
 /// The declarations of `definitions`, in their order, each followed by its
@@ -29,7 +35,9 @@ pub fn schema_name(definition: &str) -> String {
 /// only a recursive type makes, is a getter of the object property it is in.
 /// Answers the source and the definitions it refers to that are declared
 /// elsewhere.
-pub fn declarations(definitions: &[Definition<'_>]) -> Result<(String, BTreeSet<String>), Unsupported> {
+pub fn declarations(
+    definitions: &[Definition<'_>],
+) -> Result<(String, BTreeSet<String>), Unsupported> {
     let order: HashMap<&str, usize> = definitions
         .iter()
         .enumerate()
@@ -55,7 +63,12 @@ pub fn declarations(definitions: &[Definition<'_>]) -> Result<(String, BTreeSet<
         push_doc(&mut source, definition.description, 0);
         let schema = schema_name(definition.name);
         writeln!(source, "export const {schema} = {}", rendered.code).expect("writing to a string");
-        writeln!(source, "export type {} = z.infer<typeof {schema}>", definition.name).expect("writing to a string");
+        writeln!(
+            source,
+            "export type {} = z.infer<typeof {schema}>",
+            definition.name
+        )
+        .expect("writing to a string");
     }
     Ok((source, imported))
 }
@@ -69,7 +82,10 @@ struct Rendered {
 
 impl Rendered {
     fn now(code: String) -> Self {
-        Self { code, forward: false }
+        Self {
+            code,
+            forward: false,
+        }
     }
 }
 
@@ -145,7 +161,13 @@ impl Writer<'_> {
     /// An object: tolerant when the web app receives the type, strict
     /// otherwise, which requires the Rust type to refuse unknown fields.
     /// `tag` is written first when the object is a variant.
-    fn object(&mut self, object: &Object, tag: Option<&str>, at: &str, indent: usize) -> Result<String, Unsupported> {
+    fn object(
+        &mut self,
+        object: &Object,
+        tag: Option<&str>,
+        at: &str,
+        indent: usize,
+    ) -> Result<String, Unsupported> {
         let constructor = if self.received {
             "z.object"
         } else if object.denies_unknown {
@@ -156,11 +178,20 @@ impl Writer<'_> {
                 problem: "only the web app sends this object, but it accepts unknown fields; a type the backend receives refuses them".into(),
             });
         };
-        Ok(format!("{constructor}({})", self.fields(object, tag, at, indent)?))
+        Ok(format!(
+            "{constructor}({})",
+            self.fields(object, tag, at, indent)?
+        ))
     }
 
     /// An object's fields as the object literal Zod takes.
-    fn fields(&mut self, object: &Object, tag: Option<&str>, at: &str, indent: usize) -> Result<String, Unsupported> {
+    fn fields(
+        &mut self,
+        object: &Object,
+        tag: Option<&str>,
+        at: &str,
+        indent: usize,
+    ) -> Result<String, Unsupported> {
         if object.properties.is_empty() {
             return Ok("{}".into());
         }
@@ -179,7 +210,8 @@ impl Writer<'_> {
             push_doc(&mut code, property.description.as_deref(), inner);
             let key = key(&property.name);
             if rendered.forward {
-                writeln!(code, "{}get {key}() {{ return {value} }},", pad(inner)).expect("writing to a string");
+                writeln!(code, "{}get {key}() {{ return {value} }},", pad(inner))
+                    .expect("writing to a string");
             } else {
                 writeln!(code, "{}{key}: {value},", pad(inner)).expect("writing to a string");
             }
@@ -189,7 +221,13 @@ impl Writer<'_> {
         Ok(code)
     }
 
-    fn union(&mut self, tag: &str, variants: &[Variant], at: &str, indent: usize) -> Result<String, Unsupported> {
+    fn union(
+        &mut self,
+        tag: &str,
+        variants: &[Variant],
+        at: &str,
+        indent: usize,
+    ) -> Result<String, Unsupported> {
         let inner = indent + 1;
         let mut code = format!("z.discriminatedUnion({}, [\n", quote(tag));
         for (index, variant) in variants.iter().enumerate() {
@@ -204,7 +242,11 @@ impl Writer<'_> {
                             problem: "a variant that extends a type declared after it".into(),
                         });
                     }
-                    format!("{}.extend({})", base.code, self.fields(&variant.object, Some(tag), &at, inner)?)
+                    format!(
+                        "{}.extend({})",
+                        base.code,
+                        self.fields(&variant.object, Some(tag), &at, inner)?
+                    )
                 }
                 None => self.object(&variant.object, Some(tag), &at, inner)?,
             };
@@ -268,7 +310,8 @@ fn number_schema(min: Option<Bound>, max: Option<Bound>) -> String {
 
 /// A number as a JavaScript literal.
 fn number(value: f64) -> String {
-    serde_json::Number::from_f64(value).map_or_else(|| value.to_string(), |number| number.to_string())
+    serde_json::Number::from_f64(value)
+        .map_or_else(|| value.to_string(), |number| number.to_string())
 }
 
 /// A string as a JavaScript literal: JSON's quoting is JavaScript's.
@@ -282,8 +325,14 @@ fn key(name: &str) -> String {
     let identifier = characters
         .next()
         .is_some_and(|first| first.is_ascii_alphabetic() || first == '_' || first == '$')
-        && characters.all(|character| character.is_ascii_alphanumeric() || character == '_' || character == '$');
-    if identifier { name.to_owned() } else { quote(name) }
+        && characters.all(|character| {
+            character.is_ascii_alphanumeric() || character == '_' || character == '$'
+        });
+    if identifier {
+        name.to_owned()
+    } else {
+        quote(name)
+    }
 }
 
 fn pad(indent: usize) -> String {
@@ -340,7 +389,10 @@ mod tests {
             received: true,
         }];
         let (source, imported) = declarations(&definitions).unwrap();
-        assert!(source.contains("get children() { return z.array(treeSchema) },"), "{source}");
+        assert!(
+            source.contains("get children() { return z.array(treeSchema) },"),
+            "{source}"
+        );
         assert!(source.contains("name: z.string(),"), "{source}");
         assert!(imported.is_empty());
     }

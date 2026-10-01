@@ -1,6 +1,6 @@
 use demi_runner_shell::testing::{UTILITIES, run};
-use uucore::context::Context;
 use std::{collections::BTreeMap, path::Path, sync::Arc};
+use uucore::context::Context;
 
 fn invoke(root: &Path, name: &'static str, args: &[&str]) -> (i32, String, String) {
     let output = tempfile::NamedTempFile::new().unwrap();

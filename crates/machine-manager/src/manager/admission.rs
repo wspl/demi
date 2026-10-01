@@ -47,6 +47,12 @@ impl Admission {
     }
 }
 
+impl Default for Admission {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{cell::RefCell, rc::Rc, time::Duration};

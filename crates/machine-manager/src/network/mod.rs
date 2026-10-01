@@ -59,10 +59,15 @@ mod linux {
 
     /// Applies `ruleset` as one `nft` transaction; a refusal carries what
     /// `nft` printed.
-    fn apply(nft: &std::path::Path, ruleset: &nftables::schema::Nftables<'_>) -> Result<(), NetworkError> {
+    fn apply(
+        nft: &std::path::Path,
+        ruleset: &nftables::schema::Nftables<'_>,
+    ) -> Result<(), NetworkError> {
         use nftables::helper::{DEFAULT_ARGS, NftablesError, apply_ruleset_with_args};
         apply_ruleset_with_args(ruleset, Some(nft), DEFAULT_ARGS).map_err(|error| match error {
-            NftablesError::NftFailed { stderr, .. } => NetworkError::Firewall(stderr.trim().to_owned()),
+            NftablesError::NftFailed { stderr, .. } => {
+                NetworkError::Firewall(stderr.trim().to_owned())
+            }
             other => NetworkError::Firewall(other.to_string()),
         })
     }
@@ -89,19 +94,25 @@ mod linux {
         /// Checks that the pool overlaps no host route, resolves the
         /// backend, enables forwarding, and installs the firewall table.
         pub async fn prepare(&self) -> Result<(), NetworkError> {
-            let routes = netlink::session(|handle| async move { netlink::main_routes(&handle).await }).await?;
+            let routes =
+                netlink::session(|handle| async move { netlink::main_routes(&handle).await })
+                    .await?;
             for (network, interface) in routes {
                 let default = network.prefix_len() == 0;
                 let ours = interface.is_some_and(|name| name.starts_with(HOST_INTERFACES));
                 if default || ours {
                     continue;
                 }
-                if self.pool.contains(&network.network()) || network.contains(&self.pool.network()) {
+                if self.pool.contains(&network.network()) || network.contains(&self.pool.network())
+                {
                     return Err(NetworkError::Overlap(network));
                 }
             }
             let backend = self.backend_addresses().await?;
-            let port = self.backend.port_or_known_default().expect("an http URL has a port");
+            let port = self
+                .backend
+                .port_or_known_default()
+                .expect("an http URL has a port");
             let table = ruleset::table(&Policy {
                 pool: self.pool,
                 backend: &backend,
@@ -119,7 +130,10 @@ mod linux {
         /// The backend's IPv4 addresses, none of them loopback or
         /// unspecified: a sandbox reaches the backend over the network.
         async fn backend_addresses(&self) -> Result<Vec<Ipv4Addr>, NetworkError> {
-            let port = self.backend.port_or_known_default().expect("an http URL has a port");
+            let port = self
+                .backend
+                .port_or_known_default()
+                .expect("an http URL has a port");
             let mut addresses: Vec<Ipv4Addr> = match self.backend.host() {
                 Some(url::Host::Ipv4(address)) => vec![address],
                 Some(url::Host::Domain(host)) => tokio::net::lookup_host((host, port))
@@ -136,7 +150,10 @@ mod linux {
             if addresses.is_empty() {
                 return Err(NetworkError::NoBackendAddress);
             }
-            if addresses.iter().any(|address| address.is_loopback() || address.octets()[0] == 0) {
+            if addresses
+                .iter()
+                .any(|address| address.is_loopback() || address.octets()[0] == 0)
+            {
                 return Err(NetworkError::LoopbackBackend);
             }
             Ok(addresses)
@@ -183,7 +200,9 @@ mod linux {
                 if ipv6 {
                     fs_err::write(format!("{IPV6_SETTINGS}/conf/all/disable_ipv6"), "1")?;
                 }
-                let runtime = tokio::runtime::Builder::new_current_thread().enable_io().build()?;
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_io()
+                    .build()?;
                 runtime
                     .block_on(netlink::session(|handle| async move {
                         netlink::up(&handle, "lo").await?;
@@ -221,7 +240,11 @@ mod linux {
 
         fn output(program: &str, args: &[&str]) -> String {
             let output = Command::new(program).args(args).output().expect(program);
-            assert!(output.status.success(), "{program} {args:?}: {}", String::from_utf8_lossy(&output.stderr));
+            assert!(
+                output.status.success(),
+                "{program} {args:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
             String::from_utf8(output.stdout).unwrap()
         }
 
@@ -248,7 +271,10 @@ mod linux {
             assert_eq!(listing, expected, "the installed table:\n{listing}");
             // Installing it again replaces it.
             network.prepare().await.unwrap();
-            assert_eq!(output("nft", &["list", "table", "inet", "demi_cloud"]), expected);
+            assert_eq!(
+                output("nft", &["list", "table", "inet", "demi_cloud"]),
+                expected
+            );
 
             let slot = SlotPool::new("172.30.0.0/16".parse().unwrap(), 8).slot(3);
             network.attach(&slot).await.unwrap();
@@ -261,9 +287,20 @@ mod linux {
             assert!(routes.contains("default via 172.30.0.13"), "{routes}");
             // IPv6 is off on both ends, unless the kernel runs without it.
             if std::path::Path::new(IPV6_SETTINGS).exists() {
-                assert_eq!(read("/proc/sys/net/ipv6/conf/demih3/disable_ipv6").trim(), "1");
-                let disabled =
-                    output("ip", &["netns", "exec", "demi-3", "cat", "/proc/sys/net/ipv6/conf/all/disable_ipv6"]);
+                assert_eq!(
+                    read("/proc/sys/net/ipv6/conf/demih3/disable_ipv6").trim(),
+                    "1"
+                );
+                let disabled = output(
+                    "ip",
+                    &[
+                        "netns",
+                        "exec",
+                        "demi-3",
+                        "cat",
+                        "/proc/sys/net/ipv6/conf/all/disable_ipv6",
+                    ],
+                );
                 assert_eq!(disabled.trim(), "1");
             }
 
@@ -285,7 +322,12 @@ mod linux {
             output("ip", &["link", "set", "lo", "up"]);
             // A veth pair, which the manager needs anyway: a kernel may lack
             // the dummy driver.
-            output("ip", &["link", "add", "probe0", "type", "veth", "peer", "name", "probe1"]);
+            output(
+                "ip",
+                &[
+                    "link", "add", "probe0", "type", "veth", "peer", "name", "probe1",
+                ],
+            );
             output("ip", &["addr", "add", "172.30.5.1/24", "dev", "probe0"]);
             output("ip", &["link", "set", "probe0", "up"]);
             let nft = which::which("nft").unwrap();
@@ -296,7 +338,10 @@ mod linux {
                 nft.clone(),
             );
             let error = overlapping.prepare().await.unwrap_err();
-            assert_eq!(error.to_string(), "DEMI_MANAGED_SUBNET overlaps host route 172.30.5.0/24");
+            assert_eq!(
+                error.to_string(),
+                "DEMI_MANAGED_SUBNET overlaps host route 172.30.5.0/24"
+            );
             for backend in ["http://127.0.0.1:3271", "http://0.1.2.3:3271"] {
                 let loopback = CloudNetwork::new(
                     "10.99.0.0/16".parse().unwrap(),
@@ -305,7 +350,10 @@ mod linux {
                     nft.clone(),
                 );
                 let error = loopback.prepare().await.unwrap_err();
-                assert_eq!(error.to_string(), "Backend URL must be reachable from Cloud, not host loopback");
+                assert_eq!(
+                    error.to_string(),
+                    "Backend URL must be reachable from Cloud, not host loopback"
+                );
             }
         }
     }

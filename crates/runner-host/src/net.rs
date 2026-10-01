@@ -5,11 +5,7 @@
 use std::{io, time::Duration};
 
 use futures_util::StreamExt;
-use tokio::{
-    io::AsyncWriteExt,
-    net::TcpStream,
-    sync::mpsc,
-};
+use tokio::{io::AsyncWriteExt, net::TcpStream, sync::mpsc};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use demi_runner_process::pipes::{PipeClient, report_pipe};
@@ -59,8 +55,6 @@ impl NetStreams {
         if self.cancel.is_cancelled() {
             return Err(io::Error::other("host connection closed"));
         }
-        let port = u16::try_from(port)
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "net_open port is invalid"))?;
         let pipes = self.pipes.clone();
         let reply = self.output.clone();
         let reporting = self.cancel.clone();
@@ -180,7 +174,6 @@ async fn connect(host: &str, port: u16) -> Result<TcpStream, (NetErrorCode, Stri
         }
     }
 }
-
 
 async fn pump_input(
     pipes: PipeClient,

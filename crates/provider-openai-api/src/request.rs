@@ -4,7 +4,6 @@
 
 use std::borrow::Cow;
 
-use demi_shared_types::is_blank;
 use demi_provider_common::{
     InferenceRequest, json_body,
     openai_request::{
@@ -13,6 +12,7 @@ use demi_provider_common::{
         prompt_cache_key, reasoning_effort, responses_input, responses_reasoning,
     },
 };
+use demi_shared_types::is_blank;
 use serde::Serialize;
 
 use crate::{SIGNATURE_TAG, VendorPolicy};

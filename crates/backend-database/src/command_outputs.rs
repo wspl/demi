@@ -10,8 +10,8 @@
 //! (`storage.md` § Collecting blobs).
 
 use demi_agent_store::StoreError;
-use demi_shared_types::{BlobRef, Block, CommandId, Timestamp, ToolView};
 use demi_host_interface::Missing;
+use demi_shared_types::{BlobRef, Block, CommandId, Timestamp, ToolView};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use super::StorageError;
@@ -22,7 +22,10 @@ use super::columns::{decode, instant};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OutputRow {
     /// Its blob, and the bytes at its end that the backend does not have.
-    Stored { blob: BlobRef, missing: Option<Missing> },
+    Stored {
+        blob: BlobRef,
+        missing: Option<Missing>,
+    },
     /// Why it was not stored.
     NotStored(String),
     /// When the retention pass removed it.
@@ -37,7 +40,8 @@ pub struct CommandOutput {
     pub output: OutputRow,
 }
 
-const COLUMNS: &str = "command_id, ended_at, blob, missing_bytes, missing_reason, not_stored, removed_at";
+const COLUMNS: &str =
+    "command_id, ended_at, blob, missing_bytes, missing_reason, not_stored, removed_at";
 
 /// Writes `rows` in one transaction; a command that has a row keeps it. The
 /// blobs they name are used before the commit.
@@ -59,7 +63,8 @@ pub fn insert(
                 OutputRow::NotStored(reason) => (None, None, Some(reason), None),
                 OutputRow::Removed(at) => (None, None, None, Some(at.as_millisecond())),
             };
-            let missing_bytes = missing.map(|missing| i64::try_from(missing.bytes).unwrap_or(i64::MAX));
+            let missing_bytes =
+                missing.map(|missing| i64::try_from(missing.bytes).unwrap_or(i64::MAX));
             insert.execute(params![
                 row.command.as_str(),
                 row.ended.as_millisecond(),
@@ -80,16 +85,24 @@ pub fn insert(
 }
 
 /// The row of `command`; none when the conversation has none.
-pub fn read(connection: &Connection, command: &CommandId) -> Result<Option<CommandOutput>, StorageError> {
+pub fn read(
+    connection: &Connection,
+    command: &CommandId,
+) -> Result<Option<CommandOutput>, StorageError> {
     connection
-        .prepare_cached(&format!("SELECT {COLUMNS} FROM command_outputs WHERE command_id = ?1"))?
+        .prepare_cached(&format!(
+            "SELECT {COLUMNS} FROM command_outputs WHERE command_id = ?1"
+        ))?
         .query_row([command.as_str()], output_row)
         .optional()?
         .transpose()
 }
 
 /// The rows of `commands`, which a Fork copies into its destination.
-pub fn rows(connection: &Connection, commands: &[CommandId]) -> Result<Vec<CommandOutput>, StorageError> {
+pub fn rows(
+    connection: &Connection,
+    commands: &[CommandId],
+) -> Result<Vec<CommandOutput>, StorageError> {
     let mut rows = Vec::new();
     for command in commands {
         if let Some(row) = read(connection, command)? {
@@ -137,8 +150,9 @@ pub fn remove_expired(
     // first, in the same transaction.
     let mut released = Vec::new();
     {
-        let mut select = transaction
-            .prepare_cached("SELECT blob FROM command_outputs WHERE blob IS NOT NULL AND ended_at < ?1")?;
+        let mut select = transaction.prepare_cached(
+            "SELECT blob FROM command_outputs WHERE blob IS NOT NULL AND ended_at < ?1",
+        )?;
         let mut rows = select.query([expired])?;
         while let Some(row) = rows.next()? {
             released.push(blob(row.get(0)?)?);
@@ -160,7 +174,8 @@ pub fn remove_expired(
 
 /// The blobs the rows hold.
 pub fn references(connection: &Connection) -> Result<Vec<BlobRef>, StorageError> {
-    let mut statement = connection.prepare_cached("SELECT blob FROM command_outputs WHERE blob IS NOT NULL")?;
+    let mut statement =
+        connection.prepare_cached("SELECT blob FROM command_outputs WHERE blob IS NOT NULL")?;
     let mut rows = statement.query([])?;
     let mut references = Vec::new();
     while let Some(row) = rows.next()? {
@@ -221,7 +236,11 @@ fn decode_row(row: &Row<'_>) -> Result<CommandOutput, StorageError> {
             });
         }
     };
-    Ok(CommandOutput { command, ended, output })
+    Ok(CommandOutput {
+        command,
+        ended,
+        output,
+    })
 }
 
 fn blob(text: String) -> Result<BlobRef, StorageError> {

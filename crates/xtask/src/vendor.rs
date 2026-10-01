@@ -22,7 +22,16 @@ const DOWNLOAD_BYTES: u64 = 64 * 1024 * 1024;
 /// The upstream files and directories a vendored copy leaves out: packaging
 /// residue, a lockfile Cargo ignores in a dependency, upstream's CI, and
 /// targets a dependency never builds.
-const LEFT_OUT: [&str; 8] = [".cargo-ok", "Cargo.lock", "Cargo.toml.orig", ".github", "tests", "benches", "fuzz", "examples"];
+const LEFT_OUT: [&str; 8] = [
+    ".cargo-ok",
+    "Cargo.lock",
+    "Cargo.toml.orig",
+    ".github",
+    "tests",
+    "benches",
+    "fuzz",
+    "examples",
+];
 
 #[derive(clap::Subcommand)]
 pub enum Command {
@@ -105,7 +114,10 @@ pub fn run(command: Command) -> Result<(), Error> {
         let scratch = tempfile::tempdir()?;
         for crate_ in &vendored {
             let upstream = upstream(&client, crate_, scratch.path(), &cancel).await?;
-            let relative = crate_.directory.strip_prefix(&repository).unwrap_or(&crate_.directory);
+            let relative = crate_
+                .directory
+                .strip_prefix(&repository)
+                .unwrap_or(&crate_.directory);
             if patch.is_some() {
                 print_patch(&upstream, &crate_.directory)?;
             } else {
@@ -125,17 +137,23 @@ fn vendored(repository: &Path) -> Result<Vec<Vendored>, Error> {
         .arg(repository.join("Cargo.toml"))
         .output()?;
     if !output.status.success() {
-        return Err(Error::Metadata(String::from_utf8_lossy(&output.stderr).into_owned()));
+        return Err(Error::Metadata(
+            String::from_utf8_lossy(&output.stderr).into_owned(),
+        ));
     }
-    let metadata: Metadata =
-        serde_json::from_slice(&output.stdout).map_err(|error| Error::Metadata(error.to_string()))?;
+    let metadata: Metadata = serde_json::from_slice(&output.stdout)
+        .map_err(|error| Error::Metadata(error.to_string()))?;
     let vendor = repository.join("vendor");
     let mut vendored: Vec<Vendored> = metadata
         .packages
         .into_iter()
         .filter(|package| package.manifest_path.starts_with(&vendor))
         .map(|package| Vendored {
-            directory: package.manifest_path.parent().expect("a manifest is in a directory").to_owned(),
+            directory: package
+                .manifest_path
+                .parent()
+                .expect("a manifest is in a directory")
+                .to_owned(),
             name: package.name,
             version: package.version,
         })
@@ -165,9 +183,13 @@ async fn upstream(
 ) -> Result<PathBuf, Error> {
     let mut index = Vec::new();
     let url = format!("{INDEX}/{}", index_path(&crate_.name));
-    demi_shared_artifacts::download_measured(client, &url, DOWNLOAD_BYTES, &mut index, cancel).await?;
+    demi_shared_artifacts::download_measured(client, &url, DOWNLOAD_BYTES, &mut index, cancel)
+        .await?;
     let mut recorded = None;
-    for line in index.split(|byte| *byte == b'\n').filter(|line| !line.is_empty()) {
+    for line in index
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+    {
         let entry: IndexEntry = serde_json::from_slice(line).map_err(|error| Error::Index {
             name: crate_.name.clone(),
             reason: error.to_string(),
@@ -182,7 +204,14 @@ async fn upstream(
     })?;
     let mut archive = Vec::new();
     let url = format!("{ARCHIVES}/{0}/{0}-{1}.crate", crate_.name, crate_.version);
-    let digest = demi_shared_artifacts::download_measured(client, &url, DOWNLOAD_BYTES, &mut archive, cancel).await?;
+    let digest = demi_shared_artifacts::download_measured(
+        client,
+        &url,
+        DOWNLOAD_BYTES,
+        &mut archive,
+        cancel,
+    )
+    .await?;
     if digest.sha256 != recorded {
         return Err(Error::Checksum {
             name: crate_.name.clone(),
@@ -255,7 +284,11 @@ fn compare(upstream: &Path, vendored: &Path) -> std::io::Result<Changes> {
 }
 
 fn print_summary(directory: &str, version: &str, changes: &Changes) {
-    let inserted: usize = changes.changed.iter().map(|(_, inserted, _)| inserted).sum();
+    let inserted: usize = changes
+        .changed
+        .iter()
+        .map(|(_, inserted, _)| inserted)
+        .sum();
     let deleted: usize = changes.changed.iter().map(|(_, _, deleted)| deleted).sum();
     println!(
         "{directory} {version}: {} changed (+{inserted} -{deleted}), {} added, {} removed, {} left out",
@@ -283,11 +316,23 @@ fn print_patch(upstream: &Path, vendored: &Path) -> std::io::Result<()> {
     };
     let changed = changes.changed.iter().map(|(path, _, _)| path);
     for path in changed.chain(&changes.added).chain(&changes.removed) {
-        let before = if upstream.join(path).is_file() { read(upstream, path)? } else { String::new() };
-        let after = if vendored.join(path).is_file() { read(vendored, path)? } else { String::new() };
+        let before = if upstream.join(path).is_file() {
+            read(upstream, path)?
+        } else {
+            String::new()
+        };
+        let after = if vendored.join(path).is_file() {
+            read(vendored, path)?
+        } else {
+            String::new()
+        };
         let name = path.display().to_string();
         let diff = TextDiff::from_lines(&before, &after);
-        print!("{}", diff.unified_diff().header(&format!("a/{name}"), &format!("b/{name}")));
+        print!(
+            "{}",
+            diff.unified_diff()
+                .header(&format!("a/{name}"), &format!("b/{name}"))
+        );
     }
     Ok(())
 }
@@ -305,12 +350,20 @@ mod tests {
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
             std::fs::write(path, text).unwrap();
         };
-        write(upstream.path(), "src/lib.rs", "use std::fs;\nfn main() {}\n");
+        write(
+            upstream.path(),
+            "src/lib.rs",
+            "use std::fs;\nfn main() {}\n",
+        );
         write(upstream.path(), "src/same.rs", "same\n");
         write(upstream.path(), "src/gone.rs", "gone\n");
         write(upstream.path(), "tests/it.rs", "test\n");
         write(upstream.path(), "Cargo.toml.orig", "[package]\n");
-        write(vendored.path(), "src/lib.rs", "use uucore::context::fs;\nfn main() {}\n");
+        write(
+            vendored.path(),
+            "src/lib.rs",
+            "use uucore::context::fs;\nfn main() {}\n",
+        );
         write(vendored.path(), "src/same.rs", "same\n");
         write(vendored.path(), "src/context.rs", "new\n");
 

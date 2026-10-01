@@ -8,7 +8,10 @@ use crate::{blocking::OffLoop, sandbox::files::USER_ID};
 
 /// Copies the directory `skeleton` to the new directory `destination`.
 pub fn copy(_: &OffLoop, skeleton: &Path, destination: &Path) -> io::Result<()> {
-    for entry in walkdir::WalkDir::new(skeleton).follow_links(false).sort_by_file_name() {
+    for entry in walkdir::WalkDir::new(skeleton)
+        .follow_links(false)
+        .sort_by_file_name()
+    {
         let entry = entry?;
         let relative = entry
             .path()
@@ -26,7 +29,10 @@ pub fn copy(_: &OffLoop, skeleton: &Path, destination: &Path) -> io::Result<()> 
         } else {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                format!("{} is neither a file, a directory nor a link", entry.path().display()),
+                format!(
+                    "{} is neither a file, a directory nor a link",
+                    entry.path().display()
+                ),
             ));
         }
         fs_err::os::unix::fs::lchown(&target, Some(USER_ID), Some(USER_ID))?;
@@ -57,11 +63,27 @@ mod tests {
             return;
         }
         copied.unwrap();
-        assert_eq!(std::fs::read_link(home.join(".bash_profile")).unwrap(), Path::new(".profile"));
-        assert_eq!(std::fs::read_link(home.join(".bashrc")).unwrap(), Path::new("/etc/bash.bashrc"));
-        for path in [home.clone(), home.join(".config"), home.join(".profile"), home.join(".bashrc")] {
+        assert_eq!(
+            std::fs::read_link(home.join(".bash_profile")).unwrap(),
+            Path::new(".profile")
+        );
+        assert_eq!(
+            std::fs::read_link(home.join(".bashrc")).unwrap(),
+            Path::new("/etc/bash.bashrc")
+        );
+        for path in [
+            home.clone(),
+            home.join(".config"),
+            home.join(".profile"),
+            home.join(".bashrc"),
+        ] {
             let metadata = std::fs::symlink_metadata(&path).unwrap();
-            assert_eq!((metadata.uid(), metadata.gid()), (USER_ID, USER_ID), "{}", path.display());
+            assert_eq!(
+                (metadata.uid(), metadata.gid()),
+                (USER_ID, USER_ID),
+                "{}",
+                path.display()
+            );
         }
     }
 
@@ -82,9 +104,14 @@ mod tests {
         copy(&off, &skeleton, &root.join("demi")).unwrap();
         let image = directory.path().join("home.ext4");
         let tools = crate::tools::Tools::on_path();
-        crate::storage::ext4::make_home(&tools, &root, &image, std::num::NonZeroU64::new(32 << 20).unwrap())
-            .await
-            .unwrap();
+        crate::storage::ext4::make_home(
+            &tools,
+            &root,
+            &image,
+            std::num::NonZeroU64::new(32 << 20).unwrap(),
+        )
+        .await
+        .unwrap();
         let stat = |path: &str| {
             let output = std::process::Command::new("debugfs")
                 .args(["-R", &format!("stat {path}")])
@@ -96,7 +123,10 @@ mod tests {
         let top = stat("/");
         assert!(top.contains("Mode:  0755"), "{top}");
         let home = stat("/demi");
-        assert!(home.contains("User:  1000") && home.contains("Group:  1000"), "{home}");
+        assert!(
+            home.contains("User:  1000") && home.contains("Group:  1000"),
+            "{home}"
+        );
         let profile = stat("/demi/.profile");
         assert!(profile.contains("User:  1000"), "{profile}");
     }

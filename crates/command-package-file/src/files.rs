@@ -7,15 +7,15 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_shared_artifacts::{Mode, Permissions, Publication};
+use demi_command_package_file_protocol::{CreateArgs, EditArgs, Operation, PatchArgs, ReadArgs};
 use demi_command_protocol::{CommandError, Completion};
 use demi_command_sdk::{
     InvocationContext, ServiceError,
     edits::{Recorder, Recording},
 };
-use demi_shared_types::DecodeError;
-use demi_command_package_file_protocol::{CreateArgs, EditArgs, Operation, PatchArgs, ReadArgs};
+use demi_shared_artifacts::{Mode, Permissions, Publication};
 use demi_shared_gates::SerialGate;
+use demi_shared_types::DecodeError;
 use tokio::io::AsyncReadExt;
 use tokio_util::sync::CancellationToken;
 
@@ -288,5 +288,9 @@ fn edit(
 
 /// The 1-based line of the byte at `index`.
 fn line_of(content: &str, index: usize) -> usize {
-    content[..index].bytes().filter(|&byte| byte == b'\n').count() + 1
+    content[..index]
+        .bytes()
+        .filter(|&byte| byte == b'\n')
+        .count()
+        + 1
 }

@@ -148,7 +148,13 @@ impl Runsc {
     }
 
     async fn run(&self, command: &[&OsStr]) -> Result<Output, ToolError> {
-        self.tools.run(Tool::Runsc, self.args(command.iter().copied()), Some(DEADLINE)).await
+        self.tools
+            .run(
+                Tool::Runsc,
+                self.args(command.iter().copied()),
+                Some(DEADLINE),
+            )
+            .await
     }
 
     /// The installed runsc's version line.
@@ -162,7 +168,9 @@ impl Runsc {
 
     /// The status of container `id`, `None` when runsc does not know it.
     pub async fn status(&self, id: &SandboxId) -> Result<Option<Status>, RunscError> {
-        let output = self.run(&[OsStr::new("list"), OsStr::new("--format=json")]).await?;
+        let output = self
+            .run(&[OsStr::new("list"), OsStr::new("--format=json")])
+            .await?;
         status_in(&output.stdout, id).map_err(|error| RunscError::List(error.to_string()))
     }
 
@@ -206,24 +214,34 @@ impl Runsc {
         }
         let written = blocking::run(move |_| fs_err::read(path)).await?;
         let text = String::from_utf8_lossy(&written);
-        Err(RunscError::Start(crate::tools::tail(&text, 8 * 1024).to_owned()))
+        Err(RunscError::Start(
+            crate::tools::tail(&text, 8 * 1024).to_owned(),
+        ))
     }
 
     /// Waits for container `id` to exit, as long as it runs.
     pub async fn wait(&self, id: &SandboxId) -> Result<(), ToolError> {
         let output = self
             .tools
-            .output(Tool::Runsc, self.args([OsStr::new("wait"), OsStr::new(id.as_str())]), None)
+            .output(
+                Tool::Runsc,
+                self.args([OsStr::new("wait"), OsStr::new(id.as_str())]),
+                None,
+            )
             .await?;
         Tools::accept(Tool::Runsc, output, &[0]).map(drop)
     }
 
     pub async fn pause(&self, id: &SandboxId) -> Result<(), ToolError> {
-        self.run(&[OsStr::new("pause"), OsStr::new(id.as_str())]).await.map(drop)
+        self.run(&[OsStr::new("pause"), OsStr::new(id.as_str())])
+            .await
+            .map(drop)
     }
 
     pub async fn resume(&self, id: &SandboxId) -> Result<(), ToolError> {
-        self.run(&[OsStr::new("resume"), OsStr::new(id.as_str())]).await.map(drop)
+        self.run(&[OsStr::new("resume"), OsStr::new(id.as_str())])
+            .await
+            .map(drop)
     }
 
     /// Asks every process of container `id` to terminate.
@@ -231,7 +249,12 @@ impl Runsc {
         self.tools
             .output(
                 Tool::Runsc,
-                self.args([OsStr::new("kill"), OsStr::new("--all"), OsStr::new(id.as_str()), OsStr::new("TERM")]),
+                self.args([
+                    OsStr::new("kill"),
+                    OsStr::new("--all"),
+                    OsStr::new(id.as_str()),
+                    OsStr::new("TERM"),
+                ]),
                 Some(DEADLINE),
             )
             .await
@@ -239,9 +262,13 @@ impl Runsc {
 
     /// Deletes container `id`, killing what still runs.
     pub async fn delete(&self, id: &SandboxId) -> Result<(), ToolError> {
-        self.run(&[OsStr::new("delete"), OsStr::new("--force"), OsStr::new(id.as_str())])
-            .await
-            .map(drop)
+        self.run(&[
+            OsStr::new("delete"),
+            OsStr::new("--force"),
+            OsStr::new(id.as_str()),
+        ])
+        .await
+        .map(drop)
     }
 }
 
@@ -252,10 +279,22 @@ mod tests {
     #[test]
     fn the_version_must_match_exactly() {
         let version = RuntimeRelease::pinned().version();
-        assert!(reports_version(&format!("runsc version {version}\nspec: 1.1.0\n"), &version));
-        assert!(!reports_version(&format!("runsc version {version}.1\n"), &version));
-        assert!(!reports_version("runsc version release-20260914.0-demi.1\n", "release-20260914.0"));
-        assert!(!reports_version(&format!("spec: 1.1.0\nrunsc version {version}\n"), &version));
+        assert!(reports_version(
+            &format!("runsc version {version}\nspec: 1.1.0\n"),
+            &version
+        ));
+        assert!(!reports_version(
+            &format!("runsc version {version}.1\n"),
+            &version
+        ));
+        assert!(!reports_version(
+            "runsc version release-20260914.0-demi.1\n",
+            "release-20260914.0"
+        ));
+        assert!(!reports_version(
+            &format!("spec: 1.1.0\nrunsc version {version}\n"),
+            &version
+        ));
     }
 
     #[test]
@@ -270,7 +309,11 @@ mod tests {
 
     #[test]
     fn every_command_names_the_state_root_and_the_profile() {
-        let runsc = Runsc::new(Tools::placeholder(), Path::new("/run/demi-machine-manager"), true);
+        let runsc = Runsc::new(
+            Tools::placeholder(),
+            Path::new("/run/demi-machine-manager"),
+            true,
+        );
         let args = runsc.args([OsStr::new("pause"), OsStr::new("demi-a")]);
         let args: Vec<_> = args.iter().map(|arg| arg.to_str().unwrap()).collect();
         assert_eq!(

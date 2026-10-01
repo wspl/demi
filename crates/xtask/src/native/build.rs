@@ -108,7 +108,8 @@ fn apple_sdk(named: Option<&Path>) -> Result<PathBuf, Error> {
         reason,
     };
     let bytes = std::fs::read(&path).map_err(|error| unreadable(error.to_string()))?;
-    let settings: Settings = serde_json::from_slice(&bytes).map_err(|error| unreadable(error.to_string()))?;
+    let settings: Settings =
+        serde_json::from_slice(&bytes).map_err(|error| unreadable(error.to_string()))?;
     if settings.version != APPLE_SDK_VERSION {
         return Err(Error::SdkVersion {
             path: sdk,
@@ -162,9 +163,9 @@ impl Build<'_> {
     /// Where cargo-xwin keeps the pinned Windows SDK and C runtime, below
     /// `checkout`.
     fn xwin_cache(checkout: &Path) -> PathBuf {
-        checkout
-            .join(".cache")
-            .join(format!("native-xwin-{WINDOWS_CRT_VERSION}-{WINDOWS_SDK_VERSION}"))
+        checkout.join(".cache").join(format!(
+            "native-xwin-{WINDOWS_CRT_VERSION}-{WINDOWS_SDK_VERSION}"
+        ))
     }
 
     /// The linker flags of `target`'s build: Windows links its C runtime
@@ -204,7 +205,12 @@ impl Build<'_> {
 
     /// The same build inside `image`, with the checkout, the target
     /// directory, Cargo's download caches and the SDK mounted.
-    fn in_container(&self, image: &str, target: &str, executables: &[Executable]) -> Result<Command, Error> {
+    fn in_container(
+        &self,
+        image: &str,
+        target: &str,
+        executables: &[Executable],
+    ) -> Result<Command, Error> {
         let cache = self.repository.join(".cache");
         let registry = cache.join("native-registry");
         let git = cache.join("native-git");
@@ -218,8 +224,14 @@ impl Build<'_> {
         environment.push(("CARGO_TARGET_DIR", CONTAINER_ARTIFACTS.into()));
         environment.push(("XWIN_CACHE_DIR", Self::xwin_cache(checkout).into()));
         environment.push(("CARGO_BUILD_JOBS", "4".into()));
-        environment.push(("ZIG_GLOBAL_CACHE_DIR", checkout.join(".cache/native-zig").into()));
-        let sdk = self.sdk.filter(|_| apple(target)).map(|_| Path::new(CONTAINER_SDK));
+        environment.push((
+            "ZIG_GLOBAL_CACHE_DIR",
+            checkout.join(".cache/native-zig").into(),
+        ));
+        let sdk = self
+            .sdk
+            .filter(|_| apple(target))
+            .map(|_| Path::new(CONTAINER_SDK));
         if let Some(flags) = Self::rustflags(target, sdk) {
             environment.push(("RUSTFLAGS", flags));
         }
@@ -243,7 +255,9 @@ impl Build<'_> {
             .arg("-v")
             .arg(mount(&git, "/usr/local/cargo/git"));
         if let Some(sdk) = self.sdk.filter(|_| apple(target)) {
-            command.arg("-v").arg(mount(sdk, &format!("{CONTAINER_SDK}:ro")));
+            command
+                .arg("-v")
+                .arg(mount(sdk, &format!("{CONTAINER_SDK}:ro")));
         }
         for (name, value) in environment {
             let mut setting = OsString::from(name);
@@ -251,7 +265,10 @@ impl Build<'_> {
             setting.push(value);
             command.arg("-e").arg(setting);
         }
-        command.arg(image).arg("cargo").args(Self::arguments(target, executables));
+        command
+            .arg(image)
+            .arg("cargo")
+            .args(Self::arguments(target, executables));
         Ok(command)
     }
 }
@@ -271,13 +288,25 @@ mod tests {
             }
             directory
         };
-        let pinned = sdk("pinned", Some(r#"{"CanonicalName":"macosx15.4","Version":"15.4"}"#));
+        let pinned = sdk(
+            "pinned",
+            Some(r#"{"CanonicalName":"macosx15.4","Version":"15.4"}"#),
+        );
         assert_eq!(apple_sdk(Some(&pinned)).unwrap(), pinned);
-        let older = sdk("older", Some(r#"{"CanonicalName":"macosx15.2","Version":"15.2"}"#));
+        let older = sdk(
+            "older",
+            Some(r#"{"CanonicalName":"macosx15.2","Version":"15.2"}"#),
+        );
         let refused = apple_sdk(Some(&older));
-        assert!(matches!(&refused, Err(Error::SdkVersion { found, .. }) if found == "15.2"), "{refused:?}");
+        assert!(
+            matches!(&refused, Err(Error::SdkVersion { found, .. }) if found == "15.2"),
+            "{refused:?}"
+        );
         let empty = sdk("empty", None);
-        assert!(matches!(apple_sdk(Some(&empty)), Err(Error::SdkSettings { .. })));
+        assert!(matches!(
+            apple_sdk(Some(&empty)),
+            Err(Error::SdkSettings { .. })
+        ));
         assert!(matches!(apple_sdk(None), Err(Error::NoSdk)));
     }
 }

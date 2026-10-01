@@ -3,10 +3,10 @@
 //! speaks, each vendor's live model list, and the request requirements the
 //! backend applies to a vendor's models.
 
-use demi_shared_types::{ProviderModelList, Timestamp, WireApi};
-use demi_provider_common::models_dev::{ModelsDevClient, ModelsDevError, ModelsDevVendor};
 use demi_provider_anthropic_api::AnthropicConfig;
+use demi_provider_common::models_dev::{ModelsDevClient, ModelsDevError, ModelsDevVendor};
 use demi_provider_openai_api::{OpenAiConfig, VendorPolicy};
+use demi_shared_types::{ProviderModelList, Timestamp, WireApi};
 use demi_web_api_protocol::providers::Vendor;
 use icu_collator::options::CollatorOptions;
 use icu_collator::{Collator, CollatorBorrowed};
@@ -14,7 +14,11 @@ use icu_collator::{Collator, CollatorBorrowed};
 /// The family and wire each models.dev client package is written for. A
 /// vendor of another package is not offered.
 const FAMILIES: [(&str, &str, Option<WireApi>); 4] = [
-    ("@ai-sdk/openai-compatible", "openai", Some(WireApi::ChatCompletions)),
+    (
+        "@ai-sdk/openai-compatible",
+        "openai",
+        Some(WireApi::ChatCompletions),
+    ),
     ("@ai-sdk/openai", "openai", Some(WireApi::Responses)),
     ("@ai-sdk/anthropic", "anthropic", None),
     ("@ai-sdk/google", "google", None),
@@ -74,7 +78,11 @@ impl VendorCatalog {
     /// The live model list of vendor `vendor_id`, read again: a vendor the
     /// document no longer offers has an empty list, never its family's.
     pub async fn models(&self, vendor_id: &str) -> Result<ProviderModelList, String> {
-        let snapshot = self.models_dev.refreshed().await.map_err(|error| error.to_string())?;
+        let snapshot = self
+            .models_dev
+            .refreshed()
+            .await
+            .map_err(|error| error.to_string())?;
         let list = snapshot
             .vendor(vendor_id)
             .and_then(offered)
@@ -121,5 +129,6 @@ fn official_base_url(vendor_id: &str) -> Option<String> {
 /// `localeCompare` does.
 fn root_collator() -> CollatorBorrowed<'static> {
     // The root locale's data is compiled in.
-    Collator::try_new(Default::default(), CollatorOptions::default()).expect("the root collation is compiled in")
+    Collator::try_new(Default::default(), CollatorOptions::default())
+        .expect("the root collation is compiled in")
 }

@@ -22,14 +22,17 @@ use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use std::sync::Arc;
 
+use demi_agent_store::{AgentTreeStore, SessionStore, StoredOutput};
 use demi_agent_store::{
     BoundaryEdge, Checkpoint, CheckpointState, CheckpointUpdate, ClosePhase, CommandStateSnapshot,
     CommandStorageKey, CommandVersion, CommitGuard, NodeClose, NodeRecord, SessionBoundary,
     StoreError, media::BlobStore,
 };
-use demi_agent_store::{AgentTreeStore, SessionStore, StoredOutput};
-use demi_shared_types::{Block, BlockId, CommandId, CompletionId, NodeId, QueuedMessage, Sequence, SessionPhase, Timestamp};
 use demi_backend_remote_host::decode_output;
+use demi_shared_types::{
+    Block, BlockId, CommandId, CompletionId, NodeId, QueuedMessage, Sequence, SessionPhase,
+    Timestamp,
+};
 use futures_util::future::LocalBoxFuture;
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 use serde_json::Value;
@@ -80,7 +83,10 @@ fn missing(node: &NodeId) -> StoreError {
 }
 
 impl AgentTreeStore for SqliteTreeStore {
-    fn node<'a>(&'a self, id: &'a NodeId) -> LocalBoxFuture<'a, Result<Option<NodeRecord>, StoreError>> {
+    fn node<'a>(
+        &'a self,
+        id: &'a NodeId,
+    ) -> LocalBoxFuture<'a, Result<Option<NodeRecord>, StoreError>> {
         let id = id.clone();
         Box::pin(async move {
             self.db
@@ -90,7 +96,10 @@ impl AgentTreeStore for SqliteTreeStore {
         })
     }
 
-    fn children<'a>(&'a self, parent: &'a NodeId) -> LocalBoxFuture<'a, Result<Vec<NodeRecord>, StoreError>> {
+    fn children<'a>(
+        &'a self,
+        parent: &'a NodeId,
+    ) -> LocalBoxFuture<'a, Result<Vec<NodeRecord>, StoreError>> {
         let parent = parent.clone();
         Box::pin(async move {
             self.db
@@ -100,7 +109,11 @@ impl AgentTreeStore for SqliteTreeStore {
         })
     }
 
-    fn create_node(&self, record: NodeRecord, initial: CheckpointUpdate) -> LocalBoxFuture<'_, Result<(), StoreError>> {
+    fn create_node(
+        &self,
+        record: NodeRecord,
+        initial: CheckpointUpdate,
+    ) -> LocalBoxFuture<'_, Result<(), StoreError>> {
         Box::pin(async move {
             let completions = initial.carried_completions()?;
             let node = record.id.clone();
@@ -161,7 +174,11 @@ impl AgentTreeStore for SqliteTreeStore {
         })
     }
 
-    fn close_node<'a>(&'a self, id: &'a NodeId, close: NodeClose) -> LocalBoxFuture<'a, Result<(), StoreError>> {
+    fn close_node<'a>(
+        &'a self,
+        id: &'a NodeId,
+        close: NodeClose,
+    ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
         let node = id.clone();
         Box::pin(async move {
             let (phase, closed_at, result, failure) = close_columns(Some(&close));
@@ -222,7 +239,11 @@ impl AgentTreeStore for SqliteTreeStore {
         })
     }
 
-    fn mark_delivered<'a>(&'a self, id: &'a NodeId, round: u64) -> LocalBoxFuture<'a, Result<(), StoreError>> {
+    fn mark_delivered<'a>(
+        &'a self,
+        id: &'a NodeId,
+        round: u64,
+    ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
         let node = id.clone();
         Box::pin(async move {
             let found = self
@@ -302,23 +323,31 @@ impl AgentTreeStore for SqliteTreeStore {
                 OutputRow::NotStored(reason) => return Ok(Some(StoredOutput::NotStored(reason))),
                 OutputRow::Removed(at) => return Ok(Some(StoredOutput::Removed(at))),
             };
-            let bytes = self
-                .blobs
-                .media()
-                .get(&blob)
-                .await?
-                .ok_or_else(|| StoreError::Failed(format!("the blob {blob} of the output of {command} is missing")))?;
-            let output = tokio::task::spawn_blocking(move || decode_output(bytes.as_bytes(), missing))
-                .await
-                .map_err(|error| StoreError::Failed(error.to_string()))?
-                .map_err(|error| StoreError::Corrupt(format!("the output of {command} does not decode: {error}")))?;
+            let bytes = self.blobs.media().get(&blob).await?.ok_or_else(|| {
+                StoreError::Failed(format!(
+                    "the blob {blob} of the output of {command} is missing"
+                ))
+            })?;
+            let output =
+                tokio::task::spawn_blocking(move || decode_output(bytes.as_bytes(), missing))
+                    .await
+                    .map_err(|error| StoreError::Failed(error.to_string()))?
+                    .map_err(|error| {
+                        StoreError::Corrupt(format!(
+                            "the output of {command} does not decode: {error}"
+                        ))
+                    })?;
             Ok(Some(StoredOutput::Stored(output)))
         })
     }
 }
 
 impl SessionStore for SqliteSessionStore {
-    fn save<'a>(&'a self, update: CheckpointUpdate, guard: &'a CommitGuard) -> LocalBoxFuture<'a, Result<(), StoreError>> {
+    fn save<'a>(
+        &'a self,
+        update: CheckpointUpdate,
+        guard: &'a CommitGuard,
+    ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
         let guard = guard.clone();
         let node = self.node.clone();
         Box::pin(async move {
@@ -333,7 +362,8 @@ impl SessionStore for SqliteSessionStore {
                     if let Err(stale) = guard.check() {
                         return Ok(Err(stale));
                     }
-                    let written = write_checkpoint(&transaction, &*blobs, &node, &update, &completions)?;
+                    let written =
+                        write_checkpoint(&transaction, &*blobs, &node, &update, &completions)?;
                     if written.is_ok() {
                         commit.commit(transaction)?;
                     }
@@ -383,8 +413,14 @@ fn write_checkpoint(
     }
     blob_refs::truncate(transaction, node, update.block_count, &mut touched)?;
     let block_count = count(update.block_count);
-    let output = update.changed_blocks.iter().any(|(_, block)| is_output(block));
-    let revision = update.command_state.as_ref().map(|state| integer(state.revision));
+    let output = update
+        .changed_blocks
+        .iter()
+        .any(|(_, block)| is_output(block));
+    let revision = update
+        .command_state
+        .as_ref()
+        .map(|state| integer(state.revision));
     // The old block count is the column's value before the update: rows
     // gone are a rewrite of the output.
     let changed = transaction.execute(
@@ -416,7 +452,12 @@ fn write_checkpoint(
 fn is_output(block: &Block) -> bool {
     !matches!(
         block,
-        Block::User(_) | Block::Context(_) | Block::Wakeup(_) | Block::Steer(_) | Block::AgentMessage(_) | Block::Resume(_)
+        Block::User(_)
+            | Block::Context(_)
+            | Block::Wakeup(_)
+            | Block::Steer(_)
+            | Block::AgentMessage(_)
+            | Block::Resume(_)
     )
 }
 
@@ -453,8 +494,15 @@ fn write_command_state(
             }
         }
     }
-    let revisions: Vec<u64> = state.versions.iter().map(|version| version.revision).collect();
-    transaction.execute("DELETE FROM session_boundaries WHERE node_id = ?1", [node.as_str()])?;
+    let revisions: Vec<u64> = state
+        .versions
+        .iter()
+        .map(|version| version.revision)
+        .collect();
+    transaction.execute(
+        "DELETE FROM session_boundaries WHERE node_id = ?1",
+        [node.as_str()],
+    )?;
     transaction.execute(
         "DELETE FROM command_snapshots WHERE node_id = ?1 AND revision NOT IN (SELECT value FROM json_each(?2))",
         params![node.as_str(), to_json(&revisions)],
@@ -494,8 +542,13 @@ fn checkpoint(connection: &Connection, node: &NodeId) -> Result<Option<Checkpoin
 }
 
 /// A node's blocks: exactly one row for each index below its block count.
-pub(crate) fn blocks_of(connection: &Connection, node: &NodeId, block_count: i64) -> Result<Vec<Block>, StorageError> {
-    let mut statement = connection.prepare("SELECT idx, block FROM blocks WHERE node_id = ?1 AND idx < ?2 ORDER BY idx")?;
+pub(crate) fn blocks_of(
+    connection: &Connection,
+    node: &NodeId,
+    block_count: i64,
+) -> Result<Vec<Block>, StorageError> {
+    let mut statement = connection
+        .prepare("SELECT idx, block FROM blocks WHERE node_id = ?1 AND idx < ?2 ORDER BY idx")?;
     let mut rows = statement.query(params![node.as_str(), block_count])?;
     let mut blocks = Vec::new();
     while let Some(row) = rows.next()? {
@@ -522,10 +575,15 @@ fn gap(node: &NodeId, index: usize) -> StorageError {
 
 /// A node's command state: every version and every boundary, with the
 /// current revision the node row names.
-fn command_state(connection: &Connection, node: &NodeId, revision: i64) -> Result<CommandStateSnapshot, StorageError> {
+fn command_state(
+    connection: &Connection,
+    node: &NodeId,
+    revision: i64,
+) -> Result<CommandStateSnapshot, StorageError> {
     let mut versions = Vec::new();
-    let mut statement =
-        connection.prepare("SELECT revision, entries FROM command_snapshots WHERE node_id = ?1 ORDER BY revision")?;
+    let mut statement = connection.prepare(
+        "SELECT revision, entries FROM command_snapshots WHERE node_id = ?1 ORDER BY revision",
+    )?;
     let mut rows = statement.query([node.as_str()])?;
     while let Some(row) = rows.next()? {
         let entries: String = row.get(1)?;
@@ -542,8 +600,16 @@ fn command_state(connection: &Connection, node: &NodeId, revision: i64) -> Resul
     while let Some(row) = rows.next()? {
         let edge: String = row.get("edge")?;
         boundaries.push(SessionBoundary {
-            block_id: decode("session_boundaries", "block_id", BlockId::try_from(row.get::<_, String>("block_id")?))?,
-            edge: decode("session_boundaries", "edge", serde_json::from_value(Value::String(edge)))?,
+            block_id: decode(
+                "session_boundaries",
+                "block_id",
+                BlockId::try_from(row.get::<_, String>("block_id")?),
+            )?,
+            edge: decode(
+                "session_boundaries",
+                "edge",
+                serde_json::from_value(Value::String(edge)),
+            )?,
             command_revision: unsigned(row, "session_boundaries", "command_revision")?,
         });
     }
@@ -555,7 +621,11 @@ fn command_state(connection: &Connection, node: &NodeId, revision: i64) -> Resul
 }
 
 fn version_values(entries: &str) -> Result<BTreeMap<CommandStorageKey, Value>, StorageError> {
-    decode("command_snapshots", "entries", serde_json::from_str(entries))
+    decode(
+        "command_snapshots",
+        "entries",
+        serde_json::from_str(entries),
+    )
 }
 
 fn unsigned(row: &Row<'_>, table: &'static str, column: &'static str) -> Result<u64, StorageError> {
@@ -572,26 +642,38 @@ fn edge_name(edge: BoundaryEdge) -> String {
 }
 
 /// The state row of `node`, decoded.
-fn node_state(connection: &Connection, node: &NodeId) -> Result<Option<CheckpointState>, StorageError> {
+fn node_state(
+    connection: &Connection,
+    node: &NodeId,
+) -> Result<Option<CheckpointState>, StorageError> {
     let state: Option<String> = connection
-        .query_row("SELECT state FROM nodes WHERE id = ?1", [node.as_str()], |row| row.get(0))
+        .query_row(
+            "SELECT state FROM nodes WHERE id = ?1",
+            [node.as_str()],
+            |row| row.get(0),
+        )
         .optional()?;
-    state.map(|state| json("nodes", "state", &state)).transpose()
+    state
+        .map(|state| json("nodes", "state", &state))
+        .transpose()
 }
 
-const NODE_COLUMNS: &str = "id, number, parent_id, description, profile, round, started_at, can_spawn, closed_phase,
+const NODE_COLUMNS: &str =
+    "id, number, parent_id, description, profile, round, started_at, can_spawn, closed_phase,
      closed_at, result, failure, delivered";
 
 fn node_by_id(connection: &Connection, id: &NodeId) -> Result<Option<NodeRecord>, StorageError> {
-    let mut statement = connection.prepare(&format!("SELECT {NODE_COLUMNS} FROM nodes WHERE id = ?1"))?;
+    let mut statement =
+        connection.prepare(&format!("SELECT {NODE_COLUMNS} FROM nodes WHERE id = ?1"))?;
     let mut rows = statement.query([id.as_str()])?;
     rows.next()?.map(node_row).transpose()
 }
 
 /// A node's direct children in spawn order, the order of their numbers.
 fn children_of(connection: &Connection, parent: &NodeId) -> Result<Vec<NodeRecord>, StorageError> {
-    let mut statement =
-        connection.prepare(&format!("SELECT {NODE_COLUMNS} FROM nodes WHERE parent_id = ?1 ORDER BY number"))?;
+    let mut statement = connection.prepare(&format!(
+        "SELECT {NODE_COLUMNS} FROM nodes WHERE parent_id = ?1 ORDER BY number"
+    ))?;
     let mut rows = statement.query([parent.as_str()])?;
     let mut children = Vec::new();
     while let Some(row) = rows.next()? {
@@ -639,7 +721,9 @@ fn node_row(row: &Row<'_>) -> Result<NodeRecord, StorageError> {
     Ok(NodeRecord {
         id: decode(TABLE, "id", NodeId::try_from(row.get::<_, String>("id")?))?,
         number: decode(TABLE, "number", u64::try_from(row.get::<_, i64>("number")?))?,
-        parent: parent.map(|parent| decode(TABLE, "parent_id", NodeId::try_from(parent))).transpose()?,
+        parent: parent
+            .map(|parent| decode(TABLE, "parent_id", NodeId::try_from(parent)))
+            .transpose()?,
         description: row.get("description")?,
         profile: row.get("profile")?,
         round: decode(TABLE, "round", u64::try_from(row.get::<_, i64>("round")?))?,
@@ -662,7 +746,14 @@ fn required(row: &Row<'_>, column: &'static str) -> Result<String, StorageError>
 
 /// A close as its columns: the phase, the time, and the result or failure
 /// the phase carries.
-fn close_columns(close: Option<&NodeClose>) -> (Option<&'static str>, Option<i64>, Option<String>, Option<String>) {
+fn close_columns(
+    close: Option<&NodeClose>,
+) -> (
+    Option<&'static str>,
+    Option<i64>,
+    Option<String>,
+    Option<String>,
+) {
     let Some(close) = close else {
         return (None, None, None, None);
     };
@@ -673,7 +764,6 @@ fn close_columns(close: Option<&NodeClose>) -> (Option<&'static str>, Option<i64
         ClosePhase::Error { failure } => (Some("error"), at, None, Some(failure.clone())),
     }
 }
-
 
 /// A count as the INTEGER column holds it: an agent's number counts spawns,
 /// a round resumes and a revision saves, so none comes near `i64::MAX`.
@@ -750,9 +840,11 @@ pub fn summary(connection: &Connection) -> Result<SummaryFacts, StorageError> {
 /// Whether the tree `connection` holds has its root; a Fork's destination
 /// is committed once it does.
 pub fn has_root(connection: &Connection) -> Result<bool, StorageError> {
-    let exists = connection.query_row("SELECT EXISTS (SELECT 1 FROM nodes WHERE parent_id IS NULL)", [], |row| {
-        row.get(0)
-    })?;
+    let exists = connection.query_row(
+        "SELECT EXISTS (SELECT 1 FROM nodes WHERE parent_id IS NULL)",
+        [],
+        |row| row.get(0),
+    )?;
     Ok(exists)
 }
 
@@ -768,9 +860,11 @@ pub struct History {
 /// root yet.
 pub fn history(connection: &Connection) -> Result<History, StorageError> {
     let root: Option<(String, i64)> = connection
-        .query_row("SELECT id, block_count FROM nodes WHERE parent_id IS NULL", [], |row| {
-            Ok((row.get(0)?, row.get(1)?))
-        })
+        .query_row(
+            "SELECT id, block_count FROM nodes WHERE parent_id IS NULL",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
         .optional()?;
     let Some((root, block_count)) = root else {
         return Ok(History::default());
@@ -778,22 +872,39 @@ pub fn history(connection: &Connection) -> Result<History, StorageError> {
     let root = decode("nodes", "id", NodeId::try_from(root))?;
     let blocks = blocks_of(connection, &root, block_count)?;
     let mut children: HashMap<NodeId, Vec<NodeRecord>> = HashMap::new();
-    let mut statement =
-        connection.prepare(&format!("SELECT {NODE_COLUMNS} FROM nodes WHERE parent_id IS NOT NULL ORDER BY number"))?;
+    let mut statement = connection.prepare(&format!(
+        "SELECT {NODE_COLUMNS} FROM nodes WHERE parent_id IS NOT NULL ORDER BY number"
+    ))?;
     let mut rows = statement.query([])?;
     while let Some(row) = rows.next()? {
         let node = node_row(row)?;
-        let parent = node.parent.clone().expect("the query selects nodes with a parent");
+        let parent = node
+            .parent
+            .clone()
+            .expect("the query selects nodes with a parent");
         children.entry(parent).or_default().push(node);
     }
     let mut subagents = Vec::new();
-    let mut pending: Vec<NodeRecord> = children.remove(&root).unwrap_or_default().into_iter().rev().collect();
+    let mut pending: Vec<NodeRecord> = children
+        .remove(&root)
+        .unwrap_or_default()
+        .into_iter()
+        .rev()
+        .collect();
     while let Some(node) = pending.pop() {
-        let block_count: i64 = connection.query_row("SELECT block_count FROM nodes WHERE id = ?1", [node.id.as_str()], |row| {
-            row.get(0)
-        })?;
+        let block_count: i64 = connection.query_row(
+            "SELECT block_count FROM nodes WHERE id = ?1",
+            [node.id.as_str()],
+            |row| row.get(0),
+        )?;
         let blocks = blocks_of(connection, &node.id, block_count)?;
-        pending.extend(children.remove(&node.id).unwrap_or_default().into_iter().rev());
+        pending.extend(
+            children
+                .remove(&node.id)
+                .unwrap_or_default()
+                .into_iter()
+                .rev(),
+        );
         subagents.push((node, blocks));
     }
     Ok(History { blocks, subagents })
@@ -807,9 +918,10 @@ mod tests {
     use demi_agent_store::testing::{store_contract, test_model, text};
     use demi_agent_transcript::retire::Retirement;
     use demi_shared_types::{
-        B64Bytes, BlobRef, EditCopies, EditKind, EditSegment, EditedFile, MediaSource, ResponseBlock, ShellId, ShellToolView,
-        ShellViewStatus, TextBlock, TokenUsage, ToolCallBlock, ToolCallStatus, ToolMediaSource,
-        ToolResultContentBlock, ToolView, TurnId, UserBlock, UserContentBlock,
+        B64Bytes, BlobRef, EditCopies, EditKind, EditSegment, EditedFile, MediaSource,
+        ResponseBlock, ShellId, ShellToolView, ShellViewStatus, TextBlock, TokenUsage,
+        ToolCallBlock, ToolCallStatus, ToolMediaSource, ToolResultContentBlock, ToolView, TurnId,
+        UserBlock, UserContentBlock,
     };
     use demi_web_api_protocol::ids::ConversationId;
 
@@ -828,7 +940,10 @@ mod tests {
             Box::pin(async move { Ok(blob) })
         }
 
-        fn get<'a>(&'a self, blob: &'a BlobRef) -> LocalBoxFuture<'a, Result<Option<B64Bytes>, StoreError>> {
+        fn get<'a>(
+            &'a self,
+            blob: &'a BlobRef,
+        ) -> LocalBoxFuture<'a, Result<Option<B64Bytes>, StoreError>> {
             let bytes = self.0.lock().unwrap().get(blob).cloned();
             Box::pin(async move { Ok(bytes) })
         }
@@ -848,10 +963,17 @@ mod tests {
     /// namespace, with the stores that hold it.
     async fn store() -> (SqliteTreeStore, ConversationStores, tempfile::TempDir) {
         let data = tempfile::tempdir().unwrap();
-        let stores = ConversationStores::open(data.path().join("conversations"), NonZeroUsize::new(4).unwrap())
-            .await
-            .unwrap();
-        let store = SqliteTreeStore::new(stores.db(&conversation()), Arc::new(Blobs::default()), Rc::new(|_: &NodeId| {}));
+        let stores = ConversationStores::open(
+            data.path().join("conversations"),
+            NonZeroUsize::new(4).unwrap(),
+        )
+        .await
+        .unwrap();
+        let store = SqliteTreeStore::new(
+            stores.db(&conversation()),
+            Arc::new(Blobs::default()),
+            Rc::new(|_: &NodeId| {}),
+        );
         (store, stores, data)
     }
 
@@ -932,26 +1054,42 @@ mod tests {
     }
 
     async fn facts(stores: &ConversationStores) -> SummaryFacts {
-        stores.read(&conversation(), summary).await.unwrap().unwrap()
+        stores
+            .read(&conversation(), summary)
+            .await
+            .unwrap()
+            .unwrap()
     }
 
     #[tokio::test(flavor = "local")]
     async fn output_advances_the_revision_and_input_alone_does_not() {
         let (tree, stores, _data) = store().await;
         assert_eq!(stores.read(&conversation(), summary).await.unwrap(), None);
-        tree.create_node(record("root", None, 0), update(Vec::new(), 0)).await.unwrap();
+        tree.create_node(record("root", None, 0), update(Vec::new(), 0))
+            .await
+            .unwrap();
         let root = tree.session_store(&id("root"));
         assert_eq!(facts(&stores).await, SummaryFacts::EMPTY);
 
-        root.save(update(vec![(0, user("u1"))], 1), &CommitGuard::default()).await.unwrap();
-        assert_eq!(facts(&stores).await.revision, 0, "the user's message alone");
-        root.save(update(vec![(1, reply("a1")), (2, response("r1"))], 3), &CommitGuard::default())
+        root.save(update(vec![(0, user("u1"))], 1), &CommitGuard::default())
             .await
             .unwrap();
+        assert_eq!(facts(&stores).await.revision, 0, "the user's message alone");
+        root.save(
+            update(vec![(1, reply("a1")), (2, response("r1"))], 3),
+            &CommitGuard::default(),
+        )
+        .await
+        .unwrap();
         let answered = facts(&stores).await;
-        assert_eq!((answered.revision, answered.last), (1, Some(Terminal::Response)));
+        assert_eq!(
+            (answered.revision, answered.last),
+            (1, Some(Terminal::Response))
+        );
         // A rewrite that drops rows is a change of the output.
-        root.save(update(Vec::new(), 1), &CommitGuard::default()).await.unwrap();
+        root.save(update(Vec::new(), 1), &CommitGuard::default())
+            .await
+            .unwrap();
         let rewritten = facts(&stores).await;
         assert_eq!((rewritten.revision, rewritten.last), (2, None));
     }
@@ -959,28 +1097,37 @@ mod tests {
     #[tokio::test(flavor = "local")]
     async fn a_refused_save_leaves_the_whole_checkpoint_as_it_was() {
         let (tree, _stores, _data) = store().await;
-        tree.create_node(record("root", None, 0), update(Vec::new(), 0)).await.unwrap();
+        tree.create_node(record("root", None, 0), update(Vec::new(), 0))
+            .await
+            .unwrap();
         let root = tree.session_store(&id("root"));
         let before = root.load().await.unwrap().unwrap();
 
         // A version the store holds is immutable: the save that changes it
         // writes neither its blocks nor its state.
         let mut changed = CommandStateSnapshot::initial();
-        changed.versions[0]
-            .values
-            .insert("todos.json".to_owned().try_into().unwrap(), Value::Bool(true));
+        changed.versions[0].values.insert(
+            "todos.json".to_owned().try_into().unwrap(),
+            Value::Bool(true),
+        );
         let mut save = update(vec![(0, user("u1"))], 1);
         save.command_state = Some(changed);
         save.state.phase = SessionPhase::Running;
         let refused = root.save(save, &CommitGuard::default()).await.unwrap_err();
-        assert_eq!(refused, StoreError::Failed("command-state version 0 is immutable".into()));
+        assert_eq!(
+            refused,
+            StoreError::Failed("command-state version 0 is immutable".into())
+        );
         assert_eq!(root.load().await.unwrap().unwrap(), before);
 
         // A save serving an invocation a rewrite made stale commits nothing.
         let stale = tokio_util::sync::CancellationToken::new();
         stale.cancel();
         let refused = root
-            .save(update(vec![(0, user("u1"))], 1), &CommitGuard::new(vec![stale]))
+            .save(
+                update(vec![(0, user("u1"))], 1),
+                &CommitGuard::new(vec![stale]),
+            )
             .await
             .unwrap_err();
         assert_eq!(refused, StoreError::Invalidated);
@@ -990,13 +1137,21 @@ mod tests {
     #[tokio::test(flavor = "local")]
     async fn the_history_is_the_root_then_each_subagent_depth_first_in_spawn_order() {
         let (tree, stores, _data) = store().await;
-        tree.create_node(record("root", None, 0), update(vec![(0, user("u1"))], 1)).await.unwrap();
+        tree.create_node(record("root", None, 0), update(vec![(0, user("u1"))], 1))
+            .await
+            .unwrap();
         for (node, parent, round) in [("b", "root", 5), ("a", "root", 3), ("a1", "a", 4)] {
             let blocks = vec![(0, reply(&format!("{node}-text")))];
-            tree.create_node(record(node, Some(parent), round), update(blocks, 1)).await.unwrap();
+            tree.create_node(record(node, Some(parent), round), update(blocks, 1))
+                .await
+                .unwrap();
         }
 
-        let history = stores.read(&conversation(), history).await.unwrap().unwrap();
+        let history = stores
+            .read(&conversation(), history)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(history.blocks, [user("u1")]);
         let order: Vec<(&str, &Block)> = history
             .subagents
@@ -1005,7 +1160,11 @@ mod tests {
             .collect();
         assert_eq!(
             order,
-            [("a", &reply("a-text")), ("a1", &reply("a1-text")), ("b", &reply("b-text"))]
+            [
+                ("a", &reply("a-text")),
+                ("a1", &reply("a1-text")),
+                ("b", &reply("b-text"))
+            ]
         );
         assert_eq!(history.subagents[0].0, record("a", Some("root"), 3));
     }
@@ -1108,10 +1267,18 @@ mod tests {
             .prepare("SELECT node_id, idx, part, blob, holder, at FROM blob_refs ORDER BY node_id, idx, part")?;
         let mut rows = statement.query([])?;
         while let Some(row) = rows.next()? {
-            held.push((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?));
+            held.push((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+            ));
         }
         let mut derived = Vec::new();
-        let mut statement = connection.prepare("SELECT node_id, idx, block FROM blocks ORDER BY node_id, idx")?;
+        let mut statement =
+            connection.prepare("SELECT node_id, idx, block FROM blocks ORDER BY node_id, idx")?;
         let mut rows = statement.query([])?;
         while let Some(row) = rows.next()? {
             let (node, index): (String, i64) = (row.get(0)?, row.get(1)?);
@@ -1135,17 +1302,27 @@ mod tests {
         let (tree, stores, _data) = store().await;
         let check = async |path: &str| {
             let (held, derived) = stores.read(&conversation(), index).await.unwrap().unwrap();
-            assert!(!held.is_empty() || path == "an edit", "after {path}: the index holds rows");
+            assert!(
+                !held.is_empty() || path == "an edit",
+                "after {path}: the index holds rows"
+            );
             assert_eq!(held, derived, "after {path}");
         };
         let written = Timestamp::UNIX_EPOCH;
         // A Fork's seed is the first checkpoint of its root, with a history.
-        let seed = vec![(0, pasted("u1", written, 1)), (1, shot("t1", written, &[2, 3]))];
-        tree.create_node(record("root", None, 0), update(seed, 2)).await.unwrap();
+        let seed = vec![
+            (0, pasted("u1", written, 1)),
+            (1, shot("t1", written, &[2, 3])),
+        ];
+        tree.create_node(record("root", None, 0), update(seed, 2))
+            .await
+            .unwrap();
         check("a Fork's seed").await;
         let root = tree.session_store(&id("root"));
         let save = async |blocks: Vec<(usize, Block)>, count: usize| {
-            root.save(update(blocks, count), &CommitGuard::default()).await.unwrap();
+            root.save(update(blocks, count), &CommitGuard::default())
+                .await
+                .unwrap();
         };
         save(vec![(2, shot("t2", written, &[4])), (3, reply("a1"))], 4).await;
         check("a save").await;
@@ -1156,10 +1333,19 @@ mod tests {
         save(vec![(0, pasted("u2", written, 7))], 1).await;
         check("an edit").await;
         // A command's edit copies: the middle side is both segments'.
-        save(vec![(1, shot("t4", written, &[8])), (2, edited("e1", written, &[10, 11, 12]))], 3).await;
+        save(
+            vec![
+                (1, shot("t4", written, &[8])),
+                (2, edited("e1", written, &[10, 11, 12])),
+            ],
+            3,
+        )
+        .await;
         check("a save of edit copies").await;
         let child = vec![(0, shot("c1", written, &[9]))];
-        tree.create_node(record("child", Some("root"), 2), update(child, 1)).await.unwrap();
+        tree.create_node(record("child", Some("root"), 2), update(child, 1))
+            .await
+            .unwrap();
         tree.delete_node(&id("child")).await.unwrap();
         check("a subagent's deletion").await;
 
@@ -1181,20 +1367,34 @@ mod tests {
         // the page nothing new.
         let (held, _) = stores.read(&conversation(), index).await.unwrap().unwrap();
         let kept: Vec<(i64, &str)> = held.iter().map(|row| (row.1, row.4.as_str())).collect();
-        assert_eq!(kept, [(0, "message"), (2, "edit_copy"), (2, "edit_copy"), (2, "edit_copy"), (2, "edit_copy")]);
+        assert_eq!(
+            kept,
+            [
+                (0, "message"),
+                (2, "edit_copy"),
+                (2, "edit_copy"),
+                (2, "edit_copy"),
+                (2, "edit_copy")
+            ]
+        );
         assert_eq!(facts(&stores).await, before);
     }
 
     #[tokio::test(flavor = "local")]
     async fn the_database_keeps_the_tree_store_contract() {
         let (tree, _stores, _data) = store().await;
-        store_contract::create_queues_the_first_message_with_the_node_and_a_save_replaces_it(&tree).await;
+        store_contract::create_queues_the_first_message_with_the_node_and_a_save_replaces_it(&tree)
+            .await;
         let (tree, _stores, _data) = store().await;
-        store_contract::a_save_delivers_the_completions_its_transcript_carries_and_only_those(&tree).await;
+        store_contract::a_save_delivers_the_completions_its_transcript_carries_and_only_those(
+            &tree,
+        )
+        .await;
         let (tree, _stores, _data) = store().await;
         store_contract::reopen_makes_a_closed_node_live_with_its_message_and_delete_takes_the_subtree(&tree).await;
         let (tree, _stores, _data) = store().await;
-        store_contract::a_completion_of_an_earlier_round_marks_the_current_one_undelivered(&tree).await;
+        store_contract::a_completion_of_an_earlier_round_marks_the_current_one_undelivered(&tree)
+            .await;
         let (tree, _stores, _data) = store().await;
         store_contract::a_save_delivers_a_completion_it_holds_as_waiting_input(&tree).await;
         let (tree, _stores, _data) = store().await;

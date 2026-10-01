@@ -196,9 +196,11 @@ mod tests {
     #[test]
     fn a_verification_code_is_six_ascii_digits() {
         let confirm = |code: &str| {
-            serde_json::from_value::<EmailChangeConfirm>(serde_json::json!({ "id": "c", "code": code }))
-                .unwrap()
-                .validate()
+            serde_json::from_value::<EmailChangeConfirm>(
+                serde_json::json!({ "id": "c", "code": code }),
+            )
+            .unwrap()
+            .validate()
         };
         assert!(confirm("012345").is_ok());
         for refused in ["abcdef", "12345", "1234567", "١٢٣٤٥٦", "12 456"] {
@@ -225,9 +227,10 @@ mod tests {
 
     #[test]
     fn a_password_never_shows_in_debug_output() {
-        let credentials: Credentials =
-            serde_json::from_value(serde_json::json!({ "email": "ana@example.test", "password": "hunter22" }))
-                .unwrap();
+        let credentials: Credentials = serde_json::from_value(
+            serde_json::json!({ "email": "ana@example.test", "password": "hunter22" }),
+        )
+        .unwrap();
         assert!(!format!("{credentials:?}").contains("hunter22"));
     }
 }

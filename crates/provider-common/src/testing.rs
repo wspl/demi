@@ -46,7 +46,11 @@ pub mod event {
         ProviderEvent::ThinkingDelta(text.to_owned())
     }
 
-    pub fn tool_call(tool_use_id: &str, tool_name: &str, input: serde_json::Value) -> ProviderEvent {
+    pub fn tool_call(
+        tool_use_id: &str,
+        tool_name: &str,
+        input: serde_json::Value,
+    ) -> ProviderEvent {
         ProviderEvent::ToolCall(ToolCall {
             tool_use_id: tool_use_id.to_owned(),
             tool_name: tool_name.to_owned(),
@@ -97,16 +101,23 @@ pub fn inference_request() -> InferenceRequest {
     }
 }
 
+/// The events a scripted run makes of its request.
+pub type RequestEvents = Box<dyn FnOnce(&InferenceRequest) -> Vec<ProviderEvent>>;
+
+/// The stream a scripted run opens for its request.
+pub type RequestStream =
+    Box<dyn FnOnce(&InferenceRequest) -> LocalBoxStream<'static, ProviderEvent>>;
+
 /// One scripted run.
 pub enum Turn {
     /// These events, in order.
     Events(Vec<ProviderEvent>),
     /// The events a function of the request returns, so that a test can
     /// answer what the request carries.
-    Respond(Box<dyn FnOnce(&InferenceRequest) -> Vec<ProviderEvent>>),
+    Respond(RequestEvents),
     /// Any stream, for a test that controls timing, such as a run that
     /// never ends until it is cancelled.
-    Stream(Box<dyn FnOnce(&InferenceRequest) -> LocalBoxStream<'static, ProviderEvent>>),
+    Stream(RequestStream),
 }
 
 impl Turn {
@@ -229,7 +240,10 @@ pub async fn all_events(run: impl Stream<Item = ProviderEvent>) -> Vec<ProviderE
 }
 
 /// Runs `request` on `runtime` and returns every event of the run.
-pub async fn run(runtime: &mut dyn ProviderRuntime, request: InferenceRequest) -> Vec<ProviderEvent> {
+pub async fn run(
+    runtime: &mut dyn ProviderRuntime,
+    request: InferenceRequest,
+) -> Vec<ProviderEvent> {
     all_events(runtime.run(request)).await
 }
 
@@ -274,7 +288,11 @@ impl Clock for TokioClock {
 pub fn jwt(claims: &serde_json::Value) -> String {
     use base64::Engine;
     let encode = |value: &str| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(value);
-    format!("{}.{}.signature", encode(r#"{"alg":"none","typ":"JWT"}"#), encode(&claims.to_string()))
+    format!(
+        "{}.{}.signature",
+        encode(r#"{"alg":"none","typ":"JWT"}"#),
+        encode(&claims.to_string())
+    )
 }
 
 /// A server-sent events body with one `data:` frame per payload.
@@ -450,7 +468,9 @@ impl MockVendor {
     where
         L: axum::serve::Listener<Addr = SocketAddr>,
     {
-        let address = listener.local_addr().expect("a bound listener has an address");
+        let address = listener
+            .local_addr()
+            .expect("a bound listener has an address");
         let state = Arc::new(VendorState {
             script: Mutex::new(VendorScript::default()),
             disconnected: Notify::new(),
@@ -526,7 +546,10 @@ impl MockVendor {
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, VendorScript> {
-        self.state.script.lock().expect("the vendor script is not poisoned")
+        self.state
+            .script
+            .lock()
+            .expect("the vendor script is not poisoned")
     }
 }
 
@@ -536,23 +559,35 @@ impl MockVendor {
 /// built into the provider, never fetched and not stale, with its default
 /// among them. Reading none of it sends `vendor` a request.
 pub async fn assert_built_in_catalog(provider: &dyn Provider, vendor: &MockVendor) {
-    assert!(!provider.capabilities().process_host, "an API-key entry starts no process");
+    assert!(
+        !provider.capabilities().process_host,
+        "an API-key entry starts no process"
+    );
     let auth = provider.auth_status().await;
     assert!(matches!(auth, AuthState::Authenticated { .. }), "{auth:?}");
     let runtime = provider.runtime_state();
     assert!(matches!(runtime, RuntimeState::Ready { .. }), "{runtime:?}");
-    let list = provider.list_models().await.expect("a built-in directory is always read");
+    let list = provider
+        .list_models()
+        .await
+        .expect("a built-in directory is always read");
     assert_eq!(
         (list.source_fetched_at, list.stale),
         (Timestamp::UNIX_EPOCH, false),
         "a built-in directory is never fetched"
     );
-    let default = list.default_model_id.as_deref().expect("the directory names its default");
+    let default = list
+        .default_model_id
+        .as_deref()
+        .expect("the directory names its default");
     assert!(
         list.models.iter().any(|model| model.id == default),
         "the default {default} is one of the directory's models"
     );
-    assert!(vendor.requests().is_empty(), "reading the status and the models makes no request");
+    assert!(
+        vendor.requests().is_empty(),
+        "reading the status and the models makes no request"
+    );
 }
 
 async fn answer(State(state): State<Arc<VendorState>>, request: Request) -> Response {
@@ -561,7 +596,10 @@ async fn answer(State(state): State<Arc<VendorState>>, request: Request) -> Resp
         .await
         .expect("the request body arrives");
     let next = {
-        let mut script = state.script.lock().expect("the vendor script is not poisoned");
+        let mut script = state
+            .script
+            .lock()
+            .expect("the vendor script is not poisoned");
         let routed = script
             .routes
             .get_mut(parts.uri.path())

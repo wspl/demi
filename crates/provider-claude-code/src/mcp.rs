@@ -66,7 +66,7 @@ struct Board {
 /// Something the server did that the run acts on.
 pub(crate) enum McpEvent {
     /// A reply, and the control request it answers.
-    Reply(String, ServerJsonRpcMessage),
+    Reply(String, Box<ServerJsonRpcMessage>),
     /// A call the server opened.
     Opened(ToolCall),
 }
@@ -185,7 +185,7 @@ impl Mcp {
         if waiting.is_empty() {
             self.requests.remove(id);
         }
-        Some(McpEvent::Reply(request_id, reply))
+        Some(McpEvent::Reply(request_id, Box::new(reply)))
     }
 
     /// Hands the agent's results to their calls: a call the CLI made gets its

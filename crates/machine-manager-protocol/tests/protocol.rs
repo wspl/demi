@@ -18,7 +18,11 @@ fn corpus(direction: &str) -> Vec<(String, Vec<u8>)> {
         .expect("corpus directory")
         .map(|entry| {
             let path = entry.expect("corpus entry").path();
-            let name = path.file_stem().expect("line name").to_string_lossy().into_owned();
+            let name = path
+                .file_stem()
+                .expect("line name")
+                .to_string_lossy()
+                .into_owned();
             (name, fs::read(&path).expect("corpus line"))
         })
         .collect();
@@ -47,7 +51,8 @@ fn every_request_decodes_and_encodes_to_the_same_bytes() {
 #[test]
 fn every_response_decodes_and_encodes_to_the_same_bytes() {
     for (name, line) in corpus("manager-to-backend") {
-        let response = decode_response(text(&line)).unwrap_or_else(|error| panic!("{name}: {error}"));
+        let response =
+            decode_response(text(&line)).unwrap_or_else(|error| panic!("{name}: {error}"));
         assert_eq!(encode_line(&response), line, "{name}");
     }
 }
@@ -80,12 +85,22 @@ fn ok_replies_carry_their_operations_results() {
         })
     );
     let (reset, _) = result::<ImageStateParams>("ok.image_state.reset");
-    assert_eq!(reset.and_then(|state| state.reset_id).as_deref(), Some("reset-4f1e"));
+    assert_eq!(
+        reset.and_then(|state| state.reset_id).as_deref(),
+        Some("reset-4f1e")
+    );
     assert_eq!(result::<ImageStateParams>("ok.image_state.none").0, None);
-    assert_eq!(result::<RuntimeStateParams>("ok.runtime_state").0, RuntimeState::Running);
-    assert_eq!(result::<RuntimeStateParams>("ok.runtime_state.stopped").0, RuntimeState::Stopped);
-    let (version, _) =
-        result::<demi_machine_manager_protocol::CurrentBaseVersionParams>("ok.current_base_version");
+    assert_eq!(
+        result::<RuntimeStateParams>("ok.runtime_state").0,
+        RuntimeState::Running
+    );
+    assert_eq!(
+        result::<RuntimeStateParams>("ok.runtime_state.stopped").0,
+        RuntimeState::Stopped
+    );
+    let (version, _) = result::<demi_machine_manager_protocol::CurrentBaseVersionParams>(
+        "ok.current_base_version",
+    );
     assert_eq!(version.as_str(), "b".repeat(64));
     result::<demi_machine_manager_protocol::ReconcileParams>("ok.reconcile");
 }
@@ -125,11 +140,21 @@ fn requests_ignore_unknown_keys_and_refuse_malformed_values() {
         format!(
             r#"{{"id":"1","op":"wake","params":{{{device},"boot":{{"backendUrl":"http://backend","deviceToken":"two words"}}}}}}"#
         ),
-        format!(r#"{{"id":"1","op":"grow_volume","params":{{{device},"volume":"home","bytes":0}}}}"#),
-        format!(r#"{{"id":"1","op":"grow_volume","params":{{{device},"volume":"home","bytes":-1}}}}"#),
-        format!(r#"{{"id":"1","op":"grow_volume","params":{{{device},"volume":"home","bytes":1.5}}}}"#),
-        format!(r#"{{"id":"1","op":"grow_volume","params":{{{device},"volume":"swap","bytes":1}}}}"#),
-        format!(r#"{{"id":"1","op":"reset","params":{{{device},"operationId":"","baseVersion":"b"}}}}"#),
+        format!(
+            r#"{{"id":"1","op":"grow_volume","params":{{{device},"volume":"home","bytes":0}}}}"#
+        ),
+        format!(
+            r#"{{"id":"1","op":"grow_volume","params":{{{device},"volume":"home","bytes":-1}}}}"#
+        ),
+        format!(
+            r#"{{"id":"1","op":"grow_volume","params":{{{device},"volume":"home","bytes":1.5}}}}"#
+        ),
+        format!(
+            r#"{{"id":"1","op":"grow_volume","params":{{{device},"volume":"swap","bytes":1}}}}"#
+        ),
+        format!(
+            r#"{{"id":"1","op":"reset","params":{{{device},"operationId":"","baseVersion":"b"}}}}"#
+        ),
         format!(r#"{{"id":"1","op":"reset","params":{{{device},"operationId":"o"}}}}"#),
     ];
     for line in &refused {
@@ -151,7 +176,8 @@ fn responses_refuse_unknown_types_and_missing_names() {
 
 #[test]
 fn an_image_state_requires_every_key_and_valid_names() {
-    let valid = r#"{"generation":"g-1","baseVersion":"b_1","resetId":null,"systemBytes":1,"homeBytes":2}"#;
+    let valid =
+        r#"{"generation":"g-1","baseVersion":"b_1","resetId":null,"systemBytes":1,"homeBytes":2}"#;
     let state: MachineImageState = serde_json::from_str(valid).expect("valid state");
     assert_eq!(state.bytes(Volume::Home).get(), 2);
     for invalid in [
@@ -181,7 +207,8 @@ fn image_names_are_single_path_components() {
 #[test]
 fn a_boot_credential_never_appears_in_debugging_output() {
     let line = fs::read(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/backend-to-manager/wake.ndjson"),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/backend-to-manager/wake.ndjson"),
     )
     .expect("wake line");
     let request = decode_request(text(&line)).expect("wake");
@@ -227,7 +254,8 @@ fn manifest() -> serde_json::Value {
 #[test]
 fn an_image_manifest_names_its_embedded_runner_and_packages() {
     use demi_machine_manager_protocol::image::{Architecture, CloudImageManifest, ManifestError};
-    let decode = |value: &serde_json::Value| CloudImageManifest::decode(&serde_json::to_vec(value).unwrap());
+    let decode =
+        |value: &serde_json::Value| CloudImageManifest::decode(&serde_json::to_vec(value).unwrap());
     let decoded = decode(&manifest()).expect("valid manifest");
     assert_eq!(decoded.architecture, Architecture::Arm64);
     assert_eq!(decoded.architecture.target(), "aarch64-unknown-linux-musl");
@@ -239,7 +267,10 @@ fn an_image_manifest_names_its_embedded_runner_and_packages() {
     changed["architecture"] = "amd64".into();
     assert!(matches!(decode(&changed), Err(ManifestError::Runner)));
     let mut changed = manifest();
-    changed["executables"].as_object_mut().unwrap().retain(|path, _| !path.starts_with("/opt/"));
+    changed["executables"]
+        .as_object_mut()
+        .unwrap()
+        .retain(|path, _| !path.starts_with("/opt/"));
     assert!(matches!(decode(&changed), Err(ManifestError::Release(id)) if id == "demi.file"));
     for (field, value) in [
         ("formatVersion", serde_json::json!(2)),
@@ -251,7 +282,13 @@ fn an_image_manifest_names_its_embedded_runner_and_packages() {
         changed[field] = value;
         assert!(decode(&changed).is_err(), "{field}");
     }
-    for path in ["/etc/passwd", "/usr/", "/usr/../etc/shadow", "/opt/x\ny", "usr/bin/x"] {
+    for path in [
+        "/etc/passwd",
+        "/usr/",
+        "/usr/../etc/shadow",
+        "/opt/x\ny",
+        "usr/bin/x",
+    ] {
         let mut changed = manifest();
         changed["executables"][path] = serde_json::json!({ "sha256": "e".repeat(64), "size": 10 });
         assert!(decode(&changed).is_err(), "{path:?}");

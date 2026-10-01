@@ -96,7 +96,11 @@ impl UserBlobs {
             mode: PutMode::Create,
             ..PutOptions::default()
         };
-        match self.objects.put_opts(&location, PutPayload::from_bytes(bytes), create).await {
+        match self
+            .objects
+            .put_opts(&location, PutPayload::from_bytes(bytes), create)
+            .await
+        {
             // A put of the same bytes may have created it since the HEAD.
             Ok(_) | Err(object_store::Error::AlreadyExists { .. }) => Ok(blob),
             Err(error) => Err(error.into()),
@@ -128,13 +132,12 @@ impl UserBlobs {
                 tracing::warn!(object = %object.location, "an object in a blob namespace is not a blob");
                 continue;
             };
-            let written = Timestamp::from_millisecond(object.last_modified.timestamp_millis()).map_err(|error| {
-                ObjectError::Corrupt {
+            let written = Timestamp::from_millisecond(object.last_modified.timestamp_millis())
+                .map_err(|error| ObjectError::Corrupt {
                     location: object.location.to_string(),
                     field: "last modified time",
                     reason: error.to_string(),
-                }
-            })?;
+                })?;
             blobs.push(StoredBlob { blob, written });
         }
         Ok(blobs)
@@ -145,7 +148,11 @@ impl UserBlobs {
     /// uses: from then until the deletion has ended, a put of the blob waits
     /// and a commit that would write a reference to it fails. Answers whether
     /// the blob was deleted.
-    pub async fn delete_unused(&self, blob: &BlobRef, grace: SignedDuration) -> Result<bool, ObjectError> {
+    pub async fn delete_unused(
+        &self,
+        blob: &BlobRef,
+        grace: SignedDuration,
+    ) -> Result<bool, ObjectError> {
         let Some(_deleting) = self.uses.mark(&self.user, blob, grace) else {
             return Ok(false);
         };
@@ -158,7 +165,10 @@ impl UserBlobs {
     /// Records that a commit writes or removes references to `blobs`, inside
     /// its transaction and before it commits. It is refused when one of them
     /// is being deleted, and the commit must then not commit.
-    pub fn commit_uses<'a>(&self, blobs: impl IntoIterator<Item = &'a BlobRef>) -> Result<(), StoreError> {
+    pub fn commit_uses<'a>(
+        &self,
+        blobs: impl IntoIterator<Item = &'a BlobRef>,
+    ) -> Result<(), StoreError> {
         self.uses.commit(&self.user, blobs)
     }
 
@@ -186,7 +196,10 @@ impl BlobStore for UserBlobs {
         })
     }
 
-    fn get<'a>(&'a self, blob: &'a BlobRef) -> LocalBoxFuture<'a, Result<Option<B64Bytes>, StoreError>> {
+    fn get<'a>(
+        &'a self,
+        blob: &'a BlobRef,
+    ) -> LocalBoxFuture<'a, Result<Option<B64Bytes>, StoreError>> {
         Box::pin(async move {
             let bytes = UserBlobs::get(self, blob)
                 .await
@@ -245,7 +258,10 @@ impl BlobUses {
                 let mut uses = self.lock();
                 if !uses.deleting.contains(&key) {
                     let now = self.clock.now();
-                    uses.last.entry(user.clone()).or_default().insert(blob.clone(), now);
+                    uses.last
+                        .entry(user.clone())
+                        .or_default()
+                        .insert(blob.clone(), now);
                     return;
                 }
             }
@@ -254,7 +270,11 @@ impl BlobUses {
         }
     }
 
-    fn commit<'a>(&self, user: &UserId, blobs: impl IntoIterator<Item = &'a BlobRef>) -> Result<(), StoreError> {
+    fn commit<'a>(
+        &self,
+        user: &UserId,
+        blobs: impl IntoIterator<Item = &'a BlobRef>,
+    ) -> Result<(), StoreError> {
         let blobs: Vec<&BlobRef> = blobs.into_iter().collect();
         if blobs.is_empty() {
             return Ok(());
@@ -276,7 +296,12 @@ impl BlobUses {
 
     /// Marks `blob` as being deleted when its last use, if any, is older than
     /// `grace`; the mark goes when the answer is dropped.
-    fn mark(&self, user: &UserId, blob: &BlobRef, grace: SignedDuration) -> Option<DeletionMark<'_>> {
+    fn mark(
+        &self,
+        user: &UserId,
+        blob: &BlobRef,
+        grace: SignedDuration,
+    ) -> Option<DeletionMark<'_>> {
         let now = self.clock.now();
         let mut uses = self.lock();
         let recent = uses
@@ -314,7 +339,9 @@ struct DeletionMark<'a> {
 impl Drop for DeletionMark<'_> {
     fn drop(&mut self) {
         self.uses.lock().deleting.remove(&self.key);
-        self.uses.deleted.send_modify(|ended| *ended = ended.wrapping_add(1));
+        self.uses
+            .deleted
+            .send_modify(|ended| *ended = ended.wrapping_add(1));
     }
 }
 
@@ -326,8 +353,8 @@ mod tests {
     use futures_util::stream::BoxStream;
     use object_store::memory::InMemory;
     use object_store::{
-        CopyOptions, GetOptions, GetResult, ListResult, MultipartUpload, ObjectMeta, PutMultipartOptions, PutResult,
-        RenameOptions, Result,
+        CopyOptions, GetOptions, GetResult, ListResult, MultipartUpload, ObjectMeta,
+        PutMultipartOptions, PutResult, RenameOptions, Result,
     };
     use tokio::sync::Notify;
 
@@ -361,11 +388,20 @@ mod tests {
 
     #[async_trait::async_trait]
     impl ObjectStore for HeldDeletions {
-        async fn put_opts(&self, location: &Path, payload: PutPayload, opts: PutOptions) -> Result<PutResult> {
+        async fn put_opts(
+            &self,
+            location: &Path,
+            payload: PutPayload,
+            opts: PutOptions,
+        ) -> Result<PutResult> {
             self.inner.put_opts(location, payload, opts).await
         }
 
-        async fn put_multipart_opts(&self, location: &Path, opts: PutMultipartOptions) -> Result<Box<dyn MultipartUpload>> {
+        async fn put_multipart_opts(
+            &self,
+            location: &Path,
+            opts: PutMultipartOptions,
+        ) -> Result<Box<dyn MultipartUpload>> {
             self.inner.put_multipart_opts(location, opts).await
         }
 
@@ -373,7 +409,10 @@ mod tests {
             self.inner.get_opts(location, options).await
         }
 
-        fn delete_stream(&self, locations: BoxStream<'static, Result<Path>>) -> BoxStream<'static, Result<Path>> {
+        fn delete_stream(
+            &self,
+            locations: BoxStream<'static, Result<Path>>,
+        ) -> BoxStream<'static, Result<Path>> {
             let (reached, go) = (self.reached.clone(), self.go.clone());
             let held = locations.then(move |location| {
                 let (reached, go) = (reached.clone(), go.clone());
@@ -412,7 +451,8 @@ mod tests {
             go: go.clone(),
         });
         let clock = Arc::new(TestClock(Mutex::new(Timestamp::UNIX_EPOCH)));
-        let blobs = BlobStores::new(objects, clock.clone()).for_user(&UserId::try_from("ana").unwrap());
+        let blobs =
+            BlobStores::new(objects, clock.clone()).for_user(&UserId::try_from("ana").unwrap());
         let bytes = Bytes::from_static(b"a screenshot");
         let blob = blobs.put(bytes.clone()).await.unwrap();
         // The put used the blob, which keeps it for the grace.
@@ -437,7 +477,9 @@ mod tests {
                 tokio::time::sleep(Duration::from_millis(1)).await;
             }
         };
-        tokio::time::timeout(Duration::from_secs(10), waiting).await.expect("the put waits for the deletion");
+        tokio::time::timeout(Duration::from_secs(10), waiting)
+            .await
+            .expect("the put waits for the deletion");
         go.notify_one();
         assert!(deletion.await.unwrap().unwrap());
         // The put stored the bytes again once the deletion ended, so the

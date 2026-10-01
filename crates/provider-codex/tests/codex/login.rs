@@ -6,14 +6,14 @@ use std::{
     time::Duration,
 };
 
-use demi_shared_types::LoginPending;
+use demi_provider_codex::{CodexConfig, CodexProvider};
 use demi_provider_common::{
     Provider,
     credentials::{AccountsCapability, CredentialPool, LoginError, MemoryCredentialPool},
     quota::MemorySnapshots,
     testing::{FixedClock, MockResponse, MockVendor, jwt},
 };
-use demi_provider_codex::{CodexConfig, CodexProvider};
+use demi_shared_types::LoginPending;
 use serde_json::{Value, json};
 
 use crate::NOW;

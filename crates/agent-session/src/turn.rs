@@ -15,10 +15,10 @@ use demi_agent_transcript::{
     estimate::{context_tokens, request_size},
     resume_point, tool_input,
 };
-use demi_shared_types::{Block, BlockId, ToolView, WakeupId};
 use demi_provider_common::{
     ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun, ResultPart,
 };
+use demi_shared_types::{Block, BlockId, ToolView, WakeupId};
 use futures_util::StreamExt;
 
 use super::{
@@ -216,7 +216,7 @@ async fn stream(
             attempt,
             delay_ms: u64::try_from(delay.as_millis()).unwrap_or(u64::MAX),
             code: failure.code.as_ref().map(|code| code.as_str().to_owned()),
-            diagnostics: failure.diagnostics,
+            diagnostics: failure.diagnostics.map(|diagnostics| *diagnostics),
         });
         cancel.guard(tokio::time::sleep(delay)).await?;
         attempt += 1;
@@ -371,8 +371,13 @@ async fn run_tools(
         cancel.check()?;
         let before = s.read(|core| core.inputs.arrivals());
         let outcome = if tools.iter().any(|tool| tool.name == call.tool_name) {
-            let (model, request_limits, generation) =
-                s.read(|core| (core.model.clone(), core.request_limits(), core.generation.number));
+            let (model, request_limits, generation) = s.read(|core| {
+                (
+                    core.model.clone(),
+                    core.request_limits(),
+                    core.generation.number,
+                )
+            });
             let invocation = ToolInvocation {
                 tool_use_id: call.tool_use_id.clone(),
                 tool_name: call.tool_name.clone(),

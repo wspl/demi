@@ -17,6 +17,7 @@ use axum::http::uri::Authority;
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Request, StatusCode, Uri, Version};
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
+use demi_backend_expose::relay::RelayRefusal;
 use demi_web_api_protocol::exposes::ExposeAddress;
 use demi_web_api_protocol::ids::ExposeId;
 use http_body::{Frame, SizeHint};
@@ -25,13 +26,12 @@ use hyper::client::conn::http1;
 use hyper::upgrade::OnUpgrade;
 use hyper_util::rt::TokioIo;
 use tokio_util::io::{CopyToBytes, SinkWriter, StreamReader};
-use demi_backend_expose::relay::RelayRefusal;
 
 use super::AppState;
 use super::cookies::over_https;
 use super::listener::{ConnectionWatch, Peer};
-use demi_backend_user_shard::shard::exposes::ExposeConnection;
 use demi_backend_host_access::lease::Lease;
+use demi_backend_user_shard::shard::exposes::ExposeConnection;
 
 /// Headers that concern one connection only, which the relay never passes
 /// on; the names a `Connection` header lists join them.
@@ -69,7 +69,12 @@ pub(super) fn expose_label(state: &AppState, request: &Request<Incoming>) -> Opt
 /// Answers a visitor of the expose whose hostname starts with `label`:
 /// unknown, malformed and expired ids answer 404, and a connection the
 /// owner's shard does not admit answers its reason.
-pub(super) async fn relay(state: AppState, peer: Peer, label: String, request: Request<Incoming>) -> Response {
+pub(super) async fn relay(
+    state: AppState,
+    peer: Peer,
+    label: String,
+    request: Request<Incoming>,
+) -> Response {
     let Ok(id) = ExposeId::try_from(label) else {
         return not_found();
     };
@@ -77,7 +82,10 @@ pub(super) async fn relay(state: AppState, peer: Peer, label: String, request: R
         Ok(Some(record)) => record,
         Ok(None) => return not_found(),
         Err(error) => {
-            tracing::error!(error = &error as &dyn std::error::Error, "an expose could not be read");
+            tracing::error!(
+                error = &error as &dyn std::error::Error,
+                "an expose could not be read"
+            );
             return unavailable();
         }
     };
@@ -127,14 +135,18 @@ async fn forward(
     {
         Ok(handshake) => handshake,
         Err(error) => {
-            tracing::debug!(error = &error as &dyn std::error::Error, "the relay's client did not start");
+            tracing::debug!(
+                error = &error as &dyn std::error::Error,
+                "the relay's client did not start"
+            );
             return unreachable("no_response");
         }
     };
     let mut connection: Option<ClientConnection> = Some(Box::pin(connection.with_upgrades()));
     let upgrade = wants_upgrade(request.headers());
     let visitor_upgrade = hyper::upgrade::on(&mut request);
-    let mut exchange = pin!(sender.send_request(forwarded_request(request, address, peer, upgrade)));
+    let mut exchange =
+        pin!(sender.send_request(forwarded_request(request, address, peer, upgrade)));
     // The client connection writes the request and reads the answer while
     // the exchange waits for the answer's head.
     let answer = loop {
@@ -149,7 +161,10 @@ async fn forward(
     let mut answer = match answer {
         Ok(answer) => answer,
         Err(error) => {
-            tracing::debug!(error = &error as &dyn std::error::Error, "the exposed service gave no answer");
+            tracing::debug!(
+                error = &error as &dyn std::error::Error,
+                "the exposed service gave no answer"
+            );
             return unreachable("no_response");
         }
     };
@@ -158,7 +173,13 @@ async fn forward(
         let (mut parts, _) = answer.into_parts();
         parts.version = Version::HTTP_11;
         remove_hop_by_hop(&mut parts.headers, true);
-        tokio::spawn(copy_upgraded(visitor_upgrade, service_upgrade, connection, lease, watch));
+        tokio::spawn(copy_upgraded(
+            visitor_upgrade,
+            service_upgrade,
+            connection,
+            lease,
+            watch,
+        ));
         return Response::from_parts(parts, Body::empty());
     }
     let (mut parts, body) = answer.into_parts();
@@ -189,7 +210,12 @@ async fn running(connection: &mut Option<ClientConnection>) -> hyper::Result<()>
 /// handshake needs; any other request asks the service to close its
 /// connection after the answer. Every other header, its name's case and
 /// the separate lines of a repeated one pass unchanged.
-fn forwarded_request(request: Request<Incoming>, address: &ExposeAddress, peer: &Peer, upgrade: bool) -> Request<Incoming> {
+fn forwarded_request(
+    request: Request<Incoming>,
+    address: &ExposeAddress,
+    peer: &Peer,
+    upgrade: bool,
+) -> Request<Incoming> {
     let https = over_https(request.uri(), request.headers());
     let (mut parts, body) = request.into_parts();
     parts.uri = parts
@@ -203,9 +229,11 @@ fn forwarded_request(request: Request<Incoming>, address: &ExposeAddress, peer: 
     if !upgrade {
         headers.insert(CONNECTION, HeaderValue::from_static("close"));
     }
-    let address = HeaderValue::try_from(address.as_str()).expect("an expose address is visible ASCII");
+    let address =
+        HeaderValue::try_from(address.as_str()).expect("an expose address is visible ASCII");
     headers.insert(HOST, address);
-    let visitor = HeaderValue::try_from(peer.addr.ip().to_string()).expect("an IP address is visible ASCII");
+    let visitor =
+        HeaderValue::try_from(peer.addr.ip().to_string()).expect("an IP address is visible ASCII");
     headers.append(X_FORWARDED_FOR, visitor);
     if let Some(host) = visitor_host {
         headers.insert(X_FORWARDED_HOST, host);
@@ -227,7 +255,8 @@ fn connection_tokens(headers: &HeaderMap) -> impl Iterator<Item = &str> {
 
 /// Whether the visitor asks to switch protocols, as a WebSocket does.
 fn wants_upgrade(headers: &HeaderMap) -> bool {
-    headers.contains_key(UPGRADE) && connection_tokens(headers).any(|token| token.eq_ignore_ascii_case("upgrade"))
+    headers.contains_key(UPGRADE)
+        && connection_tokens(headers).any(|token| token.eq_ignore_ascii_case("upgrade"))
 }
 
 /// Removes the connection-level headers; an upgrade keeps `Connection` and
@@ -260,7 +289,8 @@ async fn copy_upgraded(
             connection.await?;
         }
         let (visitor, service) = tokio::try_join!(visitor, service)?;
-        tokio::io::copy_bidirectional(&mut TokioIo::new(visitor), &mut TokioIo::new(service)).await?;
+        tokio::io::copy_bidirectional(&mut TokioIo::new(visitor), &mut TokioIo::new(service))
+            .await?;
         Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
     };
     tokio::select! {
@@ -291,7 +321,10 @@ impl http_body::Body for RelayedBody {
     type Data = Bytes;
     type Error = hyper::Error;
 
-    fn poll_frame(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<Frame<Bytes>, hyper::Error>>> {
+    fn poll_frame(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Frame<Bytes>, hyper::Error>>> {
         let this = self.get_mut();
         if let Some(connection) = &mut this.connection
             && connection.as_mut().poll(cx).is_ready()
@@ -323,7 +356,10 @@ fn refused(refusal: RelayRefusal) -> Response {
         ),
         RelayRefusal::Removed => removed(),
         RelayRefusal::Storage(error) => {
-            tracing::error!(error = &error as &dyn std::error::Error, "an expose could not be read");
+            tracing::error!(
+                error = &error as &dyn std::error::Error,
+                "an expose could not be read"
+            );
             unavailable()
         }
     }
@@ -344,13 +380,24 @@ fn unreachable(reason: &str) -> Response {
 }
 
 fn removed() -> Response {
-    page(StatusCode::BAD_GATEWAY, "This expose was removed while serving.\n")
+    page(
+        StatusCode::BAD_GATEWAY,
+        "This expose was removed while serving.\n",
+    )
 }
 
 fn unavailable() -> Response {
-    page(StatusCode::SERVICE_UNAVAILABLE, "This expose cannot be served right now; retry shortly.\n")
+    page(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "This expose cannot be served right now; retry shortly.\n",
+    )
 }
 
 fn page(status: StatusCode, text: &str) -> Response {
-    (status, [(CONTENT_TYPE, "text/plain; charset=utf-8")], text.to_owned()).into_response()
+    (
+        status,
+        [(CONTENT_TYPE, "text/plain; charset=utf-8")],
+        text.to_owned(),
+    )
+        .into_response()
 }

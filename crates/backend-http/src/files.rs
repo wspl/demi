@@ -13,16 +13,16 @@ use axum::extract::{ConnectInfo, Path, State};
 use axum::http::header::{CONTENT_LENGTH, ETAG, IF_NONE_MATCH, LAST_MODIFIED, RANGE};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
-use demi_shared_types::preview_media_type;
+use demi_backend_runners::files::{TextError, browse_directory, read_text_file, text_of};
 use demi_host_interface::{FileStat, HostFs, MkdirOptions, RmOptions};
+use demi_shared_types::preview_media_type;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::files::{
-    ChangeSides, CommittedFileQuery, CreateDirectory, CreatedDirectory, Directory, DirectoryQuery, FileQuery, FileText,
-    RawFileQuery, RemoveQuery, TreeFileQuery, UploadQuery, WorkingTreeChanges,
+    ChangeSides, CommittedFileQuery, CreateDirectory, CreatedDirectory, Directory, DirectoryQuery,
+    FileQuery, FileText, RawFileQuery, RemoveQuery, TreeFileQuery, UploadQuery, WorkingTreeChanges,
 };
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use typed_path::Utf8TypedPath;
-use demi_backend_runners::files::{TextError, browse_directory, read_text_file, text_of};
 
 use super::AppState;
 use super::body::JsonBody;
@@ -33,7 +33,9 @@ use super::listener::Peer;
 use super::query::QueryParams;
 use super::transfer::{TRANSFER_IDLE, UploadEnd, copy_upload, paced_body};
 use demi_backend_host_access::access::{ConversationHost, HostAccessError, Refusal};
-use demi_backend_host_access::transfer::{Download, DownloadRequest, RangeAnswer, Upload, file_version};
+use demi_backend_host_access::transfer::{
+    Download, DownloadRequest, RangeAnswer, Upload, file_version,
+};
 
 pub(super) async fn list(
     State(state): State<AppState>,
@@ -66,7 +68,9 @@ async fn list_on(
     let requested = query.path.map(|path| path.as_str().to_owned());
     let directory = on_host(state, user, id, device, async move |host| {
         let path = requested.unwrap_or_else(|| host.root.clone());
-        let entries = browse_directory(&host.host, &path).await.map_err(ApiError::host_operation)?;
+        let entries = browse_directory(&host.host, &path)
+            .await
+            .map_err(ApiError::host_operation)?;
         Ok(Directory {
             path,
             home: host.home.clone(),
@@ -197,11 +201,20 @@ pub(super) async fn raw(
     let download = state
         .shards
         .of(&user.id)
-        .call(move |shard, cancel| async move { shard.host_shard().open_download(&conversation, request, &cancel).await })
+        .call(move |shard, cancel| async move {
+            shard
+                .host_shard()
+                .open_download(&conversation, request, &cancel)
+                .await
+        })
         .await??;
     let download_flag = query.download.0;
     match download {
-        Download::NotAFile => Err(ApiError::new(StatusCode::NOT_FOUND, ErrorCode::NotFound, "Not a regular file")),
+        Download::NotAFile => Err(ApiError::new(
+            StatusCode::NOT_FOUND,
+            ErrorCode::NotFound,
+            "Not a regular file",
+        )),
         Download::Changed => Err(ApiError::new(
             StatusCode::PRECONDITION_FAILED,
             ErrorCode::FileChanged,
@@ -212,9 +225,11 @@ pub(super) async fn raw(
             headers.insert(ETAG, header_value(&version));
             Ok((StatusCode::NOT_MODIFIED, headers).into_response())
         }
-        Download::Head { stat, part } => {
-            Ok((part.status(), file_headers(&path, download_flag, &stat, &part)).into_response())
-        }
+        Download::Head { stat, part } => Ok((
+            part.status(),
+            file_headers(&path, download_flag, &stat, &part),
+        )
+            .into_response()),
         Download::Stream {
             stat,
             part,
@@ -247,14 +262,27 @@ pub(super) async fn upload(
     let upload = state
         .shards
         .of(&user.id)
-        .call(move |shard, cancel| async move { shard.host_shard().open_upload(&conversation, path, replace.0, &cancel).await })
+        .call(move |shard, cancel| async move {
+            shard
+                .host_shard()
+                .open_upload(&conversation, path, replace.0, &cancel)
+                .await
+        })
         .await??;
     let open = match upload {
         Upload::IsDirectory => {
-            return Err(ApiError::new(StatusCode::CONFLICT, ErrorCode::IsDirectory, "A directory is at this path"));
+            return Err(ApiError::new(
+                StatusCode::CONFLICT,
+                ErrorCode::IsDirectory,
+                "A directory is at this path",
+            ));
         }
         Upload::Exists => {
-            return Err(ApiError::new(StatusCode::CONFLICT, ErrorCode::FileExists, "A file is already at this path"));
+            return Err(ApiError::new(
+                StatusCode::CONFLICT,
+                ErrorCode::FileExists,
+                "A file is already at this path",
+            ));
         }
         Upload::Open(open) => open,
     };
@@ -281,7 +309,11 @@ pub(super) async fn changes(
     Path(id): Path<String>,
 ) -> Result<Json<WorkingTreeChanges>, ApiError> {
     let changes = on_host(&state, &user.id, &id, None, async move |host| {
-        let changes = host.host.git_changes(&host.root).await.map_err(ApiError::working_tree)?;
+        let changes = host
+            .host
+            .git_changes(&host.root)
+            .await
+            .map_err(ApiError::working_tree)?;
         Ok(WorkingTreeChanges {
             root: host.root.clone(),
             changes,
@@ -305,11 +337,12 @@ pub(super) async fn changed_file(
             Err(error) if error.code() == Some("ENOENT") => String::new(),
             Err(error) => return Err(ApiError::working_tree(error)),
         };
-        let modified = match read_text_file(&host.host, &format!("{}/{}", host.root, path.as_str())).await {
-            Ok(text) => text,
-            Err(TextError::Host(error)) if error.code() == Some("ENOENT") => String::new(),
-            Err(error) => return Err(error.into()),
-        };
+        let modified =
+            match read_text_file(&host.host, &format!("{}/{}", host.root, path.as_str())).await {
+                Ok(text) => text,
+                Err(TextError::Host(error)) if error.code() == Some("ENOENT") => String::new(),
+                Err(error) => return Err(error.into()),
+            };
         Ok(ChangeSides { original, modified })
     })
     .await?;
@@ -351,20 +384,32 @@ pub(super) async fn committed(
 
 /// Runs `operation` on the conversation's Host through its host access: the
 /// main Host, or the bound device `device` names.
-async fn on_host<T, F>(state: &AppState, user: &UserId, id: &str, device: Option<&str>, operation: F) -> Result<T, ApiError>
+async fn on_host<T, F>(
+    state: &AppState,
+    user: &UserId,
+    id: &str,
+    device: Option<&str>,
+    operation: F,
+) -> Result<T, ApiError>
 where
     T: Send + 'static,
     F: AsyncFnOnce(&ConversationHost) -> Result<T, ApiError> + Send + 'static,
 {
     let conversation = conversation_id(id)?;
     let device = device
-        .map(|device| DeviceId::try_from(device).map_err(|_| ApiError::from(HostAccessError::from(Refusal::NotAttached))))
+        .map(|device| {
+            DeviceId::try_from(device)
+                .map_err(|_| ApiError::from(HostAccessError::from(Refusal::NotAttached)))
+        })
         .transpose()?;
     state
         .shards
         .of(user)
         .call(move |shard, cancel| async move {
-            shard.host_shard().with_host(&conversation, device.as_ref(), &cancel, operation).await?
+            shard
+                .host_shard()
+                .with_host(&conversation, device.as_ref(), &cancel, operation)
+                .await?
         })
         .await?
 }
@@ -400,7 +445,10 @@ fn raw_file_headers() -> HeaderMap {
         HeaderValue::from_static("private, no-cache"),
     );
     headers.insert(axum::http::header::VARY, HeaderValue::from_static("Cookie"));
-    headers.insert(HeaderName::from_static("x-accel-buffering"), HeaderValue::from_static("no"));
+    headers.insert(
+        HeaderName::from_static("x-accel-buffering"),
+        HeaderValue::from_static("no"),
+    );
     headers
 }
 
@@ -408,7 +456,11 @@ fn raw_file_headers() -> HeaderMap {
 /// the part.
 fn file_headers(path: &str, download: bool, stat: &FileStat, part: &RangeAnswer) -> HeaderMap {
     let mut headers = raw_file_headers();
-    headers.extend(content_headers(preview_media_type(path), download, file_name(path).as_deref()));
+    headers.extend(content_headers(
+        preview_media_type(path),
+        download,
+        file_name(path).as_deref(),
+    ));
     headers.insert(ETAG, header_value(&file_version(stat)));
     headers.insert(LAST_MODIFIED, last_modified(stat));
     headers.extend(part.headers());
@@ -417,21 +469,33 @@ fn file_headers(path: &str, download: bool, stat: &FileStat, part: &RangeAnswer)
 
 /// When the file was last modified, as an HTTP date.
 fn last_modified(stat: &FileStat) -> HeaderValue {
-    let date = stat.modified.to_jiff().strftime("%a, %d %b %Y %H:%M:%S GMT").to_string();
+    let date = stat
+        .modified
+        .to_jiff()
+        .strftime("%a, %d %b %Y %H:%M:%S GMT")
+        .to_string();
     HeaderValue::from_str(&date).expect("an HTTP date is a header value")
 }
 
 #[cfg(test)]
 mod tests {
-    use demi_shared_types::Timestamp;
     use demi_host_interface::FileKind;
+    use demi_shared_types::Timestamp;
 
     use super::*;
 
     #[test]
     fn a_delete_keeps_the_roots_and_every_directory_that_holds_a_kept_one() {
         let kept = ["/home/ana", "/home/ana/work"];
-        for path in ["/", "/home", "/home/ana", "/HOME/Ana/", "/home/ana/work/..", "/home/ana/work", "C:\\"] {
+        for path in [
+            "/",
+            "/home",
+            "/home/ana",
+            "/HOME/Ana/",
+            "/home/ana/work/..",
+            "/home/ana/work",
+            "C:\\",
+        ] {
             assert!(protected_path(path, kept), "{path}");
         }
         for path in ["/home/ana/work/notes.md", "/home/ana/other", "/home/anabel"] {
@@ -449,6 +513,9 @@ mod tests {
         };
         assert_eq!(last_modified(&stat), "Mon, 21 Sep 2026 14:13:20 GMT");
         assert_eq!(file_name("/work/logo.svg").as_deref(), Some("logo.svg"));
-        assert_eq!(file_name("C:\\work\\report.pdf").as_deref(), Some("report.pdf"));
+        assert_eq!(
+            file_name("C:\\work\\report.pdf").as_deref(),
+            Some("report.pdf")
+        );
     }
 }

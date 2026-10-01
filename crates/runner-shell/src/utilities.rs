@@ -43,15 +43,34 @@ pub const UTILITIES: &[(&str, Entry)] = &[
     ("chown", chown),
     ("grep", |args| uu_grep::uumain(args.into_iter())),
     ("sed", |args| sed::sed::uumain(args.into_iter())),
-    ("find", |args| findutils::find::find_main(&strings(&args).iter().map(String::as_str).collect::<Vec<_>>(), &findutils::find::StandardDependencies::new())),
-    ("xargs", |args| findutils::xargs::xargs_main(&strings(&args).iter().map(String::as_str).collect::<Vec<_>>())),
+    ("find", |args| {
+        findutils::find::find_main(
+            &strings(&args)
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            &findutils::find::StandardDependencies::new(),
+        )
+    }),
+    ("xargs", |args| {
+        findutils::xargs::xargs_main(
+            &strings(&args)
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+        )
+    }),
     ("diff", |args| {
         usage("diff", &args, "Compare files. -u unified, -c context, -y side by side, -q brief, -s identical, -e ed script.")
             .unwrap_or_else(|| diffutilslib::diff::main(args.into_iter().peekable()))
     }),
     ("cmp", |args| {
-        usage("cmp", &args, "Compare files byte by byte. -s silent, -l list differences, -n LIMIT, -i SKIP.")
-            .unwrap_or_else(|| diffutilslib::cmp::main(args.into_iter().peekable()))
+        usage(
+            "cmp",
+            &args,
+            "Compare files byte by byte. -s silent, -l list differences, -n LIMIT, -i SKIP.",
+        )
+        .unwrap_or_else(|| diffutilslib::cmp::main(args.into_iter().peekable()))
     }),
     ("jq", jaq::uumain),
     ("rg", ripgrep::uumain),
@@ -115,7 +134,10 @@ fn strings(args: &[std::ffi::OsString]) -> Vec<String> {
         .collect()
 }
 
-pub fn run(context: uucore::context::Context, args: Vec<std::ffi::OsString>) -> Result<i32, String> {
+pub fn run(
+    context: uucore::context::Context,
+    args: Vec<std::ffi::OsString>,
+) -> Result<i32, String> {
     let name = context.name;
     let entry = UTILITIES
         .iter()

@@ -44,7 +44,10 @@ impl Drop for Node {
         let mut nodes = nodes.borrow_mut();
         // A later registration of the node replaced this one's entry, and
         // stays.
-        if nodes.get(&self.id).is_some_and(|entry| entry.strong_count() == 0) {
+        if nodes
+            .get(&self.id)
+            .is_some_and(|entry| entry.strong_count() == 0)
+        {
             nodes.remove(&self.id);
         }
     }
@@ -98,7 +101,11 @@ impl CommandRouter {
 
     /// The manifest of `node`'s commands, provided it is registered for
     /// `conversation`: what a job the node starts on another Host runs with.
-    pub fn selection_of(&self, node: &str, conversation: &ConversationId) -> Option<CommandSelection> {
+    pub fn selection_of(
+        &self,
+        node: &str,
+        conversation: &ConversationId,
+    ) -> Option<CommandSelection> {
         let registered = self.nodes.borrow().get(node).and_then(Weak::upgrade)?;
         (registered.conversation == *conversation).then(|| registered.selection.clone())
     }

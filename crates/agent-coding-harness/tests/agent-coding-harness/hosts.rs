@@ -3,8 +3,8 @@
 //! Host it used, and a command's handle answers only on the Host that runs
 //! it.
 
-use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
 use demi_agent_tools::testing::shown_output;
+use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
 use demi_provider_common::testing::{ScriptedRuntime, Turn};
 
 use crate::support::{Fixture, exec, reply, scripts, turn, within};

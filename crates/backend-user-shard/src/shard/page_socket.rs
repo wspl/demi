@@ -36,7 +36,10 @@ impl PageSocket {
 
     /// Sends one JSON text message.
     pub async fn send(&mut self, text: String) -> Result<(), PageGone> {
-        self.sink.send(Message::Text(text.into())).await.map_err(|_| PageGone)?;
+        self.sink
+            .send(Message::Text(text.into()))
+            .await
+            .map_err(|_| PageGone)?;
         self.sent_at = Instant::now();
         Ok(())
     }
@@ -54,6 +57,10 @@ impl PageSocket {
     pub async fn close(mut self, frame: CloseFrame) {
         // A page that went meanwhile, or does not read, hears nothing, and
         // dropping the socket ends the connection all the same.
-        let _ = tokio::time::timeout(self.tuning.close_wait, self.sink.send(Message::Close(Some(frame)))).await;
+        let _ = tokio::time::timeout(
+            self.tuning.close_wait,
+            self.sink.send(Message::Close(Some(frame))),
+        )
+        .await;
     }
 }

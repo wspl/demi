@@ -117,7 +117,9 @@ pub enum ResponseError {
 
 /// Decodes the JSON body of a login or refresh response into `T`. A failure
 /// names the field's path and its kind only, because the body holds tokens.
-pub async fn decode_json_response<T: DeserializeOwned>(response: reqwest::Response) -> Result<T, ResponseError> {
+pub async fn decode_json_response<T: DeserializeOwned>(
+    response: reqwest::Response,
+) -> Result<T, ResponseError> {
     let Ok(text) = response.text().await else {
         return Err(ResponseError::Unreadable);
     };

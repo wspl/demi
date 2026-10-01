@@ -180,7 +180,9 @@ crate::id!(
 /// A sequence of the numbers the model knows a conversation's things by
 /// (`runtime.md` § Identifiers the model sees): each is given once, in order,
 /// across crashes, restores and Forks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum Sequence {
     /// Commands, from 1: `17`.

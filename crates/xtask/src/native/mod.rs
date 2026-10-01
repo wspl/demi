@@ -36,17 +36,30 @@ pub fn run(command: Command) -> Result<(), Error> {
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("{} is not built for {target}", executable.name())]
-    NotItsTarget { executable: Executable, target: &'static str },
-    #[error("the Apple targets need the Apple SDK {}: pass --sdk or set SDKROOT", build::APPLE_SDK_VERSION)]
+    NotItsTarget {
+        executable: Executable,
+        target: &'static str,
+    },
+    #[error(
+        "the Apple targets need the Apple SDK {}: pass --sdk or set SDKROOT",
+        build::APPLE_SDK_VERSION
+    )]
     NoSdk,
     #[error("the Apple SDK at {} is {found}, not the pinned {}", path.display(), build::APPLE_SDK_VERSION)]
     SdkVersion { path: PathBuf, found: String },
     #[error("{}: {reason}", path.display())]
     SdkSettings { path: PathBuf, reason: String },
     #[error("the build for {target} failed: {status}")]
-    Build { target: &'static str, status: std::process::ExitStatus },
+    Build {
+        target: &'static str,
+        status: std::process::ExitStatus,
+    },
     #[error("no build of {} for {target} at {}: run cargo xtask native build first", executable.name(), path.display())]
-    NotBuilt { executable: Executable, target: &'static str, path: PathBuf },
+    NotBuilt {
+        executable: Executable,
+        target: &'static str,
+        path: PathBuf,
+    },
     #[error("the release record is invalid: {0}")]
     Record(String),
     #[error(transparent)]
@@ -137,7 +150,10 @@ fn apple(target: &str) -> bool {
 /// run on, or else every target of each executable.
 fn targets(executables: &[Executable], named: &[&'static str]) -> Result<Vec<&'static str>, Error> {
     for target in named {
-        if let Some(executable) = executables.iter().find(|executable| !executable.targets().contains(target)) {
+        if let Some(executable) = executables
+            .iter()
+            .find(|executable| !executable.targets().contains(target))
+        {
             return Err(Error::NotItsTarget {
                 executable: *executable,
                 target,
@@ -146,7 +162,9 @@ fn targets(executables: &[Executable], named: &[&'static str]) -> Result<Vec<&'s
     }
     let selected = |target: &&str| {
         if named.is_empty() {
-            executables.iter().any(|executable| executable.targets().contains(target))
+            executables
+                .iter()
+                .any(|executable| executable.targets().contains(target))
         } else {
             named.contains(target)
         }
@@ -169,7 +187,10 @@ mod tests {
 
     #[test]
     fn named_targets_must_be_each_executables_and_unnamed_ones_are_all_of_theirs() {
-        let refused = targets(&[Executable::Runner, Executable::Machines], &["aarch64-apple-darwin"]);
+        let refused = targets(
+            &[Executable::Runner, Executable::Machines],
+            &["aarch64-apple-darwin"],
+        );
         assert!(
             matches!(
                 refused,
@@ -185,7 +206,10 @@ mod tests {
             targets(&[Executable::Runner, Executable::Machines], &linux).unwrap(),
             ["aarch64-unknown-linux-musl", "x86_64-unknown-linux-musl"]
         );
-        assert_eq!(targets(&[Executable::Machines], &[]).unwrap(), Executable::Machines.targets());
+        assert_eq!(
+            targets(&[Executable::Machines], &[]).unwrap(),
+            Executable::Machines.targets()
+        );
         assert_eq!(targets(&Executable::DEFAULT, &[]).unwrap(), TARGETS);
     }
 }

@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_shared_types::{BinaryStdout, CommandId, ShellId, StreamKind};
 use demi_host_interface::{
     BinaryOutput, CommandRecord, CommandState, Ending, OutputRecord, PageState, Seen, TAIL_CHARS,
     WholeOutput,
 };
+use demi_shared_types::{BinaryStdout, CommandId, ShellId, StreamKind};
 
 fn new_record() -> CommandRecord {
     CommandRecord::new(
@@ -96,7 +96,13 @@ fn the_end_gives_the_whole_output_once_with_what_the_model_had_seen() {
     let exited = record.status(0, None);
     let view = exited.whole.expect("the whole output");
     assert_eq!(view.output, whole);
-    assert_eq!(view.seen, Seen { stdout: 5, stderr: 0 });
+    assert_eq!(
+        view.seen,
+        Seen {
+            stdout: 5,
+            stderr: 0
+        }
+    );
     assert_eq!(
         exited.state,
         CommandState::Exited {
@@ -119,7 +125,10 @@ fn a_stop_ends_the_command_aborted_and_one_whose_streams_never_ended_keeps_its_v
     let mut record = new_record();
     record.append_output(StreamKind::Stderr, "partial");
     assert!(record.settle(Ending::Aborted, Arc::new(WholeOutput::default()), None, ""));
-    assert!(matches!(record.status(0, None).state, CommandState::Aborted));
+    assert!(matches!(
+        record.status(0, None).state,
+        CommandState::Aborted
+    ));
 
     let long = "x".repeat(TAIL_CHARS) + "é";
     let mut record = new_record();
@@ -158,7 +167,12 @@ async fn the_pages_view_keeps_the_newest_characters_and_their_count_until_the_en
     assert_eq!(record.status(0, None).output.text, "é");
 
     // The end adds what it brings, once; nothing changes the view after it.
-    assert!(record.settle(Ending::Exited(2), Arc::new(WholeOutput::default()), None, "end\n"));
+    assert!(record.settle(
+        Ending::Exited(2),
+        Arc::new(WholeOutput::default()),
+        None,
+        "end\n"
+    ));
     assert!(!record.append_output(StreamKind::Stderr, "late"));
     assert!(!record.mark_aborted());
     let view = record.page_view();

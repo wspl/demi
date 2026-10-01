@@ -8,10 +8,10 @@
 
 use std::{num::NonZeroU32, sync::Arc};
 
-use demi_shared_types::{Model, ModelSelection, ThinkingCapability, ThinkingConfig, char_offset};
 use demi_provider_common::{
     InferenceItem, InferenceRequest, PromptCache, ProviderEvent, ProviderRuntime, UserPart,
 };
+use demi_shared_types::{Model, ModelSelection, ThinkingCapability, ThinkingConfig, char_offset};
 use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
 

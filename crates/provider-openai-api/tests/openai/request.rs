@@ -3,13 +3,13 @@
 
 use std::{num::NonZeroU32, sync::Arc};
 
-use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingSummary, TokenUsage, WireApi};
 use demi_provider_common::{
     InferenceItem, InferenceRequest, MediaBytes, Medium, Provider, ProviderEvent, ResultPart,
     RuntimeEnv, ToolDefinition, UserPart,
     testing::{MockResponse, MockVendor, inference_request, sse_body},
 };
 use demi_provider_openai_api::VendorPolicy;
+use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingSummary, TokenUsage, WireApi};
 use serde_json::{Value, json};
 
 use crate::{body_of, provider_at, run};
@@ -100,7 +100,10 @@ fn answer(wire: WireApi) -> (MockResponse, Vec<ProviderEvent>) {
                 cache_read_tokens: 0,
                 cache_write_tokens: 0,
             };
-            (MockResponse::event_stream(body), vec![text, ProviderEvent::Response(usage)])
+            (
+                MockResponse::event_stream(body),
+                vec![text, ProviderEvent::Response(usage)],
+            )
         }
         WireApi::ChatCompletions => {
             let chunk = sse_body(&[json!({ "choices": [{ "delta": { "content": "hi" } }] })]);

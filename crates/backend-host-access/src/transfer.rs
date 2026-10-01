@@ -13,11 +13,11 @@ use std::future::Future;
 use std::rc::Rc;
 
 use bytes::Bytes;
-use http::header::{ACCEPT_RANGES, CONTENT_LENGTH, CONTENT_RANGE};
-use http::{HeaderMap, HeaderValue, StatusCode};
 use demi_backend_remote_host::{PipeReader, PipeWriter};
 use demi_host_interface::{ByteRange, FileKind, FileStat, HostError, HostFs, WriteOptions};
 use demi_web_api_protocol::ids::ConversationId;
+use http::header::{ACCEPT_RANGES, CONTENT_LENGTH, CONTENT_RANGE};
+use http::{HeaderMap, HeaderValue, StatusCode};
 use tokio::sync::{oneshot, watch};
 use tokio_util::sync::CancellationToken;
 
@@ -102,7 +102,11 @@ impl dyn HostShard + '_ {
             return Ok(Download::NotAFile);
         }
         let version = file_version(&stat);
-        if request.version.as_ref().is_some_and(|expected| *expected != version) {
+        if request
+            .version
+            .as_ref()
+            .is_some_and(|expected| *expected != version)
+        {
             return Ok(Download::Changed);
         }
         if not_modified(request.if_none_match.as_deref(), &version) {
@@ -160,13 +164,19 @@ impl dyn HostShard + '_ {
         let (done, written) = oneshot::channel();
         let input = pipe.clone();
         let write = async move {
-            let outcome = host.write_from(&path, &input, WriteOptions::default()).await;
+            let outcome = host
+                .write_from(&path, &input, WriteOptions::default())
+                .await;
             // An edge that went away reads no outcome.
             let _ = done.send(outcome);
         };
         let stop = move || pipe.fail("the upload ended before its last byte");
         let lease = self.lease_transfer(admitted, open, write, stop);
-        Ok(Upload::Open(OpenUpload { writer, written, lease }))
+        Ok(Upload::Open(OpenUpload {
+            writer,
+            written,
+            lease,
+        }))
     }
 
     /// Hands the edge a lease on an admitted transfer. The shard's owner
@@ -286,7 +296,11 @@ impl Drop for TransfersClosed {
 
 /// A file's version as an ETag: its size and modification time.
 pub fn file_version(stat: &FileStat) -> String {
-    format!("W/\"{:x}-{}\"", stat.size, hexadecimal(stat.modified.as_millisecond()))
+    format!(
+        "W/\"{:x}-{}\"",
+        stat.size,
+        hexadecimal(stat.modified.as_millisecond())
+    )
 }
 
 /// `value` in hexadecimal, a negative one with a minus sign, as
@@ -329,7 +343,9 @@ impl RangeAnswer {
     /// the file's end.
     pub fn of(header: Option<&str>, size: u64) -> Self {
         let whole = Self::Whole { size };
-        let Some((first, last)) = header.and_then(|header| header.trim().strip_prefix("bytes=")?.split_once('-')) else {
+        let Some((first, last)) =
+            header.and_then(|header| header.trim().strip_prefix("bytes=")?.split_once('-'))
+        else {
             return whole;
         };
         let digits = |text: &str| text.chars().all(|char| char.is_ascii_digit());
@@ -415,14 +431,24 @@ impl RangeAnswer {
             Self::Whole { size } => {
                 headers.insert(CONTENT_LENGTH, HeaderValue::from(size));
             }
-            Self::Part { start, length, size } => {
+            Self::Part {
+                start,
+                length,
+                size,
+            } => {
                 headers.insert(CONTENT_LENGTH, HeaderValue::from(length));
                 let range = format!("bytes {start}-{}/{size}", start + length - 1);
-                headers.insert(CONTENT_RANGE, HeaderValue::from_str(&range).expect("digits are a header value"));
+                headers.insert(
+                    CONTENT_RANGE,
+                    HeaderValue::from_str(&range).expect("digits are a header value"),
+                );
             }
             Self::Unsatisfiable { size } => {
                 let range = format!("bytes */{size}");
-                headers.insert(CONTENT_RANGE, HeaderValue::from_str(&range).expect("digits are a header value"));
+                headers.insert(
+                    CONTENT_RANGE,
+                    HeaderValue::from_str(&range).expect("digits are a header value"),
+                );
             }
         }
         headers
@@ -431,8 +457,8 @@ impl RangeAnswer {
 
 #[cfg(test)]
 mod tests {
-    use demi_shared_types::Timestamp;
     use demi_host_interface::FileKind;
+    use demi_shared_types::Timestamp;
 
     use super::*;
 
@@ -440,33 +466,106 @@ mod tests {
     fn a_range_asks_for_one_part_of_the_file_or_for_all_of_it() {
         let of = |header: &str, size: u64| RangeAnswer::of(Some(header), size);
         assert_eq!(RangeAnswer::of(None, 100), RangeAnswer::Whole { size: 100 });
-        assert_eq!(of("bytes=10-19", 100), RangeAnswer::Part { start: 10, length: 10, size: 100 });
-        assert_eq!(of("bytes=90-", 100), RangeAnswer::Part { start: 90, length: 10, size: 100 });
-        assert_eq!(of("bytes=-5", 100), RangeAnswer::Part { start: 95, length: 5, size: 100 });
-        assert_eq!(of("bytes=-500", 100), RangeAnswer::Part { start: 0, length: 100, size: 100 });
-        assert_eq!(of("bytes=50-5000", 100), RangeAnswer::Part { start: 50, length: 50, size: 100 });
+        assert_eq!(
+            of("bytes=10-19", 100),
+            RangeAnswer::Part {
+                start: 10,
+                length: 10,
+                size: 100
+            }
+        );
+        assert_eq!(
+            of("bytes=90-", 100),
+            RangeAnswer::Part {
+                start: 90,
+                length: 10,
+                size: 100
+            }
+        );
+        assert_eq!(
+            of("bytes=-5", 100),
+            RangeAnswer::Part {
+                start: 95,
+                length: 5,
+                size: 100
+            }
+        );
+        assert_eq!(
+            of("bytes=-500", 100),
+            RangeAnswer::Part {
+                start: 0,
+                length: 100,
+                size: 100
+            }
+        );
+        assert_eq!(
+            of("bytes=50-5000", 100),
+            RangeAnswer::Part {
+                start: 50,
+                length: 50,
+                size: 100
+            }
+        );
         // Past the end, or an empty suffix: nothing can be sent.
         for header in ["bytes=100-", "bytes=-0"] {
-            assert_eq!(of(header, 100), RangeAnswer::Unsatisfiable { size: 100 }, "{header}");
+            assert_eq!(
+                of(header, 100),
+                RangeAnswer::Unsatisfiable { size: 100 },
+                "{header}"
+            );
         }
         assert_eq!(of("bytes=0-", 0), RangeAnswer::Unsatisfiable { size: 0 });
         assert_eq!(of("bytes=-5", 0), RangeAnswer::Unsatisfiable { size: 0 });
         // Several ranges, a reversed one, or another unit: the whole file.
-        for header in ["bytes=0-1,5-6", "bytes=9-3", "items=0-1", "bytes=-", "bytes=a-b", "bytes=٣-"] {
-            assert_eq!(of(header, 100), RangeAnswer::Whole { size: 100 }, "{header}");
+        for header in [
+            "bytes=0-1,5-6",
+            "bytes=9-3",
+            "items=0-1",
+            "bytes=-",
+            "bytes=a-b",
+            "bytes=٣-",
+        ] {
+            assert_eq!(
+                of(header, 100),
+                RangeAnswer::Whole { size: 100 },
+                "{header}"
+            );
         }
         // Numbers past a u64: a start starts past the end, an end ends at
         // the file's end.
-        assert_eq!(of("bytes=99999999999999999999-", 100), RangeAnswer::Unsatisfiable { size: 100 });
-        assert_eq!(of("bytes=10-99999999999999999999", 100), RangeAnswer::Part { start: 10, length: 90, size: 100 });
-        assert_eq!(of("bytes=-99999999999999999999", 100), RangeAnswer::Part { start: 0, length: 100, size: 100 });
+        assert_eq!(
+            of("bytes=99999999999999999999-", 100),
+            RangeAnswer::Unsatisfiable { size: 100 }
+        );
+        assert_eq!(
+            of("bytes=10-99999999999999999999", 100),
+            RangeAnswer::Part {
+                start: 10,
+                length: 90,
+                size: 100
+            }
+        );
+        assert_eq!(
+            of("bytes=-99999999999999999999", 100),
+            RangeAnswer::Part {
+                start: 0,
+                length: 100,
+                size: 100
+            }
+        );
 
         let part = of("bytes=10-19", 100).headers();
         assert_eq!(part[CONTENT_RANGE], "bytes 10-19/100");
         assert_eq!(part[CONTENT_LENGTH], "10");
         assert_eq!(part[ACCEPT_RANGES], "bytes");
-        assert_eq!(of("bytes=100-", 100).headers()[CONTENT_RANGE], "bytes */100");
-        assert_eq!(RangeAnswer::Whole { size: 100 }.headers()[CONTENT_LENGTH], "100");
+        assert_eq!(
+            of("bytes=100-", 100).headers()[CONTENT_RANGE],
+            "bytes */100"
+        );
+        assert_eq!(
+            RangeAnswer::Whole { size: 100 }.headers()[CONTENT_LENGTH],
+            "100"
+        );
     }
 
     #[test]
@@ -481,7 +580,10 @@ mod tests {
         assert_eq!(etag, "W/\"493e0-1a0c4506c7b\"");
         assert!(not_modified(Some(&etag), &etag));
         assert!(not_modified(Some("\"493e0-1a0c4506c7b\""), &etag));
-        assert!(not_modified(Some("\"other\", W/\"493e0-1a0c4506c7b\""), &etag));
+        assert!(not_modified(
+            Some("\"other\", W/\"493e0-1a0c4506c7b\""),
+            &etag
+        ));
         assert!(not_modified(Some(" * "), &etag));
         assert!(!not_modified(Some("W/\"493e0-0\""), &etag));
         assert!(!not_modified(None, &etag));

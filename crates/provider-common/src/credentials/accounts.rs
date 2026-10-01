@@ -151,7 +151,11 @@ impl<K: AccountKit> Accounts<K> {
     /// Stores `account`: an account with the same identity key is replaced,
     /// a new one gets an id derived from its identity, and the first account
     /// of an entry without an active one becomes its active account.
-    async fn import(&self, account: NewAccount, source: &str) -> Result<AccountInfo, AccountsError> {
+    async fn import(
+        &self,
+        account: NewAccount,
+        source: &str,
+    ) -> Result<AccountInfo, AccountsError> {
         let NewAccount { secret, label } = account;
         let existing = match &label.identity_key {
             Some(key) => find_by_identity(&*self.pool, key).await?,

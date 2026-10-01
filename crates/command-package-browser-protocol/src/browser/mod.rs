@@ -1,7 +1,9 @@
 //! The `browser.*` operations (`browser.md`): their limits, the values they
 //! share, their failures, and each operation's input and result.
 
-pub use failure::{ActionProgress, BrowserErrorCode, BrowserFailure, ErrorDetails, FailureDocument};
+pub use failure::{
+    ActionProgress, BrowserErrorCode, BrowserFailure, ErrorDetails, FailureDocument,
+};
 pub use operations::*;
 
 use demi_shared_types::MAX_SAFE_INTEGER;
@@ -55,7 +57,10 @@ pub const LOCATOR_LENGTH: usize = 4096;
 /// random bytes, 22 characters.
 pub fn handle(prefix: &str, random: [u8; 16]) -> String {
     use base64::Engine;
-    format!("{prefix}_{}", base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(random))
+    format!(
+        "{prefix}_{}",
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(random)
+    )
 }
 
 /// Declares an identifier the model reads and writes, a fixed prefix and a
@@ -456,47 +461,91 @@ impl From<BrowserQueryMatch> for BrowserTarget {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserQuery {
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "BrowserQueryMatch")]
     #[garde(dive)]
     pub r#match: Option<BrowserQueryMatch>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "Box<BrowserQuery>")]
     #[garde(dive)]
     pub within: Option<Box<BrowserQuery>>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "Box<BrowserQuery>")]
     #[garde(dive)]
     pub frame: Option<Box<BrowserQuery>>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "Vec<BrowserQuery>")]
     #[garde(length(min = 1), dive)]
     pub and: Option<Vec<BrowserQuery>>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "Vec<BrowserQuery>")]
     #[garde(length(min = 1), dive)]
     pub or: Option<Vec<BrowserQuery>>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "Box<BrowserQuery>")]
     #[garde(dive)]
     pub has: Option<Box<BrowserQuery>>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "Box<BrowserQuery>")]
     #[garde(dive)]
     pub has_not: Option<Box<BrowserQuery>>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "String")]
     #[garde(length(chars, max = STDIN_BYTES))]
     pub has_text: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "String")]
     #[garde(length(chars, max = STDIN_BYTES))]
     pub has_not_text: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "bool")]
     #[garde(skip)]
     pub visible: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "usize")]
     #[garde(skip)]
     pub nth: Option<usize>,
@@ -557,17 +606,29 @@ pub struct Bounds {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct BrowserNode {
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "NodeRef")]
     pub r#ref: Option<NodeRef>,
     pub role: String,
     pub name: String,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "NodeValue")]
     pub value: Option<NodeValue>,
     pub depth: usize,
     pub states: Vec<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "Bounds")]
     pub bounds: Option<Bounds>,
 }
@@ -577,25 +638,53 @@ pub struct BrowserNode {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct BrowserTreeNode {
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "NodeRef")]
     pub r#ref: Option<NodeRef>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "String")]
     pub role: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "String")]
     pub name: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "NodeValue")]
     pub value: Option<NodeValue>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "String")]
     pub tag: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "Vec<String>")]
     pub states: Option<Vec<String>>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "Vec<BrowserTreeNode>")]
     pub children: Option<Vec<BrowserTreeNode>>,
 }

@@ -6,8 +6,8 @@
 
 use std::rc::Rc;
 
-use demi_shared_types::{ModelSelection, NodeId};
 use demi_host_interface::{CommandSet, Host, HostError, HostErrorKind};
+use demi_shared_types::{ModelSelection, NodeId};
 
 /// The node a harness hook is asked about.
 #[derive(Debug, Clone, Copy)]
@@ -80,6 +80,14 @@ pub trait AgentHarness: 'static {
     }
 }
 
+/// A profile's system prompt, written from the node's context and the
+/// rendered help of its commands.
+pub type ProfilePrompt = Rc<dyn Fn(PromptContext<'_>, &str) -> String>;
+
+/// A profile's narrowing of its parent's harness commands: the commands its
+/// child gets out of the parent's.
+pub type CommandNarrowing = Rc<dyn Fn(&CommandSet) -> CommandSet>;
+
 /// A named subagent configuration (`subagents.md` § Profiles): every field
 /// overrides what the child would inherit from its parent.
 #[derive(Clone)]
@@ -90,9 +98,9 @@ pub struct Profile {
     pub description: String,
     /// Replaces the parent's system prompt and drops its preamble; it is
     /// given the node's context and the rendered help of its commands.
-    pub system_prompt: Option<Rc<dyn Fn(PromptContext<'_>, &str) -> String>>,
+    pub system_prompt: Option<ProfilePrompt>,
     /// Narrows the parent's harness commands for the child.
-    pub commands: Option<Rc<dyn Fn(&CommandSet) -> CommandSet>>,
+    pub commands: Option<CommandNarrowing>,
     /// Whether the profile's children may spawn children of their own.
     pub can_spawn_subagents: bool,
     /// A model used instead of the parent's, on a fork of the parent's

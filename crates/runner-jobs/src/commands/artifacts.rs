@@ -5,8 +5,8 @@
 use crate::commands::contexts::Contexts;
 use crate::connection::ConnectionHandle;
 use demi_command_protocol::PackageArtifact;
-use demi_runner_protocol::wire;
 use demi_runner_command_packages::{ArtifactResolver, ArtifactSource, RuntimeError};
+use demi_runner_protocol::wire;
 use futures_util::future::BoxFuture;
 use tokio_util::sync::CancellationToken;
 

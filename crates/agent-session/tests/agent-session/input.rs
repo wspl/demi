@@ -4,10 +4,10 @@
 
 use demi_agent_store::ScheduledWakeup;
 use demi_agent_transcript::testing::{WAKEUP_TEXT, agent_message_envelope};
+use demi_provider_common::testing::TokioClock;
 use demi_shared_types::{
     AgentMessage, AgentMessageEvent, BlockId, CompletionOutcome, PendingSteer, WakeupPlacement,
 };
-use demi_provider_common::testing::TokioClock;
 
 use super::*;
 

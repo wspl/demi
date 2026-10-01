@@ -54,7 +54,10 @@ pub async fn read_text_file(fs: &dyn HostFs, path: &str) -> Result<String, TextE
 /// A directory's entries with their metadata. Each entry's metadata is
 /// awaited before the next is asked for, so one listing cannot flood the
 /// runner's queue; an entry that disappears meanwhile is left out.
-pub async fn browse_directory(fs: &dyn HostFs, path: &str) -> Result<Vec<DirectoryEntry>, HostError> {
+pub async fn browse_directory(
+    fs: &dyn HostFs,
+    path: &str,
+) -> Result<Vec<DirectoryEntry>, HostError> {
     let names = fs.read_dir(path).await?;
     let directory = path.trim_end_matches('/');
     let mut entries = Vec::with_capacity(names.len());
@@ -81,9 +84,21 @@ mod tests {
 
     #[test]
     fn text_is_utf8_without_a_nul_byte_up_to_the_snapshot_limit() {
-        assert_eq!(text_of(Bytes::from_static(b"1\n2\n")), Ok("1\n2\n".to_owned()));
-        assert_eq!(text_of(Bytes::from_static(b"\x00\xff\x01")), Err(TextRefusal::NotText));
-        assert_eq!(text_of(Bytes::from_static(b"nul \x00 inside")), Err(TextRefusal::NotText));
-        assert_eq!(text_of(Bytes::from(vec![b'a'; EDIT_FILE_BYTES + 1])), Err(TextRefusal::TooLarge));
+        assert_eq!(
+            text_of(Bytes::from_static(b"1\n2\n")),
+            Ok("1\n2\n".to_owned())
+        );
+        assert_eq!(
+            text_of(Bytes::from_static(b"\x00\xff\x01")),
+            Err(TextRefusal::NotText)
+        );
+        assert_eq!(
+            text_of(Bytes::from_static(b"nul \x00 inside")),
+            Err(TextRefusal::NotText)
+        );
+        assert_eq!(
+            text_of(Bytes::from(vec![b'a'; EDIT_FILE_BYTES + 1])),
+            Err(TextRefusal::TooLarge)
+        );
     }
 }

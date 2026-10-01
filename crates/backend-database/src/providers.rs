@@ -85,18 +85,21 @@ pub struct CredentialWrite {
     pub secret: Vec<u8>,
 }
 
-const PROVIDER_COLUMNS: &str =
-    "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at";
-const CREDENTIAL_COLUMNS: &str = "id, identity_key, label, detail, source, secret, version, quota, updated_at";
+const PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at";
+const CREDENTIAL_COLUMNS: &str =
+    "id, identity_key, label, detail, source, secret, version, quota, updated_at";
 
 impl ControlService {
     /// The master account, which a shared instance's entries belong to.
     pub async fn master(&self) -> Result<Option<UserId>, StorageError> {
         self.call(|connection, _| {
             let id: Option<String> = connection
-                .query_row("SELECT id FROM users WHERE role = 'master'", [], |row| row.get(0))
+                .query_row("SELECT id FROM users WHERE role = 'master'", [], |row| {
+                    row.get(0)
+                })
                 .optional()?;
-            id.map(|id| decode("users", "id", UserId::try_from(id))).transpose()
+            id.map(|id| decode("users", "id", UserId::try_from(id)))
+                .transpose()
         })
         .await
     }
@@ -145,7 +148,8 @@ impl ControlService {
     }
 
     pub async fn provider(&self, id: ProviderId) -> Result<Option<ProviderRow>, StorageError> {
-        self.call(move |connection, _| provider_by_id(connection, &id)).await
+        self.call(move |connection, _| provider_by_id(connection, &id))
+            .await
     }
 
     /// The owner's entries, oldest first.
@@ -203,7 +207,10 @@ impl ControlService {
     }
 
     /// The entry's accounts, ordered by id.
-    pub async fn credentials(&self, provider: ProviderId) -> Result<Vec<CredentialRow>, StorageError> {
+    pub async fn credentials(
+        &self,
+        provider: ProviderId,
+    ) -> Result<Vec<CredentialRow>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection.prepare_cached(&format!(
                 "SELECT {CREDENTIAL_COLUMNS} FROM provider_credentials WHERE provider_id = ?1 ORDER BY id"
@@ -302,7 +309,11 @@ impl ControlService {
     }
 
     /// Removes the account, and the entry's selection of it with it.
-    pub async fn remove_credential(&self, provider: ProviderId, id: CredentialId) -> Result<(), StorageError> {
+    pub async fn remove_credential(
+        &self,
+        provider: ProviderId,
+        id: CredentialId,
+    ) -> Result<(), StorageError> {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
             transaction.execute(
@@ -338,7 +349,10 @@ impl ControlService {
     }
 
     /// The entry's catalog record, validated.
-    pub async fn catalog_record(&self, provider: ProviderId) -> Result<Option<CatalogRecord>, StorageError> {
+    pub async fn catalog_record(
+        &self,
+        provider: ProviderId,
+    ) -> Result<Option<CatalogRecord>, StorageError> {
         self.call(move |connection, _| {
             let text: Option<String> = connection
                 .query_row(
@@ -347,7 +361,8 @@ impl ControlService {
                     |row| row.get(0),
                 )
                 .optional()?;
-            text.map(|text| json("model_catalogs", "record", &text)).transpose()
+            text.map(|text| json("model_catalogs", "record", &text))
+                .transpose()
         })
         .await
     }
@@ -373,16 +388,23 @@ impl ControlService {
 
     pub async fn delete_catalog_record(&self, provider: ProviderId) -> Result<(), StorageError> {
         self.call(move |connection, _| {
-            connection.execute("DELETE FROM model_catalogs WHERE provider_id = ?1", [provider.as_str()])?;
+            connection.execute(
+                "DELETE FROM model_catalogs WHERE provider_id = ?1",
+                [provider.as_str()],
+            )?;
             Ok(())
         })
         .await
     }
 }
 
-fn provider_by_id(connection: &Connection, id: &ProviderId) -> Result<Option<ProviderRow>, StorageError> {
-    let mut statement =
-        connection.prepare_cached(&format!("SELECT {PROVIDER_COLUMNS} FROM providers WHERE id = ?1"))?;
+fn provider_by_id(
+    connection: &Connection,
+    id: &ProviderId,
+) -> Result<Option<ProviderRow>, StorageError> {
+    let mut statement = connection.prepare_cached(&format!(
+        "SELECT {PROVIDER_COLUMNS} FROM providers WHERE id = ?1"
+    ))?;
     let mut rows = statement.query([id.as_str()])?;
     rows.next()?.map(provider_row).transpose()
 }
@@ -424,7 +446,11 @@ fn write_credential(
 fn provider_row(row: &Row<'_>) -> Result<ProviderRow, StorageError> {
     let active: Option<String> = row.get("active_credential_id")?;
     Ok(ProviderRow {
-        id: decode("providers", "id", ProviderId::try_from(row.get::<_, String>("id")?))?,
+        id: decode(
+            "providers",
+            "id",
+            ProviderId::try_from(row.get::<_, String>("id")?),
+        )?,
         owner: decode(
             "providers",
             "owner_user_id",
@@ -434,12 +460,19 @@ fn provider_row(row: &Row<'_>) -> Result<ProviderRow, StorageError> {
         kind: decode(
             "providers",
             "credential_kind",
-            row.get::<_, String>("credential_kind")?.parse::<CredentialKind>(),
+            row.get::<_, String>("credential_kind")?
+                .parse::<CredentialKind>(),
         )?,
         label: row.get("label")?,
         config: row.get("config")?,
         active: active
-            .map(|id| decode("providers", "active_credential_id", CredentialId::try_from(id)))
+            .map(|id| {
+                decode(
+                    "providers",
+                    "active_credential_id",
+                    CredentialId::try_from(id),
+                )
+            })
             .transpose()?,
         created_at: instant(row, "providers", "created_at")?,
     })

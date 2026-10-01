@@ -9,11 +9,11 @@ use std::{
     rc::Rc,
 };
 
+use demi_provider_common::UserPart;
 use demi_shared_types::{
     B64Bytes, BlobRef, Block, CommandId, FileExtension, Model, ModelSelection, NodeId,
     QueuedMessage, Sequence, Timestamp, UserContentBlock,
 };
-use demi_provider_common::UserPart;
 use futures_util::future::LocalBoxFuture;
 
 use crate::{
@@ -52,9 +52,7 @@ pub fn model_reading(provider: &str, model: &str, extensions: &[FileExtension]) 
 pub fn png(width: u32, height: u32, seed: u8) -> B64Bytes {
     use image::{DynamicImage, Rgba, RgbaImage, codecs::png::PngEncoder};
 
-    let pixels = RgbaImage::from_fn(width, height, |x, y| {
-        Rgba([x as u8, y as u8, seed, 255])
-    });
+    let pixels = RgbaImage::from_fn(width, height, |x, y| Rgba([x as u8, y as u8, seed, 255]));
     let mut bytes = Vec::new();
     DynamicImage::ImageRgba8(pixels)
         .write_with_encoder(PngEncoder::new(&mut bytes))
@@ -819,7 +817,12 @@ pub mod store_contract {
             .expect("the node reopens");
         let reopened = stored(store, "child").await.expect("the node exists");
         assert_eq!(
-            (reopened.closed, reopened.round, reopened.started_at, reopened.delivered),
+            (
+                reopened.closed,
+                reopened.round,
+                reopened.started_at,
+                reopened.delivered
+            ),
             (None, 2, resumed, false)
         );
         assert_eq!(queue(store, "child").await, [message("m2")]);
@@ -917,7 +920,10 @@ pub mod store_contract {
         let blobs = blobs.blobs();
         let bytes = B64Bytes::new(vec![0x89, b'P', b'N', b'G', 0, 1, 2, 3]);
         let name = format!("{:x}", Sha256::digest(bytes.as_bytes()));
-        let blob = blobs.put(bytes.clone()).await.expect("the namespace stores bytes");
+        let blob = blobs
+            .put(bytes.clone())
+            .await
+            .expect("the namespace stores bytes");
         assert_eq!(blob.as_str(), name);
         assert_eq!(
             blobs.get(&blob).await.expect("the namespace reads bytes"),
@@ -925,7 +931,10 @@ pub mod store_contract {
         );
         let unknown = BlobRef::try_from("0".repeat(64)).expect("64 hexadecimal digits name a blob");
         assert_eq!(
-            blobs.get(&unknown).await.expect("the namespace reads bytes"),
+            blobs
+                .get(&unknown)
+                .await
+                .expect("the namespace reads bytes"),
             None
         );
     }
@@ -980,12 +989,7 @@ pub mod store_contract {
             update(Vec::new(), Vec::new()),
         )
         .await;
-        for (child, number) in [
-            ("late", 4),
-            ("early", 1),
-            ("second", 3),
-            ("first", 2),
-        ] {
+        for (child, number) in [("late", 4), ("early", 1), ("second", 3), ("first", 2)] {
             create(
                 store,
                 record(child, Some("root"), number),

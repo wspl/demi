@@ -84,7 +84,11 @@ impl Entry {
 }
 
 impl ModelCatalogCache {
-    pub fn new(control: ControlService, clock: Arc<dyn Clock>, edge: tokio::runtime::Handle) -> Self {
+    pub fn new(
+        control: ControlService,
+        clock: Arc<dyn Clock>,
+        edge: tokio::runtime::Handle,
+    ) -> Self {
         Self {
             control,
             clock,
@@ -145,7 +149,10 @@ impl ModelCatalogCache {
                 }
             };
             if let (false, Some(record)) = (force, &record) {
-                let failure = state.failure.as_ref().map(|failure| failure.message.as_str());
+                let failure = state
+                    .failure
+                    .as_ref()
+                    .map(|failure| failure.message.as_str());
                 return Ok(match failure {
                     Some(message) => stale(record, message),
                     None => stale_without_warning(record),
@@ -164,7 +171,10 @@ impl ModelCatalogCache {
 
     /// Drops the entry's record from memory and storage, and cancels its
     /// refresh, which writes nothing back.
-    pub async fn invalidate(&self, provider: &ProviderId) -> Result<(), demi_backend_database::StorageError> {
+    pub async fn invalidate(
+        &self,
+        provider: &ProviderId,
+    ) -> Result<(), demi_backend_database::StorageError> {
         let entry = self.lock().remove(provider);
         if let Some(entry) = &entry {
             entry.cancel.cancel();
@@ -211,7 +221,11 @@ impl ModelCatalogCache {
     /// The record storage holds under the entry's key, read once. A stored
     /// record that fails validation is the entry's failure, never repaired
     /// or dropped.
-    async fn stored(&self, provider: &ProviderId, entry: &Entry) -> Result<Option<Arc<CatalogRecord>>, String> {
+    async fn stored(
+        &self,
+        provider: &ProviderId,
+        entry: &Entry,
+    ) -> Result<Option<Arc<CatalogRecord>>, String> {
         if let Some(record) = entry.lock().record.clone() {
             return Ok(record);
         }
@@ -220,7 +234,9 @@ impl ModelCatalogCache {
             .catalog_record(provider.clone())
             .await
             .map_err(|error| error.to_string())?;
-        let record = stored.filter(|record| record.key == entry.key).map(Arc::new);
+        let record = stored
+            .filter(|record| record.key == entry.key)
+            .map(Arc::new);
         let mut state = entry.lock();
         // A concurrent read or a refresh may have set it meanwhile.
         Ok(state.record.get_or_insert(record).clone())
@@ -322,9 +338,12 @@ async fn refresh(
 /// The catalog a source answered, when it can be kept: valid, and not a
 /// stale copy of the source's own, which counts as a failed refresh.
 fn usable(catalog: ProviderModelList) -> Result<ProviderModelList, String> {
-    catalog
-        .validate()
-        .map_err(|report| format!("The catalog cannot be read: {}", report.to_string().trim_end()))?;
+    catalog.validate().map_err(|report| {
+        format!(
+            "The catalog cannot be read: {}",
+            report.to_string().trim_end()
+        )
+    })?;
     if catalog.stale {
         return Err(if catalog.warnings.is_empty() {
             "The provider answered a stale model catalog".to_owned()
@@ -341,8 +360,8 @@ mod tests {
 
     use demi_backend_database::control::testing;
     use demi_backend_database::providers::NewProvider;
-    use demi_shared_types::ProviderModel;
     use demi_provider_common::testing::TokioClock;
+    use demi_shared_types::ProviderModel;
     use demi_web_api_protocol::providers::CredentialKind;
     use futures_util::future::join_all;
     use tokio::sync::oneshot;
@@ -386,9 +405,12 @@ mod tests {
     impl Fixture {
         async fn new() -> Self {
             let data = tempfile::tempdir().unwrap();
-            let control = ControlService::open(&data.path().join("control.sqlite"), Arc::new(demi_shared_types::SystemClock))
-                .await
-                .unwrap();
+            let control = ControlService::open(
+                &data.path().join("control.sqlite"),
+                Arc::new(demi_shared_types::SystemClock),
+            )
+            .await
+            .unwrap();
             let owner = testing::master(&control).await.id;
             let provider = ProviderId::try_from("provider").unwrap();
             let entry = NewProvider {
@@ -439,7 +461,10 @@ mod tests {
         dropped: Arc<AtomicBool>,
     }
 
-    fn awaiting(reads: &Arc<AtomicUsize>, awaited: Awaited) -> impl FnOnce() -> CatalogFetch + Send + use<> {
+    fn awaiting(
+        reads: &Arc<AtomicUsize>,
+        awaited: Awaited,
+    ) -> impl FnOnce() -> CatalogFetch + Send + use<> {
         struct Dropped(Arc<AtomicBool>);
         impl Drop for Dropped {
             fn drop(&mut self) {
@@ -478,7 +503,8 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn a_fresh_record_serves_from_memory_and_storage_and_an_expired_one_refreshes_once_behind_its_readers() {
+    async fn a_fresh_record_serves_from_memory_and_storage_and_an_expired_one_refreshes_once_behind_its_readers()
+     {
         let fixture = Fixture::new().await;
         let reads = Arc::new(AtomicUsize::new(0));
         let cache = fixture.cache();
@@ -491,10 +517,10 @@ mod tests {
             )
         }))
         .await;
-        assert!(
-            cold.iter()
-                .all(|list| list.as_ref().is_ok_and(|list| name(list) == "First" && !list.stale))
-        );
+        assert!(cold.iter().all(|list| {
+            list.as_ref()
+                .is_ok_and(|list| name(list) == "First" && !list.stale)
+        }));
         assert_eq!(reads.load(Ordering::SeqCst), 1);
         cache
             .read(
@@ -519,7 +545,10 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!((name(&restored), reads.load(Ordering::SeqCst)), ("First", 1));
+        assert_eq!(
+            (name(&restored), reads.load(Ordering::SeqCst)),
+            ("First", 1)
+        );
 
         // Expired: every reader gets the record at once, marked stale, and one
         // refresh starts; a forced read joins it.
@@ -529,7 +558,10 @@ mod tests {
         let mut stale = Vec::new();
         for _ in 0..8 {
             let source = fetch.take().map_or_else(
-                || Box::new(answering(&reads, Ok(catalog("Never")))) as Box<dyn FnOnce() -> CatalogFetch>,
+                || {
+                    Box::new(answering(&reads, Ok(catalog("Never"))))
+                        as Box<dyn FnOnce() -> CatalogFetch>
+                },
                 |fetch| Box::new(fetch) as Box<dyn FnOnce() -> CatalogFetch>,
             );
             stale.push(
@@ -567,7 +599,8 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn a_failed_refresh_keeps_the_record_holds_off_a_minute_and_a_forced_refresh_does_not_wait() {
+    async fn a_failed_refresh_keeps_the_record_holds_off_a_minute_and_a_forced_refresh_does_not_wait()
+     {
         let fixture = Fixture::new().await;
         let reads = Arc::new(AtomicUsize::new(0));
         let failures = Arc::new(AtomicUsize::new(0));
@@ -581,7 +614,11 @@ mod tests {
             )
             .await
             .unwrap();
-        let kept = fixture.control.catalog_record(fixture.provider.clone()).await.unwrap();
+        let kept = fixture
+            .control
+            .catalog_record(fixture.provider.clone())
+            .await
+            .unwrap();
         tokio::time::advance(Duration::from_secs(15 * 60)).await;
         let failed = cache
             .read(
@@ -597,7 +634,11 @@ mod tests {
             (true, "First", vec!["offline".to_owned()])
         );
         assert_eq!(
-            fixture.control.catalog_record(fixture.provider.clone()).await.unwrap(),
+            fixture
+                .control
+                .catalog_record(fixture.provider.clone())
+                .await
+                .unwrap(),
             kept
         );
         // Held off: no automatic refresh for a minute.
@@ -650,7 +691,11 @@ mod tests {
             let cache = cache.clone();
             let provider = fixture.provider.clone();
             let fetch = awaiting(&reads, awaited);
-            tokio::spawn(async move { cache.read(&provider, "old-account".into(), fetch, false).await })
+            tokio::spawn(async move {
+                cache
+                    .read(&provider, "old-account".into(), fetch, false)
+                    .await
+            })
         };
         started.notified().await;
         cache.invalidate(&fixture.provider).await.unwrap();
@@ -678,7 +723,10 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!((name(&changed), reads.load(Ordering::SeqCst)), ("Changed", 3));
+        assert_eq!(
+            (name(&changed), reads.load(Ordering::SeqCst)),
+            ("Changed", 3)
+        );
         let stored = fixture
             .control
             .catalog_record(fixture.provider.clone())
@@ -689,16 +737,25 @@ mod tests {
             (stored.key.as_str(), name(&stored.catalog)),
             ("changed-config", "Changed")
         );
-        fixture.control.delete_provider(fixture.provider.clone()).await.unwrap();
+        fixture
+            .control
+            .delete_provider(fixture.provider.clone())
+            .await
+            .unwrap();
         assert_eq!(
-            fixture.control.catalog_record(fixture.provider.clone()).await.unwrap(),
+            fixture
+                .control
+                .catalog_record(fixture.provider.clone())
+                .await
+                .unwrap(),
             None
         );
         cache.close().await;
     }
 
     #[tokio::test(start_paused = true)]
-    async fn cold_failures_and_unusable_answers_are_explicit_a_refresh_times_out_and_closing_ends_its_readers() {
+    async fn cold_failures_and_unusable_answers_are_explicit_a_refresh_times_out_and_closing_ends_its_readers()
+     {
         let fixture = Fixture::new().await;
         let reads = Arc::new(AtomicUsize::new(0));
         let cache = Arc::new(fixture.cache());
@@ -714,18 +771,35 @@ mod tests {
         let mut invalid = catalog("Invalid");
         invalid.models[0].output_limit = Some(0);
         let refused = cache
-            .read(&fixture.provider, "key".into(), answering(&reads, Ok(invalid)), true)
+            .read(
+                &fixture.provider,
+                "key".into(),
+                answering(&reads, Ok(invalid)),
+                true,
+            )
             .await;
         assert!(refused.unwrap_err().contains("cannot be read"));
         let mut stale = catalog("Stale");
         stale.stale = true;
         stale.warnings = vec!["Using stale models.dev catalog: offline".into()];
         let refused = cache
-            .read(&fixture.provider, "key".into(), answering(&reads, Ok(stale)), true)
+            .read(
+                &fixture.provider,
+                "key".into(),
+                answering(&reads, Ok(stale)),
+                true,
+            )
             .await;
-        assert_eq!(refused, Err("Using stale models.dev catalog: offline".into()));
         assert_eq!(
-            fixture.control.catalog_record(fixture.provider.clone()).await.unwrap(),
+            refused,
+            Err("Using stale models.dev catalog: offline".into())
+        );
+        assert_eq!(
+            fixture
+                .control
+                .catalog_record(fixture.provider.clone())
+                .await
+                .unwrap(),
             None
         );
 
@@ -734,7 +808,12 @@ mod tests {
         let dropped = awaited.dropped.clone();
         let before = Instant::now();
         let timed_out = cache
-            .read(&fixture.provider, "key".into(), awaiting(&reads, awaited), true)
+            .read(
+                &fixture.provider,
+                "key".into(),
+                awaiting(&reads, awaited),
+                true,
+            )
             .await;
         assert_eq!(timed_out, Err("Model catalog request timed out".into()));
         assert_eq!(before.elapsed(), REFRESH_LIMIT);

@@ -211,7 +211,9 @@ fn image_paths(executables: &BTreeMap<String, PackageArtifact>, _: &()) -> garde
         let under = path.starts_with("/usr/") || path.starts_with("/opt/");
         let named = path.len() > "/usr/".len() && !path.contains(['\r', '\n']);
         if !under || !named || path.split('/').any(|segment| segment == "..") {
-            return Err(garde::Error::new(format!("invalid image executable path {path:?}")));
+            return Err(garde::Error::new(format!(
+                "invalid image executable path {path:?}"
+            )));
         }
     }
     Ok(())

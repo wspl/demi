@@ -100,17 +100,20 @@ impl ProviderFailure {
         let message = if body.is_empty() {
             format!("{label} API request failed with HTTP {}", status.as_u16())
         } else {
-            format!("{label} API request failed with HTTP {}: {body}", status.as_u16())
+            format!(
+                "{label} API request failed with HTTP {}: {body}",
+                status.as_u16()
+            )
         };
         let record = HttpFailureRecord::from_response(status, headers, body);
         let failure = Self {
             code: ErrorCode::from_http(status.as_u16(), &message),
             message,
-            diagnostics: Some(diagnostics(
+            diagnostics: Some(Box::new(diagnostics(
                 FailureSource::Http,
                 Some(status.as_u16()),
                 Some(record.to_json()),
-            )),
+            ))),
             retry_after: None,
         };
         failure.with_retry_wait(reader, received_at)

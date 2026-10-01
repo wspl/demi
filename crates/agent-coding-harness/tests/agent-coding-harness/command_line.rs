@@ -28,11 +28,7 @@ pub fn demi() -> (CommandSet, Node) {
 }
 
 /// The input `demi <line>` gives its command, with `stdin` as the body.
-pub fn parse(
-    root: &Node,
-    line: &[&str],
-    stdin: Option<&str>,
-) -> Result<Parsed, UsageError> {
+pub fn parse(root: &Node, line: &[&str], stdin: Option<&str>) -> Result<Parsed, UsageError> {
     let argv = argv(line);
     let selected = root.select(&argv)?;
     let parsed = selected.parse(&argv)?;

@@ -57,7 +57,9 @@ fn fixture(id: &str) -> Value {
 /// `value` with the field at `pointer` set to `field`, adding it if absent.
 fn with(mut value: Value, pointer: &str, field: Value) -> Value {
     let (parent, key) = pointer.rsplit_once('/').unwrap();
-    let target = value.pointer_mut(parent).unwrap_or_else(|| panic!("{parent}"));
+    let target = value
+        .pointer_mut(parent)
+        .unwrap_or_else(|| panic!("{parent}"));
     match target {
         Value::Object(object) => {
             object.insert(key.to_owned(), field);
@@ -94,10 +96,15 @@ fn mutated(case: &Value) -> Value {
 /// tolerant objects, § Rules only Rust checks).
 #[test]
 fn stored_blocks_refuse_what_the_contract_does_not_hold() {
-    let table: Value = serde_json::from_str(include_str!("fixtures/blocks-mutations.json")).unwrap();
+    let table: Value =
+        serde_json::from_str(include_str!("fixtures/blocks-mutations.json")).unwrap();
     for case in table["refused"].as_array().unwrap() {
         let value = mutated(case);
-        assert!(decode_value(&value).is_err(), "{} was accepted: {value}", case["why"]);
+        assert!(
+            decode_value(&value).is_err(),
+            "{} was accepted: {value}",
+            case["why"]
+        );
     }
 }
 

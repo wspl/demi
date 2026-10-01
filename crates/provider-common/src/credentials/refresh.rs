@@ -134,7 +134,9 @@ pub struct Stored<S> {
 }
 
 /// Reads and decodes an account's secret document.
-pub async fn read_secret<S: SecretDocument>(doc: &dyn AccountDocument) -> Result<Stored<S>, AccountError> {
+pub async fn read_secret<S: SecretDocument>(
+    doc: &dyn AccountDocument,
+) -> Result<Stored<S>, AccountError> {
     let revision = doc.read().await.map_err(AccountError::Store)?;
     let Some(revision) = revision else {
         return Err(AccountError::Missing);

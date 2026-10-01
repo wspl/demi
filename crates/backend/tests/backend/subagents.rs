@@ -10,16 +10,18 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
+use demi_backend_providers::llm::families::{
+    FamilyArgs, FamilyCredential, FamilyError, ProviderFamily,
+};
 use demi_conversation_socket_protocol::JobPhase;
-use demi_backend_providers::llm::families::{FamilyArgs, FamilyCredential, FamilyError, ProviderFamily};
+use demi_provider_common::testing::event;
+use demi_provider_common::{
+    Capabilities, CatalogError, InferenceRequest, Provider, ProviderEvent, ProviderRun,
+    ProviderRuntime, RequestLimits, RuntimeEnv, RuntimeError,
+};
 use demi_shared_types::{
     AuthState, Block, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
     RuntimeState, Timestamp,
-};
-use demi_provider_common::testing::event;
-use demi_provider_common::{
-    Capabilities, CatalogError, InferenceRequest, Provider, ProviderEvent, ProviderRun, ProviderRuntime, RequestLimits,
-    RuntimeEnv, RuntimeError,
 };
 use demi_web_api_protocol::providers::{CredentialKind, ProviderAnswer};
 use futures_util::future::{BoxFuture, LocalBoxFuture};
@@ -54,11 +56,19 @@ struct ScriptState {
 impl Scripts {
     fn root(&self, conversation: &str, answers: Vec<Answer>) {
         let mut state = self.state.lock().unwrap();
-        state.roots.entry(conversation.to_owned()).or_default().extend(answers);
+        state
+            .roots
+            .entry(conversation.to_owned())
+            .or_default()
+            .extend(answers);
     }
 
     fn child(&self, answers: Vec<Answer>) {
-        self.state.lock().unwrap().unclaimed.push_back(answers.into());
+        self.state
+            .lock()
+            .unwrap()
+            .unclaimed
+            .push_back(answers.into());
     }
 
     /// What the requests of the sessions `keep` accepts carried, in order.
@@ -76,7 +86,9 @@ impl Scripts {
         let mut guard = self.state.lock().unwrap();
         let state = &mut *guard;
         let session = request.session_id.clone();
-        state.asked.push((session.clone(), format!("{:?}", request.items)));
+        state
+            .asked
+            .push((session.clone(), format!("{:?}", request.items)));
         let script = match state.roots.get_mut(&session) {
             Some(script) => script,
             None => {
@@ -97,7 +109,11 @@ impl Scripts {
 /// The model's shell call `id` running `script`.
 fn shell(id: &str, script: &str) -> Answer {
     vec![
-        event::tool_call(id, "shell_exec", json!({ "description": id, "script": script, "timeoutMs": 60_000 })),
+        event::tool_call(
+            id,
+            "shell_exec",
+            json!({ "description": id, "script": script, "timeoutMs": 60_000 }),
+        ),
         event::response(1, 1),
     ]
 }
@@ -134,7 +150,11 @@ impl Provider for TreeProvider {
     }
 
     fn auth_status(&self) -> BoxFuture<'_, AuthState> {
-        Box::pin(async { AuthState::Authenticated { account_label: None } })
+        Box::pin(async {
+            AuthState::Authenticated {
+                account_label: None,
+            }
+        })
     }
 
     fn runtime_state(&self) -> RuntimeState {
@@ -180,8 +200,17 @@ impl ProviderRuntime for TreeRuntime {
 /// A backend whose master has an entry of the scripted family, and the
 /// conversation `FIRST` on the entry's model `m` and a paired device's
 /// `work` directory; the harness holds the backend's data and the device.
-async fn tree(scripts: &Arc<Scripts>) -> (Harness, TestBackend, Session, crate::support::Paired, String) {
-    let harness = Harness::new().with_families(demi_backend::families::builtin().with("tree", Tree(scripts.clone())));
+async fn tree(
+    scripts: &Arc<Scripts>,
+) -> (
+    Harness,
+    TestBackend,
+    Session,
+    crate::support::Paired,
+    String,
+) {
+    let harness = Harness::new()
+        .with_families(demi_backend::families::builtin().with("tree", Tree(scripts.clone())));
     let (backend, master) = harness.start_set_up().await;
     let created = backend
         .post(
@@ -196,8 +225,18 @@ async fn tree(scripts: &Arc<Scripts>) -> (Harness, TestBackend, Session, crate::
             }),
         )
         .await;
-    assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
-    let provider = created.json::<ProviderAnswer>().provider.id.as_str().to_owned();
+    assert_eq!(
+        created.status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&created.body)
+    );
+    let provider = created
+        .json::<ProviderAnswer>()
+        .provider
+        .id
+        .as_str()
+        .to_owned();
     create(&backend, &master, FIRST).await;
     choose(&backend, &master, FIRST, &provider, "m").await;
     let (paired, root) = on_device(&harness, &backend, &master, FIRST).await;
@@ -216,10 +255,16 @@ async fn a_child_works_in_its_parents_files_keeps_its_own_todos_and_runs_on_afte
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
 
-    scripts.root(FIRST, vec![
-        shell("t1", "printf 'the answer is 42\\n' > notes.md && demi todo add root-only"),
-        say("written"),
-    ]);
+    scripts.root(
+        FIRST,
+        vec![
+            shell(
+                "t1",
+                "printf 'the answer is 42\\n' > notes.md && demi todo add root-only",
+            ),
+            say("written"),
+        ],
+    );
     socket.chat("m1", "Write the notes").await;
 
     // The child waits until the test lets it go, long after the spawn
@@ -230,28 +275,55 @@ async fn a_child_works_in_its_parents_files_keeps_its_own_todos_and_runs_on_afte
          demi host shell --host laptop \"demi todo add child-only\" && demi todo list"
     );
     scripts.child(vec![shell("c1", &child), say("the file says 42")]);
-    scripts.root(FIRST, vec![
-        shell("t2", "demi agent spawn --description reader <<< 'Read notes.md and answer'"),
-        say("dispatched"),
-        // The child's completion wakes the idle parent.
-        say("received"),
-    ]);
+    scripts.root(
+        FIRST,
+        vec![
+            shell(
+                "t2",
+                "demi agent spawn --description reader <<< 'Read notes.md and answer'",
+            ),
+            say("dispatched"),
+            // The child's completion wakes the idle parent.
+            say("received"),
+        ],
+    );
     socket.chat("m2", "Delegate the reading").await;
     std::fs::write(format!("{root}/go"), "").unwrap();
     socket.until_idle().await;
 
     let children = scripts.asked(|session| session != FIRST);
     let read = children.last().unwrap();
-    assert!(read.contains("the answer is 42") && read.contains("child-only"), "{read}");
-    assert!(!read.contains("root-only"), "the child's todos are its own: {read}");
-    assert_eq!(std::fs::read_to_string(format!("{root}/reply.md")).unwrap(), "from the child\n");
+    assert!(
+        read.contains("the answer is 42") && read.contains("child-only"),
+        "{read}"
+    );
+    assert!(
+        !read.contains("root-only"),
+        "the child's todos are its own: {read}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(format!("{root}/reply.md")).unwrap(),
+        "from the child\n"
+    );
 
-    scripts.root(FIRST, vec![shell("t3", "cat reply.md && demi todo list"), say("checked")]);
+    scripts.root(
+        FIRST,
+        vec![
+            shell("t3", "cat reply.md && demi todo list"),
+            say("checked"),
+        ],
+    );
     socket.chat("m3", "Check").await;
     let checked = scripts.asked(|session| session == FIRST);
     let checked = &checked[checked.len() - 1];
-    assert!(checked.contains("from the child") && checked.contains("root-only"), "{checked}");
-    assert!(!checked.contains("child-only"), "the parent's todos are its own: {checked}");
+    assert!(
+        checked.contains("from the child") && checked.contains("root-only"),
+        "{checked}"
+    );
+    assert!(
+        !checked.contains("child-only"),
+        "the parent's todos are its own: {checked}"
+    );
 
     let history = transcript(&backend, &master, FIRST).await;
     let jobs: Vec<(&str, JobPhase)> = history
@@ -272,14 +344,26 @@ async fn a_fork_taken_while_a_child_runs_leaves_the_child_with_its_source() {
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
     scripts.child(vec![shell("c1", WAIT), say("the child's result")]);
-    scripts.root(FIRST, vec![
-        shell("t1", "demi agent spawn --description worker <<< 'Wait for the file'"),
-        say("the child is still working"),
-        say("received"),
-    ]);
+    scripts.root(
+        FIRST,
+        vec![
+            shell(
+                "t1",
+                "demi agent spawn --description worker <<< 'Wait for the file'",
+            ),
+            say("the child is still working"),
+            say("received"),
+        ],
+    );
     socket.chat("m1", "Start a worker").await;
 
-    let text = match socket.live().await.iter().rev().find(|block| matches!(block, Block::Text(_))) {
+    let text = match socket
+        .live()
+        .await
+        .iter()
+        .rev()
+        .find(|block| matches!(block, Block::Text(_)))
+    {
         Some(block) => block.id().clone(),
         None => panic!("the parent answered"),
     };
@@ -290,10 +374,22 @@ async fn a_fork_taken_while_a_child_runs_leaves_the_child_with_its_source() {
             json!({ "id": SECOND, "blockId": text }),
         )
         .await;
-    assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
+    assert_eq!(
+        created.status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&created.body)
+    );
     // The Fork keeps the call that spawned the child, and no child.
     let before = transcript(&backend, &master, SECOND).await;
-    assert!(before.blocks.iter().any(|block| matches!(block, Block::ToolCall(_))), "{:?}", before.blocks);
+    assert!(
+        before
+            .blocks
+            .iter()
+            .any(|block| matches!(block, Block::ToolCall(_))),
+        "{:?}",
+        before.blocks
+    );
     assert!(before.subagents.is_empty(), "{:?}", before.subagents);
 
     // The child finishes into its source alone.
@@ -306,11 +402,19 @@ async fn a_fork_taken_while_a_child_runs_leaves_the_child_with_its_source() {
     // The Fork's tree has no child to list.
     let mut fork = Socket::connect(&backend, &master, SECOND).await;
     fork.open().await;
-    scripts.root(SECOND, vec![shell("f1", "demi agent list"), say("an empty tree")]);
+    scripts.root(
+        SECOND,
+        vec![shell("f1", "demi agent list"), say("an empty tree")],
+    );
     fork.chat("m2", "Who works for you?").await;
     let asked = scripts.asked(|session| session == SECOND);
     let last = &asked[asked.len() - 1];
-    let listed = &last[last.find("ToolResult { tool_use_id: \"f1\"").expect("the list's result")..];
-    assert!(listed.contains("(root session)") && !listed.contains("worker"), "{listed}");
+    let listed = &last[last
+        .find("ToolResult { tool_use_id: \"f1\"")
+        .expect("the list's result")..];
+    assert!(
+        listed.contains("(root session)") && !listed.contains("worker"),
+        "{listed}"
+    );
     backend.close().await;
 }

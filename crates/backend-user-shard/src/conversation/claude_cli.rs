@@ -12,20 +12,22 @@ use std::rc::{Rc, Weak};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use bytes::Bytes;
-use demi_backend_providers::llm::claude_releases::ReleaseError;
+use demi_backend_cloud::access::MachineAccess;
 use demi_backend_database::StorageError;
-use demi_command_package_claude_code_protocol::{Installed, Operation, PACKAGE, Release, Reply, Status};
-use demi_command_protocol::{CommandCaller, CommandContext};
+use demi_backend_providers::llm::claude_releases::ReleaseError;
 use demi_backend_remote_host::{RemoteHost, ServiceCallError, ServiceRequest};
-use demi_provider_claude_code::{CliSite, Placement, StartError};
+use demi_backend_runners::command_context::{command_context, provider_context};
+use demi_command_package_claude_code_protocol::{
+    Installed, Operation, PACKAGE, Release, Reply, Status,
+};
+use demi_command_protocol::{CommandCaller, CommandContext};
 use demi_host_interface::{Host as _, MkdirOptions, Process, SpawnRequest};
+use demi_provider_claude_code::{CliSite, Placement, StartError};
 use demi_web_api_protocol::ids::{ConversationId, ProviderId, UserId};
 use demi_web_api_protocol::providers::{CliInstall, CliMachine};
 use futures_util::future::LocalBoxFuture;
 use serde::de::DeserializeOwned;
 use tokio_util::sync::CancellationToken;
-use demi_backend_cloud::access::MachineAccess;
-use demi_backend_runners::command_context::{command_context, provider_context};
 
 use crate::services::Services;
 use crate::shard::{Shard, Shards};
@@ -43,7 +45,11 @@ pub(crate) struct CliError {
 impl fmt::Display for CliError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.version {
-            Some(version) => write!(f, "Claude Code {version} could not be installed: {}", self.reason),
+            Some(version) => write!(
+                f,
+                "Claude Code {version} could not be installed: {}",
+                self.reason
+            ),
             None => write!(f, "Claude Code could not be installed: {}", self.reason),
         }
     }
@@ -90,7 +96,8 @@ pub(crate) struct CloudPlacement {
 }
 
 impl CloudPlacement {
-    pub fn new(shard: Weak<Shard>, work: ProcessWork) -> Rc<dyn Placement> {
+    /// The placement a provider's process starts with.
+    pub fn placement(shard: Weak<Shard>, work: ProcessWork) -> Rc<dyn Placement> {
         Rc::new(Self { shard, work })
     }
 }
@@ -110,13 +117,20 @@ impl Placement for CloudPlacement {
                 .machine_access()
                 .await
                 .map_err(|error| StartError(error.to_string()))?;
-            let site = shard.cli_site(&access, &self.work).await.map_err(StartError)?;
+            let site = shard
+                .cli_site(&access, &self.work)
+                .await
+                .map_err(StartError)?;
             access
                 .host
                 .process()
                 .spawn(spawn(&site))
                 .await
-                .map_err(|error| StartError(format!("Claude Code could not be started on the Cloud: {error}")))
+                .map_err(|error| {
+                    StartError(format!(
+                        "Claude Code could not be started on the Cloud: {error}"
+                    ))
+                })
         })
     }
 }
@@ -132,19 +146,31 @@ impl Shard {
     /// Where a provider's process runs on the Cloud `access` holds: the
     /// CLI's executable, installed first when the Cloud has none, and Demi's
     /// directories there, made first.
-    async fn cli_site(&self, access: &MachineAccess, work: &ProcessWork) -> Result<CliSite, String> {
+    async fn cli_site(
+        &self,
+        access: &MachineAccess,
+        work: &ProcessWork,
+    ) -> Result<CliSite, String> {
         let control = &self.services().control;
         let context = match work {
-            ProcessWork::Conversation(id) => command_context(control, self.user(), id, CommandCaller::User {}).await,
-            ProcessWork::Account(provider) => provider_context(control, self.user(), provider).await,
+            ProcessWork::Conversation(id) => {
+                command_context(control, self.user(), id, CommandCaller::User {}).await
+            }
+            ProcessWork::Account(provider) => {
+                provider_context(control, self.user(), provider).await
+            }
         };
-        let context = context.map_err(|error| format!("The command context could not be read: {error}"))?;
+        let context =
+            context.map_err(|error| format!("The command context could not be read: {error}"))?;
         let target = CliTarget {
             host: access.host.clone(),
             home: access.home.clone(),
             context,
         };
-        let executable = self.cli_executable(&target).await.map_err(|error| error.to_string())?;
+        let executable = self
+            .cli_executable(&target)
+            .await
+            .map_err(|error| error.to_string())?;
         let site = CliSite {
             executable,
             run_dir: format!("{}/.demi/claude/run", access.home),
@@ -186,7 +212,12 @@ impl Shard {
     /// newer one again. Its Host admits each operation without waking the
     /// Cloud, and shutdown cancels it.
     fn upgrade_cli(&self, target: CliTarget, release: Release) {
-        if !self.claude_cli().upgrading.borrow_mut().insert(release.version.clone()) {
+        if !self
+            .claude_cli()
+            .upgrading
+            .borrow_mut()
+            .insert(release.version.clone())
+        {
             return;
         }
         let shard = self.this();
@@ -216,13 +247,22 @@ impl Shard {
                 Ok(path) => CliInstall::Installed { path },
                 Err(message) => CliInstall::Failed { message },
             };
-            shard.services().cli_installs.finish(shard.user(), &entry, outcome);
+            shard
+                .services()
+                .cli_installs
+                .finish(shard.user(), &entry, outcome);
         });
     }
 
     async fn install_cli_now(&self, entry: &ProviderId) -> Result<String, String> {
-        let access = self.cloud_shard().machine_access().await.map_err(|error| error.to_string())?;
-        let site = self.cli_site(&access, &ProcessWork::Account(entry.clone())).await?;
+        let access = self
+            .cloud_shard()
+            .machine_access()
+            .await
+            .map_err(|error| error.to_string())?;
+        let site = self
+            .cli_site(&access, &ProcessWork::Account(entry.clone()))
+            .await?;
         Ok(site.executable)
     }
 
@@ -244,10 +284,21 @@ impl Shard {
             return Ok(Vec::new());
         };
         let context = provider_context(control, self.user(), entry).await?;
-        let target = CliTarget { host, home, context };
-        let listed = cancel.run_until_cancelled(installed(self.services(), &target)).await;
+        let target = CliTarget {
+            host,
+            home,
+            context,
+        };
+        let listed = cancel
+            .run_until_cancelled(installed(self.services(), &target))
+            .await;
         let versions = match listed {
-            Some(Ok(installed)) => Some(installed.into_iter().map(|installed| installed.version).collect()),
+            Some(Ok(installed)) => Some(
+                installed
+                    .into_iter()
+                    .map(|installed| installed.version)
+                    .collect(),
+            ),
             Some(Err(_)) | None => None,
         };
         Ok(vec![CliMachine {
@@ -265,13 +316,24 @@ async fn installed(services: &Services, target: &CliTarget) -> Result<Vec<Instal
 }
 
 /// Installs `release` on `target` and answers the executable's path.
-async fn ensure(services: &Services, target: &CliTarget, release: &Release) -> Result<String, CliError> {
+async fn ensure(
+    services: &Services,
+    target: &CliTarget,
+    release: &Release,
+) -> Result<String, CliError> {
     let failed = |reason: String| CliError {
         version: Some(release.version.clone()),
         reason,
     };
     let record = serde_json::to_vec(release).map_err(|error| failed(error.to_string()))?;
-    let installed: Installed = call(services, target, Operation::Ensure, Bytes::from(record), Some(&release.version)).await?;
+    let installed: Installed = call(
+        services,
+        target,
+        Operation::Ensure,
+        Bytes::from(record),
+        Some(&release.version),
+    )
+    .await?;
     Ok(installed.path.to_string_lossy().into_owned())
 }
 
@@ -308,9 +370,17 @@ async fn call<T: DeserializeOwned>(
         cwd: target.home.clone(),
         resolver: services.native.resolver(&services.public_url),
     };
-    let (output, exit) = match target.host.call_service(request, input, MAX_ANSWER_BYTES).await {
+    let (output, exit) = match target
+        .host
+        .call_service(request, input, MAX_ANSWER_BYTES)
+        .await
+    {
         Ok(output) => (output, None),
-        Err(ServiceCallError::Exited { exit_code, stderr, stdout }) => (stdout, Some((exit_code, stderr))),
+        Err(ServiceCallError::Exited {
+            exit_code,
+            stderr,
+            stdout,
+        }) => (stdout, Some((exit_code, stderr))),
         Err(error) => return Err(failed(format!("the installer failed: {error}"))),
     };
     if output.iter().all(u8::is_ascii_whitespace) {
@@ -323,8 +393,12 @@ async fn call<T: DeserializeOwned>(
     match (serde_json::from_slice::<Reply<T>>(&output), exit) {
         (Ok(Reply::Failed(failure)), _) => Err(failed(failure.message)),
         (Ok(Reply::Done(answer)), None) => Ok(answer),
-        (Ok(Reply::Done(_)), Some((code, _))) => Err(failed(format!("the installer answered and exited with {code}"))),
-        (Err(error), _) => Err(failed(format!("the installer's answer cannot be read: {error}"))),
+        (Ok(Reply::Done(_)), Some((code, _))) => Err(failed(format!(
+            "the installer answered and exited with {code}"
+        ))),
+        (Err(error), _) => Err(failed(format!(
+            "the installer's answer cannot be read: {error}"
+        ))),
     }
 }
 
@@ -372,7 +446,12 @@ impl CliInstalls {
 
 /// Starts the install of `entry`'s CLI on `user`'s Cloud unless one is
 /// under way, and answers its state. Nobody waits for it.
-pub async fn start_install(services: &Services, shards: &Shards, user: &UserId, entry: &ProviderId) -> CliInstall {
+pub async fn start_install(
+    services: &Services,
+    shards: &Shards,
+    user: &UserId,
+    entry: &ProviderId,
+) -> CliInstall {
     if !services.cli_installs.begin(user, entry) {
         return CliInstall::Installing {};
     }

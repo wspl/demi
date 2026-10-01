@@ -118,6 +118,12 @@ pub struct CommandStateHistory {
     dirty: bool,
 }
 
+impl Default for CommandStateHistory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CommandStateHistory {
     /// A new node's history, which its first checkpoint already holds.
     pub fn new() -> Self {

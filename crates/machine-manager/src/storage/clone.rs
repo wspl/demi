@@ -4,11 +4,7 @@
 //! capacity never becomes allocated host storage. It runs in the manager's
 //! process, so the checkpoint's frozen window starts no program.
 
-use std::{
-    io,
-    os::unix::fs::FileExt,
-    path::Path,
-};
+use std::{io, os::unix::fs::FileExt, path::Path};
 
 use fs_err::os::unix::fs::OpenOptionsExt;
 use rustix::{fs::SeekFrom, io::Errno};
@@ -76,14 +72,16 @@ fn write_nonzero(to: &fs_err::File, chunk: &[u8], position: u64) -> io::Result<(
         match (zero, run) {
             (false, None) => run = Some(start),
             (true, Some(first)) => {
-                to.file().write_all_at(&chunk[first..start], position + first as u64)?;
+                to.file()
+                    .write_all_at(&chunk[first..start], position + first as u64)?;
                 run = None;
             }
             _ => {}
         }
     }
     if let Some(first) = run {
-        to.file().write_all_at(&chunk[first..], position + first as u64)?;
+        to.file()
+            .write_all_at(&chunk[first..], position + first as u64)?;
     }
     Ok(())
 }
@@ -110,20 +108,34 @@ pub(crate) mod tests {
         clone_sparse(&off, &source, &destination).unwrap();
         let metadata = std::fs::metadata(&destination).unwrap();
         assert_eq!(metadata.len(), bytes);
-        assert!(metadata.blocks() * 512 < 1 << 20, "{} blocks", metadata.blocks());
+        assert!(
+            metadata.blocks() * 512 < 1 << 20,
+            "{} blocks",
+            metadata.blocks()
+        );
         let copy = std::fs::File::open(&destination).unwrap();
         for (position, expected) in [(0, b"head"), (bytes - 4, b"tail")] {
             let mut read = [0; 4];
             copy.read_exact_at(&mut read, position).unwrap();
             assert_eq!(&read, expected);
         }
-        assert!(clone_sparse(&off, &source, &destination).is_err(), "the copy is new");
+        assert!(
+            clone_sparse(&off, &source, &destination).is_err(),
+            "the copy is new"
+        );
     }
 
     /// Runs `program` with `args` on this thread's namespaces.
     fn run(program: &str, args: &[&std::ffi::OsStr]) {
-        let output = std::process::Command::new(program).args(args).output().expect(program);
-        assert!(output.status.success(), "{program}: {}", String::from_utf8_lossy(&output.stderr));
+        let output = std::process::Command::new(program)
+            .args(args)
+            .output()
+            .expect(program);
+        assert!(
+            output.status.success(),
+            "{program}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     fn sha256(path: &Path) -> String {
@@ -148,17 +160,42 @@ pub(crate) mod tests {
         let content = directory.path().join("content");
         std::fs::create_dir(&content).unwrap();
         for index in 0..8u8 {
-            std::fs::write(content.join(format!("file-{index}")), vec![index + 1; 300_000 + usize::from(index) * 4096]).unwrap();
+            std::fs::write(
+                content.join(format!("file-{index}")),
+                vec![index + 1; 300_000 + usize::from(index) * 4096],
+            )
+            .unwrap();
         }
         let source = directory.path().join("source.ext4");
-        run("mke2fs", &["-q".as_ref(), "-t".as_ref(), "ext4".as_ref(), "-d".as_ref(), content.as_os_str(), source.as_os_str(), "96m".as_ref()]);
-        let file = std::fs::OpenOptions::new().write(true).open(&source).unwrap();
+        run(
+            "mke2fs",
+            &[
+                "-q".as_ref(),
+                "-t".as_ref(),
+                "ext4".as_ref(),
+                "-d".as_ref(),
+                content.as_os_str(),
+                source.as_os_str(),
+                "96m".as_ref(),
+            ],
+        );
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&source)
+            .unwrap();
         file.write_all_at(&vec![0; 2 << 20], 40 << 20).unwrap();
         file.write_all_at(b"tail", (96 << 20) - 4).unwrap();
         drop(file);
-        for (filesystem, mkfs) in [("xfs", "mkfs.xfs"), ("btrfs", "mkfs.btrfs"), ("ext4", "mkfs.ext4")] {
+        for (filesystem, mkfs) in [
+            ("xfs", "mkfs.xfs"),
+            ("btrfs", "mkfs.btrfs"),
+            ("ext4", "mkfs.ext4"),
+        ] {
             let image = directory.path().join(format!("{filesystem}.img"));
-            std::fs::File::create(&image).unwrap().set_len(512 << 20).unwrap();
+            std::fs::File::create(&image)
+                .unwrap()
+                .set_len(512 << 20)
+                .unwrap();
             let device = loopdev::attach(&off, &image).unwrap();
             let quiet: &[&str] = match filesystem {
                 "ext4" => &["-q", "-F"],
@@ -170,29 +207,62 @@ pub(crate) mod tests {
             run(mkfs, &args);
             let target = directory.path().join(filesystem);
             std::fs::create_dir(&target).unwrap();
-            rustix::mount::mount(&path, &target, filesystem, rustix::mount::MountFlags::empty(), None::<&std::ffi::CStr>)
-                .unwrap();
+            rustix::mount::mount(
+                &path,
+                &target,
+                filesystem,
+                rustix::mount::MountFlags::empty(),
+                None::<&std::ffi::CStr>,
+            )
+            .unwrap();
             drop(device);
             let inside = target.join("source.ext4");
-            run("cp", &["--sparse=always".as_ref(), source.as_os_str(), inside.as_os_str()]);
+            run(
+                "cp",
+                &[
+                    "--sparse=always".as_ref(),
+                    source.as_os_str(),
+                    inside.as_os_str(),
+                ],
+            );
             let ours = target.join("ours.ext4");
             let theirs = target.join("theirs.ext4");
             clone_sparse(&off, &inside, &ours).unwrap();
-            run("cp", &["--reflink=auto".as_ref(), "--sparse=always".as_ref(), inside.as_os_str(), theirs.as_os_str()]);
+            run(
+                "cp",
+                &[
+                    "--reflink=auto".as_ref(),
+                    "--sparse=always".as_ref(),
+                    inside.as_os_str(),
+                    theirs.as_os_str(),
+                ],
+            );
             run("sync", &["-f".as_ref(), target.as_os_str()]);
             let blocks = |path: &Path| std::fs::metadata(path).unwrap().blocks();
             assert_eq!(sha256(&ours), sha256(&inside), "{filesystem}: content");
-            assert_eq!(std::fs::metadata(&ours).unwrap().len(), 96 << 20, "{filesystem}: length");
+            assert_eq!(
+                std::fs::metadata(&ours).unwrap().len(),
+                96 << 20,
+                "{filesystem}: length"
+            );
             assert!(
                 blocks(&ours) <= blocks(&theirs),
                 "{filesystem}: {} blocks against cp's {}",
                 blocks(&ours),
                 blocks(&theirs)
             );
-            eprintln!("{filesystem}: ours {} blocks, cp {} blocks, source {}", blocks(&ours), blocks(&theirs), blocks(&inside));
+            eprintln!(
+                "{filesystem}: ours {} blocks, cp {} blocks, source {}",
+                blocks(&ours),
+                blocks(&theirs),
+                blocks(&inside)
+            );
             mount::unmount(&off, &target).unwrap();
             // Unmounting detaches the auto-clear loop device.
-            assert!(loop_detaches(&image), "{filesystem}: the loop device stays attached");
+            assert!(
+                loop_detaches(&image),
+                "{filesystem}: the loop device stays attached"
+            );
         }
     }
 

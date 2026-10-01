@@ -5,9 +5,9 @@
 //! which the session resolves from that message (`message-editing.md`
 //! § Files the edit keeps). No frame carries bytes.
 
-use demi_conversation_socket_protocol::ClientContent;
 use demi_agent_session::EditContent;
 use demi_agent_store::media::HeldMedia;
+use demi_conversation_socket_protocol::ClientContent;
 use demi_shared_types::UserContentBlock;
 use futures_util::future::LocalBoxFuture;
 

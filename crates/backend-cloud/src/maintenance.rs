@@ -11,8 +11,8 @@
 use std::rc::{Rc, Weak};
 
 use demi_backend_idle_watch::{Activity, IdlePolicy, Retirement};
-use demi_shared_gates::{GateLease, Purpose};
 use demi_machine_manager_protocol::CheckpointParams;
+use demi_shared_gates::{GateLease, Purpose};
 use tokio::time::Instant;
 use tokio_util::task::AbortOnDropHandle;
 

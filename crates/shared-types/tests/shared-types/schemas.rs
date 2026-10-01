@@ -10,7 +10,11 @@ use serde_json::{Value, json};
 /// The schema of `T` with its definitions, under both of schemars' contracts:
 /// what serde accepts and what it writes.
 fn schemas<T: schemars::JsonSchema>() -> [Value; 2] {
-    [SchemaSettings::default(), SchemaSettings::default().for_serialize()].map(|settings| {
+    [
+        SchemaSettings::default(),
+        SchemaSettings::default().for_serialize(),
+    ]
+    .map(|settings| {
         let schema = SchemaGenerator::new(settings).into_root_schema_for::<T>();
         serde_json::to_value(schema).unwrap()
     })
@@ -85,7 +89,11 @@ fn optional_fields_may_be_absent_and_nullable_fields_may_be_null() {
 fn received_types_are_strict_and_types_only_the_web_app_receives_are_tolerant() {
     let [root, _] = schemas::<Block>();
     for kind in ["user", "tool_call", "abort"] {
-        assert_eq!(variant(&root, "type", kind)["additionalProperties"], false, "{kind}");
+        assert_eq!(
+            variant(&root, "type", kind)["additionalProperties"],
+            false,
+            "{kind}"
+        );
     }
     let disabled = variant(definition(&root, "ThinkingConfig"), "type", "disabled");
     assert_eq!(disabled["additionalProperties"], false);
@@ -106,7 +114,10 @@ fn times_identities_and_bounds_carry_their_formats() {
 
     let attachment = variant(definition(&root, "UserContentBlock"), "type", "attachment");
     assert_eq!(attachment["properties"]["name"]["minLength"], 1);
-    assert_eq!(attachment["properties"]["sizeBytes"]["maximum"], MAX_SAFE_INTEGER);
+    assert_eq!(
+        attachment["properties"]["sizeBytes"]["maximum"],
+        MAX_SAFE_INTEGER
+    );
 
     let model = definition(&root, "Model");
     assert_eq!(model["properties"]["outputLimit"]["minimum"], 1);

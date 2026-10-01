@@ -8,14 +8,16 @@
 
 use std::sync::{Arc, Mutex};
 
-use demi_backend_providers::llm::families::{FamilyArgs, FamilyCredential, FamilyError, ProviderFamily};
-use demi_shared_types::{
-    AuthState, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList, RuntimeState, Timestamp,
-    TokenUsage,
+use demi_backend_providers::llm::families::{
+    FamilyArgs, FamilyCredential, FamilyError, ProviderFamily,
 };
 use demi_provider_common::{
-    Capabilities, CatalogError, InferenceItem, InferenceRequest, Provider, ProviderEvent, ProviderRun, ProviderRuntime,
-    RequestLimits, RuntimeEnv, RuntimeError, UserPart,
+    Capabilities, CatalogError, InferenceItem, InferenceRequest, Provider, ProviderEvent,
+    ProviderRun, ProviderRuntime, RequestLimits, RuntimeEnv, RuntimeError, UserPart,
+};
+use demi_shared_types::{
+    AuthState, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList, RuntimeState,
+    Timestamp, TokenUsage,
 };
 use demi_web_api_protocol::conversations::ConversationSummary;
 use demi_web_api_protocol::error::ErrorCode;
@@ -82,7 +84,11 @@ impl Provider for TitlingProvider {
     }
 
     fn auth_status(&self) -> BoxFuture<'_, AuthState> {
-        Box::pin(async { AuthState::Authenticated { account_label: None } })
+        Box::pin(async {
+            AuthState::Authenticated {
+                account_label: None,
+            }
+        })
     }
 
     fn runtime_state(&self) -> RuntimeState {
@@ -120,8 +126,12 @@ fn usage() -> ProviderEvent {
 
 impl ProviderRuntime for TitlingRuntime {
     fn run(&mut self, request: InferenceRequest) -> ProviderRun<'_> {
-        if !request.system_prompt.starts_with("You are a title generator") {
-            return stream::iter([ProviderEvent::TextDelta("Answer.".into()), usage()]).boxed_local();
+        if !request
+            .system_prompt
+            .starts_with("You are a title generator")
+        {
+            return stream::iter([ProviderEvent::TextDelta("Answer.".into()), usage()])
+                .boxed_local();
         }
         let script = self.0.clone();
         let cancel = request.cancel.clone();
@@ -176,7 +186,8 @@ fn input(request: &InferenceRequest) -> String {
 /// family that configures the model `m` with an output limit of 8,000
 /// tokens, and that entry; the harness holds the backend's data.
 async fn titling(script: &Arc<Script>) -> (Harness, TestBackend, Session, String) {
-    let mut harness = Harness::new().with_families(demi_backend::families::builtin().with("titling", Titling(script.clone())));
+    let mut harness = Harness::new()
+        .with_families(demi_backend::families::builtin().with("titling", Titling(script.clone())));
     harness.conversations.titles = true;
     let (backend, master) = harness.start_set_up().await;
     let entry = json!({
@@ -184,7 +195,12 @@ async fn titling(script: &Arc<Script>) -> (Harness, TestBackend, Session, String
     });
     let created = backend.post("/api/providers", Some(&master), entry).await;
     assert_eq!(created.status, StatusCode::CREATED);
-    let provider = created.json::<ProviderAnswer>().provider.id.as_str().to_owned();
+    let provider = created
+        .json::<ProviderAnswer>()
+        .provider
+        .id
+        .as_str()
+        .to_owned();
     (harness, backend, master, provider)
 }
 
@@ -197,7 +213,11 @@ async fn a_title_follows_the_first_message_and_a_rename_or_an_archive_while_one_
     // The web app's record creation repeats the placeholder, which settles
     // nothing.
     let repeated = backend
-        .patch(&format!("/api/conversations/{FIRST}"), &master, json!({ "title": "New conversation" }))
+        .patch(
+            &format!("/api/conversations/{FIRST}"),
+            &master,
+            json!({ "title": "New conversation" }),
+        )
         .await;
     assert_eq!(repeated.status, StatusCode::OK);
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
@@ -207,26 +227,41 @@ async fn a_title_follows_the_first_message_and_a_rename_or_an_archive_while_one_
     // first turn writes a better one.
     let message = "why does pnpm build fail with TS2307 after I moved auth into its own package";
     socket.chat("m1", message).await;
-    eventually("the title request is asked", || async { script.asked() == 1 }).await;
+    eventually("the title request is asked", || async {
+        script.asked() == 1
+    })
+    .await;
     let asked = summary(&backend, &master, FIRST).await;
-    assert_eq!((asked.title.as_str(), asked.title_generating), (message, true));
+    assert_eq!(
+        (asked.title.as_str(), asked.title_generating),
+        (message, true)
+    );
     script.answers.add_permits(1);
     eventually("the generated title is written", || async {
         summary(&backend, &master, FIRST).await.title == GENERATED
     })
     .await;
     let titled = summary(&backend, &master, FIRST).await;
-    assert_eq!((titled.title_generating, titled.title_current), (false, true));
+    assert_eq!(
+        (titled.title_generating, titled.title_current),
+        (false, true)
+    );
     {
         let asked = script.asked.lock().unwrap();
         assert_eq!(input(&asked[0]), format!("1. {message}"));
         // The request's own cap, although the configured model allows more
         // (`models.md` § Output limit).
-        assert_eq!(asked[0].max_output_tokens().map(|limit| limit.get()), Some(1_024));
+        assert_eq!(
+            asked[0].max_output_tokens().map(|limit| limit.get()),
+            Some(1_024)
+        );
         assert!(asked[0].tools.is_empty() && asked[0].thinking.is_none());
     }
     // The request is metered like a turn.
-    let totals = backend.get("/api/usage", Some(&master)).await.json::<demi_web_api_protocol::usage::UsageTotals>();
+    let totals = backend
+        .get("/api/usage", Some(&master))
+        .await
+        .json::<demi_web_api_protocol::usage::UsageTotals>();
     assert_eq!(totals.totals[0].requests, 2);
 
     // A later message titles nothing by itself, and the title is no longer
@@ -236,11 +271,23 @@ async fn a_title_follows_the_first_message_and_a_rename_or_an_archive_while_one_
     assert!(!summary(&backend, &master, FIRST).await.title_current);
     let path = format!("/api/conversations/{FIRST}/title");
     let detect = backend.post(&path, Some(&master), json!({})).await;
-    assert_eq!(detect.status, StatusCode::ACCEPTED, "{}", String::from_utf8_lossy(&detect.body));
+    assert_eq!(
+        detect.status,
+        StatusCode::ACCEPTED,
+        "{}",
+        String::from_utf8_lossy(&detect.body)
+    );
     eventually("Detect title is asked", || async { script.asked() == 2 }).await;
-    assert_eq!(input(&script.asked.lock().unwrap()[1]), format!("1. {message}\n2. and the login test"));
+    assert_eq!(
+        input(&script.asked.lock().unwrap()[1]),
+        format!("1. {message}\n2. and the login test")
+    );
     let renamed = backend
-        .patch(&format!("/api/conversations/{FIRST}"), &master, json!({ "title": "Kept" }))
+        .patch(
+            &format!("/api/conversations/{FIRST}"),
+            &master,
+            json!({ "title": "Kept" }),
+        )
         .await;
     assert_eq!(renamed.status, StatusCode::OK);
     script.answers.add_permits(1);
@@ -253,34 +300,61 @@ async fn a_title_follows_the_first_message_and_a_rename_or_an_archive_while_one_
 
     // An archive ends a request in flight, which writes nothing.
     backend.post(&path, Some(&master), json!({})).await;
-    eventually("the third request is asked", || async { script.asked() == 3 }).await;
+    eventually("the third request is asked", || async {
+        script.asked() == 3
+    })
+    .await;
     let archived = backend
-        .patch(&format!("/api/conversations/{FIRST}"), &master, json!({ "archived": true }))
+        .patch(
+            &format!("/api/conversations/{FIRST}"),
+            &master,
+            json!({ "archived": true }),
+        )
         .await;
     assert_eq!(archived.status, StatusCode::OK);
     eventually("the aborted request ends", || async {
-        let listed = backend.get("/api/conversations?archived=true", Some(&master)).await;
-        let conversations = listed.json::<demi_web_api_protocol::conversations::Conversations>().conversations;
-        conversations.first().is_some_and(|summary| !summary.title_generating)
+        let listed = backend
+            .get("/api/conversations?archived=true", Some(&master))
+            .await;
+        let conversations = listed
+            .json::<demi_web_api_protocol::conversations::Conversations>()
+            .conversations;
+        conversations
+            .first()
+            .is_some_and(|summary| !summary.title_generating)
     })
     .await;
     assert_eq!(script.answers.available_permits(), 0);
     let refused = backend.post(&path, Some(&master), json!({})).await;
-    assert_eq!(refused.refusal(), (StatusCode::CONFLICT, ErrorCode::ConversationArchived));
+    assert_eq!(
+        refused.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::ConversationArchived)
+    );
 
     // What there is nothing to title with is refused: a conversation without
     // a model, one without a message, and one whose provider is gone.
     create(&backend, &master, SECOND).await;
     let second = format!("/api/conversations/{SECOND}/title");
     let unchosen = backend.post(&second, Some(&master), json!({})).await;
-    assert_eq!(unchosen.refusal(), (StatusCode::CONFLICT, ErrorCode::ModelNotSelected));
+    assert_eq!(
+        unchosen.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::ModelNotSelected)
+    );
     choose(&backend, &master, SECOND, &provider, "m").await;
     let empty = backend.post(&second, Some(&master), json!({})).await;
-    assert_eq!(empty.refusal(), (StatusCode::CONFLICT, ErrorCode::NoMessages));
-    let deleted = backend.delete(&format!("/api/providers/{provider}"), &master).await;
+    assert_eq!(
+        empty.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::NoMessages)
+    );
+    let deleted = backend
+        .delete(&format!("/api/providers/{provider}"), &master)
+        .await;
     assert_eq!(deleted.status, StatusCode::NO_CONTENT);
     let gone = backend.post(&second, Some(&master), json!({})).await;
-    assert_eq!(gone.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ProviderNotFound));
+    assert_eq!(
+        gone.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::ProviderNotFound)
+    );
     backend.close().await;
 }
 
@@ -293,7 +367,10 @@ async fn an_answer_without_a_title_leaves_the_messages_title_and_detect_title_av
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
     socket.chat("m1", "hello   there").await;
-    eventually("the title request is asked", || async { script.asked() == 1 }).await;
+    eventually("the title request is asked", || async {
+        script.asked() == 1
+    })
+    .await;
     script.answers.add_permits(1);
     eventually("the request ends", || async {
         !summary(&backend, &master, FIRST).await.title_generating
@@ -301,6 +378,9 @@ async fn an_answer_without_a_title_leaves_the_messages_title_and_detect_title_av
     .await;
     // The title in place stays, and asking again is the retry.
     let left = summary(&backend, &master, FIRST).await;
-    assert_eq!((left.title.as_str(), left.title_current), ("hello there", false));
+    assert_eq!(
+        (left.title.as_str(), left.title_current),
+        ("hello there", false)
+    );
     backend.close().await;
 }

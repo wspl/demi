@@ -2,8 +2,8 @@
 //! working tree (`web-api.md` § Device files and remote references, § File
 //! text and working tree changes).
 
-use demi_shared_types::{MAX_SAFE_INTEGER, Nullable, Timestamp};
 use demi_runner_protocol::wire::GitChanges;
+use demi_shared_types::{MAX_SAFE_INTEGER, Nullable, Timestamp};
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -125,7 +125,9 @@ impl TryFrom<String> for TreePath {
     type Error = &'static str;
 
     fn try_from(path: String) -> Result<Self, &'static str> {
-        let inside = !path.is_empty() && !path.starts_with('/') && !path.split('/').any(|segment| segment == "..");
+        let inside = !path.is_empty()
+            && !path.starts_with('/')
+            && !path.split('/').any(|segment| segment == "..");
         if inside {
             Ok(Self(path))
         } else {

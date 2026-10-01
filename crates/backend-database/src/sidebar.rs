@@ -62,8 +62,9 @@ impl ControlService {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
             let peers = {
-                let mut statement =
-                    transaction.prepare_cached("SELECT id FROM workspaces WHERE user_id = ?1 ORDER BY sort_order, id")?;
+                let mut statement = transaction.prepare_cached(
+                    "SELECT id FROM workspaces WHERE user_id = ?1 ORDER BY sort_order, id",
+                )?;
                 let rows = statement.query_map([user.as_str()], |row| row.get::<_, String>(0))?;
                 rows.collect::<Result<Vec<String>, _>>()?
             };
@@ -89,7 +90,10 @@ fn write_order(
     moved: &str,
     before: Option<&str>,
 ) -> Result<bool, StorageError> {
-    let Some(from) = peers.iter().position(|peer| peer.eq_ignore_ascii_case(moved)) else {
+    let Some(from) = peers
+        .iter()
+        .position(|peer| peer.eq_ignore_ascii_case(moved))
+    else {
         return Ok(false);
     };
     if before.is_some_and(|before| !peers.iter().any(|peer| peer.eq_ignore_ascii_case(before))) {
@@ -105,7 +109,8 @@ fn write_order(
         None => peers.len(),
     };
     peers.insert(to, row);
-    let mut statement = connection.prepare_cached(&format!("UPDATE {table} SET sort_order = ?1 WHERE id = ?2"))?;
+    let mut statement =
+        connection.prepare_cached(&format!("UPDATE {table} SET sort_order = ?1 WHERE id = ?2"))?;
     for (position, peer) in peers.iter().enumerate() {
         let position = i64::try_from(position).expect("a partition's size fits an i64");
         statement.execute(params![position, peer])?;

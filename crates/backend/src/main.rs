@@ -19,7 +19,10 @@ fn main() -> ExitCode {
         .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
         .with(config.log.clone())
         .init();
-    let runtime = match tokio::runtime::Builder::new_multi_thread().enable_all().build() {
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
         Ok(runtime) => runtime,
         Err(error) => {
             eprintln!("demi-backend: the runtime cannot start: {error}");
@@ -59,7 +62,10 @@ async fn run(config: Config) -> ExitCode {
         "demi-backend is listening"
     );
     if let Err(error) = stopped().await {
-        tracing::error!(error = &error as &dyn std::error::Error, "the stop signals cannot be watched");
+        tracing::error!(
+            error = &error as &dyn std::error::Error,
+            "the stop signals cannot be watched"
+        );
     }
     match backend.close().await {
         Ok(()) => ExitCode::SUCCESS,

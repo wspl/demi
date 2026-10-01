@@ -28,13 +28,17 @@ pub enum CaptureCommand {
         window: u32,
     },
     /// Encode the next frame as a key frame.
-    Keyframe { capture: u32 },
+    Keyframe {
+        capture: u32,
+    },
     Encoding {
         capture: u32,
         bitrate: u32,
         fps: u32,
     },
-    Stop { capture: u32 },
+    Stop {
+        capture: u32,
+    },
 }
 
 /// What the extension tells the module.

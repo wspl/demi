@@ -16,7 +16,10 @@ use tower_http::services::{ServeDir, ServeFile};
 use super::error::ApiError;
 
 /// `app` with the files of `directory` behind every path no route answers.
-pub(super) fn serve<S: Clone + Send + Sync + 'static>(app: Router<S>, directory: PathBuf) -> Router<S> {
+pub(super) fn serve<S: Clone + Send + Sync + 'static>(
+    app: Router<S>,
+    directory: PathBuf,
+) -> Router<S> {
     let index = directory.join("index.html");
     let page = move |request: Request| page(index.clone(), request);
     let files = ServeDir::new(directory)

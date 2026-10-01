@@ -4,13 +4,13 @@
 
 use std::sync::Arc;
 
-use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingSummary};
+use demi_provider_codex::TransportMode;
 use demi_provider_common::{
     InferenceItem, InferenceRequest, MediaBytes, ResultPart, ToolDefinition, UserPart,
     openai_request::{prompt_cache_key, short_hash},
     testing::{MockVendor, RecordedRequest, inference_request, jwt},
 };
-use demi_provider_codex::TransportMode;
+use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingSummary};
 use serde_json::{Value, json};
 
 use crate::{NOW, RESPONSES, completed, fresh_token, pool_with, provider, run, runtime_of, secret};

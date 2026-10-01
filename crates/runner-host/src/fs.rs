@@ -52,9 +52,7 @@ async fn call(
     };
     Ok(match message {
         FsExists {
-            path: value,
-            cwd,
-            ..
+            path: value, cwd, ..
         } => {
             let exists = match fs::symlink_metadata(path(value, cwd)?).await {
                 Ok(_) => true,
@@ -70,9 +68,7 @@ async fn call(
             path: value, cwd, ..
         } => FsResult::Lstat(stat(fs::symlink_metadata(path(value, cwd)?).await?)?),
         FsReaddir {
-            path: value,
-            cwd,
-            ..
+            path: value, cwd, ..
         } => {
             let target = path(value, cwd)?;
             let mut directory = read_dir(&target, cancel).await?;
@@ -320,8 +316,7 @@ fn copy_entry<'a>(
         }
         if metadata.is_file() {
             // Out of open files, the copy waits for one (`runner.md` § Load).
-            demi_command_sdk::descriptors::retry(cancel, || fs::copy(source, destination))
-                .await?;
+            demi_command_sdk::descriptors::retry(cancel, || fs::copy(source, destination)).await?;
             return Ok(());
         }
         if !metadata.is_dir() {

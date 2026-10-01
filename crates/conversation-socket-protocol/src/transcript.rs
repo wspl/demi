@@ -44,7 +44,9 @@ pub enum TranscriptPatch {
 /// transcript is built, at creation and at every restore, so a version taken
 /// before a backend restart never matches after it; the revision counts the
 /// patch batches since.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, garde::Validate,
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TranscriptVersion {
     #[garde(length(chars, min = 1))]

@@ -5,12 +5,12 @@
 
 use std::sync::Arc;
 
-use demi_shared_types::LoginPending;
 use demi_provider_common::Secret;
 use demi_provider_common::credentials::{
     AccountKit, AccountLabel, AccountsCapability, AccountsError, AddAccount, AuthFailure,
     AuthReason, CredentialPool, LoginError, NewAccount, SecretDocument, read_secret,
 };
+use demi_shared_types::LoginPending;
 use futures_util::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
