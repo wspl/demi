@@ -8,6 +8,7 @@ mod browser;
 mod cloud_image;
 mod contracts;
 mod native;
+mod vendor;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -34,6 +35,9 @@ enum Command {
     /// Completes a Cloud image release on its Linux builder.
     #[command(subcommand)]
     CloudImage(cloud_image::Command),
+    /// Compares the vendored crates with their upstream releases.
+    #[command(subcommand)]
+    Vendor(vendor::Command),
 }
 
 /// The repository's root directory.
@@ -107,6 +111,13 @@ fn main() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
                 eprintln!("xtask cloud-image: {error}");
+                ExitCode::FAILURE
+            }
+        },
+        Command::Vendor(command) => match vendor::run(command) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("xtask vendor: {error}");
                 ExitCode::FAILURE
             }
         },

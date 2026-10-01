@@ -9020,6 +9020,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+ "similar",
  "tar",
  "tempfile",
  "thiserror",
