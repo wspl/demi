@@ -32,8 +32,8 @@ pub const CONTROL_FRAME: u8 = 1;
 pub const VIDEO_FRAME: u8 = 2;
 /// The video frames' codec as WebCodecs names it: H.264 High profile (`64`),
 /// no constraint flags (`00`), level 5.1 (`33`). The capture extension
-/// encodes with it, and the page asks its browser for a decoder of it
-/// before it opens a view.
+/// encodes with it, and the page asks the user's browser for a decoder
+/// of it before it opens a view.
 pub const VIDEO_CODEC: &str = "avc1.640033";
 /// A chosen file's bytes: [`FileHeader`], then the data.
 pub const FILE_FRAME: u8 = 3;

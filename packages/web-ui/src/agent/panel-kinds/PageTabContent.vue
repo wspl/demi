@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { ExternalLink } from '@lucide/vue'
-import BrowserAddressBar from '../BrowserAddressBar.vue'
+import AddressBar from '../AddressBar.vue'
 import IconButton from '../../ui/IconButton.vue'
 import Tooltip from '../../ui/Tooltip.vue'
 import { loadPageAddress, pageTabTitle, type PageTabData } from './page-data'
@@ -15,8 +15,9 @@ import { loadPageAddress, pageTabTitle, type PageTabData } from './page-data'
 const props = defineProps<{ tabId: string; data: PageTabData; shown: boolean }>()
 const emit = defineEmits<{ update: [data: PageTabData] }>()
 
-// Scripts, forms and popups work; popups land in ordinary browser tabs. Without
-// allow-top-navigation the page cannot navigate the product away.
+// Scripts, forms and popups work; popups land in ordinary tabs of the user's
+// browser. Without allow-top-navigation the page cannot navigate the product
+// away.
 const SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads'
 const HISTORY_UNAVAILABLE = 'A framed page keeps its history to itself'
 
@@ -39,7 +40,7 @@ function submitAddress(): void {
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col">
-    <BrowserAddressBar
+    <AddressBar
       :address="address"
       :history-reason="HISTORY_UNAVAILABLE"
       can-reload
@@ -60,7 +61,7 @@ function submitAddress(): void {
           </a>
         </Tooltip>
       </template>
-    </BrowserAddressBar>
+    </AddressBar>
     <iframe
       :key="`${tabId}:${data.url}:${reloads}`"
       :src="data.url"

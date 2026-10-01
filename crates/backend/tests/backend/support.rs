@@ -1,6 +1,6 @@
 //! The test backend: a data directory, a clock the test moves, a mailbox
 //! that captures verification codes, a machine manager the test scripts,
-//! the native packages the workspace built as development releases, which
+//! the command packages the workspace built as development releases, which
 //! the backend's local store serves its runners, and an HTTP client that
 //! sends a session's cookie.
 
@@ -67,7 +67,7 @@ pub const SESSION_COOKIE: &str = "demi_session";
 /// release files.
 const RELEASES: &str = concat!(env!("CARGO_TARGET_TMPDIR"), "/backend-releases");
 
-/// A native package the workspace built: its descriptor for this machine's
+/// A command package the workspace built: its descriptor for this machine's
 /// target and its program, and the catalog a backend loads from its
 /// development release. Each test process computes the digest once and
 /// publishes the release once: both read the whole program, most of a second
@@ -439,7 +439,7 @@ impl Harness {
         self
     }
 
-    /// A browser build in the data directory, served beside the API.
+    /// A web app build in the data directory, served beside the API.
     pub fn with_web(mut self, files: &[(&str, &str)]) -> Self {
         let directory = self.data.path().join("web");
         std::fs::create_dir_all(&directory).unwrap();
@@ -635,7 +635,8 @@ pub async fn answer(response: reqwest::Response) -> Answer {
     }
 }
 
-/// A signed-in browser: its cookie on every request.
+/// A signed-in user's session, as their browser holds it: its cookie on
+/// every request.
 #[derive(Clone)]
 pub struct Session {
     pub cookie: String,

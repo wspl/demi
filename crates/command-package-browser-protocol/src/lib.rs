@@ -1,5 +1,5 @@
 //! The `demi.browser` package's contract (`crates-and-packages.md`
-//! § browser-protocol): the arguments and results of its `browser.*`
+//! § command-package-browser-protocol): the arguments and results of its `browser.*`
 //! operations, the live view's protocol, the capture extension's messages,
 //! and the pinned Chrome release records. It holds types and their checks
 //! only; the operations, transport and IO live in `demi-browser` and the

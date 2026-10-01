@@ -724,7 +724,7 @@ pub struct RunnerInfo {
 }
 
 /// The operating system a runner runs on, named as Node's
-/// `process.platform` names it. A device keeps its runner's, and the browser
+/// `process.platform` names it. A device keeps its runner's, and the web app
 /// receives it with the device.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -785,7 +785,7 @@ pub struct DirEntry {
     pub is_symbolic_link: bool,
 }
 
-/// A working tree's changes, as `git status` lists them. The browser
+/// A working tree's changes, as `git status` lists them. The web app
 /// receives it too, beside the directory it lists (`web-api.md` § File text
 /// and working tree changes).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, JsonSchema)]

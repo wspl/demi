@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch, type Component } from 'vue'
 import { Monitor, Ruler, Smartphone } from '@lucide/vue'
-import BrowserAddressBar from '../agent/BrowserAddressBar.vue'
+import AddressBar from '../agent/AddressBar.vue'
 import Button from '../ui/Button.vue'
 import IconButton from '../ui/IconButton.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
@@ -41,7 +41,7 @@ const anchor = ref<HTMLElement | null>(null)
 const session = computed(() => props.controller.session.value)
 /** The bound tab as the view reports it now; null while the view has not listed it. */
 const live = computed(() => session.value?.state.tabs.find((tab) => tab.id === props.data.tab) ?? null)
-/** The browser answered and does not have the bound tab. */
+/** The conversation browser answered and does not have the bound tab. */
 const gone = computed(() => {
   const list = props.controller.list.value
   return props.data.tab !== undefined && list !== null && !list.tabs.some((tab) => tab.id === props.data.tab)
@@ -70,7 +70,8 @@ function reopen(): void {
   emit('update', { url: props.data.url })
 }
 
-// A shown tab without a browser tab asks for one; a bound one is watched on the page's view.
+// A shown panel tab not yet bound to a tab of the conversation browser asks for
+// one; a bound one is watched on the page's view.
 watch(
   () => [props.shown, props.data.tab, gone.value] as const,
   ([shown, tab, lost], previous) => {
@@ -142,7 +143,7 @@ function history(action: 'back' | 'forward' | 'reload'): void {
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col">
-    <BrowserAddressBar
+    <AddressBar
       :address="address"
       :can-reload="live !== null"
       :focused="fresh"
@@ -168,7 +169,7 @@ function history(action: 'back' | 'forward' | 'reload'): void {
           </span>
         </Tooltip>
       </template>
-    </BrowserAddressBar>
+    </AddressBar>
     <!-- What a request of this content, or the view itself, could not do, above a picture that still shows. -->
     <p
       v-if="live && (failure || session?.state.notice)"

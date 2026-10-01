@@ -16,7 +16,7 @@ import type { ExposeMenuEntry } from './types'
 /**
  * The session tools button of the conversation header (`expose.md` § Product
  * surface): the home of conversation-level utilities, and the only place the
- * browser shows exposes. Its menu lists the user's live exposes across hosts
+ * web app shows exposes. Its menu lists the user's live exposes across hosts
  * with renew and remove. The button exists only while an expose is live, and
  * its icon carries a green dot, so a forgotten URL is visible in the header.
  */
@@ -27,7 +27,7 @@ const props = defineProps<{
   pendingIds?: string[]
 }>()
 const emit = defineEmits<{
-  /** The host opens the URL; the product uses a work panel browser tab. */
+  /** The host opens the URL; the product uses a work panel `page` tab. */
   open: [expose: ExposeMenuEntry]
   renew: [id: string]
   remove: [id: string]

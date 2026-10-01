@@ -201,10 +201,10 @@ pub(crate) enum Attention {
     /// is active until the stream ends.
     Watches,
     /// An operation of the user's on what runs there, such as closing a
-    /// browser tab: activity that ends at once.
+    /// conversation browser tab: activity that ends at once.
     Operates,
-    /// A look at what runs there, such as listing the browser's tabs: no
-    /// activity.
+    /// A look at what runs there, such as listing the conversation
+    /// browser's tabs: no activity.
     Looks,
 }
 
@@ -478,7 +478,7 @@ impl dyn HostShard + '_ {
         })
     }
 
-    /// The Hosts browser access and `demi host shell --host` accept
+    /// The Hosts the web app's host routes and `demi host shell --host` accept
     /// (§ Attached hosts): the main Host, and the attached ones. A shell on
     /// the main Host starts in the conversation's directory there; one on an
     /// attached Host where the last shell there ended, or in its home before

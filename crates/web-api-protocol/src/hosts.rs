@@ -1,4 +1,4 @@
-//! A conversation's attached hosts as the browser lists and changes them
+//! A conversation's attached hosts as the web app lists and changes them
 //! (`web-api.md` § Workspaces, devices, and attached hosts).
 
 use demi_shared_types::{Nullable, Timestamp};

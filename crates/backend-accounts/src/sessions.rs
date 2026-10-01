@@ -1,6 +1,6 @@
-//! Browser sessions (`backend.md` § Authentication and ownership): the
-//! cookie holds a random 256-bit token, storage holds the token's SHA-256,
-//! and a session expires 30 days after its last renewal.
+//! The web app's login sessions (`backend.md` § Authentication and
+//! ownership): the cookie holds a random 256-bit token, storage holds the
+//! token's SHA-256, and a session expires 30 days after its last renewal.
 
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::ids::UserId;

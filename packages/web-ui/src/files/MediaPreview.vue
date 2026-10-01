@@ -2,7 +2,7 @@
 import { onBeforeUnmount, ref } from 'vue'
 import { dropSource } from './preview'
 
-/** A video or audio file in the browser's own player. */
+/** A video or audio file in the web browser's own player. */
 defineProps<{ src: string; kind: 'video' | 'audio'; name: string }>()
 const emit = defineEmits<{ size: [width: number, height: number]; failed: [] }>()
 

@@ -1,6 +1,6 @@
 //! Conversations (`web-api.md` § Conversation creation and Fork, § Sidebar
 //! mutations, read state and page synchronization; `runtime.md` § Frame
-//! protocol): creation under the browser's id, the list and the product
+//! protocol): creation under the web app's id, the list and the product
 //! state, a chat over the socket with an Anthropic endpoint the test
 //! scripts, a reload whose history is what the database holds, a client that
 //! falls behind, the frames the backend refuses, provider edits
@@ -427,7 +427,7 @@ pub(crate) fn last_text(blocks: &[Block]) -> String {
 }
 
 #[tokio::test]
-async fn a_conversation_is_created_once_under_the_id_the_browser_chose_and_listed_for_its_owner() {
+async fn a_conversation_is_created_once_under_the_id_the_web_app_chose_and_listed_for_its_owner() {
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     harness.add_user("ana@example.test", "ana-pass-1", demi_web_api_protocol::auth::Role::User);
@@ -504,7 +504,7 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     let system = body["system"].to_string();
     assert!(system.contains("You are a coding agent. Use shell session tools"), "{system}");
     assert!(system.contains("demi host"), "the backend's group is among the commands: {system}");
-    // Without the native packages the backend's own groups are
+    // Without the command packages the backend's own groups are
     // offered, and none of the packages'.
     assert!(system.contains("demi todo"), "{system}");
     assert!(!system.contains("demi file") && !system.contains("demi browser"), "{system}");
@@ -900,9 +900,9 @@ pub(crate) fn configured(output: u32) -> Value {
     })
 }
 
-/// A page on an expose shares the product's site, so the browser sends it the
-/// session cookie; the socket must still refuse it (`backend.md`
-/// § Authentication and ownership).
+/// A page on an expose shares the product's site, so the user's browser
+/// sends it the session cookie; the socket must still refuse it
+/// (`backend.md` § Authentication and ownership).
 #[tokio::test]
 async fn the_conversation_socket_opens_only_from_a_page_of_the_product() {
     let harness = Harness::new().with_expose_domain("expose.localhost");

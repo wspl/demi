@@ -11,7 +11,7 @@ pub struct Definition<'a> {
     pub name: &'a str,
     pub shape: &'a Shape,
     pub description: Option<&'a str>,
-    /// Whether the browser receives the type, so that its objects are
+    /// Whether the web app receives the type, so that its objects are
     /// tolerant; otherwise they are strict.
     pub received: bool,
 }
@@ -142,7 +142,7 @@ impl Writer<'_> {
         }
     }
 
-    /// An object: tolerant when the browser receives the type, strict
+    /// An object: tolerant when the web app receives the type, strict
     /// otherwise, which requires the Rust type to refuse unknown fields.
     /// `tag` is written first when the object is a variant.
     fn object(&mut self, object: &Object, tag: Option<&str>, at: &str, indent: usize) -> Result<String, Unsupported> {
@@ -153,7 +153,7 @@ impl Writer<'_> {
         } else {
             return Err(Unsupported {
                 at: at.to_owned(),
-                problem: "only the browser sends this object, but it accepts unknown fields; a type the backend receives refuses them".into(),
+                problem: "only the web app sends this object, but it accepts unknown fields; a type the backend receives refuses them".into(),
             });
         };
         Ok(format!("{constructor}({})", self.fields(object, tag, at, indent)?))
@@ -234,7 +234,7 @@ fn string_schema(string: &StringShape) -> String {
         write!(code, ".max({max})").expect("writing to a string");
     }
     if let Some(pattern) = &string.pattern {
-        // `u`: the browser matches code points, as Rust's `regex` does.
+        // `u`: the user's browser matches code points, as Rust's `regex` does.
         write!(code, ".regex(new RegExp({}, \"u\"))", quote(pattern)).expect("writing to a string");
     }
     code
@@ -346,7 +346,7 @@ mod tests {
     }
 
     #[test]
-    fn an_object_only_the_browser_sends_must_refuse_unknown_fields() {
+    fn an_object_only_the_web_app_sends_must_refuse_unknown_fields() {
         let open = Shape::Object(Object {
             properties: vec![Property {
                 name: "id".into(),

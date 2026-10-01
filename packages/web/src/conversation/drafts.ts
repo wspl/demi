@@ -12,7 +12,7 @@ const fileSchema = z.object({
   kind: z.literal('file'),
   id: z.string(),
   name: z.string(),
-  /** The bytes this browser added; none for a file another page uploaded. */
+  /** The bytes this page added; none for a file another page uploaded. */
   file: z.instanceof(File).nullable(),
   upload: uploadSchema.nullable(),
   /** A text file's opening, as the backend answered its upload. */
@@ -182,7 +182,7 @@ export async function deleteDraft(
  * A composer's text as the page closes (`web-application.md` § Drafts): the
  * revision it was built on, its Markdown and the files of its marks, which
  * the IndexedDB record carries. An IndexedDB write still under way when the
- * page goes can be lost, so the page writes this where the browser writes
+ * page goes can be lost, so the page writes this where the web browser writes
  * at once, and the next page of the conversation takes it over the record.
  */
 const lastWordsSchema = z.object({
@@ -200,7 +200,7 @@ export function writeLastWords(userId: string, conversationId: string, words: La
   try {
     localStorage.setItem(lastWordsKey(userId, conversationId), JSON.stringify(words))
   } catch {
-    // Storage the browser refuses, as in a private window, leaves the
+    // Storage the web browser refuses, as in a private window, leaves the
     // IndexedDB record, a moment older, to the next page.
   }
 }

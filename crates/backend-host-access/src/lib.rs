@@ -60,7 +60,7 @@ pub trait HostShard {
     fn blobs(&self) -> UserBlobs;
     /// The database of the user's conversation `conversation`.
     fn conversation_db(&self, conversation: &ConversationId) -> ConversationDb;
-    /// The native packages the conversations' commands bind to.
+    /// The command packages the conversations' commands bind to.
     fn native(&self) -> &NativeCatalog;
     /// Where runners fetch the packages' executables from.
     fn public_url(&self) -> &PublicUrl;

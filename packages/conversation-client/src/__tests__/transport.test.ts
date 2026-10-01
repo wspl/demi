@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { AgentClient } from '../client'
+import { ConversationClient } from '../client'
 import { createWebSocketTransport, type SocketClose, type SocketMessage, type WebSocketLike } from '../transport'
 import { text, user } from './harness'
 
@@ -53,13 +53,13 @@ class FakeSocket implements WebSocketLike {
   }
 }
 
-// A browser `WebSocket` is what the transport takes.
-const acceptsBrowserSockets: WebSocket extends WebSocketLike ? true : false = true
+// The web browser's `WebSocket` is what the transport takes.
+const acceptsWebBrowserSockets: WebSocket extends WebSocketLike ? true : false = true
 
 test('frames travel as JSON text messages both ways', async () => {
-  expect(acceptsBrowserSockets).toBe(true)
+  expect(acceptsWebBrowserSockets).toBe(true)
   const socket = new FakeSocket()
-  const client = new AgentClient(createWebSocketTransport(socket))
+  const client = new ConversationClient(createWebSocketTransport(socket))
   const opening = client.open()
   expect(socket.written.map((data) => JSON.parse(data))).toEqual([{ type: 'open' }])
   socket.message(JSON.stringify({ type: 'opened' }))
@@ -76,7 +76,7 @@ test('frames travel as JSON text messages both ways', async () => {
 test('a message that is not JSON text closes the socket and disconnects the client', () => {
   for (const data of ['not json', new Uint8Array([123, 125])]) {
     const socket = new FakeSocket()
-    const client = new AgentClient(createWebSocketTransport(socket))
+    const client = new ConversationClient(createWebSocketTransport(socket))
     const endings: string[] = []
     client.subscribe((event) => {
       if (event.type === 'disconnected') {
@@ -93,7 +93,7 @@ test('a message that is not JSON text closes the socket and disconnects the clie
 
 test('a socket the server closes disconnects the client with the close code', () => {
   const socket = new FakeSocket()
-  const client = new AgentClient(createWebSocketTransport(socket))
+  const client = new ConversationClient(createWebSocketTransport(socket))
   const endings: string[] = []
   client.subscribe((event) => {
     if (event.type === 'disconnected') {

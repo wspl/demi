@@ -100,7 +100,7 @@ impl ConversationStatus {
     }
 }
 
-/// Frame command-service metadata with the shared bounded length prefix.
+/// Frame the command wire's metadata with the shared bounded length prefix.
 fn encode_metadata(value: &impl serde::Serialize) -> Result<Bytes, ProtocolError> {
     let json = serde_json::to_vec(value)?;
     if json.len() > MAX_METADATA_BYTES {

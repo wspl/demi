@@ -1,8 +1,8 @@
 import { shallowRef, triggerRef } from 'vue'
-import { SessionError, SteerRejectedError, type AgentClient, type ClientSessionEvent } from '@demicodes/conversation-client'
+import { SessionError, SteerRejectedError, type ConversationClient, type ClientSessionEvent } from '@demicodes/conversation-client'
 import { asError } from '@demicodes/utils'
 import type { ClientContent, EditRequest, TranscriptVersion } from '@demicodes/protocol'
-import { AgentSocketError } from '../transport/agent-socket'
+import { ConversationSocketError } from '../transport/conversation-socket'
 import { waitToReconnect, type ReconnectWait } from '../transport/liveness'
 import { hasAcceptedSubmission } from './submission'
 import type { ConversationState } from './types'
@@ -30,7 +30,7 @@ export type RuntimeState = Pick<
 
 export interface ConversationRuntimeOptions {
   state: RuntimeState
-  connect: (signal: AbortSignal) => Promise<AgentClient>
+  connect: (signal: AbortSignal) => Promise<ConversationClient>
   onEvent?: (event: ClientSessionEvent) => void
 }
 
@@ -52,8 +52,8 @@ const OPEN_TIMEOUT_MS = 30_000
  */
 export class ConversationRuntime {
   private readonly options: ConversationRuntimeOptions
-  private readonly client = shallowRef<AgentClient | null>(null)
-  private opening: Promise<AgentClient> | null = null
+  private readonly client = shallowRef<ConversationClient | null>(null)
+  private opening: Promise<ConversationClient> | null = null
   private controller: AbortController | null = null
   private unsubscribe: (() => void) | null = null
   /** The wait before the next connection, while the socket is closed. */
@@ -228,7 +228,7 @@ export class ConversationRuntime {
     this.opening = null
   }
 
-  private ensureOpen(): Promise<AgentClient> {
+  private ensureOpen(): Promise<ConversationClient> {
     if (this.disposed) {
       return Promise.reject(new Error('Conversation view was disposed'))
     }
@@ -244,7 +244,7 @@ export class ConversationRuntime {
   }
 
   /** One opening: attempts until the session opens, waiting after each connection not made. */
-  private async openSession(controller: AbortController): Promise<AgentClient> {
+  private async openSession(controller: AbortController): Promise<ConversationClient> {
     for (;;) {
       try {
         const client = await this.openOnce(controller)
@@ -255,7 +255,7 @@ export class ConversationRuntime {
           // Released meanwhile: disposed, or a newer opening took over.
           throw error
         }
-        if (!(error instanceof AgentSocketError)) {
+        if (!(error instanceof ConversationSocketError)) {
           this.client.value = null
           this.opening = null
           this.options.state.load = 'failed'
@@ -270,15 +270,15 @@ export class ConversationRuntime {
     }
   }
 
-  private async openOnce(controller: AbortController): Promise<AgentClient> {
-    let client: AgentClient | null = null
+  private async openOnce(controller: AbortController): Promise<ConversationClient> {
+    let client: ConversationClient | null = null
     let unsubscribe: (() => void) | null = null
     // Each attempt has its own deadline; the opening's controller ends them all.
     const attempt = new AbortController()
     const abortAttempt = () => attempt.abort(controller.signal.reason)
     controller.signal.addEventListener('abort', abortAttempt, { once: true })
     const timeout = setTimeout(
-      () => attempt.abort(new AgentSocketError('The conversation did not open in time')),
+      () => attempt.abort(new ConversationSocketError('The conversation did not open in time')),
       OPEN_TIMEOUT_MS,
     )
     // A deadline or a release while the session opens ends the connection, which ends the wait.

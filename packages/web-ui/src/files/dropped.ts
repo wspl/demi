@@ -2,7 +2,7 @@ import type { UploadItem } from './file-uploads'
 
 /**
  * What the walk reads of a dropped entry, the File and Directory Entries
- * API's `FileSystemEntry`: the browser's entries have all of it.
+ * API's `FileSystemEntry`: the web browser's entries have all of it.
  */
 export interface DroppedEntry {
   readonly name: string
@@ -31,7 +31,7 @@ function isFile(entry: DroppedEntry): entry is DroppedFile {
 /**
  * The files and folders a drop carries, taken while its event lasts: the
  * transfer empties once the handler returns, while an entry taken from it
- * stays readable. A browser without entries hands over the files alone.
+ * stays readable. A web browser without entries hands over the files alone.
  */
 export function droppedEntries(transfer: DataTransfer): (DroppedEntry | File)[] {
   const out: (DroppedEntry | File)[] = []

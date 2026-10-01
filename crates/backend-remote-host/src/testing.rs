@@ -264,7 +264,7 @@ impl TestLink {
     }
 }
 
-/// A native package built in the workspace: its descriptor for this host
+/// A command package built in the workspace: its descriptor for this host
 /// and where its executable is.
 pub struct NativeFixture {
     pub descriptor: PackageDescriptor,

@@ -29,8 +29,9 @@ export function readLocalState(userId: string): LocalState {
     const raw = localStorage.getItem(`demi.preferences.${userId}`)
     return raw ? localStateSchema.parse(JSON.parse(raw)) : emptyLocalState()
   } catch (error) {
-    // Browser storage is optional. Invalid external entries are discarded as a
-    // whole; no legacy keys or partially repaired records enter product state.
+    // The web browser's storage is optional. Invalid external entries are
+    // discarded as a whole; no legacy keys or partially repaired records enter
+    // product state.
     console.warn('Could not read local preferences', error)
     return emptyLocalState()
   }

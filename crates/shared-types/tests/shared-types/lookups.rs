@@ -1,4 +1,4 @@
-//! The lookups the product and the browser share: which files the page shows
+//! The lookups the backend and the web app share: which files the page shows
 //! and how, which media a model reads, and how an attachment is named to the
 //! model.
 
@@ -43,7 +43,7 @@ fn every_medium_a_model_reads_is_served_for_the_page_to_show_in_place() {
     // A tool's images and videos, and a message's, are known by the
     // model-media table and served from their blobs by the file-type table:
     // a type the second does not show in place downloads, and a player then
-    // plays it only where the browser guesses the format.
+    // plays it only where the user's browser guesses the format.
     for entry in MODEL_MEDIA_TYPES {
         assert!(shows_in_place(entry.media_type), "{}", entry.media_type);
     }
