@@ -4,7 +4,7 @@ use futures_util::FutureExt;
 use std::{collections::BTreeMap, future::Future, sync::Arc};
 
 use demi_browser::DemiBrowser;
-use demi_browser_driver::installation::BrowserDirectories;
+use demi_command_package_browser_chrome::driver::installation::BrowserDirectories;
 use demi_command_protocol::{
     CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Record,
 };
@@ -220,7 +220,7 @@ pub async fn install_chrome(root: &std::path::Path) {
         std::path::PathBuf::from(std::env::var_os("DEMI_TEST_CHROME").expect("DEMI_TEST_CHROME"));
     demi_shared_artifacts::testing::install_unpacked(
         root,
-        &demi_browser_driver::installation::pinned_archive().unwrap(),
+        &demi_command_package_browser_chrome::driver::installation::pinned_archive().unwrap(),
         &executable,
         &CancellationToken::new(),
     )

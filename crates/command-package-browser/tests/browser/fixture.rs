@@ -1,6 +1,6 @@
 //! Joined cleanup for real-browser fixture assertions, including unwinding tests.
-use demi_browser_driver::{numbers::TabNumbers, operation::Result};
-use demi_browser_tabs::environment::{BrowserEnvironment, LaunchOptions, with_browser};
+use demi_command_package_browser_chrome::driver::{numbers::TabNumbers, operation::Result};
+use demi_command_package_browser_chrome::tabs::environment::{BrowserEnvironment, LaunchOptions, with_browser};
 use demi_command_sdk::testing::counting_numbers;
 use futures_util::FutureExt;
 use std::{future::Future, path::PathBuf};
