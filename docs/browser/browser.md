@@ -1940,8 +1940,8 @@ for the browser:
   CDP handling and WebMCP (`browser-cdp`) and the live view (`browser-live`).
 - `artifact`: the verified download and installation of the pinned Chrome for
   Testing release, used by `browser-driver` and by Cloud image packaging.
-- `command-service`: generic invocation and conversation protocol, not page or
-  cookie semantics.
+- `command-protocol` and `command-service`: the generic invocation and
+  conversation protocol and its SDK, not page or cookie semantics.
 - `web-ui`: the [live view](live-view.md#responsibilities), with the
   generic user stream in the runner, `host-remote` and the backend.
 

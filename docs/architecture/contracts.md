@@ -22,9 +22,8 @@ validator are derived from it.
 A contract crate holds the types of one wire or data family, their serde,
 schemars and garde attributes, and the decode function of each boundary that
 receives them. Both ends of a wire link it, or the TypeScript generator reads
-it. A contract crate has no async runtime and no IO, with one exception:
-`command-service` carries the SDK that speaks the command wire next to the
-wire's types. [Crates and packages](crates-and-packages.md#contract-crates)
+it. A contract crate has no async runtime and no IO.
+[Crates and packages](crates-and-packages.md#contract-crates)
 names each crate's items.
 
 | Wire or stored data | Contract crate | Ends |
@@ -33,7 +32,7 @@ names each crate's items.
 | Conversation WebSocket frames, transcript blocks and patches, tool views | `agent-protocol`, `core` | Backend; `agent-client` and `web-ui`, through `@demicodes/protocol` |
 | Runner wire (MessagePack over a WebSocket) and command manifests | `runner-protocol`, with manifest nodes from `command-tree` | Backend; runner |
 | Managed boot record | `runner-protocol` | Backend and machine manager; the runner in a Cloud sandbox reads it |
-| Command invocations between a runner and a command program | `command-service` | Runner; `demi-file`, `demi-browser`, `demi-claude` |
+| Command invocations between a runner and a command program | `command-protocol` | Runner; `demi-file`, `demi-browser`, `demi-claude` |
 | `demi.file` operations | `file-protocol` | `coding-agent` declarations; `demi-file` |
 | `demi.browser` operations, live view messages, capture extension events | `browser-protocol` | `coding-agent` declarations, the backend and the browser crates; the page reads live view messages through `@demicodes/protocol` |
 | `demi.claude` operations and the Claude Code release record | `claude-protocol` | Backend; `demi-claude` |
@@ -131,7 +130,7 @@ These are the points where values enter, and what a failure does:
 | A frame on the conversation WebSocket | The conversation socket, into `ClientFrame` | An `error` frame with code `invalid_frame`, before any state changes; a message that is not JSON closes the socket ([Frame protocol](../agent/runtime.md#frame-protocol)) |
 | A frame or REST response the browser receives | The generated schemas, in `agent-client` and `web` | `agent-client` drops the connection and reports the field path; `web` validates a response before applying it to state |
 | A runner message, at either end | `runner-protocol`'s codec | The connection closes ([Runner](../execution/runner.md)) |
-| Invocation metadata and records between a runner and a command program | `command-service` | [Validation and flow control](../execution/native-runtime.md#validation-and-flow-control) |
+| Invocation metadata and records between a runner and a command program | `command-protocol` | [Validation and flow control](../execution/native-runtime.md#validation-and-flow-control) |
 | A command's arguments | The declaration's JSON Schema, at the dispatcher and again in a native handler before work | One usage error that names every field that failed |
 | A machine-manager request or response | `machines-protocol` | A malformed line or an unknown operation drops the connection; an invalid device id is that operation's error ([Managed Cloud hosts](../cloud/managed-hosts.md)) |
 | The managed boot file | `runner-protocol`'s `ManagedBoot` | The runner fails; it never falls back to pairing ([Runner](../execution/runner.md#managed-guests-and-verification)) |
