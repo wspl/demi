@@ -10,6 +10,7 @@ rust-version.workspace = true
 # § Module layout); no doc examples.
 test = false
 doctest = false
+bench = false
 
 [features]
 # Scripted provider runtimes and a test client that drives a connection

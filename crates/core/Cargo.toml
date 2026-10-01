@@ -11,6 +11,7 @@ rust-version.workspace = true
 # so the library needs no test harness of its own.
 doctest = false
 test = false
+bench = false
 
 [dependencies]
 base64.workspace = true

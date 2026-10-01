@@ -11,6 +11,7 @@ rust-version.workspace = true
 # integration tests (`crates-and-packages.md` § Module layout); no doc
 # examples.
 doctest = false
+bench = false
 
 [features]
 # A bound connection's driver without its socket (`Serving::into_driver`),
