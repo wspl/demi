@@ -559,8 +559,9 @@ A job keeps its output in its directory on the device and sends the backend
 views of it in `job_output` messages, each naming its stream and where its
 bytes start in the stream (`offset`):
 
-- The first 32 KiB of each stream (`JOB_VIEW_BYTES`), as the runner reads
-  them. The model's view of a running command comes from these
+- The first 8 KiB of each stream (`JOB_VIEW_BYTES`), as the runner reads
+  them. The model's view of a running command comes from these and from the
+  newest bytes below
   ([Results and previews](../agent/runtime.md#results-and-previews)).
 - While the backend follows the job, the output beyond them: at most one
   message per stream every 250 ms (`JOB_LIVE_INTERVAL`), with the newest bytes
@@ -568,17 +569,23 @@ bytes start in the stream (`offset`):
   4,096 characters of up to four bytes each). A message whose `offset` lies
   beyond the end of the stream's previous one says that the runner left the
   bytes between out. When following starts, each stream that has passed its
-  first 32 KiB sends its newest bytes at once; while the job is followed, its
-  last output leaves before `job_exit`.
-- While the backend does not follow the job, only that a stream grows beyond
-  them: at most one message per stream every 2 seconds
-  (`JOB_GROWTH_INTERVAL`), without bytes, whose `offset` is the stream's
-  length. The model's idle time counts from it
+  first 8 KiB sends its newest bytes at once.
+- While the backend does not follow the job, that a stream grows beyond them,
+  with its newest bytes: at most one message per stream every 2 seconds
+  (`JOB_GROWTH_INTERVAL`), with the stream's last 8 KiB beyond its first,
+  which end at its length; the next message sends them again as far as they
+  are still the newest. The model's idle time counts from these messages
   ([Results and previews](../agent/runtime.md#results-and-previews)).
+- A job's last output leaves before `job_exit`: while followed, what the
+  backend does not hold; otherwise each stream's newest bytes up to its end.
 - `job_exit` gives each stream's length. When a stream went beyond what the
   backend received, the backend reads the rest from the kept output, below.
+  When that read fails, the command's whole output is what the backend
+  received: each stream's first bytes, a line that counts the bytes left
+  out, and each stream's newest bytes, so the end of a build's log, where it
+  says what failed, still shows.
 
-What goes beyond the first 32 KiB never slows the job: a message that finds
+What goes beyond the first 8 KiB never slows the job: a message that finds
 the connection's queue full waits for the stream's next interval, and then
 carries the newest bytes.
 
@@ -596,7 +603,7 @@ device's disk. A record adds about 20 bytes to its read, which the runner
 makes up to 64 KiB at a time, so the bound holds nearly 16 MiB of output.
 `job_read { jobId }` streams the kept output, as it stands, through a pipe.
 The backend reads it when the job ends and a stream went beyond its first
-32 KiB, and while the job runs, for `demi shell output`
+8 KiB, and while the job runs, for `demi shell output`
 ([The whole output](../agent/runtime.md#the-whole-output)).
 
 The runner makes the job's directory when the job starts, private to its

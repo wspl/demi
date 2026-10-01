@@ -5,7 +5,9 @@
 use demi_agent_session::ToolOutcome;
 use demi_agent_store::images;
 use demi_agent_transcript::REPLAY_CHARS;
-use demi_host_interface::{BinaryOutput, CommandState, CommandStatus, OutputText, Piece, Streams};
+use demi_host_interface::{
+    BinaryOutput, CommandState, CommandStatus, Newest, OutputText, Piece, Streams,
+};
 use demi_provider_common::{MediaBytes, RequestLimits, ResultPart};
 use demi_shared_types::{
     B64Bytes, CommandId, Model, ModelMediaKind, OutputChunk, ShellToolView, ShellViewStatus,
@@ -66,7 +68,8 @@ fn unseen_output(status: &CommandStatus) -> OutputText {
 
 /// The lines the model reads: the status, the handles and timings that
 /// matter, the output since the model's last look within the replay bound,
-/// and the next step.
+/// while the command runs each stream's newest lines beyond its start, and
+/// the next step.
 fn result_text(status: &CommandStatus, text: &OutputText) -> String {
     let command = &status.command_id;
     let running = matches!(status.state, CommandState::Running { .. });
@@ -80,8 +83,13 @@ fn result_text(status: &CommandStatus, text: &OutputText) -> String {
         before.push(format!("runningMs: {}", status.running_ms));
         before.push(format!("idleMs: {}", status.idle_ms));
     }
+    let newest: Vec<&Newest> = status
+        .newest
+        .iter()
+        .filter(|newest| running && !newest.text.is_empty())
+        .collect();
     let mut after = Vec::new();
-    if running && status.unreceived > 0 {
+    if running && status.unreceived > 0 && newest.is_empty() {
         after.push(format!(
             "[... {} bytes not shown so far; the newest: demi shell output {command} --tail {NEWEST_LINES} ...]",
             status.unreceived
@@ -95,24 +103,63 @@ fn result_text(status: &CommandStatus, text: &OutputText) -> String {
         CommandState::Exited { .. } => {}
     }
     // The other lines, the output's label among them, each with its newline.
+    let markers: Vec<String> = newest.iter().map(|newest| newest_marker(newest)).collect();
     let others: usize = before
         .iter()
         .chain(&after)
+        .chain(&markers)
         .map(|line| line.chars().count() + 1)
         .sum::<usize>()
         + "output:\n".len();
-    let shown = text.unseen_line().map_or_else(Vec::new, |from| {
-        cut(text, from, command, REPLAY_CHARS.saturating_sub(others))
-    });
+    let budget = REPLAY_CHARS.saturating_sub(others);
+    // The start takes all of the bound, or half of it beside newest lines.
+    let start_budget = if newest.is_empty() {
+        budget
+    } else {
+        budget / 2
+    };
+    let shown = text
+        .unseen_line()
+        .map_or_else(Vec::new, |from| cut(text, from, command, start_budget));
+    let used: usize = shown.iter().map(|line| line.chars().count() + 1).sum();
+    let mut newest_lines = Vec::new();
+    if !newest.is_empty() {
+        let each = budget.saturating_sub(used) / newest.len();
+        for (newest, marker) in newest.iter().zip(markers) {
+            newest_lines.push(marker);
+            newest_lines.extend(newest_tail(newest, each));
+        }
+    }
     let mut lines = before;
-    if shown.is_empty() {
+    if shown.is_empty() && newest_lines.is_empty() {
         lines.push("output: (empty)".to_owned());
     } else {
         lines.push("output:".to_owned());
         lines.extend(shown);
+        lines.extend(newest_lines);
     }
     lines.extend(after);
     lines.join("\n")
+}
+
+/// The line before a stream's newest lines, which counts the bytes left out
+/// between the stream's start and them.
+fn newest_marker(newest: &Newest) -> String {
+    format!(
+        "[... {} bytes of {} not shown; its newest lines follow ...]",
+        newest.left_out, newest.stream
+    )
+}
+
+/// A stream's newest whole lines that fit in `budget` characters, from the
+/// end: a line cut at their start is left out, and the last line alone shows
+/// its end when it is too long.
+fn newest_tail(newest: &Newest, budget: usize) -> Vec<String> {
+    let text = match newest.text.split_once('\n') {
+        Some((_, rest)) if newest.left_out > 0 && !rest.is_empty() => rest,
+        _ => newest.text.as_str(),
+    };
+    take_end(&OutputText::received(text, 1), budget).0
 }
 
 /// The length of a binary stdout, which the output shows as one line.
@@ -470,7 +517,7 @@ mod tests {
     use std::sync::Arc;
 
     use bytes::Bytes;
-    use demi_host_interface::{OutputRecord, Seen, WholeOutput, WholeView};
+    use demi_host_interface::{Newest, OutputRecord, Seen, WholeOutput, WholeView};
     use demi_shared_types::{BinaryStdout, FileExtension, OutputView, StreamKind, StreamView};
 
     use super::*;
@@ -511,6 +558,7 @@ mod tests {
                 truncated: false,
             },
             unreceived: 0,
+            newest: Vec::new(),
             whole: Some(WholeView {
                 output: Arc::new(output),
                 seen: Seen::default(),
@@ -641,6 +689,52 @@ mod tests {
                 from + PAGE_CHARS - 1
             )
         );
+    }
+
+    #[tokio::test]
+    async fn a_running_command_shows_its_first_and_its_newest_lines_within_the_bound() {
+        let mut running = exited("");
+        running.whole = None;
+        running.state = CommandState::Running { hint: None };
+        running.output.text = "building\n".into();
+        running.unreceived = 1_048_576;
+        running.newest = vec![Newest {
+            stream: StreamKind::Stdout,
+            offset: 1_048_576,
+            left_out: 1_040_384,
+            text: "ne 998\nline 999\nline 1000\n".into(),
+        }];
+        assert_eq!(
+            result(&running).await,
+            [
+                "status: running",
+                "commandId: 17",
+                "shellId: 3",
+                "runningMs: 5",
+                "idleMs: 1",
+                "output:",
+                "building",
+                "[... 1040384 bytes of stdout not shown; its newest lines follow ...]",
+                "line 999",
+                "line 1000",
+                RUNNING_NEXT,
+            ]
+            .join("\n")
+        );
+
+        // A long start and long newest bytes take half of the bound each.
+        running.output.text = "a\n".repeat(8_000);
+        running.newest[0].text = "b\n".repeat(8_000);
+        let text = result(&running).await;
+        assert!(
+            text.chars().count() <= REPLAY_CHARS,
+            "{}",
+            text.chars().count()
+        );
+        let first = text.lines().filter(|line| *line == "a").count();
+        let newest = text.lines().filter(|line| *line == "b").count();
+        assert!(first > 3_000 && newest > 3_000, "{first} {newest}");
+        assert!(text.contains("bytes of stdout not shown; its newest lines follow"));
     }
 
     #[tokio::test]
