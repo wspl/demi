@@ -33,8 +33,13 @@ pub mod workspaces;
 pub enum StorageError {
     #[error("SQLite failed: {0}")]
     Sqlite(#[from] rusqlite::Error),
-    #[error("the schema could not be applied: {0}")]
-    Schema(#[from] rusqlite_migration::Error),
+    /// The database was made by another build of Demi, whose schema this
+    /// build does not read and never changes.
+    #[error(
+        "{} was made by another version of Demi; move the data directory away and start with a new one (storage.md § Schemas)",
+        path.display()
+    )]
+    OtherSchema { path: std::path::PathBuf },
     /// Replication and concurrent readers need WAL, which the file system
     /// refused.
     #[error("the database stays in journal mode {0}, not WAL")]

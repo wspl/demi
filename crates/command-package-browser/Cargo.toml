@@ -17,10 +17,6 @@ name = "demi-browser"
 path = "src/main.rs"
 test = false
 
-[features]
-# The browser libraries' test support, for the Chrome tests.
-testing = ["demi-command-package-browser-chrome/testing"]
-
 [dependencies]
 bytes.workspace = true
 demi-command-package-browser-chrome = { path = "../command-package-browser-chrome" }
@@ -38,7 +34,8 @@ tracing-subscriber.workspace = true
 [dev-dependencies]
 axum = "0.8"
 base64 = "0.22"
-demi-shared-artifacts = { path = "../shared-artifacts", features = ["testing"] }
+# The browser libraries' test support, for the Chrome tests.
+demi-command-package-browser-chrome = { path = "../command-package-browser-chrome", features = ["testing"] }
 demi-command-sdk = { path = "../command-sdk", features = ["testing"] }
 regex = "1"
 # The repair tests fetch from their fixture site.

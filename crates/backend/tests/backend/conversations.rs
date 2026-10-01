@@ -127,7 +127,7 @@ impl Socket {
         self.send_text(serde_json::to_string(frame).unwrap()).await;
     }
 
-    async fn send_text(&mut self, text: String) {
+    pub(crate) async fn send_text(&mut self, text: String) {
         self.socket.send(Message::Text(text.into())).await.unwrap();
     }
 
@@ -1406,6 +1406,47 @@ async fn a_shutdown_in_the_middle_of_a_turn_saves_its_interruption_and_the_next_
     backend.close().await;
 }
 
+/// A yield wakeup outlives a restart of the backend (`runtime.md` § Yield
+/// wakeups): the model asks to check the build in ten minutes, the backend
+/// is down past that time, and once it starts again the wakeup's turn runs
+/// with no page open.
+#[tokio::test]
+async fn a_wakeup_due_while_the_backend_was_down_runs_its_turn_once_it_starts_again() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    vendor.respond(tool_use(
+        "toolu_wait",
+        "yield",
+        &json!({ "durationMs": 600_000 }),
+    ));
+    socket.chat("m1", "start the build").await;
+    let asked = vendor.requests().len();
+    drop(socket);
+    backend.close().await;
+
+    harness.clock.advance(jiff::SignedDuration::from_mins(11));
+    vendor.respond(answer(&["the build passed"], 1, 1));
+    let backend = harness.start().await;
+    vendor.received(asked + 1).await;
+    let woken = vendor.requests()[asked].json()["messages"].to_string();
+    assert!(woken.contains("Scheduled yield wakeup fired"), "{woken}");
+    let master = backend
+        .login(MASTER_EMAIL, crate::support::MASTER_PASSWORD)
+        .await;
+    crate::support::eventually("the woken turn is saved", || async {
+        let blocks = transcript(&backend, &master, FIRST).await.blocks;
+        kinds(&blocks).ends_with(&["wakeup".into(), "text".into(), "response".into()])
+    })
+    .await;
+    backend.close().await;
+}
+
 /// A page's conversation socket that stops reading where the test says,
 /// with a receive buffer of a few kilobytes: a frame larger than the
 /// backend's send buffer then fills the socket's buffers, and the backend's
@@ -1456,9 +1497,10 @@ impl StalledPage {
 /// A page that stopped reading, its socket's buffers full, holds up
 /// shutdown no longer than the close frame's bound (`backend.md` § Startup
 /// and shutdown): the backend is in the middle of sending a transcript
-/// larger than any socket buffer when it shuts down. The 8 MiB message that
+/// larger than any socket buffer when it shuts down. The 8 MiB answer that
 /// makes the transcript so large costs most of the test's 2 s: a smaller
-/// one can fit the send buffer, whose limit is 4 MiB on Linux and macOS.
+/// one can fit the send buffer, whose limit is 4 MiB on Linux and macOS. The
+/// answer is the model's, since a page sends no message over 1 MiB.
 #[tokio::test]
 async fn a_page_that_stopped_reading_does_not_hold_up_shutdown() {
     let vendor = MockVendor::start().await;
@@ -1470,8 +1512,9 @@ async fn a_page_that_stopped_reading_does_not_hold_up_shutdown() {
     choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
-    vendor.respond(answer(&["noted"], 1, 1));
-    socket.chat("m1", &"x".repeat(8 << 20)).await;
+    let long = "x".repeat(8 << 20);
+    vendor.respond(answer(&[&long], 1, 1));
+    socket.chat("m1", "Write at length.").await;
 
     let mut stalled = StalledPage::connect(&backend, &master, FIRST).await;
     let reset = stalled.open_until_the_reset_is_sent().await;

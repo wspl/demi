@@ -633,6 +633,25 @@ pub struct BrowserNode {
     pub bounds: Option<Bounds>,
 }
 
+/// The element an action or a wait resolved its target to, as the page's
+/// accessibility tree names it, with the reference that names it from then
+/// on. `role` and `name` are empty for an element the tree leaves out.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ResolvedElement {
+    pub r#ref: NodeRef,
+    pub role: String,
+    pub name: String,
+}
+
+/// An option `select` left selected: its value and the label it shows.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SelectedOption {
+    pub value: String,
+    pub label: String,
+}
+
 /// One node of the tree `inspect` returns: an accessibility node, or a DOM
 /// element with its tag.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]

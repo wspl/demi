@@ -23,6 +23,8 @@ pub mod quota;
 mod secret;
 #[cfg(feature = "testing")]
 pub mod testing;
+pub mod thinking;
+mod vendor;
 pub mod wire;
 
 pub use body::{encode_body, json_body};
@@ -35,3 +37,4 @@ pub use endpoint::endpoint_url;
 pub use failure::{ErrorCode, FailureReader, ProviderFailure};
 pub use http_record::{HttpFailureRecord, http_failure, read_http_failure, retry_at};
 pub use secret::{Secret, SecretError};
+pub use vendor::VendorPolicy;

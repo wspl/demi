@@ -29,6 +29,28 @@ const messagesRequestSchema = z.object({
 })
 export type MessagesRequest = z.infer<typeof messagesRequestSchema>
 
+/**
+ * A reply the endpoint holds: it answers the request only on `release`, so
+ * the turn stays in its provider stream while a test acts on it.
+ */
+export interface HeldReply {
+  /** Settles once the request the reply answers has arrived. */
+  requested: Promise<void>
+  /** Settles if the backend cancels that request before the release. */
+  cancelled: Promise<void>
+  release(): void
+}
+
+/** A scripted reply, with its hold when it has one. */
+interface Reply {
+  blocks: ScriptedBlock[]
+  hold?: {
+    requested: PromiseWithResolvers<void>
+    cancelled: PromiseWithResolvers<void>
+    released: PromiseWithResolvers<void>
+  }
+}
+
 /** The system prompt of a title request (`agent::title::TITLE_INSTRUCTION` begins so). */
 const TITLE_REQUEST = 'You are a title generator.'
 
@@ -41,7 +63,9 @@ const TITLE_REQUEST = 'You are a title generator.'
  * reads what the model received. No request reaches a real model.
  */
 export function startScriptedAnthropic() {
-  const replies: ScriptedBlock[][] = []
+  const replies: Reply[] = []
+  /** The holds not yet released, which `clear` releases so that no answer waits forever. */
+  const holding = new Set<() => void>()
   const titles: string[] = []
   const turns: MessagesRequest[] = []
   let toolUses = 0
@@ -100,16 +124,48 @@ export function startScriptedAnthropic() {
       if (!reply) {
         return Response.json({ type: 'error', error: { type: 'api_error', message: 'The script has no reply for this request' } }, { status: 500 })
       }
-      return stream(reply)
+      const hold = reply.hold
+      if (hold) {
+        // A cancelled request is answered as well: the answer goes nowhere,
+        // and the handler ends.
+        request.signal.addEventListener('abort', () => hold.cancelled.resolve(), { once: true })
+        hold.requested.resolve()
+        await Promise.race([hold.released.promise, hold.cancelled.promise])
+      }
+      return stream(reply.blocks)
     },
   })
+
+  /** Drops the replies not yet asked for, and releases every hold. */
+  function clear(): void {
+    replies.length = 0
+    titles.length = 0
+    for (const release of [...holding]) {
+      release()
+    }
+  }
 
   return {
     /** The base URL an entry names: the provider appends `/messages`. */
     url: `http://127.0.0.1:${server.port}/v1`,
     /** Queues the reply of the next turn request. */
     reply(...blocks: ScriptedBlock[]): void {
-      replies.push(blocks)
+      replies.push({ blocks })
+    },
+    /** Queues the reply of the next turn request, held until its release. */
+    hold(...blocks: ScriptedBlock[]): HeldReply {
+      const hold = {
+        requested: Promise.withResolvers<void>(),
+        cancelled: Promise.withResolvers<void>(),
+        released: Promise.withResolvers<void>(),
+      }
+      const release = () => {
+        holding.delete(release)
+        hold.released.resolve()
+      }
+      holding.add(release)
+      replies.push({ blocks, hold })
+      return { requested: hold.requested.promise, cancelled: hold.cancelled.promise, release }
     },
     /** Queues the answer of the next title request. */
     title(text: string): void {
@@ -119,7 +175,11 @@ export function startScriptedAnthropic() {
     turns: (): readonly MessagesRequest[] => turns,
     /** The replies not yet asked for. */
     unused: (): number => replies.length,
-    stop: (): Promise<void> => server.stop(true),
+    clear,
+    async stop(): Promise<void> {
+      clear()
+      await server.stop(true)
+    },
   }
 }
 

@@ -350,6 +350,7 @@ mod tests {
     use std::fmt;
     use std::time::Duration;
 
+    use demi_provider_common::testing::ManualClock;
     use futures_util::stream::BoxStream;
     use object_store::memory::InMemory;
     use object_store::{
@@ -361,15 +362,6 @@ mod tests {
     use super::*;
 
     const DAY: SignedDuration = SignedDuration::from_hours(24);
-
-    /// Wall-clock time the test sets.
-    struct TestClock(Mutex<Timestamp>);
-
-    impl Clock for TestClock {
-        fn now(&self) -> Timestamp {
-            *self.0.lock().unwrap()
-        }
-    }
 
     /// An object store in memory whose deletions wait, once they reached it,
     /// until the test lets them go.
@@ -450,7 +442,7 @@ mod tests {
             reached: reached.clone(),
             go: go.clone(),
         });
-        let clock = Arc::new(TestClock(Mutex::new(Timestamp::UNIX_EPOCH)));
+        let clock = Arc::new(ManualClock::new(Timestamp::UNIX_EPOCH));
         let blobs =
             BlobStores::new(objects, clock.clone()).for_user(&UserId::try_from("ana").unwrap());
         let bytes = Bytes::from_static(b"a screenshot");
@@ -459,7 +451,7 @@ mod tests {
         assert!(!blobs.delete_unused(&blob, DAY).await.unwrap());
 
         let later = i64::try_from((DAY * 2).as_millis()).unwrap();
-        *clock.0.lock().unwrap() = Timestamp::from_millisecond(later).unwrap();
+        clock.set(Timestamp::from_millisecond(later).unwrap());
         let deletion = tokio::spawn({
             let (blobs, blob) = (blobs.clone(), blob.clone());
             async move { blobs.delete_unused(&blob, DAY).await }

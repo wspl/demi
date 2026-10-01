@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use demi_provider_common::{
     Capabilities, CatalogError, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
-    RequestLimits, RuntimeEnv, RuntimeError, Secret, endpoint_url, read_http_failure,
+    RequestLimits, RuntimeEnv, RuntimeError, Secret, VendorPolicy, endpoint_url, read_http_failure,
 };
 use demi_shared_types::{
     AuthState, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
@@ -31,6 +31,7 @@ pub struct AnthropicConfig {
     /// `https://api.anthropic.com/v1`; `None` for that default. The provider
     /// appends `/messages` unless the URL already ends with it.
     pub base_url: Option<Url>,
+    pub policy: VendorPolicy,
 }
 
 impl AnthropicConfig {
@@ -47,6 +48,7 @@ pub struct AnthropicProvider {
 struct Shared {
     api_key: HeaderValue,
     messages_url: Url,
+    policy: VendorPolicy,
     clock: Arc<dyn Clock>,
 }
 
@@ -59,6 +61,7 @@ impl AnthropicProvider {
             shared: Arc::new(Shared {
                 api_key: config.api_key.header_value(),
                 messages_url: endpoint_url(&base, "/messages"),
+                policy: config.policy,
                 clock,
             }),
         }

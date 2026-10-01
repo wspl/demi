@@ -375,6 +375,9 @@ async fn run_on_host(
                 }
             };
             let (end, (), ()) = tokio::join!(ending, view, typing);
+            // The end and the output are read, stopped or not: the runner
+            // may remove the job's directory.
+            job.release().await;
             Ok(Some(end))
         })
         .await

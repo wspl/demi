@@ -20,7 +20,7 @@ use crate::tabs::session::{Reference, References};
 
 use crate::page::{
     element::TargetElement,
-    protocol::{BrowserNode, BrowserTarget, BrowserTreeNode, NodeRef},
+    protocol::{BrowserNode, BrowserTarget, BrowserTreeNode, NodeRef, ResolvedElement},
 };
 
 pub(crate) type DomIdentity = (TargetId, BackendNodeId);
@@ -747,6 +747,24 @@ impl Observation {
             }
         }
         self.resolve(page, target, refs).await
+    }
+
+    /// What the page tree names `element`, with the reference that names it.
+    pub(crate) fn named(
+        &self,
+        element: &TargetElement,
+        refs: &mut References,
+    ) -> Result<ResolvedElement> {
+        let node = self
+            .describe_elements(std::slice::from_ref(element), refs, 1)?
+            .into_iter()
+            .next()
+            .ok_or(BrowserError::StaleReference)?;
+        Ok(ResolvedElement {
+            r#ref: node.r#ref.ok_or(BrowserError::StaleReference)?,
+            role: node.role,
+            name: node.name,
+        })
     }
 
     pub fn describe_elements(

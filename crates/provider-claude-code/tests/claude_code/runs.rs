@@ -611,3 +611,34 @@ async fn the_clis_error_ends_the_turn_and_keeps_the_process_while_a_broken_line_
     assert_eq!(cli.signals(), [Signal::Terminate]);
     assert_eq!(placement.starts(), 1);
 }
+
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_retry_with_nothing_new_replays_the_transcript_in_a_new_process() {
+    let provider = provider().await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    let items = vec![user("hi")];
+    let (_, cli) = tokio::join!(
+        as_the_agent_reads(runtime.run(request_without_tools(items.clone()))),
+        async {
+            let mut cli = starts.next().await;
+            cli.read().await;
+            cli.say(json!({ "type": "result", "is_error": true, "result": "overloaded" }));
+            cli
+        }
+    );
+
+    // The agent retries the same transcript: the kept process already holds
+    // it and would wait for input that never comes, so a new one replays it.
+    let (events, ()) = tokio::join!(
+        all_events(runtime.run(request_without_tools(items))),
+        async {
+            let mut replayed = starts.next().await;
+            assert_eq!(replayed.read().await, user_line("hi"));
+            replayed.result(1, 1);
+        }
+    );
+    assert_eq!(events, [usage(1, 1)]);
+    assert_eq!(cli.signals(), [Signal::Terminate]);
+    assert_eq!(placement.starts(), 2);
+}

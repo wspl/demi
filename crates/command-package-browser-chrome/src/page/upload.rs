@@ -60,8 +60,10 @@ pub async fn execute(
         let target = command
             .target()
             .ok_or_else(|| BrowserError::Configuration("upload requires a target".into()))?;
-        let (control, _) =
-            crate::page::element::ready(tab, &target, references, &["enabled"], &operation).await?;
+        let control =
+            crate::page::element::ready(tab, &target, references, &["enabled"], &operation)
+                .await?
+                .element;
         let is_input: bool = operation
             .run(element::call(
                 tab.page(),

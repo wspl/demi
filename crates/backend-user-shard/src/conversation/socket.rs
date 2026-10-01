@@ -106,7 +106,7 @@ impl Shard {
     ) {
         // Counted before any wait, so the shard's close waits for this
         // socket; one adopted as the close begins ends at once.
-        let _socket = self.conversation_sockets().token();
+        let _socket = self.tree_openers().token();
         if self.is_closing() {
             return;
         }
@@ -198,6 +198,44 @@ impl Shard {
         }
         // Dropping the connection, last, detaches it from its tree, whose
         // turns go on.
+    }
+
+    /// Restores the conversation's tree with no page attached, as an `open`
+    /// does (`runtime.md` § Yield wakeups): under the conversation's file
+    /// gate and its settings order, with the model its record holds, and
+    /// only when the backend would deliver an `open`. A tree that is live
+    /// already is left as it is.
+    pub(crate) async fn restore_tree(&self, conversation: &ConversationId) -> Result<(), String> {
+        let services = self.services();
+        let record = services
+            .control
+            .conversation(conversation.clone())
+            .await
+            .map_err(|error| error.to_string())?
+            .filter(|record| record.owner == *self.user())
+            .ok_or("the conversation is gone")?;
+        let cwd = self
+            .host_shard()
+            .resolve_target(&record)
+            .await
+            .map_err(|error| error.to_string())?
+            .path()
+            .to_owned();
+        let slot = self.conversations().slot(conversation);
+        let _files = slot.file_gate().enter(Purpose::Demand).await;
+        let _settings = slot.settings.acquire().await;
+        match self
+            .prepare_frame(conversation, &ClientFrame::Open {})
+            .await
+        {
+            Ok(Prepared::Deliver) => {}
+            Ok(Prepared::Refused(code, message)) => return Err(format!("{code}: {message}")),
+            Err(error) => return Err(error.to_string()),
+        }
+        self.agent()
+            .restore(&root_of(conversation), &cwd)
+            .await
+            .map_err(|error| error.to_string())
     }
 
     /// Decodes one message and hands the frame to the conversation's agent
@@ -447,8 +485,6 @@ enum Prepared {
     Refused(ErrorCode, String),
 }
 
-/// The answer to a frame the backend refused: an edit's `edit_result`, and
-/// an `error` frame for any other.
 /// How a frame is admitted while it is handled.
 enum Admission {
     /// Under a lease of the conversation's file gate.
@@ -470,6 +506,8 @@ fn carries_uploads(frame: &ClientFrame) -> bool {
         .any(|part| matches!(part, ClientContent::Upload { .. }))
 }
 
+/// The answer to a frame the backend refused: an edit's `edit_result`, and
+/// an `error` frame for any other.
 fn refused_frame(frame: ClientFrame, code: ErrorCode, message: String) -> ServerFrame {
     match frame {
         ClientFrame::EditAndSend { request } => ServerFrame::EditResult {

@@ -211,6 +211,57 @@ test('the test script names every package with tests, and only paths that exist'
   expect(violations).toEqual([])
 })
 
+/** The names a module declares at its top level: functions, function-valued variables, classes, types and enums. */
+function topLevelDeclarations(path: string): string[] {
+  const parsed = parseSync(path, readFileSync(join(root, path), 'utf8'))
+  const names: string[] = []
+  for (const statement of parsed.program.body) {
+    const declaration = statement.type === 'ExportNamedDeclaration' || statement.type === 'ExportDefaultDeclaration'
+      ? statement.declaration
+      : statement
+    if (!declaration) continue
+    switch (declaration.type) {
+      case 'FunctionDeclaration':
+      case 'ClassDeclaration':
+      case 'TSInterfaceDeclaration':
+      case 'TSTypeAliasDeclaration':
+      case 'TSEnumDeclaration':
+        if (declaration.id) names.push(declaration.id.name)
+        break
+      case 'VariableDeclaration':
+        for (const declarator of declaration.declarations) {
+          const helper = declarator.init?.type === 'ArrowFunctionExpression' || declarator.init?.type === 'FunctionExpression'
+          if (helper && declarator.id.type === 'Identifier') names.push(declarator.id.name)
+        }
+        break
+    }
+  }
+  return names
+}
+
+test('no package declares a helper that @demicodes/utils exports, which it imports instead', () => {
+  const utils = packages.find((pkg) => pkg.name === 'utils')
+  if (!utils) throw new Error('the workspace has no utils package')
+  const helpers = new Set<string>()
+  for (const path of productionSources(utils)) {
+    for (const statement of parseSync(path, readFileSync(join(root, path), 'utf8')).module.staticExports) {
+      for (const entry of statement.entries) {
+        if (!entry.moduleRequest && entry.exportName.name) helpers.add(entry.exportName.name)
+      }
+    }
+  }
+  expect(helpers.size).toBeGreaterThan(0)
+  const violations: string[] = []
+  for (const pkg of packages.filter((candidate) => candidate !== utils)) {
+    for (const path of productionSources(pkg)) {
+      for (const name of topLevelDeclarations(path)) {
+        if (helpers.has(name)) violations.push(`${path} declares ${name}; import it from @demicodes/utils`)
+      }
+    }
+  }
+  expect(violations).toEqual([])
+})
+
 test('the graph is acyclic', () => {
   const done = new Set<string>()
   const visiting: string[] = []

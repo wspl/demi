@@ -36,7 +36,6 @@ hmac = "0.12"
 jiff.workspace = true
 password-hash = "0.5"
 rusqlite = { version = "0.40", default-features = false, features = ["bundled"] }
-rusqlite_migration = "2.6"
 serde.workspace = true
 serde_json.workspace = true
 sha2 = "0.10"
@@ -47,6 +46,7 @@ tokio-rusqlite = "0.8"
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
+demi-provider-common = { path = "../provider-common", features = ["testing"] }
 demi-agent-store = { path = "../agent-store", features = ["testing"] }
 tempfile = "3"
 tokio-util.workspace = true
