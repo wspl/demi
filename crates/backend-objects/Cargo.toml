@@ -3,7 +3,6 @@ name = "demi-backend-objects"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-rust-version.workspace = true
 
 [lib]
 # Its tests reach the record of blob uses, so they are unit tests and the

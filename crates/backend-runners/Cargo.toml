@@ -3,7 +3,6 @@ name = "demi-backend-runners"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-rust-version.workspace = true
 
 [lib]
 # Its tests reach the pending claims' window, the codes' alphabet and the
