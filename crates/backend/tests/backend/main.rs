@@ -18,6 +18,7 @@
 mod accounts;
 mod auth;
 mod blobs;
+mod builtin_families;
 mod browser;
 mod claude;
 mod claude_code;

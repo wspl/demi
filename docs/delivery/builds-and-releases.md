@@ -317,7 +317,7 @@ Demi supports, downloads the `chrome` archive from Chrome for Testing's
 download host through the artifact library, measures its size and SHA-256, and
 checks that it holds the executable the record names. It then writes the
 release record, `crates/command-package-browser-protocol/src/release/chrome.json`, which
-`browser-driver` compiles in and the Cloud image build installs from; commit it
+`command-package-browser-chrome` compiles in and the Cloud image build installs from; commit it
 with the change that adopts the version. Chrome for Testing publishes no
 Windows arm64 build, so the record carries five of the six targets. The
 downloads are not kept: every installer downloads its archive again and checks
