@@ -10,6 +10,7 @@ rust-version.workspace = true
 # § Module layout); no doc examples.
 test = false
 doctest = false
+bench = false
 
 [features]
 # A job's shell and scope with the view of its units' activity, and the

@@ -10,6 +10,7 @@ rust-version.workspace = true
 # crate has no integration tests (`crates-and-packages.md` § Module layout);
 # no doc examples.
 doctest = false
+bench = false
 
 [features]
 # The capture extension's ID, for the Chrome tests, and tab numbers at hand

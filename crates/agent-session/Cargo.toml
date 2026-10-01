@@ -10,6 +10,7 @@ rust-version.workspace = true
 # § Module layout); no doc examples.
 test = false
 doctest = false
+bench = false
 
 [features]
 # What a session's tests read of it besides its public items

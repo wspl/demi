@@ -1424,7 +1424,13 @@ review.
   both unit and integration tests is compiled twice. The one binary is the
   crate's integration test binary, `tests/<crate>/main.rs` with a module per
   area, which tests the crate's public boundary; the library and every
-  executable target set `test = false`, and every library `doctest = false`.
+  executable target set `test = false`, and every library `doctest = false`
+  and `bench = false`. The workspace has no benchmarks, and without
+  `bench = false` the `--all-targets` check compiles every library a second
+  time as a benchmark harness: after an edit to `command-service`, that
+  second pass was a quarter of the check's time (18 s of 66 s on 4 x86-64
+  cores). Cargo's metadata does not report the setting, so review enforces
+  it.
   A crate whose program another test starts has that binary in any case:
   Cargo builds a package's programs only for its integration tests. A crate
   without programs whose behavior is observable only inside it keeps its

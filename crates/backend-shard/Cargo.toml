@@ -11,6 +11,7 @@ rust-version.workspace = true
 # play, so they are unit tests and the crate has no integration tests
 # (`crates-and-packages.md` § Module layout); no doc examples.
 doctest = false
+bench = false
 
 [features]
 # Shared services and a shard for tests (`Services::start_for_tests`), and

@@ -11,6 +11,7 @@ rust-version.workspace = true
 # layout); no doc examples.
 test = false
 doctest = false
+bench = false
 
 [dependencies]
 demi-backend-storage = { path = "../backend-storage" }

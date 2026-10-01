@@ -10,6 +10,7 @@ rust-version.workspace = true
 # test and the crate has no integration tests (`crates-and-packages.md`
 # § Module layout); no doc examples.
 doctest = false
+bench = false
 
 [dependencies]
 demi-backend-providers = { path = "../backend-providers" }

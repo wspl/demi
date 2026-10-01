@@ -10,6 +10,7 @@ rust-version.workspace = true
 # internals, so they are unit tests and the crate has no integration tests
 # (`crates-and-packages.md` § Module layout); no doc examples.
 doctest = false
+bench = false
 
 [dependencies]
 demi-backend-storage = { path = "../backend-storage" }

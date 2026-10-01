@@ -10,6 +10,7 @@ rust-version.workspace = true
 # § Module layout); no doc examples.
 test = false
 doctest = false
+bench = false
 
 [dependencies]
 demi-agent-tools = { path = "../agent-tools" }

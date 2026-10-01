@@ -10,6 +10,7 @@ rust-version.workspace = true
 # tests/claude_code, so the library needs no test harness of its own.
 doctest = false
 test = false
+bench = false
 
 [dependencies]
 demi-core = { path = "../core" }

@@ -11,6 +11,7 @@ rust-version.workspace = true
 # § Module layout); no doc examples.
 test = false
 doctest = false
+bench = false
 
 [features]
 # Test support: a download client that also reaches a fixture server on 127.0.0.1.

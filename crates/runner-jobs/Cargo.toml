@@ -10,6 +10,7 @@ rust-version.workspace = true
 # § Module layout); no doc examples.
 test = false
 doctest = false
+bench = false
 
 [features]
 # A dispatcher with live execution contexts on a connection that channels

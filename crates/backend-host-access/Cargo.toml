@@ -12,6 +12,7 @@ rust-version.workspace = true
 # shard are tested in `backend-shard`, which implements `HostShard`. No doc
 # examples.
 doctest = false
+bench = false
 
 [dependencies]
 demi-agent-store = { path = "../agent-store" }

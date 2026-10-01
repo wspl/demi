@@ -10,6 +10,7 @@ rust-version.workspace = true
 # has no integration tests (`crates-and-packages.md` § Module layout); no doc
 # examples.
 doctest = false
+bench = false
 
 [features]
 # A control database with the master account and raw statements behind the
