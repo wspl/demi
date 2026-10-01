@@ -1,14 +1,17 @@
 //! `demi browser`: every operation of the package has its command.
 
 use demi_command_package_browser_protocol::browser::{OPERATIONS, PREFIX};
-
-use crate::command_line::{demi, help, parse};
+use demi_plugin_browser::Browser;
+use demi_plugin_interface::{
+    PluginFactory,
+    testing::command_line::{help, parse, roots},
+};
 
 const TAB: &str = "t1";
 
 #[test]
 fn every_operation_has_a_command_that_takes_each_operand_from_one_source() {
-    let (_, root) = demi();
+    let root = roots(Browser::new().manifest()).remove(0);
     for operation in OPERATIONS {
         let name = operation.strip_prefix(PREFIX).unwrap();
         let mut line = vec!["browser"];

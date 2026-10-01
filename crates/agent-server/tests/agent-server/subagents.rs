@@ -2,7 +2,7 @@
 //! `demi agent` calls a node's jobs make, the frames the root's connection
 //! receives, what each model is asked, and the tree store's records.
 
-use std::{cell::RefCell, rc::Rc, time::Duration};
+use std::{cell::RefCell, time::Duration};
 
 use demi_agent_server::ServerConfig;
 use demi_agent_store::{
@@ -10,25 +10,24 @@ use demi_agent_store::{
     NodeRecord,
     testing::{MemoryTreeStore, model_of, test_model, text},
 };
-use demi_agent_tools::Profile;
 use demi_conversation_socket_protocol::{
     ClientFrame, JobPhase, ServerFrame, SubagentEvent, TranscriptPatch,
 };
-use demi_host_interface::{CommandSet, RpcError, StorageOp, StorageReply};
+use demi_host_interface::{RpcError, StorageOp, StorageReply};
 use demi_provider_common::{
     InferenceItem, UserPart,
     testing::{Turn, event},
 };
 use demi_shared_types::{
     AgentMessage, AgentMessageEvent, Block, BlockId, CompletionId, CompletionOutcome, NodeId,
-    QueuedMessage, SessionPhase, TextBlock, Timestamp, TurnId, UserBlock,
+    Profile, QueuedMessage, SessionPhase, TextBlock, Timestamp, TurnId, UserBlock,
 };
 use serde_json::{Value, json};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::support::{
-    CommandRun, Fixture, Gate, Model, TestHarness, agent, agent_call, command_storage,
+    CommandRun, Fixture, Gate, Model, TestProduct, agent, agent_call, command_storage,
     conversation, held, is_idle, is_pending_steers, named_node, open, request_text, send, texts,
     until, until_answered,
 };
@@ -45,10 +44,10 @@ fn root() -> NodeId {
     conversation()
 }
 
-fn fixture(model: &Model, harness: TestHarness) -> Fixture {
+fn fixture(model: &Model, product: TestProduct) -> Fixture {
     Fixture::with_model(
         model,
-        harness,
+        product,
         MemoryTreeStore::new(),
         ServerConfig::default(),
     )
@@ -132,7 +131,7 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
     let model = Model::default();
     model.root([said("working"), said("got it")]);
     model.child("Read notes.md", [said("the file says 42")]);
-    let fixture = fixture(&model, TestHarness::default());
+    let fixture = fixture(&model, TestProduct::default());
     let mut client = fixture.opened().await;
     client.send(send("m1", "start")).await;
     client.next_until(is_idle).await;
@@ -216,7 +215,9 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
     let asked = model.requests_of("Read notes.md");
     assert_eq!(asked.len(), 1);
     assert_eq!(asked[0].session_id, child.as_str());
-    assert_eq!(asked[0].system_prompt, "system prompt");
+    assert!(asked[0].system_prompt.starts_with("system prompt\n"));
+    assert!(asked[0].system_prompt.contains("demi agent spawn"));
+    assert!(asked[0].system_prompt.contains("demi agent send"));
     let [InferenceItem::UserMessage { content }] = &*asked[0].items else {
         panic!("{:?}", asked[0].items)
     };
@@ -229,14 +230,6 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
     );
     assert!(preamble.contains("`demi agent spawn` spawns your own children."));
     assert_eq!(first, brief);
-    assert!(
-        fixture
-            .harness
-            .prompts
-            .borrow()
-            .iter()
-            .all(|help| help.contains("demi agent spawn") && help.contains("demi agent send"))
-    );
 
     // The parent heard the result once, as agent input of the request that
     // answered it.
@@ -307,7 +300,7 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
         ],
     );
     model.child("task gamma", [held_said(&gamma_gate, "gamma done")]);
-    let fixture = fixture(&model, TestHarness::default());
+    let fixture = fixture(&model, TestProduct::default());
     let mut client = fixture.opened().await;
 
     let delta = spawn(
@@ -551,7 +544,7 @@ async fn abort_closes_the_subtree_and_dispose_detaches_it_for_the_next_open() {
         "task beta",
         [held_said(&beta_gate, "never"), said("beta after restart")],
     );
-    let fixture = fixture(&model, TestHarness::default());
+    let fixture = fixture(&model, TestProduct::default());
     let mut client = fixture.opened().await;
     let alpha = spawn(&fixture, &root(), json!({ "prompt": "task alpha" })).await;
     let gamma_start = tokio::task::spawn_local({
@@ -655,7 +648,6 @@ pub(crate) fn checkpoint(queue: Vec<QueuedMessage>, blocks: Vec<Block>) -> Check
             wakeups: Vec::new(),
             cwd: "/workspace".into(),
             model: test_model(),
-            harness: "test".into(),
             edits: Vec::new(),
         },
         command_state: Some(CommandStateSnapshot::initial()),
@@ -753,7 +745,7 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
     };
     let closed = NodeId::try_from("closed").unwrap();
     store.close_node(&closed, close).await.unwrap();
-    // A profile the harness no longer declares: gone with its subtree.
+    // A profile the product no longer declares: gone with its subtree.
     store
         .create_node(
             child_record("orphan", 4, "conversation", Some("retired")),
@@ -793,7 +785,7 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
     model.child("task lost", [said("lost result")]);
     let fixture = Fixture::with_model(
         &model,
-        TestHarness::default(),
+        TestProduct::default(),
         store.clone(),
         ServerConfig::default(),
     );
@@ -868,7 +860,7 @@ async fn a_start_request_is_safe_to_retry_and_outlives_a_cancelled_call() {
             said("third done"),
         ],
     );
-    let fixture = fixture(&model, TestHarness::default());
+    let fixture = fixture(&model, TestProduct::default());
     let mut client = fixture.opened().await;
     client.send(send("m1", "work")).await;
     until(|| model.root_requests().len() == 1).await;
@@ -999,7 +991,7 @@ async fn a_start_request_is_safe_to_retry_and_outlives_a_cancelled_call() {
 async fn a_node_has_at_most_eight_live_children_and_the_web_app_aborts_them_all() {
     let model = Model::default();
     let gate = Gate::new();
-    let fixture = fixture(&model, TestHarness::default());
+    let fixture = fixture(&model, TestProduct::default());
     let mut client = fixture.opened().await;
     for index in 1..=8 {
         model.child(&format!("limit {index}:"), [held_said(&gate, "waits")]);
@@ -1041,15 +1033,14 @@ async fn profiles_and_the_spawn_restriction_shape_a_childs_prompt_and_commands()
     let explorer = Profile {
         name: "explorer".into(),
         description: "Reads, never edits.".into(),
-        system_prompt: Some(Rc::new(|_, help: &str| format!("explorer prompt\n{help}"))),
+        instructions: Some("explorer prompt".into()),
         commands: None,
         can_spawn_subagents: false,
         model: None,
     };
-    let harness = TestHarness {
-        preamble: Some("harness preamble".into()),
+    let product = TestProduct {
         profiles: vec![explorer],
-        ..TestHarness::default()
+        ..TestProduct::default()
     };
     let model = Model::default();
     model.root([said("noted"), said("noted"), said("noted")]);
@@ -1062,7 +1053,7 @@ async fn profiles_and_the_spawn_restriction_shape_a_childs_prompt_and_commands()
             held_said(&resumed_gate, "more done"),
         ],
     );
-    let fixture = fixture(&model, harness);
+    let fixture = fixture(&model, product);
     let mut client = fixture.opened().await;
 
     let unknown = agent(
@@ -1138,7 +1129,6 @@ async fn profiles_and_the_spawn_restriction_shape_a_childs_prompt_and_commands()
     let explorer_preamble = request_text(explored);
     assert!(explorer_preamble.starts_with("You are a subagent"));
     assert!(explorer_preamble.contains("This session may not spawn subagents."));
-    assert!(!explorer_preamble.contains("harness preamble"));
     assert_eq!(
         fixture
             .store
@@ -1149,8 +1139,13 @@ async fn profiles_and_the_spawn_restriction_shape_a_childs_prompt_and_commands()
         Some("explorer")
     );
     let restricted_asked = &model.requests_of("task restricted")[0];
-    assert_eq!(restricted_asked.system_prompt, "system prompt");
-    assert!(request_text(restricted_asked).starts_with("harness preamble\n\nYou are a subagent"));
+    assert!(
+        restricted_asked
+            .system_prompt
+            .starts_with("system prompt\n")
+    );
+    assert!(!restricted_asked.system_prompt.contains("demi agent spawn"));
+    assert!(request_text(restricted_asked).starts_with("You are a subagent"));
     let is_missing_spawn = |call: &Result<CommandRun, RpcError>| matches!(call, Err(RpcError::Usage(message)) if message == "\"demi agent spawn\" is not an rpc command");
     assert!(is_missing_spawn(&from_restricted), "{from_restricted:?}");
     assert!(is_missing_spawn(&after_resume), "{after_resume:?}");
@@ -1162,28 +1157,20 @@ async fn profiles_and_the_spawn_restriction_shape_a_childs_prompt_and_commands()
             .unwrap()
             .can_spawn_subagents
     );
-    assert!(
-        fixture
-            .harness
-            .prompts
-            .borrow()
-            .iter()
-            .any(|help| !help.contains("demi agent spawn"))
-    );
 
     let reserved = Profile {
         name: "default".into(),
         description: String::new(),
-        system_prompt: None,
+        instructions: None,
         commands: None,
         can_spawn_subagents: true,
         model: None,
     };
     let refusing = self::fixture(
         &Model::default(),
-        TestHarness {
+        TestProduct {
             profiles: vec![reserved],
-            ..TestHarness::default()
+            ..TestProduct::default()
         },
     );
     let mut refused_client = refusing.client();
@@ -1204,7 +1191,7 @@ async fn a_detached_tree_with_a_live_child_is_not_evicted_and_one_without_is() {
     let gate = Gate::new();
     model.root([said("child done")]);
     model.child("task long", [held_said(&gate, "long result")]);
-    let fixture = fixture(&model, TestHarness::default());
+    let fixture = fixture(&model, TestProduct::default());
     let client = fixture.opened().await;
     spawn(&fixture, &root(), json!({ "prompt": "task long" })).await;
     drop(client);
@@ -1235,7 +1222,7 @@ async fn a_child_whose_turn_fails_closes_as_an_error_and_a_silent_one_completes_
         [Turn::Events(vec![event::error("the vendor refused", None)])],
     );
     model.child("task silent", [Turn::Events(vec![event::response(1, 1)])]);
-    let fixture = fixture(&model, TestHarness::default());
+    let fixture = fixture(&model, TestProduct::default());
     let mut client = fixture.opened().await;
 
     let failing = spawn(&fixture, &root(), json!({ "prompt": "task fails" })).await;
@@ -1297,7 +1284,7 @@ async fn a_grandchild_completes_into_its_parent_which_then_completes_into_the_wo
         ],
     );
     model.child("task grandchild", [said("grandchild done")]);
-    let fixture = fixture(&model, TestHarness::default());
+    let fixture = fixture(&model, TestProduct::default());
     let mut client = fixture.opened().await;
     let parent = spawn(&fixture, &root(), json!({ "prompt": "task parent" })).await;
 
@@ -1370,7 +1357,7 @@ async fn a_grandchild_completes_into_its_parent_which_then_completes_into_the_wo
     );
 }
 
-/// The execution context the harness gives each node once.
+/// The execution context the product gives each node once.
 const ON_THE_CLOUD: &str = "The conversation now runs on the Cloud.";
 
 /// How many `context` blocks the node's stored transcript holds.
@@ -1393,15 +1380,15 @@ async fn a_grandchild_inherits_its_parents_profile_and_every_node_reads_the_exec
     let worker = Profile {
         name: "worker".into(),
         description: "Works through a task list.".into(),
-        system_prompt: Some(Rc::new(|_, help: &str| format!("worker prompt\n{help}"))),
-        commands: Some(Rc::new(|_: &CommandSet| CommandSet::new())),
+        instructions: Some("worker prompt".into()),
+        commands: Some(Vec::new()),
         can_spawn_subagents: true,
         model: Some(worker_model),
     };
-    let harness = TestHarness {
+    let product = TestProduct {
         profiles: vec![worker],
         context: RefCell::new(Some(ON_THE_CLOUD.into())),
-        ..TestHarness::default()
+        ..TestProduct::default()
     };
     let model = Model::default();
     let (outer_gate, inner_gate) = (Gate::new(), Gate::new());
@@ -1411,7 +1398,7 @@ async fn a_grandchild_inherits_its_parents_profile_and_every_node_reads_the_exec
         [held_said(&outer_gate, "delegated"), said("outer done")],
     );
     model.child("task inner", [held_said(&inner_gate, "inner done")]);
-    let fixture = fixture(&model, harness);
+    let fixture = fixture(&model, product);
     let mut client = fixture.opened().await;
 
     let outer = spawn(
@@ -1430,7 +1417,7 @@ async fn a_grandchild_inherits_its_parents_profile_and_every_node_reads_the_exec
 
     // Spawned without a profile under the worker, the grandchild runs the
     // worker's prompt and model, and keeps the `demi agent` group, which the
-    // worker's narrowing of the harness commands cannot take away.
+    // worker's narrowing of the product commands cannot take away.
     let inner_asked = &model.requests_of("task inner")[0];
     assert!(inner_asked.system_prompt.starts_with("worker prompt\n"));
     assert!(inner_asked.system_prompt.contains("demi agent send"));
@@ -1459,7 +1446,7 @@ async fn a_reopened_tree_restores_a_childs_own_children_before_the_child_can_set
         "task inner",
         [held_said(&never, "never said"), said("inner done")],
     );
-    let fixture = fixture(&model, TestHarness::default());
+    let fixture = fixture(&model, TestProduct::default());
     let mut client = fixture.opened().await;
     let outer = spawn(&fixture, &root(), json!({ "prompt": "task outer" })).await;
     let inner_start = spawn_during_turn(&fixture, &outer, json!({ "prompt": "task inner" }));
@@ -1558,7 +1545,7 @@ async fn a_child_waiting_on_its_yield_stays_live_while_no_action_holds_the_tree(
             said("waited"),
         ],
     );
-    let fixture = Fixture::with_model_on_tokio_time(&model, TestHarness::default());
+    let fixture = Fixture::with_model_on_tokio_time(&model, TestProduct::default());
     let mut client = fixture.opened().await;
     let child = spawn(&fixture, &root(), json!({ "prompt": "task wait" })).await;
     let tree = fixture.server.tree(&root()).unwrap();

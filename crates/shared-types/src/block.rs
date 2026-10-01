@@ -101,7 +101,7 @@ impl garde::Validate for Block {
     }
 }
 
-/// A message the user submitted, with the harness's text for the turn.
+/// A message the user submitted, with the runtime's text for the turn.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UserBlock {
@@ -117,16 +117,16 @@ pub struct UserBlock {
     /// The content as submitted.
     #[garde(dive)]
     pub content: Vec<UserContentBlock>,
-    /// The harness's text for the turn, which the model receives before the
-    /// content; null when the harness adds none.
+    /// The runtime's text for the turn, a subagent's identity, which the
+    /// model receives before the content; null for the root.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     #[garde(skip)]
     pub preamble: Option<String>,
 }
 
-/// The execution context the node's next request runs in, which the model
-/// receives as a user message.
+/// What one context source told the node before a request (`runtime.md`
+/// § Context), which the model receives as a user message.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ContextBlock {
@@ -138,6 +138,9 @@ pub struct ContextBlock {
     pub created_at: Timestamp,
     #[garde(dive)]
     pub model: ModelSelection,
+    /// The source that answered: `execution`, or a plugin's id.
+    #[garde(length(chars, min = 1, max = 64))]
+    pub source: String,
     #[garde(skip)]
     pub text: String,
 }

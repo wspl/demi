@@ -37,7 +37,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     subagents::{checkpoint, child_record},
     support::{
-        Fixture, Gate, Model, TestHarness, agent, command_storage, conversation, held, is_idle,
+        Fixture, Gate, Model, TestProduct, agent, command_storage, conversation, held, is_idle,
         kinds, named_node, open, send, session_of, switch, until,
     },
 };
@@ -124,7 +124,7 @@ async fn read_todo(fixture: &Fixture) -> StorageReply {
 
 /// A, B and C, each answered, with the command storage's `todo` at 1 before
 /// B and at 2 before C.
-async fn three_turns(fixture: &Fixture, client: &mut TestClient<TestHarness>) {
+async fn three_turns(fixture: &Fixture, client: &mut TestClient<TestProduct>) {
     for (value, (id, text)) in [("m1", "A"), ("m2", "B"), ("m3", "C")]
         .into_iter()
         .enumerate()
@@ -887,7 +887,7 @@ async fn an_edit_waits_for_no_child_and_an_edit_and_a_child_start_refuse_each_ot
     model.child("Count the files", [said("7 files")]);
     let fixture = Fixture::with_model(
         &model,
-        TestHarness::default(),
+        TestProduct::default(),
         MemoryTreeStore::new(),
         ServerConfig::default(),
     );
@@ -974,7 +974,7 @@ async fn a_completion_whose_saves_failed_refuses_an_edit_until_a_later_save_deli
     model.root([said("answer A"), said("answer B"), said("answer A2")]);
     let fixture = Fixture::with_model(
         &model,
-        TestHarness::default(),
+        TestProduct::default(),
         MemoryTreeStore::new(),
         ServerConfig::default(),
     );

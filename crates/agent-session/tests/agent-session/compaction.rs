@@ -1289,6 +1289,63 @@ async fn a_pass_with_nothing_to_summarize_but_the_last_summary_sends_no_request(
 }
 
 #[tokio::test(flavor = "local")]
+async fn a_context_source_sees_only_its_blocks_after_the_last_boundary_and_tells_the_model_again() {
+    let provider = ScriptedRuntime::new([
+        answer("first answer"),
+        answer("second answer"),
+        answer("summary"),
+        answer("third answer"),
+    ]);
+    let store = MemoryTreeStore::new();
+    let runtime = TestRuntime {
+        execution: Some("Runs on the Cloud."),
+        ..test_runtime(Vec::new())
+    };
+    let seen = runtime.seen.clone();
+    let session = start_on(&provider, runtime, &store, SessionConfig::default()).await;
+
+    for (message, id) in [("one", "t1"), ("two", "t2")] {
+        session
+            .send(text(message), turn(id))
+            .unwrap()
+            .await
+            .unwrap();
+    }
+    session.compact().unwrap().await.unwrap();
+    session
+        .send(text("three"), turn("t3"))
+        .unwrap()
+        .await
+        .unwrap();
+
+    // Told once before the first request; the summary replaced that block,
+    // so after the pass the source is shown nothing and tells it again.
+    let told = vec!["execution: Runs on the Cloud.".to_owned()];
+    assert_eq!(*seen.borrow(), [vec![], told.clone(), vec![]]);
+    let blocks = session.transcript().blocks;
+    let contexts: Vec<_> = blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::Context(context) => Some((context.source.as_str(), context.text.as_str())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        contexts,
+        [
+            ("execution", "Runs on the Cloud."),
+            ("execution", "Runs on the Cloud.")
+        ]
+    );
+    let last = provider.requests().pop().unwrap();
+    assert!(
+        format!("{:?}", last.items).contains("Runs on the Cloud."),
+        "{:?}",
+        last.items
+    );
+}
+
+#[tokio::test(flavor = "local")]
 async fn a_second_pass_folds_the_first_summary_in_and_a_restored_session_replays_only_the_last() {
     let provider = ScriptedRuntime::new([
         answer("first answer"),

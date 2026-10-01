@@ -1,7 +1,7 @@
 //! Turns over the conversation socket: a message runs to its response and
 //! its patches rebuild the transcript; a failure, a stop and a close in the
 //! middle of a turn; a reopen from the store after a close and after a
-//! crash; model switches; the harness's texts.
+//! crash; model switches; the product's texts.
 
 use std::{rc::Rc, time::Duration};
 
@@ -682,7 +682,7 @@ async fn the_system_prompt_has_the_command_help_and_a_context_change_is_saved_be
         Turn::Events(vec![event::text("again"), event::response(1, 1)]),
     ]);
     let fixture = Fixture::with(&script, store, ServerConfig::default());
-    *fixture.harness.context.borrow_mut() = Some("The conversation now runs on the Cloud.".into());
+    *fixture.product.context.borrow_mut() = Some("The conversation now runs on the Cloud.".into());
     let mut client = fixture.opened().await;
 
     client.send(send("m1", "hi")).await;
@@ -690,16 +690,14 @@ async fn the_system_prompt_has_the_command_help_and_a_context_change_is_saved_be
 
     assert_eq!(*stored_at_request.borrow(), ["user", "context"]);
     let request = &script.requests()[0];
-    assert_eq!(request.system_prompt, "system prompt");
+    assert!(request.system_prompt.starts_with("system prompt\n"));
+    assert!(
+        request.system_prompt.contains("greet: Greets the caller."),
+        "{}",
+        request.system_prompt
+    );
+    assert!(request.system_prompt.contains("greet hello"));
     assert_eq!(request.items.len(), 2);
-    {
-        let prompts = fixture.harness.prompts.borrow();
-        assert!(
-            prompts[0].contains("greet: Greets the caller."),
-            "{prompts:?}"
-        );
-        assert!(prompts[0].contains("greet hello"), "{prompts:?}");
-    }
     let blocks = fixture
         .server
         .tree(&conversation())
@@ -713,7 +711,7 @@ async fn the_system_prompt_has_the_command_help_and_a_context_change_is_saved_be
     // The next request's hook is shown what the node saw.
     client.send(send("m2", "again")).await;
     client.next_until(is_idle).await;
-    let seen = fixture.harness.seen.borrow();
+    let seen = fixture.product.seen.borrow();
     assert_eq!(
         *seen,
         [

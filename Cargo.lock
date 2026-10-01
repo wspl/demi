@@ -1246,32 +1246,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-agent-coding-harness"
-version = "0.1.3"
-dependencies = [
- "demi-agent-server",
- "demi-agent-store",
- "demi-agent-tools",
- "demi-agent-transcript",
- "demi-backend-remote-host",
- "demi-command-declarations",
- "demi-command-package-browser-protocol",
- "demi-command-package-file-protocol",
- "demi-command-protocol",
- "demi-conversation-socket-protocol",
- "demi-host-interface",
- "demi-provider-common",
- "demi-shared-types",
- "futures-util",
- "rustix",
- "schemars",
- "serde",
- "serde_json",
- "tokio",
- "tokio-util",
-]
-
-[[package]]
 name = "demi-agent-server"
 version = "0.1.3"
 dependencies = [
@@ -1420,6 +1394,10 @@ dependencies = [
  "demi-conversation-socket-protocol",
  "demi-host-interface",
  "demi-machine-manager-protocol",
+ "demi-plugin-browser",
+ "demi-plugin-file",
+ "demi-plugin-interface",
+ "demi-plugin-todo",
  "demi-provider-anthropic-api",
  "demi-provider-claude-code",
  "demi-provider-codex",
@@ -1681,6 +1659,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "demi-backend-plugins"
+version = "0.1.3"
+dependencies = [
+ "demi-agent-server",
+ "demi-agent-store",
+ "demi-agent-tools",
+ "demi-agent-transcript",
+ "demi-backend-remote-host",
+ "demi-command-declarations",
+ "demi-command-package-file-protocol",
+ "demi-command-protocol",
+ "demi-conversation-socket-protocol",
+ "demi-host-interface",
+ "demi-plugin-file",
+ "demi-plugin-interface",
+ "demi-plugin-todo",
+ "demi-provider-common",
+ "demi-shared-types",
+ "futures-util",
+ "rustix",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "demi-backend-providers"
 version = "0.1.3"
 dependencies = [
@@ -1786,7 +1792,6 @@ version = "0.1.3"
 dependencies = [
  "axum",
  "bytes",
- "demi-agent-coding-harness",
  "demi-agent-server",
  "demi-agent-session",
  "demi-agent-store",
@@ -1800,17 +1805,17 @@ dependencies = [
  "demi-backend-host-access",
  "demi-backend-idle-watch",
  "demi-backend-page-sync",
+ "demi-backend-plugins",
  "demi-backend-providers",
  "demi-backend-remote-host",
  "demi-backend-runners",
  "demi-command-declarations",
- "demi-command-package-browser-protocol",
  "demi-command-package-claude-code-protocol",
- "demi-command-package-file-protocol",
  "demi-command-protocol",
  "demi-conversation-socket-protocol",
  "demi-host-interface",
  "demi-machine-manager-protocol",
+ "demi-plugin-interface",
  "demi-provider-claude-code",
  "demi-provider-common",
  "demi-runner-protocol",
@@ -2110,6 +2115,58 @@ dependencies = [
  "serde_json",
  "serde_plain",
  "thiserror",
+]
+
+[[package]]
+name = "demi-plugin-browser"
+version = "0.1.3"
+dependencies = [
+ "demi-command-declarations",
+ "demi-command-package-browser-protocol",
+ "demi-host-interface",
+ "demi-plugin-interface",
+ "schemars",
+ "serde_json",
+]
+
+[[package]]
+name = "demi-plugin-file"
+version = "0.1.3"
+dependencies = [
+ "demi-command-declarations",
+ "demi-command-package-file-protocol",
+ "demi-host-interface",
+ "demi-plugin-interface",
+]
+
+[[package]]
+name = "demi-plugin-interface"
+version = "0.1.3"
+dependencies = [
+ "demi-command-declarations",
+ "demi-host-interface",
+ "demi-plugin-interface",
+ "demi-shared-types",
+ "futures-util",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "demi-plugin-todo"
+version = "0.1.3"
+dependencies = [
+ "demi-command-declarations",
+ "demi-host-interface",
+ "demi-plugin-interface",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

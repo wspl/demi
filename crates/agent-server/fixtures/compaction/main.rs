@@ -25,7 +25,7 @@ use demi_agent_store::{
     testing::MemoryTreeStore,
 };
 use demi_agent_tools::{
-    AgentHarness, PromptContext,
+    HostResolver,
     testing::{NoHost, NoShells},
 };
 use demi_agent_transcript::{RandomIds, RequestView, estimate::context_tokens};
@@ -66,7 +66,6 @@ const TURN_TIMEOUT: Duration = Duration::from_secs(600);
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Fixture {
-    harness: String,
     cwd: String,
     built_tokens: u64,
     generations: u32,
@@ -150,26 +149,11 @@ fn deepseek() -> Result<Rc<OpenAiProvider>, String> {
     Ok(Rc::new(OpenAiProvider::new(config, Arc::new(SystemClock))))
 }
 
-/// The fixture's harness: its name, no commands, no Host, and the system
-/// prompt the fixture was built with.
-struct FixtureHarness {
-    name: String,
-}
+/// The fixture's agents: no Host, so no shell tool runs.
+struct NoHosts;
 
-impl AgentHarness for FixtureHarness {
+impl HostResolver for NoHosts {
     type Host = NoHost;
-
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn commands(&self) -> Rc<CommandSet> {
-        Rc::new(CommandSet::new())
-    }
-
-    async fn system_prompt(&self, _context: PromptContext<'_>, _commands: &str) -> String {
-        SYSTEM_PROMPT.to_owned()
-    }
 }
 
 /// Every runtime is DeepSeek's, and the conversation opens with the model
@@ -206,8 +190,8 @@ impl ProviderResolver for DeepSeek {
 
 /// The fixture opened as a conversation, and what the harness asks it.
 struct Conversation {
-    server: Rc<AgentServer<FixtureHarness>>,
-    client: TestClient<FixtureHarness>,
+    server: Rc<AgentServer<NoHosts>>,
+    client: TestClient<NoHosts>,
     root: NodeId,
 }
 
@@ -230,7 +214,6 @@ impl Conversation {
                 wakeups: Vec::new(),
                 cwd: fixture.cwd.clone(),
                 model: model.clone(),
-                harness: fixture.harness.clone(),
                 edits: Vec::new(),
             },
             command_state: Some(CommandStateSnapshot::initial()),
@@ -251,9 +234,11 @@ impl Conversation {
             ..ServerConfig::default()
         };
         let server = AgentServer::new(ServerDeps {
-            harness: Rc::new(FixtureHarness {
-                name: fixture.harness,
-            }),
+            commands: Rc::new(CommandSet::new()),
+            instructions: Rc::from(SYSTEM_PROMPT),
+            profiles: Rc::new([]),
+            hosts: Rc::new(NoHosts),
+            context: Rc::new([]),
             providers: deepseek,
             shells: Rc::new(NoShells),
             stores: Rc::new(move |_: &NodeId| store.clone() as Rc<dyn AgentTreeStore>),

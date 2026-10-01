@@ -23,6 +23,7 @@ use demi_backend_providers::llm::claude_releases::DEFAULT_RELEASES_URL;
 use demi_backend_providers::llm::families::FamilyRegistry;
 use demi_backend_providers::vault::logins::LoginTiming;
 use demi_backend_runners::native::NativeCatalog;
+use demi_plugin_interface::PluginFactory;
 use demi_provider_common::models_dev::ModelsDevClient;
 
 use demi_backend_host_access::stream::BROWSER_STREAM;
@@ -206,6 +207,8 @@ pub struct BackendConfig {
     pub shards: ShardPlacement,
     /// The provider families entries are assembled with.
     pub families: FamilyRegistry,
+    /// The plugins, in their order of registration.
+    pub plugins: Vec<Box<dyn PluginFactory>>,
     /// Where the models.dev document is read.
     pub models_dev_url: Url,
     /// The Claude Code distribution whose newest release the CLI on each
@@ -264,6 +267,7 @@ impl BackendConfig {
             clock: Arc::new(SystemClock),
             shards: ShardPlacement::Threads(NonZeroUsize::MIN),
             families: crate::families::builtin(),
+            plugins: crate::plugins::builtin(),
             models_dev_url: ModelsDevClient::DEFAULT_URL
                 .parse()
                 .expect("the models.dev address parses"),
