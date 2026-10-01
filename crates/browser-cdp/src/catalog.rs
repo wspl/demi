@@ -32,7 +32,7 @@ pub(crate) fn catalog() -> Result<&'static Catalog> {
 impl Catalog {
     fn load() -> std::result::Result<Self, String> {
         let protocol: PinnedProtocol = serde_json::from_str(include_str!(
-            "../../../vendor/chromiumoxide_cdp/pdl/protocol.json"
+            "../../../vendor/chromiumoxide/chromiumoxide_cdp/pdl/protocol.json"
         ))
         .map_err(|error| error.to_string())?;
         let mut definitions = serde_json::Map::new();
