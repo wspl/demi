@@ -9,11 +9,11 @@ use demi_command_protocol::{Completion, Invocation, LocalInvocation};
 use demi_command_sdk::{
     Exchange, ExchangeError, Handler, Input, InvocationContext, Output, ServiceError,
 };
+use demi_runner_command_packages::ServiceHandle;
 use demi_runner_process::{
     command_client::{RAW, RawCommand},
     pipes::PipeClient,
 };
-use demi_runner_command_packages::ServiceHandle;
 use std::{future::Future, pin::Pin, sync::Arc};
 
 /// The most a command's body read from its standard input may hold.
@@ -75,11 +75,15 @@ impl Dispatcher {
         mut invocation: InvocationContext<LocalInvocation>,
     ) -> Result<Completion, ServiceError> {
         let raw: RawCommand = serde_json::from_value(invocation.request.args.clone())?;
-        let context = self.contexts.get(&raw.context).map_err(ServiceError::failed)?;
+        let context = self
+            .contexts
+            .get(&raw.context)
+            .map_err(ServiceError::failed)?;
         let execute = async {
-            let root = context.manifest.roots.get(&raw.root).ok_or_else(|| {
-                ServiceError::failed(DispatchError::NotARoot(raw.root.clone()))
-            })?;
+            let root =
+                context.manifest.roots.get(&raw.root).ok_or_else(|| {
+                    ServiceError::failed(DispatchError::NotARoot(raw.root.clone()))
+                })?;
             let selected = root.tree.select(&raw.argv).map_err(ServiceError::failed)?;
             let parsed = selected.parse(&raw.argv).map_err(ServiceError::failed)?;
             if parsed.help {
@@ -110,8 +114,10 @@ impl Dispatcher {
                 None
             };
             let parsed = parsed.validate(leaf, body).map_err(ServiceError::failed)?;
-            let mut output =
-                CommandOutput::new(invocation.output, leaf.json_output().filter(|_| parsed.json));
+            let mut output = CommandOutput::new(
+                invocation.output,
+                leaf.json_output().filter(|_| parsed.json),
+            );
             let _hint = rpc::running_hint(
                 &context.connection,
                 &context.job_id,
@@ -155,7 +161,9 @@ impl Dispatcher {
                 };
                 match exchange.await {
                     Ok(code) => code,
-                    Err(Failed::Caller(error) | Failed::Service(error @ ServiceError::Cancelled)) => {
+                    Err(
+                        Failed::Caller(error) | Failed::Service(error @ ServiceError::Cancelled),
+                    ) => {
                         return Err(error);
                     }
                     // A call that failed with its service reports how the

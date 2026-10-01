@@ -8,9 +8,9 @@
 use std::sync::Arc;
 
 use demi_backend_database::StorageError;
-use demi_shared_types::AccountInfo;
 use demi_provider_common::Secret;
 use demi_provider_common::credentials::{AccountsError, AddAccount, MemoryCredentialPool};
+use demi_shared_types::AccountInfo;
 use demi_web_api_protocol::ids::{CredentialId, UserId};
 use demi_web_api_protocol::providers::Accounts;
 
@@ -59,10 +59,15 @@ pub async fn import_setup_token(
     token: String,
 ) -> Result<ProviderEntry, AccountRefusal> {
     if assembly.families().get(SETUP_TOKEN_FAMILY).is_none() {
-        return Err(AccountRefusal::Unsupported("Setup-token import is unavailable"));
+        return Err(AccountRefusal::Unsupported(
+            "Setup-token import is unavailable",
+        ));
     }
     let entries = assembly.vault().entries(owner.clone()).await?;
-    if entries.iter().any(|entry| entry.family == SETUP_TOKEN_FAMILY) {
+    if entries
+        .iter()
+        .any(|entry| entry.family == SETUP_TOKEN_FAMILY)
+    {
         return Err(AccountRefusal::Exists);
     }
     let staged = MemoryCredentialPool::new();
@@ -91,15 +96,22 @@ pub async fn add_token(
 
 /// Stores the token's account through the provider's own account
 /// operations, which know the family's secret document.
-async fn add(provider: &dyn demi_provider_common::Provider, token: String) -> Result<AccountInfo, AccountRefusal> {
+async fn add(
+    provider: &dyn demi_provider_common::Provider,
+    token: String,
+) -> Result<AccountInfo, AccountRefusal> {
     let accounts = provider
         .accounts()
         .filter(|accounts| accounts.capability().add)
-        .ok_or(AccountRefusal::Unsupported("Use device login for this provider"))?;
+        .ok_or(AccountRefusal::Unsupported(
+            "Use device login for this provider",
+        ))?;
     let secret = Secret::try_from(token).map_err(|_| AccountRefusal::TokenImportFailed)?;
     match accounts.add(AddAccount::SetupToken(secret)).await {
         Ok(account) => Ok(account),
-        Err(AccountsError::Unsupported) => Err(AccountRefusal::Unsupported("Use device login for this provider")),
+        Err(AccountsError::Unsupported) => Err(AccountRefusal::Unsupported(
+            "Use device login for this provider",
+        )),
         Err(AccountsError::Store(message)) => Err(AccountRefusal::Store(message)),
         // Whatever else the family says may quote the token.
         Err(AccountsError::Invalid(_) | AccountsError::NotFound(_) | AccountsError::Active) => {
@@ -161,7 +173,10 @@ pub async fn remove(
     if entry.active() == Some(&account) {
         return Err(AccountRefusal::Active);
     }
-    let stored = assembly.vault().account(entry.id.clone(), account.clone()).await?;
+    let stored = assembly
+        .vault()
+        .account(entry.id.clone(), account.clone())
+        .await?;
     if stored.is_none() {
         return Err(AccountRefusal::NotFound);
     }

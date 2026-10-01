@@ -16,10 +16,10 @@ use std::{
     time::Duration,
 };
 
-use demi_command_protocol::{CommandCaller, CommandContext, CommandLocale};
 use demi_backend_remote_host::testing::{RunnerProcess, RunnerProcessOptions};
-use demi_runner_protocol::wire::{self, Inbound, Outbound};
+use demi_command_protocol::{CommandCaller, CommandContext, CommandLocale};
 use demi_host_interface::SpawnEnv;
+use demi_runner_protocol::wire::{self, Inbound, Outbound};
 use futures_util::{SinkExt, StreamExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
@@ -43,12 +43,21 @@ impl Host {
     /// Starts a runner whose environment is the test's with `env` added, as
     /// the device the backend already paired, and takes its `hello`.
     pub async fn start(env: BTreeMap<String, String>) -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0").await.expect("a local port");
-        let backend = format!("http://{}", listener.local_addr().expect("the listener's address"));
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a local port");
+        let backend = format!(
+            "http://{}",
+            listener.local_addr().expect("the listener's address")
+        );
         let process = RunnerProcess::start(
             &backend,
             RunnerProcessOptions {
-                env: SpawnEnv::Overlay(env.into_iter().map(|(name, value)| (name, Some(value))).collect()),
+                env: SpawnEnv::Overlay(
+                    env.into_iter()
+                        .map(|(name, value)| (name, Some(value)))
+                        .collect(),
+                ),
                 token: Some("test-token".into()),
                 ..RunnerProcessOptions::default()
             },
@@ -126,7 +135,10 @@ impl Host {
 }
 
 /// The runner's next connection and its first message.
-async fn accept(listener: &TcpListener, process: &RunnerProcess) -> (WebSocketStream<TcpStream>, Outbound) {
+async fn accept(
+    listener: &TcpListener,
+    process: &RunnerProcess,
+) -> (WebSocketStream<TcpStream>, Outbound) {
     let accepted = tokio::time::timeout(CONNECT, listener.accept()).await;
     let Ok(Ok((stream, _))) = accepted else {
         panic!("the runner did not connect:\n{}", process.output());
@@ -145,7 +157,10 @@ async fn next(socket: &mut WebSocketStream<TcpStream>, process: &RunnerProcess) 
                 return wire::decode(&bytes).expect("the runner sends valid messages");
             }
             Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
-            other => panic!("the runner's connection ended: {other:?}\n{}", process.output()),
+            other => panic!(
+                "the runner's connection ended: {other:?}\n{}",
+                process.output()
+            ),
         }
     }
 }

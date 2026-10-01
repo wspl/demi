@@ -22,9 +22,6 @@ use demi_runner_protocol::{
 use demi_runner_shell::ShellRuntime;
 use registration::Options;
 use state::RunnerState;
-use tracing_subscriber::{
-    Layer as _, filter::LevelFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _,
-};
 use std::{
     collections::BTreeMap,
     io,
@@ -32,6 +29,9 @@ use std::{
     sync::Arc,
 };
 use tokio_util::sync::CancellationToken;
+use tracing_subscriber::{
+    Layer as _, filter::LevelFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _,
+};
 
 async fn command(root: String, argv: Vec<String>) -> io::Result<u8> {
     let env: BTreeMap<_, _> = std::env::vars().collect();

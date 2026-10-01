@@ -60,7 +60,9 @@ impl WebSessions {
     /// The live session a token's hash names, as `resolve` finds it but
     /// never renewed; `None` when it names no live session.
     pub async fn check(&self, token: &TokenHash) -> Result<Option<ResolvedSession>, StorageError> {
-        self.control.resolve_web_session(token.clone(), WITHOUT_RENEWAL).await
+        self.control
+            .resolve_web_session(token.clone(), WITHOUT_RENEWAL)
+            .await
     }
 
     pub async fn close(&self, token: &str) -> Result<(), StorageError> {

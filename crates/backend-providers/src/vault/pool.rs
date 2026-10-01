@@ -6,7 +6,9 @@
 
 use demi_backend_database::StorageError;
 use demi_backend_database::providers::{CredentialRow, CredentialWrite};
-use demi_provider_common::credentials::{AccountDocument, AccountMeta, CredentialPool, PoolError, RefreshPermit, Revision};
+use demi_provider_common::credentials::{
+    AccountDocument, AccountMeta, CredentialPool, PoolError, RefreshPermit, Revision,
+};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 use futures_util::future::BoxFuture;
 
@@ -45,7 +47,11 @@ fn store(error: StorageError) -> PoolError {
 impl CredentialPool for VaultCredentialPool {
     fn list(&self) -> BoxFuture<'_, Result<Vec<AccountMeta>, PoolError>> {
         Box::pin(async {
-            let rows = self.vault.accounts(self.provider.clone()).await.map_err(store)?;
+            let rows = self
+                .vault
+                .accounts(self.provider.clone())
+                .await
+                .map_err(store)?;
             Ok(rows.iter().map(meta).collect())
         })
     }
@@ -56,7 +62,11 @@ impl CredentialPool for VaultCredentialPool {
             let Ok(id) = CredentialId::try_from(id) else {
                 return Ok(None);
             };
-            let row = self.vault.account(self.provider.clone(), id).await.map_err(store)?;
+            let row = self
+                .vault
+                .account(self.provider.clone(), id)
+                .await
+                .map_err(store)?;
             Ok(row.as_ref().map(meta))
         })
     }
@@ -69,7 +79,9 @@ impl CredentialPool for VaultCredentialPool {
                 .provider(self.provider.clone())
                 .await
                 .map_err(store)?;
-            Ok(row.and_then(|row| row.active).map(CredentialId::into_string))
+            Ok(row
+                .and_then(|row| row.active)
+                .map(CredentialId::into_string))
         })
     }
 
@@ -95,7 +107,8 @@ impl CredentialPool for VaultCredentialPool {
     /// account, in one transaction; the record's time is the write's.
     fn write(&self, meta: AccountMeta, secret: String) -> BoxFuture<'_, Result<(), PoolError>> {
         Box::pin(async move {
-            let id = CredentialId::try_from(meta.id).map_err(|error| PoolError::Store(error.to_string()))?;
+            let id = CredentialId::try_from(meta.id)
+                .map_err(|error| PoolError::Store(error.to_string()))?;
             let account = CredentialWrite {
                 secret: self.vault.seal_secret(&self.provider, &id, &secret),
                 id,
@@ -111,7 +124,9 @@ impl CredentialPool for VaultCredentialPool {
                 .await
                 .map_err(store)?;
             if !stored {
-                return Err(PoolError::Store("the provider entry no longer exists".into()));
+                return Err(PoolError::Store(
+                    "the provider entry no longer exists".into(),
+                ));
             }
             self.vault.mark_entry_changed(&self.provider).await;
             Ok(())
@@ -177,9 +192,12 @@ impl AccountDocument for VaultDocument {
                 .vault
                 .key()
                 .open(seal::Row::Secret(&self.provider, account), &row.secret)
-                .map_err(|_| PoolError::Store(format!("the secret of {} does not open", self.name)))?;
-            let text = String::from_utf8(document)
-                .map_err(|_| PoolError::Store(format!("the secret of {} is not UTF-8", self.name)))?;
+                .map_err(|_| {
+                    PoolError::Store(format!("the secret of {} does not open", self.name))
+                })?;
+            let text = String::from_utf8(document).map_err(|_| {
+                PoolError::Store(format!("the secret of {} is not UTF-8", self.name))
+            })?;
             Ok(Some(Revision {
                 text,
                 version: row.version,
@@ -224,8 +242,8 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use demi_backend_database::control::{ControlService, testing};
-    use demi_shared_types::Timestamp;
     use demi_provider_common::credentials::{MemoryCredentialPool, SecretDocument, renew};
+    use demi_shared_types::Timestamp;
     use demi_web_api_protocol::settings::InstanceMode;
     use serde::{Deserialize, Serialize};
 
@@ -254,9 +272,12 @@ mod tests {
     #[tokio::test]
     async fn an_account_is_a_sealed_record_refreshed_only_over_the_version_it_was_read_at() {
         let data = tempfile::tempdir().unwrap();
-        let control = ControlService::open(&data.path().join("control.sqlite"), Arc::new(demi_shared_types::SystemClock))
-            .await
-            .unwrap();
+        let control = ControlService::open(
+            &data.path().join("control.sqlite"),
+            Arc::new(demi_shared_types::SystemClock),
+        )
+        .await
+        .unwrap();
         let master = testing::master(&control).await;
         let vault = Vault::new(
             control.clone(),
@@ -272,7 +293,9 @@ mod tests {
             .unwrap();
         let pool = vault.pool(entry.id.clone());
         assert_eq!(pool.active().await, Ok(None));
-        pool.write(account("a"), r#"{"refresh":"one"}"#.into()).await.unwrap();
+        pool.write(account("a"), r#"{"refresh":"one"}"#.into())
+            .await
+            .unwrap();
         // The first account of an entry without an active one becomes it, in
         // the same write.
         assert_eq!(pool.active().await.unwrap().as_deref(), Some("a"));
@@ -296,7 +319,10 @@ mod tests {
                 .await
                 .unwrap()
         );
-        assert_eq!(document.read().await.unwrap().unwrap().text, r#"{"refresh":"two"}"#);
+        assert_eq!(
+            document.read().await.unwrap().unwrap().text,
+            r#"{"refresh":"two"}"#
+        );
 
         // Concurrent renewals of one account ask the vendor once, and the
         // second uses what the first stored.
@@ -325,7 +351,12 @@ mod tests {
 
         // Another entry's pool reaches none of these accounts.
         let other = vault
-            .create_subscription(master.id.clone(), "grok-build".into(), "Grok".into(), &staged)
+            .create_subscription(
+                master.id.clone(),
+                "grok-build".into(),
+                "Grok".into(),
+                &staged,
+            )
             .await
             .unwrap()
             .unwrap();
@@ -341,7 +372,10 @@ mod tests {
             vec![entry.id.to_string(), other.id.to_string()],
         )
         .await;
-        assert!(matches!(foreign.document("a").read().await, Err(PoolError::Store(_))));
+        assert!(matches!(
+            foreign.document("a").read().await,
+            Err(PoolError::Store(_))
+        ));
 
         pool.write(account("b"), "{}".into()).await.unwrap();
         assert_eq!(
@@ -352,7 +386,10 @@ mod tests {
         pool.remove("b").await.unwrap();
         assert_eq!(pool.active().await, Ok(None));
         vault.delete(&entry).await.unwrap();
-        assert_eq!(control.credentials(entry.id.clone()).await.unwrap(), Vec::new());
+        assert_eq!(
+            control.credentials(entry.id.clone()).await.unwrap(),
+            Vec::new()
+        );
         control.close().await.unwrap();
     }
 }

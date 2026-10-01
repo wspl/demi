@@ -9,10 +9,12 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_conversation_socket_protocol::ClientContent;
 use demi_backend_database::drafts::{DraftRefusal, StagedFile};
 use demi_backend_page_sync::Part;
-use demi_web_api_protocol::drafts::{ATTACHMENT_MARK, DRAFT_BYTES_MAX, DraftAnswer, DraftSave, ReplacedDraftAction};
+use demi_conversation_socket_protocol::ClientContent;
+use demi_web_api_protocol::drafts::{
+    ATTACHMENT_MARK, DRAFT_BYTES_MAX, DraftAnswer, DraftSave, ReplacedDraftAction,
+};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::AttachmentId;
 
@@ -42,7 +44,11 @@ pub(super) async fn save(
 ) -> Result<Json<DraftAnswer>, ApiError> {
     let record = owned(&services, &user.id, &id).await?;
     let JsonBody(save) = body?;
-    let marks = save.text.chars().filter(|char| *char == ATTACHMENT_MARK).count();
+    let marks = save
+        .text
+        .chars()
+        .filter(|char| *char == ATTACHMENT_MARK)
+        .count();
     if marks != save.files.len() {
         return Err(ApiError::invalid_body(format!(
             "text: holds {marks} attachment marks for {} files",
@@ -57,7 +63,13 @@ pub(super) async fn save(
         .collect::<Result<Vec<_>, _>>()?;
     let saved = services
         .control
-        .save_draft(record.id.clone(), user.id.clone(), save.base, save.text, files)
+        .save_draft(
+            record.id.clone(),
+            user.id.clone(),
+            save.base,
+            save.text,
+            files,
+        )
         .await?
         .map_err(refused)?;
     services.sync.mark(&user.id, Part::Conversation(record.id));
@@ -105,9 +117,11 @@ fn refused(refusal: DraftRefusal) -> ApiError {
             ErrorCode::ConversationArchived,
             "The conversation is archived",
         ),
-        DraftRefusal::UploadNotFound(id) => {
-            ApiError::new(StatusCode::NOT_FOUND, ErrorCode::UploadNotFound, format!("No upload {id}"))
-        }
+        DraftRefusal::UploadNotFound(id) => ApiError::new(
+            StatusCode::NOT_FOUND,
+            ErrorCode::UploadNotFound,
+            format!("No upload {id}"),
+        ),
         DraftRefusal::TooLarge => ApiError::new(
             StatusCode::PAYLOAD_TOO_LARGE,
             ErrorCode::TooLarge,

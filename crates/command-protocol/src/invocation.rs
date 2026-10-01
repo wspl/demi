@@ -45,7 +45,9 @@ impl CommandCaller {
 /// An IANA time zone and BCP 47 language tags in preference order. The
 /// web app reports it as a user preference (web-api), so its schema is part
 /// of the web app's contract too.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, schemars::JsonSchema,
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CommandLocale {
     #[garde(length(chars, min = 1, max = 64))]
@@ -87,10 +89,18 @@ pub struct Invocation {
     pub cwd: String,
     #[garde(custom(environment))]
     pub env: BTreeMap<String, String>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[garde(dive)]
     pub edits: Option<EditContext>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[garde(skip)]
     pub json: Option<bool>,
 }
@@ -126,7 +136,11 @@ pub struct CommandError {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Completion {
     pub exit_code: u8,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     pub error: Option<CommandError>,
 }
 

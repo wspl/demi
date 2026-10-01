@@ -54,8 +54,12 @@ pub enum WorkspaceDeletion {
 }
 
 impl ControlService {
-    pub async fn workspace(&self, id: WorkspaceId) -> Result<Option<WorkspaceRecord>, StorageError> {
-        self.call(move |connection, _| workspace_by_id(connection, &id)).await
+    pub async fn workspace(
+        &self,
+        id: WorkspaceId,
+    ) -> Result<Option<WorkspaceRecord>, StorageError> {
+        self.call(move |connection, _| workspace_by_id(connection, &id))
+            .await
     }
 
     /// The user's workspaces, in their order.
@@ -133,7 +137,11 @@ impl ControlService {
 
     /// Deletes the user's workspace `id` unless conversations still target
     /// it; the count and the delete are one transaction.
-    pub async fn delete_workspace(&self, user: UserId, id: WorkspaceId) -> Result<WorkspaceDeletion, StorageError> {
+    pub async fn delete_workspace(
+        &self,
+        user: UserId,
+        id: WorkspaceId,
+    ) -> Result<WorkspaceDeletion, StorageError> {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
             let found = transaction
@@ -151,7 +159,11 @@ impl ControlService {
                 [id.as_str()],
                 |row| row.get(0),
             )?;
-            let targeting = decode("conversations", "target_workspace_id", u64::try_from(targeting))?;
+            let targeting = decode(
+                "conversations",
+                "target_workspace_id",
+                u64::try_from(targeting),
+            )?;
             if targeting > 0 {
                 return Ok(WorkspaceDeletion::InUse(targeting));
             }
@@ -163,8 +175,13 @@ impl ControlService {
     }
 }
 
-fn workspace_by_id(connection: &Connection, id: &WorkspaceId) -> Result<Option<WorkspaceRecord>, StorageError> {
-    let mut statement = connection.prepare_cached(&format!("SELECT {WORKSPACE_COLUMNS} FROM workspaces WHERE id = ?1"))?;
+fn workspace_by_id(
+    connection: &Connection,
+    id: &WorkspaceId,
+) -> Result<Option<WorkspaceRecord>, StorageError> {
+    let mut statement = connection.prepare_cached(&format!(
+        "SELECT {WORKSPACE_COLUMNS} FROM workspaces WHERE id = ?1"
+    ))?;
     let mut rows = statement.query([id.as_str()])?;
     rows.next()?.map(workspace_row).transpose()
 }
@@ -172,9 +189,21 @@ fn workspace_by_id(connection: &Connection, id: &WorkspaceId) -> Result<Option<W
 fn workspace_row(row: &Row<'_>) -> Result<WorkspaceRecord, StorageError> {
     const TABLE: &str = "workspaces";
     Ok(WorkspaceRecord {
-        id: decode(TABLE, "id", WorkspaceId::try_from(row.get::<_, String>("id")?))?,
-        user: decode(TABLE, "user_id", UserId::try_from(row.get::<_, String>("user_id")?))?,
-        device: decode(TABLE, "device_id", DeviceId::try_from(row.get::<_, String>("device_id")?))?,
+        id: decode(
+            TABLE,
+            "id",
+            WorkspaceId::try_from(row.get::<_, String>("id")?),
+        )?,
+        user: decode(
+            TABLE,
+            "user_id",
+            UserId::try_from(row.get::<_, String>("user_id")?),
+        )?,
+        device: decode(
+            TABLE,
+            "device_id",
+            DeviceId::try_from(row.get::<_, String>("device_id")?),
+        )?,
         path: row.get("path")?,
         name: row.get("name")?,
         created_at: instant(row, TABLE, "created_at")?,

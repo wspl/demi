@@ -92,7 +92,10 @@ impl<K: Eq + Hash + Clone> KeyedSerialGate<K> {
 
     /// How many keys have a holder or a waiter.
     pub fn len(&self) -> usize {
-        self.gates.lock().unwrap_or_else(PoisonError::into_inner).len()
+        self.gates
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .len()
     }
 
     pub fn is_empty(&self) -> bool {

@@ -322,10 +322,18 @@ fn a_leaf_runs_one_way_and_names_valid_inputs() {
         leaf["input"] = input;
         serde_json::from_value::<Node>(leaf).unwrap().validate()
     };
-    assert!(declaration(json!({"type": "object", "properties": {"text": {"type": "string"}}})).is_ok());
+    assert!(
+        declaration(json!({"type": "object", "properties": {"text": {"type": "string"}}})).is_ok()
+    );
     assert!(declaration(json!({"type": "array"})).is_err());
-    assert!(declaration(json!({"type": "object", "properties": {"json": {"type": "boolean"}}})).is_err());
-    assert!(declaration(json!({"type": "object", "properties": {"bad name": {"type": "string"}}})).is_err());
+    assert!(
+        declaration(json!({"type": "object", "properties": {"json": {"type": "boolean"}}}))
+            .is_err()
+    );
+    assert!(
+        declaration(json!({"type": "object", "properties": {"bad name": {"type": "string"}}}))
+            .is_err()
+    );
 }
 
 #[test]
@@ -364,14 +372,32 @@ fn the_input_subset_takes_scalars_enums_and_arrays_and_refuses_the_rest() {
         .unwrap_err()
     };
     for (field, reason) in [
-        (json!({"type": "integer", "default": 2}), "carries a default"),
+        (
+            json!({"type": "integer", "default": 2}),
+            "carries a default",
+        ),
         (json!({"type": ["string", "null"]}), "allows null"),
-        (json!({"type": "string", "enum": ["a", null]}), "allows null"),
-        (json!({"type": "object", "properties": {"inner": {"type": "string"}}}), "nested object"),
-        (json!({"oneOf": [{"type": "string"}, {"type": "integer"}]}), "union"),
+        (
+            json!({"type": "string", "enum": ["a", null]}),
+            "allows null",
+        ),
+        (
+            json!({"type": "object", "properties": {"inner": {"type": "string"}}}),
+            "nested object",
+        ),
+        (
+            json!({"oneOf": [{"type": "string"}, {"type": "integer"}]}),
+            "union",
+        ),
         (json!({"$ref": "#"}), "refers to another schema"),
-        (json!({"type": "array", "items": {"type": "array", "items": {"type": "string"}}}), "array of arrays"),
-        (json!({"type": "array", "items": {"type": "string"}, "uniqueItems": true}), "\"uniqueItems\""),
+        (
+            json!({"type": "array", "items": {"type": "array", "items": {"type": "string"}}}),
+            "array of arrays",
+        ),
+        (
+            json!({"type": "array", "items": {"type": "string"}, "uniqueItems": true}),
+            "\"uniqueItems\"",
+        ),
         (json!({"type": "string", "format": "uri"}), "format"),
     ] {
         let error = refused(field);

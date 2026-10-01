@@ -358,10 +358,7 @@ mod tests {
             .unwrap();
         let mut helper_command = Command::new(std::env::current_exe().unwrap());
         helper_command
-            .args([
-                "--exact",
-                "driver::process::tests::detached_helper_fixture",
-            ])
+            .args(["--exact", "driver::process::tests::detached_helper_fixture"])
             .env("DEMI_BROWSER_HELPER_FIXTURE", "1")
             .env(PROFILE_ENV, profile.path())
             .kill_on_drop(true);

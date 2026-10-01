@@ -3,15 +3,15 @@
 //! output on pipes. The connection's owner routes the call's inbound events
 //! to it; the call itself sends its requests.
 
-use demi_command_declarations::Parsed;
 use crate::{
     commands::command_output::CommandOutput, commands::contexts::ExecutionContext,
     connection::ConnectionHandle,
 };
+use bytes::Bytes;
+use demi_command_declarations::Parsed;
+use demi_command_sdk::{Input, ServiceError};
 use demi_runner_process::pipes::PipeClient;
 use demi_runner_protocol::wire::{self, PipeRef};
-use bytes::Bytes;
-use demi_command_sdk::{Input, ServiceError};
 use futures_util::StreamExt;
 use std::{collections::BTreeMap, io, sync::Arc, time::Duration};
 use tokio::sync::{mpsc, oneshot};
@@ -270,7 +270,14 @@ async fn exchange(
         report(connection, &reference, &result, stop).await?;
         result.map_err(ServiceError::failed)
     };
-    let input = send_input(pipes, request.live, stdin_receiver, demanded, input, transport);
+    let input = send_input(
+        pipes,
+        request.live,
+        stdin_receiver,
+        demanded,
+        input,
+        transport,
+    );
     let complete = async {
         let (code, ()) = tokio::try_join!(control, download)?;
         Ok(code)
@@ -331,17 +338,16 @@ async fn send_input(
     }
     if let Some(reference) = reference.await.map_err(|_| ServiceError::Cancelled)? {
         let token = stop.clone();
-        let body =
-            futures_util::stream::unfold((input, token), |(mut input, stop)| async move {
-                tokio::select! {
-                    _ = stop.cancelled() => None,
-                    bytes = input.next() => match bytes {
-                        Ok(Some(bytes)) => Some((Ok(bytes), (input, stop))),
-                        Ok(None) => None,
-                        Err(error) => Some((Err(io::Error::other(error)), (input, stop))),
-                    }
+        let body = futures_util::stream::unfold((input, token), |(mut input, stop)| async move {
+            tokio::select! {
+                _ = stop.cancelled() => None,
+                bytes = input.next() => match bytes {
+                    Ok(Some(bytes)) => Some((Ok(bytes), (input, stop))),
+                    Ok(None) => None,
+                    Err(error) => Some((Err(io::Error::other(error)), (input, stop))),
                 }
-            });
+            }
+        });
         let result = pipes.put(&reference.url, body, stop).await;
         report(connection, &reference, &result, stop).await?;
         result.map_err(ServiceError::failed)?;

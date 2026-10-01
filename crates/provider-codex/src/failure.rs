@@ -3,8 +3,8 @@
 //! it lifts, in the failure's own fields, and anything else falls back to
 //! the standard reading.
 
-use demi_shared_types::{FailureSource, ProviderErrorDiagnostics, ProviderFailureFacts, Timestamp};
 use demi_provider_common::{HttpFailureRecord, quota::unix_seconds, read_http_failure};
+use demi_shared_types::{FailureSource, ProviderErrorDiagnostics, ProviderFailureFacts, Timestamp};
 
 /// The facts of a Codex failure record: `resets_at`, a Unix time in seconds,
 /// or `resets_in_seconds`, counted from when the failure was received, of

@@ -18,8 +18,8 @@ use axum::{
     routing::get,
     serve::ListenerExt as _,
 };
-use demi_runner_protocol::wire::{self, HelloErrorCode, Inbound, MAX_MESSAGE_BYTES, Outbound};
 use demi_host_interface::{CommandSet, HostKey, SpawnEnv};
+use demi_runner_protocol::wire::{self, HelloErrorCode, Inbound, MAX_MESSAGE_BYTES, Outbound};
 use futures_util::{SinkExt, StreamExt, future::ready};
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -61,7 +61,7 @@ pub struct RunnerFixture {
 
 /// What the edge hands the device's local task.
 enum Request {
-    Adopt(WebSocket),
+    Adopt(Box<WebSocket>),
     Source {
         id: String,
         claimed: oneshot::Sender<Result<DeviceSource, PipeRefusal>>,
@@ -127,7 +127,13 @@ impl RunnerFixture {
             &format!("http://{address}"),
             RunnerProcessOptions {
                 name: "fixture".into(),
-                env: SpawnEnv::Overlay(options.env.into_iter().map(|(name, value)| (name, Some(value))).collect()),
+                env: SpawnEnv::Overlay(
+                    options
+                        .env
+                        .into_iter()
+                        .map(|(name, value)| (name, Some(value)))
+                        .collect(),
+                ),
                 token: Some(TOKEN.into()),
                 managed: false,
             },
@@ -176,7 +182,7 @@ impl RunnerFixture {
 
     /// The device's Host, starting work in its home.
     pub fn host(&self) -> RemoteHost {
-        self.host_at(&self.home().to_owned())
+        self.host_at(self.home())
     }
 
     /// The device's Host, starting work in `cwd`.
@@ -267,7 +273,7 @@ async fn serve_device(
         match request {
             Request::Adopt(socket) => {
                 tasks.spawn_local(adopt(
-                    socket,
+                    *socket,
                     device.clone(),
                     pipes.clone(),
                     policy.clone(),
@@ -389,7 +395,7 @@ async fn runner_socket(State(edge): State<Edge>, upgrade: WebSocketUpgrade) -> R
         .max_frame_size(MAX_MESSAGE_BYTES)
         .on_upgrade(move |socket| async move {
             // A fixture that stopped adopts nothing.
-            let _ = edge.requests.send(Request::Adopt(socket)).await;
+            let _ = edge.requests.send(Request::Adopt(Box::new(socket))).await;
         })
 }
 

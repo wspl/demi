@@ -49,7 +49,11 @@ pub struct ShellToolView {
     #[garde(skip)]
     pub command_id: CommandId,
     /// Present once the command exited.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "i32")]
     #[garde(skip)]
     pub exit_code: Option<i32>,
@@ -64,12 +68,20 @@ pub struct ShellToolView {
     #[garde(skip)]
     pub view_truncated: bool,
     /// The files the command changed, once it exited and changed some.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "Vec<EditedFile>")]
     #[garde(dive)]
     pub files: Option<Vec<EditedFile>>,
     /// Present with `files`: whether the list was cut.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "bool")]
     #[garde(skip)]
     pub files_truncated: Option<bool>,
@@ -143,7 +155,11 @@ serde_plain::derive_fromstr_from_deserialize!(EditKind);
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EditSegment {
     /// The file's two sides; absent when they were not stored.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "EditCopies")]
     #[garde(skip)]
     pub copies: Option<EditCopies>,
@@ -209,7 +225,9 @@ pub struct OutputView {
 
 /// A command's final stdout that was not text, described by its size: its
 /// bytes never travel in a frame.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct BinaryStdout {
     /// True when the stream exceeded `limitBytes` and was cut.

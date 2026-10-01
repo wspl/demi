@@ -70,7 +70,8 @@ impl ControlService {
 
     /// The user's totals.
     pub async fn usage_totals(&self, user: UserId) -> Result<Vec<UsageGroup>, StorageError> {
-        self.call(move |connection, _| totals(connection, &user)).await
+        self.call(move |connection, _| totals(connection, &user))
+            .await
     }
 
     /// Every account's totals, the accounts in the order they were created,
@@ -79,13 +80,17 @@ impl ControlService {
         self.call(|connection, _| {
             let transaction = connection.transaction()?;
             let users = {
-                let mut statement =
-                    transaction.prepare_cached("SELECT id, email FROM users ORDER BY created_at, rowid")?;
+                let mut statement = transaction
+                    .prepare_cached("SELECT id, email FROM users ORDER BY created_at, rowid")?;
                 let mut rows = statement.query([])?;
                 let mut users = Vec::new();
                 while let Some(row) = rows.next()? {
                     let id = decode("users", "id", UserId::try_from(row.get::<_, String>("id")?))?;
-                    let email = decode("users", "email", EmailAddress::try_from(row.get::<_, String>("email")?))?;
+                    let email = decode(
+                        "users",
+                        "email",
+                        EmailAddress::try_from(row.get::<_, String>("email")?),
+                    )?;
                     users.push((id, email));
                 }
                 users
@@ -93,7 +98,11 @@ impl ControlService {
             let mut usage = Vec::with_capacity(users.len());
             for (user_id, email) in users {
                 let totals = totals(&transaction, &user_id)?;
-                usage.push(UserUsage { user_id, email, totals });
+                usage.push(UserUsage {
+                    user_id,
+                    email,
+                    totals,
+                });
             }
             transaction.commit()?;
             Ok(usage)
@@ -114,7 +123,11 @@ fn totals(connection: &Connection, user: &UserId) -> Result<Vec<UsageGroup>, Sto
 
 fn group(row: &Row<'_>) -> Result<UsageGroup, StorageError> {
     let count = |column: &'static str| -> Result<u64, StorageError> {
-        decode("usage_ledger", column, u64::try_from(row.get::<_, i64>(column)?))
+        decode(
+            "usage_ledger",
+            column,
+            u64::try_from(row.get::<_, i64>(column)?),
+        )
     };
     Ok(UsageGroup {
         provider_id: row.get("provider_id")?,

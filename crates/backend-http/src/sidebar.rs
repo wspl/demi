@@ -23,11 +23,15 @@ pub(super) async fn reorder(
     let control = &services.control;
     let (moved, changed) = match request {
         SidebarReorder::Conversation { id, before_id } => (
-            control.reorder_conversations(user.id.clone(), id, before_id).await?,
+            control
+                .reorder_conversations(user.id.clone(), id, before_id)
+                .await?,
             Part::ConversationOrder,
         ),
         SidebarReorder::Workspace { id, before_id } => (
-            control.reorder_workspaces(user.id.clone(), id, before_id).await?,
+            control
+                .reorder_workspaces(user.id.clone(), id, before_id)
+                .await?,
             Part::Workspaces,
         ),
     };

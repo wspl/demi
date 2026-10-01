@@ -52,7 +52,9 @@ impl FakeS3 {
             .route("/{bucket}/{*key}", axum::routing::any(object))
             .with_state(objects.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let endpoint = format!("http://{}", listener.local_addr().unwrap()).parse().unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap())
+            .parse()
+            .unwrap();
         let serving = tokio::spawn(async move {
             axum::serve(listener, app).await.unwrap();
         });
@@ -94,11 +96,12 @@ impl FakeS3 {
         let bucket = self.objects.lock().unwrap();
         bucket.objects.get(key).map(|object| object.bytes.clone())
     }
-
 }
 
 fn error(status: StatusCode, code: &str) -> Response {
-    let body = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>{code}</Code><Message>{code}</Message></Error>");
+    let body = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>{code}</Code><Message>{code}</Message></Error>"
+    );
     (status, [("content-type", "application/xml")], body).into_response()
 }
 
@@ -109,22 +112,38 @@ async fn object(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    let etag = |bytes: &Bytes| format!("\"{:x}-{}\"", bytes.len(), bytes.first().copied().unwrap_or(0));
+    let etag = |bytes: &Bytes| {
+        format!(
+            "\"{:x}-{}\"",
+            bytes.len(),
+            bytes.first().copied().unwrap_or(0)
+        )
+    };
     match method {
         Method::PUT => {
             let mut bucket = objects.lock().unwrap();
-            let create = headers.get("if-none-match").is_some_and(|value| value == "*");
+            let create = headers
+                .get("if-none-match")
+                .is_some_and(|value| value == "*");
             if create && bucket.objects.contains_key(&key) {
                 return error(StatusCode::PRECONDITION_FAILED, "PreconditionFailed");
             }
             let metadata = headers
                 .iter()
-                .filter(|(name, _)| name.as_str().starts_with("x-amz-meta-") || *name == "content-encoding")
+                .filter(|(name, _)| {
+                    name.as_str().starts_with("x-amz-meta-") || *name == "content-encoding"
+                })
                 .map(|(name, value)| (name.clone(), value.clone()))
                 .collect();
             let tag = etag(&body);
             bucket.written.push(key.clone());
-            bucket.objects.insert(key, Object { bytes: body, metadata });
+            bucket.objects.insert(
+                key,
+                Object {
+                    bytes: body,
+                    metadata,
+                },
+            );
             (StatusCode::OK, [("etag", tag)]).into_response()
         }
         Method::GET | Method::HEAD => {
@@ -133,7 +152,10 @@ async fn object(
             };
             let mut answer = HeaderMap::new();
             answer.insert("etag", HeaderValue::from_str(&etag(&found.bytes)).unwrap());
-            answer.insert("last-modified", HeaderValue::from_static("Thu, 24 Sep 2026 08:00:00 GMT"));
+            answer.insert(
+                "last-modified",
+                HeaderValue::from_static("Thu, 24 Sep 2026 08:00:00 GMT"),
+            );
             answer.insert("content-length", HeaderValue::from(found.bytes.len()));
             for (name, value) in found.metadata {
                 answer.insert(name, value);

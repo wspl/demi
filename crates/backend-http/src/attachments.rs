@@ -13,7 +13,9 @@ use axum::extract::rejection::{BytesRejection, FailedToBufferBody};
 use axum::http::header::{CONTENT_LENGTH, CONTENT_TYPE};
 use axum::http::{HeaderMap, StatusCode};
 use demi_agent_store::attachments::{is_text, snippet, upload_media_type};
-use demi_web_api_protocol::attachments::{ATTACHMENT_MAX_BYTES, AttachmentAnswer, AttachmentDto, UploadQuery};
+use demi_web_api_protocol::attachments::{
+    ATTACHMENT_MAX_BYTES, AttachmentAnswer, AttachmentDto, UploadQuery,
+};
 use demi_web_api_protocol::error::ErrorCode;
 use garde::Validate as _;
 
@@ -34,9 +36,14 @@ fn too_large() -> ApiError {
 /// with its parameters. A `multipart/*` form is an envelope, not a file's
 /// bytes.
 fn sent_media_type(headers: &HeaderMap) -> Result<String, ApiError> {
-    let refused = || ApiError::invalid_body("Send the file's bytes with its media type as Content-Type");
+    let refused =
+        || ApiError::invalid_body("Send the file's bytes with its media type as Content-Type");
     let value = headers.get(CONTENT_TYPE).ok_or_else(refused)?;
-    let media_type: mime::Mime = value.to_str().map_err(|_| refused())?.parse().map_err(|_| refused())?;
+    let media_type: mime::Mime = value
+        .to_str()
+        .map_err(|_| refused())?
+        .parse()
+        .map_err(|_| refused())?;
     if media_type.type_() == mime::MULTIPART {
         return Err(refused());
     }

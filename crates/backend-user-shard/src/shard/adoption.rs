@@ -6,13 +6,13 @@
 use std::rc::Rc;
 
 use axum::extract::ws::{Message, WebSocket};
-use demi_backend_runners::devices::{LastSeen, Serving, send};
 use demi_backend_database::StorageError;
 use demi_backend_database::devices::DeviceRecord;
 use demi_backend_page_sync::Part;
 use demi_backend_remote_host::{Link, LinkOptions, host_identity};
-use demi_runner_protocol::wire::{HelloErrorCode, Inbound, RunnerInfo};
+use demi_backend_runners::devices::{LastSeen, Serving, send};
 use demi_host_interface::HostIdentity;
+use demi_runner_protocol::wire::{HelloErrorCode, Inbound, RunnerInfo};
 use demi_web_api_protocol::devices::DeviceDto;
 use demi_web_api_protocol::ids::DeviceId;
 use tokio::sync::oneshot;
@@ -29,7 +29,10 @@ impl Shard {
         mut socket: WebSocket,
     ) {
         #[cfg(feature = "testing")]
-        self.services().hellos.pass(crate::holds::HelloStep::Bind).await;
+        self.services()
+            .hellos
+            .pass(crate::holds::HelloStep::Bind)
+            .await;
         self.devices().settled(&device.id).await;
         // From this check until the link is published nothing awaits, so two
         // runners of one device never both become online.

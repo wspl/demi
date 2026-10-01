@@ -46,7 +46,9 @@ pub enum ReplacedAction {
 
 /// `POST /conversations/:id/draft/replaced`: an action on the replaced
 /// version the page shows, named by its revision.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate,
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReplacedDraftAction {
     #[garde(skip)]
@@ -105,7 +107,11 @@ pub struct ReplacedDraft {
 
 /// A file of a draft as every page shows it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "type", rename_all = "snake_case", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum DraftFile {
     /// An upload, with what its record holds: the media type the backend
     /// read, where its bytes are in the caller's blobs, and a text file's
@@ -115,7 +121,11 @@ pub enum DraftFile {
         file_name: String,
         media_type: String,
         sha256: BlobRef,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         #[schemars(with = "String")]
         snippet: Option<String>,
     },

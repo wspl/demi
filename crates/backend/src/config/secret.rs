@@ -62,7 +62,10 @@ impl InstanceSecret {
     pub(crate) async fn load_or_create(data_dir: &Path) -> Result<Self, SecretError> {
         let path = data_dir.join(FILE);
         match tokio::fs::read_to_string(&path).await {
-            Ok(text) => text.trim_end().parse().map_err(|_| SecretError::Corrupt { path }),
+            Ok(text) => text
+                .trim_end()
+                .parse()
+                .map_err(|_| SecretError::Corrupt { path }),
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
                 let secret = Self(rand::random());
                 let text = format!("{}\n", hex::encode(secret.0));

@@ -36,10 +36,18 @@ impl EditContext {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct EditCopies {
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[garde(inner(length(min = 1), custom(without_nul)))]
     pub original: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[garde(inner(length(min = 1), custom(without_nul)))]
     pub modified: Option<String>,
 }

@@ -200,17 +200,28 @@ impl Installer {
                         .await
                         .is_ok_and(|metadata| metadata.is_file());
                 if usable {
-                    installed.push((version, Installed { version: name, path }));
+                    installed.push((
+                        version,
+                        Installed {
+                            version: name,
+                            path,
+                        },
+                    ));
                 }
             }
         }
         // Newest first, the image's before the user's for one version.
         installed.sort_by(|(left, left_installed), (right, right_installed)| {
-            right.cmp(left).then_with(|| left_installed.path.cmp(&right_installed.path))
+            right
+                .cmp(left)
+                .then_with(|| left_installed.path.cmp(&right_installed.path))
         });
         Ok(Status {
             platform: platform.into(),
-            installed: installed.into_iter().map(|(_, installed)| installed).collect(),
+            installed: installed
+                .into_iter()
+                .map(|(_, installed)| installed)
+                .collect(),
         })
     }
 
@@ -249,7 +260,8 @@ impl Installer {
     ) -> Result<PathBuf, EnsureError> {
         let root = self.home()?;
         tokio::fs::create_dir_all(root).await?;
-        let _lock = InstallLock::acquire(&root.join(format!("{}.lock", expected.version)), cancel).await?;
+        let _lock =
+            InstallLock::acquire(&root.join(format!("{}.lock", expected.version)), cancel).await?;
         let destination = root.join(&expected.version);
         if let Some(path) = self.usable(&destination, expected, cancel).await? {
             return Ok(path);
@@ -296,11 +308,15 @@ impl Installer {
         };
         let mut output = tokio::fs::File::create(path).await?;
         let downloaded =
-            demi_shared_artifacts::download(&client, &artifact.url, &declared, &mut output, cancel).await;
+            demi_shared_artifacts::download(&client, &artifact.url, &declared, &mut output, cancel)
+                .await;
         match downloaded {
             Ok(()) => {}
             Err(demi_shared_artifacts::Error::Cancelled) => return Err(EnsureError::Cancelled),
-            Err(error @ (demi_shared_artifacts::Error::Download(_) | demi_shared_artifacts::Error::Rejected { .. })) => {
+            Err(
+                error @ (demi_shared_artifacts::Error::Download(_)
+                | demi_shared_artifacts::Error::Rejected { .. }),
+            ) => {
                 return Err(EnsureError::DownloadFailed(format!(
                     "Claude Code {version} download from {host} failed: {error}"
                 )));
@@ -379,7 +395,9 @@ fn current_platform() -> Result<&'static str, EnsureError> {
 /// The receipt in `directory`; none when it has none or one that does not
 /// decode, which makes the installation unusable.
 async fn read_receipt(directory: &Path) -> Option<Receipt> {
-    let bytes = demi_shared_artifacts::receipt::read(directory).await.ok()??;
+    let bytes = demi_shared_artifacts::receipt::read(directory)
+        .await
+        .ok()??;
     serde_json::from_slice(&bytes).ok()
 }
 

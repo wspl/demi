@@ -224,7 +224,10 @@ fn help_opens_with_the_defaults_and_lists_every_root() {
     let mut set = CommandSet::new();
     set.register(todo()).unwrap();
     let help = set.render_help();
-    assert!(help.starts_with(demi_command_declarations::HELP_DEFAULTS), "{help}");
+    assert!(
+        help.starts_with(demi_command_declarations::HELP_DEFAULTS),
+        "{help}"
+    );
     let root = set.declarations().next().unwrap().help("demi");
     assert_eq!(
         help,

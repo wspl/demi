@@ -18,16 +18,16 @@ use std::{
 
 use bytes::Bytes;
 use demi_command_protocol::{ArtifactLocation, CommandContext, PackageDescriptor, ServiceSequence};
-use demi_shared_types::StreamKind;
-use demi_shared_gates::{GateLease, SerialGate};
-use demi_runner_protocol::wire::{
-    self, ArtifactOwner, FsResult, GitResult, Inbound, LogLine, Outbound, VolumeName,
-};
 use demi_host_interface::{
     HostError, HostErrorKind, HostIdentity, HostKey, JobCaller, PortError, ProcessEnd,
     ProcessOutput, RpcError, RpcInvocation, RpcPort, SpawnError, SpawnErrorKind, StorageOp,
     StorageReply,
 };
+use demi_runner_protocol::wire::{
+    self, ArtifactOwner, FsResult, GitResult, Inbound, LogLine, Outbound, VolumeName,
+};
+use demi_shared_gates::{GateLease, SerialGate};
+use demi_shared_types::StreamKind;
 use futures_util::{Sink, SinkExt, Stream, StreamExt, future::LocalBoxFuture};
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};

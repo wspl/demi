@@ -14,20 +14,24 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use demi_agent_server::testing::client_text;
-use demi_conversation_socket_protocol::{ClientFrame, EditOutcome, EditRequest, ServerFrame, TranscriptVersion};
-use demi_backend_providers::llm::families::{FamilyArgs, FamilyCredential, FamilyError, ProviderFamily};
-use demi_shared_types::{
-    AuthState, Block, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList, RuntimeState,
-    SessionPhase, Timestamp, TokenUsage, TurnId,
+use demi_backend_providers::llm::families::{
+    FamilyArgs, FamilyCredential, FamilyError, ProviderFamily,
+};
+use demi_conversation_socket_protocol::{
+    ClientFrame, EditOutcome, EditRequest, ServerFrame, TranscriptVersion,
 };
 use demi_provider_common::testing::{MockResponse, MockVendor};
 use demi_provider_common::{
-    Capabilities, CatalogError, InferenceRequest, Provider, ProviderEvent, ProviderRun, ProviderRuntime, RequestLimits,
-    RuntimeEnv, RuntimeError,
+    Capabilities, CatalogError, InferenceRequest, Provider, ProviderEvent, ProviderRun,
+    ProviderRuntime, RequestLimits, RuntimeEnv, RuntimeError,
+};
+use demi_shared_types::{
+    AuthState, Block, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
+    RuntimeState, SessionPhase, Timestamp, TokenUsage, TurnId,
 };
 use demi_web_api_protocol::conversations::{
-    BatchAnswer, BatchResult, ConversationAnswer, ConversationStatus, ConversationSummary, ConversationUpdate,
-    Conversations, FieldResult, ModelSettings, PatchField, Transcript,
+    BatchAnswer, BatchResult, ConversationAnswer, ConversationStatus, ConversationSummary,
+    ConversationUpdate, Conversations, FieldResult, ModelSettings, PatchField, Transcript,
 };
 use demi_web_api_protocol::error::{ErrorBody, ErrorCode};
 use demi_web_api_protocol::providers::{CredentialKind, ProviderAnswer};
@@ -49,7 +53,6 @@ pub(crate) const FIRST: &str = "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b";
 pub(crate) const SECOND: &str = "7d1c2e3f-4a5b-4c1e-9d2b-0b6f7f3e8f3a";
 pub(crate) const THIRD: &str = "5a4b3c2d-1e0f-4a1b-8c2d-3e4f5a6b7c8d";
 
-
 /// What a conversation socket delivered next.
 #[derive(Debug)]
 enum Received {
@@ -60,14 +63,20 @@ enum Received {
 
 /// A page's conversation socket.
 pub(crate) struct Socket {
-    socket: tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+    socket: tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+    >,
     /// How long it waits for the next message before the test fails as
     /// hung: ten seconds, longer where a real Cloud boots within a turn.
     pub(crate) patience: Duration,
 }
 
 impl Socket {
-    pub(crate) async fn connect(backend: &TestBackend, session: &Session, conversation: &str) -> Self {
+    pub(crate) async fn connect(
+        backend: &TestBackend,
+        session: &Session,
+        conversation: &str,
+    ) -> Self {
         match Self::try_connect(backend, session, conversation).await {
             Ok(socket) => socket,
             Err(status) => panic!("the stream refused the upgrade with {status}"),
@@ -76,7 +85,11 @@ impl Socket {
 
     /// The socket, opened from a page of the product, or the status the
     /// route answered instead of upgrading.
-    pub(crate) async fn try_connect(backend: &TestBackend, session: &Session, conversation: &str) -> Result<Self, u16> {
+    pub(crate) async fn try_connect(
+        backend: &TestBackend,
+        session: &Session,
+        conversation: &str,
+    ) -> Result<Self, u16> {
         Self::try_connect_from(backend, session, conversation, &backend.url)
             .await
             .map_err(|(status, _)| status)
@@ -125,10 +138,13 @@ impl Socket {
                 .unwrap_or_else(|_| panic!("the socket delivers within {:?}", self.patience));
             match message {
                 Some(Ok(Message::Text(text))) => {
-                    let frame = serde_json::from_str(text.as_str()).unwrap_or_else(|error| panic!("{error}: {text}"));
+                    let frame = serde_json::from_str(text.as_str())
+                        .unwrap_or_else(|error| panic!("{error}: {text}"));
                     return Received::Frame(frame);
                 }
-                Some(Ok(Message::Close(close))) => return Received::Closed(close.map(|close| u16::from(close.code))),
+                Some(Ok(Message::Close(close))) => {
+                    return Received::Closed(close.map(|close| u16::from(close.code)));
+                }
                 Some(Ok(_)) => {}
                 Some(Err(_)) | None => return Received::Closed(None),
             }
@@ -159,8 +175,14 @@ impl Socket {
     /// the handshake.
     pub(crate) async fn open(&mut self) -> Vec<ServerFrame> {
         self.send(&ClientFrame::Open {}).await;
-        let handshake = self.until(|frame| matches!(frame, ServerFrame::PendingSteers { .. })).await;
-        assert_eq!(handshake.first(), Some(&ServerFrame::Opened), "{handshake:?}");
+        let handshake = self
+            .until(|frame| matches!(frame, ServerFrame::PendingSteers { .. }))
+            .await;
+        assert_eq!(
+            handshake.first(),
+            Some(&ServerFrame::Opened),
+            "{handshake:?}"
+        );
         handshake
     }
 
@@ -178,11 +200,15 @@ impl Socket {
         loop {
             let frame = self.frame().await;
             let idle = match &frame {
-                ServerFrame::Phase { phase: SessionPhase::Running } => {
+                ServerFrame::Phase {
+                    phase: SessionPhase::Running,
+                } => {
                     ran = true;
                     false
                 }
-                ServerFrame::Phase { phase: SessionPhase::Idle } => ran,
+                ServerFrame::Phase {
+                    phase: SessionPhase::Idle,
+                } => ran,
                 _ => false,
             };
             frames.push(frame);
@@ -201,7 +227,9 @@ impl Socket {
         while !(answered && idle) {
             match self.frame().await {
                 ServerFrame::AbortResult { .. } => answered = true,
-                ServerFrame::Phase { phase: SessionPhase::Idle } => idle = true,
+                ServerFrame::Phase {
+                    phase: SessionPhase::Idle,
+                } => idle = true,
                 _ => {}
             }
         }
@@ -210,7 +238,9 @@ impl Socket {
     /// The live transcript, as a fresh reset sends it.
     pub(crate) async fn live(&mut self) -> Vec<Block> {
         self.send(&ClientFrame::SyncTranscript {}).await;
-        let frames = self.until(|frame| matches!(frame, ServerFrame::TranscriptReset { .. })).await;
+        let frames = self
+            .until(|frame| matches!(frame, ServerFrame::TranscriptReset { .. }))
+            .await;
         match frames.into_iter().last() {
             Some(ServerFrame::TranscriptReset { blocks, .. }) => blocks,
             other => unreachable!("{other:?}"),
@@ -237,18 +267,30 @@ pub(crate) fn send(id: &str, text: &str) -> ClientFrame {
 /// A Messages API stream that answers `deltas`, in that many pieces, and
 /// reports `input` and `output` tokens.
 pub(crate) fn answer(deltas: &[&str], input: u64, output: u64) -> MockResponse {
-    message(vec![text_block(0, deltas)], "end_turn", json!({ "input_tokens": input, "output_tokens": 0 }), output)
+    message(
+        vec![text_block(0, deltas)],
+        "end_turn",
+        json!({ "input_tokens": input, "output_tokens": 0 }),
+        output,
+    )
 }
 
 /// A Messages API stream that calls the tool `name` with `input`.
 pub(crate) fn tool_use(id: &str, name: &str, input: &Value) -> MockResponse {
     let usage = json!({ "input_tokens": 1, "output_tokens": 0 });
-    message(vec![tool_use_block(0, id, name, input)], "tool_use", usage, 1)
+    message(
+        vec![tool_use_block(0, id, name, input)],
+        "tool_use",
+        usage,
+        1,
+    )
 }
 
 /// The frames that open a text block at `index` and fill it with `deltas`.
 pub(crate) fn text_block(index: usize, deltas: &[&str]) -> Vec<Value> {
-    let mut frames = vec![json!({ "type": "content_block_start", "index": index, "content_block": { "type": "text", "text": "" } })];
+    let mut frames = vec![
+        json!({ "type": "content_block_start", "index": index, "content_block": { "type": "text", "text": "" } }),
+    ];
     for delta in deltas {
         frames.push(json!({ "type": "content_block_delta", "index": index, "delta": { "type": "text_delta", "text": delta } }));
     }
@@ -291,7 +333,12 @@ pub(crate) fn tool_result(request: &Value, id: &str) -> String {
 /// One message of the content blocks whose frames `blocks` open and fill,
 /// each closed after its frames; `usage` is the message's usage at its
 /// start, and `output` its output tokens at its end.
-pub(crate) fn message(blocks: Vec<Vec<Value>>, stop_reason: &str, usage: Value, output: u64) -> MockResponse {
+pub(crate) fn message(
+    blocks: Vec<Vec<Value>>,
+    stop_reason: &str,
+    usage: Value,
+    output: u64,
+) -> MockResponse {
     let mut frames = vec![message_start(usage)];
     for block in blocks {
         let index = block[0]["index"].clone();
@@ -314,26 +361,50 @@ pub(crate) fn message_start(usage: Value) -> Value {
 pub(crate) fn events(frames: &[Value]) -> String {
     frames
         .iter()
-        .map(|frame| format!("event: {}\ndata: {frame}\n\n", frame["type"].as_str().unwrap()))
+        .map(|frame| {
+            format!(
+                "event: {}\ndata: {frame}\n\n",
+                frame["type"].as_str().unwrap()
+            )
+        })
         .collect()
 }
 
 /// A new API-key entry of the master's.
 async fn entry(backend: &TestBackend, master: &Session, body: Value) -> String {
     let created = backend.post("/api/providers", Some(master), body).await;
-    assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
-    created.json::<ProviderAnswer>().provider.id.as_str().to_owned()
+    assert_eq!(
+        created.status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&created.body)
+    );
+    created
+        .json::<ProviderAnswer>()
+        .provider
+        .id
+        .as_str()
+        .to_owned()
 }
 
 /// An Anthropic entry whose endpoint is `vendor`.
-pub(crate) async fn anthropic(backend: &TestBackend, master: &Session, vendor: &MockVendor) -> String {
+pub(crate) async fn anthropic(
+    backend: &TestBackend,
+    master: &Session,
+    vendor: &MockVendor,
+) -> String {
     anthropic_at(backend, master, vendor, "").await
 }
 
 /// An Anthropic entry whose endpoint is `vendor` under `prefix`, so that
 /// conversations on entries of their own get their own answers however
 /// their requests interleave.
-pub(crate) async fn anthropic_at(backend: &TestBackend, master: &Session, vendor: &MockVendor, prefix: &str) -> String {
+pub(crate) async fn anthropic_at(
+    backend: &TestBackend,
+    master: &Session,
+    vendor: &MockVendor,
+    prefix: &str,
+) -> String {
     let body = json!({
         "source": "custom", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
         "baseUrl": vendor.url(&format!("{prefix}/v1"))
@@ -341,9 +412,20 @@ pub(crate) async fn anthropic_at(backend: &TestBackend, master: &Session, vendor
     entry(backend, master, body).await
 }
 
-pub(crate) async fn create(backend: &TestBackend, session: &Session, id: &str) -> ConversationSummary {
-    let created = backend.post("/api/conversations", Some(session), json!({ "id": id })).await;
-    assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
+pub(crate) async fn create(
+    backend: &TestBackend,
+    session: &Session,
+    id: &str,
+) -> ConversationSummary {
+    let created = backend
+        .post("/api/conversations", Some(session), json!({ "id": id }))
+        .await;
+    assert_eq!(
+        created.status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&created.body)
+    );
     created.json::<ConversationAnswer>().conversation
 }
 
@@ -357,15 +439,27 @@ pub(crate) async fn choose(
     model: &str,
 ) -> ConversationSummary {
     let body = json!({ "model": { "providerId": provider, "modelId": model } });
-    let chosen = backend.patch(&format!("/api/conversations/{id}"), session, body).await;
-    assert_eq!(chosen.status, StatusCode::OK, "{}", String::from_utf8_lossy(&chosen.body));
+    let chosen = backend
+        .patch(&format!("/api/conversations/{id}"), session, body)
+        .await;
+    assert_eq!(
+        chosen.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&chosen.body)
+    );
     chosen.json::<ConversationUpdate>().conversation
 }
 
 /// Makes the master's conversation `id` work in a new `work` directory of a
 /// paired device's real runner, as a target switch would leave it; answers
 /// the device and that directory.
-pub(crate) async fn on_device(harness: &Harness, backend: &TestBackend, master: &Session, id: &str) -> (Paired, String) {
+pub(crate) async fn on_device(
+    harness: &Harness,
+    backend: &TestBackend,
+    master: &Session,
+    id: &str,
+) -> (Paired, String) {
     let paired = backend.pair(master, "laptop").await;
     let root = format!("{}/work", paired.runner.home());
     std::fs::create_dir_all(&root).unwrap();
@@ -379,16 +473,28 @@ pub(crate) async fn on_device(harness: &Harness, backend: &TestBackend, master: 
     (paired, root)
 }
 
-pub(crate) async fn summaries(backend: &TestBackend, session: &Session) -> Vec<ConversationSummary> {
+pub(crate) async fn summaries(
+    backend: &TestBackend,
+    session: &Session,
+) -> Vec<ConversationSummary> {
     let listed = backend.get("/api/conversations", Some(session)).await;
-    assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
+    assert_eq!(
+        listed.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&listed.body)
+    );
     listed.json::<Conversations>().conversations
 }
 
 /// The conversation's summary, as the sidebar lists it. Once a socket has
 /// seen the idle phase, the save that ended the turn has committed
 /// (`runtime.md` § A turn), so the summary and the database hold the turn.
-pub(crate) async fn summary(backend: &TestBackend, session: &Session, id: &str) -> ConversationSummary {
+pub(crate) async fn summary(
+    backend: &TestBackend,
+    session: &Session,
+    id: &str,
+) -> ConversationSummary {
     summaries(backend, session)
         .await
         .into_iter()
@@ -397,8 +503,18 @@ pub(crate) async fn summary(backend: &TestBackend, session: &Session, id: &str) 
 }
 
 pub(crate) async fn transcript(backend: &TestBackend, session: &Session, id: &str) -> Transcript {
-    let read = backend.get(&format!("/api/conversations/{id}/transcript"), Some(session)).await;
-    assert_eq!(read.status, StatusCode::OK, "{}", String::from_utf8_lossy(&read.body));
+    let read = backend
+        .get(
+            &format!("/api/conversations/{id}/transcript"),
+            Some(session),
+        )
+        .await;
+    assert_eq!(
+        read.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&read.body)
+    );
     read.json()
 }
 
@@ -410,7 +526,12 @@ pub(crate) async fn usage(backend: &TestBackend, session: &Session) -> UsageTota
 pub(crate) fn kinds(blocks: &[Block]) -> Vec<String> {
     blocks
         .iter()
-        .map(|block| serde_json::to_value(block).unwrap()["type"].as_str().unwrap().to_owned())
+        .map(|block| {
+            serde_json::to_value(block).unwrap()["type"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        })
         .collect()
 }
 
@@ -430,19 +551,44 @@ pub(crate) fn last_text(blocks: &[Block]) -> String {
 async fn a_conversation_is_created_once_under_the_id_the_web_app_chose_and_listed_for_its_owner() {
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
-    harness.add_user("ana@example.test", "ana-pass-1", demi_web_api_protocol::auth::Role::User);
+    harness.add_user(
+        "ana@example.test",
+        "ana-pass-1",
+        demi_web_api_protocol::auth::Role::User,
+    );
 
     let created = create(&backend, &master, FIRST).await;
     assert_eq!(
-        (created.id.as_str(), created.title.as_str(), created.status, created.revision, created.unread),
-        (FIRST, "New conversation", ConversationStatus::Idle, 0, false)
+        (
+            created.id.as_str(),
+            created.title.as_str(),
+            created.status,
+            created.revision,
+            created.unread
+        ),
+        (
+            FIRST,
+            "New conversation",
+            ConversationStatus::Idle,
+            0,
+            false
+        )
     );
     assert_eq!(created.cwd, format!("/home/demi/sessions/{FIRST}"));
-    assert_eq!(serde_json::to_value(&created.target).unwrap(), json!({ "kind": "cloud" }));
+    assert_eq!(
+        serde_json::to_value(&created.target).unwrap(),
+        json!({ "kind": "cloud" })
+    );
 
     // A retry, in any spelling, finds the one it created.
     for spelling in [FIRST.to_owned(), FIRST.to_uppercase()] {
-        let again = backend.post("/api/conversations", Some(&master), json!({ "id": spelling })).await;
+        let again = backend
+            .post(
+                "/api/conversations",
+                Some(&master),
+                json!({ "id": spelling }),
+            )
+            .await;
         assert_eq!(again.status, StatusCode::OK);
         assert_eq!(again.json::<ConversationAnswer>().conversation, created);
     }
@@ -453,27 +599,63 @@ async fn a_conversation_is_created_once_under_the_id_the_web_app_chose_and_liste
         .map(|summary| summary.id.as_str().to_owned())
         .collect();
     assert_eq!(listed, [SECOND, FIRST], "the newest first");
-    let archived = backend.get("/api/conversations?archived=true", Some(&master)).await;
+    let archived = backend
+        .get("/api/conversations?archived=true", Some(&master))
+        .await;
     assert!(archived.json::<Conversations>().conversations.is_empty());
-    let malformed = backend.get("/api/conversations?archived=1", Some(&master)).await;
-    assert_eq!(malformed.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery));
+    let malformed = backend
+        .get("/api/conversations?archived=1", Some(&master))
+        .await;
+    assert_eq!(
+        malformed.refusal(),
+        (StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery)
+    );
     let state = backend.sync(&master).await.snapshot().await;
     assert_eq!(state.conversations, [second, created]);
     assert!(transcript(&backend, &master, FIRST).await.blocks.is_empty());
 
     // Another user can neither take the id nor reach the conversation.
     let ana = backend.login("ana@example.test", "ana-pass-1").await;
-    let taken = backend.post("/api/conversations", Some(&ana), json!({ "id": FIRST.to_uppercase() })).await;
-    assert_eq!(taken.refusal(), (StatusCode::CONFLICT, ErrorCode::IdUnavailable));
-    for path in [format!("/api/conversations/{FIRST}/transcript"), "/api/conversations/not-a-uuid/transcript".into()] {
+    let taken = backend
+        .post(
+            "/api/conversations",
+            Some(&ana),
+            json!({ "id": FIRST.to_uppercase() }),
+        )
+        .await;
+    assert_eq!(
+        taken.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::IdUnavailable)
+    );
+    for path in [
+        format!("/api/conversations/{FIRST}/transcript"),
+        "/api/conversations/not-a-uuid/transcript".into(),
+    ] {
         let foreign = backend.get(&path, Some(&ana)).await;
-        assert_eq!(foreign.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ConversationNotFound), "{path}");
+        assert_eq!(
+            foreign.refusal(),
+            (StatusCode::NOT_FOUND, ErrorCode::ConversationNotFound),
+            "{path}"
+        );
     }
     assert!(summaries(&backend, &ana).await.is_empty());
-    assert_eq!(Socket::try_connect(&backend, &ana, FIRST).await.err(), Some(404));
-    for body in [json!({ "id": "conversation-1" }), json!({ "id": FIRST, "title": "x" }), json!({})] {
-        let refused = backend.post("/api/conversations", Some(&ana), body.clone()).await;
-        assert_eq!(refused.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody), "{body}");
+    assert_eq!(
+        Socket::try_connect(&backend, &ana, FIRST).await.err(),
+        Some(404)
+    );
+    for body in [
+        json!({ "id": "conversation-1" }),
+        json!({ "id": FIRST, "title": "x" }),
+        json!({}),
+    ] {
+        let refused = backend
+            .post("/api/conversations", Some(&ana), body.clone())
+            .await;
+        assert_eq!(
+            refused.refusal(),
+            (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody),
+            "{body}"
+        );
     }
     backend.close().await;
 }
@@ -491,25 +673,58 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     let handshake = socket.open().await;
     let kinds_of: Vec<String> = handshake
         .iter()
-        .map(|frame| serde_json::to_value(frame).unwrap()["type"].as_str().unwrap().to_owned())
+        .map(|frame| {
+            serde_json::to_value(frame).unwrap()["type"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        })
         .collect();
-    assert_eq!(kinds_of, ["opened", "transcript_reset", "phase", "queue", "pending_steers"]);
+    assert_eq!(
+        kinds_of,
+        [
+            "opened",
+            "transcript_reset",
+            "phase",
+            "queue",
+            "pending_steers"
+        ]
+    );
     vendor.respond(answer(&["Hello", " there."], 12, 3));
     let turn = socket.chat("m1", "Say hello").await;
-    assert!(turn.iter().any(|frame| matches!(frame, ServerFrame::TranscriptPatch { .. })), "{turn:?}");
+    assert!(
+        turn.iter()
+            .any(|frame| matches!(frame, ServerFrame::TranscriptPatch { .. })),
+        "{turn:?}"
+    );
 
     let sent = &vendor.requests()[0];
-    assert_eq!((sent.uri.path(), sent.header("x-api-key")), ("/v1/messages", Some("sk-ant-test")));
+    assert_eq!(
+        (sent.uri.path(), sent.header("x-api-key")),
+        ("/v1/messages", Some("sk-ant-test"))
+    );
     let body = sent.json();
     let system = body["system"].to_string();
-    assert!(system.contains("You are a coding agent. Use shell session tools"), "{system}");
-    assert!(system.contains("demi host"), "the backend's group is among the commands: {system}");
+    assert!(
+        system.contains("You are a coding agent. Use shell session tools"),
+        "{system}"
+    );
+    assert!(
+        system.contains("demi host"),
+        "the backend's group is among the commands: {system}"
+    );
     // Without the command packages the backend's own groups are
     // offered, and none of the packages'.
     assert!(system.contains("demi todo"), "{system}");
-    assert!(!system.contains("demi file") && !system.contains("demi browser"), "{system}");
+    assert!(
+        !system.contains("demi file") && !system.contains("demi browser"),
+        "{system}"
+    );
     assert_eq!(body["model"], "claude-opus-4-8");
-    assert!(body["messages"][0].to_string().contains("Say hello"), "{body}");
+    assert!(
+        body["messages"][0].to_string().contains("Say hello"),
+        "{body}"
+    );
 
     // Live equals cold once the page has seen the turn end: the live tree's
     // transcript is what the database holds, which the history route reads
@@ -522,30 +737,64 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     assert_eq!(cold.blocks, live);
     assert!(cold.failures.is_none() && cold.subagents.is_empty());
 
-    assert_eq!((summary.status, summary.unread), (ConversationStatus::Completed, true));
+    assert_eq!(
+        (summary.status, summary.unread),
+        (ConversationStatus::Completed, true)
+    );
     assert!(summary.revision > 0);
-    let model = summary.model.as_ref().map(|model| (model.provider_id.as_str(), model.model_id.as_str()));
+    let model = summary
+        .model
+        .as_ref()
+        .map(|model| (model.provider_id.as_str(), model.model_id.as_str()));
     assert_eq!(model, Some((provider.as_str(), "claude-opus-4-8")));
     let beyond = backend
-        .post(&format!("/api/conversations/{FIRST}/read"), Some(&master), json!({ "revision": summary.revision + 1 }))
+        .post(
+            &format!("/api/conversations/{FIRST}/read"),
+            Some(&master),
+            json!({ "revision": summary.revision + 1 }),
+        )
         .await;
-    assert_eq!(beyond.refusal(), (StatusCode::CONFLICT, ErrorCode::InvalidRevision));
+    assert_eq!(
+        beyond.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::InvalidRevision)
+    );
     let read = backend
-        .post(&format!("/api/conversations/{FIRST}/read"), Some(&master), json!({ "revision": summary.revision }))
+        .post(
+            &format!("/api/conversations/{FIRST}/read"),
+            Some(&master),
+            json!({ "revision": summary.revision }),
+        )
         .await;
     assert_eq!(read.status, StatusCode::NO_CONTENT);
-    let older = backend.post(&format!("/api/conversations/{FIRST}/read"), Some(&master), json!({ "revision": 0 })).await;
+    let older = backend
+        .post(
+            &format!("/api/conversations/{FIRST}/read"),
+            Some(&master),
+            json!({ "revision": 0 }),
+        )
+        .await;
     assert_eq!(older.status, StatusCode::NO_CONTENT);
     let summary = summaries(&backend, &master).await.remove(0);
-    assert_eq!((summary.read_revision, summary.unread), (summary.revision, false));
+    assert_eq!(
+        (summary.read_revision, summary.unread),
+        (summary.revision, false)
+    );
 
     // The request is metered: its usage is a ledger row.
     let totals = usage(&backend, &master).await.totals;
     assert_eq!(
-        (totals.len(), totals[0].requests, totals[0].input_tokens, totals[0].output_tokens),
+        (
+            totals.len(),
+            totals[0].requests,
+            totals[0].input_tokens,
+            totals[0].output_tokens
+        ),
         (1, 1, 12, 3)
     );
-    assert_eq!((totals[0].provider_id.as_str(), totals[0].model_id.as_str()), (provider.as_str(), "claude-opus-4-8"));
+    assert_eq!(
+        (totals[0].provider_id.as_str(), totals[0].model_id.as_str()),
+        (provider.as_str(), "claude-opus-4-8")
+    );
 
     // A reload opens the same history, and a later message continues it.
     drop(socket);
@@ -558,8 +807,15 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     vendor.respond(answer(&["Again."], 20, 2));
     reloaded.chat("m2", "Once more").await;
     let replayed = vendor.requests()[1].json();
-    assert_eq!(replayed["messages"].as_array().unwrap().len(), 3, "{replayed}");
-    assert_eq!(kinds(&transcript(&backend, &master, FIRST).await.blocks).len(), 6);
+    assert_eq!(
+        replayed["messages"].as_array().unwrap().len(),
+        3,
+        "{replayed}"
+    );
+    assert_eq!(
+        kinds(&transcript(&backend, &master, FIRST).await.blocks).len(),
+        6
+    );
     backend.close().await;
 }
 
@@ -604,7 +860,11 @@ async fn a_request_the_vendor_refuses_as_too_large_compacts_and_goes_again_from_
     // The second request is refused as too large, as a compatible endpoint
     // with a smaller limit than the API's would.
     let refusal = json!({ "type": "error", "error": { "type": "request_too_large", "message": "Request exceeds the maximum size" } });
-    vendor.respond(MockResponse::status(413).header("content-type", "application/json").chunk(refusal.to_string()));
+    vendor.respond(
+        MockResponse::status(413)
+            .header("content-type", "application/json")
+            .chunk(refusal.to_string()),
+    );
     vendor.respond(answer(&["The user asked a first question."], 10, 5));
     vendor.respond(answer(&["Second answer."], 8, 2));
     let turn = socket.chat("m2", "Second question").await;
@@ -612,7 +872,11 @@ async fn a_request_the_vendor_refuses_as_too_large_compacts_and_goes_again_from_
     // One pass: the summary request is the first request, which the vendor
     // took, with the instruction after it; then the refused request goes
     // again, from the summary.
-    let requests: Vec<Value> = vendor.requests().iter().map(|request| request.json()).collect();
+    let requests: Vec<Value> = vendor
+        .requests()
+        .iter()
+        .map(|request| request.json())
+        .collect();
     let [first, refused, summary, again] = requests.as_slice() else {
         panic!("{requests:?}");
     };
@@ -624,7 +888,11 @@ async fn a_request_the_vendor_refuses_as_too_large_compacts_and_goes_again_from_
             .iter()
             .flat_map(|message| {
                 let role = message["role"].clone();
-                message["content"].as_array().unwrap().iter().map(move |block| (role.clone(), block.clone()))
+                message["content"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(move |block| (role.clone(), block.clone()))
             })
             .collect()
     };
@@ -632,22 +900,55 @@ async fn a_request_the_vendor_refuses_as_too_large_compacts_and_goes_again_from_
     assert_eq!(summary_blocks[..first_blocks.len()], first_blocks[..]);
     assert_eq!(summary_blocks.len(), first_blocks.len() + 1);
     let instruction = summary_blocks.last().unwrap().1.to_string();
-    assert!(instruction.contains("Summarize the conversation above"), "{summary}");
-    assert_eq!((unmarked(&summary["system"]), &summary["tools"]), (unmarked(&first["system"]), &first["tools"]));
+    assert!(
+        instruction.contains("Summarize the conversation above"),
+        "{summary}"
+    );
+    assert_eq!(
+        (unmarked(&summary["system"]), &summary["tools"]),
+        (unmarked(&first["system"]), &first["tools"])
+    );
     assert_eq!(messages(refused).len(), 3);
     let again = messages(again);
-    assert!(again[0].to_string().contains("Previous conversation summary:\\nThe user asked a first question."), "{again:?}");
+    assert!(
+        again[0]
+            .to_string()
+            .contains("Previous conversation summary:\\nThe user asked a first question."),
+        "{again:?}"
+    );
     assert!(again[1].to_string().contains("First answer."), "{again:?}");
-    assert!(again[2].to_string().contains("Second question"), "{again:?}");
+    assert!(
+        again[2].to_string().contains("Second question"),
+        "{again:?}"
+    );
     // The page saw the pass, and no retry: the refusal left nothing behind.
     assert!(
-        turn.iter().any(|frame| matches!(frame, ServerFrame::Phase { phase: SessionPhase::Compacting })),
+        turn.iter().any(|frame| matches!(
+            frame,
+            ServerFrame::Phase {
+                phase: SessionPhase::Compacting
+            }
+        )),
         "{turn:?}"
     );
-    assert!(!turn.iter().any(|frame| matches!(frame, ServerFrame::RetryScheduled { .. })), "{turn:?}");
+    assert!(
+        !turn
+            .iter()
+            .any(|frame| matches!(frame, ServerFrame::RetryScheduled { .. })),
+        "{turn:?}"
+    );
     assert_eq!(
         kinds(&socket.live().await),
-        ["user", "compaction_boundary", "text", "response", "user", "compaction_marker", "text", "response"]
+        [
+            "user",
+            "compaction_boundary",
+            "text",
+            "response",
+            "user",
+            "compaction_marker",
+            "text",
+            "response"
+        ]
     );
     backend.close().await;
 }
@@ -675,14 +976,27 @@ async fn a_client_that_falls_behind_is_closed_as_lagging_and_a_reopen_adopts_the
     let deadline = tokio::time::Instant::now() + PATIENCE;
     let blocks = loop {
         let blocks = again.live().await;
-        if blocks.iter().any(|block| matches!(block, Block::Response(_))) {
+        if blocks
+            .iter()
+            .any(|block| matches!(block, Block::Response(_)))
+        {
             break blocks;
         }
-        assert!(tokio::time::Instant::now() < deadline, "the adopted turn never ended: {blocks:?}");
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the adopted turn never ended: {blocks:?}"
+        );
         tokio::time::sleep(Duration::from_millis(20)).await;
     };
-    assert!(last_text(&blocks).ends_with("199 "), "the turn ran to its end");
-    assert_eq!(vendor.requests().len(), 1, "the reopen adopted the tree, which asked once");
+    assert!(
+        last_text(&blocks).ends_with("199 "),
+        "the turn ran to its end"
+    );
+    assert_eq!(
+        vendor.requests().len(),
+        1,
+        "the reopen adopted the tree, which asked once"
+    );
     backend.close().await;
 }
 
@@ -696,7 +1010,9 @@ async fn the_frames_the_backend_refuses_never_reach_the_session() {
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
 
     // A frame outside its schema is answered, and the socket stays open.
-    socket.send_text(json!({ "type": "send", "messageId": "m1" }).to_string()).await;
+    socket
+        .send_text(json!({ "type": "send", "messageId": "m1" }).to_string())
+        .await;
     let ServerFrame::Error { code, .. } = socket.frame().await else {
         panic!("an invalid frame is answered with an error");
     };
@@ -714,7 +1030,10 @@ async fn the_frames_the_backend_refuses_never_reach_the_session() {
     // socket.
     harness
         .control_database()
-        .execute("UPDATE conversations SET archived = 1 WHERE id = ?1", [FIRST])
+        .execute(
+            "UPDATE conversations SET archived = 1 WHERE id = ?1",
+            [FIRST],
+        )
         .unwrap();
     socket.send(&send("m1", "hi")).await;
     let ServerFrame::Error { code, .. } = socket.frame().await else {
@@ -743,7 +1062,10 @@ async fn the_frames_the_backend_refuses_never_reach_the_session() {
         }
     );
     assert!(vendor.requests().is_empty());
-    assert_eq!(Socket::try_connect(&backend, &master, FIRST).await.err(), Some(409));
+    assert_eq!(
+        Socket::try_connect(&backend, &master, FIRST).await.err(),
+        Some(409)
+    );
     socket.send(&ClientFrame::Close {}).await;
     assert_eq!(socket.frame().await, ServerFrame::Closed);
 
@@ -754,10 +1076,16 @@ async fn the_frames_the_backend_refuses_never_reach_the_session() {
     let product = [("origin", backend.url.as_str())];
     let path = format!("/api/conversations/{SECOND}/stream");
     let not_socket = backend.get_with(&path, &master, &product).await;
-    assert_eq!(not_socket.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ConversationNotFound));
+    assert_eq!(
+        not_socket.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::ConversationNotFound)
+    );
     create(&backend, &master, SECOND).await;
     let not_socket = backend.get_with(&path, &master, &product).await;
-    assert_eq!(not_socket.refusal(), (StatusCode::UPGRADE_REQUIRED, ErrorCode::UpgradeRequired));
+    assert_eq!(
+        not_socket.refusal(),
+        (StatusCode::UPGRADE_REQUIRED, ErrorCode::UpgradeRequired)
+    );
     backend.close().await;
 }
 
@@ -815,7 +1143,11 @@ impl Provider for KeyedProvider {
     }
 
     fn auth_status(&self) -> BoxFuture<'_, AuthState> {
-        Box::pin(async { AuthState::Authenticated { account_label: None } })
+        Box::pin(async {
+            AuthState::Authenticated {
+                account_label: None,
+            }
+        })
     }
 
     fn runtime_state(&self) -> RuntimeState {
@@ -850,7 +1182,9 @@ impl ProviderRuntime for KeyedRuntime {
     fn run(&mut self, request: InferenceRequest) -> ProviderRun<'_> {
         self.requests += 1;
         let (key, count, runs) = (self.key.clone(), self.requests, self.runs.clone());
-        let output = request.output_limit.map_or(0, |limit| u64::from(limit.get()));
+        let output = request
+            .output_limit
+            .map_or(0, |limit| u64::from(limit.get()));
         stream::once(async move {
             let first = {
                 let mut calls = runs.calls.lock().unwrap();
@@ -913,7 +1247,9 @@ async fn the_conversation_socket_opens_only_from_a_page_of_the_product() {
     let port = backend.url.rsplit(':').next().unwrap();
     let expose = format!("http://a1b2c3d4e5.expose.localhost:{port}");
     for origin in ["https://elsewhere.example", expose.as_str()] {
-        let refused = Socket::try_connect_from(&backend, &master, FIRST, origin).await.err();
+        let refused = Socket::try_connect_from(&backend, &master, FIRST, origin)
+            .await
+            .err();
         assert_eq!(refused, Some((403, ErrorCode::ForbiddenOrigin)), "{origin}");
     }
     // The product's own page opens it.
@@ -924,7 +1260,8 @@ async fn the_conversation_socket_opens_only_from_a_page_of_the_product() {
 #[tokio::test]
 async fn an_edit_of_the_entry_reaches_the_next_request_and_a_deleted_entry_refuses_inference() {
     let runs = Runs::new();
-    let harness = Harness::new().with_families(demi_backend::families::builtin().with("keyed", Keyed(runs.clone())));
+    let harness = Harness::new()
+        .with_families(demi_backend::families::builtin().with("keyed", Keyed(runs.clone())));
     let (backend, master) = harness.start_set_up().await;
     let body = json!({
         "source": "custom", "providerType": "keyed", "label": "Keyed", "apiKey": "old-key",
@@ -939,23 +1276,47 @@ async fn an_edit_of_the_entry_reaches_the_next_request_and_a_deleted_entry_refus
     // An edit while the first request runs: that request finishes with the
     // runtime it started with, and the next one gets a new runtime.
     socket.send(&send("m1", "before the edit")).await;
-    crate::support::eventually("the first request runs", || async { runs.calls().len() == 1 }).await;
+    crate::support::eventually("the first request runs", || async {
+        runs.calls().len() == 1
+    })
+    .await;
     let path = format!("/api/providers/{provider}");
     let edited = backend
-        .patch(&path, &master, json!({ "apiKey": "new-key", "models": [configured(8_000)] }))
+        .patch(
+            &path,
+            &master,
+            json!({ "apiKey": "new-key", "models": [configured(8_000)] }),
+        )
         .await;
-    assert_eq!(edited.status, StatusCode::OK, "{}", String::from_utf8_lossy(&edited.body));
+    assert_eq!(
+        edited.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&edited.body)
+    );
     runs.released.send_replace(true);
     socket.until_idle().await;
     socket.chat("m2", "after the edit").await;
     socket.chat("m3", "the same entry").await;
     assert_eq!(
         runs.calls(),
-        [("old-key".to_owned(), 1), ("new-key".to_owned(), 1), ("new-key".to_owned(), 2)]
+        [
+            ("old-key".to_owned(), 1),
+            ("new-key".to_owned(), 1),
+            ("new-key".to_owned(), 2)
+        ]
     );
-    assert_eq!(runs.runtimes.load(Ordering::SeqCst), 2, "an unchanged entry keeps its runtime");
+    assert_eq!(
+        runs.runtimes.load(Ordering::SeqCst),
+        2,
+        "an unchanged entry keeps its runtime"
+    );
     let totals = usage(&backend, &master).await.totals;
-    assert_eq!((totals[0].requests, totals[0].output_tokens), (3, 4_000 + 8_000 + 8_000), "{totals:?}");
+    assert_eq!(
+        (totals[0].requests, totals[0].output_tokens),
+        (3, 4_000 + 8_000 + 8_000),
+        "{totals:?}"
+    );
 
     // A deleted entry refuses the next request before any vendor.
     let deleted = backend.delete(&path, &master).await;
@@ -992,7 +1353,10 @@ async fn a_request_over_the_rate_limit_fails_without_reaching_the_vendor() {
     assert!(limited, "{turn:?}");
     assert_eq!(vendor.requests().len(), 1);
     assert_eq!(usage(&backend, &master).await.totals[0].requests, 1);
-    assert_eq!(summary(&backend, &master, FIRST).await.status, ConversationStatus::Error);
+    assert_eq!(
+        summary(&backend, &master, FIRST).await.status,
+        ConversationStatus::Error
+    );
     backend.close().await;
 }
 
@@ -1016,10 +1380,17 @@ async fn a_shutdown_in_the_middle_of_a_turn_saves_its_interruption_and_the_next_
     assert_eq!(socket.closed().await, Some(u16::from(CloseCode::Away)));
 
     let backend = harness.start().await;
-    let master = backend.login(MASTER_EMAIL, crate::support::MASTER_PASSWORD).await;
+    let master = backend
+        .login(MASTER_EMAIL, crate::support::MASTER_PASSWORD)
+        .await;
     let blocks = transcript(&backend, &master, FIRST).await.blocks;
-    assert_eq!(kinds(&blocks), ["user", "text", "response", "user", "error"]);
-    let Some(Block::Error(record)) = blocks.last() else { unreachable!() };
+    assert_eq!(
+        kinds(&blocks),
+        ["user", "text", "response", "user", "error"]
+    );
+    let Some(Block::Error(record)) = blocks.last() else {
+        unreachable!()
+    };
     assert_eq!(record.code.as_deref(), Some("interrupted"));
     let summary = summaries(&backend, &master).await.remove(0);
     assert_eq!(summary.status, ConversationStatus::Interrupted);
@@ -1053,7 +1424,9 @@ impl StalledPage {
         let headers = request.headers_mut();
         headers.insert("cookie", session.cookie.parse().unwrap());
         headers.insert("origin", backend.url.parse().unwrap());
-        let (socket, _) = tokio_tungstenite::client_async(request, stream).await.unwrap();
+        let (socket, _) = tokio_tungstenite::client_async(request, stream)
+            .await
+            .unwrap();
         Self { socket }
     }
 
@@ -1102,7 +1475,10 @@ async fn a_page_that_stopped_reading_does_not_hold_up_shutdown() {
 
     let mut stalled = StalledPage::connect(&backend, &master, FIRST).await;
     let reset = stalled.open_until_the_reset_is_sent().await;
-    assert!(reset > 8 << 20, "the reset carries the whole transcript: {reset} bytes");
+    assert!(
+        reset > 8 << 20,
+        "the reset carries the whole transcript: {reset} bytes"
+    );
     tokio::time::timeout(PATIENCE, backend.close())
         .await
         .expect("a page that stopped reading does not hold up shutdown");
@@ -1128,7 +1504,10 @@ async fn the_page_receives_what_the_provider_reads_from_an_error_blocks_record()
     // The frame that brings the error block carries the provider's reading
     // of its record: the vendor's wait, counted from when it failed.
     let read = turn.iter().find_map(|frame| match frame {
-        ServerFrame::TranscriptPatch { failures: Some(failures), .. } => Some(failures.clone()),
+        ServerFrame::TranscriptPatch {
+            failures: Some(failures),
+            ..
+        } => Some(failures.clone()),
         _ => None,
     });
     let read = read.unwrap_or_else(|| panic!("no frame carried failure facts: {turn:?}"));
@@ -1137,16 +1516,32 @@ async fn the_page_receives_what_the_provider_reads_from_an_error_blocks_record()
         panic!("the turn failed: {:?}", blocks.blocks);
     };
     let retry_at: Timestamp = "2026-09-24T08:02:00.000Z".parse().unwrap();
-    assert_eq!(read.get(&error.id).and_then(|facts| facts.retry_at), Some(retry_at));
+    assert_eq!(
+        read.get(&error.id).and_then(|facts| facts.retry_at),
+        Some(retry_at)
+    );
     assert_eq!(blocks.failures, Some(read));
     let others = turn
         .iter()
-        .filter(|frame| matches!(frame, ServerFrame::TranscriptPatch { failures: Some(_), .. }))
+        .filter(|frame| {
+            matches!(
+                frame,
+                ServerFrame::TranscriptPatch {
+                    failures: Some(_),
+                    ..
+                }
+            )
+        })
         .count();
-    assert_eq!(others, 1, "only the frame that brings the block carries facts");
+    assert_eq!(
+        others, 1,
+        "only the frame that brings the block carries facts"
+    );
 
     // With its entry gone, the record shows without facts.
-    backend.delete(&format!("/api/providers/{provider}"), &master).await;
+    backend
+        .delete(&format!("/api/providers/{provider}"), &master)
+        .await;
     assert_eq!(transcript(&backend, &master, FIRST).await.failures, None);
     backend.close().await;
 }
@@ -1163,7 +1558,9 @@ async fn a_deepseek_tool_continuation_sends_the_reasoning_back_to_the_compatible
     });
     vendor.respond_at(
         "/api.json",
-        MockResponse::status(200).header("etag", "\"fixture\"").chunk(catalog.to_string()),
+        MockResponse::status(200)
+            .header("etag", "\"fixture\"")
+            .chunk(catalog.to_string()),
     );
     let harness = Harness::new().with_models_dev(vendor.url("/api.json"));
     let (backend, master) = harness.start_set_up().await;
@@ -1214,11 +1611,16 @@ fn applied(field: PatchField) -> FieldResult {
 }
 
 #[tokio::test]
-async fn each_field_of_a_patch_applies_on_its_own_and_an_archived_conversation_takes_only_its_restore() {
+async fn each_field_of_a_patch_applies_on_its_own_and_an_archived_conversation_takes_only_its_restore()
+ {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
-    harness.add_user("ana@example.test", "ana-pass-1", demi_web_api_protocol::auth::Role::User);
+    harness.add_user(
+        "ana@example.test",
+        "ana-pass-1",
+        demi_web_api_protocol::auth::Role::User,
+    );
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
     create(&backend, &master, SECOND).await;
@@ -1231,7 +1633,9 @@ async fn each_field_of_a_patch_applies_on_its_own_and_an_archived_conversation_t
             .collect()
     };
 
-    let renamed = backend.patch(&path, &master, json!({ "title": "  Build failure  " })).await;
+    let renamed = backend
+        .patch(&path, &master, json!({ "title": "  Build failure  " }))
+        .await;
     assert_eq!(renamed.status, StatusCode::OK);
     let update = renamed.json::<ConversationUpdate>();
     assert_eq!(update.results, [applied(PatchField::Title)]);
@@ -1245,40 +1649,103 @@ async fn each_field_of_a_patch_applies_on_its_own_and_an_archived_conversation_t
     let update = chosen.json::<ConversationUpdate>();
     assert_eq!(
         update.results,
-        [applied(PatchField::Pinned), applied(PatchField::Model), applied(PatchField::Target)]
+        [
+            applied(PatchField::Pinned),
+            applied(PatchField::Model),
+            applied(PatchField::Target)
+        ]
     );
     let conversation = update.conversation;
-    let model = conversation.model.as_ref().map(|model| (model.provider_id.as_str(), model.model_id.as_str()));
-    assert_eq!((conversation.pinned, model), (true, Some((provider.as_str(), "claude-opus-4-8"))));
-    assert_eq!(listed().await, [FIRST, SECOND], "a pinned conversation leads");
+    let model = conversation
+        .model
+        .as_ref()
+        .map(|model| (model.provider_id.as_str(), model.model_id.as_str()));
+    assert_eq!(
+        (conversation.pinned, model),
+        (true, Some((provider.as_str(), "claude-opus-4-8")))
+    );
+    assert_eq!(
+        listed().await,
+        [FIRST, SECOND],
+        "a pinned conversation leads"
+    );
     // A patch of one field that is refused answers that field's refusal.
     let foreign = backend
-        .patch(&path, &master, json!({ "model": { "providerId": "someone-elses", "modelId": "m" } }))
+        .patch(
+            &path,
+            &master,
+            json!({ "model": { "providerId": "someone-elses", "modelId": "m" } }),
+        )
         .await;
-    assert_eq!(foreign.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ProviderNotFound));
+    assert_eq!(
+        foreign.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::ProviderNotFound)
+    );
 
     // The archive goes first, so the rename beside it is refused.
-    let archived = backend.patch(&path, &master, json!({ "title": "Renamed", "archived": true })).await;
+    let archived = backend
+        .patch(
+            &path,
+            &master,
+            json!({ "title": "Renamed", "archived": true }),
+        )
+        .await;
     assert_eq!(archived.status, StatusCode::MULTI_STATUS);
     let update = archived.json::<ConversationUpdate>();
     assert_eq!(update.results[0], applied(PatchField::Archived));
-    let FieldResult::Failed { field, code, http_status, .. } = &update.results[1] else {
-        panic!("the rename of an archived conversation is refused: {:?}", update.results);
+    let FieldResult::Failed {
+        field,
+        code,
+        http_status,
+        ..
+    } = &update.results[1]
+    else {
+        panic!(
+            "the rename of an archived conversation is refused: {:?}",
+            update.results
+        );
     };
-    assert_eq!((*field, *code, *http_status), (PatchField::Title, ErrorCode::ConversationArchived, 409));
-    assert_eq!((update.conversation.archived, update.conversation.title.as_str()), (true, "Build failure"));
+    assert_eq!(
+        (*field, *code, *http_status),
+        (PatchField::Title, ErrorCode::ConversationArchived, 409)
+    );
+    assert_eq!(
+        (
+            update.conversation.archived,
+            update.conversation.title.as_str()
+        ),
+        (true, "Build failure")
+    );
     assert_eq!(listed().await, [SECOND]);
-    let archived = backend.get("/api/conversations?archived=true", Some(&master)).await;
-    assert_eq!(archived.json::<Conversations>().conversations, [update.conversation]);
+    let archived = backend
+        .get("/api/conversations?archived=true", Some(&master))
+        .await;
+    assert_eq!(
+        archived.json::<Conversations>().conversations,
+        [update.conversation]
+    );
     // Its history stays readable.
     assert!(transcript(&backend, &master, FIRST).await.blocks.is_empty());
-    for body in [json!({ "pinned": false }), json!({ "target": { "kind": "cloud" } })] {
+    for body in [
+        json!({ "pinned": false }),
+        json!({ "target": { "kind": "cloud" } }),
+    ] {
         let refused = backend.patch(&path, &master, body.clone()).await;
-        assert_eq!(refused.refusal(), (StatusCode::CONFLICT, ErrorCode::ConversationArchived), "{body}");
+        assert_eq!(
+            refused.refusal(),
+            (StatusCode::CONFLICT, ErrorCode::ConversationArchived),
+            "{body}"
+        );
     }
-    let restored = backend.patch(&path, &master, json!({ "archived": false })).await;
+    let restored = backend
+        .patch(&path, &master, json!({ "archived": false }))
+        .await;
     assert_eq!(restored.status, StatusCode::OK);
-    assert_eq!(listed().await, [FIRST, SECOND], "the restore keeps the place and the pin");
+    assert_eq!(
+        listed().await,
+        [FIRST, SECOND],
+        "the restore keeps the place and the pin"
+    );
 
     // A body outside the patch's rules changes nothing, and neither does a
     // conversation the caller does not have.
@@ -1292,12 +1759,20 @@ async fn each_field_of_a_patch_applies_on_its_own_and_an_archived_conversation_t
     ];
     for body in bodies {
         let refused = backend.patch(&path, &master, body.clone()).await;
-        assert_eq!(refused.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody), "{body}");
+        assert_eq!(
+            refused.refusal(),
+            (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody),
+            "{body}"
+        );
     }
     let ana = backend.login("ana@example.test", "ana-pass-1").await;
     for path in [path.clone(), "/api/conversations/not-a-uuid".into()] {
         let foreign = backend.patch(&path, &ana, json!({ "pinned": true })).await;
-        assert_eq!(foreign.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ConversationNotFound), "{path}");
+        assert_eq!(
+            foreign.refusal(),
+            (StatusCode::NOT_FOUND, ErrorCode::ConversationNotFound),
+            "{path}"
+        );
     }
     assert_eq!(summaries(&backend, &master).await[0].title, "Build failure");
     backend.close().await;
@@ -1343,14 +1818,26 @@ async fn a_change_of_the_model_settings_reaches_every_page_and_the_next_request(
     // Page A raises the effort, and page B, another sign-in that has not
     // read that, turns Fast on: the value ends with both, and page A reads
     // it in its next snapshot.
-    let other = backend.login(MASTER_EMAIL, crate::support::MASTER_PASSWORD).await;
+    let other = backend
+        .login(MASTER_EMAIL, crate::support::MASTER_PASSWORD)
+        .await;
     let mut socket = Socket::connect(&backend, &other, FIRST).await;
     socket.open().await;
-    let raised = backend.patch(&path, &master, json!({ "thinkingEffort": "high" })).await;
-    assert_eq!(raised.json::<ConversationUpdate>().results, [applied(PatchField::ThinkingEffort)]);
-    let fast = backend.patch(&path, &other, json!({ "serviceTierId": "priority" })).await;
+    let raised = backend
+        .patch(&path, &master, json!({ "thinkingEffort": "high" }))
+        .await;
+    assert_eq!(
+        raised.json::<ConversationUpdate>().results,
+        [applied(PatchField::ThinkingEffort)]
+    );
+    let fast = backend
+        .patch(&path, &other, json!({ "serviceTierId": "priority" }))
+        .await;
     let both = settings("m", Some("high"), Some("priority"));
-    assert_eq!(fast.json::<ConversationUpdate>().conversation.model, Some(both.clone()));
+    assert_eq!(
+        fast.json::<ConversationUpdate>().conversation.model,
+        Some(both.clone())
+    );
     assert_eq!(summary(&backend, &master, FIRST).await.model, Some(both));
 
     // Page B's message runs with both.
@@ -1358,57 +1845,100 @@ async fn a_change_of_the_model_settings_reaches_every_page_and_the_next_request(
     socket.chat("m1", "first").await;
     let sent = vendor.requests()[0].json();
     assert_eq!(
-        (&sent["model"], &sent["output_config"]["effort"], &sent["service_tier"]),
+        (
+            &sent["model"],
+            &sent["output_config"]["effort"],
+            &sent["service_tier"]
+        ),
         (&json!("m"), &json!("high"), &json!("priority"))
     );
 
     // Page A switches the model as its menu does, naming the effort the new
     // model lists; the new model has no Fast tier, so the tier goes. Page
     // B's next message runs with the new value.
-    let body = json!({ "model": { "providerId": provider, "modelId": "n" }, "thinkingEffort": "high" });
+    let body =
+        json!({ "model": { "providerId": provider, "modelId": "n" }, "thinkingEffort": "high" });
     let switched = backend.patch(&path, &master, body).await;
     let update = switched.json::<ConversationUpdate>();
-    assert_eq!(update.results, [applied(PatchField::Model), applied(PatchField::ThinkingEffort)]);
-    assert_eq!(update.conversation.model, Some(settings("n", Some("high"), None)));
+    assert_eq!(
+        update.results,
+        [
+            applied(PatchField::Model),
+            applied(PatchField::ThinkingEffort)
+        ]
+    );
+    assert_eq!(
+        update.conversation.model,
+        Some(settings("n", Some("high"), None))
+    );
     vendor.respond(answer(&["two"], 1, 1));
     socket.chat("m2", "second").await;
     let sent = vendor.requests()[1].json();
     assert_eq!(
-        (&sent["model"], &sent["output_config"]["effort"], sent.get("service_tier")),
+        (
+            &sent["model"],
+            &sent["output_config"]["effort"],
+            sent.get("service_tier")
+        ),
         (&json!("n"), &json!("high"), None)
     );
 
     // A change while no tree is live is the record's, and the next open
     // takes it.
     socket.send(&ClientFrame::Close {}).await;
-    socket.until(|frame| matches!(frame, ServerFrame::Closed)).await;
-    let lowered = backend.patch(&path, &master, json!({ "thinkingEffort": "low" })).await;
+    socket
+        .until(|frame| matches!(frame, ServerFrame::Closed))
+        .await;
+    let lowered = backend
+        .patch(&path, &master, json!({ "thinkingEffort": "low" }))
+        .await;
     assert_eq!(lowered.status, StatusCode::OK);
     socket.open().await;
     vendor.respond(answer(&["three"], 1, 1));
     socket.chat("m3", "third").await;
-    assert_eq!(vendor.requests()[2].json()["output_config"]["effort"], "low");
+    assert_eq!(
+        vendor.requests()[2].json()["output_config"]["effort"],
+        "low"
+    );
 
     // A part the model does not offer, a model the catalog does not list,
     // and a part for a conversation without a model are refused and change
     // nothing.
     let second = format!("/api/conversations/{SECOND}");
     let refusals = [
-        (&path, json!({ "serviceTierId": "priority" }), StatusCode::CONFLICT, ErrorCode::SettingUnavailable),
-        (&path, json!({ "thinkingEffort": "max" }), StatusCode::CONFLICT, ErrorCode::SettingUnavailable),
+        (
+            &path,
+            json!({ "serviceTierId": "priority" }),
+            StatusCode::CONFLICT,
+            ErrorCode::SettingUnavailable,
+        ),
+        (
+            &path,
+            json!({ "thinkingEffort": "max" }),
+            StatusCode::CONFLICT,
+            ErrorCode::SettingUnavailable,
+        ),
         (
             &path,
             json!({ "model": { "providerId": provider, "modelId": "x" } }),
             StatusCode::NOT_FOUND,
             ErrorCode::ModelNotFound,
         ),
-        (&second, json!({ "thinkingEffort": "low" }), StatusCode::CONFLICT, ErrorCode::ModelNotSelected),
+        (
+            &second,
+            json!({ "thinkingEffort": "low" }),
+            StatusCode::CONFLICT,
+            ErrorCode::ModelNotSelected,
+        ),
     ];
     for (target, body, status, code) in refusals {
         let refused = backend.patch(target, &master, body.clone()).await;
         assert_eq!(refused.refusal(), (status, code), "{body}");
     }
-    assert_eq!(summary(&backend, &master, FIRST).await.model, Some(settings("n", Some("low"), None)));
+    assert_eq!(
+        summary(&backend, &master, FIRST).await.model,
+        Some(settings("n", Some("low"), None))
+    );
     backend.close().await;
 }
 
@@ -1426,7 +1956,8 @@ async fn a_model_that_cannot_turn_thinking_off_shows_the_effort_its_requests_car
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
     let chosen = choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
-    let effort = |summary: ConversationSummary| summary.model.and_then(|model| model.thinking_effort);
+    let effort =
+        |summary: ConversationSummary| summary.model.and_then(|model| model.thinking_effort);
     assert_eq!(effort(chosen).as_deref(), Some("low"));
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
@@ -1440,9 +1971,16 @@ async fn a_model_that_cannot_turn_thinking_off_shows_the_effort_its_requests_car
 
     // Asking for the model's default names that effort again.
     let path = format!("/api/conversations/{FIRST}");
-    backend.patch(&path, &master, json!({ "thinkingEffort": "high" })).await;
-    let reset = backend.patch(&path, &master, json!({ "thinkingEffort": null })).await;
-    assert_eq!(effort(reset.json::<ConversationUpdate>().conversation).as_deref(), Some("low"));
+    backend
+        .patch(&path, &master, json!({ "thinkingEffort": "high" }))
+        .await;
+    let reset = backend
+        .patch(&path, &master, json!({ "thinkingEffort": null }))
+        .await;
+    assert_eq!(
+        effort(reset.json::<ConversationUpdate>().conversation).as_deref(),
+        Some("low")
+    );
     backend.close().await;
 }
 
@@ -1461,28 +1999,47 @@ async fn an_archive_refuses_running_work_and_holds_the_open_socket_until_the_res
     vendor.received(1).await;
 
     let path = format!("/api/conversations/{FIRST}");
-    let busy = backend.patch(&path, &master, json!({ "archived": true })).await;
-    assert_eq!(busy.refusal(), (StatusCode::CONFLICT, ErrorCode::TurnInFlight));
+    let busy = backend
+        .patch(&path, &master, json!({ "archived": true }))
+        .await;
+    assert_eq!(
+        busy.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::TurnInFlight)
+    );
 
     // Stopped and saved, the turn no longer holds the conversation.
     socket.stop().await;
-    assert_eq!(summary(&backend, &master, FIRST).await.status, ConversationStatus::Stopped);
-    let archived = backend.patch(&path, &master, json!({ "archived": true })).await;
+    assert_eq!(
+        summary(&backend, &master, FIRST).await.status,
+        ConversationStatus::Stopped
+    );
+    let archived = backend
+        .patch(&path, &master, json!({ "archived": true }))
+        .await;
     assert_eq!(archived.status, StatusCode::OK);
     socket.send(&send("m2", "still there?")).await;
     let ServerFrame::Error { code, .. } = socket.frame().await else {
         panic!("an archived conversation refuses a message");
     };
     assert_eq!(code.as_deref(), Some("conversation_archived"));
-    assert_eq!(Socket::try_connect(&backend, &master, FIRST).await.err(), Some(409));
+    assert_eq!(
+        Socket::try_connect(&backend, &master, FIRST).await.err(),
+        Some(409)
+    );
 
     // Restored, the socket that stayed open runs a turn again.
-    let restored = backend.patch(&path, &master, json!({ "archived": false })).await;
+    let restored = backend
+        .patch(&path, &master, json!({ "archived": false }))
+        .await;
     assert_eq!(restored.status, StatusCode::OK);
     vendor.respond(answer(&["back"], 1, 1));
     socket.chat("m3", "and now?").await;
     assert_eq!(last_text(&socket.live().await), "back");
-    assert_eq!(vendor.requests().len(), 2, "the refused message never reached the vendor");
+    assert_eq!(
+        vendor.requests().len(),
+        2,
+        "the refused message never reached the vendor"
+    );
     backend.close().await;
 }
 
@@ -1490,7 +2047,11 @@ async fn an_archive_refuses_running_work_and_holds_the_open_socket_until_the_res
 async fn a_batch_answers_each_item_on_its_own() {
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
-    harness.add_user("ana@example.test", "ana-pass-1", demi_web_api_protocol::auth::Role::User);
+    harness.add_user(
+        "ana@example.test",
+        "ana-pass-1",
+        demi_web_api_protocol::auth::Role::User,
+    );
     create(&backend, &master, FIRST).await;
     create(&backend, &master, SECOND).await;
     let ana = backend.login("ana@example.test", "ana-pass-1").await;
@@ -1501,34 +2062,71 @@ async fn a_batch_answers_each_item_on_its_own() {
         { "id": SECOND, "patch": { "archived": true, "title": "Old" } },
         { "id": THIRD, "patch": { "pinned": true } },
     ] });
-    let answered = backend.post("/api/conversations/batch", Some(&master), body).await;
+    let answered = backend
+        .post("/api/conversations/batch", Some(&master), body)
+        .await;
     assert_eq!(answered.status, StatusCode::MULTI_STATUS);
     let results = answered.json::<BatchAnswer>().results;
     let [first, second, third] = results.as_slice() else {
         panic!("one outcome per item: {results:?}");
     };
-    let BatchResult::Updated { id, conversation, results } = first else {
+    let BatchResult::Updated {
+        id,
+        conversation,
+        results,
+    } = first
+    else {
         panic!("{first:?}");
     };
-    assert_eq!((id.as_str(), conversation.pinned, results.as_slice()), (FIRST, true, &[applied(PatchField::Pinned)][..]));
-    let BatchResult::Updated { conversation, results, .. } = second else {
+    assert_eq!(
+        (id.as_str(), conversation.pinned, results.as_slice()),
+        (FIRST, true, &[applied(PatchField::Pinned)][..])
+    );
+    let BatchResult::Updated {
+        conversation,
+        results,
+        ..
+    } = second
+    else {
         panic!("{second:?}");
     };
     assert!(conversation.archived);
     assert!(matches!(
         results.as_slice(),
-        [FieldResult::Applied { field: PatchField::Archived }, FieldResult::Failed { code: ErrorCode::ConversationArchived, .. }]
+        [
+            FieldResult::Applied {
+                field: PatchField::Archived
+            },
+            FieldResult::Failed {
+                code: ErrorCode::ConversationArchived,
+                ..
+            }
+        ]
     ));
     let BatchResult::Refused { id, code, .. } = third else {
         panic!("another user's conversation is refused: {third:?}");
     };
-    assert_eq!((id.as_str(), *code), (THIRD, ErrorCode::ConversationNotFound));
+    assert_eq!(
+        (id.as_str(), *code),
+        (THIRD, ErrorCode::ConversationNotFound)
+    );
     assert!(!summaries(&backend, &ana).await[0].pinned);
 
-    let too_many: Vec<Value> = (0..101).map(|_| json!({ "id": FIRST, "patch": {} })).collect();
-    for body in [json!({ "items": [] }), json!({ "items": too_many }), json!({ "items": [{ "id": FIRST }] })] {
-        let refused = backend.post("/api/conversations/batch", Some(&master), body).await;
-        assert_eq!(refused.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody));
+    let too_many: Vec<Value> = (0..101)
+        .map(|_| json!({ "id": FIRST, "patch": {} }))
+        .collect();
+    for body in [
+        json!({ "items": [] }),
+        json!({ "items": too_many }),
+        json!({ "items": [{ "id": FIRST }] }),
+    ] {
+        let refused = backend
+            .post("/api/conversations/batch", Some(&master), body)
+            .await;
+        assert_eq!(
+            refused.refusal(),
+            (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody)
+        );
     }
     backend.close().await;
 }

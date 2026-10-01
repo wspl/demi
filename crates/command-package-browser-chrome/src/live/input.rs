@@ -20,10 +20,10 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::driver::operation::{BrowserError, CONTROL_TIMEOUT, Result};
 use crate::page::keyboard;
+use crate::tabs::{dialog::InputRelease, tab::BrowserTab};
 use demi_command_package_browser_protocol::live::{
     KeyAction, LiveModuleMessage, LiveViewerMessage, PointerAction, PointerButton,
 };
-use crate::tabs::{dialog::InputRelease, tab::BrowserTab};
 
 use crate::live::protocol::{TabId, ViewportMode};
 use crate::live::{observers, writer::Writer};

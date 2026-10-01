@@ -40,7 +40,9 @@ pub async fn run<T: Send + 'static>(
 
 fn enter(namespace: &Namespace) -> io::Result<()> {
     match namespace {
-        Namespace::HostMount => enter_link(Path::new("/proc/1/ns/mnt"), LinkNameSpaceType::Mount, true),
+        Namespace::HostMount => {
+            enter_link(Path::new("/proc/1/ns/mnt"), LinkNameSpaceType::Mount, true)
+        }
         Namespace::Network(path) => enter_link(path, LinkNameSpaceType::Network, false),
         Namespace::NewNetwork => {
             // SAFETY: CLONE_NEWNET moves only this thread into a new network

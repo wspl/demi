@@ -180,7 +180,9 @@ impl ProviderModel {
         capabilities
             .into_iter()
             .find_map(|capability| match capability {
-                ThinkingCapability::Adaptive { efforts, .. } if efforts.iter().any(|listed| listed == effort) => {
+                ThinkingCapability::Adaptive { efforts, .. }
+                    if efforts.iter().any(|listed| listed == effort) =>
+                {
                     Some(ThinkingConfig::Adaptive {
                         effort: effort.to_owned(),
                     })
@@ -189,10 +191,12 @@ impl ProviderModel {
                     efforts,
                     default_summary,
                     ..
-                } if efforts.iter().any(|listed| listed == effort) => Some(ThinkingConfig::Effort {
-                    effort: effort.to_owned(),
-                    summary: default_summary,
-                }),
+                } if efforts.iter().any(|listed| listed == effort) => {
+                    Some(ThinkingConfig::Effort {
+                        effort: effort.to_owned(),
+                        summary: default_summary,
+                    })
+                }
                 _ => None,
             })
             .map(Some)
@@ -208,20 +212,22 @@ impl ProviderModel {
         if self.can_disable_thinking != Some(false) {
             return None;
         }
-        self.thinking_capabilities().into_iter().find_map(|capability| match capability {
-            ThinkingCapability::Adaptive {
-                efforts,
-                default_effort,
-            }
-            | ThinkingCapability::Effort {
-                efforts,
-                default_effort,
-                ..
-            } => default_effort
-                .filter(|effort| efforts.contains(effort))
-                .or_else(|| efforts.into_iter().next()),
-            _ => None,
-        })
+        self.thinking_capabilities()
+            .into_iter()
+            .find_map(|capability| match capability {
+                ThinkingCapability::Adaptive {
+                    efforts,
+                    default_effort,
+                }
+                | ThinkingCapability::Effort {
+                    efforts,
+                    default_effort,
+                    ..
+                } => default_effort
+                    .filter(|effort| efforts.contains(effort))
+                    .or_else(|| efforts.into_iter().next()),
+                _ => None,
+            })
     }
 
     /// The service tier `tier` of a conversation's model settings on this
@@ -267,7 +273,11 @@ impl ProviderModel {
         if self.supports_reasoning == Some(false) {
             return vec![ThinkingCapability::Disabled {}];
         }
-        let Some(efforts) = self.supported_thinking_efforts.as_ref().filter(|efforts| !efforts.is_empty()) else {
+        let Some(efforts) = self
+            .supported_thinking_efforts
+            .as_ref()
+            .filter(|efforts| !efforts.is_empty())
+        else {
             return Vec::new();
         };
         vec![ThinkingCapability::Effort {

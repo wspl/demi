@@ -65,7 +65,10 @@ pub enum StoreError {
     Io(#[from] io::Error),
     /// A record that does not decode is an error; nothing repairs it.
     #[error("{} is not a valid generation record: {source}", path.display())]
-    Corrupt { path: PathBuf, source: serde_json::Error },
+    Corrupt {
+        path: PathBuf,
+        source: serde_json::Error,
+    },
 }
 
 /// Reads a generation record at `path`; `None` when there is none.
@@ -99,7 +102,11 @@ impl ImageStore {
     }
 
     /// A device's committed generation, `None` before its first.
-    pub fn read(&self, off: &OffLoop, device: &DeviceId) -> Result<Option<MachineImageState>, StoreError> {
+    pub fn read(
+        &self,
+        off: &OffLoop,
+        device: &DeviceId,
+    ) -> Result<Option<MachineImageState>, StoreError> {
         read_state(off, &self.root.join(device).join("current.json"))
     }
 
@@ -216,10 +223,16 @@ mod tests {
         std::fs::write(&sources.home, "home").unwrap();
         let pair = sources.as_deref();
         assert_eq!(store.read(&off, &device).unwrap(), None);
-        store.publish(&off, &device, &state("first"), pair.clone()).unwrap();
+        store
+            .publish(&off, &device, &state("first"), pair.clone())
+            .unwrap();
 
         std::fs::remove_file(&sources.home).unwrap();
-        assert!(store.publish(&off, &device, &state("partial"), pair.clone()).is_err());
+        assert!(
+            store
+                .publish(&off, &device, &state("partial"), pair.clone())
+                .is_err()
+        );
         assert_eq!(store.read(&off, &device).unwrap(), Some(state("first")));
         assert_eq!(generations(&store.root), ["first"]);
 
@@ -229,11 +242,15 @@ mod tests {
         for volume in Volume::ALL {
             std::fs::copy(committed.get(volume), sources.get(volume)).unwrap();
         }
-        store.publish(&off, &device, &state("second"), pair.clone()).unwrap();
+        store
+            .publish(&off, &device, &state("second"), pair.clone())
+            .unwrap();
         std::fs::remove_file(&sources.system).unwrap();
         std::fs::remove_file(&sources.home).unwrap();
         let second = store.images(&device, &state("second").generation);
-        store.publish(&off, &device, &state("third"), second.as_deref()).unwrap();
+        store
+            .publish(&off, &device, &state("third"), second.as_deref())
+            .unwrap();
         assert_eq!(generations(&store.root), ["second", "third"]);
         assert_eq!(store.read(&off, &device).unwrap(), Some(state("third")));
     }
@@ -250,7 +267,9 @@ mod tests {
         let sources = ImagePair::in_directory(directory.path());
         std::fs::write(&sources.system, "system").unwrap();
         std::fs::write(&sources.home, "home").unwrap();
-        store.publish(&off, &device, &state("first"), sources.as_deref()).unwrap();
+        store
+            .publish(&off, &device, &state("first"), sources.as_deref())
+            .unwrap();
         let committed = store.images(&device, &state("first").generation);
         for volume in Volume::ALL {
             let source = std::fs::metadata(sources.get(volume)).unwrap();
@@ -266,7 +285,14 @@ mod tests {
         let store = ImageStore::new(directory.path().to_owned());
         let device = DeviceId::parse("device").unwrap();
         std::fs::create_dir(directory.path().join("device")).unwrap();
-        std::fs::write(directory.path().join("device/current.json"), r#"{"generation":"g"}"#).unwrap();
-        assert!(matches!(store.read(&off, &device), Err(StoreError::Corrupt { .. })));
+        std::fs::write(
+            directory.path().join("device/current.json"),
+            r#"{"generation":"g"}"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            store.read(&off, &device),
+            Err(StoreError::Corrupt { .. })
+        ));
     }
 }

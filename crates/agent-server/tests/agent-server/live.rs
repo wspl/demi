@@ -13,17 +13,17 @@ use demi_agent_server::{
     AgentServer, ServerConfig, ServerDeps,
     testing::{ScriptedProviders, TestClient},
 };
-use demi_conversation_socket_protocol::{ServerFrame, ShellStatus};
 use demi_agent_store::{AgentTreeStore, testing::MemoryTreeStore};
 use demi_agent_tools::{AgentHarness, EnvironmentScope, PromptContext, ShellEnvironmentFactory};
 use demi_agent_transcript::testing::SequentialIds;
-use demi_shared_types::{CommandId, NodeId, ShellId, StreamKind};
-use demi_provider_common::testing::{FixedClock, ScriptedRuntime, Turn, event};
+use demi_conversation_socket_protocol::{ServerFrame, ShellStatus};
 use demi_host_interface::{
     CommandRecord, CommandSet, CommandStatus, DEFAULT_OUTPUT_LIMIT_BYTES, ExecRequest, Host,
     HostError, HostFs, HostIdentity, HostKey, HostProcess, PageFeed, PageView, ShellEnvironment,
     ShellError, WholeOutput,
 };
+use demi_provider_common::testing::{FixedClock, ScriptedRuntime, Turn, event};
+use demi_shared_types::{CommandId, NodeId, ShellId, StreamKind};
 use futures_util::future::LocalBoxFuture;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;

@@ -140,7 +140,10 @@ impl ConversationStores {
             waiting,
         });
         *self.0.hold.lock().unwrap_or_else(PoisonError::into_inner) = Some(hold.clone());
-        CommitHold { hold, waiting: watched }
+        CommitHold {
+            hold,
+            waiting: watched,
+        }
     }
 }
 
@@ -206,7 +209,12 @@ impl ConversationDb {
     pub fn commit_point(&self) -> CommitPoint {
         CommitPoint {
             #[cfg(feature = "testing")]
-            hold: self.stores.hold.lock().unwrap_or_else(PoisonError::into_inner).clone(),
+            hold: self
+                .stores
+                .hold
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone(),
         }
     }
 
@@ -274,7 +282,11 @@ impl CommitHold {
 #[cfg(feature = "testing")]
 impl Drop for CommitHold {
     fn drop(&mut self) {
-        *self.hold.released.lock().unwrap_or_else(PoisonError::into_inner) = true;
+        *self
+            .hold
+            .released
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = true;
         self.hold.opened.notify_all();
     }
 }
@@ -325,8 +337,10 @@ fn read_cold<T>(
     if !path.try_exists()? {
         return Ok(None);
     }
-    let mut connection =
-        Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)?;
+    let mut connection = Connection::open_with_flags(
+        path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
     connection.busy_timeout(sqlite::BUSY_TIMEOUT)?;
     let transaction = connection.transaction()?;
     // A writer that has just created the file may not have given it its
@@ -349,7 +363,11 @@ mod tests {
     }
 
     /// The root node's row, as a tree store writes it.
-    async fn write_root(db: &ConversationDb, conversation: &ConversationId, state: &str) -> Result<(), StorageError> {
+    async fn write_root(
+        db: &ConversationDb,
+        conversation: &ConversationId,
+        state: &str,
+    ) -> Result<(), StorageError> {
         let (id, state) = (conversation.as_str().to_owned(), state.to_owned());
         db.call(move |connection| {
             let transaction = connection.transaction()?;
@@ -368,7 +386,11 @@ mod tests {
 
     fn root_state(connection: &Connection) -> Result<Option<String>, StorageError> {
         let state = connection
-            .query_row("SELECT state FROM nodes WHERE parent_id IS NULL", [], |row| row.get(0))
+            .query_row(
+                "SELECT state FROM nodes WHERE parent_id IS NULL",
+                [],
+                |row| row.get(0),
+            )
             .optional()?;
         Ok(state)
     }
@@ -388,30 +410,53 @@ mod tests {
 
         assert_eq!(stores.read(&c, root_state).await.unwrap(), None);
         assert!(!directory.join(format!("{c}.sqlite")).exists());
-        assert_eq!(stores.read(&b, root_state).await.unwrap(), Some(Some("b".to_owned())));
+        assert_eq!(
+            stores.read(&b, root_state).await.unwrap(),
+            Some(Some("b".to_owned()))
+        );
         assert_eq!(stores.open_writers(), 2);
 
         // A third writer closes the least recently used, a's. The handle
         // handed out before opens it again, and nothing was lost.
         write_root(&stores.db(&c), &c, "c").await.unwrap();
         assert_eq!(stores.open_writers(), 2);
-        assert_eq!(first.call(|connection| root_state(connection)).await.unwrap(), Some("a".to_owned()));
+        assert_eq!(
+            first
+                .call(|connection| root_state(connection))
+                .await
+                .unwrap(),
+            Some("a".to_owned())
+        );
         write_root(&first, &a, "a2").await.unwrap();
         assert_eq!(stores.open_writers(), 2);
 
         // Another spelling of an id names the same database.
         let upper = ConversationId::try_from(a.as_str().to_uppercase()).unwrap();
-        assert_eq!(stores.read(&upper, root_state).await.unwrap(), Some(Some("a2".to_owned())));
+        assert_eq!(
+            stores.read(&upper, root_state).await.unwrap(),
+            Some(Some("a2".to_owned()))
+        );
 
         assert!(stores.close().await.is_empty());
         assert_eq!(stores.open_writers(), 0);
-        assert!(matches!(first.call(|_| Ok(())).await, Err(StorageError::Closed)));
-        assert!(matches!(stores.read(&a, |_| Ok(())).await, Err(StorageError::Closed)));
+        assert!(matches!(
+            first.call(|_| Ok(())).await,
+            Err(StorageError::Closed)
+        ));
+        assert!(matches!(
+            stores.read(&a, |_| Ok(())).await,
+            Err(StorageError::Closed)
+        ));
 
         // After a restart, a cold read finds every database as it was left.
-        let reopened = ConversationStores::open(directory, MAX_WRITERS).await.unwrap();
+        let reopened = ConversationStores::open(directory, MAX_WRITERS)
+            .await
+            .unwrap();
         for (conversation, state) in [(&a, "a2"), (&b, "b"), (&c, "c")] {
-            assert_eq!(reopened.read(conversation, root_state).await.unwrap(), Some(Some(state.to_owned())));
+            assert_eq!(
+                reopened.read(conversation, root_state).await.unwrap(),
+                Some(Some(state.to_owned()))
+            );
         }
         assert_eq!(reopened.open_writers(), 0);
     }
@@ -424,7 +469,10 @@ mod tests {
             .unwrap();
         let a = conversation(1);
         let (one, other) = (stores.db(&a), stores.db(&a));
-        let (first, second) = tokio::join!(write_root(&one, &a, "first"), write_root(&other, &a, "second"));
+        let (first, second) = tokio::join!(
+            write_root(&one, &a, "first"),
+            write_root(&other, &a, "second")
+        );
         first.unwrap();
         second.unwrap();
         assert_eq!(stores.open_writers(), 1);

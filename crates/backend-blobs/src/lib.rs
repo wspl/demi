@@ -27,4 +27,3 @@ pub enum ObjectError {
     #[error("blocking object store work did not finish: {0}")]
     Interrupted(#[from] tokio::task::JoinError),
 }
-

@@ -93,7 +93,9 @@ pub async fn install_archive(
         return Ok(executable);
     }
     // Everything is staged here and gone with it, whatever happens.
-    let temporary = tempfile::Builder::new().prefix(".install-").tempdir_in(root)?;
+    let temporary = tempfile::Builder::new()
+        .prefix(".install-")
+        .tempdir_in(root)?;
     let downloaded = temporary.path().join("archive.zip");
     let mut output = tokio::fs::File::create(&downloaded).await?;
     crate::download(client, &archive.url, &archive.digest, &mut output, cancel).await?;
@@ -111,7 +113,13 @@ async fn publish_installation(
     archive: &Archive,
     cancel: &CancellationToken,
 ) -> Result<PathBuf, Error> {
-    let executable = match crate::digest(&extracted.join(&archive.executable), EXECUTABLE_BYTES, cancel).await {
+    let executable = match crate::digest(
+        &extracted.join(&archive.executable),
+        EXECUTABLE_BYTES,
+        cancel,
+    )
+    .await
+    {
         Ok(executable) => executable,
         Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
             return Err(Error::Archive(format!("holds no {}", archive.executable)));
@@ -148,17 +156,29 @@ pub async fn install_unpacked(
         .try_fold(executable, |path, _| path.parent())
         .filter(|unpacked| unpacked.join(&archive.executable) == executable)
         .ok_or_else(|| {
-            Error::Archive(format!("{} is not its {}", executable.display(), archive.executable))
+            Error::Archive(format!(
+                "{} is not its {}",
+                executable.display(),
+                archive.executable
+            ))
         })?
         .to_owned();
     tokio::fs::create_dir_all(root).await?;
-    let temporary = tempfile::Builder::new().prefix(".install-").tempdir_in(root)?;
+    let temporary = tempfile::Builder::new()
+        .prefix(".install-")
+        .tempdir_in(root)?;
     let extracted = temporary.path().join("extracted");
     let linked = extracted.clone();
     tokio::task::spawn_blocking(move || link_tree(&unpacked, &linked))
         .await
         .map_err(std::io::Error::other)??;
-    publish_installation(&extracted, &root.join(&archive.digest.sha256), archive, cancel).await
+    publish_installation(
+        &extracted,
+        &root.join(&archive.digest.sha256),
+        archive,
+        cancel,
+    )
+    .await
 }
 
 /// Makes `destination` a tree like `source`: new directories, the same
@@ -177,7 +197,10 @@ fn link_tree(source: &Path, destination: &Path) -> std::io::Result<()> {
             #[cfg(unix)]
             std::os::unix::fs::symlink(std::fs::read_link(&from)?, &to)?;
             #[cfg(not(unix))]
-            return Err(std::io::Error::other(format!("{} is a symbolic link", from.display())));
+            return Err(std::io::Error::other(format!(
+                "{} is a symbolic link",
+                from.display()
+            )));
         } else if std::fs::hard_link(&from, &to).is_err() {
             // Every system refuses a hard link across filesystems, and Linux
             // one to another user's file (`protected_hardlinks`); a copy has
@@ -200,7 +223,8 @@ pub async fn zip_holds(archive: &Path, path: &str) -> Result<bool, Error> {
     let archive = archive.to_owned();
     let path = path.to_owned();
     tokio::task::spawn_blocking(move || {
-        let unreadable = |error: zip::result::ZipError| Error::Archive(format!("cannot be read: {error}"));
+        let unreadable =
+            |error: zip::result::ZipError| Error::Archive(format!("cannot be read: {error}"));
         let mut archive = zip::ZipArchive::new(File::open(archive)?).map_err(unreadable)?;
         let Some(index) = archive.index_for_name(&path) else {
             return Ok(false);
@@ -239,7 +263,11 @@ impl Seek for Cancellable {
 /// Extracts the zip archive at `archive` into `destination` on the blocking
 /// pool. The call returns only once extraction has stopped, also when
 /// cancelled, so the caller alone owns what was extracted.
-async fn extract_zip(archive: &Path, destination: &Path, cancel: &CancellationToken) -> Result<(), Error> {
+async fn extract_zip(
+    archive: &Path,
+    destination: &Path,
+    cancel: &CancellationToken,
+) -> Result<(), Error> {
     let archive = archive.to_owned();
     let destination = destination.to_owned();
     let reader_cancel = cancel.clone();
@@ -248,7 +276,8 @@ async fn extract_zip(archive: &Path, destination: &Path, cancel: &CancellationTo
             file: File::open(archive)?,
             cancel: reader_cancel,
         };
-        let unusable = |error: zip::result::ZipError| Error::Archive(format!("cannot be extracted: {error}"));
+        let unusable =
+            |error: zip::result::ZipError| Error::Archive(format!("cannot be extracted: {error}"));
         let mut archive = zip::ZipArchive::new(reader).map_err(unusable)?;
         archive.extract(destination).map_err(unusable)
     })

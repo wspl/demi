@@ -7,7 +7,9 @@
 mod process;
 mod runner;
 
-pub use process::{PAIRING_CODE, RunnerProcess, RunnerProcessOptions, native_fixture_binary, runner_binary};
+pub use process::{
+    PAIRING_CODE, RunnerProcess, RunnerProcessOptions, native_fixture_binary, runner_binary,
+};
 pub use runner::{FixtureOptions, RunnerFixture};
 
 use std::{
@@ -22,11 +24,11 @@ use demi_command_protocol::{
     ArtifactLocation, ArtifactPath, PackageArtifact, PackageDescriptor, ServiceSequence,
     host_target,
 };
-use demi_runner_protocol::wire::{self, Inbound, Outbound, VolumeName};
 use demi_host_interface::{
     CommandSet, HostIdentity, HostKey, PortError, RpcError, RpcInvocation, RpcPort, StorageOp,
     StorageReply, testing::MemoryStorage,
 };
+use demi_runner_protocol::wire::{self, Inbound, Outbound, VolumeName};
 use futures_util::future::LocalBoxFuture;
 use sha2::{Digest, Sha256};
 use tokio::sync::{mpsc, watch};
@@ -63,7 +65,7 @@ impl CommandPolicy {
         self.storage
             .borrow_mut()
             .entry(node.to_owned())
-            .or_insert_with(MemoryStorage::new)
+            .or_default()
             .clone()
     }
 }

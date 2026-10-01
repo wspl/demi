@@ -2,11 +2,11 @@
 //! the chat proxy with the account's session. A catalog that cannot be read
 //! is a failed refresh, and the backend keeps its last one.
 
-use demi_shared_types::{Clock, ProviderModel, ProviderModelList};
 use demi_provider_common::{
     CatalogError,
     wire::{NonEmpty, decode_untagged},
 };
+use demi_shared_types::{Clock, ProviderModel, ProviderModelList};
 use http::{HeaderValue, header::ACCEPT};
 use serde::Deserialize;
 

@@ -106,7 +106,11 @@ pub async fn publish(
 }
 
 /// Publishes `bytes` at `path`.
-pub async fn publish_bytes(path: &Path, bytes: &[u8], publication: Publication) -> Result<(), Error> {
+pub async fn publish_bytes(
+    path: &Path,
+    bytes: &[u8],
+    publication: Publication,
+) -> Result<(), Error> {
     let path = path.to_owned();
     let bytes = bytes.to_vec();
     tokio::task::spawn_blocking(move || publish_bytes_blocking(&path, &bytes, publication))
@@ -116,7 +120,11 @@ pub async fn publish_bytes(path: &Path, bytes: &[u8], publication: Publication) 
 
 /// Publishes `bytes` at `path` on this thread, for work that already runs on
 /// a blocking thread, such as a file mutation that must stay in one piece.
-pub fn publish_bytes_blocking(path: &Path, bytes: &[u8], publication: Publication) -> Result<(), Error> {
+pub fn publish_bytes_blocking(
+    path: &Path,
+    bytes: &[u8],
+    publication: Publication,
+) -> Result<(), Error> {
     use std::io::Write as _;
     let (mut file, temporary) = stage_blocking(path, publication)?;
     file.write_all(bytes)?;
@@ -154,9 +162,12 @@ fn stage_blocking(
     path: &Path,
     publication: Publication,
 ) -> Result<(std::fs::File, tempfile::TempPath), Error> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "a file needs a parent directory"))?;
+    let parent = path.parent().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "a file needs a parent directory",
+        )
+    })?;
     let mut builder = tempfile::Builder::new();
     builder.prefix(STAGED_PREFIX);
     // Windows has no Unix mode for the file to be made with.

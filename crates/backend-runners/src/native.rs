@@ -10,15 +10,15 @@
 use std::rc::Rc;
 use std::sync::Arc;
 
-use demi_command_protocol::{ArtifactLocation, PackageArtifact, PackageDescriptor};
 use demi_backend_remote_host::{ArtifactResolver, CommandCatalog};
+use demi_command_protocol::{ArtifactLocation, PackageArtifact, PackageDescriptor};
 use demi_runner_protocol::manifest::ManifestError;
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 
 use crate::local_store::{LocalArtifacts, ServedArtifacts};
-use crate::publication::SignedArtifacts;
 use crate::public_url::PublicUrl;
+use crate::publication::SignedArtifacts;
 
 /// The loaded command packages, as each shard's catalog is built from them.
 #[derive(Clone)]
@@ -97,9 +97,12 @@ impl NativeCatalog {
     /// Whether `package` serves every one of `operations`.
     pub fn serves(&self, package: &str, operations: &[&str]) -> bool {
         self.package(package).is_some_and(|descriptor| {
-            operations
-                .iter()
-                .all(|operation| descriptor.operations.iter().any(|served| served == operation))
+            operations.iter().all(|operation| {
+                descriptor
+                    .operations
+                    .iter()
+                    .any(|served| served == operation)
+            })
         })
     }
 }

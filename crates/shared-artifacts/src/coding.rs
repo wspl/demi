@@ -37,7 +37,8 @@ impl Effort {
 /// Blocking.
 pub fn encode_blocking(bytes: &[u8], effort: Effort) -> Result<Vec<u8>, Error> {
     let workers = std::thread::available_parallelism().map_or(1, |count| count.get());
-    let mut encoder = zstd::stream::Encoder::new(Vec::with_capacity(bytes.len() / 3), effort.level())?;
+    let mut encoder =
+        zstd::stream::Encoder::new(Vec::with_capacity(bytes.len() / 3), effort.level())?;
     encoder.multithread(u32::try_from(workers).unwrap_or(u32::MAX))?;
     encoder.write_all(bytes)?;
     Ok(encoder.finish()?)

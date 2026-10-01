@@ -19,26 +19,27 @@ use std::rc::{Rc, Weak};
 
 use axum::extract::ws::{CloseFrame, Message, Utf8Bytes, WebSocket, close_code};
 use demi_agent_server::{ContentError, ContentResolver, FileReference, Outgoing, ResolvedFiles};
-use demi_conversation_socket_protocol::{
-    ClientContent, ClientFrame, EditOutcome, FrameError, ServerFrame, TranscriptPatch, decode_client_frame,
-};
 use demi_agent_store::media::HeldMedia;
 use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::ConversationRecord;
 use demi_backend_page_sync::Part;
-use demi_shared_types::{Block, UserContentBlock};
+use demi_conversation_socket_protocol::{
+    ClientContent, ClientFrame, EditOutcome, FrameError, ServerFrame, TranscriptPatch,
+    decode_client_frame,
+};
 use demi_shared_gates::{GateLease, Purpose};
+use demi_shared_types::{Block, UserContentBlock};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, ProviderId};
 use futures_util::StreamExt as _;
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 
+use super::failure_facts;
+use crate::shard::{PageSocket, Shard};
 use demi_backend_host_access::access::{Admitted, ConversationHost, Waits};
 use demi_backend_host_access::remote_files::RemoteFile;
 use demi_backend_host_access::root_of;
-use super::failure_facts;
-use crate::shard::{PageSocket, Shard};
 
 /// The close code of a socket whose page fell a full outbox behind; the page
 /// reconnects and adopts the running tree.
@@ -98,7 +99,11 @@ impl Shard {
     /// its end, even when the shard closes meanwhile; until then, the
     /// outbox's frames keep flowing to the page. A socket that has sent
     /// nothing for the heartbeat interval sends a `heartbeat`.
-    pub async fn serve_conversation_socket(self: Rc<Self>, conversation: ConversationRecord, socket: WebSocket) {
+    pub async fn serve_conversation_socket(
+        self: Rc<Self>,
+        conversation: ConversationRecord,
+        socket: WebSocket,
+    ) {
         // Counted before any wait, so the shard's close waits for this
         // socket; one adopted as the close begins ends at once.
         let _socket = self.conversation_sockets().token();
@@ -212,7 +217,10 @@ impl Shard {
             Ok(frame) => frame,
             Err(FrameError::NotJson(_)) => return Handled::NotJson,
             Err(FrameError::Invalid(error)) => {
-                return Handled::Replies(vec![refusal(ErrorCode::InvalidFrame, format!("Invalid client frame: {error}"))]);
+                return Handled::Replies(vec![refusal(
+                    ErrorCode::InvalidFrame,
+                    format!("Invalid client frame: {error}"),
+                )]);
             }
         };
         // The frame is handled under the conversation's file gate, which a
@@ -222,7 +230,15 @@ impl Shard {
         // once, and its resolver writes through that admission: nothing
         // enters the file gate while holding it (§ Host operations).
         let _admitted = if carries_uploads(&frame) {
-            match self.host_shard().admit_host(conversation, None, Waits::request(&CancellationToken::new())).await {
+            match self
+                .host_shard()
+                .admit_host(
+                    conversation,
+                    None,
+                    Waits::request(&CancellationToken::new()),
+                )
+                .await
+            {
                 Ok(admitted) => {
                     files.host.replace(Some(admitted.host.clone()));
                     Admission::Host(admitted)
@@ -233,13 +249,25 @@ impl Shard {
                 }
             }
         } else {
-            Admission::Files(self.conversations().slot(conversation).file_gate().enter(Purpose::Demand).await)
+            Admission::Files(
+                self.conversations()
+                    .slot(conversation)
+                    .file_gate()
+                    .enter(Purpose::Demand)
+                    .await,
+            )
         };
         // An open takes its turn among the changes of the model settings: the
         // tree opens with the selection the record holds, never with one a
         // change is about to replace.
         let _settings = match &frame {
-            ClientFrame::Open {} => Some(self.conversations().slot(conversation).settings.acquire().await),
+            ClientFrame::Open {} => Some(
+                self.conversations()
+                    .slot(conversation)
+                    .settings
+                    .acquire()
+                    .await,
+            ),
             _ => None,
         };
         let handled = match self.prepare_frame(conversation, &frame).await {
@@ -247,10 +275,16 @@ impl Shard {
                 connection.handle(frame).await;
                 Handled::Replies(Vec::new())
             }
-            Ok(Prepared::Refused(code, message)) => Handled::Replies(vec![refused_frame(frame, code, message)]),
+            Ok(Prepared::Refused(code, message)) => {
+                Handled::Replies(vec![refused_frame(frame, code, message)])
+            }
             Err(error) => {
                 tracing::error!(%conversation, error = &error as &dyn std::error::Error, "a frame was not prepared");
-                Handled::Replies(vec![refused_frame(frame, ErrorCode::FrameDeliveryFailed, error.to_string())])
+                Handled::Replies(vec![refused_frame(
+                    frame,
+                    ErrorCode::FrameDeliveryFailed,
+                    error.to_string(),
+                )])
             }
         };
         files.host.replace(None);
@@ -262,11 +296,18 @@ impl Shard {
     /// conversation must not be archived, except to close it; an `open` needs
     /// the model the conversation's record holds, of a provider of the user's
     /// scope; a `send` is activity in the conversation.
-    async fn prepare_frame(&self, conversation: &ConversationId, frame: &ClientFrame) -> Result<Prepared, StorageError> {
+    async fn prepare_frame(
+        &self,
+        conversation: &ConversationId,
+        frame: &ClientFrame,
+    ) -> Result<Prepared, StorageError> {
         let services = self.services();
         let record = services.control.conversation(conversation.clone()).await?;
         let Some(record) = record.filter(|record| record.owner == *self.user()) else {
-            return Ok(Prepared::Refused(ErrorCode::ConversationNotFound, "No such conversation".into()));
+            return Ok(Prepared::Refused(
+                ErrorCode::ConversationNotFound,
+                "No such conversation".into(),
+            ));
         };
         if record.archived && !matches!(frame, ClientFrame::Close {}) {
             return Ok(Prepared::Refused(
@@ -283,26 +324,45 @@ impl Shard {
                     ));
                 };
                 let visible = match ProviderId::try_from(model.provider_id.as_str()) {
-                    Ok(provider) => services.vault.visible(self.user(), &provider).await?.is_some(),
+                    Ok(provider) => services
+                        .vault
+                        .visible(self.user(), &provider)
+                        .await?
+                        .is_some(),
                     Err(_) => false,
                 };
                 if !visible {
-                    return Ok(Prepared::Refused(ErrorCode::ProviderNotFound, "No such provider".into()));
+                    return Ok(Prepared::Refused(
+                        ErrorCode::ProviderNotFound,
+                        "No such provider".into(),
+                    ));
                 }
                 // The tree is live from here on, before it admits any action
                 // (`storage.md` § Retiring tool media).
-                services.control.mark_live(record.id.clone(), services.clock.now()).await?;
+                services
+                    .control
+                    .mark_live(record.id.clone(), services.clock.now())
+                    .await?;
             }
             ClientFrame::Send { content, .. } => {
                 // Every message the user sends makes a generated title older
                 // than the conversation.
-                let seen = services.control.count_user_message(record.id.clone()).await?;
+                let seen = services
+                    .control
+                    .count_user_message(record.id.clone())
+                    .await?;
                 self.title_first_message(&record, content, seen).await?;
-                services.control.touch_conversation(record.id.clone()).await?;
+                services
+                    .control
+                    .touch_conversation(record.id.clone())
+                    .await?;
                 self.mark(Part::Conversation(record.id));
             }
             ClientFrame::Steer { .. } | ClientFrame::EditAndSend { .. } => {
-                services.control.count_user_message(record.id.clone()).await?;
+                services
+                    .control
+                    .count_user_message(record.id.clone())
+                    .await?;
                 self.mark(Part::Conversation(record.id));
             }
             _ => {}
@@ -328,7 +388,9 @@ impl Shard {
         let services = self.services();
         let assembly = &services.assembly;
         match frame {
-            ServerFrame::TranscriptReset { blocks, version, .. } => {
+            ServerFrame::TranscriptReset {
+                blocks, version, ..
+            } => {
                 let failures = failure_facts(assembly, &blocks).await;
                 ServerFrame::TranscriptReset {
                     blocks,
@@ -336,7 +398,9 @@ impl Shard {
                     failures,
                 }
             }
-            ServerFrame::TranscriptPatch { patches, revision, .. } => {
+            ServerFrame::TranscriptPatch {
+                patches, revision, ..
+            } => {
                 let failures = failure_facts(assembly, &blocks_added(&patches)).await;
                 ServerFrame::TranscriptPatch {
                     patches,
@@ -401,7 +465,9 @@ fn carries_uploads(frame: &ClientFrame) -> bool {
         ClientFrame::EditAndSend { request } => &request.content,
         _ => return false,
     };
-    content.iter().any(|part| matches!(part, ClientContent::Upload { .. }))
+    content
+        .iter()
+        .any(|part| matches!(part, ClientContent::Upload { .. }))
 }
 
 fn refused_frame(frame: ClientFrame, code: ErrorCode, message: String) -> ServerFrame {
@@ -419,7 +485,9 @@ fn blocks_added(patches: &[TranscriptPatch]) -> Vec<Block> {
     patches
         .iter()
         .flat_map(|patch| match patch {
-            TranscriptPatch::Add { value, .. } | TranscriptPatch::ReplaceBlock { value, .. } => vec![value.clone()],
+            TranscriptPatch::Add { value, .. } | TranscriptPatch::ReplaceBlock { value, .. } => {
+                vec![value.clone()]
+            }
             TranscriptPatch::Replace { value } => value.clone(),
             TranscriptPatch::AppendText { .. } => Vec::new(),
         })
@@ -433,7 +501,8 @@ fn blocks_added(patches: &[TranscriptPatch]) -> Vec<Block> {
 async fn serialize(frame: ServerFrame) -> Option<String> {
     let whole = match &frame {
         ServerFrame::TranscriptReset { .. } | ServerFrame::SubagentTranscriptReset { .. } => true,
-        ServerFrame::TranscriptPatch { patches, .. } | ServerFrame::SubagentTranscriptPatch { patches, .. } => patches
+        ServerFrame::TranscriptPatch { patches, .. }
+        | ServerFrame::SubagentTranscriptPatch { patches, .. } => patches
             .iter()
             .any(|patch| matches!(patch, TranscriptPatch::Replace { .. })),
         _ => false,
@@ -441,7 +510,9 @@ async fn serialize(frame: ServerFrame) -> Option<String> {
     if !whole {
         return Some(to_text(&frame));
     }
-    tokio::task::spawn_blocking(move || to_text(&frame)).await.ok()
+    tokio::task::spawn_blocking(move || to_text(&frame))
+        .await
+        .ok()
 }
 
 fn to_text(frame: &ServerFrame) -> String {
@@ -487,7 +558,8 @@ impl ContentResolver for ConversationFiles {
                     FileReference::Upload { r#ref, file_name } => {
                         // A frame with uploads is admitted on its Host first.
                         let host = self.host.borrow().clone();
-                        let host = host.ok_or_else(|| refused("The frame's Host was not admitted".into()))?;
+                        let host = host
+                            .ok_or_else(|| refused("The frame's Host was not admitted".into()))?;
                         let (blocks, held) = shard
                             .host_shard()
                             .resolve_upload(&self.conversation, &host, &r#ref, &file_name)
@@ -497,7 +569,10 @@ impl ContentResolver for ConversationFiles {
                         media.absorb(held);
                     }
                     FileReference::RemoteFile { device_id, path } => {
-                        remote.push(RemoteFile { device: device_id, path });
+                        remote.push(RemoteFile {
+                            device: device_id,
+                            path,
+                        });
                         resolved.push(None);
                     }
                 }

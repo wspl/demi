@@ -3,12 +3,12 @@
 
 use std::time::Duration;
 
-use demi_shared_types::FailureSource;
+use demi_provider_anthropic_api::{AnthropicConfig, AnthropicProvider};
 use demi_provider_common::{
-    ErrorCode, ProviderEvent, ProviderFailure, Provider, RuntimeEnv, Secret,
+    ErrorCode, Provider, ProviderEvent, ProviderFailure, RuntimeEnv, Secret,
     testing::{FixedClock, MockResponse, MockVendor, inference_request},
 };
-use demi_provider_anthropic_api::{AnthropicConfig, AnthropicProvider};
+use demi_shared_types::FailureSource;
 use std::sync::Arc;
 
 use crate::{NOW, run, runtime};
@@ -34,23 +34,51 @@ async fn a_refused_request_fails_with_the_vendor_record_and_the_wait_it_names() 
             .chunk(body),
     )
     .await;
-    assert_eq!(failure.message, format!("Anthropic API request failed with HTTP 429: {body}"));
+    assert_eq!(
+        failure.message,
+        format!("Anthropic API request failed with HTTP 429: {body}")
+    );
     assert_eq!(failure.code, Some(ErrorCode::RateLimit));
     assert_eq!(failure.retry_after, Some(Duration::from_secs(30)));
     let diagnostics = failure.diagnostics.unwrap();
-    assert_eq!((diagnostics.source, diagnostics.http_status), (FailureSource::Http, Some(429)));
-    let record: serde_json::Value = serde_json::from_str(diagnostics.upstream.as_deref().unwrap()).unwrap();
+    assert_eq!(
+        (diagnostics.source, diagnostics.http_status),
+        (FailureSource::Http, Some(429))
+    );
+    let record: serde_json::Value =
+        serde_json::from_str(diagnostics.upstream.as_deref().unwrap()).unwrap();
     assert_eq!(record["body"], body);
-    assert!(record["headers"].as_array().unwrap().contains(&serde_json::json!(["request-id", "req_1"])));
+    assert!(
+        record["headers"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!(["request-id", "req_1"]))
+    );
 }
 
 #[tokio::test]
 async fn the_status_decides_the_code_of_a_refusal() {
     let cases = [
-        (529, r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#, Some(ErrorCode::Overloaded)),
-        (401, r#"{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}"#, Some(ErrorCode::AuthExpired)),
-        (400, r#"{"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long: 213000 tokens > 200000 maximum"}}"#, Some(ErrorCode::ContextLengthExceeded)),
-        (404, r#"{"type":"error","error":{"type":"not_found_error","message":"model: claude-x"}}"#, None),
+        (
+            529,
+            r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#,
+            Some(ErrorCode::Overloaded),
+        ),
+        (
+            401,
+            r#"{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}"#,
+            Some(ErrorCode::AuthExpired),
+        ),
+        (
+            400,
+            r#"{"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long: 213000 tokens > 200000 maximum"}}"#,
+            Some(ErrorCode::ContextLengthExceeded),
+        ),
+        (
+            404,
+            r#"{"type":"error","error":{"type":"not_found_error","message":"model: claude-x"}}"#,
+            None,
+        ),
     ];
     for (status, body, code) in cases {
         let failure = failure_of(MockResponse::status(status).chunk(body)).await;
@@ -69,15 +97,32 @@ async fn a_request_without_an_answer_fails_as_overloaded() {
         base_url: Some(format!("http://{address}/v1").parse().unwrap()),
     };
     let provider = AnthropicProvider::new(config, Arc::new(FixedClock(NOW.parse().unwrap())));
-    let mut runtime = provider.runtime(RuntimeEnv { http: reqwest::Client::new() }).unwrap();
+    let mut runtime = provider
+        .runtime(RuntimeEnv {
+            http: reqwest::Client::new(),
+        })
+        .unwrap();
     let events = run(runtime.as_mut(), inference_request()).await;
     let [ProviderEvent::Error(failure)] = events.as_slice() else {
         panic!("{events:?}");
     };
     assert_eq!(failure.code, Some(ErrorCode::Overloaded));
-    assert!(failure.message.starts_with("Anthropic API request failed: "), "{}", failure.message);
-    assert!(!failure.message.contains(&address.to_string()), "{}", failure.message);
-    assert_eq!(failure.diagnostics.as_ref().unwrap().source, FailureSource::Transport);
+    assert!(
+        failure
+            .message
+            .starts_with("Anthropic API request failed: "),
+        "{}",
+        failure.message
+    );
+    assert!(
+        !failure.message.contains(&address.to_string()),
+        "{}",
+        failure.message
+    );
+    assert_eq!(
+        failure.diagnostics.as_ref().unwrap().source,
+        FailureSource::Transport
+    );
 }
 
 #[tokio::test]
@@ -90,10 +135,17 @@ async fn a_stream_that_breaks_off_fails_as_overloaded_after_what_arrived() {
         .break_off(),
     );
     let events = run(runtime(&vendor).as_mut(), inference_request()).await;
-    let [ProviderEvent::TextDelta(text), ProviderEvent::Error(failure)] = events.as_slice() else {
+    let [
+        ProviderEvent::TextDelta(text),
+        ProviderEvent::Error(failure),
+    ] = events.as_slice()
+    else {
         panic!("{events:?}");
     };
     assert_eq!(text, "partial");
     assert_eq!(failure.code, Some(ErrorCode::Overloaded));
-    assert_eq!(failure.diagnostics.as_ref().unwrap().source, FailureSource::Transport);
+    assert_eq!(
+        failure.diagnostics.as_ref().unwrap().source,
+        FailureSource::Transport
+    );
 }

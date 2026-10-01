@@ -7,9 +7,9 @@ use std::path::PathBuf;
 use tokio::sync::OnceCell;
 use tokio_util::sync::CancellationToken;
 
-use demi_shared_artifacts::{Archive, Digest};
 use demi_command_package_browser_protocol::release::BrowserRelease;
 use demi_command_protocol::host_target;
+use demi_shared_artifacts::{Archive, Digest};
 
 use crate::driver::operation::{BrowserError, Result};
 
@@ -32,8 +32,9 @@ impl BrowserDirectories {
     /// `.demi/browsers` in the user's home, when the home is absolute.
     pub fn host() -> Self {
         Self {
-            image: cfg!(unix)
-                .then(|| PathBuf::from(demi_command_package_browser_protocol::release::IMAGE_BROWSERS)),
+            image: cfg!(unix).then(|| {
+                PathBuf::from(demi_command_package_browser_protocol::release::IMAGE_BROWSERS)
+            }),
             install: std::env::home_dir()
                 .filter(|home| home.is_absolute())
                 .map(|home| home.join(HOME_ROOT)),
@@ -114,9 +115,10 @@ async fn install(directories: &BrowserDirectories, cancel: &CancellationToken) -
     let version = pinned_version()?;
     let archive = pinned_archive()?;
     if let Some(image) = &directories.image {
-        let found = demi_shared_artifacts::installed(&image.join(&archive.digest.sha256), &archive, cancel)
-            .await
-            .map_err(|error| failed(&version, error))?;
+        let found =
+            demi_shared_artifacts::installed(&image.join(&archive.digest.sha256), &archive, cancel)
+                .await
+                .map_err(|error| failed(&version, error))?;
         if let Some(executable) = found {
             return Ok(executable);
         }

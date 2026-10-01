@@ -67,7 +67,7 @@ pub enum BrowserError {
     #[error("{source}")]
     Action {
         source: Box<BrowserError>,
-        details: ErrorDetails,
+        details: Box<ErrorDetails>,
     },
     #[error("browser operation was cancelled")]
     Cancelled,
@@ -187,7 +187,7 @@ impl<'a> Operation<'a> {
         }
         BrowserError::Action {
             source: Box::new(error),
-            details,
+            details: Box::new(details),
         }
     }
 
@@ -315,7 +315,7 @@ impl BrowserError {
 
     pub fn details(&self) -> ErrorDetails {
         match self {
-            Self::Action { details, .. } => details.clone(),
+            Self::Action { details, .. } => details.as_ref().clone(),
             Self::PartialFailure { export } => ErrorDetails {
                 export: Some(export.clone()),
                 ..ErrorDetails::default()

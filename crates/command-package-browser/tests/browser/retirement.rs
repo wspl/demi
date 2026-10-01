@@ -3,7 +3,9 @@
 use std::{collections::HashSet, os::unix::fs::PermissionsExt, path::PathBuf, time::Duration};
 
 use demi_command_package_browser_chrome::driver::{numbers::TabNumbers, operation::BrowserError};
-use demi_command_package_browser_chrome::tabs::environment::{DirectoryBases, LaunchOptions, with_browser};
+use demi_command_package_browser_chrome::tabs::environment::{
+    DirectoryBases, LaunchOptions, with_browser,
+};
 use demi_command_sdk::testing::counting_numbers;
 use serde_json::json;
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
@@ -107,7 +109,12 @@ exit 1
         );
         let error = result.expect_err("the launch fails");
         assert!(matches!(error, BrowserError::Root), "{error:?}");
-        assert!(error.to_string().contains("run the runner as an ordinary user"), "{error}");
+        assert!(
+            error
+                .to_string()
+                .contains("run the runner as an ordinary user"),
+            "{error}"
+        );
     }
 }
 
@@ -390,7 +397,13 @@ async fn chrome_keeps_its_directories_apart_whatever_the_services_home_and_tempo
     let home = tempfile::tempdir().unwrap();
     tokio::time::timeout(Duration::from_secs(60), async {
         let service = service_program(home.path(), temporary.to_str().unwrap()).await;
-        agent_call(&service, "browser.open", json!({"url": "about:blank"}), scratch.path()).await;
+        agent_call(
+            &service,
+            "browser.open",
+            json!({"url": "about:blank"}),
+            scratch.path(),
+        )
+        .await;
         assert_eq!(
             chrome_profiles_of(service.id().unwrap(), &temporary).len(),
             1,
@@ -406,17 +419,25 @@ async fn chrome_keeps_its_directories_apart_whatever_the_services_home_and_tempo
     // directories above it, are in the home (`browser.md` § Native driver):
     // on Linux the certificate database, on macOS the crash reports.
     let kept = if cfg!(target_os = "macos") {
-        [".demi", "Library/Application Support/Google/Chrome for Testing"]
+        [
+            ".demi",
+            "Library/Application Support/Google/Chrome for Testing",
+        ]
     } else {
         [".demi", ".local/share/pki"]
     };
     let written: Vec<_> = walk(home.path())
         .into_iter()
         .filter(|path| {
-            !kept.iter().any(|kept| path.starts_with(kept) || std::path::Path::new(kept).starts_with(path))
+            !kept
+                .iter()
+                .any(|kept| path.starts_with(kept) || std::path::Path::new(kept).starts_with(path))
         })
         .collect();
-    assert!(written.is_empty(), "Chrome wrote in the service's home: {written:?}");
+    assert!(
+        written.is_empty(),
+        "Chrome wrote in the service's home: {written:?}"
+    );
 }
 
 /// Without `TMPDIR`, as on the Cloud, a profile and a download saved without
@@ -436,11 +457,21 @@ async fn without_tmpdir_profiles_and_downloads_go_to_var_tmp() {
     .unwrap();
     let profile = tokio::time::timeout(Duration::from_secs(60), async {
         let service = service_program(home.path(), "").await;
-        let tab = agent_call(&service, "browser.open", json!({"url": page.as_str()}), scratch.path())
-            .await["tab"]
+        let tab = agent_call(
+            &service,
+            "browser.open",
+            json!({"url": page.as_str()}),
+            scratch.path(),
+        )
+        .await["tab"]
             .clone();
         let profiles = chrome_profiles_of(service.id().unwrap(), base);
-        assert_eq!(profiles.len(), 1, "the service's Chrome keeps its profile in {}", base.display());
+        assert_eq!(
+            profiles.len(),
+            1,
+            "the service's Chrome keeps its profile in {}",
+            base.display()
+        );
         let download = agent_call(
             &service,
             "browser.download",
@@ -570,7 +601,10 @@ fn chrome_profiles() -> std::collections::BTreeMap<i32, PathBuf> {
 /// The profiles in `base` of the Chrome processes `parent` started, by main
 /// process, read from the profiles' singleton locks rather than asked of the
 /// service.
-fn chrome_profiles_of(parent: u32, base: &std::path::Path) -> std::collections::BTreeMap<i32, PathBuf> {
+fn chrome_profiles_of(
+    parent: u32,
+    base: &std::path::Path,
+) -> std::collections::BTreeMap<i32, PathBuf> {
     let parent = i32::try_from(parent).unwrap();
     let children: HashSet<_> = processes()
         .into_iter()
@@ -713,7 +747,10 @@ async fn browser_uses_trusted_conversation_and_caller_despite_script_environment
         let tabs = first.call("browser.tabs", json!({})).await;
         assert_eq!(tabs["tabs"].as_array().unwrap().len(), 1);
         assert_eq!(tabs["tabs"][0]["id"], first_tab);
-        assert_eq!(tabs["tabs"][0]["createdBy"], json!({"kind": "agent", "number": first.caller}));
+        assert_eq!(
+            tabs["tabs"][0]["createdBy"],
+            json!({"kind": "agent", "number": first.caller})
+        );
         let (_, error) = first
             .result(
                 "browser.info",
@@ -747,7 +784,6 @@ async fn browser_uses_trusted_conversation_and_caller_despite_script_environment
     })
     .await;
 }
-
 
 #[tokio::test]
 #[ignore = "requires DEMI_TEST_CHROME; verifies joined retirement after failed assertions"]

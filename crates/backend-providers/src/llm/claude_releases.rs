@@ -103,7 +103,9 @@ impl ClaudeReleases {
             Some(release) => release.clone(),
             None => {
                 let release = self.release(version).await.map_err(|reason| {
-                    ReleaseError(format!("the release of version {version} could not be read ({reason})"))
+                    ReleaseError(format!(
+                        "the release of version {version} could not be read ({reason})"
+                    ))
                 })?;
                 known.releases.insert(version.to_owned(), release.clone());
                 release
@@ -136,7 +138,8 @@ impl ClaudeReleases {
             version: manifest.version,
             platforms,
         };
-        garde::Validate::validate(&release).map_err(|report| report.to_string().trim_end().to_owned())?;
+        garde::Validate::validate(&release)
+            .map_err(|report| report.to_string().trim_end().to_owned())?;
         Ok(release)
     }
 
@@ -188,9 +191,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_newest_release_is_the_pointers_version_from_its_manifest_believed_until_a_refresh() {
+    async fn the_newest_release_is_the_pointers_version_from_its_manifest_believed_until_a_refresh()
+    {
         let vendor = MockVendor::start().await;
-        let releases = ClaudeReleases::new(&vendor.url("/r").parse().unwrap(), Handle::current()).unwrap();
+        let releases =
+            ClaudeReleases::new(&vendor.url("/r").parse().unwrap(), Handle::current()).unwrap();
         vendor.respond_at("/r/latest", text("2.1.3\n"));
         vendor.respond_at("/r/2.1.3/manifest.json", manifest("2.1.3"));
         // Concurrent readers share one read.
@@ -200,8 +205,14 @@ mod tests {
         assert_eq!(release.version, "2.1.3");
         let linux = &release.platforms["linux-x64"];
         assert_eq!(linux.url, vendor.url("/r/2.1.3/linux-x64/claude"));
-        assert_eq!((linux.size, linux.sha256.as_str()), (1024, "ab".repeat(32).as_str()));
-        assert_eq!(release.platforms["win32-x64"].url, vendor.url("/r/2.1.3/win32-x64/claude.exe"));
+        assert_eq!(
+            (linux.size, linux.sha256.as_str()),
+            (1024, "ab".repeat(32).as_str())
+        );
+        assert_eq!(
+            release.platforms["win32-x64"].url,
+            vendor.url("/r/2.1.3/win32-x64/claude.exe")
+        );
         assert_eq!(vendor.requests().len(), 2);
 
         // A refresh reads the pointer again; a version's manifest is read once.
@@ -224,7 +235,10 @@ mod tests {
         vendor.respond_at("/r/latest", text("2.1.5"));
         vendor.respond_at("/r/2.1.5/manifest.json", manifest("2.1.4"));
         let mislabelled = releases.latest(true).await.unwrap_err().to_string();
-        assert!(mislabelled.ends_with("(its manifest names version 2.1.4)"), "{mislabelled}");
+        assert!(
+            mislabelled.ends_with("(its manifest names version 2.1.4)"),
+            "{mislabelled}"
+        );
         let elsewhere = MockResponse::status(302).header("location", &vendor.url("/r/moved"));
         vendor.respond_at("/r/latest", elsewhere);
         let redirected = releases.latest(true).await.unwrap_err().to_string();

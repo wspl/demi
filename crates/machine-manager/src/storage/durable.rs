@@ -49,5 +49,10 @@ pub fn create_private(_: &OffLoop, path: &Path) -> io::Result<()> {
         .recursive(true)
         .mode(0o700)
         .create(path)
-        .map_err(|error| io::Error::new(error.kind(), format!("failed to create {}: {error}", path.display())))
+        .map_err(|error| {
+            io::Error::new(
+                error.kind(),
+                format!("failed to create {}: {error}", path.display()),
+            )
+        })
 }

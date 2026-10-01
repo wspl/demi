@@ -11,9 +11,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use demi_shared_types::LoginPending;
 use demi_provider_common::Provider;
 use demi_provider_common::credentials::MemoryCredentialPool;
+use demi_shared_types::LoginPending;
 use demi_web_api_protocol::ids::{CredentialId, LoginId, UserId};
 use demi_web_api_protocol::providers::{CredentialKind, LoginState};
 use tokio::sync::watch;
@@ -137,7 +137,10 @@ impl LoginFlows {
         let id = LoginId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty");
         let (provider, target) = match existing {
             Some(entry) => {
-                let held = self.operations.reserve(&entry.id).ok_or(LoginRefusal::Busy)?;
+                let held = self
+                    .operations
+                    .reserve(&entry.id)
+                    .ok_or(LoginRefusal::Busy)?;
                 let provider = self.assembly.provider_for(&entry).await?;
                 let entry = Box::new(entry);
                 (provider, Target::Existing { entry, _held: held })
@@ -153,9 +156,12 @@ impl LoginFlows {
                     return Err(LoginRefusal::Exists(family));
                 }
                 let staged = MemoryCredentialPool::new();
-                let provider = self
-                    .assembly
-                    .detached(&family, id.as_str(), &label, Arc::new(staged.clone()))?;
+                let provider = self.assembly.detached(
+                    &family,
+                    id.as_str(),
+                    &label,
+                    Arc::new(staged.clone()),
+                )?;
                 (
                     provider,
                     Target::New {
@@ -166,7 +172,10 @@ impl LoginFlows {
                 )
             }
         };
-        if !provider.accounts().is_some_and(|accounts| accounts.capability().login) {
+        if !provider
+            .accounts()
+            .is_some_and(|accounts| accounts.capability().login)
+        {
             return Err(LoginRefusal::NoLoginFlow(family));
         }
         let cancel = self.closing.child_token();
@@ -185,8 +194,11 @@ impl LoginFlows {
         self.lock().insert(id.clone(), flow);
         let flows = self.clone();
         let login = id.clone();
-        self.tasks
-            .spawn(async move { flows.run(login, owner, provider, target, cancel, ended).await });
+        self.tasks.spawn(async move {
+            flows
+                .run(login, owner, provider, target, cancel, ended)
+                .await
+        });
         Ok(id)
     }
 
@@ -226,8 +238,10 @@ impl LoginFlows {
     /// Drops the results that have been kept long enough.
     fn prune(&self) {
         let retention = self.timing.retention;
-        self.lock()
-            .retain(|_, flow| flow.ended_at.is_none_or(|ended| ended.elapsed() < retention));
+        self.lock().retain(|_, flow| {
+            flow.ended_at
+                .is_none_or(|ended| ended.elapsed() < retention)
+        });
     }
 
     /// Runs the login until it completes, fails, expires or is cancelled, and
@@ -246,7 +260,9 @@ impl LoginFlows {
             let id = id.clone();
             move |pending: LoginPending| flows.pending(&id, pending)
         };
-        let accounts = provider.accounts().expect("a login's provider has account operations");
+        let accounts = provider
+            .accounts()
+            .expect("a login's provider has account operations");
         let outcome = tokio::select! {
             () = cancel.cancelled() => Err("The login was cancelled".to_owned()),
             outcome = tokio::time::timeout(self.timing.lifetime, accounts.login(&pending)) => match outcome {
@@ -295,7 +311,11 @@ impl LoginFlows {
             }
         };
         let published = match target {
-            Target::New { family, label, staged } => {
+            Target::New {
+                family,
+                label,
+                staged,
+            } => {
                 let created = self
                     .assembly
                     .vault()

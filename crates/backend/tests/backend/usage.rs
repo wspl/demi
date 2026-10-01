@@ -26,17 +26,42 @@ fn row(harness: &Harness, email: &str, provider: &str, model: &str, input: i64, 
 }
 
 #[tokio::test]
-async fn totals_group_by_entry_and_model_in_first_use_order_and_the_instance_view_is_for_administrators() {
+async fn totals_group_by_entry_and_model_in_first_use_order_and_the_instance_view_is_for_administrators()
+ {
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     harness.add_user("admin@example.test", "admin-pass-1", Role::Admin);
     harness.add_user("bob@example.test", "bob-pass-1", Role::User);
-    row(&harness, "master@example.test", "entry-b", "model-2", 100, 1);
-    row(&harness, "master@example.test", "entry-a", "model-1", 200, 2);
-    row(&harness, "master@example.test", "entry-b", "model-2", 300, 3);
+    row(
+        &harness,
+        "master@example.test",
+        "entry-b",
+        "model-2",
+        100,
+        1,
+    );
+    row(
+        &harness,
+        "master@example.test",
+        "entry-a",
+        "model-1",
+        200,
+        2,
+    );
+    row(
+        &harness,
+        "master@example.test",
+        "entry-b",
+        "model-2",
+        300,
+        3,
+    );
     row(&harness, "bob@example.test", "entry-a", "model-1", 50, 4);
 
-    let own = backend.get("/api/usage", Some(&master)).await.json::<UsageTotals>();
+    let own = backend
+        .get("/api/usage", Some(&master))
+        .await
+        .json::<UsageTotals>();
     let groups: Vec<(&str, &str, u64, u64, u64)> = own
         .totals
         .iter()
@@ -52,10 +77,16 @@ async fn totals_group_by_entry_and_model_in_first_use_order_and_the_instance_vie
         .collect();
     assert_eq!(
         groups,
-        [("entry-b", "model-2", 2, 400, 20), ("entry-a", "model-1", 1, 200, 10)]
+        [
+            ("entry-b", "model-2", 2, 400, 20),
+            ("entry-a", "model-1", 1, 200, 10)
+        ]
     );
     assert_eq!(
-        (own.totals[0].cache_read_tokens, own.totals[0].cache_write_tokens),
+        (
+            own.totals[0].cache_read_tokens,
+            own.totals[0].cache_write_tokens
+        ),
         (4, 2)
     );
 
@@ -70,7 +101,10 @@ async fn totals_group_by_entry_and_model_in_first_use_order_and_the_instance_vie
         1
     );
     let refused = backend.get("/api/usage/instance", Some(&bob)).await;
-    assert_eq!(refused.refusal(), (StatusCode::FORBIDDEN, ErrorCode::Forbidden));
+    assert_eq!(
+        refused.refusal(),
+        (StatusCode::FORBIDDEN, ErrorCode::Forbidden)
+    );
     let admin = backend.login("admin@example.test", "admin-pass-1").await;
     let instance = backend
         .get("/api/usage/instance", Some(&admin))
@@ -99,9 +133,15 @@ async fn totals_group_by_entry_and_model_in_first_use_order_and_the_instance_vie
     // An isolated instance has no instance view.
     let backend = harness.start_in_mode(InstanceMode::Isolated).await;
     let master = backend
-        .login(crate::support::MASTER_EMAIL, crate::support::MASTER_PASSWORD)
+        .login(
+            crate::support::MASTER_EMAIL,
+            crate::support::MASTER_PASSWORD,
+        )
         .await;
     let refused = backend.get("/api/usage/instance", Some(&master)).await;
-    assert_eq!(refused.refusal(), (StatusCode::FORBIDDEN, ErrorCode::Forbidden));
+    assert_eq!(
+        refused.refusal(),
+        (StatusCode::FORBIDDEN, ErrorCode::Forbidden)
+    );
     backend.close().await;
 }

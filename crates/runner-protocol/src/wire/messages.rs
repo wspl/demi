@@ -65,15 +65,35 @@ pub enum Inbound {
     Spawn {
         spawn_id: String,
         command: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         args: Option<Vec<String>>,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         cwd: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         env: Option<BTreeMap<String, Option<String>>>,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         inherit_env: Option<bool>,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         kill_process_group: Option<bool>,
     },
     SpawnStdin {
@@ -85,7 +105,11 @@ pub enum Inbound {
     },
     SpawnKill {
         spawn_id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         signal: Option<Signal>,
     },
     /// One job: `bash -c script` in `cwd` with exactly `env`. Its declared
@@ -93,7 +117,11 @@ pub enum Inbound {
     /// and fd 1 to pipes whose other ends are elsewhere.
     JobStart {
         job_id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         #[garde(inner(custom(digest)))]
         manifest_hash: Option<String>,
         #[garde(dive)]
@@ -101,9 +129,17 @@ pub enum Inbound {
         script: String,
         cwd: String,
         env: BTreeMap<String, String>,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         stdin: Option<PipeRef>,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         stdout: Option<PipeRef>,
     },
     JobStdin {
@@ -115,7 +151,11 @@ pub enum Inbound {
     },
     JobKill {
         job_id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         signal: Option<Signal>,
     },
     /// Starts or stops sending the job's output beyond each stream's first
@@ -143,7 +183,11 @@ pub enum Inbound {
     /// The call's pipe ends, sent before anything else for the call.
     RpcPipes {
         call_id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         stdin: Option<PipeRef>,
         stdout: PipeRef,
     },
@@ -178,9 +222,17 @@ pub enum Inbound {
         package: PackageDescriptor,
         #[garde(length(min = 1))]
         operation: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         args: Option<serde_json::Map<String, serde_json::Value>>,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         json: Option<bool>,
         #[garde(length(min = 1))]
         cwd: String,
@@ -191,11 +243,19 @@ pub enum Inbound {
     /// of one `source` when named.
     LogRead {
         id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         since: Option<u64>,
         #[garde(range(min = 1, max = LOG_READ_LINES as u64))]
         limit: u64,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         #[garde(inner(length(min = 1)))]
         source: Option<String>,
     },
@@ -206,20 +266,36 @@ pub enum Inbound {
     },
     ArtifactLocation {
         id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         #[garde(dive)]
         location: Option<ArtifactLocation>,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         error: Option<String>,
     },
     /// The numbers a `numbers_reserve` asked for: the first of them, or why
     /// there are none (`native-runtime.md` § Conversation numbers).
     NumbersReserved {
         id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         #[garde(inner(range(min = 1)))]
         first: Option<u64>,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         #[garde(inner(length(min = 1)))]
         error: Option<String>,
     },
@@ -228,11 +304,23 @@ pub enum Inbound {
     FsReadFile {
         id: String,
         path: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         cwd: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         offset: Option<u64>,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         length: Option<u64>,
         output: PipeRef,
     },
@@ -241,102 +329,178 @@ pub enum Inbound {
     FsWriteFile {
         id: String,
         path: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         cwd: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         create_parents: Option<bool>,
         input: PipeRef,
     },
     FsExists {
         id: String,
         path: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         cwd: Option<String>,
     },
     FsStat {
         id: String,
         path: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         cwd: Option<String>,
     },
     FsLstat {
         id: String,
         path: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         cwd: Option<String>,
     },
     /// Lists a directory, each entry with its file type.
     FsReaddir {
         id: String,
         path: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         cwd: Option<String>,
     },
     FsMkdir {
         id: String,
         path: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         cwd: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         recursive: Option<bool>,
     },
     FsRm {
         id: String,
         path: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         cwd: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         recursive: Option<bool>,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         force: Option<bool>,
     },
     FsCp {
         id: String,
         path: String,
         destination: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         cwd: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         recursive: Option<bool>,
     },
     FsMv {
         id: String,
         path: String,
         destination: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         cwd: Option<String>,
     },
     FsChmod {
         id: String,
         path: String,
         mode: u32,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         cwd: Option<String>,
     },
     FsSymlink {
         id: String,
         target: String,
         path: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         cwd: Option<String>,
     },
     FsLink {
         id: String,
         existing_path: String,
         path: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         cwd: Option<String>,
     },
     FsReadlink {
         id: String,
         path: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         cwd: Option<String>,
     },
     FsRealpath {
         id: String,
         path: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         cwd: Option<String>,
     },
     FsUtimes {
@@ -344,7 +508,11 @@ pub enum Inbound {
         path: String,
         atime: Timestamp,
         mtime: Timestamp,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         cwd: Option<String>,
     },
     /// The working tree's changes under `root`.
@@ -407,7 +575,11 @@ impl Inbound {
 pub enum Outbound {
     ConversationReleased {
         id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         error: Option<String>,
     },
     /// Reserves `count` numbers of the conversation's `sequence` for a
@@ -433,7 +605,11 @@ pub enum Outbound {
     Hello {
         protocol: u32,
         /// Absent on an unclaimed first start.
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         #[garde(skip)]
         device_token: Option<DeviceToken>,
         #[garde(dive)]
@@ -445,7 +621,11 @@ pub enum Outbound {
     },
     SyncDone {
         id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         error: Option<String>,
     },
     /// A writable volume is nearly full: the runner asks for this total size.
@@ -459,7 +639,11 @@ pub enum Outbound {
     /// A failed fs call; `code` is the errno-style code when there is one.
     FsError {
         id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         code: Option<String>,
         message: String,
     },
@@ -482,9 +666,17 @@ pub enum Outbound {
         spawn_id: String,
         #[serde(deserialize_with = "Option::deserialize")]
         exit_code: Option<i32>,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         signal: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         spawn_error: Option<SpawnError>,
     },
     /// A stream's bytes from `offset` while the job runs (`runner.md`
@@ -511,15 +703,31 @@ pub enum Outbound {
         job_id: String,
         #[serde(deserialize_with = "Option::deserialize")]
         exit_code: Option<i32>,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         signal: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         spawn_error: Option<SpawnError>,
         /// The directory the script ended in; absent when bash never ran it.
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         cwd: Option<String>,
         /// Absent when bash never ran the script.
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         output: Option<OutputLengths>,
         #[garde(length(max = demi_command_protocol::EDIT_JOB_FILES), dive)]
         files: Vec<JobFileChange>,
@@ -529,7 +737,11 @@ pub enum Outbound {
     /// error says why none does.
     JobRead {
         id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         error: Option<String>,
     },
     /// An `rpc` command invoked on the target. It names only its job; `stdin`
@@ -561,7 +773,11 @@ pub enum Outbound {
     PipeDone {
         pipe_id: String,
         ok: bool,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         error: Option<String>,
     },
     NetOpened {
@@ -712,14 +928,22 @@ pub struct RunnerInfo {
     pub name: String,
     pub platform: RunnerPlatform,
     pub version: String,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[garde(inner(custom(demi_command_protocol::target)))]
     pub native_target: Option<String>,
     /// Read at shell creation, so it arrives before any Host use.
     pub identity: HostIdentity,
     /// A runner booted as a managed host's init: it presents its token or is
     /// refused, never paired.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     pub managed: Option<bool>,
 }
 
@@ -754,17 +978,41 @@ pub struct FileStat {
     pub mode: u32,
     pub size: u64,
     pub mtime: Timestamp,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     pub uid: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     pub gid: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     pub ino: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     pub dev: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     pub nlink: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     pub is_character_device: Option<bool>,
     #[serde(
         rename = "isFIFO",
@@ -815,7 +1063,11 @@ pub struct GitChange {
     pub status: String,
     pub kind: ChangeKind,
     /// The path before a rename.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "String")]
     pub from: Option<String>,
     #[garde(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
@@ -840,7 +1092,11 @@ pub enum ChangeKind {
 #[serde(deny_unknown_fields)]
 pub struct SpawnError {
     pub kind: SpawnErrorKind,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     pub detail: Option<String>,
 }
 
@@ -889,7 +1145,11 @@ pub struct LogLine {
     pub at: Timestamp,
     #[garde(length(min = 1))]
     pub source: String,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[garde(inner(length(min = 1)))]
     pub conversation_id: Option<String>,
     pub text: String,
@@ -907,4 +1167,3 @@ serde_plain::derive_display_from_serialize!(SpawnErrorKind);
 serde_plain::derive_display_from_serialize!(RunnerPlatform);
 // A device's platform is stored as its name.
 serde_plain::derive_fromstr_from_deserialize!(RunnerPlatform);
-

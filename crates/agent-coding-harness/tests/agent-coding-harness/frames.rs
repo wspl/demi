@@ -8,10 +8,10 @@
 use std::{cell::RefCell, rc::Rc, time::Duration, time::Instant};
 
 use demi_agent_server::{ServerConfig, testing::TestClient};
-use demi_conversation_socket_protocol::{ClientFrame, ServerFrame, ShellStatus, TranscriptPatch};
 use demi_agent_tools::testing::shown_output;
-use demi_shared_types::{Block, CommandId, ToolCallStatus};
+use demi_conversation_socket_protocol::{ClientFrame, ServerFrame, ShellStatus, TranscriptPatch};
 use demi_provider_common::testing::{ScriptedRuntime, Turn, event};
+use demi_shared_types::{Block, CommandId, ToolCallStatus};
 use serde_json::json;
 
 use crate::support::{Fixture, Harness, exec, last_result, reply, turn, within};

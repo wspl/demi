@@ -27,10 +27,14 @@ pub(super) async fn instance(
     AuthUser(user): AuthUser,
 ) -> Result<Json<InstanceUsage>, ApiError> {
     if services.mode != InstanceMode::Shared {
-        return Err(ApiError::forbidden("The instance's usage is a shared instance's view"));
+        return Err(ApiError::forbidden(
+            "The instance's usage is a shared instance's view",
+        ));
     }
     if user.role == Role::User {
-        return Err(ApiError::forbidden("The instance's usage is for administrators"));
+        return Err(ApiError::forbidden(
+            "The instance's usage is for administrators",
+        ));
     }
     let users = services.control.instance_usage().await?;
     Ok(Json(InstanceUsage { users }))

@@ -10,10 +10,10 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use async_stream::stream;
-use demi_shared_types::Model;
 use demi_provider_common::{
     InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun, ProviderRuntime, RequestLimits,
 };
+use demi_shared_types::Model;
 use futures_util::StreamExt as _;
 use futures_util::future::LocalBoxFuture;
 use futures_util::stream::{self, Stream};

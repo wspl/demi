@@ -27,10 +27,19 @@ fn every_server_frame_keeps_its_wire_shape() {
 #[test]
 fn a_page_accepts_frame_fields_it_does_not_know() {
     let frame = json!({"type": "phase", "phase": "idle", "since": "2026-09-21T14:13:20.000Z"});
-    assert_eq!(decode(&frame), ServerFrame::Phase { phase: demi_shared_types::SessionPhase::Idle });
+    assert_eq!(
+        decode(&frame),
+        ServerFrame::Phase {
+            phase: demi_shared_types::SessionPhase::Idle
+        }
+    );
 
     let schema = serde_json::to_value(schemars::schema_for!(ServerFrame)).unwrap();
     for variant in schema["oneOf"].as_array().unwrap() {
-        assert!(variant.get("additionalProperties").is_none(), "{}", variant["properties"]["type"]);
+        assert!(
+            variant.get("additionalProperties").is_none(),
+            "{}",
+            variant["properties"]["type"]
+        );
     }
 }

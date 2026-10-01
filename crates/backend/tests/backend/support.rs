@@ -13,22 +13,28 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
-use demi_backend_blobs::counting::ObjectCounts;
-use demi_backend_accounts::email_change::{AccountMail, MailError, VerificationMail};
-use demi_backend_providers::llm::families::FamilyRegistry;
-use demi_backend_providers::vault::logins::LoginTiming;
 use demi_backend::{Backend, BackendConfig};
-use demi_backend_user_shard::tuning::{ConversationTuning, ExposeTuning, LifecycleTuning, PageTuning, RunnerTuning};
+use demi_backend_accounts::email_change::{AccountMail, MailError, VerificationMail};
+use demi_backend_blobs::counting::ObjectCounts;
 use demi_backend_cloud::tuning::CloudTuning;
 use demi_backend_expose::domain::ExposeDomain;
+use demi_backend_providers::llm::families::FamilyRegistry;
+use demi_backend_providers::vault::logins::LoginTiming;
+use demi_backend_remote_host::testing::{
+    NativeFixture, RunnerProcess, RunnerProcessOptions, native_fixture_binary,
+};
 use demi_backend_runners::native::NativeCatalog;
 use demi_backend_runners::publication::publish_native;
-use demi_command_package_browser_protocol::{Operation as BrowserOperation, PACKAGE as BROWSER_PACKAGE};
+use demi_backend_user_shard::tuning::{
+    ConversationTuning, ExposeTuning, LifecycleTuning, PageTuning, RunnerTuning,
+};
+use demi_command_declarations::NativeOperation;
+use demi_command_package_browser_protocol::{
+    Operation as BrowserOperation, PACKAGE as BROWSER_PACKAGE,
+};
 use demi_command_protocol::testing::built_program;
 use demi_command_protocol::{PackageDescriptor, host_target};
-use demi_command_declarations::NativeOperation;
 use demi_shared_types::Clock;
-use demi_backend_remote_host::testing::{NativeFixture, RunnerProcess, RunnerProcessOptions, native_fixture_binary};
 use demi_web_api_protocol::auth::{Identity, Role, UserDto};
 use demi_web_api_protocol::devices::{ClaimedDevice, DeviceDto, Devices};
 use demi_web_api_protocol::error::{ErrorBody, ErrorCode};
@@ -97,7 +103,9 @@ impl Built {
     async fn catalog(&self) -> NativeCatalog {
         let published = self.published.get_or_init(|| async {
             let config = self.write_release();
-            publish_native(&config, &CancellationToken::new()).await.unwrap()
+            publish_native(&config, &CancellationToken::new())
+                .await
+                .unwrap()
         });
         published.await.clone()
     }
@@ -119,7 +127,10 @@ impl Built {
         let _ = std::fs::remove_file(&staged);
         std::os::unix::fs::symlink(&self.program, &staged).unwrap();
         std::fs::rename(&staged, &link).unwrap();
-        replace(&release.join("descriptor.json"), &serde_json::to_vec(&self.descriptor).unwrap());
+        replace(
+            &release.join("descriptor.json"),
+            &serde_json::to_vec(&self.descriptor).unwrap(),
+        );
         let config = json!({
             "releases": [{ "directory": executable, "executable": executable }],
             "store": { "provider": "local" },
@@ -143,20 +154,28 @@ static FILE: LazyLock<Built> = LazyLock::new(|| {
     Built::new(
         demi_command_package_file_protocol::PACKAGE,
         built_program("demi-file"),
-        demi_command_package_file_protocol::OPERATIONS.iter().copied(),
+        demi_command_package_file_protocol::OPERATIONS
+            .iter()
+            .copied(),
     )
 });
 
 /// `demi.browser`, from `demi-browser`.
-static BROWSER: LazyLock<Built> =
-    LazyLock::new(|| Built::new(BROWSER_PACKAGE, built_program("demi-browser"), BrowserOperation::names()));
+static BROWSER: LazyLock<Built> = LazyLock::new(|| {
+    Built::new(
+        BROWSER_PACKAGE,
+        built_program("demi-browser"),
+        BrowserOperation::names(),
+    )
+});
 
 /// `demi.claude-code`, from `demi-claude-code`.
 static CLAUDE: LazyLock<Built> = LazyLock::new(|| {
     Built::new(
         demi_command_package_claude_code_protocol::PACKAGE,
         built_program("demi-claude-code"),
-        demi_command_package_claude_code_protocol::Operation::ALL.map(demi_command_package_claude_code_protocol::Operation::name),
+        demi_command_package_claude_code_protocol::Operation::ALL
+            .map(demi_command_package_claude_code_protocol::Operation::name),
     )
 });
 
@@ -262,7 +281,10 @@ pub struct Harness {
 impl Harness {
     pub fn new() -> Self {
         Self {
-            data: tempfile::Builder::new().prefix("demi-backend-").tempdir().unwrap(),
+            data: tempfile::Builder::new()
+                .prefix("demi-backend-")
+                .tempdir()
+                .unwrap(),
             clock: Arc::new(ManualClock(Mutex::new(
                 "2026-09-24T08:00:00Z".parse::<Timestamp>().unwrap(),
             ))),
@@ -348,9 +370,16 @@ impl Harness {
             operation: operation.into(),
         };
         self.user_streams = Some(
-            ["echo", "where", "retain", "held", "stall_release", "stalled"]
-                .map(|name| (name.to_owned(), stream(name)))
-                .into(),
+            [
+                "echo",
+                "where",
+                "retain",
+                "held",
+                "stall_release",
+                "stalled",
+            ]
+            .map(|name| (name.to_owned(), stream(name)))
+            .into(),
         );
         self.release = Some(&*FIXTURE);
         self
@@ -395,8 +424,11 @@ impl Harness {
 
     /// The control database, opened beside the backend's own connection.
     pub fn control_database(&self) -> rusqlite::Connection {
-        let connection = rusqlite::Connection::open(self.data_dir().join("control.sqlite")).unwrap();
-        connection.busy_timeout(std::time::Duration::from_secs(5)).unwrap();
+        let connection =
+            rusqlite::Connection::open(self.data_dir().join("control.sqlite")).unwrap();
+        connection
+            .busy_timeout(std::time::Duration::from_secs(5))
+            .unwrap();
         connection
     }
 
@@ -456,7 +488,8 @@ impl Harness {
 
     /// The backend over this harness's data, in `mode`.
     pub async fn start_in_mode(&self, mode: InstanceMode) -> TestBackend {
-        self.launch(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)), mode).await
+        self.launch(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)), mode)
+            .await
     }
 
     /// A backend listening on `address`, such as the one an earlier start
@@ -470,7 +503,10 @@ impl Harness {
     }
 
     async fn launch(&self, address: SocketAddr, mode: InstanceMode) -> TestBackend {
-        let machines = self.machines.clone().unwrap_or_else(|| self.manager.socket().to_owned());
+        let machines = self
+            .machines
+            .clone()
+            .unwrap_or_else(|| self.manager.socket().to_owned());
         let mut config = BackendConfig::new(self.data_dir(), address, mode, machines);
         config.lifecycle = self.lifecycle;
         config.cloud = self.cloud;
@@ -494,13 +530,25 @@ impl Harness {
             config.native = built.catalog().await;
         }
         if let Some(native) = &self.native {
-            config.native = publish_native(native, &CancellationToken::new()).await.unwrap();
+            config.native = publish_native(native, &CancellationToken::new())
+                .await
+                .unwrap();
         }
         if let Some(streams) = &self.user_streams {
             config.user_streams = streams.clone();
         }
-        config.models_dev_url = self.models_dev_url.as_deref().unwrap_or(NO_MODELS_DEV).parse().unwrap();
-        config.claude_releases = self.claude_releases.as_deref().unwrap_or(NO_CLAUDE_RELEASES).parse().unwrap();
+        config.models_dev_url = self
+            .models_dev_url
+            .as_deref()
+            .unwrap_or(NO_MODELS_DEV)
+            .parse()
+            .unwrap();
+        config.claude_releases = self
+            .claude_releases
+            .as_deref()
+            .unwrap_or(NO_CLAUDE_RELEASES)
+            .parse()
+            .unwrap();
         if self.mail {
             config.account_mail = Some(self.mailbox.clone());
         }
@@ -528,7 +576,9 @@ pub struct TestBackend {
 
 /// A page's synchronization channel (`web-api.md` § Page synchronization).
 pub struct SyncChannel {
-    socket: tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+    socket: tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+    >,
 }
 
 impl SyncChannel {
@@ -540,7 +590,8 @@ impl SyncChannel {
                 .unwrap_or_else(|_| panic!("the channel sends within {PATIENCE:?}"));
             match message {
                 Some(Ok(Message::Text(text))) => {
-                    return serde_json::from_str(text.as_str()).unwrap_or_else(|error| panic!("{error}: {text}"));
+                    return serde_json::from_str(text.as_str())
+                        .unwrap_or_else(|error| panic!("{error}: {text}"));
                 }
                 Some(Ok(Message::Close(close))) => panic!("the channel closed: {close:?}"),
                 Some(Ok(_)) => {}
@@ -578,7 +629,9 @@ impl SyncChannel {
                 .await
                 .unwrap_or_else(|_| panic!("the channel closes within {PATIENCE:?}"));
             match message {
-                Some(Ok(Message::Close(Some(close)))) => return (close.code.into(), close.reason.to_string()),
+                Some(Ok(Message::Close(Some(close)))) => {
+                    return (close.code.into(), close.reason.to_string());
+                }
                 Some(Ok(Message::Close(None))) => panic!("the channel closed without a code"),
                 Some(Ok(_)) => {}
                 other => panic!("the channel ended without a close: {other:?}"),
@@ -601,9 +654,8 @@ pub struct Answer {
 
 impl Answer {
     pub fn json<T: DeserializeOwned>(&self) -> T {
-        serde_json::from_slice(&self.body).unwrap_or_else(|error| {
-            panic!("{error}: {}", String::from_utf8_lossy(&self.body))
-        })
+        serde_json::from_slice(&self.body)
+            .unwrap_or_else(|error| panic!("{error}: {}", String::from_utf8_lossy(&self.body)))
     }
 
     pub fn error(&self) -> ErrorBody {
@@ -665,13 +717,19 @@ impl TestBackend {
 
     /// Holds every runner's hello at `step` from now on, until the hold is
     /// released or dropped.
-    pub fn hold_hellos(&self, step: demi_backend_user_shard::holds::HelloStep) -> demi_backend_user_shard::holds::StepHold {
+    pub fn hold_hellos(
+        &self,
+        step: demi_backend_user_shard::holds::HelloStep,
+    ) -> demi_backend_user_shard::holds::StepHold {
         self.backend.hold_hellos(step)
     }
 
     /// Holds every page's synchronization channel at `step` from now on,
     /// until the hold is released or dropped.
-    pub fn hold_sync(&self, step: demi_backend_user_shard::sync::SyncStep) -> demi_backend_user_shard::holds::StepHold {
+    pub fn hold_sync(
+        &self,
+        step: demi_backend_user_shard::sync::SyncStep,
+    ) -> demi_backend_user_shard::holds::StepHold {
         self.backend.hold_sync(step)
     }
 
@@ -692,9 +750,16 @@ impl TestBackend {
         self.backend.run_retention(&session.user.id).await;
     }
 
-    pub async fn file_gate(&self, session: &Session, conversation: &str) -> demi_shared_gates::ActivityGate {
-        let conversation = demi_web_api_protocol::ids::ConversationId::try_from(conversation).unwrap();
-        self.backend.file_gate(&session.user.id, &conversation).await
+    pub async fn file_gate(
+        &self,
+        session: &Session,
+        conversation: &str,
+    ) -> demi_shared_gates::ActivityGate {
+        let conversation =
+            demi_web_api_protocol::ids::ConversationId::try_from(conversation).unwrap();
+        self.backend
+            .file_gate(&session.user.id, &conversation)
+            .await
     }
 
     /// The `ws://` URL of `path`.
@@ -705,7 +770,12 @@ impl TestBackend {
     /// The session's paired devices, as `GET /api/devices` lists them.
     pub async fn devices(&self, session: &Session) -> Vec<DeviceDto> {
         let answer = self.get("/api/devices", Some(session)).await;
-        assert_eq!(answer.status, StatusCode::OK, "{}", String::from_utf8_lossy(&answer.body));
+        assert_eq!(
+            answer.status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(&answer.body)
+        );
         answer.json::<Devices>().devices
     }
 
@@ -737,8 +807,15 @@ impl TestBackend {
             },
         );
         let code = runner.pairing_code(0).await;
-        let claimed = self.post("/api/devices/claim", Some(session), json!({ "code": code })).await;
-        assert_eq!(claimed.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&claimed.body));
+        let claimed = self
+            .post("/api/devices/claim", Some(session), json!({ "code": code }))
+            .await;
+        assert_eq!(
+            claimed.status,
+            StatusCode::CREATED,
+            "{}",
+            String::from_utf8_lossy(&claimed.body)
+        );
         let device = claimed.json::<ClaimedDevice>().device;
         self.until_online(session, device.id.as_str(), true).await;
         stored_token(&runner).await;
@@ -806,48 +883,81 @@ where
 {
     let deadline = tokio::time::Instant::now() + PATIENCE;
     while !check().await {
-        assert!(tokio::time::Instant::now() < deadline, "never came true: {what}");
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "never came true: {what}"
+        );
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
 }
 
 impl TestBackend {
-    pub async fn send(&self, method: Method, path: &str, cookie: Option<&str>, body: Option<Value>) -> Answer {
+    pub async fn send(
+        &self,
+        method: Method,
+        path: &str,
+        cookie: Option<&str>,
+        body: Option<Value>,
+    ) -> Answer {
         let mut request = self.http.request(method, format!("{}{path}", self.url));
         if let Some(cookie) = cookie {
             request = request.header(COOKIE, cookie);
         }
         if let Some(body) = body {
-            request = request.header("content-type", "application/json").body(body.to_string());
+            request = request
+                .header("content-type", "application/json")
+                .body(body.to_string());
         }
         answer(request.send().await.unwrap()).await
     }
 
     pub async fn get(&self, path: &str, session: Option<&Session>) -> Answer {
-        self.send(Method::GET, path, session.map(|session| session.cookie.as_str()), None)
-            .await
+        self.send(
+            Method::GET,
+            path,
+            session.map(|session| session.cookie.as_str()),
+            None,
+        )
+        .await
     }
 
     pub async fn post(&self, path: &str, session: Option<&Session>, body: Value) -> Answer {
-        self.send(Method::POST, path, session.map(|session| session.cookie.as_str()), Some(body))
-            .await
+        self.send(
+            Method::POST,
+            path,
+            session.map(|session| session.cookie.as_str()),
+            Some(body),
+        )
+        .await
     }
 
     pub async fn patch(&self, path: &str, session: &Session, body: Value) -> Answer {
-        self.send(Method::PATCH, path, Some(&session.cookie), Some(body)).await
+        self.send(Method::PATCH, path, Some(&session.cookie), Some(body))
+            .await
     }
 
     pub async fn put(&self, path: &str, session: &Session, body: Value) -> Answer {
-        self.send(Method::PUT, path, Some(&session.cookie), Some(body)).await
+        self.send(Method::PUT, path, Some(&session.cookie), Some(body))
+            .await
     }
 
     pub async fn delete(&self, path: &str, session: &Session) -> Answer {
-        self.send(Method::DELETE, path, Some(&session.cookie), None).await
+        self.send(Method::DELETE, path, Some(&session.cookie), None)
+            .await
     }
 
     /// A GET with the session's cookie and extra headers.
-    pub async fn get_with(&self, path: &str, session: &Session, headers: &[(&str, &str)]) -> Answer {
-        answer(self.response(Method::GET, path, session, headers, None).await).await
+    pub async fn get_with(
+        &self,
+        path: &str,
+        session: &Session,
+        headers: &[(&str, &str)],
+    ) -> Answer {
+        answer(
+            self.response(Method::GET, path, session, headers, None)
+                .await,
+        )
+        .await
     }
 
     /// The response to a request with the session's cookie, extra headers
@@ -875,23 +985,45 @@ impl TestBackend {
 
     pub async fn setup(&self) -> Session {
         let answer = self
-            .post("/api/setup", None, json!({ "email": MASTER_EMAIL, "password": MASTER_PASSWORD }))
+            .post(
+                "/api/setup",
+                None,
+                json!({ "email": MASTER_EMAIL, "password": MASTER_PASSWORD }),
+            )
             .await;
-        assert_eq!(answer.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&answer.body));
+        assert_eq!(
+            answer.status,
+            StatusCode::CREATED,
+            "{}",
+            String::from_utf8_lossy(&answer.body)
+        );
         session_from(&answer)
     }
 
     pub async fn login(&self, email: &str, password: &str) -> Session {
         let answer = self
-            .post("/api/auth/login", None, json!({ "email": email, "password": password }))
+            .post(
+                "/api/auth/login",
+                None,
+                json!({ "email": email, "password": password }),
+            )
             .await;
-        assert_eq!(answer.status, StatusCode::OK, "{}", String::from_utf8_lossy(&answer.body));
+        assert_eq!(
+            answer.status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(&answer.body)
+        );
         session_from(&answer)
     }
 
     pub async fn login_answer(&self, email: &str, password: &str) -> Answer {
-        self.post("/api/auth/login", None, json!({ "email": email, "password": password }))
-            .await
+        self.post(
+            "/api/auth/login",
+            None,
+            json!({ "email": email, "password": password }),
+        )
+        .await
     }
 }
 

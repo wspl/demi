@@ -63,20 +63,36 @@ pub enum Accent {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Appearance {
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "Theme")]
     #[garde(skip)]
     pub theme: Option<Theme>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "Tone")]
     #[garde(skip)]
     pub tone: Option<Tone>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "Accent")]
     #[garde(skip)]
     pub accent: Option<Accent>,
     /// The text size in pixels.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "u8")]
     #[garde(range(min = 12, max = 18))]
     pub font_size: Option<u8>,
@@ -91,17 +107,29 @@ pub const SHORTCUT_MAX: usize = 64;
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Shortcuts {
     /// A new conversation.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "String")]
     #[garde(length(chars, max = SHORTCUT_MAX))]
     pub new: Option<String>,
     /// Showing or hiding the sidebar.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "String")]
     #[garde(length(chars, max = SHORTCUT_MAX))]
     pub sidebar: Option<String>,
     /// Opening the settings.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "String")]
     #[garde(length(chars, max = SHORTCUT_MAX))]
     pub settings: Option<String>,
@@ -112,15 +140,27 @@ pub struct Shortcuts {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ShortcutsPatch {
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "double_option")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "double_option"
+    )]
     #[schemars(with = "Option<String>")]
     #[garde(length(chars, max = SHORTCUT_MAX))]
     pub new: Option<Option<String>>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "double_option")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "double_option"
+    )]
     #[schemars(with = "Option<String>")]
     #[garde(length(chars, max = SHORTCUT_MAX))]
     pub sidebar: Option<Option<String>>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "double_option")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "double_option"
+    )]
     #[schemars(with = "Option<String>")]
     #[garde(length(chars, max = SHORTCUT_MAX))]
     pub settings: Option<Option<String>>,
@@ -136,14 +176,22 @@ pub struct Preferences {
     pub shortcuts: Shortcuts,
     /// The model settings a new conversation starts with, as the user last
     /// chose them; existing conversations keep their own.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "ModelSettings")]
     #[garde(dive)]
     pub last_model: Option<ModelSettings>,
     /// The time zone and languages the user's browser last reported, which
     /// commands receive in their command context: a zone the backend knows,
     /// in its IANA spelling, and each language once as its canonical tag.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "CommandLocale")]
     #[garde(dive)]
     pub locale: Option<CommandLocale>,
@@ -154,21 +202,37 @@ pub struct Preferences {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PreferencesPatch {
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "Appearance")]
     #[garde(dive)]
     pub appearance: Option<Appearance>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "ShortcutsPatch")]
     #[garde(dive)]
     pub shortcuts: Option<ShortcutsPatch>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "ModelSettings")]
     #[garde(dive)]
     pub last_model: Option<ModelSettings>,
     /// A time zone the backend does not know or a malformed language tag is
     /// refused.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[schemars(with = "CommandLocale")]
     #[garde(dive)]
     pub locale: Option<CommandLocale>,
@@ -190,9 +254,18 @@ mod tests {
         assert_eq!(schema["additionalProperties"], false);
         assert_eq!(schema["required"], serde_json::json!(null));
         let definitions = &schema["$defs"];
-        assert_eq!(definitions["Appearance"]["properties"]["fontSize"]["maximum"], 18);
-        assert_eq!(definitions["ShortcutsPatch"]["properties"]["new"]["type"], serde_json::json!(["string", "null"]));
-        assert_eq!(definitions["CommandLocale"]["properties"]["languages"]["maxItems"], 16);
+        assert_eq!(
+            definitions["Appearance"]["properties"]["fontSize"]["maximum"],
+            18
+        );
+        assert_eq!(
+            definitions["ShortcutsPatch"]["properties"]["new"]["type"],
+            serde_json::json!(["string", "null"])
+        );
+        assert_eq!(
+            definitions["CommandLocale"]["properties"]["languages"]["maxItems"],
+            16
+        );
         assert_eq!(definitions["CommandLocale"]["additionalProperties"], false);
     }
 }

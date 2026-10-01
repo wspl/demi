@@ -26,13 +26,13 @@ use std::sync::Arc;
 use demi_agent_server::{AgentServer, ServerConfig, ServerDeps, TreeStores};
 use demi_agent_store::AgentTreeStore;
 use demi_agent_transcript::RandomIds;
+use demi_backend_database::blob_refs::OwnerBlobs;
+use demi_backend_database::tree::SqliteTreeStore;
 use demi_backend_host_access::blobs::ConversationBlobs;
 use demi_backend_host_access::shells::ShardShellEnvironments;
 use demi_backend_host_access::{HostShard, conversation_of};
-use demi_backend_providers::usage::rate_limit::RequestRateLimit;
-use demi_backend_database::blob_refs::OwnerBlobs;
-use demi_backend_database::tree::SqliteTreeStore;
 use demi_backend_page_sync::Part;
+use demi_backend_providers::usage::rate_limit::RequestRateLimit;
 use demi_shared_types::NodeId;
 use demi_web_api_protocol::ids::UserId;
 
@@ -69,7 +69,8 @@ pub(crate) fn conversation_parts(
         let services = services.clone();
         let marks = marks.clone();
         // The shard's user owns every conversation it hosts.
-        let blobs: Arc<dyn OwnerBlobs> = Arc::new(ConversationBlobs(services.blobs.for_user(&user)));
+        let blobs: Arc<dyn OwnerBlobs> =
+            Arc::new(ConversationBlobs(services.blobs.for_user(&user)));
         Rc::new(move |root: &NodeId| {
             let conversation = conversation_of(root);
             let db = services.conversations.db(&conversation);
@@ -109,7 +110,10 @@ pub(crate) fn conversation_parts(
     let agent = AgentServer::new(ServerDeps {
         harness: Rc::new(conversation_harness(shard.clone(), &services.native)),
         providers,
-        shells: Rc::new(ShardShellEnvironments::new(hosts, services.native.catalog(&services.public_url))),
+        shells: Rc::new(ShardShellEnvironments::new(
+            hosts,
+            services.native.catalog(&services.public_url),
+        )),
         stores,
         clock: services.clock.clone(),
         ids: Rc::new(RandomIds),

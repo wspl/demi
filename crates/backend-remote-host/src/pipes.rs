@@ -697,7 +697,9 @@ impl Sink<Bytes> for PipeSink {
         if let Some(failure) = this.core.failure() {
             return Poll::Ready(Err(failure));
         }
-        this.sender.poll_reserve(cx).map_err(|_| this.core.stopped())
+        this.sender
+            .poll_reserve(cx)
+            .map_err(|_| this.core.stopped())
     }
 
     fn start_send(self: Pin<&mut Self>, chunk: Bytes) -> Result<(), PipeFailure> {
@@ -707,7 +709,9 @@ impl Sink<Bytes> for PipeSink {
         if chunk.is_empty() {
             return Ok(());
         }
-        this.sender.send_item(chunk).map_err(|_| this.core.stopped())
+        this.sender
+            .send_item(chunk)
+            .map_err(|_| this.core.stopped())
     }
 
     fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), PipeFailure>> {

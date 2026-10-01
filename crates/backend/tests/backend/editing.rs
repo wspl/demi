@@ -16,19 +16,22 @@ use std::time::Duration;
 
 use demi_agent_server::testing::client_text;
 use demi_conversation_socket_protocol::{ClientFrame, EditOutcome, EditRequest, ServerFrame};
-use demi_shared_types::{Block, SessionPhase, UserContentBlock};
 use demi_provider_common::testing::MockVendor;
+use demi_shared_types::{Block, SessionPhase, UserContentBlock};
 use serde_json::json;
 
 use crate::conversations::{
-    FIRST, Socket, anthropic, answer, choose, create, on_device, send, tool_result, tool_use, transcript,
+    FIRST, Socket, answer, anthropic, choose, create, on_device, send, tool_result, tool_use,
+    transcript,
 };
 use crate::support::Harness;
 
 /// The outcome of the edit `frame` asks for, which `socket` answers.
 async fn edit(socket: &mut Socket, frame: &ClientFrame) -> EditOutcome {
     socket.send(frame).await;
-    let answered = socket.until(|frame| matches!(frame, ServerFrame::EditResult { .. })).await;
+    let answered = socket
+        .until(|frame| matches!(frame, ServerFrame::EditResult { .. }))
+        .await;
     match answered.into_iter().last() {
         Some(ServerFrame::EditResult { outcome, .. }) => outcome,
         other => unreachable!("{other:?}"),
@@ -45,8 +48,13 @@ async fn edit_request(
     replacement: &str,
 ) -> EditRequest {
     socket.send(&ClientFrame::SyncTranscript {}).await;
-    let synced = socket.until(|frame| matches!(frame, ServerFrame::TranscriptReset { .. })).await;
-    let Some(ServerFrame::TranscriptReset { blocks, version, .. }) = synced.into_iter().last() else {
+    let synced = socket
+        .until(|frame| matches!(frame, ServerFrame::TranscriptReset { .. }))
+        .await;
+    let Some(ServerFrame::TranscriptReset {
+        blocks, version, ..
+    }) = synced.into_iter().last()
+    else {
         unreachable!()
     };
     let target_block_id = blocks
@@ -68,14 +76,19 @@ async fn edit_request(
 
 /// Whether a frame tells the page that the session is idle.
 fn idle(frame: &ServerFrame) -> bool {
-    matches!(frame, ServerFrame::Phase { phase: SessionPhase::Idle })
+    matches!(
+        frame,
+        ServerFrame::Phase {
+            phase: SessionPhase::Idle
+        }
+    )
 }
-
 
 // Over a second: a real device runs the turns' jobs, and its runner comes back
 // after the backend's restart.
 #[tokio::test]
-async fn an_edit_restores_the_todos_keeps_the_files_and_answers_its_receipt_on_another_socket_and_after_a_restart() {
+async fn an_edit_restores_the_todos_keeps_the_files_and_answers_its_receipt_on_another_socket_and_after_a_restart()
+ {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
@@ -86,18 +99,27 @@ async fn an_edit_restores_the_todos_keeps_the_files_and_answers_its_receipt_on_a
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
     let shell = |id: &str, script: &str| {
-        tool_use(id, "shell_exec", &json!({ "description": id, "script": script, "timeoutMs": 60_000 }))
+        tool_use(
+            id,
+            "shell_exec",
+            &json!({ "description": id, "script": script, "timeoutMs": 60_000 }),
+        )
     };
     vendor.respond(answer(&["answer-A-kept"], 1, 1));
     socket.chat("m1", "A-kept").await;
-    vendor.respond(shell("toolu_effects", "printf permanent > sentinel.txt && demi todo add \"permanent todo\""));
+    vendor.respond(shell(
+        "toolu_effects",
+        "printf permanent > sentinel.txt && demi todo add \"permanent todo\"",
+    ));
     vendor.respond(answer(&["answer-B-removed"], 1, 1));
     socket.chat("m2", "B-removed").await;
     vendor.respond(answer(&["answer-C-removed"], 1, 1));
     socket.chat("m3", "C-removed").await;
 
     let request = edit_request(&mut socket, "B-removed", "edit-1", "B-edited").await;
-    let repeated = ClientFrame::EditAndSend { request: request.clone() };
+    let repeated = ClientFrame::EditAndSend {
+        request: request.clone(),
+    };
     let stale = ClientFrame::EditAndSend {
         request: EditRequest {
             operation_id: "edit-2".try_into().unwrap(),
@@ -108,16 +130,30 @@ async fn an_edit_restores_the_todos_keeps_the_files_and_answers_its_receipt_on_a
     let asked = vendor.requests().len();
     vendor.respond(answer(&["answer-edited"], 1, 1));
     let accepted = edit(&mut socket, &repeated).await;
-    assert!(matches!(accepted, EditOutcome::Accepted { .. }), "{accepted:?}");
+    assert!(
+        matches!(accepted, EditOutcome::Accepted { .. }),
+        "{accepted:?}"
+    );
     socket.until(idle).await;
     // The model reads the history the edit kept and the new message, on a
     // fresh runtime; the removed turns and their tool result are gone.
     let replayed = vendor.requests()[asked].json()["messages"].to_string();
-    assert!(replayed.contains("A-kept") && replayed.contains("answer-A-kept") && replayed.contains("B-edited"), "{replayed}");
-    assert!(!replayed.contains("B-removed") && !replayed.contains("C-removed"), "{replayed}");
+    assert!(
+        replayed.contains("A-kept")
+            && replayed.contains("answer-A-kept")
+            && replayed.contains("B-edited"),
+        "{replayed}"
+    );
+    assert!(
+        !replayed.contains("B-removed") && !replayed.contains("C-removed"),
+        "{replayed}"
+    );
     assert!(!replayed.contains("tool_result"), "{replayed}");
     // The files the removed turn wrote stay.
-    assert_eq!(std::fs::read_to_string(format!("{root}/sentinel.txt")).unwrap(), "permanent");
+    assert_eq!(
+        std::fs::read_to_string(format!("{root}/sentinel.txt")).unwrap(),
+        "permanent"
+    );
 
     // Another socket of the conversation, beside the first: the same edit
     // answers its receipt there, and the old snapshot is refused, neither
@@ -125,7 +161,10 @@ async fn an_edit_restores_the_todos_keeps_the_files_and_answers_its_receipt_on_a
     let mut second = Socket::connect(&backend, &master, FIRST).await;
     second.open().await;
     assert_eq!(edit(&mut second, &repeated).await, accepted);
-    assert!(matches!(edit(&mut second, &stale).await, EditOutcome::Rejected { .. }));
+    assert!(matches!(
+        edit(&mut second, &stale).await,
+        EditOutcome::Rejected { .. }
+    ));
     drop((socket, second));
 
     // After a restart as well: the receipt is durable. The backend comes
@@ -137,8 +176,15 @@ async fn an_edit_restores_the_todos_keeps_the_files_and_answers_its_receipt_on_a
     let mut third = Socket::connect(&backend, &master, FIRST).await;
     third.open().await;
     assert_eq!(edit(&mut third, &repeated).await, accepted);
-    assert!(matches!(edit(&mut third, &stale).await, EditOutcome::Rejected { .. }));
-    assert_eq!(vendor.requests().len(), asked + 1, "no edit asked the model again");
+    assert!(matches!(
+        edit(&mut third, &stale).await,
+        EditOutcome::Rejected { .. }
+    ));
+    assert_eq!(
+        vendor.requests().len(),
+        asked + 1,
+        "no edit asked the model again"
+    );
 
     // The todos are as they were before the edited message; the file stays.
     let before = vendor.requests().len();
@@ -146,7 +192,10 @@ async fn an_edit_restores_the_todos_keeps_the_files_and_answers_its_receipt_on_a
     vendor.respond(answer(&["checked"], 1, 1));
     third.chat("m4", "Verify the effects").await;
     let checked = tool_result(&vendor.requests()[before + 1].json(), "toolu_check");
-    assert!(checked.contains("permanent") && checked.contains("No todos"), "{checked}");
+    assert!(
+        checked.contains("permanent") && checked.contains("No todos"),
+        "{checked}"
+    );
     assert!(!checked.contains("permanent todo"), "{checked}");
     backend.close().await;
 }
@@ -183,20 +232,40 @@ async fn an_edit_reaches_the_page_and_the_model_only_once_its_transaction_commit
     // of the edit only after the commit, which the agent shows where its
     // outbox can be read while the save waits (its editing tests).
     assert_eq!(transcript(&backend, &master, FIRST).await.blocks, history);
-    assert_eq!(vendor.requests().len(), asked, "the model is not asked before the commit");
+    assert_eq!(
+        vendor.requests().len(),
+        asked,
+        "the model is not asked before the commit"
+    );
 
     // Once the commit completes, the replacement and the result reach the
     // page, and the model is asked with the replacement.
     hold.release();
-    let answered = socket.until(|frame| matches!(frame, ServerFrame::EditResult { .. })).await;
+    let answered = socket
+        .until(|frame| matches!(frame, ServerFrame::EditResult { .. }))
+        .await;
     assert!(
-        matches!(answered.last(), Some(ServerFrame::EditResult { outcome: EditOutcome::Accepted { .. }, .. })),
+        matches!(
+            answered.last(),
+            Some(ServerFrame::EditResult {
+                outcome: EditOutcome::Accepted { .. },
+                ..
+            })
+        ),
         "{answered:?}"
     );
-    assert!(answered.iter().any(|frame| matches!(frame, ServerFrame::TranscriptPatch { .. })), "{answered:?}");
+    assert!(
+        answered
+            .iter()
+            .any(|frame| matches!(frame, ServerFrame::TranscriptPatch { .. })),
+        "{answered:?}"
+    );
     socket.until(idle).await;
     let replayed = vendor.requests()[asked].json()["messages"].to_string();
-    assert!(replayed.contains("B-edited") && !replayed.contains("B-removed"), "{replayed}");
+    assert!(
+        replayed.contains("B-edited") && !replayed.contains("B-removed"),
+        "{replayed}"
+    );
     backend.close().await;
 }
 
@@ -223,9 +292,17 @@ async fn the_page_sees_a_turn_end_once_its_save_commits_and_an_edit_sent_then_is
     // Meanwhile the page has not seen the turn end: the reset that answers a
     // sync follows every frame sent before it, and none of them says idle.
     socket.send(&ClientFrame::SyncTranscript {}).await;
-    let meanwhile = socket.until(|frame| matches!(frame, ServerFrame::TranscriptReset { .. })).await;
-    assert!(!meanwhile.iter().any(idle), "the page saw the turn end before its save committed: {meanwhile:?}");
-    let Some(ServerFrame::TranscriptReset { blocks, version, .. }) = meanwhile.last() else {
+    let meanwhile = socket
+        .until(|frame| matches!(frame, ServerFrame::TranscriptReset { .. }))
+        .await;
+    assert!(
+        !meanwhile.iter().any(idle),
+        "the page saw the turn end before its save committed: {meanwhile:?}"
+    );
+    let Some(ServerFrame::TranscriptReset {
+        blocks, version, ..
+    }) = meanwhile.last()
+    else {
         unreachable!()
     };
     let target_block_id = blocks
@@ -247,7 +324,10 @@ async fn the_page_sees_a_turn_end_once_its_save_commits_and_an_edit_sent_then_is
     socket.until(idle).await;
     vendor.respond(answer(&["answer-edited"], 1, 1));
     let outcome = edit(&mut socket, &ClientFrame::EditAndSend { request }).await;
-    assert!(matches!(outcome, EditOutcome::Accepted { .. }), "{outcome:?}");
+    assert!(
+        matches!(outcome, EditOutcome::Accepted { .. }),
+        "{outcome:?}"
+    );
     socket.until(idle).await;
     backend.close().await;
 }

@@ -29,9 +29,10 @@ impl Row<'_> {
     fn name(&self) -> Vec<u8> {
         let (label, ids): (&[u8], Vec<&str>) = match self {
             Self::Config(provider) => (b"demi provider config", vec![provider.as_str()]),
-            Self::Secret(provider, credential) => {
-                (b"demi account secret", vec![provider.as_str(), credential.as_str()])
-            }
+            Self::Secret(provider, credential) => (
+                b"demi account secret",
+                vec![provider.as_str(), credential.as_str()],
+            ),
         };
         let mut name = label.to_vec();
         for id in ids {
@@ -120,7 +121,10 @@ mod tests {
         let other = provider("entry-2");
         assert_eq!(key.open(Row::Config(&other), &sealed), Err(Unsealable));
         let account = CredentialId::try_from("cred-1").unwrap();
-        assert_eq!(key.open(Row::Secret(&entry, &account), &sealed), Err(Unsealable));
+        assert_eq!(
+            key.open(Row::Secret(&entry, &account), &sealed),
+            Err(Unsealable)
+        );
         assert_eq!(
             VaultKey::new([8; 32]).open(Row::Config(&entry), &sealed),
             Err(Unsealable)
@@ -134,6 +138,9 @@ mod tests {
         let (long, short) = (provider("ab"), CredentialId::try_from("c").unwrap());
         let (shorter, longer) = (provider("a"), CredentialId::try_from("bc").unwrap());
         let sealed = key.seal(Row::Secret(&long, &short), b"x");
-        assert_eq!(key.open(Row::Secret(&shorter, &longer), &sealed), Err(Unsealable));
+        assert_eq!(
+            key.open(Row::Secret(&shorter, &longer), &sealed),
+            Err(Unsealable)
+        );
     }
 }

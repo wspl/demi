@@ -2,19 +2,18 @@
 //! a viewer drives `browser.live` as the page does, beside the agent's
 //! commands on the same tabs.
 
-
 use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
 
+use crate::families::{BrowserFixture, with_browser_fixture};
 use axum::{
     Router,
     http::{HeaderMap, header::USER_AGENT},
     response::Html,
     routing::get,
 };
-use crate::families::{BrowserFixture, with_browser_fixture};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use demi_command_package_browser_protocol::live::VideoHeader;
 use demi_command_protocol::{CommandCaller, Completion, Record};
@@ -1036,7 +1035,10 @@ async fn decoded(fixture: &BrowserFixture, tab: &str, frame: &[u8]) -> (u32, Vec
     let mut encoded = String::with_capacity(length);
     while encoded.len() < length {
         let from = encoded.len();
-        let slice = format!("globalThis.decodedPicture.slice({from}, {})", from + PICTURE_SLICE);
+        let slice = format!(
+            "globalThis.decodedPicture.slice({from}, {})",
+            from + PICTURE_SLICE
+        );
         let value = run_in_page(fixture, tab, &slice).await;
         encoded.push_str(value.as_str().expect("a slice of the kept picture"));
     }
@@ -1051,7 +1053,9 @@ async fn decoded(fixture: &BrowserFixture, tab: &str, frame: &[u8]) -> (u32, Vec
     let pixels = match info.color_type {
         png::ColorType::Rgb => pixels,
         png::ColorType::Rgba => pixels
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .flat_map(|pixel| &pixel[..3])
             .copied()
             .collect(),
@@ -1257,7 +1261,10 @@ async fn capture_extension_reload_preserves_pages_and_recreates_its_worker() {
                         target.url == worker_url && previous.as_ref() != Some(&target.target_id)
                     });
                     if let Some(worker) = worker.filter(|_| started) {
-                        return Ok::<_, demi_command_package_browser_chrome::driver::operation::BrowserError>(worker.target_id);
+                        return Ok::<
+                            _,
+                            demi_command_package_browser_chrome::driver::operation::BrowserError,
+                        >(worker.target_id);
                     }
                     tokio::time::sleep(Duration::from_millis(50)).await;
                 }
@@ -1266,17 +1273,24 @@ async fn capture_extension_reload_preserves_pages_and_recreates_its_worker() {
             .expect("the capture worker returns after every reload")?;
             assert_eq!(environment.tabs(&cancel, timeout).await?.len(), 1);
             assert_eq!(
-                demi_command_package_browser_chrome::page::evaluation::evaluate(&tab, "document.URL", &cancel, timeout).await?,
+                demi_command_package_browser_chrome::page::evaluation::evaluate(
+                    &tab,
+                    "document.URL",
+                    &cancel,
+                    timeout
+                )
+                .await?,
                 json!("about:blank")
             );
             if round == 3 {
                 break;
             }
-            let reloading = demi_command_package_browser_chrome::cdp::testing::evaluate_in(&environment, 
-                    worker.clone(),
-                    "setTimeout(() => chrome.runtime.reload(), 100); true",
-                )
-                .await?;
+            let reloading = demi_command_package_browser_chrome::cdp::testing::evaluate_in(
+                &environment,
+                worker.clone(),
+                "setTimeout(() => chrome.runtime.reload(), 100); true",
+            )
+            .await?;
             assert_eq!(reloading, json!(true));
             previous = Some(worker);
         }

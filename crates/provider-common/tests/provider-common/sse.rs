@@ -19,11 +19,20 @@ async fn frames(chunks: &[&[u8]]) -> Vec<String> {
 #[tokio::test]
 async fn frames_follow_the_specification() {
     // CRLF line ends; the event name is not carried.
-    assert_eq!(frames(&[b"event: delta\r\ndata: {\"a\":1}\r\n\r\n"]).await, ["{\"a\":1}"]);
+    assert_eq!(
+        frames(&[b"event: delta\r\ndata: {\"a\":1}\r\n\r\n"]).await,
+        ["{\"a\":1}"]
+    );
     // Multi-line data joins with a newline.
-    assert_eq!(frames(&[b"data: line one\ndata: line two\n\n"]).await, ["line one\nline two"]);
+    assert_eq!(
+        frames(&[b"data: line one\ndata: line two\n\n"]).await,
+        ["line one\nline two"]
+    );
     // The [DONE] sentinel is a payload like any other.
-    assert_eq!(frames(&[b"data: {\"a\":1}\n\n", b"data: [DONE]\n\n"]).await, ["{\"a\":1}", "[DONE]"]);
+    assert_eq!(
+        frames(&[b"data: {\"a\":1}\n\n", b"data: [DONE]\n\n"]).await,
+        ["{\"a\":1}", "[DONE]"]
+    );
     // An empty body has no frames.
     assert!(frames(&[]).await.is_empty());
 }
@@ -56,5 +65,8 @@ async fn a_body_that_breaks_off_reports_its_error_after_the_frames_before_it() {
     ]);
     let items: Vec<_> = sse_data(body).collect().await;
     assert_eq!(items[0].as_ref().unwrap(), "first");
-    assert!(matches!(items[1], Err(SseError::Transport("connection reset"))));
+    assert!(matches!(
+        items[1],
+        Err(SseError::Transport("connection reset"))
+    ));
 }

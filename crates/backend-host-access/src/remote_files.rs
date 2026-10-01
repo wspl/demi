@@ -52,7 +52,8 @@ impl dyn HostShard + '_ {
             .ok_or(RemoteFileRefusal::NotAccessible)?;
         let mut devices: Vec<DeviceRecord> = Vec::new();
         for file in files {
-            let id = DeviceId::try_from(file.device.as_str()).map_err(|_| RemoteFileRefusal::NotAccessible)?;
+            let id = DeviceId::try_from(file.device.as_str())
+                .map_err(|_| RemoteFileRefusal::NotAccessible)?;
             if devices.iter().any(|device| device.id == id) {
                 continue;
             }
@@ -101,14 +102,20 @@ impl dyn HostShard + '_ {
 /// that names the device and the command that reads the file.
 fn reference(device: &DeviceRecord, path: &str) -> Result<UserContentBlock, RemoteFileRefusal> {
     let read = format!("cat -- {}", quote(path)?);
-    let command = format!("demi host shell --host {} {}", quote(device.id.as_str())?, quote(&read)?);
+    let command = format!(
+        "demi host shell --host {} {}",
+        quote(device.id.as_str())?,
+        quote(&read)?
+    );
     let mut url = url::Url::parse("file:///").expect("the root file URL parses");
     url.set_path(path);
     url.query_pairs_mut()
         .append_pair("host", &device.name)
         .append_pair("deviceId", device.id.as_str())
         .append_pair("readCommand", &command);
-    Ok(UserContentBlock::Reference { reference: url.into() })
+    Ok(UserContentBlock::Reference {
+        reference: url.into(),
+    })
 }
 
 /// `word` as one shell word.

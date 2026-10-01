@@ -1,3 +1,8 @@
+// Whether the service is `Send`, which serving it needs, is decided through
+// a conversation's browser and the channels that answer with it, deeper than
+// the default 128 steps of the trait solver; the library sets the same limit.
+#![recursion_limit = "256"]
+
 use std::sync::Arc;
 
 #[tokio::main]
@@ -14,10 +19,10 @@ async fn main() {
         .without_time()
         .with_target(false)
         .init();
-    let browsers = demi_command_package_browser_chrome::driver::installation::BrowserDirectories::host();
-    let service = demi_command_sdk::serve_stdio(Arc::new(demi_browser::DemiBrowser::new(
-        browsers.clone(),
-    )));
+    let browsers =
+        demi_command_package_browser_chrome::driver::installation::BrowserDirectories::host();
+    let service =
+        demi_command_sdk::serve_stdio(Arc::new(demi_browser::DemiBrowser::new(browsers.clone())));
     // Profiles a service that ended without retiring its browsers left are
     // removed beside serving (`browser.md` § Native driver).
     let (result, ()) = tokio::join!(

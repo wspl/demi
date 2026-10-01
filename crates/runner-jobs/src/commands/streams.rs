@@ -17,13 +17,13 @@ use tokio::sync::mpsc;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use demi_command_protocol::host_target;
+use demi_runner_command_packages::{ServiceHandle, ServiceLease};
 use demi_runner_process::{
     lines::LineSplitter,
     pipes::{PipeClient, report_pipe},
     tail::TailBuffer,
 };
 use demi_runner_protocol::wire::{self, ServiceErrorCode};
-use demi_runner_command_packages::{ServiceHandle, ServiceLease};
 
 use crate::{commands::artifacts::StreamArtifacts, connection::ConnectionHandle};
 
@@ -289,7 +289,10 @@ impl Bindings {
     /// `hold`.
     fn bind(&self, package: &str, digest: &str) -> bool {
         let mut bound = self.0.lock().expect("the bindings are intact");
-        if bound.get(package).is_some_and(|bound| bound.digest == digest) {
+        if bound
+            .get(package)
+            .is_some_and(|bound| bound.digest == digest)
+        {
             return false;
         }
         bound.insert(
@@ -334,7 +337,11 @@ struct StreamLog {
 
 impl StreamLog {
     fn event(&self, text: &str) {
-        tracing::info!(conversation = self.conversation.as_str(), "{} {text}", self.source);
+        tracing::info!(
+            conversation = self.conversation.as_str(),
+            "{} {text}",
+            self.source
+        );
     }
 
     fn stderr(&self, line: &str) {

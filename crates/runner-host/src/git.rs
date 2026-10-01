@@ -378,16 +378,19 @@ impl Owner {
                 self.roots.remove(&oldest);
             }
         }
-        let root = self.roots.entry(request.root.clone()).or_insert_with(|| Root {
-            state: Some(RootState {
-                baseline: None,
-                watch: Watch::Unstarted,
-            }),
-            touched: Arc::new(Mutex::new(Touched::default())),
-            last_used: now,
-            current: Vec::new(),
-            queued: Vec::new(),
-        });
+        let root = self
+            .roots
+            .entry(request.root.clone())
+            .or_insert_with(|| Root {
+                state: Some(RootState {
+                    baseline: None,
+                    watch: Watch::Unstarted,
+                }),
+                touched: Arc::new(Mutex::new(Touched::default())),
+                last_used: now,
+                current: Vec::new(),
+                queued: Vec::new(),
+            });
         root.last_used = now;
         root.queued.push(Waiter {
             reply: request.reply,
@@ -417,8 +420,15 @@ impl Owner {
         let max_files = self.max_files;
         self.running.spawn(async move {
             let mut state = state;
-            let result =
-                changes(&path, &mut state, &touched, &computations, max_files, &cancel).await;
+            let result = changes(
+                &path,
+                &mut state,
+                &touched,
+                &computations,
+                max_files,
+                &cancel,
+            )
+            .await;
             (path, state, result)
         });
     }

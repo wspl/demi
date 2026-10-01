@@ -40,7 +40,11 @@ pub(super) struct EdgeListener {
 }
 
 impl EdgeListener {
-    pub(super) fn new(tcp: TcpListener, closing: CancellationToken, connections: CancellationToken) -> Self {
+    pub(super) fn new(
+        tcp: TcpListener,
+        closing: CancellationToken,
+        connections: CancellationToken,
+    ) -> Self {
         Self {
             tcp: Some(tcp),
             closing,
@@ -112,7 +116,9 @@ where
 {
     let mut builder = http1::Builder::new();
     builder.preserve_header_case(true);
-    let connection = builder.serve_connection(TokioIo::new(io), service).with_upgrades();
+    let connection = builder
+        .serve_connection(TokioIo::new(io), service)
+        .with_upgrades();
     let mut connection = std::pin::pin!(connection);
     let mut stopping = false;
     loop {
@@ -253,14 +259,23 @@ impl ConnectionControl {
 }
 
 /// A connection's watch; dropping it stops watching.
-pub(crate) struct ConnectionWatch(#[expect(dead_code, reason = "held for its drop")] AbortOnDropHandle<()>);
+pub(crate) struct ConnectionWatch(
+    #[expect(dead_code, reason = "held for its drop")] AbortOnDropHandle<()>,
+);
 
 fn closed_by_the_backend() -> io::Error {
-    io::Error::new(io::ErrorKind::ConnectionAborted, "the backend closed the connection")
+    io::Error::new(
+        io::ErrorKind::ConnectionAborted,
+        "the backend closed the connection",
+    )
 }
 
 impl AsyncRead for ConnectionIo {
-    fn poll_read(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
         let this = self.get_mut();
         if this.read_closed.as_mut().poll(cx).is_ready() {
             return Poll::Ready(Err(closed_by_the_backend()));
@@ -275,7 +290,11 @@ impl AsyncRead for ConnectionIo {
 }
 
 impl AsyncWrite for ConnectionIo {
-    fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
         let this = self.get_mut();
         if this.write_closed.as_mut().poll(cx).is_ready() {
             return Poll::Ready(Err(closed_by_the_backend()));

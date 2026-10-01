@@ -4,7 +4,6 @@
 
 use std::sync::{Arc, Mutex};
 
-use demi_shared_types::{QuotaPlan, QuotaSeverity, QuotaUnit, QuotaWindow, SnapshotSource, Timestamp};
 use demi_provider_common::{
     quota::{
         MemorySnapshots, Observation, ProbeCost, ProbeReading, ProviderQuota, QuotaError,
@@ -12,6 +11,9 @@ use demi_provider_common::{
         used_percent_from_ratio,
     },
     testing::FixedClock,
+};
+use demi_shared_types::{
+    QuotaPlan, QuotaSeverity, QuotaUnit, QuotaWindow, SnapshotSource, Timestamp,
 };
 use futures_util::future::BoxFuture;
 use http::{HeaderMap, HeaderValue, StatusCode};
@@ -75,7 +77,10 @@ fn observe(quota: &ProviderQuota) {
 }
 
 fn ids_and_shares(windows: &[QuotaWindow]) -> Vec<(String, Option<f64>)> {
-    windows.iter().map(|window| (window.id.clone(), window.used_percent)).collect()
+    windows
+        .iter()
+        .map(|window| (window.id.clone(), window.used_percent))
+        .collect()
 }
 
 #[tokio::test]
@@ -91,16 +96,26 @@ async fn an_observation_replaces_its_windows_and_keeps_the_probed_plan_and_label
     });
     assert!(quota.latest().is_none());
     let probed = quota.probe().await.unwrap();
-    assert_eq!((probed.source, probed.observed_at), (SnapshotSource::Probe, NOW.parse().unwrap()));
+    assert_eq!(
+        (probed.source, probed.observed_at),
+        (SnapshotSource::Probe, NOW.parse().unwrap())
+    );
 
     observe(&quota);
     let observed = quota.latest().unwrap();
     assert_eq!(observed.source, SnapshotSource::Observation);
     assert_eq!(observed.plan, Some(plan("pro")));
-    assert_eq!(observed.account_label.as_deref(), Some("person@example.com"));
+    assert_eq!(
+        observed.account_label.as_deref(),
+        Some("person@example.com")
+    );
     assert_eq!(
         ids_and_shares(&observed.windows),
-        [("monthly".into(), Some(25.0)), ("rpm".into(), Some(40.0)), ("tpm".into(), Some(5.0))]
+        [
+            ("monthly".into(), Some(25.0)),
+            ("rpm".into(), Some(40.0)),
+            ("tpm".into(), Some(5.0))
+        ]
     );
 }
 
@@ -122,7 +137,13 @@ async fn a_probe_says_the_plan_and_keeps_the_windows_it_does_not_name() {
     observe(&quota);
     let probed = quota.probe().await.unwrap();
     assert_eq!(probed.plan, Some(plan("pro")));
-    assert_eq!(ids_and_shares(&probed.windows), [("requests".into(), Some(5.0)), ("weekly".into(), Some(40.0))]);
+    assert_eq!(
+        ids_and_shares(&probed.windows),
+        [
+            ("requests".into(), Some(5.0)),
+            ("weekly".into(), Some(40.0))
+        ]
+    );
     // A response the source cannot read changes nothing.
     observe(&quota);
     assert_eq!(quota.latest().unwrap(), probed);
@@ -132,7 +153,10 @@ async fn a_probe_says_the_plan_and_keeps_the_windows_it_does_not_name() {
 
 #[tokio::test]
 async fn a_family_that_cannot_probe_for_free_is_never_probed() {
-    for (cost, error) in [(None, QuotaError::Unsupported), (Some(ProbeCost::Inference), QuotaError::RequiresInference)] {
+    for (cost, error) in [
+        (None, QuotaError::Unsupported),
+        (Some(ProbeCost::Inference), QuotaError::RequiresInference),
+    ] {
         let quota = quota(Scripted {
             cost,
             probes: Mutex::new(Vec::new()),
@@ -151,23 +175,46 @@ fn shares_severities_and_reset_times_read_in_their_declared_units() {
     assert_eq!(clamp_used_percent(f64::NAN), None);
     assert_eq!(used_percent_from_ratio(25.0, 100.0), Some(25.0));
     assert_eq!(used_percent_from_ratio(1.0, 0.0), None);
-    let severities = [(Some(50.0), Some(QuotaSeverity::Normal)), (Some(80.0), Some(QuotaSeverity::Warning)), (Some(90.0), Some(QuotaSeverity::Warning)), (Some(95.0), Some(QuotaSeverity::Critical)), (None, None)];
+    let severities = [
+        (Some(50.0), Some(QuotaSeverity::Normal)),
+        (Some(80.0), Some(QuotaSeverity::Warning)),
+        (Some(90.0), Some(QuotaSeverity::Warning)),
+        (Some(95.0), Some(QuotaSeverity::Critical)),
+        (None, None),
+    ];
     for (share, expected) in severities {
         assert_eq!(severity(share), expected, "{share:?}");
     }
 
     let time = |text: &str| text.parse::<Timestamp>().unwrap();
-    assert_eq!(unix_seconds(1_700_000_000.0), Some(time("2023-11-14T22:13:20.000Z")));
-    assert_eq!(unix_seconds(1_700_000_000.5), Some(time("2023-11-14T22:13:20.500Z")));
+    assert_eq!(
+        unix_seconds(1_700_000_000.0),
+        Some(time("2023-11-14T22:13:20.000Z"))
+    );
+    assert_eq!(
+        unix_seconds(1_700_000_000.5),
+        Some(time("2023-11-14T22:13:20.500Z"))
+    );
     assert_eq!(unix_seconds(1e20), None);
     assert_eq!(unix_seconds(f64::NAN), None);
-    assert_eq!(rfc3339("2026-08-21T10:45:24.951512+00:00"), Some(time("2026-08-21T10:45:24.951Z")));
-    assert_eq!(rfc3339("2026-08-01T00:00:00Z"), Some(time("2026-08-01T00:00:00.000Z")));
+    assert_eq!(
+        rfc3339("2026-08-21T10:45:24.951512+00:00"),
+        Some(time("2026-08-21T10:45:24.951Z"))
+    );
+    assert_eq!(
+        rfc3339("2026-08-01T00:00:00Z"),
+        Some(time("2026-08-01T00:00:00.000Z"))
+    );
     assert_eq!(rfc3339("soon"), None);
     assert_eq!(rfc3339("1790062659"), None);
 
     let mut headers = HeaderMap::new();
-    for (name, value) in [("x-used", " 35.5 "), ("x-word", "full"), ("x-blank", ""), ("x-infinite", "inf")] {
+    for (name, value) in [
+        ("x-used", " 35.5 "),
+        ("x-word", "full"),
+        ("x-blank", ""),
+        ("x-infinite", "inf"),
+    ] {
         headers.insert(name, HeaderValue::from_static(value));
     }
     assert_eq!(header_number(&headers, "x-used"), Some(35.5));

@@ -14,13 +14,13 @@ use crate::{
 };
 use bytes::Bytes;
 use demi_command_protocol::CommandContext;
+use demi_runner_command_packages::ServiceHandle;
 use demi_runner_process::{
     job_shell::{JobCommands, JobShell, JobStart, ShellJob},
     pipes::{PipeClient, report_pipe},
     process::{ChildProcess, OutputChunk, ProcessExit, ProcessInput, SpawnOptions},
 };
 use demi_runner_protocol::wire::{self, OutputStream, Signal};
-use demi_runner_command_packages::ServiceHandle;
 use futures_util::{FutureExt, StreamExt};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -436,7 +436,8 @@ impl JobConfig {
                 job = Some((Logs::new(output), scratch, recorder.clone(), running));
                 let commands = match commands {
                     Some((manifest_hash, command)) => {
-                        let setup = self.context(&id, &manifest_hash, command, edit_context, &mut env);
+                        let setup =
+                            self.context(&id, &manifest_hash, command, edit_context, &mut env);
                         // A job killed while it waits for its manifest never starts.
                         let (context, declared) = tokio::select! {
                             _ = cancel.cancelled() => {
@@ -684,7 +685,7 @@ impl JobConfig {
                 signal: exit.signal,
                 spawn_error,
             })
-                .map_err(io::Error::other),
+            .map_err(io::Error::other),
         }
     }
 }
@@ -847,7 +848,10 @@ impl Log {
                 wire::JOB_GROWTH_INTERVAL,
             )
         };
-        waiting.then(|| self.reported_at.map_or_else(Instant::now, |at| at + interval))
+        waiting.then(|| {
+            self.reported_at
+                .map_or_else(Instant::now, |at| at + interval)
+        })
     }
 
     /// The message beyond the first `JOB_VIEW_BYTES`: while followed, the

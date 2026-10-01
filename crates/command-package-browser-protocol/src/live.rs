@@ -92,7 +92,9 @@ impl VideoHeader {
     /// Splits a video frame's payload into its header and data.
     pub fn split(payload: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
         let Some((header, data)) = payload.split_first_chunk::<{ Self::BYTES }>() else {
-            return Err(DecodeError::Invalid("a video frame is shorter than its header".into()));
+            return Err(DecodeError::Invalid(
+                "a video frame is shorter than its header".into(),
+            ));
         };
         let (tab, fields) = header.split_at(Self::TAB_BYTES);
         let length = tab.iter().position(|byte| *byte == 0).unwrap_or(tab.len());
@@ -128,7 +130,9 @@ impl FileHeader {
     /// Splits a file frame's payload into its header and data.
     pub fn split(payload: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
         let Some((header, data)) = payload.split_first_chunk::<{ Self::BYTES }>() else {
-            return Err(DecodeError::Invalid("a file frame is shorter than its header".into()));
+            return Err(DecodeError::Invalid(
+                "a file frame is shorter than its header".into(),
+            ));
         };
         let (upload, file) = header.split_at(4);
         let header = Self {
@@ -141,7 +145,8 @@ impl FileHeader {
 
 /// What a control token looks like: a UUID in lowercase, as
 /// `crypto.randomUUID` makes it. It is both the check and the schema.
-pub const CONTROL_TOKEN_PATTERN: &str = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
+pub const CONTROL_TOKEN_PATTERN: &str =
+    "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
 
 /// A control's identity in its page, as `crypto.randomUUID` makes it.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
@@ -159,8 +164,9 @@ impl TryFrom<String> for ControlToken {
     type Error = String;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        static PATTERN: LazyLock<Regex> =
-            LazyLock::new(|| Regex::new(CONTROL_TOKEN_PATTERN).expect("the control token pattern compiles"));
+        static PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+            Regex::new(CONTROL_TOKEN_PATTERN).expect("the control token pattern compiles")
+        });
         if PATTERN.is_match(&value) {
             Ok(Self(value))
         } else {
@@ -336,7 +342,11 @@ pub enum LiveViewerMessage {
         repeat: bool,
         #[garde(range(max = 3))]
         location: u8,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         #[schemars(with = "String")]
         #[garde(length(chars, min = 1, max = 16))]
         text: Option<String>,
@@ -396,7 +406,11 @@ pub enum LiveViewerMessage {
         tab: TabId,
         #[garde(skip)]
         accept: bool,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         #[schemars(with = "String")]
         #[garde(length(chars, max = 2000))]
         text: Option<String>,

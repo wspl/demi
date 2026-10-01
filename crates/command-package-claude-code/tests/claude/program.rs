@@ -117,7 +117,10 @@ async fn the_service_answers_one_document_for_each_invocation() {
     .await
     .unwrap();
     let info = service.client().info().await.unwrap();
-    assert_eq!(info.operations, ["claude-code.ensure", "claude-code.status"]);
+    assert_eq!(
+        info.operations,
+        ["claude-code.ensure", "claude-code.status"]
+    );
 
     let (document, completion) = invoke(
         &service,
@@ -150,14 +153,20 @@ async fn the_service_answers_one_document_for_each_invocation() {
     )
     .await;
     let error = completion.error.unwrap();
-    assert_eq!((completion.exit_code, error.code.as_str()), (1, "invalid_release"));
+    assert_eq!(
+        (completion.exit_code, error.code.as_str()),
+        (1, "invalid_release")
+    );
     assert_eq!(
         document,
         json!({ "ok": false, "code": "invalid_release", "message": error.message })
     );
 
     let (document, completion) = invoke(&service, "claude-code.ensure", b"{}".to_vec()).await;
-    assert_eq!((document["ok"].clone(), document["code"].clone()), (json!(false), json!("invalid_release")));
+    assert_eq!(
+        (document["ok"].clone(), document["code"].clone()),
+        (json!(false), json!("invalid_release"))
+    );
     assert_eq!(completion.exit_code, 1);
 
     let (document, _) = invoke(&service, "claude-code.ensure", vec![b' '; 64 * 1024 + 1]).await;

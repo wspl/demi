@@ -14,9 +14,7 @@ use std::{future::Future, pin::Pin, sync::Arc};
 use demi_command_package_browser_chrome::driver::installation::BrowserDirectories;
 use demi_command_package_browser_protocol::{Operation, OperationError, browser as protocol};
 use demi_command_protocol::{Completion, Invocation};
-use demi_command_sdk::{
-    ConversationContext, Handler, InvocationContext, Numbers, ServiceError,
-};
+use demi_command_sdk::{ConversationContext, Handler, InvocationContext, Numbers, ServiceError};
 
 /// The service.
 pub struct DemiBrowser {
@@ -66,7 +64,7 @@ impl Handler for DemiBrowser {
         let browsers = self.browsers.clone();
         match Operation::parse(&context.request.operation, context.request.args.clone()) {
             Ok(Operation::Browser(operation)) => {
-                Box::pin(async move { browsers.invoke(context, Ok(operation)).await })
+                Box::pin(async move { browsers.invoke(context, Ok(*operation)).await })
             }
             Ok(Operation::Live) => Box::pin(async move { browsers.live(context).await }),
             Err(OperationError::Unknown(operation)) => {

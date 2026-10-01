@@ -95,7 +95,11 @@ impl CompletionId {
 
 impl fmt::Display for CompletionId {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{COMPLETION_PREFIX}{}:{}", self.child, self.round)
+        write!(
+            formatter,
+            "{COMPLETION_PREFIX}{}:{}",
+            self.child, self.round
+        )
     }
 }
 
@@ -154,7 +158,9 @@ fn has_body_when_explicit(
             return Ok(());
         };
         if is_blank(content) {
-            return Err(garde::Error::new("an explicit agent message must not be empty"));
+            return Err(garde::Error::new(
+                "an explicit agent message must not be empty",
+            ));
         }
         Ok(())
     }

@@ -5,15 +5,15 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_shared_types::{B64Bytes, ThinkingConfig, TokenUsage};
+use demi_host_interface::{ProcessEnd, Signal, SpawnEnv, SpawnRequest};
+use demi_provider_claude_code::{ClaudeCodeConfig, ClaudeCodeProvider};
 use demi_provider_common::credentials::MemoryCredentialPool;
 use demi_provider_common::quota::MemorySnapshots;
 use demi_provider_common::{
     ErrorCode, InferenceItem, InferenceRequest, MediaBytes, Medium, ProviderEvent, ProviderFailure,
     ProviderRun, UserPart,
 };
-use demi_provider_claude_code::{ClaudeCodeConfig, ClaudeCodeProvider};
-use demi_host_interface::{ProcessEnd, Signal, SpawnEnv, SpawnRequest};
+use demi_shared_types::{B64Bytes, ThinkingConfig, TokenUsage};
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
@@ -194,19 +194,22 @@ fn a_line_the_cli_prints_before_answering_initialize_is_read_by_the_run_after_th
             let provider = provider().await;
             let (placement, mut starts) = ScriptedPlacement::new();
             let mut runtime = runtime_of(&provider, &placement);
-            let (events, ()) = tokio::join!(all_events(runtime.run(request(vec![user("hi")]))), async {
-                let mut cli = starts.next().await;
-                let initialize = cli.read().await;
-                // The CLI tells its commands before it answers.
-                cli.say(json!({ "type": "system", "subtype": "commands_changed", "commands": [] }));
-                cli.say(json!({
+            let (events, ()) =
+                tokio::join!(all_events(runtime.run(request(vec![user("hi")]))), async {
+                    let mut cli = starts.next().await;
+                    let initialize = cli.read().await;
+                    // The CLI tells its commands before it answers.
+                    cli.say(
+                        json!({ "type": "system", "subtype": "commands_changed", "commands": [] }),
+                    );
+                    cli.say(json!({
                     "type": "control_response",
                     "response": { "subtype": "success", "request_id": initialize["request_id"] },
                 }));
-                assert_eq!(cli.read().await, user_line("hi"));
-                cli.text("hello");
-                cli.result(1, 1);
-            });
+                    assert_eq!(cli.read().await, user_line("hi"));
+                    cli.text("hello");
+                    cli.result(1, 1);
+                });
             events
         });
         // The test gave up waiting only when this run spun.

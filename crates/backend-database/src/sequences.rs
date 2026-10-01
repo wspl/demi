@@ -20,7 +20,11 @@ pub fn next(connection: &Connection, sequence: Sequence) -> Result<u64, StorageE
 /// The first of the next `count` numbers of `sequence`, which the database
 /// has advanced past when it answers (`native-runtime.md` § Conversation
 /// numbers).
-pub fn reserve(connection: &Connection, sequence: Sequence, count: u32) -> Result<u64, StorageError> {
+pub fn reserve(
+    connection: &Connection,
+    sequence: Sequence,
+    count: u32,
+) -> Result<u64, StorageError> {
     let number: i64 = connection
         .prepare_cached(
             "INSERT INTO sequences (name, next) VALUES (?1, 1 + ?2)
@@ -33,11 +37,16 @@ pub fn reserve(connection: &Connection, sequence: Sequence, count: u32) -> Resul
 
 /// Each sequence that gave a number out, with its next one.
 pub fn all(connection: &Connection) -> Result<Vec<(Sequence, u64)>, StorageError> {
-    let mut statement = connection.prepare_cached("SELECT name, next FROM sequences ORDER BY name")?;
+    let mut statement =
+        connection.prepare_cached("SELECT name, next FROM sequences ORDER BY name")?;
     let mut rows = statement.query([])?;
     let mut sequences = Vec::new();
     while let Some(row) = rows.next()? {
-        let sequence = decode("sequences", "name", row.get::<_, String>(0)?.parse::<Sequence>())?;
+        let sequence = decode(
+            "sequences",
+            "name",
+            row.get::<_, String>(0)?.parse::<Sequence>(),
+        )?;
         let next = decode("sequences", "next", u64::try_from(row.get::<_, i64>(1)?))?;
         sequences.push((sequence, next));
     }
@@ -46,7 +55,10 @@ pub fn all(connection: &Connection) -> Result<Vec<(Sequence, u64)>, StorageError
 
 /// Starts a Fork's destination at its source's next numbers, so a number
 /// the copied history names is never given to something new.
-pub fn continue_from(connection: &Connection, sequences: &[(Sequence, u64)]) -> Result<(), StorageError> {
+pub fn continue_from(
+    connection: &Connection,
+    sequences: &[(Sequence, u64)],
+) -> Result<(), StorageError> {
     let mut insert = connection.prepare_cached(
         "INSERT INTO sequences (name, next) VALUES (?1, ?2)
          ON CONFLICT (name) DO UPDATE SET next = max(next, excluded.next)",

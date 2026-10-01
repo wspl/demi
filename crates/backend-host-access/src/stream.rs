@@ -13,17 +13,19 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_command_protocol::{CommandCaller, PackageDescriptor};
+use demi_backend_remote_host::{
+    Pipe, PipeReader, PipeWriter, ServiceCallError, ServiceRequest, ServiceStream,
+};
+use demi_backend_runners::command_context::command_context;
+use demi_backend_runners::native::NativeCatalog;
 use demi_command_declarations::NativeOperation;
-use demi_shared_gates::GateLease;
-use demi_backend_remote_host::{Pipe, PipeReader, PipeWriter, ServiceCallError, ServiceRequest, ServiceStream};
+use demi_command_protocol::{CommandCaller, PackageDescriptor};
 use demi_host_interface::HostErrorKind;
+use demi_shared_gates::GateLease;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::ConversationId;
 use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
-use demi_backend_runners::command_context::command_context;
-use demi_backend_runners::native::NativeCatalog;
 
 use crate::HostShard;
 use crate::access::{Attention, ConversationHost, HostAccessError, Waits};
@@ -152,14 +154,21 @@ impl dyn HostShard + '_ {
         let device = access.device.as_str();
         let input = self.pipes().to_device(device);
         let output = self.pipes().from_device(device);
-        let to_host = input.writer().expect("a pipe just made has its source free");
+        let to_host = input
+            .writer()
+            .expect("a pipe just made has its source free");
         let from_host = output.reader().expect("a pipe just made has its sink free");
         let waits = Waits {
             cancel,
             ended: Some(&access.open.ended),
         };
         let opened = waits
-            .wait(access.host.host.open_service(request, input.wire_ref(), output.wire_ref()))
+            .wait(
+                access
+                    .host
+                    .host
+                    .open_service(request, input.wire_ref(), output.wire_ref()),
+            )
             .await;
         let refused = match opened {
             Ok(Ok(service)) => {
@@ -171,7 +180,9 @@ impl dyn HostShard + '_ {
                 });
             }
             Err(error) => StreamError::Access(error),
-            Ok(Err(error)) if matches!(error.kind, HostErrorKind::Offline) => HostAccessError::Host(error).into(),
+            Ok(Err(error)) if matches!(error.kind, HostErrorKind::Offline) => {
+                HostAccessError::Host(error).into()
+            }
             Ok(Err(error)) => StreamError::Failed(error.message),
         };
         input.fail("the user stream never opened");
@@ -198,7 +209,10 @@ impl dyn HostShard + '_ {
                         let request = self
                             .service_request(&record.id, host, &call.binding, Some(&call.args))
                             .await?;
-                        let answer = host.host.call_service(request, Bytes::new(), call.max_bytes).await?;
+                        let answer = host
+                            .host
+                            .call_service(request, Bytes::new(), call.max_bytes)
+                            .await?;
                         Ok::<_, UserCallError>(answer)
                     })
                     .await?;
@@ -210,14 +224,24 @@ impl dyn HostShard + '_ {
         // in, so a transition ends the call.
         let access = self.admit_stream(id, attention, cancel).await?;
         let request = self
-            .service_request(&access.conversation, &access.host, &call.binding, Some(&call.args))
+            .service_request(
+                &access.conversation,
+                &access.host,
+                &call.binding,
+                Some(&call.args),
+            )
             .await?;
         let waits = Waits {
             cancel,
             ended: Some(&access.open.ended),
         };
         let answer = waits
-            .wait(access.host.host.call_service(request, Bytes::new(), call.max_bytes))
+            .wait(
+                access
+                    .host
+                    .host
+                    .call_service(request, Bytes::new(), call.max_bytes),
+            )
             .await??;
         Ok(answer)
     }
@@ -234,7 +258,13 @@ impl dyn HostShard + '_ {
         binding: &ServiceBinding,
         args: Option<&Map<String, Value>>,
     ) -> Result<ServiceRequest, HostAccessError> {
-        let context = command_context(self.control(), self.user(), conversation, CommandCaller::User {}).await?;
+        let context = command_context(
+            self.control(),
+            self.user(),
+            conversation,
+            CommandCaller::User {},
+        )
+        .await?;
         Ok(ServiceRequest {
             context,
             package: binding.package.clone(),

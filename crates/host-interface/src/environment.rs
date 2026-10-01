@@ -6,7 +6,9 @@
 use std::{cell::RefCell, rc::Rc, sync::Arc, time::Duration};
 
 use bytes::Bytes;
-use demi_shared_types::{BinaryStdout, CommandId, EditedFile, NodeId, OutputView, Sequence, ShellId, StreamView};
+use demi_shared_types::{
+    BinaryStdout, CommandId, EditedFile, NodeId, OutputView, Sequence, ShellId, StreamView,
+};
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
