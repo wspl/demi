@@ -1,0 +1,35 @@
+[package]
+name = "demi-host-interface"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+# One test binary, the integration tests' (`crates-and-packages.md`
+# § Module layout); no doc examples.
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+bytes.workspace = true
+demi-command-protocol = { path = "../command-protocol" }
+demi-command-declarations = { path = "../command-declarations" }
+demi-shared-types = { path = "../shared-types" }
+futures-util.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_with.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+
+[dev-dependencies]
+# The crate's own tests use its test support.
+demi-host-interface = { path = ".", features = ["testing"] }
+tokio = { workspace = true, features = ["test-util"] }
+
+[features]
+# The Host conformance cases and an in-memory rpc port (`shell::testing`).
+testing = []

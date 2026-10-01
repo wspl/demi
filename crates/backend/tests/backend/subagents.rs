@@ -10,18 +10,18 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
-use demi_agent_protocol::JobPhase;
+use demi_conversation_socket_protocol::JobPhase;
 use demi_backend_providers::llm::families::{FamilyArgs, FamilyCredential, FamilyError, ProviderFamily};
-use demi_core::{
+use demi_shared_types::{
     AuthState, Block, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
     RuntimeState, Timestamp,
 };
-use demi_provider::testing::event;
-use demi_provider::{
+use demi_provider_common::testing::event;
+use demi_provider_common::{
     Capabilities, CatalogError, InferenceRequest, Provider, ProviderEvent, ProviderRun, ProviderRuntime, RequestLimits,
     RuntimeEnv, RuntimeError,
 };
-use demi_web_api::providers::{CredentialKind, ProviderAnswer};
+use demi_web_api_protocol::providers::{CredentialKind, ProviderAnswer};
 use futures_util::future::{BoxFuture, LocalBoxFuture};
 use futures_util::{StreamExt as _, stream};
 use reqwest::StatusCode;
@@ -172,7 +172,7 @@ impl ProviderRuntime for TreeRuntime {
         Box::pin(async {})
     }
 
-    fn request_limits(&self, _model: &demi_core::Model) -> RequestLimits {
+    fn request_limits(&self, _model: &demi_shared_types::Model) -> RequestLimits {
         RequestLimits::default()
     }
 }

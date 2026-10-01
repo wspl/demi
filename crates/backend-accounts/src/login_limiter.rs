@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use demi_web_api::text::EmailAddress;
+use demi_web_api_protocol::text::EmailAddress;
 use tokio::time::{Duration, Instant};
 
 /// Failures, each within `WINDOW` of the one before, that lock an address.

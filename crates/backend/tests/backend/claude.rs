@@ -18,9 +18,9 @@
 use std::os::unix::fs::PermissionsExt as _;
 use std::time::Duration;
 
-use demi_core::Block;
-use demi_provider::testing::{MockResponse, MockVendor};
-use demi_web_api::providers::{AddedAccount, CliInstall, NewestVersion, ProviderAnswer, ProviderCli};
+use demi_shared_types::Block;
+use demi_provider_common::testing::{MockResponse, MockVendor};
+use demi_web_api_protocol::providers::{AddedAccount, CliInstall, NewestVersion, ProviderAnswer, ProviderCli};
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 

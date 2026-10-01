@@ -6,7 +6,7 @@
 //! retired. The backend applies the rule to stored conversations
 //! (`storage.md` § Retiring tool media).
 
-use demi_core::{
+use demi_shared_types::{
     Block, GoneCause, ModelMediaKind, Timestamp, ToolMediaSource, ToolResultContentBlock,
 };
 use jiff::SignedDuration;

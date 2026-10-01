@@ -10,7 +10,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use demi_artifact::{Mode, Permissions, Publication, ReleaseFile, ReleaseRecord};
+use demi_shared_artifacts::{Mode, Permissions, Publication, ReleaseFile, ReleaseRecord};
 use demi_command_protocol::{PackageArtifact, PackageDescriptor, canonical_digest};
 use demi_runner_protocol::release::RunnerRelease;
 use serde::Serialize;
@@ -70,16 +70,16 @@ async fn package(options: &Options, cancel: &CancellationToken) -> Result<String
     let release = match executable {
         Executable::Runner => Release::Runner,
         Executable::File => Release::Package {
-            id: demi_file_protocol::PACKAGE,
-            operations: demi_file_protocol::OPERATIONS.iter().map(|&name| name.to_owned()).collect(),
+            id: demi_command_package_file_protocol::PACKAGE,
+            operations: demi_command_package_file_protocol::OPERATIONS.iter().map(|&name| name.to_owned()).collect(),
         },
         Executable::Browser => Release::Package {
-            id: demi_browser_protocol::PACKAGE,
-            operations: demi_browser_protocol::Operation::names().map(String::from).collect(),
+            id: demi_command_package_browser_protocol::PACKAGE,
+            operations: demi_command_package_browser_protocol::Operation::names().map(String::from).collect(),
         },
         Executable::Claude => Release::Package {
-            id: demi_claude_protocol::PACKAGE,
-            operations: demi_claude_protocol::Operation::ALL
+            id: demi_command_package_claude_code_protocol::PACKAGE,
+            operations: demi_command_package_claude_code_protocol::Operation::ALL
                 .map(|operation| operation.name().to_owned())
                 .to_vec(),
         },
@@ -94,9 +94,9 @@ async fn package(options: &Options, cancel: &CancellationToken) -> Result<String
     for target in super::targets(&[executable], &options.targets)? {
         let name = executable.file_name(target);
         let source = artifacts.join(target).join("release").join(&name);
-        let digest = match demi_artifact::digest(&source, u64::MAX, cancel).await {
+        let digest = match demi_shared_artifacts::digest(&source, u64::MAX, cancel).await {
             Ok(digest) => digest,
-            Err(demi_artifact::Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
+            Err(demi_shared_artifacts::Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
                 return Err(Error::NotBuilt {
                     executable,
                     target,
@@ -148,7 +148,7 @@ async fn command_package(
         name: DESCRIPTOR,
         bytes: &bytes,
     };
-    demi_artifact::publish_release(output, record, &built.files, cancel).await?;
+    demi_shared_artifacts::publish_release(output, record, &built.files, cancel).await?;
     Ok(format!(
         "Native package {id}@{VERSION}: {digest}\n{}",
         output.join(DESCRIPTOR).display()
@@ -180,7 +180,7 @@ async fn executable_release(
         name: RELEASE,
         bytes: &bytes,
     };
-    demi_artifact::publish_release(output, record, &built.files, cancel).await?;
+    demi_shared_artifacts::publish_release(output, record, &built.files, cancel).await?;
     Ok(format!(
         "Release {}@{VERSION}\n{}",
         executable.name(),
@@ -221,14 +221,14 @@ async fn runner(output: &Path, built: Built, cancel: &CancellationToken) -> Resu
         name: MANIFEST,
         bytes: &bytes,
     };
-    demi_artifact::publish_release(&directory, manifest, &built.files, cancel).await?;
+    demi_shared_artifacts::publish_release(&directory, manifest, &built.files, cancel).await?;
     // The pointer moves only once the release it names is in place.
     let pointer = Publication {
         mode: Mode::Replace,
         permissions: Permissions::Default,
         durable: true,
     };
-    demi_artifact::publish_bytes(&output.join(MANIFEST), &bytes, pointer).await?;
+    demi_shared_artifacts::publish_bytes(&output.join(MANIFEST), &bytes, pointer).await?;
     Ok(format!("Runner release: {}", directory.display()))
 }
 
@@ -310,7 +310,7 @@ mod tests {
         build(&artifacts, Executable::Runner, TARGETS, "first");
         let refused = package(&options(Executable::Runner, &artifacts, &output, &[]), &cancel).await;
         assert!(
-            matches!(&refused, Err(Error::Artifact(demi_artifact::Error::Conflict(path))) if *path == linux),
+            matches!(&refused, Err(Error::Artifact(demi_shared_artifacts::Error::Conflict(path))) if *path == linux),
             "{refused:?}"
         );
         assert_eq!(pointer(&output), second);
@@ -331,7 +331,7 @@ mod tests {
         let mut targets = serde_json::Map::new();
         for target in linux {
             let path = artifacts.join(target).join("release/demi-machines");
-            let digest = demi_artifact::digest(&path, u64::MAX, &cancel).await.unwrap();
+            let digest = demi_shared_artifacts::digest(&path, u64::MAX, &cancel).await.unwrap();
             targets.insert(target.to_owned(), serde_json::json!({"sha256": digest.sha256, "size": digest.size}));
         }
         let record: serde_json::Value = serde_json::from_slice(&std::fs::read(output.join(RELEASE)).unwrap()).unwrap();
@@ -346,7 +346,7 @@ mod tests {
         // is immutable.
         build(&artifacts, Executable::Machines, &linux, "rebuilt");
         let refused = package(&options(Executable::Machines, &artifacts, &output, &[]), &cancel).await;
-        assert!(matches!(refused, Err(Error::Artifact(demi_artifact::Error::Conflict(_)))), "{refused:?}");
+        assert!(matches!(refused, Err(Error::Artifact(demi_shared_artifacts::Error::Conflict(_)))), "{refused:?}");
     }
 
     #[tokio::test]
@@ -367,9 +367,9 @@ mod tests {
             .unwrap();
         let descriptor = serde_json::from_slice(&std::fs::read(output.join(DESCRIPTOR)).unwrap()).unwrap();
         let descriptor = PackageDescriptor::parse(descriptor).unwrap();
-        assert_eq!(descriptor.id, demi_browser_protocol::PACKAGE);
+        assert_eq!(descriptor.id, demi_command_package_browser_protocol::PACKAGE);
         assert_eq!(descriptor.version, VERSION);
-        let declared: Vec<&str> = demi_browser_protocol::Operation::names().collect();
+        let declared: Vec<&str> = demi_command_package_browser_protocol::Operation::names().collect();
         assert_eq!(descriptor.operations, declared);
         assert_eq!(descriptor.targets.keys().collect::<Vec<_>>(), carried);
         assert_eq!(names(&output), [carried[0], DESCRIPTOR, carried[1]]);

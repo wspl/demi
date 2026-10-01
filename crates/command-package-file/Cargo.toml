@@ -1,0 +1,38 @@
+[package]
+name = "demi-file"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+# One test binary, the integration tests' (`crates-and-packages.md`
+# § Module layout); no doc examples.
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "demi-file"
+path = "src/main.rs"
+test = false
+
+[dependencies]
+bytes.workspace = true
+demi-shared-artifacts = { path = "../shared-artifacts" }
+demi-command-protocol = { path = "../command-protocol" }
+demi-command-sdk = { path = "../command-sdk" }
+demi-shared-types = { path = "../shared-types" }
+demi-command-package-file-protocol = { path = "../command-package-file-protocol" }
+demi-shared-gates = { path = "../shared-gates" }
+regex = "1"
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+# The program started and driven as a service (`testing::ServiceProcess`).
+demi-command-sdk = { path = "../command-sdk", features = ["testing"] }
+serde_json.workspace = true
+tempfile = "3"

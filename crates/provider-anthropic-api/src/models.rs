@@ -1,7 +1,7 @@
 //! The provider's own model directory (`models.md` § Directories): a list
 //! built into the provider, which reading makes no request for.
 
-use demi_core::{ProviderModel, ProviderModelList, Timestamp};
+use demi_shared_types::{ProviderModel, ProviderModelList, Timestamp};
 
 /// The Claude models an `anthropic` entry offers when it has no configured
 /// list and no vendor catalog.

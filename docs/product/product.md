@@ -108,7 +108,7 @@ The conversation interface exposes steering, queued messages, stop,
 compaction, model switching, message editing, Fork, and child/terminal
 inspection. [Message editing](../agent/message-editing.md) and
 [Conversation Fork](../agent/conversation-fork.md) define their history
-boundaries. Interactive stdin is an agent-protocol capability; exposing a
+boundaries. Interactive stdin is a `conversation-socket-protocol` capability; exposing a
 terminal input control remains separate from read-only job inspection.
 
 A pending steer can be delivered at once instead of at the next continuation

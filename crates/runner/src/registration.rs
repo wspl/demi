@@ -22,7 +22,7 @@ use demi_runner_protocol::{
     values::{BackendUrl, DeviceToken},
     wire,
 };
-use demi_runner_services::ServiceRegistry;
+use demi_runner_command_packages::ServiceRegistry;
 use std::{collections::BTreeMap, io, path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;

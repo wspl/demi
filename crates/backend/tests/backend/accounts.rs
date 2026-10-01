@@ -11,17 +11,17 @@ use std::time::Duration;
 
 use demi_backend_providers::llm::families::FamilyRegistry;
 use demi_backend_providers::vault::logins::LoginTiming;
-use demi_core::{QuotaWindow, SnapshotSource};
-use demi_provider::quota::ProbeCost;
-use demi_provider::testing::{MockResponse, MockVendor};
-use demi_web_api::auth::Role;
-use demi_web_api::error::ErrorCode;
-use demi_web_api::providers::{
+use demi_shared_types::{QuotaWindow, SnapshotSource};
+use demi_provider_common::quota::ProbeCost;
+use demi_provider_common::testing::{MockResponse, MockVendor};
+use demi_web_api_protocol::auth::Role;
+use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::providers::{
     Accounts, ActiveAccount, AddedAccount, CredentialKind, LoginAnswer, LoginStarted, LoginState,
     ProbeCost as ProbeCostDto, ProviderAnswer, ProviderDetails, ProviderDto, Providers, QuotaAnswer, QuotaCapability,
     VendorCatalog,
 };
-use demi_web_api::settings::InstanceMode;
+use demi_web_api_protocol::settings::InstanceMode;
 use reqwest::StatusCode;
 use serde_json::json;
 
@@ -216,7 +216,7 @@ async fn a_setup_token_becomes_a_sealed_account_that_no_answer_returns() {
         (seen.accounts.len(), seen.active.clone(), seen.quota.clone()),
         (0, None, None)
     );
-    assert_eq!(seen.auth, demi_core::AuthState::Authenticated { account_label: None });
+    assert_eq!(seen.auth, demi_shared_types::AuthState::Authenticated { account_label: None });
     backend.close().await;
 }
 

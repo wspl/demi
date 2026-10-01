@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use demi_provider::{
+use demi_provider_common::{
     InferenceRequest, ProviderEvent, ProviderFailure, encode_body, http_failure,
     quota::Observation,
     read_http_failure,

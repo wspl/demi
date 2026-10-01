@@ -5,7 +5,7 @@
 
 use aes_gcm::aead::{Aead, KeyInit, Payload};
 use aes_gcm::{Aes256Gcm, Nonce};
-use demi_web_api::ids::{CredentialId, ProviderId};
+use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 
 const NONCE_BYTES: usize = 12;
 

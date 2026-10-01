@@ -10,9 +10,9 @@
 
 use std::rc::{Rc, Weak};
 
-use demi_backend_idle::{Activity, IdlePolicy, Retirement};
-use demi_gates::{GateLease, Purpose};
-use demi_machines_protocol::CheckpointParams;
+use demi_backend_idle_watch::{Activity, IdlePolicy, Retirement};
+use demi_shared_gates::{GateLease, Purpose};
+use demi_machine_manager_protocol::CheckpointParams;
 use tokio::time::Instant;
 use tokio_util::task::AbortOnDropHandle;
 
@@ -29,7 +29,7 @@ impl dyn CloudShard {
             shard: Rc::downgrade(&self.this()),
             machine: machine.clone(),
         };
-        let watch = demi_backend_idle::watch(idle, window, sweep, self.tasks().clone());
+        let watch = demi_backend_idle_watch::watch(idle, window, sweep, self.tasks().clone());
         let maintenance = maintain(Rc::downgrade(&self.this()), machine.clone());
         vec![
             AbortOnDropHandle::new(self.tasks().spawn_local(watch)),

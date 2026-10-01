@@ -4,7 +4,7 @@
 //! wakeups still scheduled. Pure state: the session decides when a boundary
 //! takes them.
 
-use demi_core::{AgentMessage, BlockId, PendingSteer, Timestamp, WakeupId};
+use demi_shared_types::{AgentMessage, BlockId, PendingSteer, Timestamp, WakeupId};
 
 use demi_agent_store::{PendingAgentInput, ScheduledWakeup};
 

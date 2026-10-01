@@ -21,7 +21,7 @@ use tokio::{
 };
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
-use demi_command_service::paths::resolve;
+use demi_command_sdk::paths::resolve;
 use demi_runner_process::file_diff::line_counts;
 use demi_runner_protocol::wire::{self, ChangeKind, Frame, Inbound};
 
@@ -119,8 +119,8 @@ impl Clone for GitError {
             GitError::Internal(message) => GitError::Internal(message.clone()),
             // Out of open files stays so, whatever the error wraps: the
             // request then waits (`runner.md` § Load).
-            GitError::Io(error) if demi_command_service::descriptors::exhausted(error) => {
-                GitError::Io(demi_command_service::descriptors::exhaustion())
+            GitError::Io(error) if demi_command_sdk::descriptors::exhausted(error) => {
+                GitError::Io(demi_command_sdk::descriptors::exhaustion())
             }
             GitError::Io(error) => GitError::Io(match error.raw_os_error() {
                 Some(code) => io::Error::from_raw_os_error(code),
@@ -133,7 +133,7 @@ impl Clone for GitError {
 fn internal<E: std::error::Error + Send + Sync + 'static>(error: E) -> GitError {
     // Running out of open files stays an IO error, so the request waits for
     // one (`runner.md` § Load).
-    if demi_command_service::descriptors::exhausted(&error) {
+    if demi_command_sdk::descriptors::exhausted(&error) {
         return GitError::Io(io::Error::other(error));
     }
     GitError::Internal(error.to_string())
@@ -663,9 +663,9 @@ async fn interruptible<T: Send + 'static>(
 fn discover(root: &Path) -> Result<Option<gix::Repository>, GitError> {
     match gix::discover(root) {
         Ok(repo) => Ok(Some(repo)),
-        Err(error) if demi_command_service::descriptors::exhausted(&error) => Err(internal(error)),
+        Err(error) if demi_command_sdk::descriptors::exhausted(&error) => Err(internal(error)),
         Err(gix::discover::Error::Discover(_)) => match std::fs::File::open(root) {
-            Err(error) if demi_command_service::descriptors::exhausted(&error) => {
+            Err(error) if demi_command_sdk::descriptors::exhausted(&error) => {
                 Err(GitError::Io(error))
             }
             _ => Ok(None),
@@ -1242,7 +1242,7 @@ pub async fn handle(
 ) -> Option<Result<Frame, wire::WireError>> {
     let id = message.git_request_id()?;
     // Out of open files, the request waits for one (`runner.md` § Load).
-    let result = demi_command_service::descriptors::retry(cancel, || {
+    let result = demi_command_sdk::descriptors::retry(cancel, || {
         call(service, message, default_cwd, cancel)
     })
     .await;

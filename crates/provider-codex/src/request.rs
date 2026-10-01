@@ -5,7 +5,7 @@
 use std::borrow::Cow;
 
 use bytes::Bytes;
-use demi_provider::{
+use demi_provider_common::{
     InferenceRequest, json_body,
     openai_request::{
         AssistantReplay, InputItem, Reasoning, ReasoningReplay, ResponsesDialect, ResponsesTool,

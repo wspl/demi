@@ -5,7 +5,7 @@
 //! sidebar keeps the order the user gave it, within each partition, however
 //! much the rows change.
 
-use demi_web_api::error::ErrorCode;
+use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 

@@ -44,15 +44,15 @@ cargo xtask native package --package demi-claude --output .cache/releases/demi-c
 ## Cloud image in Lima
 
 Build the image inside the VM as the
-[guest image build](../../packages/guest-image/README.md) describes, prefixing
+[guest image build](../../cloud-guest-image/README.md) describes, prefixing
 the build command with `limactl shell demi-machines --`. The VM sees the Mac's
 home directory at the same path. Keep the image's output and the manager's
 working images on the VM's Linux disk, never on the shared Mac directory.
 
 ## Machine manager in Lima
 
-`crates/machines/lima/demi-machines.yaml` and
-`crates/machines/scripts/lima-machines.sh` provision the Linux dependencies, a
+`crates/machine-manager/lima/demi-machines.yaml` and
+`crates/machine-manager/scripts/lima-machines.sh` provision the Linux dependencies, a
 separate persistent data disk, the manager service, the network policy, and
 Unix socket forwarding. The VM runs the same privileged manager and runsc
 profile as a Linux execution host. The script copies the manager built for the
@@ -63,7 +63,7 @@ replaces the executable of a running manager.
 cargo xtask native build --package demi-machines --target aarch64-unknown-linux-musl
 cargo xtask native package --package demi-machines \
   --target aarch64-unknown-linux-musl --output .cache/releases/demi-machines-<build>
-bash crates/machines/scripts/lima-machines.sh \
+bash crates/machine-manager/scripts/lima-machines.sh \
   --manager .cache/releases/demi-machines-<build>/aarch64-unknown-linux-musl/demi-machines \
   --image /opt/demi-cloud/releases/build-id --dns 1.1.1.1
 ```
@@ -103,7 +103,7 @@ cargo-zigbuild and run in the VM. The tests that need root run with
 
 ```sh
 cargo zigbuild --tests --target aarch64-unknown-linux-musl \
-  -p demi-machines -p demi-machines-protocol --target-dir .cache/linux-target
+  -p demi-machines -p demi-machine-manager-protocol --target-dir .cache/linux-target
 limactl shell demi-machines -- <test executable>
 limactl shell demi-machines -- sudo <test executable> --include-ignored
 ```

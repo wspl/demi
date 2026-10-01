@@ -7,9 +7,9 @@
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
-use demi_shell::{Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
-use demi_web_api::exposes::{ExposeAddress, ExposeAnswer, Exposes};
-use demi_web_api::ids::ExposeId;
+use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
+use demi_web_api_protocol::exposes::{ExposeAddress, ExposeAnswer, Exposes};
+use demi_web_api_protocol::ids::ExposeId;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use demi_backend_expose::records::ExposeError;

@@ -11,12 +11,12 @@ mod stream;
 
 use std::sync::Arc;
 
-use demi_provider::{
+use demi_provider_common::{
     Provider, ProviderRuntime, RuntimeEnv, Secret,
     testing::{FixedClock, MockResponse, MockVendor},
 };
 use demi_provider_anthropic_api::{AnthropicConfig, AnthropicProvider};
-pub(crate) use demi_provider::testing::run;
+pub(crate) use demi_provider_common::testing::run;
 
 /// When the scripted vendor answers.
 pub(crate) const NOW: &str = "2026-09-18T14:00:00.000Z";

@@ -3,7 +3,7 @@
 //! reach.
 
 use demi_command_protocol::LocalInvocation;
-use demi_command_service::{Handler, ServiceError};
+use demi_command_sdk::{Handler, ServiceError};
 #[cfg(unix)]
 use demi_runner_process::{command_client::ALIVE, private_files::chmod};
 use demi_runner_process::command_client::Stream;
@@ -46,25 +46,25 @@ impl Server {
         let counted = active.clone();
         let owner = tokio::spawn(async move {
             let mut connections = tokio::task::JoinSet::new();
-            let mut backoff = demi_command_service::descriptors::Backoff::default();
+            let mut backoff = demi_command_sdk::descriptors::Backoff::default();
             let mut outcome = loop {
                 tokio::select! {
                     _ = stop.cancelled() => break Ok(()),
                     socket = listener.accept() => {
                         match socket {
                             Ok(socket) => {
-                                backoff = demi_command_service::descriptors::Backoff::default();
+                                backoff = demi_command_sdk::descriptors::Backoff::default();
                                 let registration = ActiveConnection::new(&counted);
                                 let handler = handler.clone();
                                 let cancel = stop.child_token();
                                 connections.spawn(async move {
                                     let _registration = registration;
-                                    demi_command_service::serve_cancellable(socket, handler, cancel).await
+                                    demi_command_sdk::serve_cancellable(socket, handler, cancel).await
                                 });
                             }
                             // Out of open files, the connection stays queued until one
                             // closes (`runner.md` § Load).
-                            Err(error) if demi_command_service::descriptors::exhausted(&error) => backoff.wait().await,
+                            Err(error) if demi_command_sdk::descriptors::exhausted(&error) => backoff.wait().await,
                             Err(error) => break Err(error),
                         }
                     }

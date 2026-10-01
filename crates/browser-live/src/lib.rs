@@ -2,7 +2,7 @@
 //! viewers of the conversation's browser, the capture of the tabs they watch,
 //! its pacing, and the relay of their input to the tab.
 
-use demi_browser_protocol::browser as protocol;
+use demi_command_package_browser_protocol::browser as protocol;
 
 pub mod hub;
 pub mod viewer;

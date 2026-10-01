@@ -12,10 +12,10 @@ doctest = false
 bench = false
 
 [dependencies]
-demi-backend-storage = { path = "../backend-storage" }
+demi-backend-database = { path = "../backend-database" }
 demi-command-protocol = { path = "../command-protocol" }
-demi-core = { path = "../core" }
-demi-web-api = { path = "../web-api" }
+demi-shared-types = { path = "../shared-types" }
+demi-web-api-protocol = { path = "../web-api-protocol" }
 # `std` for `password_hash::Error` as a `std::error::Error`; `password-hash`'s
 # `getrandom` gives `SaltString::generate` its operating-system RNG.
 argon2 = { version = "0.5", features = ["std"] }

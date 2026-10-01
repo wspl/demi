@@ -3,8 +3,8 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use demi_core::{Clock, FailureSource, ProviderErrorDiagnostics, TokenUsage};
-use demi_provider::{
+use demi_shared_types::{Clock, FailureSource, ProviderErrorDiagnostics, TokenUsage};
+use demi_provider_common::{
     ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ToolCall, encode_body,
     http_failure, read_http_failure, tagged_wire,
     wire::{NonEmpty, ReportedString, Tagged, decode_tagged, sse_data},

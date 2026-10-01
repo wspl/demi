@@ -6,12 +6,12 @@ hardware configuration. The manager combines those files with each device's
 persistent storage, as defined in [Managed hosts](managed-hosts.md#images).
 
 [Cloud setup](setup.md) describes deployment. The
-[build instructions](../../packages/guest-image/README.md) assemble and publish
+[build instructions](../../cloud-guest-image/README.md) assemble and publish
 this format on a matching Linux builder.
 
 ## Release artifacts
 
-`packages/guest-image` holds the Linux root filesystem build. Each architecture
+`cloud-guest-image` holds the Linux root filesystem build. Each architecture
 produces:
 
 | Artifact | Contents |
@@ -27,7 +27,7 @@ Its runner release must name the embedded runner executable, and each command
 package release must have its artifact for the image's target embedded under
 that artifact's content-addressed path. The SHA-256 of the exact manifest file
 bytes is `baseVersion`; one hash names one immutable build. The manifest's type
-is defined once, in the `machines-protocol` crate: the packaging command
+is defined once, in the `machine-manager-protocol` crate: the packaging command
 validates a manifest with it before publishing, and the manager validates a
 release with it before importing.
 
@@ -51,7 +51,7 @@ image on another architecture.
 A build runs as root on a Linux builder of the target architecture, in two
 stages:
 
-1. `packages/guest-image/rootfs/build.sh` creates the Ubuntu tree with
+1. `cloud-guest-image/rootfs/build.sh` creates the Ubuntu tree with
    debootstrap. Inside a chroot, it installs the listed packages and `tini`,
    creates the `demi` user and its sudo rule, applies the file overlay, and
    removes package caches, runtime state, and machine identity. These steps
@@ -76,24 +76,24 @@ The image has the architecture that build runs on. On a Linux builder, the
 `xtask` that the workspace's one Cargo selection builds into `target/debug`
 also works: it trusts the platform's certificate authorities beside its own
 and follows `HTTPS_PROXY`, so it downloads through a proxy that re-signs TLS.
-The [build instructions](../../packages/guest-image/README.md) give the
+The [build instructions](../../cloud-guest-image/README.md) give the
 options for a builder behind such a proxy.
 
 ## Root filesystem contents
 
 The base is the Ubuntu release that the build script pins, and the manifest
 records it. Its system package inventory has one source:
-[packages.txt](../../packages/guest-image/rootfs/packages.txt). The build also
+[packages.txt](../../cloud-guest-image/rootfs/packages.txt). The build also
 installs standalone `uv`, pinned Chrome for Testing, and the shipped native
 artifacts. It records resolved versions and hashes rather than maintaining a
 second version list in documentation.
 
 Chrome comes from the browser release pinned in the repository and is installed
-by the same installer that paired devices use, in the `artifact` crate, so one
+by the same installer that paired devices use, in the `shared-artifacts` crate, so one
 implementation downloads, verifies, and unpacks it everywhere. uv is checked
 against a digest pinned in the repository: a digest fetched from the same
 release as uv would prove only that the download arrived intact, not that it is
-the file that was reviewed. `packages/guest-image/rootfs/uv.json` pins its
+the file that was reviewed. `cloud-guest-image/rootfs/uv.json` pins its
 version and, for each architecture, the archive's URL, size, and SHA-256.
 Artifact downloads follow no redirect, and uv's GitHub release URLs redirect
 to short-lived storage URLs, so the pin names the same files on Astral's

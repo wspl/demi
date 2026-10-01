@@ -14,9 +14,9 @@ use bytes::Bytes;
 use tokio::{sync::mpsc, time::Instant};
 use tokio_util::sync::CancellationToken;
 
-use demi_browser_protocol::live::{HEARTBEAT_MS, LiveModuleMessage};
-use demi_command_service::Output;
-use demi_core::DecodeError;
+use demi_command_package_browser_protocol::live::{HEARTBEAT_MS, LiveModuleMessage};
+use demi_command_sdk::Output;
+use demi_shared_types::DecodeError;
 
 use crate::frames;
 

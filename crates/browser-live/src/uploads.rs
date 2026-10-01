@@ -12,7 +12,7 @@ use demi_browser_driver::{
     handles,
     operation::{BrowserError, Result},
 };
-use demi_browser_protocol::live::{ControlToken, LiveModuleMessage, UploadFile};
+use demi_command_package_browser_protocol::live::{ControlToken, LiveModuleMessage, UploadFile};
 use demi_browser_tabs::environment::BrowserEnvironment;
 
 use crate::{commands::find, hub::Membership, observers, protocol::TabId, writer::Writer};

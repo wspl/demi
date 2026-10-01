@@ -18,16 +18,16 @@ bench = false
 testing = []
 
 [dependencies]
-demi-artifact = { path = "../artifact" }
-demi-backend-objects = { path = "../backend-objects" }
-demi-backend-storage = { path = "../backend-storage" }
-demi-backend-sync = { path = "../backend-sync" }
+demi-shared-artifacts = { path = "../shared-artifacts" }
+demi-backend-blobs = { path = "../backend-blobs" }
+demi-backend-database = { path = "../backend-database" }
+demi-backend-page-sync = { path = "../backend-page-sync" }
 demi-command-protocol = { path = "../command-protocol" }
-demi-gates = { path = "../gates" }
-demi-host-remote = { path = "../host-remote" }
+demi-shared-gates = { path = "../shared-gates" }
+demi-backend-remote-host = { path = "../backend-remote-host" }
 demi-runner-protocol = { path = "../runner-protocol" }
-demi-shell = { path = "../shell" }
-demi-web-api = { path = "../web-api" }
+demi-host-interface = { path = "../host-interface" }
+demi-web-api-protocol = { path = "../web-api-protocol" }
 # A runner's connection is the WebSocket the edge upgraded.
 axum = { version = "0.8", features = ["ws"] }
 bytes.workspace = true
@@ -50,7 +50,7 @@ tracing.workspace = true
 url = { version = "2", features = ["serde"] }
 
 [dev-dependencies]
-demi-backend-objects = { path = "../backend-objects", features = ["testing"] }
-demi-browser-protocol = { path = "../browser-protocol" }
+demi-backend-blobs = { path = "../backend-blobs", features = ["testing"] }
+demi-command-package-browser-protocol = { path = "../command-package-browser-protocol" }
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }

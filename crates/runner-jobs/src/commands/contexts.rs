@@ -10,7 +10,7 @@ use demi_runner_process::{
     private_files::{chmod, write_private},
 };
 use demi_runner_protocol::manifest::Manifest;
-use demi_runner_services::{ServiceHandle, ServiceLease};
+use demi_runner_command_packages::{ServiceHandle, ServiceLease};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     io,

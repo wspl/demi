@@ -1,7 +1,7 @@
 //! The provider's own model directory (`models.md` § Directories): a list
 //! built into the provider, which reading makes no request for.
 
-use demi_core::{ProviderModel, ProviderModelList, ServiceTier, Timestamp};
+use demi_shared_types::{ProviderModel, ProviderModelList, ServiceTier, Timestamp};
 
 /// The models an `openai` entry offers when it has no configured list and no
 /// vendor catalog.

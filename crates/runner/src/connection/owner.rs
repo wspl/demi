@@ -34,7 +34,7 @@ use demi_runner_protocol::{
     values::{BackendUrl, DeviceToken},
     wire::{self, Inbound},
 };
-use demi_runner_services::ServiceHandle;
+use demi_runner_command_packages::ServiceHandle;
 use tokio::{
     sync::{mpsc, watch},
     task::JoinSet,

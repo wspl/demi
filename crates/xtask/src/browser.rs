@@ -5,8 +5,8 @@
 //! holds the executable the record names, and writes the release record with
 //! browser-protocol's type, which `demi-browser` installs from.
 
-use demi_artifact::{Mode, Permissions, Publication};
-use demi_browser_protocol::release::{BrowserRelease, ReleasePlatform};
+use demi_shared_artifacts::{Mode, Permissions, Publication};
+use demi_command_package_browser_protocol::release::{BrowserRelease, ReleasePlatform};
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
@@ -15,7 +15,7 @@ const METADATA: &str = "https://googlechromelabs.github.io/chrome-for-testing";
 /// Where every official archive is.
 const ARCHIVES: &str = "https://storage.googleapis.com/";
 /// The pinned record, which `BrowserRelease::pinned` reads.
-const RECORD: &str = "crates/browser-protocol/src/release/chrome.json";
+const RECORD: &str = "crates/command-package-browser-protocol/src/release/chrome.json";
 /// The most bytes a version's metadata may have.
 const METADATA_BYTES: u64 = 1024 * 1024;
 /// The most bytes an archive may have.
@@ -90,7 +90,7 @@ pub enum Error {
     #[error("the release record is invalid: {0}")]
     Record(String),
     #[error(transparent)]
-    Artifact(#[from] demi_artifact::Error),
+    Artifact(#[from] demi_shared_artifacts::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
@@ -102,14 +102,14 @@ pub fn run(options: Options) -> Result<(), Error> {
         archives: ARCHIVES,
     };
     crate::interruptible(|cancel| async move {
-        let client = demi_artifact::client()?;
+        let client = demi_shared_artifacts::client()?;
         let bytes = prepare(&client, &sources, &options.version, &cancel).await?;
         let publication = Publication {
             mode: Mode::Replace,
             permissions: Permissions::Default,
             durable: true,
         };
-        demi_artifact::publish_bytes(&record, &bytes, publication).await?;
+        demi_shared_artifacts::publish_bytes(&record, &bytes, publication).await?;
         println!("Chrome for Testing {}: {}", options.version, record.display());
         Ok(())
     })?
@@ -144,7 +144,7 @@ struct Download {
 
 /// The release record of `version`, as the file's bytes.
 async fn prepare(
-    client: &demi_artifact::Client,
+    client: &demi_shared_artifacts::Client,
     sources: &Sources<'_>,
     version: &str,
     cancel: &CancellationToken,
@@ -155,7 +155,7 @@ async fn prepare(
     };
     let url = format!("{}/{version}.json", sources.metadata);
     let mut bytes = Vec::new();
-    demi_artifact::download_measured(client, &url, METADATA_BYTES, &mut bytes, cancel).await?;
+    demi_shared_artifacts::download_measured(client, &url, METADATA_BYTES, &mut bytes, cancel).await?;
     let metadata: Metadata = serde_json::from_slice(&bytes).map_err(|error| invalid(error.to_string()))?;
     if metadata.version != version {
         return Err(invalid(format!("it describes {}", metadata.version)));
@@ -181,9 +181,9 @@ async fn prepare(
         }
         let path = downloads.path().join(format!("{}.zip", platform.name));
         let mut file = tokio::fs::File::create(&path).await?;
-        let digest = demi_artifact::download_measured(client, &download.url, ARCHIVE_BYTES, &mut file, cancel).await?;
+        let digest = demi_shared_artifacts::download_measured(client, &download.url, ARCHIVE_BYTES, &mut file, cancel).await?;
         drop(file);
-        if !demi_artifact::zip_holds(&path, platform.executable).await? {
+        if !demi_shared_artifacts::zip_holds(&path, platform.executable).await? {
             return Err(Error::NoExecutable {
                 platform: platform.name,
                 executable: platform.executable,
@@ -212,7 +212,7 @@ async fn prepare(
 
 #[cfg(test)]
 mod tests {
-    use demi_artifact::testing::{Answer, Server, zip};
+    use demi_shared_artifacts::testing::{Answer, Server, zip};
     use serde_json::json;
 
     use super::*;
@@ -262,7 +262,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_pinned_version_records_each_official_archive_with_its_executable() {
-        let client = demi_artifact::client_allowing_http().unwrap();
+        let client = demi_shared_artifacts::client_allowing_http().unwrap();
         let cancel = CancellationToken::new();
         let version = "153.0.8010.36";
         // The argument is Chrome's four-part version, or nothing is fetched.
@@ -283,7 +283,7 @@ mod tests {
         for ((recorded, platform), file) in release.platforms.iter().zip(&PLATFORMS).zip(&fixture.files) {
             let path = files.path().join(platform.name);
             std::fs::write(&path, file).unwrap();
-            let digest = demi_artifact::digest(&path, u64::MAX, &cancel).await.unwrap();
+            let digest = demi_shared_artifacts::digest(&path, u64::MAX, &cancel).await.unwrap();
             let expected = ReleasePlatform {
                 target: platform.target.to_owned(),
                 url: fixture.archives.url(&format!("/{version}/{0}/chrome-{0}.zip", platform.name)),

@@ -102,7 +102,7 @@ manager -> backend   {"type":"death","deviceId":"<other device>"}
 Each request carries an id the client chooses, an operation, and its
 parameters. The reply names the request and carries a result or an error
 message. A `death` event goes to every connection when a device's sandbox exits
-without being asked to stop. The `machines-protocol` crate defines every
+without being asked to stop. The `machine-manager-protocol` crate defines every
 message, and both the manager and the backend link it.
 
 - A line holds one message of at most 1 MiB; the largest real message is a few
@@ -432,7 +432,7 @@ data, a checkpoint copies each image once, and a reset writes only its new
 system image. Hard links need the working and image directories on one
 filesystem, which startup checks. These durable writes go through the same
 atomic publication that release packaging uses
-([`artifact`](../architecture/crates-and-packages.md#artifact)).
+([`shared-artifacts`](../architecture/crates-and-packages.md#shared-artifacts)).
 
 | Failure boundary | Recovery |
 | --- | --- |
@@ -636,7 +636,7 @@ nested Docker. Unsupported operations return errors; they never widen
 isolation.
 
 The runtime inputs are pinned in the runtime release manifest,
-`crates/machines/runtime/release.json`. The manager is built with that manifest
+`crates/machine-manager/runtime/release.json`. The manager is built with that manifest
 and refuses to start unless the configured `runsc` reports exactly the pinned
 version. amd64 uses the verified upstream distribution. arm64 uses the same
 source with the shipped `SECCOMP_RET_TRAP` register fix: Linux preserves the

@@ -14,8 +14,8 @@ bench = false
 
 [dependencies]
 demi-command-protocol = { path = "../command-protocol" }
-demi-command-tree = { path = "../command-tree" }
-demi-core = { path = "../core" }
+demi-command-declarations = { path = "../command-declarations" }
+demi-shared-types = { path = "../shared-types" }
 garde.workspace = true
 rmp-serde = "1.3"
 schemars.workspace = true

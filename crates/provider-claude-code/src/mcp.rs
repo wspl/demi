@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
-use demi_provider::{ResultPart, ToolCall, ToolDefinition};
+use demi_provider_common::{ResultPart, ToolCall, ToolDefinition};
 use futures_channel::mpsc;
 use futures_util::StreamExt as _;
 use rmcp::model::{

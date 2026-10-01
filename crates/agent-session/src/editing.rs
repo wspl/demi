@@ -6,17 +6,17 @@
 
 use std::rc::Rc;
 
-use demi_agent_protocol::{EditRequest, MediaRef, TranscriptVersion};
+use demi_conversation_socket_protocol::{EditRequest, MediaRef, TranscriptVersion};
 use demi_agent_store::{
     BoundaryEdge, Checkpoint, CheckpointState, CheckpointUpdate, CommandStateHistory, CommitGuard,
     EditReceipt,
 };
 use demi_agent_transcript::{CutError, TranscriptLog, before_user, through_assistant};
 use demi_command_protocol::canonical_digest;
-use demi_core::{
+use demi_shared_types::{
     BlobRef, Block, BlockId, DocumentSource, MediaSource, OperationId, UserContentBlock,
 };
-use demi_provider::ProviderRuntime;
+use demi_provider_common::ProviderRuntime;
 use tokio::sync::watch;
 
 use super::{
@@ -205,7 +205,7 @@ struct Candidate {
     runtime: Box<dyn ProviderRuntime>,
     update: CheckpointUpdate,
     receipt: EditReceipt,
-    model: demi_core::ModelSelection,
+    model: demi_shared_types::ModelSelection,
 }
 
 impl Candidate {
@@ -278,7 +278,7 @@ impl Candidate {
         edits.push(receipt.clone());
         let update = CheckpointUpdate {
             state: CheckpointState {
-                phase: demi_core::SessionPhase::Running,
+                phase: demi_shared_types::SessionPhase::Running,
                 queue: Vec::new(),
                 edits,
                 model: model.clone(),
@@ -363,7 +363,7 @@ pub fn fork_seed(
         .ok_or(ForkError::NoBoundary)?;
     Ok(Checkpoint {
         state: CheckpointState {
-            phase: demi_core::SessionPhase::Idle,
+            phase: demi_shared_types::SessionPhase::Idle,
             queue: Vec::new(),
             agent_inputs: Vec::new(),
             wakeups: Vec::new(),

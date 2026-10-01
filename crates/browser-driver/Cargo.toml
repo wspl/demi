@@ -19,11 +19,11 @@ testing = []
 [dependencies]
 bytes.workspace = true
 chromiumoxide = "=0.9.1"
-demi-artifact = { path = "../artifact" }
-demi-browser-protocol = { path = "../browser-protocol" }
+demi-shared-artifacts = { path = "../shared-artifacts" }
+demi-command-package-browser-protocol = { path = "../command-package-browser-protocol" }
 demi-command-protocol = { path = "../command-protocol" }
-demi-command-service = { path = "../command-service" }
-demi-core = { path = "../core" }
+demi-command-sdk = { path = "../command-sdk" }
+demi-shared-types = { path = "../shared-types" }
 futures-util.workspace = true
 getrandom = "0.4"
 serde.workspace = true

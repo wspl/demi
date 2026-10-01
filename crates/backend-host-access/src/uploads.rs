@@ -12,10 +12,10 @@ use std::path::Path;
 use bytes::Bytes;
 use demi_agent_store::attachments::{Upload, unavailable, upload_blocks};
 use demi_agent_store::media::HeldMedia;
-use demi_core::{B64Bytes, UserContentBlock};
-use demi_host_remote::RemoteHost;
-use demi_shell::{FileContents, Host as _, HostError, WriteOptions};
-use demi_web_api::ids::{AttachmentId, ConversationId};
+use demi_shared_types::{B64Bytes, UserContentBlock};
+use demi_backend_remote_host::RemoteHost;
+use demi_host_interface::{FileContents, Host as _, HostError, WriteOptions};
+use demi_web_api_protocol::ids::{AttachmentId, ConversationId};
 
 use crate::HostShard;
 use crate::access::{ConversationHost, HostAccessError};

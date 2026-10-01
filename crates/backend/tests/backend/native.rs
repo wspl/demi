@@ -8,7 +8,7 @@
 //! it, and the route serves only what the backend loaded.
 
 use demi_command_protocol::host_target;
-use demi_web_api::error::ErrorCode;
+use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
 use reqwest::header::{CACHE_CONTROL, CONTENT_ENCODING};
 

@@ -30,7 +30,7 @@ check the facilities instead of relying on the provider's product name.
 The installer installs the complete pinned runsc distribution and verifies its
 release checksum on amd64. On arm64 it builds the pinned source with the shipped
 seccomp ABI fix and runs the native/systrap regression probe. Build dependencies
-and pinned inputs are in `crates/machines/runtime/README.md`. Keep `runsc` and
+and pinned inputs are in `crates/machine-manager/runtime/README.md`. Keep `runsc` and
 its accompanying `gvisor-bin/` directory together; upstream packaging can
 include helper binaries. The runtime release manifest pins the release and
 archive hash, and startup requires the configured executable to report exactly
@@ -181,7 +181,7 @@ dependencies and the manager binary and publishing an image, install the
 service with absolute paths:
 
 ```sh
-sudo bash crates/machines/scripts/install-managed-hosts.sh \
+sudo bash crates/machine-manager/scripts/install-managed-hosts.sh \
   --user backend \
   --manager /opt/demi/bin/demi-machines \
   --image /opt/demi-cloud/releases/build-id \

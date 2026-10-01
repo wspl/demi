@@ -54,7 +54,7 @@ and image comparison modes such as swipe and onion skin are not designed yet.
 ## Choosing a view
 
 One table maps a file extension, ignoring case, to a media type, and says
-which media types the page shows in place. The `core` contract crate owns the
+which media types the page shows in place. The `shared-types` contract crate owns the
 table and its lookup, and the browser receives both generated into
 `@demicodes/protocol`
 ([Logic the browser and backend share](../architecture/contracts.md#logic-the-browser-and-backend-share)):
@@ -330,7 +330,7 @@ in the product's origin:
 | The runner | Moves file contents through pipes ([Runner](../execution/runner.md#file-contents)). |
 | The Host contract and the backend's remote Host | Streamed reads, whole or by range, and writes, over pipes. |
 | The backend | The raw routes, their headers and ranges, and ending transfers. |
-| The `core` contract crate | The file-type table and its lookup, generated for the browser into `@demicodes/protocol`. |
+| The `shared-types` contract crate | The file-type table and its lookup, generated for the browser into `@demicodes/protocol`. |
 | `web-ui` | Choosing and showing previews, Markdown rendering and sanitizing, the side-by-side comparison, releasing transfers, resolving the files a message names, showing the media a tool returned and opening an image large. |
 | `web`, `web-gallery` | Raw and blob URLs from the product's routes and the working directory messages resolve against; a fixture file for every kind, and fixture blobs for a tool's media. |
 

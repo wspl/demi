@@ -669,7 +669,7 @@ responsibility split, boot credentials, and lifecycle.
 what the runner crate owns and must not do. Tests that exercise a runner start
 the built executable through the testing feature of the crate that owns the
 backend's end of a runner, and tests that exercise a native service start its
-built binary through the command-service library's testing feature; both find
+built binary through the command-sdk library's testing feature; both find
 the binary the way every test finds a built program
 ([Module layout](../architecture/crates-and-packages.md#module-layout)). The
 [build guide](../delivery/builds-and-releases.md#validation) defines target

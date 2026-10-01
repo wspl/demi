@@ -1,8 +1,8 @@
 //! Request bodies and the browser build (`web-api.md` § Request bodies,
 //! § Serving the browser build).
 
-use demi_web_api::auth::Identity;
-use demi_web_api::error::ErrorCode;
+use demi_web_api_protocol::auth::Identity;
+use demi_web_api_protocol::error::ErrorCode;
 use reqwest::{Body, Method, StatusCode};
 use serde_json::json;
 
@@ -72,7 +72,7 @@ async fn a_json_body_over_its_limit_is_refused_before_it_is_read() {
     // comes can meet the connection's reset instead of the answer.
     let (status, body) = declared_over_the_limit(&backend.url).await;
     assert_eq!(status, 401, "{body}");
-    let refusal: demi_web_api::error::ErrorBody = serde_json::from_str(&body).unwrap();
+    let refusal: demi_web_api_protocol::error::ErrorBody = serde_json::from_str(&body).unwrap();
     assert_eq!(refusal.code, ErrorCode::Unauthenticated);
     backend.close().await;
 }
