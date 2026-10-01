@@ -2,10 +2,10 @@
 //! target): its selection resolved to a device and the directory its work
 //! starts in there.
 
-use demi_backend_storage::StorageError;
-use demi_backend_storage::conversation_index::{ConversationRecord, ExecutionTarget};
-use demi_web_api::conversations::ConversationTarget;
-use demi_web_api::ids::ConversationId;
+use demi_backend_database::StorageError;
+use demi_backend_database::conversation_index::{ConversationRecord, ExecutionTarget};
+use demi_web_api_protocol::conversations::ConversationTarget;
+use demi_web_api_protocol::ids::ConversationId;
 
 use crate::HostShard;
 

@@ -8,11 +8,11 @@
 //! file's bytes: a device revoked or disconnected before the read makes the
 //! command fail.
 
-use demi_backend_storage::StorageError;
-use demi_backend_storage::conversation_index::{AttachedHostRecord, ChangeOutcome, RecordChange};
-use demi_backend_storage::devices::DeviceRecord;
-use demi_core::UserContentBlock;
-use demi_web_api::ids::{ConversationId, DeviceId};
+use demi_backend_database::StorageError;
+use demi_backend_database::conversation_index::{AttachedHostRecord, ChangeOutcome, RecordChange};
+use demi_backend_database::devices::DeviceRecord;
+use demi_shared_types::UserContentBlock;
+use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 
 use crate::HostShard;
 

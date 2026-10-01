@@ -12,7 +12,7 @@ pub mod webmcp;
 
 use chromiumoxide::Page;
 use demi_browser_driver::operation::Result;
-use demi_browser_protocol::browser as protocol;
+use demi_command_package_browser_protocol::browser as protocol;
 
 use crate::protocol::Capability;
 

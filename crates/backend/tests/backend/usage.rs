@@ -4,10 +4,10 @@
 //! administrator. The metered runtime that writes the rows is the usage
 //! module's own test; here the rows are written to the ledger directly.
 
-use demi_web_api::auth::Role;
-use demi_web_api::error::ErrorCode;
-use demi_web_api::settings::InstanceMode;
-use demi_web_api::usage::{InstanceUsage, UsageTotals};
+use demi_web_api_protocol::auth::Role;
+use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::settings::InstanceMode;
+use demi_web_api_protocol::usage::{InstanceUsage, UsageTotals};
 use reqwest::StatusCode;
 
 use crate::support::Harness;

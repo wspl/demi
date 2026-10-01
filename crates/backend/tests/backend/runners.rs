@@ -6,17 +6,17 @@
 
 use std::time::Duration;
 
-use demi_agent_protocol::ClientFrame;
-use demi_backend_shard::holds::HelloStep;
+use demi_conversation_socket_protocol::ClientFrame;
+use demi_backend_user_shard::holds::HelloStep;
 use demi_command_protocol::ServiceSequence;
-use demi_host_remote::testing::{RunnerProcess, RunnerProcessOptions};
+use demi_backend_remote_host::testing::{RunnerProcess, RunnerProcessOptions};
 use demi_runner_protocol::values::DeviceToken;
 use demi_runner_protocol::wire::{
     self, ArtifactOwner, HelloErrorCode, HostIdentity, Inbound, Outbound, RunnerInfo, RunnerPlatform, StreamArtifactOwner,
 };
-use demi_web_api::devices::{ClaimedDevice, DeviceKind, DeviceLog};
-use demi_web_api::error::ErrorCode;
-use demi_web_api::files::Directory;
+use demi_web_api_protocol::devices::{ClaimedDevice, DeviceKind, DeviceLog};
+use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::files::Directory;
 use futures_util::{SinkExt as _, StreamExt as _};
 use reqwest::StatusCode;
 use serde_json::json;

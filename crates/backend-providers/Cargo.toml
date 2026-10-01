@@ -12,15 +12,15 @@ doctest = false
 bench = false
 
 [dependencies]
-demi-backend-storage = { path = "../backend-storage" }
-demi-backend-sync = { path = "../backend-sync" }
-demi-claude-protocol = { path = "../claude-protocol" }
-demi-core = { path = "../core" }
-demi-provider = { path = "../provider" }
+demi-backend-database = { path = "../backend-database" }
+demi-backend-page-sync = { path = "../backend-page-sync" }
+demi-command-package-claude-code-protocol = { path = "../command-package-claude-code-protocol" }
+demi-shared-types = { path = "../shared-types" }
+demi-provider-common = { path = "../provider-common" }
 demi-provider-anthropic-api = { path = "../provider-anthropic-api" }
 demi-provider-claude-code = { path = "../provider-claude-code" }
 demi-provider-openai-api = { path = "../provider-openai-api" }
-demi-web-api = { path = "../web-api" }
+demi-web-api-protocol = { path = "../web-api-protocol" }
 aes-gcm = "0.10"
 futures-util.workspace = true
 garde.workspace = true
@@ -42,7 +42,7 @@ url = { version = "2", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
-demi-backend-storage = { path = "../backend-storage", features = ["testing"] }
-demi-provider = { path = "../provider", features = ["testing"] }
+demi-backend-database = { path = "../backend-database", features = ["testing"] }
+demi-provider-common = { path = "../provider-common", features = ["testing"] }
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }

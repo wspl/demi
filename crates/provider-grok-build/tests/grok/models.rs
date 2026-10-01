@@ -1,6 +1,6 @@
 //! The Grok Build catalog (`models.md` § Directories).
 
-use demi_provider::{
+use demi_provider_common::{
     CatalogError, Provider,
     testing::{MockResponse, MockVendor},
 };
@@ -112,7 +112,7 @@ async fn a_catalog_that_cannot_be_read_is_a_failed_refresh() {
     );
     let staged = crate::provider(
         &vendor,
-        &demi_provider::credentials::MemoryCredentialPool::new(),
+        &demi_provider_common::credentials::MemoryCredentialPool::new(),
         None,
     );
     assert_eq!(

@@ -3,8 +3,8 @@
 
 use std::{num::NonZeroU32, sync::Arc};
 
-use demi_core::{B64Bytes, ThinkingConfig, ThinkingSummary, TokenUsage, WireApi};
-use demi_provider::{
+use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingSummary, TokenUsage, WireApi};
+use demi_provider_common::{
     InferenceItem, InferenceRequest, MediaBytes, Medium, Provider, ProviderEvent, ResultPart,
     RuntimeEnv, ToolDefinition, UserPart,
     testing::{MockResponse, MockVendor, inference_request, sse_body},
@@ -84,7 +84,7 @@ const NO_POLICY: VendorPolicy = VendorPolicy {
 };
 
 /// Each wire's answer as the endpoint streams it, and the events a run makes
-/// of it. The mapping itself is the shared mappers' (`demi_provider::wire`);
+/// of it. The mapping itself is the shared mappers' (`demi_provider_common::wire`);
 /// which mapper reads the answer is this runtime's choice.
 fn answer(wire: WireApi) -> (MockResponse, Vec<ProviderEvent>) {
     let text = ProviderEvent::TextDelta("hi".into());

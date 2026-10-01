@@ -12,21 +12,21 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use demi_agent_tools::{EnvironmentScope, ShellEnvironmentFactory};
-use demi_backend_objects::blobs::UserBlobs;
-use demi_backend_storage::command_outputs::{self, CommandOutput, OutputRow};
-use demi_backend_storage::conversations::ConversationDb;
+use demi_backend_blobs::blobs::UserBlobs;
+use demi_backend_database::command_outputs::{self, CommandOutput, OutputRow};
+use demi_backend_database::conversations::ConversationDb;
 use demi_command_protocol::CommandCaller;
-use demi_core::{Clock, CommandId, EditCopies, EditedFile, ShellId};
-use demi_host_remote::{
+use demi_shared_types::{Clock, CommandId, EditCopies, EditedFile, ShellId};
+use demi_backend_remote_host::{
     CommandCatalog, CommandKeeper, ContextSource, EnvironmentOptions, HostAccess, RemoteHost, RemoteShellEnvironment,
     edited_file, encode_output,
 };
 use demi_runner_protocol::wire::JobFileChange;
-use demi_shell::{
+use demi_host_interface::{
     CommandStatus, ExecRequest, Host, HostError, HostErrorKind, HostFs, HostKey, PageView, ShellEnvironment,
     ShellError, WholeOutput,
 };
-use demi_web_api::ids::{ConversationId, DeviceId};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 use demi_backend_runners::command_context::command_context;
@@ -206,7 +206,7 @@ struct Keeper {
 
 impl Keeper {
     /// Stores `output` as a blob, in the kept output's records.
-    async fn put(&self, output: &WholeOutput) -> Result<demi_core::BlobRef, String> {
+    async fn put(&self, output: &WholeOutput) -> Result<demi_shared_types::BlobRef, String> {
         let output = output.clone();
         // Encoding 16 MiB would hold the shard's thread.
         let encoded = tokio::task::spawn_blocking(move || encode_output(&output))

@@ -2,13 +2,13 @@
 //! cookie holds a random 256-bit token, storage holds the token's SHA-256,
 //! and a session expires 30 days after its last renewal.
 
-use demi_core::Timestamp;
-use demi_web_api::ids::UserId;
+use demi_shared_types::Timestamp;
+use demi_web_api_protocol::ids::UserId;
 use jiff::SignedDuration;
 
-use demi_backend_storage::StorageError;
-use demi_backend_storage::accounts::{ResolvedSession, SessionPolicy, TokenHash};
-use demi_backend_storage::control::ControlService;
+use demi_backend_database::StorageError;
+use demi_backend_database::accounts::{ResolvedSession, SessionPolicy, TokenHash};
+use demi_backend_database::control::ControlService;
 
 const DAY_SECONDS: i64 = 24 * 60 * 60;
 

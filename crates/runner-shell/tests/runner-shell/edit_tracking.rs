@@ -1,5 +1,5 @@
 use demi_command_protocol::EditContext;
-use demi_command_service::edits::Recorder;
+use demi_command_sdk::edits::Recorder;
 use demi_runner_shell::testing::{Scope, ShellOptions, execute};
 use std::{collections::BTreeMap, fs, path::Path};
 use tokio_util::sync::CancellationToken;

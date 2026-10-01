@@ -7,7 +7,7 @@
 //! endpoint the test scripts; the device is a real runner.
 
 use demi_agent_tools::testing::{field, shown_output};
-use demi_provider::testing::MockVendor;
+use demi_provider_common::testing::MockVendor;
 
 use crate::conversations::{anthropic_at, create, on_device};
 use crate::support::{Harness, eventually};

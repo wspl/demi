@@ -4,8 +4,8 @@
 //! only against a lease of that conversation's file gate
 //! (`Devices::conversation_host`).
 
-use demi_shell::HostKey;
-use demi_web_api::ids::{ConversationId, DeviceId};
+use demi_host_interface::HostKey;
+use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 
 /// Whose a Host handle is.
 pub(crate) enum HostOwner<'a> {

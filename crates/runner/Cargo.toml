@@ -10,18 +10,18 @@ license.workspace = true
 # activity and a dispatcher on channels.
 test-fixtures = [
   "demi-runner-jobs/testing",
-  "demi-runner-services/testing",
+  "demi-runner-command-packages/testing",
   "demi-runner-shell/testing",
 ]
 
 [dependencies]
 demi-command-protocol = { path = "../command-protocol" }
-demi-command-service = { path = "../command-service" }
+demi-command-sdk = { path = "../command-sdk" }
 demi-runner-host = { path = "../runner-host" }
 demi-runner-jobs = { path = "../runner-jobs" }
 demi-runner-process = { path = "../runner-process" }
 demi-runner-protocol = { path = "../runner-protocol" }
-demi-runner-services = { path = "../runner-services" }
+demi-runner-command-packages = { path = "../runner-command-packages" }
 demi-runner-shell = { path = "../runner-shell" }
 clap = { version = "4", features = ["derive", "env"] }
 futures-util.workspace = true
@@ -53,10 +53,10 @@ libc = "0.2"
 [dev-dependencies]
 bytes.workspace = true
 demi-command-protocol = { path = "../command-protocol", features = ["testing"] }
-demi-command-service = { path = "../command-service", features = ["testing"] }
+demi-command-sdk = { path = "../command-sdk", features = ["testing"] }
 # The built runner with a home and state of its own (`RunnerProcess`).
-demi-host-remote = { path = "../host-remote", features = ["testing"] }
-demi-shell = { path = "../shell" }
+demi-backend-remote-host = { path = "../backend-remote-host", features = ["testing"] }
+demi-host-interface = { path = "../host-interface" }
 rmp-serde = "1.3"
 tempfile = "3"
 

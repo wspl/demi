@@ -9,8 +9,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use demi_core::{Clock, ProviderModelList, Timestamp};
-use demi_web_api::ids::ProviderId;
+use demi_shared_types::{Clock, ProviderModelList, Timestamp};
+use demi_web_api_protocol::ids::ProviderId;
 use futures_util::FutureExt;
 use futures_util::future::{BoxFuture, Shared};
 use garde::Validate;
@@ -19,8 +19,8 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
-use demi_backend_storage::control::ControlService;
-use demi_backend_storage::providers::CatalogRecord;
+use demi_backend_database::control::ControlService;
+use demi_backend_database::providers::CatalogRecord;
 
 /// How long a record stays fresh.
 const FRESH_FOR: SignedDuration = SignedDuration::from_mins(15);
@@ -164,7 +164,7 @@ impl ModelCatalogCache {
 
     /// Drops the entry's record from memory and storage, and cancels its
     /// refresh, which writes nothing back.
-    pub async fn invalidate(&self, provider: &ProviderId) -> Result<(), demi_backend_storage::StorageError> {
+    pub async fn invalidate(&self, provider: &ProviderId) -> Result<(), demi_backend_database::StorageError> {
         let entry = self.lock().remove(provider);
         if let Some(entry) = &entry {
             entry.cancel.cancel();
@@ -339,11 +339,11 @@ fn usable(catalog: ProviderModelList) -> Result<ProviderModelList, String> {
 mod tests {
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-    use demi_backend_storage::control::testing;
-    use demi_backend_storage::providers::NewProvider;
-    use demi_core::ProviderModel;
-    use demi_provider::testing::TokioClock;
-    use demi_web_api::providers::CredentialKind;
+    use demi_backend_database::control::testing;
+    use demi_backend_database::providers::NewProvider;
+    use demi_shared_types::ProviderModel;
+    use demi_provider_common::testing::TokioClock;
+    use demi_web_api_protocol::providers::CredentialKind;
     use futures_util::future::join_all;
     use tokio::sync::oneshot;
 
@@ -386,7 +386,7 @@ mod tests {
     impl Fixture {
         async fn new() -> Self {
             let data = tempfile::tempdir().unwrap();
-            let control = ControlService::open(&data.path().join("control.sqlite"), Arc::new(demi_core::SystemClock))
+            let control = ControlService::open(&data.path().join("control.sqlite"), Arc::new(demi_shared_types::SystemClock))
                 .await
                 .unwrap();
             let owner = testing::master(&control).await.id;

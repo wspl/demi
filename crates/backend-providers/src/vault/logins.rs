@@ -11,11 +11,11 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use demi_core::LoginPending;
-use demi_provider::Provider;
-use demi_provider::credentials::MemoryCredentialPool;
-use demi_web_api::ids::{CredentialId, LoginId, UserId};
-use demi_web_api::providers::{CredentialKind, LoginState};
+use demi_shared_types::LoginPending;
+use demi_provider_common::Provider;
+use demi_provider_common::credentials::MemoryCredentialPool;
+use demi_web_api_protocol::ids::{CredentialId, LoginId, UserId};
+use demi_web_api_protocol::providers::{CredentialKind, LoginState};
 use tokio::sync::watch;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;

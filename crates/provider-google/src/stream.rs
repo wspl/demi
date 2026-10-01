@@ -3,8 +3,8 @@
 
 use std::sync::Arc;
 
-use demi_core::{FailureSource, ProviderErrorDiagnostics, TokenUsage};
-use demi_provider::{
+use demi_shared_types::{FailureSource, ProviderErrorDiagnostics, TokenUsage};
+use demi_provider_common::{
     ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ToolCall, encode_body,
     http_failure, read_http_failure,
     wire::{NonEmpty, ReportedString, decode_untagged, sse_data, undecodable},

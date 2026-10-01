@@ -13,8 +13,8 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use demi_agent_tools::testing::{field, shown_output};
-use demi_core::{Block, EditedFile, ToolView};
-use demi_provider::testing::{MockResponse, MockVendor};
+use demi_shared_types::{Block, EditedFile, ToolView};
+use demi_provider_common::testing::{MockResponse, MockVendor};
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 

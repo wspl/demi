@@ -8,7 +8,7 @@ use tokio_util::sync::CancellationToken;
 
 use demi_browser_driver::operation::{BrowserError, Result, after_cleanup};
 use demi_browser_tabs::{debug::Query, environment::BrowserEnvironment, tab::BrowserTab};
-use demi_command_service::InvocationContext;
+use demi_command_sdk::InvocationContext;
 
 use crate::protocol::{
     BrowserErrorCode, BrowserOperation, Capability, CdpDetachResult, CdpSendResult, CdpTarget,

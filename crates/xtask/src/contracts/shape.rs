@@ -7,7 +7,7 @@ use serde_json::{Map, Value};
 
 /// Core's `MAX_SAFE_INTEGER`, the bound of every integer the browser reads,
 /// as a signed bound.
-pub const MAX_SAFE_INTEGER: i64 = demi_core::MAX_SAFE_INTEGER as i64;
+pub const MAX_SAFE_INTEGER: i64 = demi_shared_types::MAX_SAFE_INTEGER as i64;
 
 /// Keywords that describe a schema without constraining it. schemars writes
 /// `default` for a field serde fills in when it is absent, which the field's

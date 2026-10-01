@@ -4,8 +4,8 @@
 
 use std::borrow::Cow;
 
-use demi_core::is_blank;
-use demi_provider::{
+use demi_shared_types::is_blank;
+use demi_provider_common::{
     InferenceRequest, json_body,
     openai_request::{
         AssistantReplay, ChatDialect, ChatMedia, ChatMessage, ChatTool, InputItem, Reasoning,

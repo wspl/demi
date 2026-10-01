@@ -12,9 +12,9 @@ test = false
 bench = false
 
 [dependencies]
-demi-core = { path = "../core" }
-demi-provider = { path = "../provider" }
-demi-shell = { path = "../shell" }
+demi-shared-types = { path = "../shared-types" }
+demi-provider-common = { path = "../provider-common" }
+demi-host-interface = { path = "../host-interface" }
 async-stream = "0.3"
 base64.workspace = true
 bytes.workspace = true
@@ -37,6 +37,6 @@ tracing.workspace = true
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
-demi-provider = { path = "../provider", features = ["testing"] }
+demi-provider-common = { path = "../provider-common", features = ["testing"] }
 # Closing a process that ignores SIGTERM is tested on a paused clock.
 tokio = { workspace = true, features = ["test-util"] }

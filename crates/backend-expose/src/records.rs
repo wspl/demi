@@ -7,12 +7,12 @@
 //! exposes: creation is refused as unavailable, and there is none to list,
 //! renew or remove.
 
-use demi_backend_storage::StorageError;
-use demi_backend_storage::exposes::ExposeRecord;
-use demi_backend_sync::Part;
-use demi_web_api::error::ErrorCode;
-use demi_web_api::exposes::{ExposeAddress, ExposeDto};
-use demi_web_api::ids::{DeviceId, ExposeId};
+use demi_backend_database::StorageError;
+use demi_backend_database::exposes::ExposeRecord;
+use demi_backend_page_sync::Part;
+use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::exposes::{ExposeAddress, ExposeDto};
+use demi_web_api_protocol::ids::{DeviceId, ExposeId};
 use jiff::SignedDuration;
 use url::Url;
 

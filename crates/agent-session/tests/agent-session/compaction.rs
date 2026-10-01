@@ -5,8 +5,8 @@
 use demi_agent_session::testing::COMPACTION_SUMMARY_INSTRUCTION;
 use demi_agent_store::media::ModelView;
 use demi_agent_transcript::{RequestView, estimate::block_tokens, testing::RESUME_TEXT};
-use demi_core::{BlockId, QueuedMessage, TokenUsage};
-use demi_provider::{PromptCache, ProviderFailure, RequestLimits};
+use demi_shared_types::{BlockId, QueuedMessage, TokenUsage};
+use demi_provider_common::{PromptCache, ProviderFailure, RequestLimits};
 
 use super::*;
 
@@ -93,13 +93,13 @@ fn too_long() -> Turn {
 }
 
 /// A 750-token message.
-fn long_message() -> Vec<demi_core::UserContentBlock> {
+fn long_message() -> Vec<demi_shared_types::UserContentBlock> {
     text(&"x".repeat(3_000))
 }
 
 /// Whether `request` is a summary request: it carries the summary
 /// instruction, which no request of the session does.
-fn is_copy(request: &demi_provider::InferenceRequest) -> bool {
+fn is_copy(request: &demi_provider_common::InferenceRequest) -> bool {
     request
         .items
         .contains(&user_item(COMPACTION_SUMMARY_INSTRUCTION))
@@ -1685,7 +1685,7 @@ async fn a_pass_after_an_edit_summarizes_only_the_history_the_edit_kept() {
 }
 
 /// The images `request` carries, in messages and tool results.
-fn images(request: &demi_provider::InferenceRequest) -> usize {
+fn images(request: &demi_provider_common::InferenceRequest) -> usize {
     demi_agent_transcript::estimate::request_size("", &request.items).images as usize
 }
 

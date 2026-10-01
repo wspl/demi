@@ -9,11 +9,11 @@ use std::{
     rc::Rc,
 };
 
-use demi_core::{
+use demi_shared_types::{
     B64Bytes, BlobRef, Block, CommandId, FileExtension, Model, ModelSelection, NodeId,
     QueuedMessage, Sequence, Timestamp, UserContentBlock,
 };
-use demi_provider::UserPart;
+use demi_provider_common::UserPart;
 use futures_util::future::LocalBoxFuture;
 
 use crate::{
@@ -543,7 +543,7 @@ impl BlobStore for MemoryBlobs {
 /// contract, so the agent's in-memory store and the backend's database pass
 /// the same cases.
 pub mod store_contract {
-    use demi_core::{
+    use demi_shared_types::{
         AgentMessage, AgentMessageBlock, AgentMessageEvent, B64Bytes, BlobRef, Block, CompletionId,
         CompletionOutcome, NodeId, QueuedMessage, Sender, Sequence, SessionPhase, Timestamp,
         TurnId, UserBlock,

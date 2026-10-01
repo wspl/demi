@@ -12,9 +12,9 @@ doctest = false
 bench = false
 
 [dependencies]
-demi-artifact = { path = "../artifact" }
+demi-shared-artifacts = { path = "../shared-artifacts" }
 demi-command-protocol = { path = "../command-protocol" }
-demi-command-service = { path = "../command-service" }
+demi-command-sdk = { path = "../command-sdk" }
 demi-runner-protocol = { path = "../runner-protocol" }
 bytes.workspace = true
 futures-util.workspace = true

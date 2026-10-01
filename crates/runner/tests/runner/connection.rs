@@ -5,7 +5,7 @@
 
 use std::{collections::BTreeMap, time::Duration};
 
-use demi_host_remote::testing::{RunnerProcess, RunnerProcessOptions};
+use demi_backend_remote_host::testing::{RunnerProcess, RunnerProcessOptions};
 use demi_runner_protocol::wire::{self, Inbound, Outbound};
 use futures_util::{SinkExt, StreamExt};
 use tokio::net::TcpListener;

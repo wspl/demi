@@ -20,7 +20,7 @@ testing = []
 brush-core = "0.5"
 brush-builtins = "0.2"
 demi-command-protocol = { path = "../command-protocol" }
-demi-command-service = { path = "../command-service" }
+demi-command-sdk = { path = "../command-sdk" }
 demi-runner-process = { path = "../runner-process" }
 demi-runner-protocol = { path = "../runner-protocol" }
 bytes.workspace = true
@@ -91,7 +91,7 @@ default-features = false
 features = ["std"]
 
 [dev-dependencies]
-demi-command-service = { path = "../command-service", features = ["testing"] }
+demi-command-sdk = { path = "../command-sdk", features = ["testing"] }
 demi-runner-shell = { path = ".", features = ["testing"] }
 rlimit = "0.11"
 tempfile = "3"

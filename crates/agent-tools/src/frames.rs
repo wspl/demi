@@ -3,9 +3,9 @@
 //! transcript last saw running, which a page that attaches or asks for a
 //! fresh transcript receives with the ones that run.
 
-use demi_agent_protocol::{CommandView, ServerFrame, ShellStatus};
-use demi_core::{Block, CommandId, NodeId, ShellViewStatus, ToolView};
-use demi_shell::{PageState, PageView};
+use demi_conversation_socket_protocol::{CommandView, ServerFrame, ShellStatus};
+use demi_shared_types::{Block, CommandId, NodeId, ShellViewStatus, ToolView};
+use demi_host_interface::{PageState, PageView};
 
 /// The `shell_output` frame of `view`, a command of the subagent `subagent`,
 /// or of the root when none.

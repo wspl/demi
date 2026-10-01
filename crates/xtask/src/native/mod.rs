@@ -50,7 +50,7 @@ pub enum Error {
     #[error("the release record is invalid: {0}")]
     Record(String),
     #[error(transparent)]
-    Artifact(#[from] demi_artifact::Error),
+    Artifact(#[from] demi_shared_artifacts::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }

@@ -18,14 +18,14 @@ use std::sync::Arc;
 use std::time::Duration;
 
 
-use demi_backend_shard::tuning::LifecycleTuning;
-use demi_gates::Purpose;
-use demi_provider::testing::MockVendor;
-use demi_web_api::cloud::{CloudResetAnswer, CloudState, CloudStatus, ResetPhase};
-use demi_web_api::devices::DeviceKind;
-use demi_web_api::error::ErrorCode;
-use demi_web_api::files::{Directory, FileText};
-use demi_web_api::hosts::AttachedHosts;
+use demi_backend_user_shard::tuning::LifecycleTuning;
+use demi_shared_gates::Purpose;
+use demi_provider_common::testing::MockVendor;
+use demi_web_api_protocol::cloud::{CloudResetAnswer, CloudState, CloudStatus, ResetPhase};
+use demi_web_api_protocol::devices::DeviceKind;
+use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::files::{Directory, FileText};
+use demi_web_api_protocol::hosts::AttachedHosts;
 use reqwest::StatusCode;
 use serde_json::json;
 use tokio::sync::Notify;
@@ -122,7 +122,7 @@ async fn process_entry(backend: &TestBackend, master: &Session) -> String {
         )
         .await;
     assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
-    created.json::<demi_web_api::providers::ProviderAnswer>().provider.id.as_str().to_owned()
+    created.json::<demi_web_api_protocol::providers::ProviderAnswer>().provider.id.as_str().to_owned()
 }
 
 /// Waits until the Cloud's runner holds no job directory: it keeps nothing
@@ -576,7 +576,7 @@ async fn capacity_counts_the_clouds_of_every_user_and_a_cloud_that_finds_none_fa
     harness.lifecycle = idle_after(Duration::from_millis(500));
     harness.cloud.sweep = Duration::from_millis(50);
     let (backend, master) = harness.start_set_up().await;
-    harness.add_user("ana@example.test", "ana-pass-1", demi_web_api::auth::Role::User);
+    harness.add_user("ana@example.test", "ana-pass-1", demi_web_api_protocol::auth::Role::User);
     let ana = backend.login("ana@example.test", "ana-pass-1").await;
     create(&backend, &master, FIRST).await;
     create(&backend, &ana, SECOND).await;
@@ -644,7 +644,7 @@ async fn the_clouds_device_log_answers_while_it_runs_and_a_stopped_cloud_says_so
         if read.status != StatusCode::OK {
             return 0;
         }
-        let lines = read.json::<demi_web_api::devices::DeviceLog>().lines;
+        let lines = read.json::<demi_web_api_protocol::devices::DeviceLog>().lines;
         lines.iter().filter(|line| line.text == "online").count()
     };
     eventually("the running Cloud's log says it is online", || async { onlines().await == 1 }).await;
@@ -675,7 +675,7 @@ async fn the_clouds_files_and_todos_and_the_usage_ledger_survive_a_backend_resta
     let script = "demi file create notes.md <<'EOF'\nkeep me\nEOF\ndemi todo add \"still here\"";
     let stored = work.turn(vec![shell("t1", script, 20_000), say("stored")]).await;
     assert!(stored.received[0].contains("Created notes.md"), "{}", stored.received[0]);
-    let requests = |usage: demi_web_api::usage::UsageTotals| usage.totals.iter().map(|group| group.requests).sum::<u64>();
+    let requests = |usage: demi_web_api_protocol::usage::UsageTotals| usage.totals.iter().map(|group| group.requests).sum::<u64>();
     let before = requests(backend.get("/api/usage", Some(&master)).await.json());
 
     // The backend's close saves the Cloud; the next start boots nothing
@@ -936,7 +936,7 @@ async fn cloud_projects_share_the_users_one_machine_and_a_deleted_project_keeps_
         async move {
             let created = backend.post("/api/workspaces", Some(master), body).await;
             assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
-            created.json::<demi_web_api::workspaces::WorkspaceAnswer>().workspace
+            created.json::<demi_web_api_protocol::workspaces::WorkspaceAnswer>().workspace
         }
     };
     // Two projects made at once are directories of one Cloud, booted once.

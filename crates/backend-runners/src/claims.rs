@@ -9,11 +9,11 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
-use demi_backend_storage::devices::DeviceRecord;
+use demi_backend_database::devices::DeviceRecord;
 use demi_runner_protocol::values::DeviceToken;
 use demi_runner_protocol::wire::RunnerInfo;
-use demi_web_api::devices::DeviceDto;
-use demi_web_api::ids::UserId;
+use demi_web_api_protocol::devices::DeviceDto;
+use demi_web_api_protocol::ids::UserId;
 use tokio::sync::oneshot;
 use tokio::time::Instant;
 

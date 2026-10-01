@@ -71,7 +71,7 @@ they go to the [Host log](runner.md#host-log): the runner writes its own as log
 events, and a native service writes its own to its standard error, which the
 runner drains into the log.
 
-The shared recorder belongs to the command-service library, which the runner
+The shared recorder belongs to the command-sdk library, which the runner
 and the native command services both link, so both record through the same
 file interface. The runner creates the job's private `changes` directory in
 the job's directory, next to its kept output, and provides that directory and
@@ -190,12 +190,12 @@ Only Uncommitted mode lists files and offers a changed-file tree.
 | --- | --- |
 | `vendor/brush/brush-core`, `vendor/uutils-coreutils/uucore`, `vendor/uutils-sed/sed` | Route writable opens, file writes and temporary-file publication through the execution owner's hooks. |
 | `crates/command-protocol` | Define the recording context, the journal and the test of whether bytes are text. |
-| `crates/command-service` | Implement the shared bounded recorder with OS locking. |
-| `crates/demi-file` | Record create, edit, patch publication and rollback using the invocation's recorder. |
+| `crates/command-sdk` | Implement the shared bounded recorder with OS locking. |
+| `crates/command-package-file` | Record create, edit, patch publication and rollback using the invocation's recorder. |
 | `crates/runner-jobs`, `crates/runner-shell` | Create job recording contexts, associate descriptors with paths, forward redirected external output, finalize reports and share line counting with the working tree. |
-| `crates/runner-protocol`, `crates/shell`, `crates/host-remote` | Carry the report through command completion. |
-| `crates/backend-shard` | Store the copies as blobs before tool completion; the blob route serves them. |
-| `crates/core`, `crates/agent-tools` | Define the shell tool view with its small file and segment list, and carry it in the transcript, exclusively for the user. |
+| `crates/runner-protocol`, `crates/host-interface`, `crates/backend-remote-host` | Carry the report through command completion. |
+| `crates/backend-user-shard` | Store the copies as blobs before tool completion; the blob route serves them. |
+| `crates/shared-types`, `crates/agent-tools` | Define the shell tool view with its small file and segment list, and carry it in the transcript, exclusively for the user. |
 | `packages/web-ui` | Shared file selection, segment selection and diff behavior. |
 | `packages/web`, `packages/web-gallery` | Product data adapters and matching specimens. |
 

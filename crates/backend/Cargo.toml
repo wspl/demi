@@ -24,32 +24,32 @@ test = false
 # object store that counts what reaches it (`ObjectCounts`), and the holds of
 # the runners' hellos and the pages' synchronization channels (`StepHold`).
 testing = [
-  "demi-backend-edge/testing",
-  "demi-backend-objects/testing",
-  "demi-backend-shard/testing",
-  "demi-backend-storage/testing",
-  "demi-gates/testing",
+  "demi-backend-http/testing",
+  "demi-backend-blobs/testing",
+  "demi-backend-user-shard/testing",
+  "demi-backend-database/testing",
+  "demi-shared-gates/testing",
 ]
 
 [dependencies]
-demi-artifact = { path = "../artifact" }
+demi-shared-artifacts = { path = "../shared-artifacts" }
 demi-backend-accounts = { path = "../backend-accounts" }
 demi-backend-cloud = { path = "../backend-cloud" }
-demi-backend-edge = { path = "../backend-edge" }
+demi-backend-http = { path = "../backend-http" }
 demi-backend-expose = { path = "../backend-expose" }
 demi-backend-families = { path = "../backend-families" }
 demi-backend-host-access = { path = "../backend-host-access" }
-demi-backend-objects = { path = "../backend-objects" }
+demi-backend-blobs = { path = "../backend-blobs" }
 demi-backend-providers = { path = "../backend-providers" }
 demi-backend-runners = { path = "../backend-runners" }
-demi-backend-shard = { path = "../backend-shard" }
-demi-backend-storage = { path = "../backend-storage" }
-demi-browser-protocol = { path = "../browser-protocol" }
-demi-command-tree = { path = "../command-tree" }
-demi-core = { path = "../core" }
-demi-gates = { path = "../gates" }
-demi-provider = { path = "../provider" }
-demi-web-api = { path = "../web-api" }
+demi-backend-user-shard = { path = "../backend-user-shard" }
+demi-backend-database = { path = "../backend-database" }
+demi-command-package-browser-protocol = { path = "../command-package-browser-protocol" }
+demi-command-declarations = { path = "../command-declarations" }
+demi-shared-types = { path = "../shared-types" }
+demi-shared-gates = { path = "../shared-gates" }
+demi-provider-common = { path = "../provider-common" }
+demi-web-api-protocol = { path = "../web-api-protocol" }
 clap = { version = "4", features = ["derive", "env"] }
 hex = "0.4"
 hkdf = "0.12"
@@ -63,22 +63,22 @@ tracing-subscriber.workspace = true
 url = { version = "2", features = ["serde"] }
 
 [dev-dependencies]
-demi-agent = { path = "../agent", features = ["testing"] }
-demi-agent-protocol = { path = "../agent-protocol" }
+demi-agent-server = { path = "../agent-server", features = ["testing"] }
+demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
 demi-agent-store = { path = "../agent-store", features = ["testing"] }
 demi-agent-tools = { path = "../agent-tools", features = ["testing"] }
 demi-backend = { path = ".", features = ["testing"] }
 demi-backend-runners = { path = "../backend-runners", features = ["testing"] }
-demi-backend-shard = { path = "../backend-shard", features = ["testing"] }
-demi-claude-protocol = { path = "../claude-protocol" }
+demi-backend-user-shard = { path = "../backend-user-shard", features = ["testing"] }
+demi-command-package-claude-code-protocol = { path = "../command-package-claude-code-protocol" }
 demi-command-protocol = { path = "../command-protocol", features = ["testing"] }
-demi-file-protocol = { path = "../file-protocol" }
-demi-host-remote = { path = "../host-remote", features = ["testing"] }
-demi-machines-protocol = { path = "../machines-protocol" }
-demi-provider = { path = "../provider", features = ["testing"] }
+demi-command-package-file-protocol = { path = "../command-package-file-protocol" }
+demi-backend-remote-host = { path = "../backend-remote-host", features = ["testing"] }
+demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
+demi-provider-common = { path = "../provider-common", features = ["testing"] }
 demi-provider-claude-code = { path = "../provider-claude-code" }
 demi-runner-protocol = { path = "../runner-protocol" }
-demi-shell = { path = "../shell", features = ["testing"] }
+demi-host-interface = { path = "../host-interface", features = ["testing"] }
 bytes.workspace = true
 # The upload and retention scenarios look for images' base64 in what a
 # provider was sent.

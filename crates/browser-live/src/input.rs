@@ -20,7 +20,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use demi_browser_driver::operation::{BrowserError, CONTROL_TIMEOUT, Result};
 use demi_browser_page::keyboard;
-use demi_browser_protocol::live::{
+use demi_command_package_browser_protocol::live::{
     KeyAction, LiveModuleMessage, LiveViewerMessage, PointerAction, PointerButton,
 };
 use demi_browser_tabs::{dialog::InputRelease, tab::BrowserTab};

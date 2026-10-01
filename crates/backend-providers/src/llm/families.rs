@@ -9,14 +9,14 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use demi_core::{Clock, WireApi};
-use demi_provider::credentials::CredentialPool;
-use demi_provider::models_dev::ModelsDevClient;
-use demi_provider::quota::QuotaSnapshotStore;
-use demi_provider::{Provider, ProviderRuntime, Secret};
+use demi_shared_types::{Clock, WireApi};
+use demi_provider_common::credentials::CredentialPool;
+use demi_provider_common::models_dev::ModelsDevClient;
+use demi_provider_common::quota::QuotaSnapshotStore;
+use demi_provider_common::{Provider, ProviderRuntime, Secret};
 use demi_provider_claude_code::Placement;
 use demi_provider_openai_api::VendorPolicy;
-use demi_web_api::providers::CredentialKind;
+use demi_web_api_protocol::providers::CredentialKind;
 use url::Url;
 
 /// A provider family: `anthropic`, `codex`, or a test's scripted one.

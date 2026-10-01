@@ -72,7 +72,7 @@ impl PipeClient {
         // Out of open files, the connection waits for one (`runner.md` § Load).
         let response = tokio::select! {
             _ = cancel.cancelled() => return Err(cancelled()),
-            response = demi_command_service::descriptors::retry(&cancel, || async {
+            response = demi_command_sdk::descriptors::retry(&cancel, || async {
                 let request = self.request(reqwest::Method::GET, path)?;
                 request.send().await.map_err(io::Error::other)
             }) => expect_ok(response?).await?,
@@ -101,7 +101,7 @@ impl PipeClient {
         tokio::select! {
             _ = cancel.cancelled() => Err(cancelled()),
             result = async {
-                let mut backoff = demi_command_service::descriptors::Backoff::default();
+                let mut backoff = demi_command_sdk::descriptors::Backoff::default();
                 let response = loop {
                     let request = self.request(reqwest::Method::PUT, path)?;
                     match request.body(reqwest::Body::wrap_stream(body.attempt())).send().await {
@@ -109,7 +109,7 @@ impl PipeClient {
                         // Out of open files, the connection waits for one
                         // (`runner.md` § Load). Only an attempt that read none
                         // of the body can be made again.
-                        Err(error) if body.unread() && demi_command_service::descriptors::exhausted(&error) => {
+                        Err(error) if body.unread() && demi_command_sdk::descriptors::exhausted(&error) => {
                             backoff.wait().await;
                         }
                         Err(error) => return Err(io::Error::other(error)),

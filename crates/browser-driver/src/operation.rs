@@ -5,7 +5,7 @@ use thiserror::Error;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
-use demi_browser_protocol::browser::{
+use demi_command_package_browser_protocol::browser::{
     ActionProgress, AssetsExportResult, BrowserErrorCode, ErrorDetails,
 };
 
@@ -214,7 +214,7 @@ impl<'a> Operation<'a> {
 /// The number of the agent a browser command acts for: tabs, debugging
 /// sessions and temporary tabs belong to it (`native-runtime.md` § Command
 /// context).
-pub fn agent(context: &demi_command_service::InvocationContext) -> Result<u64> {
+pub fn agent(context: &demi_command_sdk::InvocationContext) -> Result<u64> {
     context
         .request
         .context

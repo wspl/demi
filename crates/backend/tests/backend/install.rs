@@ -9,10 +9,10 @@ use std::path::{Path, PathBuf};
 use std::process::Output;
 
 use demi_command_protocol::{TARGETS, VERSION, host_target};
-use demi_host_remote::testing::{PAIRING_CODE, runner_binary};
-use demi_provider::testing::MockVendor;
+use demi_backend_remote_host::testing::{PAIRING_CODE, runner_binary};
+use demi_provider_common::testing::MockVendor;
 use demi_runner_protocol::wire;
-use demi_web_api::devices::ClaimedDevice;
+use demi_web_api_protocol::devices::ClaimedDevice;
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};

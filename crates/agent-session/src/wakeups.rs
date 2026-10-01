@@ -8,7 +8,7 @@ use std::{
     time::Duration,
 };
 
-use demi_core::Clock;
+use demi_shared_types::Clock;
 use tokio::sync::Notify;
 
 use super::SessionShared;

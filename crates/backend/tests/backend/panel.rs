@@ -1,7 +1,7 @@
 //! The work panel (`web-api.md` § Work panel state): one document per
 //! conversation, saved whole, read back as saved and never interpreted.
 
-use demi_web_api::error::ErrorCode;
+use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 

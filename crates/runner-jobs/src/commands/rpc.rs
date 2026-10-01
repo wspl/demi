@@ -3,7 +3,7 @@
 //! output on pipes. The connection's owner routes the call's inbound events
 //! to it; the call itself sends its requests.
 
-use demi_command_tree::Parsed;
+use demi_command_declarations::Parsed;
 use crate::{
     commands::command_output::CommandOutput, commands::contexts::ExecutionContext,
     connection::ConnectionHandle,
@@ -11,7 +11,7 @@ use crate::{
 use demi_runner_process::pipes::PipeClient;
 use demi_runner_protocol::wire::{self, PipeRef};
 use bytes::Bytes;
-use demi_command_service::{Input, ServiceError};
+use demi_command_sdk::{Input, ServiceError};
 use futures_util::StreamExt;
 use std::{collections::BTreeMap, io, sync::Arc, time::Duration};
 use tokio::sync::{mpsc, oneshot};

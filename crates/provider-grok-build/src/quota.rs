@@ -4,8 +4,8 @@
 
 use std::sync::Arc;
 
-use demi_core::{QuotaPlan, QuotaUnit, QuotaWindow, Timestamp};
-use demi_provider::{
+use demi_shared_types::{QuotaPlan, QuotaUnit, QuotaWindow, Timestamp};
+use demi_provider_common::{
     quota::{
         Observation, ProbeCost, ProbeReading, QuotaError, QuotaSource, clamp_used_percent,
         header_number, rfc3339, severity, used_percent_from_ratio,

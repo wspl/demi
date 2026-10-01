@@ -5,8 +5,8 @@
 use std::{borrow::Cow, collections::HashMap};
 
 use base64::{Engine, engine::general_purpose::STANDARD};
-use demi_core::{ThinkingConfig, is_blank};
-use demi_provider::{
+use demi_shared_types::{ThinkingConfig, is_blank};
+use demi_provider_common::{
     InferenceItem, InferenceRequest, MediaBytes, Medium, ResultPart, ToolDefinition, UserPart,
     json_body, openai_request::tool_arguments,
 };

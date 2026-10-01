@@ -3,8 +3,8 @@
 
 use std::time::Duration;
 
-use demi_core::FailureSource;
-use demi_provider::{
+use demi_shared_types::FailureSource;
+use demi_provider_common::{
     ErrorCode, ProviderEvent, ProviderFailure, Provider, RuntimeEnv, Secret,
     testing::{FixedClock, MockResponse, MockVendor, inference_request},
 };

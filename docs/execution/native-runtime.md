@@ -71,7 +71,7 @@ The responsibility boundaries are:
 | Execution adapter in the backend | Validate bindings against the startup catalog, build manifests, and answer artifact location requests. |
 | Backend artifact module | Publish complete releases and sign artifact downloads. No command algorithms. |
 | Runner | Validate dispatch, install artifacts, own service processes and their retention, and route invocations. |
-| Shared command-service SDK | Handle framing, HTTP/2, byte IO, and cancellation over a supplied transport. |
+| Shared command-sdk | Handle framing, HTTP/2, byte IO, and cancellation over a supplied transport. |
 | Native package | Implement operations, validate their arguments, and release operation resources. |
 
 The shared SDK owns no artifact or process management. Brush builtins and external

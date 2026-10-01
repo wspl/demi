@@ -8,18 +8,18 @@
 
 use std::time::{Duration, Instant};
 
-use demi_agent_protocol::{ClientFrame, ServerFrame};
-use demi_backend_shard::sync::SyncStep;
-use demi_core::AuthState;
-use demi_provider::quota::ProbeCost;
-use demi_provider::testing::{MockResponse, MockVendor};
-use demi_web_api::auth::Role;
-use demi_web_api::cloud::{CloudState, CloudStatus, CloudVolumes};
-use demi_web_api::conversations::{ConversationStatus, ConversationSummary};
-use demi_web_api::error::ErrorCode;
-use demi_web_api::providers::{ProviderDetails, ProviderReading, ProviderState};
-use demi_web_api::settings::{InstanceMode, Preferences, Theme};
-use demi_web_api::state::{ProductState, SyncEvent};
+use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
+use demi_backend_user_shard::sync::SyncStep;
+use demi_shared_types::AuthState;
+use demi_provider_common::quota::ProbeCost;
+use demi_provider_common::testing::{MockResponse, MockVendor};
+use demi_web_api_protocol::auth::Role;
+use demi_web_api_protocol::cloud::{CloudState, CloudStatus, CloudVolumes};
+use demi_web_api_protocol::conversations::{ConversationStatus, ConversationSummary};
+use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::providers::{ProviderDetails, ProviderReading, ProviderState};
+use demi_web_api_protocol::settings::{InstanceMode, Preferences, Theme};
+use demi_web_api_protocol::state::{ProductState, SyncEvent};
 use jiff::SignedDuration;
 use reqwest::{Method, StatusCode};
 use serde_json::json;

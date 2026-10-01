@@ -10,13 +10,13 @@ mod request;
 
 use std::sync::Arc;
 
-use demi_core::WireApi;
-use demi_provider::{
+use demi_shared_types::WireApi;
+use demi_provider_common::{
     InferenceRequest, Provider, ProviderRuntime, RuntimeEnv, Secret,
     testing::{FixedClock, MockResponse, MockVendor},
 };
 use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider, VendorPolicy};
-pub(crate) use demi_provider::testing::run;
+pub(crate) use demi_provider_common::testing::run;
 
 /// When the scripted vendor answers.
 pub(crate) const NOW: &str = "2026-09-18T14:00:00.000Z";

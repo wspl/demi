@@ -2,8 +2,8 @@
 //! request or after a request refused with HTTP 401, one refresh at a time
 //! (`providers.md` § Token refresh).
 
-use demi_core::{AuthState, TokenUsage};
-use demi_provider::{
+use demi_shared_types::{AuthState, TokenUsage};
+use demi_provider_common::{
     ErrorCode, Provider, ProviderEvent,
     credentials::{AccountMeta, CredentialPool, MemoryCredentialPool},
     testing::{MockResponse, MockVendor, inference_request},
@@ -282,8 +282,8 @@ async fn the_status_names_the_account_and_an_unreadable_or_absent_one_is_reporte
     // A provider built to log in has no account yet.
     let mut config = demi_provider_codex::CodexConfig::new(None);
     config.backend_url = vendor.url("/backend-api").parse().unwrap();
-    let clock = std::sync::Arc::new(demi_provider::testing::FixedClock(NOW.parse().unwrap()));
-    let snapshots = std::sync::Arc::new(demi_provider::quota::MemorySnapshots::new());
+    let clock = std::sync::Arc::new(demi_provider_common::testing::FixedClock(NOW.parse().unwrap()));
+    let snapshots = std::sync::Arc::new(demi_provider_common::quota::MemorySnapshots::new());
     let staged = demi_provider_codex::CodexProvider::new(
         config,
         std::sync::Arc::new(MemoryCredentialPool::new()),

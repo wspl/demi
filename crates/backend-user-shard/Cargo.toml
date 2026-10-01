@@ -1,0 +1,75 @@
+[package]
+name = "demi-backend-user-shard"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+# Its tests reach a shard's calls, its conversations' transitions and idle
+# watches, and host access's operations over a shard with runners the tests
+# play, so they are unit tests and the crate has no integration tests
+# (`crates-and-packages.md` § Module layout); no doc examples.
+doctest = false
+bench = false
+
+[features]
+# Shared services and a shard for tests (`Services::start_for_tests`), and
+# the holds of a flow at one of its steps (`StepHold`): the runners' hellos
+# and the pages' synchronization channels.
+testing = []
+
+[dependencies]
+demi-agent-server = { path = "../agent-server" }
+demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
+demi-agent-session = { path = "../agent-session" }
+demi-agent-store = { path = "../agent-store" }
+demi-agent-tools = { path = "../agent-tools" }
+demi-agent-transcript = { path = "../agent-transcript" }
+demi-backend-accounts = { path = "../backend-accounts" }
+demi-backend-cloud = { path = "../backend-cloud" }
+demi-backend-expose = { path = "../backend-expose" }
+demi-backend-host-access = { path = "../backend-host-access" }
+demi-backend-idle-watch = { path = "../backend-idle-watch" }
+demi-backend-blobs = { path = "../backend-blobs" }
+demi-backend-providers = { path = "../backend-providers" }
+demi-backend-runners = { path = "../backend-runners" }
+demi-backend-database = { path = "../backend-database" }
+demi-backend-page-sync = { path = "../backend-page-sync" }
+demi-command-package-browser-protocol = { path = "../command-package-browser-protocol" }
+demi-command-package-claude-code-protocol = { path = "../command-package-claude-code-protocol" }
+demi-agent-coding-harness = { path = "../agent-coding-harness" }
+demi-command-protocol = { path = "../command-protocol" }
+demi-command-declarations = { path = "../command-declarations" }
+demi-shared-types = { path = "../shared-types" }
+demi-command-package-file-protocol = { path = "../command-package-file-protocol" }
+demi-shared-gates = { path = "../shared-gates" }
+demi-backend-remote-host = { path = "../backend-remote-host" }
+demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
+demi-provider-common = { path = "../provider-common" }
+demi-provider-claude-code = { path = "../provider-claude-code" }
+demi-runner-protocol = { path = "../runner-protocol" }
+demi-host-interface = { path = "../host-interface" }
+demi-web-api-protocol = { path = "../web-api-protocol" }
+axum = { version = "0.8", features = ["ws"] }
+bytes.workspace = true
+futures-util.workspace = true
+jiff.workspace = true
+object_store = { version = "0.13", default-features = false }
+rand = "0.9"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+url = "2"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+demi-backend-runners = { path = "../backend-runners", features = ["testing"] }
+percent-encoding = "2"
+shlex = "2"
+tempfile = "3"
+tokio = { workspace = true, features = ["test-util"] }

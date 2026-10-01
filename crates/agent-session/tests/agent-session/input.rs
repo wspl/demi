@@ -4,10 +4,10 @@
 
 use demi_agent_store::ScheduledWakeup;
 use demi_agent_transcript::testing::{WAKEUP_TEXT, agent_message_envelope};
-use demi_core::{
+use demi_shared_types::{
     AgentMessage, AgentMessageEvent, BlockId, CompletionOutcome, PendingSteer, WakeupPlacement,
 };
-use demi_provider::testing::TokioClock;
+use demi_provider_common::testing::TokioClock;
 
 use super::*;
 
@@ -672,7 +672,7 @@ async fn yield_ends_the_turn_and_its_wakeup_opens_a_continuation_once_the_action
     let Block::ToolCall(call) = &blocks[1] else {
         panic!("{blocks:?}");
     };
-    let Some(demi_core::ToolView::YieldWakeup {
+    let Some(demi_shared_types::ToolView::YieldWakeup {
         wakeup_id,
         duration_ms: 120_000,
     }) = &call.view
@@ -796,7 +796,7 @@ async fn a_wakeup_that_fires_during_a_turn_joins_it_as_a_steer() {
 async fn a_wakeup_survives_dispose_and_one_due_meanwhile_fires_once_the_session_is_restored() {
     let provider = ScriptedRuntime::new([yield_call(60_000)]);
     let store = MemoryTreeStore::new();
-    let clock: Arc<dyn demi_core::Clock> = Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH));
+    let clock: Arc<dyn demi_shared_types::Clock> = Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH));
     let session = start_at(
         &provider,
         test_runtime(vec![yield_tool()]),
@@ -839,7 +839,7 @@ async fn a_session_restored_after_an_interrupted_turn_holds_its_wakeups_and_mess
 {
     let provider = ScriptedRuntime::new([yield_call(1_000), Turn::pending()]);
     let store = MemoryTreeStore::new();
-    let clock: Arc<dyn demi_core::Clock> = Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH));
+    let clock: Arc<dyn demi_shared_types::Clock> = Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH));
     let session = start_at(
         &provider,
         test_runtime(vec![yield_tool()]),

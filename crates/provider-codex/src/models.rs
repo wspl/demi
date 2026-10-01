@@ -5,8 +5,8 @@
 
 use std::num::NonZeroU32;
 
-use demi_core::{Clock, ProviderModel, ProviderModelList, ServiceTier};
-use demi_provider::{
+use demi_shared_types::{Clock, ProviderModel, ProviderModelList, ServiceTier};
+use demi_provider_common::{
     CatalogError,
     wire::{NonEmpty, decode_untagged},
 };

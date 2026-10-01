@@ -3,9 +3,9 @@
 //! messages, the lines and blocks it skips, and the failures of lines it
 //! cannot read.
 
-use demi_core::TokenUsage;
-use demi_provider::{ErrorCode, ProviderEvent, ProviderFailure};
-use demi_shell::Signal;
+use demi_shared_types::TokenUsage;
+use demi_provider_common::{ErrorCode, ProviderEvent, ProviderFailure};
+use demi_host_interface::Signal;
 use serde_json::{Value, json};
 
 use crate::cli::*;

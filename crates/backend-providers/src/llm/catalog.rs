@@ -6,9 +6,9 @@
 
 use std::sync::Arc;
 
-use demi_core::{ModelSelection, ProviderModel, ProviderModelList, ServiceTier, Timestamp};
-use demi_provider::Provider;
-use demi_web_api::providers::{CatalogModel, CatalogProvider, ConfiguredModel};
+use demi_shared_types::{ModelSelection, ProviderModel, ProviderModelList, ServiceTier, Timestamp};
+use demi_provider_common::Provider;
+use demi_web_api_protocol::providers::{CatalogModel, CatalogProvider, ConfiguredModel};
 use futures_util::future::join_all;
 use sha2::{Digest, Sha256};
 
@@ -188,10 +188,10 @@ fn catalog_key(entry: &ProviderEntry) -> String {
 
 #[cfg(test)]
 mod tests {
-    use demi_core::{Model, ThinkingConfig};
-    use demi_provider::Secret;
-    use demi_web_api::ids::{ProviderId, UserId};
-    use demi_web_api::providers::ConfiguredModels;
+    use demi_shared_types::{Model, ThinkingConfig};
+    use demi_provider_common::Secret;
+    use demi_web_api_protocol::ids::{ProviderId, UserId};
+    use demi_web_api_protocol::providers::ConfiguredModels;
 
     use super::*;
     use crate::vault::entries::ApiKeyConfig;
@@ -256,7 +256,7 @@ mod tests {
         );
         assert_eq!(
             applied.model.accepted_extensions,
-            Some(vec![demi_core::FileExtension::Png, demi_core::FileExtension::Pdf])
+            Some(vec![demi_shared_types::FileExtension::Png, demi_shared_types::FileExtension::Pdf])
         );
         assert_eq!(
             (applied.thinking, applied.service_tier_id),

@@ -23,7 +23,7 @@ use tokio::sync::{broadcast, watch};
 use tokio_util::task::TaskTracker;
 
 use demi_browser_driver::operation::{BrowserError, Result};
-use demi_browser_protocol::live::{ControlToken, LiveControl};
+use demi_command_package_browser_protocol::live::{ControlToken, LiveControl};
 use demi_browser_tabs::tab::BrowserTab;
 
 /// The isolated world's name, shared by its script and its binding.

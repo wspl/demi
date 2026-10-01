@@ -15,7 +15,7 @@ change. The [boundary checks](#boundary-checks) fail until both agree.
 ## Extension principle
 
 Host capabilities are plugins behind one narrow port, and that port is all the
-runner and the backend know about them. The runner and the command-service SDK
+runner and the backend know about them. The runner and the command-sdk
 supply mechanism: the trusted conversation and caller identity on every
 invocation, and the generic conversation release with its status query
 ([Conversation-scoped state](../execution/native-runtime.md#conversation-scoped-state)).
@@ -24,21 +24,21 @@ The backend owns one policy: when a conversation is idle
 Each tool owns its own state and cleanup.
 
 For example, the conversation browser keeps its tabs between shell jobs. Its
-operations are types in `browser-protocol`, the `demi.browser` package
+operations are types in `command-package-browser-protocol`, the `demi.browser` package
 (`demi-browser` and the browser libraries) implements them, and
-`coding-agent` declares them as `demi browser` commands. The tabs are keyed by
+`agent-coding-harness` declares them as `demi browser` commands. The tabs are keyed by
 the conversation the runner names on every invocation, and they end when the
 runner forwards the generic conversation release. No browser state or
 browser-specific message exists in the runner's crates, `runner-protocol`,
-`host-remote`, the agent's crates or the backend's conversation lifecycle.
+`backend-remote-host`, the agent's crates or the backend's conversation lifecycle.
 The backend names the browser only where the user's page reaches it directly:
 it declares the live view's `browser` user stream and serves the conversation
 browser tab routes, and neither holds browser logic or state.
 
 A new conversation-scoped capability is therefore added as a native package
 of its own: its operation types in a contract crate, its commands in its
-program, and its declarations in `coding-agent`; the runner, `runner-protocol`,
-`host-remote`, the agent and the backend's conversation lifecycle do not
+program, and its declarations in `agent-coding-harness`; the runner, `runner-protocol`,
+`backend-remote-host`, the agent and the backend's conversation lifecycle do not
 change. A proposal that adds a tool-specific message, adapter or lifecycle
 hook to any of those crates violates this contract and is redesigned at the
 port instead. A generic Host mechanism is different: a
@@ -81,7 +81,7 @@ receives them. Both ends of a wire link it, or the generator reads it to write
 the browser's TypeScript. A contract crate has no async runtime and no IO.
 [Contracts](contracts.md) owns the rules these crates follow.
 
-#### `core`
+#### `shared-types`
 
 - **Owns:** the data the browser, the agent and the backend share:
   - transcript blocks (`Block`): the explicit submission `User`, the only
@@ -133,7 +133,7 @@ the browser's TypeScript. A contract crate has no async runtime and no IO.
   runtime details, Host details, user-interface concepts, transport URLs or
   backend identifiers.
 
-#### `agent-protocol`
+#### `conversation-socket-protocol`
 
 - **Owns:** the conversation WebSocket's frames: `ClientFrame` and its content
   (`ClientContent`, whose `upload`, `remote_file`, `media` and `attachment`
@@ -144,7 +144,7 @@ the browser's TypeScript. A contract crate has no async runtime and no IO.
   (`decode_client_frame`), which tells a message that is not JSON from an
   invalid frame.
 - **Public boundary:** the types above. The agent resolves the files a
-  frame's content refers to through the backend (`agent`'s
+  frame's content refers to through the backend (`agent-server`'s
   `ContentResolver`) before the session sees the content. The protocol's
   behavior is in [Frame protocol](../agent/runtime.md#frame-protocol).
 - **Must not:** hold session logic or a transport, or carry file bytes inside a
@@ -172,9 +172,9 @@ the browser's TypeScript. A contract crate has no async runtime and no IO.
   service (`FIXTURE_OPERATIONS`), which the tests at both ends of the wire
   use.
 - **Must not:** speak the wire: the client, the server and the recorder are
-  `command-service`'s.
+  `command-sdk`'s.
 
-#### `command-tree`
+#### `command-declarations`
 
 - **Owns:** command declarations, which are also the manifest's nodes (`Node`,
   `Group`, `Leaf`, `LeafKind` with its `Rpc` and `Native` bindings: a
@@ -196,20 +196,20 @@ the browser's TypeScript. A contract crate has no async runtime and no IO.
   check and its one wording; the runner checks `--json` output against the
   leaf's output schema with the same check.
   Behavior: [Commands](../execution/commands.md).
-- **Must not:** hold handlers or their bindings (`shell` pairs declarations
+- **Must not:** hold handlers or their bindings (`host-interface` pairs declarations
   with handlers), read stdin, or perform any other IO.
 
-#### `file-protocol`
+#### `command-package-file-protocol`
 
 - **Owns:** the `demi.file` package's id (`PACKAGE`, which its release
   descriptor names) and operations (`Operation`): the arguments and results of
   `file.read`, `file.create`, `file.edit` and `file.patch`, with their limits.
-- **Public boundary:** the types above. `coding-agent` declares the `demi file`
+- **Public boundary:** the types above. `agent-coding-harness` declares the `demi file`
   commands from them and `demi-file` decodes invocations with them.
   Behavior: [Commands](../execution/commands.md).
 - **Must not:** implement operations or perform IO.
 
-#### `browser-protocol`
+#### `command-package-browser-protocol`
 
 - **Owns:** the `demi.browser` package's id (`PACKAGE`) and operations
   (`Operation`): the arguments and results of `browser.*`, browser targets,
@@ -218,7 +218,7 @@ the browser's TypeScript. A contract crate has no async runtime and no IO.
   commands, and the pinned Chrome release record. Limits are the crate's
   constants, shared by the inputs they bound; each input type carries its
   default timeout.
-- **Public boundary:** the types above. `coding-agent` declares the commands
+- **Public boundary:** the types above. `agent-coding-harness` declares the commands
   from these types, the browser libraries decode invocations with them, the
   backend uses them for the conversation browser tab routes, and the page
   reads the live view's messages through `@demicodes/protocol`. Native
@@ -227,7 +227,7 @@ the browser's TypeScript. A contract crate has no async runtime and no IO.
 - **Must not:** implement operations, transport, components, Host access,
   process management or conversation persistence.
 
-#### `claude-protocol`
+#### `command-package-claude-code-protocol`
 
 - **Owns:** the `demi.claude` package's operations, `claude.ensure` and
   `claude.status`: their arguments and results, the release record and the
@@ -259,14 +259,14 @@ the browser's TypeScript. A contract crate has no async runtime and no IO.
   `numbers_reserve` the one generic request for a conversation's numbers; the
   wire carries no browser policy.
 - **Public boundary:** the items above. The runner and the backend link it; the
-  machine manager uses `ManagedBoot`, and `machines-protocol`'s image manifest
+  machine manager uses `ManagedBoot`, and `machine-manager-protocol`'s image manifest
   check and `xtask`'s image build use `ARTIFACTS_PATH`. Behavior:
   [Runner](../execution/runner.md).
 - **Must not:** contain network IO, a Host implementation, a shell environment,
   the job table, credentials, claim policy, the device registry or conversation
   state.
 
-#### `machines-protocol`
+#### `machine-manager-protocol`
 
 - **Owns:** the machine-manager socket: requests (`MachineRequest`,
   `MachineCall` with one parameter type per operation), responses
@@ -276,14 +276,14 @@ the browser's TypeScript. A contract crate has no async runtime and no IO.
   (`MachineImageState`, `RuntimeState`, `Volume`) and the names of stored
   images (`DeviceId`, `GenerationId`, `BaseVersion`: one path component
   each); and the Cloud image manifest (`image::CloudImageManifest`), which
-  embeds `runner-protocol`'s runner release and `command-service`'s package
+  embeds `runner-protocol`'s runner release and `command-sdk`'s package
   descriptors.
 - **Public boundary:** the items above. The backend's machine-manager client
   and the manager link it; `xtask` writes the image manifest with it. Behavior:
   [Managed Cloud hosts](../cloud/managed-hosts.md).
 - **Must not:** hold the manager's policy or IO.
 
-#### `web-api`
+#### `web-api-protocol`
 
 - **Owns:** every REST request and response body, such as `ProductState`,
   `ConversationPatch` and `ProviderDto`; the messages of the page's
@@ -291,8 +291,8 @@ the browser's TypeScript. A contract crate has no async runtime and no IO.
   `ErrorCode`, the one list of every error code the browser can see; and the
   identifier and text types those bodies use. It reuses the runner's
   working-tree change types (`GitChanges`) and platform (`RunnerPlatform`, a
-  device's platform), `browser-protocol`'s browser tab types and
-  `command-service`'s command locale (`CommandLocale`, which the browser
+  device's platform), `command-package-browser-protocol`'s browser tab types and
+  `command-sdk`'s command locale (`CommandLocale`, which the browser
   reports as a preference) instead of declaring them again. A Host
   log line is its own type: the runner wire carries its time as integer
   milliseconds, the browser as an RFC 3339 time.
@@ -302,7 +302,7 @@ the browser's TypeScript. A contract crate has no async runtime and no IO.
 
 ### Libraries
 
-#### `command-service`
+#### `command-sdk`
 
 - **Owns:** the SDK that speaks the command wire of `command-protocol`:
   - the HTTP/2 client and server, the one invocation exchange (`Exchange`),
@@ -313,7 +313,7 @@ the browser's TypeScript. A contract crate has no async runtime and no IO.
   - path resolution against an invocation's working directory, and waiting out
     a lack of open file descriptors.
 - **Public boundary:** the client, the service entry point, the handler and IO
-  traits, and the edit recorder; `command_service::testing` starts a service
+  traits, and the edit recorder; `command_sdk::testing` starts a service
   binary and drives it with a client (`ServiceProcess`), gives a handler
   numbers from counters that start at 1 (`counting_numbers`) or answers a
   service's numbers stream from them (`answer_numbers`), and counts the
@@ -325,7 +325,7 @@ the browser's TypeScript. A contract crate has no async runtime and no IO.
   processes, hold credentials, or change the process-wide working directory or
   environment for an invocation.
 
-#### `gates`
+#### `shared-gates`
 
 - **Owns:** the named gates that serialize work across awaits: `ActivityGate`
   (demand and maintenance leases, reservations and its `GateState` snapshot),
@@ -336,7 +336,7 @@ the browser's TypeScript. A contract crate has no async runtime and no IO.
   test waits for an operation to be held instead of for time.
 - **Must not:** know users, conversations, devices or any other domain.
 
-#### `artifact`
+#### `shared-artifacts`
 
 - **Owns:** verified download over HTTPS with a declared size and SHA-256
   (plain HTTP too for the runner's artifact cache, whose digests come from the
@@ -351,7 +351,7 @@ the browser's TypeScript. A contract crate has no async runtime and no IO.
   publication of a file, durable or not, goes through it: the runner's
   artifact cache, the Chrome and Claude Code installers, the machine
   manager's image store, the edit recorder's snapshots and journal in
-  `command-service`, and `xtask` release packaging.
+  `command-sdk`, and `xtask` release packaging.
 - **Public boundary:** the functions and types above. Its `testing` feature
   adds a fixture HTTP server on `127.0.0.1` that downloads can reach, the count
   of waits for install locks, and `install_unpacked`, which installs a release
@@ -360,7 +360,7 @@ the browser's TypeScript. A contract crate has no async runtime and no IO.
 - **Must not:** choose what to install or read release pointers: its callers
   name the location, size and digest they expect.
 
-#### `provider`
+#### `provider-common`
 
 - **Owns:**
   - the provider contract: `Provider`, one entry shared by every user and
@@ -380,18 +380,18 @@ the browser's TypeScript. A contract crate has no async runtime and no IO.
     server-sent events, the two-step decode of payloads tagged by `type`, and
     the OpenAI-shaped Responses and Chat Completions formats with their stream
     mappers;
-  - OAuth device flows (`provider::oauth`); the credential pool contract
+  - OAuth device flows (`provider_common::oauth`); the credential pool contract
     (`CredentialPool`, `AccountDocument`) with one refresh at a time per
     account (`RefreshGates`), the one refresh protocol of every family
     (`renew`), a pool held in memory for logins and tests
     (`MemoryCredentialPool`), the account operations every subscription
     family shares (`Accounts`, over a family's `AccountKit`), and why an
     account could not be used (`AuthFailure`); quota (`ProviderQuota`), token
-    accounting, and the models.dev client (`provider::models_dev`: the one
+    accounting, and the models.dev client (`provider_common::models_dev`: the one
     copy of the document a backend keeps, `ModelsDevClient`, and its vendors
     and models as catalog models); the catalog, state, account and quota
-    shapes they return are `core`'s, because the browser receives them.
-- **Public boundary:** the items above; `provider::testing` supplies scripted
+    shapes they return are `shared-types`'s, because the browser receives them.
+- **Public boundary:** the items above; `provider_common::testing` supplies scripted
   runtimes (`ScriptedRuntime`), a scripted vendor server (`MockVendor`), waits
   for a run's events that fail a test instead of hanging it (`next_event`,
   `all_events`), the check of an API-key entry's built-in catalog
@@ -401,7 +401,7 @@ the browser's TypeScript. A contract crate has no async runtime and no IO.
   [Models](../providers/models.md),
   [Usage and quota](../providers/usage-and-quota.md) and
   [Failures and recovery](../agent/failures-and-recovery.md).
-- **Must not:** depend on concrete providers, the agent runtime, `shell` or a
+- **Must not:** depend on concrete providers, the agent runtime, `host-interface` or a
   Host implementation.
 
 #### Vendor provider crates
@@ -424,7 +424,7 @@ Each crate implements the provider contract for one vendor family.
   [Providers](../providers/providers.md).
 - **Secret boundary:** keys, tokens, custom headers and raw endpoint values stay
   inside the provider and never reach a frame or response the browser sees.
-- **Must not:** depend on the agent's crates, `shell`, `coding-agent` or a
+- **Must not:** depend on the agent's crates, `host-interface`, `agent-coding-harness` or a
   Host implementation.
 
 #### `provider-claude-code`
@@ -438,16 +438,16 @@ Each crate implements the provider contract for one vendor family.
 - **Public boundary:** its `Provider` implementation and configuration type,
   the session runtime it builds over a placement, and the placement contract
   (`Placement`): `start` starts a new CLI process from the spawn request the
-  provider builds and answers the `shell` process. `Provider::runtime` refuses
+  provider builds and answers the `host-interface` process. `Provider::runtime` refuses
   with `ProcessHostRequired`. Behavior:
   [Claude Code](../providers/claude-code.md#how-a-runtime-gets-its-process).
 - **Secret boundary:** OAuth tokens never reach a frame or response the browser
   sees; the only process that receives one is the CLI on the user's Cloud.
-- **Must not:** depend on the agent's crates, `coding-agent` or a Host
-  implementation. It runs the CLI through the `shell` process the placement
+- **Must not:** depend on the agent's crates, `agent-coding-harness` or a Host
+  implementation. It runs the CLI through the `host-interface` process the placement
   answers; which machine that is, is the backend's placement.
 
-#### `shell`
+#### `host-interface`
 
 - **Owns:** three contracts and nothing that implements them:
   - the Host contract: `Host` (`key`, `default_cwd`, `identity`, `fs`,
@@ -473,13 +473,13 @@ Each crate implements the provider contract for one vendor family.
     and the keeper to which an environment hands what a command leaves when it ends,
     its whole output and its edit copies, which the product implements over
     its storage ([The whole output](../agent/runtime.md#the-whole-output)).
-- **Public boundary:** the items above; `shell::testing` supplies the Host
+- **Public boundary:** the items above; `host_interface::testing` supplies the Host
   conformance cases, an in-memory port for rpc handler tests
   (`MemoryPort`) and sequences that count from 1 (`CountingNumbers`). The Host rules are in
   [Host operations](../execution/runner.md#host-operations); the handler
   interface is [the TypeScript boundary](contracts.md#the-typescript-boundary).
-- **Must not:** depend on the agent's crates, `provider`, a concrete provider,
-  `coding-agent` or a Host implementation.
+- **Must not:** depend on the agent's crates, `provider-common`, a concrete provider,
+  `agent-coding-harness` or a Host implementation.
 
 #### `agent-store`
 
@@ -559,7 +559,7 @@ Each crate implements the provider contract for one vendor family.
   readers of a shell tool's result text (`field`, `shown_output`).
 - **Must not:** create sessions, nodes or trees, or own a shell interpreter.
 
-#### `agent`
+#### `agent-server`
 
 - **Owns:** the agent server, which assembles sessions and tools into
   conversations:
@@ -579,7 +579,7 @@ Each crate implements the provider contract for one vendor family.
     frame's content refers to, which the backend answers
     (`ContentResolver`), and the conversation title request and its rules
     (`title`).
-- **Public boundary:** the items above; `agent::testing` supplies provider
+- **Public boundary:** the items above; `agent_server::testing` supplies provider
   runtimes that play scripts (`ScriptedProviders`), uploads a frame's files
   resolve to (`TestFiles`) and a test client that drives a connection
   (`TestClient`, and `waiting_frames` for what an outbox holds). A product supplies the harness, the providers, a shell environment
@@ -597,17 +597,17 @@ Each crate implements the provider contract for one vendor family.
   whose dev-dependencies include the OpenAI-compatible provider; every build of
   the one selection compiles it, and no test runs it.
 
-#### `coding-agent`
+#### `agent-coding-harness`
 
 - **Owns:** the coding harness (`CodingHarness`), its system prompt, and the
-  `demi` command root: `file` (native, declared from `file-protocol` types),
-  `todo` (rpc) and `browser` (native, declared from `browser-protocol`
+  `demi` command root: `file` (native, declared from `command-package-file-protocol` types),
+  `todo` (rpc) and `browser` (native, declared from `command-package-browser-protocol`
   types), with product groups such as the backend's `host` group composed in.
 - **Public boundary:** the harness (`CodingHarness`) over the product's
   answer to where a node runs (`HostResolver`: a node's Host and the text that
   announces a change of it) and the `demi` root (`demi_root`, with the
   product's groups in `DemiOptions`). Its native groups bind to the `PACKAGE`
-  of `file-protocol` and of `browser-protocol`, which the backend imports from
+  of `command-package-file-protocol` and of `command-package-browser-protocol`, which the backend imports from
   there too.
 - **Native binding:** the native groups declare package and operation ids. The
   backend supplies exact release descriptors at runtime; declarations import no
@@ -617,7 +617,7 @@ Each crate implements the provider contract for one vendor family.
   environment, a concrete provider or a Host implementation, or replace the
   shell mechanism or the standard tools.
 
-#### `host-remote`
+#### `backend-remote-host`
 
 - **Owns:** the backend's end of a runner:
   - the connection engine (`Link`, served by its `LinkDriver`): routing
@@ -633,7 +633,7 @@ Each crate implements the provider contract for one vendor family.
   - a whole output as the runner wire's kept-output records, in which the
     backend stores it (`encode_output`, `decode_output`);
   - building manifests from a command set.
-- **Public boundary:** the items above; `host_remote::testing` supplies a real
+- **Public boundary:** the items above; `backend_remote_host::testing` supplies a real
   runner process for a backend at any address, with a home and state of its
   own (`RunnerProcess`), such a runner connected to a backend end of the
   fixture's own for one device (`RunnerFixture`), an in-process fake runner
@@ -657,7 +657,7 @@ sed, findutils and diffutils, and nothing below the executable depends on it.
 
 ```text
 demi-runner (executable: connection, registration, Host log, composition)
-   |-- runner-jobs ------> runner-services ---.
+   |-- runner-jobs ------> runner-command-packages ---.
    |-- runner-host ---------------------------+--> runner-process
    |-- runner-shell --------------------------'
    `-- (all of the above)
@@ -673,14 +673,14 @@ demi-runner (executable: connection, registration, Host log, composition)
   file contents and output to the backend's pipe routes, and the report of a
   pipe's outcome ([Pipes and output](../execution/runner.md#pipes-and-output));
   the split of a stream into lines and the kept tail of a stream; private
-  state files written atomically, through `artifact`'s publication; the line
+  state files written atomically, through `shared-artifacts`'s publication; the line
   counts of a change to a file; the
   local command client that a command alias runs
   ([External command clients](../execution/commands.md#external-command-clients));
   and the job shell contract (`JobShell`, `ShellJob`): how the runner starts
   a job's script, feeds its input, signals, cancels and awaits it, without
   knowing which shell runs it. A job's declared commands come with it as
-  their root names, its execution context's id and the command-service
+  their root names, its execution context's id and the `command-sdk`
   `Handler` each invocation goes to (`JobCommands`).
 - **Public boundary:** the items above.
 - **Must not:** know the backend connection, jobs, commands, services or the
@@ -693,14 +693,14 @@ demi-runner (executable: connection, registration, Host log, composition)
   operations and file contents through pipes, the working tree with its
   status, diffs and change watch (gix and notify), network streams, and the
   volumes a Host reports. It resolves a request's paths and waits out a lack
-  of open files with `command-service`, as every native program does, and
-  writes a file's contents through `artifact`'s staged publication.
+  of open files with `command-sdk`, as every native program does, and
+  writes a file's contents through `shared-artifacts`'s staged publication.
 - **Public boundary:** one function per operation over its wire request, and
   the working tree's watch.
 - **Must not:** know jobs, commands or the connection that carries the
   requests.
 
-#### `runner-services`
+#### `runner-command-packages`
 
 - **Owns:** the artifact cache, the preinstalled executables of a Cloud
   image, and the resident service registry: installing a pinned executable,
@@ -728,20 +728,20 @@ demi-runner (executable: connection, registration, Host log, composition)
   dispatcher.
 - **Must not:** know jobs, their execution contexts, services or the
   connection: a declared command reaches the dispatcher only through the
-  command-service `Handler` the job gives it.
+  command-sdk `Handler` the job gives it.
 
 #### `runner-jobs`
 
 - **Owns:** shell jobs and the commands they run: the job table, each job's
   execution context with its command context, its directory and kept output,
   the edit report at its end, and the command dispatcher (it parses argv with
-  `command-tree`, holds a `--json` command's output until it is checked
+  `command-declarations`, holds a `--json` command's output until it is checked
   against the leaf's output schema, routes native invocations to their
   services and rpc calls to the backend) with local command forwarding.
 - **Conversation scope:** keeps each job's command context and writes it into
   every native invocation; it implements no browser operation.
 - **Public boundary:** the job table, the dispatcher, which implements the
-  command-service `Handler` the shell calls, and the connection handle it
+  command-sdk `Handler` the shell calls, and the connection handle it
   sends rpc calls and reports through (`ConnectionHandle`), whose requests
   the composition's connection owner serves and whose answers it routes
   (`Relay`).
@@ -754,34 +754,34 @@ The backend is one executable built from layered crates. Each layer knows
 only the layers beneath it. A domain whose operations need another domain's
 state does not reach for the user's shard: it defines the narrow trait of what
 it needs (`CloudShard`, `ExposeShard`, `HostShard`), writes its operations as
-methods of that trait object, and `backend-shard` implements the trait for
+methods of that trait object, and `backend-user-shard` implements the trait for
 `Shard` ([Composition](concurrency.md#the-user-shard)). No crate below
-`backend-shard` sees `Shard` or `Services`; each receives the handles it uses,
+`backend-user-shard` sees `Shard` or `Services`; each receives the handles it uses,
 such as the control service or its user's change marks.
 
 ```text
 demi-backend (executable: configuration, composition)
   |-- backend-families --> backend-providers
-  `-- backend-edge (HTTP)
-        `-- backend-shard (the user's shard, conversations)
+  `-- backend-http (HTTP)
+        `-- backend-user-shard (the user's shard, conversations)
               |-- backend-host-access --> backend-cloud, backend-expose, backend-runners
-              |-- backend-cloud --------> backend-runners, backend-providers, backend-idle
+              |-- backend-cloud --------> backend-runners, backend-providers, backend-idle-watch
               |-- backend-accounts
-              `-- (each as it needs) --> backend-storage, backend-objects, backend-sync
+              `-- (each as it needs) --> backend-database, backend-blobs, backend-page-sync
 ```
 
-#### `backend-sync`
+#### `backend-page-sync`
 
 - **Owns:** the change registry of the pages' synchronization channels: the
   parts of a user's product state (`Part`), and the marks each change leaves
   on that user's open channels (`SyncRegistry`, `UserMarks`)
   ([Browser synchronization](../backend/backend.md#browser-synchronization)).
   A channel is registered under the hash of the session it opened with, a
-  record of `backend-storage`, so a sign-out ends that session's channels.
+  record of `backend-database`, so a sign-out ends that session's channels.
 - **Public boundary:** the items above.
-- **Must not:** read or build the product state; `backend-shard` does.
+- **Must not:** read or build the product state; `backend-user-shard` does.
 
-#### `backend-storage`
+#### `backend-database`
 
 - **Owns:** the SQLite databases ([Storage](../backend/storage.md)): the
   control service and every control record, the conversation index, each
@@ -792,14 +792,14 @@ demi-backend (executable: configuration, composition)
   and settings changes, and catalog records, which the domains above use. The
   tree store reaches the owner's blobs through `OwnerBlobs`, the narrow trait
   of what its commits need of the namespace and the record of blob uses that
-  `backend-objects` keeps, which the shard implements.
+  `backend-blobs` keeps, which the shard implements.
 - **Public boundary:** the stores and their records. Its `testing` feature
   opens a control database with a test key and runs raw statements behind the
   service's back, for tests of what the service must refuse, and holds the
   commits of the conversations' checkpoints (`CommitHold`).
 - **Must not:** hold a domain's policy or call another backend crate.
 
-#### `backend-objects`
+#### `backend-blobs`
 
 - **Owns:** the object store, on local disk or S3 through `object_store`, and
   the attachment and transcript media over it with the record of each blob's
@@ -850,8 +850,8 @@ demi-backend (executable: configuration, composition)
   that runners reach (`PublicUrl`)
   ([Runner](../execution/runner.md),
   [Native runtime](../execution/native-runtime.md#backend-deployment-configuration)).
-  Publication uploads to the object store `backend-objects` configures, and
-  the file gate is a `gates` gate, which is why it depends on both.
+  Publication uploads to the object store `backend-blobs` configures, and
+  the file gate is a `shared-gates` gate, which is why it depends on both.
 - **Public boundary:** the items above. A Host handle owned by a conversation
   is given out only against that conversation's file-gate lease:
   `Devices::conversation_host` takes a `FileLease`, which names the
@@ -863,7 +863,7 @@ demi-backend (executable: configuration, composition)
 - **Must not:** reach a conversation's Host except through host access, or
   know conversations, the Cloud or exposes.
 
-#### `backend-idle`
+#### `backend-idle-watch`
 
 - **Owns:** the idle rule's mechanism: one idle window, and one watch per
   resource over that resource's gates, which reserves the resource and reads
@@ -896,7 +896,7 @@ demi-backend (executable: configuration, composition)
 - **Public boundary:** the exposes component and its operations on
   `dyn ExposeShard`. The `demi host expose` leaves are host commands and live
   in `backend-host-access`; the network stream of an admitted connection is
-  opened by `backend-shard` through device access.
+  opened by `backend-user-shard` through device access.
 - **Must not:** see `Shard` or reach a Host.
 
 #### `backend-host-access`
@@ -914,7 +914,7 @@ demi-backend (executable: configuration, composition)
   conversation databases, the native catalog and the public address, and
   the shard as the Cloud and the exposes see it) and the conversation's idle
   watch, which every Host admission starts. Uploads read the user's blobs,
-  and the shells store theirs, in `backend-objects`, which is why it depends
+  and the shells store theirs, in `backend-blobs`, which is why it depends
   on it.
 - **Public boundary:** host access and its operations on `dyn HostShard`, the
   conversations' slots, the transitions, the leases, the shell environment
@@ -924,7 +924,7 @@ demi-backend (executable: configuration, composition)
   leases make no Host.
 - **Must not:** see `Shard`; or leave a second way to a conversation's Host.
 
-#### `backend-shard`
+#### `backend-user-shard`
 
 - **Owns:** the user shard ([The user shard](concurrency.md#the-user-shard)):
   shard threads, `Shard`, `Shards` and the shard pool, the shared services a
@@ -948,7 +948,7 @@ demi-backend (executable: configuration, composition)
   return.
 - **Must not:** serve HTTP.
 
-#### `backend-edge`
+#### `backend-http`
 
 - **Owns:** the HTTP edge: the listener and router, the session gate, request
   extractors and body limits, the mapping of errors to `ErrorCode`, the
@@ -982,7 +982,7 @@ demi-browser (executable: conversations, composition)
   agent it acts for, element handles, frames, navigation history, the
   conversation numbers stream, and the text and output a command answers with
   ([Native driver](../browser/browser.md#native-driver)). The capture
-  channel's decoding of the extension's frames is why it depends on `core`.
+  channel's decoding of the extension's frames is why it depends on `shared-types`.
 - **Public boundary:** the items above; its `testing` feature adds the
   capture extension's id and tab numbers at hand without a numbers source.
 - **Must not:** know tabs, conversations or the live view's viewers.
@@ -1009,7 +1009,7 @@ demi-browser (executable: conversations, composition)
   them, the clipboard, uploads, downloads, fetches and assets, and the
   capabilities of these families. The families that read the invocation's
   working directory, standard input or caller take its command context from
-  `command-service`.
+  `command-sdk`.
 - **Public boundary:** one function per action over a `BrowserTab`. Its
   `testing` feature adds the helpers that drive a page by CSS selector.
 - **Must not:** own tab state or the CDP session.
@@ -1063,7 +1063,7 @@ demi-browser (executable: conversations, composition)
   (`NativeCatalog`, which the executable and the scenarios make with
   `publish_native` from a `DEMI_NATIVE_CONFIG` file) and the user stream
   declarations. A test imports each of these from the library that owns it
-  (`backend-providers`, `backend-shard`, `backend-cloud`, `backend-runners`),
+  (`backend-providers`, `backend-user-shard`, `backend-cloud`, `backend-runners`),
   never through the executable. Its `testing` feature adds `Backend::hold_commits`, which
   holds the commits of the conversations' checkpoints (`CommitHold`) for the
   scenarios that stop a save at its commit
@@ -1091,7 +1091,7 @@ demi-browser (executable: conversations, composition)
   the machine manager). The one credential that reaches a runner is a Claude
   Code account's token, in the CLI's environment on the user's Cloud.
 
-#### `machines` (`demi-machines`)
+#### `machine-manager` (`demi-machines`)
 
 - **Owns:** the Cloud machine manager on Linux: gVisor sandboxes run through
   `runsc` and their OCI bundles, private mounts and loop devices, network
@@ -1123,7 +1123,7 @@ demi-browser (executable: conversations, composition)
   reserves with the runner's own; its local endpoint answers the management
   requests (`status`, `drain`) beside the dispatcher's commands. It keeps a
   service resident while it holds conversation state and forwards the
-  conversation release, through `runner-services`.
+  conversation release, through `runner-command-packages`.
 - **Public boundary:** the executable; the crate has no library. Its test
   binary drives the built program, as a backend does; the open-file test, a
   binary of its own, runs the runner libraries in its process. Behavior:
@@ -1134,7 +1134,7 @@ demi-browser (executable: conversations, composition)
   boot as PID 1, since init belongs to the image; link Demi's command
   algorithms.
 
-#### `demi-file`
+#### `command-package-file` (`demi-file`)
 
 - **Owns:** the independently released `demi.file` resident program: file
   read, create, edit and patch, with the file mutations serialized by one
@@ -1148,7 +1148,7 @@ demi-browser (executable: conversations, composition)
   store conversations or be linked into the runner. Standard shell utilities
   belong to the runner.
 
-#### `demi-browser`
+#### `command-package-browser` (`demi-browser`)
 
 - **Owns:** the independently released `demi.browser` resident program: the
   conversations' browsers, one owner per conversation, each with the live
@@ -1164,7 +1164,7 @@ demi-browser (executable: conversations, composition)
 - **Must not:** host a runner connection, define the agent's command tree,
   store conversations or be linked into the runner.
 
-#### `demi-claude`
+#### `command-package-claude-code` (`demi-claude`)
 
 - **Owns:** the independently released `demi.claude` package, which installs
   and verifies Demi's copy of the Claude Code CLI on the machine that runs it
@@ -1187,7 +1187,7 @@ demi-browser (executable: conversations, composition)
   ([Validation](../delivery/builds-and-releases.md#validation)).
 - **Public boundary:** its commands; no crate links it.
 - **Must not:** hold a second implementation of something a crate owns: it
-  downloads and publishes through `artifact` and writes every record with its
+  downloads and publishes through `shared-artifacts` and writes every record with its
   contract crate's type.
 
 ## TypeScript packages
@@ -1257,7 +1257,7 @@ packages under `packages/`.
 - **Private.**
 - **Owns:** the Vue single-page application: the application frame, route
   navigation, product state and backend request handlers, with the REST types
-  generated from `web-api` into `src/api/generated/`. Vue, TypeScript and Vite,
+  generated from `web-api-protocol` into `src/api/generated/`. Vue, TypeScript and Vite,
   with vue-router, Pinia and Tailwind.
 - **Layout:** `main.ts` is the only composition root (app, router and
   account-scoped stores); `App.vue` is the application frame; `conversation/`
@@ -1290,7 +1290,7 @@ packages under `packages/`.
 - **Public boundary:** `bun run web:gallery`.
 - **Must not:** import Node or `web`, or be imported by another package.
 
-#### `packages/guest-image` (not a workspace package)
+#### `cloud-guest-image` (not a workspace package)
 
 - **Owns:** the chroot steps of the Linux Cloud image build (debootstrap, apt,
   the `demi` user and sudo configuration, init and the shell skeleton), written
@@ -1318,64 +1318,64 @@ vendored crates are outside them.
 A line names a workspace member by its directory.
 
 ```text
-core -> none
+shared-types -> none
 command-protocol -> none
-agent-protocol -> core
-command-service -> artifact, command-protocol
-command-tree -> none
-file-protocol -> core
-browser-protocol -> core
-claude-protocol -> none
-runner-protocol -> command-protocol, command-tree, core
-machines-protocol -> command-protocol, runner-protocol
-web-api -> agent-protocol, browser-protocol, command-protocol, core, runner-protocol
-gates -> none
-artifact -> none
-provider -> core, gates
-provider-anthropic-api -> core, provider
-provider-openai-api -> core, provider
-provider-google -> core, provider
-provider-codex -> core, provider
-provider-grok-build -> core, provider
-provider-claude-code -> core, provider, shell
-shell -> command-protocol, command-tree, core
-agent-store -> agent-protocol, core, provider, shell
-agent-transcript -> agent-protocol, agent-store, core, provider
-agent-session -> agent-protocol, agent-store, agent-transcript, command-protocol, core, gates, provider, shell
-agent-tools -> agent-protocol, agent-session, agent-store, agent-transcript, core, provider, shell
-agent -> agent-protocol, agent-session, agent-store, agent-tools, agent-transcript, core, gates, provider, shell
-coding-agent -> agent-tools, browser-protocol, command-tree, core, file-protocol, shell
-host-remote -> command-protocol, command-tree, core, gates, runner-protocol, shell
-runner-process -> artifact, command-protocol, command-service, runner-protocol
-runner-host -> artifact, command-service, runner-process, runner-protocol
-runner-services -> artifact, command-protocol, command-service, runner-process, runner-protocol
-runner-shell -> command-protocol, command-service, runner-process, runner-protocol
-runner-jobs -> command-protocol, command-service, command-tree, runner-process, runner-protocol, runner-services
-browser-driver -> artifact, browser-protocol, command-protocol, command-service, core
-browser-tabs -> browser-driver, browser-protocol, command-protocol
-browser-page -> browser-driver, browser-protocol, browser-tabs, command-service
-browser-cdp -> browser-driver, browser-protocol, browser-tabs, command-service
-browser-live -> browser-driver, browser-page, browser-protocol, browser-tabs, command-protocol, command-service, core
-backend-sync -> backend-storage, web-api
-backend-storage -> agent-store, agent-transcript, core, gates, host-remote, machines-protocol, runner-protocol, shell, web-api
-backend-objects -> agent-store, core, web-api
-backend-accounts -> backend-storage, command-protocol, core, web-api
-backend-providers -> backend-storage, backend-sync, claude-protocol, core, provider, provider-anthropic-api, provider-claude-code, provider-openai-api, web-api
-backend-families -> backend-providers, core, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, web-api
-backend-runners -> artifact, backend-objects, backend-storage, backend-sync, command-protocol, gates, host-remote, runner-protocol, shell, web-api
-backend-idle -> gates
-backend-cloud -> backend-idle, backend-providers, backend-runners, backend-storage, backend-sync, gates, host-remote, machines-protocol, runner-protocol, shell, web-api
-backend-expose -> backend-storage, backend-sync, core, web-api
-backend-host-access -> agent-store, agent-tools, backend-cloud, backend-expose, backend-objects, backend-runners, backend-storage, command-protocol, command-tree, core, gates, host-remote, runner-protocol, shell, web-api
-backend-shard -> agent, agent-protocol, agent-session, agent-store, agent-tools, agent-transcript, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-idle, backend-objects, backend-providers, backend-runners, backend-storage, backend-sync, browser-protocol, claude-protocol, coding-agent, command-protocol, command-tree, core, file-protocol, gates, host-remote, machines-protocol, provider, provider-claude-code, runner-protocol, shell, web-api
-backend-edge -> agent-protocol, agent-store, artifact, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-objects, backend-providers, backend-runners, backend-shard, backend-storage, backend-sync, browser-protocol, command-protocol, core, host-remote, provider, runner-protocol, shell, web-api
-backend -> artifact, backend-accounts, backend-cloud, backend-edge, backend-expose, backend-families, backend-host-access, backend-objects, backend-providers, backend-runners, backend-shard, backend-storage, browser-protocol, command-tree, core, gates, provider, web-api
-machines -> artifact, machines-protocol, runner-protocol
-runner -> command-protocol, command-service, runner-host, runner-jobs, runner-process, runner-protocol, runner-services, runner-shell
-demi-file -> artifact, command-protocol, command-service, core, file-protocol, gates
-demi-browser -> browser-cdp, browser-driver, browser-live, browser-page, browser-protocol, browser-tabs, command-protocol, command-service
-demi-claude -> artifact, claude-protocol, command-protocol, command-service
-xtask -> agent-protocol, artifact, browser-protocol, claude-protocol, command-protocol, core, file-protocol, machines-protocol, runner-protocol, web-api
+conversation-socket-protocol -> shared-types
+command-sdk -> shared-artifacts, command-protocol
+command-declarations -> none
+command-package-file-protocol -> shared-types
+command-package-browser-protocol -> shared-types
+command-package-claude-code-protocol -> none
+runner-protocol -> command-protocol, command-declarations, shared-types
+machine-manager-protocol -> command-protocol, runner-protocol
+web-api-protocol -> conversation-socket-protocol, command-package-browser-protocol, command-protocol, shared-types, runner-protocol
+shared-gates -> none
+shared-artifacts -> none
+provider-common -> shared-types, shared-gates
+provider-anthropic-api -> shared-types, provider-common
+provider-openai-api -> shared-types, provider-common
+provider-google -> shared-types, provider-common
+provider-codex -> shared-types, provider-common
+provider-grok-build -> shared-types, provider-common
+provider-claude-code -> shared-types, provider-common, host-interface
+host-interface -> command-protocol, command-declarations, shared-types
+agent-store -> conversation-socket-protocol, shared-types, provider-common, host-interface
+agent-transcript -> conversation-socket-protocol, agent-store, shared-types, provider-common
+agent-session -> conversation-socket-protocol, agent-store, agent-transcript, command-protocol, shared-types, shared-gates, provider-common, host-interface
+agent-tools -> conversation-socket-protocol, agent-session, agent-store, agent-transcript, shared-types, provider-common, host-interface
+agent-server -> conversation-socket-protocol, agent-session, agent-store, agent-tools, agent-transcript, shared-types, shared-gates, provider-common, host-interface
+agent-coding-harness -> agent-tools, command-package-browser-protocol, command-declarations, shared-types, command-package-file-protocol, host-interface
+backend-remote-host -> command-protocol, command-declarations, shared-types, shared-gates, runner-protocol, host-interface
+runner-process -> shared-artifacts, command-protocol, command-sdk, runner-protocol
+runner-host -> shared-artifacts, command-sdk, runner-process, runner-protocol
+runner-command-packages -> shared-artifacts, command-protocol, command-sdk, runner-process, runner-protocol
+runner-shell -> command-protocol, command-sdk, runner-process, runner-protocol
+runner-jobs -> command-protocol, command-sdk, command-declarations, runner-process, runner-protocol, runner-command-packages
+browser-driver -> shared-artifacts, command-package-browser-protocol, command-protocol, command-sdk, shared-types
+browser-tabs -> browser-driver, command-package-browser-protocol, command-protocol
+browser-page -> browser-driver, command-package-browser-protocol, browser-tabs, command-sdk
+browser-cdp -> browser-driver, command-package-browser-protocol, browser-tabs, command-sdk
+browser-live -> browser-driver, browser-page, command-package-browser-protocol, browser-tabs, command-protocol, command-sdk, shared-types
+backend-page-sync -> backend-database, web-api-protocol
+backend-database -> agent-store, agent-transcript, shared-types, shared-gates, backend-remote-host, machine-manager-protocol, runner-protocol, host-interface, web-api-protocol
+backend-blobs -> agent-store, shared-types, web-api-protocol
+backend-accounts -> backend-database, command-protocol, shared-types, web-api-protocol
+backend-providers -> backend-database, backend-page-sync, command-package-claude-code-protocol, shared-types, provider-common, provider-anthropic-api, provider-claude-code, provider-openai-api, web-api-protocol
+backend-families -> backend-providers, shared-types, provider-common, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, web-api-protocol
+backend-runners -> shared-artifacts, backend-blobs, backend-database, backend-page-sync, command-protocol, shared-gates, backend-remote-host, runner-protocol, host-interface, web-api-protocol
+backend-idle-watch -> shared-gates
+backend-cloud -> backend-idle-watch, backend-providers, backend-runners, backend-database, backend-page-sync, shared-gates, backend-remote-host, machine-manager-protocol, runner-protocol, host-interface, web-api-protocol
+backend-expose -> backend-database, backend-page-sync, shared-types, web-api-protocol
+backend-host-access -> agent-store, agent-tools, backend-cloud, backend-expose, backend-blobs, backend-runners, backend-database, command-protocol, command-declarations, shared-types, shared-gates, backend-remote-host, runner-protocol, host-interface, web-api-protocol
+backend-user-shard -> agent-server, conversation-socket-protocol, agent-session, agent-store, agent-tools, agent-transcript, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-idle-watch, backend-blobs, backend-providers, backend-runners, backend-database, backend-page-sync, command-package-browser-protocol, command-package-claude-code-protocol, agent-coding-harness, command-protocol, command-declarations, shared-types, command-package-file-protocol, shared-gates, backend-remote-host, machine-manager-protocol, provider-common, provider-claude-code, runner-protocol, host-interface, web-api-protocol
+backend-http -> conversation-socket-protocol, agent-store, shared-artifacts, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-blobs, backend-providers, backend-runners, backend-user-shard, backend-database, backend-page-sync, command-package-browser-protocol, command-protocol, shared-types, backend-remote-host, provider-common, runner-protocol, host-interface, web-api-protocol
+backend -> shared-artifacts, backend-accounts, backend-cloud, backend-http, backend-expose, backend-families, backend-host-access, backend-blobs, backend-providers, backend-runners, backend-user-shard, backend-database, command-package-browser-protocol, command-declarations, shared-types, shared-gates, provider-common, web-api-protocol
+machine-manager -> shared-artifacts, machine-manager-protocol, runner-protocol
+runner -> command-protocol, command-sdk, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell
+command-package-file -> shared-artifacts, command-protocol, command-sdk, shared-types, command-package-file-protocol, shared-gates
+command-package-browser -> browser-cdp, browser-driver, browser-live, browser-page, command-package-browser-protocol, browser-tabs, command-protocol, command-sdk
+command-package-claude-code -> shared-artifacts, command-package-claude-code-protocol, command-protocol, command-sdk
+xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, machine-manager-protocol, runner-protocol, web-api-protocol
 ```
 
 ### TypeScript packages
@@ -1403,6 +1403,33 @@ review.
   are released and upgraded together. A type's correspondence across languages does not
   require matching packages: several contract crates generate into one
   `@demicodes/protocol`.
+- **Names.** A crate's directory is `<owner>-<part>`: the owner says where
+  the crate belongs and the part what it holds, so each name has one reading
+  inside the repository and out of it. A program is named by its owner
+  alone.
+
+  | Owner | Belongs to | Program |
+  | --- | --- | --- |
+  | `backend-` | The server | `backend` |
+  | `agent-` | The conversation runtime the backend links | |
+  | `provider-` | The model providers the backend links | |
+  | `runner-` | The runner on each Host | `runner` |
+  | `machine-manager-` | The machine manager on a Cloud host | `machine-manager` |
+  | `command-` | The command wire between a runner and a command package | |
+  | `command-package-<name>-` | One command package, released as `demi.<name>` and started by a runner | `command-package-<name>` |
+  | `host-` | The Host, the execution target, as the agent and the backend see it | |
+  | `shared-` | No one owner: several components use it | |
+
+  A suffix has one meaning: `-protocol` holds the types of one wire and no IO,
+  `-sdk` implements one end of a wire, and `-interface` holds traits and
+  nothing that implements them. Words whose meaning outside the repository
+  differs stay out of names, such as `service`, `plugin`, `extension`, `edge`
+  and `core`; `browser` appears only in `command-package-browser`, the
+  conversation browser, and `shell` only for the shell interpreter. A
+  library's package is `demi-<directory>`; a program's package is its
+  executable's name (`demi-backend`, `demi-runner`, `demi-machines`,
+  `demi-file`, `demi-browser`, `demi-claude`), which releases and installers
+  use.
 - **When a part is its own crate.** A separate crate or package requires
   independent use, distribution, dependency isolation or build isolation;
   responsibilities that change together belong in modules of one crate. Size
@@ -1418,7 +1445,7 @@ review.
     connection's tests link none of them.
   - A stable contract below the code that changes saves time. The command
     wire's types are `command-protocol`, apart from the SDK in
-    `command-service`: most crates read only the types, so a change to the SDK
+    `command-sdk`: most crates read only the types, so a change to the SDK
     recompiles only the runner and the command programs, not the backend or
     the agent.
   - A chain costs time. A part split into crates that each depend on the one
@@ -1454,7 +1481,7 @@ review.
   executable target set `test = false`, and every library `doctest = false`
   and `bench = false`. The workspace has no benchmarks, and without
   `bench = false` the `--all-targets` check compiles every library a second
-  time as a benchmark harness: after an edit to `command-service`, that
+  time as a benchmark harness: after an edit to `command-sdk`, that
   second pass was a quarter of the check's time (18 s of 66 s on 4 x86-64
   cores). Cargo's metadata does not report the setting, so review enforces
   it.
@@ -1469,8 +1496,8 @@ review.
   binary"). The crate boundary check
   enforces these rules ([Boundary checks](#boundary-checks)). Test support is
   a `testing` cargo feature of the crate that owns the thing being faked
-  (`agent::testing`, `provider::testing`, `provider_codex::testing`,
-  `host_remote::testing`, `command_service::testing`), never a crate that
+  (`agent_server::testing`, `provider_common::testing`, `provider_codex::testing`,
+  `backend_remote_host::testing`, `command_sdk::testing`), never a crate that
   depends upward. A test reaches another program as the
   binary Cargo built into the target directory the test runs from
   (`command_protocol::testing::built_program`), and a TypeScript test through

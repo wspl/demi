@@ -10,7 +10,7 @@ use std::{
 
 use demi_agent_store::{CommandStateHistory, CommandVersion, CommitGuard, StoreError};
 use demi_agent_transcript::DirtyRows;
-use demi_core::Block;
+use demi_shared_types::Block;
 use tokio::sync::Notify;
 
 use super::{SessionEvent, SessionShared};

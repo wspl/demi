@@ -9,8 +9,8 @@
 
 use std::time::Duration;
 
-use demi_gates::Purpose;
-use demi_web_api::error::ErrorCode;
+use demi_shared_gates::Purpose;
+use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 use tokio::time::Instant;

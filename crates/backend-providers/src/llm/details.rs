@@ -7,10 +7,10 @@
 
 use std::sync::Arc;
 
-use demi_core::{AuthState, RuntimeState};
-use demi_provider::Provider;
-use demi_provider::quota::ProbeCost;
-use demi_web_api::providers::{
+use demi_shared_types::{AuthState, RuntimeState};
+use demi_provider_common::Provider;
+use demi_provider_common::quota::ProbeCost;
+use demi_web_api_protocol::providers::{
     AccountDto, Availability, ProbeCost as ProbeCostDto, ProviderDetails, QuotaCapability, UnavailableReason,
 };
 

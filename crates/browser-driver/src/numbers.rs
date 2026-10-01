@@ -10,7 +10,7 @@ use std::{
 };
 
 use demi_command_protocol::{MAX_NUMBERS, ServiceSequence};
-use demi_command_service::Numbers;
+use demi_command_sdk::Numbers;
 
 use crate::operation::{BrowserError, Result};
 

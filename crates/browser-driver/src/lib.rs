@@ -5,7 +5,7 @@
 //! conversation's tab numbers, and the text and output a command answers with
 //! (`browser.md` § Native driver).
 
-use demi_browser_protocol::browser as protocol;
+use demi_command_package_browser_protocol::browser as protocol;
 
 pub mod capture;
 pub mod frames;

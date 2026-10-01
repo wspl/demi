@@ -22,11 +22,11 @@ use std::time::Duration;
 
 use axum::http::Method;
 use bytes::Bytes;
-use demi_backend_objects::store::S3Config;
+use demi_backend_blobs::store::S3Config;
 use demi_command_protocol::{
     ArtifactLocation, ArtifactUrl, PackageArtifact, PackageDescriptor, TARGETS,
 };
-use demi_host_remote::ArtifactResolver;
+use demi_backend_remote_host::ArtifactResolver;
 use futures_util::TryStreamExt as _;
 use futures_util::future::LocalBoxFuture;
 use object_store::path::Path;
@@ -263,7 +263,7 @@ where
                 let bytes = Bytes::from(read.map_err(|error| refused(error.to_string()))?);
                 // What is uploaded is what was verified, whatever changed the
                 // file since.
-                let mut verifier = demi_artifact::Verifier::new(&demi_artifact::Digest {
+                let mut verifier = demi_shared_artifacts::Verifier::new(&demi_shared_artifacts::Digest {
                     size: artifact.size,
                     sha256: artifact.sha256.clone(),
                 });
@@ -272,12 +272,12 @@ where
                     .and_then(|()| verifier.finish())
                     .map_err(|error| refused(error.to_string()))?;
                 let encoded = tokio::task::spawn_blocking(move || {
-                    demi_artifact::encode_blocking(&bytes, demi_artifact::Effort::Published)
+                    demi_shared_artifacts::encode_blocking(&bytes, demi_shared_artifacts::Effort::Published)
                 })
                     .await
                     .map_err(|error| refused(error.to_string()))?
                     .map_err(|error| refused(error.to_string()))?;
-                let coding = Some(demi_artifact::CONTENT_CODING);
+                let coding = Some(demi_shared_artifacts::CONTENT_CODING);
                 put_immutable(store, &key, Bytes::from(encoded), &artifact, coding, cancel).await
             }
         })
@@ -360,10 +360,10 @@ async fn verify(release: &Release, targets: Targets, cancel: &CancellationToken)
             .directory
             .join(target)
             .join(format!("{}{suffix}", release.executable));
-        let found = demi_artifact::digest(&path, expected.size, cancel)
+        let found = demi_shared_artifacts::digest(&path, expected.size, cancel)
             .await
             .map_err(|error| match error {
-                demi_artifact::Error::Cancelled => PublicationError::Cancelled,
+                demi_shared_artifacts::Error::Cancelled => PublicationError::Cancelled,
                 error => refused(format!("{target}: {error}")),
             })?;
         if found.size != expected.size || found.sha256 != expected.sha256 {
@@ -515,8 +515,8 @@ mod tests {
     use object_store::aws::AmazonS3Builder;
     use sha2::{Digest as _, Sha256};
 
-    use demi_backend_objects::fake_s3::FakeS3;
-    use demi_browser_protocol::PACKAGE as BROWSER_PACKAGE;
+    use demi_backend_blobs::fake_s3::FakeS3;
+    use demi_command_package_browser_protocol::PACKAGE as BROWSER_PACKAGE;
 
     use super::*;
 
@@ -562,16 +562,16 @@ mod tests {
         // An executable is stored in its content coding and downloads as
         // the executable its descriptor names.
         let bytes = std::fs::read(directory.path().join(TARGETS[0]).join("commands")).unwrap();
-        let digest = demi_artifact::Digest {
+        let digest = demi_shared_artifacts::Digest {
             size: bytes.len() as u64,
             sha256: hex::encode(Sha256::digest(&bytes)),
         };
         let key = format!("native/blobs/{}", digest.sha256);
         assert_ne!(fake.object(&key).unwrap(), bytes);
         let mut downloaded = Vec::new();
-        let client = demi_artifact::client_allowing_http().unwrap();
+        let client = demi_shared_artifacts::client_allowing_http().unwrap();
         let url = format!("{}demi/{key}", fake.endpoint);
-        demi_artifact::download(&client, &url, &digest, &mut downloaded, &cancel)
+        demi_shared_artifacts::download(&client, &url, &digest, &mut downloaded, &cancel)
             .await
             .unwrap();
         assert_eq!(downloaded, bytes);

@@ -13,8 +13,8 @@ test = false
 bench = false
 
 [dependencies]
-demi-core = { path = "../core" }
-demi-provider = { path = "../provider" }
+demi-shared-types = { path = "../shared-types" }
+demi-provider-common = { path = "../provider-common" }
 async-stream = "0.3"
 base64.workspace = true
 futures-util.workspace = true
@@ -25,4 +25,4 @@ tokio.workspace = true
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
-demi-provider = { path = "../provider", features = ["testing"] }
+demi-provider-common = { path = "../provider-common", features = ["testing"] }

@@ -1,8 +1,8 @@
 //! What the provider says about itself: its catalog and how it reads its
 //! failure records.
 
-use demi_core::{FailureSource, ProviderErrorDiagnostics};
-use demi_provider::{
+use demi_shared_types::{FailureSource, ProviderErrorDiagnostics};
+use demi_provider_common::{
     HttpFailureRecord, Provider,
     testing::{MockVendor, assert_built_in_catalog},
 };

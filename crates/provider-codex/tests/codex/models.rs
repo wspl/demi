@@ -1,7 +1,7 @@
 //! The Codex catalog (`models.md` § The Codex catalog).
 
-use demi_core::ServiceTier;
-use demi_provider::{
+use demi_shared_types::ServiceTier;
+use demi_provider_common::{
     CatalogError, Provider,
     testing::{MockResponse, MockVendor},
 };

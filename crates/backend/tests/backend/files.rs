@@ -12,8 +12,8 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use demi_runner_protocol::wire::MAX_MESSAGE_BYTES;
-use demi_web_api::auth::Role;
-use demi_web_api::error::ErrorCode;
+use demi_web_api_protocol::auth::Role;
+use demi_web_api_protocol::error::ErrorCode;
 use futures_util::{StreamExt as _, stream};
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};

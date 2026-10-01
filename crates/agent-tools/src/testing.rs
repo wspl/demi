@@ -3,7 +3,7 @@
 
 use std::rc::Rc;
 
-use demi_shell::{Host, HostError, HostFs, HostIdentity, HostKey, HostProcess, ShellEnvironment};
+use demi_host_interface::{Host, HostError, HostFs, HostIdentity, HostKey, HostProcess, ShellEnvironment};
 use futures_util::future::LocalBoxFuture;
 
 use crate::{EnvironmentScope, ShellEnvironmentFactory};

@@ -10,11 +10,11 @@ mod run;
 
 use std::sync::Arc;
 
-use demi_core::{
+use demi_shared_types::{
     AuthState, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
     RuntimeState, Timestamp, WireApi,
 };
-use demi_provider::{
+use demi_provider_common::{
     Capabilities, CatalogError, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
     RequestLimits, RuntimeEnv, RuntimeError, Secret, endpoint_url, read_http_failure,
 };

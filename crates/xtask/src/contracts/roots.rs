@@ -2,10 +2,10 @@
 //! belongs to, and what the browser does with each (`contracts.md`
 //! § Generated TypeScript). Every type they refer to is emitted with them.
 
-use demi_agent_protocol as frames;
-use demi_browser_protocol::live;
-use demi_core as core;
-use demi_web_api as api;
+use demi_conversation_socket_protocol as frames;
+use demi_command_package_browser_protocol::live;
+use demi_shared_types as core;
+use demi_web_api_protocol as api;
 use schemars::{JsonSchema, Schema, SchemaGenerator};
 
 /// What the browser does with a type, which decides whether its schema is a

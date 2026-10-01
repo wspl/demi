@@ -10,7 +10,7 @@ use futures_util::future::BoxFuture;
 use tokio::fs;
 use tokio_util::sync::CancellationToken;
 
-use demi_command_service::paths::resolve;
+use demi_command_sdk::paths::resolve;
 
 /// Returns None for messages owned by other runner subsystems. A file's
 /// contents are not answered here: they travel through pipes
@@ -215,7 +215,7 @@ async fn call(
 
 /// Out of open files, reading a directory waits for one (`runner.md` § Load).
 async fn read_dir(path: &Path, cancel: &CancellationToken) -> io::Result<fs::ReadDir> {
-    demi_command_service::descriptors::retry(cancel, || fs::read_dir(path)).await
+    demi_command_sdk::descriptors::retry(cancel, || fs::read_dir(path)).await
 }
 
 async fn remove(path: &Path, recursive: bool, cancel: &CancellationToken) -> io::Result<()> {
@@ -228,7 +228,7 @@ async fn remove(path: &Path, recursive: bool, cancel: &CancellationToken) -> io:
         }
         // Out of open files, the removal waits for one and continues where
         // it stopped.
-        demi_command_service::descriptors::retry(cancel, || fs::remove_dir_all(path)).await
+        demi_command_sdk::descriptors::retry(cancel, || fs::remove_dir_all(path)).await
     } else {
         fs::remove_file(path).await
     }
@@ -320,7 +320,7 @@ fn copy_entry<'a>(
         }
         if metadata.is_file() {
             // Out of open files, the copy waits for one (`runner.md` § Load).
-            demi_command_service::descriptors::retry(cancel, || fs::copy(source, destination))
+            demi_command_sdk::descriptors::retry(cancel, || fs::copy(source, destination))
                 .await?;
             return Ok(());
         }

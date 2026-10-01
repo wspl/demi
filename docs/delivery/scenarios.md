@@ -46,7 +46,7 @@ machine manager is the backend's own test code, since the manager's crate runs
 only on Linux.
 
 The model is scripted in one of two ways: a scripted vendor (`MockVendor`, from
-`demi-provider`'s `testing` feature) that a built-in family sends to, which
+`demi-provider-common`'s `testing` feature) that a built-in family sends to, which
 answers each request with the next scripted response and records every request;
 or a family the scenario registers, whose runtime it scripts. Title requests
 are off unless a scenario turns them on, since one beside the first turn would
@@ -60,7 +60,7 @@ rebuild the live transcript from patches: the browser's patch applier is the
 only one, so the [browser-contract suite](#browser-contract-suite) compares
 live with cold.
 
-The scripted machine manager speaks `machines-protocol` as the real one does:
+The scripted machine manager speaks `machine-manager-protocol` as the real one does:
 operations of one device run in arrival order, requests on a connection are
 answered as they finish, and a death reaches every connection. It starts the
 same runner as a local process with the boot record's backend URL and token,
@@ -96,7 +96,7 @@ Cloud holds its conversation's file gate while it looks (`file_gate` of the
 backend's `testing` feature): a lease of that gate is the conversation's work,
 so the Cloud idles only after the lease ends, and a lower bound on the stop
 counts from there. One that shows an operation a transition holds waits until
-the operation waits at that gate (`ActivityGate::waiting`, from `demi-gates`'
+the operation waits at that gate (`ActivityGate::waiting`, from `demi-shared-gates`'
 `testing` feature), and fails if the operation finishes first.
 
 ## Required scenario coverage
@@ -170,7 +170,7 @@ bytes per stream and interval, the last before `job_exit`
 
 The world does not record the runner's wire frames either. `job_exit` and
 `pipe_done` are pinned where the runner sends them, by the runner tests of
-`host-remote` (`crates/host-remote/tests/host_remote/runner.rs`), which read
+`backend-remote-host` (`crates/backend-remote-host/tests/host_remote/runner.rs`), which read
 every frame their runner sends: each job's end there comes from its
 `job_exit`, and they check `pipe_done` for a job's pipes, whole and refused, a
 file read whose reader left, and service and network streams. A scenario sees
@@ -305,11 +305,11 @@ DEMI_TEST_CLOUD_NATIVE=<native configuration> \
 ```
 
 On a Linux machine without an installed manager,
-`crates/machines/scripts/cloud-suite.sh` runs the same command against a
+`crates/machine-manager/scripts/cloud-suite.sh` runs the same command against a
 manager of its own, as root:
 
 ```sh
-sudo bash crates/machines/scripts/cloud-suite.sh --image <release> \
+sudo bash crates/machine-manager/scripts/cloud-suite.sh --image <release> \
   --native <native configuration> --work <directory>
 ```
 

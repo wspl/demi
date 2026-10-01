@@ -1,7 +1,7 @@
 //! The events a run makes of recorded Messages API event streams.
 
-use demi_core::{FailureSource, TokenUsage};
-use demi_provider::{
+use demi_shared_types::{FailureSource, TokenUsage};
+use demi_provider_common::{
     ErrorCode, ProviderEvent, ToolCall,
     testing::{MockResponse, MockVendor, inference_request},
 };

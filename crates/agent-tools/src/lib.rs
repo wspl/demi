@@ -22,9 +22,9 @@ use std::{
 use bytes::Bytes;
 use demi_agent_session::{ToolEffect, ToolFailure, ToolInvocation, ToolOutcome};
 use demi_agent_store::AgentTreeStore;
-use demi_core::{CommandId, ModelSelection, NodeId, Sequence};
-use demi_provider::{RequestLimits, ToolDefinition};
-use demi_shell::{
+use demi_shared_types::{CommandId, ModelSelection, NodeId, Sequence};
+use demi_provider_common::{RequestLimits, ToolDefinition};
+use demi_host_interface::{
     CommandSet, CommandState, CommandStatus, ExecRequest, Host, HostError, JobCaller, Numbers,
     ObservationWindow, PageFeed, ShellEnvironment, ShellError, ShellTarget,
 };

@@ -6,8 +6,8 @@
 
 use std::{sync::Arc, time::Duration};
 
-use demi_core::{Clock, LoginPending, Timestamp};
-use demi_provider::{
+use demi_shared_types::{Clock, LoginPending, Timestamp};
+use demi_provider_common::{
     Secret,
     credentials::{
         AccountKit, AccountsCapability, AccountsError, AddAccount, LoginError, NewAccount,
@@ -52,7 +52,7 @@ impl AccountKit for CodexKit {
 
 impl CodexKit {
     fn url(&self, path: &str) -> Url {
-        demi_provider::endpoint_url(&self.auth_url, path)
+        demi_provider_common::endpoint_url(&self.auth_url, path)
     }
 
     async fn device_login(

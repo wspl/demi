@@ -4,10 +4,10 @@
 //! Cloud's admission, which wakes a stopped Cloud or waits for a running
 //! reset, and no conversation's file gate.
 
-use demi_backend_storage::StorageError;
-use demi_backend_storage::devices::DeviceRecord;
-use demi_backend_sync::Part;
-use demi_host_remote::RemoteHost;
+use demi_backend_database::StorageError;
+use demi_backend_database::devices::DeviceRecord;
+use demi_backend_page_sync::Part;
+use demi_backend_remote_host::RemoteHost;
 
 use crate::CloudShard;
 use crate::machine::{CloudAdmission, CloudError};

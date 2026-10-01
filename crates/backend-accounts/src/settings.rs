@@ -3,7 +3,7 @@
 //! what is saved.
 
 use demi_command_protocol::CommandLocale;
-use demi_web_api::settings::{Preferences, PreferencesPatch};
+use demi_web_api_protocol::settings::{Preferences, PreferencesPatch};
 use icu_locale::{Locale, LocaleCanonicalizer};
 use icu_time::zone::iana::IanaParserExtended;
 

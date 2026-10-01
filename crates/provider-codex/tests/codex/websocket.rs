@@ -3,8 +3,8 @@
 
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
-use demi_core::TokenUsage;
-use demi_provider::{
+use demi_shared_types::TokenUsage;
+use demi_provider_common::{
     ErrorCode, Provider, ProviderEvent,
     credentials::MemoryCredentialPool,
     quota::MemorySnapshots,

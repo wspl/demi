@@ -7,7 +7,7 @@ use chromiumoxide::cdp::{
 // The browser design requires this context-scoped permission grant; upstream marks it deprecated.
 #[allow(deprecated)]
 use chromiumoxide::cdp::browser_protocol::browser::GrantPermissionsParams;
-use demi_command_service::InvocationContext;
+use demi_command_sdk::InvocationContext;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;

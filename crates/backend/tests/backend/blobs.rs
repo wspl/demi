@@ -2,7 +2,7 @@
 //! blob route serves the caller's own blobs, inert and cached for good, and
 //! by byte range, so a player can play and seek a video.
 
-use demi_web_api::error::ErrorCode;
+use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
 use sha2::{Digest, Sha256};
 

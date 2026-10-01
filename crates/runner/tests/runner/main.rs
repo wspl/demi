@@ -17,9 +17,9 @@ use std::{
 };
 
 use demi_command_protocol::{CommandCaller, CommandContext, CommandLocale};
-use demi_host_remote::testing::{RunnerProcess, RunnerProcessOptions};
+use demi_backend_remote_host::testing::{RunnerProcess, RunnerProcessOptions};
 use demi_runner_protocol::wire::{self, Inbound, Outbound};
-use demi_shell::SpawnEnv;
+use demi_host_interface::SpawnEnv;
 use futures_util::{SinkExt, StreamExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::{WebSocketStream, tungstenite::Message};

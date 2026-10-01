@@ -7,7 +7,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
 
-use demi_claude_protocol::{Artifact, Release, is_version};
+use demi_command_package_claude_code_protocol::{Artifact, Release, is_version};
 use serde::Deserialize;
 use tokio::runtime::Handle;
 use tokio::time::Instant;
@@ -166,7 +166,7 @@ impl ClaudeReleases {
 
 #[cfg(test)]
 mod tests {
-    use demi_provider::testing::{MockResponse, MockVendor};
+    use demi_provider_common::testing::{MockResponse, MockVendor};
     use serde_json::json;
 
     use super::*;

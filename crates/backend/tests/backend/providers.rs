@@ -9,17 +9,17 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use demi_agent_protocol::{ClientFrame, ServerFrame};
+use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
 use demi_backend_providers::llm::families::FamilyRegistry;
-use demi_core::WireApi;
-use demi_provider::CatalogError;
-use demi_provider::testing::{MockResponse, MockVendor, RecordedRequest, sse_body};
-use demi_web_api::auth::Role;
-use demi_web_api::error::ErrorCode;
-use demi_web_api::providers::{
+use demi_shared_types::WireApi;
+use demi_provider_common::CatalogError;
+use demi_provider_common::testing::{MockResponse, MockVendor, RecordedRequest, sse_body};
+use demi_web_api_protocol::auth::Role;
+use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::providers::{
     Availability, CredentialKind, ModelCatalog, ProviderAnswer, ProviderDto, Providers, TestResult, VendorCatalog,
 };
-use demi_web_api::settings::InstanceMode;
+use demi_web_api_protocol::settings::InstanceMode;
 use jiff::SignedDuration;
 use reqwest::StatusCode;
 use serde_json::{Value, json};
@@ -551,7 +551,7 @@ async fn a_directory_catalog_is_cached_refreshed_on_demand_and_kept_after_a_fail
         (ids(&typed), typed.providers[0].stale, directory.reads()),
         (vec!["typed".to_owned()], false, 4)
     );
-    assert_eq!(typed.providers[0].source_fetched_at, demi_core::Timestamp::UNIX_EPOCH);
+    assert_eq!(typed.providers[0].source_fetched_at, demi_shared_types::Timestamp::UNIX_EPOCH);
     let model = &typed.providers[0].models[0];
     assert_eq!(
         (
@@ -559,7 +559,7 @@ async fn a_directory_catalog_is_cached_refreshed_on_demand_and_kept_after_a_fail
             model.model.service_tiers[0].id.as_str(),
             model.model.accepted_extensions.clone()
         ),
-        (Some(4_000), "priority", Some(vec![demi_core::FileExtension::Pdf]))
+        (Some(4_000), "priority", Some(vec![demi_shared_types::FileExtension::Pdf]))
     );
     backend.close().await;
 }

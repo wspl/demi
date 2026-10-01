@@ -13,13 +13,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
-use demi_core::{StreamKind, ThinkingConfig};
-use demi_provider::quota::Observation;
-use demi_provider::wire::Tagged;
-use demi_provider::{
+use demi_shared_types::{StreamKind, ThinkingConfig};
+use demi_provider_common::quota::Observation;
+use demi_provider_common::wire::Tagged;
+use demi_provider_common::{
     InferenceItem, InferenceRequest, ProviderFailure, ResultPart, ToolCall, UserPart, encode_body,
 };
-use demi_shell::{Process, ProcessControl, ProcessEnd, ProcessOutput, Signal};
+use demi_host_interface::{Process, ProcessControl, ProcessEnd, ProcessOutput, Signal};
 use futures_channel::mpsc;
 use futures_util::future::{LocalBoxFuture, Shared as SharedFuture};
 use futures_util::stream::LocalBoxStream;

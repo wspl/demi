@@ -6,7 +6,7 @@
 
 use std::io::Cursor;
 
-use demi_core::B64Bytes;
+use demi_shared_types::B64Bytes;
 use image::{
     DynamicImage, ImageDecoder as _, ImageError, ImageFormat, ImageReader, Limits,
     codecs::{jpeg::JpegEncoder, png::PngEncoder},

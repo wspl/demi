@@ -3,7 +3,7 @@
 //! the machine and readies Demi's CLI there, and the provider builds the
 //! spawn request from what the placement found.
 
-use demi_shell::{Process, SpawnRequest};
+use demi_host_interface::{Process, SpawnRequest};
 use futures_util::future::LocalBoxFuture;
 
 /// Where a new CLI process runs on the machine the placement chose.

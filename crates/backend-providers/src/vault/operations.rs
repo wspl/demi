@@ -6,7 +6,7 @@
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use demi_web_api::ids::ProviderId;
+use demi_web_api_protocol::ids::ProviderId;
 
 /// The entries a change holds.
 #[derive(Debug, Default)]

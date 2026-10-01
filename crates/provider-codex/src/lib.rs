@@ -23,11 +23,11 @@ use std::{
     time::Duration,
 };
 
-use demi_core::{
+use demi_shared_types::{
     AuthState, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
     RuntimeState, Timestamp,
 };
-use demi_provider::{
+use demi_provider_common::{
     Capabilities, CatalogError, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
     RequestLimits, RuntimeEnv, RuntimeError,
     credentials::{Accounts, CredentialPool, SubscriptionAccounts},
@@ -155,7 +155,7 @@ impl CodexProvider {
         let source = CodexQuota {
             auth: auth.clone(),
             http: http.clone(),
-            usage_url: demi_provider::endpoint_url(&config.backend_url, "/wham/usage"),
+            usage_url: demi_provider_common::endpoint_url(&config.backend_url, "/wham/usage"),
             user_agent: user_agent.clone(),
         };
         let kit = CodexKit {
@@ -189,14 +189,14 @@ impl CodexProvider {
 fn codex_url(backend: &Url, path: &str) -> Url {
     let trimmed = backend.path().trim_end_matches('/');
     if trimmed.ends_with(path) {
-        return demi_provider::endpoint_url(backend, path);
+        return demi_provider_common::endpoint_url(backend, path);
     }
     let codex = if trimmed.ends_with("/codex") {
         backend.clone()
     } else {
-        demi_provider::endpoint_url(backend, "/codex")
+        demi_provider_common::endpoint_url(backend, "/codex")
     };
-    demi_provider::endpoint_url(&codex, path)
+    demi_provider_common::endpoint_url(&codex, path)
 }
 
 /// The WebSocket address of a Responses URL: `wss` for `https`, `ws` for

@@ -1246,21 +1246,47 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-agent"
+name = "demi-agent-coding-harness"
+version = "0.1.3"
+dependencies = [
+ "demi-agent-server",
+ "demi-agent-store",
+ "demi-agent-tools",
+ "demi-agent-transcript",
+ "demi-backend-remote-host",
+ "demi-command-declarations",
+ "demi-command-package-browser-protocol",
+ "demi-command-package-file-protocol",
+ "demi-command-protocol",
+ "demi-conversation-socket-protocol",
+ "demi-host-interface",
+ "demi-provider-common",
+ "demi-shared-types",
+ "futures-util",
+ "rustix",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "demi-agent-server"
 version = "0.1.3"
 dependencies = [
  "bytes",
- "demi-agent",
- "demi-agent-protocol",
+ "demi-agent-server",
  "demi-agent-session",
  "demi-agent-store",
  "demi-agent-tools",
  "demi-agent-transcript",
- "demi-core",
- "demi-gates",
- "demi-provider",
+ "demi-conversation-socket-protocol",
+ "demi-host-interface",
+ "demi-provider-common",
  "demi-provider-openai-api",
- "demi-shell",
+ "demi-shared-gates",
+ "demi-shared-types",
  "flate2",
  "futures-util",
  "reqwest",
@@ -1274,37 +1300,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-agent-protocol"
-version = "0.1.3"
-dependencies = [
- "demi-core",
- "garde",
- "schemars",
- "serde",
- "serde_json",
- "serde_plain",
- "serde_with",
- "thiserror",
-]
-
-[[package]]
 name = "demi-agent-session"
 version = "0.1.3"
 dependencies = [
- "demi-agent-protocol",
  "demi-agent-session",
  "demi-agent-store",
  "demi-agent-transcript",
  "demi-command-protocol",
- "demi-core",
- "demi-gates",
- "demi-provider",
+ "demi-conversation-socket-protocol",
+ "demi-host-interface",
  "demi-provider-anthropic-api",
  "demi-provider-codex",
+ "demi-provider-common",
  "demi-provider-google",
  "demi-provider-grok-build",
  "demi-provider-openai-api",
- "demi-shell",
+ "demi-shared-gates",
+ "demi-shared-types",
  "futures-util",
  "garde",
  "rand 0.9.5",
@@ -1321,11 +1333,11 @@ dependencies = [
 name = "demi-agent-store"
 version = "0.1.3"
 dependencies = [
- "demi-agent-protocol",
  "demi-agent-store",
- "demi-core",
- "demi-provider",
- "demi-shell",
+ "demi-conversation-socket-protocol",
+ "demi-host-interface",
+ "demi-provider-common",
+ "demi-shared-types",
  "futures-util",
  "garde",
  "image",
@@ -1343,13 +1355,13 @@ name = "demi-agent-tools"
 version = "0.1.3"
 dependencies = [
  "bytes",
- "demi-agent-protocol",
  "demi-agent-session",
  "demi-agent-store",
  "demi-agent-transcript",
- "demi-core",
- "demi-provider",
- "demi-shell",
+ "demi-conversation-socket-protocol",
+ "demi-host-interface",
+ "demi-provider-common",
+ "demi-shared-types",
  "futures-util",
  "schemars",
  "serde",
@@ -1364,35 +1376,16 @@ dependencies = [
 name = "demi-agent-transcript"
 version = "0.1.3"
 dependencies = [
- "demi-agent-protocol",
  "demi-agent-store",
  "demi-agent-transcript",
- "demi-core",
- "demi-provider",
+ "demi-conversation-socket-protocol",
+ "demi-provider-common",
+ "demi-shared-types",
  "jiff",
  "serde",
  "serde_json",
  "thiserror",
  "uuid",
-]
-
-[[package]]
-name = "demi-artifact"
-version = "0.1.3"
-dependencies = [
- "bytes",
- "demi-artifact",
- "futures-util",
- "reqwest",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror",
- "tokio",
- "tokio-util",
- "zip",
- "zstd 0.13.3",
 ]
 
 [[package]]
@@ -1403,37 +1396,37 @@ dependencies = [
  "bytes",
  "clap",
  "data-encoding",
- "demi-agent",
- "demi-agent-protocol",
+ "demi-agent-server",
  "demi-agent-store",
  "demi-agent-tools",
- "demi-artifact",
  "demi-backend",
  "demi-backend-accounts",
+ "demi-backend-blobs",
  "demi-backend-cloud",
- "demi-backend-edge",
+ "demi-backend-database",
  "demi-backend-expose",
  "demi-backend-families",
  "demi-backend-host-access",
- "demi-backend-objects",
+ "demi-backend-http",
  "demi-backend-providers",
+ "demi-backend-remote-host",
  "demi-backend-runners",
- "demi-backend-shard",
- "demi-backend-storage",
- "demi-browser-protocol",
- "demi-claude-protocol",
+ "demi-backend-user-shard",
+ "demi-command-declarations",
+ "demi-command-package-browser-protocol",
+ "demi-command-package-claude-code-protocol",
+ "demi-command-package-file-protocol",
  "demi-command-protocol",
- "demi-command-tree",
- "demi-core",
- "demi-file-protocol",
- "demi-gates",
- "demi-host-remote",
- "demi-machines-protocol",
- "demi-provider",
+ "demi-conversation-socket-protocol",
+ "demi-host-interface",
+ "demi-machine-manager-protocol",
  "demi-provider-claude-code",
+ "demi-provider-common",
  "demi-runner-protocol",
- "demi-shell",
- "demi-web-api",
+ "demi-shared-artifacts",
+ "demi-shared-gates",
+ "demi-shared-types",
+ "demi-web-api-protocol",
  "futures-util",
  "hex",
  "hkdf",
@@ -1462,10 +1455,10 @@ name = "demi-backend-accounts"
 version = "0.1.3"
 dependencies = [
  "argon2",
- "demi-backend-storage",
+ "demi-backend-database",
  "demi-command-protocol",
- "demi-core",
- "demi-web-api",
+ "demi-shared-types",
+ "demi-web-api-protocol",
  "futures-util",
  "hex",
  "icu_locale",
@@ -1480,169 +1473,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-backend-cloud"
-version = "0.1.3"
-dependencies = [
- "demi-backend-idle",
- "demi-backend-providers",
- "demi-backend-runners",
- "demi-backend-storage",
- "demi-backend-sync",
- "demi-gates",
- "demi-host-remote",
- "demi-machines-protocol",
- "demi-runner-protocol",
- "demi-shell",
- "demi-web-api",
- "futures-util",
- "serde_json",
- "tempfile",
- "thiserror",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
-name = "demi-backend-edge"
-version = "0.1.3"
-dependencies = [
- "axum",
- "axum-extra",
- "bytes",
- "cookie",
- "demi-agent-protocol",
- "demi-agent-store",
- "demi-artifact",
- "demi-backend-accounts",
- "demi-backend-cloud",
- "demi-backend-expose",
- "demi-backend-host-access",
- "demi-backend-objects",
- "demi-backend-providers",
- "demi-backend-runners",
- "demi-backend-shard",
- "demi-backend-storage",
- "demi-backend-sync",
- "demi-browser-protocol",
- "demi-command-protocol",
- "demi-core",
- "demi-host-remote",
- "demi-provider",
- "demi-runner-protocol",
- "demi-shell",
- "demi-web-api",
- "futures-util",
- "garde",
- "http-body",
- "hyper",
- "hyper-util",
- "mime",
- "percent-encoding",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "tokio",
- "tokio-util",
- "tower",
- "tower-http",
- "tracing",
- "typed-path",
- "url",
-]
-
-[[package]]
-name = "demi-backend-expose"
-version = "0.1.3"
-dependencies = [
- "data-encoding",
- "demi-backend-storage",
- "demi-backend-sync",
- "demi-core",
- "demi-web-api",
- "jiff",
- "rand 0.9.5",
- "thiserror",
- "tokio",
- "tokio-util",
- "tracing",
- "url",
-]
-
-[[package]]
-name = "demi-backend-families"
-version = "0.1.3"
-dependencies = [
- "demi-backend-providers",
- "demi-core",
- "demi-provider",
- "demi-provider-anthropic-api",
- "demi-provider-claude-code",
- "demi-provider-codex",
- "demi-provider-google",
- "demi-provider-grok-build",
- "demi-provider-openai-api",
- "demi-web-api",
- "reqwest",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "demi-backend-host-access"
-version = "0.1.3"
-dependencies = [
- "bytes",
- "demi-agent-store",
- "demi-agent-tools",
- "demi-backend-cloud",
- "demi-backend-expose",
- "demi-backend-objects",
- "demi-backend-runners",
- "demi-backend-storage",
- "demi-command-protocol",
- "demi-command-tree",
- "demi-core",
- "demi-gates",
- "demi-host-remote",
- "demi-runner-protocol",
- "demi-shell",
- "demi-web-api",
- "futures-util",
- "http",
- "schemars",
- "serde",
- "serde_json",
- "shlex",
- "thiserror",
- "tokio",
- "tokio-util",
- "tracing",
- "url",
-]
-
-[[package]]
-name = "demi-backend-idle"
-version = "0.1.3"
-dependencies = [
- "demi-gates",
- "futures-util",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
-name = "demi-backend-objects"
+name = "demi-backend-blobs"
 version = "0.1.3"
 dependencies = [
  "async-trait",
  "axum",
  "bytes",
  "demi-agent-store",
- "demi-core",
- "demi-web-api",
+ "demi-shared-types",
+ "demi-web-api-protocol",
  "futures-util",
  "jiff",
  "object_store",
@@ -1656,146 +1495,42 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-backend-providers"
+name = "demi-backend-cloud"
 version = "0.1.3"
 dependencies = [
- "aes-gcm",
- "demi-backend-storage",
- "demi-backend-sync",
- "demi-claude-protocol",
- "demi-core",
- "demi-provider",
- "demi-provider-anthropic-api",
- "demi-provider-claude-code",
- "demi-provider-openai-api",
- "demi-web-api",
- "futures-util",
- "garde",
- "hex",
- "icu_collator",
- "jiff",
- "rand 0.9.5",
- "reqwest",
- "serde",
- "serde_json",
- "serde_json_canonicalizer",
- "serde_with",
- "sha2",
- "tempfile",
- "thiserror",
- "tokio",
- "tokio-util",
- "tracing",
- "url",
- "uuid",
-]
-
-[[package]]
-name = "demi-backend-runners"
-version = "0.1.3"
-dependencies = [
- "axum",
- "bytes",
- "data-encoding",
- "demi-artifact",
- "demi-backend-objects",
- "demi-backend-storage",
- "demi-backend-sync",
- "demi-browser-protocol",
- "demi-command-protocol",
- "demi-gates",
- "demi-host-remote",
- "demi-runner-protocol",
- "demi-shell",
- "demi-web-api",
- "futures-util",
- "hex",
- "jiff",
- "object_store",
- "percent-encoding",
- "rand 0.9.5",
- "serde",
- "serde_json",
- "serde_json_canonicalizer",
- "sha2",
- "shlex",
- "tempfile",
- "thiserror",
- "tokio",
- "tokio-util",
- "tracing",
- "url",
-]
-
-[[package]]
-name = "demi-backend-shard"
-version = "0.1.3"
-dependencies = [
- "axum",
- "bytes",
- "demi-agent",
- "demi-agent-protocol",
- "demi-agent-session",
- "demi-agent-store",
- "demi-agent-tools",
- "demi-agent-transcript",
- "demi-backend-accounts",
- "demi-backend-cloud",
- "demi-backend-expose",
- "demi-backend-host-access",
- "demi-backend-idle",
- "demi-backend-objects",
+ "demi-backend-database",
+ "demi-backend-idle-watch",
+ "demi-backend-page-sync",
  "demi-backend-providers",
+ "demi-backend-remote-host",
  "demi-backend-runners",
- "demi-backend-storage",
- "demi-backend-sync",
- "demi-browser-protocol",
- "demi-claude-protocol",
- "demi-coding-agent",
- "demi-command-protocol",
- "demi-command-tree",
- "demi-core",
- "demi-file-protocol",
- "demi-gates",
- "demi-host-remote",
- "demi-machines-protocol",
- "demi-provider",
- "demi-provider-claude-code",
+ "demi-host-interface",
+ "demi-machine-manager-protocol",
  "demi-runner-protocol",
- "demi-shell",
- "demi-web-api",
+ "demi-shared-gates",
+ "demi-web-api-protocol",
  "futures-util",
- "jiff",
- "object_store",
- "percent-encoding",
- "rand 0.9.5",
- "reqwest",
- "serde",
  "serde_json",
- "sha2",
- "shlex",
  "tempfile",
  "thiserror",
  "tokio",
  "tokio-util",
  "tracing",
- "url",
- "uuid",
 ]
 
 [[package]]
-name = "demi-backend-storage"
+name = "demi-backend-database"
 version = "0.1.3"
 dependencies = [
  "demi-agent-store",
  "demi-agent-transcript",
- "demi-core",
- "demi-gates",
- "demi-host-remote",
- "demi-machines-protocol",
+ "demi-backend-remote-host",
+ "demi-host-interface",
+ "demi-machine-manager-protocol",
  "demi-runner-protocol",
- "demi-shell",
- "demi-web-api",
+ "demi-shared-gates",
+ "demi-shared-types",
+ "demi-web-api-protocol",
  "futures-util",
  "garde",
  "hashlink",
@@ -1818,12 +1553,298 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-backend-sync"
+name = "demi-backend-expose"
 version = "0.1.3"
 dependencies = [
- "demi-backend-storage",
- "demi-web-api",
+ "data-encoding",
+ "demi-backend-database",
+ "demi-backend-page-sync",
+ "demi-shared-types",
+ "demi-web-api-protocol",
+ "jiff",
+ "rand 0.9.5",
+ "thiserror",
  "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
+]
+
+[[package]]
+name = "demi-backend-families"
+version = "0.1.3"
+dependencies = [
+ "demi-backend-providers",
+ "demi-provider-anthropic-api",
+ "demi-provider-claude-code",
+ "demi-provider-codex",
+ "demi-provider-common",
+ "demi-provider-google",
+ "demi-provider-grok-build",
+ "demi-provider-openai-api",
+ "demi-shared-types",
+ "demi-web-api-protocol",
+ "reqwest",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "demi-backend-host-access"
+version = "0.1.3"
+dependencies = [
+ "bytes",
+ "demi-agent-store",
+ "demi-agent-tools",
+ "demi-backend-blobs",
+ "demi-backend-cloud",
+ "demi-backend-database",
+ "demi-backend-expose",
+ "demi-backend-remote-host",
+ "demi-backend-runners",
+ "demi-command-declarations",
+ "demi-command-protocol",
+ "demi-host-interface",
+ "demi-runner-protocol",
+ "demi-shared-gates",
+ "demi-shared-types",
+ "demi-web-api-protocol",
+ "futures-util",
+ "http",
+ "schemars",
+ "serde",
+ "serde_json",
+ "shlex",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
+]
+
+[[package]]
+name = "demi-backend-http"
+version = "0.1.3"
+dependencies = [
+ "axum",
+ "axum-extra",
+ "bytes",
+ "cookie",
+ "demi-agent-store",
+ "demi-backend-accounts",
+ "demi-backend-blobs",
+ "demi-backend-cloud",
+ "demi-backend-database",
+ "demi-backend-expose",
+ "demi-backend-host-access",
+ "demi-backend-page-sync",
+ "demi-backend-providers",
+ "demi-backend-remote-host",
+ "demi-backend-runners",
+ "demi-backend-user-shard",
+ "demi-command-package-browser-protocol",
+ "demi-command-protocol",
+ "demi-conversation-socket-protocol",
+ "demi-host-interface",
+ "demi-provider-common",
+ "demi-runner-protocol",
+ "demi-shared-artifacts",
+ "demi-shared-types",
+ "demi-web-api-protocol",
+ "futures-util",
+ "garde",
+ "http-body",
+ "hyper",
+ "hyper-util",
+ "mime",
+ "percent-encoding",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tower",
+ "tower-http",
+ "tracing",
+ "typed-path",
+ "url",
+]
+
+[[package]]
+name = "demi-backend-idle-watch"
+version = "0.1.3"
+dependencies = [
+ "demi-shared-gates",
+ "futures-util",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "demi-backend-page-sync"
+version = "0.1.3"
+dependencies = [
+ "demi-backend-database",
+ "demi-web-api-protocol",
+ "tokio",
+]
+
+[[package]]
+name = "demi-backend-providers"
+version = "0.1.3"
+dependencies = [
+ "aes-gcm",
+ "demi-backend-database",
+ "demi-backend-page-sync",
+ "demi-command-package-claude-code-protocol",
+ "demi-provider-anthropic-api",
+ "demi-provider-claude-code",
+ "demi-provider-common",
+ "demi-provider-openai-api",
+ "demi-shared-types",
+ "demi-web-api-protocol",
+ "futures-util",
+ "garde",
+ "hex",
+ "icu_collator",
+ "jiff",
+ "rand 0.9.5",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_json_canonicalizer",
+ "serde_with",
+ "sha2",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "demi-backend-remote-host"
+version = "0.1.3"
+dependencies = [
+ "axum",
+ "bytes",
+ "demi-backend-remote-host",
+ "demi-command-declarations",
+ "demi-command-protocol",
+ "demi-host-interface",
+ "demi-runner-protocol",
+ "demi-shared-gates",
+ "demi-shared-types",
+ "futures-util",
+ "garde",
+ "rustix",
+ "schemars",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "demi-backend-runners"
+version = "0.1.3"
+dependencies = [
+ "axum",
+ "bytes",
+ "data-encoding",
+ "demi-backend-blobs",
+ "demi-backend-database",
+ "demi-backend-page-sync",
+ "demi-backend-remote-host",
+ "demi-command-package-browser-protocol",
+ "demi-command-protocol",
+ "demi-host-interface",
+ "demi-runner-protocol",
+ "demi-shared-artifacts",
+ "demi-shared-gates",
+ "demi-web-api-protocol",
+ "futures-util",
+ "hex",
+ "jiff",
+ "object_store",
+ "percent-encoding",
+ "rand 0.9.5",
+ "serde",
+ "serde_json",
+ "serde_json_canonicalizer",
+ "sha2",
+ "shlex",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
+]
+
+[[package]]
+name = "demi-backend-user-shard"
+version = "0.1.3"
+dependencies = [
+ "axum",
+ "bytes",
+ "demi-agent-coding-harness",
+ "demi-agent-server",
+ "demi-agent-session",
+ "demi-agent-store",
+ "demi-agent-tools",
+ "demi-agent-transcript",
+ "demi-backend-accounts",
+ "demi-backend-blobs",
+ "demi-backend-cloud",
+ "demi-backend-database",
+ "demi-backend-expose",
+ "demi-backend-host-access",
+ "demi-backend-idle-watch",
+ "demi-backend-page-sync",
+ "demi-backend-providers",
+ "demi-backend-remote-host",
+ "demi-backend-runners",
+ "demi-command-declarations",
+ "demi-command-package-browser-protocol",
+ "demi-command-package-claude-code-protocol",
+ "demi-command-package-file-protocol",
+ "demi-command-protocol",
+ "demi-conversation-socket-protocol",
+ "demi-host-interface",
+ "demi-machine-manager-protocol",
+ "demi-provider-claude-code",
+ "demi-provider-common",
+ "demi-runner-protocol",
+ "demi-shared-gates",
+ "demi-shared-types",
+ "demi-web-api-protocol",
+ "futures-util",
+ "jiff",
+ "object_store",
+ "percent-encoding",
+ "rand 0.9.5",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "shlex",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
+ "uuid",
 ]
 
 [[package]]
@@ -1833,15 +1854,15 @@ dependencies = [
  "axum",
  "base64",
  "bytes",
- "demi-artifact",
  "demi-browser-cdp",
  "demi-browser-driver",
  "demi-browser-live",
  "demi-browser-page",
- "demi-browser-protocol",
  "demi-browser-tabs",
+ "demi-command-package-browser-protocol",
  "demi-command-protocol",
- "demi-command-service",
+ "demi-command-sdk",
+ "demi-shared-artifacts",
  "futures-util",
  "libc",
  "png",
@@ -1864,9 +1885,9 @@ version = "0.1.3"
 dependencies = [
  "chromiumoxide",
  "demi-browser-driver",
- "demi-browser-protocol",
  "demi-browser-tabs",
- "demi-command-service",
+ "demi-command-package-browser-protocol",
+ "demi-command-sdk",
  "futures-util",
  "jsonschema",
  "serde",
@@ -1883,11 +1904,11 @@ dependencies = [
  "base64",
  "bytes",
  "chromiumoxide",
- "demi-artifact",
- "demi-browser-protocol",
+ "demi-command-package-browser-protocol",
  "demi-command-protocol",
- "demi-command-service",
- "demi-core",
+ "demi-command-sdk",
+ "demi-shared-artifacts",
+ "demi-shared-types",
  "futures-util",
  "getrandom 0.4.3",
  "libc",
@@ -1911,11 +1932,11 @@ dependencies = [
  "chromiumoxide",
  "demi-browser-driver",
  "demi-browser-page",
- "demi-browser-protocol",
  "demi-browser-tabs",
+ "demi-command-package-browser-protocol",
  "demi-command-protocol",
- "demi-command-service",
- "demi-core",
+ "demi-command-sdk",
+ "demi-shared-types",
  "futures-util",
  "garde",
  "serde",
@@ -1933,9 +1954,9 @@ dependencies = [
  "base64",
  "chromiumoxide",
  "demi-browser-driver",
- "demi-browser-protocol",
  "demi-browser-tabs",
- "demi-command-service",
+ "demi-command-package-browser-protocol",
+ "demi-command-sdk",
  "futures-util",
  "png",
  "serde",
@@ -1946,28 +1967,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-browser-protocol"
-version = "0.1.3"
-dependencies = [
- "base64",
- "demi-core",
- "garde",
- "regex",
- "schemars",
- "serde",
- "serde_json",
- "serde_plain",
- "serde_with",
- "thiserror",
-]
-
-[[package]]
 name = "demi-browser-tabs"
 version = "0.1.3"
 dependencies = [
  "chromiumoxide",
  "demi-browser-driver",
- "demi-browser-protocol",
+ "demi-command-package-browser-protocol",
  "demi-command-protocol",
  "futures-util",
  "libc",
@@ -1986,11 +1991,11 @@ name = "demi-claude"
 version = "0.1.3"
 dependencies = [
  "bytes",
- "demi-artifact",
  "demi-claude",
- "demi-claude-protocol",
+ "demi-command-package-claude-code-protocol",
  "demi-command-protocol",
- "demi-command-service",
+ "demi-command-sdk",
+ "demi-shared-artifacts",
  "futures-util",
  "reqwest",
  "serde",
@@ -2003,7 +2008,35 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-claude-protocol"
+name = "demi-command-declarations"
+version = "0.1.3"
+dependencies = [
+ "jsonschema",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "thiserror",
+]
+
+[[package]]
+name = "demi-command-package-browser-protocol"
+version = "0.1.3"
+dependencies = [
+ "base64",
+ "demi-shared-types",
+ "garde",
+ "regex",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_plain",
+ "serde_with",
+ "thiserror",
+]
+
+[[package]]
+name = "demi-command-package-claude-code-protocol"
 version = "0.1.3"
 dependencies = [
  "garde",
@@ -2015,29 +2048,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-coding-agent"
+name = "demi-command-package-file-protocol"
 version = "0.1.3"
 dependencies = [
- "demi-agent",
- "demi-agent-protocol",
- "demi-agent-store",
- "demi-agent-tools",
- "demi-agent-transcript",
- "demi-browser-protocol",
- "demi-command-protocol",
- "demi-command-tree",
- "demi-core",
- "demi-file-protocol",
- "demi-host-remote",
- "demi-provider",
- "demi-shell",
- "futures-util",
- "rustix",
+ "demi-shared-types",
+ "garde",
  "schemars",
  "serde",
  "serde_json",
- "tokio",
- "tokio-util",
+ "serde_with",
+ "thiserror",
 ]
 
 [[package]]
@@ -2057,13 +2077,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-command-service"
+name = "demi-command-sdk"
 version = "0.1.3"
 dependencies = [
  "bytes",
- "demi-artifact",
  "demi-command-protocol",
- "demi-command-service",
+ "demi-command-sdk",
+ "demi-shared-artifacts",
  "futures-util",
  "garde",
  "h2",
@@ -2081,31 +2101,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-command-tree"
+name = "demi-conversation-socket-protocol"
 version = "0.1.3"
 dependencies = [
- "jsonschema",
- "schemars",
- "serde",
- "serde_json",
- "serde_with",
- "thiserror",
-]
-
-[[package]]
-name = "demi-core"
-version = "0.1.3"
-dependencies = [
- "base64",
- "bytes",
+ "demi-shared-types",
  "garde",
- "jiff",
  "schemars",
  "serde",
  "serde_json",
  "serde_plain",
  "serde_with",
- "sha2",
  "thiserror",
 ]
 
@@ -2114,12 +2119,12 @@ name = "demi-file"
 version = "0.1.3"
 dependencies = [
  "bytes",
- "demi-artifact",
+ "demi-command-package-file-protocol",
  "demi-command-protocol",
- "demi-command-service",
- "demi-core",
- "demi-file-protocol",
- "demi-gates",
+ "demi-command-sdk",
+ "demi-shared-artifacts",
+ "demi-shared-gates",
+ "demi-shared-types",
  "regex",
  "serde_json",
  "tempfile",
@@ -2131,51 +2136,35 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-file-protocol"
+name = "demi-host-interface"
 version = "0.1.3"
 dependencies = [
- "demi-core",
- "garde",
+ "bytes",
+ "demi-command-declarations",
+ "demi-command-protocol",
+ "demi-host-interface",
+ "demi-shared-types",
+ "futures-util",
  "schemars",
  "serde",
  "serde_json",
  "serde_with",
  "thiserror",
-]
-
-[[package]]
-name = "demi-gates"
-version = "0.1.3"
-dependencies = [
- "tokio",
-]
-
-[[package]]
-name = "demi-host-remote"
-version = "0.1.3"
-dependencies = [
- "axum",
- "bytes",
- "demi-command-protocol",
- "demi-command-tree",
- "demi-core",
- "demi-gates",
- "demi-host-remote",
- "demi-runner-protocol",
- "demi-shell",
- "futures-util",
- "garde",
- "rustix",
- "schemars",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror",
  "tokio",
  "tokio-util",
- "tracing",
- "uuid",
+]
+
+[[package]]
+name = "demi-machine-manager-protocol"
+version = "0.1.3"
+dependencies = [
+ "demi-command-protocol",
+ "demi-runner-protocol",
+ "garde",
+ "serde",
+ "serde_json",
+ "serde_plain",
+ "thiserror",
 ]
 
 [[package]]
@@ -2183,10 +2172,10 @@ name = "demi-machines"
 version = "0.1.3"
 dependencies = [
  "clap",
- "demi-artifact",
+ "demi-machine-manager-protocol",
  "demi-machines",
- "demi-machines-protocol",
  "demi-runner-protocol",
+ "demi-shared-artifacts",
  "fs-err",
  "futures-util",
  "ipnet",
@@ -2214,54 +2203,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-machines-protocol"
-version = "0.1.3"
-dependencies = [
- "demi-command-protocol",
- "demi-runner-protocol",
- "garde",
- "serde",
- "serde_json",
- "serde_plain",
- "thiserror",
-]
-
-[[package]]
-name = "demi-provider"
-version = "0.1.3"
-dependencies = [
- "async-stream",
- "axum",
- "base64",
- "bytes",
- "demi-core",
- "demi-gates",
- "demi-provider",
- "eventsource-stream",
- "futures-util",
- "http",
- "httpdate",
- "indexmap",
- "jiff",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "serde_path_to_error",
- "sha2",
- "thiserror",
- "tokio",
- "tokio-rustls",
- "tokio-util",
-]
-
-[[package]]
 name = "demi-provider-anthropic-api"
 version = "0.1.3"
 dependencies = [
  "async-stream",
- "demi-core",
- "demi-provider",
+ "demi-provider-common",
+ "demi-shared-types",
  "futures-util",
  "reqwest",
  "serde",
@@ -2276,9 +2223,9 @@ dependencies = [
  "async-stream",
  "base64",
  "bytes",
- "demi-core",
- "demi-provider",
- "demi-shell",
+ "demi-host-interface",
+ "demi-provider-common",
+ "demi-shared-types",
  "futures-channel",
  "futures-util",
  "http",
@@ -2300,9 +2247,9 @@ version = "0.1.3"
 dependencies = [
  "async-stream",
  "bytes",
- "demi-core",
- "demi-provider",
  "demi-provider-codex",
+ "demi-provider-common",
+ "demi-shared-types",
  "futures-util",
  "http",
  "reqwest",
@@ -2314,13 +2261,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "demi-provider-common"
+version = "0.1.3"
+dependencies = [
+ "async-stream",
+ "axum",
+ "base64",
+ "bytes",
+ "demi-provider-common",
+ "demi-shared-gates",
+ "demi-shared-types",
+ "eventsource-stream",
+ "futures-util",
+ "http",
+ "httpdate",
+ "indexmap",
+ "jiff",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_path_to_error",
+ "sha2",
+ "thiserror",
+ "tokio",
+ "tokio-rustls",
+ "tokio-util",
+]
+
+[[package]]
 name = "demi-provider-google"
 version = "0.1.3"
 dependencies = [
  "async-stream",
  "base64",
- "demi-core",
- "demi-provider",
+ "demi-provider-common",
+ "demi-shared-types",
  "futures-util",
  "reqwest",
  "serde",
@@ -2335,8 +2311,8 @@ version = "0.1.3"
 dependencies = [
  "async-stream",
  "bytes",
- "demi-core",
- "demi-provider",
+ "demi-provider-common",
+ "demi-shared-types",
  "futures-util",
  "http",
  "reqwest",
@@ -2351,8 +2327,8 @@ name = "demi-provider-openai-api"
 version = "0.1.3"
 dependencies = [
  "async-stream",
- "demi-core",
- "demi-provider",
+ "demi-provider-common",
+ "demi-shared-types",
  "futures-util",
  "reqwest",
  "serde",
@@ -2366,16 +2342,16 @@ version = "0.1.3"
 dependencies = [
  "bytes",
  "clap",
+ "demi-backend-remote-host",
  "demi-command-protocol",
- "demi-command-service",
- "demi-host-remote",
+ "demi-command-sdk",
+ "demi-host-interface",
+ "demi-runner-command-packages",
  "demi-runner-host",
  "demi-runner-jobs",
  "demi-runner-process",
  "demi-runner-protocol",
- "demi-runner-services",
  "demi-runner-shell",
- "demi-shell",
  "futures-util",
  "hostname",
  "libc",
@@ -2397,14 +2373,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "demi-runner-command-packages"
+version = "0.1.3"
+dependencies = [
+ "bytes",
+ "demi-command-protocol",
+ "demi-command-sdk",
+ "demi-runner-command-packages",
+ "demi-runner-process",
+ "demi-runner-protocol",
+ "demi-shared-artifacts",
+ "futures-util",
+ "process-wrap",
+ "reqwest",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "demi-runner-host"
 version = "0.1.3"
 dependencies = [
  "bytes",
- "demi-artifact",
- "demi-command-service",
+ "demi-command-sdk",
  "demi-runner-process",
  "demi-runner-protocol",
+ "demi-shared-artifacts",
  "filetime",
  "fsevent-sys",
  "futures-util",
@@ -2428,13 +2428,13 @@ name = "demi-runner-jobs"
 version = "0.1.3"
 dependencies = [
  "bytes",
+ "demi-command-declarations",
  "demi-command-protocol",
- "demi-command-service",
- "demi-command-tree",
+ "demi-command-sdk",
+ "demi-runner-command-packages",
  "demi-runner-jobs",
  "demi-runner-process",
  "demi-runner-protocol",
- "demi-runner-services",
  "futures-util",
  "rmp-serde",
  "serde",
@@ -2452,10 +2452,10 @@ name = "demi-runner-process"
 version = "0.1.3"
 dependencies = [
  "bytes",
- "demi-artifact",
  "demi-command-protocol",
- "demi-command-service",
+ "demi-command-sdk",
  "demi-runner-protocol",
+ "demi-shared-artifacts",
  "futures-util",
  "gix-imara-diff",
  "libc",
@@ -2476,9 +2476,9 @@ dependencies = [
 name = "demi-runner-protocol"
 version = "0.1.3"
 dependencies = [
+ "demi-command-declarations",
  "demi-command-protocol",
- "demi-command-tree",
- "demi-core",
+ "demi-shared-types",
  "garde",
  "rmp-serde",
  "schemars",
@@ -2492,30 +2492,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-runner-services"
-version = "0.1.3"
-dependencies = [
- "bytes",
- "demi-artifact",
- "demi-command-protocol",
- "demi-command-service",
- "demi-runner-process",
- "demi-runner-protocol",
- "demi-runner-services",
- "futures-util",
- "process-wrap",
- "reqwest",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "demi-runner-shell"
 version = "0.1.3"
 dependencies = [
@@ -2525,7 +2501,7 @@ dependencies = [
  "chrono",
  "clap",
  "demi-command-protocol",
- "demi-command-service",
+ "demi-command-sdk",
  "demi-runner-process",
  "demi-runner-protocol",
  "demi-runner-shell",
@@ -2585,33 +2561,57 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-shell"
+name = "demi-shared-artifacts"
 version = "0.1.3"
 dependencies = [
  "bytes",
- "demi-command-protocol",
- "demi-command-tree",
- "demi-core",
- "demi-shell",
+ "demi-shared-artifacts",
  "futures-util",
- "schemars",
+ "reqwest",
  "serde",
  "serde_json",
- "serde_with",
+ "sha2",
+ "tempfile",
  "thiserror",
  "tokio",
  "tokio-util",
+ "zip",
+ "zstd 0.13.3",
 ]
 
 [[package]]
-name = "demi-web-api"
+name = "demi-shared-gates"
 version = "0.1.3"
 dependencies = [
- "demi-agent-protocol",
- "demi-browser-protocol",
+ "tokio",
+]
+
+[[package]]
+name = "demi-shared-types"
+version = "0.1.3"
+dependencies = [
+ "base64",
+ "bytes",
+ "garde",
+ "jiff",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_plain",
+ "serde_with",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
+name = "demi-web-api-protocol"
+version = "0.1.3"
+dependencies = [
+ "demi-command-package-browser-protocol",
  "demi-command-protocol",
- "demi-core",
+ "demi-conversation-socket-protocol",
  "demi-runner-protocol",
+ "demi-shared-types",
  "garde",
  "regex",
  "schemars",
@@ -9005,16 +9005,16 @@ name = "xtask"
 version = "0.1.3"
 dependencies = [
  "clap",
- "demi-agent-protocol",
- "demi-artifact",
- "demi-browser-protocol",
- "demi-claude-protocol",
+ "demi-command-package-browser-protocol",
+ "demi-command-package-claude-code-protocol",
+ "demi-command-package-file-protocol",
  "demi-command-protocol",
- "demi-core",
- "demi-file-protocol",
- "demi-machines-protocol",
+ "demi-conversation-socket-protocol",
+ "demi-machine-manager-protocol",
  "demi-runner-protocol",
- "demi-web-api",
+ "demi-shared-artifacts",
+ "demi-shared-types",
+ "demi-web-api-protocol",
  "flate2",
  "garde",
  "schemars",

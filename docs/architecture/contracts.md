@@ -4,7 +4,7 @@ Every message and stored document that crosses a process boundary is defined
 once, as a Rust type. For example, adding a `durationMs` field to a transcript
 block works like this:
 
-1. A developer adds the field to the `Block` type in the `core` crate, with its
+1. A developer adds the field to the `Block` type in the `shared-types` crate, with its
    serde and garde attributes.
 2. `bun run contracts` builds the workspace and runs `xtask contracts`, which
    rewrites the generated TypeScript in `packages/protocol/src/generated/`.
@@ -28,16 +28,16 @@ names each crate's items.
 
 | Wire or stored data | Contract crate | Ends |
 |---|---|---|
-| Browser HTTP requests and responses | `web-api` | Backend; `web`, through generated TypeScript |
-| Conversation WebSocket frames, transcript blocks and patches, tool views | `agent-protocol`, `core` | Backend; `agent-client` and `web-ui`, through `@demicodes/protocol` |
-| Runner wire (MessagePack over a WebSocket) and command manifests | `runner-protocol`, with manifest nodes from `command-tree` | Backend; runner |
+| Browser HTTP requests and responses | `web-api-protocol` | Backend; `web`, through generated TypeScript |
+| Conversation WebSocket frames, transcript blocks and patches, tool views | `conversation-socket-protocol`, `shared-types` | Backend; `agent-client` and `web-ui`, through `@demicodes/protocol` |
+| Runner wire (MessagePack over a WebSocket) and command manifests | `runner-protocol`, with manifest nodes from `command-declarations` | Backend; runner |
 | Managed boot record | `runner-protocol` | Backend and machine manager; the runner in a Cloud sandbox reads it |
 | Command invocations between a runner and a command program | `command-protocol` | Runner; `demi-file`, `demi-browser`, `demi-claude` |
-| `demi.file` operations | `file-protocol` | `coding-agent` declarations; `demi-file` |
-| `demi.browser` operations, live view messages, capture extension events | `browser-protocol` | `coding-agent` declarations, the backend and the browser crates; the page reads live view messages through `@demicodes/protocol` |
-| `demi.claude` operations and the Claude Code release record | `claude-protocol` | Backend; `demi-claude` |
-| Machine-manager socket (one JSON document per line over a Unix socket) and the Cloud image manifest | `machines-protocol` | Backend; machine manager; `xtask` writes the image manifest |
-| JSON stored in the control and conversation databases | The crate that owns the data, such as `core` for blocks | Backend |
+| `demi.file` operations | `command-package-file-protocol` | `agent-coding-harness` declarations; `demi-file` |
+| `demi.browser` operations, live view messages, capture extension events | `command-package-browser-protocol` | `agent-coding-harness` declarations, the backend and the browser crates; the page reads live view messages through `@demicodes/protocol` |
+| `demi.claude` operations and the Claude Code release record | `command-package-claude-code-protocol` | Backend; `demi-claude` |
+| Machine-manager socket (one JSON document per line over a Unix socket) and the Cloud image manifest | `machine-manager-protocol` | Backend; machine manager; `xtask` writes the image manifest |
+| JSON stored in the control and conversation databases | The crate that owns the data, such as `shared-types` for blocks | Backend |
 
 A wire whose two ends are both Rust needs no generation: both ends link the
 same crate. The runner wire and the machine-manager socket have fixed
@@ -66,7 +66,7 @@ convention:
   The generated Zod schemas refuse the same values, so both ends agree.
 - Bytes are base64 strings (`B64Bytes`). Times are RFC 3339 strings in UTC
   with three fractional digits, such as `2026-09-21T14:13:20.000Z`, so that
-  the text of two times orders as the times do (`core`'s `Timestamp`, whole
+  the text of two times orders as the times do (`shared-types`'s `Timestamp`, whole
   milliseconds of a `jiff::Timestamp`); a finer time is refused.
 - Integers are integer types. An integer the browser reads is bounded to
   JavaScript's safe integer range in the Rust type as well: a 64-bit field
@@ -126,16 +126,16 @@ These are the points where values enter, and what a failure does:
 
 | Where a value enters | Decoded by | When it fails |
 |---|---|---|
-| A browser request body or query | The edge's body and query extractors, into `web-api` types | 400 `invalid_body` or `invalid_query`, naming the field and the reason ([Web API](../product/web-api.md)) |
+| A browser request body or query | The edge's body and query extractors, into `web-api-protocol` types | 400 `invalid_body` or `invalid_query`, naming the field and the reason ([Web API](../product/web-api.md)) |
 | A frame on the conversation WebSocket | The conversation socket, into `ClientFrame` | An `error` frame with code `invalid_frame`, before any state changes; a message that is not JSON closes the socket ([Frame protocol](../agent/runtime.md#frame-protocol)) |
 | A frame or REST response the browser receives | The generated schemas, in `agent-client` and `web` | `agent-client` drops the connection and reports the field path; `web` validates a response before applying it to state |
 | A runner message, at either end | `runner-protocol`'s codec | The connection closes ([Runner](../execution/runner.md)) |
 | Invocation metadata and records between a runner and a command program | `command-protocol` | [Validation and flow control](../execution/native-runtime.md#validation-and-flow-control) |
 | A command's arguments | The declaration's JSON Schema, at the dispatcher and again in a native handler before work | One usage error that names every field that failed |
-| A machine-manager request or response | `machines-protocol` | A malformed line or an unknown operation drops the connection; an invalid device id is that operation's error ([Managed Cloud hosts](../cloud/managed-hosts.md)) |
+| A machine-manager request or response | `machine-manager-protocol` | A malformed line or an unknown operation drops the connection; an invalid device id is that operation's error ([Managed Cloud hosts](../cloud/managed-hosts.md)) |
 | The managed boot file | `runner-protocol`'s `ManagedBoot` | The runner fails; it never falls back to pairing ([Runner](../execution/runner.md#managed-guests-and-verification)) |
-| A capture extension event | `browser-protocol` | The extension connection fails, and the failure is logged ([Live view](../browser/live-view.md)) |
-| A row or JSON column read from a database | `backend-storage` | The restore stops; nothing is repaired or defaulted ([Storage](../backend/storage.md)) |
+| A capture extension event | `command-package-browser-protocol` | The extension connection fails, and the failure is logged ([Live view](../browser/live-view.md)) |
+| A row or JSON column read from a database | `backend-database` | The restore stops; nothing is repaired or defaulted ([Storage](../backend/storage.md)) |
 | A sealed credential document | The vault | The error names the field path and the kind of failure, never the value ([Providers](../providers/providers.md)) |
 | Configuration from arguments and the environment | Each program's configuration, at startup | The program does not start, and the error names the variable |
 | A tool call's input from the model | The tool | The model receives the tool's error ([Tools](../agent/runtime.md#tools)) |
@@ -153,9 +153,9 @@ xtask contracts: the emitter, which fails on anything outside its subset
    |
    v
 Zod source and z.infer types
-   -> packages/protocol/src/generated/   @demicodes/protocol: core, agent-protocol,
-                                          browser-protocol types the page reads
-   -> packages/web/src/api/generated/    web: the web-api REST types
+   -> packages/protocol/src/generated/   @demicodes/protocol: core, conversation-socket-protocol,
+                                          command-package-browser-protocol types the page reads
+   -> packages/web/src/api/generated/    web: the web-api-protocol REST types
 ```
 
 - **Generation.** `bun run contracts` builds the workspace with its one Cargo
@@ -187,8 +187,8 @@ Zod source and z.infer types
   times as core's `Timestamp` writes them (`z.iso.datetime({ precision: 3 })`:
   UTC with three fractional digits, the contract's one spelling); email
   addresses; `http` and `https` URLs (`z.url` with those protocols,
-  `web-api`'s `EndpointUrl`); text the backend trims on arrival, whose bounds
-  count what the trim leaves (`z.string().trim()`, `web-api`'s `Trimmed`);
+  `web-api-protocol`'s `EndpointUrl`); text the backend trims on arrival, whose bounds
+  count what the trim leaves (`z.string().trim()`, `web-api-protocol`'s `Trimmed`);
   JSON values (`z.json()`); flattened plain structs (merged properties); one
   named instantiation of a generic root type; recursion through `$ref`, as a
   getter of the object property that refers back, which Zod types
@@ -268,7 +268,7 @@ by case:
 
 | Logic | Owner | How |
 |---|---|---|
-| The file-type table: which files the product previews, by extension, and which the page shows in place | `core` | The page must choose a viewer before any byte arrives ([Choosing a view](../product/file-previews.md#choosing-a-view)), so the table and its lookups are emitted into `@demicodes/protocol`, and the backend serves files by the same definition |
+| The file-type table: which files the product previews, by extension, and which the page shows in place | `shared-types` | The page must choose a viewer before any byte arrives ([Choosing a view](../product/file-previews.md#choosing-a-view)), so the table and its lookups are emitted into `@demicodes/protocol`, and the backend serves files by the same definition |
 | Whether an upload is text, and its short opening snippet | Backend | The upload response carries the snippet the composer's tile shows |
 | The media type a model receives for an upload | Backend | The upload response carries the sniffed media type; the message editor uploads files the way the main composer does |
 | Whether a message can be edited | The data model | `User` is the only editable block type; hidden inputs are `Context`, `Wakeup` and `AgentMessage` blocks |

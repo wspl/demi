@@ -6,7 +6,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::process::{Command, Output};
 
 use demi_backend::{Backend, BackendConfig, InstanceSecret, SecretError, StartError};
-use demi_web_api::settings::InstanceMode;
+use demi_web_api_protocol::settings::InstanceMode;
 
 use crate::support::Harness;
 

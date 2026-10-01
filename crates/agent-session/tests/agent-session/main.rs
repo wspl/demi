@@ -11,20 +11,20 @@ use std::{
     time::Duration,
 };
 
-use demi_agent_protocol::{AbortResult, AbortTarget, TranscriptPatch};
+use demi_conversation_socket_protocol::{AbortResult, AbortTarget, TranscriptPatch};
 use demi_agent_session::{
     ActionEnd, AdmissionError, AgentMessageError, AgentSession, CompactionConfig, Continuation,
     EditCheck, EditContent, EditError, EditSubmission, ModelSwitch, RestoreError, SessionConfig,
     SessionDeps, SessionEvent, SessionInit, SessionRuntime, SteerError, Subscription, ToolEffect,
     ToolFailure, ToolInvocation, ToolOutcome,
 };
-use demi_core::{
+use demi_shared_types::{
     AgentMessage, AgentMessageEvent, B64Bytes, BlobRef, Block, BlockId, DocumentSource,
     FailureSource, FileExtension, MediaSource, ModelSelection, NodeId, OperationId, Sender,
     SessionPhase, Timestamp, ToolCallStatus, ToolResultContentBlock, TurnId, UserContentBlock,
 };
-use demi_gates::{ActivityGate, GateLease, Purpose};
-use demi_provider::{
+use demi_shared_gates::{ActivityGate, GateLease, Purpose};
+use demi_provider_common::{
     ErrorCode, InferenceItem, MediaBytes, PromptCache, ProviderEvent, ProviderRuntime,
     RequestLimits, ResultPart, ToolDefinition, UserPart,
     testing::{FixedClock, ScriptedRuntime, Turn, event},
@@ -66,7 +66,7 @@ impl SessionRuntime for TestRuntime {
         Box::pin(self.admission.enter(Purpose::Demand))
     }
 
-    fn reserve_edit(&self) -> LocalBoxFuture<'_, Result<Option<demi_gates::Reservation>, String>> {
+    fn reserve_edit(&self) -> LocalBoxFuture<'_, Result<Option<demi_shared_gates::Reservation>, String>> {
         Box::pin(async { Ok(None) })
     }
 
@@ -283,7 +283,7 @@ async fn start_at(
     runtime: TestRuntime,
     store: &Rc<MemoryTreeStore>,
     config: SessionConfig,
-    clock: Arc<dyn demi_core::Clock>,
+    clock: Arc<dyn demi_shared_types::Clock>,
 ) -> AgentSession {
     start_with(Box::new(provider.clone()), runtime, store, config, clock).await
 }
@@ -294,7 +294,7 @@ async fn start_with(
     runtime: TestRuntime,
     store: &Rc<MemoryTreeStore>,
     config: SessionConfig,
-    clock: Arc<dyn demi_core::Clock>,
+    clock: Arc<dyn demi_shared_types::Clock>,
 ) -> AgentSession {
     let deps = SessionDeps {
         runtime: Rc::new(runtime),
@@ -326,7 +326,7 @@ fn restore_session(
     store: &Rc<MemoryTreeStore>,
     provider: &ScriptedRuntime,
     runtime: TestRuntime,
-    clock: Arc<dyn demi_core::Clock>,
+    clock: Arc<dyn demi_shared_types::Clock>,
 ) -> (AgentSession, Continuation) {
     restore_configured(
         checkpoint,
@@ -345,7 +345,7 @@ fn restore_configured(
     store: &Rc<MemoryTreeStore>,
     provider: &ScriptedRuntime,
     runtime: TestRuntime,
-    clock: Arc<dyn demi_core::Clock>,
+    clock: Arc<dyn demi_shared_types::Clock>,
     config: SessionConfig,
 ) -> (AgentSession, Continuation) {
     let deps = SessionDeps {
@@ -389,7 +389,7 @@ impl NumberedRuntime {
 }
 
 impl ProviderRuntime for NumberedRuntime {
-    fn run(&mut self, request: demi_provider::InferenceRequest) -> demi_provider::ProviderRun<'_> {
+    fn run(&mut self, request: demi_provider_common::InferenceRequest) -> demi_provider_common::ProviderRun<'_> {
         self.log.borrow_mut().served.push(self.number);
         self.script.run(request)
     }
@@ -409,7 +409,7 @@ impl ProviderRuntime for NumberedRuntime {
         self.script.close()
     }
 
-    fn request_limits(&self, model: &demi_core::Model) -> demi_provider::RequestLimits {
+    fn request_limits(&self, model: &demi_shared_types::Model) -> demi_provider_common::RequestLimits {
         self.script.request_limits(model)
     }
 }
@@ -1061,7 +1061,7 @@ async fn a_message_queued_while_a_tool_runs_is_saved_without_a_transcript_change
 
 /// The parts of the first user message and of the tool result in `request`,
 /// with each medium as its kind and type and each text as written.
-fn media_parts(request: &demi_provider::InferenceRequest) -> Vec<String> {
+fn media_parts(request: &demi_provider_common::InferenceRequest) -> Vec<String> {
     let user = request
         .items
         .iter()

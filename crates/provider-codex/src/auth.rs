@@ -4,8 +4,8 @@
 
 use std::{sync::Arc, time::Duration};
 
-use demi_core::{Clock, Timestamp};
-use demi_provider::{
+use demi_shared_types::{Clock, Timestamp};
+use demi_provider_common::{
     Secret,
     credentials::{
         AccountDocument, AccountLabel, AuthFailure, AuthReason, CredentialPool, SecretDocument,
@@ -133,7 +133,7 @@ pub(crate) fn token_account(token: &Secret) -> TokenAccount {
 /// When a token expires, by its `exp` claim in Unix seconds.
 fn expiry(token: &Secret) -> Option<Timestamp> {
     let seconds = claims(token).exp.into_inner()?;
-    demi_provider::quota::unix_seconds(seconds)
+    demi_provider_common::quota::unix_seconds(seconds)
 }
 
 impl CodexSecret {
@@ -206,7 +206,7 @@ impl CodexAuth {
         Self {
             pool,
             account,
-            token_url: demi_provider::endpoint_url(auth_url, "/oauth/token"),
+            token_url: demi_provider_common::endpoint_url(auth_url, "/oauth/token"),
             clock,
         }
     }

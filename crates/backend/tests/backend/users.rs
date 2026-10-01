@@ -2,7 +2,7 @@
 //! system): the master creates admins and users, an admin creates users
 //! only, and a password is reset only down the ranks.
 
-use demi_web_api::error::ErrorCode;
+use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 

@@ -3,8 +3,8 @@
 
 use std::time::Duration;
 
-use demi_core::{FailureSource, ProviderErrorDiagnostics, Timestamp, TokenUsage};
-use demi_provider::{
+use demi_shared_types::{FailureSource, ProviderErrorDiagnostics, Timestamp, TokenUsage};
+use demi_provider_common::{
     ErrorCode, HttpFailureRecord, ProviderEvent, ProviderFailure, ToolCall,
     testing::{MockResponse, MockVendor, inference_request, next_event},
 };
@@ -163,8 +163,8 @@ async fn response_headers_that_do_not_arrive_in_time_fail_the_run_as_overloaded(
     config.auth_url = vendor.url("").parse().unwrap();
     config.transport = TransportMode::Sse;
     config.header_timeout = Duration::from_millis(50);
-    let clock = std::sync::Arc::new(demi_provider::testing::FixedClock(NOW.parse().unwrap()));
-    let snapshots = std::sync::Arc::new(demi_provider::quota::MemorySnapshots::new());
+    let clock = std::sync::Arc::new(demi_provider_common::testing::FixedClock(NOW.parse().unwrap()));
+    let snapshots = std::sync::Arc::new(demi_provider_common::quota::MemorySnapshots::new());
     let provider = CodexProvider::new(
         config,
         std::sync::Arc::new(pool),

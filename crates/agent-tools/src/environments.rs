@@ -11,9 +11,9 @@ use std::{
 };
 
 use demi_agent_session::ToolOutcome;
-use demi_core::{CommandId, ShellId, ToolView};
-use demi_provider::ResultPart;
-use demi_shell::{HostError, HostKey, PageView, ShellEnvironment};
+use demi_shared_types::{CommandId, ShellId, ToolView};
+use demi_provider_common::ResultPart;
+use demi_host_interface::{HostError, HostKey, PageView, ShellEnvironment};
 use futures_util::future::join_all;
 use tokio::{sync::OnceCell, time::Instant};
 
@@ -245,7 +245,7 @@ mod tests {
     use std::cell::Cell;
 
     use bytes::Bytes;
-    use demi_shell::{CommandStatus, ExecRequest, ShellError, WholeOutput};
+    use demi_host_interface::{CommandStatus, ExecRequest, ShellError, WholeOutput};
     use futures_util::future::{LocalBoxFuture, join};
     use tokio_util::sync::CancellationToken;
 

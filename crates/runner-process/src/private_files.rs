@@ -12,20 +12,20 @@ pub async fn write_private(path: PathBuf, mut bytes: Vec<u8>) -> io::Result<()> 
     if !bytes.ends_with(b"\n") {
         bytes.push(b'\n');
     }
-    let publication = demi_artifact::Publication {
-        mode: demi_artifact::Mode::Replace,
-        permissions: demi_artifact::Permissions::Private,
+    let publication = demi_shared_artifacts::Publication {
+        mode: demi_shared_artifacts::Mode::Replace,
+        permissions: demi_shared_artifacts::Permissions::Private,
         durable: true,
     };
-    demi_artifact::publish_bytes(&path, &bytes, publication)
+    demi_shared_artifacts::publish_bytes(&path, &bytes, publication)
         .await
         .map_err(io_error)
 }
 
 /// An artifact failure as the IO error it is, or wraps.
-pub fn io_error(error: demi_artifact::Error) -> io::Error {
+pub fn io_error(error: demi_shared_artifacts::Error) -> io::Error {
     match error {
-        demi_artifact::Error::Io(error) => error,
+        demi_shared_artifacts::Error::Io(error) => error,
         error => io::Error::other(error),
     }
 }

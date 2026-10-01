@@ -3,8 +3,8 @@
 
 use std::sync::Arc;
 
-use demi_core::WireApi;
-use demi_provider::{
+use demi_shared_types::WireApi;
+use demi_provider_common::{
     InferenceRequest, ProviderEvent, ProviderFailure, encode_body, http_failure, read_http_failure,
     wire::{Vendor, chat_completions, responses},
 };

@@ -13,13 +13,13 @@
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
-use demi_agent_protocol::{ClientFrame, ServerFrame};
+use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
 use demi_agent_tools::testing::field;
-use demi_backend_objects::counting::ObjectCounts;
-use demi_core::{
+use demi_backend_blobs::counting::ObjectCounts;
+use demi_shared_types::{
     Block, GoneCause, ModelMediaKind, Timestamp, ToolMediaSource, ToolResultContentBlock, UserContentBlock,
 };
-use demi_provider::testing::MockVendor;
+use demi_provider_common::testing::MockVendor;
 use jiff::SignedDuration;
 use reqwest::StatusCode;
 use serde_json::json;
@@ -50,7 +50,7 @@ fn orphan(harness: &Harness, session: &Session, bytes: &[u8], age: SignedDuratio
     let path = blob_path(harness, session, bytes);
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, bytes).unwrap();
-    let now = demi_core::Clock::now(&*harness.clock).as_millisecond();
+    let now = demi_shared_types::Clock::now(&*harness.clock).as_millisecond();
     let written = now - i64::try_from(age.as_millis()).unwrap();
     let written = SystemTime::UNIX_EPOCH + Duration::from_millis(u64::try_from(written).unwrap());
     std::fs::File::options().write(true).open(&path).unwrap().set_modified(written).unwrap();
@@ -115,7 +115,7 @@ fn utc_day(at: Timestamp) -> jiff::civil::Date {
 
 /// A PNG retired on the clock's day, as `result_media` shows it.
 fn retired_on(harness: &Harness) -> String {
-    format!("image/png retired on {}", utc_day(demi_core::Clock::now(&*harness.clock)))
+    format!("image/png retired on {}", utc_day(demi_shared_types::Clock::now(&*harness.clock)))
 }
 
 #[tokio::test]
@@ -288,7 +288,7 @@ async fn a_conversation_idle_for_30_days_loses_its_tool_images_and_its_next_requ
     vendor.respond(say("Still here."));
     socket.chat("m2", "Anything new?").await;
     let sent = vendor.requests().last().unwrap().json()["messages"].to_string();
-    let day = utc_day(demi_core::Clock::now(&*harness.clock));
+    let day = utc_day(demi_shared_types::Clock::now(&*harness.clock));
     let retired = format!(
         "[image:image/png, removed on {day}: a tool result's images and videos are kept for 30 days]"
     );
@@ -353,7 +353,7 @@ async fn a_commands_output_is_removed_30_days_after_it_ended() {
     vendor.respond(read("toolu_3"));
     vendor.respond(say("Gone."));
     socket.chat("m3", "Read it again").await;
-    let day = utc_day(demi_core::Clock::now(&*harness.clock));
+    let day = utc_day(demi_shared_types::Clock::now(&*harness.clock));
     let gone = tool_result(&vendor.requests().last().unwrap().json(), "toolu_3");
     let removed = format!(
         "demi shell output: the output of {command} was removed on {day}, 30 days after the command ended"

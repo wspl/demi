@@ -13,7 +13,7 @@ use std::{
     sync::Arc,
 };
 
-use demi_agent_protocol::AbortTarget;
+use demi_conversation_socket_protocol::AbortTarget;
 use demi_agent_store::{
     BoundaryEdge, CheckpointState, CheckpointUpdate, CommandStateHistory, CommandStateSnapshot,
     CommandStorageKey, CommandVersion, EditReceipt, PendingAgentInput, ScheduledWakeup,
@@ -23,12 +23,12 @@ use demi_agent_transcript::{
     INTERRUPTED_CODE, INTERRUPTED_TURN_MESSAGE, IdSource, RequestView, TranscriptLog,
     opens_input_turn, replay, replay_start,
 };
-use demi_core::{
+use demi_shared_types::{
     AgentMessage, BlobRef, Block, BlockId, Clock, FailureSource, ModelSelection, NodeId,
     PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase, ToolResultContentBlock,
     ToolView, TurnId, UserContentBlock, WakeupId, WakeupPlacement,
 };
-use demi_provider::{
+use demi_provider_common::{
     InferenceRequest, PromptCache, ProviderEvent, ProviderFailure, ProviderRuntime, RequestLimits,
     ToolDefinition,
 };
@@ -321,9 +321,9 @@ impl SessionCore {
     /// nothing waiting and a current snapshot.
     pub(super) fn check_edit(
         &self,
-        operation: &demi_core::OperationId,
+        operation: &demi_shared_types::OperationId,
         digest: &str,
-        version: &demi_agent_protocol::TranscriptVersion,
+        version: &demi_conversation_socket_protocol::TranscriptVersion,
     ) -> Result<EditCheck, EditError> {
         if let Some(receipt) = self
             .edits
@@ -1049,7 +1049,7 @@ impl SessionCore {
         self.wake();
     }
 
-    pub(super) fn next_wakeup(&self) -> Option<demi_core::Timestamp> {
+    pub(super) fn next_wakeup(&self) -> Option<demi_shared_types::Timestamp> {
         self.wakeups.next_due()
     }
 

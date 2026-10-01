@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use demi_command_protocol::{ArtifactLocation, ArtifactUrl, PackageArtifact};
-use demi_host_remote::ArtifactResolver;
+use demi_backend_remote_host::ArtifactResolver;
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 
@@ -54,7 +54,7 @@ impl LocalArtifacts {
     }
 
     /// The executable whose SHA-256 is `sha256` in the content coding
-    /// ([`demi_artifact::CONTENT_CODING`]), when a loaded release carries it.
+    /// ([`demi_shared_artifacts::CONTENT_CODING`]), when a loaded release carries it.
     /// Concurrent first requests share one encoding. The backend verified the
     /// file when it loaded the release: a file that is gone since is the
     /// deployment's fault.
@@ -68,7 +68,7 @@ impl LocalArtifacts {
                     tokio::task::spawn_blocking(move || {
                         let bytes = std::fs::read(&path)
                             .map_err(|error| io::Error::new(error.kind(), format!("{}: {error}", path.display())))?;
-                        demi_artifact::encode_blocking(&bytes, demi_artifact::Effort::Development)
+                        demi_shared_artifacts::encode_blocking(&bytes, demi_shared_artifacts::Effort::Development)
                             .map(Bytes::from)
                             .map_err(io::Error::other)
                     })

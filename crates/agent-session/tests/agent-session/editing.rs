@@ -5,9 +5,9 @@
 //! replacement's turn fails.
 
 use demi_agent_transcript::testing::RESUME_TEXT;
-use demi_core::BlockId;
-use demi_provider::testing::TokioClock;
-use demi_shell::{PortError, StorageOp};
+use demi_shared_types::BlockId;
+use demi_provider_common::testing::TokioClock;
+use demi_host_interface::{PortError, StorageOp};
 
 use super::*;
 
@@ -31,7 +31,7 @@ fn published(session: &AgentSession) -> (Subscription, Rc<RefCell<Vec<Transcript
 
 /// Stops the running action in a task of its own; the task ends once the
 /// stop is recorded.
-fn spawn_abort(session: &AgentSession) -> JoinHandle<demi_agent_protocol::AbortResult> {
+fn spawn_abort(session: &AgentSession) -> JoinHandle<demi_conversation_socket_protocol::AbortResult> {
     let session = session.clone();
     tokio::task::spawn_local(async move { session.abort().await })
 }

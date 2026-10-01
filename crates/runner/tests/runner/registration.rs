@@ -5,7 +5,7 @@
 
 use std::{collections::BTreeMap, time::Duration};
 
-use demi_host_remote::testing::runner_binary;
+use demi_backend_remote_host::testing::runner_binary;
 use demi_runner_protocol::{
     manifest::Manifest,
     wire::{self, Inbound, Outbound},

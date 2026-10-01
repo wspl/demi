@@ -2,8 +2,8 @@
 //! `retry` and `resume`.
 
 use demi_agent_transcript::testing::RESUME_TEXT;
-use demi_core::{BlockId, SteerBlock};
-use demi_provider::ProviderFailure;
+use demi_shared_types::{BlockId, SteerBlock};
+use demi_provider_common::ProviderFailure;
 
 use super::*;
 

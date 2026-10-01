@@ -5,8 +5,8 @@
 
 use std::sync::Arc;
 
-use demi_core::{QuotaPlan, QuotaUnit, QuotaWindow};
-use demi_provider::quota::{
+use demi_shared_types::{QuotaPlan, QuotaUnit, QuotaWindow};
+use demi_provider_common::quota::{
     Observation, ProbeCost, ProbeReading, QuotaError, QuotaSource, clamp_used_percent,
     header_number, severity, unix_seconds,
 };
@@ -94,7 +94,7 @@ impl QuotaSource for CodexQuota {
                 ))
             })?;
             let usage: UsageStatus =
-                demi_provider::wire::decode_untagged(&text).map_err(|error| {
+                demi_provider_common::wire::decode_untagged(&text).map_err(|error| {
                     QuotaError::Invalid(format!("Codex usage status cannot be read: {error}"))
                 })?;
             Ok(ProbeReading {
@@ -187,7 +187,7 @@ fn window_of(
     kind: Kind,
     used_percent: Option<f64>,
     minutes: Option<f64>,
-    resets_at: Option<demi_core::Timestamp>,
+    resets_at: Option<demi_shared_types::Timestamp>,
 ) -> QuotaWindow {
     QuotaWindow {
         id: kind.id().into(),

@@ -10,8 +10,8 @@
 
 use demi_agent_session::testing::COMPACTION_SUMMARY_INSTRUCTION;
 use demi_agent_store::testing::png;
-use demi_core::{BlobRef, FileExtension, MediaSource, WireApi};
-use demi_provider::{
+use demi_shared_types::{BlobRef, FileExtension, MediaSource, WireApi};
+use demi_provider_common::{
     InferenceRequest, Provider, ProviderRun, ProviderRuntime, RequestLimits, RuntimeEnv, Secret,
     credentials::{AccountMeta, CredentialPool, MemoryCredentialPool},
     quota::MemorySnapshots,
@@ -64,7 +64,7 @@ impl ProviderRuntime for Tee {
         })
     }
 
-    fn request_limits(&self, model: &demi_core::Model) -> RequestLimits {
+    fn request_limits(&self, model: &demi_shared_types::Model) -> RequestLimits {
         self.real.request_limits(model)
     }
 }
@@ -125,7 +125,7 @@ impl Family {
     /// A runtime of this family's provider at `vendor`, or at `socket` for
     /// Codex's WebSocket.
     async fn runtime(self, vendor: &MockVendor, socket: &FakeWebSocket) -> Box<dyn ProviderRuntime> {
-        let clock: Arc<dyn demi_core::Clock> = Arc::new(FixedClock(NOW.parse().unwrap()));
+        let clock: Arc<dyn demi_shared_types::Clock> = Arc::new(FixedClock(NOW.parse().unwrap()));
         let env = RuntimeEnv {
             http: reqwest::Client::new(),
         };
@@ -336,7 +336,7 @@ async fn conversation(family: Family) -> Vec<String> {
             let shot = shot.clone();
             Box::pin(async move {
                 finished.await?;
-                let image = ResultPart::Image(demi_provider::MediaBytes {
+                let image = ResultPart::Image(demi_provider_common::MediaBytes {
                     data: shot,
                     media_type: "image/png".into(),
                 });
@@ -408,7 +408,7 @@ async fn conversation(family: Family) -> Vec<String> {
         .unwrap();
     // The user changes the thinking setting of the same model.
     let mut deeper = model_reading("stub", "model-a", &[FileExtension::Png]);
-    deeper.thinking = Some(demi_core::ThinkingConfig::Adaptive {
+    deeper.thinking = Some(demi_shared_types::ThinkingConfig::Adaptive {
         effort: "high".into(),
     });
     session

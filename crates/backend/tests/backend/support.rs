@@ -13,27 +13,27 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
-use demi_backend_objects::counting::ObjectCounts;
+use demi_backend_blobs::counting::ObjectCounts;
 use demi_backend_accounts::email_change::{AccountMail, MailError, VerificationMail};
 use demi_backend_providers::llm::families::FamilyRegistry;
 use demi_backend_providers::vault::logins::LoginTiming;
 use demi_backend::{Backend, BackendConfig};
-use demi_backend_shard::tuning::{ConversationTuning, ExposeTuning, LifecycleTuning, PageTuning, RunnerTuning};
+use demi_backend_user_shard::tuning::{ConversationTuning, ExposeTuning, LifecycleTuning, PageTuning, RunnerTuning};
 use demi_backend_cloud::tuning::CloudTuning;
 use demi_backend_expose::domain::ExposeDomain;
 use demi_backend_runners::native::NativeCatalog;
 use demi_backend_runners::publication::publish_native;
-use demi_browser_protocol::{Operation as BrowserOperation, PACKAGE as BROWSER_PACKAGE};
+use demi_command_package_browser_protocol::{Operation as BrowserOperation, PACKAGE as BROWSER_PACKAGE};
 use demi_command_protocol::testing::built_program;
 use demi_command_protocol::{PackageDescriptor, host_target};
-use demi_command_tree::NativeOperation;
-use demi_core::Clock;
-use demi_host_remote::testing::{NativeFixture, RunnerProcess, RunnerProcessOptions, native_fixture_binary};
-use demi_web_api::auth::{Identity, Role, UserDto};
-use demi_web_api::devices::{ClaimedDevice, DeviceDto, Devices};
-use demi_web_api::error::{ErrorBody, ErrorCode};
-use demi_web_api::settings::InstanceMode;
-use demi_web_api::state::{ProductState, SyncEvent};
+use demi_command_declarations::NativeOperation;
+use demi_shared_types::Clock;
+use demi_backend_remote_host::testing::{NativeFixture, RunnerProcess, RunnerProcessOptions, native_fixture_binary};
+use demi_web_api_protocol::auth::{Identity, Role, UserDto};
+use demi_web_api_protocol::devices::{ClaimedDevice, DeviceDto, Devices};
+use demi_web_api_protocol::error::{ErrorBody, ErrorCode};
+use demi_web_api_protocol::settings::InstanceMode;
+use demi_web_api_protocol::state::{ProductState, SyncEvent};
 use futures_util::{SinkExt as _, StreamExt as _};
 use jiff::{SignedDuration, Timestamp};
 use reqwest::header::{COOKIE, HeaderMap, SET_COOKIE};
@@ -141,9 +141,9 @@ fn replace(path: &std::path::Path, bytes: &[u8]) {
 /// `demi.file`, from `demi-file`.
 static FILE: LazyLock<Built> = LazyLock::new(|| {
     Built::new(
-        demi_file_protocol::PACKAGE,
+        demi_command_package_file_protocol::PACKAGE,
         built_program("demi-file"),
-        demi_file_protocol::OPERATIONS.iter().copied(),
+        demi_command_package_file_protocol::OPERATIONS.iter().copied(),
     )
 });
 
@@ -154,9 +154,9 @@ static BROWSER: LazyLock<Built> =
 /// `demi.claude`, from `demi-claude`.
 static CLAUDE: LazyLock<Built> = LazyLock::new(|| {
     Built::new(
-        demi_claude_protocol::PACKAGE,
+        demi_command_package_claude_code_protocol::PACKAGE,
         built_program("demi-claude"),
-        demi_claude_protocol::Operation::ALL.map(demi_claude_protocol::Operation::name),
+        demi_command_package_claude_code_protocol::Operation::ALL.map(demi_command_package_claude_code_protocol::Operation::name),
     )
 });
 
@@ -172,8 +172,8 @@ pub static FIXTURE: LazyLock<Built> = LazyLock::new(|| Built {
 pub struct ManualClock(Mutex<Timestamp>);
 
 impl Clock for ManualClock {
-    fn now(&self) -> demi_core::Timestamp {
-        demi_core::Timestamp::truncate(*self.0.lock().unwrap())
+    fn now(&self) -> demi_shared_types::Timestamp {
+        demi_shared_types::Timestamp::truncate(*self.0.lock().unwrap())
     }
 }
 
@@ -658,19 +658,19 @@ impl TestBackend {
 
     /// Holds every commit of a conversation's checkpoint from now on, until
     /// the hold is released or dropped.
-    pub fn hold_commits(&self) -> demi_backend_storage::conversations::CommitHold {
+    pub fn hold_commits(&self) -> demi_backend_database::conversations::CommitHold {
         self.backend.hold_commits()
     }
 
     /// Holds every runner's hello at `step` from now on, until the hold is
     /// released or dropped.
-    pub fn hold_hellos(&self, step: demi_backend_shard::holds::HelloStep) -> demi_backend_shard::holds::StepHold {
+    pub fn hold_hellos(&self, step: demi_backend_user_shard::holds::HelloStep) -> demi_backend_user_shard::holds::StepHold {
         self.backend.hold_hellos(step)
     }
 
     /// Holds every page's synchronization channel at `step` from now on,
     /// until the hold is released or dropped.
-    pub fn hold_sync(&self, step: demi_backend_shard::sync::SyncStep) -> demi_backend_shard::holds::StepHold {
+    pub fn hold_sync(&self, step: demi_backend_user_shard::sync::SyncStep) -> demi_backend_user_shard::holds::StepHold {
         self.backend.hold_sync(step)
     }
 
@@ -691,8 +691,8 @@ impl TestBackend {
         self.backend.run_retention(&session.user.id).await;
     }
 
-    pub async fn file_gate(&self, session: &Session, conversation: &str) -> demi_gates::ActivityGate {
-        let conversation = demi_web_api::ids::ConversationId::try_from(conversation).unwrap();
+    pub async fn file_gate(&self, session: &Session, conversation: &str) -> demi_shared_gates::ActivityGate {
+        let conversation = demi_web_api_protocol::ids::ConversationId::try_from(conversation).unwrap();
         self.backend.file_gate(&session.user.id, &conversation).await
     }
 

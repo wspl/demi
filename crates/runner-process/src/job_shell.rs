@@ -10,7 +10,7 @@ use std::{
 };
 
 use demi_command_protocol::LocalInvocation;
-use demi_command_service::{Handler, edits::Recorder};
+use demi_command_sdk::{Handler, edits::Recorder};
 use demi_runner_protocol::wire::Signal;
 use futures_util::future::BoxFuture;
 use tokio::sync::mpsc;

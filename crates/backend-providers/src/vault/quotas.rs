@@ -7,10 +7,10 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use demi_backend_storage::providers::CredentialRow;
-use demi_core::QuotaSnapshot;
-use demi_provider::quota::QuotaSnapshotStore;
-use demi_web_api::ids::{CredentialId, ProviderId};
+use demi_backend_database::providers::CredentialRow;
+use demi_shared_types::QuotaSnapshot;
+use demi_provider_common::quota::QuotaSnapshotStore;
+use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 use tokio_util::task::TaskTracker;
 
 use super::entries::Vault;

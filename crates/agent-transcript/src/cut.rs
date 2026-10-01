@@ -4,7 +4,7 @@
 //! (`conversation-fork.md`) and the window compaction summarizes
 //! (`compaction.md` § One pass). Each is a pure reading of the blocks.
 
-use demi_core::{Block, BlockId, ToolCallStatus, TurnId, is_blank};
+use demi_shared_types::{Block, BlockId, ToolCallStatus, TurnId, is_blank};
 
 use super::{latest_answer, opens_input_turn, replay_start};
 

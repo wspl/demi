@@ -58,7 +58,7 @@ The dispatcher validates `{ "path": "notes.txt" }` against `input` before
 invoking `file.read`, and the native service decodes the same value into
 `FileRead`, together with the invocation's cwd and IO. The arguments and
 results of every `demi.file` operation are types of one contract crate,
-`file-protocol`, that the declarations and the native program both link, so a
+`command-package-file-protocol`, that the declarations and the native program both link, so a
 declaration and its handler cannot describe different arguments
 ([Contract crates](../architecture/contracts.md#contract-crates)).
 

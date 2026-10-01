@@ -16,11 +16,11 @@ bytes.workspace = true
 chromiumoxide = "=0.9.1"
 demi-browser-driver = { path = "../browser-driver" }
 demi-browser-page = { path = "../browser-page" }
-demi-browser-protocol = { path = "../browser-protocol" }
+demi-command-package-browser-protocol = { path = "../command-package-browser-protocol" }
 demi-browser-tabs = { path = "../browser-tabs" }
 demi-command-protocol = { path = "../command-protocol" }
-demi-command-service = { path = "../command-service" }
-demi-core = { path = "../core" }
+demi-command-sdk = { path = "../command-sdk" }
+demi-shared-types = { path = "../shared-types" }
 futures-util.workspace = true
 garde.workspace = true
 serde.workspace = true

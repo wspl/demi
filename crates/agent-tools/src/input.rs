@@ -2,7 +2,7 @@
 //! Schema the model receives and the check a call runs come from the same
 //! type. An optional field is absent or a value, never null.
 
-use demi_core::{CommandId, ShellId};
+use demi_shared_types::{CommandId, ShellId};
 use schemars::{JsonSchema, generate::SchemaSettings};
 use serde::de::{self, DeserializeOwned, Unexpected, Visitor};
 use serde::{Deserialize, Deserializer};

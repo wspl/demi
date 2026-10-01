@@ -3,15 +3,15 @@
 
 use std::{rc::Rc, sync::Arc};
 
-use demi_agent_protocol::{TranscriptPatch, TranscriptVersion};
-use demi_core::{
+use demi_conversation_socket_protocol::{TranscriptPatch, TranscriptVersion};
+use demi_shared_types::{
     AbortBlock, AgentMessage, AgentMessageBlock, Block, BlockId, Clock, CompactionBoundaryBlock,
     CompactionMarkerBlock, ContextBlock, ErrorBlock, ModelSelection, ProviderErrorDiagnostics,
     RedactedThinkingBlock, ResponseBlock, ResumeBlock, SteerBlock, TextBlock, ThinkingBlock,
     Timestamp, TokenUsage, ToolCallBlock, ToolCallStatus, ToolResultContentBlock, ToolView, TurnId,
     UserBlock, UserContentBlock, WakeupBlock, WakeupPlacement,
 };
-use demi_provider::ToolCall;
+use demi_provider_common::ToolCall;
 use serde_json::Value;
 
 use super::{

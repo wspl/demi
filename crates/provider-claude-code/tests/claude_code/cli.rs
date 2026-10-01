@@ -9,20 +9,20 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_core::{Clock, StreamKind};
-use demi_provider::credentials::{AddAccount, MemoryCredentialPool};
-use demi_provider::models_dev::ModelsDevClient;
-use demi_provider::quota::MemorySnapshots;
-pub use demi_provider::testing::{all_events, next_event};
-use demi_provider::testing::{FixedClock, guarded, inference_request};
-use demi_provider::{
+use demi_shared_types::{Clock, StreamKind};
+use demi_provider_common::credentials::{AddAccount, MemoryCredentialPool};
+use demi_provider_common::models_dev::ModelsDevClient;
+use demi_provider_common::quota::MemorySnapshots;
+pub use demi_provider_common::testing::{all_events, next_event};
+use demi_provider_common::testing::{FixedClock, guarded, inference_request};
+use demi_provider_common::{
     InferenceItem, InferenceRequest, Provider, ProviderRuntime, ResultPart, Secret, ToolDefinition,
     UserPart,
 };
 use demi_provider_claude_code::{
     ClaudeCodeConfig, ClaudeCodeProvider, CliSite, Placement, StartError,
 };
-use demi_shell::{
+use demi_host_interface::{
     HostError, Process, ProcessControl, ProcessEnd, ProcessOutput, Signal, SpawnRequest,
 };
 use futures_channel::mpsc;

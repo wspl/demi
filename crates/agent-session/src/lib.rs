@@ -38,19 +38,19 @@ use std::{
     time::Duration,
 };
 
-use demi_agent_protocol::{AbortResult, TranscriptPatch, TranscriptVersion};
+use demi_conversation_socket_protocol::{AbortResult, TranscriptPatch, TranscriptVersion};
 use demi_agent_store::{
     Checkpoint, CheckpointUpdate, CommandStateError, CommandStateHistory, SessionStore, StoreError,
     media::HeldMedia,
 };
 use demi_agent_transcript::{IdSource, TranscriptLog, last_assistant_text};
-use demi_core::{
+use demi_shared_types::{
     AgentMessage, Block, BlockId, Clock, ModelSelection, NodeId, PendingSteer,
     ProviderErrorDiagnostics, QueuedMessage, SessionPhase, ToolResultContentBlock, TurnId,
     UserContentBlock,
 };
-use demi_gates::SerialGate;
-use demi_provider::{ProviderFailure, ProviderRuntime};
+use demi_shared_gates::SerialGate;
+use demi_provider_common::{ProviderFailure, ProviderRuntime};
 use schemars::JsonSchema;
 use serde::Serialize;
 use tokio::sync::{Notify, oneshot, watch};
@@ -765,7 +765,7 @@ impl AgentSession {
     /// repeated request writes no file.
     pub fn check_edit(
         &self,
-        operation: &demi_core::OperationId,
+        operation: &demi_shared_types::OperationId,
         digest: &str,
         version: &TranscriptVersion,
     ) -> Result<EditCheck, EditError> {

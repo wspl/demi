@@ -6,8 +6,8 @@
 
 use std::rc::Rc;
 
-use demi_core::{ModelSelection, NodeId};
-use demi_shell::{CommandSet, Host, HostError, HostErrorKind};
+use demi_shared_types::{ModelSelection, NodeId};
+use demi_host_interface::{CommandSet, Host, HostError, HostErrorKind};
 
 /// The node a harness hook is asked about.
 #[derive(Debug, Clone, Copy)]

@@ -5,15 +5,15 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 use demi_browser_driver::capture::Frame;
-use demi_browser_protocol::{
+use demi_command_package_browser_protocol::{
     browser::TabId,
     live::{
         CONTROL_FRAME, FILE_FRAME, FileHeader, LiveModuleMessage, LiveViewerMessage,
         MAX_FRAME_BYTES, VIDEO_FRAME, VideoHeader,
     },
 };
-use demi_command_service::{Input, ServiceError};
-use demi_core::DecodeError;
+use demi_command_sdk::{Input, ServiceError};
+use demi_shared_types::DecodeError;
 
 /// What the page sends.
 #[derive(Debug)]
@@ -167,7 +167,7 @@ mod tests {
             assert!(matches!(
                 reader.next().await.unwrap(),
                 Some(Inbound::Control(LiveViewerMessage::Hello { platform }))
-                    if platform == demi_browser_protocol::live::Platform::Mac
+                    if platform == demi_command_package_browser_protocol::live::Platform::Mac
             ));
             assert!(matches!(
                 reader.next().await.unwrap(),

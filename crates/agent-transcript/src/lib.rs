@@ -23,7 +23,7 @@ pub use journal::{DirtyRows, PatchBatch};
 pub use log::{PendingCall, TranscriptLog};
 pub use replay::{REPLAY_CHARS, Replay, RequestView, replay, tool_input};
 
-use demi_core::{Block, GoneCause, ModelMediaKind, WakeupPlacement};
+use demi_shared_types::{Block, GoneCause, ModelMediaKind, WakeupPlacement};
 use jiff::tz::TimeZone;
 
 /// What the model receives for a tool's medium that is gone (`runtime.md`

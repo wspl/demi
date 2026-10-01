@@ -9,17 +9,17 @@
 use std::sync::{Arc, Mutex};
 
 use demi_backend_providers::llm::families::{FamilyArgs, FamilyCredential, FamilyError, ProviderFamily};
-use demi_core::{
+use demi_shared_types::{
     AuthState, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList, RuntimeState, Timestamp,
     TokenUsage,
 };
-use demi_provider::{
+use demi_provider_common::{
     Capabilities, CatalogError, InferenceItem, InferenceRequest, Provider, ProviderEvent, ProviderRun, ProviderRuntime,
     RequestLimits, RuntimeEnv, RuntimeError, UserPart,
 };
-use demi_web_api::conversations::ConversationSummary;
-use demi_web_api::error::ErrorCode;
-use demi_web_api::providers::{CredentialKind, ProviderAnswer};
+use demi_web_api_protocol::conversations::ConversationSummary;
+use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::providers::{CredentialKind, ProviderAnswer};
 use futures_util::future::{BoxFuture, LocalBoxFuture};
 use futures_util::{StreamExt as _, stream};
 use reqwest::StatusCode;
@@ -148,7 +148,7 @@ impl ProviderRuntime for TitlingRuntime {
         Box::pin(async {})
     }
 
-    fn request_limits(&self, _model: &demi_core::Model) -> RequestLimits {
+    fn request_limits(&self, _model: &demi_shared_types::Model) -> RequestLimits {
         RequestLimits::default()
     }
 }
@@ -226,7 +226,7 @@ async fn a_title_follows_the_first_message_and_a_rename_or_an_archive_while_one_
         assert!(asked[0].tools.is_empty() && asked[0].thinking.is_none());
     }
     // The request is metered like a turn.
-    let totals = backend.get("/api/usage", Some(&master)).await.json::<demi_web_api::usage::UsageTotals>();
+    let totals = backend.get("/api/usage", Some(&master)).await.json::<demi_web_api_protocol::usage::UsageTotals>();
     assert_eq!(totals.totals[0].requests, 2);
 
     // A later message titles nothing by itself, and the title is no longer
@@ -260,7 +260,7 @@ async fn a_title_follows_the_first_message_and_a_rename_or_an_archive_while_one_
     assert_eq!(archived.status, StatusCode::OK);
     eventually("the aborted request ends", || async {
         let listed = backend.get("/api/conversations?archived=true", Some(&master)).await;
-        let conversations = listed.json::<demi_web_api::conversations::Conversations>().conversations;
+        let conversations = listed.json::<demi_web_api_protocol::conversations::Conversations>().conversations;
         conversations.first().is_some_and(|summary| !summary.title_generating)
     })
     .await;

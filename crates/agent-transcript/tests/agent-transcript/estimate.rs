@@ -8,13 +8,13 @@ use demi_agent_transcript::{
     RequestView,
     estimate::{block_tokens, context_tokens, text_tokens},
 };
-use demi_core::{
+use demi_shared_types::{
     B64Bytes, BlobRef, Block, CompactionBoundaryBlock, CompactionMarkerBlock, DocumentSource,
     FileExtension, MediaSource, Model, ResponseBlock, TextBlock, Timestamp, TokenUsage,
     ToolCallBlock, ToolCallStatus, ToolMediaSource, ToolResultContentBlock, TurnId, UserBlock,
     UserContentBlock,
 };
-use demi_provider::RequestLimits;
+use demi_provider_common::RequestLimits;
 
 fn user(id: &str, text: &str) -> Block {
     Block::User(UserBlock {

@@ -12,18 +12,18 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::rc::Rc;
 
-use demi_backend_objects::ObjectError;
-use demi_backend_storage::StorageError;
-use demi_backend_storage::conversation_index::{ConversationRecord, ExecutionTarget};
-use demi_backend_storage::devices::DeviceRecord;
+use demi_backend_blobs::ObjectError;
+use demi_backend_database::StorageError;
+use demi_backend_database::conversation_index::{ConversationRecord, ExecutionTarget};
+use demi_backend_database::devices::DeviceRecord;
 use demi_backend_cloud::machine::{CloudAdmission, CloudError};
 use demi_backend_runners::file_gate::{FileGate, FileLease};
-use demi_gates::{ActivityGate, GateLease, Purpose, SerialGate};
-use demi_host_remote::{Admission, RemoteHost};
-use demi_shell::{HostError, HostErrorKind, HostFs, MkdirOptions};
-use demi_web_api::devices::DeviceKind;
-use demi_web_api::error::ErrorCode;
-use demi_web_api::ids::{ConversationId, DeviceId};
+use demi_shared_gates::{ActivityGate, GateLease, Purpose, SerialGate};
+use demi_backend_remote_host::{Admission, RemoteHost};
+use demi_host_interface::{HostError, HostErrorKind, HostFs, MkdirOptions};
+use demi_web_api_protocol::devices::DeviceKind;
+use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::join_all;
 use tokio_util::sync::CancellationToken;
 

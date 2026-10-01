@@ -5,12 +5,12 @@
 use demi_agent_session::ToolOutcome;
 use demi_agent_store::images;
 use demi_agent_transcript::REPLAY_CHARS;
-use demi_core::{
+use demi_shared_types::{
     B64Bytes, CommandId, Model, ModelMediaKind, OutputChunk, ShellToolView, ShellViewStatus,
     ToolView, model_accepts_media_type, sniff_model_media_type,
 };
-use demi_provider::{MediaBytes, RequestLimits, ResultPart};
-use demi_shell::{BinaryOutput, CommandState, CommandStatus, OutputText, Piece, Streams};
+use demi_provider_common::{MediaBytes, RequestLimits, ResultPart};
+use demi_host_interface::{BinaryOutput, CommandState, CommandStatus, OutputText, Piece, Streams};
 
 use super::PAGE_CHARS;
 
@@ -468,8 +468,8 @@ mod tests {
     use std::sync::Arc;
 
     use bytes::Bytes;
-    use demi_core::{BinaryStdout, FileExtension, OutputView, StreamKind, StreamView};
-    use demi_shell::{OutputRecord, Seen, WholeOutput, WholeView};
+    use demi_shared_types::{BinaryStdout, FileExtension, OutputView, StreamKind, StreamView};
+    use demi_host_interface::{OutputRecord, Seen, WholeOutput, WholeView};
 
     use super::*;
     use demi_agent_store::testing::test_model;
@@ -551,7 +551,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_look_repeats_an_unfinished_line_until_its_newline_or_the_command_ends() {
-        use demi_shell::{CommandRecord, Ending};
+        use demi_host_interface::{CommandRecord, Ending};
 
         let mut record = CommandRecord::new(
             "3".try_into().unwrap(),

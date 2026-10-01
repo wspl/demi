@@ -7,12 +7,12 @@
 
 use std::sync::Arc;
 
-use demi_backend_storage::StorageError;
-use demi_core::AccountInfo;
-use demi_provider::Secret;
-use demi_provider::credentials::{AccountsError, AddAccount, MemoryCredentialPool};
-use demi_web_api::ids::{CredentialId, UserId};
-use demi_web_api::providers::Accounts;
+use demi_backend_database::StorageError;
+use demi_shared_types::AccountInfo;
+use demi_provider_common::Secret;
+use demi_provider_common::credentials::{AccountsError, AddAccount, MemoryCredentialPool};
+use demi_web_api_protocol::ids::{CredentialId, UserId};
+use demi_web_api_protocol::providers::Accounts;
 
 use super::entries::{EntryCredential, ProviderEntry};
 use super::pool::meta;
@@ -91,7 +91,7 @@ pub async fn add_token(
 
 /// Stores the token's account through the provider's own account
 /// operations, which know the family's secret document.
-async fn add(provider: &dyn demi_provider::Provider, token: String) -> Result<AccountInfo, AccountRefusal> {
+async fn add(provider: &dyn demi_provider_common::Provider, token: String) -> Result<AccountInfo, AccountRefusal> {
     let accounts = provider
         .accounts()
         .filter(|accounts| accounts.capability().add)

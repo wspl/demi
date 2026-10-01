@@ -20,7 +20,7 @@ use demi_runner_process::{
     process::{ChildProcess, OutputChunk, ProcessExit, ProcessInput, SpawnOptions},
 };
 use demi_runner_protocol::wire::{self, OutputStream, Signal};
-use demi_runner_services::ServiceHandle;
+use demi_runner_command_packages::ServiceHandle;
 use futures_util::{FutureExt, StreamExt};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -422,7 +422,7 @@ impl JobConfig {
                 };
                 let recording = edit_context.clone();
                 let recorder = tokio::task::spawn_blocking(move || {
-                    demi_command_service::edits::Recorder::new(recording)
+                    demi_command_sdk::edits::Recorder::new(recording)
                 })
                 .await
                 .map_err(io::Error::other)?;

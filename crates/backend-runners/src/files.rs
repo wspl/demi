@@ -8,8 +8,8 @@
 use bytes::Bytes;
 use demi_command_protocol::EDIT_FILE_BYTES;
 use demi_command_protocol::is_text;
-use demi_shell::{FileKind, HostError, HostFs};
-use demi_web_api::files::DirectoryEntry;
+use demi_host_interface::{FileKind, HostError, HostFs};
+use demi_web_api_protocol::files::DirectoryEntry;
 
 /// Why a file is not shown as text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
