@@ -525,7 +525,7 @@ crate and package; for the live view:
 | `browser-driver` | The capture extension as an embedded resource, the capture channel it connects to, and launch configuration. |
 | `browser-tabs` | Each tab's viewport, dialog and the upload directory the viewers' files go to. |
 | `demi-browser` | Starting the live hub of each browser it runs, and the conversation browser that the viewer trait reaches. |
-| `command-service`, the runner's crates, `runner-protocol`, `host-remote` | [User streams](../execution/native-runtime.md#user-streams) and [service streams](../execution/runner.md#service-streams), with no browser knowledge. |
+| `command-protocol`, `command-service`, the runner's crates, `runner-protocol`, `host-remote` | [User streams](../execution/native-runtime.md#user-streams) and [service streams](../execution/runner.md#service-streams), with no browser knowledge. |
 | `coding-agent` | Declaring `viewport set --scale` with the other `demi browser` commands. |
 | `backend` | Declaring the `browser` user stream; the user stream route, where the user's shard admits and ends the stream and the edge relays its bytes with backpressure; the [browser tab routes](../product/web-api.md#conversation-browser-tabs), which call the browser's own operations and hold no browser logic. |
 | `web-ui` | The `browser` tab kind: its tab source, which lists, opens and closes tabs through an interface the consumer supplies, and its content, the live view: video, input, native control overlays, clipboard, dialogs, the viewport menu, and what it shows while a tab is opening, gone, or out of reach, or in a browser that cannot decode the pictures. It depends on `@demicodes/protocol` for the live protocol, as it depends on `@demicodes/agent-client` for agent frames. |

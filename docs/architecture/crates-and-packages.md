@@ -78,9 +78,7 @@ third-party crates are not members ([Module layout](#module-layout)).
 A contract crate holds the types of one wire or data family, their serde,
 schemars and garde attributes, and the decode function of each boundary that
 receives them. Both ends of a wire link it, or the generator reads it to write
-the browser's TypeScript. A contract crate has no async runtime and no IO, with
-one exception: `command-service` carries the SDK that speaks the command wire
-next to the wire's types, so that a command program depends on one crate.
+the browser's TypeScript. A contract crate has no async runtime and no IO.
 [Contracts](contracts.md) owns the rules these crates follow.
 
 #### `core`
@@ -152,40 +150,25 @@ next to the wire's types, so that a command program depends on one crate.
 - **Must not:** hold session logic or a transport, or carry file bytes inside a
   frame.
 
-#### `command-service`
+#### `command-protocol`
 
-- **Owns:** the wire between an execution host and a command program, and the
-  SDK that speaks it:
+- **Owns:** the wire between an execution host and a command program:
   - invocation metadata (`Invocation`, `LocalInvocation`), the command context
     (`CommandContext`, `CommandCaller`, `CommandLocale`), completion
     (`Completion`), service information (`ServiceInfo`), the conversation
-    release and status requests, and the conversation numbers stream
-    (`NumbersRequest`, `NumbersAnswer`, the handler's `Numbers`);
+    release and status requests, and the conversation numbers stream's
+    messages (`NumbersRequest`, `NumbersAnswer`);
+  - record framing (`Record`, `RecordDecoder`);
   - package descriptors and their identities (`PackageDescriptor`), artifact
     locations and target triples (`TargetTriple`), and the one canonical
     digest of a JSON value (`canonical_digest`: the SHA-256 of its RFC 8785
     form), which also identifies the agent's edit requests;
-  - the edit journal and its context (`EditContext`, `EditJournal`);
-  - record framing (`Record`, `RecordDecoder`), the HTTP/2 client and server,
-    the one invocation exchange (`Exchange`), bounded invocation IO and handler
-    cancellation;
-  - the invocation edit recorder: bounded file snapshots and a journal
-    coordinated across processes by an OS file lock;
-  - path resolution against an invocation's working directory, and waiting out
-    a lack of open file descriptors.
-- **Public boundary:** the protocol types, the client, the service entry point,
-  the handler and IO traits, and the edit recorder; `command_service::testing`
-  finds the programs a test starts beside it (`built_program`), starts a
-  service binary and drives it with a client (`ServiceProcess`), gives a
-  handler numbers from counters that start at 1 (`counting_numbers`) or
-  answers a service's numbers stream from them (`answer_numbers`), and counts
-  the process's pauses before trying an operation again (`pauses`), which
-  show an operation waiting out a lack of open files. The runner and every
-  command program use this one SDK; a command program depends on it without
-  depending on the runner or on Demi's command implementations.
-- **Must not:** implement commands, download artifacts, start command
-  processes, hold credentials, or change the process-wide working directory or
-  environment for an invocation.
+  - the edit journal and its context (`EditContext`, `EditJournal`), and the
+    one test of whether bytes are text (`is_text`), which edit tracking and
+    line counts read at both ends.
+- **Public boundary:** the types and functions above.
+- **Must not:** speak the wire: the client, the server and the recorder are
+  `command-service`'s.
 
 #### `command-tree`
 
@@ -314,6 +297,30 @@ next to the wire's types, so that a command program depends on one crate.
 - **Must not:** hold route handling or domain logic.
 
 ### Libraries
+
+#### `command-service`
+
+- **Owns:** the SDK that speaks the command wire of `command-protocol`:
+  - the HTTP/2 client and server, the one invocation exchange (`Exchange`),
+    bounded invocation IO and handler cancellation, and the handler's
+    conversation numbers (`Numbers`);
+  - the invocation edit recorder: bounded file snapshots and a journal
+    coordinated across processes by an OS file lock;
+  - path resolution against an invocation's working directory, and waiting out
+    a lack of open file descriptors.
+- **Public boundary:** the client, the service entry point, the handler and IO
+  traits, and the edit recorder; `command_service::testing` finds the programs
+  a test starts beside it (`built_program`), starts a service binary and
+  drives it with a client (`ServiceProcess`), gives a handler numbers from
+  counters that start at 1 (`counting_numbers`) or answers a service's
+  numbers stream from them (`answer_numbers`), and counts the process's
+  pauses before trying an operation again (`pauses`), which show an operation
+  waiting out a lack of open files. The runner and every command program use
+  this one SDK; a command program depends on it and on `command-protocol`
+  without depending on the runner or on Demi's command implementations.
+- **Must not:** implement commands, download artifacts, start command
+  processes, hold credentials, or change the process-wide working directory or
+  environment for an invocation.
 
 #### `gates`
 
@@ -1307,15 +1314,16 @@ A line names a workspace member by its directory.
 
 ```text
 core -> none
+command-protocol -> none
 agent-protocol -> core
-command-service -> artifact
+command-service -> artifact, command-protocol
 command-tree -> none
 file-protocol -> core
 browser-protocol -> core
 claude-protocol -> none
-runner-protocol -> command-service, command-tree, core
-machines-protocol -> command-service, runner-protocol
-web-api -> agent-protocol, browser-protocol, command-service, core, runner-protocol
+runner-protocol -> command-protocol, command-tree, core
+machines-protocol -> command-protocol, runner-protocol
+web-api -> agent-protocol, browser-protocol, command-protocol, core, runner-protocol
 gates -> none
 artifact -> none
 provider -> core, gates
@@ -1325,44 +1333,44 @@ provider-google -> core, provider
 provider-codex -> core, provider
 provider-grok-build -> core, provider
 provider-claude-code -> core, provider, shell
-shell -> command-service, command-tree, core
+shell -> command-protocol, command-tree, core
 agent-store -> agent-protocol, core, provider, shell
 agent-transcript -> agent-protocol, agent-store, core, provider
-agent-session -> agent-protocol, agent-store, agent-transcript, command-service, core, gates, provider, shell
+agent-session -> agent-protocol, agent-store, agent-transcript, command-protocol, core, gates, provider, shell
 agent-tools -> agent-protocol, agent-session, agent-store, agent-transcript, core, provider, shell
 agent -> agent-protocol, agent-session, agent-store, agent-tools, agent-transcript, core, gates, provider, shell
 coding-agent -> agent-tools, browser-protocol, command-tree, core, file-protocol, shell
-host-remote -> command-service, command-tree, core, gates, runner-protocol, shell
-runner-process -> artifact, command-service, runner-protocol
+host-remote -> command-protocol, command-tree, core, gates, runner-protocol, shell
+runner-process -> artifact, command-protocol, command-service, runner-protocol
 runner-host -> artifact, command-service, runner-process, runner-protocol
-runner-services -> artifact, command-service, runner-process, runner-protocol
-runner-shell -> command-service, runner-process, runner-protocol
-runner-jobs -> command-service, command-tree, runner-process, runner-protocol, runner-services
-browser-driver -> artifact, browser-protocol, command-service, core
-browser-tabs -> browser-driver, browser-protocol, command-service
+runner-services -> artifact, command-protocol, command-service, runner-process, runner-protocol
+runner-shell -> command-protocol, command-service, runner-process, runner-protocol
+runner-jobs -> command-protocol, command-service, command-tree, runner-process, runner-protocol, runner-services
+browser-driver -> artifact, browser-protocol, command-protocol, command-service, core
+browser-tabs -> browser-driver, browser-protocol, command-protocol
 browser-page -> browser-driver, browser-protocol, browser-tabs, command-service
 browser-cdp -> browser-driver, browser-protocol, browser-tabs, command-service
 browser-live -> browser-driver, browser-page, browser-protocol, browser-tabs, command-service, core
 backend-sync -> backend-storage, web-api
 backend-storage -> agent-store, agent-transcript, core, gates, host-remote, machines-protocol, runner-protocol, shell, web-api
 backend-objects -> agent-store, core, web-api
-backend-accounts -> backend-storage, command-service, core, web-api
+backend-accounts -> backend-storage, command-protocol, core, web-api
 backend-providers -> backend-storage, backend-sync, claude-protocol, core, provider, provider-anthropic-api, provider-claude-code, provider-openai-api, web-api
 backend-families -> backend-providers, core, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, web-api
-backend-runners -> artifact, backend-objects, backend-storage, backend-sync, command-service, gates, host-remote, runner-protocol, shell, web-api
+backend-runners -> artifact, backend-objects, backend-storage, backend-sync, command-protocol, gates, host-remote, runner-protocol, shell, web-api
 backend-idle -> gates
 backend-cloud -> backend-idle, backend-providers, backend-runners, backend-storage, backend-sync, gates, host-remote, machines-protocol, runner-protocol, shell, web-api
 backend-expose -> backend-storage, backend-sync, core, web-api
-backend-host-access -> agent-store, agent-tools, backend-cloud, backend-expose, backend-objects, backend-runners, backend-storage, command-service, command-tree, core, gates, host-remote, runner-protocol, shell, web-api
-backend-shard -> agent, agent-protocol, agent-session, agent-store, agent-tools, agent-transcript, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-idle, backend-objects, backend-providers, backend-runners, backend-storage, backend-sync, browser-protocol, claude-protocol, coding-agent, command-service, command-tree, core, file-protocol, gates, host-remote, machines-protocol, provider, provider-claude-code, runner-protocol, shell, web-api
-backend-edge -> agent-protocol, agent-store, artifact, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-objects, backend-providers, backend-runners, backend-shard, backend-storage, backend-sync, browser-protocol, command-service, core, host-remote, provider, runner-protocol, shell, web-api
+backend-host-access -> agent-store, agent-tools, backend-cloud, backend-expose, backend-objects, backend-runners, backend-storage, command-protocol, command-tree, core, gates, host-remote, runner-protocol, shell, web-api
+backend-shard -> agent, agent-protocol, agent-session, agent-store, agent-tools, agent-transcript, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-idle, backend-objects, backend-providers, backend-runners, backend-storage, backend-sync, browser-protocol, claude-protocol, coding-agent, command-protocol, command-tree, core, file-protocol, gates, host-remote, machines-protocol, provider, provider-claude-code, runner-protocol, shell, web-api
+backend-edge -> agent-protocol, agent-store, artifact, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-objects, backend-providers, backend-runners, backend-shard, backend-storage, backend-sync, browser-protocol, command-protocol, core, host-remote, provider, runner-protocol, shell, web-api
 backend -> artifact, backend-accounts, backend-cloud, backend-edge, backend-expose, backend-families, backend-host-access, backend-objects, backend-providers, backend-runners, backend-shard, backend-storage, browser-protocol, command-tree, core, gates, provider, web-api
 machines -> artifact, machines-protocol, runner-protocol
-runner -> command-service, runner-host, runner-jobs, runner-process, runner-protocol, runner-services, runner-shell
-demi-file -> artifact, command-service, core, file-protocol, gates
-demi-browser -> browser-cdp, browser-driver, browser-live, browser-page, browser-protocol, browser-tabs, command-service
-demi-claude -> artifact, claude-protocol, command-service
-xtask -> agent-protocol, artifact, browser-protocol, claude-protocol, command-service, core, file-protocol, machines-protocol, runner-protocol, web-api
+runner -> command-protocol, command-service, runner-host, runner-jobs, runner-process, runner-protocol, runner-services, runner-shell
+demi-file -> artifact, command-protocol, command-service, core, file-protocol, gates
+demi-browser -> browser-cdp, browser-driver, browser-live, browser-page, browser-protocol, browser-tabs, command-protocol, command-service
+demi-claude -> artifact, claude-protocol, command-protocol, command-service
+xtask -> agent-protocol, artifact, browser-protocol, claude-protocol, command-protocol, core, file-protocol, machines-protocol, runner-protocol, web-api
 ```
 
 ### TypeScript packages
@@ -1390,17 +1398,29 @@ review.
   `@demicodes/protocol`.
 - **When a part is its own crate.** A separate crate or package requires
   independent use, distribution, dependency isolation or build isolation;
-  responsibilities that change together belong in modules of one crate. Build
-  isolation applies to Rust: Cargo compiles a crate as one unit, so a change
-  anywhere in it recompiles all of it and every crate above it, and every test
-  binary that links it also links all of its dependencies. A part that changes
-  on its own, or that brings heavy third-party dependencies the code around it
-  does not use, is therefore a crate of its own. For example, the runner's
-  shell with its standard utilities is `runner-shell`: a change to the
-  runner's backend connection recompiles neither, and the connection's tests
-  link none of the utilities. A crate holds at most about 6,000 lines of
-  source; one that grows past that is split along its design modules, the way
-  the [crates](#crates) above are, and review enforces the limit.
+  responsibilities that change together belong in modules of one crate. Size
+  is not a reason: a crate is never split because it is long.
+- **Build isolation.** Cargo compiles a crate as one unit, and it rebuilds
+  every crate above a changed crate even when the change leaves the crate's
+  public items as they were. A split therefore saves build time only when the
+  part split off is not above the code that changes: when it is a sibling of
+  that code, or below it and stable.
+  - A sibling saves time. The runner's shell with its standard utilities is
+    `runner-shell`, beside the runner's backend connection: a change to the
+    connection recompiles neither the shell nor the utilities, and the
+    connection's tests link none of them.
+  - A stable contract below the code that changes saves time. The command
+    wire's types are `command-protocol`, apart from the SDK in
+    `command-service`: most crates read only the types, so a change to the SDK
+    recompiles only the runner and the command programs, not the backend or
+    the agent.
+  - A chain costs time. A part split into crates that each depend on the one
+    before still recompiles all of them when the bottom one changes, and each
+    crate adds a compiler run and a test binary to link.
+
+  So code that changes often belongs above, and the types many crates read
+  belong below. A crate that many crates depend on holds only what they need
+  of it.
 - **Crate shape.** A crate keeps its `Cargo.toml` at its root, its source under
   `src/` and Cargo's standard library and executable entry points.
 - **One composition root per executable.** Exactly one place assembles a
