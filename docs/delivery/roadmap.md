@@ -51,15 +51,21 @@ delivered in this order, each a checkpoint of its own:
    dependencies, context sources that name their source and see only their
    blocks since the last compaction, profiles as data, no harness name in a
    checkpoint), and `plugin-todo`. `agent-coding-harness` is removed.
-2. **The command plugins.** `plugin-file` and `plugin-browser`, with the rule
-   that leaves out a group whose package the catalog does not serve.
+2. **The command plugins.** `plugin-file`, and `plugin-browser` with its
+   `browser` user stream and its tab methods over package calls, with the
+   rule that leaves out a group whose package the catalog does not serve; and
+   `plugin-expose` with `demi expose`, its numbers, the conversation hosts and
+   exposes operations and a page state that follows the user's exposes. The
+   plugin call routes replace the browser tab routes and `/api/exposes`.
 3. **Skills on the backend.** `plugin-skills` with its sources, its values and
    blobs, the Host directories with their installation before a job, the Host
    file reads that never wake a Host, project skills, the catalog, and the
    page call route with the `plugin` sync message.
-4. **Skills on the page.** `PluginClient`, `usePlugin()` and the slots in
-   `web-ui`; `@demicodes/plugin-skills`; its registration in `web` and its
-   specimens in `web-gallery`.
+4. **The plugins' pages.** `PluginClient`, `usePlugin()` and the slots in
+   `web-ui`; `@demicodes/plugin-browser` (the `browser` work panel kind),
+   `@demicodes/plugin-expose` (the conversation header tool) and
+   `@demicodes/plugin-skills` (the settings section); their registration in
+   `web` and their specimens in `web-gallery`.
 
 ## Evidence required at a checkpoint
 

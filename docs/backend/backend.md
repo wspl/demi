@@ -293,8 +293,8 @@ the page cannot override it with an arbitrary frame cwd.
 
 Each page also holds one synchronization channel, `WS /api/sync`. It sends the
 page the product state when it connects, then every part of it that changes:
-the account, preferences, providers, workspaces, devices, exposes, the Cloud,
-and each conversation's summary
+the account, preferences, providers, workspaces, devices, the Cloud, each
+plugin's state, and each conversation's summary
 ([Page synchronization](../product/web-api.md#page-synchronization)). No page
 polls. The socket moves into the user's shard, as a conversation socket does.
 For example, a rename commits in the user's shard; the shard then marks the
@@ -302,8 +302,10 @@ conversation's summary as changed on each of the user's open channels, and the
 task of each channel reads the summary and sends it to its page.
 
 - **Marks.** Every change a page shows is marked where it commits, after the
-  commit. The shard marks what it changes: conversations, titles, devices,
-  exposes and the Cloud. A conversation's tree store marks it when a
+  commit. The shard marks what it changes: conversations, titles, devices
+  and the Cloud, and a plugin's state when the plugin marks it or a change it
+  follows happens, such as one of the user's exposes being created or
+  destroyed. A conversation's tree store marks it when a
   checkpoint is saved, and the agent's notice marks it when its tree starts or
   stops working or is disposed. A shared service marks what it changes for a
   user, such as the vault when it renews an account's credential.
