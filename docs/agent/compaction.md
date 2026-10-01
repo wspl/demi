@@ -297,7 +297,7 @@ its only use.
 | Transcript | A copy of the window |
 | Held media | The bytes the session holds for the window's media ([Media](runtime.md#media)), so the summary request reads no blob |
 | Model selection, working directory, retry policy | The session's |
-| System prompt, tools, thinking | The session's, through the same harness |
+| System prompt, tools, thinking | The session's |
 | Provider runtime | A fresh runtime from the same provider: the same configuration and credentials, none of the session's execution state, such as a retained CLI process or a pending tool call ([Providers](../providers/providers.md)) |
 | Command state | A copy of the versions the window refers to, with the session's current version |
 | Compaction | Never; the copy does not compact itself |

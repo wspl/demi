@@ -471,9 +471,10 @@ authoritative home in [Providers](../providers/providers.md), catalogs in
 The web app provides conversations, account settings, provider management,
 devices, [exposes](../execution/expose.md#product-surface) in the conversation
 header, and Cloud controls. Administrative account management and usage have
-backend APIs; their dedicated pages in the web app are deferred. Notifications,
-MCP, Skills, data/privacy actions, language switching, and account deletion are
-also deferred.
+backend APIs; their dedicated pages in the web app are deferred. Skills have a
+settings section of their own ([Skills](../agent/skills.md#the-page)).
+Notifications, MCP, data/privacy actions, language switching, and account
+deletion are also deferred.
 
 The selected scope excludes public sharing, collaboration, search, offline mode,
 PWA behavior, push notifications, and localization. Technology and package

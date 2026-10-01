@@ -69,10 +69,11 @@ yield
 
 The agent server grafts a `demi agent` group into every node's command set; the
 root and every subagent receive the same group, except that a spawn-restricted
-node's group lacks `spawn`, `abort`, and `resume`. When the harness declares a
-`demi` group, `agent` joins it, replacing any `agent` child the harness
-declared. Otherwise the server adds a `demi` root, "Demi agent runtime
-commands.", that contains only `agent`.
+node's group lacks `spawn`, `abort`, and `resume`. When the command set the
+product supplies has a `demi` root, `agent` joins it; the product never
+declares an `agent` group of its own, since the plugin host refuses the name
+([Commands](../architecture/plugins.md#commands)). Otherwise the server adds a
+`demi` root, "Demi agent runtime commands.", that contains only `agent`.
 
 ```text
 demi agent spawn [--request-id <id>] [--profile <name>] [--description <title>] [--no-subagents] < task-brief.txt
@@ -446,30 +447,32 @@ The field descriptions of `list` and `show` state that they are snapshots, that
 
 ## Profiles
 
-A profile is harness configuration: data the harness declares, not
-configuration a command invents.
+A profile is data a plugin declares in its manifest
+([Profiles](../architecture/plugins.md#profiles)), not configuration a
+command invents. The product gives the agent server every plugin's profiles
+when it starts.
 
 | Field | Meaning |
 | --- | --- |
-| Name | The `--profile` value. `default` is reserved: it names no profile, and a harness that declares a profile named `default` fails at assembly. |
+| Name | The `--profile` value. `default` is reserved: it names no profile, and a plugin that declares a profile named `default` stops the backend at startup, as does a name two plugins declare. |
 | Description | What the profile is for. |
-| System prompt | Optional. Replaces the parent's system prompt and drops the parent's preamble; the command help and the subagent preamble are still supplied. |
-| Commands | Optional. Narrows the parent's harness commands for the child. |
+| Instructions | Optional. Replace the instructions in the child's system prompt ([Sessions and turns](runtime.md#sessions-and-turns)); the runtime's rules for its tools, the command help and the subagent preamble are still supplied. |
+| Commands | Optional. The command paths, such as `demi file`, the child keeps of its parent's commands; every other command of the parent's set is left out. |
 | Spawning | Whether children of this profile may spawn children of their own. |
 | Model | Optional. A model selection used instead of the parent's; the child still runs on a [runtime fork](../providers/providers.md#runtime-forks-and-closing) of the parent's provider runtime. |
 
-The coding harness declares no named profiles. Coding tasks spawn children
+No plugin of this repository declares a profile. Coding tasks spawn children
 without `--profile`, which inherit the parent's coding instructions and its
 ability to edit files.
 
 Omitting `--profile` always selects the unnamed inherit profile: the parent's
 prompt and preamble, model, Host, and commands, which are its profile's when the
 parent was started with one. It exists whether or
-not the harness declares profiles, and it cannot be configured or replaced. A
+not any profile is declared, and it cannot be configured or replaced. A
 given `--profile` must match a declared name; an unknown name fails and lists
-the available ones. A profile's command narrowing applies to the harness
-commands; the `demi agent` group is grafted after it and cannot be narrowed
-away. The only sanctioned narrowing of `demi agent` is the spawn restriction
+the available ones. A profile's command narrowing applies to the commands the
+product supplies; the `demi agent` group is grafted after it and cannot be
+narrowed away. The only sanctioned narrowing of `demi agent` is the spawn restriction
 (`--no-subagents`, or a profile that forbids spawning), which removes `spawn`,
 `abort`, and `resume`; communication and reads always remain. The restriction
 persists with the child across restore and resume.
@@ -477,7 +480,7 @@ persists with the child across restore and resume.
 The node assembly supplies every node's provider runtime. A profile may pin a
 model selection; the running command cannot pick a provider. Profiles apply to a
 session's own children; a subagent spawning grandchildren resolves names
-against the same harness profile list.
+against the same list of profiles.
 
 ## Child identity
 
@@ -495,7 +498,7 @@ summarize the parent transcript into the child.
 
 | Layer | Owner | Content |
 | --- | --- | --- |
-| System prompt | The profile, else the parent harness | Worker identity, shell rules, and the rendered command help. A profile's system prompt replaces the parent's; the command help is still supplied. |
+| System prompt | The runtime, the product and the plugins, or the profile | The runtime's rules for its tools, the instructions (a profile's replace the parent's), and the rendered command help ([Sessions and turns](runtime.md#sessions-and-turns)). |
 | Preamble | The agent server, for every child | This session is a subagent; its ID and its parent's ID; ending the turn with nothing pending returns the last assistant text as the result; `demi agent send` reaches the parent (`parent`) and any agent in `demi agent list`; spawn delegates further, or this session may not spawn; the session is not talking to the product user and does not address them. |
 | First user message | The parent model | The spawn prompt from stdin. Demi does not inspect or pad it. |
 
@@ -505,16 +508,18 @@ only states a role still uses that inherited prompt unless it sets its own
 system prompt.
 
 The agent server does not inject project instruction files, git status, parent
-memory, or a roster dump. A harness that loads those for the parent, for
-example in its system prompt or preamble, loads them for a child that inherits
-that harness. A profile that replaces the system prompt opts out. Explore-style
+memory, or a roster dump. What the context sources tell the parent, such as
+the execution context and the skills that are on, they tell each child as
+well, before the child's first request, since every node asks them
+([Context](runtime.md#context)). A profile that replaces the instructions
+keeps the context. Explore-style
 profiles that want a cheap, instruction-light worker replace the prompt; a
 profile is a prompt and a command set, never a restriction the Host enforces.
 
 Never copied into a child:
 
 - the parent transcript and tool results;
-- skills or files already in the parent's context;
+- files already in the parent's context;
 - the parent's output style or product-user voice;
 - a fork of the parent system prompt when the profile replaced it.
 
@@ -593,8 +598,8 @@ restores its own: a tree restore, with one rule per node.
 - A child that is quiescent closes with its result. Whether it is quiescent is
   read only once its own live children are back, so a child waiting for its
   children keeps waiting.
-- A live child that cannot be rebuilt, for example because the harness does
-  not declare its profile, is deleted with its subtree.
+- A live child that cannot be rebuilt, for example because no plugin declares
+  its profile any more, is deleted with its subtree.
 
 The root's interrupted turn is its client's to resume: the root records the
 interruption, and the web app offers Resume
@@ -780,8 +785,8 @@ returned, a child's as well as the root's
 | --- | --- |
 | Command system | Declarations, `rpc` dispatch through the serializable handler interface, and command storage as messages |
 | Agent runtime | The node assembly, supervision and the agent directory, the `demi agent` group, agent messages, the subagent frames, and the tree store contract |
-| Backend | The tree store over the conversation's database, and the conversation's host access for every node |
-| Coding harness | No named profiles; children inherit by default |
+| Backend | The tree store over the conversation's database, the conversation's host access for every node, and the plugin host, which supplies the commands, instructions, profiles and context sources |
+| Plugins | No profiles; children inherit by default |
 | `web-ui` | Nested subagent views, receipts, and the agents chip over `ConversationClient` |
 
 [Crates](../architecture/crates-and-packages.md#crates) names the crate that owns
@@ -883,5 +888,5 @@ Product:
 1. The product and the gallery show collapsed and expanded updates, completed,
    failed, and aborted receipts, long content, equal descriptions with distinct
    sender IDs, and reconnect.
-2. The coding harness declares no named profiles, its children inherit by
+2. No plugin declares a profile, children inherit by
    default, and the model sees the spawn prompt field's help.

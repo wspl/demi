@@ -63,7 +63,7 @@ web app needs no new conversation-socket frame for this product action.
 The agent server has two Fork operations: prepare an owned seed from a source,
 and initialize a destination root from that seed. The seed is a root
 checkpoint: the retained transcript, the command state with the versions its
-boundaries reference, a model selection, the cwd, and the harness name. It
+boundaries reference, a model selection and the cwd. It
 holds no source runtime or persistence handle. The backend gives the seed the
 model selection of the source's record, which the Fork operation records, so
 the destination's root and its record start with the same one.

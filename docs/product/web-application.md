@@ -15,9 +15,12 @@ would read.
 ```text
 web                                 web-gallery
 account state, routing,             fixture data and
-backend adapters                    preview handlers
-        |                                  |
-        +------------> web-ui <------------+
+backend adapters, the               preview handlers, the
+plugins' HTTP clients               plugins' fixture clients
+        |          \              /       |
+        |           plugin-<name>         |    a plugin's page: its slots
+        |                 |               |
+        +------------> web-ui <-----------+
                          |
                          v
                     conversation-client     ConversationClient, transport, patch application
@@ -37,11 +40,20 @@ backend adapters                    preview handlers
   message content, tool views and the live view's messages, and the file-type
   table with its lookup.
 - `@demicodes/utils` holds small helpers the web app's packages share.
+- `@demicodes/plugin-<name>` is a [plugin's page](../architecture/plugins.md#the-page):
+  the slots it fills, such as a settings section or work panel kinds,
+  composed from `web-ui` components. Its components reach their plugin only
+  through the `PluginClient` they receive with `usePlugin()`: the plugin's
+  state, which follows the synchronization channel, and its page calls. `web`
+  registers each plugin package from a static list and supplies a client over
+  the [page call route](web-api.md#plugin-calls); the gallery registers the
+  same packages and supplies a client over each specimen's fixture state.
 
 The product and gallery do not import each other. The web app knows the HTTP
 API and the streams only through types generated from the Rust types that
 define them: `@demicodes/protocol` for the conversation stream and the live
-view, and REST types generated into `web` for the HTTP API
+view, REST types generated into `web` for the HTTP API, and each plugin's page
+types generated into its package
 ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
 No web app package writes its own schema for a shape those contracts define.
 Where the page and the backend could each compute the same fact, one side owns
@@ -78,7 +90,8 @@ tabs        [{ id, kind, data }], in the user's order
   panel and the tab state know nothing else about a kind. What protocol,
   stream or route a tab's content uses is the kind's own business, behind its
   content component. A new kind, such as a streamed window of the Host, is a
-  new registration and changes neither the panel nor the tab state.
+  new registration and changes neither the panel nor the tab state; a plugin
+  package registers its kinds the same way.
 
 The tab state is ordinary state with `add`, `update`, `remove`, `move` and
 `select`. Every change applies to the page first and is then saved

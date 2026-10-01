@@ -31,9 +31,9 @@ conversation's host access; they are not conversation database content.
 
 | Store | Owns | Writer |
 |---|---|---|
-| `control.sqlite` | Accounts, auth sessions, preferences, devices, workspaces, exposes, conversation index, providers, model catalogs, usage, attachment metadata, operation records | The control service, on its database thread |
+| `control.sqlite` | Accounts, auth sessions, preferences, devices, workspaces, exposes, conversation index, providers, model catalogs, usage, attachment metadata, operation records, plugin values and Host directories | The control service, on its database thread |
 | Conversation database | Root and subagent nodes, checkpoint state, transcript blocks, command history, the records of commands' outputs | The shard of the user who owns the conversation |
-| User blob namespace | Uploaded bytes, transcript media, edit copies and commands' whole outputs, addressed by content hash | The upload route, the conversation socket when an uploaded image enters fitted, a session when a tool's medium enters its transcript, and the backend when a command ends |
+| User blob namespace | Uploaded bytes, transcript media, edit copies, commands' whole outputs and the files plugins keep, addressed by content hash | The upload route, the conversation socket when an uploaded image enters fitted, a session when a tool's medium enters its transcript, and the backend when a command ends |
 
 Both kinds of database are SQLite, reached through rusqlite with SQLite
 compiled into the executable, so a deployment needs no system SQLite. A
@@ -159,6 +159,19 @@ input, which the multi-worker control service also relies on
   `attachments` stores owner, media type, byte length, content hash, a text
   file's snippet, and creation time. Neither table contains the attachment
   bytes.
+
+- **Plugins:** `plugin_values` stores each plugin's values for a user
+  ([The contract](../architecture/plugins.md#the-contract)): user, plugin id,
+  key, the JSON document, its revision, and the SHA-256 of each blob the value
+  names. A write names the revision it read and commits only if the row still
+  has it, in one transaction, so two writes never build on the same revision;
+  a value's first write expects none. `plugin_directories` stores each
+  plugin's [Host directories](../architecture/plugins.md#host-directories) for
+  a user: user, plugin id, the directory's name, its digest and its listing,
+  each file's path, mode and SHA-256. A plugin's set for a user is replaced
+  whole in one transaction. The plugin host decodes a value only as JSON; the
+  plugin decodes it into its own type and refuses one that does not fit, as
+  every reader of a stored value does.
 
 Conversation and workspace `sort_order` represent explicit user ordering;
 activity timestamps do not reorder them. A read acknowledgement advances
@@ -475,14 +488,17 @@ kinds of evidence:
   the destination of each of the user's Forks that is not published yet, its
   `blob_refs` rows, which cover the media and edit copies of every block of
   every node; the media of each node's queued messages; and its
-  `command_outputs` rows that hold a blob.
+  `command_outputs` rows that hold a blob; and the blobs the user's
+  `plugin_values` and `plugin_directories` rows name.
 - **Uses:** what no row shows yet, such as a medium that was put but whose
-  block is not saved, or a pending steer, which lives only in its session
+  block is not saved, a file a plugin put before the value that names it, or a
+  pending steer, which lives only in its session
   ([Pending steers](../agent/runtime.md#pending-steers)). Each backend
   records, per user and blob, when the blob was last used: when a put of it
   starts, before it asks whether the blob exists, and when a commit writes or
   removes a reference to it, inside the commit's transaction, before it
-  commits. Each change of a conversation's `blob_refs` rows is such a commit. A
+  commits. Each change of a conversation's `blob_refs` rows is such a commit,
+  and so is each write of a plugin value or of a plugin's Host directories. A
   use is remembered for 24 hours.
 
 Every reference counts, not only those of the replayed blocks: a live session

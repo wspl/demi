@@ -9,7 +9,8 @@ acceptance are required before enabling a deployed release.
 This is the authoritative browser design. Command dispatch, Host admission,
 native service ownership, and crate boundaries belong to their own documents.
 Browser automation does not introduce another shell or agent loop, and it does
-not reach into the agent runtime: the browser is a plugin behind the
+not reach into the agent runtime: the browser is a [plugin](../architecture/plugins.md),
+`plugin-browser`, whose commands bind the `demi.browser` command package behind the
 [conversation-scoped state port](../execution/native-runtime.md#conversation-scoped-state).
 It keeps its own state per conversation and ends it when the conversation is
 released, as [Conversation idle and Host resource release](../execution/resource-lifecycle.md)
@@ -640,8 +641,8 @@ Browser arguments, results, error codes, limits and event payloads are defined
 once, as Rust types in the `command-package-browser-protocol` crate. The `demi browser` command
 declarations take their schemas from those types, and the native handlers
 decode their input into them and return them as results. The page uses the
-same definitions, as TypeScript generated from them, without depending on the
-coding harness
+same definitions, as TypeScript generated from them, without depending on
+`plugin-browser`
 ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
 [Crates and packages](../architecture/crates-and-packages.md) places these
 crates.
@@ -1957,9 +1958,10 @@ for the browser:
   limits and event payloads, the live view messages and frame header, and the
   capture extension's messages; the web app receives the types it uses as
   generated TypeScript in `@demicodes/protocol`.
-- `agent-coding-harness`: the `demi browser` command declarations, built from those
-  types, with help rendered from the declarations; the command tree includes
-  them when the command package catalog provides the browser's operations.
+- `plugin-browser`: the `demi browser` command declarations, built from those
+  types, with help rendered from the declarations; the plugin host includes
+  them when the command package catalog provides the browser's operations
+  ([Commands](../architecture/plugins.md#commands)).
 - the backend: builds the command context of every job and sends the generic
   conversation release; declares the `browser` user stream; no browser module.
 - the runner's crates and `backend-remote-host`: the command context of every

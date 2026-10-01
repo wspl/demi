@@ -52,8 +52,9 @@ over the manager's Unix socket.
 | `config` | `demi-backend` | The typed configuration, validated at startup, and the instance secret with the keys derived from it | [Configuration](#configuration) |
 | `auth`, `settings` | `backend-accounts` | Accounts, password hashing, web sessions, login lockout, email-change delivery; per-user preferences | [Authentication and ownership](#authentication-and-ownership), [Product](../product/product.md#user-system), [Web API](../product/web-api.md#user-preferences) |
 | `sync` | `backend-page-sync`, `backend-user-shard` | The registry that marks changes on each user's channels (`backend-page-sync`); the pages' synchronization channels with the product state and the parts that changed (`backend-user-shard`) | [Page synchronization](#page-synchronization) |
-| `conversation` | `backend-user-shard` | Agent-tree hosting, frame scoping, attachment references, history and Fork, summaries and titles, the Claude Code CLI's work on the user's Cloud, and the provider test | [Sessions and targets](../execution/sessions-and-targets.md) |
-| `host_access` | `backend-host-access` | The conversation's host access, target resolution and transitions, file transfers, uploads, remote files and user streams with the leases the edge holds of them, the nodes' shell environments with the keeper that stores what a command leaves when it ends, the product's `demi host` group | [Host operations](../execution/sessions-and-targets.md#host-operations) |
+| `conversation` | `backend-user-shard` | Agent-tree hosting with the agent server's dependencies, the product's instructions and the execution context source, frame scoping, attachment references, history and Fork, summaries and titles, the Claude Code CLI's work on the user's Cloud, and the provider test | [Sessions and targets](../execution/sessions-and-targets.md) |
+| `host_access` | `backend-host-access` | The conversation's host access, target resolution and transitions, file transfers, uploads, remote files and user streams with the leases the edge holds of them, the nodes' shell environments with the keeper that stores what a command leaves when it ends, the installation of the plugins' Host directories before a job, the product's `demi host` group | [Host operations](../execution/sessions-and-targets.md#host-operations) |
+| `plugins` | `backend-plugins`, `demi-backend` (`plugins`) | The plugin host: the registry and its checks, the command set, instructions, profiles and context sources the agent server is given, each user's instances, the port's operations, page state and page calls (`backend-plugins`); the built-in plugins, in their order of registration (the backend's `plugins`) | [Plugins](../architecture/plugins.md) |
 | `runner` | `backend-runners` | Pairing, device links and runner connections with the Host handles made over them, the lease of a conversation's file gate a conversation's Host is made against, the rpc relay and each session's commands, installer scripts, native artifact publication and the development store | [Runner](../execution/runner.md), [Commands](../execution/commands.md), [Native runtime](../execution/native-runtime.md#backend-deployment-configuration) |
 | `lifecycle` | `backend-idle-watch`, `backend-user-shard` | The idle watch (`backend-idle-watch`); the conversation idle clock, the conversation release, and the daily retention pass that retires expired tool media, removes expired command outputs and collects blobs (`backend-user-shard`) | [Conversation idle and Host resource release](../execution/resource-lifecycle.md), [Retention](storage.md#retention) |
 | `managed` | `backend-cloud` | Cloud policy and capacity, machine transitions, reset and recovery, the machine manager's client | [Managed hosts](../cloud/managed-hosts.md) |
@@ -430,7 +431,11 @@ At startup the backend:
    An interrupt or termination signal during publication stops the start.
 3. Opens the data directory and loads the instance secret.
 4. Opens the control database; a new database receives its schema.
-5. Starts the shared services and the shard threads.
+5. Starts the shared services, among them the plugin host, which checks
+   every plugin's manifest against the others and the native catalog; a
+   manifest that breaks a rule stops the start and the error names the plugin
+   ([The plugin host](../architecture/plugins.md#the-plugin-host)). Then it
+   starts the shard threads.
 6. Recovers before it serves: the machine manager reconciles its machines,
    which stops every Cloud, so the exposes an earlier backend left on a Cloud
    are destroyed ([Host expose](../execution/expose.md#lifetime)), an

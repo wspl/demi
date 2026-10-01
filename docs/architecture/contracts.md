@@ -33,9 +33,11 @@ names each crate's items.
 | Runner wire (MessagePack over a WebSocket) and command manifests | `runner-protocol`, with manifest nodes from `command-declarations` | Backend; runner |
 | Managed boot record | `runner-protocol` | Backend and machine manager; the runner in a Cloud sandbox reads it |
 | Command invocations between a runner and a command program | `command-protocol` | Runner; `demi-file`, `demi-browser`, `demi-claude-code` |
-| `demi.file` operations | `command-package-file-protocol` | `agent-coding-harness` declarations; `demi-file` |
-| `demi.browser` operations, live view messages, capture extension events | `command-package-browser-protocol` | `agent-coding-harness` declarations, the backend and the conversation browser's crates; the page reads live view messages through `@demicodes/protocol` |
+| `demi.file` operations | `command-package-file-protocol` | `plugin-file` declarations; `demi-file` |
+| `demi.browser` operations, live view messages, capture extension events | `command-package-browser-protocol` | `plugin-browser` declarations, the backend and the conversation browser's crates; the page reads live view messages through `@demicodes/protocol` |
 | `demi.claude-code` operations and the Claude Code release record | `command-package-claude-code-protocol` | Backend; `demi-claude-code` |
+| Plugin manifests, requests, replies and port messages | `plugin-interface` | The plugin host; every plugin, in process today and over a process's stdio with the TypeScript SDK ([Plugins](plugins.md#the-contract)) |
+| A plugin's page state, page call parameters and results | The plugin's crate, such as `plugin-skills` | The plugin; its page package, through generated TypeScript |
 | Machine-manager socket (one JSON document per line over a Unix socket) and the Cloud image manifest | `machine-manager-protocol` | Backend; machine manager; `xtask` writes the image manifest |
 | JSON stored in the control and conversation databases | The crate that owns the data, such as `shared-types` for blocks | Backend |
 
@@ -107,9 +109,12 @@ Every value from outside a process follows the same rule:
   defaulted.
 - Fixed contracts are validated by their types and garde, never by
   round-tripping a value through JSON or a JSON Schema. JSON Schema validation
-  belongs to command arguments, whose schema travels in the manifest: both
-  ends check it with `jsonschema` and word a failure the same way
-  ([Parse input and render help](../execution/commands.md#parse-input-and-render-help)).
+  belongs to the values whose schema is data: command arguments, whose schema
+  travels in the manifest, where both ends check it with `jsonschema` and word
+  a failure the same way
+  ([Parse input and render help](../execution/commands.md#parse-input-and-render-help)),
+  and a plugin's page call parameters, which the plugin host checks against
+  the schema the plugin's manifest declares before the plugin sees them.
 
 A string length counts Unicode scalar values, garde's `chars` mode, wherever
 a bound is checked: in the web app's schemas and in command inputs alike.
@@ -132,6 +137,8 @@ These are the points where values enter, and what a failure does:
 | A runner message, at either end | `runner-protocol`'s codec | The connection closes ([Runner](../execution/runner.md)) |
 | Invocation metadata and records between a runner and a command program | `command-protocol` | [Validation and flow control](../execution/native-runtime.md#validation-and-flow-control) |
 | A command's arguments | The declaration's JSON Schema, at the dispatcher and again in a native handler before work | One usage error that names every field that failed |
+| A plugin's page call parameters | The method's JSON Schema from the plugin's manifest, at the plugin host; the plugin decodes them into its type | 400 `invalid_body`, naming the field ([Plugin calls](../product/web-api.md#plugin-calls)) |
+| A plugin's page state or call result, at the page | The plugin package's generated schemas | The plugin's client reports the field path and keeps the state it held |
 | A machine-manager request or response | `machine-manager-protocol` | A malformed line or an unknown operation drops the connection; an invalid device id is that operation's error ([Managed Cloud hosts](../cloud/managed-hosts.md)) |
 | The managed boot file | `runner-protocol`'s `ManagedBoot` | The runner fails; it never falls back to pairing ([Runner](../execution/runner.md#managed-guests-and-verification)) |
 | A capture extension event | `command-package-browser-protocol` | The extension connection fails, and the failure is logged ([Live view](../browser/live-view.md)) |
@@ -156,6 +163,9 @@ Zod source and z.infer types
    -> packages/protocol/src/generated/   @demicodes/protocol: core, conversation-socket-protocol,
                                           command-package-browser-protocol types the page reads
    -> packages/web/src/api/generated/    web: the web-api-protocol REST types
+   -> packages/plugin-<name>/src/generated/
+                                         a plugin package: its plugin's page state,
+                                         parameters and results
 ```
 
 - **Generation.** `bun run contracts` builds the workspace with its one Cargo
@@ -171,8 +181,11 @@ Zod source and z.infer types
   its tables in `generated/tables.ts`, which the package's entry re-exports.
   The roots of `web` are the web-api request and response bodies; its
   `src/api/generated/web-api.ts` imports the schemas it shares with
-  `@demicodes/protocol` from there. A new body type is added to the roots with
-  its direction.
+  `@demicodes/protocol` from there. The roots of a plugin package are its
+  plugin's page state, which the page receives, and each method's parameters,
+  which it sends, and result, which it receives; its `src/generated/` imports
+  shared schemas from `@demicodes/protocol` the same way. A new body type is
+  added to the roots with its direction.
 - **One constraint definition.** A garde attribute drives both the Rust check
   and the emitted schema: schemars reads garde's attributes, including
   `length(chars, ...)`, and emits `minLength` and `maxLength`. Internally
@@ -239,27 +252,31 @@ types without validators.
 
 ## The TypeScript boundary
 
-Demi has no TypeScript SDK. The design keeps one possible without embedding
-the Rust runtime: a TypeScript program would be a client of serializable
-protocols, never a host of the Rust code. Two such protocols exist:
+Demi will have a TypeScript SDK for [plugins](plugins.md), and none is built
+yet. The design keeps it possible without embedding the Rust runtime: a
+TypeScript program is a client or a peer of serializable protocols, never a
+host of the Rust code. Two such protocols exist:
 
-- **The agent frame protocol.** `ConversationClient` drives a session through it, as
-  the web app does.
-- **Application commands.** An `rpc` command leaf is a callback to the
-  application that declared it. Another process could register such leaves
-  and serve their invocations, so a command could be written in TypeScript.
+- **The agent frame protocol.** `ConversationClient` drives a session through
+  it, as the web app does.
+- **The plugin contract.** A plugin receives requests and acts through a port,
+  and every request, reply and port operation is a message
+  ([The contract](plugins.md#the-contract)). A plugin process written with the
+  SDK would exchange the same messages as the plugins the backend links, and
+  an `rpc` command leaf would reach it as a command request.
 
-The constraint that keeps this possible: everything an `rpc` handler receives
-is expressible as messages. That covers its arguments, byte IO, working
-directory, environment, cancellation, command storage, and Host operations
-once a handler needs them. The command system dispatches through `RpcHandler`
-with a serializable `RpcInvocation` and an `RpcPort` whose every operation is
-a message, and in-process handlers implement the same interface. A handler
-never receives a live object, such as a Host handle or a callback into the
-backend. This is why command storage changes by versioned compare-and-set
+The constraint that keeps this possible: everything a plugin, or an `rpc`
+handler, receives is expressible as messages. That covers its arguments,
+byte IO, working directory, environment, cancellation, command storage, its
+values and blobs, and the Host directories it keeps. The command system
+dispatches through `RpcHandler` with a serializable `RpcInvocation` and an
+`RpcPort` whose every operation is a message, and the plugin port extends the
+same rule to the plugin's other requests. A plugin never receives a live
+object, such as a Host handle or a callback into the backend. This is why
+command storage and a plugin's values change by versioned compare-and-set
 rather than by a callback inside a transaction
-([Command state history](../agent/command-state-history.md)). The port offers
-no Host operation until a handler needs one.
+([Command state history](../agent/command-state-history.md)), and why a
+plugin names the directories a Host must hold instead of writing to a Host.
 
 ## Logic the web app and backend share
 
