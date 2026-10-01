@@ -1,4 +1,4 @@
-use demi_command_service::protocol::PackageDescriptor;
+use demi_command_protocol::PackageDescriptor;
 
 #[test]
 fn a_descriptor_validates_and_hashes_to_its_recorded_digest() {
@@ -54,7 +54,7 @@ fn package_decoding_enforces_value_constraints() {
 
 #[test]
 fn an_artifact_url_is_http_or_https_without_credentials() {
-    use demi_command_service::protocol::ArtifactLocation;
+    use demi_command_protocol::ArtifactLocation;
     let valid = |url: &str| {
         let location: ArtifactLocation =
             serde_json::from_value(serde_json::json!({ "url": url })).unwrap();
@@ -74,14 +74,14 @@ fn an_artifact_url_is_http_or_https_without_credentials() {
 
 /// Decodes and validates invocation metadata as the service boundary does.
 fn decode_invocation(value: serde_json::Value) -> Result<(), String> {
-    use demi_command_service::protocol::{Invocation, Metadata};
+    use demi_command_protocol::{Invocation, Metadata};
     let invocation: Invocation = serde_json::from_value(value).map_err(|error| error.to_string())?;
     invocation.validate().map_err(|error| error.to_string())
 }
 
 #[test]
 fn invocation_decoding_checks_nested_values_and_optional_nulls() {
-    use demi_command_service::protocol::Completion;
+    use demi_command_protocol::Completion;
     let context = serde_json::json!({
         "conversation": "conversation",
         "caller": {"kind": "agent", "number": 1},

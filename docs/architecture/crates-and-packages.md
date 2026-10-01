@@ -166,7 +166,11 @@ the browser's TypeScript. A contract crate has no async runtime and no IO.
   - the edit journal and its context (`EditContext`, `EditJournal`), and the
     one test of whether bytes are text (`is_text`), which edit tracking and
     line counts read at both ends.
-- **Public boundary:** the types and functions above.
+- **Public boundary:** the types and functions above;
+  `command_protocol::testing` finds the programs a test starts beside it
+  (`built_program`) and names the operations of the runner's native fixture
+  service (`FIXTURE_OPERATIONS`), which the tests at both ends of the wire
+  use.
 - **Must not:** speak the wire: the client, the server and the recorder are
   `command-service`'s.
 
@@ -309,13 +313,12 @@ the browser's TypeScript. A contract crate has no async runtime and no IO.
   - path resolution against an invocation's working directory, and waiting out
     a lack of open file descriptors.
 - **Public boundary:** the client, the service entry point, the handler and IO
-  traits, and the edit recorder; `command_service::testing` finds the programs
-  a test starts beside it (`built_program`), starts a service binary and
-  drives it with a client (`ServiceProcess`), gives a handler numbers from
-  counters that start at 1 (`counting_numbers`) or answers a service's
-  numbers stream from them (`answer_numbers`), and counts the process's
-  pauses before trying an operation again (`pauses`), which show an operation
-  waiting out a lack of open files. The runner and every command program use
+  traits, and the edit recorder; `command_service::testing` starts a service
+  binary and drives it with a client (`ServiceProcess`), gives a handler
+  numbers from counters that start at 1 (`counting_numbers`) or answers a
+  service's numbers stream from them (`answer_numbers`), and counts the
+  process's pauses before trying an operation again (`pauses`), which show an
+  operation waiting out a lack of open files. The runner and every command program use
   this one SDK; a command program depends on it and on `command-protocol`
   without depending on the runner or on Demi's command implementations.
 - **Must not:** implement commands, download artifacts, start command
@@ -1350,7 +1353,7 @@ browser-driver -> artifact, browser-protocol, command-protocol, command-service,
 browser-tabs -> browser-driver, browser-protocol, command-protocol
 browser-page -> browser-driver, browser-protocol, browser-tabs, command-service
 browser-cdp -> browser-driver, browser-protocol, browser-tabs, command-service
-browser-live -> browser-driver, browser-page, browser-protocol, browser-tabs, command-service, core
+browser-live -> browser-driver, browser-page, browser-protocol, browser-tabs, command-protocol, command-service, core
 backend-sync -> backend-storage, web-api
 backend-storage -> agent-store, agent-transcript, core, gates, host-remote, machines-protocol, runner-protocol, shell, web-api
 backend-objects -> agent-store, core, web-api
@@ -1466,7 +1469,7 @@ review.
   `host_remote::testing`, `command_service::testing`), never a crate that
   depends upward. A test reaches another program as the
   binary Cargo built into the target directory the test runs from
-  (`command_service::testing::built_program`), and a TypeScript test through
+  (`command_protocol::testing::built_program`), and a TypeScript test through
   `DEMI_TEST_PROGRAMS` ([Validation](../delivery/builds-and-releases.md#validation)).
   JavaScript that a crate ships, such as the capture extension of
   `browser-driver`, is tested by a Bun test beside it, which `bun run test`

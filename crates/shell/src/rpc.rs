@@ -6,7 +6,7 @@
 use std::{collections::BTreeMap, rc::Rc};
 
 use bytes::Bytes;
-use demi_command_service::protocol::CommandContext;
+use demi_command_protocol::CommandContext;
 use demi_core::B64Bytes;
 use futures_util::future::LocalBoxFuture;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};

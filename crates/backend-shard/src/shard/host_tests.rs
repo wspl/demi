@@ -8,7 +8,7 @@ mod host_commands {
 
     use demi_backend_host_access::HostShard;
     use demi_backend_host_access::host_commands::host_group;
-    use demi_command_service::protocol::{CommandCaller, CommandContext};
+    use demi_command_protocol::{CommandCaller, CommandContext};
     use demi_shell::testing::MemoryPort;
     use demi_shell::{CommandSet, GroupBuilder, RpcInvocation};
     use demi_web_api::ids::{ConversationId, DeviceId, UserId};

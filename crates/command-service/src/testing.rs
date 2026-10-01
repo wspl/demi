@@ -1,29 +1,22 @@
-//! Test support (`crates-and-packages.md` § command-service): the programs a
-//! test finds beside itself, a command service's binary started and driven
-//! with a client, a numbers source that counts, and the count of the
-//! process's pauses before trying an operation again.
+//! Test support (`crates-and-packages.md` § command-service): a command
+//! service's binary started and driven with a client, a numbers source that
+//! counts, and the count of the process's pauses before trying an operation
+//! again.
 
 use std::{
     collections::HashMap,
-    path::{Path, PathBuf},
+    path::Path,
     process::{ExitStatus, Stdio},
     sync::atomic::{AtomicU64, Ordering},
 };
 
+use demi_command_protocol::ServiceSequence;
 use tokio::{
     process::{Child, ChildStdin, ChildStdout, Command},
     task::JoinHandle,
 };
 
-use crate::{Client, Numbers, ServiceError, protocol::ServiceSequence};
-
-/// The operations of the runner's native fixture service
-/// (`crates/runner/tests/fixtures/service.rs`), which the runner's and
-/// host-remote's tests name in its descriptors.
-pub const FIXTURE_OPERATIONS: [&str; 12] = [
-    "where", "echo", "first", "spin", "result", "retain", "stall_release", "held", "crash", "stalled",
-    "proceed", "number",
-];
+use crate::{Client, Numbers, ServiceError};
 
 /// Every pause a [`crate::descriptors::Backoff`] of this process has taken.
 static PAUSES: AtomicU64 = AtomicU64::new(0);
@@ -89,17 +82,6 @@ pub async fn answer_numbers(client: &Client) -> Result<JoinHandle<Result<(), Ser
             })
             .await
     }))
-}
-
-/// A program Cargo built into the target directory this test runs from,
-/// such as a workspace crate's executable.
-pub fn built_program(name: &str) -> PathBuf {
-    let executable = std::env::current_exe().expect("the test knows its executable");
-    let directory = executable
-        .parent()
-        .and_then(Path::parent)
-        .expect("a test runs from the target directory's deps");
-    directory.join(format!("{name}{}", std::env::consts::EXE_SUFFIX))
 }
 
 type Transport = tokio::io::Join<ChildStdout, ChildStdin>;

@@ -10,7 +10,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_command_service::protocol::{CommandCaller, CommandContext, CommandLocale};
+use demi_command_protocol::{CommandCaller, CommandContext, CommandLocale};
 use demi_core::{B64Bytes, Sequence, StreamKind, Timestamp};
 use futures_util::{StreamExt, future::LocalBoxFuture, stream};
 use serde_json::Value;

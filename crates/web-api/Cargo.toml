@@ -14,7 +14,7 @@ bench = false
 [dependencies]
 demi-agent-protocol = { path = "../agent-protocol" }
 demi-browser-protocol = { path = "../browser-protocol" }
-demi-command-service = { path = "../command-service" }
+demi-command-protocol = { path = "../command-protocol" }
 demi-core = { path = "../core" }
 demi-runner-protocol = { path = "../runner-protocol" }
 garde.workspace = true

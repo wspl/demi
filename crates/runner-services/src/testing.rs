@@ -2,7 +2,7 @@
 //! no conversation numbers. The feature also builds `demi-native-fixture`,
 //! the command program with fixture operations that tests install and start.
 
-use demi_command_service::protocol::ServiceSequence;
+use demi_command_protocol::ServiceSequence;
 use futures_util::future::BoxFuture;
 
 use crate::NumberSource;

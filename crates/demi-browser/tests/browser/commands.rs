@@ -1,9 +1,9 @@
 use std::{collections::BTreeMap, time::Duration};
 
-use demi_command_service::{
-    Client,
-    protocol::{CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Record},
+use demi_command_protocol::{
+    CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Record,
 };
+use demi_command_service::Client;
 
 pub(crate) async fn exchange(
     client: &Client,
@@ -11,7 +11,7 @@ pub(crate) async fn exchange(
     lifecycle: bool,
 ) -> (Completion, Vec<u8>, Vec<u8>) {
     let (_input, mut output) = if lifecycle {
-        use demi_command_service::protocol::ConversationRequest;
+        use demi_command_protocol::ConversationRequest;
         let lifecycle = match request.operation.as_str() {
             "status" => ConversationRequest::Status {},
             "release" => ConversationRequest::Release {

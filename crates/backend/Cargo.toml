@@ -72,7 +72,7 @@ demi-backend = { path = ".", features = ["testing"] }
 demi-backend-runners = { path = "../backend-runners", features = ["testing"] }
 demi-backend-shard = { path = "../backend-shard", features = ["testing"] }
 demi-claude-protocol = { path = "../claude-protocol" }
-demi-command-service = { path = "../command-service", features = ["testing"] }
+demi-command-protocol = { path = "../command-protocol", features = ["testing"] }
 demi-file-protocol = { path = "../file-protocol" }
 demi-host-remote = { path = "../host-remote", features = ["testing"] }
 demi-machines-protocol = { path = "../machines-protocol" }

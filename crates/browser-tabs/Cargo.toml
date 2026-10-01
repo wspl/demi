@@ -20,7 +20,7 @@ testing = []
 chromiumoxide = "=0.9.1"
 demi-browser-driver = { path = "../browser-driver" }
 demi-browser-protocol = { path = "../browser-protocol" }
-demi-command-service = { path = "../command-service" }
+demi-command-protocol = { path = "../command-protocol" }
 futures-util.workspace = true
 regex = "1"
 serde.workspace = true

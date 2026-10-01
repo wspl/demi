@@ -1,9 +1,9 @@
 //! Convert retained edit snapshots to the runner's completed-job report.
 
+use demi_command_protocol::EDIT_FILE_BYTES;
+use demi_command_service::edits::Recorder;
 use demi_runner_process::file_diff::line_counts;
 use demi_runner_protocol::wire;
-use demi_command_service::edits::Recorder;
-use demi_command_service::protocol::EDIT_FILE_BYTES;
 use std::io::Read;
 
 pub fn finish(recorder: Option<&Recorder>) -> (Vec<wire::JobFileChange>, bool) {
@@ -62,7 +62,7 @@ fn read_snapshot(path: &String) -> std::io::Result<Vec<u8>> {
     std::fs::File::open(path)?
         .take((EDIT_FILE_BYTES + 1) as u64)
         .read_to_end(&mut bytes)?;
-    if bytes.len() > EDIT_FILE_BYTES || !demi_command_service::edits::is_text(&bytes) {
+    if bytes.len() > EDIT_FILE_BYTES || !demi_command_protocol::is_text(&bytes) {
         return Err(std::io::Error::other("invalid edit snapshot"));
     }
     Ok(bytes)

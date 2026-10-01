@@ -23,7 +23,7 @@ demi-artifact = { path = "../artifact" }
 demi-backend-objects = { path = "../backend-objects" }
 demi-backend-storage = { path = "../backend-storage" }
 demi-backend-sync = { path = "../backend-sync" }
-demi-command-service = { path = "../command-service" }
+demi-command-protocol = { path = "../command-protocol" }
 demi-gates = { path = "../gates" }
 demi-host-remote = { path = "../host-remote" }
 demi-runner-protocol = { path = "../runner-protocol" }

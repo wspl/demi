@@ -18,7 +18,7 @@ use std::{
     time::Duration,
 };
 
-use demi_command_service::protocol::{
+use demi_command_protocol::{
     ArtifactLocation, ArtifactPath, PackageArtifact, PackageDescriptor, ServiceSequence,
     host_target,
 };
@@ -273,12 +273,12 @@ pub struct NativeFixture {
 
 impl NativeFixture {
     /// The runner's native fixture package
-    /// (`demi_command_service::testing::FIXTURE_OPERATIONS`).
+    /// (`demi_command_protocol::testing::FIXTURE_OPERATIONS`).
     pub fn load() -> Self {
         Self::package(
             "demicodes.runner-test",
             native_fixture_binary(),
-            demi_command_service::testing::FIXTURE_OPERATIONS,
+            demi_command_protocol::testing::FIXTURE_OPERATIONS,
         )
     }
 

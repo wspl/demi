@@ -1,6 +1,6 @@
 //! Line counting shared by working-tree changes and recorded edits.
 
-use demi_command_service::edits::is_text;
+use demi_command_protocol::is_text;
 
 fn line_count(bytes: &[u8]) -> u64 {
     if bytes.is_empty() {

@@ -10,15 +10,13 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_command_service::{
-    Exchange, ExchangeError, InputSource, OutputSink,
-    protocol::{Invocation, MAX_RECORD_BYTES},
-};
+use demi_command_protocol::{Invocation, MAX_RECORD_BYTES};
+use demi_command_service::{Exchange, ExchangeError, InputSource, OutputSink};
 use futures_util::{StreamExt, stream::BoxStream};
 use tokio::sync::mpsc;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use demi_command_service::protocol::host_target;
+use demi_command_protocol::host_target;
 use demi_runner_process::{
     lines::LineSplitter,
     pipes::{PipeClient, report_pipe},

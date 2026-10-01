@@ -8,7 +8,7 @@ use std::{future::Future, pin::Pin, sync::Arc};
 
 use demi_browser_driver::installation::BrowserDirectories;
 use demi_browser_protocol::{Operation, OperationError, browser as protocol};
-use demi_command_service::protocol::{Completion, Invocation};
+use demi_command_protocol::{Completion, Invocation};
 use demi_command_service::{
     ConversationContext, Handler, InvocationContext, Numbers, ServiceError,
 };

@@ -1,10 +1,9 @@
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use bytes::{BufMut, Bytes, BytesMut};
+use demi_command_protocol::{Completion, ConversationRequest, Invocation, Record};
 use demi_command_service::{
-    Client, ConversationContext, Handler, InvocationContext, ServiceError,
-    protocol::{Completion, ConversationRequest, Invocation, Record},
-    serve,
+    Client, ConversationContext, Handler, InvocationContext, ServiceError, serve,
 };
 use tokio::sync::Notify;
 
@@ -193,7 +192,7 @@ async fn conversation_cancellation_joins_hook_and_cleanup_failure_retires_servic
 
 #[test]
 fn conversation_status_checks_conversation_identity() {
-    use demi_command_service::protocol::ConversationStatus;
+    use demi_command_protocol::ConversationStatus;
     assert!(
         ConversationStatus {
             conversations: vec![]

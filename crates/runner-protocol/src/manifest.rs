@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use demi_command_service::protocol::{PackageDescriptor, ProtocolError, canonical_digest};
+use demi_command_protocol::{PackageDescriptor, ProtocolError, canonical_digest};
 use demi_command_tree::{DeclarationError, NativeOperation, Node};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

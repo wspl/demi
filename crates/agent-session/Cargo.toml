@@ -21,7 +21,7 @@ testing = ["demi-agent-transcript/testing", "demi-provider/testing"]
 demi-agent-protocol = { path = "../agent-protocol" }
 demi-agent-store = { path = "../agent-store" }
 demi-agent-transcript = { path = "../agent-transcript" }
-demi-command-service = { path = "../command-service" }
+demi-command-protocol = { path = "../command-protocol" }
 demi-core = { path = "../core" }
 demi-gates = { path = "../gates" }
 demi-provider = { path = "../provider" }

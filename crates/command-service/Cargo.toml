@@ -14,30 +14,24 @@ doctest = false
 bench = false
 
 [features]
-# Built programs, a started service binary and the runner's native fixture's
-# operations for tests (`command_service::testing`).
-testing = []
+# A started service binary, counting numbers and the count of pauses for
+# tests (`command_service::testing`), with the protocol's test support.
+testing = ["demi-command-protocol/testing"]
 
 [dependencies]
 bytes.workspace = true
 demi-artifact = { path = "../artifact" }
+demi-command-protocol = { path = "../command-protocol" }
 futures-util.workspace = true
-garde.workspace = true
 h2.workspace = true
 http.workspace = true
-schemars.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+sync_wrapper = "1"
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
-
-serde.workspace = true
-serde_with.workspace = true
-sync_wrapper = "1"
-sha2 = "0.10"
-serde_json_canonicalizer = "0.3"
-url = "2"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
@@ -49,5 +43,7 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation"] }
 # The crate's own tests count its pauses (`testing::pauses`) and run on a
 # paused clock.
 demi-command-service = { path = ".", features = ["testing"] }
+# The package tests check artifact locations with the protocol's rules.
+garde.workspace = true
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }
