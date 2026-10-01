@@ -118,22 +118,22 @@ work panel tab state        browser kind                         backend / Host
   lost connection changes no tab. The content of the shown tab says what is
   wrong, reconnects by itself where that can help, and offers Retry where it
   cannot.
-- **A browser that cannot decode the pictures.** The page decodes the
+- **A user's browser that cannot decode the pictures.** The page decodes the
   pictures, H.264 High ([Capture](#capture)), with the viewer's WebCodecs, and
-  some browsers have no decoder for them: a Chromium built without proprietary
-  codecs has WebCodecs but no H.264. The page asks its browser whether it
-  decodes that stream before it opens a view. A browser that does not opens no
-  view, and the content of a bound tab says that this browser cannot show the
-  live view. Such a page is no viewer: it would show nothing, its missing
-  acknowledgements would lower the picture every viewer of the tab shares
-  ([Delivery](#delivery)), its blind clicks would decide the tab's size
-  ([Modes](#modes)), and an open view would keep the conversation active
-  ([Ending a view](#ending-a-view)). The tab requests still work; only the
-  view is missing, so the Host counts no viewer for the page.
+  some users' browsers have no decoder for them: a Chromium built without
+  proprietary codecs has WebCodecs but no H.264. Before it opens a view, the
+  page asks the user's browser whether it decodes that stream. If it does not,
+  the page opens no view, and the content of a bound tab says that the user's
+  browser cannot show the live view. Such a page is no viewer: it would show
+  nothing, its missing acknowledgements would lower the picture every viewer of
+  the tab shares ([Delivery](#delivery)), its blind clicks would decide the
+  tab's size ([Modes](#modes)), and an open view would keep the conversation
+  active ([Ending a view](#ending-a-view)). The tab requests still work; only
+  the view is missing, so the Host counts no viewer for the page.
 
 A page has at most one view per conversation, open only while a `browser` tab
 is the panel's selection and the page is visible
-([Ending a view](#ending-a-view)), and only in a browser that decodes the
+([Ending a view](#ending-a-view)), and only if the user's browser decodes the
 pictures. Selecting another `browser` tab keeps the view and
 sends `watch`; the module then releases what the viewer held on the old tab,
 starts a new stream generation and sends the new tab's dialog, controls and
@@ -202,17 +202,17 @@ messages and file frames, which carry the bytes of files the user chose
 frame or for a paste's text and HTML.
 
 Control messages are JSON. Their types are defined once, in the
-`command-package-browser-protocol` crate: the module decodes each message into them, and the
-page checks each one against the schema generated from them into
+`command-package-browser-protocol` crate: the module decodes each message into
+them, and the page checks each one against the schema generated from them into
 `@demicodes/protocol`
 ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
-Video frames are binary: a header naming the tab,
-the stream generation, a sequence number, whether the frame is a key frame, its
-timestamp and its size, followed by H.264 Annex B data. The protocol also fixes
-the pictures' codec: H.264 High at level 5.1, `avc1.640033` in WebCodecs'
-terms. The module has the capture extension encode with it, and the page, which
-receives it from `command-package-browser-protocol` with the protocol's other constants, asks
-its browser for a decoder of it before it opens a view; the stream does not
+Video frames are binary: a header naming the tab, the stream generation, a
+sequence number, whether the frame is a key frame, its timestamp and its size,
+followed by H.264 Annex B data. The protocol also fixes the pictures' codec:
+H.264 High at level 5.1, `avc1.640033` in WebCodecs' terms. The module has the
+capture extension encode with it, and the page, which receives it from
+`command-package-browser-protocol` with the protocol's other constants, asks the
+user's browser for a decoder of it before it opens a view; the stream does not
 name it. The page and the module ship in the same release, as the page and the
 backend do, so the protocol carries no version.
 
@@ -251,14 +251,14 @@ backend memory instead of dropping stale ones on the Host.
 | Event | Result |
 | --- | --- |
 | The page closes, hides the view, or loses its connection | The invocation is cancelled; the keys and buttons this viewer holds are released; capture of a tab nobody watches stops |
-| The page's document is hidden: another browser tab is in front, or the window is minimized | The page closes the view, with the result above; once the page is visible again, it opens a new view on the tab it shows |
+| The page's document is hidden: another tab of the user's browser is in front, or the window is minimized | The page closes the view, with the result above; once the page is visible again, it opens a new view on the tab it shows |
 | The browser environment ends: last tab closed, conversation release, Chrome crash, Cloud stop | The module tells the page that the browser ended, and the stream ends |
 | Archive, target or directory change, detach | The backend ends the stream, as it ends file transfers |
 | The Host becomes unreachable | The stream ends; the page reconnects when the conversation's host access admits it again |
 | The module sends a frame the protocol refuses | The page reports it and ends the view; the next view opens as after any other end |
 
-The page's visibility, as the browser reports it (the Page Visibility API's
-`visibilityState`), is the one sign of whether someone can watch the view.
+The page's visibility, as the user's browser reports it (the Page Visibility
+API's `visibilityState`), is the one sign of whether someone can watch the view.
 Nobody can watch a hidden page, and an open view keeps its conversation, and
 with it a Cloud, [active](../execution/resource-lifecycle.md#activity), so a
 hidden page holds no view. A visible page keeps its view however long nobody
@@ -520,7 +520,7 @@ crate and package; for the live view:
 
 | Where | Responsibility |
 | --- | --- |
-| `command-package-browser-protocol` | The live protocol: its message types, the frame kinds, the frame header, the frame limit and the video codec; the capture extension's messages. The page receives the live protocol as generated TypeScript in `@demicodes/protocol`. |
+| `command-package-browser-protocol` | The live protocol: its message types, the frame kinds, the frame header, the frame limit and the video codec; the capture extension's messages. The web app receives the live protocol as generated TypeScript in `@demicodes/protocol`. |
 | `command-package-browser-chrome`'s `live` | The live view module: viewers, capture control, delivery and congestion, heartbeat, input, viewport modes and screen ratio, and the page observers of watched tabs with their script, served by the live hub and the capture channel. |
 | `command-package-browser-chrome`'s `driver` | The capture extension as an embedded resource, the capture channel it connects to, and launch configuration. |
 | `command-package-browser-chrome`'s `tabs` | Each tab's viewport, dialog and the upload directory the viewers' files go to. |
@@ -528,7 +528,7 @@ crate and package; for the live view:
 | `command-protocol`, `command-sdk`, the runner's crates, `runner-protocol`, `backend-remote-host` | [User streams](../execution/native-runtime.md#user-streams) and [service streams](../execution/runner.md#service-streams), with no browser knowledge. |
 | `agent-coding-harness` | Declaring `viewport set --scale` with the other `demi browser` commands. |
 | `backend` | Declaring the `browser` user stream; the user stream route, where the user's shard admits and ends the stream and the edge relays its bytes with backpressure; the [browser tab routes](../product/web-api.md#conversation-browser-tabs), which call the browser's own operations and hold no browser logic. |
-| `web-ui` | The `browser` tab kind: its tab source, which lists, opens and closes tabs through an interface the consumer supplies, and its content, the live view: video, input, native control overlays, clipboard, dialogs, the viewport menu, and what it shows while a tab is opening, gone, or out of reach, or in a browser that cannot decode the pictures. It depends on `@demicodes/protocol` for the live protocol, as it depends on `@demicodes/conversation-client` for agent frames. |
+| `web-ui` | The `browser` tab kind: its tab source, which lists, opens and closes tabs through an interface the consumer supplies, and its content, the live view: video, input, native control overlays, clipboard, dialogs, the viewport menu, and what it shows while a tab is opening, gone, or out of reach, or in a user's browser that cannot decode the pictures. It depends on `@demicodes/protocol` for the live protocol, as it depends on `@demicodes/conversation-client` for agent frames. |
 | `web`, `web-gallery` | The product's stream source and tab routes; a gallery source that encodes its own picture, keeps its own tab list and speaks the protocol, so the kind shows without a Host. |
 | `cloud-guest-image` | Fonts for Chinese, Japanese and Korean text in the Cloud guest image. |
 

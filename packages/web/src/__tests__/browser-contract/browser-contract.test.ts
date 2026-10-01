@@ -26,7 +26,7 @@ import { useProduct } from '../../state/product'
 import { openBrowser, startBackend, startRunner, temporaryRoot, type Backend, type Runner } from './harness'
 import { startScriptedAnthropic, type ScriptedAnthropic } from './scripted-anthropic'
 
-// The browser-contract suite (`scenarios.md` § Browser-contract suite): the
+// The browser-contract suite (`scenarios.md` § Web app contract suite): the
 // backend executable, driven the way the page drives it, through the web
 // application's API client and the conversation socket's `AgentClient`,
 // which validate every answer and frame with the generated schemas. The

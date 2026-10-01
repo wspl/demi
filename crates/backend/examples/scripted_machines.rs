@@ -1,6 +1,6 @@
 //! The backend scenarios' scripted machine manager as a program, for suites
 //! that start the backend executable, such as the browser-contract suite
-//! (`scenarios.md` § Browser-contract suite): the backend reconciles with a
+//! (`scenarios.md` § Web app contract suite): the backend reconciles with a
 //! manager before it serves. The program prints the manager's socket path as
 //! its first line and serves until its standard input closes or it is
 //! terminated. It then ends, and every runner it started ends with it.

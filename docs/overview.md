@@ -1,11 +1,10 @@
 # Demi overview
 
-Demi is a hosted, multi-user coding-agent product that people use in a web
-browser. The backend owns conversations and agent execution. Runners provide
+Demi is a hosted, multi-user coding-agent product that people use in their own
+web browser. The backend owns conversations and agent execution. Runners provide
 filesystem, process and shell operations on paired devices and on each user's
 managed Cloud. The backend, the runner, the native command programs and the
-machine manager are Rust programs; the browser application is Vue and
-TypeScript.
+machine manager are Rust programs; the web app is Vue and TypeScript.
 
 Users configure model providers and choose where tools execute. A conversation
 starts with Cloud selected, but selecting Cloud does not start a machine. File
@@ -22,8 +21,9 @@ Provider services are external to Demi.
 
 ```text
 +--------------------+
-| Browser            |
 | Web application    |
+| in the user's      |
+| browser            |
 +--------------------+
           |
           | HTTP + synchronization and conversation WebSockets
@@ -71,7 +71,7 @@ define that boundary; [native execution](execution/native-runtime.md) defines
 native command services, which are separate from provider CLIs.
 
 Each wire between these parts is defined once, as Rust types in a contract
-crate that both ends link, and the browser's schemas are generated from those
+crate that both ends link, and the web app's schemas are generated from those
 types ([Contracts](architecture/contracts.md)).
 [Crates and packages](architecture/crates-and-packages.md) owns the
 responsibilities and dependencies of every crate and package.
@@ -81,13 +81,13 @@ responsibilities and dependencies of every crate and package.
 For example, a user opens a conversation, selects a paired laptop, and asks the
 agent to edit a file:
 
-1. The browser sends the conversation action to the backend.
+1. The page sends the conversation action to the backend.
 2. The backend runs the agent and selects the authorized execution target.
 3. The runner executes the shell job. A declared native command calls a
    resident command service on the laptop; an application callback returns to
    the backend.
 4. The backend records the conversation result and streams updates to the
-   browser.
+   page.
 
 The edited file stays on the laptop. Switching the conversation's target
 changes where subsequent operations run; it does not move files or the
@@ -116,7 +116,7 @@ The backend vault stores configured provider credentials, encrypted with the
 instance secret. The Claude Code provider passes the selected account's token
 to the CLI on the user's Cloud, in the process's environment. This does not
 make the runner a credential vault, but the token is available to that process
-and its execution environment; it never reaches a paired device. The browser
+and its execution environment; it never reaches a paired device. The web app
 uses backend APIs rather than receiving stored provider secrets.
 
 ## Terms

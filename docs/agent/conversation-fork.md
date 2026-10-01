@@ -56,7 +56,7 @@ independently.
 Fork is an agent capability and a backend product operation. `demi agent`, the
 shell command for managing subagents, gains no subcommand. Fork creates another
 root, not a child of the source. Providers need no new protocol, and the
-browser needs no new conversation-socket frame for this product action.
+web app needs no new conversation-socket frame for this product action.
 
 ## The fork seed
 
@@ -104,12 +104,12 @@ never stored. A Fork is a persistent root at an earlier message.
 
 The endpoint is `POST /api/conversations/:sourceId/fork`, with a strict body
 that contains a client-generated destination UUID and the selected text block
-ID. The server obtains the transcript content itself; the browser never uploads
+ID. The server obtains the transcript content itself; the web app never uploads
 a replacement history. The server verifies ownership of the source and of the
 destination UUID before preparing data.
 
 The response contains the ordinary conversation summary, whose model settings
-are the ones the destination inherited; the browser shows them as it shows any
+are the ones the destination inherited; the web app shows them as it shows any
 conversation's, then opens the destination if the user is still viewing the
 source. `web-ui` keeps the pending state and the retry UUID per message, above
 the virtualized rows; failures appear beside that message's Fork action.
