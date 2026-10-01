@@ -1,10 +1,10 @@
 use bytes::{Buf, Bytes, BytesMut};
+use demi_command_protocol::{MAX_METADATA_BYTES, MAX_RECORD_BYTES, ProtocolError};
 use futures_util::future::poll_fn;
 use h2::{RecvStream, SendStream};
 use thiserror::Error;
 
 use crate::Output;
-use crate::protocol::{MAX_METADATA_BYTES, MAX_RECORD_BYTES, ProtocolError};
 
 /// The largest connection window HTTP/2 allows. Each stream keeps its own
 /// record-sized window, so a stream's window always binds first and a slow

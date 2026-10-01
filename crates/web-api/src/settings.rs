@@ -2,7 +2,7 @@
 //! preferences). Preferences hold saved overrides only: whatever is absent
 //! uses the browser's defaults.
 
-use demi_command_service::protocol::CommandLocale;
+use demi_command_protocol::CommandLocale;
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

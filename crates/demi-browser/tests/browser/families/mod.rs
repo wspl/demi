@@ -3,12 +3,12 @@
 use futures_util::FutureExt;
 use std::{collections::BTreeMap, future::Future, sync::Arc};
 
-use demi_command_service::{
-    Handler, Input, InvocationContext, Output, ServiceError,
-    protocol::{CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Record},
-};
 use demi_browser::DemiBrowser;
 use demi_browser_driver::installation::BrowserDirectories;
+use demi_command_protocol::{
+    CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Record,
+};
+use demi_command_service::{Handler, Input, InvocationContext, Output, ServiceError};
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
@@ -147,7 +147,7 @@ impl BrowserFixture {
     }
 
     pub async fn lifecycle(&self, operation: &str) -> Value {
-        use demi_command_service::protocol::ConversationRequest;
+        use demi_command_protocol::ConversationRequest;
         let request = match operation {
             "status" => ConversationRequest::Status {},
             "release" => ConversationRequest::Release {

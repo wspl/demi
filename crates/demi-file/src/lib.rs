@@ -9,7 +9,7 @@ mod patch;
 
 use std::{future::Future, pin::Pin};
 
-use demi_command_service::protocol::{Completion, Invocation};
+use demi_command_protocol::{Completion, Invocation};
 use demi_command_service::{Handler, InvocationContext, ServiceError};
 use demi_file_protocol::{OPERATIONS, Operation, OperationError};
 use demi_gates::SerialGate;

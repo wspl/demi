@@ -14,6 +14,7 @@ bench = false
 
 [dependencies]
 demi-artifact = { path = "../artifact" }
+demi-command-protocol = { path = "../command-protocol" }
 demi-command-service = { path = "../command-service" }
 demi-runner-protocol = { path = "../runner-protocol" }
 bytes.workspace = true

@@ -14,7 +14,7 @@ use futures_util::{StreamExt, stream::FuturesUnordered};
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
-use crate::protocol::{Completion, NumbersAnswer, NumbersRequest, Record, ServiceSequence};
+use demi_command_protocol::{Completion, NumbersAnswer, NumbersRequest, Record, ServiceSequence};
 use crate::{CommandInput, CommandOutput, Input, Output, ServiceError};
 
 /// Draws waiting for the numbers stream; a full queue holds back their

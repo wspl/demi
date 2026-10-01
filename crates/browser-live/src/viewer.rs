@@ -17,10 +17,8 @@ use demi_browser_protocol::live::{
     PointerAction, STALL_MS, ViewerMode,
 };
 use demi_browser_tabs::{environment::BrowserEnvironment, tab::BrowserTab};
-use demi_command_service::{
-    Input as ServiceInput, InvocationContext, ServiceError,
-    protocol::{CommandError, Completion},
-};
+use demi_command_protocol::{CommandError, Completion};
+use demi_command_service::{Input as ServiceInput, InvocationContext, ServiceError};
 
 use crate::protocol::{TabId, ViewportMode};
 use crate::{

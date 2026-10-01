@@ -35,6 +35,7 @@ demi-browser-live = { path = "../browser-live" }
 demi-browser-page = { path = "../browser-page" }
 demi-browser-protocol = { path = "../browser-protocol" }
 demi-browser-tabs = { path = "../browser-tabs" }
+demi-command-protocol = { path = "../command-protocol" }
 demi-command-service = { path = "../command-service" }
 futures-util.workspace = true
 png = "0.18"

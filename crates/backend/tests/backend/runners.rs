@@ -8,9 +8,9 @@ use std::time::Duration;
 
 use demi_agent_protocol::ClientFrame;
 use demi_backend_shard::holds::HelloStep;
+use demi_command_protocol::ServiceSequence;
 use demi_host_remote::testing::{RunnerProcess, RunnerProcessOptions};
 use demi_runner_protocol::values::DeviceToken;
-use demi_command_service::protocol::ServiceSequence;
 use demi_runner_protocol::wire::{
     self, ArtifactOwner, HelloErrorCode, HostIdentity, Inbound, Outbound, RunnerInfo, RunnerPlatform, StreamArtifactOwner,
 };
@@ -263,7 +263,7 @@ async fn hellos_with_one_token_at_once_bind_one_socket_and_a_repeated_hello_chan
             stream_id: "none".into(),
         }),
         sha256: "0".repeat(64),
-        target: demi_command_service::protocol::host_target().into(),
+        target: demi_command_protocol::host_target().into(),
     };
     bound.send(&after).await;
     match bound.next().await {

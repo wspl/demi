@@ -20,6 +20,7 @@ test = false
 [dependencies]
 bytes.workspace = true
 demi-artifact = { path = "../artifact" }
+demi-command-protocol = { path = "../command-protocol" }
 demi-command-service = { path = "../command-service" }
 demi-core = { path = "../core" }
 demi-file-protocol = { path = "../file-protocol" }

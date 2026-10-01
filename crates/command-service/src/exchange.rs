@@ -11,12 +11,10 @@
 use std::future::Future;
 
 use bytes::Bytes;
+use demi_command_protocol::{Completion, ProtocolError, Record};
 use tokio::sync::mpsc;
 
-use crate::{
-    CommandInput, CommandOutput, ServiceError,
-    protocol::{Completion, ProtocolError, Record},
-};
+use crate::{CommandInput, CommandOutput, ServiceError};
 
 /// Where an invocation's input comes from.
 pub trait InputSource {

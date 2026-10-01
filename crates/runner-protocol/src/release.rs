@@ -6,7 +6,7 @@
 
 use std::collections::BTreeMap;
 
-use demi_command_service::protocol::{PackageArtifact, digest, target_artifacts};
+use demi_command_protocol::{PackageArtifact, digest, target_artifacts};
 use serde::{Deserialize, Serialize};
 
 use crate::wire;
@@ -21,7 +21,7 @@ pub struct RunnerRelease {
     pub release: String,
     #[garde(range(equal = wire::VERSION))]
     pub wire: u32,
-    #[garde(range(equal = demi_command_service::protocol::VERSION))]
+    #[garde(range(equal = demi_command_protocol::VERSION))]
     pub command_protocol: u64,
     #[garde(custom(target_artifacts))]
     pub targets: BTreeMap<String, PackageArtifact>,

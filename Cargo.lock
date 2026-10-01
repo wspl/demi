@@ -1295,7 +1295,7 @@ dependencies = [
  "demi-agent-session",
  "demi-agent-store",
  "demi-agent-transcript",
- "demi-command-service",
+ "demi-command-protocol",
  "demi-core",
  "demi-gates",
  "demi-provider",
@@ -1422,7 +1422,7 @@ dependencies = [
  "demi-backend-storage",
  "demi-browser-protocol",
  "demi-claude-protocol",
- "demi-command-service",
+ "demi-command-protocol",
  "demi-command-tree",
  "demi-core",
  "demi-file-protocol",
@@ -1463,7 +1463,7 @@ version = "0.1.3"
 dependencies = [
  "argon2",
  "demi-backend-storage",
- "demi-command-service",
+ "demi-command-protocol",
  "demi-core",
  "demi-web-api",
  "futures-util",
@@ -1525,7 +1525,7 @@ dependencies = [
  "demi-backend-storage",
  "demi-backend-sync",
  "demi-browser-protocol",
- "demi-command-service",
+ "demi-command-protocol",
  "demi-core",
  "demi-host-remote",
  "demi-provider",
@@ -1601,7 +1601,7 @@ dependencies = [
  "demi-backend-objects",
  "demi-backend-runners",
  "demi-backend-storage",
- "demi-command-service",
+ "demi-command-protocol",
  "demi-command-tree",
  "demi-core",
  "demi-gates",
@@ -1702,7 +1702,7 @@ dependencies = [
  "demi-backend-storage",
  "demi-backend-sync",
  "demi-browser-protocol",
- "demi-command-service",
+ "demi-command-protocol",
  "demi-gates",
  "demi-host-remote",
  "demi-runner-protocol",
@@ -1752,7 +1752,7 @@ dependencies = [
  "demi-browser-protocol",
  "demi-claude-protocol",
  "demi-coding-agent",
- "demi-command-service",
+ "demi-command-protocol",
  "demi-command-tree",
  "demi-core",
  "demi-file-protocol",
@@ -1840,6 +1840,7 @@ dependencies = [
  "demi-browser-page",
  "demi-browser-protocol",
  "demi-browser-tabs",
+ "demi-command-protocol",
  "demi-command-service",
  "futures-util",
  "libc",
@@ -1884,6 +1885,7 @@ dependencies = [
  "chromiumoxide",
  "demi-artifact",
  "demi-browser-protocol",
+ "demi-command-protocol",
  "demi-command-service",
  "demi-core",
  "futures-util",
@@ -1911,6 +1913,7 @@ dependencies = [
  "demi-browser-page",
  "demi-browser-protocol",
  "demi-browser-tabs",
+ "demi-command-protocol",
  "demi-command-service",
  "demi-core",
  "futures-util",
@@ -1965,7 +1968,7 @@ dependencies = [
  "chromiumoxide",
  "demi-browser-driver",
  "demi-browser-protocol",
- "demi-command-service",
+ "demi-command-protocol",
  "futures-util",
  "libc",
  "regex",
@@ -1986,6 +1989,7 @@ dependencies = [
  "demi-artifact",
  "demi-claude",
  "demi-claude-protocol",
+ "demi-command-protocol",
  "demi-command-service",
  "futures-util",
  "reqwest",
@@ -2020,7 +2024,7 @@ dependencies = [
  "demi-agent-tools",
  "demi-agent-transcript",
  "demi-browser-protocol",
- "demi-command-service",
+ "demi-command-protocol",
  "demi-command-tree",
  "demi-core",
  "demi-file-protocol",
@@ -2037,30 +2041,42 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-command-service"
+name = "demi-command-protocol"
 version = "0.1.3"
 dependencies = [
  "bytes",
- "demi-artifact",
- "demi-command-service",
- "futures-util",
  "garde",
- "h2",
- "http",
- "libc",
  "schemars",
  "serde",
  "serde_json",
  "serde_json_canonicalizer",
  "serde_with",
  "sha2",
+ "thiserror",
+ "url",
+]
+
+[[package]]
+name = "demi-command-service"
+version = "0.1.3"
+dependencies = [
+ "bytes",
+ "demi-artifact",
+ "demi-command-protocol",
+ "demi-command-service",
+ "futures-util",
+ "garde",
+ "h2",
+ "http",
+ "libc",
+ "serde",
+ "serde_json",
  "sync_wrapper",
  "tempfile",
  "thiserror",
  "tokio",
  "tokio-util",
  "tracing",
- "url",
  "windows-sys 0.61.2",
 ]
 
@@ -2099,6 +2115,7 @@ version = "0.1.3"
 dependencies = [
  "bytes",
  "demi-artifact",
+ "demi-command-protocol",
  "demi-command-service",
  "demi-core",
  "demi-file-protocol",
@@ -2139,7 +2156,7 @@ version = "0.1.3"
 dependencies = [
  "axum",
  "bytes",
- "demi-command-service",
+ "demi-command-protocol",
  "demi-command-tree",
  "demi-core",
  "demi-gates",
@@ -2200,7 +2217,7 @@ dependencies = [
 name = "demi-machines-protocol"
 version = "0.1.3"
 dependencies = [
- "demi-command-service",
+ "demi-command-protocol",
  "demi-runner-protocol",
  "garde",
  "serde",
@@ -2349,6 +2366,7 @@ version = "0.1.3"
 dependencies = [
  "bytes",
  "clap",
+ "demi-command-protocol",
  "demi-command-service",
  "demi-host-remote",
  "demi-runner-host",
@@ -2410,6 +2428,7 @@ name = "demi-runner-jobs"
 version = "0.1.3"
 dependencies = [
  "bytes",
+ "demi-command-protocol",
  "demi-command-service",
  "demi-command-tree",
  "demi-runner-jobs",
@@ -2434,6 +2453,7 @@ version = "0.1.3"
 dependencies = [
  "bytes",
  "demi-artifact",
+ "demi-command-protocol",
  "demi-command-service",
  "demi-runner-protocol",
  "futures-util",
@@ -2456,7 +2476,7 @@ dependencies = [
 name = "demi-runner-protocol"
 version = "0.1.3"
 dependencies = [
- "demi-command-service",
+ "demi-command-protocol",
  "demi-command-tree",
  "demi-core",
  "garde",
@@ -2477,6 +2497,7 @@ version = "0.1.3"
 dependencies = [
  "bytes",
  "demi-artifact",
+ "demi-command-protocol",
  "demi-command-service",
  "demi-runner-process",
  "demi-runner-protocol",
@@ -2503,6 +2524,7 @@ dependencies = [
  "bytes",
  "chrono",
  "clap",
+ "demi-command-protocol",
  "demi-command-service",
  "demi-runner-process",
  "demi-runner-protocol",
@@ -2567,7 +2589,7 @@ name = "demi-shell"
 version = "0.1.3"
 dependencies = [
  "bytes",
- "demi-command-service",
+ "demi-command-protocol",
  "demi-command-tree",
  "demi-core",
  "demi-shell",
@@ -2587,7 +2609,7 @@ version = "0.1.3"
 dependencies = [
  "demi-agent-protocol",
  "demi-browser-protocol",
- "demi-command-service",
+ "demi-command-protocol",
  "demi-core",
  "demi-runner-protocol",
  "garde",
@@ -8987,7 +9009,7 @@ dependencies = [
  "demi-artifact",
  "demi-browser-protocol",
  "demi-claude-protocol",
- "demi-command-service",
+ "demi-command-protocol",
  "demi-core",
  "demi-file-protocol",
  "demi-machines-protocol",

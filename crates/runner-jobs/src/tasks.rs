@@ -13,7 +13,7 @@ use crate::{
     connection::ConnectionHandle,
 };
 use bytes::Bytes;
-use demi_command_service::protocol::CommandContext;
+use demi_command_protocol::CommandContext;
 use demi_runner_process::{
     job_shell::{JobCommands, JobShell, JobStart, ShellJob},
     pipes::{PipeClient, report_pipe},
@@ -302,7 +302,7 @@ impl JobConfig {
         job_id: &str,
         manifest_hash: &str,
         command: CommandContext,
-        edits: demi_command_service::protocol::EditContext,
+        edits: demi_command_protocol::EditContext,
         env: &mut BTreeMap<String, String>,
     ) -> io::Result<(Arc<ExecutionContext>, JobCommands)> {
         let commands = self
@@ -411,7 +411,7 @@ impl JobConfig {
                 );
                 env.insert("TEMP".into(), scratch.path().to_string_lossy().into_owned());
                 env.insert("DEMI_JOB_ID".into(), id.clone());
-                let edit_context = demi_command_service::protocol::EditContext {
+                let edit_context = demi_command_protocol::EditContext {
                     directory: path.join("changes").to_string_lossy().into_owned(),
                     lock: self
                         .directories

@@ -1,0 +1,30 @@
+[package]
+name = "demi-command-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+# Its behavior is tested through the SDK, in command-service's tests
+# (`crates-and-packages.md` § Module layout); no doc examples.
+test = false
+doctest = false
+bench = false
+
+[features]
+# The programs a test finds beside itself and the runner's native fixture's
+# operations (`command_protocol::testing`).
+testing = []
+
+[dependencies]
+bytes.workspace = true
+garde.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_json_canonicalizer = "0.3"
+serde_with.workspace = true
+sha2 = "0.10"
+thiserror.workspace = true
+url = "2"

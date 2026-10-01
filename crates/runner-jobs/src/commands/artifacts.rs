@@ -4,7 +4,7 @@
 
 use crate::commands::contexts::Contexts;
 use crate::connection::ConnectionHandle;
-use demi_command_service::protocol::PackageArtifact;
+use demi_command_protocol::PackageArtifact;
 use demi_runner_protocol::wire;
 use demi_runner_services::{ArtifactResolver, ArtifactSource, RuntimeError};
 use futures_util::future::BoxFuture;

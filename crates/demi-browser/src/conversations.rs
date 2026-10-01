@@ -29,10 +29,8 @@ use demi_browser_tabs::{
     environment::{BrowserEnvironment, LaunchOptions, with_browser},
     registry::Closed,
 };
-use demi_command_service::{
-    ConversationContext, InvocationContext, Numbers, ServiceError,
-    protocol::{CommandLocale, Completion, ConversationRequest, ConversationStatus},
-};
+use demi_command_protocol::{CommandLocale, Completion, ConversationRequest, ConversationStatus};
+use demi_command_service::{ConversationContext, InvocationContext, Numbers, ServiceError};
 
 use crate::protocol::{
     self, ActionProgress, BrowserErrorCode, BrowserFailure, BrowserOperation, CapabilitiesResult,

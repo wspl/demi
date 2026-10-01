@@ -246,7 +246,7 @@ impl Scope {
         {
             let mut files = self.files.lock().unwrap();
             files.retain(|_, previous| previous != path);
-            if files.len() < demi_command_service::protocol::EDIT_JOB_FILES {
+            if files.len() < demi_command_protocol::EDIT_JOB_FILES {
                 files.insert(identity, path.to_owned());
             }
         }

@@ -15,7 +15,7 @@ use axum::extract::{Path, State};
 use axum::http::header::{CACHE_CONTROL, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE, HOST};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
-use demi_command_service::protocol::{is_digest, is_target};
+use demi_command_protocol::{is_digest, is_target};
 use demi_runner_protocol::release::RunnerRelease;
 use demi_web_api::error::ErrorCode;
 use tokio_util::io::ReaderStream;

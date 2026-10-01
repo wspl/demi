@@ -9,14 +9,11 @@ use std::{
 };
 
 use bytes::Bytes;
+use demi_command_protocol::{
+    CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Record, ServiceSequence,
+};
 use demi_command_service::{
-    Client, Handler, InvocationContext, Numbers, ServiceError,
-    protocol::{
-        CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Record,
-        ServiceSequence,
-    },
-    serve,
-    testing::answer_numbers,
+    Client, Handler, InvocationContext, Numbers, ServiceError, serve, testing::answer_numbers,
 };
 use tokio::sync::Notify;
 

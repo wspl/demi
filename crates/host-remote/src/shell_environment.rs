@@ -18,7 +18,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_command_service::protocol::{CommandContext, EditKind as JobEditKind};
+use demi_command_protocol::{CommandContext, EditKind as JobEditKind};
 use demi_core::{CommandId, EditCopies, EditKind, EditSegment, EditedFile, Sequence, ShellId, StreamKind};
 use demi_runner_protocol::{
     manifest::ManifestError,

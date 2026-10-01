@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_command_service::protocol::{ArtifactLocation, ArtifactUrl, PackageArtifact};
+use demi_command_protocol::{ArtifactLocation, ArtifactUrl, PackageArtifact};
 use demi_host_remote::ArtifactResolver;
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;

@@ -9,7 +9,7 @@ use std::{future::Future, pin::Pin, sync::Arc};
 
 use bytes::Bytes;
 use demi_claude_protocol::{Failure, Installed, Operation, Reply};
-use demi_command_service::protocol::{CommandError, Completion, Invocation};
+use demi_command_protocol::{CommandError, Completion, Invocation};
 use demi_command_service::{Handler, Input, InvocationContext, ServiceError};
 use serde::Serialize;
 use tokio_util::sync::CancellationToken;

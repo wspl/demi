@@ -7,7 +7,7 @@
 //! promises: a runner installs a package from the backend's route and runs
 //! it, and the route serves only what the backend loaded.
 
-use demi_command_service::protocol::host_target;
+use demi_command_protocol::host_target;
 use demi_web_api::error::ErrorCode;
 use reqwest::StatusCode;
 use reqwest::header::{CACHE_CONTROL, CONTENT_ENCODING};

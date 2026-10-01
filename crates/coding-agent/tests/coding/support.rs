@@ -16,7 +16,7 @@ use demi_agent_store::{AgentTreeStore, testing::MemoryTreeStore};
 use demi_agent_tools::{EnvironmentScope, PromptContext, ShellEnvironmentFactory};
 use demi_agent_transcript::testing::SequentialIds;
 use demi_coding_agent::{CodingHarness, DemiOptions, HostResolver, demi_root};
-use demi_command_service::testing::built_program;
+use demi_command_protocol::testing::built_program;
 use demi_core::{Block, CommandId, NodeId, SessionPhase, ToolView, TurnId};
 use demi_host_remote::{
     CommandCatalog, ContextSource, EnvironmentOptions, RemoteHost, RemoteShellEnvironmentFactory,

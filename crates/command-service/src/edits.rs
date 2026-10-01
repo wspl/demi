@@ -11,7 +11,7 @@ use std::{
 
 use demi_artifact::{Mode, Permissions, Publication};
 
-use crate::protocol::{
+use demi_command_protocol::{
     EDIT_FILE_BYTES, EDIT_JOB_BYTES, EDIT_JOB_FILES, EDIT_JOB_SEGMENTS, EditContext, EditCopies,
     EditFile, EditJournal, EditKind,
 };
@@ -377,7 +377,7 @@ impl Contents {
     fn text_or_missing(&self) -> bool {
         match self {
             Self::Missing => true,
-            Self::Bytes(bytes, _) => is_text(bytes),
+            Self::Bytes(bytes, _) => demi_command_protocol::is_text(bytes),
             _ => false,
         }
     }
@@ -406,13 +406,6 @@ fn publish_file(path: &Path, bytes: &[u8]) -> io::Result<()> {
             other => io::Error::other(other),
         })
     })
-}
-
-/// Whether `bytes` are text, which edit tracking and line counts read:
-/// UTF-8 without a NUL byte. Binary and non-UTF-8 content are treated alike
-/// (`edit-tracking.md` § Scope).
-pub fn is_text(bytes: &[u8]) -> bool {
-    !bytes.contains(&0) && std::str::from_utf8(bytes).is_ok()
 }
 
 fn normalize(path: &Path) -> PathBuf {
