@@ -7,7 +7,7 @@
 # beneath DIR inside the VM, which changes nothing else there.
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
-instance=demi-machines
+instance=demi-machine-manager
 backend_port=3271
 slots=16
 manager=""
@@ -45,7 +45,7 @@ case "$(limactl list --format '{{.Status}}' "$instance" 2>/dev/null)" in
   Stopped) limactl start "$instance" ;;
   *)
     limactl disk ls --format '{{.Name}}' | grep -qx demi-cloud-data || limactl disk create demi-cloud-data --size "$data_size"
-    limactl start --name "$instance" "$here/lima/demi-machines.yaml"
+    limactl start --name "$instance" "$here/lima/demi-machine-manager.yaml"
     ;;
 esac
 backend_address=$(limactl shell "$instance" -- getent ahostsv4 host.lima.internal | awk 'NR==1 {print $1}')
@@ -55,7 +55,7 @@ uid=$(limactl shell "$instance" -- id -u)
 settings=(
   --user "$guest_user" --image "$image"
   --backend-url "http://$backend_address:$backend_port" --dns "$dns"
-  --data "$data" --socket "/run/user/$uid/demi-machines.sock" --slots "$slots"
+  --data "$data" --socket "/run/user/$uid/demi-machine-manager.sock" --slots "$slots"
 )
 if [ -n "$root" ]; then
   # The VM sees this Mac's home at the same path, so the build is read there.
@@ -72,10 +72,10 @@ fi
 # The service runs a copy named by its digest, so a later build never
 # replaces the executable of a running manager.
 digest=$(shasum -a 256 "$manager" | awk '{print $1}')
-installed="/opt/demi-machines/$digest/demi-machines"
+installed="/opt/demi-machine-manager/$digest/demi-machine-manager"
 limactl shell "$instance" -- sudo install -D -m 0755 "$manager" "$installed"
 limactl shell "$instance" -- sudo bash "$here/scripts/install-managed-hosts.sh" \
   "${settings[@]}" --manager "$installed"
-echo "DEMI_MACHINES_SOCKET=$HOME/.lima/$instance/sock/demi-machines.sock"
+echo "DEMI_MACHINE_MANAGER_SOCKET=$HOME/.lima/$instance/sock/demi-machine-manager.sock"
 echo "DEMI_BACKEND_PUBLIC_URL=http://$backend_address:$backend_port"
-limactl shell "$instance" -- sudo journalctl -u demi-machines.service -n 10 --no-pager
+limactl shell "$instance" -- sudo journalctl -u demi-machine-manager.service -n 10 --no-pager

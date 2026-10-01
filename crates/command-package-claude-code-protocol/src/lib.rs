@@ -1,6 +1,6 @@
-//! The `demi.claude` package's contract (`claude-code.md` § The package):
-//! `claude.ensure` installs the Claude Code CLI a release record names and
-//! `claude.status` lists the installations. Each writes one JSON document to
+//! The `demi.claude-code` package's contract (`claude-code.md` § The package):
+//! `claude-code.ensure` installs the Claude Code CLI a release record names and
+//! `claude-code.status` lists the installations. Each writes one JSON document to
 //! stdout, a failure included, because a service stream carries only stdout.
 
 use std::{collections::BTreeMap, path::PathBuf};
@@ -9,14 +9,14 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, de::DeserializeOwn
 use serde_json::Value;
 
 /// The package's id in the native catalog.
-pub const PACKAGE: &str = "demi.claude";
+pub const PACKAGE: &str = "demi.claude-code";
 
 /// The package's operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Operation {
-    /// `claude.ensure`: installs the version a release record names.
+    /// `claude-code.ensure`: installs the version a release record names.
     Ensure,
-    /// `claude.status`: lists the installed versions.
+    /// `claude-code.status`: lists the installed versions.
     Status,
 }
 
@@ -24,11 +24,11 @@ impl Operation {
     /// Every operation, in the order the descriptor lists them.
     pub const ALL: [Operation; 2] = [Self::Ensure, Self::Status];
 
-    /// The operation's name, such as `claude.ensure`.
+    /// The operation's name, such as `claude-code.ensure`.
     pub fn name(self) -> &'static str {
         match self {
-            Self::Ensure => "claude.ensure",
-            Self::Status => "claude.status",
+            Self::Ensure => "claude-code.ensure",
+            Self::Status => "claude-code.status",
         }
     }
 
@@ -76,7 +76,7 @@ fn cli_version(value: &str, _: &()) -> garde::Result {
     Ok(())
 }
 
-/// What `claude.ensure` reads from stdin: one CLI version and its official
+/// What `claude-code.ensure` reads from stdin: one CLI version and its official
 /// executable for each platform key. Every entry is checked, not only this
 /// machine's.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
@@ -118,7 +118,7 @@ pub struct Installed {
     pub path: PathBuf,
 }
 
-/// What `claude.status` answers: this machine's platform key and its
+/// What `claude-code.status` answers: this machine's platform key and its
 /// installations, newest version first.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

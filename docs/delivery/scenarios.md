@@ -194,7 +194,7 @@ is the regression suite for that contract: a change on either side that breaks
 the other fails here. It is part of the tests of `packages/web`. It starts the
 backend executable with a temporary data directory, calls it through the web
 application's API client, and drives conversations with `AgentClient` from
-`@demicodes/agent-client`, the client the page runs. Its requests carry what a
+`@demicodes/conversation-client`, the client the page runs. Its requests carry what a
 browser adds to the product page's own: the session cookie, and the page's
 `Origin` wherever a browser sends one
 ([Authentication and ownership](../backend/backend.md#authentication-and-ownership)).
@@ -211,7 +211,7 @@ The suite therefore starts the backend with the backend scenarios'
 [scripted machine manager](#system-under-test), run as the backend crate's
 example program `scripted_machines`, and stops the backend before the
 manager. The program prints the manager's socket path as its first line,
-which the suite passes as `DEMI_MACHINES_SOCKET`, and serves until its
+which the suite passes as `DEMI_MACHINE_MANAGER_SOCKET`, and serves until its
 standard input closes or it is terminated; the runners it started end with
 it.
 
@@ -224,7 +224,7 @@ it.
 
 The patch protocol has one more check. The Rust agent tests write patch
 sequences together with the snapshot each must produce, and the
-`@demicodes/agent-client` tests apply them with the browser's patch applier
+`@demicodes/conversation-client` tests apply them with the browser's patch applier
 ([Frame protocol](../agent/runtime.md#frame-protocol)). With the reload check,
 this verifies the patches without a second applier.
 
@@ -298,7 +298,7 @@ Against a manager installed on the host:
 ```sh
 DEMI_TEST_MACHINES_SOCKET=/run/demi-cloud/machines.sock \
 DEMI_TEST_CLOUD_URL=http://<address>:<port> \
-DEMI_TEST_MACHINES_DATA=/var/lib/demi-machines \
+DEMI_TEST_MACHINES_DATA=/var/lib/demi-machine-manager \
 DEMI_TEST_CLOUD_NATIVE=<native configuration> \
   cargo test --workspace --features demi-runner/test-fixtures --test backend \
   -- --include-ignored real_cloud --test-threads=1 --nocapture
@@ -342,7 +342,7 @@ after its `--`.
 The Claude Code suite is part of the backend scenarios' test binary and runs
 their world with the vendor's CLI in place of a scripted provider
 ([Validation](builds-and-releases.md#validation) gives the command). The
-world's Cloud installs Demi's copy of the CLI through `claude.ensure`, from a
+world's Cloud installs Demi's copy of the CLI through `claude-code.ensure`, from a
 local distribution that serves the supplied executable with a manifest the
 suite computes, and the provider starts it as in the product
 ([Claude Code](../providers/claude-code.md#requests-over-stream-json)). The

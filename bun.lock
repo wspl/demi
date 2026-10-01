@@ -17,8 +17,8 @@
         "zod": "^4.0.0",
       },
     },
-    "packages/agent-client": {
-      "name": "@demicodes/agent-client",
+    "packages/conversation-client": {
+      "name": "@demicodes/conversation-client",
       "version": "0.24.0",
       "dependencies": {
         "@demicodes/protocol": "workspace:^",
@@ -96,7 +96,7 @@
         "@codemirror/search": "6.6.0",
         "@codemirror/state": "6.6.0",
         "@codemirror/view": "6.40.0",
-        "@demicodes/agent-client": "workspace:^",
+        "@demicodes/conversation-client": "workspace:^",
         "@demicodes/protocol": "workspace:^",
         "@demicodes/utils": "workspace:^",
         "@floating-ui/vue": "^2.0.0",
@@ -270,7 +270,7 @@
 
     "@codemirror/view": ["@codemirror/view@6.40.0", "", { "dependencies": { "@codemirror/state": "^6.6.0", "crelt": "^1.0.6", "style-mod": "^4.1.0", "w3c-keyname": "^2.2.4" } }, "sha512-WA0zdU7xfF10+5I3HhUUq3kqOx3KjqmtQ9lqZjfK7jtYk4G72YW9rezcSywpaUMCWOMlq+6E0pO1IWg1TNIhtg=="],
 
-    "@demicodes/agent-client": ["@demicodes/agent-client@workspace:packages/agent-client"],
+    "@demicodes/conversation-client": ["@demicodes/conversation-client@workspace:packages/conversation-client"],
 
     "@demicodes/protocol": ["@demicodes/protocol@workspace:packages/protocol"],
 

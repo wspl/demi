@@ -56,7 +56,7 @@ pub struct Config {
     #[arg(long, env = "DEMI_BACKEND_PUBLIC_URL", value_name = "DEMI_BACKEND_PUBLIC_URL")]
     pub public_url: Url,
     /// The machine manager's Unix socket
-    #[arg(long, env = "DEMI_MACHINES_SOCKET", value_name = "DEMI_MACHINES_SOCKET")]
+    #[arg(long, env = "DEMI_MACHINE_MANAGER_SOCKET", value_name = "DEMI_MACHINE_MANAGER_SOCKET")]
     pub machines_socket: PathBuf,
     /// The native command releases and the object storage they are published to
     #[arg(long, env = "DEMI_NATIVE_CONFIG", value_name = "DEMI_NATIVE_CONFIG")]

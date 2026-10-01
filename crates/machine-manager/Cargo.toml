@@ -1,5 +1,5 @@
 [package]
-name = "demi-machines"
+name = "demi-machine-manager"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,12 +11,12 @@ doctest = false
 bench = false
 
 [[bin]]
-name = "demi-machines"
+name = "demi-machine-manager"
 path = "src/main.rs"
 test = false
 
 [features]
-# Acceptance builds: `DEMI_MACHINES_FAULT=<point>` aborts the process at that
+# Acceptance builds: `DEMI_MACHINE_MANAGER_FAULT=<point>` aborts the process at that
 # point (`managed-hosts.md` § Verification).
 fault-injection = []
 # The Cloud image fixtures of the manager's process tests (`tests/manager`).
@@ -62,7 +62,7 @@ sha2 = { version = "0.10", features = ["asm"] }
 # The process tests (`tests/manager`) use the Cloud image fixtures of the
 # `testing` feature; through this, the workspace's one Cargo selection builds
 # them too.
-demi-machines = { path = ".", features = ["testing"] }
+demi-machine-manager = { path = ".", features = ["testing"] }
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }
 

@@ -13,8 +13,8 @@ additionalDisks:
     format: true
     fsType: ext4
 portForwards:
-  - guestSocket: "/run/user/{{.UID}}/demi-machines.sock"
-    hostSocket: "{{.Dir}}/sock/demi-machines.sock"
+  - guestSocket: "/run/user/{{.UID}}/demi-machine-manager.sock"
+    hostSocket: "{{.Dir}}/sock/demi-machine-manager.sock"
 provision:
   - mode: system
     script: |

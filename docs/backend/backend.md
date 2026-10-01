@@ -499,7 +499,7 @@ and an error names the variable. `demi-backend --help` lists the flags.
 | `DEMI_BACKEND_PORT` | The TCP port the backend listens on, 1 to 65535. Default 3271. | — |
 | `DEMI_INSTANCE_MODE` | `shared` or `isolated`. Required. | [Product](../product/product.md#instance-mode-shared-vs-isolated) |
 | `DEMI_BACKEND_PUBLIC_URL` | The URL runners and Cloud guests connect to; installers embed it, the page's install command fetches them from it, expose URLs take their scheme and port from it, and a development store's downloads are on it. Required. | [Cloud setup](../cloud/setup.md#configuration) |
-| `DEMI_MACHINES_SOCKET` | The machine manager's Unix socket. Required: every deployment has Cloud. | [Cloud setup](../cloud/setup.md#configuration) |
+| `DEMI_MACHINE_MANAGER_SOCKET` | The machine manager's Unix socket. Required: every deployment has Cloud. | [Cloud setup](../cloud/setup.md#configuration) |
 | `DEMI_NATIVE_CONFIG` | The native command releases, and the object storage they are published to or the development store that serves them. Required. | [Native runtime](../execution/native-runtime.md#backend-deployment-configuration) |
 | `DEMI_OBJECT_STORE_CONFIG` | Puts the object store in an S3 bucket. Optional: the data directory holds it otherwise. | [Storage](storage.md#the-object-store) |
 | `DEMI_INSTANCE_SECRET` | The instance secret as 64 hexadecimal digits. Optional: generated into the data directory otherwise. | [Storage](storage.md#passwords-and-credentials-at-rest) |
@@ -531,7 +531,7 @@ Cloud guest, and both run `x86_64-unknown-linux-musl`:
      --target x86_64-unknown-linux-musl
    cargo xtask native package --package demi-browser --output .cache/releases/demi-browser \
      --target x86_64-unknown-linux-musl
-   cargo xtask native package --package demi-claude --output .cache/releases/demi-claude \
+   cargo xtask native package --package demi-claude-code --output .cache/releases/demi-claude-code \
      --target x86_64-unknown-linux-musl
    ```
 
@@ -545,7 +545,7 @@ Cloud guest, and both run `x86_64-unknown-linux-musl`:
      "releases": [
        { "directory": "demi-file", "executable": "demi-file" },
        { "directory": "demi-browser", "executable": "demi-browser" },
-       { "directory": "demi-claude", "executable": "demi-claude" }
+       { "directory": "demi-claude-code", "executable": "demi-claude-code" }
      ],
      "store": { "provider": "local" }
    }
@@ -570,7 +570,7 @@ Cloud guest, and both run `x86_64-unknown-linux-musl`:
    DEMI_BACKEND_DATA=~/.demi/development \
    DEMI_INSTANCE_MODE=isolated \
    DEMI_BACKEND_PUBLIC_URL=http://<address the guest reaches>:3271 \
-   DEMI_MACHINES_SOCKET=/run/demi-cloud/machines.sock \
+   DEMI_MACHINE_MANAGER_SOCKET=/run/demi-cloud/machines.sock \
    DEMI_NATIVE_CONFIG=.cache/releases/native.json \
    DEMI_RUNNER_RELEASE_DIR=.cache/releases/runners \
    DEMI_EXPOSE_DOMAIN=expose.localhost \

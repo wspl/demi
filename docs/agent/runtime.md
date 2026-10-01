@@ -1156,7 +1156,7 @@ conversation: the backend supplies the session id and the working directory
 from the conversation's target, and the client never sends them. The types of
 every frame are Rust types, and the browser validates frames with the schemas
 generated from them ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
-`AgentClient`, in `@demicodes/agent-client`, is the browser's client of this
+`AgentClient`, in `@demicodes/conversation-client`, is the browser's client of this
 protocol.
 
 For example, a page opens a conversation whose root is running:

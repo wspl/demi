@@ -8,10 +8,10 @@
 //! selected, the next request closes that process and starts one with the
 //! new account's token.
 //!
-//! The distribution is a server the test scripts, and `demi.claude` is the
+//! The distribution is a server the test scripts, and `demi.claude-code` is the
 //! workspace's own, which downloads only over HTTPS: every install from the
 //! scripted distribution fails. The Cloud's CLI is therefore a script the
-//! test puts in its home with a receipt, where `claude.ensure` installs; it
+//! test puts in its home with a receipt, where `claude-code.ensure` installs; it
 //! answers each message with where it runs and with which token. No test
 //! runs the real CLI.
 
@@ -137,7 +137,7 @@ async fn saved(backend: &TestBackend, session: &Session) -> Vec<Block> {
     transcript(backend, session, CONVERSATION).await.blocks
 }
 
-// Over a second: the Cloud boots and installs the `demi.claude` package, which
+// Over a second: the Cloud boots and installs the `demi.claude-code` package, which
 // installs the CLI and runs it.
 #[tokio::test]
 async fn a_conversation_on_a_paired_device_infers_through_the_clouds_cli_with_the_active_accounts_token() {

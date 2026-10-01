@@ -1,6 +1,6 @@
 # @demicodes/utils
 
-Small generic helpers that Demi's browser packages share: `@demicodes/agent-client`,
+Small generic helpers that Demi's browser packages share: `@demicodes/conversation-client`,
 `@demicodes/web-ui`, and the web application and its component gallery. Each is a
 pure function or a small primitive with no dependency and no domain type, so a
 package imports it rather than writing its own copy.

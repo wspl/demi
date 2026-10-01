@@ -1,5 +1,5 @@
 [package]
-name = "demi-claude"
+name = "demi-claude-code"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -13,7 +13,7 @@ doctest = false
 bench = false
 
 [[bin]]
-name = "demi-claude"
+name = "demi-claude-code"
 path = "src/main.rs"
 test = false
 
@@ -37,7 +37,7 @@ tokio.workspace = true
 tokio-util.workspace = true
 
 [dev-dependencies]
-demi-claude = { path = ".", features = ["testing"] }
+demi-claude-code = { path = ".", features = ["testing"] }
 demi-shared-artifacts = { path = "../shared-artifacts", features = ["testing"] }
 # The program started and driven as a service (`testing::ServiceProcess`).
 demi-command-sdk = { path = "../command-sdk", features = ["testing"] }

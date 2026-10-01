@@ -1,5 +1,5 @@
 {
-  "name": "@demicodes/agent-client",
+  "name": "@demicodes/conversation-client",
   "description": "The browser's client of Demi's conversation socket: AgentClient, its WebSocket transport and the transcript patch applier.",
   "version": "0.24.0",
   "private": false,
@@ -32,8 +32,8 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wspl/demi.git",
-    "directory": "packages/agent-client"
+    "directory": "packages/conversation-client"
   },
-  "homepage": "https://github.com/wspl/demi/tree/main/packages/agent-client#readme",
+  "homepage": "https://github.com/wspl/demi/tree/main/packages/conversation-client#readme",
   "bugs": "https://github.com/wspl/demi/issues"
 }

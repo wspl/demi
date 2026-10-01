@@ -1,9 +1,9 @@
-//! The `demi-machines` executable: the one place the manager is assembled
+//! The `demi-machine-manager` executable: the one place the manager is assembled
 //! (`managed-hosts.md` § Startup and recovery).
 
 #[cfg(not(target_os = "linux"))]
 fn main() -> std::process::ExitCode {
-    eprintln!("demi-machines: the Cloud manager runs only on Linux");
+    eprintln!("demi-machine-manager: the Cloud manager runs only on Linux");
     std::process::ExitCode::FAILURE
 }
 
@@ -11,11 +11,11 @@ fn main() -> std::process::ExitCode {
 fn main() -> std::process::ExitCode {
     use tracing_subscriber::{fmt, prelude::*};
 
-    let config = match demi_machines::config::Config::from_env() {
+    let config = match demi_machine_manager::config::Config::from_env() {
         Ok(config) => config,
-        Err(demi_machines::config::ConfigError::Invalid(error)) => error.exit(),
+        Err(demi_machine_manager::config::ConfigError::Invalid(error)) => error.exit(),
         Err(error) => {
-            eprintln!("demi-machines: {error}");
+            eprintln!("demi-machine-manager: {error}");
             return std::process::ExitCode::FAILURE;
         }
     };
@@ -36,7 +36,7 @@ fn main() -> std::process::ExitCode {
     match result {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {
-            tracing::error!("demi-machines: {}", demi_machines::server::chain(&*error));
+            tracing::error!("demi-machine-manager: {}", demi_machine_manager::server::chain(&*error));
             std::process::ExitCode::FAILURE
         }
     }
@@ -46,7 +46,7 @@ fn main() -> std::process::ExitCode {
 mod service {
     use std::{error::Error, rc::Rc};
 
-    use demi_machines::{
+    use demi_machine_manager::{
         blocking,
         config::{Config, Mode},
         lock::{self, ManagerLock},
@@ -94,7 +94,7 @@ mod service {
         preflight::release_probes(&core.config.data).await?;
         match core.config.limits {
             Some(_) => cgroup::prepare().await?,
-            None => tracing::warn!("demi-machines: DEMI_MANAGED_LIMITS=off: Clouds run without CPU, memory or PID limits"),
+            None => tracing::warn!("demi-machine-manager: DEMI_MANAGED_LIMITS=off: Clouds run without CPU, memory or PID limits"),
         }
         let (working, images) = (core.config.working(), core.config.images());
         blocking::run(move |off| preflight::require_one_filesystem(off, &working, &images)).await?;
@@ -116,7 +116,7 @@ mod service {
         // does nothing.
         sd_notify::notify(&[sd_notify::NotifyState::Ready])?;
         let limits = if core.config.limits.is_some() { "on" } else { "off" };
-        tracing::info!("demi-machines: gVisor/systrap ready at {}, resource limits {limits}", socket_path.display());
+        tracing::info!("demi-machine-manager: gVisor/systrap ready at {}, resource limits {limits}", socket_path.display());
         let stopping = async move {
             tokio::select! {
                 _ = terminate.recv() => {}

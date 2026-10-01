@@ -4,7 +4,7 @@
   "commit": false,
   "fixed": [
     [
-      "@demicodes/agent-client",
+      "@demicodes/conversation-client",
       "@demicodes/protocol",
       "@demicodes/utils",
       "@demicodes/web",

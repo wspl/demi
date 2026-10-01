@@ -279,7 +279,7 @@ volume and survives a reset, while these are Demi's working files, which a
 reset removes with the rest of the system.
 
 The manager keeps bases, generations, and working pairs under its state
-directory, `DEMI_MACHINES_DATA`, which must be one filesystem
+directory, `DEMI_MACHINE_MANAGER_DATA`, which must be one filesystem
 ([Save a generation](#save-a-generation) explains why). Nothing of a machine
 lives in the backend's data directory.
 

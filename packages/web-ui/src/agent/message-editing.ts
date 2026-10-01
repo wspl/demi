@@ -1,6 +1,6 @@
 import { toRaw } from 'vue'
 import { z } from 'zod'
-import { EditRejectedError } from '@demicodes/agent-client'
+import { EditRejectedError } from '@demicodes/conversation-client'
 import {
   editRequestSchema,
   userContentBlockSchema,
@@ -12,7 +12,7 @@ import {
 import { reportError } from '../infra/errors'
 import type { MessageListBlock } from './pending-steers'
 
-export { EditRejectedError } from '@demicodes/agent-client'
+export { EditRejectedError } from '@demicodes/conversation-client'
 
 /**
  * A file the edit added, once its upload is done: the upload the edit names

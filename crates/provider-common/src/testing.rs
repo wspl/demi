@@ -421,7 +421,7 @@ impl MockVendor {
 
     /// The vendor over HTTPS, presenting `certificate`, a PEM certificate
     /// chain for `127.0.0.1`, with its PEM `key`: for a client that accepts
-    /// nothing but `https`, such as `demi.claude` downloading from a
+    /// nothing but `https`, such as `demi.claude-code` downloading from a
     /// distribution. The client trusts the chain's issuer by its own means.
     pub async fn start_tls(certificate: &[u8], key: &[u8]) -> Self {
         use tokio_rustls::rustls::pki_types::pem::PemObject as _;

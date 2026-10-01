@@ -1,5 +1,5 @@
 #![cfg(unix)]
-//! The `demi-claude` program at its boundary (`claude-code.md` § The
+//! The `demi-claude-code` program at its boundary (`claude-code.md` § The
 //! package): the command service it serves on its standard input and
 //! output, as a runner starts it, answers each invocation with one document
 //! and says a failure in its completion too.
@@ -80,7 +80,7 @@ async fn invoke(service: &ServiceProcess, operation: &str, input: Vec<u8>) -> (V
 
 /// A release record of `version` whose entry for this machine is `url`.
 fn record(version: &str, url: &str) -> Vec<u8> {
-    let platform = demi_claude::platform::current().unwrap();
+    let platform = demi_claude_code::platform::current().unwrap();
     let sha256 = format!("{:x}", Sha256::digest(BODY));
     json!({ "version": version, "platforms": { platform: { "url": url, "size": BODY.len(), "sha256": sha256 } } })
         .to_string()
@@ -88,7 +88,7 @@ fn record(version: &str, url: &str) -> Vec<u8> {
 }
 
 /// A verified installation of `version` under `home`, with its receipt, as
-/// `claude.ensure` leaves it: the service answers from it without a
+/// `claude-code.ensure` leaves it: the service answers from it without a
 /// download.
 fn installed(home: &Path, version: &str) -> PathBuf {
     let directory = home.join(".demi/claude").join(version);
@@ -97,7 +97,7 @@ fn installed(home: &Path, version: &str) -> PathBuf {
     std::fs::write(&executable, BODY).unwrap();
     let receipt = json!({
         "version": version,
-        "platform": demi_claude::platform::current().unwrap(),
+        "platform": demi_claude_code::platform::current().unwrap(),
         "sha256": format!("{:x}", Sha256::digest(BODY)),
         "size": BODY.len(),
     });
@@ -110,18 +110,18 @@ async fn the_service_answers_one_document_for_each_invocation() {
     let home = tempfile::tempdir().unwrap();
     let path = installed(home.path(), "2.1.278");
     let service = ServiceProcess::start(
-        env!("CARGO_BIN_EXE_demi-claude"),
+        env!("CARGO_BIN_EXE_demi-claude-code"),
         &["--command-service"],
         &[("HOME", home.path().to_str().unwrap())],
     )
     .await
     .unwrap();
     let info = service.client().info().await.unwrap();
-    assert_eq!(info.operations, ["claude.ensure", "claude.status"]);
+    assert_eq!(info.operations, ["claude-code.ensure", "claude-code.status"]);
 
     let (document, completion) = invoke(
         &service,
-        "claude.ensure",
+        "claude-code.ensure",
         record("2.1.278", "https://downloads.example.test/claude"),
     )
     .await;
@@ -131,12 +131,12 @@ async fn the_service_answers_one_document_for_each_invocation() {
     );
     assert_eq!((completion.exit_code, completion.error), (0, None));
 
-    let (document, completion) = invoke(&service, "claude.status", Vec::new()).await;
+    let (document, completion) = invoke(&service, "claude-code.status", Vec::new()).await;
     assert_eq!(
         document,
         json!({
             "ok": true,
-            "platform": demi_claude::platform::current().unwrap(),
+            "platform": demi_claude_code::platform::current().unwrap(),
             "installed": [{ "version": "2.1.278", "path": path }],
         })
     );
@@ -145,7 +145,7 @@ async fn the_service_answers_one_document_for_each_invocation() {
     // The program downloads over HTTPS only, from any address.
     let (document, completion) = invoke(
         &service,
-        "claude.ensure",
+        "claude-code.ensure",
         record("2.1.279", "http://127.0.0.1:9/claude"),
     )
     .await;
@@ -156,11 +156,11 @@ async fn the_service_answers_one_document_for_each_invocation() {
         json!({ "ok": false, "code": "invalid_release", "message": error.message })
     );
 
-    let (document, completion) = invoke(&service, "claude.ensure", b"{}".to_vec()).await;
+    let (document, completion) = invoke(&service, "claude-code.ensure", b"{}".to_vec()).await;
     assert_eq!((document["ok"].clone(), document["code"].clone()), (json!(false), json!("invalid_release")));
     assert_eq!(completion.exit_code, 1);
 
-    let (document, _) = invoke(&service, "claude.ensure", vec![b' '; 64 * 1024 + 1]).await;
+    let (document, _) = invoke(&service, "claude-code.ensure", vec![b' '; 64 * 1024 + 1]).await;
     assert_eq!(document["code"], json!("invalid_release"));
 
     assert!(service.shutdown().await.unwrap().success());

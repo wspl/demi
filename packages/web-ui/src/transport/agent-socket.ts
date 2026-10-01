@@ -1,4 +1,4 @@
-import { AgentClient, createWebSocketTransport } from '@demicodes/agent-client'
+import { AgentClient, createWebSocketTransport } from '@demicodes/conversation-client'
 import { watchSilence } from './liveness'
 
 /**

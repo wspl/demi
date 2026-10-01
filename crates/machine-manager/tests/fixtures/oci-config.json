@@ -1,7 +1,7 @@
 {
   "ociVersion": "1.1.0",
   "root": {
-    "path": "/run/demi-machines/demi-00000000-0000-4000-8000-000000000000/rootfs",
+    "path": "/run/demi-machine-manager/demi-00000000-0000-4000-8000-000000000000/rootfs",
     "readonly": false
   },
   "process": {
@@ -62,25 +62,25 @@
     {
       "destination": "/home",
       "type": "bind",
-      "source": "/run/demi-machines/demi-00000000-0000-4000-8000-000000000000/home",
+      "source": "/run/demi-machine-manager/demi-00000000-0000-4000-8000-000000000000/home",
       "options": ["bind", "nodev"]
     },
     {
       "destination": "/run/demi-boot.json",
       "type": "bind",
-      "source": "/run/demi-machines/demi-00000000-0000-4000-8000-000000000000/credentials/boot.json",
+      "source": "/run/demi-machine-manager/demi-00000000-0000-4000-8000-000000000000/credentials/boot.json",
       "options": ["bind", "ro", "nodev"]
     },
     {
       "destination": "/etc/resolv.conf",
       "type": "bind",
-      "source": "/run/demi-machines/demi-00000000-0000-4000-8000-000000000000/credentials/resolv.conf",
+      "source": "/run/demi-machine-manager/demi-00000000-0000-4000-8000-000000000000/credentials/resolv.conf",
       "options": ["bind", "ro", "nodev"]
     },
     {
       "destination": "/etc/hosts",
       "type": "bind",
-      "source": "/run/demi-machines/demi-00000000-0000-4000-8000-000000000000/credentials/hosts",
+      "source": "/run/demi-machine-manager/demi-00000000-0000-4000-8000-000000000000/credentials/hosts",
       "options": ["bind", "ro", "nodev"]
     }
   ],

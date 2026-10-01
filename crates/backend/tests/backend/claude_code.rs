@@ -20,9 +20,9 @@
 //! traffic, telemetry and error reporting are off; and the account's token
 //! is made up.
 //!
-//! The distribution serves HTTPS, since `demi.claude` downloads nothing
+//! The distribution serves HTTPS, since `demi.claude-code` downloads nothing
 //! else, with the certificate in `claude_code/`. The backend in this process
-//! and the Cloud's `demi.claude` trust its CA through `SSL_CERT_FILE`, which
+//! and the Cloud's `demi.claude-code` trust its CA through `SSL_CERT_FILE`, which
 //! the machine's roots of the one selection's reqwest read.
 
 use std::collections::BTreeMap;
@@ -124,7 +124,7 @@ fn version_of(path: &std::ffi::OsStr) -> String {
 
 /// The path of the suite's CA, which `SSL_CERT_FILE` must name: the backend
 /// in this process reads the distribution with it, and the Cloud's runner
-/// gets it for `demi.claude`.
+/// gets it for `demi.claude-code`.
 fn trusted_ca() -> String {
     let named = std::env::var("SSL_CERT_FILE")
         .expect("SSL_CERT_FILE names claude_code/distribution-ca.pem (builds-and-releases.md § Validation)");
@@ -303,7 +303,7 @@ fn carries(frame: &ServerFrame, text: &str) -> bool {
 }
 
 // Several seconds, as in every scenario of the suite: the Cloud boots and
-// installs `demi.claude`, which downloads and verifies the CLI (240 MB for
+// installs `demi.claude-code`, which downloads and verifies the CLI (240 MB for
 // 2.1.283), and each new CLI process takes about half a second to start.
 #[tokio::test]
 #[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI, as builds-and-releases.md § Validation runs it"]

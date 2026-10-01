@@ -3,7 +3,7 @@
 //!
 //! ```text
 //! <data>/working/<device>/sandbox.json      {id, slot}: which boot, which network slot
-//! /run/demi-machines/<sandbox>/
+//! /run/demi-machine-manager/<sandbox>/
 //!     base/ system/ home/ rootfs/ credentials/   mount points
 //!     config.json runtime.log                    the OCI bundle and runsc's output
 //! ```
@@ -80,7 +80,7 @@ pub struct SandboxRecord {
     pub slot: u16,
 }
 
-/// A boot's runtime directory, `/run/demi-machines/<sandbox>`.
+/// A boot's runtime directory, `/run/demi-machine-manager/<sandbox>`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeDirectory {
     root: PathBuf,

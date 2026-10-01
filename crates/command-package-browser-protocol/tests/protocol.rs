@@ -162,7 +162,7 @@ fn an_invocation_decodes_to_the_operation_its_name_names() {
         Operation::parse("browser.nothing", json!({})),
         Err(OperationError::Unserved(name)) if name == "browser.nothing"
     ));
-    for other in ["file.read", "claude.ensure"] {
+    for other in ["file.read", "claude-code.ensure"] {
         assert!(
             matches!(Operation::parse(other, json!({})), Err(OperationError::Unknown(name)) if name == other),
             "{other}"

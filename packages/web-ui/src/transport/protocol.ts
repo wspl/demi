@@ -40,6 +40,6 @@ export interface ModelInfo {
 }
 
 // The session's events and the one transcript patch applier, which a host
-// reads through here: it reaches `@demicodes/agent-client` only through this
+// reads through here: it reaches `@demicodes/conversation-client` only through this
 // package.
-export { applyTranscriptPatches, type ClientSessionEvent } from '@demicodes/agent-client'
+export { applyTranscriptPatches, type ClientSessionEvent } from '@demicodes/conversation-client'

@@ -820,10 +820,10 @@ Version: 0.19.0-3
             write(&runners.join(&runner.release).join(MANIFEST), &record);
             write(&runners.join(MANIFEST), &record);
             let browser = path.join("demi-browser");
-            let claude = path.join("demi-claude");
+            let claude = path.join("demi-claude-code");
             let releases = vec![
                 command_package(&browser, demi_command_package_browser_protocol::PACKAGE, "demi-browser", b"browser", browser_program).await,
-                command_package(&claude, demi_command_package_claude_code_protocol::PACKAGE, "demi-claude", b"claude", b"claude").await,
+                command_package(&claude, demi_command_package_claude_code_protocol::PACKAGE, "demi-claude-code", b"claude", b"claude").await,
             ];
             let chrome = zip(&[(CHROME, b"chrome"), ("chrome-linux-arm64/LICENSE", b"license")]);
             let uv = gzip_tar(&[(UV_EXECUTABLES[0], b"uv"), (UV_EXECUTABLES[1], b"uvx")]);
@@ -935,7 +935,7 @@ Version: 0.19.0-3
         let browser = measured(b"browser").await;
         let claude = measured(b"claude").await;
         let executables = BTreeMap::from([
-            (format!("{ARTIFACTS_PATH}/{}/demi-claude", claude.sha256), claude.clone()),
+            (format!("{ARTIFACTS_PATH}/{}/demi-claude-code", claude.sha256), claude.clone()),
             (format!("{ARTIFACTS_PATH}/{}/demi-browser", browser.sha256), browser.clone()),
             (format!("{IMAGE_BROWSERS}/{}/{CHROME}", chrome.sha256), measured(b"chrome").await),
             (RUNNER_PATH.to_owned(), measured(b"runner").await),

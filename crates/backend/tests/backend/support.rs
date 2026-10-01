@@ -151,11 +151,11 @@ static FILE: LazyLock<Built> = LazyLock::new(|| {
 static BROWSER: LazyLock<Built> =
     LazyLock::new(|| Built::new(BROWSER_PACKAGE, built_program("demi-browser"), BrowserOperation::names()));
 
-/// `demi.claude`, from `demi-claude`.
+/// `demi.claude-code`, from `demi-claude-code`.
 static CLAUDE: LazyLock<Built> = LazyLock::new(|| {
     Built::new(
         demi_command_package_claude_code_protocol::PACKAGE,
-        built_program("demi-claude"),
+        built_program("demi-claude-code"),
         demi_command_package_claude_code_protocol::Operation::ALL.map(demi_command_package_claude_code_protocol::Operation::name),
     )
 });
@@ -381,7 +381,7 @@ impl Harness {
     }
 
     /// A Claude Code provider's CLI is listed and installed by the
-    /// `demi.claude` package the workspace built, which a Cloud's runner
+    /// `demi.claude-code` package the workspace built, which a Cloud's runner
     /// installs from the backend.
     pub fn with_claude_package(mut self) -> Self {
         self.release = Some(&*CLAUDE);

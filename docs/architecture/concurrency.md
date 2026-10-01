@@ -39,7 +39,7 @@ Each program picks its model by what its state belongs to.
 | Runner | A single-threaded control runtime; a shell runtime with its own large blocking pool; a Host log thread | Its state belongs to one registration and one backend connection, so there is nothing to run in parallel; shell work must not share a bounded pool with control work |
 | `demi-browser` | A multi-threaded runtime with owner tasks | Its state belongs to many conversations whose browsers must make progress in parallel |
 | `demi-file` | A multi-threaded runtime, file mutations behind one gate | Reads run in parallel; mutations wait on disk one at a time |
-| `demi-claude` | A current-thread runtime | Installs are rare and wait on IO |
+| `demi-claude-code` | A current-thread runtime | Installs are rare and wait on IO |
 | Machine manager | A single-threaded loop, one worker task per device, the blocking pool and one-shot namespace threads | Little state and much blocking work |
 
 All programs use Tokio. The backend's shard threads, the runner's control
@@ -143,9 +143,9 @@ per-conversation threads would add nothing but a hop, and would pin a
 conversation's agent commands, live view frames and DevTools decoding to one
 thread.
 
-### demi-claude and the command-sdk
+### demi-claude-code and the command-sdk
 
-`demi-claude` runs on a current-thread runtime. Hashing an installed
+`demi-claude-code` runs on a current-thread runtime. Hashing an installed
 executable and writing files each run in one blocking call.
 
 The command-sdk does not choose a runtime. Handler futures are `Send`,
@@ -325,7 +325,7 @@ What crosses is owned data in both directions.
 | Runner | The control blocking pool behind `Admission` for filesystem requests, git computations and hashing; the shell runtime's pool for interpreter units and utilities; its own thread for the Host log |
 | `demi-file` | The blocking pool for file mutations and output publication |
 | `demi-browser` | The blocking pool for archive extraction, image decoding and encoding, output publication, process-table scans and hashing |
-| `demi-claude` | One blocking call each for hashing and file writes |
+| `demi-claude-code` | One blocking call each for hashing and file writes |
 | Machine manager | One entry point to the blocking pool; the storage and Linux functions take a token only that entry point creates, so running off the loop is checked at compile time. Child processes start from the loop, because spawning is quick and waiting is event-driven, and dropping one kills it; firewall updates run on the pool because their library spawns synchronously |
 
 `tokio::task::block_in_place` is not used: blocking work moves off the async

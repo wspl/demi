@@ -29,13 +29,13 @@ names each crate's items.
 | Wire or stored data | Contract crate | Ends |
 |---|---|---|
 | Browser HTTP requests and responses | `web-api-protocol` | Backend; `web`, through generated TypeScript |
-| Conversation WebSocket frames, transcript blocks and patches, tool views | `conversation-socket-protocol`, `shared-types` | Backend; `agent-client` and `web-ui`, through `@demicodes/protocol` |
+| Conversation WebSocket frames, transcript blocks and patches, tool views | `conversation-socket-protocol`, `shared-types` | Backend; `conversation-client` and `web-ui`, through `@demicodes/protocol` |
 | Runner wire (MessagePack over a WebSocket) and command manifests | `runner-protocol`, with manifest nodes from `command-declarations` | Backend; runner |
 | Managed boot record | `runner-protocol` | Backend and machine manager; the runner in a Cloud sandbox reads it |
-| Command invocations between a runner and a command program | `command-protocol` | Runner; `demi-file`, `demi-browser`, `demi-claude` |
+| Command invocations between a runner and a command program | `command-protocol` | Runner; `demi-file`, `demi-browser`, `demi-claude-code` |
 | `demi.file` operations | `command-package-file-protocol` | `agent-coding-harness` declarations; `demi-file` |
 | `demi.browser` operations, live view messages, capture extension events | `command-package-browser-protocol` | `agent-coding-harness` declarations, the backend and the browser crates; the page reads live view messages through `@demicodes/protocol` |
-| `demi.claude` operations and the Claude Code release record | `command-package-claude-code-protocol` | Backend; `demi-claude` |
+| `demi.claude-code` operations and the Claude Code release record | `command-package-claude-code-protocol` | Backend; `demi-claude-code` |
 | Machine-manager socket (one JSON document per line over a Unix socket) and the Cloud image manifest | `machine-manager-protocol` | Backend; machine manager; `xtask` writes the image manifest |
 | JSON stored in the control and conversation databases | The crate that owns the data, such as `shared-types` for blocks | Backend |
 
@@ -128,7 +128,7 @@ These are the points where values enter, and what a failure does:
 |---|---|---|
 | A browser request body or query | The edge's body and query extractors, into `web-api-protocol` types | 400 `invalid_body` or `invalid_query`, naming the field and the reason ([Web API](../product/web-api.md)) |
 | A frame on the conversation WebSocket | The conversation socket, into `ClientFrame` | An `error` frame with code `invalid_frame`, before any state changes; a message that is not JSON closes the socket ([Frame protocol](../agent/runtime.md#frame-protocol)) |
-| A frame or REST response the browser receives | The generated schemas, in `agent-client` and `web` | `agent-client` drops the connection and reports the field path; `web` validates a response before applying it to state |
+| A frame or REST response the browser receives | The generated schemas, in `conversation-client` and `web` | `conversation-client` drops the connection and reports the field path; `web` validates a response before applying it to state |
 | A runner message, at either end | `runner-protocol`'s codec | The connection closes ([Runner](../execution/runner.md)) |
 | Invocation metadata and records between a runner and a command program | `command-protocol` | [Validation and flow control](../execution/native-runtime.md#validation-and-flow-control) |
 | A command's arguments | The declaration's JSON Schema, at the dispatcher and again in a native handler before work | One usage error that names every field that failed |
@@ -224,12 +224,12 @@ Zod source and z.infer types
   be an `http` or `https` URL. An email address the browser sends passes its
   schema only when it has no surrounding white space and has the form the
   backend checks, so the backend accepts every address the schema does.
-- **Checked on arrival.** `agent-client` validates every frame it receives, and
+- **Checked on arrival.** `conversation-client` validates every frame it receives, and
   `web` validates every REST response before applying it to state.
 - **One patch applier.** Transcript patches have one applier,
-  `applyTranscriptPatches` in `agent-client`. The agent's Rust tests write
+  `applyTranscriptPatches` in `conversation-client`. The agent's Rust tests write
   patch sequences together with the snapshot each must produce, and
-  `agent-client`'s tests apply them, so no second applier exists in Rust.
+  `conversation-client`'s tests apply them, so no second applier exists in Rust.
 
 The emitter lives in the repository because no available generator covers
 this job: `json-schema-to-zod` is unmaintained; `zod_gen` and `schemars-zod`

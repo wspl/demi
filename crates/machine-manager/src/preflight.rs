@@ -25,7 +25,7 @@ pub enum PreflightError {
     SharedNamespace,
     #[error("Cloud requires runsc {0}")]
     Runsc(String),
-    #[error("DEMI_MACHINES_DATA must be one filesystem: {0} and {1} are on different filesystems")]
+    #[error("DEMI_MACHINE_MANAGER_DATA must be one filesystem: {0} and {1} are on different filesystems")]
     Filesystems(String, String),
     #[error(transparent)]
     Tool(#[from] ToolError),

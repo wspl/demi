@@ -1,4 +1,4 @@
-//! The `demi.claude` command package: Demi's own verified copy of the Claude
+//! The `demi.claude-code` command package: Demi's own verified copy of the Claude
 //! Code CLI on the machine that runs it (`claude-code.md` § The package).
 
 pub mod install;
