@@ -5,8 +5,8 @@
 
 use std::borrow::Cow;
 
-use demi_core::{B64Bytes, ThinkingConfig, ThinkingSummary, is_blank};
-use demi_provider::{
+use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingSummary, is_blank};
+use demi_provider_common::{
     InferenceItem, InferenceRequest, MediaBytes, Medium, PromptCache, ResultPart, ToolDefinition,
     UserPart, json_body,
 };

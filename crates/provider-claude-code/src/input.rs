@@ -6,8 +6,8 @@
 
 use std::borrow::Cow;
 
-use demi_provider::openai_request::tool_output_text;
-use demi_provider::{InferenceItem, Medium, UserPart, json_body};
+use demi_provider_common::openai_request::tool_output_text;
+use demi_provider_common::{InferenceItem, Medium, UserPart, json_body};
 use rmcp::model::ServerJsonRpcMessage;
 use serde::Serialize;
 
@@ -100,7 +100,7 @@ enum Block<'a> {
 enum ImageSource<'a> {
     Base64 {
         media_type: &'a str,
-        data: &'a demi_core::B64Bytes,
+        data: &'a demi_shared_types::B64Bytes,
     },
     Url {
         url: &'a str,
@@ -111,7 +111,7 @@ enum ImageSource<'a> {
 #[serde(tag = "type", rename = "base64")]
 struct Base64<'a> {
     media_type: &'a str,
-    data: &'a demi_core::B64Bytes,
+    data: &'a demi_shared_types::B64Bytes,
 }
 
 /// `input` as the line Demi writes.

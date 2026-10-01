@@ -17,10 +17,10 @@ bench = false
 testing = ["dep:sha2"]
 
 [dependencies]
-demi-agent-protocol = { path = "../agent-protocol" }
-demi-core = { path = "../core" }
-demi-provider = { path = "../provider" }
-demi-shell = { path = "../shell" }
+demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
+demi-shared-types = { path = "../shared-types" }
+demi-provider-common = { path = "../provider-common" }
+demi-host-interface = { path = "../host-interface" }
 futures-util.workspace = true
 garde.workspace = true
 # Fits an image as it enters a transcript (`runtime.md` § Images in the

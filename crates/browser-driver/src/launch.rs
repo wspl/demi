@@ -6,7 +6,7 @@ use std::path::Path;
 
 use chromiumoxide::browser::BrowserConfigBuilder;
 
-use demi_browser_protocol::live::VIDEO_CODEC;
+use demi_command_package_browser_protocol::live::VIDEO_CODEC;
 use demi_command_protocol::CommandLocale;
 
 use crate::operation::Result;

@@ -7,7 +7,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_command_service::descriptors::{self, Backoff};
+use demi_command_sdk::descriptors::{self, Backoff};
 use process_wrap::tokio::{ChildWrapper, CommandWrap, KillOnDrop};
 use futures_util::StreamExt;
 use tokio::{
@@ -448,7 +448,7 @@ const BUSY_WAIT: Duration = Duration::from_secs(1);
 /// When a failed process start is tried again.
 ///
 /// - Out of open files, always: another descriptor will close
-///   (`demi_command_service::descriptors`).
+///   (`demi_command_sdk::descriptors`).
 /// - While its program is busy (`ETXTBSY`), for at most `BUSY_WAIT`. Linux
 ///   refuses to run a file that any process holds open for writing, and the
 ///   runner causes that itself. It writes files that it then runs, such as a

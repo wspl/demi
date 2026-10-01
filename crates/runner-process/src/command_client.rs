@@ -4,7 +4,7 @@
 
 use bytes::Bytes;
 use demi_command_protocol::{Completion, LocalInvocation, MAX_RECORD_BYTES};
-use demi_command_service::{
+use demi_command_sdk::{
     Client, CommandInput, CommandOutput, Exchange, ExchangeError, InputSource, OutputSink,
 };
 use serde::{Deserialize, Serialize};
@@ -217,7 +217,7 @@ async fn connect_inner(endpoint: &str) -> io::Result<Stream> {
                 "local socket path must be absolute",
             ));
         }
-        let mut backoff = demi_command_service::descriptors::Backoff::default();
+        let mut backoff = demi_command_sdk::descriptors::Backoff::default();
         loop {
             match tokio::net::UnixStream::connect(endpoint).await {
                 Ok(socket) => return Ok(Box::new(socket)),
@@ -229,7 +229,7 @@ async fn connect_inner(endpoint: &str) -> io::Result<Stream> {
                     if (matches!(
                         error.kind(),
                         io::ErrorKind::ConnectionRefused | io::ErrorKind::WouldBlock
-                    ) || demi_command_service::descriptors::exhausted(&error))
+                    ) || demi_command_sdk::descriptors::exhausted(&error))
                         && liveness(endpoint) != Liveness::Gone =>
                 {
                     backoff.wait().await;
@@ -289,7 +289,7 @@ fn liveness(endpoint: &str) -> Liveness {
             // runner's leftover.
             Ok(()) | Err(std::fs::TryLockError::Error(_)) => Liveness::Gone,
         },
-        Err(error) if demi_command_service::descriptors::exhausted(&error) => Liveness::Unknown,
+        Err(error) if demi_command_sdk::descriptors::exhausted(&error) => Liveness::Unknown,
         Err(_) => Liveness::Gone,
     }
 }

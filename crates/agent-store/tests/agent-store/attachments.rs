@@ -5,7 +5,7 @@ use demi_agent_store::{
     media::{BlobStore, HeldMedia},
     testing::{MemoryBlobs, png},
 };
-use demi_core::{B64Bytes, BlobRef, MediaSource, UserContentBlock};
+use demi_shared_types::{B64Bytes, BlobRef, MediaSource, UserContentBlock};
 
 const PNG: [u8; 12] = [
     0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe, 0x01,

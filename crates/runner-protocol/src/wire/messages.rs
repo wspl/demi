@@ -795,7 +795,7 @@ pub struct GitChanges {
     pub repository: bool,
     /// Always written, null before the first commit.
     #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "demi_core::Nullable<String>")]
+    #[schemars(with = "demi_shared_types::Nullable<String>")]
     pub head: Option<String>,
     #[garde(dive)]
     pub files: Vec<GitChange>,
@@ -818,9 +818,9 @@ pub struct GitChange {
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "String")]
     pub from: Option<String>,
-    #[garde(range(max = demi_core::MAX_SAFE_INTEGER))]
+    #[garde(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
     pub added: u64,
-    #[garde(range(max = demi_core::MAX_SAFE_INTEGER))]
+    #[garde(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
     pub removed: u64,
 }
 

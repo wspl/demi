@@ -2,7 +2,7 @@
 
 use demi_backend_expose::domain::ExposeDomain;
 use demi_backend_expose::records::expose_url;
-use demi_web_api::ids::ExposeId;
+use demi_web_api_protocol::ids::ExposeId;
 use url::Url;
 
 #[test]

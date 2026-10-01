@@ -5,8 +5,8 @@
 
 use std::{sync::Arc, time::Duration};
 
-use demi_core::{Clock, Timestamp};
-use demi_provider::{
+use demi_shared_types::{Clock, Timestamp};
+use demi_provider_common::{
     Secret,
     credentials::{
         AccountDocument, AccountLabel, AuthFailure, AuthReason, CredentialPool, SecretDocument,
@@ -278,7 +278,7 @@ impl GrokAuth {
             form.push(("principal_id", principal.id.as_str()));
         }
         let response = http
-            .post(demi_provider::endpoint_url(
+            .post(demi_provider_common::endpoint_url(
                 &secret.issuer.0,
                 "/oauth2/token",
             ))

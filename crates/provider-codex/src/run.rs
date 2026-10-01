@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use demi_provider::{
+use demi_provider_common::{
     InferenceRequest, ProviderEvent, ProviderFailure, encode_body,
     wire::{ReportedString, Vendor, responses},
 };
@@ -131,7 +131,7 @@ fn refused(refusal: Refusal, shared: &Shared) -> ProviderFailure {
 #[derive(Default, Deserialize)]
 struct ErrorBody {
     #[serde(default)]
-    error: demi_provider::wire::Reported<ErrorFields>,
+    error: demi_provider_common::wire::Reported<ErrorFields>,
     #[serde(default)]
     request_id: ReportedString,
 }

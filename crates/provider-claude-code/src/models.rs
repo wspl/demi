@@ -4,9 +4,9 @@
 
 use std::cmp::Ordering;
 
-use demi_core::{ProviderModel, ProviderModelList};
-use demi_provider::CatalogError;
-use demi_provider::models_dev::{ModelsDevClient, ModelsDevSnapshot};
+use demi_shared_types::{ProviderModel, ProviderModelList};
+use demi_provider_common::CatalogError;
+use demi_provider_common::models_dev::{ModelsDevClient, ModelsDevSnapshot};
 
 /// The models.dev vendor whose models the CLI runs.
 const VENDOR: &str = "anthropic";

@@ -6,14 +6,14 @@ use crate::{
 };
 use bytes::Bytes;
 use demi_command_protocol::{Completion, Invocation, LocalInvocation};
-use demi_command_service::{
+use demi_command_sdk::{
     Exchange, ExchangeError, Handler, Input, InvocationContext, Output, ServiceError,
 };
 use demi_runner_process::{
     command_client::{RAW, RawCommand},
     pipes::PipeClient,
 };
-use demi_runner_services::ServiceHandle;
+use demi_runner_command_packages::ServiceHandle;
 use std::{future::Future, pin::Pin, sync::Arc};
 
 /// The most a command's body read from its standard input may hold.
@@ -206,8 +206,8 @@ enum Failed {
 /// Drives one native call: the caller's input goes to the service one chunk
 /// per pull, and the service's records come back to the caller.
 async fn native_exchange(
-    sender: demi_command_service::CommandInput,
-    response: demi_command_service::CommandOutput,
+    sender: demi_command_sdk::CommandInput,
+    response: demi_command_sdk::CommandOutput,
     input: &mut Input,
     output: &mut CommandOutput<'_>,
 ) -> Result<u8, Failed> {

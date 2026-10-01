@@ -13,18 +13,18 @@ bench = false
 
 [dependencies]
 demi-backend-providers = { path = "../backend-providers" }
-demi-core = { path = "../core" }
-demi-provider = { path = "../provider" }
+demi-shared-types = { path = "../shared-types" }
+demi-provider-common = { path = "../provider-common" }
 demi-provider-anthropic-api = { path = "../provider-anthropic-api" }
 demi-provider-claude-code = { path = "../provider-claude-code" }
 demi-provider-codex = { path = "../provider-codex" }
 demi-provider-google = { path = "../provider-google" }
 demi-provider-grok-build = { path = "../provider-grok-build" }
 demi-provider-openai-api = { path = "../provider-openai-api" }
-demi-web-api = { path = "../web-api" }
+demi-web-api-protocol = { path = "../web-api-protocol" }
 
 [dev-dependencies]
-demi-provider = { path = "../provider", features = ["testing"] }
+demi-provider-common = { path = "../provider-common", features = ["testing"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
 serde_json.workspace = true
 tokio.workspace = true

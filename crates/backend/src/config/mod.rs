@@ -9,10 +9,10 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use demi_browser_protocol::{PACKAGE as BROWSER_PACKAGE, live};
-use demi_command_tree::NativeOperation;
-use demi_core::{Clock, SystemClock};
-use demi_web_api::settings::InstanceMode;
+use demi_command_package_browser_protocol::{PACKAGE as BROWSER_PACKAGE, live};
+use demi_command_declarations::NativeOperation;
+use demi_shared_types::{Clock, SystemClock};
+use demi_web_api_protocol::settings::InstanceMode;
 use tracing_subscriber::filter::Targets;
 use url::Url;
 
@@ -20,14 +20,14 @@ use demi_backend_accounts::email_change::AccountMail;
 use demi_backend_providers::llm::claude_releases::DEFAULT_RELEASES_URL;
 use demi_backend_providers::llm::families::FamilyRegistry;
 use demi_backend_providers::vault::logins::LoginTiming;
-use demi_provider::models_dev::ModelsDevClient;
+use demi_provider_common::models_dev::ModelsDevClient;
 use demi_backend_cloud::tuning::CloudTuning;
 use demi_backend_expose::domain::ExposeDomain;
 use demi_backend_runners::native::NativeCatalog;
 
 use demi_backend_host_access::stream::BROWSER_STREAM;
-use demi_backend_shard::shard::ShardPlacement;
-use demi_backend_shard::tuning::{ConversationTuning, ExposeTuning, LifecycleTuning, PageTuning, RunnerTuning};
+use demi_backend_user_shard::shard::ShardPlacement;
+use demi_backend_user_shard::tuning::{ConversationTuning, ExposeTuning, LifecycleTuning, PageTuning, RunnerTuning};
 
 use self::secret::InstanceSecret;
 
@@ -206,7 +206,7 @@ pub struct BackendConfig {
     /// Counts what reaches the object store, for the scenarios that prove
     /// what the backend reads and writes there.
     #[cfg(feature = "testing")]
-    pub object_counts: Option<demi_backend_objects::counting::ObjectCounts>,
+    pub object_counts: Option<demi_backend_blobs::counting::ObjectCounts>,
 }
 
 impl BackendConfig {

@@ -624,7 +624,7 @@ page-provided tool schemas/results at entry: each is decoded into its type and
 checked against its bounds there, and corrupt data is refused, never repaired
 ([Validation at entry](../architecture/contracts.md#validation-at-entry)).
 Browser arguments, results, error codes, limits and event payloads are defined
-once, as Rust types in the `browser-protocol` crate. The `demi browser` command
+once, as Rust types in the `command-package-browser-protocol` crate. The `demi browser` command
 declarations take their schemas from those types, and the native handlers
 decode their input into them and return them as results. The page uses the
 same definitions, as TypeScript generated from them, without depending on the
@@ -948,7 +948,7 @@ coordinates in a full-page screenshot are not current viewport coordinates.
 ### Catalog
 
 The `demi browser` catalog has these commands, grouped by family. Each is
-declared once, from its types in the `browser-protocol` crate, and its help
+declared once, from its types in the `command-package-browser-protocol` crate, and its help
 shows only the declared arguments.
 
 | Family | Commands |
@@ -1693,7 +1693,7 @@ the same name. Page tool descriptions remain external data, not system instructi
 ### Structured result fields
 
 These are business result fields for `--json`. Their exact types are the
-result types in the `browser-protocol` crate. List results report truncation. Do not reuse a
+result types in the `command-package-browser-protocol` crate. List results report truncation. Do not reuse a
 field with a different meaning or type. A `viewport` value carries `width`,
 `height`, `devicePixelRatio` and `mode`.
 
@@ -1921,16 +1921,16 @@ persistent JavaScript REPL; Bash already composes their operations.
 [Crates and packages](../architecture/crates-and-packages.md) is authoritative;
 for the browser:
 
-- `browser-protocol`: the browser's operation arguments, results, error codes,
+- `command-package-browser-protocol`: the browser's operation arguments, results, error codes,
   limits and event payloads, the live view messages and frame header, and the
   capture extension's messages; the page receives the types it uses as
   generated TypeScript in `@demicodes/protocol`.
-- `coding-agent`: the `demi browser` command declarations, built from those
+- `agent-coding-harness`: the `demi browser` command declarations, built from those
   types, with help rendered from the declarations; the command tree includes
   them when the native package catalog provides the browser's operations.
 - the backend: builds the command context of every job and sends the generic
   conversation release; declares the `browser` user stream; no browser module.
-- the runner's crates and `host-remote`: the command context of every
+- the runner's crates and `backend-remote-host`: the command context of every
   invocation, service residency, the release forward, cancellation, and
   transport; no webpage algorithms.
 - `demi-browser` and the [browser libraries](../architecture/crates-and-packages.md#browser-libraries):
@@ -1938,12 +1938,12 @@ for the browser:
   output rendering (`browser-driver`), environments and tabs
   (`browser-tabs`), page observation, actions and assets (`browser-page`),
   CDP handling and WebMCP (`browser-cdp`) and the live view (`browser-live`).
-- `artifact`: the verified download and installation of the pinned Chrome for
+- `shared-artifacts`: the verified download and installation of the pinned Chrome for
   Testing release, used by `browser-driver` and by Cloud image packaging.
-- `command-protocol` and `command-service`: the generic invocation and
+- `command-protocol` and `command-sdk`: the generic invocation and
   conversation protocol and its SDK, not page or cookie semantics.
 - `web-ui`: the [live view](live-view.md#responsibilities), with the
-  generic user stream in the runner, `host-remote` and the backend.
+  generic user stream in the runner, `backend-remote-host` and the backend.
 
 A library adopted for locating or acting must also cover the adjacent waiting,
 introspection, and error handling it provides. Reuse one observation/targeting

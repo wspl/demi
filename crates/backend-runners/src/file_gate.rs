@@ -7,8 +7,8 @@
 //! The gates live in the conversations' slots of host access, which takes
 //! their leases.
 
-use demi_gates::{ActivityGate, GateLease, Purpose};
-use demi_web_api::ids::ConversationId;
+use demi_shared_gates::{ActivityGate, GateLease, Purpose};
+use demi_web_api_protocol::ids::ConversationId;
 
 /// The file gate of one conversation.
 pub struct FileGate {

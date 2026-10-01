@@ -1,8 +1,8 @@
 //! The instance's settings and each user's preferences (`web-api.md` §
 //! User preferences).
 
-use demi_web_api::error::ErrorCode;
-use demi_web_api::settings::{InstanceMode, Settings, UserPreferences};
+use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::settings::{InstanceMode, Settings, UserPreferences};
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 

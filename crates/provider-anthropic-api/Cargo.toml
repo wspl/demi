@@ -13,8 +13,8 @@ test = false
 bench = false
 
 [dependencies]
-demi-core = { path = "../core" }
-demi-provider = { path = "../provider" }
+demi-shared-types = { path = "../shared-types" }
+demi-provider-common = { path = "../provider-common" }
 async-stream = "0.3"
 futures-util.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
@@ -23,4 +23,4 @@ serde_json.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
-demi-provider = { path = "../provider", features = ["testing"] }
+demi-provider-common = { path = "../provider-common", features = ["testing"] }

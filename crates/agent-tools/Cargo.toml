@@ -18,13 +18,13 @@ testing = ["demi-agent-session/testing"]
 
 [dependencies]
 bytes.workspace = true
-demi-agent-protocol = { path = "../agent-protocol" }
+demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
 demi-agent-session = { path = "../agent-session" }
 demi-agent-store = { path = "../agent-store" }
 demi-agent-transcript = { path = "../agent-transcript" }
-demi-core = { path = "../core" }
-demi-provider = { path = "../provider" }
-demi-shell = { path = "../shell" }
+demi-shared-types = { path = "../shared-types" }
+demi-provider-common = { path = "../provider-common" }
+demi-host-interface = { path = "../host-interface" }
 futures-util.workspace = true
 schemars.workspace = true
 serde.workspace = true

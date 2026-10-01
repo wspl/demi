@@ -7,13 +7,13 @@
 use std::borrow::Cow;
 
 use demi_agent_store::media::{Held, ModelView, missing_text};
-use demi_core::{
+use demi_shared_types::{
     AgentMessage, AgentMessageEvent, B64Bytes, BlobRef, Block, CompletionOutcome, DocumentSource,
     FileExtension, MediaSource, Model, ModelMediaKind, Timestamp, ToolCallStatus, ToolMediaSource,
     ToolResultContentBlock, UserContentBlock, WakeupPlacement, attachment_tag, char_offset,
     file_extension_support, model_accepts_media_type,
 };
-use demi_provider::{InferenceItem, MediaBytes, Medium, RequestLimits, ResultPart, UserPart};
+use demi_provider_common::{InferenceItem, MediaBytes, Medium, RequestLimits, ResultPart, UserPart};
 use serde::Serialize;
 use serde_json::Value;
 

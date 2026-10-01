@@ -4,7 +4,7 @@
 //! job whose history generation a rewrite or dispose ended cannot commit.
 
 use demi_agent_store::{CommandStorageKey, CommitGuard, StoreError};
-use demi_shell::{PortError, Revision, StorageOp, StorageReply};
+use demi_host_interface::{PortError, Revision, StorageOp, StorageReply};
 use tokio_util::sync::CancellationToken;
 
 use super::{AgentSession, core::SessionCore, persist};

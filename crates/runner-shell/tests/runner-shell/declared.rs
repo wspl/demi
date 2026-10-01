@@ -13,7 +13,7 @@ use std::{
 };
 
 use demi_command_protocol::{Completion, LocalInvocation};
-use demi_command_service::{Handler, InvocationContext, ServiceError};
+use demi_command_sdk::{Handler, InvocationContext, ServiceError};
 use demi_runner_process::{
     command_client::{RAW, RawCommand},
     job_shell::{JobCommands, JobShell, JobStart},

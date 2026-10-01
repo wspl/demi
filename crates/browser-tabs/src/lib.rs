@@ -3,7 +3,7 @@
 //! data each command family keeps for a tab, viewports, dialogs, console logs
 //! and navigation. What acts on a page is written above this crate.
 
-use demi_browser_protocol::browser as protocol;
+use demi_command_package_browser_protocol::browser as protocol;
 
 pub mod debug;
 pub mod dialog;

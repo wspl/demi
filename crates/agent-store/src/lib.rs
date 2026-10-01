@@ -22,12 +22,12 @@ pub mod testing;
 
 use std::rc::Rc;
 
-use demi_agent_protocol::{JobPhase, SubagentJob};
-use demi_core::{
+use demi_conversation_socket_protocol::{JobPhase, SubagentJob};
+use demi_shared_types::{
     AgentMessage, AgentMessageEvent, Block, CommandId, CompletionId, ModelSelection, NodeId,
     OperationId, QueuedMessage, Sequence, SessionPhase, Timestamp, TurnId, WakeupId,
 };
-use demi_shell::WholeOutput;
+use demi_host_interface::WholeOutput;
 use futures_util::future::LocalBoxFuture;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use demi_backend_cloud::client::{MachinesClient, MachinesError};
-use demi_machines_protocol::{
+use demi_machine_manager_protocol::{
     BaseVersion, CurrentBaseVersionParams, HibernateParams, ImageStateParams, MachineCall,
     MachineImageState, MachineRequest, MachineResponse, decode_request, encode_line,
 };
@@ -100,7 +100,7 @@ async fn calls_cross_the_socket_and_their_replies_are_matched_by_id_whatever_the
     let second = peer.request().await;
     assert_eq!((first.id.as_str(), second.id.as_str()), ("1", "2"));
     let state = MachineImageState {
-        generation: demi_machines_protocol::GenerationId::parse("gen-1").unwrap(),
+        generation: demi_machine_manager_protocol::GenerationId::parse("gen-1").unwrap(),
         base_version: BaseVersion::parse("base-1").unwrap(),
         reset_id: None,
         system_bytes: 1024.try_into().unwrap(),

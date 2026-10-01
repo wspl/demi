@@ -2,7 +2,7 @@
 //! local endpoint answers beside the declared commands.
 
 use demi_command_protocol::{Completion, LocalInvocation};
-use demi_command_service::{Handler, InvocationContext, ServiceError};
+use demi_command_sdk::{Handler, InvocationContext, ServiceError};
 use demi_runner_jobs::commands::dispatch::{Dispatcher, completed, reported};
 use serde::{Deserialize, Serialize};
 use std::{future::Future, pin::Pin, sync::Arc};

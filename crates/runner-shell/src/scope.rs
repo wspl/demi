@@ -97,7 +97,7 @@ pub struct Scope {
     pub cancellation: CancellationToken,
     pub tasks: TaskTracker,
     pub commands: Option<JobCommands>,
-    pub edits: Option<demi_command_service::edits::Recorder>,
+    pub edits: Option<demi_command_sdk::edits::Recorder>,
     /// Readable once `cancellation` is, so blocking IO polls it with its
     /// file; made when blocking IO first needs it. A std mutex: the job's
     /// unit threads share it for the moment it takes to make.
@@ -149,7 +149,7 @@ impl Scope {
     /// again until one closes or the job ends (`runner.md` § Load). It runs
     /// on a shell thread, which may block.
     pub(crate) fn descriptors<T>(&self, mut make: impl FnMut() -> io::Result<T>) -> io::Result<T> {
-        demi_command_service::descriptors::retry_blocking(|| {
+        demi_command_sdk::descriptors::retry_blocking(|| {
             self.check()?;
             make()
         })

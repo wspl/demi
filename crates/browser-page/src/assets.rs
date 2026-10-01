@@ -18,7 +18,7 @@ use demi_browser_tabs::{
     session::{Asset, AssetSource, Inventory},
     tab::BrowserTab,
 };
-use demi_command_service::InvocationContext;
+use demi_command_sdk::InvocationContext;
 
 use crate::protocol::{
     AssetKind, AssetsExportResult, AssetsListResult, BrowserFailure, BrowserOperation,

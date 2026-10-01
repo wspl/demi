@@ -7,7 +7,7 @@ use demi_agent_store::{
     images::{Fitted, Unfit, fit},
     testing::png as png_of,
 };
-use demi_core::B64Bytes;
+use demi_shared_types::B64Bytes;
 use image::{
     DynamicImage, ImageBuffer, ImageFormat, Rgb, RgbImage, Rgba, RgbaImage,
     codecs::{jpeg::JpegEncoder, png::PngEncoder},

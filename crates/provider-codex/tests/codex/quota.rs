@@ -1,8 +1,8 @@
 //! A Codex account's quota: the `x-codex-*` headers on every answer of the
 //! service and the free usage probe (`usage-and-quota.md` § Codex).
 
-use demi_core::{QuotaSeverity, SnapshotSource, Timestamp};
-use demi_provider::{
+use demi_shared_types::{QuotaSeverity, SnapshotSource, Timestamp};
+use demi_provider_common::{
     Provider,
     quota::{ProbeCost, QuotaError},
     testing::{MockResponse, MockVendor, inference_request},

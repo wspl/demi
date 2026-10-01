@@ -5,10 +5,10 @@
 //! replaced, which a session restores or dismisses. An upload the draft
 //! names is readable from every session, with the opening its record keeps.
 
-use demi_web_api::attachments::AttachmentAnswer;
-use demi_web_api::drafts::{ConversationDraft, DraftAnswer, DraftFile, ReplacedDraft};
-use demi_web_api::error::ErrorCode;
-use demi_web_api::state::SyncEvent;
+use demi_web_api_protocol::attachments::AttachmentAnswer;
+use demi_web_api_protocol::drafts::{ConversationDraft, DraftAnswer, DraftFile, ReplacedDraft};
+use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::state::SyncEvent;
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
 

@@ -1,11 +1,11 @@
 //! A run's failures on either wire: a refusal with the vendor's record and
 //! wait, and a request that gets no answer (`failures-and-recovery.md`). The
-//! events of a stream are the shared mappers' (`demi_provider::wire`).
+//! events of a stream are the shared mappers' (`demi_provider_common::wire`).
 
 use std::{sync::Arc, time::Duration};
 
-use demi_core::{FailureSource, WireApi};
-use demi_provider::{
+use demi_shared_types::{FailureSource, WireApi};
+use demi_provider_common::{
     ErrorCode, Provider, ProviderEvent, RuntimeEnv, Secret,
     testing::{FixedClock, MockResponse, MockVendor, inference_request},
 };

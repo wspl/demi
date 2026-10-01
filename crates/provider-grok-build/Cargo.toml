@@ -13,8 +13,8 @@ test = false
 bench = false
 
 [dependencies]
-demi-core = { path = "../core" }
-demi-provider = { path = "../provider" }
+demi-shared-types = { path = "../shared-types" }
+demi-provider-common = { path = "../provider-common" }
 async-stream = "0.3"
 bytes.workspace = true
 futures-util.workspace = true
@@ -26,7 +26,7 @@ serde_with.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
-demi-provider = { path = "../provider", features = ["testing"] }
+demi-provider-common = { path = "../provider-common", features = ["testing"] }
 # The device login waits at least a second between polls; its tests run on
 # a paused clock.
 tokio = { workspace = true, features = ["test-util"] }

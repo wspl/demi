@@ -2,9 +2,9 @@
 //! SDK MCP channel, § Tool-call batches).
 
 use bytes::Bytes;
-use demi_core::{B64Bytes, TokenUsage};
-use demi_provider::{InferenceItem, MediaBytes, ProviderEvent, ResultPart, ToolCall};
-use demi_shell::Signal;
+use demi_shared_types::{B64Bytes, TokenUsage};
+use demi_provider_common::{InferenceItem, MediaBytes, ProviderEvent, ResultPart, ToolCall};
+use demi_host_interface::Signal;
 use serde_json::json;
 
 use crate::cli::*;
@@ -302,7 +302,7 @@ async fn a_batch_without_all_its_results_or_results_never_asked_for_fail_the_run
     both.push(tool_result("toolu_alpha", "alpha done"));
     both.push(tool_result("toolu_beta", "beta done"));
     let (events, ()) = tokio::join!(all_events(runtime.run(request(both))), async {
-        cli.exit(demi_shell::ProcessEnd::Exited(0));
+        cli.exit(demi_host_interface::ProcessEnd::Exited(0));
     });
     let [ProviderEvent::Error(failure)] = &events[..] else {
         panic!("expected a failure, got {events:?}")
@@ -336,7 +336,7 @@ async fn output_a_run_left_behind_belongs_to_no_request() {
     second.push(tool_use("toolu_1", "pwd"));
     second.push(tool_result("toolu_1", "/tmp"));
     second.push(InferenceItem::UserSteer {
-        content: vec![demi_provider::UserPart::Text("also list it".into())],
+        content: vec![demi_provider_common::UserPart::Text("also list it".into())],
     });
     let (events, ()) = tokio::join!(all_events(runtime.run(request(second.clone()))), async {
         let steer = cli.read().await;

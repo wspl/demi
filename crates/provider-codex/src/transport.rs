@@ -6,7 +6,7 @@
 
 use std::{sync::atomic::Ordering, time::Duration};
 
-use demi_provider::{
+use demi_provider_common::{
     ProviderFailure,
     quota::Observation,
     wire::{

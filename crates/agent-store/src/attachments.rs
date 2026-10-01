@@ -5,7 +5,7 @@
 //! backend's upload route and its content resolution both use these rules;
 //! the agent never reads a file's bytes itself.
 
-use demi_core::{
+use demi_shared_types::{
     Attachment, B64Bytes, BlobRef, DocumentSource, MediaSource, ModelMediaKind, UserContentBlock,
     char_offset, sniff_model_media_type,
 };
@@ -55,7 +55,7 @@ pub fn snippet(bytes: &[u8]) -> String {
 /// model can read them natively, as an image, a video or a PDF, else the one
 /// it was sent with.
 pub fn upload_media_type(sent: &str, bytes: &[u8]) -> String {
-    if let Some(media) = demi_core::sniff_model_media_type(bytes) {
+    if let Some(media) = demi_shared_types::sniff_model_media_type(bytes) {
         return media.media_type.to_owned();
     }
     if bytes.starts_with(b"%PDF-") {

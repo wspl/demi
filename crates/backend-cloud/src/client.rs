@@ -14,7 +14,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use demi_machines_protocol::{
+use demi_machine_manager_protocol::{
     DeviceId, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse, Operation, ReconcileParams,
     decode_response, encode_line,
 };

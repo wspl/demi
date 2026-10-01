@@ -14,10 +14,10 @@
 
 use std::time::Duration;
 
-use demi_agent::testing::client_text;
-use demi_agent_protocol::{ClientFrame, EditOutcome, EditRequest, ServerFrame};
-use demi_core::{Block, SessionPhase, UserContentBlock};
-use demi_provider::testing::MockVendor;
+use demi_agent_server::testing::client_text;
+use demi_conversation_socket_protocol::{ClientFrame, EditOutcome, EditRequest, ServerFrame};
+use demi_shared_types::{Block, SessionPhase, UserContentBlock};
+use demi_provider_common::testing::MockVendor;
 use serde_json::json;
 
 use crate::conversations::{

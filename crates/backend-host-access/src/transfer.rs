@@ -14,9 +14,9 @@ use std::rc::Rc;
 use bytes::Bytes;
 use http::header::{ACCEPT_RANGES, CONTENT_LENGTH, CONTENT_RANGE};
 use http::{HeaderMap, HeaderValue, StatusCode};
-use demi_host_remote::{PipeReader, PipeWriter};
-use demi_shell::{ByteRange, FileKind, FileStat, HostError, HostFs, WriteOptions};
-use demi_web_api::ids::ConversationId;
+use demi_backend_remote_host::{PipeReader, PipeWriter};
+use demi_host_interface::{ByteRange, FileKind, FileStat, HostError, HostFs, WriteOptions};
+use demi_web_api_protocol::ids::ConversationId;
 use tokio::sync::{oneshot, watch};
 use tokio_util::sync::CancellationToken;
 
@@ -430,8 +430,8 @@ impl RangeAnswer {
 
 #[cfg(test)]
 mod tests {
-    use demi_core::Timestamp;
-    use demi_shell::FileKind;
+    use demi_shared_types::Timestamp;
+    use demi_host_interface::FileKind;
 
     use super::*;
 

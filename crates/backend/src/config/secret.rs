@@ -9,7 +9,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use demi_artifact::{Mode, Permissions, Publication};
+use demi_shared_artifacts::{Mode, Permissions, Publication};
 use hkdf::Hkdf;
 use sha2::Sha256;
 
@@ -37,7 +37,7 @@ pub enum SecretError {
     #[error("the instance secret file {} cannot be created: {source}", path.display())]
     Create {
         path: PathBuf,
-        source: demi_artifact::Error,
+        source: demi_shared_artifacts::Error,
     },
 }
 
@@ -71,7 +71,7 @@ impl InstanceSecret {
                     permissions: Permissions::Private,
                     durable: true,
                 };
-                demi_artifact::publish_bytes(&path, text.as_bytes(), publication)
+                demi_shared_artifacts::publish_bytes(&path, text.as_bytes(), publication)
                     .await
                     .map_err(|source| SecretError::Create { path, source })?;
                 Ok(secret)

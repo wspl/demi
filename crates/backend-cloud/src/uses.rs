@@ -12,8 +12,8 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use demi_backend_storage::StorageError;
-use demi_web_api::ids::{ConversationId, ProviderId};
+use demi_backend_database::StorageError;
+use demi_web_api_protocol::ids::{ConversationId, ProviderId};
 
 use crate::machine::CloudError;
 use crate::{CloudShard, ConversationHold};

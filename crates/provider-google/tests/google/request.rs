@@ -3,8 +3,8 @@
 
 use std::{num::NonZeroU32, sync::Arc};
 
-use demi_core::{B64Bytes, ThinkingConfig, TokenUsage};
-use demi_provider::{
+use demi_shared_types::{B64Bytes, ThinkingConfig, TokenUsage};
+use demi_provider_common::{
     InferenceItem, InferenceRequest, MediaBytes, Medium, Provider, ProviderEvent, ResultPart,
     RuntimeEnv, ToolDefinition, UserPart,
     testing::{MockVendor, inference_request},

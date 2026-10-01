@@ -18,7 +18,7 @@ testing = []
 [dependencies]
 chromiumoxide = "=0.9.1"
 demi-browser-driver = { path = "../browser-driver" }
-demi-browser-protocol = { path = "../browser-protocol" }
+demi-command-package-browser-protocol = { path = "../command-package-browser-protocol" }
 demi-command-protocol = { path = "../command-protocol" }
 futures-util.workspace = true
 regex = "1"

@@ -8,8 +8,8 @@ use std::{
     time::Duration,
 };
 
-use demi_core::LoginPending;
-use demi_provider::{
+use demi_shared_types::LoginPending;
+use demi_provider_common::{
     Provider,
     credentials::{AccountsCapability, CredentialPool, LoginError, MemoryCredentialPool},
     testing::{MockResponse, MockVendor},

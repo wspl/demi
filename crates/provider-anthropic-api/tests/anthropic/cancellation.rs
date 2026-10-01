@@ -1,7 +1,7 @@
 //! Cancelling a run: it stops at once, drops its connection and ends without
 //! a further event (`providers.md` § A run).
 
-use demi_provider::{
+use demi_provider_common::{
     ProviderEvent,
     testing::{MockResponse, MockVendor, inference_request, next_event},
 };

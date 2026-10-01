@@ -8,12 +8,12 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use demi_backend_storage::StorageError;
-use demi_core::Clock;
-use demi_provider::credentials::CredentialPool;
-use demi_provider::{Provider, ProviderRuntime};
+use demi_backend_database::StorageError;
+use demi_shared_types::Clock;
+use demi_provider_common::credentials::CredentialPool;
+use demi_provider_common::{Provider, ProviderRuntime};
 use demi_provider_claude_code::Placement;
-use demi_web_api::ids::{CredentialId, ProviderId};
+use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 
 use super::catalog_cache::ModelCatalogCache;
 use super::families::{

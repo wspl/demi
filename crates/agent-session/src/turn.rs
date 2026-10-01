@@ -15,8 +15,8 @@ use demi_agent_transcript::{
     estimate::{context_tokens, request_size},
     resume_point, tool_input,
 };
-use demi_core::{Block, BlockId, ToolView, WakeupId};
-use demi_provider::{
+use demi_shared_types::{Block, BlockId, ToolView, WakeupId};
+use demi_provider_common::{
     ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun, ResultPart,
 };
 use futures_util::StreamExt;

@@ -6,8 +6,8 @@
 
 use std::{sync::Arc, time::Duration};
 
-use demi_core::{Clock, LoginPending, Timestamp};
-use demi_provider::{
+use demi_shared_types::{Clock, LoginPending, Timestamp};
+use demi_provider_common::{
     Secret,
     credentials::{
         AccountKit, AccountsCapability, AccountsError, AddAccount, LoginError, NewAccount,
@@ -110,7 +110,7 @@ impl GrokKit {
         ];
         let response = self
             .http
-            .post(demi_provider::endpoint_url(
+            .post(demi_provider_common::endpoint_url(
                 &self.issuer,
                 "/oauth2/device/code",
             ))
@@ -168,7 +168,7 @@ impl GrokKit {
             }
             let response = self
                 .http
-                .post(demi_provider::endpoint_url(&self.issuer, "/oauth2/token"))
+                .post(demi_provider_common::endpoint_url(&self.issuer, "/oauth2/token"))
                 .headers(oauth_headers())
                 .form(&form)
                 .send()

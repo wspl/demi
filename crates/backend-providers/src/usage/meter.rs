@@ -9,13 +9,13 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use demi_backend_storage::control::ControlService;
-use demi_backend_storage::usage::UsageRow;
-use demi_core::{Model, TokenUsage};
-use demi_provider::{
+use demi_backend_database::control::ControlService;
+use demi_backend_database::usage::UsageRow;
+use demi_shared_types::{Model, TokenUsage};
+use demi_provider_common::{
     ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun, ProviderRuntime, RequestLimits,
 };
-use demi_web_api::ids::{ConversationId, ProviderId, UserId};
+use demi_web_api_protocol::ids::{ConversationId, ProviderId, UserId};
 use futures_util::future::LocalBoxFuture;
 use futures_util::{StreamExt, stream};
 
@@ -126,8 +126,8 @@ impl ProviderRuntime for MeteredRuntime {
 mod tests {
     use std::sync::Arc;
 
-    use demi_backend_storage::control::testing;
-    use demi_provider::testing::{ScriptedRuntime, Turn, event, inference_request};
+    use demi_backend_database::control::testing;
+    use demi_provider_common::testing::{ScriptedRuntime, Turn, event, inference_request};
     use futures_util::future::join_all;
 
     use super::*;
@@ -135,7 +135,7 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn answered_requests_are_ledger_rows_before_their_response_and_the_limit_refuses_the_rest() {
         let data = tempfile::tempdir().unwrap();
-        let control = ControlService::open(&data.path().join("control.sqlite"), Arc::new(demi_core::SystemClock))
+        let control = ControlService::open(&data.path().join("control.sqlite"), Arc::new(demi_shared_types::SystemClock))
             .await
             .unwrap();
         let master = testing::master(&control).await;

@@ -4,8 +4,8 @@
 
 use std::sync::Arc;
 
-use demi_core::{B64Bytes, ThinkingConfig, ThinkingSummary};
-use demi_provider::{
+use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingSummary};
+use demi_provider_common::{
     InferenceItem, InferenceRequest, MediaBytes, ResultPart, ToolDefinition, UserPart,
     openai_request::{prompt_cache_key, short_hash},
     testing::{MockVendor, RecordedRequest, inference_request, jwt},

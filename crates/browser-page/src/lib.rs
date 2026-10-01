@@ -4,7 +4,7 @@
 //! the actions that combine them, the clipboard, uploads, downloads, fetches
 //! and assets, each a function over a tab.
 
-use demi_browser_protocol::browser as protocol;
+use demi_command_package_browser_protocol::browser as protocol;
 
 pub mod actions;
 pub mod assets;

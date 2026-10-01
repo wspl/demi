@@ -13,17 +13,17 @@ use std::sync::atomic::AtomicBool;
 use demi_backend_cloud::CloudServices;
 use demi_backend_cloud::client::MachinesClient;
 use demi_backend_cloud::reset::recover_resets;
-use demi_backend_edge::{AppState, Edge, Site};
-use demi_backend_objects::ObjectError;
-use demi_backend_objects::store::{self as objects, S3Config, S3ConfigError};
-use demi_backend_shard::conversation::recover_forks;
-use demi_backend_shard::lifecycle::retention;
-use demi_backend_shard::services::{
+use demi_backend_http::{AppState, Edge, Site};
+use demi_backend_blobs::ObjectError;
+use demi_backend_blobs::store::{self as objects, S3Config, S3ConfigError};
+use demi_backend_user_shard::conversation::recover_forks;
+use demi_backend_user_shard::lifecycle::retention;
+use demi_backend_user_shard::services::{
     CloseError, ProviderSetup, ServiceKeys, ServiceSettings, Services, ServicesError, Storage,
 };
-use demi_backend_shard::shard::ShardPool;
-use demi_backend_shard::shard::cloud::route_deaths;
-use demi_backend_storage::StorageError;
+use demi_backend_user_shard::shard::ShardPool;
+use demi_backend_user_shard::shard::cloud::route_deaths;
+use demi_backend_database::StorageError;
 use tokio_util::task::AbortOnDropHandle;
 
 use crate::config::BackendConfig;
@@ -250,7 +250,7 @@ impl Backend {
     /// Holds every commit of a conversation's checkpoint from now on, until
     /// the hold is released.
     #[cfg(feature = "testing")]
-    pub fn hold_commits(&self) -> demi_backend_storage::conversations::CommitHold {
+    pub fn hold_commits(&self) -> demi_backend_database::conversations::CommitHold {
         self.services.conversations.hold_commits()
     }
 
@@ -259,8 +259,8 @@ impl Backend {
     #[cfg(feature = "testing")]
     pub fn hold_hellos(
         &self,
-        step: demi_backend_shard::holds::HelloStep,
-    ) -> demi_backend_shard::holds::StepHold {
+        step: demi_backend_user_shard::holds::HelloStep,
+    ) -> demi_backend_user_shard::holds::StepHold {
         self.services.hellos.hold(step)
     }
 
@@ -269,8 +269,8 @@ impl Backend {
     #[cfg(feature = "testing")]
     pub fn hold_sync(
         &self,
-        step: demi_backend_shard::sync::SyncStep,
-    ) -> demi_backend_shard::holds::StepHold {
+        step: demi_backend_user_shard::sync::SyncStep,
+    ) -> demi_backend_user_shard::holds::StepHold {
         self.services.syncs.hold(step)
     }
 
@@ -281,9 +281,9 @@ impl Backend {
     #[cfg(feature = "testing")]
     pub async fn file_gate(
         &self,
-        user: &demi_web_api::ids::UserId,
-        conversation: &demi_web_api::ids::ConversationId,
-    ) -> demi_gates::ActivityGate {
+        user: &demi_web_api_protocol::ids::UserId,
+        conversation: &demi_web_api_protocol::ids::ConversationId,
+    ) -> demi_shared_gates::ActivityGate {
         let conversation = conversation.clone();
         self.shards
             .shards()
@@ -302,7 +302,7 @@ impl Backend {
     /// Runs the user's retention pass at once (`storage.md` § The retention
     /// pass) and answers once it has ended.
     #[cfg(feature = "testing")]
-    pub async fn run_retention(&self, user: &demi_web_api::ids::UserId) {
+    pub async fn run_retention(&self, user: &demi_web_api_protocol::ids::UserId) {
         self.shards
             .shards()
             .of(user)

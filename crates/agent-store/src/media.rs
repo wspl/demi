@@ -8,11 +8,11 @@
 
 use std::collections::{HashMap, HashSet};
 
-use demi_core::{
+use demi_shared_types::{
     B64Bytes, BlobRef, Block, DocumentSource, GoneCause, MediaSource, ModelMediaKind,
     ToolCallBlock, ToolMediaSource, ToolResultContentBlock, ToolView, UserContentBlock,
 };
-use demi_provider::{MediaBytes, ResultPart};
+use demi_provider_common::{MediaBytes, ResultPart};
 use futures_util::{StreamExt as _, TryStreamExt as _, future::LocalBoxFuture, stream};
 
 use super::StoreError;

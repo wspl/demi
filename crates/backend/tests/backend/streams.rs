@@ -7,7 +7,7 @@
 
 use std::time::Duration;
 
-use demi_web_api::error::ErrorCode;
+use demi_web_api_protocol::error::ErrorCode;
 use futures_util::{SinkExt as _, StreamExt as _};
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};

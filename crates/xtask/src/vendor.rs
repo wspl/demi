@@ -39,7 +39,7 @@ pub enum Error {
     #[error("{0}")]
     Io(#[from] std::io::Error),
     #[error("{0}")]
-    Artifact(#[from] demi_artifact::Error),
+    Artifact(#[from] demi_shared_artifacts::Error),
     #[error("cargo metadata: {0}")]
     Metadata(String),
     #[error("the crates.io index of {name}: {reason}")]
@@ -101,7 +101,7 @@ pub fn run(command: Command) -> Result<(), Error> {
         }
     }
     crate::interruptible(|cancel| async move {
-        let client = demi_artifact::client()?;
+        let client = demi_shared_artifacts::client()?;
         let scratch = tempfile::tempdir()?;
         for crate_ in &vendored {
             let upstream = upstream(&client, crate_, scratch.path(), &cancel).await?;
@@ -158,14 +158,14 @@ fn index_path(name: &str) -> String {
 /// Downloads and unpacks `crate_`'s upstream release below `scratch`, after
 /// checking it against the index, and returns its directory.
 async fn upstream(
-    client: &demi_artifact::Client,
+    client: &demi_shared_artifacts::Client,
     crate_: &Vendored,
     scratch: &Path,
     cancel: &CancellationToken,
 ) -> Result<PathBuf, Error> {
     let mut index = Vec::new();
     let url = format!("{INDEX}/{}", index_path(&crate_.name));
-    demi_artifact::download_measured(client, &url, DOWNLOAD_BYTES, &mut index, cancel).await?;
+    demi_shared_artifacts::download_measured(client, &url, DOWNLOAD_BYTES, &mut index, cancel).await?;
     let mut recorded = None;
     for line in index.split(|byte| *byte == b'\n').filter(|line| !line.is_empty()) {
         let entry: IndexEntry = serde_json::from_slice(line).map_err(|error| Error::Index {
@@ -182,7 +182,7 @@ async fn upstream(
     })?;
     let mut archive = Vec::new();
     let url = format!("{ARCHIVES}/{0}/{0}-{1}.crate", crate_.name, crate_.version);
-    let digest = demi_artifact::download_measured(client, &url, DOWNLOAD_BYTES, &mut archive, cancel).await?;
+    let digest = demi_shared_artifacts::download_measured(client, &url, DOWNLOAD_BYTES, &mut archive, cancel).await?;
     if digest.sha256 != recorded {
         return Err(Error::Checksum {
             name: crate_.name.clone(),

@@ -18,8 +18,8 @@ bench = false
 testing = []
 
 [dependencies]
-demi-core = { path = "../core" }
-demi-provider = { path = "../provider" }
+demi-shared-types = { path = "../shared-types" }
+demi-provider-common = { path = "../provider-common" }
 async-stream = "0.3"
 bytes.workspace = true
 futures-util.workspace = true
@@ -32,7 +32,7 @@ tokio-tungstenite = { version = "0.29", default-features = false, features = ["c
 tokio-util.workspace = true
 
 [dev-dependencies]
-demi-provider = { path = "../provider", features = ["testing"] }
+demi-provider-common = { path = "../provider-common", features = ["testing"] }
 demi-provider-codex = { path = ".", features = ["testing"] }
 # The device login's lifetime is tested on a paused clock.
 tokio = { workspace = true, features = ["test-util"] }

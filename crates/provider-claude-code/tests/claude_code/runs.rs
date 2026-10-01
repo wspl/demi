@@ -5,15 +5,15 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_core::{B64Bytes, ThinkingConfig, TokenUsage};
-use demi_provider::credentials::MemoryCredentialPool;
-use demi_provider::quota::MemorySnapshots;
-use demi_provider::{
+use demi_shared_types::{B64Bytes, ThinkingConfig, TokenUsage};
+use demi_provider_common::credentials::MemoryCredentialPool;
+use demi_provider_common::quota::MemorySnapshots;
+use demi_provider_common::{
     ErrorCode, InferenceItem, InferenceRequest, MediaBytes, Medium, ProviderEvent, ProviderFailure,
     ProviderRun, UserPart,
 };
 use demi_provider_claude_code::{ClaudeCodeConfig, ClaudeCodeProvider};
-use demi_shell::{ProcessEnd, Signal, SpawnEnv, SpawnRequest};
+use demi_host_interface::{ProcessEnd, Signal, SpawnEnv, SpawnRequest};
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 

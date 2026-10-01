@@ -2,8 +2,8 @@
 //! (`commands.md` § Deliver IO and release an invocation).
 
 use bytes::Bytes;
-use demi_command_service::{Output, OutputSink, ServiceError};
-use demi_command_tree::Schema;
+use demi_command_sdk::{Output, OutputSink, ServiceError};
+use demi_command_declarations::Schema;
 
 /// The most JSON output a command may produce.
 const JSON_BYTES: usize = 1024 * 1024;

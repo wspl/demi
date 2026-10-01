@@ -1,6 +1,6 @@
 //! `cargo xtask cloud-image package` (`images.md` § Build pipeline): the
 //! second stage of a Cloud image build, which
-//! `packages/guest-image/rootfs/build.sh` runs as root on a Linux builder of
+//! `cloud-guest-image/rootfs/build.sh` runs as root on a Linux builder of
 //! the image's architecture, with an `xtask` built for that architecture.
 //! Into the Ubuntu tree the script made, it installs the runner and its
 //! `demi` alias from the verified runner release, each command package from
@@ -17,10 +17,10 @@ use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use demi_artifact::{Archive, Digest, Mode, Permissions, Publication, ReleaseFile, ReleaseRecord, Staged};
-use demi_browser_protocol::release::{BrowserRelease, IMAGE_BROWSERS};
+use demi_shared_artifacts::{Archive, Digest, Mode, Permissions, Publication, ReleaseFile, ReleaseRecord, Staged};
+use demi_command_package_browser_protocol::release::{BrowserRelease, IMAGE_BROWSERS};
 use demi_command_protocol::{PackageArtifact, PackageDescriptor};
-use demi_machines_protocol::image::{
+use demi_machine_manager_protocol::image::{
     Architecture, CloudImageManifest, FormatVersion, INIT_PATH, InstalledPackage, ManifestError, Os, RUNNER_PATH,
     RootfsArchive, RootfsFile, StandaloneTool,
 };
@@ -32,7 +32,7 @@ use crate::native::{DESCRIPTOR, MANIFEST};
 
 /// The uv release every image installs, pinned in the repository. `xtask`
 /// carries the pin it was built with.
-const UV: &str = include_str!("../../../packages/guest-image/rootfs/uv.json");
+const UV: &str = include_str!("../../../cloud-guest-image/rootfs/uv.json");
 /// The image release's record.
 const IMAGE_MANIFEST: &str = "manifest.json";
 /// The name the runner also answers to, beside it in `/usr/bin`.
@@ -77,7 +77,7 @@ pub enum Error {
     #[error("the pinned {name} release is invalid: {reason}")]
     Pin { name: &'static str, reason: String },
     #[error("{}: {source}", path.display())]
-    File { path: PathBuf, source: demi_artifact::Error },
+    File { path: PathBuf, source: demi_shared_artifacts::Error },
     #[error("{} {reason}", path.display())]
     Invalid { path: PathBuf, reason: String },
     #[error("{release} carries nothing for {target}")]
@@ -93,7 +93,7 @@ pub enum Error {
     #[error(transparent)]
     Manifest(#[from] ManifestError),
     #[error(transparent)]
-    Artifact(#[from] demi_artifact::Error),
+    Artifact(#[from] demi_shared_artifacts::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
@@ -106,7 +106,7 @@ pub fn run(command: Command) -> Result<(), Error> {
         .ok_or(Error::NotLinux)?;
     let pins = Pins::pinned()?;
     let base = crate::interruptible(|cancel| async move {
-        let client = demi_artifact::client()?;
+        let client = demi_shared_artifacts::client()?;
         package(&options, architecture, &pins, &client, &cancel).await
     })??;
     println!("{base}");
@@ -130,7 +130,7 @@ impl Pins {
     }
 }
 
-/// The pinned uv release (`packages/guest-image/rootfs/uv.json`): its
+/// The pinned uv release (`cloud-guest-image/rootfs/uv.json`): its
 /// version and the archive for each image architecture.
 #[derive(Debug, Deserialize, garde::Validate)]
 #[serde(deny_unknown_fields)]
@@ -182,7 +182,7 @@ async fn package(
     options: &Options,
     architecture: Architecture,
     pins: &Pins,
-    client: &demi_artifact::Client,
+    client: &demi_shared_artifacts::Client,
     cancel: &CancellationToken,
 ) -> Result<String, Error> {
     let root = std::path::absolute(&options.root)?;
@@ -226,7 +226,7 @@ async fn package(
         tokio::task::spawn_blocking(move || write_archive(&root, &archive, &cancel))
     };
     writing.await.map_err(std::io::Error::other)??;
-    let digest = demi_artifact::digest(&archive, u64::MAX, cancel).await?;
+    let digest = demi_shared_artifacts::digest(&archive, u64::MAX, cancel).await?;
     let manifest = CloudImageManifest {
         format_version: FormatVersion,
         os: Os::Linux,
@@ -256,10 +256,10 @@ async fn package(
         digest,
         executable: false,
     }];
-    demi_artifact::publish_release(&output, record, &files, cancel).await?;
+    demi_shared_artifacts::publish_release(&output, record, &files, cancel).await?;
     eprintln!("Cloud image: {}", output.display());
     // The base version names the manifest's bytes as published.
-    let published = demi_artifact::digest(&output.join(IMAGE_MANIFEST), u64::MAX, cancel).await?;
+    let published = demi_shared_artifacts::digest(&output.join(IMAGE_MANIFEST), u64::MAX, cancel).await?;
     Ok(published.sha256)
 }
 
@@ -378,7 +378,7 @@ async fn install_executable(
         durable: false,
     };
     let mut staged = Staged::new(destination, publication).await.map_err(at(destination))?;
-    demi_artifact::copy(&mut input, &expected, staged.file(), cancel)
+    demi_shared_artifacts::copy(&mut input, &expected, staged.file(), cancel)
         .await
         .map_err(at(source))?;
     staged.publish().await.map_err(at(destination))
@@ -403,7 +403,7 @@ async fn install_chrome(
     root: &Path,
     release: &BrowserRelease,
     target: &'static str,
-    client: &demi_artifact::Client,
+    client: &demi_shared_artifacts::Client,
     cancel: &CancellationToken,
 ) -> Result<(String, PackageArtifact, StandaloneTool), Error> {
     let platform = release
@@ -423,7 +423,7 @@ async fn install_chrome(
         executable: platform.executable.clone(),
     };
     let browsers = in_tree(root, IMAGE_BROWSERS);
-    let executable = demi_artifact::install_archive(client, &browsers, &archive, cancel).await?;
+    let executable = demi_shared_artifacts::install_archive(client, &browsers, &archive, cancel).await?;
     // The installation's lock serves installers running at once on one
     // machine; an image starts with none running.
     let lock = browsers.join(format!("{}.lock", platform.sha256));
@@ -446,7 +446,7 @@ async fn install_uv(
     root: &Path,
     release: &UvRelease,
     architecture: Architecture,
-    client: &demi_artifact::Client,
+    client: &demi_shared_artifacts::Client,
     cancel: &CancellationToken,
 ) -> Result<(Vec<(String, PackageArtifact)>, StandaloneTool), Error> {
     let archive = release.archive(architecture);
@@ -457,7 +457,7 @@ async fn install_uv(
     let downloads = tempfile::tempdir()?;
     let downloaded = downloads.path().join("uv.tar.gz");
     let mut file = tokio::fs::File::create(&downloaded).await?;
-    demi_artifact::download(client, &archive.url, &expected, &mut file, cancel).await?;
+    demi_shared_artifacts::download(client, &archive.url, &expected, &mut file, cancel).await?;
     drop(file);
     let tools = in_tree(root, TOOLS_PATH);
     let unpacking = {
@@ -513,7 +513,7 @@ fn unpack(url: &str, archive: &Path, paths: &[String], directory: &Path) -> Resu
             permissions: Permissions::Executable,
             durable: false,
         };
-        demi_artifact::publish_bytes_blocking(&directory.join(&name), &bytes, publication)
+        demi_shared_artifacts::publish_bytes_blocking(&directory.join(&name), &bytes, publication)
             .map_err(at(&directory.join(&name)))?;
         found.push(named);
         names.push(name);
@@ -531,7 +531,7 @@ async fn measure(path: &Path, cancel: &CancellationToken) -> Result<PackageArtif
     if !metadata.is_file() {
         return Err(invalid(path, "is not a regular file"));
     }
-    let digest = demi_artifact::digest(path, u64::MAX, cancel).await.map_err(at(path))?;
+    let digest = demi_shared_artifacts::digest(path, u64::MAX, cancel).await.map_err(at(path))?;
     Ok(PackageArtifact {
         sha256: digest.sha256,
         size: digest.size,
@@ -665,7 +665,7 @@ fn compress(mut input: impl std::io::Read, archive: &Path, cancel: &Cancellation
     let mut buffer = vec![0; 1024 * 1024];
     loop {
         if cancel.is_cancelled() {
-            return Err(demi_artifact::Error::Cancelled.into());
+            return Err(demi_shared_artifacts::Error::Cancelled.into());
         }
         let count = match input.read(&mut buffer) {
             Ok(count) => count,
@@ -687,7 +687,7 @@ fn in_tree(root: &Path, path: &str) -> PathBuf {
 }
 
 /// An error about the file at `path`.
-fn at<E: Into<demi_artifact::Error>>(path: &Path) -> impl FnOnce(E) -> Error {
+fn at<E: Into<demi_shared_artifacts::Error>>(path: &Path) -> impl FnOnce(E) -> Error {
     let path = path.to_owned();
     move |source| Error::File {
         path,
@@ -705,8 +705,8 @@ fn invalid(path: &Path, reason: impl ToString) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use demi_artifact::testing::{Answer, Server, zip};
-    use demi_browser_protocol::release::ReleasePlatform;
+    use demi_shared_artifacts::testing::{Answer, Server, zip};
+    use demi_command_package_browser_protocol::release::ReleasePlatform;
 
     use super::*;
 
@@ -750,7 +750,7 @@ Version: 0.19.0-3
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("measured");
         std::fs::write(&path, bytes).unwrap();
-        let digest = demi_artifact::digest(&path, u64::MAX, &CancellationToken::new()).await.unwrap();
+        let digest = demi_shared_artifacts::digest(&path, u64::MAX, &CancellationToken::new()).await.unwrap();
         PackageArtifact {
             sha256: digest.sha256,
             size: digest.size,
@@ -822,8 +822,8 @@ Version: 0.19.0-3
             let browser = path.join("demi-browser");
             let claude = path.join("demi-claude");
             let releases = vec![
-                command_package(&browser, demi_browser_protocol::PACKAGE, "demi-browser", b"browser", browser_program).await,
-                command_package(&claude, demi_claude_protocol::PACKAGE, "demi-claude", b"claude", b"claude").await,
+                command_package(&browser, demi_command_package_browser_protocol::PACKAGE, "demi-browser", b"browser", browser_program).await,
+                command_package(&claude, demi_command_package_claude_code_protocol::PACKAGE, "demi-claude", b"claude", b"claude").await,
             ];
             let chrome = zip(&[(CHROME, b"chrome"), ("chrome-linux-arm64/LICENSE", b"license")]);
             let uv = gzip_tar(&[(UV_EXECUTABLES[0], b"uv"), (UV_EXECUTABLES[1], b"uvx")]);
@@ -898,7 +898,7 @@ Version: 0.19.0-3
         // The repository's pins are what a real build downloads.
         Pins::pinned().unwrap();
         let fixture = Fixture::new(DATABASE, b"browser").await;
-        let client = demi_artifact::client_allowing_http().unwrap();
+        let client = demi_shared_artifacts::client_allowing_http().unwrap();
         let cancel = CancellationToken::new();
         let base = package(&fixture.options, ARCHITECTURE, &fixture.pins, &client, &cancel)
             .await
@@ -973,13 +973,13 @@ Version: 0.19.0-3
 
     #[tokio::test]
     async fn an_artifact_unlike_its_release_or_an_unfinished_package_fails_the_image_and_publishes_nothing() {
-        let client = demi_artifact::client_allowing_http().unwrap();
+        let client = demi_shared_artifacts::client_allowing_http().unwrap();
         let cancel = CancellationToken::new();
         // demi-browser's file is not the executable its descriptor records.
         let corrupt = Fixture::new(DATABASE, b"BROWSER").await;
         let refused = package(&corrupt.options, ARCHITECTURE, &corrupt.pins, &client, &cancel).await;
         assert!(
-            matches!(&refused, Err(Error::File { path, source: demi_artifact::Error::Digest }) if path.ends_with("demi-browser")),
+            matches!(&refused, Err(Error::File { path, source: demi_shared_artifacts::Error::Digest }) if path.ends_with("demi-browser")),
             "{refused:?}"
         );
         assert!(!corrupt.options.output.exists());
