@@ -25,7 +25,7 @@ Each tool owns its own state and cleanup.
 
 For example, the conversation browser keeps its tabs between shell jobs. Its
 operations are types in `command-package-browser-protocol`, the `demi.browser` package
-(`demi-browser` and the browser libraries) implements them, and
+(`command-package-browser` with `command-package-browser-chrome`) implements them, and
 `agent-coding-harness` declares them as `demi browser` commands. The tabs are keyed by
 the conversation the runner names on every invocation, and they end when the
 runner forwards the generic conversation release. No browser state or
@@ -219,7 +219,7 @@ the browser's TypeScript. A contract crate has no async runtime and no IO.
   constants, shared by the inputs they bound; each input type carries its
   default timeout.
 - **Public boundary:** the types above. `agent-coding-harness` declares the commands
-  from these types, the browser libraries decode invocations with them, the
+  from these types, the browser's crates decode invocations with them, the
   backend uses them for the conversation browser tab routes, and the page
   reads the live view's messages through `@demicodes/protocol`. Native
   commands, the coding harness, the backend and the page need one contract
@@ -761,7 +761,7 @@ such as the control service or its user's change marks.
 
 ```text
 demi-backend (executable: configuration, composition)
-  |-- backend-families --> backend-providers
+  |-- (families) ---------> backend-providers
   `-- backend-http (HTTP)
         `-- backend-user-shard (the user's shard, conversations)
               |-- backend-host-access --> backend-cloud, backend-expose, backend-runners
@@ -830,13 +830,6 @@ demi-backend (executable: configuration, composition)
 - **Public boundary:** the assembly, the vault, the meter, the family contract.
 - **Must not:** know conversations, devices or the Cloud; run a process for a
   provider, which the shard places on the user's Cloud.
-
-#### `backend-families`
-
-- **Owns:** the built-in provider families, one per vendor crate
-  (`builtin`).
-- **Public boundary:** the registry the executable starts with.
-- **Must not:** hold anything but the families' construction.
 
 #### `backend-runners`
 
@@ -960,98 +953,83 @@ demi-backend (executable: configuration, composition)
   the runners' hellos at the token's lookup (`Backend::hold_hellos`).
 - **Must not:** hold business logic beyond routing and validation.
 
-### Browser libraries
+### Browser library
 
-The conversation browser is one resident program built from five crates. Each
-tab's state is data in `browser-tabs`; what acts on a tab is written above it,
-as functions of the crate that owns the action, so each crate stays a layer.
+#### `command-package-browser-chrome`
 
-```text
-demi-browser (executable: conversations, composition)
-   |-- browser-live --> browser-page --.
-   `-- browser-cdp --------------------+--> browser-tabs --> browser-driver
-```
+- **Owns:** the conversation browser's Chrome, in five modules that are
+  layers: each tab's state is data in `tabs`, and what acts on a tab is
+  written above it, as functions of the module that owns the action.
 
-#### `browser-driver`
+  ```text
+  command-package-browser (program: conversations, composition)
+     `-- command-package-browser-chrome
+           |-- live --> page --.
+           `-- cdp ------------+--> tabs --> driver
+  ```
 
-- **Owns:** Chrome and the operations run on it: the installation of the
-  pinned Chrome for Testing release, launch with the capture extension and
-  the capture channel, the extension's connection, which the live view starts
-  captures over, the Chrome process and its profile, the operation type every
-  command runs as with its cancellation and failure (`Operation`) and the
-  agent it acts for, element handles, frames, navigation history, the
-  conversation numbers stream, and the text and output a command answers with
-  ([Native driver](../browser/browser.md#native-driver)). The capture
-  channel's decoding of the extension's frames is why it depends on `shared-types`.
-- **Public boundary:** the items above; its `testing` feature adds the
-  capture extension's id and tab numbers at hand without a numbers source.
-- **Must not:** know tabs, conversations or the live view's viewers.
-
-#### `browser-tabs`
-
-- **Owns:** a conversation browser's environment and its tabs: the Chrome
-  process tree, profile and CDP event pump of each environment, the tab
-  registry and its snapshot, each tab's state and gate, the data each feature
-  keeps for a tab (references, asset inventories, WebMCP tool sets, the
-  console buffer, and the way to the tab's debugging owner), viewports,
-  dialogs, console logs and navigation.
-- **Public boundary:** the environment, the registry, `BrowserTab`, the tab
-  state and the modules that keep it. Its `testing` feature adds Chrome's own
-  view of its targets.
-- **Must not:** act on a page's content beyond navigation, or know the live
-  view.
-
-#### `browser-page`
-
-- **Owns:** what the commands do to a page: element location and state,
-  evaluation, observation, queries and probes, content and screenshots,
-  keyboard, pointer, selection and select options, the actions that combine
-  them, the clipboard, uploads, downloads, fetches and assets, and the
-  capabilities of these families. The families that read the invocation's
-  working directory, standard input or caller take its command context from
-  `command-sdk`.
-- **Public boundary:** one function per action over a `BrowserTab`. Its
-  `testing` feature adds the helpers that drive a page by CSS selector.
-- **Must not:** own tab state or the CDP session.
-
-#### `browser-cdp`
-
-- **Owns:** raw CDP commands with their validation against the pinned
-  protocol, each tab's debugging owner, which the tab's first `cdp` command
-  starts, with its connections and their event pumps, and WebMCP;
-  `jsonschema` validates both the pinned protocol and the schemas pages
-  declare.
-- **Public boundary:** the two command families over a `BrowserTab` and their
-  capabilities. Its `testing` feature adds evaluation in a target no command
-  addresses.
-- **Must not:** own tab state.
-
-#### `browser-live`
-
-- **Owns:** the live view ([Live view](../browser/live-view.md)): the capture
-  pipeline, frame rate and pacing, the viewer connections of user streams,
-  the page observer of each watched tab, and the relay of the user's input to
-  the tab; and the trait through which a viewer reaches its conversation's
-  browser, which `demi-browser` implements. The hub starts with an
-  environment, and `demi-browser` starts it for each browser it runs.
-- **Public boundary:** the live view's hub, the viewer trait and the serving
-  of a view.
-- **Must not:** know how conversations are owned or released.
+  - `driver`: Chrome and the operations run on it: the installation of the
+    pinned Chrome for Testing release, launch with the capture extension and
+    the capture channel, the extension's connection, which the live view
+    starts captures over, the Chrome process and its profile, the operation
+    type every command runs as with its cancellation and failure
+    (`Operation`) and the agent it acts for, element handles, frames,
+    navigation history, the conversation numbers stream, and the text and
+    output a command answers with
+    ([Native driver](../browser/browser.md#native-driver));
+  - `tabs`: a conversation browser's environment and its tabs: the Chrome
+    process tree, profile and CDP event pump of each environment, the tab
+    registry and its snapshot, each tab's state and gate, the data each
+    feature keeps for a tab (references, asset inventories, WebMCP tool sets,
+    the console buffer, and the way to the tab's debugging owner), viewports,
+    dialogs, console logs and navigation;
+  - `page`: what the commands do to a page: element location and state,
+    evaluation, observation, queries and probes, content and screenshots,
+    keyboard, pointer, selection and select options, the actions that combine
+    them, the clipboard, uploads, downloads, fetches and assets, and the
+    capabilities of these families, one function per action over a
+    `BrowserTab`;
+  - `cdp`: raw CDP commands with their validation against the pinned
+    protocol, each tab's debugging owner, which the tab's first `cdp` command
+    starts, with its connections and their event pumps, and WebMCP;
+    `jsonschema` validates both the pinned protocol and the schemas pages
+    declare;
+  - `live`: the live view ([Live view](../browser/live-view.md)): the capture
+    pipeline, frame rate and pacing, the viewer connections of user streams,
+    the page observer of each watched tab, and the relay of the user's input
+    to the tab; and the trait through which a viewer reaches its
+    conversation's browser, which `command-package-browser` implements. The
+    hub starts with an environment, and the program starts it for each
+    browser it runs.
+- **Public boundary:** the five modules and the items above. Its `testing`
+  feature adds the capture extension's id and tab numbers at hand without a
+  numbers source (`driver`), Chrome's own view of its targets (`tabs`), the
+  helpers that drive a page by CSS selector (`page`) and evaluation in a
+  target no command addresses (`cdp`). Its tests are unit tests, since they
+  read the layers' internals; the tests of the whole program are
+  `command-package-browser`'s.
+- **Rules:** `driver` knows no tabs, conversations or viewers; `tabs` acts on
+  a page's content only to navigate, and knows no live view; `page` and `cdp`
+  own no tab state, and `page` owns no CDP session; `live` knows nothing of
+  how conversations are owned or released.
 
 ### Executables
 
 #### `backend` (`demi-backend`)
 
 - **Owns:** the hosted product's server program: its typed configuration,
-  validated at startup; the instance secret and the keys derived from it; and
-  the composition of the [backend libraries](#backend-libraries) in
+  validated at startup; the instance secret and the keys derived from it; the
+  built-in provider families, one per vendor crate (`families::builtin`),
+  which the composition starts with; and the composition of the
+  [backend libraries](#backend-libraries) in
   `Backend::start`, the one composition root: the storage, the shared services,
   the shard pool and the edge, with the command manifest it serves to runners,
   the rpc handlers it runs and the
   [user stream](../execution/native-runtime.md#user-streams) declarations,
   such as the live view's `browser` stream. Its modules and their crates are
   listed in [Backend](../backend/backend.md#request-paths-and-responsibilities).
-- **Public boundary:** the `demi-backend` executable; `Backend::start` and
+- **Public boundary:** the `demi-backend` executable; the built-in families,
+  beside which a test registers scripted ones; `Backend::start` and
   `BackendConfig` for tests, with the parts a test replaces: the provider
   families entries are assembled with (`FamilyRegistry`, `ProviderFamily` and
   the arguments a family builds a provider from, or, for a provider that needs
@@ -1155,12 +1133,13 @@ demi-browser (executable: conversations, composition)
   view hub of the browser it runs, routing each invocation by the package's
   operation list, the `capabilities` command, which is the one place that
   knows every command family, the sweep of orphaned profiles at start, and the
-  composition of the [browser libraries](#browser-libraries).
+  composition of
+  [`command-package-browser-chrome`](#command-package-browser-chrome).
 - **Public boundary:** the executable. Behavior:
   [Conversation browser](../browser/browser.md), whose
   [catalog](../browser/browser.md#catalog) lists the browser commands, and
-  [Live view](../browser/live-view.md). Its `testing` feature turns on the
-  browser libraries' `testing` features for the Chrome tests.
+  [Live view](../browser/live-view.md). Its `testing` feature turns on
+  `command-package-browser-chrome`'s for the Chrome tests.
 - **Must not:** host a runner connection, define the agent's command tree,
   store conversations or be linked into the runner.
 
@@ -1351,17 +1330,12 @@ runner-host -> shared-artifacts, command-sdk, runner-process, runner-protocol
 runner-command-packages -> shared-artifacts, command-protocol, command-sdk, runner-process, runner-protocol
 runner-shell -> command-protocol, command-sdk, runner-process, runner-protocol
 runner-jobs -> command-protocol, command-sdk, command-declarations, runner-process, runner-protocol, runner-command-packages
-browser-driver -> shared-artifacts, command-package-browser-protocol, command-protocol, command-sdk, shared-types
-browser-tabs -> browser-driver, command-package-browser-protocol, command-protocol
-browser-page -> browser-driver, command-package-browser-protocol, browser-tabs, command-sdk
-browser-cdp -> browser-driver, command-package-browser-protocol, browser-tabs, command-sdk
-browser-live -> browser-driver, browser-page, command-package-browser-protocol, browser-tabs, command-protocol, command-sdk, shared-types
+command-package-browser-chrome -> command-package-browser-protocol, command-protocol, command-sdk, shared-artifacts, shared-types
 backend-page-sync -> backend-database, web-api-protocol
 backend-database -> agent-store, agent-transcript, shared-types, shared-gates, backend-remote-host, machine-manager-protocol, runner-protocol, host-interface, web-api-protocol
 backend-blobs -> agent-store, shared-types, web-api-protocol
 backend-accounts -> backend-database, command-protocol, shared-types, web-api-protocol
 backend-providers -> backend-database, backend-page-sync, command-package-claude-code-protocol, shared-types, provider-common, provider-anthropic-api, provider-claude-code, provider-openai-api, web-api-protocol
-backend-families -> backend-providers, shared-types, provider-common, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, web-api-protocol
 backend-runners -> shared-artifacts, backend-blobs, backend-database, backend-page-sync, command-protocol, shared-gates, backend-remote-host, runner-protocol, host-interface, web-api-protocol
 backend-idle-watch -> shared-gates
 backend-cloud -> backend-idle-watch, backend-providers, backend-runners, backend-database, backend-page-sync, shared-gates, backend-remote-host, machine-manager-protocol, runner-protocol, host-interface, web-api-protocol
@@ -1369,11 +1343,11 @@ backend-expose -> backend-database, backend-page-sync, shared-types, web-api-pro
 backend-host-access -> agent-store, agent-tools, backend-cloud, backend-expose, backend-blobs, backend-runners, backend-database, command-protocol, command-declarations, shared-types, shared-gates, backend-remote-host, runner-protocol, host-interface, web-api-protocol
 backend-user-shard -> agent-server, conversation-socket-protocol, agent-session, agent-store, agent-tools, agent-transcript, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-idle-watch, backend-blobs, backend-providers, backend-runners, backend-database, backend-page-sync, command-package-browser-protocol, command-package-claude-code-protocol, agent-coding-harness, command-protocol, command-declarations, shared-types, command-package-file-protocol, shared-gates, backend-remote-host, machine-manager-protocol, provider-common, provider-claude-code, runner-protocol, host-interface, web-api-protocol
 backend-http -> conversation-socket-protocol, agent-store, shared-artifacts, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-blobs, backend-providers, backend-runners, backend-user-shard, backend-database, backend-page-sync, command-package-browser-protocol, command-protocol, shared-types, backend-remote-host, provider-common, runner-protocol, host-interface, web-api-protocol
-backend -> shared-artifacts, backend-accounts, backend-cloud, backend-http, backend-expose, backend-families, backend-host-access, backend-blobs, backend-providers, backend-runners, backend-user-shard, backend-database, command-package-browser-protocol, command-declarations, shared-types, shared-gates, provider-common, web-api-protocol
+backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-expose, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, provider-anthropic-api, provider-claude-code, provider-codex, provider-common, provider-google, provider-grok-build, provider-openai-api, shared-artifacts, shared-gates, shared-types, web-api-protocol
 machine-manager -> shared-artifacts, machine-manager-protocol, runner-protocol
 runner -> command-protocol, command-sdk, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell
 command-package-file -> shared-artifacts, command-protocol, command-sdk, shared-types, command-package-file-protocol, shared-gates
-command-package-browser -> browser-cdp, browser-driver, browser-live, browser-page, command-package-browser-protocol, browser-tabs, command-protocol, command-sdk
+command-package-browser -> command-package-browser-chrome, command-package-browser-protocol, command-protocol, command-sdk
 command-package-claude-code -> shared-artifacts, command-package-claude-code-protocol, command-protocol, command-sdk
 xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, machine-manager-protocol, runner-protocol, web-api-protocol
 ```

@@ -14,7 +14,7 @@ async fn main() {
         .without_time()
         .with_target(false)
         .init();
-    let browsers = demi_browser_driver::installation::BrowserDirectories::host();
+    let browsers = demi_command_package_browser_chrome::driver::installation::BrowserDirectories::host();
     let service = demi_command_sdk::serve_stdio(Arc::new(demi_browser::DemiBrowser::new(
         browsers.clone(),
     )));
@@ -22,7 +22,7 @@ async fn main() {
     // removed beside serving (`browser.md` § Native driver).
     let (result, ()) = tokio::join!(
         service,
-        demi_browser_tabs::environment::sweep_orphans(&browsers)
+        demi_command_package_browser_chrome::tabs::environment::sweep_orphans(&browsers)
     );
     if let Err(error) = result {
         eprintln!("demi-browser: {error}");

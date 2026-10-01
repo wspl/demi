@@ -11,7 +11,7 @@ mod conversations;
 
 use std::{future::Future, pin::Pin, sync::Arc};
 
-use demi_browser_driver::installation::BrowserDirectories;
+use demi_command_package_browser_chrome::driver::installation::BrowserDirectories;
 use demi_command_package_browser_protocol::{Operation, OperationError, browser as protocol};
 use demi_command_protocol::{Completion, Invocation};
 use demi_command_sdk::{

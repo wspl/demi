@@ -1206,7 +1206,7 @@ async fn the_capture_extension_runs_beside_the_pages_and_is_never_a_tab() {
         let tab = environment.open("about:blank", &cancel, timeout).await?;
         let prefix = format!(
             "chrome-extension://{}/",
-            demi_browser_driver::testing::CAPTURE_EXTENSION_ID
+            demi_command_package_browser_chrome::driver::testing::CAPTURE_EXTENSION_ID
         );
         // The extension's worker starts on its own, some time after the browser.
         tokio::time::timeout(timeout, async {
@@ -1218,7 +1218,7 @@ async fn the_capture_extension_runs_beside_the_pages_and_is_never_a_tab() {
             {
                 tokio::time::sleep(Duration::from_millis(50)).await;
             }
-            Ok::<_, demi_browser_driver::operation::BrowserError>(())
+            Ok::<_, demi_command_package_browser_chrome::driver::operation::BrowserError>(())
         })
         .await
         .expect("the capture extension runs")?;
@@ -1242,7 +1242,7 @@ async fn capture_extension_reload_preserves_pages_and_recreates_its_worker() {
         let tab = environment.open("about:blank", &cancel, timeout).await?;
         let worker_url = format!(
             "chrome-extension://{}/background.js",
-            demi_browser_driver::testing::CAPTURE_EXTENSION_ID
+            demi_command_package_browser_chrome::driver::testing::CAPTURE_EXTENSION_ID
         );
         let offscreen_url = worker_url.replace("background.js", "offscreen.html");
         let mut previous = None;
@@ -1257,7 +1257,7 @@ async fn capture_extension_reload_preserves_pages_and_recreates_its_worker() {
                         target.url == worker_url && previous.as_ref() != Some(&target.target_id)
                     });
                     if let Some(worker) = worker.filter(|_| started) {
-                        return Ok::<_, demi_browser_driver::operation::BrowserError>(worker.target_id);
+                        return Ok::<_, demi_command_package_browser_chrome::driver::operation::BrowserError>(worker.target_id);
                     }
                     tokio::time::sleep(Duration::from_millis(50)).await;
                 }
@@ -1266,13 +1266,13 @@ async fn capture_extension_reload_preserves_pages_and_recreates_its_worker() {
             .expect("the capture worker returns after every reload")?;
             assert_eq!(environment.tabs(&cancel, timeout).await?.len(), 1);
             assert_eq!(
-                demi_browser_page::evaluation::evaluate(&tab, "document.URL", &cancel, timeout).await?,
+                demi_command_package_browser_chrome::page::evaluation::evaluate(&tab, "document.URL", &cancel, timeout).await?,
                 json!("about:blank")
             );
             if round == 3 {
                 break;
             }
-            let reloading = demi_browser_cdp::testing::evaluate_in(&environment, 
+            let reloading = demi_command_package_browser_chrome::cdp::testing::evaluate_in(&environment, 
                     worker.clone(),
                     "setTimeout(() => chrome.runtime.reload(), 100); true",
                 )

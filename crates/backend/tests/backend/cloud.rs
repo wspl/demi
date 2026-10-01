@@ -103,7 +103,7 @@ fn with_process_family(harness: Harness) -> Harness {
         wires: &[],
         process_host: true,
     };
-    harness.with_families(demi_backend_families::builtin().with("process", process))
+    harness.with_families(demi_backend::families::builtin().with("process", process))
 }
 
 /// The master's entry of the family `process`, with its one model `m`.

@@ -1,0 +1,53 @@
+[package]
+name = "demi-command-package-browser-chrome"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+# Its tests reach the layers' internals, so they are unit tests and the crate
+# has no integration tests; the browser's tests of the whole program are
+# command-package-browser's (`crates-and-packages.md` § Module layout). No doc
+# examples.
+doctest = false
+bench = false
+
+[features]
+# The layers' test support, for the Chrome tests: the capture extension's id
+# and tab numbers at hand (`driver::testing`), Chrome's own view of its targets
+# (`tabs`), driving a page by CSS selector (`page::testing`) and evaluation in a
+# target no command addresses (`cdp::testing`).
+testing = []
+
+[dependencies]
+base64 = "0.22"
+bytes.workspace = true
+chromiumoxide = "=0.9.1"
+demi-command-package-browser-protocol = { path = "../command-package-browser-protocol" }
+demi-command-protocol = { path = "../command-protocol" }
+demi-command-sdk = { path = "../command-sdk" }
+demi-shared-artifacts = { path = "../shared-artifacts" }
+demi-shared-types = { path = "../shared-types" }
+futures-util.workspace = true
+garde.workspace = true
+getrandom = "0.4"
+# Validate page tool schemas and the pinned CDP protocol without fetching external refs (MIT).
+jsonschema = { version = "0.56", default-features = false }
+png = "0.18"
+regex = "1"
+serde.workspace = true
+serde_json.workspace = true
+tempfile = "3"
+thiserror.workspace = true
+tokio.workspace = true
+tokio-tungstenite = { version = "0.29", default-features = false, features = ["handshake"] }
+tokio-util.workspace = true
+tracing.workspace = true
+url = "2"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+sysinfo = { version = "0.39", default-features = false, features = ["system"] }
+
+[dev-dependencies]
+sha2 = "0.10"

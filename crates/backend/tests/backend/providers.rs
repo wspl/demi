@@ -63,7 +63,7 @@ async fn catalog_of(backend: &TestBackend, session: &Session, query: &str) -> Mo
 }
 
 fn scripted(directory: &Arc<Directory>) -> FamilyRegistry {
-    demi_backend_families::builtin().with(
+    demi_backend::families::builtin().with(
         "scripted",
         ScriptedKey {
             directory: directory.clone(),
@@ -363,7 +363,7 @@ fn served(document: &Value) -> MockResponse {
 async fn a_vendor_entry_takes_its_family_wire_and_endpoint_from_models_dev_and_reads_its_live_models() {
     let vendor = MockVendor::start().await;
     let directory = Arc::new(Directory::default());
-    let families = demi_backend_families::builtin().with(
+    let families = demi_backend::families::builtin().with(
         "openai",
         ScriptedKey {
             directory: directory.clone(),

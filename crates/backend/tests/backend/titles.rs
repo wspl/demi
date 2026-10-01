@@ -176,7 +176,7 @@ fn input(request: &InferenceRequest) -> String {
 /// family that configures the model `m` with an output limit of 8,000
 /// tokens, and that entry; the harness holds the backend's data.
 async fn titling(script: &Arc<Script>) -> (Harness, TestBackend, Session, String) {
-    let mut harness = Harness::new().with_families(demi_backend_families::builtin().with("titling", Titling(script.clone())));
+    let mut harness = Harness::new().with_families(demi_backend::families::builtin().with("titling", Titling(script.clone())));
     harness.conversations.titles = true;
     let (backend, master) = harness.start_set_up().await;
     let entry = json!({

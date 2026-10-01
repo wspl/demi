@@ -19,21 +19,12 @@ test = false
 
 [features]
 # The browser libraries' test support, for the Chrome tests.
-testing = [
-  "demi-browser-cdp/testing",
-  "demi-browser-driver/testing",
-  "demi-browser-page/testing",
-  "demi-browser-tabs/testing",
-]
+testing = ["demi-command-package-browser-chrome/testing"]
 
 [dependencies]
 bytes.workspace = true
-demi-browser-cdp = { path = "../browser-cdp" }
-demi-browser-driver = { path = "../browser-driver" }
-demi-browser-live = { path = "../browser-live" }
-demi-browser-page = { path = "../browser-page" }
+demi-command-package-browser-chrome = { path = "../command-package-browser-chrome" }
 demi-command-package-browser-protocol = { path = "../command-package-browser-protocol" }
-demi-browser-tabs = { path = "../browser-tabs" }
 demi-command-protocol = { path = "../command-protocol" }
 demi-command-sdk = { path = "../command-sdk" }
 futures-util.workspace = true

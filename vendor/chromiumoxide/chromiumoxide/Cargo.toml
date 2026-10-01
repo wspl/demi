@@ -222,7 +222,7 @@ version = "0.3"
 version = "0.6"
 
 [package.metadata.demi]
-maintainer = "demi-commands"
+maintainer = "demi-command-package-browser-chrome"
 patches = [
     "Bounded event subscriptions whose loss is an explicit lag error, in place of unbounded channels",
     "Bounded CDP websocket messages (16 MiB); an oversized message fails the connection",

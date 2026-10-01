@@ -37,7 +37,6 @@ demi-backend-accounts = { path = "../backend-accounts" }
 demi-backend-cloud = { path = "../backend-cloud" }
 demi-backend-http = { path = "../backend-http" }
 demi-backend-expose = { path = "../backend-expose" }
-demi-backend-families = { path = "../backend-families" }
 demi-backend-host-access = { path = "../backend-host-access" }
 demi-backend-blobs = { path = "../backend-blobs" }
 demi-backend-providers = { path = "../backend-providers" }
@@ -49,6 +48,12 @@ demi-command-declarations = { path = "../command-declarations" }
 demi-shared-types = { path = "../shared-types" }
 demi-shared-gates = { path = "../shared-gates" }
 demi-provider-common = { path = "../provider-common" }
+demi-provider-anthropic-api = { path = "../provider-anthropic-api" }
+demi-provider-claude-code = { path = "../provider-claude-code" }
+demi-provider-codex = { path = "../provider-codex" }
+demi-provider-google = { path = "../provider-google" }
+demi-provider-grok-build = { path = "../provider-grok-build" }
+demi-provider-openai-api = { path = "../provider-openai-api" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
 clap = { version = "4", features = ["derive", "env"] }
 hex = "0.4"
@@ -76,7 +81,6 @@ demi-command-package-file-protocol = { path = "../command-package-file-protocol"
 demi-backend-remote-host = { path = "../backend-remote-host", features = ["testing"] }
 demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
 demi-provider-common = { path = "../provider-common", features = ["testing"] }
-demi-provider-claude-code = { path = "../provider-claude-code" }
 demi-runner-protocol = { path = "../runner-protocol" }
 demi-host-interface = { path = "../host-interface", features = ["testing"] }
 bytes.workspace = true

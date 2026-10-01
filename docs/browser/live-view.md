@@ -521,9 +521,9 @@ crate and package; for the live view:
 | Where | Responsibility |
 | --- | --- |
 | `command-package-browser-protocol` | The live protocol: its message types, the frame kinds, the frame header, the frame limit and the video codec; the capture extension's messages. The page receives the live protocol as generated TypeScript in `@demicodes/protocol`. |
-| `browser-live` | The live view module: viewers, capture control, delivery and congestion, heartbeat, input, viewport modes and screen ratio, and the page observers of watched tabs with their script, served by the live hub and the capture channel. |
-| `browser-driver` | The capture extension as an embedded resource, the capture channel it connects to, and launch configuration. |
-| `browser-tabs` | Each tab's viewport, dialog and the upload directory the viewers' files go to. |
+| `command-package-browser-chrome`'s `live` | The live view module: viewers, capture control, delivery and congestion, heartbeat, input, viewport modes and screen ratio, and the page observers of watched tabs with their script, served by the live hub and the capture channel. |
+| `command-package-browser-chrome`'s `driver` | The capture extension as an embedded resource, the capture channel it connects to, and launch configuration. |
+| `command-package-browser-chrome`'s `tabs` | Each tab's viewport, dialog and the upload directory the viewers' files go to. |
 | `demi-browser` | Starting the live hub of each browser it runs, and the conversation browser that the viewer trait reaches. |
 | `command-protocol`, `command-sdk`, the runner's crates, `runner-protocol`, `backend-remote-host` | [User streams](../execution/native-runtime.md#user-streams) and [service streams](../execution/runner.md#service-streams), with no browser knowledge. |
 | `agent-coding-harness` | Declaring `viewport set --scale` with the other `demi browser` commands. |

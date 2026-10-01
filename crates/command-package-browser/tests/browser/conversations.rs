@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use demi_browser::DemiBrowser;
-use demi_browser_driver::installation::BrowserDirectories;
+use demi_command_package_browser_chrome::driver::installation::BrowserDirectories;
 use demi_command_protocol::{
     CommandCaller, CommandContext, CommandLocale, ConversationRequest, Invocation, Record,
 };

@@ -181,7 +181,7 @@ impl ProviderRuntime for TreeRuntime {
 /// conversation `FIRST` on the entry's model `m` and a paired device's
 /// `work` directory; the harness holds the backend's data and the device.
 async fn tree(scripts: &Arc<Scripts>) -> (Harness, TestBackend, Session, crate::support::Paired, String) {
-    let harness = Harness::new().with_families(demi_backend_families::builtin().with("tree", Tree(scripts.clone())));
+    let harness = Harness::new().with_families(demi_backend::families::builtin().with("tree", Tree(scripts.clone())));
     let (backend, master) = harness.start_set_up().await;
     let created = backend
         .post(

@@ -1933,13 +1933,14 @@ for the browser:
 - the runner's crates and `backend-remote-host`: the command context of every
   invocation, service residency, the release forward, cancellation, and
   transport; no webpage algorithms.
-- `demi-browser` and the [browser libraries](../architecture/crates-and-packages.md#browser-libraries):
-  per-conversation browsers and their owners (`demi-browser`), the driver and
-  output rendering (`browser-driver`), environments and tabs
-  (`browser-tabs`), page observation, actions and assets (`browser-page`),
-  CDP handling and WebMCP (`browser-cdp`) and the live view (`browser-live`).
+- `command-package-browser` and [`command-package-browser-chrome`](../architecture/crates-and-packages.md#command-package-browser-chrome):
+  per-conversation browsers and their owners (`command-package-browser`), the driver and
+  output rendering (`driver`), environments and tabs (`tabs`), page
+  observation, actions and assets (`page`), CDP handling and WebMCP (`cdp`)
+  and the live view (`live`), the modules of `command-package-browser-chrome`.
 - `shared-artifacts`: the verified download and installation of the pinned Chrome for
-  Testing release, used by `browser-driver` and by Cloud image packaging.
+  Testing release, used by `command-package-browser-chrome` and by Cloud
+  image packaging.
 - `command-protocol` and `command-sdk`: the generic invocation and
   conversation protocol and its SDK, not page or cookie semantics.
 - `web-ui`: the [live view](live-view.md#responsibilities), with the

@@ -270,7 +270,7 @@ impl Harness {
             mail: false,
             web_directory: None,
             mode: InstanceMode::Shared,
-            families: demi_backend_families::builtin(),
+            families: demi_backend::families::builtin(),
             models_dev_url: None,
             claude_releases: None,
             logins: LoginTiming::default(),
