@@ -153,7 +153,7 @@ conversation's behalf goes through one entry, the conversation's host access.
 The agent resolves its Host through it for each tool call and runs each shell
 job inside it, and everything the backend does for the user outside the agent
 uses it too, whether it writes an attachment, lists the working tree, or reads
-a file for the browser. An operation can name a device bound as the main or an
+a file for the web app. An operation can name a device bound as the main or an
 attached host; omitting the device selects the current main host. The binding
 and ownership are checked after taking the file gate and before reaching the
 Host. An unknown or detached device is refused; detaching prevents new access,
@@ -212,10 +212,10 @@ an attempt that has not dispatched its operation waits and starts over. An
 operation already dispatched runs once and is never retried: if a reset or the
 loss of its device cuts it off, it fails with that cause.
 
-Two operations last as long as the browser decides. The user's shard admits
-each one like any operation, and the backend's edge carries its bytes: the
-part of the backend that serves HTTP and moves bytes on threads shared by all
-users ([Programs and threads](../architecture/concurrency.md#programs-and-threads)).
+Two operations last as long as the user's browser decides. The user's shard
+admits each one like any operation, and the backend's edge carries its bytes:
+the part of the backend that serves HTTP and moves bytes on threads shared
+by all users ([Programs and threads](../architecture/concurrency.md#programs-and-threads)).
 With the pipe ends, the shard hands the edge a lease. The edge holds the lease
 while bytes move and drops it when it is done, which releases the admission in
 the shard. When the shard ends the operation first, it releases the admission
@@ -223,7 +223,7 @@ at once, without waiting for the edge, and the edge sees the lease end and
 stops. For example, a download of `report.txt` from the Cloud:
 
 ```text
-Browser            Edge                          User's shard                 Runner
+Web app            Edge                          User's shard                 Runner
   |-- GET fs/raw -->|                               |                            |
   |                 |-- admit the download -------->| take the file gate and     |
   |                 |                               | the Cloud's admission      |
@@ -235,21 +235,21 @@ Browser            Edge                          User's shard                 Ru
 
 The first is a file transfer: the bytes of a
 [file preview](../product/file-previews.md) or a download, which last as long as
-a user watches a video, and of an upload, which last as long as the browser
-takes to send them. It holds Host access like any operation, until its last
-byte is delivered or the browser ends it. Two rules keep a forgotten transfer
-from holding a Cloud awake or a conversation's file gate:
+a user watches a video, and of an upload, which last as long as the user's
+browser takes to send them. It holds Host access like any operation, until its
+last byte is delivered or the user's browser ends it. Two rules keep a forgotten
+transfer from holding a Cloud awake or a conversation's file gate:
 
-- A transfer the browser has accepted no bytes from, or sent none to, for 60
-  seconds releases its access and stops the runner's read or write. The edge
-  applies this rule, since only the edge sees the browser's pace. Only time
-  spent waiting for the browser counts; waiting for the runner or for a Cloud
-  to wake does not. A download's response is left without an end, so when its
-  connection closes the browser sees it cut short, never complete, and a paused
-  player asks again for the range it still needs; an upload's file is left as
-  it was. A connection on which no byte has moved for 60 seconds is closed.
-  Sixty seconds is the stalled-client timeout web servers use, nginx's
-  `send_timeout` among them.
+- A transfer the user's browser has accepted no bytes from, or sent none to, for
+  60 seconds releases its access and stops the runner's read or write. The edge
+  applies this rule, since only the edge sees the user's browser's pace. Only
+  time spent waiting for the user's browser counts; waiting for the runner or
+  for a Cloud to wake does not. A download's response is left without an end, so
+  when its connection closes the user's browser sees it cut short, never
+  complete, and a paused player asks again for the range it still needs; an
+  upload's file is left as it was. A connection on which no byte has moved for
+  60 seconds is closed. Sixty seconds is the stalled-client timeout web servers
+  use, nginx's `send_timeout` among them.
 - An archive, a target or directory change, and a detach end the
   conversation's open transfers instead of waiting for them or being refused
   by them. A Cloud stop or reset ends them with the device's other work.
@@ -263,8 +263,8 @@ archived conversation, like any operation, with two differences:
 
 - It never wakes a stopped Cloud: a stopped Cloud holds none of the state a
   user stream shows, so the page learns that the Host is stopped. Work the
-  user starts from the view, such as opening a new browser tab, is ordinary
-  demand and wakes it.
+  user starts from the view, such as opening a new conversation browser tab,
+  is ordinary demand and wakes it.
 - Once admitted, it does not hold the conversation's file gate, so a
   transition ends it instead of waiting for it. While it is open the
   conversation is active, which keeps a Cloud awake
@@ -290,7 +290,7 @@ touches no conversation's files. This table names every way to a Host:
 
 | Way | Used by | Takes | A stopped Cloud |
 | --- | --- | --- | --- |
-| The conversation's host access | The agent's tool calls and shell jobs; attachments, the working tree, file text and file transfers; one-shot user calls that start work, such as opening a browser tab | The conversation's file gate while the operation runs, and, for a Cloud, the Cloud's admission | Woken; a running reset is waited for |
+| The conversation's host access | The agent's tool calls and shell jobs; attachments, the working tree, file text and file transfers; one-shot user calls that start work, such as opening a conversation browser tab | The conversation's file gate while the operation runs, and, for a Cloud, the Cloud's admission | Woken; a running reset is waited for |
 | User-stream admission, a form of the conversation's host access | User streams; one-shot user calls that must not wake the Host | The file gate while admitting only | Not woken: the caller learns that the Host is stopped |
 | [Lifecycle access](#lifecycle-access), a form of the conversation's host access | The conversation release | Nothing: the release is a runner message, sent only to a connected runner | Not woken: the Cloud hears the release after its next wake |
 | Device access | The public relay of a [Host expose](expose.md#the-public-relay); the [device log](../product/web-api.md#device-log); browsing a paired device's directories to choose a target; the [Claude Code versions](../providers/claude-code.md#what-the-user-sees) a provider's settings show | Nothing: the caller must own the device, and its runner must be connected | Not woken |
@@ -333,9 +333,9 @@ conversation for a release to remove
 ([Conversation release](resource-lifecycle.md#conversation-release)).
 
 If the database commit fails after the release, the old selection remains and
-its next browser open starts fresh; page state cannot be rolled back. Device
-revocation and unexpected loss end the conversation's state on that device
-without using Host access to revive it for cleanup.
+the conversation browser starts fresh at its next open; the state of its tabs
+cannot be rolled back. Device revocation and unexpected loss end the conversation's state
+on that device without using Host access to revive it for cleanup.
 
 ## Coordinate shared Cloud activity
 
@@ -405,7 +405,7 @@ originated it throughout the shared-device activity.
 
 An unavailable paired device or failed Cloud wake produces an operation error.
 History remains readable, and the backend does not redirect the operation.
-Browser disconnect does not abort the agent turn; a reconnecting browser
+A page that disconnects does not abort the agent turn; a page that reconnects
 synchronizes with the backend transcript.
 
 The agent persists a tool call as executing before dispatch. Recovery distinguishes

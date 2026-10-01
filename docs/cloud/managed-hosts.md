@@ -344,9 +344,10 @@ Deploying a base makes it available for new devices and resets; ordinary wake
 never silently upgrades an existing base. A base identifies its architecture
 and complete build manifest. CPU architectures are not interchangeable: moving
 persisted system/home state between architectures is outside this contract.
-The runner's installation state and browser processes are temporary, and a
-job's output lasts only until its conversation's release. Durable results must
-be written outside runtime mounts and the runner's directories.
+The runner's installation state and conversation browser processes are
+temporary, and a job's output lasts only until its conversation's release.
+Durable results must be written outside runtime mounts and the runner's
+directories.
 
 ### Container initialization
 
@@ -410,9 +411,9 @@ flush/freeze, and durable publication are all required. Acceptance must
 exercise ordinary writes, writable mappings, rename/unlink, and cross-volume
 writers. An unresponsive runtime cannot produce a successful live checkpoint.
 Report the failure; do not claim a checkpoint by silently restarting the user's
-browser. If thawing or resuming fails, the manager stops the sandbox, sends the
-death event, and reports the capture error together with the cleanup errors;
-the backend recovers the device as a runtime loss.
+conversation browser. If thawing or resuming fails, the manager stops the
+sandbox, sends the death event, and reports the capture error together with
+the cleanup errors; the backend recovers the device as a runtime loss.
 
 Hibernate instead stops all writers, releases Gofer references, unmounts the
 merged root and writable filesystems, checks and syncs both images, and
@@ -480,9 +481,10 @@ The [idle rule](../execution/resource-lifecycle.md#idle-window) applies across
 every conversation using this device. Tabs, resident services, attachments, and
 a look at what runs there, such as a tab listing, do not keep it active.
 Maintenance does not restart the idle clock. Stopping Cloud ends all in-sandbox
-browser/native state and its [exposes](../execution/expose.md#lifetime). A
-running Cloud hears each conversation's release as a paired device does; a
-stop needs none, since it ends everything a release would
+conversation browser and native state, and its
+[exposes](../execution/expose.md#lifetime). A running Cloud hears each
+conversation's release as a paired device does; a stop needs none, since it
+ends everything a release would
 ([A Cloud's idle stop](../execution/resource-lifecycle.md#a-clouds-idle-stop)),
 and cleanup never wakes a stopped Cloud.
 
@@ -631,9 +633,9 @@ or hardware VM. Each user gets a separate Sentry, filesystem view, network
 namespace, and, with the [resource limits](#resource-limits) on, resource
 group. Infrastructure still trusts the Linux kernel,
 manager, runsc distribution, and image builder. The product supports ordinary
-Linux development and browsers, not arbitrary kernel features or privileged
-nested Docker. Unsupported operations return errors; they never widen
-isolation.
+Linux development and conversation browsers, not arbitrary kernel features
+or privileged nested Docker. Unsupported operations return errors; they never
+widen isolation.
 
 The runtime inputs are pinned in the runtime release manifest,
 `crates/machine-manager/runtime/release.json`. The manager is built with that manifest
@@ -707,8 +709,8 @@ update.
 
 A service's public URL uses the backend's [Host expose](../execution/expose.md)
 relay over the runner connection. The same connection carries files, commands,
-and browser streams through normal Host access. No infrastructure transport is
-an alternate route for conversation operations.
+and conversation browser streams through normal Host access. No
+infrastructure transport is an alternate route for conversation operations.
 
 ### Managed boot credential
 
@@ -763,7 +765,7 @@ how the suite runs; a run must show the following:
 | Persistence | A system package and home files survive stop and wake; a stop leaves no job directory in the generation it saves; home survives a reset; reset succeeds with a broken runner and with a broken system, such as disabled bash. |
 | Tools | Installers run in the login shell (rustup, nvm), and later jobs find the tools they installed (cargo, node). |
 | Browser | Chrome opens with its own sandbox, and closes at the release of its conversation while the Cloud runs on; the live view receives frames and delivers input. |
-| Checkpoint | A live checkpoint with a running browser publishes both images; the saved image contains pages a live process wrote through a writable mapping and never flushed. |
+| Checkpoint | A live checkpoint with a running conversation browser publishes both images; the saved image contains pages a live process wrote through a writable mapping and never flushed. |
 | Growth and space | Online growth records the actual capacity; it needs `CAP_SYS_RESOURCE` ([Linux requirements](setup.md#linux-requirements)). A full disk fails the operation and keeps working data. |
 | Recovery | A restart at each publication boundary loses neither published nor newer working data; runtime and out-of-memory loss report a death. |
 | Manager recovery | After the manager is killed while a filesystem is frozen, the next start recovers through the saved namespace, and the backend reads the Cloud's files and wakes it without restarting itself. A service stop whose drain fails is completed by the stop-post recovery. |
@@ -798,12 +800,12 @@ Inject faults after acquiring each resource: a manager built with fault
 injection aborts at a named point, and the next start must recover with nothing
 left behind.
 
-Exercise shell, native commands, provider CLI installation, and the real browser
-panel through normal Host access on both Cloud and a paired device. Automated
-checks use scripted models. Measure image preparation, storage setup, runsc
-start, runner authentication, first command, first Chrome open, subsequent open,
-first live frame, checkpoint pause, and stop separately; include cold/warm runs,
-CPU architecture, memory peaks, and concurrent load. Do not turn a single
-observed runtime-start duration into an end-to-end startup promise. Passing the
-functional suite does not establish production capacity, concurrent-load
-latency, host power-loss behavior, or multi-worker failover.
+Exercise shell, native commands, provider CLI installation, and the real
+conversation browser panel through normal Host access on both Cloud and a paired
+device. Automated checks use scripted models. Measure image preparation, storage
+setup, runsc start, runner authentication, first command, first Chrome open,
+subsequent open, first live frame, checkpoint pause, and stop separately;
+include cold/warm runs, CPU architecture, memory peaks, and concurrent load. Do
+not turn a single observed runtime-start duration into an end-to-end startup
+promise. Passing the functional suite does not establish production capacity,
+concurrent-load latency, host power-loss behavior, or multi-worker failover.

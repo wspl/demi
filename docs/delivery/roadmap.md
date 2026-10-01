@@ -22,7 +22,7 @@ Contracts and crate boundaries
 
 | Area | Completion condition | Contract |
 |---|---|---|
-| Contracts | Each wire and stored format has one Rust definition that both ends use; the browser's schemas are generated from those definitions; every boundary decodes and validates what it receives | [Contracts](../architecture/contracts.md) |
+| Contracts | Each wire and stored format has one Rust definition that both ends use; the web app's schemas are generated from those definitions; every boundary decodes and validates what it receives | [Contracts](../architecture/contracts.md) |
 | Crate and package boundaries | Product storage and execution policy stay outside the reusable agent, shell, and provider crates; the crate graph and the TypeScript package graph hold | [Crates and packages](../architecture/crates-and-packages.md) |
 | Native execution | Validated wire contracts, shell/job conformance, cancellation, independent installations, and resident service lifecycle work on the offered platforms | [Native runtime](../execution/native-runtime.md), [Runner](../execution/runner.md) |
 | Commands | Native operations run beside their files; RPC invokes the correct node's backend handler and scoped storage | [Commands](../execution/commands.md) |
@@ -32,7 +32,7 @@ Contracts and crate boundaries
 | Resource lifecycle | One conversation idle rule stops idle Cloud machines and releases idle conversations on paired devices and running Clouds; no cleanup wake or orphan state | [Conversation idle and Host resource release](../execution/resource-lifecycle.md#acceptance) |
 | Personal Cloud | One user has one machine; disk generations survive ordinary wake; external reset retains home and serializes recovery | [Managed hosts](../cloud/managed-hosts.md) |
 | Accounts and product | Authentication, roles, provider mode, and resource isolation hold across every exposed operation | [Product](../product/product.md), [Web API](../product/web-api.md) |
-| Browser | Shared UI has real product adapters and gallery examples; backend persistence and authorization are verified through the product | [Web architecture](../product/web-application.md) |
+| Web app | Shared UI has real product adapters and gallery examples; backend persistence and authorization are verified through the product | [Web architecture](../product/web-application.md) |
 | Browser automation | Conversation-owned browser, shell commands, observations, screenshots, and lifecycle satisfy their contracts on paired devices and Cloud | [Conversation browser](../browser/browser.md#acceptance) |
 | Live browser view | The user watches and operates the conversation's tabs in the work panel on paired devices and Cloud | [Live browser view](../browser/live-view.md#acceptance) |
 | Host expose | A device service gets a one-hour public URL; HTTP, streaming, and WebSocket relay byte-faithfully on paired devices and Cloud; expiry, removal, Cloud stop, and revocation destroy it | [Host expose](../execution/expose.md#acceptance) |
@@ -46,7 +46,7 @@ changed, the frontend's typechecks and tests
 ([Validation](builds-and-releases.md#validation)).
 Use crate tests for schemas, state machines, parsers, and adapters. Use
 [Scenarios](scenarios.md) for complete backend paths with scripted providers
-and real native runners, and its browser-contract suite for what the browser
+and real native runners, and its web app contract suite for what the web app
 relies on. Tests never call real models.
 
 Native release acceptance includes cross builds and execution on each offered
@@ -67,7 +67,7 @@ preservation through wake and home preservation through reset, including a guest
 that cannot connect. A local restart or a scenario on the fake machine manager
 is not acceptance of worker failover.
 
-Browser changes are made once in `web-ui`, with product and gallery adapters in
+Web app changes are made once in `web-ui`, with product and gallery adapters in
 the same checkpoint. Verify the affected real product flow and the shared
 gallery examples. Component styles and layouts are maintained in the gallery,
 not in separate specifications.
@@ -108,7 +108,7 @@ reverse proxy pins each user to one backend worker
   serves: a shared instance's provider entries serve every user, and each
   worker keeps its own quota snapshots. A worker marks such a change only on
   the synchronization channels it holds
-  ([Browser synchronization](../backend/backend.md#browser-synchronization));
+  ([Page synchronization](../backend/backend.md#page-synchronization));
   how it reaches the pages of users on other workers is undecided.
 - **Retention.** Define how long disks and blobs are kept after an explicit
   account or data deletion; [Account deletion](../backend/storage.md#account-deletion)

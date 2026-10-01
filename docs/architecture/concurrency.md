@@ -5,11 +5,11 @@ each piece of state lives, and how work is serialized, moved off async threads,
 cancelled and cleaned up. [Crates and packages](crates-and-packages.md) names
 the crates; the behavior of each subsystem is in its own document.
 
-For example, a browser downloads a file from a conversation on the user's
+For example, the user's browser downloads a file from a conversation on their
 Cloud:
 
 ```text
-browser --GET--> edge (any thread)
+web app --GET--> edge (any thread)
                   | call the user's shard
                   v
                  user's shard (one thread)
@@ -18,7 +18,7 @@ browser --GET--> edge (any thread)
                   - opens the runner's read stream
                   | returns a lease and the pipe's reading end
                   v
-                 edge copies the bytes to the browser
+                 edge copies the bytes to the web app
                   | the download ends, fails or is abandoned
                   v
                  the edge drops the lease; the shard releases the admission
@@ -223,13 +223,13 @@ owned data in both directions, `Send` pipe ends, leases and marks:
   on a shared provider entry, marks the changed part in the registry of open
   synchronization channels. The mark adds the part to each of the user's
   channels and wakes their tasks, which read the part in the shard
-  ([Browser synchronization](../backend/backend.md#browser-synchronization)).
+  ([Page synchronization](../backend/backend.md#page-synchronization)).
 
 **Call semantics.** A shard call always runs to completion. When the requester
 leaves, the edge cancels the call's token, and only waits observe it, such as
 a wait for the file gate or for a Cloud to wake, never a step after a commit.
 For example, a target switch that has won its storage write still restarts the
-conversation's idle watch, even if the browser disconnected. Transitions such
+conversation's idle watch, even if the page disconnected. Transitions such
 as switch, archive and detach run as spawned shard tasks once they hold the
 conversation.
 
@@ -336,7 +336,7 @@ from the blocking pool or a thread of its own.
 
 ## Cancellation and cleanup
 
-In the opening example, the browser closes the tab halfway through the
+In the opening example, the user's browser closes the tab halfway through the
 download. The edge's response body stops, the edge drops the lease, and the
 lease's owner task in the shard fails the pipe and releases the file gate. If
 instead the conversation is archived mid-download, the shard ends the lease,

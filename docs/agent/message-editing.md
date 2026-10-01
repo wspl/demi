@@ -103,7 +103,7 @@ the replacement's turn ID, and a digest of the request. The digest is the
 SHA-256 of the request's RFC 8785 canonical JSON, so equal requests have equal
 digests whatever their key order
 ([Encodings and digests](../backend/storage.md#encodings-and-digests)). The
-digest covers the request as the browser sent it, before any upload in it is
+digest covers the request as the page sent it, before any upload in it is
 resolved. Resolving an upload writes the file under a name not yet taken, so
 the same request resolved twice would differ, while its retry must match.
 
@@ -303,7 +303,7 @@ unfinished turn, which restores like any other
 - After acceptance, a generation failure shows turn recovery instead of
   offering to submit the accepted edit as another new message.
 - Gallery examples cover editing, saving, conflict, and failure with the shared
-  `web-ui` behavior. Browser acceptance covers keyboard submission, Chinese
+  `web-ui` behavior. Web app acceptance covers keyboard submission, Chinese
   input, multiline text, attachments, cancel, reconnect, and the replaced
   transcript. The shared keyboard predicate is tested with active IME
   composition events. The product acceptance fixture supplies a scripted
@@ -312,9 +312,9 @@ unfinished turn, which restores like any other
 ## Completion gate
 
 Editing is accepted when every invariant group above has automated coverage
-and the shared gallery and product browser acceptance passes. Screenshots
-alone do not establish transcript correctness or durability. No case calls a
-real model or generates a live compaction fixture.
+and the web app acceptance passes in the shared gallery and the product.
+Screenshots alone do not establish transcript correctness or durability. No
+case calls a real model or generates a live compaction fixture.
 
 The strength of the suite is checked with temporary targeted defects: retain
 one removed block, reuse the consumed provider runtime, publish before save, or

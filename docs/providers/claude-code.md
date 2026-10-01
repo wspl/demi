@@ -93,7 +93,7 @@ later install.
 
 ## The package
 
-`demi.claude-code` is a native package of its own
+`demi.claude-code` is a command package of its own
 ([Bind an exact package](../execution/native-runtime.md#bind-an-exact-package)),
 not part of Demi's other packages: the runner knows nothing about Claude Code, and
 removing the package and the backend's use of it leaves the rest of Demi as it

@@ -11,8 +11,8 @@ Every node of the tree, the root included, is the same kind of session: built by
 the same assembly, stored under the same contract ([Runtime](#runtime),
 [Persistence](#persistence)), carrying the same `demi agent` command group, and
 supervising its own children. The model-facing tool surface stays the five
-standard tools ([Tools](runtime.md#tools)). The browser receives the whole tree
-on the conversation's socket, beside the root's own frames
+standard tools ([Tools](runtime.md#tools)). The web app receives the whole
+tree on the conversation's socket, beside the root's own frames
 ([Protocol](#protocol)).
 
 A subagent is not a session copy. The session copy that compaction uses
@@ -167,7 +167,7 @@ For example, a child finishes while its parent executes a tool. The receipt
 waits in the parent's pending input. After the tool completes, the parent's
 next continuation boundary writes one `agent_message` block into its
 transcript, and the parent continues the same turn with the child's result in
-context. The browser renders a collapsed receipt row from that block
+context. The web app renders a collapsed receipt row from that block
 ([Product rendering](#product-rendering)).
 
 ### Delivery behavior and transcript type
@@ -216,7 +216,7 @@ number and its round, such as `{"agent": 2, "description": "refactor auth",
 of it ([Identifiers the model sees](runtime.md#identifiers-the-model-sees)).
 
 The source is structured data, independent of presentation text: neither replay
-nor the browser parses a bracketed text prefix to find it. The recipient's
+nor the web app parses a bracketed text prefix to find it. The recipient's
 session validates each message when it admits it
 ([Validation at entry](../architecture/contracts.md#validation-at-entry)).
 
@@ -244,7 +244,7 @@ The session admits explicit messages and completion receipts through one entry.
 While the recipient runs, a message waits in its pending input and enters the
 transcript at the next continuation boundary. While the recipient is idle, the
 session opens an internal continuation. Agent inputs never appear in the human
-message queue or in the list of pending steers the browser shows.
+message queue or in the list of pending steers the page shows.
 
 | Recipient state | Delivery |
 | --- | --- |
@@ -256,7 +256,7 @@ message queue or in the list of pending steers the browser shows.
 | Archived | Explicit sends are refused; a completion receipt stays durable at its owning supervisor until it can be delivered. |
 
 Messages do not cancel an executing tool or restart the current turn. A
-boundary can come later than the arrival, so the browser must not claim that
+boundary can come later than the arrival, so the web app must not claim that
 the model has read a receipt merely because the runtime accepted it.
 
 At a boundary, the session writes pending messages into the transcript in
@@ -302,7 +302,7 @@ explicit source envelope: two fixed lines saying that this is agent-originated
 context, subject to the real user's task and constraints, that needs no
 separate acknowledgement, followed by the message as JSON. A provider may need
 a user-role item to carry it; that wire role does not make the message
-human-authored in the transcript or the browser. The message is never replayed
+human-authored in the transcript or the web app. The message is never replayed
 as the recipient's own assistant answer.
 
 Editing, Fork, compaction, and restore read the same structured contract.
@@ -342,7 +342,7 @@ on the preserved transcript.
 ## Observe
 
 The parent model does not receive `subagent_transcript_*` frames. Those frames
-are for the browser. Pushing child tool history into the parent's inference
+are for the web app. Pushing child tool history into the parent's inference
 transcript is the failure this design exists to avoid.
 
 A stuck child also cannot be asked to report on itself: a steer waits until the
@@ -530,7 +530,7 @@ command's cancellation has no authority over its child. Dispose saves the
 checkpoints and detaches a subtree for restore; it does not archive it as
 aborted.
 
-The browser stops children with two client frames. `abort_subagents` aborts
+The web app stops children with two client frames. `abort_subagents` aborts
 every live child of the root, and `abort_subagent` with a `subagentId` aborts
 that child of the root; each takes the child's subtree with it. Neither has a
 reply of its own: the `subagent` `closed` frames report the result.
@@ -597,7 +597,7 @@ restores its own: a tree restore, with one rule per node.
   not declare its profile, is deleted with its subtree.
 
 The root's interrupted turn is its client's to resume: the root records the
-interruption, and the browser offers Resume
+interruption, and the web app offers Resume
 ([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)).
 The root's queued messages run, and its pending agent input and due wakeups
 wake it only when its last turn was not interrupted.
@@ -674,7 +674,7 @@ session's inference transcript is only its own transcript frames.
 | Server frame | Fields | Sent |
 | --- | --- | --- |
 | `subagent` | `event` (`started` or `closed`), `job` | When a child starts (spawn, resume, or restore) and when it closes |
-| `subagent_transcript_reset` | `subagentId`, `blocks`, `revision`, optional `failures` | After `started`, and for every live child when the browser opens the conversation or syncs its transcript |
+| `subagent_transcript_reset` | `subagentId`, `blocks`, `revision`, optional `failures` | After `started`, and for every live child when a page opens the conversation or syncs its transcript |
 | `subagent_transcript_patch` | `subagentId`, `patches`, `revision`, optional `failures` | When a child's transcript changes |
 
 A job describes one child:
@@ -696,13 +696,13 @@ stream. `failures` is the backend's reading of the error blocks the frame
 carries, attached when the frame is sent and never stored; root transcript
 frames carry the same field ([Failure facts](../backend/backend.md#failure-facts)).
 A child's other session events, such as phase, queue and errors, send no
-frames; its commands' output reaches the browser as the root's does, in
+frames; its commands' output reaches the web app as the root's does, in
 `shell_output` frames that name the child
 ([Live output](runtime.md#live-output)). `AgentClient` in
 `@demicodes/conversation-client` mirrors the three frames as client events; its
 transcript events omit `revision`, as the root's do.
 
-`parentSessionId` is the tree: the browser keys nested UI by it. Frames from any
+`parentSessionId` is the tree: the web app keys nested UI by it. Frames from any
 depth are flat on the connection; the protocol has no per-level nesting. A
 child's blocks are the same types as the root's
 ([Transcript](runtime.md#transcript)). They never appear in another session's
@@ -713,10 +713,10 @@ An incorporated agent message is a transcript patch that adds an
 or `subagent_transcript_patch` for a subagent target. It is not a fourth
 subagent event.
 
-When the browser opens the conversation, Demi sends the root's transcript and
+When a page opens the conversation, Demi sends the root's transcript and
 state frames and then, for each live agent of the tree in depth-first spawn
 order, `subagent` with `started` and `subagent_transcript_reset`. A transcript
-sync replays the live children the same way. The browser's two frames for
+sync replays the live children the same way. The web app's two frames for
 stopping children are described in [Abort](#abort).
 
 ## Sequence
