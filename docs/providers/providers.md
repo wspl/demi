@@ -89,8 +89,9 @@ A vendor's request requirements are typed settings of the backend's vendor
 policy. The policy applies them to every model of that vendor and passes them
 to the provider with the entry's configuration. For example, DeepSeek's Chat
 Completions needs earlier thinking replayed as `reasoning_content` on tool-call
-continuations, and some Responses gateways need replayed assistant items marked
-as completed. In the other direction, the Chat Completions reader turns
+continuations, some Responses gateways need replayed assistant items marked
+as completed, and every vendor on the Messages API but Anthropic takes an
+effort as a token budget ([Thinking and service tiers](models.md#thinking-and-service-tiers)). In the other direction, the Chat Completions reader turns
 reasoning that a compatible vendor streams as `reasoning_content` deltas into
 thinking, for every vendor and without a setting.
 
@@ -139,9 +140,10 @@ extends the previous one whichever way each went
 cannot connect, the handshake is refused, or it closes), the same request goes
 over server-sent events instead; a failure after the first event is the run's
 failure. A WebSocket that cannot connect at all, because its connection fails
-or times out, sends the provider's later requests over server-sent events at
-once, so that a network that blocks WebSockets does not cost every request a
-failed connect. The WebSocket connect waits at most 10 seconds, and a
+or times out, sends the provider's requests of the next 10 minutes over
+server-sent events at once, so that a network that blocks WebSockets does not
+cost every request a failed connect; the first request after them tries the
+WebSocket again, so a passing failure does not cost it for long. The WebSocket connect waits at most 10 seconds, and a
 server-sent events request waits at most 20 seconds for its response headers.
 The WebSocket client is tokio-tungstenite, because the handshake must carry
 Codex's own headers. Grok Build sends Chat Completions through the chat proxy

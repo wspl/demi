@@ -7,7 +7,7 @@ use std::borrow::Cow;
 
 use demi_provider_common::{
     InferenceItem, InferenceRequest, MediaBytes, Medium, PromptCache, ResultPart, ToolDefinition,
-    UserPart, json_body,
+    UserPart, VendorPolicy, json_body, thinking::effort_budget,
 };
 use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingSummary, is_blank};
 use serde::Serialize;
@@ -38,8 +38,8 @@ const CACHE_MARK: CacheControl = CacheControl {
 };
 
 /// The JSON body of `request`.
-pub(crate) fn encode(request: &InferenceRequest) -> Vec<u8> {
-    json_body(&body(request))
+pub(crate) fn encode(request: &InferenceRequest, policy: VendorPolicy) -> Vec<u8> {
+    json_body(&body(request, policy))
 }
 
 #[derive(Serialize)]
@@ -214,11 +214,11 @@ struct OutputConfig<'a> {
     effort: &'a str,
 }
 
-fn body(request: &InferenceRequest) -> Body<'_> {
+fn body(request: &InferenceRequest, policy: VendorPolicy) -> Body<'_> {
     let max_tokens = request
         .max_output_tokens()
         .map_or(DEFAULT_MAX_TOKENS, |limit| limit.get());
-    let (thinking, output_config) = thinking(request.thinking.as_ref(), max_tokens);
+    let (thinking, output_config) = thinking(request.thinking.as_ref(), max_tokens, policy);
     let mut system = Vec::new();
     if !is_blank(&request.system_prompt) {
         let prompt = Block::Text {
@@ -294,18 +294,26 @@ fn last_position(messages: &[Message<'_>]) -> Option<Position> {
 /// The thinking setting as the Messages API takes it: a budget as a budget,
 /// kept at least the API's minimum and below `max_tokens`; an effort or an
 /// adaptive setting as adaptive thinking at that effort, which streams a
-/// summary unless the setting turns summaries off; off or no setting as no
+/// summary unless the setting turns summaries off, or, for a vendor that
+/// takes only budgets, as the effort's budget; off or no setting as no
 /// thinking field.
 fn thinking(
     config: Option<&ThinkingConfig>,
     max_tokens: u32,
+    policy: VendorPolicy,
 ) -> (Option<Thinking>, Option<OutputConfig<'_>>) {
+    let budget = |budget_tokens: u32| {
+        let ceiling = MIN_THINKING_BUDGET.max(max_tokens.saturating_sub(MIN_THINKING_BUDGET));
+        let budget_tokens = budget_tokens.min(ceiling).max(MIN_THINKING_BUDGET);
+        (Some(Thinking::Enabled { budget_tokens }), None)
+    };
     match config {
         None | Some(ThinkingConfig::Disabled {}) => (None, None),
-        Some(ThinkingConfig::Budget { budget_tokens }) => {
-            let ceiling = MIN_THINKING_BUDGET.max(max_tokens.saturating_sub(MIN_THINKING_BUDGET));
-            let budget_tokens = (*budget_tokens).min(ceiling).max(MIN_THINKING_BUDGET);
-            (Some(Thinking::Enabled { budget_tokens }), None)
+        Some(ThinkingConfig::Budget { budget_tokens }) => budget(*budget_tokens),
+        Some(ThinkingConfig::Adaptive { effort } | ThinkingConfig::Effort { effort, .. })
+            if policy.effort_as_budget =>
+        {
+            budget(effort_budget(effort))
         }
         Some(ThinkingConfig::Adaptive { effort }) => (
             Some(Thinking::Adaptive {

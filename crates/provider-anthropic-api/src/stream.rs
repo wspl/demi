@@ -38,7 +38,8 @@ pub(crate) fn run(
             return;
         }
         // A body with images is megabytes of base64, built off the shard.
-        let body = match encode_body(LABEL, move || request::encode(&request)).await {
+        let policy = shared.policy;
+        let body = match encode_body(LABEL, move || request::encode(&request, policy)).await {
             Ok(body) => body,
             Err(failure) => {
                 yield ProviderEvent::Error(failure);

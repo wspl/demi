@@ -188,3 +188,19 @@ async fn the_web_app_build_is_served_with_deep_navigation_while_api_misses_stay_
     );
     backend.close().await;
 }
+
+#[tokio::test]
+async fn a_page_socket_message_over_the_limit_fails_the_socket() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    crate::conversations::create(&backend, &master, crate::conversations::FIRST).await;
+    let mut socket =
+        crate::conversations::Socket::connect(&backend, &master, crate::conversations::FIRST).await;
+    // A frame the backend would read, were it within the limit.
+    let frame = crate::conversations::send("m1", &"x".repeat(JSON_BODY_LIMIT));
+    socket
+        .send_text(serde_json::to_string(&frame).unwrap())
+        .await;
+    assert_eq!(socket.closed().await, None);
+    backend.close().await;
+}

@@ -372,10 +372,26 @@ with `shell_status`.
   survives dispose and a backend restart; a fired wakeup stays saved until
   the transcript holds it. Restoring the session arms it again: a wakeup
   whose time passed while the session was not live is due at once, and one
-  whose action the process died in starts its wait at the restore. A backend restart opens no conversation: a saved
-  wakeup waits until its tree is next restored. A restored root whose last
-  turn was interrupted holds its due wakeups as it holds its pending agent
-  input ([Persistence](subagents.md#persistence)).
+  whose action the process died in starts its wait at the restore. A
+  restored root whose last turn was interrupted holds its due wakeups as it
+  holds its pending agent input ([Persistence](subagents.md#persistence)).
+- A backend restart keeps a saved wakeup's time. For example, a turn ends
+  at minute 0 with a `yield` for 10 minutes to check a build, and the
+  backend is down from minute 2 to minute 12. At its start the backend restores the
+  conversation's tree with no page attached, the wakeup is due at once, and
+  its turn runs; once the tree is quiescent the idle rule evicts it
+  ([Connections and the live tree](#connections-and-the-live-tree)). Had the
+  backend come back at minute 5, it would restore the tree at minute 10.
+  The backend's index of conversations keeps when the earliest wakeup each
+  conversation's tree saved is due, which every commit of the tree updates
+  ([Control records](../backend/storage.md#control-records)); at start, each
+  conversation in it that is not archived has its tree restored at that
+  time, as an `open` restores it, and one whose wakeup's action had not
+  ended at once, since the restore starts that wakeup's wait. A tree that
+  is live by then is left as it is. A root saved under a turn is left out of
+  the index: it restores interrupted and holds its wakeups until the user
+  resumes it, so restoring it with no page would fire nothing. A child's
+  wakeups count, since a restored child resumes its interrupted turn.
 - A scheduled wakeup is not conversation activity: it keeps no Cloud awake
   ([Activity](../execution/resource-lifecycle.md#activity)). A subagent with a
   scheduled wakeup stays live ([Result](subagents.md#result)), and message
@@ -390,7 +406,7 @@ The model has five tools, and only these:
 | --- | --- |
 | `shell_exec` | Starts a script in a shell on the conversation's Host and watches it for up to `timeoutMs`. The window is for watching, not a deadline: a command still running when it ends keeps running, and the result carries its handle (`commandId`). Completed short output returns directly. |
 | `shell_status` | Reads a running command's status and the output since the model last looked. It neither waits nor writes. |
-| `shell_write` | Writes non-empty stdin to a running command and returns its status with the new output. |
+| `shell_write` | Writes non-empty stdin to a running command and returns its status with the new output. A command that still acquires its Host, as while a Cloud wakes, shows as running, and the input waits until it starts; one that ends first answers that it is not running. |
 | `shell_abort` | Stops a running command. Its result is never an error. |
 | `yield` | Ends the turn and schedules one wakeup after `durationMs` ([Yield wakeups](#yield-wakeups)). |
 

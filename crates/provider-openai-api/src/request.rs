@@ -15,7 +15,9 @@ use demi_provider_common::{
 use demi_shared_types::is_blank;
 use serde::Serialize;
 
-use crate::{SIGNATURE_TAG, VendorPolicy};
+use demi_provider_common::VendorPolicy;
+
+use crate::SIGNATURE_TAG;
 
 /// The JSON body of a Responses request.
 pub(crate) fn responses(request: &InferenceRequest, policy: VendorPolicy) -> Vec<u8> {

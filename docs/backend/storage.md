@@ -41,11 +41,23 @@ transaction is a synchronous closure on its connection's own thread, so
 nothing asynchronous happens inside one. Databases use WAL, foreign keys and a
 five-second busy timeout, and stay plain SQLite files that Litestream can
 replicate ([Multi-worker storage placement](#multi-worker-storage-placement)).
-Each database's schema is one versioned step that `rusqlite_migration` applies
-to a new database in a transaction, recording the version in SQLite's own
-`user_version` field. Product modules call the control service's operations
-rather than issuing control SQL. This document defines data meaning and
-atomicity; the SQL lives in the storage module's schema.
+Product modules call the control service's operations rather than issuing
+control SQL. This document defines data meaning and atomicity; the SQL lives in
+the storage module's schema.
+
+### Schemas
+
+Each kind of database has one schema, a SQL text. Its version is a digest of
+that text: the first 31 bits of its SHA-256, which a database records in
+SQLite's own `user_version` field. Opening a database applies the schema to a
+new one in a transaction and records its version; a database that records the
+version opens as it is. Any other database stops the open, and with it the
+backend's start, with an error that names the file and says to move the data
+directory away and start with a new one. That covers a database another build
+made after the schema text changed, and one the TypeScript backend made, which
+records no version but holds tables. Demi changes no such database and
+migrates none: until a release commits to a schema, an edited schema means a
+new data directory.
 
 ## Control records
 
@@ -91,9 +103,16 @@ input, which the multi-worker control service also relies on
   switch, Cloud reset marker, the conversation's model selection as JSON
   ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)),
   the counts of messages the user sent and the last generated title had
-  seen, and when its agent tree was last seen live (`live_at`), from which
+  seen, when its agent tree was last seen live (`live_at`), from which
   the retention pass reads how long the conversation has been idle
-  ([Retiring tool media](#retiring-tool-media)). The target is
+  ([Retiring tool media](#retiring-tool-media)), and when the earliest yield
+  wakeup its tree saved is due (`wakeup_at`), at which the next start
+  restores the tree ([Yield wakeups](../agent/runtime.md#yield-wakeups)).
+  `wakeup_at` is milliseconds since the Unix epoch, 0 for a wakeup whose
+  action had not ended, which is due at start, and null when the tree saved
+  none. The user's shard writes it after a commit of the tree that changed
+  it, from the `nodes` rows ([Conversation state and
+  transactions](#conversation-state-and-transactions)). The target is
   typed columns: its kind (Cloud, a device directory, or a workspace) and the
   device, path or workspace that kind names, checked per kind. A target switch
   compares and sets these columns, so it commits only against the selection it
@@ -165,7 +184,7 @@ Host. The node lifecycle and its commits are defined in
 
 | Table | Meaning |
 |---|---|
-| `nodes` | Parent relationship, the agent's number and its current round ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)) with the round's start time, description and profile, whether the node may spawn children, close result or failure, completion-delivery state, checkpoint state, block count, command and output revisions |
+| `nodes` | Parent relationship, the agent's number and its current round ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)) with the round's start time, description and profile, whether the node may spawn children, close result or failure, completion-delivery state, checkpoint state, block count, command and output revisions, and when the earliest wakeup the checkpoint state saves is due (`wakeup_at`, encoded as the index of conversations encodes it), which each save writes with the state, so the conversation's earliest wakeup is the least over its nodes; a root saved under a turn has none, since its wakeups wait for the user to resume it ([Yield wakeups](../agent/runtime.md#yield-wakeups)) |
 | `sequences` | The next number of each sequence the model sees in the conversation: commands, shells, agents and conversation browser tabs. The backend advances a sequence in its own transaction before it gives the number out, by the count a native service asks for when it reserves several ([Conversation numbers](../execution/native-runtime.md#conversation-numbers)), so a crash leaves a gap and never gives a number twice |
 | `blocks` | One transcript block per node and block index |
 | `blob_refs` | An index of the blobs the blocks reference, for the [retention pass](#retention): one row per reference, with the node, the block index, the reference's place in the block, the blob, what refers to it (a message's medium, a tool result's medium or an edit copy), and the block's time. The rows are derived from the blocks, never written on their own: one function derives a block's rows, and every path of the tree store that writes a block, a save, a history rewrite, an edit, a Fork's seed and a retirement, replaces that block's rows with it in the same transaction. It indexes what SQLite cannot index inside a block's JSON |
@@ -298,7 +317,13 @@ absent; any other error propagates.
 `DEMI_OBJECT_STORE_CONFIG` names a JSON file with `bucket`, `region`, an
 optional HTTPS `endpoint` for an S3-compatible service, and an optional
 `forcePathStyle`, false by default, which names the bucket in the request path
-instead of the host name.
+instead of the host name. An S3-compatible service must support conditional
+writes (a PUT with `If-None-Match: *`, which the conditional creation above
+sends) and SHA-256 upload checksums (`x-amz-checksum-sha256`, which every
+upload carries and the service verifies). Native publication requires both of
+its store as well
+([Publish artifacts before enabling commands](../execution/native-runtime.md#publish-artifacts-before-enabling-commands)),
+so a deployment needs them of its S3 service either way.
 Credentials come from the standard AWS environment variables, a web identity
 token, or container or instance metadata; shared credentials and profile
 files are not read. Shutdown releases the storage client.
@@ -344,9 +369,10 @@ and startup recovery has published each
 Fork destination whose root committed
 ([Backend creation and retries](../agent/conversation-fork.md#backend-creation-and-retries)),
 then every 24 hours. It hands the users' passes to their shards one after
-another, and a user's pass takes three steps in the user's shard: it retires
-the expired tool media of the user's conversations, removes their expired
-command outputs, then collects the user's blobs. The pass runs in the shard because the conversations' live trees, file
+another, and a user's pass works in the user's shard: for each of the user's
+conversations, it removes the expired command outputs and then retires the
+expired tool media; once every conversation is done, it collects the user's
+blobs. The pass runs in the shard because the conversations' live trees, file
 gates and holds are there ([The user shard](../architecture/concurrency.md#the-user-shard)):
 it can tell a live tree from a stored one and hold a conversation as a
 transition does. It waits on the databases and the object store, never
@@ -652,7 +678,7 @@ Worker A                             Worker B
                       | control.sqlite        |
                       +-----------------------+
 
-Workers: blob and change objects -> S3
+Workers: blobs -> S3
 Each SQLite owner: database replication -> S3
 ```
 
@@ -682,7 +708,7 @@ log data after fencing the stale writer. The recovery point is the last
 successfully replicated state; an unhealthy replicator can lose more than one
 configured sync interval.
 
-Blobs and change objects live in the S3 object store, which every worker
+Blobs, edit copies among them, live in the S3 object store, which every worker
 reaches. A user's Cloud disks need their own restoration path: moving a user
 to another worker publishes the machine's disk generation where the
 destination can restore it. A generation kept in object storage must stay

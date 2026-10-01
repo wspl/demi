@@ -3,12 +3,12 @@
 
 use std::{num::NonZeroU32, sync::Arc};
 
+use demi_provider_common::VendorPolicy;
 use demi_provider_common::{
     InferenceItem, InferenceRequest, MediaBytes, Medium, Provider, ProviderEvent, ResultPart,
     RuntimeEnv, ToolDefinition, UserPart,
     testing::{MockResponse, MockVendor, inference_request, sse_body},
 };
-use demi_provider_openai_api::VendorPolicy;
 use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingSummary, TokenUsage, WireApi};
 use serde_json::{Value, json};
 
@@ -81,6 +81,7 @@ fn effort(effort: &str, summary: Option<ThinkingSummary>) -> Option<ThinkingConf
 const NO_POLICY: VendorPolicy = VendorPolicy {
     pass_back_reasoning_content: false,
     replay_assistant_status: false,
+    effort_as_budget: false,
 };
 
 /// Each wire's answer as the endpoint streams it, and the events a run makes

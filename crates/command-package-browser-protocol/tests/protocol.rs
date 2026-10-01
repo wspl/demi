@@ -6,7 +6,7 @@ use demi_command_package_browser_protocol::{
     browser::{
         ActionResult, AssetsExportResult, BrowserErrorCode, BrowserFailure, BrowserInput,
         BrowserOperation, BrowserQuery, BrowserTarget, ErrorDetails, ExportedAsset, Load,
-        MouseButton, NodeRef, OPERATIONS, ReadResult, TabId,
+        MouseButton, NodeRef, OPERATIONS, ReadResult, ResolvedElement, TabId,
     },
     capture::{CaptureEvent, FrameHeader},
     live::{FileHeader, LiveViewerMessage, VideoHeader},
@@ -210,7 +210,11 @@ fn an_invocation_decodes_to_the_operation_its_name_names() {
 fn results_and_failures_print_the_documented_names() {
     let action = ActionResult {
         operation: "click".into(),
-        target: None,
+        target: Some(ResolvedElement {
+            r#ref: REF.parse().unwrap(),
+            role: "button".into(),
+            name: "Sign in".into(),
+        }),
         result: json!("completed"),
         url: Some("https://example.test/".into()),
         opened_tabs: Some(vec![TAB.parse().unwrap()]),
@@ -218,8 +222,8 @@ fn results_and_failures_print_the_documented_names() {
     };
     assert_eq!(
         serde_json::to_value(&action).unwrap(),
-        json!({"operation": "click", "result": "completed", "url": "https://example.test/",
-            "openedTabs": [TAB]}),
+        json!({"operation": "click", "target": {"ref": REF, "role": "button", "name": "Sign in"},
+            "result": "completed", "url": "https://example.test/", "openedTabs": [TAB]}),
     );
     let read: ReadResult =
         serde_json::from_value(json!({"values": [1, "a"], "truncated": false})).unwrap();

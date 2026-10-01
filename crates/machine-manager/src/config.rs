@@ -178,7 +178,9 @@ impl Config {
         vars: impl IntoIterator<Item = (OsString, OsString)>,
     ) -> Result<Self, ConfigError> {
         let command = Cli::command();
-        reject_unknown_managed_vars(&command, vars)?;
+        if let Some(name) = demi_shared_cli::unknown_variable(&command, MANAGED_PREFIX, vars) {
+            return Err(ConfigError::Unknown(name));
+        }
         let matches = command.try_get_matches_from(args)?;
         let cli = Cli::from_arg_matches(&matches)?;
         let capacity = 1_u64 << (32 - u32::from(cli.subnet.prefix_len()));
@@ -263,25 +265,6 @@ fn mebibytes(value: NonZeroU32) -> NonZeroU64 {
 
 /// Refuses a `DEMI_MANAGED_*` variable the command does not declare. The
 /// declared names come from the command itself, so they are listed once.
-fn reject_unknown_managed_vars(
-    command: &clap::Command,
-    vars: impl IntoIterator<Item = (OsString, OsString)>,
-) -> Result<(), ConfigError> {
-    let known: Vec<_> = command
-        .get_arguments()
-        .filter_map(clap::Arg::get_env)
-        .collect();
-    for (name, _) in vars {
-        let Some(name) = name.to_str() else {
-            continue;
-        };
-        if name.starts_with(MANAGED_PREFIX) && !known.iter().any(|known| *known == name) {
-            return Err(ConfigError::Unknown(name.to_owned()));
-        }
-    }
-    Ok(())
-}
-
 fn absolute(value: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(value);
     if !path.is_absolute() {

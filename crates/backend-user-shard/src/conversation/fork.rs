@@ -284,7 +284,7 @@ mod tests {
         SqliteTreeStore::new(
             stores.db(id),
             blobs,
-            std::rc::Rc::new(|_: &demi_shared_types::NodeId| {}),
+            std::rc::Rc::new(|_: &demi_shared_types::NodeId, _| {}),
         )
         .create_node(NodeRecord::root(root_of(id), at), initial)
         .await

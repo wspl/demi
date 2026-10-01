@@ -319,11 +319,11 @@ impl Hold {
 
 async fn open_writer(path: &Path) -> Result<tokio_rusqlite::Connection, StorageError> {
     let writer = tokio_rusqlite::Connection::open(path).await?;
+    let path = path.to_owned();
     writer
-        .call(|connection| {
+        .call(move |connection| {
             sqlite::configure(connection)?;
-            schema::CONVERSATION.to_latest(connection)?;
-            Ok(())
+            schema::CONVERSATION.apply(connection, &path)
         })
         .await
         .map_err(sqlite::flatten)?;
@@ -345,9 +345,14 @@ fn read_cold<T>(
     let transaction = connection.transaction()?;
     // A writer that has just created the file may not have given it its
     // schema yet; such a database holds nothing yet.
-    let version: i64 = transaction.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    let version: i32 = transaction.pragma_query_value(None, "user_version", |row| row.get(0))?;
     if version == 0 {
         return Ok(None);
+    }
+    if version != schema::CONVERSATION.version() {
+        return Err(StorageError::OtherSchema {
+            path: path.to_owned(),
+        });
     }
     work(&transaction).map(Some)
 }

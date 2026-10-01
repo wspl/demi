@@ -59,6 +59,13 @@ fn a_port_that_is_not_a_number_stops_startup_naming_the_variable() {
 }
 
 #[test]
+fn a_variable_the_backend_does_not_read_stops_startup_naming_it() {
+    let mut variables = REQUIRED.to_vec();
+    variables.push(("DEMI_BACKEND_PORTT", "3272"));
+    refused_naming(&start(&variables), "DEMI_BACKEND_PORTT");
+}
+
+#[test]
 fn a_missing_public_url_stops_startup_naming_the_variable() {
     let variables: Vec<_> = REQUIRED
         .into_iter()

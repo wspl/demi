@@ -232,15 +232,12 @@ impl<H: AgentHarness> Connection<H> {
             return;
         }
         let _turn = self.server.opening.acquire(self.root.clone()).await;
-        let (tree, continuation) = match self.server.tree(&self.root) {
-            Some(tree) => (tree, None),
-            None => match Tree::open(&self.server, &self.root, &self.cwd).await {
-                Ok(opened) => opened,
-                Err(error) => {
-                    self.error(error);
-                    return;
-                }
-            },
+        let (tree, continuation) = match self.server.live_or_open(&self.root, &self.cwd).await {
+            Ok(opened) => opened,
+            Err(error) => {
+                self.error(error);
+                return;
+            }
         };
         tree.attach(self.id, self.outbox.clone());
         if let Some(continuation) = continuation

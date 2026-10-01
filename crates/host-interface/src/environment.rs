@@ -256,8 +256,6 @@ pub enum ShellError {
     NotRunning(CommandId),
     #[error("shell_write field \"stdin\" must not be empty; use shell_status to poll")]
     EmptyStdin,
-    #[error("Command \"{0}\" is still acquiring its Host")]
-    Starting(CommandId),
     #[error(transparent)]
     Host(#[from] HostError),
 }

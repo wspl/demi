@@ -24,6 +24,7 @@ testing = ["dep:tempfile"]
 
 [dependencies]
 demi-shared-artifacts = { path = "../shared-artifacts" }
+demi-shared-cli = { path = "../shared-cli" }
 demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
 demi-runner-protocol = { path = "../runner-protocol" }
 clap = { version = "4", features = ["derive", "env"] }

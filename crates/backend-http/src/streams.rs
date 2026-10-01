@@ -12,6 +12,7 @@ use demi_web_api_protocol::error::ErrorCode;
 use futures_util::{SinkExt as _, StreamExt as _};
 
 use super::AppState;
+use super::body::page_socket;
 use super::conversations::owned;
 use super::error::ApiError;
 use super::gate::AuthUser;
@@ -51,7 +52,7 @@ pub(super) async fn open(
         })
         .await??;
     // An upgrade that never completes drops the stream, which ends it.
-    Ok(upgrade.on_upgrade(move |socket| relay(socket, stream)))
+    Ok(page_socket(upgrade).on_upgrade(move |socket| relay(socket, stream)))
 }
 
 /// How a stream ended, which the page's socket closes with.

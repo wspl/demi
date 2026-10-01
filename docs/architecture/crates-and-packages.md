@@ -336,6 +336,15 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   test waits for an operation to be held instead of for time.
 - **Must not:** know users, conversations, devices or any other domain.
 
+#### `shared-cli`
+
+- **Owns:** what every program's command line shares: a variable under the
+  program's prefix that none of its settings reads stops startup, naming it,
+  so a misspelt setting is never ignored. The backend refuses an unknown
+  `DEMI_*` variable and the machine manager an unknown `DEMI_MANAGED_*` one.
+- **Public boundary:** `unknown_variable`, over the program's clap command.
+- **Must not:** parse a program's settings, which its clap command does.
+
 #### `shared-artifacts`
 
 - **Owns:** verified download over HTTPS with a declared size and SHA-256
@@ -1138,8 +1147,9 @@ demi-backend (executable: configuration, composition)
 - **Public boundary:** the executable. Behavior:
   [Conversation browser](../browser/browser.md), whose
   [catalog](../browser/browser.md#catalog) lists the browser commands, and
-  [Live view](../browser/live-view.md). Its `testing` feature turns on
-  `command-package-browser-chrome`'s for the Chrome tests.
+  [Live view](../browser/live-view.md). Its tests turn on
+  `command-package-browser-chrome`'s `testing` feature for the Chrome tests,
+  as the backend's browser suite does to install the pinned Chrome.
 - **Must not:** host a runner connection, define the agent's command tree,
   store conversations or be linked into the runner.
 
@@ -1159,8 +1169,10 @@ demi-backend (executable: configuration, composition)
   workspace; [Contracts](contracts.md#generated-typescript)), native build and
   release packaging for every executable, the pinned Chrome for Testing
   release record, Cloud image packaging, and the comparison of the vendored
-  crates with their upstream releases (`xtask vendor diff`); and the crate
-  boundary check, one
+  crates with their upstream releases (`xtask vendor diff`), the one-command
+  development backend with its echo model (`xtask dev`;
+  [Development backend](../backend/backend.md#one-command-development-backend));
+  and the crate boundary check, one
   of its tests ([Boundary checks](#boundary-checks)).
   The checks and tests are plain Cargo and bun commands
   ([Validation](../delivery/builds-and-releases.md#validation)).
@@ -1310,6 +1322,7 @@ machine-manager-protocol -> command-protocol, runner-protocol
 web-api-protocol -> conversation-socket-protocol, command-package-browser-protocol, command-protocol, shared-types, runner-protocol
 shared-gates -> none
 shared-artifacts -> none
+shared-cli -> none
 provider-common -> shared-types, shared-gates
 provider-anthropic-api -> shared-types, provider-common
 provider-openai-api -> shared-types, provider-common
@@ -1343,8 +1356,8 @@ backend-expose -> backend-database, backend-page-sync, shared-types, web-api-pro
 backend-host-access -> agent-store, agent-tools, backend-cloud, backend-expose, backend-blobs, backend-runners, backend-database, command-protocol, command-declarations, shared-types, shared-gates, backend-remote-host, runner-protocol, host-interface, web-api-protocol
 backend-user-shard -> agent-server, conversation-socket-protocol, agent-session, agent-store, agent-tools, agent-transcript, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-idle-watch, backend-blobs, backend-providers, backend-runners, backend-database, backend-page-sync, command-package-browser-protocol, command-package-claude-code-protocol, agent-coding-harness, command-protocol, command-declarations, shared-types, command-package-file-protocol, shared-gates, backend-remote-host, machine-manager-protocol, provider-common, provider-claude-code, runner-protocol, host-interface, web-api-protocol
 backend-http -> conversation-socket-protocol, agent-store, shared-artifacts, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-blobs, backend-providers, backend-runners, backend-user-shard, backend-database, backend-page-sync, command-package-browser-protocol, command-protocol, shared-types, backend-remote-host, provider-common, runner-protocol, host-interface, web-api-protocol
-backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-expose, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, provider-anthropic-api, provider-claude-code, provider-codex, provider-common, provider-google, provider-grok-build, provider-openai-api, shared-artifacts, shared-gates, shared-types, web-api-protocol
-machine-manager -> shared-artifacts, machine-manager-protocol, runner-protocol
+backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-expose, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, provider-anthropic-api, provider-claude-code, provider-codex, provider-common, provider-google, provider-grok-build, provider-openai-api, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol
+machine-manager -> shared-artifacts, shared-cli, machine-manager-protocol, runner-protocol
 runner -> command-protocol, command-sdk, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell
 command-package-file -> shared-artifacts, command-protocol, command-sdk, shared-types, command-package-file-protocol, shared-gates
 command-package-browser -> command-package-browser-chrome, command-package-browser-protocol, command-protocol, command-sdk
@@ -1540,6 +1553,10 @@ unless:
   file under a `development` condition, the root `tsconfig.json` `paths`
   mirror every subpath entry, and the root `test` script names every package
   that has tests;
+- no production `.ts` source outside `@demicodes/utils` declares at its top
+  level a function, a function-valued variable, a class or a type under a name
+  `@demicodes/utils` exports, which it imports instead; the names are read
+  from `@demicodes/utils` itself, so a new helper is covered once exported;
 - the graph is acyclic.
 
 It is a test of the repository's scripts (`scripts/__tests__`), and the

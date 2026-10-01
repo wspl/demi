@@ -11,14 +11,22 @@ demi-shared-artifacts = { path = "../shared-artifacts" }
 demi-command-package-browser-protocol = { path = "../command-package-browser-protocol" }
 demi-command-package-file-protocol = { path = "../command-package-file-protocol" }
 demi-command-package-claude-code-protocol = { path = "../command-package-claude-code-protocol" }
-demi-command-protocol = { path = "../command-protocol" }
+# `testing` for `built_program`: `xtask dev` starts the programs the
+# workspace built beside it.
+demi-command-protocol = { path = "../command-protocol", features = ["testing"] }
 demi-shared-types = { path = "../shared-types" }
 demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
 demi-runner-protocol = { path = "../runner-protocol" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
+axum = "0.8"
 clap = { version = "4", features = ["derive", "env"] }
 flate2 = "1"
+futures-util.workspace = true
 garde.workspace = true
+process-wrap.workspace = true
+# Plain HTTP to the backend `xtask dev` starts; the one Cargo selection
+# builds it with the features the backend gives it.
+reqwest = { version = "0.12", default-features = false }
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true

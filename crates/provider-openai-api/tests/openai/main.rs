@@ -10,12 +10,13 @@ mod request;
 
 use std::sync::Arc;
 
+use demi_provider_common::VendorPolicy;
 pub(crate) use demi_provider_common::testing::run;
 use demi_provider_common::{
     InferenceRequest, Provider, ProviderRuntime, RuntimeEnv, Secret,
     testing::{FixedClock, MockResponse, MockVendor},
 };
-use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider, VendorPolicy};
+use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider};
 use demi_shared_types::WireApi;
 
 /// When the scripted vendor answers.

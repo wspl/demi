@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use demi_provider_anthropic_api::{AnthropicConfig, AnthropicProvider};
 use demi_provider_common::{
-    ErrorCode, Provider, ProviderEvent, ProviderFailure, RuntimeEnv, Secret,
+    ErrorCode, Provider, ProviderEvent, ProviderFailure, RuntimeEnv, Secret, VendorPolicy,
     testing::{FixedClock, MockResponse, MockVendor, inference_request},
 };
 use demi_shared_types::FailureSource;
@@ -95,6 +95,7 @@ async fn a_request_without_an_answer_fails_as_overloaded() {
     let config = AnthropicConfig {
         api_key: Secret::try_from("sk-ant-test".to_owned()).unwrap(),
         base_url: Some(format!("http://{address}/v1").parse().unwrap()),
+        policy: VendorPolicy::default(),
     };
     let provider = AnthropicProvider::new(config, Arc::new(FixedClock(NOW.parse().unwrap())));
     let mut runtime = provider

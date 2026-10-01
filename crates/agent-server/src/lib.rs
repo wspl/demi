@@ -23,5 +23,6 @@ pub mod title;
 pub use node::Node;
 pub use server::{
     AgentServer, Connection, ContentError, ContentResolver, FileReference, FrameRx, Outgoing,
-    ProviderResolver, ResolveError, ResolvedFiles, ServerConfig, ServerDeps, Tree, TreeStores,
+    ProviderResolver, ResolveError, ResolvedFiles, RestoreError, ServerConfig, ServerDeps, Tree,
+    TreeStores,
 };

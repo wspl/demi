@@ -39,6 +39,7 @@ mod native;
 mod outputs;
 mod panel;
 mod providers;
+mod real_browser;
 mod real_cloud;
 mod retention;
 mod runners;

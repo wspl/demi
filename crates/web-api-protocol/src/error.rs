@@ -98,6 +98,9 @@ pub enum ErrorCode {
     QuotaUnavailable,
     /// The vendor list could not be read from models.dev.
     CatalogUnavailable,
+    /// The entry's provider could not be built or read, which the sync
+    /// state shows as the entry's `failed` details.
+    ProviderStatusFailed,
     /// Too many pairing codes tried: ten claims per user within a minute.
     RateLimited,
     /// The caller owns no device of that id, or not one the route takes,

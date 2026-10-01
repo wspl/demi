@@ -3,7 +3,8 @@
 //! over the conversation's database, the conversation socket, the provider
 //! runtimes the sessions infer with, the Claude Code CLI's work on the
 //! user's Cloud and the provider test, the conversations' summaries, and the
-//! failure facts of their history.
+//! failure facts of their history, and the saved wakeups that a restart
+//! carries over.
 
 mod announcement;
 pub mod claude_cli;
@@ -18,6 +19,7 @@ mod socket;
 mod summary;
 pub mod titles;
 pub mod transition;
+mod wakeups;
 
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
@@ -42,6 +44,8 @@ pub(crate) use self::harness::ConversationHarness;
 use self::harness::conversation_harness;
 use self::providers::ConversationProviders;
 use self::titles::Titles;
+use self::wakeups::IndexedWakeup;
+pub use self::wakeups::rearm_wakeups;
 use crate::services::Services;
 use crate::shard::Shard;
 
@@ -68,6 +72,7 @@ pub(crate) fn conversation_parts(
     let stores: TreeStores = {
         let services = services.clone();
         let marks = marks.clone();
+        let shard = shard.clone();
         // The shard's user owns every conversation it hosts.
         let blobs: Arc<dyn OwnerBlobs> =
             Arc::new(ConversationBlobs(services.blobs.for_user(&user)));
@@ -75,14 +80,17 @@ pub(crate) fn conversation_parts(
             let conversation = conversation_of(root);
             let db = services.conversations.db(&conversation);
             // The summary reads the root's checkpoint, which each save of it
-            // changes.
+            // changes; the index of conversations keeps the earliest wakeup
+            // the tree saved.
             let saved = {
                 let marks = marks.clone();
                 let root = root.clone();
-                Rc::new(move |node: &NodeId| {
+                let indexed = IndexedWakeup::new(shard.clone(), conversation.clone());
+                Rc::new(move |node: &NodeId, wakeup| {
                     if *node == root {
                         marks.mark(Part::Conversation(conversation.clone()));
                     }
+                    indexed.committed(wakeup);
                 })
             };
             Rc::new(SqliteTreeStore::new(db, blobs.clone(), saved)) as Rc<dyn AgentTreeStore>

@@ -91,6 +91,17 @@ than that. A body the backend streams to a Host, a file upload or a runner's
 pipe, has no size limit: it moves as fast as the Host writes it, and only what
 is in flight is held.
 
+A page's WebSocket message is at most 1 MiB as well, on the conversation
+socket, the synchronization channel and a user stream alike
+(`MAX_PAGE_MESSAGE_BYTES`, which the generated tables give the page). No page
+needs more: a frame refers to an upload and never carries its bytes, and a
+user stream frames its own messages, so its bytes may travel in messages of
+any size. A larger message fails the socket, which closes without a close
+code. The conversation client never sends one: it answers a frame over the
+limit as the backend answers a frame it refuses, with `rejected` (a
+`steer_result` that rejects, for a steer) and the size in the reason, and the
+socket stays open.
+
 A JSON body must match its request type exactly. A field the type does not
 define, a missing required field, or a value outside its bounds answers 400
 `invalid_body`, with a message that names the field and the reason; the
@@ -578,7 +589,9 @@ Unknown auth/runtime status stays explicit; catalog availability is not a
 successful inference test.
 
 `GET /api/providers/:id/status` returns auth/runtime state, account metadata,
-active account, capabilities and quota. Each account carries its own `quota`,
+active account, capabilities and quota. An entry whose provider cannot be built
+or read answers 502 `provider_status_failed` with the reason, the message its
+`failed` details carry in the sync state. Each account carries its own `quota`,
 the last real snapshot kept for it; the top-level `quota` is the active
 account's. `quotaCapability` is `{ type: "none" }` for a family without quota,
 or `{ type: "supported", probe }` with the probe's cost, `free` or

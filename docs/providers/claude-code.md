@@ -74,9 +74,11 @@ share one read, and a version's manifest, which never changes once published,
 is read once.
 
 Demi always follows the official newest release; provider entries store no CLI
-version and expose no version-selection or update-disable setting. The provider
-names the newest version it was tested with; a newer one in use is worth a note
-in settings and a line in a failure report, never a refusal.
+version and expose no version-selection or update-disable setting. Demi keeps
+no list of versions it was tested with: such a list would be out of date with
+each release, and a version it does not name would still run. The
+[Claude Code suite](../delivery/scenarios.md#claude-code-suite) checks
+whichever CLI executable it is given against what the product relies on.
 
 What is **installed** is a fact of each machine and is asked of that machine
 when someone wants to know. The backend keeps no table of it. A machine that is
@@ -266,7 +268,12 @@ it and starts a new one when the request's model or thinking setting differs,
 when the request offers tools to a process started without them (it has no SDK
 MCP server to offer them in), or when the transcript does not continue what the
 process saw: it holds fewer user messages than the process received, or its
-first user message changed, as after an edit, a fork or compaction.
+first user message changed, as after an edit, a fork or compaction. It does
+the same when the request gains nothing to send: no new user message and no
+results for calls the process holds. That is a retry of a turn that failed,
+such as one the vendor refused as overloaded; the kept process already holds
+the transcript and would wait for input that never comes, so a new one
+replays it.
 
 Output that a kept process printed after the previous run ended belongs to no
 request, as when the CLI answered a steer in a turn of its own after the run
@@ -296,8 +303,8 @@ account's quota still shows what the vendor counted. An `error` line, a failure
 the CLI reports outside a `result`, fails the run with the CLI's words. A line
 that fails to decode or is longer than 64 MiB, a `tool_use` block without an ID
 or a name, and a tool call in a request that offered no tools fail the run with
-that line as the failure record. Lines that report rate limits feed the
-account's quota ([Vendor quota](usage-and-quota.md#vendor-quota)).
+that line as the failure record. A `rate_limit_event` line feeds the
+account's quota ([Vendor quota](usage-and-quota.md#claude-code)).
 
 ## The SDK MCP channel
 
@@ -422,7 +429,8 @@ a failed installation. The routes are listed in
   result.
 - A second request continues in the same process and writes only the new user
   message; after the first message is edited, a new process starts and replays
-  the transcript.
+  the transcript. A retry of a failed turn, which gains no input, starts a new
+  process that replays the transcript.
 - Cancelling a run closes the process and ends the run without an event; a
   process that ignores SIGTERM is killed after five seconds.
 - After another account is selected, the next request starts a new process
@@ -435,6 +443,6 @@ a failed installation. The routes are listed in
   its setup token installs the CLI from the official distribution and passes
   **Test connection**, a message and a two-tool batch complete, and the wire
   trace shows what a batch's results sent together with a steer make the CLI
-  print (one `result` or two) and which lines report rate limits, in which
-  units ([Vendor quota](usage-and-quota.md#claude-code)); **Refresh usage**
-  probes the account's quota.
+  print (one `result` or two), the quota shows the windows of the vendor's
+  `rate_limit_event` lines ([Vendor quota](usage-and-quota.md#claude-code)),
+  and **Refresh usage** probes the account's quota.

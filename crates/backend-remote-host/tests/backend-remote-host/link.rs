@@ -1667,3 +1667,49 @@ async fn an_unread_output_ends_with_the_newest_bytes_the_runner_sent() {
     );
     assert_eq!(whole.output.missing(), None);
 }
+
+/// Input typed while a command still acquires its Host, as while a Cloud
+/// wakes, waits and reaches the command once it starts; the page shows the
+/// command running all along.
+#[tokio::test(flavor = "local")]
+async fn input_written_while_a_command_acquires_its_host_reaches_it_once_it_starts() {
+    let device = device();
+    let mut link = device.connect(None);
+    let acquired = Rc::new(tokio::sync::Notify::new());
+    let context: demi_backend_remote_host::ContextSource = {
+        let acquired = acquired.clone();
+        Rc::new(move || {
+            let acquired = acquired.clone();
+            Box::pin(async move {
+                acquired.notified().await;
+                Ok(test_command_context())
+            })
+        })
+    };
+    let shell = RemoteShellEnvironment::new(EnvironmentOptions::new(
+        device.host("/work", Admission::Free),
+        context,
+        TestPages::new(false),
+        Rc::new(CountingNumbers::default()),
+    ));
+    let started = shell
+        .exec(exec("read name; echo $name"), CancellationToken::new())
+        .await
+        .unwrap();
+    let command = started.command_id;
+    let written = shell.write(&command, Bytes::from_static(b"Ana\n"));
+    let (written, ()) = tokio::join!(written, async {
+        acquired.notify_one();
+        let Inbound::JobStart { .. } = link.next().await else {
+            panic!("expected the job's start")
+        };
+    });
+    written.unwrap();
+    let frames = drain(&mut link).await;
+    assert!(
+        frames
+            .iter()
+            .any(|frame| matches!(frame, Inbound::JobStdin { bytes, .. } if bytes.0 == b"Ana\n")),
+        "{frames:?}"
+    );
+}

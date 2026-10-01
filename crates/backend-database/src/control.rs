@@ -34,11 +34,11 @@ impl ControlService {
     pub async fn open(path: &Path, clock: Arc<dyn Clock>) -> Result<Self, StorageError> {
         let db = tokio_rusqlite::Connection::open(path).await?;
         let control = Self { db, clock };
+        let path = path.to_owned();
         control
-            .call(|connection, _| {
+            .call(move |connection, _| {
                 sqlite::configure(connection)?;
-                schema::CONTROL.to_latest(connection)?;
-                Ok(())
+                schema::CONTROL.apply(connection, &path)
             })
             .await?;
         Ok(control)
@@ -593,7 +593,7 @@ pub mod testing {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
+    use demi_provider_common::testing::ManualClock;
 
     use super::testing::master;
     use super::*;
@@ -604,28 +604,51 @@ mod tests {
         renew_below: SignedDuration::from_hours(15 * 24),
     };
 
-    /// A clock the test sets.
-    struct TestClock(Mutex<jiff::Timestamp>);
-
-    impl Clock for TestClock {
-        fn now(&self) -> Timestamp {
-            Timestamp::truncate(*self.0.lock().unwrap())
+    /// A data directory another build of Demi made, an older one whose
+    /// schema this build edited or the TypeScript backend's, stops startup
+    /// with what to do, rather than failing later on a missing column; a
+    /// database of this build's schema opens again as it is.
+    #[tokio::test]
+    async fn a_database_of_another_schema_is_refused_and_one_of_this_schema_reopens() {
+        let data = tempfile::tempdir().unwrap();
+        let clock = Arc::new(ManualClock::new(
+            Timestamp::from_millisecond(1_790_000_000_000).unwrap(),
+        ));
+        for (name, made) in [
+            (
+                "edited",
+                "CREATE TABLE users (id TEXT PRIMARY KEY); PRAGMA user_version = 1;",
+            ),
+            (
+                "migrated",
+                "CREATE TABLE schema_migrations (version INTEGER);",
+            ),
+        ] {
+            let path = data.path().join(format!("{name}.sqlite"));
+            rusqlite::Connection::open(&path)
+                .unwrap()
+                .execute_batch(made)
+                .unwrap();
+            let refused = ControlService::open(&path, clock.clone()).await.err();
+            assert!(
+                matches!(refused, Some(StorageError::OtherSchema { .. })),
+                "{name}: {refused:?}"
+            );
         }
-    }
-
-    impl TestClock {
-        fn advance(&self, by: SignedDuration) {
-            let mut now = self.0.lock().unwrap();
-            *now = now.checked_add(by).unwrap();
-        }
+        let path = data.path().join("control.sqlite");
+        let control = ControlService::open(&path, clock.clone()).await.unwrap();
+        master(&control).await;
+        control.close().await.unwrap();
+        let reopened = ControlService::open(&path, clock).await.unwrap();
+        assert_eq!(reopened.users().await.unwrap().len(), 1);
     }
 
     #[tokio::test]
     async fn expired_web_sessions_are_swept_when_a_session_opens() {
         let data = tempfile::tempdir().unwrap();
-        let clock = Arc::new(TestClock(Mutex::new(
-            jiff::Timestamp::from_second(1_790_000_000).unwrap(),
-        )));
+        let clock = Arc::new(ManualClock::new(
+            Timestamp::from_millisecond(1_790_000_000_000).unwrap(),
+        ));
         let control = ControlService::open(&data.path().join("control.sqlite"), clock.clone())
             .await
             .unwrap();

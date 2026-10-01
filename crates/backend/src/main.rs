@@ -4,17 +4,27 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-use clap::Parser as _;
+use clap::{CommandFactory as _, Parser as _};
 use demi_backend::{Backend, Config};
 use demi_backend_runners::native::NativeCatalog;
 use demi_backend_runners::publication::{PublicationError, publish_native};
+use tokio::signal::unix::{Signal, SignalKind, signal};
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
 
 fn main() -> ExitCode {
-    // An unusable value stops here, naming its variable.
+    // An unusable value stops here, naming its variable, and so does a
+    // variable no setting reads, such as a misspelt one.
     let config = Config::parse();
+    if let Some(name) =
+        demi_shared_cli::unknown_variable(&Config::command(), "DEMI_", std::env::vars_os())
+    {
+        eprintln!(
+            "demi-backend: {name} is not a backend setting; `demi-backend --help` lists them"
+        );
+        return ExitCode::FAILURE;
+    }
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
         .with(config.log.clone())
@@ -33,6 +43,15 @@ fn main() -> ExitCode {
 }
 
 async fn run(config: Config) -> ExitCode {
+    // Installed before anything starts, so a stop signal that comes while the
+    // backend starts is kept and ends it once it is up.
+    let mut stop = match StopSignals::install() {
+        Ok(stop) => stop,
+        Err(error) => {
+            eprintln!("demi-backend: the stop signals cannot be watched: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
     let mut settings = match config.backend() {
         Ok(settings) => settings,
         Err(error) => {
@@ -40,7 +59,7 @@ async fn run(config: Config) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    settings.native = match publish(&config.native_config).await {
+    settings.native = match publish(&config.native_config, &mut stop).await {
         Ok(native) => native,
         Err(error) => {
             eprintln!("demi-backend: {error}");
@@ -61,12 +80,7 @@ async fn run(config: Config) -> ExitCode {
         mode = %config.mode,
         "demi-backend is listening"
     );
-    if let Err(error) = stopped().await {
-        tracing::error!(
-            error = &error as &dyn std::error::Error,
-            "the stop signals cannot be watched"
-        );
-    }
+    stop.requested().await;
     match backend.close().await {
         Ok(()) => ExitCode::SUCCESS,
         Err(errors) => {
@@ -79,24 +93,38 @@ async fn run(config: Config) -> ExitCode {
 /// Publishes the native releases before the backend accepts requests
 /// (`native-runtime.md` § Publish artifacts before enabling commands); a
 /// stop signal interrupts it.
-async fn publish(path: &Path) -> Result<NativeCatalog, PublicationError> {
+async fn publish(path: &Path, stop: &mut StopSignals) -> Result<NativeCatalog, PublicationError> {
     let cancel = CancellationToken::new();
     let publication = publish_native(path, &cancel);
     tokio::pin!(publication);
     tokio::select! {
         published = &mut publication => return published,
-        // Signals that cannot be watched leave the publication to finish.
-        Ok(()) = stopped() => {}
+        () = stop.requested() => {}
     }
     cancel.cancel();
     publication.await
 }
 
-/// Waits for SIGINT or SIGTERM.
-async fn stopped() -> std::io::Result<()> {
-    let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
-    tokio::select! {
-        interrupted = tokio::signal::ctrl_c() => interrupted,
-        _ = terminate.recv() => Ok(()),
+/// SIGINT and SIGTERM, watched from when they are installed: a signal that
+/// comes before anything waits for it is kept until something does.
+struct StopSignals {
+    interrupt: Signal,
+    terminate: Signal,
+}
+
+impl StopSignals {
+    fn install() -> std::io::Result<Self> {
+        Ok(Self {
+            interrupt: signal(SignalKind::interrupt())?,
+            terminate: signal(SignalKind::terminate())?,
+        })
+    }
+
+    /// Waits for either signal.
+    async fn requested(&mut self) {
+        tokio::select! {
+            _ = self.interrupt.recv() => {}
+            _ = self.terminate.recv() => {}
+        }
     }
 }

@@ -13,7 +13,7 @@ use crate::tabs::{session::References, tab::BrowserTab};
 
 use crate::page::{
     element,
-    protocol::{BrowserTarget, Modifier},
+    protocol::{BrowserTarget, Modifier, ResolvedElement},
 };
 
 pub(crate) struct Key {
@@ -377,12 +377,14 @@ pub(crate) async fn press(tab: &BrowserTab, keys: &[Key], operation: &Operation<
     result
 }
 
-/// Capture the current browser focus without clicking or changing its selection.
+/// Capture the current browser focus without clicking or changing its
+/// selection, and what the page tree names it; none when the focus is the
+/// document or an element the tree leaves out.
 pub(crate) async fn current_focus(
     tab: &BrowserTab,
     references: &mut crate::tabs::session::References,
     operation: &Operation<'_>,
-) -> Result<(element::TargetElement, String)> {
+) -> Result<(element::TargetElement, Option<ResolvedElement>)> {
     use chromiumoxide::cdp::{
         browser_protocol::dom::DescribeNodeParams, js_protocol::runtime::EvaluateParams,
     };
@@ -439,23 +441,16 @@ pub(crate) async fn current_focus(
                 backend_node_id: node.backend_node_id,
                 remote_object_id: object,
             };
-            let name = if matches!(node.local_name.as_str(), "body" | "html") {
-                "document".to_owned()
-            } else {
-                let observation =
-                    crate::page::observation::Observation::capture(tab.page(), references).await?;
-                if !observation.accessible(&target) {
-                    return Ok((target, "document".into()));
-                }
-                observation
-                    .describe_elements(std::slice::from_ref(&target), references, 1)?
-                    .into_iter()
-                    .next()
-                    .and_then(|node| node.r#ref)
-                    .ok_or(BrowserError::StaleReference)?
-                    .to_string()
-            };
-            Ok((target, name))
+            if matches!(node.local_name.as_str(), "body" | "html") {
+                return Ok((target, None));
+            }
+            let observation =
+                crate::page::observation::Observation::capture(tab.page(), references).await?;
+            if !observation.accessible(&target) {
+                return Ok((target, None));
+            }
+            let named = observation.named(&target, references)?;
+            Ok((target, Some(named)))
         })
         .await
 }
@@ -535,15 +530,20 @@ pub(crate) async fn type_focused(
     })
 }
 
+/// Fills the element `target` resolves to with `text`; what the page tree
+/// names it.
 pub(crate) async fn fill(
     tab: &BrowserTab,
     target: &BrowserTarget,
     references: &mut References,
     text: &str,
     operation: &Operation<'_>,
-) -> Result<()> {
-    let (target, state) =
-        crate::page::element::ready(tab, target, references, element::FILL, operation).await?;
+) -> Result<ResolvedElement> {
+    let element::Ready {
+        element: target,
+        state,
+        named,
+    } = crate::page::element::ready(tab, target, references, element::FILL, operation).await?;
     let native = state.fill_kind == element::FillKind::Native;
     let mode: FillMode = operation
         .run(async {
@@ -583,7 +583,7 @@ pub(crate) async fn fill(
                 .await?;
         }
     }
-    Ok(())
+    Ok(named)
 }
 
 #[derive(serde::Deserialize, PartialEq)]

@@ -10,11 +10,11 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use demi_provider_claude_code::Placement;
+use demi_provider_common::VendorPolicy;
 use demi_provider_common::credentials::CredentialPool;
 use demi_provider_common::models_dev::ModelsDevClient;
 use demi_provider_common::quota::QuotaSnapshotStore;
 use demi_provider_common::{Provider, ProviderRuntime, Secret};
-use demi_provider_openai_api::VendorPolicy;
 use demi_shared_types::{Clock, WireApi};
 use demi_web_api_protocol::providers::CredentialKind;
 use url::Url;
@@ -75,7 +75,7 @@ pub struct ApiKeyArgs {
     pub base_url: Option<Url>,
     pub wire_api: Option<WireApi>,
     /// The request requirements of the vendor the entry was added from,
-    /// which the OpenAI wires apply.
+    /// which each protocol's provider applies.
     pub vendor: VendorPolicy,
 }
 

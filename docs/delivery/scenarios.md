@@ -203,7 +203,12 @@ The generated schemas validate every response and frame on arrival, as they do
 in the page
 ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
 The model is an Anthropic-compatible HTTP endpoint that the suite scripts and
-the backend's Anthropic API provider calls; tools run on a real runner.
+the backend's Anthropic API provider calls; tools run on a real runner. A
+scripted reply can be held: the endpoint answers its request only when the
+test releases it, so the turn stays in its provider stream while the test
+queues, steers or stops, and the endpoint sees the backend cancel the request.
+A second page is a second copy of the page's product state in the same
+browser stand-in, following its own synchronization channel.
 
 The backend reconciles with its machine manager when it starts, before it
 serves, and again when it closes
@@ -215,6 +220,11 @@ manager. The program prints the manager's socket path as its first line,
 which the suite passes as `DEMI_MACHINE_MANAGER_SOCKET`, and serves until its
 standard input closes or it is terminated; the runners it started end with
 it.
+`cargo xtask dev` starts the backend with the same program, in the same
+order, for a developer
+([One-command development backend](../backend/backend.md#one-command-development-backend)),
+so the program's contract, its socket on the first line and its end when its
+input closes, serves both.
 
 | Path | Required observation |
 |---|---|
@@ -222,6 +232,14 @@ it.
 | Create and chat | A conversation created through the API runs a turn, and the client receives the scripted reply and the end of the turn |
 | Tools | A scripted tool call runs on the real runner, and its result appears in the transcript |
 | Reload | After a reload, the transcript the client assembled from live patches equals the cold transcript the backend serves |
+| Acknowledgement | `submit` resolves once the message's `user` block, with the message id as its turn id, is in the transcript, while the model's reply is still held |
+| Edit | `editAndSend` on the last message, built with the page's editor functions, replaces it and its answer; the model's next request holds the first exchange and the edit, never the replaced message; the live transcript equals the cold one; an edit made on the earlier transcript version is refused with `EditRejectedError` and changes nothing |
+| Queue | Messages submitted while a turn runs are acknowledged as queued; `dequeueMessage` removes one, which never reaches the transcript or the model, and `sendQueuedMessage` moves another to the front, so it runs before the one it passed |
+| Steer | A queued message sent now while a turn runs (`steerQueuedMessage`) leaves the queue and is listed in `pending_steers`; when the held reply ends, it becomes a `steer` block with the steer's id, the pending list empties, and the turn asks the model again with the steer |
+| Stop and Continue | `abort` while the model streams answers `{ target: "active_provider_stream", canAbortAgain: false }` once the transcript holds the pending steer and the `abort` marker, and the backend cancels the model's request; once the session is idle, `resume` continues the turn, marks the stop resumed, and the model reads the steer |
+| Command input | A command that prints a prompt and reads its standard input shows the prompt in `shell_output`; `shellWrite` is acknowledged, the command's view ends `exited` with what it printed, and the tool's result in the transcript and in the model's next request holds that output |
+| Drafts | A draft saved with a remote file reads back as saved; another page learns of each save from the conversation's `draftRevision` on its channel; a save on a revision the draft had moved past keeps the draft it overwrote as `replaced`, `restore` exchanges the two, and an action naming a replaced revision that is gone answers 409 `draft_changed` |
+| Page synchronization | Another page's channel brings a conversation the user creates to the front of its list, its status `running` while the turn runs, then `completed` and unread, and read once the user acknowledges the revision |
 
 The patch protocol has one more check. The Rust agent tests write patch
 sequences together with the snapshot each must produce, and the
@@ -252,14 +270,12 @@ Chrome, or Claude Code CLI:
 | Browser | Chrome for Testing on a paired device or on the Cloud | The pinned Chrome for Testing executable (`DEMI_TEST_CHROME`), and on the Cloud what the Cloud suite needs |
 | Claude Code | The vendor's CLI on the Cloud's runner, calling a local mock of the vendor's endpoint | The CLI executable (`DEMI_TEST_CLAUDE_CODE`) |
 
-Of the browser suite, only the Chrome tests of `demi-browser` exist: they
-drive a real Chrome for Testing through the command program on the machine
-that runs them, not through the backend or on a Cloud
-([Validation](builds-and-releases.md#validation) gives the command). The
-Cloud suite opens Chrome on a Cloud but does not watch its live view. A test
-of the conversation browser's live view on a Cloud is not written, and whether
-to write it is open. Until it is, release acceptance checks what it would
-observe by hand on a real Cloud.
+The browser suite has two parts, both with the pinned Chrome for Testing that
+`DEMI_TEST_CHROME` names ([Browser suite](#browser-suite)). The Cloud suite
+opens Chrome on a Cloud but does not watch its live view. A test of the
+conversation browser's live view on a Cloud is not written, and whether to
+write it is open. Until it is, release acceptance checks what it would observe
+by hand on a real Cloud.
 
 Deployment prerequisites are in [Cloud setup](../cloud/setup.md).
 
@@ -338,6 +354,25 @@ that drops it even for root. There the growth test cannot pass, and the suite
 runs without it: the script takes `-- --skip grows_its_home_online` after its
 own arguments, and the `cargo test` command takes `--skip grows_its_home_online`
 after its `--`.
+
+### Browser suite
+
+The browser suite runs where the Host would: as an ordinary user, since Chrome
+refuses root on Linux with its sandbox, with `DEMI_TEST_CHROME` naming the
+executable of an unpacked copy of the pinned release, which each test installs
+where the browser service looks for it, so no test downloads Chrome. An
+ordinary run ignores its tests.
+
+- The Chrome tests of `demi-browser` drive Chrome through the command program
+  on the machine that runs them, not through the backend.
+- `real_browser` in the backend's scenario binary runs the whole stack on a
+  paired device: the model's shell job opens a page that a local HTTP server
+  serves and reads it with `demi browser`, the page's `browser` user stream
+  brings the live view's first key frame of that tab through the backend, and
+  archiving the conversation releases it on the device, after which no Chrome
+  process runs from the device's installation.
+
+[Validation](builds-and-releases.md#validation) gives the command of each.
 
 ### Claude Code suite
 

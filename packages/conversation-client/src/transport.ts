@@ -1,15 +1,24 @@
-import type { ClientFrame } from '@demicodes/protocol'
+import { MAX_PAGE_MESSAGE_BYTES, type ClientFrame } from '@demicodes/protocol'
 
 /**
  * A connection that carries frames; it does not vouch for them. What arrives
  * is handed over as a JSON value, and `ConversationClient` validates it.
  */
 export interface ConversationClientTransport {
+  /** Sends `frame`; a frame over the backend's limit throws `FrameTooLargeError` and sends nothing. */
   send(frame: ClientFrame): void
   onFrame(handler: (frame: unknown) => void): () => void
   /** Called once when the connection ends without `close` being called. */
   onClose(handler: (error: Error) => void): () => void
   close(): void
+}
+
+/** A frame larger than the backend takes on a page's socket (`web-api.md` § Request bodies). */
+export class FrameTooLargeError extends Error {
+  constructor(bytes: number) {
+    super(`The message is ${bytes} bytes, over the ${MAX_PAGE_MESSAGE_BYTES} bytes the conversation socket takes`)
+    this.name = 'FrameTooLargeError'
+  }
 }
 
 /** What a socket's message carries. */
@@ -88,7 +97,15 @@ export function createWebSocketTransport(socket: WebSocketLike): ConversationCli
 
   return {
     send(frame) {
-      socket.send(JSON.stringify(frame))
+      const text = JSON.stringify(frame)
+      // A UTF-16 unit is at most three UTF-8 bytes, so a shorter text needs no count.
+      if (text.length * 3 > MAX_PAGE_MESSAGE_BYTES) {
+        const bytes = new TextEncoder().encode(text).byteLength
+        if (bytes > MAX_PAGE_MESSAGE_BYTES) {
+          throw new FrameTooLargeError(bytes)
+        }
+      }
+      socket.send(text)
     },
     onFrame(handler) {
       frameHandlers.add(handler)

@@ -10,6 +10,7 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use demi_backend_providers::llm::assembly::AssemblyError;
 use demi_backend_providers::llm::families::ProviderFamily;
 use demi_backend_providers::vault::entries::{ApiKeyConfig, EntryCredential, ProviderEntry};
 use demi_backend_providers::vault::operations::OperationGuard;
@@ -311,7 +312,16 @@ pub(super) async fn status(
 ) -> Result<Json<ProviderDetails>, ApiError> {
     let entry = scoped(&services, &user, &id).await?;
     let disclose = services.vault.configures(&user);
-    Ok(Json(services.assembly.details(&entry, disclose).await?))
+    match services.assembly.details(&entry, disclose).await {
+        Ok(details) => Ok(Json(details)),
+        Err(AssemblyError::Storage(error)) => Err(error.into()),
+        // As the entry's `failed` details in the sync state say it.
+        Err(error) => Err(ApiError::new(
+            StatusCode::BAD_GATEWAY,
+            ErrorCode::ProviderStatusFailed,
+            error.to_string(),
+        )),
+    }
 }
 
 /// The entry's provider for `account`, or for its active account without

@@ -13,8 +13,8 @@ use super::{
     AssetKind, BrowserFailure, BrowserNode, BrowserTab, BrowserTarget, BrowserTreeNode,
     BrowserViewport, ClipboardFormat, ClipboardMime, ContentFormat, Dialog, DialogOutcome,
     DialogType, ElementState, FETCH_URLS, InspectView, LOCATOR_LENGTH, Load, LogLevel, MAX_NODES,
-    MAX_TIMEOUT_MS, Modifier, MouseButton, NodeRef, ReadProperty, STDIN_BYTES, TIMEOUT_MS, TabId,
-    TextCursor,
+    MAX_TIMEOUT_MS, Modifier, MouseButton, NodeRef, ReadProperty, ResolvedElement, STDIN_BYTES,
+    TIMEOUT_MS, TabId, TextCursor,
 };
 
 /// What every operation's input answers about itself.
@@ -691,20 +691,25 @@ input! {
     }
 }
 
-/// What a pointer or form action answers: the operation and the target it
+/// What a pointer or form action answers: the operation and the element it
 /// acted on, its own result, and what it observed after: the URL, tabs the
 /// page opened, and a dialog.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ActionResult {
     pub operation: String,
+    /// The element the action's target resolved to; for untargeted `type`
+    /// and `key`, the focused element, and none when the focus is the
+    /// document. An action at coordinates names none.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
-    #[schemars(with = "String")]
-    pub target: Option<String>,
+    #[schemars(with = "ResolvedElement")]
+    pub target: Option<ResolvedElement>,
+    /// The operation's own outcome: for `select`, the options it left
+    /// selected (`SelectedOption`).
     pub result: Value,
     #[serde(
         default,
@@ -763,7 +768,7 @@ input! {
     }
 }
 
-/// What `wait` answers; a load wait carries neither `url` nor `ref`.
+/// What `wait` answers; a load wait carries neither `url` nor `target`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WaitResult {
@@ -776,13 +781,14 @@ pub struct WaitResult {
     )]
     #[schemars(with = "String")]
     pub url: Option<String>,
+    /// The element whose state matched; none when no element is attached.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
-    #[schemars(with = "NodeRef")]
-    pub r#ref: Option<NodeRef>,
+    #[schemars(with = "ResolvedElement")]
+    pub target: Option<ResolvedElement>,
 }
 
 input! {

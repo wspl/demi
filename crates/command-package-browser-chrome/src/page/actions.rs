@@ -462,7 +462,7 @@ pub async fn command_admitted(
                 Ok(TabResult::Eval(EvalResult { value }))
             }),
             BrowserOperation::Fill(input) => Box::pin(async {
-                crate::page::keyboard::fill(
+                let named = crate::page::keyboard::fill(
                     tab,
                     required_target(&target)?,
                     references,
@@ -470,7 +470,7 @@ pub async fn command_admitted(
                     &operation,
                 )
                 .await?;
-                let result = action_result(
+                let mut result = action_result(
                     tab,
                     &operation,
                     "fill",
@@ -478,6 +478,7 @@ pub async fn command_admitted(
                     navigation.as_mut(),
                 )
                 .await?;
+                result.target = Some(named);
                 Ok(TabResult::Action(result))
             }),
             BrowserOperation::Click(input) => Box::pin(async {
@@ -487,18 +488,19 @@ pub async fn command_admitted(
                     crate::page::protocol::MouseButton::Right => MouseButton::Right,
                 };
                 let modifiers = keyboard::modifiers(input.modifier.as_deref());
-                let point = match &input.xy {
-                    Some(xy) => operation.run(coordinates(tab, xy)).await?,
-                    None => crate::page::element::ready(
-                        tab,
-                        required_target(&target)?,
-                        references,
-                        element::CLICK,
-                        &operation,
-                    )
-                    .await?
-                    .1
-                    .point(),
+                let (point, named) = match &input.xy {
+                    Some(xy) => (operation.run(coordinates(tab, xy)).await?, None),
+                    None => {
+                        let ready = crate::page::element::ready(
+                            tab,
+                            required_target(&target)?,
+                            references,
+                            element::CLICK,
+                            &operation,
+                        )
+                        .await?;
+                        (ready.state.point(), Some(ready.named))
+                    }
                 };
                 crate::page::pointer::click_at(
                     tab,
@@ -509,7 +511,7 @@ pub async fn command_admitted(
                     &operation,
                 )
                 .await?;
-                let result = action_result(
+                let mut result = action_result(
                     tab,
                     &operation,
                     "click",
@@ -517,21 +519,23 @@ pub async fn command_admitted(
                     navigation.as_mut(),
                 )
                 .await?;
+                result.target = named;
                 Ok(TabResult::Action(result))
             }),
             BrowserOperation::Move(input) => Box::pin(async {
-                let point = match &input.xy {
-                    Some(xy) => operation.run(coordinates(tab, xy)).await?,
-                    None => crate::page::element::ready(
-                        tab,
-                        required_target(&target)?,
-                        references,
-                        element::GEOMETRY,
-                        &operation,
-                    )
-                    .await?
-                    .1
-                    .point(),
+                let (point, named) = match &input.xy {
+                    Some(xy) => (operation.run(coordinates(tab, xy)).await?, None),
+                    None => {
+                        let ready = crate::page::element::ready(
+                            tab,
+                            required_target(&target)?,
+                            references,
+                            element::GEOMETRY,
+                            &operation,
+                        )
+                        .await?;
+                        (ready.state.point(), Some(ready.named))
+                    }
                 };
                 operation
                     .run(async {
@@ -551,7 +555,8 @@ pub async fn command_admitted(
                         Ok(())
                     })
                     .await?;
-                let result = action_result(tab, &operation, "move", None, None).await?;
+                let mut result = action_result(tab, &operation, "move", None, None).await?;
+                result.target = named;
                 Ok(TabResult::Action(result))
             }),
             BrowserOperation::Scroll(input) => Box::pin(async {
@@ -560,8 +565,8 @@ pub async fn command_admitted(
                         "scroll requires a nonzero dx or dy".into(),
                     ));
                 }
-                let point = match &input.xy {
-                    Some(xy) => operation.run(coordinates(tab, xy)).await?,
+                let (point, named) = match &input.xy {
+                    Some(xy) => (operation.run(coordinates(tab, xy)).await?, None),
                     None if !target.as_ref().is_some_and(has_target_flags) => {
                         let viewport = operation
                             .run(async {
@@ -573,21 +578,23 @@ pub async fn command_admitted(
                                     .css_layout_viewport)
                             })
                             .await?;
-                        Point {
+                        let center = Point {
                             x: viewport.client_width as f64 / 2.0,
                             y: viewport.client_height as f64 / 2.0,
-                        }
+                        };
+                        (center, None)
                     }
-                    None => crate::page::element::ready(
-                        tab,
-                        required_target(&target)?,
-                        references,
-                        element::GEOMETRY,
-                        &operation,
-                    )
-                    .await?
-                    .1
-                    .point(),
+                    None => {
+                        let ready = crate::page::element::ready(
+                            tab,
+                            required_target(&target)?,
+                            references,
+                            element::GEOMETRY,
+                            &operation,
+                        )
+                        .await?;
+                        (ready.state.point(), Some(ready.named))
+                    }
                 };
                 operation
                     .run(async {
@@ -609,12 +616,13 @@ pub async fn command_admitted(
                         Ok(())
                     })
                     .await?;
-                let result = action_result(tab, &operation, "scroll", None, None).await?;
+                let mut result = action_result(tab, &operation, "scroll", None, None).await?;
+                result.target = named;
                 Ok(TabResult::Action(result))
             }),
             BrowserOperation::Type(input) => Box::pin(async {
-                let focused = if target.as_ref().is_some_and(has_target_flags) {
-                    let (element, _) = crate::page::element::ready(
+                let named = if target.as_ref().is_some_and(has_target_flags) {
+                    let ready = crate::page::element::ready(
                         tab,
                         required_target(&target)?,
                         references,
@@ -622,23 +630,23 @@ pub async fn command_admitted(
                         &operation,
                     )
                     .await?;
-                    crate::page::keyboard::type_text(tab, &element, &input.text, &operation)
+                    crate::page::keyboard::type_text(tab, &ready.element, &input.text, &operation)
                         .await?;
-                    None
+                    Some(ready.named)
                 } else {
-                    let (_, name) =
+                    let (_, focused) =
                         crate::page::keyboard::current_focus(tab, references, &operation).await?;
                     crate::page::keyboard::type_focused(tab, None, &input.text, &operation).await?;
-                    Some(name)
+                    focused
                 };
                 let mut result = action_result(tab, &operation, "type", None, None).await?;
-                result.target = focused;
+                result.target = named;
                 Ok(TabResult::Action(result))
             }),
             BrowserOperation::Key(input) => Box::pin(async {
                 let keys = keyboard::combination(&input.key)?;
-                let focused = if target.as_ref().is_some_and(has_target_flags) {
-                    let (element, _) = crate::page::element::ready(
+                let named = if target.as_ref().is_some_and(has_target_flags) {
+                    let ready = crate::page::element::ready(
                         tab,
                         required_target(&target)?,
                         references,
@@ -646,14 +654,12 @@ pub async fn command_admitted(
                         &operation,
                     )
                     .await?;
-                    crate::page::keyboard::focus(tab, &element, &operation).await?;
-                    None
+                    crate::page::keyboard::focus(tab, &ready.element, &operation).await?;
+                    Some(ready.named)
                 } else {
-                    Some(
-                        crate::page::keyboard::current_focus(tab, references, &operation)
-                            .await?
-                            .1,
-                    )
+                    crate::page::keyboard::current_focus(tab, references, &operation)
+                        .await?
+                        .1
                 };
                 crate::page::keyboard::press(tab, &keys, &operation).await?;
                 let mut result = action_result(
@@ -664,11 +670,11 @@ pub async fn command_admitted(
                     navigation.as_mut(),
                 )
                 .await?;
-                result.target = focused;
+                result.target = named;
                 Ok(TabResult::Action(result))
             }),
             BrowserOperation::Check(input) => Box::pin(async {
-                let (_, state) = crate::page::element::ready(
+                let checkable = crate::page::element::ready(
                     tab,
                     required_target(&target)?,
                     references,
@@ -676,8 +682,8 @@ pub async fn command_admitted(
                     &operation,
                 )
                 .await?;
-                if state.needs_check(input.value)? {
-                    let (element, state) = crate::page::element::ready(
+                if checkable.state.needs_check(input.value)? {
+                    let element::Ready { element, state, .. } = crate::page::element::ready(
                         tab,
                         required_target(&target)?,
                         references,
@@ -706,11 +712,12 @@ pub async fn command_admitted(
                         });
                     }
                 }
-                let result = action_result(tab, &operation, "check", None, None).await?;
+                let mut result = action_result(tab, &operation, "check", None, None).await?;
+                result.target = Some(checkable.named);
                 Ok(TabResult::Action(result))
             }),
             BrowserOperation::Select(input) => Box::pin(async {
-                let values = crate::page::select::select_options(
+                let (named, options) = crate::page::select::select_options(
                     tab,
                     required_target(&target)?,
                     references,
@@ -722,10 +729,9 @@ pub async fn command_admitted(
                     &operation,
                 )
                 .await?;
-                Ok(TabResult::Action(ActionResult::new(
-                    "select",
-                    json!(values),
-                )))
+                let mut result = ActionResult::new("select", json!(options));
+                result.target = Some(named);
+                Ok(TabResult::Action(result))
             }),
             BrowserOperation::DialogInspect(_) => Box::pin(async {
                 let dialog = tab.state().dialog.open().map(|dialog| Dialog {
@@ -772,7 +778,7 @@ pub async fn command_admitted(
                     condition,
                     matched: true,
                     url: None,
-                    r#ref: None,
+                    target: None,
                 };
                 if let Some(url) = &input.url {
                     let mut observation = NavigationObservation::subscribe(tab.page()).await?;
@@ -816,11 +822,10 @@ pub async fn command_admitted(
                             matched = !matched;
                         }
                         if matched {
-                            result.r#ref = observation
-                                .describe_elements(&elements, references, 1)?
-                                .into_iter()
-                                .next()
-                                .and_then(|node| node.r#ref);
+                            result.target = elements
+                                .first()
+                                .map(|element| observation.named(element, references))
+                                .transpose()?;
                             break;
                         }
                         tokio::time::sleep(Duration::from_millis(50)).await;

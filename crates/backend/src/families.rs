@@ -46,6 +46,7 @@ impl ProviderFamily for AnthropicFamily {
         let config = AnthropicConfig {
             api_key: settings.api_key,
             base_url: settings.base_url,
+            policy: settings.vendor,
         };
         Ok(Arc::new(AnthropicProvider::new(config, args.clock)))
     }

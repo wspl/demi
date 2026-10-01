@@ -1,6 +1,6 @@
 import { expect, jest, spyOn, test } from 'bun:test'
 import type { PendingSteer } from '@demicodes/protocol'
-import { deferred, waitFor } from '@demicodes/utils'
+import { deferred, delay, waitFor } from '@demicodes/utils'
 import { computed } from 'vue'
 import { ConversationRuntime, type RuntimeState } from '../conversation-runtime'
 import { ConversationSocketError, connectConversationClient } from '../../transport/conversation-socket'
@@ -140,9 +140,12 @@ test('a pending steer delivered now stops the turn, which writes it, and continu
     h.receive({ type: 'pending_steers', pendingSteers: [steer] })
     const delivered = runtime.interruptPendingSteer('steer')
     await waitFor(() => h.sent.some((frame) => frame.type === 'abort'))
+    // The backend answers the abort before the stopped turn has saved, and
+    // takes Continue only once the session is idle.
+    h.receive({ type: 'abort_result', result: { target: 'active_turn', canAbortAgain: false } })
+    await delay(0)
     expect(h.sent.some((frame) => frame.type === 'resume')).toBe(false)
     h.receive({ type: 'phase', phase: 'idle' })
-    h.receive({ type: 'abort_result', result: { target: 'active_turn', canAbortAgain: false } })
     await waitFor(() => h.sent.some((frame) => frame.type === 'resume'))
     h.receive({ type: 'phase', phase: 'running' })
     h.receive({ type: 'phase', phase: 'idle' })

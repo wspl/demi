@@ -4,7 +4,7 @@
 //! fallback. Every answer of the service, a refusal included, is shown to the
 //! account's quota.
 
-use std::{sync::atomic::Ordering, time::Duration};
+use std::time::Duration;
 
 use demi_provider_common::{
     ProviderFailure,
@@ -15,6 +15,7 @@ use demi_provider_common::{
         undecodable,
     },
 };
+use demi_shared_types::Timestamp;
 use futures_util::{SinkExt, StreamExt, stream::LocalBoxStream};
 use http::{
     HeaderMap, HeaderValue, StatusCode,
@@ -54,8 +55,8 @@ pub(crate) struct Refusal {
 /// that fails before its first event gives way to server-sent events unless
 /// the run was cancelled; after its first event, its failure is the run's.
 /// A WebSocket that cannot connect at all, which is how networks that block
-/// WebSockets show, sends the provider's later requests over server-sent
-/// events at once.
+/// WebSockets show, sends the provider's requests over server-sent events at
+/// once for [`WEBSOCKET_RETRY_AFTER`].
 pub(crate) async fn open(
     shared: &Shared,
     http: &reqwest::Client,
@@ -67,7 +68,7 @@ pub(crate) async fn open(
         TransportMode::Sse => sse(shared, http, headers, body, cancel).await,
         TransportMode::WebSocket => websocket(shared, headers, body, cancel).await,
         TransportMode::Auto => {
-            if shared.websocket_unreachable.load(Ordering::Relaxed) {
+            if websocket_unreachable(shared) {
                 return sse(shared, http, headers, body, cancel).await;
             }
             match websocket(shared, headers, body, cancel).await {
@@ -84,13 +85,38 @@ pub(crate) async fn open(
                     Some(Err(_)) | None => {}
                 },
                 Err(OpenError::Failed(_)) => {
-                    shared.websocket_unreachable.store(true, Ordering::Relaxed);
+                    let until = shared
+                        .clock
+                        .now()
+                        .to_jiff()
+                        .checked_add(WEBSOCKET_RETRY_AFTER);
+                    *unreachable_until(shared) = until.ok().map(Timestamp::truncate);
                 }
                 Err(OpenError::Refused(_)) => {}
             }
             sse(shared, http, headers, body, cancel).await
         }
     }
+}
+
+/// How long a WebSocket that could not connect leaves the provider's
+/// requests to server-sent events: long enough that a network that blocks
+/// WebSockets does not cost each request a failed connect, short enough that
+/// a passing failure does not cost the WebSocket for long.
+const WEBSOCKET_RETRY_AFTER: Duration = Duration::from_secs(600);
+
+/// Whether a WebSocket failed to connect within [`WEBSOCKET_RETRY_AFTER`].
+fn websocket_unreachable(shared: &Shared) -> bool {
+    let until = *unreachable_until(shared);
+    until.is_some_and(|until| shared.clock.now() < until)
+}
+
+fn unreachable_until(shared: &Shared) -> std::sync::MutexGuard<'_, Option<Timestamp>> {
+    // The value is a time, whole after any panic.
+    shared
+        .websocket_unreachable_until
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// The request over server-sent events. The response's headers must arrive

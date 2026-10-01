@@ -197,7 +197,7 @@ struct Running {
     /// Stops it: an abort, or the caller's cancellation.
     stop: CancellationToken,
     /// Its job, once started.
-    job: RefCell<Option<RemoteJob>>,
+    job: watch::Sender<Option<RemoteJob>>,
     /// The output the backend received within the streams' views, in the
     /// order it came: the whole output when neither stream went beyond.
     received: RefCell<Vec<OutputRecord>>,
@@ -212,6 +212,17 @@ impl Running {
         let mut settled = self.settled.subscribe();
         // The sender lives as long as this `Running`.
         let _ = settled.wait_for(|settled| *settled).await;
+    }
+
+    /// Its job, once it started: a command still acquiring its Host, such as
+    /// a Cloud that wakes, is waited for; none when it ended without one.
+    async fn started(&self) -> Option<RemoteJob> {
+        let mut job = self.job.subscribe();
+        tokio::select! {
+            // The sender lives as long as this `Running`.
+            started = job.wait_for(Option::is_some) => started.ok().and_then(|job| job.clone()),
+            () = self.settled() => self.job.borrow().clone(),
+        }
     }
 
     /// Waits for the command to settle, at most `within`; true when it did.
@@ -257,7 +268,7 @@ impl RemoteShellEnvironment {
         )));
         let running = Rc::new(Running {
             stop: cancel.child_token(),
-            job: RefCell::new(None),
+            job: watch::Sender::new(None),
             received: RefCell::new(Vec::new()),
             aborted: Cell::new(false),
             settled: watch::Sender::new(false),
@@ -449,7 +460,7 @@ impl RemoteShellEnvironment {
             })
             .await
             .map_err(|error| error.message)?;
-        *running.job.borrow_mut() = Some(job.clone());
+        running.job.send_replace(Some(job.clone()));
         let mut streams = [Received::default(), Received::default()];
         // The job is followed while a page watches; it starts unfollowed.
         let mut watching = self.0.options.feed.watching();
@@ -784,10 +795,9 @@ impl ShellEnvironment for RemoteShellEnvironment {
                 return Err(ShellError::NotRunning(command.clone()));
             };
             let job = running
-                .job
-                .borrow()
-                .clone()
-                .ok_or_else(|| ShellError::Starting(command.clone()))?;
+                .started()
+                .await
+                .ok_or_else(|| ShellError::NotRunning(command.clone()))?;
             Ok(job.read_output().await?)
         })
     }
@@ -806,11 +816,11 @@ impl ShellEnvironment for RemoteShellEnvironment {
             if stdin.is_empty() {
                 return Err(ShellError::EmptyStdin);
             }
+            // Input typed while the command acquires its Host waits for it.
             let job = running
-                .job
-                .borrow()
-                .clone()
-                .ok_or_else(|| ShellError::Starting(command.clone()))?;
+                .started()
+                .await
+                .ok_or_else(|| ShellError::NotRunning(command.clone()))?;
             job.write_stdin(stdin).await?;
             Ok(())
         })

@@ -57,6 +57,21 @@ pub fn module(header: &str) -> String {
         .expect("writing to a string");
     }
 
+    source.push('\n');
+    push_doc(
+        &mut source,
+        Some(
+            "The largest message a page sends on any of its WebSockets (`web-api.md` § Request bodies).",
+        ),
+        0,
+    );
+    writeln!(
+        source,
+        "export const MAX_PAGE_MESSAGE_BYTES = {}",
+        count(demi_web_api_protocol::MAX_PAGE_MESSAGE_BYTES)
+    )
+    .expect("writing to a string");
+
     source.push_str("\n// The live view's stream (`live-view.md` § The stream).\n");
     let numbers = [
         (

@@ -36,6 +36,7 @@ tracing.workspace = true
 url = { version = "2", features = ["serde"] }
 
 [dev-dependencies]
+demi-provider-common = { path = "../provider-common", features = ["testing"] }
 async-trait = "0.1"
 axum = "0.8"
 tempfile = "3"

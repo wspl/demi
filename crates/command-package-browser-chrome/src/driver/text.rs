@@ -16,8 +16,9 @@ use crate::driver::{
         ClipboardWriteResult, CloseResult, ContentFetchResult, ContentReadResult, Dialog,
         DialogInspectResult, DialogOutcome, DialogResult, DownloadResult, EvalResult, FindResult,
         HistoryResult, InfoResult, InspectResult, LogsResult, MouseButton, NavigationResult,
-        NodeRef, NodeValue, OpenResult, ProbeResult, ReadResult, ScreenshotResult, TabsResult,
-        UploadResult, ViewportResult, WaitResult, WebmcpCallResult, WebmcpListResult,
+        NodeValue, OpenResult, ProbeResult, ReadResult, ResolvedElement, ScreenshotResult,
+        SelectedOption, TabsResult, UploadResult, ViewportResult, WaitResult, WebmcpCallResult,
+        WebmcpListResult,
     },
 };
 
@@ -51,8 +52,8 @@ pub(crate) fn render(operation: &BrowserOperation, value: Value) -> Result<Strin
         | BrowserOperation::Key(_)
         | BrowserOperation::Check(_)
         | BrowserOperation::Select(_)
-        | BrowserOperation::SelectText(_) => action(operation, &typed(value)?),
-        BrowserOperation::Wait(_) => wait(&typed(value)?),
+        | BrowserOperation::SelectText(_) => action(operation, &typed(value)?)?,
+        BrowserOperation::Wait(input) => wait(input.load.is_some(), &typed(value)?),
         BrowserOperation::Upload(_) => upload(
             operation.target().as_ref().and_then(requested),
             &typed(value)?,
@@ -475,20 +476,48 @@ fn requested(target: &BrowserTarget) -> Option<String> {
     })
 }
 
-/// What an action acted on: the focused element or the document, where the
-/// input went when it named no target, else the target it named.
+/// The element a target resolved to, as an action or a wait names it:
+/// `button "Sign in" [ref=e3]`, leaving out a role or name the page tree
+/// does not give it.
+fn element(named: &ResolvedElement) -> String {
+    let mut parts = Vec::new();
+    if !named.role.is_empty() {
+        parts.push(plain(&named.role));
+    }
+    if !named.name.is_empty() {
+        parts.push(quoted(&named.name));
+    }
+    parts.push(format!("[ref={}]", named.r#ref));
+    parts.join(" ")
+}
+
+/// What an action acted on: the element its target resolved to, or, for
+/// untargeted keyboard input that found no focused element, the document.
 fn acted_on(operation: &BrowserOperation, result: &ActionResult) -> Option<String> {
-    match result.target.as_deref() {
-        Some("document") => Some("the document".to_owned()),
-        Some(focused) => Some(match NodeRef::try_from(focused.to_owned()) {
-            Ok(reference) => format!("[ref={reference}]"),
-            Err(_) => plain(focused),
-        }),
-        None => requested(&operation.target()?),
+    match &result.target {
+        Some(named) => Some(element(named)),
+        None if matches!(
+            operation,
+            BrowserOperation::Type(_) | BrowserOperation::Key(_)
+        ) =>
+        {
+            Some("the document".to_owned())
+        }
+        None => None,
     }
 }
 
-fn action(operation: &BrowserOperation, result: &ActionResult) -> String {
+/// A selected option as `select` names it: its label and, when they
+/// differ, its value, as in `Singapore (SG)`.
+fn option(selected: &SelectedOption) -> String {
+    if selected.label.is_empty() || selected.label == selected.value {
+        plain(&selected.value)
+    } else {
+        format!("{} ({})", plain(&selected.label), plain(&selected.value))
+    }
+}
+
+fn action(operation: &BrowserOperation, result: &ActionResult) -> Result<String> {
     let target = acted_on(operation, result);
     let on = |verb: &str| match &target {
         Some(target) => format!("{verb} {target}."),
@@ -537,19 +566,10 @@ fn action(operation: &BrowserOperation, result: &ActionResult) -> String {
             Some(target) => format!("Pressed {} in {target}.", plain(&input.key)),
             None => format!("Pressed {}.", plain(&input.key)),
         },
-        BrowserOperation::Check(input) => {
-            let state = if input.value { "checked" } else { "unchecked" };
-            match &target {
-                Some(target) => format!("Checkbox {target}: {state}."),
-                None => format!("Checkbox {state}."),
-            }
-        }
+        BrowserOperation::Check(input) => on(if input.value { "Checked" } else { "Unchecked" }),
         BrowserOperation::Select(_) => {
-            let selected: Vec<String> = result
-                .result
-                .as_array()
-                .map(|values| values.iter().map(value).collect())
-                .unwrap_or_default();
+            let selected: Vec<SelectedOption> = typed(result.result.clone())?;
+            let selected: Vec<String> = selected.iter().map(option).collect();
             format!("Selected: {}.", selected.join(", "))
         }
         BrowserOperation::SelectText(_) => {
@@ -574,17 +594,20 @@ fn action(operation: &BrowserOperation, result: &ActionResult) -> String {
     if let Some(shown) = &result.dialog {
         text.push_str(&dialog(shown));
     }
-    text
+    Ok(text)
 }
 
-fn wait(result: &WaitResult) -> String {
+/// A wait's text; `load` says it waited for the document's load.
+fn wait(load: bool, result: &WaitResult) -> String {
     let condition = plain(&result.condition);
     if let Some(url) = &result.url {
         format!("URL matched: {}.\n", plain(url))
-    } else if let Some(reference) = &result.r#ref {
-        format!("Element [ref={reference}] is {condition}.\n")
-    } else {
+    } else if load {
         format!("Load state reached: {condition}.\n")
+    } else if let Some(named) = &result.target {
+        format!("Matched {}. State: {condition}.\n", element(named))
+    } else {
+        format!("No element matches. State: {condition}.\n")
     }
 }
 
@@ -980,9 +1003,9 @@ mod tests {
             (
                 "click",
                 json!({"tab": "t1", "ref": "e1"}),
-                json!({"operation": "click", "result": "completed", "url": "http://localhost:3000/dashboard", "openedTabs": ["t2"]}),
+                json!({"operation": "click", "target": {"ref": "e1", "role": "button", "name": "Sign in"}, "result": "completed", "url": "http://localhost:3000/dashboard", "openedTabs": ["t2"]}),
                 vec![
-                    "Clicked [ref=e1].\n",
+                    "Clicked button \"Sign in\" [ref=e1].\n",
                     "URL: http://localhost:3000/dashboard\n",
                     "Opened tab: t2\n",
                 ],
@@ -995,9 +1018,9 @@ mod tests {
             ),
             (
                 "click",
-                json!({"tab": "t1", "role": "button", "name": "Sign in"}),
-                json!({"operation": "click", "result": "completed"}),
-                vec!["Clicked button \"Sign in\".\n"],
+                json!({"tab": "t1", "css": ".product"}),
+                json!({"operation": "click", "target": {"ref": "e3", "role": "", "name": ""}, "result": "completed"}),
+                vec!["Clicked [ref=e3].\n"],
             ),
             (
                 "drag",
@@ -1014,38 +1037,39 @@ mod tests {
             (
                 "fill",
                 json!({"tab": "t1", "ref": "e4", "text": "test@example.com"}),
-                json!({"operation": "fill", "result": "completed"}),
-                vec!["Filled [ref=e4].\n"],
+                json!({"operation": "fill", "target": {"ref": "e4", "role": "textbox", "name": "Email"}, "result": "completed"}),
+                vec!["Filled textbox \"Email\" [ref=e4].\n"],
             ),
             (
                 "type",
                 json!({"tab": "t1", "text": "hello"}),
-                json!({"operation": "type", "target": "e4", "result": "completed"}),
-                vec!["Typed into [ref=e4].\n"],
+                json!({"operation": "type", "target": {"ref": "e4", "role": "textbox", "name": "Email"}, "result": "completed"}),
+                vec!["Typed into textbox \"Email\" [ref=e4].\n"],
             ),
             (
                 "key",
                 json!({"tab": "t1", "key": "Escape"}),
-                json!({"operation": "key", "target": "document", "result": "completed"}),
+                json!({"operation": "key", "result": "completed"}),
                 vec!["Pressed Escape in the document.\n"],
             ),
             (
                 "check",
                 json!({"tab": "t1", "ref": "e5", "value": false}),
-                json!({"operation": "check", "result": "completed"}),
-                vec!["Checkbox [ref=e5]: unchecked.\n"],
+                json!({"operation": "check", "target": {"ref": "e5", "role": "checkbox", "name": "Remember me"}, "result": "completed"}),
+                vec!["Unchecked checkbox \"Remember me\" [ref=e5].\n"],
             ),
             (
                 "select",
                 json!({"tab": "t1", "ref": "e6", "value": ["SG", "JP"]}),
-                json!({"operation": "select", "result": ["SG", "JP"]}),
-                vec!["Selected: SG, JP.\n"],
+                json!({"operation": "select", "target": {"ref": "e6", "role": "combobox", "name": "Country"},
+                    "result": [{"value": "SG", "label": "Singapore"}, {"value": "JP", "label": "JP"}]}),
+                vec!["Selected: Singapore (SG), JP.\n"],
             ),
             (
                 "select-text",
                 json!({"tab": "t1", "ref": "e7", "text": "Replace", "cursor": "before"}),
-                json!({"operation": "select-text", "result": "before"}),
-                vec!["Cursor placed before the matching text in [ref=e7].\n"],
+                json!({"operation": "select-text", "target": {"ref": "e7", "role": "textbox", "name": ""}, "result": "before"}),
+                vec!["Cursor placed before the matching text in textbox [ref=e7].\n"],
             ),
             (
                 "wait",
@@ -1055,9 +1079,21 @@ mod tests {
             ),
             (
                 "wait",
-                json!({"tab": "t1", "ref": "e8", "state": "hidden"}),
-                json!({"condition": "hidden", "matched": true, "ref": "e8"}),
-                vec!["Element [ref=e8] is hidden.\n"],
+                json!({"tab": "t1", "role": "heading", "name": "Welcome back", "state": "visible"}),
+                json!({"condition": "visible", "matched": true, "target": {"ref": "e50", "role": "heading", "name": "Welcome back"}}),
+                vec!["Matched heading \"Welcome back\" [ref=e50]. State: visible.\n"],
+            ),
+            (
+                "wait",
+                json!({"tab": "t1", "css": ".spinner", "state": "detached"}),
+                json!({"condition": "detached", "matched": true}),
+                vec!["No element matches. State: detached.\n"],
+            ),
+            (
+                "wait",
+                json!({"tab": "t1", "load": "domcontentloaded"}),
+                json!({"condition": "domcontentloaded", "matched": true}),
+                vec!["Load state reached: domcontentloaded.\n"],
             ),
             (
                 "upload",

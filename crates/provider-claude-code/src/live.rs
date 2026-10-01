@@ -212,15 +212,20 @@ impl LiveCli {
 
     /// Whether the process can go on with `request`: it still runs, for the
     /// same session, model and thinking setting, it has an MCP server when
-    /// the request offers tools, and the transcript continues what it
-    /// received.
+    /// the request offers tools, the transcript continues what it received,
+    /// and the request gives it something to answer: results for the calls
+    /// it holds, or a new user message. A retry of a failed turn gives it
+    /// neither, and the process would wait for input that never comes.
     pub(crate) fn serves(&self, request: &InferenceRequest) -> bool {
         let running = self.exit.clone().now_or_never().is_none();
         let offers_tools = self.mcp.is_some() || request.tools.is_empty();
+        let gains_input =
+            !self.held.is_empty() || input::user_messages(&request.items).count() > self.sent.count;
         running
             && offers_tools
             && self.key == ProcessKey::of(request)
             && !self.sent.diverged(&request.items)
+            && gains_input
     }
 
     /// Sets a new process up for `request`: when the request offers tools,

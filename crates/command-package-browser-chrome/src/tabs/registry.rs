@@ -11,8 +11,9 @@
 //! The owner keeps its bookkeeping in a [`Book`], which knows nothing of
 //! Chrome, and does the calls to Chrome itself or in tasks of the
 //! environment. A page's public ID is `t` and a number of the conversation's
-//! `tab` sequence: before each step the owner makes sure the numbers the step
-//! may give out are at hand.
+//! `tab` sequence, which the owner gives a popup when it first sees it and one
+//! of its own creations when it sets it up. A number that cannot be drawn
+//! fails only that step: the creation fails, or the popup is closed.
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -58,9 +59,6 @@ const REQUESTS: usize = 64;
 /// of its own, so a page's creation can reach the owner after its
 /// destruction; remembering the destruction keeps that page out.
 const DESTROYED: usize = 1024;
-/// The most public IDs one step of the owner gives out: a page, its opener,
-/// and the opener Chrome names only when it attaches a popup.
-const STEP_IDS: usize = 3;
 
 /// A tab as the registry lists it.
 #[derive(Clone)]
@@ -223,6 +221,12 @@ impl Creation {
         // The owner drops its requests when the environment ends.
         (&mut self.answer).await.map_err(|_| BrowserError::Closed)?
     }
+
+    /// Whether the owner answered, with the tab or why there is none: a
+    /// creation that answered a failure left no tab behind.
+    pub fn answered(&self) -> bool {
+        self.answer.is_terminated()
+    }
 }
 
 /// A batch of temporary tabs in progress; dropping it lets the environment
@@ -315,8 +319,6 @@ impl<'a> Sighting<'a> {
 /// Chrome: their public IDs, openers and stages, the creations in flight,
 /// and whether the last tab has closed. `T` is the tab a live page has.
 struct Book<T> {
-    /// Where the public IDs' numbers come from.
-    numbers: TabNumbers,
     entries: HashMap<TargetId, Entry<T>>,
     /// Each top-level page's public ID and creation order, kept for the
     /// generation, closed tabs included.
@@ -352,9 +354,8 @@ enum Stage<T> {
 }
 
 impl<T: Clone> Book<T> {
-    fn new(numbers: TabNumbers) -> Self {
+    fn new() -> Self {
         Self {
-            numbers,
             entries: HashMap::new(),
             public_ids: HashMap::new(),
             openers: HashMap::new(),
@@ -370,11 +371,9 @@ impl<T: Clone> Book<T> {
         if self.was_destroyed(seen.target) {
             return false;
         }
-        self.public_id(seen.target);
         // Chrome may leave the opener out of later target information once
         // the opener closed; the first sighting keeps it.
         if let Some(opener) = seen.opener {
-            self.public_id(opener);
             self.openers
                 .entry(seen.target.clone())
                 .or_insert_with(|| opener.clone());
@@ -417,11 +416,9 @@ impl<T: Clone> Book<T> {
         self.openers.get(target)
     }
 
-    /// Records that `opener` opened `target`; the opener's public ID.
-    fn opened_by(&mut self, target: &TargetId, opener: TargetId) -> TabId {
-        let id = self.public_id(&opener);
+    /// Records that `opener` opened `target`.
+    fn opened_by(&mut self, target: &TargetId, opener: TargetId) {
         self.openers.insert(target.clone(), opener);
-        id
     }
 
     /// Admits a creation, unless the last tab has closed.
@@ -471,9 +468,8 @@ impl<T: Clone> Book<T> {
         Some(popups.into_iter().map(|(id, _)| id.clone()).collect())
     }
 
-    /// The page's tab is being set up; its public ID.
-    fn set_up(&mut self, target: &TargetId) -> TabId {
-        let id = self.public_id(target);
+    /// The page's tab is being set up; the owner named it.
+    fn set_up(&mut self, target: &TargetId) {
         self.entries
             .entry(target.clone())
             .or_insert_with(|| Entry {
@@ -482,7 +478,14 @@ impl<T: Clone> Book<T> {
                 stage: Stage::Pending,
             })
             .stage = Stage::Setup;
-        id
+    }
+
+    /// The page does not become a tab, such as a popup no number could be
+    /// drawn for.
+    fn unusable(&mut self, target: &TargetId) {
+        if let Some(entry) = self.entries.get_mut(target) {
+            entry.stage = Stage::Unusable;
+        }
     }
 
     /// A page's set-up tab, or none when it could not be set up; why it is
@@ -647,17 +650,15 @@ impl<T: Clone> Book<T> {
             .collect()
     }
 
-    /// The public ID of `target`, kept for the browser's generation: a new
-    /// page takes the next number at hand.
-    fn public_id(&mut self, target: &TargetId) -> TabId {
-        if let Some((id, _)) = self.public_ids.get(target) {
-            return id.clone();
-        }
+    /// The public ID of `target`, once it was named.
+    fn public_id(&self, target: &TargetId) -> Option<TabId> {
+        self.public_ids.get(target).map(|(id, _)| id.clone())
+    }
+
+    /// Names `target` with `number` for the browser's generation, after the
+    /// pages named before it.
+    fn name(&mut self, target: &TargetId, number: u64) -> TabId {
         let order = self.public_ids.len();
-        let number = self
-            .numbers
-            .take()
-            .expect("the owner stocks the numbers a step gives out");
         let id = TabId::numbered(number);
         self.public_ids.insert(target.clone(), (id.clone(), order));
         id
@@ -768,7 +769,8 @@ pub(crate) async fn start(
             failure,
             changes,
         },
-        book: Book::new(numbers),
+        book: Book::new(),
+        numbers,
         closing: HashMap::new(),
         popups: Vec::new(),
         holds: watch::channel(0).0,
@@ -781,6 +783,8 @@ pub(crate) async fn start(
 struct Owner {
     context: Context,
     book: Book<BrowserTab>,
+    /// Where the public IDs' numbers come from.
+    numbers: TabNumbers,
     /// The close requests waiting for their tab to go.
     closing: HashMap<TargetId, oneshot::Sender<Result<Closed>>>,
     /// The popup queries waiting for a popup to be registered.
@@ -795,9 +799,6 @@ impl Owner {
         let ended = self.context.ended.clone();
         let mut holds = self.holds.subscribe();
         loop {
-            if !self.stock().await {
-                break;
-            }
             // Earlier kinds of a target's events go first, so its creation
             // is usually handled before its destruction; the book's
             // destroyed list covers the rest.
@@ -805,20 +806,20 @@ impl Owner {
                 biased;
                 _ = ended.cancelled() => break,
                 event = events.created.next() => match event {
-                    Some(Ok(event)) => self.found(&event.target_info),
+                    Some(Ok(event)) => self.found(&event.target_info).await,
                     Some(Err(lost)) => self.lost(lost).await,
                     None => break,
                 },
                 event = events.attached.next() => match event {
                     Some(Ok(event)) => {
-                        self.found(&event.target_info);
+                        self.found(&event.target_info).await;
                         self.adopt(&event.target_info.target_id).await;
                     }
                     Some(Err(lost)) => self.lost(lost).await,
                     None => break,
                 },
                 event = events.changed.next() => match event {
-                    Some(Ok(event)) => self.found(&event.target_info),
+                    Some(Ok(event)) => self.found(&event.target_info).await,
                     Some(Err(lost)) => self.lost(lost).await,
                     None => break,
                 },
@@ -840,23 +841,65 @@ impl Owner {
         }
     }
 
-    /// Makes sure the numbers of the next step's public IDs are at hand;
-    /// false once the environment has ended. A tab without a number cannot
-    /// be named, so an environment that cannot have them ends with why.
-    async fn stock(&mut self) -> bool {
-        let stocked = tokio::select! {
-            _ = self.context.ended.cancelled() => return false,
-            stocked = self.book.numbers.stock(STEP_IDS) => stocked,
-        };
-        match stocked {
-            Ok(()) => true,
-            Err(error) => {
-                tracing::warn!("the browser's tabs cannot be numbered: {error}");
-                self.context.failure.send_replace(Some(error.to_string()));
-                self.context.ended.cancel();
-                false
-            }
+    /// The public ID of `target`, naming it with the next tab number when it
+    /// has none; why not, when no number could be drawn. A failed draw fails
+    /// only the step that needs the number, and the next step draws again
+    /// (`browser.md` § One tab registry).
+    async fn number(&mut self, target: &TargetId) -> Result<TabId> {
+        if let Some(id) = self.book.public_id(target) {
+            return Ok(id);
         }
+        let number = tokio::select! {
+            _ = self.context.ended.cancelled() => return Err(BrowserError::Closed),
+            number = self.numbers.next() => number?,
+        };
+        Ok(self.book.name(target, number))
+    }
+
+    /// Names the popup `target` and its opener; why not, when no number
+    /// could be drawn.
+    async fn name_popup(&mut self, target: &TargetId, opener: &TargetId) -> Result<(TabId, TabId)> {
+        let id = self.number(target).await?;
+        let opener = self.number(opener).await?;
+        Ok((id, opener))
+    }
+
+    /// A popup that cannot be named does not become a tab: Chrome closes it,
+    /// and its opener and the other tabs stay.
+    fn refuse_popup(&mut self, target: TargetId, error: &BrowserError) {
+        // An ended environment's pages end with it.
+        if matches!(error, BrowserError::Closed) {
+            return;
+        }
+        tracing::warn!("a popup is closed without a tab number: {error}");
+        self.book.unusable(&target);
+        self.settle();
+        self.close_page(target);
+    }
+
+    /// Asks Chrome to close a page that does not become a tab.
+    fn close_page(&self, target: TargetId) {
+        let browser = self.context.browser.clone();
+        self.context.tasks.spawn(async move {
+            let closed = async {
+                browser
+                    .call()?
+                    .execute(CloseTargetParams::new(target))
+                    .await?;
+                Ok::<_, BrowserError>(())
+            };
+            let closed = tokio::time::timeout(CONTROL_TIMEOUT, closed)
+                .await
+                .map_err(|_| BrowserError::Timeout)
+                .and_then(std::convert::identity);
+            match closed {
+                // An ended environment closes its pages with it.
+                Ok(()) | Err(BrowserError::Closed) => {}
+                Err(error) => {
+                    tracing::warn!("could not close a browser page that is not a tab: {error}");
+                }
+            }
+        });
     }
 
     /// Answers each popup query whose popups are all registered now.
@@ -904,7 +947,16 @@ impl Owner {
             } => match page {
                 Ok(page) => {
                     let target = page.target_id().clone();
-                    self.set_up(target, page, created_by, Some(reply));
+                    match self.number(&target).await {
+                        Ok(id) => self.set_up(target, page, id, created_by, Some(reply)),
+                        // The creation fails, and its blank page goes again.
+                        Err(error) => {
+                            self.book.failed();
+                            self.settle();
+                            let _gone = reply.send(Err(error));
+                            self.close_page(target);
+                        }
+                    }
                 }
                 Err(error) => {
                     self.book.failed();
@@ -976,11 +1028,25 @@ impl Owner {
         }
     }
 
-    fn found(&mut self, info: &TargetInfo) {
-        if let Some(seen) = Sighting::of(info)
-            && self.book.found(&seen)
-        {
+    /// Records a page an event or Chrome's target list shows. A popup is
+    /// named when first seen, with its opener, so that the action that
+    /// opened it can name it; one that cannot be named is closed. The
+    /// registry's own creations are named when set up.
+    async fn found(&mut self, info: &TargetInfo) {
+        let Some(seen) = Sighting::of(info) else {
+            return;
+        };
+        if self.book.found(&seen) {
             self.publish();
+        }
+        let Some(opener) = seen.opener else {
+            return;
+        };
+        if !self.book.is_pending(seen.target) {
+            return;
+        }
+        if let Err(error) = self.name_popup(seen.target, opener).await {
+            self.refuse_popup(seen.target.clone(), &error);
         }
     }
 
@@ -1001,20 +1067,27 @@ impl Owner {
         };
         // One of the registry's own creations, which its creator sets up.
         let Some(opener) = opener else { return };
-        let created_by = BrowserCreatedBy::Page {
-            opener: self.book.opened_by(target, opener),
+        let (id, opener_id) = match self.name_popup(target, &opener).await {
+            Ok(ids) => ids,
+            Err(error) => {
+                self.refuse_popup(target.clone(), &error);
+                return;
+            }
         };
-        self.set_up(target.clone(), page, created_by, None);
+        self.book.opened_by(target, opener);
+        let created_by = BrowserCreatedBy::Page { opener: opener_id };
+        self.set_up(target.clone(), page, id, created_by, None);
     }
 
     fn set_up(
         &mut self,
         target: TargetId,
         page: Page,
+        id: TabId,
         created_by: BrowserCreatedBy,
         reply: Option<oneshot::Sender<Result<BrowserTab>>>,
     ) {
-        let id = self.book.set_up(&target);
+        self.book.set_up(&target);
         self.publish();
         let context = self.context.clone();
         self.context.tasks.spawn(async move {
@@ -1060,25 +1133,7 @@ impl Owner {
             (Err(error), Some(reply)) => {
                 let _gone = reply.send(Err(error));
                 // A blank page its creator cannot use goes again.
-                let browser = self.context.browser.clone();
-                self.context.tasks.spawn(async move {
-                    let closed = async {
-                        browser
-                            .call()?
-                            .execute(CloseTargetParams::new(target))
-                            .await?;
-                        Ok::<_, BrowserError>(())
-                    };
-                    let closed = tokio::time::timeout(CONTROL_TIMEOUT, closed)
-                        .await
-                        .map_err(|_| BrowserError::Timeout)
-                        .and_then(std::convert::identity);
-                    if let Err(error) = closed {
-                        tracing::warn!(
-                            "could not close a browser tab that failed to set up: {error}"
-                        );
-                    }
-                });
+                self.close_page(target);
             }
             (Err(error), None) => {
                 tracing::warn!("a page's new browser tab could not be set up: {error}");
@@ -1189,24 +1244,19 @@ impl Owner {
     }
 
     /// Takes Chrome's target list as the pages there are: records each,
-    /// forgets the pages it lacks, and sets up the popups waiting. It stops
-    /// when the environment ends, which leaves nothing to register.
+    /// forgets the pages it lacks, and sets up the popups waiting.
     async fn register(&mut self, targets: &[TargetInfo]) {
         let mut present = HashSet::new();
-        for seen in targets.iter().filter_map(Sighting::of) {
-            present.insert(seen.target.clone());
-            if !self.stock().await {
-                return;
+        for info in targets {
+            if let Some(seen) = Sighting::of(info) {
+                present.insert(seen.target.clone());
             }
-            self.book.found(&seen);
+            self.found(info).await;
         }
         for target in self.book.vanished(&present) {
             self.gone(&target);
         }
         for target in self.book.pending() {
-            if !self.stock().await {
-                return;
-            }
             self.adopt(&target).await;
         }
     }
@@ -1279,18 +1329,21 @@ mod tests {
         }
     }
 
-    /// A book whose tabs take their numbers from 1.
-    fn book() -> Book<&'static str> {
-        Book::new(TabNumbers::preset(1..=64))
+    /// Names `target` with the next number from 1, as the owner names a
+    /// page.
+    fn name(book: &mut Book<&'static str>, target: &TargetId) -> TabId {
+        let number = book.public_ids.len() as u64 + 1;
+        book.name(target, number)
     }
 
     /// A book with `names` as live tabs, as the registry's own creations.
     fn live(names: &[&'static str]) -> Book<&'static str> {
-        let mut book = book();
-        for name in names {
+        let mut book = Book::new();
+        for tab in names {
             assert!(book.admit());
-            book.set_up(&target(name));
-            assert!(book.ready(&target(name), true, Some(*name)).is_none());
+            name(&mut book, &target(tab));
+            book.set_up(&target(tab));
+            assert!(book.ready(&target(tab), true, Some(*tab)).is_none());
         }
         book
     }
@@ -1310,20 +1363,25 @@ mod tests {
         assert_eq!(book.popups(&opener), Some(Vec::new()));
         let popup = target("popup");
         assert!(!book.found(&page(&popup, Some(&opener))));
+        let id = name(&mut book, &popup);
         // Known, but not yet operable: the answer waits, and the page counts
         // as opened already.
         assert_eq!(book.popups(&opener), None);
-        assert_eq!(book.opened(&opener), vec![book.public_id(&popup)]);
+        assert_eq!(book.opened(&opener), vec![id.clone()]);
         book.set_up(&popup);
         assert_eq!(book.popups(&opener), None);
         assert!(book.ready(&popup, false, Some("popup")).is_none());
-        let id = book.public_id(&popup);
         assert_eq!(book.popups(&opener), Some(vec![id.clone()]));
-        // A popup that could not be set up is not one the opener can name.
+        // A popup that could not be set up, or not named, is not one the
+        // opener can name.
         let broken = target("broken");
         book.found(&page(&broken, Some(&opener)));
+        name(&mut book, &broken);
         book.set_up(&broken);
         assert!(book.ready(&broken, false, None).is_none());
+        let unnamed = target("unnamed");
+        book.found(&page(&unnamed, Some(&opener)));
+        book.unusable(&unnamed);
         assert_eq!(book.popups(&opener), Some(vec![id]));
     }
 
@@ -1396,6 +1454,7 @@ mod tests {
         let mut book = live(&["first"]);
         let popup = target("popup");
         book.found(&page(&popup, Some(&target("first"))));
+        name(&mut book, &popup);
         book.set_up(&popup);
         let (tabs, registering) = book.listing();
         assert!(registering);
@@ -1416,7 +1475,7 @@ mod tests {
         // Chrome may drop the opener from later target information.
         book.found(&page(&popup, None));
         assert_eq!(book.opener(&popup), Some(&opener));
-        assert_eq!(book.opened_by(&popup, opener.clone()), id);
+        assert_eq!(book.public_id(&opener), id);
     }
 
     #[test]

@@ -59,6 +59,13 @@ installing=true
 [ "$root" = / ] || installing=false
 if $installing; then
   [ "$(id -u)" = 0 ] || { echo 'run as root' >&2; exit 2; }
+  # The manager's earlier name: two managers would share the socket, the
+  # network names and the nftables table (`setup.md` § Upgrading from
+  # demi-machines).
+  if [ -n "$(systemctl list-unit-files --no-legend demi-machines.service)" ]; then
+    echo 'demi-machines.service is installed: stop and disable it first (setup.md § Upgrading from demi-machines)' >&2
+    exit 2
+  fi
 fi
 [ -x "$manager" ] || { echo "the manager is not an executable: $manager" >&2; exit 2; }
 [ -f "$image/manifest.json" ] || { echo "no Cloud image release at $image" >&2; exit 2; }

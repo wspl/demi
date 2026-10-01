@@ -14,7 +14,7 @@ use std::sync::Arc;
 use demi_provider_anthropic_api::{AnthropicConfig, AnthropicProvider};
 pub(crate) use demi_provider_common::testing::run;
 use demi_provider_common::{
-    Provider, ProviderRuntime, RuntimeEnv, Secret,
+    Provider, ProviderRuntime, RuntimeEnv, Secret, VendorPolicy,
     testing::{FixedClock, MockResponse, MockVendor},
 };
 
@@ -23,16 +23,33 @@ pub(crate) const NOW: &str = "2026-09-18T14:00:00.000Z";
 
 /// A provider whose endpoint is `base` on the scripted vendor.
 pub(crate) fn provider_at(vendor: &MockVendor, base: &str) -> AnthropicProvider {
+    provider_with(vendor, base, VendorPolicy::default())
+}
+
+/// A provider whose endpoint is `base` on the scripted vendor, for a vendor
+/// of `policy`.
+pub(crate) fn provider_with(
+    vendor: &MockVendor,
+    base: &str,
+    policy: VendorPolicy,
+) -> AnthropicProvider {
     let config = AnthropicConfig {
         api_key: Secret::try_from("sk-ant-test".to_owned()).unwrap(),
         base_url: Some(vendor.url(base).parse().unwrap()),
+        policy,
     };
     AnthropicProvider::new(config, Arc::new(FixedClock(NOW.parse().unwrap())))
 }
 
 /// A runtime of a provider at `/v1` on the scripted vendor.
 pub(crate) fn runtime(vendor: &MockVendor) -> Box<dyn ProviderRuntime> {
-    provider_at(vendor, "/v1")
+    runtime_with(vendor, VendorPolicy::default())
+}
+
+/// A runtime of a provider at `/v1` on the scripted vendor, for a vendor of
+/// `policy`.
+pub(crate) fn runtime_with(vendor: &MockVendor, policy: VendorPolicy) -> Box<dyn ProviderRuntime> {
+    provider_with(vendor, "/v1", policy)
         .runtime(RuntimeEnv {
             http: reqwest::Client::new(),
         })

@@ -4,8 +4,8 @@
 //! They check the whole process table and the directory of browser profiles,
 //! so they run one at a time:
 //! `DEMI_TEST_CHROME=<chrome> cargo test --workspace --features
-//! demi-runner/test-fixtures,demi-browser/testing --test browser --
-//! --include-ignored --test-threads=1`.
+//! demi-runner/test-fixtures --test browser -- --include-ignored
+//! --test-threads=1`.
 
 // The service is `Send` and `Sync` deeper than the trait solver's default 128
 // steps, as in the library (`src/lib.rs`).
@@ -13,7 +13,6 @@
 
 mod families;
 mod fixture;
-#[cfg(feature = "testing")]
 mod page;
 mod server;
 

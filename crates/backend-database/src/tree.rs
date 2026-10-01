@@ -44,9 +44,58 @@ use super::command_outputs::{self, OutputRow};
 use super::conversations::ConversationDb;
 use super::sequences;
 
-/// What a tree store tells after each commit of a node's checkpoint, with
-/// the node: a conversation's summary reads its root's.
-pub type Saved = Rc<dyn Fn(&NodeId)>;
+/// What a tree store tells after each commit that writes a node's
+/// checkpoint or deletes a node, with that node and the conversation's
+/// earliest saved wakeup after the commit: a conversation's summary reads
+/// its root's checkpoint, and the index of conversations keeps the wakeup
+/// (`storage.md` § Control records).
+pub type Saved = Rc<dyn Fn(&NodeId, Option<WakeupDue>)>;
+
+/// When a saved yield wakeup is due (`runtime.md` § Yield wakeups): at the
+/// next start for one whose action had not ended, since a restore starts
+/// its wait; otherwise at its due time. The earlier of two is the lesser.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum WakeupDue {
+    AtStart,
+    At(Timestamp),
+}
+
+impl WakeupDue {
+    /// The earliest of the wakeups `state` saves; none when it saves none.
+    fn earliest(state: &CheckpointState) -> Option<Self> {
+        state
+            .wakeups
+            .iter()
+            .map(|wakeup| wakeup.due_at.map_or(Self::AtStart, Self::At))
+            .min()
+    }
+
+    /// As a `wakeup_at` column holds it: milliseconds since the Unix epoch,
+    /// and 0 for at start, which no wakeup scheduled since is due at.
+    pub(crate) fn column(self) -> i64 {
+        match self {
+            Self::AtStart => 0,
+            Self::At(at) => at.as_millisecond(),
+        }
+    }
+
+    /// A `wakeup_at` column of `table`, decoded.
+    pub(crate) fn from_column(table: &'static str, value: i64) -> Result<Self, StorageError> {
+        if value == 0 {
+            return Ok(Self::AtStart);
+        }
+        decode(table, "wakeup_at", Timestamp::from_millisecond(value)).map(Self::At)
+    }
+}
+
+/// The earliest wakeup the nodes of the tree `connection` holds save.
+fn earliest_wakeup(connection: &Connection) -> Result<Option<WakeupDue>, StorageError> {
+    let earliest: Option<i64> =
+        connection.query_row("SELECT MIN(wakeup_at) FROM nodes", [], |row| row.get(0))?;
+    earliest
+        .map(|value| WakeupDue::from_column("nodes", value))
+        .transpose()
+}
 
 /// One conversation's agent tree in its database, with its owner's blobs.
 pub struct SqliteTreeStore {
@@ -118,7 +167,7 @@ impl AgentTreeStore for SqliteTreeStore {
             let completions = initial.carried_completions()?;
             let node = record.id.clone();
             let blobs = self.blobs.clone();
-            self.db
+            let wakeup = self.db
                 .call(move |connection| {
                     let transaction = connection.transaction()?;
                     if node_by_id(&transaction, &record.id)?.is_some() {
@@ -152,15 +201,16 @@ impl AgentTreeStore for SqliteTreeStore {
                         command_state: Some(command_state),
                         ..initial
                     };
-                    let written = write_checkpoint(&transaction, &*blobs, &record.id, &initial, &completions)?;
-                    if written.is_ok() {
-                        transaction.commit()?;
+                    if let Err(refused) = write_checkpoint(&transaction, &*blobs, &record.id, &initial, &completions)? {
+                        return Ok(Err(refused));
                     }
-                    Ok(written)
+                    let wakeup = earliest_wakeup(&transaction)?;
+                    transaction.commit()?;
+                    Ok(Ok(wakeup))
                 })
                 .await
                 .map_err(store_error)??;
-            (self.saved)(&node);
+            (self.saved)(&node, wakeup);
             Ok(())
         })
     }
@@ -274,8 +324,10 @@ impl AgentTreeStore for SqliteTreeStore {
         let blobs = self.blobs.clone();
         Box::pin(async move {
             // The node's descendants and every row of theirs, their index
-            // rows included, go with it through the cascades.
-            self.db
+            // rows included, go with it through the cascades, and so do the
+            // wakeups they saved.
+            let wakeup = self
+                .db
                 .call(move |connection| {
                     let transaction = connection.transaction()?;
                     let removed = blob_refs::subtree(&transaction, &node)?;
@@ -283,11 +335,14 @@ impl AgentTreeStore for SqliteTreeStore {
                         return Ok(Err(refused));
                     }
                     transaction.execute("DELETE FROM nodes WHERE id = ?1", [node.as_str()])?;
+                    let wakeup = earliest_wakeup(&transaction)?;
                     transaction.commit()?;
-                    Ok(Ok(()))
+                    Ok(Ok(wakeup))
                 })
                 .await
-                .map_err(store_error)?
+                .map_err(store_error)??;
+            (self.saved)(id, wakeup);
+            Ok(())
         })
     }
 
@@ -354,7 +409,8 @@ impl SessionStore for SqliteSessionStore {
             let completions = update.carried_completions()?;
             let commit = self.db.commit_point();
             let blobs = self.blobs.clone();
-            self.db
+            let wakeup = self
+                .db
                 .call(move |connection| {
                     let transaction = connection.transaction()?;
                     // The guard is checked at the start of the transaction, so
@@ -362,16 +418,18 @@ impl SessionStore for SqliteSessionStore {
                     if let Err(stale) = guard.check() {
                         return Ok(Err(stale));
                     }
-                    let written =
-                        write_checkpoint(&transaction, &*blobs, &node, &update, &completions)?;
-                    if written.is_ok() {
-                        commit.commit(transaction)?;
+                    if let Err(refused) =
+                        write_checkpoint(&transaction, &*blobs, &node, &update, &completions)?
+                    {
+                        return Ok(Err(refused));
                     }
-                    Ok(written)
+                    let wakeup = earliest_wakeup(&transaction)?;
+                    commit.commit(transaction)?;
+                    Ok(Ok(wakeup))
                 })
                 .await
                 .map_err(store_error)??;
-            (self.saved)(&self.node);
+            (self.saved)(&self.node, wakeup);
             Ok(())
         })
     }
@@ -395,7 +453,8 @@ impl SessionStore for SqliteSessionStore {
 }
 
 /// Writes one save of `node` in `transaction`: the changed block rows, the
-/// rows past the new end gone, each with its index rows, the state row, the
+/// rows past the new end gone, each with its index rows, the state row with
+/// its earliest wakeup, the
 /// command state when it changed, and the child completions it carries
 /// marked delivered; last, the uses of the blobs whose references it wrote
 /// or removed. Changed output advances the node's output revision; input
@@ -423,11 +482,17 @@ fn write_checkpoint(
         .map(|state| integer(state.revision));
     // The old block count is the column's value before the update: rows
     // gone are a rewrite of the output.
+    let wakeup = WakeupDue::earliest(&update.state).map(WakeupDue::column);
+    // A root saved under a turn restores interrupted, and its wakeups wait
+    // for the user to resume it (`runtime.md` § Yield wakeups): none of them
+    // fires by itself. A child resumes its interrupted turn on its own.
+    let interrupted = update.state.phase != SessionPhase::Idle;
     let changed = transaction.execute(
         "UPDATE nodes SET state = ?2, block_count = ?3, command_revision = COALESCE(?5, command_revision),
-           output_revision = output_revision + (CASE WHEN block_count > ?3 OR ?4 THEN 1 ELSE 0 END)
+           output_revision = output_revision + (CASE WHEN block_count > ?3 OR ?4 THEN 1 ELSE 0 END),
+           wakeup_at = (CASE WHEN parent_id IS NULL AND ?7 THEN NULL ELSE ?6 END)
          WHERE id = ?1",
-        params![node.as_str(), to_json(&update.state), block_count, output, revision],
+        params![node.as_str(), to_json(&update.state), block_count, output, revision, wakeup, interrupted],
     )?;
     if changed == 0 {
         return Ok(Err(missing(node)));
@@ -972,7 +1037,7 @@ mod tests {
         let store = SqliteTreeStore::new(
             stores.db(&conversation()),
             Arc::new(Blobs::default()),
-            Rc::new(|_: &NodeId| {}),
+            Rc::new(|_: &NodeId, _| {}),
         );
         (store, stores, data)
     }
@@ -1378,6 +1443,82 @@ mod tests {
             ]
         );
         assert_eq!(facts(&stores).await, before);
+    }
+
+    /// A save whose state saves wakeups due at each of `due`, in
+    /// milliseconds, none for one whose action has not ended.
+    fn waiting(due: &[Option<i64>]) -> CheckpointUpdate {
+        let wakeups = due
+            .iter()
+            .enumerate()
+            .map(|(index, due)| demi_agent_store::ScheduledWakeup {
+                id: format!("w{index}").try_into().unwrap(),
+                duration_ms: 1_000,
+                due_at: due.map(|at| Timestamp::from_millisecond(at).unwrap()),
+            })
+            .collect();
+        CheckpointUpdate {
+            state: CheckpointState { wakeups, ..state() },
+            ..update(Vec::new(), 0)
+        }
+    }
+
+    #[tokio::test(flavor = "local")]
+    async fn every_commit_tells_the_earliest_wakeup_the_trees_nodes_save() {
+        let data = tempfile::tempdir().unwrap();
+        let stores = ConversationStores::open(
+            data.path().join("conversations"),
+            NonZeroUsize::new(4).unwrap(),
+        )
+        .await
+        .unwrap();
+        let told = Rc::new(std::cell::RefCell::new(Vec::new()));
+        let saved: Saved = {
+            let told = told.clone();
+            Rc::new(move |_, wakeup| told.borrow_mut().push(wakeup))
+        };
+        let tree = SqliteTreeStore::new(
+            stores.db(&conversation()),
+            Arc::new(Blobs::default()),
+            saved,
+        );
+        let at = |ms| Some(WakeupDue::At(Timestamp::from_millisecond(ms).unwrap()));
+        tree.create_node(record("root", None, 0), waiting(&[Some(9_000), None]))
+            .await
+            .unwrap();
+        let root = tree.session_store(&id("root"));
+        root.save(waiting(&[Some(9_000)]), &CommitGuard::default())
+            .await
+            .unwrap();
+        tree.create_node(record("child", Some("root"), 1), waiting(&[Some(5_000)]))
+            .await
+            .unwrap();
+        root.save(waiting(&[]), &CommitGuard::default())
+            .await
+            .unwrap();
+        tree.delete_node(&id("child")).await.unwrap();
+        // A root saved under a turn holds its wakeups until the user resumes
+        // it; a child resumes on its own.
+        let mut running = waiting(&[Some(9_000)]);
+        running.state.phase = SessionPhase::Running;
+        root.save(running.clone(), &CommitGuard::default())
+            .await
+            .unwrap();
+        tree.create_node(record("child", Some("root"), 1), running)
+            .await
+            .unwrap();
+        assert_eq!(
+            *told.borrow(),
+            [
+                Some(WakeupDue::AtStart),
+                at(9_000),
+                at(5_000),
+                at(5_000),
+                None,
+                None,
+                at(9_000)
+            ]
+        );
     }
 
     #[tokio::test(flavor = "local")]

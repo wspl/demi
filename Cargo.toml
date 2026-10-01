@@ -9,6 +9,7 @@ members = [
   "crates/agent-tools",
   "crates/agent-transcript",
   "crates/shared-artifacts",
+  "crates/shared-cli",
   "crates/backend",
   "crates/backend-accounts",
   "crates/backend-cloud",

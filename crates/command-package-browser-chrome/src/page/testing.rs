@@ -28,7 +28,7 @@ pub async fn click_css(
     let mut session = tab.state().gate.try_checkout().ok_or(BrowserError::Busy)?;
     let operation = tab.operation(cancellation, tokio::time::Instant::now() + timeout);
     let target = css_target(selector);
-    let (_, state) = crate::page::element::ready(
+    let ready = crate::page::element::ready(
         tab,
         &target,
         &mut session.references,
@@ -36,7 +36,15 @@ pub async fn click_css(
         &operation,
     )
     .await?;
-    crate::page::pointer::click_at(tab, state.point(), MouseButton::Left, 1, 0, &operation).await
+    crate::page::pointer::click_at(
+        tab,
+        ready.state.point(),
+        MouseButton::Left,
+        1,
+        0,
+        &operation,
+    )
+    .await
 }
 
 /// Fills the element `selector` matches, for tests that drive a page.
@@ -50,5 +58,6 @@ pub async fn fill_css(
     let mut session = tab.state().gate.try_checkout().ok_or(BrowserError::Busy)?;
     let operation = tab.operation(cancellation, tokio::time::Instant::now() + timeout);
     let target = css_target(selector);
-    crate::page::keyboard::fill(tab, &target, &mut session.references, text, &operation).await
+    crate::page::keyboard::fill(tab, &target, &mut session.references, text, &operation).await?;
+    Ok(())
 }

@@ -30,3 +30,10 @@ pub mod text;
 pub mod usage;
 pub mod users;
 pub mod workspaces;
+
+/// The largest message a page sends on any of its WebSockets: the
+/// conversation socket, the synchronization channel and a user stream
+/// (`web-api.md` § Request bodies). A frame refers to an upload and never
+/// carries its bytes, and a user stream frames its own messages, so no page
+/// needs a larger one.
+pub const MAX_PAGE_MESSAGE_BYTES: usize = 1024 * 1024;

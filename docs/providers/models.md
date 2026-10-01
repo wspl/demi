@@ -333,13 +333,18 @@ For example, the `anthropic` family maps them onto the Messages API as follows:
 
 | Thinking setting | Request |
 |---|---|
-| An effort, or adaptive thinking at an effort | `thinking: { type: "adaptive", display: "summarized" }` and `output_config: { effort }`; `display` is `omitted` when the setting turns summaries off |
+| An effort, or adaptive thinking at an effort | `thinking: { type: "adaptive", display: "summarized" }` and `output_config: { effort }`; `display` is `omitted` when the setting turns summaries off. For a vendor other than Anthropic, the effort's budget instead, as a token budget below |
 | A token budget | `thinking: { type: "enabled", budget_tokens }`, the budget kept between 1,024 and `max_tokens` minus 1,024, and 1,024 when `max_tokens` is 2,048 or less |
 | Off, or none | No `thinking` field |
 
 The efforts are the vendor's words, so a Claude model's `low` to `max` reach
-the API unchanged. The newest Claude models refuse a token budget, which is
-why an effort never becomes one.
+Anthropic's API unchanged. The newest Claude models refuse a token budget,
+which is why an effort never becomes one there. Adaptive thinking and
+`output_config` are Anthropic's own, so an entry added from another models.dev
+vendor on `@ai-sdk/anthropic` sends an effort as its budget, the ladder
+Gemini uses below; the vendor policy says which form a vendor takes
+([Vendors from models.dev](providers.md#vendors-from-modelsdev)). An entry that
+names no vendor is Anthropic's.
 
 The OpenAI-shaped formats level thinking by effort only:
 

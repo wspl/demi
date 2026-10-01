@@ -15,7 +15,7 @@ import {
 import { asError, createId } from '@demicodes/utils'
 import type { ConversationClientListener, ClientSessionEvent, Failures, ServerFrameOf } from './events'
 import { applyTranscriptPatches } from './patch'
-import type { ConversationClientTransport } from './transport'
+import { FrameTooLargeError, type ConversationClientTransport } from './transport'
 
 /** A correlated refusal: the edit was not accepted. */
 export class EditRejectedError extends Error {
@@ -324,10 +324,23 @@ export class ConversationClient {
     try {
       this.transport.send(frame)
     } catch (error) {
+      if (error instanceof FrameTooLargeError) {
+        this.refuse(frame, error.message)
+        return false
+      }
       this.disconnect(asError(error))
       return false
     }
     return true
+  }
+
+  /** Answers a frame the transport would not send as the backend answers a frame it refuses. */
+  private refuse(frame: ClientFrame, reason: string): void {
+    if (frame.type === 'steer') {
+      this.handle({ type: 'steer_result', steerId: frame.steerId, outcome: { status: 'rejected', reason } })
+      return
+    }
+    this.handle({ type: 'rejected', command: frame.type, reason })
   }
 
   /**

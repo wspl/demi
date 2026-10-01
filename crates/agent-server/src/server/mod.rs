@@ -19,7 +19,7 @@ use std::{
     time::Duration,
 };
 
-use demi_agent_session::{ForkError, ModelSwitch, SessionConfig, fork_seed};
+use demi_agent_session::{Continuation, ForkError, ModelSwitch, SessionConfig, fork_seed};
 use demi_agent_store::{
     AgentTreeStore, Checkpoint, CheckpointUpdate, CommandStateHistory, NodeRecord, StoreError,
 };
@@ -35,6 +35,8 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 pub use connection::{Connection, FrameRx, Outgoing};
 pub use content::{ContentError, ContentResolver, FileReference, ResolvedFiles};
 pub use tree::Tree;
+
+use tree::OpenError;
 
 use crate::Node;
 
@@ -69,6 +71,16 @@ pub enum ResolveError {
     /// The entry exists but could not build a runtime.
     #[error("{0}")]
     Failed(String),
+}
+
+/// Why a conversation's tree could not be restored without a connection.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum RestoreError {
+    /// The tree did not open, with why.
+    #[error("the tree did not open: {0}")]
+    Open(String),
+    #[error("the restored tree did not continue: {0}")]
+    Continue(#[from] StoreError),
 }
 
 fn fork_store(error: StoreError) -> ForkError {
@@ -157,6 +169,38 @@ impl<H: AgentHarness> AgentServer<H> {
     /// The conversation's live tree, if it has one.
     pub fn tree(&self, root: &NodeId) -> Option<Rc<Tree<H>>> {
         self.trees.borrow().get(root).cloned()
+    }
+
+    /// Restores the conversation `root`'s tree, working in `cwd`, with no
+    /// connection attached (`runtime.md` § Yield wakeups): it continues as a
+    /// restored tree does, so its saved wakeups are armed again, and once it
+    /// is quiescent the idle rule evicts it. A tree that is live already is
+    /// left as it is.
+    pub async fn restore(self: &Rc<Self>, root: &NodeId, cwd: &str) -> Result<(), RestoreError> {
+        let _turn = self.opening.acquire(root.clone()).await;
+        let (tree, continuation) = self
+            .live_or_open(root, cwd)
+            .await
+            .map_err(|error| RestoreError::Open(error.to_string()))?;
+        if let Some(continuation) = continuation {
+            tree.continue_restored(continuation).await?;
+        }
+        Ok(())
+    }
+
+    /// The conversation `root`'s live tree, or its tree opened from the store
+    /// in `cwd` with what the restored tree does next, which the caller hands
+    /// to [`Tree::continue_restored`] once it attached what it attaches. The
+    /// caller holds the root's opening order.
+    async fn live_or_open(
+        self: &Rc<Self>,
+        root: &NodeId,
+        cwd: &str,
+    ) -> Result<(Rc<Tree<H>>, Option<Continuation>), OpenError> {
+        match self.tree(root) {
+            Some(tree) => Ok((tree, None)),
+            None => Tree::open(self, root, cwd).await,
+        }
     }
 
     /// Prepares a switch of the conversation `root`'s live tree to `model`

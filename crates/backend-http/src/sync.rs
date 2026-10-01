@@ -14,6 +14,7 @@ use demi_backend_database::accounts::TokenHash;
 use demi_web_api_protocol::error::ErrorCode;
 
 use super::AppState;
+use super::body::page_socket;
 use super::cookies::SESSION_COOKIE;
 use super::error::ApiError;
 use demi_backend_user_shard::sync::ChannelSession;
@@ -45,7 +46,7 @@ pub(super) async fn channel(
         user: session.user,
         expires_at: session.expires_at,
     };
-    Ok(upgrade.on_upgrade(move |socket| async move {
+    Ok(page_socket(upgrade).on_upgrade(move |socket| async move {
         let user = session.user.id.clone();
         let adopted = state
             .shards

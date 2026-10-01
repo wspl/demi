@@ -144,8 +144,8 @@ pub struct DirectoryBases {
     /// directory with the environment's lock: short, since Chrome makes its
     /// process-singleton socket there and the socket's path has a limit.
     pub runtime: PathBuf,
-    /// The profiles, with their downloads and uploads, and the downloads
-    /// saved without `--output`: on disk, since they can grow large.
+    /// The profiles, with their downloads and uploads: on disk, since they
+    /// can grow large.
     pub profiles: PathBuf,
 }
 
@@ -650,6 +650,15 @@ impl BrowserEnvironment {
         &self.download_directory
     }
 
+    /// A new path for a download saved without `--output`: in the download
+    /// directory, on disk with the profile, which retirement removes
+    /// (`browser.md` § Upload, download, and clipboard).
+    pub fn saved_download(&self) -> Result<PathBuf> {
+        Ok(self
+            .download_directory
+            .join(crate::driver::handles::fresh("demi-download")?))
+    }
+
     /// Where the files the user chose in the live view stay until the
     /// browser retires.
     pub fn upload_directory(&self) -> &Path {
@@ -762,7 +771,8 @@ impl BrowserEnvironment {
 
     /// A new tab for `operation`. A creation Chrome began finishes even when
     /// the operation ends first, and its tab closes again before the
-    /// operation's end is reported, so a later listing does not show it.
+    /// operation's end is reported, so a later listing does not show it; a
+    /// creation that failed has no tab to close.
     async fn create(
         &self,
         created_by: BrowserCreatedBy,
@@ -771,6 +781,7 @@ impl BrowserEnvironment {
         let mut creation = operation.run(self.tabs.create(created_by)).await?;
         match operation.run(creation.tab()).await {
             Ok(tab) => Ok(tab),
+            Err(error) if creation.answered() => Err(error),
             Err(error) => {
                 let cleanup = tokio::time::timeout(CONTROL_TIMEOUT, async {
                     let tab = creation.tab().await?;

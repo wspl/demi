@@ -7,7 +7,7 @@ use std::{borrow::Cow, collections::HashMap};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use demi_provider_common::{
     InferenceItem, InferenceRequest, MediaBytes, Medium, ResultPart, ToolDefinition, UserPart,
-    json_body, openai_request::tool_arguments,
+    json_body, openai_request::tool_arguments, thinking::effort_budget,
 };
 use demi_shared_types::{ThinkingConfig, is_blank};
 use serde::Serialize;
@@ -16,17 +16,6 @@ use crate::SIGNATURE_TAG;
 
 /// `maxOutputTokens` when the model names no output limit.
 const DEFAULT_MAX_OUTPUT_TOKENS: u32 = 32_000;
-
-/// The thinking budget each effort names, in tokens; an effort the ladder
-/// does not name thinks like `medium`.
-const EFFORT_BUDGETS: [(&str, u32); 5] = [
-    ("low", 4_096),
-    ("medium", 16_384),
-    ("high", 32_768),
-    ("xhigh", 65_536),
-    ("max", 98_304),
-];
-const MEDIUM_BUDGET: u32 = 16_384;
 
 /// The JSON body of `request`.
 pub(crate) fn encode(request: &InferenceRequest) -> Vec<u8> {
@@ -133,11 +122,7 @@ fn thinking(config: Option<&ThinkingConfig>) -> Option<GeminiThinking> {
         }
         Some(ThinkingConfig::Budget { budget_tokens }) => Some(*budget_tokens),
         Some(ThinkingConfig::Adaptive { effort } | ThinkingConfig::Effort { effort, .. }) => {
-            let budget = EFFORT_BUDGETS
-                .iter()
-                .find(|(name, _)| name == effort)
-                .map_or(MEDIUM_BUDGET, |(_, budget)| *budget);
-            Some(budget)
+            Some(effort_budget(effort))
         }
     };
     Some(GeminiThinking {

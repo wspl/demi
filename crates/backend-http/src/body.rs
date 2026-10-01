@@ -1,13 +1,16 @@
 //! Request bodies read whole (`web-api.md` § Request bodies): a JSON body is
 //! at most 1 MiB, refused with 413 `too_large` before more than that is read,
-//! and must match its request type exactly.
+//! and must match its request type exactly; a page's WebSocket message is at
+//! most 1 MiB too.
 
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::rejection::{BytesRejection, FailedToBufferBody};
+use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{FromRequest, Request};
 use axum::http::StatusCode;
 use axum::http::header::CONTENT_LENGTH;
+use demi_web_api_protocol::MAX_PAGE_MESSAGE_BYTES;
 use demi_web_api_protocol::error::ErrorCode;
 use garde::Validate;
 use serde::de::DeserializeOwned;
@@ -18,6 +21,14 @@ use super::error::ApiError;
 /// `DefaultBodyLimit` enforces it on the bytes; `JsonBody` refuses a larger
 /// declared length before reading any.
 pub(super) const JSON_BODY_LIMIT: usize = 1024 * 1024;
+
+/// A page's WebSocket, which takes no message larger than
+/// [`MAX_PAGE_MESSAGE_BYTES`]; a larger one fails the socket.
+pub(super) fn page_socket(upgrade: WebSocketUpgrade) -> WebSocketUpgrade {
+    upgrade
+        .max_message_size(MAX_PAGE_MESSAGE_BYTES)
+        .max_frame_size(MAX_PAGE_MESSAGE_BYTES)
+}
 
 /// A JSON body decoded into its request type and validated. The content type
 /// is not consulted; a body that is empty, malformed or does not match the

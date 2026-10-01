@@ -443,8 +443,9 @@ async fn chrome_keeps_its_directories_apart_whatever_the_services_home_and_tempo
 /// Without `TMPDIR`, as on the Cloud, a profile and a download saved without
 /// `--output` go to `/var/tmp`, on disk, rather than to a `/tmp` that may be
 /// held in memory (`browser.md` § Native driver, § Upload, download, and
-/// clipboard). An empty `TMPDIR` stands in for none, since the service
-/// program inherits this test's environment. About 5 s, as above.
+/// clipboard). The download is in its environment's directory and goes when
+/// the environment retires. An empty `TMPDIR` stands in for none, since the
+/// service program inherits this test's environment. About 5 s, as above.
 #[tokio::test]
 #[ignore = "requires DEMI_TEST_CHROME; starts the service program without TMPDIR, so it uses /var/tmp"]
 async fn without_tmpdir_profiles_and_downloads_go_to_var_tmp() {
@@ -480,16 +481,68 @@ async fn without_tmpdir_profiles_and_downloads_go_to_var_tmp() {
         )
         .await;
         let saved = PathBuf::from(download["path"].as_str().unwrap());
-        let content = std::fs::read(&saved);
-        std::fs::remove_file(&saved).unwrap();
-        assert!(saved.starts_with(base), "{}", saved.display());
-        assert_eq!(content.unwrap(), b"download fixture\n");
+        let profile = profiles.into_values().next().unwrap();
+        assert!(saved.starts_with(&profile), "{}", saved.display());
+        assert_eq!(std::fs::read(&saved).unwrap(), b"download fixture\n");
         release_and_shut_down(service, scratch.path()).await;
-        profiles.into_values().next().unwrap()
+        (profile, saved)
     })
     .await
     .unwrap();
-    assert!(!profile.exists(), "{}", profile.display());
+    assert!(!profile.0.exists(), "{}", profile.0.display());
+    assert!(!profile.1.exists(), "{}", profile.1.display());
+}
+
+/// A service that is killed leaves its profile and a download saved without
+/// `--output` behind; the next service of the same user removes them as it
+/// starts (`browser.md` § Native driver). The next
+/// service sweeps beside serving and exits only once its sweep is done, so
+/// its shutdown is the event this test waits for. About 6 s: two service
+/// programs, one Chrome.
+#[tokio::test]
+#[ignore = "requires DEMI_TEST_CHROME; kills the service program and sweeps what it left"]
+async fn the_next_service_sweeps_a_killed_services_browser_and_downloads() {
+    let scratch = tempfile::tempdir().unwrap();
+    let home = tempfile::tempdir().unwrap();
+    let temporary = tempfile::tempdir().unwrap();
+    let page = url::Url::from_file_path(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/browser/download.html"),
+    )
+    .unwrap();
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let killed = service_program(home.path(), temporary.path().to_str().unwrap()).await;
+        let tab = agent_call(
+            &killed,
+            "browser.open",
+            json!({"url": page.as_str()}),
+            scratch.path(),
+        )
+        .await["tab"]
+            .clone();
+        let download = agent_call(
+            &killed,
+            "browser.download",
+            json!({"tab": tab, "css": "#instant"}),
+            scratch.path(),
+        )
+        .await;
+        let saved = PathBuf::from(download["path"].as_str().unwrap());
+        assert!(saved.is_file(), "{}", saved.display());
+        let pid = i32::try_from(killed.id().unwrap()).unwrap();
+        // SAFETY: `kill` has no memory preconditions; the process is this
+        // test's child.
+        assert_eq!(unsafe { libc::kill(pid, libc::SIGKILL) }, 0);
+        drop(killed);
+        let next = service_program(home.path(), temporary.path().to_str().unwrap()).await;
+        assert!(next.shutdown().await.unwrap().success());
+        assert_eq!(
+            walk(temporary.path()),
+            Vec::<PathBuf>::new(),
+            "the profile and its download are gone"
+        );
+    })
+    .await
+    .unwrap();
 }
 
 /// The service program as the runner starts it, with `home`, where it
