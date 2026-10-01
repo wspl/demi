@@ -1179,7 +1179,9 @@ demi-browser (executable: conversations, composition)
   TypeScript emitter, which `bun run contracts` runs after it builds the
   workspace; [Contracts](contracts.md#generated-typescript)), native build and
   release packaging for every executable, the pinned Chrome for Testing
-  release record, and Cloud image packaging; and the crate boundary check, one
+  release record, Cloud image packaging, and the comparison of the vendored
+  crates with their upstream releases (`xtask vendor diff`); and the crate
+  boundary check, one
   of its tests ([Boundary checks](#boundary-checks)).
   The checks and tests are plain Cargo and bun commands
   ([Validation](../delivery/builds-and-releases.md#validation)).
@@ -1396,7 +1398,9 @@ review.
 
 - **Source organization.** Rust crates live under `crates/`, TypeScript
   packages under `packages/`, and vendored third-party crates under
-  `vendor/<crate>/`. A type's correspondence across languages does not
+  `vendor/<upstream>/<crate>/`, one directory per upstream repository named
+  after it (`uutils-coreutils`, `ripgrep`), since the crates of one repository
+  are released and upgraded together. A type's correspondence across languages does not
   require matching packages: several contract crates generate into one
   `@demicodes/protocol`.
 - **When a part is its own crate.** A separate crate or package requires
@@ -1478,9 +1482,17 @@ review.
   `packages/protocol/src/generated/` and `packages/web/src/api/generated/` and
   is not committed ([Contracts](contracts.md#generated-typescript)).
 - **Vendored crates.** A vendored crate keeps its upstream metadata and
-  licenses. The root `Cargo.toml` declares its `[patch.crates-io]` path and
+  licenses, among them `.cargo_vcs_info.json`, which names the upstream commit
+  of the release. It leaves out what a dependency never builds or reads:
+  packaging residue (`.cargo-ok`, `Cargo.toml.orig`), its lockfile, upstream's
+  CI, and its tests, benchmarks, fuzz targets and examples; its manifest stays
+  as published. The root `Cargo.toml` declares its `[patch.crates-io]` path and
   excludes it from the workspace, so the workspace's formatting and tests
-  leave it as upstream wrote it.
+  leave it as upstream wrote it. `cargo xtask vendor diff` downloads each
+  vendored crate's release from crates.io, checks it against the index's
+  SHA-256 and lists every change from it (`--patch <crate>` prints the diff),
+  which an upgrade reapplies and a review checks against the `patches`
+  below.
   Demi's adapters of a vendored crate stay in the responsible Demi crate. Its
   `[package.metadata.demi]` names the Demi crate that maintains it
   (`maintainer`) and each change from the upstream release with its reason

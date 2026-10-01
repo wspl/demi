@@ -188,7 +188,7 @@ Only Uncommitted mode lists files and offers a changed-file tree.
 
 | Where | Responsibility |
 | --- | --- |
-| `vendor/brush-core`, `vendor/uucore`, `vendor/sed` | Route writable opens, file writes and temporary-file publication through the execution owner's hooks. |
+| `vendor/brush/brush-core`, `vendor/uutils-coreutils/uucore`, `vendor/uutils-sed/sed` | Route writable opens, file writes and temporary-file publication through the execution owner's hooks. |
 | `crates/command-protocol` | Define the recording context, the journal and the test of whether bytes are text. |
 | `crates/command-service` | Implement the shared bounded recorder with OS locking. |
 | `crates/demi-file` | Record create, edit, patch publication and rollback using the invocation's recorder. |
