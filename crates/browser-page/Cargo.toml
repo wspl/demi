@@ -3,7 +3,6 @@ name = "demi-browser-page"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-rust-version.workspace = true
 
 [lib]
 # Its tests reach the keyboard's and the observation's internals, so they are
