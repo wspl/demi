@@ -19,7 +19,7 @@ use std::process::Stdio;
 
 use demi_artifact::{Archive, Digest, Mode, Permissions, Publication, ReleaseFile, ReleaseRecord, Staged};
 use demi_browser_protocol::release::{BrowserRelease, IMAGE_BROWSERS};
-use demi_command_service::protocol::{PackageArtifact, PackageDescriptor};
+use demi_command_protocol::{PackageArtifact, PackageDescriptor};
 use demi_machines_protocol::image::{
     Architecture, CloudImageManifest, FormatVersion, INIT_PATH, InstalledPackage, ManifestError, Os, RUNNER_PATH,
     RootfsArchive, RootfsFile, StandaloneTool,
@@ -153,7 +153,7 @@ struct UvArchive {
     url: String,
     #[garde(range(min = 1))]
     size: u64,
-    #[garde(custom(demi_command_service::protocol::digest))]
+    #[garde(custom(demi_command_protocol::digest))]
     sha256: String,
     #[garde(length(min = 1), inner(length(min = 1)))]
     executables: Vec<String>,
@@ -777,7 +777,7 @@ Version: 0.19.0-3
         let descriptor = PackageDescriptor {
             id: id.to_owned(),
             version: "0.1.3".to_owned(),
-            protocol_version: demi_command_service::protocol::VERSION,
+            protocol_version: demi_command_protocol::VERSION,
             operations: vec!["file.read".to_owned()],
             targets: BTreeMap::from([(TARGET.to_owned(), measured(recorded).await)]),
         };
@@ -812,7 +812,7 @@ Version: 0.19.0-3
             let runner = RunnerRelease {
                 release: "1".repeat(64),
                 wire: demi_runner_protocol::wire::VERSION,
-                command_protocol: demi_command_service::protocol::VERSION,
+                command_protocol: demi_command_protocol::VERSION,
                 targets: BTreeMap::from([(TARGET.to_owned(), measured(b"runner").await)]),
             };
             let record = crate::record(&runner).unwrap();

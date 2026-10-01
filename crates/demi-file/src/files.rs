@@ -8,13 +8,13 @@ use std::{
 
 use bytes::Bytes;
 use demi_artifact::{Mode, Permissions, Publication};
-use demi_core::DecodeError;
-use demi_file_protocol::{CreateArgs, EditArgs, Operation, PatchArgs, ReadArgs};
+use demi_command_protocol::{CommandError, Completion};
 use demi_command_service::{
     InvocationContext, ServiceError,
     edits::{Recorder, Recording},
-    protocol::{CommandError, Completion},
 };
+use demi_core::DecodeError;
+use demi_file_protocol::{CreateArgs, EditArgs, Operation, PatchArgs, ReadArgs};
 use demi_gates::SerialGate;
 use tokio::io::AsyncReadExt;
 use tokio_util::sync::CancellationToken;

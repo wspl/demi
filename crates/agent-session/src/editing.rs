@@ -12,7 +12,7 @@ use demi_agent_store::{
     EditReceipt,
 };
 use demi_agent_transcript::{CutError, TranscriptLog, before_user, through_assistant};
-use demi_command_service::protocol::canonical_digest;
+use demi_command_protocol::canonical_digest;
 use demi_core::{
     BlobRef, Block, BlockId, DocumentSource, MediaSource, OperationId, UserContentBlock,
 };

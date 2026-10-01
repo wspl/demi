@@ -2,9 +2,9 @@
 
 use std::{collections::HashSet, os::unix::fs::PermissionsExt, path::PathBuf, time::Duration};
 
-use demi_command_service::testing::counting_numbers;
 use demi_browser_driver::{numbers::TabNumbers, operation::BrowserError};
 use demi_browser_tabs::environment::{DirectoryBases, LaunchOptions, with_browser};
+use demi_command_service::testing::counting_numbers;
 use serde_json::json;
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 use tokio_util::sync::CancellationToken;
@@ -69,7 +69,7 @@ exit 1
     )
     .unwrap();
     std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o700)).unwrap();
-    let locale = demi_command_service::protocol::CommandLocale {
+    let locale = demi_command_protocol::CommandLocale {
         time_zone: "UTC".into(),
         languages: vec!["en-US".into()],
     };
@@ -131,7 +131,7 @@ async fn canceled_launch_reaps_helpers_before_removing_profile() {
         with_browser(
             LaunchOptions::pinned(
                 launcher,
-                demi_command_service::protocol::CommandLocale {
+                demi_command_protocol::CommandLocale {
                     time_zone: "UTC".into(),
                     languages: vec!["en-US".into()]
                 }
@@ -197,7 +197,7 @@ async fn chrome_process_tree_and_profile_retire_together() {
         let result = with_browser(
             LaunchOptions::pinned(
                 executable.clone(),
-                demi_command_service::protocol::CommandLocale {
+                demi_command_protocol::CommandLocale {
                     time_zone: "UTC".into(),
                     languages: vec!["en-US".into()],
                 },
@@ -484,8 +484,8 @@ async fn service_program(
 }
 
 /// The service program's conversation and caller.
-fn service_context() -> demi_command_service::protocol::CommandContext {
-    use demi_command_service::protocol::{CommandCaller, CommandContext, CommandLocale};
+fn service_context() -> demi_command_protocol::CommandContext {
+    use demi_command_protocol::{CommandCaller, CommandContext, CommandLocale};
     CommandContext {
         conversation: "service-program".into(),
         caller: CommandCaller::agent(1),
@@ -504,7 +504,7 @@ async fn agent_call(
     args: serde_json::Value,
     cwd: &std::path::Path,
 ) -> serde_json::Value {
-    let invocation = demi_command_service::protocol::Invocation {
+    let invocation = demi_command_protocol::Invocation {
         operation: operation.into(),
         invocation_id: uuid::Uuid::new_v4().to_string(),
         context: service_context(),
@@ -531,7 +531,7 @@ async fn release_and_shut_down(
     service: demi_command_service::testing::ServiceProcess,
     cwd: &std::path::Path,
 ) {
-    let release = demi_command_service::protocol::Invocation {
+    let release = demi_command_protocol::Invocation {
         operation: "release".into(),
         invocation_id: uuid::Uuid::new_v4().to_string(),
         context: service_context(),

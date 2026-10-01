@@ -2,7 +2,7 @@
 //! executable): a miss downloads and verifies, a hit asks nobody, and nothing
 //! partial or mismatched is ever published.
 
-use demi_command_service::protocol::PackageArtifact;
+use demi_command_protocol::PackageArtifact;
 use demi_runner_services::{ArtifactResolver, ArtifactSource, RuntimeError, cache::ArtifactCache};
 use futures_util::future::BoxFuture;
 use sha2::{Digest, Sha256};

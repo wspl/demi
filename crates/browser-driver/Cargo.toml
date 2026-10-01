@@ -22,6 +22,7 @@ bytes.workspace = true
 chromiumoxide = "=0.9.1"
 demi-artifact = { path = "../artifact" }
 demi-browser-protocol = { path = "../browser-protocol" }
+demi-command-protocol = { path = "../command-protocol" }
 demi-command-service = { path = "../command-service" }
 demi-core = { path = "../core" }
 futures-util.workspace = true

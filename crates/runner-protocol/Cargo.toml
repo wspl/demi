@@ -14,7 +14,7 @@ doctest = false
 bench = false
 
 [dependencies]
-demi-command-service = { path = "../command-service" }
+demi-command-protocol = { path = "../command-protocol" }
 demi-command-tree = { path = "../command-tree" }
 demi-core = { path = "../core" }
 garde.workspace = true

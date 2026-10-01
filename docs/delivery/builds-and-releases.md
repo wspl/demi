@@ -330,7 +330,7 @@ its own copy of every shared dependency.
 
 A test that starts another program, such as a runner or `demi-file`,
 starts the one Cargo built into the target directory the test runs from
-(`command_service::testing::built_program`); it builds nothing itself.
+(`command_protocol::testing::built_program`); it builds nothing itself.
 `cargo test` of the whole selection builds every program first: Cargo builds
 a package's executables for that package's integration tests, so every crate
 whose program a test starts has an integration test binary. One test target

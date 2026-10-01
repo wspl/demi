@@ -10,11 +10,8 @@
 use std::path::{Path, PathBuf};
 
 use bytes::Bytes;
-use demi_command_service::{
-    Exchange, Input, OutputSink,
-    protocol::{CommandCaller, CommandContext, CommandLocale, Completion, Invocation},
-    testing::ServiceProcess,
-};
+use demi_command_protocol::{CommandCaller, CommandContext, CommandLocale, Completion, Invocation};
+use demi_command_service::{Exchange, Input, OutputSink, testing::ServiceProcess};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 

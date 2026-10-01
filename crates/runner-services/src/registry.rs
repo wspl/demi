@@ -18,17 +18,17 @@ use std::{
     time::Duration,
 };
 
-use demi_command_service::{
-    Client, ServiceError,
-    protocol::{ConversationRequest, ConversationStatus, PackageDescriptor, Record, ServiceInfo},
+use demi_command_protocol::{
+    ConversationRequest, ConversationStatus, PackageDescriptor, Record, ServiceInfo,
 };
+use demi_command_service::{Client, ServiceError};
 use tokio::{
     sync::{mpsc, oneshot, watch},
     task::JoinSet,
 };
 use tokio_util::sync::CancellationToken;
 
-use demi_command_service::protocol::host_target;
+use demi_command_protocol::host_target;
 
 use crate::{
     ArtifactResolver, NumberSource, RuntimeError, cache::ArtifactCache, process::ResidentService,
@@ -755,7 +755,7 @@ impl Owner {
 /// artifact comes from, where its conversation numbers come from, and its
 /// working directory and environment.
 struct Start<'a> {
-    artifact: &'a demi_command_service::protocol::PackageArtifact,
+    artifact: &'a demi_command_protocol::PackageArtifact,
     descriptor: &'a PackageDescriptor,
     resolver: &'a dyn ArtifactResolver,
     numbers: Arc<dyn NumberSource>,

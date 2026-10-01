@@ -1,12 +1,12 @@
 use bytes::Bytes;
-use demi_command_service::{
-    ConversationContext, Handler, Input, InvocationContext, Output, ServiceError,
-    protocol::{
-        CommandCaller, CommandContext, CommandLocale, ConversationRequest, Invocation, Record,
-    },
-};
 use demi_browser::DemiBrowser;
 use demi_browser_driver::installation::BrowserDirectories;
+use demi_command_protocol::{
+    CommandCaller, CommandContext, CommandLocale, ConversationRequest, Invocation, Record,
+};
+use demi_command_service::{
+    ConversationContext, Handler, Input, InvocationContext, Output, ServiceError,
+};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 

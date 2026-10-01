@@ -1,9 +1,7 @@
 //! No command the backend implements is refused for how many others are in
 //! flight (`runner.md` § Load).
 
-use demi_command_service::protocol::{
-    CommandCaller, CommandContext, CommandLocale, LocalInvocation,
-};
+use demi_command_protocol::{CommandCaller, CommandContext, CommandLocale, LocalInvocation};
 use demi_runner_jobs::testing::Dispatch;
 use demi_runner_process::{
     command_client::{RawCommand, Stdio, forward},

@@ -21,7 +21,7 @@ use demi_browser_driver::{
     operation::{BrowserError, CONTROL_TIMEOUT, Operation, Result, after_cleanup},
     process::ChromeProcess,
 };
-use demi_command_service::protocol::CommandLocale;
+use demi_command_protocol::CommandLocale;
 
 use crate::{
     protocol::{BrowserCreatedBy, Load, TabId},

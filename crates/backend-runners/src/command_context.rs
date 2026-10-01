@@ -2,7 +2,7 @@
 //! declared command of a job or a user stream knows beyond its arguments.
 //! The backend is its only source and builds it when the work starts.
 
-use demi_command_service::protocol::{CommandCaller, CommandContext, CommandLocale};
+use demi_command_protocol::{CommandCaller, CommandContext, CommandLocale};
 use demi_web_api::ids::{ConversationId, ProviderId, UserId};
 
 use demi_backend_storage::StorageError;

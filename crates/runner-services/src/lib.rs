@@ -10,7 +10,7 @@ pub mod testing;
 
 use std::{fmt, path::PathBuf, time::SystemTime};
 
-use demi_command_service::protocol::{ArtifactLocation, PackageArtifact, ServiceSequence};
+use demi_command_protocol::{ArtifactLocation, PackageArtifact, ServiceSequence};
 use futures_util::future::BoxFuture;
 use tokio_util::sync::CancellationToken;
 

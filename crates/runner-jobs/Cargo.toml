@@ -18,6 +18,7 @@ bench = false
 testing = []
 
 [dependencies]
+demi-command-protocol = { path = "../command-protocol" }
 demi-command-service = { path = "../command-service" }
 demi-command-tree = { path = "../command-tree" }
 demi-runner-process = { path = "../runner-process" }

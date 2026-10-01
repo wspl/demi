@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use demi_artifact::{Mode, Permissions, Publication, ReleaseFile, ReleaseRecord};
-use demi_command_service::protocol::{PackageArtifact, PackageDescriptor, canonical_digest};
+use demi_command_protocol::{PackageArtifact, PackageDescriptor, canonical_digest};
 use demi_runner_protocol::release::RunnerRelease;
 use serde::Serialize;
 use tokio_util::sync::CancellationToken;
@@ -138,7 +138,7 @@ async fn command_package(
     let descriptor = PackageDescriptor {
         id: id.to_owned(),
         version: VERSION.to_owned(),
-        protocol_version: demi_command_service::protocol::VERSION,
+        protocol_version: demi_command_protocol::VERSION,
         operations,
         targets: built.targets,
     };
@@ -202,7 +202,7 @@ struct RunnerContents<'a> {
 /// `output`'s manifest at it.
 async fn runner(output: &Path, built: Built, cancel: &CancellationToken) -> Result<String, Error> {
     let wire = demi_runner_protocol::wire::VERSION;
-    let command_protocol = demi_command_service::protocol::VERSION;
+    let command_protocol = demi_command_protocol::VERSION;
     let contents = RunnerContents {
         wire,
         command_protocol,
@@ -239,7 +239,7 @@ fn record(value: &impl Serialize) -> Result<Vec<u8>, Error> {
 
 #[cfg(test)]
 mod tests {
-    use demi_command_service::protocol::TARGETS;
+    use demi_command_protocol::TARGETS;
 
     use super::*;
 

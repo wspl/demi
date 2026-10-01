@@ -5,7 +5,7 @@
 
 use std::rc::Rc;
 
-use demi_command_service::protocol::{ArtifactLocation, PackageArtifact, PackageDescriptor};
+use demi_command_protocol::{ArtifactLocation, PackageArtifact, PackageDescriptor};
 use demi_runner_protocol::manifest::{Manifest, ManifestError};
 use demi_shell::CommandSet;
 use futures_util::future::LocalBoxFuture;

@@ -5,7 +5,7 @@ use crate::{
     commands::contexts::Contexts, commands::rpc,
 };
 use bytes::Bytes;
-use demi_command_service::protocol::{Completion, Invocation, LocalInvocation};
+use demi_command_protocol::{Completion, Invocation, LocalInvocation};
 use demi_command_service::{
     Exchange, ExchangeError, Handler, Input, InvocationContext, Output, ServiceError,
 };

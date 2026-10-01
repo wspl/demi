@@ -6,8 +6,8 @@
 //! is one the browser shows.
 
 use bytes::Bytes;
-use demi_command_service::edits::is_text;
-use demi_command_service::protocol::EDIT_FILE_BYTES;
+use demi_command_protocol::EDIT_FILE_BYTES;
+use demi_command_protocol::is_text;
 use demi_shell::{FileKind, HostError, HostFs};
 use demi_web_api::files::DirectoryEntry;
 

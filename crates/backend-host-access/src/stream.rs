@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_command_service::protocol::{CommandCaller, PackageDescriptor};
+use demi_command_protocol::{CommandCaller, PackageDescriptor};
 use demi_command_tree::NativeOperation;
 use demi_gates::GateLease;
 use demi_host_remote::{Pipe, PipeReader, PipeWriter, ServiceCallError, ServiceRequest, ServiceStream};

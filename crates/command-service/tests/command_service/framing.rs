@@ -1,7 +1,5 @@
 use bytes::Bytes;
-use demi_command_service::protocol::{
-    Completion, MAX_RECORD_BYTES, ProtocolError, Record, RecordDecoder,
-};
+use demi_command_protocol::{Completion, MAX_RECORD_BYTES, ProtocolError, Record, RecordDecoder};
 
 #[test]
 fn decodes_every_fragmentation_boundary_and_preserves_binary() {

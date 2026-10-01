@@ -14,7 +14,7 @@ bench = false
 
 [dependencies]
 demi-backend-storage = { path = "../backend-storage" }
-demi-command-service = { path = "../command-service" }
+demi-command-protocol = { path = "../command-protocol" }
 demi-core = { path = "../core" }
 demi-web-api = { path = "../web-api" }
 # `std` for `password_hash::Error` as a `std::error::Error`; `password-hash`'s

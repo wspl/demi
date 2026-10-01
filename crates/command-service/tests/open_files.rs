@@ -9,9 +9,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use demi_command_service::{
-    descriptors, edits::Recorder, protocol::EditContext, testing::pauses,
-};
+use demi_command_protocol::EditContext;
+use demi_command_service::{descriptors, edits::Recorder, testing::pauses};
 
 /// Every descriptor the process has left, held open.
 struct Hog(Vec<fs::File>);

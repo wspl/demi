@@ -9,10 +9,8 @@ use std::{
     collections::BTreeMap, future::Future, path::Path, process::Stdio, sync::Arc, time::Duration,
 };
 
-use demi_command_service::{
-    Client, NumbersStream, ServiceError,
-    protocol::{PackageDescriptor, ServiceInfo},
-};
+use demi_command_protocol::{PackageDescriptor, ServiceInfo};
+use demi_command_service::{Client, NumbersStream, ServiceError};
 use process_wrap::tokio::ChildWrapper;
 use tokio::{
     io::AsyncReadExt,

@@ -1,6 +1,4 @@
-use demi_command_service::protocol::{
-    CommandCaller, CommandContext, CommandLocale, LocalInvocation,
-};
+use demi_command_protocol::{CommandCaller, CommandContext, CommandLocale, LocalInvocation};
 use demi_runner_jobs::{
     commands::contexts::ExecutionContext,
     testing::{ContextGuard, Dispatch},

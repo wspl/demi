@@ -2,15 +2,13 @@
 //! without a transport hop.
 
 use crate::interpreter::{invocation_file, scope};
+use brush_core::{CommandArg, ExecutionContext, ExecutionResult, builtins};
+use bytes::Bytes;
+use demi_command_protocol::{LocalInvocation, Record};
+use demi_command_service::{Input, InvocationContext, Output, ServiceError};
 use demi_runner_process::{
     command_client::{RAW, RawCommand},
     stdio::is_live,
-};
-use brush_core::{CommandArg, ExecutionContext, ExecutionResult, builtins};
-use bytes::Bytes;
-use demi_command_service::{
-    Input, InvocationContext, Output, ServiceError,
-    protocol::{LocalInvocation, Record},
 };
 use std::{collections::BTreeMap, io, sync::Arc};
 

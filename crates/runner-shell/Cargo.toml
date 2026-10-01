@@ -20,6 +20,7 @@ testing = []
 [dependencies]
 brush-core = "0.5"
 brush-builtins = "0.2"
+demi-command-protocol = { path = "../command-protocol" }
 demi-command-service = { path = "../command-service" }
 demi-runner-process = { path = "../runner-process" }
 demi-runner-protocol = { path = "../runner-protocol" }

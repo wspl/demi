@@ -3,7 +3,7 @@
 use std::{collections::BTreeMap, future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use bytes::Bytes;
-use demi_command_service::protocol::{
+use demi_command_protocol::{
     CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Record,
 };
 use demi_command_service::{

@@ -8,7 +8,7 @@ mod management;
 mod registration;
 mod state;
 
-use demi_command_service::protocol::{LocalInvocation, host_target};
+use demi_command_protocol::{LocalInvocation, host_target};
 use demi_runner_host::volumes::ManagedVolume;
 use demi_runner_process::{
     command_client::{self, RAW, RawCommand, Stdio},

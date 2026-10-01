@@ -16,6 +16,7 @@ test-fixtures = [
 ]
 
 [dependencies]
+demi-command-protocol = { path = "../command-protocol" }
 demi-command-service = { path = "../command-service" }
 demi-runner-host = { path = "../runner-host" }
 demi-runner-jobs = { path = "../runner-jobs" }
@@ -52,6 +53,7 @@ libc = "0.2"
 
 [dev-dependencies]
 bytes.workspace = true
+demi-command-protocol = { path = "../command-protocol", features = ["testing"] }
 demi-command-service = { path = "../command-service", features = ["testing"] }
 # The built runner with a home and state of its own (`RunnerProcess`).
 demi-host-remote = { path = "../host-remote", features = ["testing"] }

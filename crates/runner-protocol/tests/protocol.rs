@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use demi_command_service::protocol::PackageDescriptor;
+use demi_command_protocol::PackageDescriptor;
 use demi_command_tree::{NativeOperation, Node};
 use demi_runner_protocol::manifest::Manifest;
 use demi_runner_protocol::wire::{

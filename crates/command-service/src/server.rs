@@ -1,6 +1,11 @@
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use bytes::Bytes;
+use demi_command_protocol::{
+    CONVERSATION_PATH, CommandError, Completion, ConversationRequest, INFO_PATH, INVOKE_PATH,
+    Invocation, MAX_METADATA_BYTES, MAX_RECORD_BYTES, Metadata, NUMBERS_PATH, NumbersOpen,
+    ProtocolError, Record, SHUTDOWN_PATH, ServiceInfo, VERSION,
+};
 use futures_util::future::poll_fn;
 use h2::{Reason, server::SendResponse};
 use http::{Method, Request, Response, StatusCode};
@@ -12,11 +17,6 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::AbortOnDropHandle;
 
-use crate::protocol::{
-    CONVERSATION_PATH, CommandError, Completion, ConversationRequest, INFO_PATH, INVOKE_PATH,
-    Invocation, MAX_METADATA_BYTES, MAX_RECORD_BYTES, Metadata, NUMBERS_PATH, NumbersOpen,
-    ProtocolError, Record, SHUTDOWN_PATH, ServiceInfo, VERSION,
-};
 use crate::{
     Input, ServiceError,
     numbers::{self, Draw, Numbers},

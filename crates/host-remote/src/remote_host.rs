@@ -8,7 +8,7 @@
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
 use bytes::{Bytes, BytesMut};
-use demi_command_service::protocol::{CommandContext, PackageDescriptor};
+use demi_command_protocol::{CommandContext, PackageDescriptor};
 use demi_core::Timestamp;
 use demi_gates::GateLease;
 use demi_runner_protocol::wire::{

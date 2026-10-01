@@ -7,7 +7,7 @@ mod package;
 
 use std::path::{Path, PathBuf};
 
-use demi_command_service::protocol::TARGETS;
+use demi_command_protocol::TARGETS;
 
 /// Where the builds go and the packaging reads them, unless `--artifacts`
 /// names another Cargo target directory.

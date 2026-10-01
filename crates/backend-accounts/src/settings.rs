@@ -2,7 +2,7 @@
 //! reported locale passes before it is saved, and how a patch merges into
 //! what is saved.
 
-use demi_command_service::protocol::CommandLocale;
+use demi_command_protocol::CommandLocale;
 use demi_web_api::settings::{Preferences, PreferencesPatch};
 use icu_locale::{Locale, LocaleCanonicalizer};
 use icu_time::zone::iana::IanaParserExtended;

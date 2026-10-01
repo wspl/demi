@@ -5,13 +5,10 @@
 
 use std::{collections::BTreeMap, path::Path, time::Duration};
 
-use demi_command_service::{
-    Client,
-    protocol::{
-        CommandCaller, CommandContext, CommandLocale, Completion, EditContext, Invocation, Record,
-    },
-    testing::ServiceProcess,
+use demi_command_protocol::{
+    CommandCaller, CommandContext, CommandLocale, Completion, EditContext, Invocation, Record,
 };
+use demi_command_service::{Client, testing::ServiceProcess};
 
 /// Where a test's invocations record their edits: beside the files, under
 /// `cwd`.
@@ -93,13 +90,13 @@ async fn the_resident_program_serves_every_file_operation_and_records_its_edits(
         let (result, output, _) = call(&client, cwd, "file.read", serde_json::json!({"path":"image.bin"})).await;
         assert_eq!(result.exit_code, 0);
         assert_eq!(output, binary);
-        let recorder = demi_command_service::edits::Recorder::new(demi_command_service::protocol::EditContext {
+        let recorder = demi_command_service::edits::Recorder::new(demi_command_protocol::EditContext {
             directory: root.path().join("changes").to_string_lossy().into_owned(),
             lock: root.path().join("edits.lock").to_string_lossy().into_owned(),
         }).unwrap();
         let report = recorder.report().unwrap();
         let large = root.path().join("large.txt");
-        std::fs::write(&large, "x".repeat(demi_command_service::protocol::EDIT_FILE_BYTES + 1)).unwrap();
+        std::fs::write(&large, "x".repeat(demi_command_protocol::EDIT_FILE_BYTES + 1)).unwrap();
         for (operation, args) in [
             ("file.create", serde_json::json!({"path":"large.txt", "content":"overwrite"})),
             ("file.edit", serde_json::json!({"path":"large.txt", "old":"absent", "new":"replacement"})),
@@ -112,7 +109,7 @@ async fn the_resident_program_serves_every_file_operation_and_records_its_edits(
         assert_eq!(report.files.len(), 2);
         assert_eq!(
             report.files[0].kind,
-            demi_command_service::protocol::EditKind::Added
+            demi_command_protocol::EditKind::Added
         );
         assert_eq!(report.files[0].edits.len(), 1);
         assert_eq!(std::fs::read(report.files[0].edits[0].modified.as_ref().unwrap()).unwrap(), b"alpha\ndelta\n");

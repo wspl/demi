@@ -15,7 +15,7 @@ use std::{
 };
 
 use demi_artifact::{Digest, Mode, Permissions, Publication, Staged};
-use demi_command_service::protocol::PackageArtifact;
+use demi_command_protocol::PackageArtifact;
 use tokio_util::sync::CancellationToken;
 
 use demi_runner_process::private_files::chmod;

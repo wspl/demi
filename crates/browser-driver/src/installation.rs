@@ -9,7 +9,7 @@ use tokio_util::sync::CancellationToken;
 
 use demi_artifact::{Archive, Digest};
 use demi_browser_protocol::release::BrowserRelease;
-use demi_command_service::protocol::host_target;
+use demi_command_protocol::host_target;
 
 use crate::operation::{BrowserError, Result};
 

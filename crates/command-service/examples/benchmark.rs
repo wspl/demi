@@ -1,10 +1,9 @@
 //! Reproducible synthetic transport benchmark; no model or product backend.
 use bytes::Bytes;
-use demi_command_service::{
-    Client, Handler, InvocationContext, ServiceError,
-    protocol::{CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Record},
-    serve_stdio,
+use demi_command_protocol::{
+    CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Record,
 };
+use demi_command_service::{Client, Handler, InvocationContext, ServiceError, serve_stdio};
 use std::{
     collections::BTreeMap,
     future::Future,

@@ -8,7 +8,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_command_service::protocol::{
+use demi_command_protocol::{
     ArtifactLocation, ArtifactUrl, EditCopies, EditKind as FileEditKind, PackageArtifact,
     PackageDescriptor, ServiceSequence, host_target,
 };

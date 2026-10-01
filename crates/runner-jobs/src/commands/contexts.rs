@@ -4,7 +4,7 @@
 //! looks them up in the snapshot it publishes.
 
 use crate::connection::ConnectionHandle;
-use demi_command_service::protocol::{CommandContext, EditContext, host_target};
+use demi_command_protocol::{CommandContext, EditContext, host_target};
 use demi_runner_process::{
     command_client::{CONTEXT_ENV, ENDPOINT_ENV},
     private_files::{chmod, write_private},

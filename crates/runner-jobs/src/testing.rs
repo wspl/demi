@@ -8,7 +8,7 @@ use std::{
     sync::Arc,
 };
 
-use demi_command_service::protocol::{CommandContext, EditContext};
+use demi_command_protocol::{CommandContext, EditContext};
 use demi_runner_process::pipes::PipeClient;
 use demi_runner_protocol::{manifest::Manifest, wire};
 use demi_runner_services::ServiceRegistry;

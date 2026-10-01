@@ -91,3 +91,10 @@ fn absolute_path(value: &str, context: &()) -> garde::Result {
     }
     Ok(())
 }
+
+/// Whether `bytes` are text, which edit tracking and line counts read:
+/// UTF-8 without a NUL byte. Binary and non-UTF-8 content are treated alike
+/// (`edit-tracking.md` § Scope).
+pub fn is_text(bytes: &[u8]) -> bool {
+    !bytes.contains(&0) && std::str::from_utf8(bytes).is_ok()
+}

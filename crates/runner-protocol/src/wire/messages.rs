@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use demi_command_service::protocol::{
+use demi_command_protocol::{
     ArtifactLocation, CommandContext, EditCopies, EditKind, MAX_NUMBERS, PackageDescriptor,
     ServiceSequence, conversation_name, digest, without_nul,
 };
@@ -427,7 +427,7 @@ pub enum Outbound {
         owner: ArtifactOwner,
         #[garde(custom(digest))]
         sha256: String,
-        #[garde(custom(demi_command_service::protocol::target))]
+        #[garde(custom(demi_command_protocol::target))]
         target: String,
     },
     Hello {
@@ -521,7 +521,7 @@ pub enum Outbound {
         /// Absent when bash never ran the script.
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         output: Option<OutputLengths>,
-        #[garde(length(max = demi_command_service::protocol::EDIT_JOB_FILES), dive)]
+        #[garde(length(max = demi_command_protocol::EDIT_JOB_FILES), dive)]
         files: Vec<JobFileChange>,
         files_truncated: bool,
     },
@@ -713,7 +713,7 @@ pub struct RunnerInfo {
     pub platform: RunnerPlatform,
     pub version: String,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-    #[garde(inner(custom(demi_command_service::protocol::target)))]
+    #[garde(inner(custom(demi_command_protocol::target)))]
     pub native_target: Option<String>,
     /// Read at shell creation, so it arrives before any Host use.
     pub identity: HostIdentity,
@@ -872,7 +872,7 @@ pub struct JobFileChange {
     pub path: String,
     #[garde(skip)]
     pub kind: EditKind,
-    #[garde(length(max = demi_command_service::protocol::EDIT_JOB_SEGMENTS as usize), dive)]
+    #[garde(length(max = demi_command_protocol::EDIT_JOB_SEGMENTS as usize), dive)]
     pub edits: Vec<EditCopies>,
     #[garde(skip)]
     pub added: u64,

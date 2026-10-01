@@ -22,7 +22,7 @@ demi-backend-expose = { path = "../backend-expose" }
 demi-backend-objects = { path = "../backend-objects" }
 demi-backend-runners = { path = "../backend-runners" }
 demi-backend-storage = { path = "../backend-storage" }
-demi-command-service = { path = "../command-service" }
+demi-command-protocol = { path = "../command-protocol" }
 demi-command-tree = { path = "../command-tree" }
 demi-core = { path = "../core" }
 demi-gates = { path = "../gates" }

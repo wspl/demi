@@ -16,7 +16,7 @@ use std::{
     time::Duration,
 };
 
-use demi_command_service::protocol::{CommandCaller, CommandContext, CommandLocale};
+use demi_command_protocol::{CommandCaller, CommandContext, CommandLocale};
 use demi_host_remote::testing::{RunnerProcess, RunnerProcessOptions};
 use demi_runner_protocol::wire::{self, Inbound, Outbound};
 use demi_shell::SpawnEnv;

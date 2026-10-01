@@ -8,7 +8,7 @@ use std::process::Stdio;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use demi_command_service::testing::built_program;
+use demi_command_protocol::testing::built_program;
 use demi_shell::SpawnEnv;
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::process::Child;

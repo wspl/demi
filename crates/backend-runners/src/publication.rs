@@ -23,7 +23,9 @@ use std::time::Duration;
 use axum::http::Method;
 use bytes::Bytes;
 use demi_backend_objects::store::S3Config;
-use demi_command_service::protocol::{ArtifactLocation, ArtifactUrl, PackageArtifact, PackageDescriptor, TARGETS};
+use demi_command_protocol::{
+    ArtifactLocation, ArtifactUrl, PackageArtifact, PackageDescriptor, TARGETS,
+};
 use demi_host_remote::ArtifactResolver;
 use futures_util::TryStreamExt as _;
 use futures_util::future::LocalBoxFuture;

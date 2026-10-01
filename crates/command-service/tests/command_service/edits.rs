@@ -7,10 +7,8 @@ use std::{
     path::Path,
 };
 
-use demi_command_service::{
-    edits::Recorder,
-    protocol::{EDIT_FILE_BYTES, EditContext, EditCopies, EditKind},
-};
+use demi_command_protocol::{EDIT_FILE_BYTES, EditContext, EditCopies, EditKind};
+use demi_command_service::edits::Recorder;
 
 fn recorder(root: &Path, job: &str) -> Recorder {
     Recorder::new(EditContext {

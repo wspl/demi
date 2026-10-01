@@ -11,7 +11,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_command_service::protocol::{CommandCaller, CommandContext};
+use demi_command_protocol::{CommandCaller, CommandContext};
 use demi_command_tree::NativeOperation;
 use demi_core::{NodeId, StreamKind};
 use demi_host_remote::{

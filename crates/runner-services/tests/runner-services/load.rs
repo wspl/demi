@@ -1,7 +1,7 @@
 //! No native call is refused for how many others are in flight
 //! (`runner.md` § Load).
 
-use demi_command_service::protocol::{
+use demi_command_protocol::{
     CommandCaller, CommandContext, CommandLocale, Invocation, PackageArtifact, PackageDescriptor,
     Record, host_target,
 };
@@ -70,7 +70,7 @@ async fn resident(root: &Path) -> (ServiceRegistry, ServiceLease, Resident) {
         id: "fixture".into(),
         version: "1.0.0".into(),
         protocol_version: 1,
-        operations: demi_command_service::testing::FIXTURE_OPERATIONS
+        operations: demi_command_protocol::testing::FIXTURE_OPERATIONS
             .map(String::from)
             .to_vec(),
         targets: BTreeMap::from([(
