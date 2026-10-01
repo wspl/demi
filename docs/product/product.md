@@ -1,6 +1,6 @@
 # Product design
 
-Demi is a browser application for conversations that can run commands on Cloud
+Demi is a web application for conversations that can run commands on Cloud
 or the user's connected machines. Conversation history belongs to the backend;
 project files belong to execution devices. Changing a conversation's target
 changes where subsequent work runs without moving its history or copying files.
@@ -48,8 +48,8 @@ current password, edit their nickname, and change email after verifying a code
 sent to the new address. Setup and account creation do not require email delivery;
 email change does, and reports an unavailable mail service explicitly.
 
-Browser HTTP, the synchronization channel and conversation WebSockets use
-the same session cookie.
+The web app's HTTP requests, the synchronization channel and conversation
+WebSockets use the same session cookie.
 [Backend authentication](../backend/backend.md#authentication-and-ownership)
 owns session and lockout behavior; [Web API](web-api.md#account-api) owns
 account request shapes and verification limits. There are no organizations or
@@ -230,7 +230,7 @@ before any send), `message`, `generated`, and `user`. A generated title is
 written only while the title is still the one the request started from, in the
 same statement that checks it, so a rename that lands while the request is in
 flight wins and is never overwritten. A rename is a title that differs from
-the current one; a patch that repeats the current title, as the browser's
+the current one; a patch that repeats the current title, as the web app's
 record creation does with the placeholder, changes no origin. A Fork's title,
 the source's with " (Fork)", has origin `user`: it is already a settled name
 and is not regenerated.
@@ -273,7 +273,7 @@ shows the Rename button busy, for the first request too.
 
 `POST /api/conversations/:id/title` starts the request with the model
 settings the conversation's record holds and answers 202 at once; it answers
-409 `no_messages` when the user has sent no text. The browser learns the new
+409 `no_messages` when the user has sent no text. The page learns the new
 title the way it learns a rename made elsewhere, from the conversation's
 summary on its [synchronization channel](web-api.md#page-synchronization);
 there is no title event of its own.
@@ -429,7 +429,7 @@ accessible by path. Attachment presence and model capability are separate facts.
 
 The upload cap is 25 MiB. Upload IDs and transcript media references travel in
 conversation frames; bulk bytes use HTTP. Exact wire forms, ownership checks,
-missing-upload behavior, and browser blob delivery are defined in
+missing-upload behavior, and blob delivery to the web app are defined in
 [Backend media handling](../backend/backend.md#media-by-reference) and
 [Web API uploads](web-api.md#uploads-and-media).
 
@@ -460,20 +460,20 @@ quota information. Reading status must not run inference. An explicit Test
 action can make a real request; a provider whose transport is a process runs
 it on the acting user's Cloud, which wakes for it
 ([Where it runs](../providers/claude-code.md#where-it-runs)). Hiding a
-provider or model from the picker is a browser preference and does not stop
+provider or model from the picker is a web app preference and does not stop
 existing work. Provider protocol and credential details have their
 authoritative home in [Providers](../providers/providers.md), catalogs in
 [Models](../providers/models.md), and quota in
 [Usage and quota](../providers/usage-and-quota.md).
 
-## Browser scope
+## Web app scope
 
-The browser provides conversations, account settings, provider management,
+The web app provides conversations, account settings, provider management,
 devices, [exposes](../execution/expose.md#product-surface) in the conversation
 header, and Cloud controls. Administrative account management and usage have
-backend APIs; their dedicated browser pages are deferred. Notifications, MCP,
-Skills, data/privacy actions, language switching, and account deletion are also
-deferred.
+backend APIs; their dedicated pages in the web app are deferred. Notifications,
+MCP, Skills, data/privacy actions, language switching, and account deletion are
+also deferred.
 
 The selected scope excludes public sharing, collaboration, search, offline mode,
 PWA behavior, push notifications, and localization. Technology and package

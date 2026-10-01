@@ -1,5 +1,5 @@
 //! The pages' synchronization channel end to end (`web-api.md` § Page
-//! synchronization, `backend.md` § Browser synchronization): the product
+//! synchronization, `backend.md` § Page synchronization): the product
 //! state a page receives first; what it receives when another session
 //! changes something, after it reconnects, and when it falls behind; a turn
 //! and its reading as other pages see them; when the channel opens and how

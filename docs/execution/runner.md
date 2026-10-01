@@ -128,7 +128,7 @@ metadata.
 - Every pipe end named to the runner is reported with `pipe_done`, including
   one a refused request never used.
 
-For example, the browser seeks a video to the middle of a 300 MB file. The
+For example, the page seeks a video to the middle of a 300 MB file. The
 backend asks for `fs_readFile` from byte 150,000,000 into a new pipe; the runner
 opens the file, seeks, replies, and uploads the bytes as the backend accepts
 them. When the user picks another file, the backend fails the pipe, and the
@@ -173,7 +173,7 @@ deletion (` D`) and an untracked file (`??`), as git reports it. Two cases
 differ from git's list: a path git lists twice, a deletion staged in the
 index and an untracked file on the disk, is one entry, `??`; and a path in
 neither `head` nor the working tree, added to the index and then deleted from
-the disk, is left out, having no side to compare. The browser marks each file
+the disk, is left out, having no side to compare. The web app marks each file
 from its `status` the way VS Code's Git does.
 
 `kind`, `from` and the line counts compare `head` with the working tree,
@@ -273,9 +273,9 @@ runner does not parse what flows through it. The backend uses it for the
 ## Host log
 
 A Host that cannot say what went wrong cannot be debugged. For example, the
-live view module fails to list the browser's tabs on a Cloud and writes why to
-its standard error; without a log those words are gone, and the page only
-sees a view that never learns its tabs.
+live view module fails to list the conversation browser's tabs on a Cloud and
+writes why to its standard error; without a log those words are gone, and the
+page only sees a view that never learns its tabs.
 
 The runner keeps one log per Host, in its own data directory: text lines, each
 with a time, a source and, when the work belongs to one, a conversation id.
@@ -394,9 +394,9 @@ its start fails. Every process the runner starts waits this way: services, raw
 processes, a job's commands and the programs its utilities start, such as
 `env` and `xargs`.
 
-Two refusals remain. A browser command that conflicts with another command on
-the same tab answers `tab_busy`; that is about the page, not load
-([Conversation browser](../browser/browser.md#one-tab-registry)). An expose answers 503
+Two refusals remain. A conversation browser command that conflicts with
+another command on the same tab answers `tab_busy`; that is about the tab, not
+load ([Conversation browser](../browser/browser.md#one-tab-registry)). An expose answers 503
 beyond 64 concurrent connections: anyone on the internet can reach it, so it
 sheds load instead of queuing it ([Host expose](expose.md#the-public-relay)).
 
@@ -677,8 +677,8 @@ execution checks; their results belong to acceptance reports.
 
 Acceptance on a paired device and on a Cloud observes these outcomes:
 
-- A burst of file-browser requests during a slow manifest install or disk sync
-  keeps the connection and every running job.
+- A burst of file requests from the web app during a slow manifest install or
+  disk sync keeps the connection and every running job.
 - Many concurrent jobs running pipelines of embedded utilities all complete;
   none waits for a thread another job's unit holds.
 - A connection that never sends its `hello` is closed after 30 seconds.

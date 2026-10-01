@@ -12,7 +12,7 @@ Three suites drive the whole backend:
 | Suite | Where it lives | How it reaches the backend | Model | Hosts |
 | --- | --- | --- | --- | --- |
 | Backend scenarios | Rust integration tests of the backend crate (`crates/backend/tests`) | HTTP and the conversation WebSocket, with the agent protocol's typed frames | A scripted provider family | Real runner processes; a scripted machine manager for the Cloud |
-| Browser-contract suite | Tests of `packages/web` | The web application's API client and `AgentClient`, against the backend executable | A scripted Anthropic-compatible endpoint | A real runner; the backend scenarios' scripted machine manager, which no path asks for the Cloud |
+| Web app contract suite | Tests of `packages/web` | The web application's API client and `AgentClient`, against the backend executable | A scripted Anthropic-compatible endpoint | A real runner; the backend scenarios' scripted machine manager, which no path asks for the Cloud |
 | Real-machine suites | Rust tests that run only when environment variables supply their resources; of them, the Cloud and Claude Code suites and part of the browser suite exist ([Real machine acceptance](#real-machine-acceptance)) | As the backend scenarios | Scripted | A real machine manager, gVisor sandbox, and shipped image; real Chrome; the real Claude Code CLI |
 
 ## System under test
@@ -34,7 +34,7 @@ with its production shard threads and a temporary data directory. In place of
 external services it uses a scripted model, serves a scripted machine manager
 on a Unix socket, and serves local fixtures in place of models.dev and the
 Claude Code release distribution. It loads the
-native packages the workspace built as development releases, which the
+command packages the workspace built as development releases, which the
 backend's development store serves to the runners
 ([Backend deployment configuration](../execution/native-runtime.md#backend-deployment-configuration)).
 It pairs real runner processes and owns cleanup. The runners are the real
@@ -56,8 +56,8 @@ Assertions inspect what the model receives, not just what a client displays.
 
 A driver reads a transcript as the backend serves it cold, through the
 transcript route, and follows events and phases in the frames. It does not
-rebuild the live transcript from patches: the browser's patch applier is the
-only one, so the [browser-contract suite](#browser-contract-suite) compares
+rebuild the live transcript from patches: the web app's patch applier is the
+only one, so the [web app contract suite](#web-app-contract-suite) compares
 live with cold.
 
 The scripted machine manager speaks `machine-manager-protocol` as the real one does:
@@ -187,16 +187,16 @@ assertion failures: drivers detach, runners stop, and the backend closes. Tests
 introducing new streams, processes, or failure injection must also verify their
 cleanup.
 
-## Browser-contract suite
+## Web app contract suite
 
-The browser-contract suite checks the backend the way the page uses it, and it
+The web app contract suite checks the backend the way the page uses it, and it
 is the regression suite for that contract: a change on either side that breaks
 the other fails here. It is part of the tests of `packages/web`. It starts the
 backend executable with a temporary data directory, calls it through the web
 application's API client, and drives conversations with `AgentClient` from
-`@demicodes/conversation-client`, the client the page runs. Its requests carry what a
-browser adds to the product page's own: the session cookie, and the page's
-`Origin` wherever a browser sends one
+`@demicodes/conversation-client`, the client the page runs. Its requests
+carry what the user's browser adds to the product page's own: the session
+cookie, and the page's `Origin` wherever the user's browser sends one
 ([Authentication and ownership](../backend/backend.md#authentication-and-ownership)).
 The generated schemas validate every response and frame on arrival, as they do
 in the page
@@ -224,7 +224,7 @@ it.
 
 The patch protocol has one more check. The Rust agent tests write patch
 sequences together with the snapshot each must produce, and the
-`@demicodes/conversation-client` tests apply them with the browser's patch applier
+`@demicodes/conversation-client` tests apply them with the web app's patch applier
 ([Frame protocol](../agent/runtime.md#frame-protocol)). With the reload check,
 this verifies the patches without a second applier.
 
@@ -255,9 +255,10 @@ Of the browser suite, only the Chrome tests of `demi-browser` exist: they
 drive a real Chrome for Testing through the command program on the machine
 that runs them, not through the backend or on a Cloud
 ([Validation](builds-and-releases.md#validation) gives the command). The
-Cloud suite opens Chrome on a Cloud but does not watch its live view. The
-browser on a Cloud is not written, and whether to write it is open. Until it
-is, release acceptance checks what it would observe by hand on a real Cloud.
+Cloud suite opens Chrome on a Cloud but does not watch its live view. A test
+of the conversation browser's live view on a Cloud is not written, and whether
+to write it is open. Until it is, release acceptance checks what it would
+observe by hand on a real Cloud.
 
 Deployment prerequisites are in [Cloud setup](../cloud/setup.md).
 

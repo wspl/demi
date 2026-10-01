@@ -1,5 +1,5 @@
 //! Request bodies and the browser build (`web-api.md` § Request bodies,
-//! § Serving the browser build).
+//! § Serving the web app build).
 
 use demi_web_api_protocol::auth::Identity;
 use demi_web_api_protocol::error::ErrorCode;

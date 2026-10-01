@@ -1,5 +1,5 @@
 //! A page's synchronization channel in the user's shard (`backend.md`
-//! § Browser synchronization): registered for changes before it reads the
+//! § Page synchronization): registered for changes before it reads the
 //! product state, it sends that state, then waits for marks and sends each
 //! marked part as it is when the channel takes it, and a heartbeat once its
 //! page socket has been silent for the heartbeat interval. It ends with its

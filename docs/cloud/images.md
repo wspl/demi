@@ -166,13 +166,14 @@ Collection and reset pinning follow
 Verify the full image on each supported architecture with the shipped runsc
 profile: init reaps orphans, jobs use UID 1000, sudo works, package installation
 and standalone tools work, and Chrome retains its sandbox. Test shell/native
-commands and the browser through the real managed runner connection.
+commands and the conversation browser through the real managed runner
+connection.
 
-When a runner or embedded native package changes, build the Cloud target,
+When a runner or embedded command package changes, build the Cloud target,
 rebuild the image, restart the local manager, and reset local Cloud to that base
-before acceptance. Check the running runner's executable hash and native package
-identity after initial start and again after hibernate/wake. After the reset
-and after the wake, the first native command starts its service from the
+before acceptance. Check the running runner's executable hash and command
+package identity after initial start and again after hibernate/wake. After the
+reset and after the wake, the first native command starts its service from the
 image's embedded executable, without a download. Do not hash PID 1
 as a proxy for the runner: PID 1 is init. Exercise the paired device in the same
 checkpoint.

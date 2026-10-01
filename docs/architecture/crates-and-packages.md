@@ -35,7 +35,7 @@ The backend names the browser only where the user's page reaches it directly:
 it declares the live view's `browser` user stream and serves the conversation
 browser tab routes, and neither holds browser logic or state.
 
-A new conversation-scoped capability is therefore added as a native package
+A new conversation-scoped capability is therefore added as a command package
 of its own: its operation types in a contract crate, its commands in its
 program, and its declarations in `agent-coding-harness`; the runner, `runner-protocol`,
 `backend-remote-host`, the agent and the backend's conversation lifecycle do not
@@ -78,12 +78,12 @@ third-party crates are not members ([Module layout](#module-layout)).
 A contract crate holds the types of one wire or data family, their serde,
 schemars and garde attributes, and the decode function of each boundary that
 receives them. Both ends of a wire link it, or the generator reads it to write
-the browser's TypeScript. A contract crate has no async runtime and no IO.
+the web app's TypeScript. A contract crate has no async runtime and no IO.
 [Contracts](contracts.md) owns the rules these crates follow.
 
 #### `shared-types`
 
-- **Owns:** the data the browser, the agent and the backend share:
+- **Owns:** the data the web app, the agent and the backend share:
   - transcript blocks (`Block`): the explicit submission `User`, the only
     editable type; `Context`, `Wakeup`, `Steer` and `AgentMessage` inputs;
     `Resume` and `Abort`; provider output; `CompactionBoundary` and
@@ -113,7 +113,7 @@ the browser's TypeScript. A contract crate has no async runtime and no IO.
     attachment types it derives, `ATTACHMENT_FILE_EXTENSIONS`); the wire
     format an `openai` entry speaks (`WireApi`), which its configuration names
     and its provider sends; its authentication and runtime states
-    (`AuthState`, `RuntimeState`); its subscription accounts as the browser
+    (`AuthState`, `RuntimeState`); its subscription accounts as the web app
     sees them (`AccountInfo`, `LoginPending`); and an account's quota snapshot
     (`QuotaSnapshot`, `QuotaWindow`, `QuotaPlan` and their sets);
   - the identities blocks and frames name (`BlockId`, `TurnId`, `NodeId`,
@@ -257,7 +257,7 @@ the browser's TypeScript. A contract crate has no async runtime and no IO.
   [command context](../execution/native-runtime.md#command-context);
   `conversation_release` is the one generic release message, and
   `numbers_reserve` the one generic request for a conversation's numbers; the
-  wire carries no browser policy.
+  wire carries no conversation browser policy.
 - **Public boundary:** the items above. The runner and the backend link it; the
   machine manager uses `ManagedBoot`, and `machine-manager-protocol`'s image manifest
   check and `xtask`'s image build use `ARTIFACTS_PATH`. Behavior:
@@ -288,14 +288,14 @@ the browser's TypeScript. A contract crate has no async runtime and no IO.
 - **Owns:** every REST request and response body, such as `ProductState`,
   `ConversationPatch` and `ProviderDto`; the messages of the page's
   synchronization channel (`SyncEvent`); the error body (`ErrorBody`) and
-  `ErrorCode`, the one list of every error code the browser can see; and the
+  `ErrorCode`, the one list of every error code the web app can see; and the
   identifier and text types those bodies use. It reuses the runner's
   working-tree change types (`GitChanges`) and platform (`RunnerPlatform`, a
   device's platform), `command-package-browser-protocol`'s browser tab types and
-  `command-sdk`'s command locale (`CommandLocale`, which the browser
+  `command-sdk`'s command locale (`CommandLocale`, which the web app
   reports as a preference) instead of declaring them again. A Host
   log line is its own type: the runner wire carries its time as integer
-  milliseconds, the browser as an RFC 3339 time.
+  milliseconds, and the web app receives it as an RFC 3339 time.
 - **Public boundary:** the types above; their TypeScript form is generated into
   `web`. Behavior: [Web API](../product/web-api.md).
 - **Must not:** hold route handling or domain logic.
@@ -390,7 +390,7 @@ the browser's TypeScript. A contract crate has no async runtime and no IO.
     accounting, and the models.dev client (`provider_common::models_dev`: the one
     copy of the document a backend keeps, `ModelsDevClient`, and its vendors
     and models as catalog models); the catalog, state, account and quota
-    shapes they return are `shared-types`'s, because the browser receives them.
+    shapes they return are `shared-types`'s, because the web app receives them.
 - **Public boundary:** the items above; `provider_common::testing` supplies scripted
   runtimes (`ScriptedRuntime`), a scripted vendor server (`MockVendor`), waits
   for a run's events that fail a test instead of hanging it (`next_event`,
@@ -423,7 +423,7 @@ Each crate implements the provider contract for one vendor family.
   connection receives. Endpoint rules are in
   [Providers](../providers/providers.md).
 - **Secret boundary:** keys, tokens, custom headers and raw endpoint values stay
-  inside the provider and never reach a frame or response the browser sees.
+  inside the provider and never reach a frame or response the web app sees.
 - **Must not:** depend on the agent's crates, `host-interface`, `agent-coding-harness` or a
   Host implementation.
 
@@ -441,7 +441,7 @@ Each crate implements the provider contract for one vendor family.
   provider builds and answers the `host-interface` process. `Provider::runtime` refuses
   with `ProcessHostRequired`. Behavior:
   [Claude Code](../providers/claude-code.md#how-a-runtime-gets-its-process).
-- **Secret boundary:** OAuth tokens never reach a frame or response the browser
+- **Secret boundary:** OAuth tokens never reach a frame or response the web app
   sees; the only process that receives one is the CLI on the user's Cloud.
 - **Must not:** depend on the agent's crates, `agent-coding-harness` or a Host
   implementation. It runs the CLI through the `host-interface` process the placement
@@ -612,7 +612,7 @@ Each crate implements the provider contract for one vendor family.
 - **Native binding:** the native groups declare package and operation ids. The
   backend supplies exact release descriptors at runtime; declarations import no
   compiled-in release catalog. The implementations live in `demi-file` and
-  the browser crates.
+  the conversation browser's crates.
 - **Must not:** create an `AgentSession`, an `AgentServer`, a shell
   environment, a concrete provider or a Host implementation, or replace the
   shell mechanism or the standard tools.
@@ -637,7 +637,7 @@ Each crate implements the provider contract for one vendor family.
   runner process for a backend at any address, with a home and state of its
   own (`RunnerProcess`), such a runner connected to a backend end of the
   fixture's own for one device (`RunnerFixture`), an in-process fake runner
-  (`TestDevice`, whose connections are `TestLink`s), a native package the
+  (`TestDevice`, whose connections are `TestLink`s), a command package the
   workspace built (`NativeFixture`, such as the runner's native fixture
   package) and a policy that runs every call in one command set
   (`CommandPolicy`). Behavior: [Runner](../execution/runner.md) and
@@ -739,7 +739,7 @@ demi-runner (executable: connection, registration, Host log, composition)
   against the leaf's output schema, routes native invocations to their
   services and rpc calls to the backend) with local command forwarding.
 - **Conversation scope:** keeps each job's command context and writes it into
-  every native invocation; it implements no browser operation.
+  every native invocation; it implements no conversation browser operation.
 - **Public boundary:** the job table, the dispatcher, which implements the
   command-sdk `Handler` the shell calls, and the connection handle it
   sends rpc calls and reports through (`ConnectionHandle`), whose requests
@@ -775,7 +775,7 @@ demi-backend (executable: configuration, composition)
 - **Owns:** the change registry of the pages' synchronization channels: the
   parts of a user's product state (`Part`), and the marks each change leaves
   on that user's open channels (`SyncRegistry`, `UserMarks`)
-  ([Browser synchronization](../backend/backend.md#browser-synchronization)).
+  ([Page synchronization](../backend/backend.md#page-synchronization)).
   A channel is registered under the hash of the session it opened with, a
   record of `backend-database`, so a sign-out ends that session's channels.
 - **Public boundary:** the items above.
@@ -945,7 +945,7 @@ demi-backend (executable: configuration, composition)
 
 - **Owns:** the HTTP edge: the listener and router, the session gate, request
   extractors and body limits, the mapping of errors to `ErrorCode`, the
-  installer, native artifact and browser-asset routes, runner acceptance, and
+  installer, native artifact and web app asset routes, runner acceptance, and
   the byte copies of file transfers, pipes, user streams and the expose relay
   ([Web API](../product/web-api.md)).
 - **Public boundary:** the edge the executable starts (`Edge`), with the
@@ -1037,7 +1037,7 @@ demi-backend (executable: configuration, composition)
   (`LoginTiming`), the conversations' bounds (`ConversationTuning`), the
   times of a page's sockets (`PageTuning`), the
   Cloud's and the idle clock's times and limits and the retention pass's
-  schedule (`CloudTuning`, `LifecycleTuning`), the native command packages their commands bind to
+  schedule (`CloudTuning`, `LifecycleTuning`), the command packages their commands bind to
   (`NativeCatalog`, which the executable and the scenarios make with
   `publish_native` from a `DEMI_NATIVE_CONFIG` file) and the user stream
   declarations. A test imports each of these from the library that owns it
@@ -1059,10 +1059,10 @@ demi-backend (executable: configuration, composition)
   (`SyncStep`: once a channel has read its snapshot, before it sends it; or
   once a change woke it, before it takes and reads the parts that changed)
   for the scenarios that change the state while a channel waits
-  ([Browser synchronization](../backend/backend.md#browser-synchronization)).
+  ([Page synchronization](../backend/backend.md#page-synchronization)).
   For suites that start the executable, the example program
   `scripted_machines` runs the scripted machine manager of its scenarios
-  ([Browser-contract suite](../delivery/scenarios.md#browser-contract-suite)).
+  ([Web app contract suite](../delivery/scenarios.md#web-app-contract-suite)).
 - **Must not:** be linked by another crate; put business logic in the HTTP
   layer beyond routing and validation; return secrets or proxy model traffic;
   spawn `runsc` or image tools itself (every sandbox and disk operation goes to
@@ -1171,13 +1171,13 @@ demi-backend (executable: configuration, composition)
 
 ## TypeScript packages
 
-The browser application and its libraries are TypeScript and Vue, as workspace
-packages under `packages/`.
+The web app and its libraries are TypeScript and Vue, as workspace packages
+under `packages/`.
 
 #### `@demicodes/protocol`
 
 - **Published** to npm.
-- **Owns:** the TypeScript form of the Rust contracts the browser reads: Zod
+- **Owns:** the TypeScript form of the Rust contracts the web app reads: Zod
   schemas and `z.infer` types for agent frames, transcript blocks and patches,
   content, tool views, models, failure facts and the live view's messages, and
   the file-type table with its lookups. `xtask contracts` generates all of it
@@ -1200,7 +1200,7 @@ packages under `packages/`.
 #### `@demicodes/utils`
 
 - **Published** to npm.
-- **Owns:** generic browser helper functions shared by `conversation-client`,
+- **Owns:** generic web app helper functions shared by `conversation-client`,
   `web-ui`, `web` and `web-gallery`.
 - **Public boundary:** pure functions; no domain types or runtime services.
 - **Must not:** contain domain logic or domain types, import Node, or hold
@@ -1250,12 +1250,12 @@ packages under `packages/`.
   HTTP; the product state follows the synchronization channel, a WebSocket;
   chat uses the agent client over WebSocket; operations on resources and
   settings use REST. [Web application](../product/web-application.md) owns
-  state ownership and operation contracts. The browser-contract suite in this
+  state ownership and operation contracts. The web app contract suite in this
   package drives the backend binary ([Scenarios](../delivery/scenarios.md)).
 - **Public boundary:** `bun run web:dev` and the production build; no library
   API.
 - **Must not:** import `web-gallery`, or import Node outside the
-  browser-contract suite, which starts the backend, runner and scripted
+  web app contract suite, which starts the backend, runner and scripted
   machine manager processes.
 
 #### `@demicodes/web-gallery`
@@ -1439,7 +1439,7 @@ review.
   module must be nameable as a part of its crate's design, such as the
   backend's modules in [Backend](../backend/backend.md). There are no
   catch-all modules (`misc`, `helpers`, `utils`): generic Rust comes from the
-  standard library or an established crate, generic browser code goes to
+  standard library or an established crate, generic web app code goes to
   `@demicodes/utils`, and domain helpers sit next to their module. A crate
   small enough to be one module needs no subdirectories.
 - **Split by responsibility, not by line count.** A file that carries two of

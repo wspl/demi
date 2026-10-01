@@ -125,7 +125,7 @@ The same reader serves both uses, so there is one implementation:
 - When blocks are shown, the backend reads each `error` block's record through
   the provider named in the block's model selection, and sends the facts
   beside the transcript ([Failure facts](../backend/backend.md#failure-facts)).
-  The browser renders them and never interprets a vendor payload. A record
+  The web app renders them and never interprets a vendor payload. A record
   whose provider configuration has been removed shows without facts.
 
 A new fact worth showing is a new field of the reader over the same stored

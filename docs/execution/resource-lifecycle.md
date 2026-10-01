@@ -2,11 +2,11 @@
 
 One rule decides when Demi reclaims what a conversation uses on a Host: the
 conversation's agent has been idle for the idle window. Nothing a tool does on
-the Host, such as a browser that is still open or a process that is still
-running, postpones reclamation on its own. Every Host, a paired device or a
-Cloud, reclaims what a conversation left there one conversation at a time,
-through the [conversation release](#conversation-release); a Cloud also stops
-as a whole once no conversation using it is active. Cloud policy and durable
+the Host, such as a conversation browser that is still open or a process that is
+still running, postpones reclamation on its own. Every Host, a paired device or
+a Cloud, reclaims what a conversation left there one conversation at a time,
+through the [conversation release](#conversation-release); a Cloud also stops as
+a whole once no conversation using it is active. Cloud policy and durable
 machine operations belong to
 [Managed hosts](../cloud/managed-hosts.md#lifecycle-and-capacity); Host access
 belongs to [Sessions and targets](sessions-and-targets.md#host-operations).
@@ -28,22 +28,22 @@ A conversation is active while any of these holds:
   the conversation's Host, and may operate it. The stream is active from its
   admission until it ends.
 
-Everything else is retention, not activity: open browser tabs, cookies, a
-resident native service, a provider's process kept between turns (the turn that
-waits for it is the activity; a Host that stops ends the process, and the next
-turn starts another), a paired device that stays online, a sidebar entry, a
-connected chat, a metadata observer, a look at what runs on the Host such as
-listing the conversation browser's tabs, a scheduled future turn that has not
-been admitted, a [Host expose](expose.md#lifetime) and its visitors' traffic.
-The gates that admit this work are the only source of this fact; no module
-keeps a second busy flag.
+Everything else is retention, not activity: open conversation browser tabs,
+cookies, a resident native service, a provider's process kept between turns (the
+turn that waits for it is the activity; a Host that stops ends the process, and
+the next turn starts another), a paired device that stays online, a sidebar
+entry, a connected chat, a metadata observer, a look at what runs on the Host
+such as listing the conversation browser's tabs, a scheduled future turn that
+has not been admitted, a [Host expose](expose.md#lifetime) and its visitors'
+traffic. The gates that admit this work are the only source of this fact; no
+module keeps a second busy flag.
 
 A look is retention because the page makes it by itself: it lists the
-browser's tabs each time it is shown again and after each tool call, so a
-listing says nothing about whether anyone uses the Host. An open view says
-that someone does, so the Host they watch is not reclaimed under them. The
-page closes its view while it is hidden, behind another browser tab or in a
-minimized window, and opens a new one when it is shown again
+conversation browser's tabs each time it is shown again and after each tool
+call, so a listing says nothing about whether anyone uses the Host. An open view
+says that someone does, so the Host they watch is not reclaimed under them. The
+page closes its view while it is hidden, behind another tab of the user's
+browser or in a minimized window, and opens a new one when it is shown again
 ([Ending a view](../browser/live-view.md#ending-a-view)). So a page left open
 on a view keeps its conversation, and its Cloud, active only while it is
 visible, when someone may be watching.
@@ -84,11 +84,12 @@ stopped Cloud: the stop has already ended everything a release ends.
 The runner forwards the release to every resident native service on that device
 as the generic [conversation release operation](native-runtime.md#conversation-scoped-state);
 each service ends whatever it holds for that conversation and acknowledges. The
-browser is one such holder: it closes that conversation's Chrome and removes its
-profile. The runner acknowledges once the services have answered. It holds no
-files of the conversation for a release to remove: a job's directory goes as
-soon as the backend has read the job's end, and what Demi keeps of a command's
-output, the backend has stored ([Pipes and output](runner.md#pipes-and-output)).
+conversation browser is one such holder: it closes that conversation's Chrome
+and removes its profile. The runner acknowledges once the services have
+answered. It holds no files of the conversation for a release to remove: a job's
+directory goes as soon as the backend has read the job's end, and what Demi
+keeps of a command's output, the backend has stored
+([Pipes and output](runner.md#pipes-and-output)).
 
 No job of the conversation runs when its release arrives: the backend sends a
 release of a conversation of the device's owner only while it holds the
@@ -159,7 +160,7 @@ database, in real time with a short window
 | Situation | Required result |
 | --- | --- |
 | Activity arrives just before the deadline | Exactly one of activity or retirement wins; no live work is stopped as idle |
-| A conversation with open browser tabs idles for the window on a paired device | The device receives one release; its Chrome and profile are gone; the device and runner remain available |
+| A conversation with open conversation browser tabs idles for the window on a paired device | The device receives one release; its Chrome and profile are gone; the device and runner remain available |
 | Commands of two conversations end on one paired device | Each job's directory is gone once the backend has read the job's end; nothing of either conversation's commands stays on the device |
 | A paired device loses its connection while a command runs | Its runner removes the job's directory; the command's stored output is what the backend received |
 | Two conversations used a running Cloud, and one idles for the window while the other stays active | The idle one's Chrome and profile are gone; the machine keeps running |
@@ -167,6 +168,6 @@ database, in real time with a short window
 | A conversation is archived while its Cloud is stopped, and the Cloud wakes later | The archive does not wake the Cloud; after the wake the Cloud holds nothing of the conversation |
 | A paired device loses its connection while an archive's release waits for its answer | The archive succeeds; its Chrome for the conversation ended with the connection, and no release is sent when it connects again |
 | A running job or a waiting child turn exists at the deadline | Nothing is retired; the window restarts when the activity ends |
-| A live browser view stays open with no agent activity, while the page lists the browser's tabs | Nothing is retired while the view is open, and the window starts when it closes; the listings restart nothing |
+| A live browser view stays open with no agent activity, while the page lists the conversation browser's tabs | Nothing is retired while the view is open, and the window starts when it closes; the listings restart nothing |
 | Target switch or archive while a timer is pending | One release to the old device; a stale timer cannot release the new binding |
 | Connection loss or backend shutdown | No idle watch or timer outlives it; no release attempt against a lost device |

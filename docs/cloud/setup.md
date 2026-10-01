@@ -206,9 +206,9 @@ Check that the proxy in front of the backend passes `Origin`: a request that
 names another origin answers 403 `forbidden_origin` ([Authentication and
 ownership](../backend/backend.md#authentication-and-ownership)). Start a real
 managed device through the backend, not the paired-device claim endpoint. Verify
-runner readiness, shell/native/browser operations, persistent package and home
-files across stop/wake, and reset with a broken system. Check network refusal
-and failure cleanup using the full [acceptance
+runner readiness, shell, native and conversation browser operations,
+persistent package and home files across stop/wake, and reset with a broken
+system. Check network refusal and failure cleanup using the full [acceptance
 contract](managed-hosts.md#verification). Measure each execution host's
 performance separately. Results on one host do not certify a different host,
 image, runtime, or concurrent-user capacity.

@@ -1,9 +1,9 @@
 # Cloud image build
 
 A Cloud image release is an architecture-specific Linux root archive and its
-manifest for gVisor. [Cloud images](../../docs/cloud/images.md) defines the
+manifest for gVisor. [Cloud images](../docs/cloud/images.md) defines the
 format, the build pipeline, import, and acceptance;
-[Cloud setup](../../docs/cloud/setup.md) describes deployment.
+[Cloud setup](../docs/cloud/setup.md) describes deployment.
 
 A build runs as root on a Linux builder of the image's architecture.
 `rootfs/build.sh` makes the Ubuntu tree, then runs `xtask cloud-image package`,
@@ -11,7 +11,7 @@ which embeds the runner release, the command packages, Chrome for Testing, and
 uv, and publishes the release.
 
 First, on the developer's machine, build and package the image's target with
-the [native cross tools](../../docs/delivery/builds-and-releases.md), and build
+the [native cross tools](../docs/delivery/builds-and-releases.md), and build
 `xtask` for the builder. For an arm64 image (use `x86_64-unknown-linux-musl`
 for amd64):
 
@@ -54,7 +54,7 @@ inside the tree then uses as well. A builder whose proxy re-signs TLS names
 the bundle that holds the proxy's authority with `--ca FILE`, which apt inside
 the tree then trusts; the build removes the file from the tree. The last line the build prints is the release's base version.
 The build neither starts nor resets a Cloud device; see
-[Acceptance and local refresh](../../docs/cloud/images.md#acceptance-and-local-refresh).
+[Acceptance and local refresh](../docs/cloud/images.md#acceptance-and-local-refresh).
 
 `rootfs/uv.json` pins uv: its version and, for each architecture, the
 archive's URL, size, SHA-256, and executables. To change the pin, download each

@@ -1,5 +1,5 @@
 //! The constant tables the page shares with the Rust side, with their
-//! lookups (`contracts.md` § Logic the browser and backend share): the
+//! lookups (`contracts.md` § Logic the web app and backend share): the
 //! file-type table the page chooses a viewer by, the file types a model
 //! reads, and the live view's frame constants. The values come from the Rust
 //! constants; the lookups do what core's lookups do, and the page's tests

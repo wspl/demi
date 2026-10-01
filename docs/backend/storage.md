@@ -68,7 +68,7 @@ input, which the multi-worker control service also relies on
   lockout to [Backend](backend.md#authentication-and-ownership).
 - **Preferences:** `user_preferences` stores validated appearance and shortcut
   overrides, the last explicit model settings for new conversations, and the
-  locale the browser last reported. A patch merges specified fields in one
+  locale the web app last reported. A patch merges specified fields in one
   transaction so independent edits do not overwrite each other.
 - **Devices and workspaces:** `devices` stores ownership, kind, name and
   platform, the hash of the device's current token, and claim and last-seen
@@ -143,7 +143,7 @@ input, which the multi-worker control service also relies on
 
 Conversation and workspace `sort_order` represent explicit user ordering;
 activity timestamps do not reorder them. A read acknowledgement advances
-`read_revision` with `MAX`, so a browser that holds a stale revision cannot
+`read_revision` with `MAX`, so a page that holds a stale revision cannot
 move it backward. The backend refuses a revision beyond current output.
 
 Projects retain their explicit order; conversations are ordered within their
@@ -166,7 +166,7 @@ Host. The node lifecycle and its commits are defined in
 | Table | Meaning |
 |---|---|
 | `nodes` | Parent relationship, the agent's number and its current round ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)) with the round's start time, description and profile, whether the node may spawn children, close result or failure, completion-delivery state, checkpoint state, block count, command and output revisions |
-| `sequences` | The next number of each sequence the model sees in the conversation: commands, shells, agents and browser tabs. The backend advances a sequence in its own transaction before it gives the number out, by the count a native service asks for when it reserves several ([Conversation numbers](../execution/native-runtime.md#conversation-numbers)), so a crash leaves a gap and never gives a number twice |
+| `sequences` | The next number of each sequence the model sees in the conversation: commands, shells, agents and conversation browser tabs. The backend advances a sequence in its own transaction before it gives the number out, by the count a native service asks for when it reserves several ([Conversation numbers](../execution/native-runtime.md#conversation-numbers)), so a crash leaves a gap and never gives a number twice |
 | `blocks` | One transcript block per node and block index |
 | `blob_refs` | An index of the blobs the blocks reference, for the [retention pass](#retention): one row per reference, with the node, the block index, the reference's place in the block, the blob, what refers to it (a message's medium, a tool result's medium or an edit copy), and the block's time. The rows are derived from the blocks, never written on their own: one function derives a block's rows, and every path of the tree store that writes a block, a save, a history rewrite, an edit, a Fork's seed and a retirement, replaces that block's rows with it in the same transaction. It indexes what SQLite cannot index inside a block's JSON |
 | `command_outputs` | The record of each ended command's whole output, by command id ([Command outputs](#command-outputs)) |
@@ -200,8 +200,8 @@ everything else a save changes, and rows a rewrite removes, is output. A
 summary read takes the phase, the output revision and the latest terminal
 block without loading the transcript; a conversation that has no database file
 yet reads as idle with revision 0. The user's shard
-combines these persisted facts with live activity to produce browser
-summaries.
+combines these persisted facts with live activity to produce the
+summaries the web app receives.
 
 The conversation stores hand out one stable handle per conversation database.
 A handle opens its writer connection on demand, on a thread of its own; at
@@ -230,10 +230,10 @@ by the conversation socket as it resolves the message, a tool's medium by
 the session, through its tree store, before the tool's result enters the
 transcript, and an edit copy by the backend when its command ends
 ([Edit copies](../execution/edit-tracking.md#edit-copies)). A session reads back, through the same store, only the media its
-provider requests send, and cold browser history reads none. The agent
+provider requests send, and cold history for the web app reads none. The agent
 defines these rules, including what a missing blob becomes
 ([Media](../agent/runtime.md#media)); the backend decides where the bytes go.
-Browser delivery and uploaded attachment resolution are defined in
+Delivery to the web app and uploaded attachment resolution are defined in
 [Backend media handling](backend.md#media-by-reference).
 
 A blob is published before any row or frame that references it: an upload
@@ -542,14 +542,14 @@ Every stored value has one encoding, fixed by its column or by its type:
 - **SQL columns hold scalars.** A time is an integer count of milliseconds
   since the Unix epoch, so ordering and comparison are exact. An identifier is
   text, stored exactly as received: a conversation ID keeps the case the
-  browser sent. Conversation IDs are nevertheless compared without case, in
+  web app sent. Conversation IDs are nevertheless compared without case, in
   the conversation index and in Fork reservations, so no two conversations
   have IDs that differ only in case: each ID names a database file,
   `conversations/<id>.sqlite` with the ID in lowercase, and a file system may
   ignore case. A closed set, such as a role, a device kind or a title origin,
   is text that a CHECK constraint limits and the reader decodes into its type.
 - **Structured values are JSON columns typed by their schema,** encoded by
-  the convention of the browser wire
+  the convention of the web app's wire
   ([Encoding conventions](../architecture/contracts.md#encoding-conventions));
   a time in JSON is an RFC 3339 string in UTC with millisecond precision. For
   example, a conversation forked at 14:13:20 UTC on 21 September 2026 has

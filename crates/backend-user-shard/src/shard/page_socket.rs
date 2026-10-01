@@ -1,5 +1,5 @@
 //! A socket to a page, which the shard serves: the synchronization channel or
-//! a conversation socket (`backend.md` § Browser synchronization). Both send
+//! a conversation socket (`backend.md` § Page synchronization). Both send
 //! their protocol's heartbeat once they have sent nothing else for the
 //! heartbeat interval, so that the page can tell a quiet socket from one that
 //! died without a close (`web-application.md` § Liveness and reconnection),

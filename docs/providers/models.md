@@ -2,13 +2,13 @@
 
 A conversation infers with one model of one provider entry. This document
 defines where Demi learns which models an entry offers and what each model can
-do, how the backend and the browser keep that information, and which facts of
+do, how the backend and the web app keep that information, and which facts of
 the selected model travel with every inference request. Provider entries,
 accounts and endpoints are defined in [Providers](providers.md); the Claude
 Code CLI is defined in [Claude Code](claude-code.md).
 
 ```text
-browser   one catalog for the signed-in account, asked for again after a minute
+web app   one catalog for the signed-in account, asked for again after a minute
    |  GET /api/models             GET /api/models?refresh=true
    v
 backend   an entry's configured list, read from the entry; for any other entry,
@@ -119,7 +119,7 @@ inference.
   in Demi.
 - `default_reasoning_level`, every `supported_reasoning_levels` entry and
   `default_service_tier` are kept. The default level becomes the model's
-  default thinking effort, and the browser's model selector offers the full
+  default thinking effort, and the web app's model selector offers the full
   effort list with that default. An explicit effort, including `max` or
   `ultra` when advertised, reaches Codex's `reasoning.effort` unchanged.
 - There is no Off option: omitting reasoning gets Codex's default instead of
@@ -140,7 +140,7 @@ For example, the backend restarts at 09:55 with a stored Codex record that was
 checked at 09:50. At 10:00 a user opens the model picker: the backend loads the
 stored record, finds it 10 minutes old, and returns it without asking Codex. At
 10:06 the record is 16 minutes old: the backend returns it at once, marked
-stale, and starts one refresh. A second browser tab that asks at the same
+stale, and starts one refresh. A second page that asks at the same
 moment gets the same answer, and no second refresh starts. If Codex answers,
 the new list replaces the record in memory and in storage. If Codex does not
 answer within 10 seconds, the list from 09:50 stays, the failure appears as a
@@ -200,7 +200,7 @@ deletes the stored row, and cancels a refresh in flight. A cancelled or
 invalidated refresh cannot write a record back. At shutdown the backend cancels
 running refreshes and waits for them before it closes storage.
 
-### What the browser receives
+### What the web app receives
 
 `GET /api/models` returns every entry the user infers with, each with its
 catalog, `sourceFetchedAt`, `stale` and `warnings`, and with the provider's
@@ -210,13 +210,13 @@ list intact. A configured or built-in list, and the empty catalog of an entry
 that no refresh has filled, carry the Unix epoch as their `sourceFetchedAt`,
 because they were never fetched. The backend builds each model's selection
 ([Request parameters](#request-parameters)) and sends it with the model, so
-the browser never converts a catalog model itself.
+the web app never converts a catalog model itself.
 [Web API](../product/web-api.md#model-configuration-and-provider-inspection)
 defines the route.
 
-### In the browser
+### In the web app
 
-- The browser application keeps one catalog for the signed-in account. New and
+- The web app keeps one catalog for the signed-in account. New and
   existing conversations use it; model metadata is never copied into a
   per-conversation cache.
 - It asks for the catalog again after one minute at the earliest, so
@@ -227,7 +227,7 @@ defines the route.
   again. An explicit refresh asks with `refresh=true`.
 - Signing out clears the catalog, its timer and its pending request.
 - The catalog does not depend on a conversation. To show whether a model is
-  available, the browser combines each entry's health, and whether it needs a
+  available, the web app combines each entry's health, and whether it needs a
   process on the user's Cloud, with the selected conversation's target;
   sending a message checks the real target.
 - Opening a conversation does not wait for the catalog. The transcript shows
@@ -245,7 +245,7 @@ catalog facts (a context window of 272,000 tokens, no output limit, the efforts
 carries the model id, the output limit, the thinking setting and the tier.
 
 A selection is built from a catalog model by one conversion, which the backend
-applies before it sends the catalog to the browser and when a conversation
+applies before it sends the catalog to the web app and when a conversation
 switches to the model. The conversation keeps its
 selection: a changed catalog does not change a running conversation, which
 keeps its model's facts until the user selects a model again. The one exception
@@ -323,7 +323,7 @@ title request sends 1,024.
 
 A configured model list refuses an output limit that is not a positive whole
 number or that exceeds the model's context window. A model selection the
-browser sends is refused by the same whole-number rule.
+web app sends is refused by the same whole-number rule.
 
 ### Thinking and service tiers
 
@@ -414,8 +414,8 @@ A model reads some files natively, as images, video or documents; every other
 file reaches it by path. The file types a model can read natively are a closed
 set: `png`, `jpg`, `jpeg`, `gif`, `webp`, `pdf`, and the video types `mp4`,
 `mov`, `webm` and `m4v`. The set is part of the file-type table, which the
-backend and the browser share through the generated contract
-([Contracts](../architecture/contracts.md#logic-the-browser-and-backend-share)).
+backend and the web app share through the generated contract
+([Contracts](../architecture/contracts.md#logic-the-web-app-and-backend-share)).
 
 A model's `acceptedExtensions` has three distinct meanings:
 

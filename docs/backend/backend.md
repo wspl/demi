@@ -2,10 +2,10 @@
 
 The backend is the product server, one Rust executable named `demi-backend`
 ([Builds and releases](../delivery/builds-and-releases.md) lists its targets).
-It authenticates browser requests, hosts conversation agent trees, assembles
-providers and commands, and connects those sessions to devices through their
-runners. Runners execute device work; the backend owns conversation state and
-product policy.
+It authenticates the web app's requests, hosts conversation agent trees,
+assembles providers and commands, and connects those sessions to devices
+through their runners. Runners execute device work; the backend owns
+conversation state and product policy.
 
 ## Request paths and responsibilities
 
@@ -15,7 +15,7 @@ backend decides for one user: that user's conversations, agent trees, devices
 and Cloud. [Runtime model](#runtime-model) explains both.
 
 ```text
-Browser
+Web app
   +-- HTTP product data ----> edge ---> a shared service, or the user's shard
   +-- sync channel ---------> edge ---> user's shard: each change the page shows
   +-- conversation socket --> edge ---> user's shard: agent tree -> conversation database
@@ -39,7 +39,7 @@ runs that process on the user's Cloud
 ([Claude Code](../providers/claude-code.md#where-it-runs)). The same
 conversation keeps its history if its target changes.
 
-Besides the browser, three kinds of client reach the backend: runners, over a
+Besides the web app, three kinds of client reach the backend: runners, over a
 WebSocket and HTTP pipes authenticated by their device token; anonymous
 visitors of an expose hostname, whom the public relay serves; and anyone who
 downloads the runner installers. The backend itself calls the machine manager
@@ -47,11 +47,11 @@ over the manager's Unix socket.
 
 | Module | Crate | Responsibility | Design contract |
 |---|---|---|---|
-| `edge` | `backend-http` | The listener and router, the session gate, request extractors and body limits, error codes, installer, native artifact and browser-asset routes, runner acceptance, and the byte copies of file transfers, pipes, user streams and the expose relay | [Web API](../product/web-api.md) |
+| `edge` | `backend-http` | The listener and router, the session gate, request extractors and body limits, error codes, installer, native artifact and web app asset routes, runner acceptance, and the byte copies of file transfers, pipes, user streams and the expose relay | [Web API](../product/web-api.md) |
 | `shard` | `backend-user-shard` | Shard threads, each user's shard, calls into it, the shared services every shard is given, socket adoption and the page socket both of a page's sockets are served through | [Runtime model](#runtime-model) |
 | `config` | `demi-backend` | The typed configuration, validated at startup, and the instance secret with the keys derived from it | [Configuration](#configuration) |
 | `auth`, `settings` | `backend-accounts` | Accounts, password hashing, web sessions, login lockout, email-change delivery; per-user preferences | [Authentication and ownership](#authentication-and-ownership), [Product](../product/product.md#user-system), [Web API](../product/web-api.md#user-preferences) |
-| `sync` | `backend-page-sync`, `backend-user-shard` | The registry that marks changes on each user's channels (`backend-page-sync`); the pages' synchronization channels with the product state and the parts that changed (`backend-user-shard`) | [Browser synchronization](#browser-synchronization) |
+| `sync` | `backend-page-sync`, `backend-user-shard` | The registry that marks changes on each user's channels (`backend-page-sync`); the pages' synchronization channels with the product state and the parts that changed (`backend-user-shard`) | [Page synchronization](#page-synchronization) |
 | `conversation` | `backend-user-shard` | Agent-tree hosting, frame scoping, attachment references, history and Fork, summaries and titles, the Claude Code CLI's work on the user's Cloud, and the provider test | [Sessions and targets](../execution/sessions-and-targets.md) |
 | `host_access` | `backend-host-access` | The conversation's host access, target resolution and transitions, file transfers, uploads, remote files and user streams with the leases the edge holds of them, the nodes' shell environments with the keeper that stores what a command leaves when it ends, the product's `demi host` group | [Host operations](../execution/sessions-and-targets.md#host-operations) |
 | `runner` | `backend-runners` | Pairing, device links and runner connections with the Host handles made over them, the lease of a conversation's file gate a conversation's Host is made against, the rpc relay and each session's commands, installer scripts, native artifact publication and the development store | [Runner](../execution/runner.md), [Commands](../execution/commands.md), [Native runtime](../execution/native-runtime.md#backend-deployment-configuration) |
@@ -121,8 +121,8 @@ and axum's `serve` cannot, and it answers a request for an expose hostname
 with the relay before the router sees it. The listener gives every
 connection an idle deadline and a close handle and exposes the peer address.
 A download arms the 60-second deadline, a lease the shard ends closes the
-connection at once even when the browser has stopped reading, and the expose
-relay forwards the peer address.
+connection at once even when the user's browser has stopped reading, and the
+expose relay forwards the peer address.
 
 The listener turns off Nagle's algorithm (`TCP_NODELAY`) on every connection
 it accepts. The runner and conversation sockets carry small messages whose
@@ -134,11 +134,11 @@ runner to acknowledge the code.
 
 ## Authentication and ownership
 
-Browser API routes use the `demi_session` cookie. It contains a random 256-bit
-token whose SHA-256 identifies the stored session. The cookie is `HttpOnly`,
-`SameSite=Lax`, and `Path=/`; HTTPS requests, including forwarded HTTPS, set
-`Secure`. A missing or expired session returns 401 `unauthenticated`; an
-invalid supplied cookie is cleared.
+The web app's API routes use the `demi_session` cookie. It contains a random
+256-bit token whose SHA-256 identifies the stored session. The cookie is
+`HttpOnly`, `SameSite=Lax`, and `Path=/`; HTTPS requests, including forwarded
+HTTPS, set `Secure`. A missing or expired session returns 401 `unauthenticated`;
+an invalid supplied cookie is cleared.
 
 Sessions expire 30 days after their last renewal. A request with less than
 15 days remaining renews the session and cookie.
@@ -161,33 +161,33 @@ as a wrong password and its timing does not reveal which addresses have
 accounts.
 
 Setup and login are public entrances. Runner and pipe routes use device
-credentials instead of browser cookies. Public installer downloads and the
+credentials instead of the session cookie. Public installer downloads and the
 expose relay carry no credential. The synchronization channel checks the
 session cookie itself, since the gate would renew the session and the channel
-never does ([Browser synchronization](#browser-synchronization)). All other
-`/api` resources, unknown paths included, pass through the browser session
+never does ([Page synchronization](#page-synchronization)). All other
+`/api` resources, unknown paths included, pass through the session
 gate, so an unauthenticated request for a path that does not exist answers
 401, not 404. [Authentication](../product/web-api.md#authentication) lists
 the routes of each kind. Inaccessible user-owned objects return 404,
 insufficient role returns 403, and missing authentication returns 401.
 
 A request that could act with the user's session must come from a page of
-the product. The browser sends the `SameSite=Lax` cookie with a request from
-any page of the product's site, not only from the product's own pages. An
+the product. The user's browser sends the `SameSite=Lax` cookie with a request
+from any page of the product's site, not only from the product's own pages. An
 expose's page is such a page: `<id>.expose.demi.example` is on the site of
 `demi.example` ([Host expose](../execution/expose.md#deployment)), and it may
-be another user's. The browser keeps such a page from reading the backend's
-answers, since the backend lets no other origin read them (it sends no CORS
-headers), but not from sending requests. For example, without a check, a
+be another user's. The user's browser keeps such a page from reading the
+backend's answers, since the backend lets no other origin read them (it sends no
+CORS headers), but not from sending requests. For example, without a check, a
 script on an expose could pair its author's runner to a signed-in visitor's
 account with a `POST /api/devices/claim` whose JSON body it labels
-`text/plain`, which the browser sends without asking the backend first; or it
-could open the visitor's conversation socket, read the transcript and send
-messages.
+`text/plain`, which the visitor's browser sends without asking the backend
+first; or it could open the visitor's conversation socket, read the transcript
+and send messages.
 
-So the edge checks the `Origin` of each request to a browser route that could
+So the edge checks the `Origin` of each request to a web app route that could
 act: a request whose method is unsafe (any but GET, HEAD, OPTIONS and TRACE),
-and every upgrade, such as a WebSocket's. The browser's routes are setup,
+and every upgrade, such as a WebSocket's. The web app's routes are setup,
 login and every route the session cookie authenticates; a runner's routes,
 public downloads and the expose relay have no such check, since no cookie
 authenticates them. The origin must be the public URL's
@@ -195,12 +195,12 @@ authenticates them. The origin must be the public URL's
 (the `Host` header), as when a development server passes the page's requests
 on. Any other origin, `null` included, answers 403 `forbidden_origin` before
 anything else, the session gate included. The check stands in front of the
-browser's routes rather than in each of them, so a new browser route has it
+web app's routes rather than in each of them, so a new web app route has it
 without asking.
 
-- **A request without `Origin` passes.** Browsers send `Origin` with every
-  request the check covers (the Fetch standard requires it), so only a
-  program that is not a browser leaves it out, such as `curl` calling the
+- **A request without `Origin` passes.** The user's browser sends `Origin` with
+  every request the check covers (the Fetch standard requires it), so only a
+  program that is not a web browser leaves it out, such as `curl` calling the
   setup API
   ([Development and checks](../product/web-application.md#development-and-checks)).
   Such a program holds any cookie it sends and could send any origin it
@@ -222,8 +222,8 @@ without asking.
 A reverse proxy in front of the backend passes each request's `Origin` and
 `Host` headers to it unchanged, since the check reads both. A proxy that
 drops `Origin` turns the check off: every request then passes, as a request
-from `curl` does. The backend notices a browser's request that lost its
-`Origin` on the way. Every current browser sends Fetch Metadata
+from `curl` does. The backend notices a request from the user's browser that
+lost its `Origin` on the way. Every current web browser sends Fetch Metadata
 (`Sec-Fetch-Site`) with each request to an HTTPS site or to `localhost`, and
 `Origin` with each request the check covers, so such a request that has
 `Sec-Fetch-Site` and no `Origin` passed a proxy that dropped `Origin`. The
@@ -273,11 +273,11 @@ connection itself.
 controls provider ownership. Every provider lookup, catalog, configuration
 route, and inference resolution uses the same scope.
 
-## Browser synchronization
+## Page synchronization
 
 Ordinary product state uses REST with stable error codes and
 `{ code, message }` errors. Every request and response type, and every error
-code, is defined once in the contract crates and generated for the browser
+code, is defined once in the contract crates and generated for the web app
 ([Generated TypeScript](../architecture/contracts.md#generated-typescript));
 [Web API](../product/web-api.md) lists the routes.
 
@@ -288,7 +288,7 @@ sockets of several pages attach to the conversation's one live tree
 ([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)). After
 the upgrade the socket moves into the user's shard, which serves it until it
 closes. Execution context comes from the conversation's server-side target;
-the browser cannot override it with an arbitrary frame cwd.
+the page cannot override it with an arbitrary frame cwd.
 
 Each page also holds one synchronization channel, `WS /api/sync`. It sends the
 page the product state when it connects, then every part of it that changes:
@@ -335,7 +335,7 @@ The shard serves both through one page socket, which owns that interval and
 the bound on the close
 ([Startup and shutdown](#startup-and-shutdown)).
 
-How the browser consumes both, with its adapters, its synchronization and
+How the web app consumes both, with its adapters, its synchronization and
 its session handling, is defined in
 [Web application](../product/web-application.md).
 Model discovery has its own account-wide cache and loading state, so it does
@@ -347,14 +347,14 @@ Transcript blocks hold their media by blob reference
 ([Media](../agent/runtime.md#media)), so the frames that carry them carry
 references, and the conversation socket sends each frame as the agent wrote
 it: it neither stores nor reads media. A blob is stored before the first frame
-that names it, so the browser can fetch every reference a frame carries, when
+that names it, so the page can fetch every reference a frame carries, when
 the frame arrives, through the cookie-authenticated blob route in its user's
 namespace.
 
 Only the media types [file previews](../product/file-previews.md#keeping-file-content-inert)
 show in place are served inline, under the same content policy; the page and
 the backend read one file-type table
-([Logic the browser and backend share](../architecture/contracts.md#logic-the-browser-and-backend-share)).
+([Logic the web app and backend share](../architecture/contracts.md#logic-the-web-app-and-backend-share)).
 Other content downloads as `application/octet-stream`; responses include
 `X-Content-Type-Options: nosniff`, private immutable caching for one year, and
 `Vary: Cookie`. A hash is not an authorization token across users.
@@ -401,7 +401,7 @@ underlying persistence and blob ownership are defined in [Storage](storage.md).
 ## Failure facts
 
 An error block keeps the vendor's failure record as it arrived; what the
-browser shows from it is read when the block is sent
+page shows from it is read when the block is sent
 ([Failures and recovery](../agent/failures-and-recovery.md#reading-a-failure)).
 For every error block in a transcript it sends, the backend asks the provider
 named in the block's model selection to read the record, and attaches the
@@ -504,7 +504,7 @@ and an error names the variable. `demi-backend --help` lists the flags.
 | `DEMI_OBJECT_STORE_CONFIG` | Puts the object store in an S3 bucket. Optional: the data directory holds it otherwise. | [Storage](storage.md#the-object-store) |
 | `DEMI_INSTANCE_SECRET` | The instance secret as 64 hexadecimal digits. Optional: generated into the data directory otherwise. | [Storage](storage.md#passwords-and-credentials-at-rest) |
 | `DEMI_EXPOSE_DOMAIN` | The domain of expose hostnames. Optional: without it, exposes are unavailable. | [Host expose](../execution/expose.md#deployment) |
-| `DEMI_WEB_DIRECTORY` | A built browser directory to serve beside the API. Optional. | [Web API](../product/web-api.md#serving-the-browser-build) |
+| `DEMI_WEB_DIRECTORY` | A built web app directory to serve beside the API. Optional. | [Web API](../product/web-api.md#serving-the-web-app-build) |
 | `DEMI_RUNNER_RELEASE_DIR` | The runner releases the installer routes serve. Optional: without it, those routes answer 503. | [Builds and releases](../delivery/builds-and-releases.md) |
 | `DEMI_CLAUDE_RELEASES_URL` | The Claude Code distribution whose newest release the CLI on each Cloud follows. Default `https://downloads.claude.ai/claude-code-releases`, the vendor's. | [Claude Code](../providers/claude-code.md#which-version) |
 | `DEMI_LOG` | What the backend writes to its standard error, in `tracing-subscriber`'s `Targets` syntax: comma-separated, a default level and `target=level` pairs, each pair covering its target and the targets below it. For example, `info,demi::provider::claude_code::wire=trace` adds the Claude Code CLI's raw exchange to the default. Default `info`. | [Claude Code](../providers/claude-code.md#process-lifetime) |
@@ -603,7 +603,7 @@ The single-backend deployment runs one backend process that owns every user.
 Its control service runs in process, its conversation databases are local, its
 object store is the data directory or an S3 bucket, and the machine manager
 supplies [Cloud](../cloud/managed-hosts.md), which every deployment has. It
-can serve the built browser directory alongside the API, and with
+can serve the built web app directory alongside the API, and with
 `DEMI_EXPOSE_DOMAIN` configured it answers expose hostnames with the public
 relay. [Cloud setup](../cloud/setup.md) describes installing the machine
 manager.
@@ -614,7 +614,7 @@ multi-worker deployment pins each user to one worker process, a complete
 backend for its assigned users, and adds one internal control service:
 
 ```text
-Browser / runner -> reverse proxy -> worker for that user
+Web app / runner -> reverse proxy -> worker for that user
                                       +-- the user's shard: conversations and live
                                       |   sessions, runner connections, the Cloud machine
                                       +-- control service client -> control service
@@ -622,13 +622,13 @@ Browser / runner -> reverse proxy -> worker for that user
 
 A deployment route map pins each user's HTTP, conversation sockets, runner
 sockets, and managed machines to one worker. The selected routing design uses
-a browser route cookie and a runner reconnect header containing the owner's
-routing key. Routing hints select placement; authentication still establishes
-identity. Login requests can reach any worker because account lookup uses
-shared control records. Pairing must reach the worker that holds the unclaimed
-runner's connection, so its routing must preserve that connection-to-code
-relationship. An off-the-shelf reverse proxy applies the map, passing
-`Origin` and `Host` unchanged
+a route cookie in the user's browser and a runner reconnect header containing
+the owner's routing key. Routing hints select placement; authentication still
+establishes identity. Login requests can reach any worker because account lookup
+uses shared control records. Pairing must reach the worker that holds the
+unclaimed runner's connection, so its routing must preserve that
+connection-to-code relationship. An off-the-shelf reverse proxy applies the map,
+passing `Origin` and `Host` unchanged
 ([Authentication and ownership](#authentication-and-ownership)); the product
 supplies deployment configuration rather than a custom router.
 

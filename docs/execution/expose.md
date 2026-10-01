@@ -253,10 +253,10 @@ abbreviate it.
 While the user has a live expose, the conversation header shows a session
 tools button between the host menu and the work panel toggle; without one the
 button is absent, and it leaves with the last expose. Its menu is the only
-place the browser shows exposes. The menu lists every live expose of the
+place the web app shows exposes. The menu lists every live expose of the
 user, across devices, soonest expiry first: the address, the host it is on,
-and a countdown that ticks. Choosing a row opens the URL in a new browser tab
-of the conversation's [work panel](../product/web-application.md#work-panel),
+and a countdown that ticks. Choosing a row opens the URL in a new conversation
+browser tab in the [work panel](../product/web-application.md#work-panel),
 opening the panel if it is closed; that tab carries the expose glyph of the
 button instead of the browser's globe. Each row carries a renew control, which
 moves the expiry an hour out, and a remove control, which destroys the expose

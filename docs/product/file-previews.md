@@ -20,8 +20,8 @@ logo. In the File view:
 - `README.md` renders as a document, the way GitHub shows a repository file.
   Source switches to its text.
 - `assets/logo.svg` shows the picture. Source switches to its XML.
-- `docs/demo.mp4` plays in the browser's own player. Seeking to minute five
-  fetches only the bytes from there on.
+- `docs/demo.mp4` plays in the player built into the user's browser. Seeking to
+  minute five fetches only the bytes from there on.
 - `dist/app.bin` shows a card with its type, size and modification time, and
   Download.
 
@@ -32,9 +32,9 @@ current side.
 | Kind | Extensions | File view | Change view |
 | --- | --- | --- | --- |
 | Image | `png`, `jpg`, `jpeg`, `gif`, `webp`, `avif`, `bmp`, `ico`, `svg` | The picture, scaled down to fit and never enlarged; a click toggles actual size. Transparency shows over a checkerboard, with the pixel size and file size beside it. | Committed and current side by side, each with its pixel size and file size |
-| Video | `mp4`, `m4v`, `webm`, `mov` | The browser's player | Side by side |
-| Audio | `mp3`, `wav`, `ogg`, `oga`, `opus`, `m4a`, `aac`, `flac` | The browser's player | Side by side |
-| PDF | `pdf` | The browser's PDF viewer | Side by side |
+| Video | `mp4`, `m4v`, `webm`, `mov` | The player in the user's browser | Side by side |
+| Audio | `mp3`, `wav`, `ogg`, `oga`, `opus`, `m4a`, `aac`, `flac` | The player in the user's browser | Side by side |
+| PDF | `pdf` | The PDF viewer in the user's browser | Side by side |
 | Markdown | `md`, `markdown` | Rendered, see [Markdown](#markdown) | Text diff |
 | Text | Any other file the text route reads | Code editor | Text diff |
 | Other | Anything else | A card: type, size, modification time, Download | A card per side |
@@ -45,7 +45,7 @@ The choice holds for the next files until the user changes it, for the page's
 lifetime. Every file in the File view can be downloaded, whatever its kind.
 
 These show the card: HEIC, TIFF and JPEG XL images, which only Safari
-displays; MKV, AVI and WMV video, which browsers do not play reliably; Office
+displays; MKV, AVI and WMV video, which web browsers play unreliably; Office
 documents. HTML and MDX show as source: a page needs its scripts and relative
 files in an origin of its own, which an [expose](../execution/expose.md) of a
 server on the Host gives it. Mermaid diagrams, CSV tables, Jupyter notebooks
@@ -55,28 +55,29 @@ and image comparison modes such as swipe and onion skin are not designed yet.
 
 One table maps a file extension, ignoring case, to a media type, and says
 which media types the page shows in place. The `shared-types` contract crate owns the
-table and its lookup, and the browser receives both generated into
+table and its lookup, and the web app receives both generated into
 `@demicodes/protocol`
-([Logic the browser and backend share](../architecture/contracts.md#logic-the-browser-and-backend-share)):
+([Logic the web app and backend share](../architecture/contracts.md#logic-the-web-app-and-backend-share)):
 `web-ui` picks the viewer from it, and the backend takes the type it serves
 from the same definition. The choice goes by extension, not by content, for
 three reasons: the page must choose an element before any byte arrives, since
 a `<video>` fetches its own URL; the type the backend serves must match the
-viewer the page chose; and browsers must not guess a type on their own
-(`nosniff`).
+viewer the page chose; and the user's browser must not guess a type on its
+own (`nosniff`).
 
 The table also names every type a model reads natively
 ([Results and previews](../agent/runtime.md#results-and-previews)), and shows
 each in place: a tool's images and videos, and a message's, are served from
 their blobs by the same table
 ([Media a tool returned](#media-a-tool-returned)), and one it did not show in
-place would download, so a player would play it only where the browser
+place would download, so a player would play it only where the user's browser
 guessed its format. So `m4v` is `video/x-m4v`, the type a model receives M4V
 bytes as.
 
 A file whose content does not match its extension fails in its viewer and
-shows the card. So does media the browser cannot decode, such as HEVC video in
-a browser without that codec; the card then says the browser cannot play it.
+shows the card. So does media that the user's browser cannot decode, such as
+HEVC video when it lacks that codec; the card then says the user's browser
+cannot play it.
 A file the table does not name is read as text, and a `not_text` or
 `file_too_large` answer shows the card.
 
@@ -104,7 +105,7 @@ Links and images resolve against the file:
 | Relative path | Resolved against the Markdown file's directory; the file opens in the File view, and Back returns | Resolved the same way and loaded from the Host |
 | Path starting with `/` | Resolved against the workspace root, as GitHub resolves it against the repository root | Same |
 | `#fragment` | Scrolls to the heading | Not applicable |
-| `http` or `https` URL | Opens in a new browser tab | Loaded from that URL |
+| `http` or `https` URL | Opens in a new tab of the user's browser | Loaded from that URL |
 | Anything else | Shown as text | Dropped |
 
 In the Change view's Preview, each side renders from its own text, and
@@ -127,7 +128,7 @@ The chart loads from the Host the way a document's image does, and a click on
 | --- | --- | --- |
 | Relative path | Resolved against the conversation's working directory, where the agent's commands run; the file opens in the File view | Resolved the same way and loaded from the Host |
 | Absolute path, or a `file://` URL | The file at that path, opened in the File view | Loaded from the Host |
-| `http` or `https` URL | Opens in a new browser tab | Loaded from that URL |
+| `http` or `https` URL | Opens in a new tab of the user's browser | Loaded from that URL |
 | `data:` URL | Shown as text | Shown as it is |
 | Anything else | Shown as text | Its alt text |
 
@@ -137,8 +138,8 @@ does not cover; a smaller image keeps its size. For example, where 800
 pixels of the conversation are visible, a 1000 × 8000 screenshot shows 480
 pixels tall and 60 wide, instead of 5600 pixels tall at a 700-pixel message
 width. A click shows the image whole: a Host image in the File
-view, a web image in a new browser tab. An image inside a link follows the
-link.
+view, a web image in a new tab of the user's browser. An image inside a link
+follows the link.
 
 A `:line` suffix on a path is dropped, since the File view opens a whole file.
 Only a Markdown link or image names a file: a path in code or plain text stays
@@ -185,13 +186,13 @@ open, and a click opens it large:
   transparency shows over a checkerboard, and its pixel size shows beneath
   it. Escape, the close control or a click on the dimmed page closes it; it
   stays open while the transcript changes beneath it.
-- **A video** plays in place, in the browser's own player at the preview's
-  height. The player's full-screen control shows it large.
+- **A video** plays in place, in the player built into the user's browser, at
+  the preview's height. The player's full-screen control shows it large.
 - **On a phone**, the preview fits the conversation's width. An image opened
   large fills the screen: a tap toggles actual size, at actual size a drag
   moves the picture, a pinch zooms as anywhere on the page, and the close
-  control closes it. A video plays in the browser's player, which an iPhone
-  shows full screen.
+  control closes it. A video plays in the player of the user's browser, which an
+  iPhone shows full screen.
 - **A medium that is gone.** A result can hold, in a medium's place, a part
   that says what the medium was and why it is gone: its bytes could not be
   stored ([Media](../agent/runtime.md#media)), or, 30 days on, it was removed
@@ -202,7 +203,7 @@ open, and a click opens it large:
   *Image removed on Oct 1, 2026*. The model reads the same facts in a text of
   its own ([Media](../agent/runtime.md#media)).
 - **A medium that cannot be shown.** When the page cannot show a medium,
-  because its blob is missing, the request failed or the browser cannot
+  because its blob is missing, the request failed or the user's browser cannot
   decode it, *Could not show this image.* (or *video*) shows in its place, at
   the same height, and a reload of the page tries again. A blob that a block
   references is never deleted ([Media](../agent/runtime.md#media)), so a
@@ -218,9 +219,9 @@ open, and a click opens it large:
   ([The whole output](../agent/runtime.md#the-whole-output)).
 
 The bytes come from the blob route
-([Media by reference](../backend/backend.md#media-by-reference)). The browser
-keeps its answers, so opening an image large loads nothing again. A player
-reads a video by byte range
+([Media by reference](../backend/backend.md#media-by-reference)). The user's
+browser keeps its answers, so opening an image large loads nothing again. A
+player reads a video by byte range
 ([Uploads and media](web-api.md#uploads-and-media)): Safari plays a video only
 from a server that answers ranges, and every player seeks with them.
 
@@ -246,7 +247,7 @@ Text, including Markdown and SVG source, comes from the text route: at most
 8 MiB of UTF-8. Everything else comes from the raw route as a stream:
 
 ```text
-Browser                        Backend                           Runner
+Web app                        Backend                           Runner
 <video> GET fs/raw             Host access: wake, file gate
   Range: bytes=150M-   ──────▶ stat: size, modification time
                                read [150M, end) into a pipe ───▶ open, seek, read
@@ -254,8 +255,8 @@ Browser                        Backend                           Runner
 ```
 
 - Nothing holds a whole file. Each hop forwards what the next one accepts:
-  when the browser stops reading, as a player with a full buffer does, the
-  backend stops pulling, the runner's upload waits and the file read pauses.
+  when the user's browser stops reading, as a player with a full buffer does,
+  the backend stops pulling, the runner's upload waits and the file read pauses.
   So a working-tree file has no size limit.
 - A range request reads only its range. That is how a player seeks and how a
   PDF viewer fetches pages on demand.
@@ -275,18 +276,18 @@ The view then offers to open the new version.
 The page ends a transfer as soon as its preview stops being shown: the user
 picks another file or tab, closes the panel, opens another conversation or
 leaves the page. A player or an image drops its source, because removing the
-element does not reliably stop the browser's fetch; a text read aborts its
-request. The end travels to the file: the request's end fails the pipe, the
-runner stops reading and closes the file, and the backend releases its Host
-access.
+element does not reliably stop the user's browser from fetching; a text read
+aborts its request. The end travels to the file: the request's end fails the
+pipe, the runner stops reading and closes the file, and the backend releases its
+Host access.
 
 A transfer is a Host operation, so while it lasts it keeps a Cloud awake and
 holds the conversation's file gate. A paused player can keep its connection
-open without reading, so a transfer the browser accepts nothing from for 60
-seconds lets go of the Host, and an archive or a target switch ends open
+open without reading, so a transfer that the user's browser accepts nothing from
+for 60 seconds lets go of the Host, and an archive or a target switch ends open
 transfers instead of waiting for them
 ([Host operations](../execution/sessions-and-targets.md#host-operations)).
-Either way the browser sees the response cut short, never complete, and a
+Either way the page sees the response cut short, never complete, and a
 player asks for the range again when it needs more.
 
 ## Keeping file content inert
@@ -309,8 +310,8 @@ in the product's origin:
   opened directly under one, and by Gitea's account Safari refuses to show a
   PDF under `sandbox`.
   None of them runs script in the page; a PDF's script stays inside the
-  browser's viewer. The page's PDF frame never carries the `sandbox`
-  attribute, which every browser's PDF viewer refuses.
+  PDF viewer of the user's browser. The page's PDF frame never carries the
+  `sandbox` attribute, which the PDF viewer of every web browser refuses.
 - The page shows SVG only through `<img>`, which never runs its script.
 - Rendered Markdown passes DOMPurify with an explicit allowlist modeled on
   GitHub's: headings, paragraphs, lists, tables with `align`, code, links,
@@ -330,7 +331,7 @@ in the product's origin:
 | The runner | Moves file contents through pipes ([Runner](../execution/runner.md#file-contents)). |
 | The Host contract and the backend's remote Host | Streamed reads, whole or by range, and writes, over pipes. |
 | The backend | The raw routes, their headers and ranges, and ending transfers. |
-| The `shared-types` contract crate | The file-type table and its lookup, generated for the browser into `@demicodes/protocol`. |
+| The `shared-types` contract crate | The file-type table and its lookup, generated for the web app into `@demicodes/protocol`. |
 | `web-ui` | Choosing and showing previews, Markdown rendering and sanitizing, the side-by-side comparison, releasing transfers, resolving the files a message names, showing the media a tool returned and opening an image large. |
 | `web`, `web-gallery` | Raw and blob URLs from the product's routes and the working directory messages resolve against; a fixture file for every kind, and fixture blobs for a tool's media. |
 
@@ -339,7 +340,7 @@ behind each role.
 
 ## Rationale
 
-The previews use what browsers already do well: their image decoders, media
-players and PDF viewers. Bundling a PDF renderer or a media stack would add
-weight and still differ from what the user's browser can play; the card and
-Download cover the rest.
+The previews use what the user's browser already does well: its image
+decoders, media players and PDF viewers. Bundling a PDF renderer or a media
+stack would add weight and still differ from what the user's browser can play;
+the card and Download cover the rest.

@@ -82,7 +82,7 @@ The session records three kinds of boundary:
 
 Queue admission alone does not establish a `before_user` boundary. These are
 explicit transcript boundaries, not wall-clock comparisons, and not the time
-the browser receives a message.
+the web app receives a message.
 
 A command can update todos while a provider is streaming, or after a shell tool
 returns with a background job still running. Therefore:

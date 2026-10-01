@@ -234,7 +234,7 @@ Then:
 - If models.dev lists vendors for your wire, add the mapping from their client
   package to your family
   ([Vendors from models.dev](../providers/providers.md#vendors-from-modelsdev)).
-- The family is a value of the REST contract, so regenerate the browser's
+- The family is a value of the REST contract, so regenerate the web app's
   contracts ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
   How users add your family's entries (a key, a device login or a token import)
   is a `web-ui` change that lands in `web` and the gallery together.

@@ -45,10 +45,10 @@ backend's scenario suites in [Scenarios](scenarios.md).
   tested directly with a table of its edge cases. Reaching every case through a
   scenario would cost more than the logic is worth.
 - **Contracts at their boundary.** A wire format that another program or the
-  browser reads is pinned where it is encoded or decoded, with the values the
+  web app reads is pinned where it is encoded or decoded, with the values the
   other side depends on. A format that nothing outside the crate reads is not
   pinned. When the other side's types are generated from the same
-  definitions, as the browser's are
+  definitions, as the web app's are
   ([Generated TypeScript](../architecture/contracts.md#generated-typescript)),
   generation carries the field names and tags, and a test that pins them
   restates the derive. Pin what generation does not carry: the fixtures both
@@ -78,7 +78,7 @@ backend's scenario suites in [Scenarios](scenarios.md).
   It does not sleep across the window and then look.
 - Timer logic runs on a paused or injected clock where the code allows it
   ([Tests and time](../architecture/concurrency.md#tests-and-time)). In the
-  browser packages, bun's `jest.useFakeTimers()` is that clock: it moves
+  web app's packages, bun's `jest.useFakeTimers()` is that clock: it moves
   `setTimeout`, `setInterval`, `Date.now` and `performance.now`, while
   `setImmediate` stays real, so a test can still let the event loop turn
   once. Its `jest.runAllTimers()` also runs the timers that the timers set,
@@ -129,7 +129,7 @@ backend's scenario suites in [Scenarios](scenarios.md).
 ## Coverage
 
 - Line coverage is measured with `cargo llvm-cov` for the Rust workspace and
-  `bun test --coverage` for the browser packages, and reported when a body of
+  `bun test --coverage` for the web app's packages, and reported when a body of
   tests is added or reviewed.
 - A new test either covers code that no test reached or adds an edge case that
   no other test holds; otherwise it is not added.

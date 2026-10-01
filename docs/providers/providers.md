@@ -694,10 +694,10 @@ An account enters an entry in one of three ways:
 | `claude-code` | Setup-token import: the user runs `claude setup-token` on a machine with Claude Code and pastes the token |
 
 A device login works on a headless or remote backend, because the user
-completes it in any browser; Demi never starts a vendor CLI to log in. The
-flows are written by hand on shared OAuth pieces, not with the `oauth2` crate,
-which refuses the vendors' token responses: they omit `token_type` and state
-`expires_in` as a string.
+completes it in their own browser on any device; Demi never starts a vendor
+CLI to log in. The flows are written by hand on shared OAuth pieces, not with
+the `oauth2` crate, which refuses the vendors' token responses: they omit
+`token_type` and state `expires_in` as a string.
 
 - **Codex** asks `https://auth.openai.com/api/accounts/deviceauth/usercode`
   for a user code (a 404 means device login is unavailable), polls

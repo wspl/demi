@@ -1,6 +1,6 @@
 # Web API reference
 
-The browser and backend ship together, so routes have no version prefix.
+The web app and backend ship together, so routes have no version prefix.
 Application data uses HTTP JSON, each page follows the user's state through
 its [synchronization channel](#page-synchronization), and an open conversation
 uses the agent WebSocket protocol.
@@ -13,19 +13,19 @@ response, every message of the synchronization channel, and every error code;
 the conversation stream carries the agent protocol's frames
 ([Frame protocol](../agent/runtime.md#frame-protocol)). The backend decodes
 each request into its type and serializes each response from its type, and
-the browser's REST types and schemas are generated from the same types
+the web app's REST types and schemas are generated from the same types
 ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
 A response carries the fields its type declares and nothing more: fields the
 backend keeps for itself in a stored record, such as a conversation's owner or
-its message counts, never reach the browser.
+its message counts, never reach the web app.
 
 ## Resource index
 
 Paths in the index are relative to `/api`, except the public installation row.
 Detailed sections use the same relative paths or spell out the `/api` prefix.
 JSON errors carry `{ code, message }`. `code` is a value of `ErrorCode`, the
-`web-api-protocol` crate's list of every code the browser can see, which the browser
-receives as a string union. A situation has one code on every route:
+`web-api-protocol` crate's list of every code the web app can see, which the web
+app receives as a string union. A situation has one code on every route:
 for example, an archived conversation that refuses an operation always answers
 `conversation_archived`. Validation normally returns 400, missing or
 inaccessible objects 404, and an operation refused by current state 409.
@@ -71,15 +71,15 @@ Each route authenticates its caller in one of these ways
 | `WS /sync` | The session cookie, which the route checks without renewing the session |
 | Every other path under `/api`, unknown paths included, except the runner transport | The session cookie, which the session gate checks |
 | The runner transport, `WS /runner` and `PUT/GET /pipes/:id` | A runner's device token; an unpaired runner's socket waits without one until a user claims its code |
-| The public installation routes and the [browser build](#serving-the-browser-build) | None |
+| The public installation routes and the [web app build](#serving-the-web-app-build) | None |
 | Every path on an expose hostname | None; the public relay answers it, never a route of this API ([Exposes](#exposes)) |
 
-The first three rows are the browser's routes. Such a route answers 403
+The first three rows are the web app's routes. Such a route answers 403
 `forbidden_origin` to a request that could act with the user's session and
 comes from a page that is not the product's: a request whose method is not
 GET, HEAD, OPTIONS or TRACE, or an upgrade, such as a WebSocket's. It answers
 before any other check, so the request changes nothing and is refused with or
-without a session. A request without `Origin` does not come from a browser
+without a session. A request without `Origin` does not come from a web browser
 and passes, so `curl` can call `POST /api/setup` without one.
 
 ### Request bodies
@@ -96,7 +96,7 @@ define, a missing required field, or a value outside its bounds answers 400
 `invalid_body`, with a message that names the field and the reason; the
 backend never drops an unknown field silently. A request that takes one of
 several shapes names its shape in one field, such as a workspace's `kind`.
-String lengths count Unicode scalar values, as the browser's schemas count
+String lengths count Unicode scalar values, as the web app's schemas count
 them ([Validation at entry](../architecture/contracts.md#validation-at-entry)).
 
 ### Query parameters
@@ -156,7 +156,7 @@ credential and do not grant device access. The install command the page shows
 fetches the installer from the origin of the state's `publicUrl`, not from the
 page's own origin, which in development is Vite's, and lets `curl` use only
 that URL's scheme, TLS 1.2 or newer for `https`; a development backend serves
-plain `http`. The runner receives a pending code; the signed-in browser claims
+plain `http`. The runner receives a pending code; the signed-in page claims
 it through `POST /api/devices/claim`. Device tokens are delivered only to the
 runner.
 
@@ -262,7 +262,8 @@ conversation's main Host; `browser` is the
 [live browser view](../browser/live-view.md). The upgrade requires the session
 cookie and a conversation the user owns, and is refused from a page that is
 not the product's ([Authentication](#authentication)), which matters all the
-more here since the stream operates a browser signed in to the user's sites.
+more here since the stream operates the conversation browser, which is signed in
+to the user's sites.
 The route answers before the upgrade:
 
 | Answer | When |
@@ -494,7 +495,7 @@ not provided.
 
 `GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, locale? } }`
 for the signed-in user. These objects contain saved overrides; absent values use
-the browser host's defaults. `PATCH` accepts any subset of appearance fields
+the web app's defaults. `PATCH` accepts any subset of appearance fields
 (`theme`, `tone`, `accent`, `fontSize`) and shortcut keys (`new`, `sidebar`,
 `settings`). A null shortcut removes that override. `lastModel` stores the explicit new-conversation
 default as model settings, `{ providerId, modelId, thinkingEffort, serviceTierId }`
@@ -513,13 +514,13 @@ rejected. The backend keeps the time zone in its IANA spelling, each tag in
 its canonical form and each language once, in the reported order: the report
 `{ timeZone: "asia/shanghai", languages: ["zh-cn", "EN", "zh-CN", "iw"] }` is
 kept as `{ timeZone: "Asia/Shanghai", languages: ["zh-CN", "en", "he"] }`,
-as the browser's `Intl.getCanonicalLocales` would write the tags. Commands
-receive it in their
+as `Intl.getCanonicalLocales` in the user's browser would write the tags.
+Commands receive it in their
 [command context](../execution/native-runtime.md#command-context), and the
 [conversation browser](../browser/browser.md#native-driver) starts with it.
 The backend reads, merges and writes in one transaction, preserving
 concurrent changes to other fields. Preferences persist across restarts and are
-separate for every user in both instance modes. The product browser reads and
+separate for every user in both instance modes. The web app reads and
 writes these overrides through its preference state adapter.
 
 ## Model configuration and provider inspection
@@ -570,7 +571,7 @@ models. A static catalog, or one never fetched, reports the Unix epoch as
 `sourceFetchedAt`. `refresh=true` waits for
 a shared forced refresh; how catalogs are cached and refreshed is defined in
 [Catalog cache](../providers/models.md#catalog-cache). The route does not wake
-Cloud or execute a model. The browser combines each provider's health with the
+Cloud or execute a model. The web app combines each provider's health with the
 state of the conversation's target and, for a provider whose transport is a
 process, of the user's Cloud. Inference admission checks the actual target.
 Unknown auth/runtime status stays explicit; catalog availability is not a
@@ -720,7 +721,7 @@ and never sends the value back: a change names only the part its user
 changed, so a page that has not yet seen another page's change cannot undo
 it. Two changes of one part end with the one applied last,
 and changes of different parts both stay. A new conversation keeps its
-settings in its browser until its first send writes them to its record
+settings in the user's browser until its first send writes them to its record
 ([User preferences](#user-preferences)), and a change on a page of a
 conversation whose record has no model yet writes the whole value.
 
@@ -728,9 +729,9 @@ Archive and a target change are transitions: each holds the conversation while
 it runs, and neither waits for other work. Running root or child work refuses
 archive with 409 `turn_in_flight`, and so does another transition, an
 asynchronous frame admission or a Host operation in progress, such as reading
-a file or opening a browser tab. File transfers, user streams and the
-[browser tab calls](#conversation-browser-tabs) that do not wake a stopped
-Cloud do not refuse it: archive ends them instead
+a file or opening a tab in the conversation browser. File transfers, user
+streams and the [conversation browser tab calls](#conversation-browser-tabs)
+that do not wake a stopped Cloud do not refuse it: archive ends them instead
 ([Host operations](../execution/sessions-and-targets.md#host-operations)). A
 target change refuses and ends the same way
 ([Switch the main target](../execution/sessions-and-targets.md#switch-the-main-target)).
@@ -767,7 +768,7 @@ Activity timestamps never reorder rows.
 `GET /api/conversations?archived=true|false` includes `status`, `revision`,
 `readRevision`, `unread`, and `cwd`, the directory the conversation's work runs
 in, resolved the same way for a device directory, a workspace, and the Cloud, so
-the browser never derives it. Status is running/compacting from the live agent
+the web app never derives it. Status is running/compacting from the live agent
 tree, otherwise completed/error/stopped from its latest terminal block, or idle.
 An unfinished checkpoint without a live session is interrupted. `titleCurrent`
 says whether the title has read every message the user sent, when asking for a
@@ -802,7 +803,7 @@ as running only on its terminal tab. `web-ui` applies the same rule to a
 conversation the page is attached to.
 
 Checkpoint output changes advance a persisted revision; user input alone does
-not. A browser sends `POST /api/conversations/:id/read { revision }` for the
+not. A page sends `POST /api/conversations/:id/read { revision }` for the
 output it actually showed. Acknowledgements only move forward, and revisions
 beyond current output are refused.
 
@@ -978,9 +979,10 @@ Host takes it. The file appears whole or not at all: an upload cut short
 leaves the path as it was ([Runner](../execution/runner.md#file-contents)).
 When the upload starts, a directory at the path answers 409 `is_directory`,
 and a file there answers 409 `file_exists` unless `replace=true`. A missing
-directory above the path answers 404; the browser makes directories first
+directory above the path answers 404; the web app makes directories first
 with `POST`. Success answers 204. An upload is a file transfer whose pace the
-browser sets, under the same Host access, stall rule and ending as a download
+user's browser sets, under the same Host access, stall rule and ending as a
+download
 ([Host operations](../execution/sessions-and-targets.md#host-operations)).
 
 `DELETE /api/conversations/:id/fs?path=...` deletes a file, or a directory
@@ -1009,7 +1011,7 @@ a stopped Cloud wakes for it, a paired device without a live runner answers
 409 `device_offline`, and a Cloud that cannot wake answers 503 with the
 lifecycle's code. A request beyond the runner's working-tree capacity waits
 for a slot ([Load](../execution/runner.md#load)); the runner's timeout answers
-504 `changes_timeout`, and the browser then keeps its previous list and says
+504 `changes_timeout`, and the page then keeps its previous list and says
 the refresh failed.
 
 `GET /api/conversations/:id/changes/file?path=...` returns `{ original,
@@ -1025,14 +1027,14 @@ not have answers 404, and a file over 8 MiB answers 413 `file_too_large`,
 since git's copy is decoded whole before it is sent
 ([Runner](../execution/runner.md#working-tree)).
 
-The browser lists the working tree again when its change view is shown, after each of the
-conversation's tool calls finishes while it shows (a call that finishes while
-the view is away marks the list stale for its next showing), when the page
+The page lists the working tree again when its change view is shown, after each
+of the conversation's tool calls finishes while it shows (a call that finishes
+while the view is away marks the list stale for its next showing), when the page
 becomes visible again, and on its Refresh control. It never polls while idle.
 
-## Serving the browser build
+## Serving the web app build
 
-With `DEMI_WEB_DIRECTORY` set, the backend serves that built browser directory
+With `DEMI_WEB_DIRECTORY` set, the backend serves that built web app directory
 alongside the API and conversation sockets. Extensionless HTML navigations
 fall back to index.html, enabling deep-page refresh. Missing assets and
 `/api/*` misses remain 404. The product frontend builds separately and uses a

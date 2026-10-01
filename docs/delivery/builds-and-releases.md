@@ -86,7 +86,7 @@ what is not yet stable:
   checks of [Validation](#validation) on it. The contract crates are ordinary Rust, and no build
 script generates contract code or needs the frontend's tooling, so a Cargo build
 needs only this toolchain and, for host builds, a C compiler for the
-dependencies that compile C code. The browser's TypeScript contracts come from
+dependencies that compile C code. The web app's TypeScript contracts come from
 a separate command, `xtask contracts`, which the frontend's scripts run through
 `bun run contracts` before they need them
 ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).

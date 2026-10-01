@@ -1,6 +1,6 @@
 # Web architecture
 
-Demi's browser application is a Vue and TypeScript SPA, built with Vite and
+Demi's web app is a Vue and TypeScript SPA, built with Vite and
 Tailwind. vue-router owns navigation; Pinia holds application state.
 `web/main.ts` composes the router and account-scoped stores. A user message is
 a tiptap (ProseMirror) editor: editable in the composer, read-only in the
@@ -26,7 +26,7 @@ backend adapters                    preview handlers
                       protocol       generated schemas and types
 ```
 
-- `web-ui` owns reusable components and browser interaction.
+- `web-ui` owns reusable components and UI interaction.
 - `web` supplies product data, state, routing, and API handlers.
 - `web-gallery` supplies fixtures and handlers to demonstrate the same components.
 - `@demicodes/conversation-client` is the client side of a conversation stream:
@@ -36,16 +36,16 @@ backend adapters                    preview handlers
   Rust contracts the page reads, such as agent frames, transcript blocks,
   message content, tool views and the live view's messages, and the file-type
   table with its lookup.
-- `@demicodes/utils` holds small helpers the browser packages share.
+- `@demicodes/utils` holds small helpers the web app's packages share.
 
-The product and gallery do not import each other. The browser knows the HTTP
+The product and gallery do not import each other. The web app knows the HTTP
 API and the streams only through types generated from the Rust types that
 define them: `@demicodes/protocol` for the conversation stream and the live
 view, and REST types generated into `web` for the HTTP API
 ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
-No browser package writes its own schema for a shape those contracts define.
+No web app package writes its own schema for a shape those contracts define.
 Where the page and the backend could each compute the same fact, one side owns
-it ([Logic the browser and backend share](../architecture/contracts.md#logic-the-browser-and-backend-share)):
+it ([Logic the web app and backend share](../architecture/contracts.md#logic-the-web-app-and-backend-share)):
 the backend reads an upload's media type and snippet, and `web-ui` derives a
 queued message's summary from its content.
 [Crates and packages](../architecture/crates-and-packages.md#typescript-packages)
@@ -54,7 +54,7 @@ both consumers in the same checkpoint.
 
 The gallery is the reference for components, appearance, layout, and interaction
 examples. Those details are not duplicated in design documents. This document
-covers only the browser's technology and architectural boundaries.
+covers only the web app's technology and architectural boundaries.
 
 ## Work panel
 
@@ -107,10 +107,10 @@ The kinds:
 A `page` tab loads the `http` or `https` address the user submits in its
 address bar, which it shares with the `browser` kind.
 The frame may run scripts, submit forms and open popups, which land in
-ordinary browser tabs; it cannot navigate the product page. The parent sees
-nothing of a cross-origin page, so Back and Forward stay unavailable, Refresh
-reloads the tab's URL, and a control opens that URL in an ordinary browser
-tab for pages that refuse framing.
+ordinary tabs of the user's browser; it cannot navigate the product page. The
+parent sees nothing of a cross-origin page, so Back and Forward stay
+unavailable, Refresh reloads the tab's URL, and a control opens that URL in an
+ordinary tab of the user's browser for pages that refuse framing.
 
 ## Backend communication
 
@@ -124,7 +124,7 @@ they happen. An operation is never a message on a stream that some later
 message may or may not answer: a lost answer then looks exactly like a slow
 one, and nothing records that it failed.
 
-The browser uses same-origin cookie authentication. REST carries every
+The web app uses same-origin cookie authentication. REST carries every
 operation, and what a page reads when it needs it, such as a transcript or a
 draft. The synchronization channel pushes the state a page shows around its
 conversations, as it changes ([Page synchronization](#page-synchronization)).
@@ -151,10 +151,12 @@ The conversation store uses the shared `ConversationCache` to retain opened
 state, initialization, and runtimes for the signed-in page lifetime. Switching
 conversations reuses healthy connections; inactive cached sessions still receive
 events. Context changes, archive changes, removal, retry, and account cleanup
-invalidate the appropriate entries. Disposing a browser runtime closes its
-attachment without stopping the backend task. Reload starts a new browser cache.
+invalidate the appropriate entries. Disposing a runtime in the page closes
+its attachment without stopping the backend task. Reloading the page starts a
+new cache.
 
-A conversation open in several tabs or browsers is live and usable in each.
+A conversation open in several tabs, or in several web browsers, is live and
+usable in each.
 For example, the user sends a message in one tab: a second tab shows the
 message, the reply as it streams and each tool call, and its Stop stops the
 turn. Every tab shows the same messages, output of running commands as it comes
@@ -265,11 +267,11 @@ bring it.
 connects again as [Liveness and reconnection](#liveness-and-reconnection)
 says, at once when the page comes back.
 The new `snapshot` replaces the whole copy, and each state follows it as it
-follows any change. The browser does not say why an upgrade failed, so a page whose channel does not open asks
-`GET /api/auth/me`, whose 401 ends the session as any 401 does
-([Authentication](#authentication)). Until the first snapshot the page shows
-its loading state; a first connection that fails shows the failure with a
-retry, which connects at once.
+follows any change. The user's browser does not say why an upgrade failed, so a
+page whose channel does not open asks `GET /api/auth/me`, whose 401 ends the
+session as any 401 does ([Authentication](#authentication)). Until the first
+snapshot the page shows its loading state; a first connection that fails shows
+the failure with a retry, which connects at once.
 
 ## Authentication
 
@@ -319,10 +321,10 @@ their first send writes them to the record; edits of sent messages in
 progress; and each conversation's scroll position. A conversation with a
 record keeps its model settings only there
 ([Sidebar mutations and read state](web-api.md#sidebar-mutations-and-read-state)).
-The tabs of one browser share this storage, and a page writes a
-conversation's record only for a change its own user made, so a tab never
-replaces what another tab wrote for a conversation it left alone.
-Browser-local preferences
+The tabs open in one of the user's browsers share this storage, and a page
+writes a conversation's record only for a change its own user made, so a tab
+never replaces what another tab wrote for a conversation it left alone.
+Preferences kept in the user's browser
 hold presentation-only choices. Work-panel width and per-conversation open/closed state use the same account-scoped
 local preferences. Refreshing restores whether the panel was open; a conversation
 without a saved choice starts closed. The panel's tabs and selection are saved
@@ -421,22 +423,22 @@ cannot reach the backend goes on writing that record. When it can again, it
 uploads the waiting files and saves, and its save wins over what other places
 saved meanwhile, which is then offered for restore. An IndexedDB write still
 under way when the page closes can be lost, so a closing page also writes each
-unconfirmed composer's text to local storage, which the browser writes at
-once, and the next page of the conversation takes that text over the record.
+unconfirmed composer's text to local storage, which the user's browser writes
+at once, and the next page of the conversation takes that text over the record.
 A page that opens with such a record shows it instead of the backend's draft
 and saves it, unless the backend's draft is that text already, as when the
 save on closing arrived; it then only takes the backend's revision. The tabs
-of one browser share the record, so the last edit written is the one kept, as
-the last save is.
+open in one of the user's browsers share the record, so the last edit written is
+the one kept, as the last save is.
 
 **A new conversation** has only its local UUID until the first send creates
-its backend record. Its draft stays in IndexedDB, in the browser it was
-started in: other tabs of that browser list it when they load, and other
-devices do not see it. The first send empties the draft, and every later
+its backend record. Its draft stays in IndexedDB, in the user's browser where
+it was started: other tabs there list it when they load, and other devices do
+not see it. The first send empties the draft, and every later
 draft of the conversation lives in the backend.
 
 An edit of a sent message ([Message editing](../agent/message-editing.md)) is
-not the draft: it stays in the browser that opened it.
+not the draft: it stays in the user's browser where it was opened.
 
 ## Development and checks
 
@@ -453,17 +455,17 @@ upgrade, and the conversation would never connect. Create the first account
 through the setup API (`POST /api/setup`).
 The script `web:build` writes `packages/web/dist`, which the backend serves when
 `DEMI_WEB_DIRECTORY` names it
-([Serving the browser build](web-api.md#serving-the-browser-build)). The
+([Serving the web app build](web-api.md#serving-the-web-app-build)). The
 script `web:gallery` runs the component catalog independently of credentials
 and model services. Generated contract files are not committed; the scripts
 that need them generate them first
 ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
 
-Changes require the affected browser package typechecks, appropriate mocked
+Changes require the affected web app package typechecks, appropriate mocked
 integration tests, and verification in product and gallery. Tests use
 disposable accounts and captured mail, and never call real models. The
-browser-contract suite in `web` runs the product's API client and
+web app contract suite in `web` runs the product's API client and
 `AgentClient` against the backend executable
-([Browser-contract suite](../delivery/scenarios.md#browser-contract-suite)).
+([Web app contract suite](../delivery/scenarios.md#web-app-contract-suite)).
 Backend acceptance and deployment requirements belong to
 [Delivery and acceptance](../delivery/roadmap.md).

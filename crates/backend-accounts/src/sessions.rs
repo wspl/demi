@@ -18,7 +18,7 @@ const SESSION_POLICY: SessionPolicy = SessionPolicy {
 };
 
 /// The policy of a look that never renews: a synchronization channel's,
-/// which only requests renew (`backend.md` § Browser synchronization).
+/// which only requests renew (`backend.md` § Page synchronization).
 const WITHOUT_RENEWAL: SessionPolicy = SessionPolicy {
     renew_below: SignedDuration::ZERO,
     ..SESSION_POLICY

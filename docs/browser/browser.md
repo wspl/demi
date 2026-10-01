@@ -1923,11 +1923,11 @@ for the browser:
 
 - `command-package-browser-protocol`: the browser's operation arguments, results, error codes,
   limits and event payloads, the live view messages and frame header, and the
-  capture extension's messages; the page receives the types it uses as
+  capture extension's messages; the web app receives the types it uses as
   generated TypeScript in `@demicodes/protocol`.
 - `agent-coding-harness`: the `demi browser` command declarations, built from those
   types, with help rendered from the declarations; the command tree includes
-  them when the native package catalog provides the browser's operations.
+  them when the command package catalog provides the browser's operations.
 - the backend: builds the command context of every job and sends the generic
   conversation release; declares the `browser` user stream; no browser module.
 - the runner's crates and `backend-remote-host`: the command context of every

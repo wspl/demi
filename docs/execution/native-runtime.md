@@ -72,7 +72,7 @@ The responsibility boundaries are:
 | Backend artifact module | Publish complete releases and sign artifact downloads. No command algorithms. |
 | Runner | Validate dispatch, install artifacts, own service processes and their retention, and route invocations. |
 | Shared command-sdk | Handle framing, HTTP/2, byte IO, and cancellation over a supplied transport. |
-| Native package | Implement operations, validate their arguments, and release operation resources. |
+| Command package | Implement operations, validate their arguments, and release operation resources. |
 
 The shared SDK owns no artifact or process management. Brush builtins and external
 command clients use the same dispatcher, which supplies validated operation
@@ -301,7 +301,7 @@ own hash.
 Each invocation owns its cwd, environment, identity, input, output, and cancellation.
 Handlers must not change process-global cwd or environment. Concurrent operations,
 including blocking or CPU-bound work, must allow connection processing and
-cancellation to continue. File algorithms belong in the native package, not in
+cancellation to continue. File algorithms belong in the command package, not in
 the runner or shared SDK.
 
 | Event | Required result |
@@ -398,7 +398,7 @@ backend, the runner, and every native service link:
 | --- | --- |
 | `conversation` | The conversation the work belongs to. Work that belongs to no conversation, such as installing the Claude Code CLI after an account is added, names the provider entry it serves instead. Either is a name of ASCII letters, digits, `-` and `_`, at most 64 characters, which the wire checks where it is decoded, as it checks the conversation a release names: the runner names a job's directory after it ([Pipes and output](runner.md#pipes-and-output)). |
 | `caller` | Who started the work: `agent`, with the agent's `number` as the model knows it ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)), or `user`, for a [user stream](#user-streams). |
-| `locale` | The time zone, an IANA name, and the languages, BCP 47 tags in preference order, that the conversation's user's browser last reported ([User preferences](../product/web-api.md#user-preferences)), or `UTC` and `en-US` until it reports them. |
+| `locale` | The time zone, an IANA name, and the languages, BCP 47 tags in preference order, that the web app last reported for the conversation's user ([User preferences](../product/web-api.md#user-preferences)), or `UTC` and `en-US` until it reports them. |
 
 The backend is the context's only source, and nothing reads it from
 environment variables: a script can change those, and every program the job
@@ -437,7 +437,7 @@ context; its consumers read it where they already receive the context.
 
 A native operation can keep state that must survive the shell job that created
 it. The conversation browser keeps its tabs between shell jobs and agent turns.
-That state belongs to the conversation, and the native package keeps it itself,
+That state belongs to the conversation, and the command package keeps it itself,
 keyed by the conversation identity the runner supplies; there is no separate
 resource handle, acquisition, or grant.
 
@@ -770,7 +770,7 @@ steps 2 and 3, and serves the executables from the backend itself
 Each release directory contains `descriptor.json` and one executable under each
 target triple, named by `executable`, a basename without an extension. Windows
 filenames end in `.exe`. Relative directories resolve against the configuration
-file's directory. An explicit empty `releases` list means no native packages:
+file's directory. An explicit empty `releases` list means no command packages:
 the backend publishes nothing and starts with an empty catalog, so
 conversations offer no `demi file` or `demi browser` commands. A missing
 `DEMI_NATIVE_CONFIG` is an error, since only the explicit empty list means

@@ -73,7 +73,7 @@ impl Default for ConversationTuning {
 }
 
 /// How the backend times its sockets to a page, the synchronization channel
-/// and the conversation sockets (`backend.md` § Browser synchronization).
+/// and the conversation sockets (`backend.md` § Page synchronization).
 /// Tests shorten the times.
 #[derive(Debug, Clone, Copy)]
 pub struct PageTuning {
