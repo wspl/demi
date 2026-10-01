@@ -460,9 +460,8 @@ output:
   `commandId`, its `shellId` and timings while it runs, the output, and a hint
   for the next step while it runs or once it was stopped.
 - A result's `idleMs` counts from the last time the command's output grew,
-  also beyond the first 32 KiB of a stream, which the model's view does not
-  hold: the runner reports such growth within 2 seconds even while no page
-  follows the command
+  also beyond the first 8 KiB of a stream: the runner reports such growth
+  within 2 seconds even while no page follows the command
   ([Pipes and output](../execution/runner.md#pipes-and-output)). For example,
   a build that prints its 100th KiB of log lines a second ago shows an
   `idleMs` below 3,000, so the model does not take it for a hung one.
@@ -480,12 +479,17 @@ output:
   So a result is cut once, where it is made, and replay sends it unchanged.
   The rule is the same for every model. Characters are Unicode scalar values
   ([Token estimates](compaction.md#token-estimates)).
-- While a command runs, the backend holds the first 32 KiB of each of its
-  streams; what they print beyond them stays on the Host until the command
-  ends ([Pipes and output](../execution/runner.md#pipes-and-output)). The
-  result of a running command whose output has gone beyond them ends with a
-  line that counts those bytes and names the command that shows the newest:
-  `[... 1048576 bytes not shown so far; the newest: demi shell output 17 --tail 50 ...]`.
+- While a command runs, the backend holds the first 8 KiB of each of its
+  streams and, once a stream has gone beyond them, its newest 8 KiB, as the
+  runner sent them within the last 2 seconds; what lies between stays on the
+  Host ([Pipes and output](../execution/runner.md#pipes-and-output)). The
+  result of a running command shows its output since the model's last look
+  within the first 8 KiB, then, for each stream that has gone beyond them, a
+  line that counts the bytes left out and the stream's newest whole lines,
+  each part within half of the bound: for a dev server that has logged for an
+  hour, its start, `[... 1040384 bytes of stdout not shown; its newest lines follow ...]`
+  and its last requests. The model's place moves only within the first 8 KiB,
+  so the next look shows the newest lines as they are then.
 - The model's place moves past the whole lines a result covers, the lines
   it leaves out included. An unterminated line is shown at once, and the
   next look shows it again from its start, as far as it has grown: a command
@@ -586,7 +590,7 @@ Where the output is kept:
 - While the command runs, on its Host, in the job's directory, within the same
   16 MiB ([Pipes and output](../execution/runner.md#pipes-and-output)).
 - When the command ends, the backend stores its output before any result
-  reports the end. When each stream stayed within its first 32 KiB, which is
+  reports the end. When each stream stayed within its first 8 KiB, which is
   most commands, the backend already holds the whole output, in the order the
   runner read it, and stores that; otherwise it reads the Host's kept output
   once, as it reads the command's edit copies
@@ -620,10 +624,10 @@ the job's stdout and stderr
   |
   v
 runner: job_output, each with its stream and offset
-  |       the first 32 KiB of each stream, always
+  |       the first 8 KiB of each stream, always
   |       beyond them, while followed: the newest bytes,
   |       at most 16 KiB per stream every 250 ms;
-  |       while not: the stream's length, at most every 2 s
+  |       while not: the newest 8 KiB, at most every 2 s
   v
 backend: the command's record
   |       the model's place and text
@@ -650,7 +654,7 @@ the tree: shell_output to every attached page,
 - **While a page is attached.** While at least one connection is attached to
   the tree ([Connections and the live tree](#connections-and-the-live-tree)),
   the backend follows every running command of the tree: the runner then sends
-  each stream's output beyond its first 32 KiB as well. A command's start and
+  each stream's output beyond its first 8 KiB as it comes. A command's start and
   every change of its view reach every attached connection as `shell_output`:
   the start and new output at most every 250 ms, the tree's changed commands
   together, and the command's end at once. Output that comes after a quiet
@@ -664,9 +668,10 @@ the tree: shell_output to every attached page,
   backend was not following, so the handshake shows what the backend holds;
   the runner's newest output follows as soon as the runner starts following.
 - **No page attached.** When the last connection detaches, the backend stops
-  following and sends nothing; the runner sends each stream's first 32 KiB
-  again and, beyond them, only the stream's length, which the model's idle
-  time counts from ([Results and previews](#results-and-previews)). The next
+  following and sends nothing; the runner sends each stream's first 8 KiB
+  again and, beyond them, the stream's newest 8 KiB every 2 seconds, which the
+  model's view shows and its idle time counts from
+  ([Results and previews](#results-and-previews)). The next
   connection to attach starts from its handshake.
 - **The end.** A command's last frame shows its end: its exit, a stop (a
   `shell_abort` from a page or from the model, a Stop of the action that
@@ -679,7 +684,7 @@ What keeps the output coming, and where each part is released:
 
 | Part | Lives in | Released |
 | --- | --- | --- |
-| The runner's messages beyond a stream's first 32 KiB, with their timer | The job's task on the runner | With the job; the timer runs only while a message waits |
+| The runner's messages beyond a stream's first 8 KiB, with their timer | The job's task on the runner | With the job; the timer runs only while a message waits |
 | The backend's following of a job: it watches whether a page is attached and tells the runner | The job's task in the node's shell environment | With the job |
 | The commands whose new output is not sent yet | The tree | Emptied when sent, when a command ends, and when the last connection detaches |
 | The task that sends them | The tree; it has a timer only while commands wait | With the tree |
@@ -1337,8 +1342,11 @@ connection B --+                    +--> B's outbox: events, and B's replies
   disposal changed, then `closed`, and is detached; a connection that sends
   `close` while attached to nothing receives `closed` alone.
 - A tree that has been detached and quiescent (no action running or waiting,
-  no live subagent, no scheduled wakeup) for 10 minutes is disposed; an `open`
-  or new activity within those 10 minutes keeps it live. The next `open`
+  no live subagent, no command of any node running, no scheduled wakeup) for
+  10 minutes is disposed; an `open` or new activity within those 10 minutes
+  keeps it live. For example, a dev server the agent started goes on serving
+  after the user closes the page, and the tree's 10 minutes start once it
+  ends. The next `open`
   restores it from the store exactly as it was saved.
 
 Connections that act at once need no rule of their own. The backend hands
@@ -1456,10 +1464,10 @@ where a tool runs; no test calls a real model.
 | A command prints while its `shell_exec` call runs | The attached connections receive the output before the call's result |
 | A command prints after its call returned | Every attached connection receives the new output, with no frame from any client |
 | A connection attaches while a command runs | Its handshake carries the command's view, whatever another connection or the model read; it then receives each change as the others do |
-| A command prints faster than a page reads | A page receives at most one frame of it every 250 ms, and its outbox does not fill; the view shows the output beyond the first 32 KiB of each stream |
+| A command prints faster than a page reads | A page receives at most one frame of it every 250 ms, and its outbox does not fill; the view shows the output beyond the first 8 KiB of each stream |
 | A command ends | No frame of it follows the frame of its end |
-| The last connection detaches | The runner sends no more output beyond the first 32 KiB of a stream, and the tree sends nothing, until a connection attaches again |
-| A command prints only beyond the first 32 KiB of its streams while no page is attached | The model's `idleMs` counts from its latest output, within 2 seconds |
+| The last connection detaches | The runner sends only each stream's newest 8 KiB beyond its first, every 2 seconds, and the tree sends nothing, until a connection attaches again |
+| A command prints only beyond the first 8 KiB of its streams while no page is attached | The model's `idleMs` counts from its latest output, within 2 seconds |
 | A model switch while a turn runs | The request in flight keeps its model; the turn's next request carries the new model, effort and tier |
 | A model switch while an edit is being prepared | The switch is not refused; the replacement turn's first request carries the model it was prepared with, and its next request the new one |
 | A client stops reading | The connection closes as lagging; a reconnect adopts the running tree and its turn completes |
@@ -1470,9 +1478,9 @@ where a tool runs; no test calls a real model.
 | A command prints 200 KB of lines and exits | Its result shows whole lines from the start and the end and the line naming the lines between and `demi shell output 17 --lines`, and fits the replay bound, so every request carries it unchanged; the pages that command prints hold those lines, numbered, with the next page's command, and `--raw` prints the 200 KB in the order the runner read them |
 | A page of a command's output | At most 12,000 characters of whole lines, so the result that holds it is not cut; a line over 2,000 characters shows its start and how to read it whole |
 | `--raw \| grep -n` on a command's output | The numbers it prints select the same lines with `--lines` |
-| A command prints 25,000 characters, more than the replay bound and less than the first 32 KiB of its stream | The result's line names `demi shell output`, which prints the characters the result leaves out |
+| A command exits having printed 25,000 characters, more than the replay bound | The result's line names `demi shell output`, which prints the characters the result leaves out |
 | The same command for a model with a context window of a million tokens | The same result |
-| A running command's stdout goes beyond its first 32 KiB while no page is attached | Its result ends with the line counting the bytes so far; `demi shell output --tail 50` prints the newest lines from the Host |
+| A running command's stdout goes beyond its first 8 KiB while no page is attached | Its result shows the stream's start, the line counting the bytes left out, and its newest lines from the last 2 seconds |
 | A command prints 20 MiB | The Host keeps 16 MiB of it while it runs, and the backend stores the same; `demi shell output` prints the first and last 8 MiB with the line where the rest was left out |
 | A binary stdout that the model does not accept | The result names `demi shell output 17 --raw --stdout`, which prints the bytes unchanged |
 | `demi shell output 17 --raw \| head -n 1` | The line, and nothing on stderr |

@@ -110,6 +110,13 @@ impl ScriptedShell {
         record.borrow_mut().append_output(StreamKind::Stdout, text);
         self.feed.changed(&record);
     }
+
+    /// The running command ends.
+    fn end(&self) {
+        let record = self.command.borrow().clone().expect("the command started");
+        record.borrow_mut().mark_aborted();
+        self.feed.changed(&record);
+    }
 }
 
 impl ShellEnvironment for ScriptedShell {
@@ -229,8 +236,14 @@ fn tails(frames: &[ServerFrame]) -> Vec<String> {
         .collect()
 }
 
-#[tokio::test(flavor = "local", start_paused = true)]
-async fn output_that_waited_or_came_while_no_page_was_attached_never_reaches_the_next_page() {
+/// A server whose conversation ran a turn that started a command which goes
+/// on running, with the page that sent it still attached.
+async fn serving() -> (
+    Rc<AgentServer<LiveHarness>>,
+    Rc<ScriptedShell>,
+    TestClient<LiveHarness>,
+    ScriptedRuntime,
+) {
     let script = ScriptedRuntime::new([
         Turn::Events(vec![event::tool_call(
             "call-1",
@@ -263,6 +276,12 @@ async fn output_that_waited_or_came_while_no_page_was_attached_never_reaches_the
         .borrow()
         .clone()
         .expect("the call made the environment");
+    (server, shell, first, script)
+}
+
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn output_that_waited_or_came_while_no_page_was_attached_never_reaches_the_next_page() {
+    let (server, shell, mut first, _script) = serving().await;
 
     // Output while a page is attached goes to it after the interval.
     shell.print("one\n");
@@ -295,4 +314,29 @@ async fn output_that_waited_or_came_while_no_page_was_attached_never_reaches_the
     tokio::time::advance(INTERVAL).await;
     settle().await;
     assert_eq!(tails(&second.received()), ["one\ntwo\nthree\nfour\n"]);
+}
+
+/// A command that runs is the conversation's work (`resource-lifecycle.md`
+/// § Runtime), so a tree no page is attached to stays live while one of its
+/// commands runs, and its idle time starts once the last one ended.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_detached_tree_stays_live_while_its_command_runs_and_goes_after_its_idle_time() {
+    let (server, shell, first, _script) = serving().await;
+    let idle = ServerConfig::default().idle_tree;
+    drop(first);
+
+    tokio::time::sleep(idle * 2).await;
+    settle().await;
+    assert!(
+        server.tree(&conversation()).is_some(),
+        "the command still runs"
+    );
+
+    shell.end();
+    tokio::time::sleep(idle - Duration::from_secs(1)).await;
+    settle().await;
+    assert!(server.tree(&conversation()).is_some());
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    settle().await;
+    assert!(server.tree(&conversation()).is_none());
 }

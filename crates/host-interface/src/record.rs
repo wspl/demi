@@ -12,7 +12,9 @@ use std::sync::Arc;
 use demi_shared_types::{CommandId, OutputChunk, OutputView, ShellId, StreamKind, StreamView};
 use tokio::time::Instant;
 
-use crate::{BinaryOutput, CommandState, CommandStatus, EditedFiles, Seen, WholeOutput, WholeView};
+use crate::{
+    BinaryOutput, CommandState, CommandStatus, EditedFiles, Newest, Seen, WholeOutput, WholeView,
+};
 
 /// How much of a stream's end a view carries.
 pub const TAIL_CHARS: usize = 4096;
@@ -109,6 +111,8 @@ struct Stream {
     /// The stream's length on the Host, which the runner reports while the
     /// record holds only the stream's start.
     host_bytes: Option<u64>,
+    /// Its newest bytes beyond its start, while the command runs.
+    newest: Option<Newest>,
 }
 
 #[derive(Debug)]
@@ -189,6 +193,17 @@ impl CommandRecord {
         let host = &mut self.stream_mut(stream).host_bytes;
         *host = Some(host.map_or(length, |known| known.max(length)));
         self.last_output = Instant::now();
+    }
+
+    /// The newest bytes of `stream` beyond what the record holds of its
+    /// start, as the runner last sent them: they replace the ones before.
+    pub fn set_newest(&mut self, stream: StreamKind, offset: u64, left_out: u64, text: String) {
+        self.stream_mut(stream).newest = Some(Newest {
+            stream,
+            offset,
+            left_out,
+            text,
+        });
     }
 
     fn append_page(&mut self, text: &str) -> bool {
@@ -285,6 +300,14 @@ impl CommandRecord {
                 .sum(),
         };
         let running = self.is_running();
+        let newest = if running {
+            [&self.stdout, &self.stderr]
+                .into_iter()
+                .filter_map(|stream| stream.newest.clone())
+                .collect()
+        } else {
+            Vec::new()
+        };
         let positions = &mut self.model;
         let stdout = stream_view(&self.stdout, &mut positions.stdout, max_output_bytes);
         let stderr = stream_view(&self.stderr, &mut positions.stderr, max_output_bytes);
@@ -313,6 +336,7 @@ impl CommandRecord {
             stderr,
             output,
             unreceived,
+            newest,
             whole,
             running_ms: millis(now - self.started),
             idle_ms: millis(now - self.last_output),
