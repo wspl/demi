@@ -48,6 +48,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Conversation browser | `GET/POST /conversations/:id/browser/tabs`, `DELETE /conversations/:id/browser/tabs/:tab`, `POST /conversations/:id/browser/tabs/:tab/navigate { url }`, `POST /conversations/:id/browser/tabs/:tab/history { action }`; see [Conversation browser tabs](#conversation-browser-tabs) |
 | Device log | `GET /devices/:id/log?since=<cursor>&limit=<n>&source=<source>` reads the [Host's log](../execution/runner.md#host-log) |
 | Sidebar | `POST /sidebar/reorder { kind, id, beforeId }` |
+| Plugins | `POST /plugins/:plugin/calls/:method` with the method's parameters calls a [plugin's page method](#plugin-calls) |
 | Models | `GET /models?refresh=true\|false` returns the account-wide catalog |
 | Providers | `GET /providers/catalog`, `GET/POST /providers`, `PATCH/DELETE /providers/:id`, `GET /providers/:id/status`, `POST /providers/:id/test`, `POST /providers/:id/quota`; account routes below |
 | Usage | `GET /usage` for the caller; `GET /usage/instance` for admins in shared mode |
@@ -852,14 +853,16 @@ later one is the current value of one part of it that changed:
 | `exposes` | `exposes` | An expose is created, renewed or removed, or expires |
 | `providers` | `providers`, each with its details | An entry the user infers with, or an account of it, is created, changed or removed, a sign-in completes, an account's credential is renewed, or its quota snapshot is stored |
 | `cloud` | `cloud` | The Cloud's lifecycle or its reset moves |
+| `plugin` | `plugin`, the plugin's id, and `state`, its state for the user's pages | The plugin marks its part as changed ([The page](../architecture/plugins.md#the-page)) |
 | `heartbeat` | Nothing | 30 seconds pass without another message |
 
 The product state holds the current user, the instance mode, preferences, the
 provider entries of the user's scope, workspaces, devices (the paired ones and
 the user's Cloud device, which the file and working-tree routes address
 alike), exposes and their domain, the summaries of the active and then the
-archived conversations, the Cloud's state, and `publicUrl`, the URL runners
-connect to (`DEMI_BACKEND_PUBLIC_URL`). Each provider entry carries its
+archived conversations, the Cloud's state, `plugins`, the state of each
+plugin that declares one for the user's pages, by plugin id, and `publicUrl`,
+the URL runners connect to (`DEMI_BACKEND_PUBLIC_URL`). Each provider entry carries its
 `details`: `{ type: "read", ... }` with what `GET /api/providers/:id/status`
 answers, or `{ type: "failed", message }` for an entry whose provider could
 not be read, which leaves the others intact. Reading the state never starts
@@ -915,6 +918,39 @@ The backend closes the channel with a code and a reason:
 
 The channel never renews its session; only requests do
 ([Authentication and ownership](../backend/backend.md#authentication-and-ownership)).
+
+## Plugin calls
+
+A plugin's page calls its plugin through one route
+([The page](../architecture/plugins.md#the-page)). For example, the Skills
+settings section adds a source:
+
+```text
+POST /api/plugins/skills/calls/add_source
+{ "origin": "vercel-labs/agent-skills" }
+
+200 { "source": "src_7fq2" }
+```
+
+The body is the method's parameters, and the response's body is its result.
+The plugin's manifest declares each method with a JSON Schema for its
+parameters and one for its result, and its page package's types are
+generated from the same Rust types. The route works like the other
+session routes ([Authentication](#authentication)):
+
+| Situation | Answer |
+| --- | --- |
+| The backend has no plugin of that id | 404 `unknown_plugin` |
+| The plugin has no method of that name | 404 `unknown_plugin_method` |
+| The body is not JSON, or does not match the method's parameter schema | 400 `invalid_body`, naming the field and the reason |
+| The plugin refuses the call, such as a source already added | 409 `plugin_refused`, with the plugin's message |
+| The plugin fails, such as a value that does not read | 500 `plugin_failed`; the plugin's error is logged, not sent |
+
+A call changes only the calling user's state. What it changed reaches every
+page of the user as the plugin's new state on the synchronization channel
+([Page synchronization](#page-synchronization)), including the page that
+called, so a page shows what it called for from the channel, as it does for
+every other part.
 
 ## Device files and remote references
 

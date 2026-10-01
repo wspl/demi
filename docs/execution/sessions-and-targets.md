@@ -153,7 +153,9 @@ conversation's behalf goes through one entry, the conversation's host access.
 The agent resolves its Host through it for each tool call and runs each shell
 job inside it, and everything the backend does for the user outside the agent
 uses it too, whether it writes an attachment, lists the working tree, or reads
-a file for the web app. An operation can name a device bound as the main or an
+a file for the web app. A plugin never reaches a Host: the
+[Host directories](../architecture/plugins.md#host-directories) its user
+needs are installed by a job's own admission, before the job starts. An operation can name a device bound as the main or an
 attached host; omitting the device selects the current main host. The binding
 and ownership are checked after taking the file gate and before reaching the
 Host. An unknown or detached device is refused; detaching prevents new access,
@@ -290,7 +292,7 @@ touches no conversation's files. This table names every way to a Host:
 
 | Way | Used by | Takes | A stopped Cloud |
 | --- | --- | --- | --- |
-| The conversation's host access | The agent's tool calls and shell jobs; attachments, the working tree, file text and file transfers; one-shot user calls that start work, such as opening a conversation browser tab | The conversation's file gate while the operation runs, and, for a Cloud, the Cloud's admission | Woken; a running reset is waited for |
+| The conversation's host access | The agent's tool calls and shell jobs, with the plugins' Host directories each job needs; attachments, the working tree, file text and file transfers; one-shot user calls that start work, such as opening a conversation browser tab | The conversation's file gate while the operation runs, and, for a Cloud, the Cloud's admission | Woken; a running reset is waited for |
 | User-stream admission, a form of the conversation's host access | User streams; one-shot user calls that must not wake the Host | The file gate while admitting only | Not woken: the caller learns that the Host is stopped |
 | [Lifecycle access](#lifecycle-access), a form of the conversation's host access | The conversation release | Nothing: the release is a runner message, sent only to a connected runner | Not woken: the Cloud hears the release after its next wake |
 | Device access | The public relay of a [Host expose](expose.md#the-public-relay); the [device log](../product/web-api.md#device-log); browsing a paired device's directories to choose a target; the [Claude Code versions](../providers/claude-code.md#what-the-user-sees) a provider's settings show | Nothing: the caller must own the device, and its runner must be connected | Not woken |

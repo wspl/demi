@@ -57,10 +57,23 @@ to run, the pending steers, the scheduled yield wakeups, and one status.
 Sessions run on the user's shard thread, where no other work runs while a
 session changes its state.
 
-The harness supplies a node's system prompt, the text added to each of its user
-turns (a subagent's identity, for example), the context text described in
-[Transcript](#transcript), and its commands. Demi has one harness, the coding
-agent.
+The agent runtime knows no product and no plugin. The product gives the
+agent server what every node is assembled from, and answers two questions
+while a node runs:
+
+| The product supplies | What it is | Where it comes from in Demi |
+| --- | --- | --- |
+| The command set | The commands every node starts from; the runtime adds its own groups per node ([Tools](#tools)) | The plugins' commands and the `demi host` group ([Plugins](../architecture/plugins.md#commands)) |
+| Instructions | The text of the system prompt between the runtime's rules for its tools and the help of the node's commands | The product's instructions, then each plugin's system-prompt text ([Prompt text and context](../architecture/plugins.md#prompt-text-and-context)) |
+| Profiles | The named [subagent profiles](subagents.md#profiles), as data | The plugins' profiles |
+| The Host of a node | Where its shell tools run now, asked at each shell tool call | The conversation's host access ([Host operations](../execution/sessions-and-targets.md#host-operations)) |
+| Context sources | What the model must learn before a request, asked before each one ([Context](#context)) | The conversation's execution context, then each plugin that is a context source |
+
+A node's system prompt is therefore the runtime's rules for its five tools,
+the instructions (or a profile's, which replace them), and the rendered help
+of the node's commands, in that order. It is rendered once, when the node is
+assembled, and holds no time, id, Host or state
+([Prompt cache](../providers/providers.md#prompt-cache)).
 
 ### Actions
 
@@ -410,10 +423,12 @@ The model has five tools, and only these:
 | `shell_abort` | Stops a running command. Its result is never an error. |
 | `yield` | Ends the turn and schedules one wakeup after `durationMs` ([Yield wakeups](#yield-wakeups)). |
 
-Everything else the agent does runs as commands in the shell, such as
-`demi file`, `demi todo`, `demi agent`, `demi browser`, `demi host` and
-`demi shell`
-([Commands](../execution/commands.md)). A tool call whose name is not one of
+Everything else the agent does runs as commands in the shell
+([Commands](../execution/commands.md)). The runtime grafts its own groups,
+`demi agent` ([Subagents](subagents.md)) and `demi shell`
+([The whole output](#the-whole-output)), into each node's command set; the
+others, such as `demi file`, `demi todo`, `demi browser` and `demi host`, come
+from the command set the product supplies. A tool call whose name is not one of
 the five completes as an error `Tool not found: <name>`.
 
 ### Tool input
@@ -778,8 +793,8 @@ Words used for session data:
 
 | Block | Written by | The model receives | The user sees it |
 | --- | --- | --- | --- |
-| `user` | A send or an edit: the submitted content and the harness's text for the turn (`preamble`) | A user message: the preamble, then the content | Yes; the only editable block ([Message editing](message-editing.md)) |
-| `context` | The session before a provider request, when the conversation's execution context changed since the node last saw it: a target switch, attached hosts, a Cloud reset ([Switch the main target](../execution/sessions-and-targets.md#switch-the-main-target)) | A user message with its text | No |
+| `user` | A send or an edit: the submitted content and, for a subagent, its identity (`preamble`, [Child context](subagents.md#child-context)) | A user message: the preamble, then the content | Yes; the only editable block ([Message editing](message-editing.md)) |
+| `context` | The session before a provider request, with the text one context source answered ([Context](#context)), and the source's name (`source`) | A user message with its text | No |
 | `wakeup` | A fired yield wakeup, with the placement `new_turn` or `steer` | The fixed wakeup text, as a user message or as a steer | No |
 | `steer` | A human steer, at a continuation boundary | A steer in the current turn | Yes |
 | `agent_message` | Another agent of the tree ([Communication](subagents.md#communication)) | A steer holding the message's source envelope | As a receipt row |
@@ -803,6 +818,31 @@ blocks belong to the turn they appear in.
 A `tool_call` block holds the provider's `toolUseId` and `toolName`, the call's
 `input` as the JSON text the provider supplied, its `status` (`executing`,
 `completed` or `error`), its `output`, and its `view`.
+
+### Context
+
+What the model must learn between its requests, and what differs by user or
+conversation, reaches it as `context` blocks, never through the system prompt.
+For example, the user switches the conversation from the Cloud to their
+laptop. Before the node's next request, the execution context source answers
+the new target, and the model receives it as a user message.
+
+Before each provider request of a node, the session asks every context source
+the product supplies, in the product's order:
+
+- Each source is given the text of its own `context` blocks that the model
+  receives, those from the last `compaction_boundary` on, oldest first, and
+  answers new text or nothing. After a compaction, a source therefore tells
+  the model again what the summary may have left out.
+- Each answer becomes one `context` block that names its source: `execution`
+  for the conversation's execution context
+  ([Switch the main target](../execution/sessions-and-targets.md#switch-the-main-target)),
+  or the id of the plugin that answered
+  ([Prompt text and context](../architecture/plugins.md#prompt-text-and-context)).
+- The blocks are appended before the request and saved at once, so a request
+  never carries a context its transcript does not hold.
+- A source that fails adds no block, and the failure is logged. Nothing is
+  lost by it: the source is asked again before the next request.
 
 ### Replay
 
@@ -1402,7 +1442,7 @@ A node's checkpoint has three parts:
 | Part | Holds |
 | --- | --- |
 | Transcript rows | One row per block, by index |
-| State row | The phase; the queued messages, each `{ id, content }`; the agent messages waiting for a boundary; the yield wakeups not yet in the transcript, each with its id, its duration and its due time once its action ended; the working directory; the model selection; the harness name; the accepted edit receipts |
+| State row | The phase; the queued messages, each `{ id, content }`; the agent messages waiting for a boundary; the yield wakeups not yet in the transcript, each with its id, its duration and its due time once its action ended; the working directory; the model selection; the accepted edit receipts |
 | Command state | Its versions and boundary references ([Command state history](command-state-history.md)) |
 
 Human pending steers are not part of it. Creating,
@@ -1418,8 +1458,8 @@ atomic commits of the same store ([Persistence](subagents.md#persistence)).
 - A session has one save in progress at a time. Saves, command-state commits,
   the boundary captured when assistant text completes, history rewrites and
   edit commits run in the order they were requested. A running turn never
-  holds this order while it waits for a provider, a tool or the harness, so a
-  tool's command-storage write can commit meanwhile.
+  holds this order while it waits for a provider, a tool or a context source,
+  so a tool's command-storage write can commit meanwhile.
 - A save that has started always finishes: Stop does not cancel it, and it
   took effect exactly when the store reports success. Right before its
   transaction, the store checks the save's guard: a command-storage write from
@@ -1449,10 +1489,9 @@ atomic commits of the same store ([Persistence](subagents.md#persistence)).
 
 - The store decodes and validates every row it reads, and corrupt data stops
   the restore ([Storage](../backend/storage.md)).
-- The session adds its own checks: the checkpoint's harness is the node's, the
-  waiting agent messages have unique ids that are not already in the
-  transcript, each is addressed to this node, and edit operation ids are
-  unique.
+- The session adds its own checks: the waiting agent messages have unique
+  ids that are not already in the transcript, each is addressed to this node,
+  and edit operation ids are unique.
 - The session then completes interrupted tool calls and hands back its queue
   as [Dispose and restore](#dispose-and-restore) describes.
 - A restore reads no blob: the session reads the blobs of its replayed media

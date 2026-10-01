@@ -11,6 +11,7 @@ layout and interaction; these documents do not repeat it.
 - [Crates and packages](architecture/crates-and-packages.md): every Rust crate and TypeScript package, what it owns and must not do, both dependency graphs, module layout and boundary checks.
 - [Contracts](architecture/contracts.md): Rust types as the only contract definition, validation at entry, the generated TypeScript, the TypeScript boundary, and logic the web app and backend share.
 - [Concurrency](architecture/concurrency.md): the threads of each program, the user shard, locks, blocking work, cancellation and cleanup, and tests and time.
+- [Plugins](architecture/plugins.md): how a capability joins Demi: commands, prompt text and context, profiles, Host directories and a page, the contract every plugin uses in process and over a wire, and the plugin host.
 
 ## What can users do, and how does the web app talk to the backend?
 
@@ -26,13 +27,14 @@ layout and interaction; these documents do not repeat it.
 
 ## How does the agent run a conversation?
 
-- [Agent runtime](agent/runtime.md): sessions and turns, input, yield wakeups, the standard tools, the transcript, the rendering boundary, the frame protocol and the tree store.
+- [Agent runtime](agent/runtime.md): sessions and turns with what the product supplies, input, yield wakeups, the standard tools, the transcript and its context blocks, the rendering boundary, the frame protocol and the tree store.
 - [Subagents](agent/subagents.md): the session tree, `demi agent` commands, agent messages, results, profiles and persistence.
 - [Compaction](agent/compaction.md): compaction through a session copy, token estimates, request sizes and window switches.
 - [Failures and recovery](agent/failures-and-recovery.md): the failure record and how it is read, retries, and resuming an interrupted turn.
 - [Message editing](agent/message-editing.md): editing and resending a message as one transaction.
 - [Conversation fork](agent/conversation-fork.md): forking a conversation from a block, with its seed, publication and subagents.
 - [Command state history](agent/command-state-history.md): versioned command storage, history boundaries and compare-and-set updates.
+- [Skills](agent/skills.md): skills from git sources, what the model sees of them, their directories on a Host and their settings section.
 
 ## Where does work execute, and how do commands run?
 
