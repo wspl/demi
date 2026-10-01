@@ -8,16 +8,16 @@ conversation boundary records the version that was current at that boundary.
 Fork and transcript rewrites restore that version without executing historical
 commands.
 
-The agent runtime owns versioning for every command storage key. The coding
-harness owns todo validation and operations; it does not implement its own
-history. `todos.json` is a logical key, not a file. Files, processes,
+The agent runtime owns versioning for every command storage key.
+`plugin-todo` owns todo validation and operations; it does not implement its
+own history. `todos.json` is a logical key, not a file. Files, processes,
 credentials, caches, and other external effects do not become versioned
 conversation state.
 
 Command storage is the only structured state a node keeps that follows its
-history; the harness keeps no state of its own. A todo command needs neither
-the transcript nor any harness internals: it reads and writes its key through
-storage messages ([Mutation API and concurrency](#mutation-api-and-concurrency)).
+history; a plugin keeps no state of a node's own elsewhere. A todo command
+needs neither the transcript nor anything of the agent runtime: it reads and
+writes its key through storage messages ([Mutation API and concurrency](#mutation-api-and-concurrency)).
 
 ## Example
 

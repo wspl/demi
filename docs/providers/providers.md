@@ -360,9 +360,11 @@ models offer it.
 
 ### What keeps it
 
-- **The system prompt and the tools** follow from the node's harness, profile
-  and commands, rendered once when the node is assembled. They hold no time,
-  id, Host or state. The tools are the five standard tools in one order
+- **The system prompt and the tools** follow from the runtime's rules, the
+  product's and the plugins' fixed instructions, the node's profile and its
+  commands, rendered once when the node is assembled. They hold no time, id,
+  Host or state, and nothing that differs by user: what does reaches the model
+  as a `context` block ([Context](../agent/runtime.md#context)). The tools are the five standard tools in one order
   ([Tools](../agent/runtime.md#tools)).
 - **The items** come from replay, which reads only what the blocks hold for
   the model, keeps each block in its place and never changes what a block
@@ -404,7 +406,7 @@ the end would then miss the previous request's entry. A session's request,
 a summary request included, therefore carries up to three marks:
 
 1. The system prompt, sent as one text block, or the last tool when the
-   prompt is blank. Nodes of the same harness and profile share their tools
+   prompt is blank. Nodes of the same profile share their tools
    and system prompt, so this entry serves each conversation's first request
    and each request after a summary.
 2. The last block of what the session's latest answered request carried: its
