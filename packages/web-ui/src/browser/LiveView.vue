@@ -30,7 +30,7 @@ const placement = computed(() => {
 })
 const stalled = computed(() => state.connection === 'stalled')
 const cursor = computed(() => {
-  // A page can name a cursor this browser has no rule for, or an image.
+  // A page can name a cursor this web browser has no rule for, or an image.
   const name = state.cursor.cursor
   return /^[a-z-]+$/.test(name) && name !== 'auto' ? name : 'default'
 })

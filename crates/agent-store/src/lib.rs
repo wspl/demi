@@ -357,7 +357,7 @@ pub struct ScheduledWakeup {
 pub struct EditReceipt {
     #[garde(skip)]
     pub operation_id: OperationId,
-    /// The SHA-256 of the request's RFC 8785 canonical JSON, as the browser
+    /// The SHA-256 of the request's RFC 8785 canonical JSON, as the web app
     /// sent it, in lowercase hexadecimal.
     #[garde(pattern(r"^[0-9a-f]{64}$"))]
     pub digest: String,

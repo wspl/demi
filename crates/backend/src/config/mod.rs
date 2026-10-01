@@ -75,7 +75,7 @@ pub struct Config {
     /// The domain of expose hostnames; without it, exposes are unavailable
     #[arg(long, env = "DEMI_EXPOSE_DOMAIN", value_name = "DEMI_EXPOSE_DOMAIN")]
     pub expose_domain: Option<ExposeDomain>,
-    /// A built browser directory to serve beside the API
+    /// The web app build's directory, to serve beside the API
     #[arg(long, env = "DEMI_WEB_DIRECTORY", value_name = "DEMI_WEB_DIRECTORY")]
     pub web_directory: Option<PathBuf>,
     /// The runner releases the installer routes serve
@@ -153,7 +153,7 @@ pub struct BackendConfig {
     pub address: SocketAddr,
     /// Who configures providers (`product.md` § Instance mode).
     pub mode: InstanceMode,
-    /// A built browser directory served beside the API.
+    /// The web app build's directory, served beside the API.
     pub web_directory: Option<PathBuf>,
     /// The URL runners connect to, which the installers name; without it,
     /// the origin an installer was requested from.
@@ -191,7 +191,7 @@ pub struct BackendConfig {
     pub conversations: ConversationTuning,
     /// How the sockets to a page are timed.
     pub pages: PageTuning,
-    /// The native command packages the conversations' commands bind to.
+    /// The command packages the conversations' commands bind to.
     pub native: NativeCatalog,
     /// The user streams a page may open, by name, each bound to an operation
     /// of a package in `native` (`native-runtime.md` § User streams); a

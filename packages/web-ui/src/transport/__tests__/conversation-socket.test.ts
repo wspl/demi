@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, jest, test } from 'bun:test'
-import { AgentSocketError, connectAgentClient } from '../agent-socket'
+import { ConversationSocketError, connectConversationClient } from '../conversation-socket'
 import { playSockets } from './test-socket'
 
 let sockets: ReturnType<typeof playSockets>
@@ -11,7 +11,7 @@ afterEach(() => {
 })
 
 test('a socket that opens carries the client from then on', async () => {
-  const opening = connectAgentClient('ws://fixture')
+  const opening = connectConversationClient('ws://fixture')
   const socket = sockets.last()
   socket.open()
   const client = await opening
@@ -26,14 +26,14 @@ test('a socket that opens carries the client from then on', async () => {
 })
 
 test('a socket that closes before it opens is a connection failure, which the runtime retries', async () => {
-  const result = connectAgentClient('ws://fixture').catch((error) => error)
+  const result = connectConversationClient('ws://fixture').catch((error) => error)
   sockets.last().end()
-  expect(await result).toBeInstanceOf(AgentSocketError)
+  expect(await result).toBeInstanceOf(ConversationSocketError)
 })
 
 test('canceling socket startup closes the transport without waiting for its timeout', async () => {
   const controller = new AbortController()
-  const result = connectAgentClient('ws://fixture', controller.signal).catch((error) => error)
+  const result = connectConversationClient('ws://fixture', controller.signal).catch((error) => error)
   controller.abort()
   expect(await result).toBeInstanceOf(Error)
   expect(sockets.last().closed).toBe(true)
@@ -42,7 +42,7 @@ test('canceling socket startup closes the transport without waiting for its time
 test('a socket that brings nothing for 75 seconds is let go as broken, and each message, a heartbeat included, starts the silence again', async () => {
   jest.useFakeTimers()
   try {
-    const opening = connectAgentClient('ws://fixture')
+    const opening = connectConversationClient('ws://fixture')
     const socket = sockets.last()
     socket.open()
     const client = await opening
@@ -60,7 +60,7 @@ test('a socket that brings nothing for 75 seconds is let go as broken, and each 
     jest.advanceTimersByTime(1)
     expect(endings).toHaveLength(1)
     // A transport failure, which the runtime answers by connecting again.
-    expect(endings[0]).toBeInstanceOf(AgentSocketError)
+    expect(endings[0]).toBeInstanceOf(ConversationSocketError)
     expect(socket.closed).toBe(true)
   } finally {
     jest.useRealTimers()

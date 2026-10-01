@@ -24,7 +24,7 @@ import {
   composerRemoteAttachment,
   isComposerFile,
 } from '@demicodes/web-ui/agent/message-input/attachments'
-import { connectAgentClient } from '@demicodes/web-ui/transport/agent-socket'
+import { connectConversationClient } from '@demicodes/web-ui/transport/conversation-socket'
 import { apiRequest, apiUrl, jsonBody, readResponse } from '../api/client'
 import {
   attachedHostsSchema,
@@ -306,7 +306,7 @@ export const useConversations = defineStore('conversations', () => {
 
   function persisted(conversation: Conversation): SavedDraft {
     const local = conversation.persistence !== 'synced'
-    // The browser keeps the composer's text only while the backend does not
+    // The web browser keeps the composer's text only while the backend does not
     // have it: a new conversation's, or a change not yet confirmed.
     const unsaved = local || hasUnsavedDraft(conversation)
     const sending = new Set(conversation.pendingSend?.fileIds ?? [])
@@ -363,9 +363,9 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Saves the drafts this page changed since it last saved or restored them.
-   * Other tabs of this browser save to the same storage, so a draft this page
-   * did not change may be another tab's newer one; writing this page's copy
-   * of it would replace that.
+   * Other tabs of this web browser save to the same storage, so a draft this
+   * page did not change may be another tab's newer one; writing this page's
+   * copy of it would replace that.
    */
   function saveDrafts(): void {
     const userId = session.user?.id ?? product.snapshot?.user.id
@@ -408,8 +408,8 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Writes, as the page closes, each composer's text the backend does not
-   * have yet where the browser writes it at once; the IndexedDB writes still
-   * under way may be lost with the page.
+   * have yet where the web browser writes it at once; the IndexedDB writes
+   * still under way may be lost with the page.
    */
   function keepLastWords(): void {
     const userId = session.user?.id
@@ -582,7 +582,7 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
-  /** A file of a draft this browser kept, as the composer carries it. */
+  /** A file of a draft this web browser kept, as the composer carries it. */
   function savedAttachment(file: SavedFile | Extract<ProductAttachment, { kind: 'reference' }>): ProductAttachment {
     if (file.kind === 'reference') {
       return file
@@ -594,7 +594,7 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
-  /** Where an uploaded picture loads from, for a file whose bytes this browser does not have. */
+  /** Where an uploaded picture loads from, for a file whose bytes this web browser does not have. */
   function blobPicture(upload: { mediaType: string; sha256: string }): string | undefined {
     return upload.mediaType.startsWith('image/')
       ? apiUrl(`/blobs/${upload.sha256}?${new URLSearchParams({ type: upload.mediaType })}`)
@@ -743,7 +743,7 @@ export const useConversations = defineStore('conversations', () => {
             window.location.href,
           )
           url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-          return connectAgentClient(url.toString(), signal)
+          return connectConversationClient(url.toString(), signal)
         },
         onEvent: (next) => {
           applyConversationEvent(conversation, next)

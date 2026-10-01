@@ -39,7 +39,7 @@ pub async fn failure_facts(assembly: &ProviderAssembly, blocks: &[Block]) -> Opt
     (!failures.is_empty()).then_some(failures)
 }
 
-/// The provider of the entry `provider`. Facts only add to what the browser
+/// The provider of the entry `provider`. Facts only add to what the web app
 /// receives anyway, so an entry that is gone or cannot be read yields no
 /// reader rather than holding back the transcript.
 async fn reader(assembly: &ProviderAssembly, provider: &str) -> Option<Arc<dyn Provider>> {

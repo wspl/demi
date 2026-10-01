@@ -1,6 +1,6 @@
 //! The HTTP edge (`backend.md` § Runtime model): the listener and router, the
 //! session gate, request extractors and body limits, error codes and the
-//! browser build. Handlers are thin: they parse, authenticate, and call a
+//! web app build. Handlers are thin: they parse, authenticate, and call a
 //! shared service or a shard.
 
 mod accounts;
@@ -160,9 +160,9 @@ impl FromRef<AppState> for Shards {
     }
 }
 
-/// The routes. The browser's routes, the entrances that sign a browser in
-/// and every route the session cookie authenticates, refuse a request that
-/// could act from a page other than the product's before anything else.
+/// The routes. The web app's routes, the entrances that sign a user in and
+/// every route the session cookie authenticates, refuse a request that could
+/// act from a page other than the product's before anything else.
 /// Every `/api` path, unknown paths included, passes the session gate,
 /// except those outside `session_api`: the entrances, setup and login, the
 /// routes that authenticate with device credentials instead, and the
@@ -272,16 +272,16 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .method_not_allowed_fallback(no_route)
         // After the fallbacks, so the gate covers them too.
         .layer(middleware::from_fn_with_state(state.services.clone(), gate::session));
-    let browser_routes = Router::new()
+    let web_app_routes = Router::new()
         .route("/api/setup", get(auth::setup_status).post(auth::setup))
         .route("/api/auth/login", post(auth::login))
         .route("/api/sync", get(sync::channel))
         .method_not_allowed_fallback(no_route)
         .nest("/api", session_api)
-        // After the nest, so the check covers every browser route, the
+        // After the nest, so the check covers every web app route, the
         // unknown paths under `/api` included.
         .layer(middleware::from_fn_with_state(state.site.clone(), gate::product_pages));
-    let app = Router::new().merge(runners_and_downloads).merge(browser_routes);
+    let app = Router::new().merge(runners_and_downloads).merge(web_app_routes);
     let app = match web_directory {
         Some(directory) => assets::serve(app, directory),
         None => app.fallback(no_route),

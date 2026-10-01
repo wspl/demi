@@ -5,9 +5,10 @@ import IconButton from '../ui/IconButton.vue'
 import TextInput from '../ui/TextInput.vue'
 
 /**
- * The address bar both kinds of browser tab share
- * (`web-application.md` § Package responsibilities): a Host tab has its own
- * history, a local tab keeps a framed page's history to itself.
+ * The address bar both kinds of web page tab share
+ * (`web-application.md` § Package responsibilities): a `browser` tab of the
+ * conversation browser has its own history, a `page` tab keeps a framed
+ * page's history to itself.
  */
 withDefaults(
   defineProps<{
@@ -33,7 +34,7 @@ const field = ref<InstanceType<typeof TextInput> | null>(null)
 /** The pointer that is giving the field its focus; its release must not drop the selection the focus made. */
 let focusing = false
 
-// A click into the address selects it whole, as a browser's does: the next thing typed replaces it.
+// A click into the address selects it whole, as a web browser's does: the next thing typed replaces it.
 function pointerDown(event: PointerEvent): void {
   focusing = event.target !== document.activeElement
 }

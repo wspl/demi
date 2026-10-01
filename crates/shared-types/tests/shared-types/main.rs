@@ -1,6 +1,7 @@
 //! The `core` contract at its boundary: what a stored or received value
 //! decodes to and back, what is refused, the lookups the product shares with
-//! the browser, and the schemas the browser's validators are generated from.
+//! the web app, and the schemas the web app's validators are generated
+//! from.
 
 mod blocks;
 mod encodings;

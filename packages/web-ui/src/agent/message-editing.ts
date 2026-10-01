@@ -80,7 +80,7 @@ export function editHasContent(state: MessageEditState): boolean {
   return state.request.content.some((part) => part.type !== 'text' || part.text.trim())
 }
 
-/** The browser exposes editing only for the latest explicit user submission. */
+/** The web app exposes editing only for the latest explicit user submission. */
 export function lastEditableUserMessageId(blocks: readonly MessageListBlock[]): string | null {
   return blocks.findLast((block) => block.type === 'user')?.id ?? null
 }

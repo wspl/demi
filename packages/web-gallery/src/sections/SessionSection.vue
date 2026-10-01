@@ -146,11 +146,11 @@ const panelActiveConversationId = ref<string | null>('c-login')
 /**
  * One work-panel specimen's state, held by the gallery as the product's store
  * holds it: the fixed views, the selection and tabs, and the `browser` kind
- * over the gallery's own browser, or over the one the specimen supplies. The
- * kind reads that browser's tabs whenever the page is shown again, so a panel
- * whose strip starts empty supplies a browser without tabs. A specimen can
- * also say whether this browser decodes the pictures; by default it asks the
- * browser, as the product does.
+ * over the gallery's own conversation browser, or over the one the specimen
+ * supplies. The kind reads that browser's tabs whenever the page is shown
+ * again, so a panel whose strip starts empty supplies a conversation browser
+ * without tabs. A specimen can also say whether the web browser decodes the
+ * pictures; by default it asks the web browser, as the product does.
  */
 function useWorkTabs(
   selection: string,
@@ -292,7 +292,8 @@ const sessionFiles: ConversationFiles = {
 // The tabs specimen starts on an empty strip, with the globe-plus add control.
 const exhibitWork = useWorkTabs('file', { tabs: galleryBrowserTabs([]) })
 const editWork = useWorkTabs('change')
-// The gallery's own browser stands behind every specimen's `browser` kind; this one lists its tabs.
+// The gallery's own conversation browser stands behind every specimen's `browser`
+// kind; this one lists its tabs.
 void editWork.browser.refresh()
 provideEditSelection(editWork.selectEdit)
 const changeUncommitted = useChangeTab('uncommitted', 'src/auth/cookie.ts', { uncommitted: workspace.changes, conversation: null })
@@ -319,7 +320,7 @@ const changeStale = useChangeTab('uncommitted', 'src/auth/cookie.ts', {
   conversation: null,
   uncommitted: createGalleryChangeSet(200, { truncated: true, failure: 'The device is offline.' }),
 })
-// A page opened the way an expose row opens it, with the expose glyph, beside the browser's own tabs.
+// A page opened the way an expose row opens it, with the expose glyph, beside the conversation browser's own tabs.
 const browserWork = useWorkTabs('change', { path: '' })
 void browserWork.browser.refresh()
 browserWork.add(pageTabKind.kind, exposePageTab({
@@ -341,7 +342,8 @@ async function closeOnDevice() {
   await browserWork.browser.api.close(tab)
   await browserWork.browser.refresh()
 }
-// The same browser in a viewer's browser that cannot decode H.264, such as a Chromium without proprietary codecs.
+// The same conversation browser, viewed in a web browser that cannot decode H.264, such as a Chromium without
+// proprietary codecs.
 const undecodedWork = useWorkTabs('change', { path: '', pictures: async () => false })
 void undecodedWork.browser.refresh()
 // The Session view is the product's ChatSession over a scripted runtime; Turns and Stream replay one flow each.
@@ -1791,7 +1793,7 @@ onBeforeUnmount(() => {
                 @close="productWould('The work panel closes')"
               />
             </div>
-            <!-- What the agent's close, or a browser that ended, does to the tab being shown. -->
+            <!-- What the agent's close, or a conversation browser that ended, does to the tab being shown. -->
             <div class="mt-2 flex items-center gap-2 text-[12px] text-fg-muted">
               <Button size="sm" :disabled="shownBrowserTab === null" @click="closeOnDevice">Close the page on the device</Button>
               <span>the shown browser tab stays, and says so</span>

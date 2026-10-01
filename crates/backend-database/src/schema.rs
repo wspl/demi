@@ -91,7 +91,7 @@ CREATE TABLE exposes (
 CREATE INDEX exposes_expiry ON exposes (expires_at);
 CREATE INDEX exposes_owner ON exposes (user_id, expires_at);
 
--- The conversation index. The browser chooses a conversation's id and its
+-- The conversation index. The web app chooses a conversation's id and its
 -- case is kept, but no two ids differ only in case: each names a database
 -- file, and a file system may ignore case. The target is Cloud (optionally a
 -- directory on it), a device directory or a workspace, checked per kind. The

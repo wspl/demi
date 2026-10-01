@@ -3,7 +3,7 @@
 //! and reads the quota a live response reports; the account's snapshot
 //! store; the one merge both paths update the snapshot by; and the helpers a
 //! source reads a vendor's windows with. The snapshot's shape is `core`'s,
-//! because the browser receives it.
+//! because the web app receives it.
 
 use std::sync::{Arc, Mutex, PoisonError};
 

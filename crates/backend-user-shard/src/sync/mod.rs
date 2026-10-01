@@ -1,8 +1,8 @@
-//! The pages' synchronization channels (`backend.md` § Browser
+//! The pages' synchronization channels (`backend.md` § Page
 //! synchronization, `web-api.md` § Page synchronization): the product state
 //! and its parts as a channel reads them, and the channel's task in the
 //! user's shard. Every change marks the parts it changed in the registry of
-//! `backend-sync`.
+//! `backend-page-sync`.
 
 mod channel;
 mod state;

@@ -168,14 +168,14 @@ impl<'de> Deserialize<'de> for Schema {
 }
 
 /// How a command runs: as a call to the backend, or as an operation of a
-/// native command package.
+/// command package.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LeafKind<B = Binding> {
     Rpc,
     Native(B),
 }
 
-/// The native package operation a declaration names. The manifest pins it to
+/// The command package operation a declaration names. The manifest pins it to
 /// the descriptor the backend selected for the package ([`Node::pin`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -184,7 +184,7 @@ pub struct NativeOperation {
     pub operation: String,
 }
 
-/// The native package operation a command runs, and the digest of the
+/// The command package operation a command runs, and the digest of the
 /// package descriptor that serves it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

@@ -2,9 +2,9 @@ import type { ClientFrame } from '@demicodes/protocol'
 
 /**
  * A connection that carries frames; it does not vouch for them. What arrives
- * is handed over as a JSON value, and `AgentClient` validates it.
+ * is handed over as a JSON value, and `ConversationClient` validates it.
  */
-export interface AgentClientTransport {
+export interface ConversationClientTransport {
   send(frame: ClientFrame): void
   onFrame(handler: (frame: unknown) => void): () => void
   /** Called once when the connection ends without `close` being called. */
@@ -23,7 +23,7 @@ export interface SocketClose {
   reason: string
 }
 
-/** The part of a browser `WebSocket` the transport uses. */
+/** The part of the web browser's `WebSocket` the transport uses. */
 export interface WebSocketLike {
   send(data: string): void
   close(): void
@@ -40,7 +40,7 @@ export interface WebSocketLike {
  * message. A message that is not JSON text is a peer that does not speak the
  * protocol, and the transport closes rather than skipping it.
  */
-export function createWebSocketTransport(socket: WebSocketLike): AgentClientTransport {
+export function createWebSocketTransport(socket: WebSocketLike): ConversationClientTransport {
   const frameHandlers = new Set<(frame: unknown) => void>()
   const closeHandlers = new Set<(error: Error) => void>()
 

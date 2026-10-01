@@ -1,7 +1,7 @@
 //! Each agent node's Host and shell environments (`sessions-and-targets.md`
 //! § Host operations, `commands.md` § Handle an rpc call). A node's Host is
 //! the conversation's current main Host, which the host access admits and
-//! lets go at once. A node's environment on it is host-remote's: each of its
+//! lets go at once. A node's environment on it is backend-remote-host's: each of its
 //! jobs runs inside the conversation's host access and is refused once the
 //! conversation's Host is another, each job's command context names the
 //! conversation and the node, and while the environment lives the node's
@@ -98,7 +98,7 @@ impl From<HostAccessError> for HostError {
 pub struct ShardShellEnvironments {
     /// Weak: the shard owns the agent server that holds this factory.
     shard: Weak<dyn HostShard>,
-    /// The native packages a node's commands bind to.
+    /// The command packages a node's commands bind to.
     catalog: CommandCatalog,
 }
 

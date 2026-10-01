@@ -11,7 +11,7 @@ import {
 
 // The Rust contract tests' fixtures and cases: the generated schemas must
 // accept and refuse what the Rust types accept and refuse, except where the
-// browser's schema is tolerant or a rule is Rust's alone (`contracts.md`
+// web app's schema is tolerant or a rule is Rust's alone (`contracts.md`
 // § Strict and tolerant objects, § Rules only Rust checks).
 const crates = resolve(import.meta.dir, '../../../../crates')
 
@@ -24,7 +24,7 @@ const mutationSchema = z.strictObject({
   value: jsonSchema.optional(),
   remove: z.array(z.string()).optional(),
   set: z.record(z.string(), jsonSchema).optional(),
-  browserRefuses: z.boolean().optional(),
+  webAppRefuses: z.boolean().optional(),
 })
 type Mutation = z.infer<typeof mutationSchema>
 
@@ -93,7 +93,7 @@ function checkTable(schema: z.ZodType, fixtures: Json[], key: string, table: Tab
     const result = schema.safeParse(mutated(fixtures, key, mutation))
     expect({ why: mutation.why, refused: !result.success }).toEqual({
       why: mutation.why,
-      refused: mutation.browserRefuses ?? true,
+      refused: mutation.webAppRefuses ?? true,
     })
   }
   for (const mutation of table.accepted ?? []) {
@@ -119,7 +119,7 @@ describe('blocks', () => {
     }
   })
 
-  test('the browser refuses what the Rust decode refuses, except unknown fields and Rust-only rules', () => {
+  test('the web app refuses what the Rust decode refuses, except unknown fields and Rust-only rules', () => {
     checkTable(blockSchema, blocks, 'id', blockTable)
   })
 })
@@ -131,7 +131,7 @@ describe('client frames', () => {
     }
   })
 
-  test('the browser refuses what the backend refuses, except the content rules Rust alone checks', () => {
+  test('the web app refuses what the backend refuses, except the content rules Rust alone checks', () => {
     checkTable(clientFrameSchema, clientFrames, 'type', clientFrameTable)
   })
 })

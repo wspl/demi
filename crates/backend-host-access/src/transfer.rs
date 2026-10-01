@@ -1,11 +1,12 @@
 //! File transfers (`sessions-and-targets.md` § Host operations): a file's
-//! bytes between the browser and the conversation's Host, for as long as
-//! the browser takes. The shard admits a transfer like any operation and
-//! hands the edge the pipe end and a lease; an archive, a target change or a
-//! detach ends the conversation's open transfers instead of waiting for
-//! them. This module also decides what a download answers from the file's
-//! metadata: its version, a conditional request, and the part a `Range`
-//! asks for (`web-api.md` § File text and working tree changes).
+//! bytes between the user's browser and the conversation's Host, for as long
+//! as the user's browser takes. The shard admits a transfer like any
+//! operation and hands the edge the pipe end and a lease; an archive, a
+//! target change or a detach ends the conversation's open transfers instead
+//! of waiting for them. This module also decides what a download answers
+//! from the file's metadata: its version, a conditional request, and the
+//! part a `Range` asks for (`web-api.md` § File text and working tree
+//! changes).
 
 use std::cell::{Cell, RefCell};
 use std::future::Future;
@@ -288,8 +289,8 @@ pub fn file_version(stat: &FileStat) -> String {
     format!("W/\"{:x}-{}\"", stat.size, hexadecimal(stat.modified.as_millisecond()))
 }
 
-/// `value` in hexadecimal, a negative one with a minus sign, as the
-/// browser writes a number in base 16.
+/// `value` in hexadecimal, a negative one with a minus sign, as
+/// JavaScript's `toString(16)` writes it.
 fn hexadecimal(value: i64) -> String {
     if value < 0 {
         format!("-{:x}", value.unsigned_abs())

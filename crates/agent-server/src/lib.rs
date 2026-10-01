@@ -1,4 +1,4 @@
-//! The agent server (`crates-and-packages.md` § agent; behavior in
+//! The agent server (`crates-and-packages.md` § agent-server; behavior in
 //! `runtime.md`). An [`AgentServer`] per user shard holds each open
 //! conversation's [`Tree`]; a tree's [`Node`]s each run an
 //! [`AgentSession`](demi_agent_session::AgentSession) with the standard tools

@@ -122,7 +122,7 @@ test('the viewport menu offers Web and Mobile, and shows what the agent set', ()
   expect(custom.at(-1)!.selectable).toBe(false)
 })
 
-test('the viewer platform comes from its own browser', () => {
+test('the viewer platform comes from its own web browser', () => {
   expect(viewerPlatform({ platform: 'MacIntel', userAgent: 'Mozilla/5.0 (Macintosh)' })).toBe('mac')
   expect(viewerPlatform({ platform: 'Win32', userAgent: 'Mozilla/5.0 (Windows NT 10.0)' })).toBe('windows')
   expect(viewerPlatform({ platform: '', userAgent: 'Mozilla/5.0 (X11; Linux x86_64)' })).toBe('linux')

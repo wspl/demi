@@ -20,7 +20,7 @@ backend adapters                    preview handlers
         +------------> web-ui <------------+
                          |
                          v
-                    conversation-client     AgentClient, transport, patch application
+                    conversation-client     ConversationClient, transport, patch application
                          |
                          v
                       protocol       generated schemas and types
@@ -30,7 +30,7 @@ backend adapters                    preview handlers
 - `web` supplies product data, state, routing, and API handlers.
 - `web-gallery` supplies fixtures and handlers to demonstrate the same components.
 - `@demicodes/conversation-client` is the client side of a conversation stream:
-  `AgentClient` and its waiters, the WebSocket transport, and the one function
+  `ConversationClient` and its waiters, the WebSocket transport, and the one function
   that applies transcript patches.
 - `@demicodes/protocol` is generated. It holds the schemas and types of the
   Rust contracts the page reads, such as agent frames, transcript blocks,
@@ -137,7 +137,7 @@ delay those events.
 Every REST answer, synchronization message and conversation frame is checked
 against its generated schema before the page uses it. `web`'s API adapters
 check each REST response before applying it to state, the synchronization
-module checks each message, and `AgentClient` checks every frame it receives,
+module checks each message, and `ConversationClient` checks every frame it receives,
 with the transcript blocks and tool views inside it. [Web API](web-api.md)
 defines the HTTP contracts; [Authentication](#authentication) defines session
 integration.
@@ -465,7 +465,7 @@ Changes require the affected web app package typechecks, appropriate mocked
 integration tests, and verification in product and gallery. Tests use
 disposable accounts and captured mail, and never call real models. The
 web app contract suite in `web` runs the product's API client and
-`AgentClient` against the backend executable
+`ConversationClient` against the backend executable
 ([Web app contract suite](../delivery/scenarios.md#web-app-contract-suite)).
 Backend acceptance and deployment requirements belong to
 [Delivery and acceptance](../delivery/roadmap.md).

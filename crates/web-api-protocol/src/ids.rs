@@ -1,4 +1,4 @@
-//! Identifiers of the records the browser names.
+//! Identifiers of the records the web app names.
 
 use std::sync::LazyLock;
 
@@ -43,7 +43,7 @@ demi_shared_types::id!(
     AttachmentId
 );
 
-/// What a UUID looks like where the browser checks one: RFC 9562 versions 1
+/// What a UUID looks like where the web app checks one: RFC 9562 versions 1
 /// to 8, the nil UUID and the max UUID, in either case.
 const UUID_PATTERN: &str = "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$";
 
@@ -62,7 +62,7 @@ fn uuid(text: &str) -> Result<(), NotUuid> {
 }
 
 demi_shared_types::id!(
-    /// A conversation's id, which the browser chooses: a UUID, kept in the
+    /// A conversation's id, which the web app chooses: a UUID, kept in the
     /// case it arrived in. No two conversations have ids that differ only in
     /// case (`storage.md` § Encodings and digests).
     ConversationId,

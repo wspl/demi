@@ -1,9 +1,9 @@
-//! What the product reads from a Host's files for the browser: directory
+//! What the product reads from a Host's files for the web app: directory
 //! listings and file text (`web-api.md` § Device files and remote
 //! references, § File text and working tree changes). Text is what edit
 //! tracking and line counts read as text, UTF-8 without a NUL byte, up to
 //! the size an edit snapshot keeps, so a file the runner counted lines for
-//! is one the browser shows.
+//! is one the web app shows.
 
 use bytes::Bytes;
 use demi_command_protocol::EDIT_FILE_BYTES;

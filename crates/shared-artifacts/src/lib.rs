@@ -1,4 +1,4 @@
-//! Verified bytes (`crates-and-packages.md` § artifact): downloads over HTTPS
+//! Verified bytes (`crates-and-packages.md` § shared-artifacts): downloads over HTTPS
 //! (plain HTTP too for a caller whose digest came over a connection it
 //! trusts) with a declared size and SHA-256, and measured ones for a release
 //! being prepared, digests, durable atomic publication, release publication,

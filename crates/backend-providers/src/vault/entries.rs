@@ -104,7 +104,7 @@ impl ProviderEntry {
         }
     }
 
-    /// The entry as the browser sees it: never its key.
+    /// The entry as the web app sees it: never its key.
     pub fn dto(&self) -> ProviderDto {
         let config = match &self.credential {
             EntryCredential::ApiKey(config) => Some(config),

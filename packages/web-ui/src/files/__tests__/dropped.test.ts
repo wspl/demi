@@ -9,7 +9,7 @@ function fileEntry(name: string, size: number): DroppedFile {
   }
 }
 
-/** A directory whose reader hands its entries over two at a time, as a browser does a hundred at a time. */
+/** A directory whose reader hands its entries over two at a time, as a web browser does a hundred at a time. */
 function directoryEntry(name: string, children: DroppedEntry[]): DroppedDirectory {
   return {
     name,

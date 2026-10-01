@@ -277,7 +277,7 @@ export const fullPageTool = binaryStdoutCall(
   blobImage(galleryBlobs.fullPage),
 )
 
-/** A recording the agent printed: it plays in the browser's player. */
+/** A recording the agent printed: it plays in the web browser's player. */
 export const recordingTool = binaryStdoutCall(
   {
     id: 'tool-recording',

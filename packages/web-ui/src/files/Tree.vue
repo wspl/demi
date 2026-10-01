@@ -17,7 +17,7 @@ import { TREE_ROW_PITCH_PX, TREE_ROW_PX, stickyTreeRows, treeBlock, type TreeDro
  * the slots `mark`, `name` and `trailing`, given the row; `tooltip` covers a
  * row with a hint; `empty` fills the tree while it has no rows. A right-click
  * asks the host for a menu (`menu`), on a row or, given no row, on the tree's
- * empty space; a host with nothing to offer leaves the browser's own.
+ * empty space; a host with nothing to offer leaves the web browser's own.
  *
  * Where a drag would drop (`dropTarget`) lights under a dashed line: a
  * directory row with the rows it holds, its pinned copies too, or the whole

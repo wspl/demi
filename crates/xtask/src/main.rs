@@ -25,7 +25,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Generates the browser's TypeScript contracts from the Rust contract types.
+    /// Generates the web app's TypeScript contracts from the Rust contract types.
     Contracts,
     /// Builds the native executables and packages their releases.
     #[command(subcommand)]
