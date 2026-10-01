@@ -12,7 +12,7 @@ The `demi browser` command family, including readable output, optional
 JSON, image bytes, targeting, and examples, is specified in
 [Browser automation](../browser/browser.md#command-contract). It uses this
 command contract rather than a separate shell or model tool loop. The
-`demi host expose` group is specified in [Host expose](expose.md#commands),
+`demi expose` group is specified in [Host expose](expose.md#commands),
 the `demi agent` group in [Subagents](../agent/subagents.md), and the
 `demi shell` group in [The whole output](../agent/runtime.md#the-whole-output).
 

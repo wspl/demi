@@ -21,7 +21,7 @@ A conversation is active while any of these holds:
 - A Host operation admitted through the conversation's host access is in
   progress. An operation the user does on what runs there, such as closing or
   navigating one of the
-  [conversation browser's tabs](../product/web-api.md#conversation-browser-tabs),
+  [conversation browser's tabs](../browser/live-view.md#the-tab-methods),
   is admitted and ends at once, so it restarts the window.
 - A [user stream](native-runtime.md#user-streams) of the conversation is open,
   such as the [live browser view](../browser/live-view.md): someone is watching
