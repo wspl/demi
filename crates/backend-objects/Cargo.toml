@@ -10,6 +10,7 @@ rust-version.workspace = true
 # crate has no integration tests (`crates-and-packages.md` § Module layout);
 # no doc examples.
 doctest = false
+bench = false
 
 [features]
 # An S3 fake (`fake_s3::FakeS3`) and an object store that counts what reaches

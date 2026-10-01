@@ -11,6 +11,7 @@ rust-version.workspace = true
 # crate has no integration tests (`crates-and-packages.md` § Module layout);
 # no doc examples.
 doctest = false
+bench = false
 
 [features]
 # The hold of the runners' hellos at the edge's token lookup

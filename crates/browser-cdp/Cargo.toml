@@ -10,6 +10,7 @@ rust-version.workspace = true
 # (`crates-and-packages.md` § Module layout); no doc examples.
 test = false
 doctest = false
+bench = false
 
 [features]
 # Evaluation in a target no command addresses, for the Chrome tests.
