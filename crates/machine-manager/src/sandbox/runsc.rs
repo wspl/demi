@@ -270,13 +270,13 @@ mod tests {
 
     #[test]
     fn every_command_names_the_state_root_and_the_profile() {
-        let runsc = Runsc::new(Tools::placeholder(), Path::new("/run/demi-machines"), true);
+        let runsc = Runsc::new(Tools::placeholder(), Path::new("/run/demi-machine-manager"), true);
         let args = runsc.args([OsStr::new("pause"), OsStr::new("demi-a")]);
         let args: Vec<_> = args.iter().map(|arg| arg.to_str().unwrap()).collect();
         assert_eq!(
             args,
             [
-                "--root=/run/demi-machines/runsc",
+                "--root=/run/demi-machine-manager/runsc",
                 "--platform=systrap",
                 "--network=sandbox",
                 "--overlay2=none",

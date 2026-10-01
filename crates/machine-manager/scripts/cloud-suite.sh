@@ -51,7 +51,7 @@ done
 [ "$(id -u)" = 0 ] || { echo 'run as root' >&2; exit 2; }
 [ -f "$image/manifest.json" ] || { echo "no Cloud image release at $image" >&2; exit 2; }
 [ -f "$native" ] || { echo "no native configuration at $native" >&2; exit 2; }
-manager="$repository/target/debug/demi-machines"
+manager="$repository/target/debug/demi-machine-manager"
 [ -x "$manager" ] || {
   echo "no manager at $manager: build the selection first" >&2
   exit 2
@@ -90,7 +90,7 @@ snapshot() {
   local into=$1
   mkdir -p "$into"
   pgrep -a -f '^runsc' | sort > "$into/runsc-processes" || true
-  pgrep -a -x demi-machines | sort > "$into/managers" || true
+  pgrep -a -x demi-machine-manager | sort > "$into/managers" || true
   awk '{ print $4, $5, $9, $10 }' /proc/self/mountinfo | sort > "$into/mounts"
   for backing in /sys/block/loop*/loop/backing_file; do
     # Without an attached loop device the pattern matches nothing.
@@ -210,8 +210,8 @@ stand_in_namespace=$(readlink "/proc/$stand_in/ns/pid_for_children")
 nsenter --mount="/proc/$stand_in/ns/mnt" --pid="/proc/$stand_in/ns/pid_for_children" -- \
   taskset -c "$cpu" unshare --mount --propagation slave -- \
   taskset -c "$cpus" env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
-  DEMI_MACHINES_SOCKET="$socket" \
-  DEMI_MACHINES_DATA="$state" \
+  DEMI_MACHINE_MANAGER_SOCKET="$socket" \
+  DEMI_MACHINE_MANAGER_DATA="$state" \
   DEMI_MANAGED_RUNSC="$runsc" \
   DEMI_MANAGED_IMAGE="$image" \
   DEMI_MANAGED_BACKEND_URL="$url" \

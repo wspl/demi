@@ -324,22 +324,22 @@ mod tests {
         let linux = ["aarch64-unknown-linux-musl", "x86_64-unknown-linux-musl"];
         let cancel = CancellationToken::new();
         build(&artifacts, Executable::Machines, &linux, "manager");
-        let output = root.path().join("demi-machines");
+        let output = root.path().join("demi-machine-manager");
         package(&options(Executable::Machines, &artifacts, &output, &[]), &cancel)
             .await
             .unwrap();
         let mut targets = serde_json::Map::new();
         for target in linux {
-            let path = artifacts.join(target).join("release/demi-machines");
+            let path = artifacts.join(target).join("release/demi-machine-manager");
             let digest = demi_shared_artifacts::digest(&path, u64::MAX, &cancel).await.unwrap();
             targets.insert(target.to_owned(), serde_json::json!({"sha256": digest.sha256, "size": digest.size}));
         }
         let record: serde_json::Value = serde_json::from_slice(&std::fs::read(output.join(RELEASE)).unwrap()).unwrap();
-        let expected = serde_json::json!({"executable": "demi-machines", "version": VERSION, "targets": targets});
+        let expected = serde_json::json!({"executable": "demi-machine-manager", "version": VERSION, "targets": targets});
         assert_eq!(record, expected);
         assert_eq!(names(&output), [linux[0], RELEASE, linux[1]]);
         assert_eq!(
-            std::fs::read(output.join(linux[1]).join("demi-machines")).unwrap(),
+            std::fs::read(output.join(linux[1]).join("demi-machine-manager")).unwrap(),
             b"manager x86_64-unknown-linux-musl"
         );
         // Another build of the same version is refused: a published version

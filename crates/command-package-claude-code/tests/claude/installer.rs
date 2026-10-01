@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tokio_util::sync::CancellationToken;
 
-use demi_claude::{
+use demi_claude_code::{
     install::{EnsureError, Installer, Roots},
     platform::{self, Loaders, platform_key},
 };

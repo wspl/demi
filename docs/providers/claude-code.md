@@ -93,7 +93,7 @@ later install.
 
 ## The package
 
-`demi.claude` is a native package of its own
+`demi.claude-code` is a native package of its own
 ([Bind an exact package](../execution/native-runtime.md#bind-an-exact-package)),
 not part of Demi's other packages: the runner knows nothing about Claude Code, and
 removing the package and the backend's use of it leaves the rest of Demi as it
@@ -101,8 +101,8 @@ was. It has two operations:
 
 | Operation | Input | Answer |
 |---|---|---|
-| `claude.ensure` | A release record: `{ version, platforms }`, each platform's official `url`, byte `size` and `sha256` | `{ version, path }`: the executable's absolute path |
-| `claude.status` | — | `{ platform, installed }`: this machine's platform key and the versions it has, newest first |
+| `claude-code.ensure` | A release record: `{ version, platforms }`, each platform's official `url`, byte `size` and `sha256` | `{ version, path }`: the executable's absolute path |
+| `claude-code.status` | — | `{ platform, installed }`: this machine's platform key and the versions it has, newest first |
 
 The backend and the package decode these records with the same Rust types
 ([Contract crates](../architecture/contracts.md#contract-crates)). The backend
@@ -125,7 +125,7 @@ and the CLI's `linux-*` and `linux-*-musl` builds are not interchangeable. A
 platform the release does not carry is `unsupported_platform`, never another
 platform's build.
 
-`claude.ensure` installs under the Host user's `.demi/claude/<version>/`; a
+`claude-code.ensure` installs under the Host user's `.demi/claude/<version>/`; a
 Cloud image may carry a version under `/opt/demi/claude/<version>/`, which is
 used when it is the wanted one. It downloads to a temporary file, enforces the
 size, verifies the digest, and only then publishes the executable atomically,
@@ -135,7 +135,7 @@ verification is removed and the install fails; there is no fallback to another
 version, location or executable.
 
 The backend starts the CLI through the ordinary Host process interface with the
-path `claude.ensure` answered, the account's token, a configuration home of
+path `claude-code.ensure` answered, the account's token, a configuration home of
 Demi's, and the CLI's own updater turned off. Demi is the only thing that
 changes the version.
 
@@ -193,7 +193,7 @@ backend, on the user's shard                 provider-claude-code
                                                   |
   placement.start(spawn) <------------------------+  a run needs a new process
     machine access: wake or admit the Cloud
-    demi.claude: claude.status, claude.ensure when needed
+    demi.claude-code: claude-code.status, claude-code.ensure when needed
     make ~/.demi/claude/run and ~/.demi/claude/config
     spawn(executable, run dir, config dir) -> the provider's spawn request
     Host process interface: start it, then release the Cloud's admission

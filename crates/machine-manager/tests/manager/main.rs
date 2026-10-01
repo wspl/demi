@@ -20,7 +20,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use demi_machines::{
+use demi_machine_manager::{
     config::RUNTIME_DIRECTORY,
     sandbox::runsc::RuntimeRelease,
     testing::{CloudImage, RUNNER, TINI, entries},
@@ -28,7 +28,7 @@ use demi_machines::{
 use demi_machine_manager_protocol::image::Architecture;
 use rustix::process::{Pid, Signal, kill_process};
 
-const MANAGER: &str = env!("CARGO_BIN_EXE_demi-machines");
+const MANAGER: &str = env!("CARGO_BIN_EXE_demi-machine-manager");
 
 /// The handle and its owner record in the runtime directory
 /// (`namespace.rs`).
@@ -121,8 +121,8 @@ impl Settings {
             variables: vec![
                 ("PATH", "/usr/sbin:/usr/bin:/sbin:/bin".to_owned()),
                 ("NOTIFY_SOCKET", notify.display().to_string()),
-                ("DEMI_MACHINES_SOCKET", directory.join("machines.sock").display().to_string()),
-                ("DEMI_MACHINES_DATA", data.display().to_string()),
+                ("DEMI_MACHINE_MANAGER_SOCKET", directory.join("machines.sock").display().to_string()),
+                ("DEMI_MACHINE_MANAGER_DATA", data.display().to_string()),
                 ("DEMI_MANAGED_RUNSC", runsc.display().to_string()),
                 ("DEMI_MANAGED_IMAGE", image.display().to_string()),
                 ("DEMI_MANAGED_BACKEND_URL", "http://203.0.113.10:3271".to_owned()),

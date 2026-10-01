@@ -4,8 +4,8 @@
 //! reachable if it dies, and the next manager recovers them through it.
 //!
 //! ```text
-//! /run/demi-machines/mount-namespace              the handle: a bind of /proc/<pid>/ns/mnt
-//! /run/demi-machines/mount-namespace-owner.json   {"dataDir": ...}: whose state it holds
+//! /run/demi-machine-manager/mount-namespace              the handle: a bind of /proc/<pid>/ns/mnt
+//! /run/demi-machine-manager/mount-namespace-owner.json   {"dataDir": ...}: whose state it holds
 //! ```
 
 use std::{

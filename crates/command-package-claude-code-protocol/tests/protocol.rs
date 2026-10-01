@@ -1,4 +1,4 @@
-//! The `demi.claude` records and documents.
+//! The `demi.claude-code` records and documents.
 
 use demi_command_package_claude_code_protocol::{ErrorCode, Failure, Installed, Release, Reply, Status, is_version};
 use serde_json::json;

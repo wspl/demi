@@ -1861,11 +1861,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-claude"
+name = "demi-claude-code"
 version = "0.1.3"
 dependencies = [
  "bytes",
- "demi-claude",
+ "demi-claude-code",
  "demi-command-package-claude-code-protocol",
  "demi-command-protocol",
  "demi-command-sdk",
@@ -2061,25 +2061,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-machine-manager-protocol"
-version = "0.1.3"
-dependencies = [
- "demi-command-protocol",
- "demi-runner-protocol",
- "garde",
- "serde",
- "serde_json",
- "serde_plain",
- "thiserror",
-]
-
-[[package]]
-name = "demi-machines"
+name = "demi-machine-manager"
 version = "0.1.3"
 dependencies = [
  "clap",
+ "demi-machine-manager",
  "demi-machine-manager-protocol",
- "demi-machines",
  "demi-runner-protocol",
  "demi-shared-artifacts",
  "fs-err",
@@ -2106,6 +2093,19 @@ dependencies = [
  "walkdir",
  "which",
  "zstd 0.13.3",
+]
+
+[[package]]
+name = "demi-machine-manager-protocol"
+version = "0.1.3"
+dependencies = [
+ "demi-command-protocol",
+ "demi-runner-protocol",
+ "garde",
+ "serde",
+ "serde_json",
+ "serde_plain",
+ "thiserror",
 ]
 
 [[package]]

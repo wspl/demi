@@ -44,9 +44,9 @@ Each executable is built for the targets where it runs:
 | Executable | Targets | Reason |
 | --- | --- | --- |
 | `demi-runner` | All six | Paired devices run macOS, Linux, or Windows on arm64 or x86_64, and the Cloud guest runs Linux |
-| `demi-file`, `demi-browser`, `demi-claude` | All six | A published command package supplies its operations on every target ([Publish a complete release](../execution/native-runtime.md#publish-a-complete-release)) |
+| `demi-file`, `demi-browser`, `demi-claude-code` | All six | A published command package supplies its operations on every target ([Publish a complete release](../execution/native-runtime.md#publish-a-complete-release)) |
 | `demi-backend` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl`, `aarch64-apple-darwin`, `x86_64-apple-darwin` | Servers run Linux; a developer may also run the backend on a Mac, with the Cloud in a Lima VM ([Develop on a Mac with Lima](../guides/mac-development.md)) |
-| `demi-machines` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl` | The machine manager drives gVisor, Linux namespaces, cgroups, loop devices, and nftables, which exist only on Linux |
+| `demi-machine-manager` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl` | The machine manager drives gVisor, Linux namespaces, cgroups, loop devices, and nftables, which exist only on Linux |
 
 Linux executables link musl statically, so one file runs on any distribution
 and inside the Cloud guest, whatever C library the host has. Windows
@@ -172,10 +172,10 @@ cargo xtask native build \
 Without `--package` or `--target` options, `cargo xtask native build` builds
 the runner and the command programs for all six targets. Repeated
 `--package <crate>` options name the executables to build, including
-`demi-backend` and `demi-machines`. Repeated `--target <triple>` options name
+`demi-backend` and `demi-machine-manager`. Repeated `--target <triple>` options name
 the targets; without them each named executable is built for every target
 [Executables and targets](#executables-and-targets) gives it. A named target
-that a named executable does not run on, such as `demi-machines` for a macOS
+that a named executable does not run on, such as `demi-machine-manager` for a macOS
 target, is refused before anything builds. `--artifacts`
 selects the Cargo target directory; its default is `.cache/native-target`.
 
@@ -220,7 +220,7 @@ cargo xtask native package --package demi-file \
   --artifacts .cache/native-target --output .cache/releases/demi-file-<version>
 cargo xtask native package --package demi-browser \
   --artifacts .cache/native-target --output .cache/releases/demi-browser-<version>
-cargo xtask native package --package demi-claude \
+cargo xtask native package --package demi-claude-code \
   --artifacts .cache/native-target --output .cache/releases/demi-claude-<version>
 cargo xtask native package --package demi-runner \
   --artifacts .cache/native-target --output .cache/releases/runners
@@ -235,7 +235,7 @@ Each executable has its own kind of release:
   with the executable. The descriptor's id and operations are the ones the
   package's contract crate declares (`command-package-file-protocol` for `demi-file`,
   `command-package-browser-protocol` for `demi-browser`, `command-package-claude-code-protocol` for
-  `demi-claude`), the operation list the program routes by, so a release
+  `demi-claude-code`), the operation list the program routes by, so a release
   cannot advertise an operation the program does not serve; its version is
   the workspace version.
   [Bind an exact package](../execution/native-runtime.md#bind-an-exact-package)
@@ -255,7 +255,7 @@ Each executable has its own kind of release:
 
   ```json
   {
-    "executable": "demi-machines",
+    "executable": "demi-machine-manager",
     "version": "0.1.3",
     "targets": {
       "x86_64-unknown-linux-musl": { "sha256": "<SHA-256 in hex>", "size": 8523528 }
@@ -381,15 +381,15 @@ namespaces of its own:
 
 ```sh
 cargo test --workspace --features demi-runner/test-fixtures --no-run
-sudo target/debug/build/demi-machines/<hash>/out/demi_machines-<hash> --include-ignored
+sudo target/debug/build/demi-machine-manager/<hash>/out/demi_machine_manager-<hash> --include-ignored
 ```
 
 The Claude Code suite runs as an ordinary user, as the Cloud's runner does:
 the CLI refuses the provider's permission mode as root. Its local
-distribution serves HTTPS, since `demi.claude` downloads nothing else, and
+distribution serves HTTPS, since `demi.claude-code` downloads nothing else, and
 `SSL_CERT_FILE` names the CA the suite carries for it, for the test process and
 the runners it starts only. The backend in the test process and the Cloud's
-`demi.claude` trust that CA because the one selection builds reqwest with the
+`demi.claude-code` trust that CA because the one selection builds reqwest with the
 machine's roots, which the variable replaces; a selection without them fails
 the suite's install with an unknown issuer. The CA's key was discarded, and
 its certificate and the distribution's expire on 2126-09-03.

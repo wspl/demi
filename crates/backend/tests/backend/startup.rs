@@ -38,7 +38,7 @@ fn start(variables: &[(&str, &str)]) -> Output {
 const REQUIRED: [(&str, &str); 4] = [
     ("DEMI_INSTANCE_MODE", "shared"),
     ("DEMI_BACKEND_PUBLIC_URL", "http://127.0.0.1:3271"),
-    ("DEMI_MACHINES_SOCKET", "/nonexistent/demi-machines.sock"),
+    ("DEMI_MACHINE_MANAGER_SOCKET", "/nonexistent/demi-machine-manager.sock"),
     ("DEMI_NATIVE_CONFIG", "/nonexistent/native.json"),
 ];
 
@@ -95,7 +95,7 @@ async fn the_instance_secret_is_created_once_readable_by_its_owner_only() {
         harness.data_dir(),
         SocketAddr::from((Ipv4Addr::LOCALHOST, 0)),
         InstanceMode::Shared,
-        "/nonexistent/demi-machines.sock".into(),
+        "/nonexistent/demi-machine-manager.sock".into(),
     );
     let Err(refused) = Backend::start(config).await else {
         panic!("a corrupt instance secret started the backend");

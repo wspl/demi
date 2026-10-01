@@ -1,5 +1,5 @@
 //! The manager's configuration (`setup.md` § Configuration): its command line
-//! and the `DEMI_MACHINES_*` and `DEMI_MANAGED_*` variables, validated at
+//! and the `DEMI_MACHINE_MANAGER_*` and `DEMI_MANAGED_*` variables, validated at
 //! startup. An invalid or unknown setting stops the manager with an error
 //! that names the variable.
 
@@ -15,7 +15,7 @@ use clap::{CommandFactory, FromArgMatches, parser::ValueSource};
 use ipnet::Ipv4Net;
 
 /// Where the manager keeps its runtime bundles, locks and namespace handle.
-pub const RUNTIME_DIRECTORY: &str = "/run/demi-machines";
+pub const RUNTIME_DIRECTORY: &str = "/run/demi-machine-manager";
 
 /// The prefix of the variables the manager owns: one it does not know is an
 /// error, so a setting from another runtime cannot be silently ignored.
@@ -24,7 +24,7 @@ const MANAGED_PREFIX: &str = "DEMI_MANAGED_";
 /// The Cloud machine manager: runs users' Cloud machines as gVisor
 /// sandboxes and serves the backend over a Unix socket.
 #[derive(Debug, clap::Parser)]
-#[command(name = "demi-machines", version)]
+#[command(name = "demi-machine-manager", version)]
 struct Cli {
     /// Fence and save what a stopped manager left behind, then exit (the
     /// service's stop-post command).
@@ -34,14 +34,14 @@ struct Cli {
     #[arg(long, hide = true)]
     recover_namespace: bool,
     /// The socket the backend connects to; required to serve.
-    #[arg(long, env = "DEMI_MACHINES_SOCKET", value_name = "DEMI_MACHINES_SOCKET", value_parser = absolute)]
+    #[arg(long, env = "DEMI_MACHINE_MANAGER_SOCKET", value_name = "DEMI_MACHINE_MANAGER_SOCKET", value_parser = absolute)]
     socket: Option<PathBuf>,
     /// The persistent state directory, on one filesystem.
     #[arg(
         long,
-        env = "DEMI_MACHINES_DATA",
-        value_name = "DEMI_MACHINES_DATA",
-        default_value = "/var/lib/demi-machines",
+        env = "DEMI_MACHINE_MANAGER_DATA",
+        value_name = "DEMI_MACHINE_MANAGER_DATA",
+        default_value = "/var/lib/demi-machine-manager",
         value_parser = absolute
     )]
     data: PathBuf,
@@ -153,7 +153,7 @@ pub enum ConfigError {
     Unknown(String),
     #[error("DEMI_MANAGED_SLOTS exceeds DEMI_MANAGED_SUBNET capacity")]
     SlotsExceedSubnet,
-    #[error("DEMI_MACHINES_SOCKET is required")]
+    #[error("DEMI_MACHINE_MANAGER_SOCKET is required")]
     MissingSocket,
     #[error("{0} applies only with DEMI_MANAGED_LIMITS=on")]
     LimitsOff(&'static str),
@@ -231,7 +231,7 @@ impl Config {
         self.data.join("images")
     }
 
-    /// The runtime directory: `/run/demi-machines`.
+    /// The runtime directory: `/run/demi-machine-manager`.
     pub fn runtime(&self) -> &Path {
         Path::new(RUNTIME_DIRECTORY)
     }
@@ -347,13 +347,13 @@ mod tests {
             .iter()
             .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
             .collect();
-        values.push(("DEMI_MACHINES_SOCKET".into(), "/run/demi-cloud/machines.sock".into()));
+        values.push(("DEMI_MACHINE_MANAGER_SOCKET".into(), "/run/demi-cloud/machines.sock".into()));
         for (name, value) in settings {
             values.retain(|(existing, _)| existing != name);
             values.push(((*name).to_owned(), (*value).to_owned()));
         }
         let command = Cli::command();
-        let mut args = vec![OsString::from("demi-machines")];
+        let mut args = vec![OsString::from("demi-machine-manager")];
         args.extend(mode.iter().map(OsString::from));
         let vars: Vec<_> = values
             .iter()
@@ -375,8 +375,8 @@ mod tests {
         let config = parse(&[], &[]).expect("valid configuration");
         assert_eq!(config.mode, Mode::Serve);
         assert_eq!(config.backend_url.as_str(), "https://backend.example.com/");
-        assert_eq!(config.data, PathBuf::from("/var/lib/demi-machines"));
-        assert_eq!(config.working(), PathBuf::from("/var/lib/demi-machines/working"));
+        assert_eq!(config.data, PathBuf::from("/var/lib/demi-machine-manager"));
+        assert_eq!(config.working(), PathBuf::from("/var/lib/demi-machine-manager/working"));
         let limits = config.limits.expect("the limits are on by default");
         assert_eq!(limits.cpus.get(), 2);
         assert_eq!(limits.memory_bytes().get(), 2 << 30);
@@ -408,7 +408,7 @@ mod tests {
             &[("DEMI_MANAGED_HOME_MIB", "+12")],
             &[("DEMI_MANAGED_SLOTS", "16385")],
             &[("DEMI_MANAGED_RUNSC", "runsc")],
-            &[("DEMI_MACHINES_DATA", "state")],
+            &[("DEMI_MACHINE_MANAGER_DATA", "state")],
             &[("DEMI_MANAGED_BACKEND_URL", "file:///tmp/backend")],
             &[("DEMI_MANAGED_LIMITS", "yes")],
         ];
@@ -438,7 +438,7 @@ mod tests {
     #[test]
     fn serving_needs_a_socket_and_recovery_does_not() {
         let command = Cli::command();
-        let mut args = vec![OsString::from("demi-machines"), "--recover".into()];
+        let mut args = vec![OsString::from("demi-machine-manager"), "--recover".into()];
         for (name, value) in REQUIRED {
             let flag = command
                 .get_arguments()
@@ -484,7 +484,7 @@ mod tests {
         let release = directory.path().join("image");
         std::fs::create_dir(&release).unwrap();
         std::fs::write(release.join("manifest.json"), "{}").unwrap();
-        let manager = directory.path().join("demi-machines");
+        let manager = directory.path().join("demi-machine-manager");
         std::fs::write(&manager, "#!/bin/sh\n").unwrap();
         std::fs::set_permissions(&manager, std::fs::Permissions::from_mode(0o755)).unwrap();
         let root = directory.path().join("root");
@@ -504,7 +504,7 @@ mod tests {
             .unwrap();
         assert!(installed.status.success(), "{}", String::from_utf8_lossy(&installed.stderr));
 
-        let unit_path = root.join("etc/systemd/system/demi-machines.service");
+        let unit_path = root.join("etc/systemd/system/demi-machine-manager.service");
         let unit = std::fs::read_to_string(&unit_path).unwrap();
         let manager = manager.display();
         for directive in [
@@ -515,7 +515,7 @@ mod tests {
             "PrivateMounts=yes".to_owned(),
             "UMask=0077".to_owned(),
             "Group=demi-cloud".to_owned(),
-            "EnvironmentFile=/etc/demi-machines/manager.env".to_owned(),
+            "EnvironmentFile=/etc/demi-machine-manager/manager.env".to_owned(),
             format!("ExecStart={manager}"),
             format!("ExecStopPost={manager} --recover"),
         ] {
@@ -524,13 +524,13 @@ mod tests {
         let verified = Command::new("systemd-analyze").arg("verify").arg(&unit_path).output().unwrap();
         let warnings = String::from_utf8_lossy(&verified.stderr);
         assert!(verified.status.success(), "{warnings}");
-        assert!(!warnings.contains("demi-machines.service"), "{warnings}");
+        assert!(!warnings.contains("demi-machine-manager.service"), "{warnings}");
 
         // Each setting is one this manager knows, passed as the flag clap
         // gives it, and together they configure the manager.
-        let settings = std::fs::read_to_string(root.join("etc/demi-machines/manager.env")).unwrap();
+        let settings = std::fs::read_to_string(root.join("etc/demi-machine-manager/manager.env")).unwrap();
         let command = Cli::command();
-        let mut args = vec![OsString::from("demi-machines")];
+        let mut args = vec![OsString::from("demi-machine-manager")];
         let mut vars = Vec::new();
         for line in settings.lines() {
             let (name, value) = line.split_once('=').expect("a setting is NAME=VALUE");
