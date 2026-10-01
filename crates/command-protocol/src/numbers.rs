@@ -15,7 +15,7 @@ pub const MAX_NUMBERS: u32 = 16;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ServiceSequence {
-    /// The browser's tabs (`browser.md` § One tab registry).
+    /// The conversation browser's tabs (`browser.md` § One tab registry).
     Tab,
 }
 

@@ -84,7 +84,7 @@ export interface WheelInput extends ModifierState {
   deltaMode: number
 }
 
-/** A wheel turn in the tab's CSS pixels, whatever units the viewer's browser used. */
+/** A wheel turn in the tab's CSS pixels, whatever units the viewer's web browser used. */
 export function wheelMessage(
   tab: string,
   point: { x: number; y: number },
@@ -135,7 +135,7 @@ export function keyMessage(tab: string, action: 'down' | 'up', event: KeyInput):
   }
 }
 
-/** Keys the viewer's own browser keeps: its paste reaches the page as a paste. */
+/** Keys the viewer's own web browser keeps: its paste reaches the page as a paste. */
 export function localKey(event: KeyInput): boolean {
   const shortcut = (event.ctrlKey || event.metaKey) && !event.getModifierState('AltGraph')
   return shortcut && event.key.toLowerCase() === 'v'

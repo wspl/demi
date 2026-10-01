@@ -1,6 +1,7 @@
-//! The browser-facing Rust types the emitter starts from, the output each
-//! belongs to, and what the browser does with each (`contracts.md`
-//! § Generated TypeScript). Every type they refer to is emitted with them.
+//! The Rust types the web app receives or sends, which the emitter starts
+//! from, the output each belongs to, and what the web app does with each
+//! (`contracts.md` § Generated TypeScript). Every type they refer to is
+//! emitted with them.
 
 use demi_conversation_socket_protocol as frames;
 use demi_command_package_browser_protocol::live;
@@ -8,14 +9,14 @@ use demi_shared_types as core;
 use demi_web_api_protocol as api;
 use schemars::{JsonSchema, Schema, SchemaGenerator};
 
-/// What the browser does with a type, which decides whether its schema is a
+/// What the web app does with a type, which decides whether its schema is a
 /// tolerant or a strict object (`contracts.md` § Strict and tolerant
 /// objects).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
-    /// The browser receives it, in a frame, a response or a table.
+    /// The web app receives it, in a frame, a response or a table.
     Receives,
-    /// Only the browser sends it; the backend or a native program receives
+    /// Only the web app sends it; the backend or a native program receives
     /// it.
     Sends,
 }

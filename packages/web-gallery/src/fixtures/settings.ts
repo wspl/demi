@@ -551,7 +551,7 @@ export function createSettingsState() {
       fontSize: 15,
     },
     notifications: {
-      browser: true,
+      webBrowser: true,
       sound: false,
       onFinish: true,
       onError: true,

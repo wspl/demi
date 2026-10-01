@@ -29,7 +29,7 @@ pub struct AccountMeta {
 }
 
 impl AccountMeta {
-    /// The account as the browser sees it.
+    /// The account as the web app sees it.
     pub fn info(&self) -> AccountInfo {
         AccountInfo {
             id: self.id.clone(),

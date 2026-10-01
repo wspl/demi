@@ -3,7 +3,7 @@ import type { PendingSteer } from '@demicodes/protocol'
 import { deferred, waitFor } from '@demicodes/utils'
 import { computed } from 'vue'
 import { ConversationRuntime, type RuntimeState } from '../conversation-runtime'
-import { AgentSocketError, connectAgentClient } from '../../transport/agent-socket'
+import { ConversationSocketError, connectConversationClient } from '../../transport/conversation-socket'
 import { pageReturned } from '../../transport/liveness'
 import { playSockets } from '../../transport/__tests__/test-socket'
 import { clientHarness, model, userBlock } from './agent-harness'
@@ -237,7 +237,7 @@ test('a connection that cannot be made is tried again after the page\'s waits, n
     connect: async () => {
       connects += 1
       if (connects < 3) {
-        throw new AgentSocketError('Agent socket failed to connect')
+        throw new ConversationSocketError('Agent socket failed to connect')
       }
       return h.client
     },
@@ -277,7 +277,7 @@ test('a connection lost before the session answered opens the conversation again
   const current = state()
   const runtime = new ConversationRuntime({
     state: current,
-    connect: (signal) => connectAgentClient('ws://fixture', signal),
+    connect: (signal) => connectConversationClient('ws://fixture', signal),
   })
   jest.useFakeTimers()
   const random = spyOn(Math, 'random').mockReturnValue(0)
@@ -316,7 +316,7 @@ test('a page back from sleep breaks a conversation socket silent past the watch 
   const current = state()
   const runtime = new ConversationRuntime({
     state: current,
-    connect: (signal) => connectAgentClient('ws://fixture', signal),
+    connect: (signal) => connectConversationClient('ws://fixture', signal),
   })
   jest.useFakeTimers()
   try {
@@ -352,7 +352,7 @@ test('a page back from sleep breaks a conversation socket that still waits for i
   const current = state()
   const runtime = new ConversationRuntime({
     state: current,
-    connect: (signal) => connectAgentClient('ws://fixture', signal),
+    connect: (signal) => connectConversationClient('ws://fixture', signal),
   })
   jest.useFakeTimers()
   try {
@@ -409,7 +409,7 @@ test('disposing during the backoff wait ends the retries', async () => {
     state: state(),
     connect: async () => {
       connects += 1
-      throw new AgentSocketError('Agent socket failed to connect')
+      throw new ConversationSocketError('Agent socket failed to connect')
     },
   })
   jest.useFakeTimers()

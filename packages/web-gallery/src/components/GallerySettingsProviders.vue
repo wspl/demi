@@ -298,7 +298,7 @@ let loginTimer = 0
 
 /**
  * Claude Code hands out a token from its own CLI; Codex and Grok Build confirm a
- * device code in the browser. The mock walks each to done.
+ * device code in a web browser. The mock walks each to done.
  */
 function beginLogin(p: SettingsProviderEntry) {
   window.clearTimeout(loginTimer)

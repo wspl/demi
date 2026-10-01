@@ -1,5 +1,5 @@
-//! The data the browser, the agent and the backend share
-//! (`crates-and-packages.md` § core): transcript blocks, user and tool
+//! The data the web app, the agent and the backend share
+//! (`crates-and-packages.md` § shared-types): transcript blocks, user and tool
 //! content, models and their selection, token usage, tool views, agent
 //! messages, the session's phase, queue and pending steers, provider failure
 //! facts, what the product shows of a provider entry (its model catalog, wire
@@ -10,8 +10,8 @@
 //! Every type follows the encoding conventions of `contracts.md`: camelCase
 //! fields, enums tagged by `type` (`kind` for views), optional fields that
 //! refuse `null`, nullable fields that refuse absence. A type the backend
-//! receives, from the browser or from its own storage, refuses unknown
-//! fields; a type only the browser receives accepts them.
+//! receives, from the web app or from its own storage, refuses unknown
+//! fields; a type only the web app receives accepts them.
 
 mod agent_message;
 mod block;
@@ -74,7 +74,7 @@ pub use view::{
 use serde::de::DeserializeOwned;
 
 /// The largest integer JavaScript represents exactly, `2^53 - 1`. Every
-/// integer the browser reads is bounded by it.
+/// integer the web app reads is bounded by it.
 pub const MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
 
 /// Why a value that entered the process was refused.

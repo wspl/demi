@@ -5,7 +5,7 @@ import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
 
 /** When the agent needs you, or is done. Four switches, all models. */
-const browser = defineModel<boolean>('browser', { required: true })
+const webBrowser = defineModel<boolean>('webBrowser', { required: true })
 const sound = defineModel<boolean>('sound', { required: true })
 const onFinish = defineModel<boolean>('onFinish', { required: true })
 const onError = defineModel<boolean>('onError', { required: true })
@@ -21,7 +21,7 @@ const onError = defineModel<boolean>('onError', { required: true })
         label="Browser notifications"
         description="The browser asks once. Delivered while this tab is hidden."
       >
-        <Switch v-model="browser" />
+        <Switch v-model="webBrowser" />
       </SettingsRow>
       <SettingsRow
         label="Sound"

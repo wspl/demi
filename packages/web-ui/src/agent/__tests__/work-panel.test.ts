@@ -56,9 +56,9 @@ describe('fixed work panel sections', () => {
   })
 })
 
-describe('browser tab closing', () => {
+describe('work panel tab closing', () => {
   const pages = [{ id: 'a' }, { id: 'b' }, { id: 'c' }]
-  test('selects the nearest remaining tab and allows an empty browser', () => {
+  test('selects the nearest remaining tab and allows an empty panel', () => {
     expect(closeTabs(pages, 'b', ['b']).activeId).toBe('a')
     expect(closeTabs(pages, 'a', ['a']).activeId).toBe('b')
     expect(closeTabs(pages, 'a', ['a', 'b', 'c'])).toEqual({ tabs: [], activeId: null })

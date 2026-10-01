@@ -1,5 +1,5 @@
 //! The identities blocks and frames name. Whoever creates a thing chooses its
-//! identity, such as the browser for a message it sends or the session for a
+//! identity, such as the web app for a message it sends or the session for a
 //! block it writes; an identity is any nonempty string, compared exactly.
 //! Other crates declare their identities with [`id!`](crate::id).
 
@@ -15,7 +15,7 @@ pub struct EmptyId;
 /// `id!(Name)` accepts any nonempty string and refuses the empty one with
 /// [`EmptyId`]. `id!(Name, check = f, error = E, schema = { .. })` accepts
 /// the strings for which `f(&str) -> Result<(), E>` answers `Ok`, and
-/// describes them to JSON Schema, and so to the browser, with the given
+/// describes them to JSON Schema, and so to the web app, with the given
 /// schema object.
 ///
 /// ```ignore
@@ -151,7 +151,7 @@ crate::id!(
 );
 crate::id!(
     /// A turn: every block a turn writes carries it. A message's id, which the
-    /// browser chooses, is the id of the turn the message starts.
+    /// web app chooses, is the id of the turn the message starts.
     TurnId
 );
 crate::id!(
@@ -172,7 +172,7 @@ crate::id!(
     CommandId
 );
 crate::id!(
-    /// A message edit, which the browser chooses so that a repeated request
+    /// A message edit, which the web app chooses so that a repeated request
     /// is recognized.
     OperationId
 );
@@ -189,8 +189,9 @@ pub enum Sequence {
     Shell,
     /// Subagents, from 1; the root is agent 0.
     Agent,
-    /// Browser tabs, from 1: `t7`. The browser service reserves them a few
-    /// at a time (`native-runtime.md` § Conversation numbers).
+    /// Conversation browser tabs, from 1: `t7`. The `demi.browser` service
+    /// reserves them a few at a time (`native-runtime.md` § Conversation
+    /// numbers).
     Tab,
 }
 

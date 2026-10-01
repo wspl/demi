@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { waitFor } from '@demicodes/utils'
 import { createPinia, setActivePinia } from 'pinia'
 import type { Block, ClientContent, ModelSelection } from '@demicodes/protocol'
-import { AgentSocketError, connectAgentClient } from '@demicodes/web-ui/transport/agent-socket'
+import { ConversationSocketError, connectConversationClient } from '@demicodes/web-ui/transport/conversation-socket'
 import type { ClientSessionEvent } from '@demicodes/web-ui/transport/protocol'
 import { ApiError, apiRequest, jsonBody, readResponse } from '../../api/client'
 import {
@@ -23,12 +23,12 @@ import {
 } from '../../api/generated/web-api'
 import { useSession } from '../../auth/session'
 import { useProduct } from '../../state/product'
-import { openBrowser, startBackend, startRunner, temporaryRoot, type Backend, type Runner } from './harness'
+import { openWebBrowser, startBackend, startRunner, temporaryRoot, type Backend, type Runner } from './harness'
 import { startScriptedAnthropic, type ScriptedAnthropic } from './scripted-anthropic'
 
-// The browser-contract suite (`scenarios.md` § Web app contract suite): the
+// The web app contract suite (`scenarios.md` § Web app contract suite): the
 // backend executable, driven the way the page drives it, through the web
-// application's API client and the conversation socket's `AgentClient`,
+// application's API client and the conversation socket's `ConversationClient`,
 // which validate every answer and frame with the generated schemas. The
 // model is a scripted Anthropic-compatible endpoint, and tools run on a real
 // runner.
@@ -43,21 +43,21 @@ const SETTLE_MS = 10_000
 let root: Awaited<ReturnType<typeof temporaryRoot>>
 let vendor: ScriptedAnthropic
 let backend: Backend
-let browser: ReturnType<typeof openBrowser>
+let webBrowser: ReturnType<typeof openWebBrowser>
 const runners: Runner[] = []
 
 beforeAll(async () => {
   root = await temporaryRoot()
   vendor = startScriptedAnthropic()
   backend = await startBackend(root.path)
-  browser = openBrowser(backend.origin)
+  webBrowser = openWebBrowser(backend.origin)
   setActivePinia(createPinia())
   // The instance's first account, signed in by its setup.
   await apiRequest('/setup', { method: 'POST', ...jsonBody({ email: EMAIL, password: PASSWORD } satisfies SetupRequest) })
 })
 
 afterAll(async () => {
-  browser?.restore()
+  webBrowser?.restore()
   for (const runner of runners) {
     await runner.stop()
   }
@@ -116,7 +116,7 @@ async function patchConversation(id: string, patch: ConversationPatch): Promise<
 
 /** The conversation's socket, as the page connects it. */
 function connect(id: string) {
-  return connectAgentClient(browser.socketUrl(`/conversations/${id}/stream`))
+  return connectConversationClient(webBrowser.socketUrl(`/conversations/${id}/stream`))
 }
 
 /** The transcript the backend serves cold, from the conversation's database. */
@@ -168,7 +168,7 @@ function kinds(blocks: readonly Block[]): string[] {
 
 /** Whether a WebSocket to the `/api` route `path` opens, as the page's would. */
 function opens(path: string): Promise<boolean> {
-  const socket = new WebSocket(browser.socketUrl(path))
+  const socket = new WebSocket(webBrowser.socketUrl(path))
   return new Promise((resolve) => {
     socket.onopen = () => {
       socket.close()
@@ -182,14 +182,14 @@ test('a user signs in through the API client, and the session admits the synchro
   const session = useSession()
   const id = await createConversation()
   await session.signOut()
-  expect(browser.signedIn()).toBe(false)
+  expect(webBrowser.signedIn()).toBe(false)
   // Signed out, the page reaches neither the API, nor its channel, nor the
   // socket.
   const refused = await apiRequest('/conversations').catch((error: unknown) => error)
   expect(refused).toBeInstanceOf(ApiError)
   expect(refused).toMatchObject({ status: 401, code: 'unauthenticated' })
   expect(await opens('/sync')).toBe(false)
-  expect(await connect(id).catch((error: unknown) => error)).toBeInstanceOf(AgentSocketError)
+  expect(await connect(id).catch((error: unknown) => error)).toBeInstanceOf(ConversationSocketError)
 
   await session.signIn(EMAIL, PASSWORD, new AbortController().signal)
   expect(session.user?.email).toBe(EMAIL)

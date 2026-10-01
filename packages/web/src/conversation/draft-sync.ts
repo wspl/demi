@@ -216,7 +216,8 @@ export function createDraftSync(options: {
   /**
    * Reads the draft, after the conversation's requests before it. A change
    * the backend has not confirmed, such as one this page restored from the
-   * browser or kept while the conversation was archived, is saved after it.
+   * web browser's storage or kept while the conversation was archived, is
+   * saved after it.
    */
   function read(conversation: Conversation): Promise<void> {
     const signal = lifetime.signal

@@ -1,6 +1,6 @@
 //! `/api/conversations` (`web-api.md` § Conversation creation and Fork,
 //! § Sidebar mutations, read state and page synchronization): creating a
-//! conversation under the id the browser chose, listing the caller's
+//! conversation under the id the web app chose, listing the caller's
 //! conversations, changing their fields one patch at a time or in a batch,
 //! forking one, reading one's history as its database holds it,
 //! acknowledging its output, and its socket, `WS /conversations/:id/stream`,

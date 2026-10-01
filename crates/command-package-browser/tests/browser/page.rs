@@ -27,7 +27,7 @@ use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 const DEADLINE: Duration = Duration::from_secs(5);
 
-/// Exercise the native driver without a model, runner grant, or product browser UI.
+/// Exercise the native driver without a model, runner grant, or the web app.
 #[tokio::test]
 #[ignore = "requires DEMI_TEST_CHROME pointing to an installed Chrome for Testing release"]
 async fn browser_contract_and_cleanup() {

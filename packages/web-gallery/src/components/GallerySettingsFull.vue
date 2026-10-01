@@ -322,7 +322,7 @@ function resetShortcuts() {
 
   <SettingsNotifications
     v-else-if="tab === 'notifications'"
-    v-model:browser="s.notifications.browser"
+    v-model:web-browser="s.notifications.webBrowser"
     v-model:sound="s.notifications.sound"
     v-model:on-finish="s.notifications.onFinish"
     v-model:on-error="s.notifications.onError"

@@ -1,4 +1,4 @@
-//! Request bodies and the browser build (`web-api.md` § Request bodies,
+//! Request bodies and the web app build (`web-api.md` § Request bodies,
 //! § Serving the web app build).
 
 use demi_web_api_protocol::auth::Identity;
@@ -113,7 +113,7 @@ async fn a_json_body_is_read_whatever_its_content_type_and_must_match_its_type()
 }
 
 #[tokio::test]
-async fn the_browser_build_is_served_with_deep_navigation_while_api_misses_stay_json() {
+async fn the_web_app_build_is_served_with_deep_navigation_while_api_misses_stay_json() {
     let harness = Harness::new().with_web(&[
         ("index.html", "<html>fixture page</html>"),
         ("main.js", "export const fixture = true"),

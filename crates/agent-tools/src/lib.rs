@@ -76,7 +76,7 @@ pub struct EnvironmentScope<'a> {
 }
 
 /// Where a node's shell environments come from. The product makes the
-/// environment of one node on one of its Hosts, such as host-remote's over
+/// environment of one node on one of its Hosts, such as backend-remote-host's over
 /// the Host's runner; the agent never knows which shell engine runs.
 pub trait ShellEnvironmentFactory<H> {
     fn create<'a>(

@@ -221,7 +221,7 @@ mod tests {
         })
     }
 
-    /// The selection a browser sent with a conversation's first request,
+    /// The selection the web app sent with a conversation's first request,
     /// from an older catalog.
     fn chosen() -> ModelSelection {
         ModelSelection {

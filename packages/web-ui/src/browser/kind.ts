@@ -15,7 +15,7 @@ const BrowserTabMark = defineComponent({
   setup: () => () => h(MonitorDot, { size: ICON_PX.markIn28 }),
 })
 
-/** A tab is named by its page once the browser has one, and by its address until then. */
+/** A tab is named by its page once the conversation browser has one, and by its address until then. */
 function browserTabTitle(controller: BrowserTabsController, data: BrowserTabData): string {
   const known = controller.list.value?.tabs.find((tab) => tab.id === data.tab)
   if (known?.title) {

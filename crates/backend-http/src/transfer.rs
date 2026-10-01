@@ -1,11 +1,12 @@
 //! The bytes of file transfers (`sessions-and-targets.md` § Host
 //! operations): the edge moves them while the user's shard holds the
-//! transfer's admission through its lease. A download's body is taken as
-//! the browser takes it and is cut short, never ended, when the Host's read
-//! fails or the shard ends the transfer; a connection on which nothing moves
-//! for a minute is closed. An upload's body is read as the Host writes it:
-//! a browser that sends nothing for a minute stalls it, and a Host that
-//! takes nothing for a minute closes its connection.
+//! transfer's admission through its lease. A download's body is read as
+//! the user's browser takes it and is cut short, never ended, when the
+//! Host's read fails or the shard ends the transfer; a connection on which
+//! nothing moves for a minute is closed. An upload's body is read as the
+//! Host writes it: the upload stalls when the user's browser sends nothing
+//! for a minute, and a Host that takes nothing for a minute closes its
+//! connection.
 
 use std::io;
 use std::time::Duration;
@@ -22,16 +23,16 @@ use super::listener::ConnectionWatch;
 use demi_backend_host_access::transfer::OpenUpload;
 use demi_backend_host_access::lease::Lease;
 
-/// How long a transfer waits for the browser, and a connection for any
-/// byte, before it ends: the stalled-client timeout web servers use, nginx's
-/// `send_timeout` among them.
+/// How long a transfer waits for the user's browser, and a connection for
+/// any byte, before it ends: the stalled-client timeout web servers use,
+/// nginx's `send_timeout` among them.
 pub(super) const TRANSFER_IDLE: Duration = Duration::from_secs(60);
 
-/// A download's body: the Host's bytes as the browser takes them. It ends
-/// complete only when the Host's read did; a failing read, or the shard
-/// ending the transfer, cuts it short, which the browser sees as an
+/// A download's body: the Host's bytes as the user's browser takes them. It
+/// ends complete only when the Host's read did; a failing read, or the shard
+/// ending the transfer, cuts it short, and the user's browser receives an
 /// incomplete response. The lease and the connection's watch go with the
-/// body, whether it ends or the browser leaves.
+/// body, whether it ends or the user's browser leaves.
 pub(super) fn paced_body(reader: PipeReader, lease: Lease, watch: ConnectionWatch) -> Body {
     struct Pacing {
         reader: PipeReader,
@@ -80,10 +81,11 @@ pub(super) enum UploadEnd {
     Refused(ApiError),
 }
 
-/// Streams the browser's body into an open upload. A chunk is read only
-/// once the Host took the one before, so a slow Host slows the browser, and
-/// time the Host takes does not count against the browser. However the copy
-/// ends short of its end, the file stays as it was.
+/// Streams the body the user's browser sends into an open upload. A chunk
+/// is read only once the Host took the one before, so a slow Host slows the
+/// upload, and time the Host takes does not count against the user's
+/// browser. However the copy ends short of its end, the file stays as it
+/// was.
 pub(super) async fn copy_upload(body: Body, upload: OpenUpload) -> UploadEnd {
     let OpenUpload {
         mut writer,
@@ -106,11 +108,11 @@ pub(super) async fn copy_upload(body: Body, upload: OpenUpload) -> UploadEnd {
         };
         let chunk = match next {
             Err(_) => {
-                writer.fail("the browser sent nothing for too long");
+                writer.fail("the upload stalled: nothing arrived for a minute");
                 return UploadEnd::Refused(ApiError::new(
                     StatusCode::REQUEST_TIMEOUT,
                     ErrorCode::TransferStalled,
-                    "The browser sent nothing for too long",
+                    "The upload stalled: nothing arrived for a minute",
                 ));
             }
             Ok(None) => break,
@@ -206,8 +208,9 @@ mod tests {
         failing.await.unwrap();
 
         // The shard ending the transfer closes the connection at once, even
-        // while nothing reads the body, as when the browser stopped taking
-        // bytes; the body, read, is cut short though the Host sent nothing.
+        // while nothing reads the body, as when the user's browser stopped
+        // taking bytes; the body, read, is cut short though the Host sent
+        // nothing.
         let (_writer, reader, _pipes) = pipe();
         let ending = CancellationToken::new();
         let (lease, _released) = Lease::new(ending.clone());
@@ -220,7 +223,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "local", start_paused = true)]
-    async fn a_connection_nothing_moves_on_is_closed_and_a_browser_that_leaves_releases_the_transfer() {
+    async fn a_connection_nothing_moves_on_is_closed_and_a_web_browser_that_leaves_releases_the_transfer() {
         let control = ConnectionControl::detached();
         let watch = control.watch(TRANSFER_IDLE, CancellationToken::new());
         tokio::time::sleep(TRANSFER_IDLE / 2).await;
@@ -232,8 +235,8 @@ mod tests {
         assert!(control.is_closed());
         drop(watch);
 
-        // The browser leaving drops the body, which releases the lease and
-        // stops the read.
+        // The user's browser leaving drops the body, which releases the
+        // lease and stops the read.
         let (mut writer, reader, _pipes) = pipe();
         let (lease, released) = Lease::new(CancellationToken::new());
         let body = paced_body(reader, lease, ConnectionControl::detached().watch(TRANSFER_IDLE, CancellationToken::new()));
@@ -251,7 +254,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "local", start_paused = true)]
-    async fn an_upload_is_read_as_the_host_writes_and_the_host_time_does_not_count_against_the_browser() {
+    async fn an_upload_is_read_as_the_host_writes_and_the_host_time_does_not_count_against_the_web_browser() {
         let (open, mut reader, done, _ending, _pipes) = upload();
         let body = Body::from_stream(futures_util::stream::iter([
             Ok::<_, io::Error>(Bytes::from_static(b"one ")),
@@ -260,8 +263,8 @@ mod tests {
         ]));
         let host = tokio::task::spawn_local(async move {
             let mut bytes = Vec::new();
-            // The Host takes each chunk well after the browser sent it, and
-            // the whole upload takes longer than the limit.
+            // The Host takes each chunk well after the user's browser sent
+            // it, and the whole upload takes longer than the limit.
             loop {
                 tokio::time::sleep(TRANSFER_IDLE / 2 + Duration::from_secs(5)).await;
                 match reader.next().await {
@@ -277,7 +280,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "local", start_paused = true)]
-    async fn a_quiet_browser_stalls_the_upload_and_ending_the_transfer_refuses_it() {
+    async fn a_quiet_web_browser_stalls_the_upload_and_ending_the_transfer_refuses_it() {
         let (open, mut reader, _done, _ending, _pipes) = upload();
         let quiet = Body::from_stream(futures_util::stream::pending::<Result<Bytes, io::Error>>());
         let copied = copy_upload(quiet, open).await;

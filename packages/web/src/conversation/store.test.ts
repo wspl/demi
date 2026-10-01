@@ -1026,7 +1026,7 @@ test('a rename shows at once, survives a summary read before the write lands, an
   await waitFor(() => title() === 'Renamed', () => `the title is ${title()}`)
 })
 
-/** Signs the page in, as it is before it loads a conversation, with browser storage that keeps `kept`, or nothing. */
+/** Signs the page in, as it is before it loads a conversation, with web browser storage that keeps `kept`, or nothing. */
 function signIn(kept: draftStorage.SavedDraft | null = null): () => void {
   const spies = [
     spyOn(draftStorage, 'readDraft').mockResolvedValue(kept),

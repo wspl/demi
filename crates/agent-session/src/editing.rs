@@ -37,7 +37,7 @@ pub enum EditContent {
 }
 
 /// An edit as the session receives it: the request with its content
-/// resolved, and the digest of the request as the browser sent it.
+/// resolved, and the digest of the request as the web app sent it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EditSubmission {
     pub operation_id: OperationId,
@@ -125,7 +125,7 @@ pub async fn accepted(mut acceptance: Acceptance) -> Result<EditReceipt, EditErr
     }
 }
 
-/// The SHA-256 of an edit request's RFC 8785 canonical JSON, as the browser
+/// The SHA-256 of an edit request's RFC 8785 canonical JSON, as the web app
 /// sent it, before its uploads are resolved (`message-editing.md` § Commit
 /// and idempotency).
 pub fn edit_digest(request: &EditRequest) -> String {

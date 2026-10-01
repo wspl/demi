@@ -19,7 +19,7 @@ The fixed group contains the published packages:
   the gallery.
 - `@demicodes/protocol`: the contract types and schemas generated from the Rust
   contract crates.
-- `@demicodes/conversation-client`: `AgentClient`, its WebSocket transport, and
+- `@demicodes/conversation-client`: `ConversationClient`, its WebSocket transport, and
   transcript patch application.
 - `@demicodes/utils`: generic helpers for the web app's packages.
 

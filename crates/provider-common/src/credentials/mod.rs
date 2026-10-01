@@ -3,7 +3,7 @@
 //! entry; the refresh protocol every family follows, with one refresh at a
 //! time per account; a pool held in memory; and the account operations a
 //! family offers over its pool, and why an account could not be used. The
-//! metadata the browser receives is `core`'s.
+//! metadata the web app receives is `core`'s.
 
 mod accounts;
 mod failure;

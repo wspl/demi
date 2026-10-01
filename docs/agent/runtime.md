@@ -9,7 +9,7 @@ that carries agent frames.
 For example, a user sends "run the tests and fix what fails":
 
 ```text
-web app (AgentClient)        backend: the user's shard                   Host
+web app (ConversationClient)        backend: the user's shard                   Host
 ---------------------        -------------------------                   ----
 send ----------------------> conversation socket
                                -> tree -> root session
@@ -326,7 +326,7 @@ The list never contains yield wakeups or agent messages.
   them; they never reached the transcript. The backend keeps no second copy of
   them for reconnecting clients.
 
-`AgentClient` keeps the current list and exposes it with its `pendingSteers()`
+`ConversationClient` keeps the current list and exposes it with its `pendingSteers()`
 reader and `pending_steers` events. It removes an entry once a `steer` block
 with the same id appears in the transcript; equal text does not make two
 steers the same. Closing or replacing the client's session clears the list.
@@ -338,7 +338,7 @@ Suppose the session has accepted steer S1 but has not written it yet, and a new
 client opens the same conversation. The server attaches the new client to the
 live tree and includes S1 in the initial list. S1 is not sent to the model a
 second time. When S1 enters the transcript, the client stops listing it.
-`AgentClient.open()` resolves on the `opened` frame; the snapshot frames follow
+`ConversationClient.open()` resolves on the `opened` frame; the snapshot frames follow
 it, so a caller that needs the initial list subscribes to `pending_steers`,
 which also reports an empty list.
 
@@ -1155,7 +1155,7 @@ conversation: the backend supplies the session id and the working directory
 from the conversation's target, and the client never sends them. The types of
 every frame are Rust types, and the web app validates frames with the schemas
 generated from them ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
-`AgentClient`, in `@demicodes/conversation-client`, is the web app's client of this
+`ConversationClient`, in `@demicodes/conversation-client`, is the web app's client of this
 protocol.
 
 For example, a page opens a conversation whose root is running:
@@ -1290,7 +1290,7 @@ Without an open session, most commands are answered with `rejected`
 `steer_result`, and `cancel_pending_steer`, `abort_subagents` and
 `abort_subagent` with nothing. A second `open` on one connection is rejected.
 
-`AgentClient` validates every frame it receives with the generated schemas and
+`ConversationClient` validates every frame it receives with the generated schemas and
 drops the connection when one does not match, applies patches with the one
 patch applier, and keeps the transcript, the phase, the queue and the pending
 steers.

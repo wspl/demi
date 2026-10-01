@@ -1007,7 +1007,7 @@ async fn a_start_request_is_safe_to_retry_and_outlives_a_cancelled_call() {
 }
 
 #[tokio::test(flavor = "local")]
-async fn a_node_has_at_most_eight_live_children_and_the_browser_aborts_them_all() {
+async fn a_node_has_at_most_eight_live_children_and_the_web_app_aborts_them_all() {
     let model = Model::default();
     let gate = Gate::new();
     let fixture = fixture(&model, TestHarness::default());

@@ -103,9 +103,9 @@ impl StreamError {
 /// whether it wakes a stopped Cloud and whether it is activity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UserCallKind {
-    /// Work the user starts, such as opening a browser tab: an ordinary
-    /// operation of the conversation's host access, which wakes a stopped
-    /// Cloud.
+    /// Work the user starts, such as opening a conversation browser tab: an
+    /// ordinary operation of the conversation's host access, which wakes a
+    /// stopped Cloud.
     Starts,
     /// An operation of the user's on what runs there, such as closing a
     /// tab: activity, though a stopped Cloud is refused rather than woken.

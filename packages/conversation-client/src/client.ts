@@ -13,9 +13,9 @@ import {
   type TranscriptVersion,
 } from '@demicodes/protocol'
 import { asError, createId } from '@demicodes/utils'
-import type { AgentClientListener, ClientSessionEvent, Failures, ServerFrameOf } from './events'
+import type { ConversationClientListener, ClientSessionEvent, Failures, ServerFrameOf } from './events'
 import { applyTranscriptPatches } from './patch'
-import type { AgentClientTransport } from './transport'
+import type { ConversationClientTransport } from './transport'
 
 /** A correlated refusal: the edit was not accepted. */
 export class EditRejectedError extends Error {
@@ -84,15 +84,15 @@ type TranscriptState =
 type Decision<T> = { resolve: T } | { reject: Error } | undefined
 
 /**
- * The browser's client of the conversation socket's frame protocol
+ * The web app's client of the conversation socket's frame protocol
  * (`runtime.md` § Frame protocol). It validates every frame it receives with
  * the generated schemas and drops the connection when one does not match,
  * applies patches with the one patch applier, and keeps the transcript, the
  * phase, the queue and the pending steers.
  */
-export class AgentClient {
-  private readonly transport: AgentClientTransport
-  private readonly listeners = new Set<AgentClientListener>()
+export class ConversationClient {
+  private readonly transport: ConversationClientTransport
+  private readonly listeners = new Set<ConversationClientListener>()
   private readonly actionWaiters: ActionWaiter[] = []
   private readonly steerWaiters = new Map<string, Waiter<void>>()
   private readonly abortWaiters: Waiter<AbortResult>[] = []
@@ -108,7 +108,7 @@ export class AgentClient {
   private queue: QueuedMessage[] = []
   private pending: PendingSteer[] = []
 
-  constructor(transport: AgentClientTransport) {
+  constructor(transport: ConversationClientTransport) {
     this.transport = transport
     const stopFrames = transport.onFrame((frame) => this.receive(frame))
     const stopClose = transport.onClose((error) => this.disconnect(error))
@@ -292,7 +292,7 @@ export class AgentClient {
     this.listeners.clear()
   }
 
-  subscribe(listener: AgentClientListener): () => void {
+  subscribe(listener: ConversationClientListener): () => void {
     this.listeners.add(listener)
     return () => {
       this.listeners.delete(listener)

@@ -5,7 +5,7 @@
 
 use serde_json::{Map, Value};
 
-/// Core's `MAX_SAFE_INTEGER`, the bound of every integer the browser reads,
+/// Core's `MAX_SAFE_INTEGER`, the bound of every integer the web app reads,
 /// as a signed bound.
 pub const MAX_SAFE_INTEGER: i64 = demi_shared_types::MAX_SAFE_INTEGER as i64;
 
@@ -304,13 +304,13 @@ fn strings(values: &Value, at: &str) -> Result<Vec<String>, Unsupported> {
 /// Refuses the constructs Rust's `regex` and ECMAScript read differently,
 /// so that a pattern matches the same strings at both ends: the class
 /// escapes `\d`, `\w`, `\s` and `\b` (Unicode in Rust, ASCII in the
-/// browser), `.` (which excludes different line breaks), groups other than
-/// `(?:`, Unicode properties, Rust's anchors `\A` and `\z`, and what Rust
-/// reads as class syntax: a `[` inside a class (a nested class or
+/// user's browser), `.` (which excludes different line breaks), groups
+/// other than `(?:`, Unicode properties, Rust's anchors `\A` and `\z`, and
+/// what Rust reads as class syntax: a `[` inside a class (a nested class or
 /// `[:alpha:]`), `&&`, `--` and `~~`, and a `]` that opens a class (a
-/// literal in Rust, an empty class in the browser).
+/// literal in Rust, an empty class in the user's browser).
 fn check_pattern(pattern: &str) -> Result<(), String> {
-    let refuse = |what: &str| Err(format!("the pattern {pattern:?} uses {what}, which Rust and the browser read differently"));
+    let refuse = |what: &str| Err(format!("the pattern {pattern:?} uses {what}, which Rust and the user's browser read differently"));
     let characters: Vec<char> = pattern.chars().collect();
     let mut in_class = false;
     let mut index = 0;
@@ -401,9 +401,9 @@ fn read_integer(schema: &Map<String, Value>, at: &str) -> Result<Shape, Unsuppor
     if let Some(exclusive) = integer_bound(schema, "exclusiveMaximum", at)? {
         max = max.min(exclusive.saturating_sub(1));
     }
-    // An integer the browser reads is bounded to JavaScript's safe range
+    // An integer the web app reads is bounded to JavaScript's safe range
     // (`contracts.md` § Encoding conventions), in the Rust type too, so that
-    // an end that decodes it refuses what the browser cannot hold.
+    // an end that decodes it refuses what the web app cannot hold.
     if min < -MAX_SAFE_INTEGER || max > MAX_SAFE_INTEGER {
         return Err(unsupported(
             at,

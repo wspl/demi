@@ -254,7 +254,7 @@ async fn a_login_the_user_never_confirms_ends_after_ten_minutes_whatever_the_cod
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_refused_login_or_an_address_a_browser_cannot_trust_fails_and_stores_nothing() {
+async fn a_refused_login_or_an_address_a_web_browser_cannot_trust_fails_and_stores_nothing() {
     let vendor = MockVendor::start().await;
     vendor.respond_at(DEVICE_CODE, device_code(json!({})));
     vendor.respond_at(TOKEN, json_answer(400, json!({ "error": "access_denied" })));

@@ -69,7 +69,7 @@ const SELECT: LiveControl = {
   rect: { x: 24, y: 168, width: 180, height: 32 },
 }
 
-/** How long the gallery's browser takes over a request, as a Host takes a moment. */
+/** How long the gallery's conversation browser takes over a request, as a Host takes a moment. */
 const REQUEST_DELAY_MS = 900
 
 /** Tab ids as the protocol spells them: `t` and the tab's number in the conversation. */
@@ -92,7 +92,7 @@ function galleryTabs(): LiveTab[] {
   ]
 }
 
-/** One view of the gallery's browser: a page it draws, and its controls. */
+/** One view of the gallery's conversation browser: a page it draws, and its controls. */
 class GalleryBrowser {
   private watched: string | null = null
   private generation = 0

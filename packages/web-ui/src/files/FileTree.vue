@@ -285,7 +285,7 @@ function openMenu(row: TreeRow | null, event: MouseEvent): void {
   const target: MenuTarget = row === null
     ? { kind: 'directory', path: normalizePath(props.root) }
     : { kind: row.isDirectory ? 'directory' : 'file', path: row.path }
-  // With nothing to offer, the browser's own menu stays.
+  // With nothing to offer, the web browser's own menu stays.
   if (target.kind === 'file' ? !props.source.contents : !props.source.upload)
     return
   menuTarget.value = target

@@ -1,7 +1,7 @@
-//! The coding agent (`crates-and-packages.md` § coding-agent): the harness
+//! The coding agent (`crates-and-packages.md` § agent-coding-harness): the harness
 //! Demi's conversations run, its system prompt, and the `demi` command root
 //! its shell offers: `file` and `browser`, which run in the `demi.file` and
-//! `demi.browser` native packages, `todo`, whose handlers run in the backend over the
+//! `demi.browser` command packages, `todo`, whose handlers run in the backend over the
 //! node's command storage, and the product's own groups.
 
 mod browser;

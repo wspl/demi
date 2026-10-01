@@ -125,7 +125,7 @@ impl Shard {
         Ok(())
     }
 
-    /// The user's devices as the browser sees them.
+    /// The user's devices as the web app sees them.
     pub async fn device_list(&self) -> Result<Vec<DeviceDto>, StorageError> {
         self.devices()
             .device_list(&self.services().control, self.user())
