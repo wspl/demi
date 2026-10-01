@@ -1,9 +1,9 @@
 //! The provider families entries are assembled with (`providers.md` §
 //! Families, vendors and endpoints): each family says how its entries
 //! authenticate and builds the provider of one entry and account from the
-//! entry's decoded configuration. The executable starts with the built-in
-//! families of `backend-families`; a test registers scripted ones beside
-//! them.
+//! entry's decoded configuration. The backend starts with its built-in
+//! families (`demi_backend::families`); a test registers scripted ones
+//! beside them.
 
 use std::collections::BTreeMap;
 use std::rc::Rc;

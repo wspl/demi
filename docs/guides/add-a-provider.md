@@ -223,7 +223,7 @@ how probes and observations merge is defined in
 
 ## Register the family
 
-The backend's built-in families (`builtin` in `backend-families`) map each
+The backend's built-in families (`builtin` in the backend's `families` module) map each
 family to its credential kind, an API key or a subscription account, and to a
 factory.
 The factory builds your provider from the entry's configuration and the

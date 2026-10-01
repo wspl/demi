@@ -229,7 +229,7 @@ impl BackendConfig {
             account_mail: None,
             clock: Arc::new(SystemClock),
             shards: ShardPlacement::Threads(NonZeroUsize::MIN),
-            families: demi_backend_families::builtin(),
+            families: crate::families::builtin(),
             models_dev_url: ModelsDevClient::DEFAULT_URL.parse().expect("the models.dev address parses"),
             claude_releases: DEFAULT_RELEASES_URL.parse().expect("the Claude Code distribution's address parses"),
             logins: LoginTiming::default(),

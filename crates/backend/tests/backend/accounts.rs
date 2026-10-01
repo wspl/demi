@@ -56,7 +56,7 @@ pub(crate) fn scripts(cost: Option<ProbeCost>) -> Scripts {
         quota: quota.clone(),
         directory: Arc::new(Directory::default()),
     };
-    let families = demi_backend_families::builtin()
+    let families = demi_backend::families::builtin()
         .with("claude-code", family())
         .with("device", family());
     Scripts { login, families }
