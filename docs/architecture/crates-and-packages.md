@@ -2044,7 +2044,7 @@ internal/agent/server -> internal/framewire, internal/agent/session, internal/ag
 internal/runner -> internal/commandwire, internal/cmdsdk, internal/runner/host, internal/runner/jobs, internal/runner/process, internal/runnerwire, internal/runner/cmdpkgs, internal/runner/shell
 internal/runner/process -> internal/artifacts, internal/commandwire, internal/cmdsdk, internal/runnerwire, internal/contract
 internal/runner/host -> internal/artifacts, internal/cmdsdk, internal/runner/process, internal/runnerwire
-internal/runner/jobs -> internal/commandwire, internal/cmdsdk, internal/declare, internal/runner/process, internal/runnerwire, internal/runner/cmdpkgs
+internal/runner/jobs -> internal/commandwire, internal/cmdsdk, internal/declare, internal/runner/process, internal/runnerwire, internal/runner/cmdpkgs, internal/contract
 internal/runner/shell -> internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire, internal/runner/shell/internal/engine
 internal/runner/shell/internal/engine -> internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire
 internal/runner/cmdpkgs -> internal/artifacts, internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire, internal/contract
@@ -2055,7 +2055,7 @@ internal/machines/network -> internal/artifacts, internal/cli, internal/machinew
 internal/machines/system -> internal/artifacts, internal/cli, internal/contract
 internal/backend -> internal/backend/accounts, internal/backend/blobs, internal/backend/cloud, internal/backend/database, internal/backend/expose, internal/backend/hostaccess, internal/backend/edge, internal/backend/providers, internal/backend/runners, internal/backend/usershard, internal/declare, internal/cmdpkg/browser/browserop, internal/plugins/browser, internal/plugins/changes, internal/plugins/file, internal/plugins/filebrowser, internal/plugin, internal/plugins/todo, internal/providers/anthropicapi, internal/providers/claudecode, internal/providers/codex, internal/provider, internal/providers/google, internal/providers/grokbuild, internal/providers/openaiapi, internal/artifacts, internal/cli, internal/gates, internal/core, internal/webapi, internal/plugins/expose, internal/plugins/skills
 internal/backend/accounts -> internal/backend/database, internal/commandwire, internal/core, internal/webapi
-internal/backend/blobs -> internal/agent/store, internal/core, internal/webapi
+internal/backend/blobs -> internal/agent/store, internal/core, internal/webapi, internal/contract
 internal/backend/cloud -> internal/backend/idlewatch, internal/backend/providers, internal/backend/runners, internal/backend/database, internal/backend/pagesync, internal/gates, internal/backend/remotehost, internal/machinewire, internal/runnerwire, internal/host, internal/webapi
 internal/backend/database -> internal/agent/store, internal/agent/transcript, internal/core, internal/gates, internal/backend/remotehost, internal/machinewire, internal/runnerwire, internal/host, internal/webapi, internal/plugin
 internal/backend/expose -> internal/backend/database, internal/core, internal/webapi

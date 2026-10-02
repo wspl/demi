@@ -1,7 +1,5 @@
 package session
 
-// revive:disable:unused-parameter API checkpoint stubs retain parameter names for callers.
-
 import (
 	"context"
 	"encoding/json"
@@ -81,7 +79,9 @@ type ToolOutcome struct {
 }
 
 // ErrorOutcome returns a call that completed as an error with this text.
-func ErrorOutcome(text string) ToolOutcome { panic("not written: a-session") }
+func ErrorOutcome(text string) ToolOutcome {
+	return ToolOutcome{Output: []provider.ResultPart{&provider.TextPart{Text: text}}, IsError: true}
+}
 
 // ToolEffect is what a tool asks of its session. A tool never reaches into it.
 //
@@ -99,4 +99,4 @@ func (*ScheduleYield) toolEffect() {}
 type ToolFailure struct{ Message string }
 
 // Error returns the tool failure's message.
-func (e *ToolFailure) Error() string { panic("not written: a-session") }
+func (e *ToolFailure) Error() string { return e.Message }
