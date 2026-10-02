@@ -146,12 +146,18 @@ backend's scenario suites in [Scenarios](scenarios.md).
 - Test support belongs beside the package that owns what is faked or observed,
   in a package with a `test` suffix, such as `providertest`. Production code
   never imports it, so it is not linked into product executables.
-- Suites that start real programs or machines carry `//go:build acceptance`.
-  They find already-built executables in the directory named by
-  `DEMI_TEST_PROGRAMS`, just as the TypeScript suites do, and never build them
-  inside a test. Resource-dependent suites additionally require the variables
-  in [Scenarios](scenarios.md#real-machine-acceptance). The tag alone does not
-  supply Chrome, a machine manager, or the vendor CLI.
+- Backend scenarios with real runners, runner suites, and command-program
+  suites stay in the default `go test ./...`. Tests obtain the repository's
+  programs through the shared `internal/programtest` package: it builds each
+  requested program once per test binary from the module into a temporary
+  directory, or uses `DEMI_TEST_PROGRAMS` when set. The TypeScript suites and
+  release acceptance supply that directory. See
+  [Programs used by tests](builds-and-releases.md#programs-used-by-tests).
+- Only suites that need resources outside the repository carry
+  `//go:build acceptance`: real Chrome (`DEMI_TEST_CHROME`), the Claude Code
+  CLI, or a real Cloud. They also skip without the environment that supplies
+  their resources, as specified in
+  [Scenarios](scenarios.md#real-machine-acceptance).
 
 ## Race detection
 

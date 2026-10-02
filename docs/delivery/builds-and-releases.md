@@ -72,6 +72,11 @@ own that passes [Validation](#validation). The module's `toolchain` directive
 selects the default toolchain, so also check `go version` in the build
 environment rather than silently using a newer installed version.
 
+**Open item: minimum macOS version.** The installed Go 1.27.1 toolchain's
+`doc/` files and `go doc runtime` do not establish its macOS support floor.
+Confirm that floor before specifying the minimum supported macOS release;
+a successful cross-build alone does not establish runtime support.
+
 Every product build uses `CGO_ENABLED=0`, including the backend's
 `modernc.org/sqlite` driver through `database/sql`. No C compiler is needed.
 The tree watch's macOS FSEvents file uses purego; that narrow native API call
@@ -288,7 +293,7 @@ acceptance runs the shared Go suites on each platform that ships a feature.
 | --- | --- |
 | `go vet ./...` | Static checks of host-buildable packages and tests |
 | `gofmt -l cmd internal tools` | Formatting; output must be empty (`gofmt -w` applies it) |
-| `go test ./...` | Package tests; `go test ./internal/gates -run <pattern>` selects one behavior while editing |
+| `go test ./...` | Package tests, including repository-program scenarios; `go test ./internal/gates -run <pattern>` selects one behavior while editing |
 | `golangci-lint run ./...` | Pinned v2.14.0, with `staticcheck`, `errcheck`, `govet`, and `revive`; no warnings; a local suppression names its reason |
 | `go run ./tools/archcheck` | Declared package dependency direction, including test imports and otherwise unused packages |
 | `go run ./tools/cgocheck` | No selected cgo dependencies and no failed package loads on every shipping target, always with `CGO_ENABLED=0` |
@@ -313,8 +318,22 @@ CGO_ENABLED=1 go test -race -tags netgo,osusergo ./...
 
 ### Programs used by tests
 
-Build once before acceptance. `go test` does not build the separate programs
-that a suite launches. For example, on a Mac:
+Backend scenarios with real runners, runner suites, and command-program suites
+run in the default `go test ./...`; they need no manual prebuild. One shared
+test-support package, `internal/programtest`, supplies the repository's own
+programs. When `DEMI_TEST_PROGRAMS` is unset, it builds each requested program
+once per test binary from the module with `go build -o <temporary dir>`.
+Go's build cache makes repeat builds take seconds. The package owns the
+shared temporary directory until the test binary's users have finished, then
+removes it; individual tests still stop and wait for the processes they start.
+Builds use `CGO_ENABLED=0` even when the calling test uses Linux's race runtime,
+and `GOFLAGS=-mod=readonly` during the migration.
+
+When `DEMI_TEST_PROGRAMS` is set, `internal/programtest` uses that directory
+instead of building. It resolves program names with `.exe` on Windows and
+fails clearly if a requested executable is absent; it never silently rebuilds
+an explicitly supplied program. TypeScript suites and release acceptance set
+this variable to test the intended artifacts. For example, on a Mac:
 
 ```sh
 mkdir -p .cache/test-programs
@@ -324,18 +343,16 @@ go test -tags acceptance -count=1 ./...
 ```
 
 The command builds the programs available on the current platform, including
-fixture programs; Linux also builds the machine manager. Both Go and
-TypeScript suites resolve program names in `DEMI_TEST_PROGRAMS` (with `.exe`
-on Windows), fail clearly if a required executable is absent, and build
-nothing themselves. `bun run test` uses an explicitly supplied `DEMI_TEST_PROGRAMS` directory,
-and otherwise prepares those programs once;
-to run selected TypeScript tests, build first and set the same variable.
-Test fixture and scripted-machine support is kept out of product binaries.
+fixture programs; Linux also builds the machine manager. `bun run test` uses
+an explicitly supplied `DEMI_TEST_PROGRAMS` directory and otherwise prepares
+those programs once; to run selected TypeScript tests, build first and set
+the same variable. Test fixture and scripted-machine support stays out of
+product binaries.
 
-Suites that start real programs or machines use `acceptance`. Resource suites
-additionally skip unless their required environment is supplied. These
-commands use that same prebuilt directory; test names below select each
-suite's named Go tests:
+Only suites that need resources outside the repository use `acceptance`:
+real Chrome, the Claude Code CLI, and a real Cloud. They also skip unless
+their required environment is supplied. The commands below use the prebuilt
+directory above; their test names select each resource suite:
 
 ```sh
 DEMI_TEST_CHROME=<chrome> \
