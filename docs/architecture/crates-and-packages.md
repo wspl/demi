@@ -1730,6 +1730,16 @@ not a tab registry, so the split introduces no dependency cycle.
   consumers. Every worker and resource has test cleanup.
 - **Must not:** implement product behavior or import a consumer of its owner.
 
+#### `internal/machines/system/systemtest`
+
+- **Owns:** running a test job as root in private mount and network
+  namespaces with a fresh `/run` (`Isolate`), and tool sets for tests that
+  only build command lines (`Placeholder`) or run the installed filesystem
+  and firewall programs (`OnPath`).
+- **Public boundary:** these fixtures, for the tests of `system`, `sandbox`,
+  `storage`, `network` and `internal/machines`.
+- **Must not:** implement product behavior or import a consumer of its owner.
+
 #### `internal/backend/remotehost/remotehosttest`
 
 - **Owns:** a real runner process for a backend at any address, with a home and
@@ -2078,6 +2088,7 @@ internal/agent/server/servertest -> internal/agent/server, internal/framewire, i
 internal/runner/jobs/jobstest -> internal/runner/jobs, internal/commandwire, internal/cmdsdk, internal/declare, internal/runner/process, internal/runnerwire, internal/runner/cmdpkgs
 internal/runner/shell/shelltest -> internal/runner/shell, internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire
 internal/runner/cmdpkgs/cmdpkgstest -> internal/runner/cmdpkgs, internal/artifacts, internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire, internal/commandwire/commandwiretest
+internal/machines/system/systemtest -> internal/machines/system
 internal/machines/machinestest -> internal/machines, internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire, internal/machines/sandbox, internal/machines/storage, internal/machines/network, internal/machines/system
 internal/backend/backendtest -> internal/backend, internal/backend/accounts, internal/backend/blobs, internal/backend/cloud, internal/backend/database, internal/backend/expose, internal/backend/hostaccess, internal/backend/edge, internal/backend/providers, internal/backend/runners, internal/backend/usershard, internal/declare, internal/cmdpkg/browser/browserop, internal/plugins/browser, internal/plugins/changes, internal/plugins/file, internal/plugins/filebrowser, internal/plugin, internal/plugins/todo, internal/providers/anthropicapi, internal/providers/claudecode, internal/providers/codex, internal/provider, internal/providers/google, internal/providers/grokbuild, internal/providers/openaiapi, internal/artifacts, internal/cli, internal/gates, internal/core, internal/webapi, internal/plugins/expose, internal/plugins/skills, internal/backend/edge/edgetest, internal/backend/blobs/blobstest, internal/backend/usershard/usershardtest, internal/backend/database/databasetest, internal/gates/gatestest
 internal/backend/blobs/blobstest -> internal/backend/blobs, internal/agent/store, internal/core, internal/webapi
