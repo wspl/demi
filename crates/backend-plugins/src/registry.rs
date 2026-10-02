@@ -1,11 +1,15 @@
 //! The registry: every plugin the composition root registers, in that
-//! order, checked once when the backend starts.
+//! order, checked once when the backend starts. What the startup catalog
+//! does not serve is left out: a command tree, a user stream or a page
+//! method bound to an operation the catalog lacks.
 
-use std::{collections::BTreeSet, rc::Rc};
+use std::collections::BTreeSet;
 
 use demi_command_declarations::{LeafKind, NativeOperation, Node};
-use demi_host_interface::{CommandSet, GroupBuilder, RegisterError};
-use demi_plugin_interface::{Commands, Placement, Plugin, PluginFactory, PluginId};
+use demi_host_interface::RegisterError;
+use demi_plugin_interface::{
+    Commands, Follows, Manifest, Page, Placement, PluginFactory, PluginId, Stream,
+};
 use demi_shared_types::Profile;
 
 use crate::commands::{TAKEN_GROUPS, compose};
@@ -24,6 +28,8 @@ pub enum RegistryError {
     },
     #[error("plugin \"{plugin}\" declares \"{command}\", which is taken")]
     Taken { plugin: PluginId, command: String },
+    #[error("plugin \"{plugin}\" declares the user stream \"{name}\", which is taken")]
+    Stream { plugin: PluginId, name: String },
     #[error("plugin \"{plugin}\"'s commands are refused: {error}")]
     Commands {
         plugin: PluginId,
@@ -31,30 +37,40 @@ pub enum RegistryError {
     },
 }
 
-/// One registered plugin, and the command trees it offers.
-struct Registered {
-    factory: Box<dyn PluginFactory>,
-    /// Its trees, without those bound to a package the catalog does not
-    /// serve.
-    commands: Vec<Commands>,
+/// One registered plugin, and what of its manifest the catalog serves.
+pub(crate) struct Registered {
+    pub(crate) factory: Box<dyn PluginFactory>,
+    pub(crate) commands: Vec<Commands>,
+    pub(crate) streams: Vec<Stream>,
+    pub(crate) page: Option<Page>,
+    /// The packages its served commands, streams and methods bind: the
+    /// only ones its package calls may name.
+    pub(crate) packages: BTreeSet<String>,
+}
+
+impl Registered {
+    pub(crate) fn id(&self) -> &PluginId {
+        &self.factory.manifest().id
+    }
 }
 
 /// The backend's plugins, shared by every shard thread.
 pub struct Registry {
-    plugins: Vec<Registered>,
+    pub(crate) plugins: Vec<Registered>,
     profiles: Vec<Profile>,
 }
 
 impl Registry {
-    /// The registry of `factories`, in their order. A command tree with a
-    /// native leaf `serves` refuses is left out whole, and logged; a
-    /// manifest that breaks a rule stops the start.
+    /// The registry of `factories`, in their order. What binds an operation
+    /// `serves` refuses is left out, and logged; a manifest that breaks a
+    /// rule stops the start.
     pub fn new(
         factories: Vec<Box<dyn PluginFactory>>,
         serves: impl Fn(&NativeOperation) -> bool,
     ) -> Result<Self, RegistryError> {
         let mut ids = BTreeSet::new();
         let mut profile_names = BTreeSet::new();
+        let mut stream_names = BTreeSet::new();
         let mut plugins = Vec::new();
         let mut profiles = Vec::new();
         for factory in factories {
@@ -79,25 +95,15 @@ impl Registry {
                 }
                 profiles.push(profile.clone());
             }
-            let commands = manifest
-                .commands
-                .iter()
-                .filter(|commands| {
-                    let served = native_operations(&commands.tree)
-                        .iter()
-                        .all(|op| serves(op));
-                    if !served {
-                        tracing::info!(
-                            plugin = %manifest.id,
-                            command = commands.tree.name(),
-                            "a command whose package the catalog does not serve is left out"
-                        );
-                    }
-                    served
-                })
-                .cloned()
-                .collect();
-            plugins.push(Registered { factory, commands });
+            for stream in &manifest.streams {
+                if !stream_names.insert(stream.name.clone()) {
+                    return Err(RegistryError::Stream {
+                        plugin: manifest.id.clone(),
+                        name: stream.name.clone(),
+                    });
+                }
+            }
+            plugins.push(served(factory, &serves));
         }
         let registry = Self { plugins, profiles };
         registry.check()?;
@@ -109,35 +115,19 @@ impl Registry {
     fn check(&self) -> Result<(), RegistryError> {
         let mut demi = BTreeSet::new();
         for registered in &self.plugins {
-            let plugin = &registered.factory.manifest().id;
             for commands in &registered.commands {
                 let name = commands.tree.name();
                 let taken = commands.placement == Placement::Demi
                     && (TAKEN_GROUPS.contains(&name) || !demi.insert(name.to_owned()));
                 if taken {
                     return Err(RegistryError::Taken {
-                        plugin: plugin.clone(),
+                        plugin: registered.id().clone(),
                         command: format!("demi {name}"),
                     });
                 }
             }
         }
-        let instances: Vec<_> = self.plugins.iter().map(|_| None).collect();
-        compose(self, &instances, "", Vec::new()).map(|_| ())
-    }
-
-    /// Each user's plugins: an instance of every plugin for the user's
-    /// shard.
-    pub fn instances(&self, user: impl Into<String>) -> UserPlugins<'_> {
-        UserPlugins {
-            registry: self,
-            user: user.into(),
-            instances: self
-                .plugins
-                .iter()
-                .map(|registered| Some(registered.factory.instance()))
-                .collect(),
-        }
+        compose(self, None, Vec::new()).map(|_| ())
     }
 
     /// The plugins' profiles, in registration order.
@@ -145,29 +135,92 @@ impl Registry {
         &self.profiles
     }
 
-    pub(crate) fn plugins(&self) -> impl Iterator<Item = (&PluginId, &[Commands])> {
-        self.plugins.iter().map(|registered| {
-            (
-                &registered.factory.manifest().id,
-                registered.commands.as_slice(),
-            )
-        })
+    /// Every user stream the catalog serves, of every plugin.
+    pub fn streams(&self) -> impl Iterator<Item = &Stream> {
+        self.plugins
+            .iter()
+            .flat_map(|registered| &registered.streams)
+    }
+
+    /// The plugins whose page state follows `change`, in registration
+    /// order.
+    pub fn followers(&self, change: Follows) -> impl Iterator<Item = &PluginId> {
+        self.plugins
+            .iter()
+            .filter(move |registered| {
+                registered
+                    .page
+                    .as_ref()
+                    .is_some_and(|page| page.follows.contains(&change))
+            })
+            .map(Registered::id)
+    }
+
+    pub(crate) fn plugin(&self, id: &str) -> Option<(usize, &Registered)> {
+        self.plugins
+            .iter()
+            .enumerate()
+            .find(|(_, registered)| registered.id().as_str() == id)
     }
 }
 
-/// One user's plugins on the user's shard.
-pub struct UserPlugins<'a> {
-    registry: &'a Registry,
-    user: String,
-    instances: Vec<Option<Rc<dyn Plugin>>>,
-}
-
-impl UserPlugins<'_> {
-    /// The command set every node of the user's conversations starts from:
-    /// the plugins' groups under `demi` beside the product's `product`
-    /// groups, and the plugins' roots.
-    pub fn commands(&self, product: Vec<GroupBuilder>) -> Result<CommandSet, RegistryError> {
-        compose(self.registry, &self.instances, &self.user, product)
+/// `factory` with what of its manifest `serves` serves.
+fn served(
+    factory: Box<dyn PluginFactory>,
+    serves: &impl Fn(&NativeOperation) -> bool,
+) -> Registered {
+    let manifest: &Manifest = factory.manifest();
+    let left_out = |what: &str, name: &str| {
+        tracing::info!(
+            plugin = %manifest.id,
+            what,
+            name,
+            "a part whose package the catalog does not serve is left out"
+        );
+    };
+    let mut packages = BTreeSet::new();
+    let mut bound = |operations: &[&NativeOperation]| {
+        packages.extend(operations.iter().map(|operation| operation.package.clone()));
+    };
+    let mut commands = Vec::new();
+    for tree in &manifest.commands {
+        let operations = native_operations(&tree.tree);
+        if operations.iter().all(|operation| serves(operation)) {
+            bound(&operations);
+            commands.push(tree.clone());
+        } else {
+            left_out("command", tree.tree.name());
+        }
+    }
+    let mut streams = Vec::new();
+    for stream in &manifest.streams {
+        if serves(&stream.operation) {
+            bound(&[&stream.operation]);
+            streams.push(stream.clone());
+        } else {
+            left_out("user stream", &stream.name);
+        }
+    }
+    let page = manifest.page.as_ref().map(|page| {
+        let mut page = page.clone();
+        page.methods.retain(|method| {
+            let operations: Vec<&NativeOperation> = method.operations.iter().collect();
+            let kept = operations.iter().all(|operation| serves(operation));
+            if kept {
+                bound(&operations);
+            } else {
+                left_out("page method", &method.name);
+            }
+            kept
+        });
+        page
+    });
+    Registered {
+        commands,
+        streams,
+        page,
+        packages,
+        factory,
     }
 }
 

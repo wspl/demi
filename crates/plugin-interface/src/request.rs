@@ -3,7 +3,11 @@
 //! plugin process would serve every user.
 
 use demi_host_interface::{PortError, RpcError, RpcInvocation};
+use demi_web_api_protocol::ids::{ConversationId, UserId};
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
+
+use crate::{PortFailure, PortRefusal};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(
@@ -17,12 +21,24 @@ pub enum Request {
     /// invocation's path starts at the plugin's own tree: a group the plugin
     /// placed under `demi` arrives without the `demi` before it.
     Command {
-        user: String,
-        invocation: RpcInvocation,
+        user: UserId,
+        invocation: Box<RpcInvocation>,
+    },
+    /// The plugin's state for the user's pages.
+    PageState { user: UserId },
+    /// A page called a method, with parameters that are valid against the
+    /// method's schema; `conversation` is the conversation a method of the
+    /// conversation scope was called for.
+    PageCall {
+        user: UserId,
+        method: String,
+        params: Map<String, Value>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        conversation: Option<ConversationId>,
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(
     tag = "type",
     rename_all = "snake_case",
@@ -32,10 +48,14 @@ pub enum Request {
 pub enum Reply {
     /// A command's exit status.
     Exit { code: u8 },
+    /// The page state, valid against the declared schema.
+    State { state: Value },
+    /// A page call's result, valid against the method's result schema.
+    Result { result: Value },
 }
 
 /// Why a plugin gave up on a request.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, thiserror::Error)]
 #[serde(
     tag = "type",
     rename_all = "snake_case",
@@ -47,6 +67,14 @@ pub enum PluginError {
     /// refuses.
     #[error("{message}")]
     Usage { message: String },
+    /// The plugin refuses a page call: `reason` is a snake_case word, such
+    /// as `tab_not_found`, which the page sees with the message.
+    #[error("{message}")]
+    Refused { reason: String, message: String },
+    /// A port operation was refused, and the plugin passes the refusal on:
+    /// the caller sees the refusal's own answer.
+    #[error("{refusal}")]
+    Port { refusal: PortRefusal },
     /// The plugin failed.
     #[error("{message}")]
     Failed { message: String },
@@ -55,15 +83,45 @@ pub enum PluginError {
     Ended { message: String },
 }
 
+impl PluginError {
+    pub fn refused(reason: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::Refused {
+            reason: reason.into(),
+            message: message.into(),
+        }
+    }
+
+    pub fn failed(message: impl ToString) -> Self {
+        Self::Failed {
+            message: message.to_string(),
+        }
+    }
+}
+
 impl From<RpcError> for PluginError {
     fn from(error: RpcError) -> Self {
         match error {
             RpcError::Usage(message) => Self::Usage { message },
             RpcError::Failed(message) => Self::Failed { message },
-            RpcError::Port(PortError::Ended(message)) => Self::Ended { message },
-            RpcError::Port(error) => Self::Failed {
-                message: error.to_string(),
-            },
+            RpcError::Port(error) => error.into(),
+        }
+    }
+}
+
+impl From<PortError> for PluginError {
+    fn from(error: PortError) -> Self {
+        match error {
+            PortError::Ended(message) => Self::Ended { message },
+            error => Self::failed(error),
+        }
+    }
+}
+
+impl From<PortFailure> for PluginError {
+    fn from(failure: PortFailure) -> Self {
+        match failure {
+            PortFailure::Port(error) => error.into(),
+            PortFailure::Refused(refusal) => Self::Port { refusal },
         }
     }
 }
@@ -72,8 +130,8 @@ impl From<PluginError> for RpcError {
     fn from(error: PluginError) -> Self {
         match error {
             PluginError::Usage { message } => Self::Usage(message),
-            PluginError::Failed { message } => Self::Failed(message),
             PluginError::Ended { message } => Self::Port(PortError::Ended(message)),
+            error => Self::Failed(error.to_string()),
         }
     }
 }

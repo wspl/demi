@@ -168,7 +168,6 @@ impl Backend {
             pages: config.pages,
             native: config.native,
             plugins: config.plugins,
-            user_streams: &config.user_streams,
             cloud: CloudServices::new(machines, config.cloud),
             lifecycle: config.lifecycle,
             expose_domain: config.expose_domain,
@@ -305,6 +304,33 @@ impl Backend {
                     .slot(&conversation)
                     .file_gate()
                     .clone()
+            })
+            .await
+            .expect("the user's shard serves while the backend runs")
+    }
+
+    /// A new expose of `address` on the user's `device` for an hour, as the
+    /// `expose` plugin makes it: a scenario's way to an expose without a
+    /// turn of the agent.
+    #[cfg(feature = "testing")]
+    pub async fn create_expose(
+        &self,
+        user: &demi_web_api_protocol::ids::UserId,
+        device: &demi_web_api_protocol::ids::DeviceId,
+        address: &str,
+    ) -> Result<demi_backend_expose::records::Expose, demi_backend_expose::records::ExposeError>
+    {
+        let device = device.clone();
+        let address = demi_web_api_protocol::exposes::ExposeAddress::try_from(address.to_owned())
+            .expect("a scenario exposes a valid address");
+        self.shards
+            .shards()
+            .of(user)
+            .call(move |shard, _| async move {
+                shard
+                    .expose_shard()
+                    .add_expose(&device, address, jiff::SignedDuration::from_hours(1))
+                    .await
             })
             .await
             .expect("the user's shard serves while the backend runs")

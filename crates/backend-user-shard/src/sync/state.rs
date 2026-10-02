@@ -6,6 +6,7 @@
 
 use demi_backend_database::StorageError;
 use demi_backend_page_sync::Part;
+use demi_plugin_interface::PluginError;
 use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::providers::{ProviderReading, ProviderState};
 use demi_web_api_protocol::state::{ProductState, SyncEvent};
@@ -13,10 +14,20 @@ use futures_util::future::join_all;
 
 use crate::shard::Shard;
 
+/// Why a part of the product state could not be read.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum StateError {
+    #[error(transparent)]
+    Storage(#[from] StorageError),
+    /// A plugin could not answer its page state.
+    #[error("a plugin's page state could not be read: {0}")]
+    Plugin(#[from] PluginError),
+}
+
 impl Shard {
     /// The product state for `user`, this shard's user as the session
     /// resolved them.
-    pub(crate) async fn product_state(&self, user: UserDto) -> Result<ProductState, StorageError> {
+    pub(crate) async fn product_state(&self, user: UserDto) -> Result<ProductState, StateError> {
         let services = self.services();
         let preferences = services.control.preferences(self.user().clone()).await?;
         let providers = self.provider_states(&user).await?;
@@ -25,7 +36,7 @@ impl Shard {
         let mut conversations = self.conversation_summaries(false).await?;
         conversations.extend(self.conversation_summaries(true).await?);
         let cloud = self.cloud_shard().cloud_status().await?;
-        let exposes = self.expose_shard().list_exposes().await?;
+        let plugin_states = self.plugins().page_states().await?;
         Ok(ProductState {
             user,
             mode: services.mode,
@@ -36,11 +47,6 @@ impl Shard {
                 .map(|workspace| workspace.dto())
                 .collect(),
             devices,
-            exposes,
-            expose_domain: services
-                .expose_domain
-                .as_ref()
-                .map(|domain| domain.as_str().to_owned()),
             public_url: services
                 .public_url
                 .get()
@@ -49,6 +55,7 @@ impl Shard {
                 .to_owned(),
             conversations,
             cloud,
+            plugin_states,
         })
     }
 
@@ -58,7 +65,7 @@ impl Shard {
         &self,
         part: &Part,
         user: &UserDto,
-    ) -> Result<Option<SyncEvent>, StorageError> {
+    ) -> Result<Option<SyncEvent>, StateError> {
         let control = &self.services().control;
         let event = match part {
             Part::Conversation(id) => {
@@ -93,9 +100,15 @@ impl Shard {
             Part::Devices => SyncEvent::Devices {
                 devices: self.device_list().await?,
             },
-            Part::Exposes => SyncEvent::Exposes {
-                exposes: self.expose_shard().list_exposes().await?,
-            },
+            Part::Plugin(plugin) => {
+                let Some(state) = self.plugins().page_state(plugin).await? else {
+                    return Ok(None);
+                };
+                SyncEvent::Plugin {
+                    plugin: plugin.clone(),
+                    state,
+                }
+            }
             Part::Providers => SyncEvent::Providers {
                 providers: self.provider_states(user).await?,
             },

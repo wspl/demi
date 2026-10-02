@@ -31,7 +31,6 @@ function expose(id: string, deviceId: string) {
     deviceId,
     address: '127.0.0.1:5173',
     url: `https://${id}.expose.demi.example/`,
-    createdAt: '2026-09-17T00:00:00.000Z',
     expiresAt: '2026-09-17T00:59:00.000Z',
   }
 }

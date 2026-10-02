@@ -12,7 +12,6 @@ bench = false
 
 [dependencies]
 demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
-demi-command-package-browser-protocol = { path = "../command-package-browser-protocol" }
 demi-command-protocol = { path = "../command-protocol" }
 demi-shared-types = { path = "../shared-types" }
 demi-runner-protocol = { path = "../runner-protocol" }

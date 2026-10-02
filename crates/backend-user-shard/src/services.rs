@@ -2,7 +2,6 @@
 //! ones that span users, or that are needed before the user is known, which
 //! the edge and every shard share, over the storage they are opened on.
 
-use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -32,7 +31,6 @@ use demi_backend_providers::vault::seal::VaultKey;
 use demi_backend_runners::claims::PendingClaims;
 use demi_backend_runners::native::NativeCatalog;
 use demi_backend_runners::public_url::PublicUrl;
-use demi_command_declarations::NativeOperation;
 use demi_plugin_interface::PluginFactory;
 use demi_provider_common::models_dev::ModelsDevClient;
 use demi_shared_types::Clock;
@@ -76,7 +74,7 @@ pub struct Services {
     pub native: NativeCatalog,
     /// The backend's plugins, checked at startup (`plugins.md` § The plugin
     /// host).
-    pub plugins: Registry,
+    pub plugins: Arc<Registry>,
     /// The user streams a page may open.
     pub user_streams: UserStreams,
     /// The machine manager's client, the Cloud capacity across users and
@@ -123,7 +121,7 @@ pub struct ServiceKeys {
 
 /// What the services are configured with besides storage, the keys and the
 /// providers.
-pub struct ServiceSettings<'a> {
+pub struct ServiceSettings {
     pub mode: InstanceMode,
     pub mail: Option<Arc<dyn AccountMail>>,
     pub runners: RunnerTuning,
@@ -132,7 +130,6 @@ pub struct ServiceSettings<'a> {
     pub native: NativeCatalog,
     /// The plugins, in their order of registration.
     pub plugins: Vec<Box<dyn PluginFactory>>,
-    pub user_streams: &'a BTreeMap<String, NativeOperation>,
     pub cloud: CloudServices,
     pub lifecycle: LifecycleTuning,
     pub expose_domain: Option<ExposeDomain>,
@@ -229,7 +226,7 @@ impl Services {
         storage: Storage,
         keys: ServiceKeys,
         providers: ProviderSetup,
-        settings: ServiceSettings<'_>,
+        settings: ServiceSettings,
     ) -> Result<Self, ServicesError> {
         let Storage {
             control,
@@ -292,9 +289,14 @@ impl Services {
             runners: settings.runners,
             conversation_tuning: settings.conversations,
             pages: settings.pages,
-            user_streams: UserStreams::new(settings.user_streams, &settings.native),
+            user_streams: UserStreams::new(
+                plugins
+                    .streams()
+                    .map(|stream| (stream.name.as_str(), &stream.operation)),
+                &settings.native,
+            ),
             native: settings.native,
-            plugins,
+            plugins: Arc::new(plugins),
             cloud: settings.cloud,
             public_url: PublicUrl::default(),
             lifecycle: settings.lifecycle,
@@ -356,7 +358,6 @@ impl Services {
             pages: PageTuning::default(),
             native: NativeCatalog::unpublished(),
             plugins: Vec::new(),
-            user_streams: &BTreeMap::new(),
             cloud: CloudServices::new(machines, demi_backend_cloud::tuning::CloudTuning::default()),
             lifecycle,
             expose_domain: None,

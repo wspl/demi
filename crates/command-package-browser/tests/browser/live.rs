@@ -368,7 +368,7 @@ fn user() -> CommandCaller {
 }
 
 /// The exit code and answer of `operation` run as the page's request runs
-/// it: for a `user` caller (`web-api.md` § Conversation browser tabs).
+/// it: for a `user` caller (`live-view.md` § The tab methods).
 async fn user_result(fixture: &BrowserFixture, operation: &str, args: Value) -> (u8, Value) {
     fixture
         .result_for(

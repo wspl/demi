@@ -39,6 +39,24 @@ pub(super) struct JsonBody<T>(pub(super) T);
 /// default; any other body follows [`JsonBody`]'s rules.
 pub(super) struct OptionalJsonBody<T>(pub(super) T);
 
+/// A body that is any JSON document, an empty one reading as `{}`, for a
+/// route whose callee checks it against a schema of its own.
+pub(super) struct JsonValueBody(pub(super) serde_json::Value);
+
+impl<S: Send + Sync> FromRequest<S> for JsonValueBody {
+    type Rejection = ApiError;
+
+    async fn from_request(request: Request, state: &S) -> Result<Self, ApiError> {
+        let bytes = read(request, state).await?;
+        if bytes.is_empty() {
+            return Ok(Self(serde_json::Value::Object(serde_json::Map::new())));
+        }
+        let Json(value) = Json::<serde_json::Value>::from_bytes(&bytes)
+            .map_err(|rejection| ApiError::invalid_body(rejection.body_text()))?;
+        Ok(Self(value))
+    }
+}
+
 fn too_large() -> ApiError {
     ApiError::new(
         StatusCode::PAYLOAD_TOO_LARGE,

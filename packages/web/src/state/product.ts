@@ -20,10 +20,17 @@ const SESSION_ENDED = 4002
 export type PartEvent = Exclude<SyncEvent, { type: 'snapshot' | 'heartbeat' }>
 
 /** A part of the product state, which a message or a write's answer replaces whole. */
-type Part = `conversation:${string}` | Exclude<PartEvent['type'], 'conversation'>
+type Part = `conversation:${string}` | `plugin:${string}` | Exclude<PartEvent['type'], 'conversation' | 'plugin'>
 
 function partOf(event: PartEvent): Part {
-  return event.type === 'conversation' ? `conversation:${event.conversation.id}` : event.type
+  switch (event.type) {
+    case 'conversation':
+      return `conversation:${event.conversation.id}`
+    case 'plugin':
+      return `plugin:${event.plugin}`
+    default:
+      return event.type
+  }
 }
 
 /** The conversations with `summary` in its place, or, new, at the front of the active or the end of the archived ones. */
@@ -64,8 +71,8 @@ function withPart(state: ProductState, event: PartEvent): ProductState {
       return { ...state, workspaces: event.workspaces }
     case 'devices':
       return { ...state, devices: event.devices }
-    case 'exposes':
-      return { ...state, exposes: event.exposes }
+    case 'plugin':
+      return { ...state, pluginStates: { ...state.pluginStates, [event.plugin]: event.state } }
     case 'providers':
       return { ...state, providers: event.providers }
     case 'cloud':
