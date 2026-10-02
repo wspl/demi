@@ -1,2 +1,3 @@
-// Package programtest supports tests of package internal and its consumers.
+// Package programtest builds repository programs once for a test binary or
+// resolves programs supplied through DEMI_TEST_PROGRAMS.
 package programtest

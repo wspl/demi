@@ -134,7 +134,7 @@ func (v EnsureReplyJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateEnsureReply(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateEnsureReply(value EnsureReply) error { return contractValidateEnsureReply(value, 0) }
 func contractValidateEnsureReply(value EnsureReply, depth int) error {
@@ -262,7 +262,7 @@ func (v ErrorCode) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func DecodeFailed(data []byte) (Failed, error) { return contract.Decode[Failed](data) }
 func (v Failed) Validate() error               { return contractValidateFailed(v, 0) }
@@ -516,7 +516,7 @@ func (v Operation) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func DecodeRelease(data []byte) (Release, error) { return contract.Decode[Release](data) }
 func (v Release) Validate() error                { return contractValidateRelease(v, 0) }
@@ -788,7 +788,7 @@ func (v StatusReplyJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateStatusReply(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateStatusReply(value StatusReply) error { return contractValidateStatusReply(value, 0) }
 func contractValidateStatusReply(value StatusReply, depth int) error {
@@ -847,5 +847,5 @@ func (v Version) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }

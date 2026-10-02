@@ -8,8 +8,9 @@ import (
 	"strings"
 )
 
-// markReceived propagates tolerant web input through every reachable definition.
-func (g *generator) markReceived(name string) {
+// markReceived follows reachable contracts. MessagePack excludes keys because
+// map keys use string encoding rather than the named type's value codec.
+func (g *generator) markReceived(name string, includeKeys bool) {
 	if g.received[name] {
 		return
 	}
@@ -21,7 +22,7 @@ func (g *generator) markReceived(name string) {
 	}
 	if has(d.marks, "union") {
 		for _, v := range g.variants(name) {
-			g.markReceived(v.key)
+			g.markReceived(v.key, includeKeys)
 		}
 	}
 	var visit func(types.Type)
@@ -31,12 +32,15 @@ func (g *generator) markReceived(name string) {
 		}
 		switch t := t.(type) {
 		case *types.Named:
-			g.markReceived(typeKey(t))
+			g.markReceived(typeKey(t), includeKeys)
 		case *types.Pointer:
 			visit(t.Elem())
 		case *types.Slice:
 			visit(t.Elem())
 		case *types.Map:
+			if includeKeys {
+				visit(t.Key())
+			}
 			visit(t.Elem())
 		case *types.Struct:
 			for i := 0; i < t.NumFields(); i++ {
@@ -77,22 +81,31 @@ func (g *generator) emitTS(name string) {
 			g.err = fmt.Errorf("adjacent union is not supported in TypeScript")
 			return
 		}
-		if d.marks["union"] == "untagged" {
-			g.err = fmt.Errorf("untagged union is not supported in TypeScript")
-			return
-		}
 		tag := bounds(d.marks["union"])["tag"]
 		var variants []string
 		for _, v := range g.variants(name) {
 			g.emitTS(v.key)
 			_, value, _ := strings.Cut(v.marks["variant"], " ")
-			variants = append(variants, schema(v.name)+".extend({"+q(tag)+": z.literal("+tagLiteral(value)+")})")
+			if d.marks["union"] == "untagged" {
+				variants = append(variants, schema(v.name))
+			} else {
+				variants = append(variants, schema(v.name)+".extend({"+q(tag)+": z.literal("+tagLiteral(value)+")})")
+			}
 		}
-		code = "z.discriminatedUnion(" + q(tag) + ", [" + strings.Join(variants, ", ") + "])"
+		if d.marks["union"] == "untagged" {
+			code = "z.union([" + strings.Join(variants, ", ") + "])"
+		} else {
+			code = "z.discriminatedUnion(" + q(tag) + ", [" + strings.Join(variants, ", ") + "])"
+		}
 	} else if st, ok := g.object(d); ok {
 		var fields []string
 		for i := 0; i < st.NumFields(); i++ {
 			f := st.Field(i)
+			if child := g.optionalObject(f); child != nil {
+				g.emitTS(child.key)
+				fields = append(fields, "..."+schema(child.name)+".partial().shape")
+				continue
+			}
 			opts := strings.Split(reflect.StructTag(st.Tag(i)).Get("json"), ",")
 			value, forward := g.tsType(f.Type(), d.fields[f.Name()])
 			if has(d.fields[f.Name()], "nullable") {

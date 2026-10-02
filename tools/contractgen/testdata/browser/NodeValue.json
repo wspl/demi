@@ -1,0 +1,13 @@
+{
+  "description": "A node's value: an input's text, or a range or progress number.",
+  "anyOf": [
+    {
+      "type": "string"
+    },
+    {
+      "type": "number",
+      "format": "double"
+    }
+  ],
+  "title": "NodeValue"
+}

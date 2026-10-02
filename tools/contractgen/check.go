@@ -81,6 +81,12 @@ func (g *generator) check(p *packages.Package) error {
 			if len(parts) < 1 || len(parts) > 2 || g.defs[parts[0]] == nil || !has(g.defs[parts[0]].marks, "union") {
 				return fail("variant requires a known union and tag")
 			}
+			if _, object := d.typ.Underlying().(*types.Struct); !object {
+				basic, scalar := d.typ.Underlying().(*types.Basic)
+				if g.defs[parts[0]].marks["union"] != "untagged" || !scalar || basic.Info()&(types.IsString|types.IsBoolean|types.IsInteger|types.IsFloat) == 0 {
+					return fail("variant requires an object or an untagged scalar")
+				}
+			}
 			if iface, ok := g.defs[parts[0]].typ.Underlying().(*types.Interface); ok && types.Implements(d.typ, iface) {
 				return fail("variant sealing method must have a pointer receiver")
 			}
@@ -115,6 +121,22 @@ func (g *generator) check(p *packages.Package) error {
 					return fail(f.Name() + ": " + err.Error())
 				}
 				tag := reflect.StructTag(st.Tag(i)).Get("json")
+				if child := g.optionalObject(f); child != nil {
+					if !f.Exported() || tag != "" || len(m) != 0 || g.adjacentUnion(d) != nil || g.tupleUnion(d) {
+						return fail(f.Name() + ": optional embedded objects cannot have tags, rules, or tuple/adjacent content")
+					}
+					nested, _ := g.object(child)
+					for _, key := range g.propertyNames(child, nested) {
+						if seen[key] {
+							return fail(f.Name() + ": duplicate flattened field " + key)
+						}
+						seen[key] = true
+					}
+					if g.err != nil {
+						return g.err
+					}
+					continue
+				}
 				if has(m, "flatten") {
 					u := g.flattenedUnion(d, f)
 					if g.adjacentUnion(d) != nil || u == nil || !has(u.marks, "union") || bounds(u.marks["union"])["content"] == "" || tag != "" || !f.Exported() || len(m) != 1 {
@@ -258,8 +280,11 @@ func (g *generator) checkType(t types.Type) error {
 	case *types.Slice:
 		return g.checkType(t.Elem())
 	case *types.Map:
-		if !types.Identical(t.Key(), types.Typ[types.String]) {
+		if b, ok := t.Key().Underlying().(*types.Basic); !ok || b.Kind() != types.String {
 			return fmt.Errorf("record keys must be strings")
+		}
+		if err := g.checkType(t.Key()); err != nil {
+			return err
 		}
 		return g.checkType(t.Elem())
 	case *types.Basic:
@@ -287,7 +312,7 @@ func (g *generator) tsSources() (map[string][]byte, error) {
 	for _, roots := range outputs {
 		for _, key := range roots {
 			if bounds(g.defs[key].marks["root"])["direction"] == "receive" {
-				g.markReceived(key)
+				g.markReceived(key, true)
 			}
 		}
 	}
@@ -295,7 +320,7 @@ func (g *generator) tsSources() (map[string][]byte, error) {
 	// Protocol ownership is reachability, independent of strictness.
 	g.received = map[string]bool{}
 	for _, key := range outputs["protocol"] {
-		g.markReceived(key)
+		g.markReceived(key, true)
 	}
 	protocol := g.received
 	g.received = received

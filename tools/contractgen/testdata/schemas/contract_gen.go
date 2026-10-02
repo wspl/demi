@@ -579,7 +579,7 @@ func (v Collection) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func CollectionJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"properties\":{\"labels\":{\"additionalProperties\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"type\":\"object\"},\"values\":{\"items\":{\"format\":\"uint8\",\"maximum\":8,\"minimum\":1,\"type\":\"integer\"},\"maxItems\":2,\"minItems\":1,\"type\":\"array\"}},\"required\":[\"values\",\"labels\"],\"title\":\"Collection\",\"type\":\"object\"}")
+	return json.RawMessage("{\"properties\":{\"labels\":{\"additionalProperties\":{\"type\":[\"string\",\"null\"]},\"type\":\"object\"},\"values\":{\"items\":{\"format\":\"uint8\",\"maximum\":8,\"minimum\":1,\"type\":\"integer\"},\"maxItems\":2,\"minItems\":1,\"type\":\"array\"}},\"required\":[\"values\",\"labels\"],\"title\":\"Collection\",\"type\":\"object\"}")
 }
 func DecodeConstraints(data []byte) (Constraints, error) { return contract.Decode[Constraints](data) }
 func (v Constraints) Validate() error                    { return contractValidateConstraints(v, 0) }
@@ -2234,7 +2234,7 @@ func contractValidateOutcome(value Outcome, depth int) error {
 	}
 }
 func OutcomeJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"oneOf\":[{\"additionalProperties\":false,\"properties\":{\"kind\":{\"const\":\"ok\",\"type\":\"string\"},\"value\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}},\"required\":[\"kind\",\"value\"],\"type\":\"object\"},{\"additionalProperties\":false,\"properties\":{\"kind\":{\"const\":\"error\",\"type\":\"string\"},\"message\":{\"type\":\"string\"}},\"required\":[\"kind\",\"message\"],\"type\":\"object\"}],\"title\":\"Outcome\"}")
+	return json.RawMessage("{\"oneOf\":[{\"additionalProperties\":false,\"properties\":{\"kind\":{\"const\":\"ok\",\"type\":\"string\"},\"value\":{\"type\":[\"string\",\"null\"]}},\"required\":[\"kind\",\"value\"],\"type\":\"object\"},{\"additionalProperties\":false,\"properties\":{\"kind\":{\"const\":\"error\",\"type\":\"string\"},\"message\":{\"type\":\"string\"}},\"required\":[\"kind\",\"message\"],\"type\":\"object\"}],\"title\":\"Outcome\"}")
 }
 func DecodePatchArgs(data []byte) (PatchArgs, error) { return contract.Decode[PatchArgs](data) }
 func (v PatchArgs) Validate() error                  { return contractValidatePatchArgs(v, 0) }

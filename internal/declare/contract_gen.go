@@ -163,6 +163,9 @@ func (v NativeOperation) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func DecoderawBinding(data []byte) (rawBinding, error) {
+	if err := contract.CheckJSON(data); err != nil {
+		return nil, err
+	}
 	if value, err := contract.Decode[NativeOperation](data); err == nil {
 		return &value, nil
 	}
@@ -185,7 +188,7 @@ func (v rawBindingJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidaterawBinding(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidaterawBinding(value rawBinding) error { return contractValidaterawBinding(value, 0) }
 func contractValidaterawBinding(value rawBinding, depth int) error {
@@ -615,6 +618,9 @@ func (v rawLeafOutput) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func DecoderawNode(data []byte) (rawNode, error) {
+	if err := contract.CheckJSON(data); err != nil {
+		return nil, err
+	}
 	if value, err := contract.Decode[rawGroup](data); err == nil {
 		return &value, nil
 	}
@@ -637,7 +643,7 @@ func (v rawNodeJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidaterawNode(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidaterawNode(value rawNode) error { return contractValidaterawNode(value, 0) }
 func contractValidaterawNode(value rawNode, depth int) error {

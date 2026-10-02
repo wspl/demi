@@ -71,8 +71,8 @@ never relax them.
 | `union tag=type` | Interface with exactly one unexported method, a parameterless and resultless seal selected independently of method order; exported methods are allowed and implemented by every variant. Internally tagged union. The tag may instead be `op`, `status`, `kind` or `ok`, as the wire requires. `variant true` and `variant false` use JSON boolean tags, never strings. |
 | `union tag=op content=result` | Go-only adjacent union. A zero-field variant has nil content; a single required field is the content itself (including a named object or array). More than one field is refused; compose a named content object instead. The tag must precede content on decode. |
 | `flatten` | Field of an adjacent union, without a JSON tag or other field markers; contributes the tag and content at that field's position in its parent object. An adjacent variant's content field cannot itself be flattened. Keys must not collide with sibling or parent tag keys. |
-| `union untagged` | Go-only interface; decode the first strict struct variant that decodes, in declaration order, in JSON and MessagePack. Encode the variant's own object. TypeScript reachability is an error. |
-| `variant text` or `variant Block text` | Struct; pointer variant with the given wire tag value, naming its union when the package has several. The encoder adds the tag; no tag field is declared. A variant can implement several unions with the same wire representation. Untagged variants use `variant` without a tag and implement their sealing method. |
+| `union untagged` | Interface; decode the first strict struct or named scalar variant that decodes, in declaration order, in JSON and MessagePack. Encode the variant's own value. Zod uses an ordered `z.union`. |
+| `variant text` or `variant Block text` | Struct (or named scalar for an untagged union); pointer variant with the given wire tag value, naming its union when the package has several. The encoder adds the tag; no tag field is declared. A variant can implement several unions with the same wire representation. Untagged variants use `variant` without a tag and implement their sealing method. |
 | `enum value1 value2` | Named string type; closed set of wire strings, including singleton literals. |
 | `nullable` | Field; required key whose value may be null. |
 | `tolerant` | Struct; ignore unknown keys in Go. Every other object is strict. |
@@ -88,11 +88,22 @@ never relax them.
 | `format email`, `format http-url`, `format trimmed` | Named string type; email, HTTP(S) URL or trimmed-text behavior in the supported subset below. |
 | `table` | Package-level variable of a slice of structs or scalars; a constant table emitted with its generated lookups into `tables.ts`, such as the file-type table. Its TypeScript name is SCREAMING_SNAKE case (`PreviewTypes` becomes `PREVIEW_TYPES`). |
 
-A contract type is a type reached from a `root` marker, including the root
-itself. Unreached types are left alone, even in a package that also holds
-runtime types. `schema` and `msgpack` select generated capabilities; they do
-not make an unreached type a boundary. Roots are markers on types, never a
-second registry in the generator.
+A contract type is reached from a `root` or `msgpack` marker, including the
+marked type itself. A standalone `msgpack` marker is a MessagePack root.
+JSON and MessagePack reachability are tracked independently: types reached
+from a `root` get JSON codecs, types reached from a `msgpack` root get
+MessagePack codecs, and types reached from both get both. MessagePack-only
+types still receive validation and union seals, but no JSON codecs or JSON
+union holders. Unreached types are left alone. `schema` selects schema output
+for a retained type; it does not make an unreached type a boundary. Roots are
+markers on types, never a second registry in the generator.
+
+Maps may use `string` or a defined string type such as `core.BlockID` as keys.
+Generated JSON and MessagePack validation runs the key type's own rules on
+every key, on decode and encode, without rewriting keys. A named map declaration
+(`type Failures map[core.BlockID]core.ProviderFailureFacts`) can own generated methods;
+a Go type alias is not needed for this contract.
+
 Named generic instantiations can be roots. Constant tables and lookups come
 from their owning Go declarations, without parallel TypeScript tables.
 
@@ -112,12 +123,26 @@ from their owning Go declarations, without parallel TypeScript tables.
   interface. A nullable array is `*[]T`: nil means null and a pointer to an
   empty non-nil slice means `[]`. Ordinary arrays and maps require non-nil
   empty values to encode `[]` and `{}` rather than null.
-- Unions are tagged wherever the web app sees the type. Go-only boundaries
-  can use untagged unions with strict struct variants. Transcript patches
+- Untagged unions may contain strict structs or named strings, booleans and
+  numbers; their pointer variants are tried in declaration order. For example,
+  the browser's `NodeValue` tries text before a number. Tagged unions remain
+  the usual representation for object variants. Transcript patches
   use `op`, nested outcomes use `status`, and views use `kind` where their contract says so.
   A tagged variant's standalone JSON encoding includes its tag. If a payload is
   also a separate root, declare it once and compose it into the tagged
   envelope rather than changing its encoding by call site.
+- An embedded value object contributes its properties at that field's position.
+  An embedded `*Object` without a tag represents serde's flattened `Option<T>`.
+  Nil writes no properties. Decoding tries the contributed properties as a whole;
+  as in serde, a failed child decode leaves nil, including missing required
+  fields and invalid child values. A child with no required fields can decode
+  an empty object successfully. Parent token checks and its own fields still
+  fail normally. Encoding a non-nil child validates it. Flattened property names
+  must not collide; recursive flattening is unsupported. For the browser's
+  optional export, `directory`, `manifest` and `files` must decode together.
+  Its schema and Zod merge the child properties as optional, without the child's
+  required list or object-level description. They describe the serialized fields;
+  they do not model serde's failed-child-to-nil decode behavior.
 - Bytes are base64 strings in JSON. Empty bytes use a non-nil empty slice,
   never null.
 - Timestamps are UTC RFC 3339 strings with exactly three fractional digits,
@@ -195,7 +220,9 @@ Rust emitter did not support them.
 
 Kept-output records use their external tag and tuple representation. Decoders distinguish absent keys from nil, reject duplicate
 keys, unknown tags, invalid scalar kinds, overflow and trailing data, and
-enforce the same presence and bounds rules as JSON.
+enforce the same presence and bounds rules as JSON. Floating-point targets
+accept integer tokens as serde does, including unsigned values above `MaxInt64`;
+integer targets never accept floating-point tokens.
 
 The machine-manager Unix socket carries one JSON document followed by a newline.
 Typed encoders preserve declared member order and disable HTML escaping.
@@ -226,10 +253,15 @@ The declaration's input-subset check still decides whether a schema has a
 command-line form; schema generation also supports richer result objects.
 
 JSON tags become `properties` and required fields become `required`.
-Optional properties omit `required` and never add null. `nullable` adds a
-null alternative with `anyOf`. Objects use `additionalProperties: false`
+Optional properties omit `required` and never add null. `nullable` follows
+schemars: an ordinary typed schema adds `"null"` to its `type` array while
+keeping its properties, bounds, format and description beside it. Enums also
+add null to their choices. References and immediate applicators (`if`, `allOf`,
+`anyOf`, `oneOf`) instead use `anyOf: [schema, {"type": "null"}]`.
+Objects use `additionalProperties: false`
 unless `tolerant`; string-keyed maps use their value schema there. Arrays
-use `items`. `union` produces `oneOf` with each `variant`'s tag as `const`.
+use `items`. Tagged `union` produces `oneOf` with each `variant`'s tag as
+`const`; untagged unions produce `anyOf` in declaration order.
 `enum` produces `enum`, `pattern` (including an `id` pattern) produces
 `pattern`, `length` produces `minLength`/`maxLength` for strings and
 `minItems`/`maxItems` for arrays, and `range` produces inclusive
@@ -257,10 +289,12 @@ for contract packages. Declaration builders may override a property description
 `internal/declare` and `internal/host` own that text, not the type generator.
 No defaults are inferred.
 
-Generation fails with the declaration and field path for reachable `check`,
-normalized string `format`, `base64` and byte-slice rules. The built-in command
-schemas use none of those rules; new uses need an explicit schema mapping
-rather than silently dropping their behavior.
+A `check` function is a rule only Go enforces: schemas omit it, as Rust's
+schemas omit garde's custom rules, so a schema-reachable type may carry one.
+Generation fails with the declaration and field path for reachable normalized
+string `format`, `base64` and byte-slice rules. The built-in command schemas
+use none of those; new uses need an explicit schema mapping rather than
+silently dropping their behavior.
 It also rejects the unsupported shapes and invalid markers described above.
 `schema` takes no arguments and is only a type marker. JSON Schema validates
 parsed values; the generated decoder additionally rejects duplicate keys,
@@ -283,6 +317,10 @@ Every value from outside a process follows the same rule:
 - Each boundary uses a generated decoder per message family. Closed sets
   use enums or unions, identifiers use validated named types, and integers
   use integer types.
+- JSON syntax errors wrap `contract.ErrSyntax`: malformed JSON, invalid UTF-8
+  or escaped Unicode, trailing data, and the recursion limit. Callers use
+  `errors.Is(err, contract.ErrSyntax)` even through field-path errors. Shape
+  and validation failures, including duplicate keys, do not wrap this sentinel.
 - JSON decoders build on stable `encoding/json` through `internal/contract`.
   They check UTF-8 before parsing and reject unpaired escaped surrogates
   instead of letting the library replace them. They reject duplicate keys
@@ -374,7 +412,8 @@ Go types + JSON tags + markers
   emitted schema. Tagged interfaces become discriminated unions; optional
   and nullable fields keep their distinct presence rules at both ends.
 - **Supported subset.** Objects; string- or boolean-tagged unions including
-  a struct payload extended with its tag; string enums and literals; arrays and records;
+  a struct payload extended with its tag; ordered untagged unions of strict
+  structs or named scalars; string enums and literals; arrays and records;
   optional fields (`.optional()`, refusing null); nullable fields
   (`.nullable()`, requiring presence); string lengths and patterns; integer
   and number bounds, with web integers in the safe range; timestamps with
@@ -382,8 +421,8 @@ Go types + JSON tags + markers
   HTTP and HTTPS URLs (`z.url` restricted to those protocols, `webapi.EndpointURL`);
   text explicitly trimmed on arrival before bounds are checked
   (`z.string().trim()`, `webapi.Trimmed`); JSON values (`z.json()`);
-  flattened plain embedded structs (merged properties, rejecting name
-  collisions); one named instantiation of a generic root; recursion through
+  flattened plain embedded value or optional pointer structs (merged properties,
+  rejecting name collisions); one named instantiation of a generic root; recursion through
   named references, emitted as getters on referring object properties so
   Zod can type them recursively; strict and tolerant objects; and constant
   tables with generated lookups (file types, model-readable file types and
@@ -411,7 +450,8 @@ Go types + JSON tags + markers
   this web-facing rule.
 - **Tolerant values where the web app receives.** Receive-only schemas may
   accept more than Go can hold, because the backend never sends the
-  difference: failure-map keys may be empty even when a block ID cannot,
+  difference: failure-map keys may be empty even when a block ID cannot
+  (`z.record(z.string(), ...)`, matching the Rust emitter),
   and email text may carry capitals that `EmailAddress` lowercases. Where
   the web sends a value, its schema refuses whatever Go refuses: trimmed
   names are trimmed before length checks, blank names fail, endpoints must
