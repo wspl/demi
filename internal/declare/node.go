@@ -25,7 +25,7 @@ func declarationError(message string) *DeclarationError {
 }
 
 // Node is a group or leaf. B identifies a native operation before or after pinning.
-// Contract markers await f-contractgen3's untagged union support.
+// Runtime nodes convert through the generated raw wire representation.
 //
 //sumtype:decl
 type Node[B any] interface {
@@ -80,13 +80,19 @@ type Native[B any] struct {
 
 func (*Native[B]) leafKind() {}
 
-// NativeOperation identifies an operation before selecting its descriptor.
+// The command package operation a declaration names. The manifest pins it to
+// the descriptor the backend selected for the package ([`Node::pin`]).
+//
+// +demi:variant rawBinding
 type NativeOperation struct {
 	Package   string `json:"package"`
 	Operation string `json:"operation"`
 }
 
-// Binding pins an operation to a package descriptor.
+// The command package operation a command runs, and the digest of the
+// package descriptor that serves it.
+//
+// +demi:variant rawBinding
 type Binding struct {
 	Package        string `json:"package"`
 	Operation      string `json:"operation"`
