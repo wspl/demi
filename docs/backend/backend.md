@@ -633,7 +633,8 @@ uses:
   `--keep` keeps it.
 - The backend scenarios' scripted machine manager, the backend crate's
   example program `scripted_machines`. A conversation's Cloud is a runner it
-  starts on this machine, with a temporary home.
+  starts on this machine, with a temporary home and the artifact cache the
+  command names with `--artifacts`.
 - `target/debug/demi-backend` in isolated mode on port 3271 (`--port`
   changes it), with the public URL `http://127.0.0.1:<port>`, the manager's
   socket, and a native configuration with the development store that names
@@ -675,12 +676,14 @@ give the full development backend for those.
 
 The command releases make the operations of `demi.file`, `demi.browser` and
 `demi.claude-code` available on the Cloud and on a paired device of this
-machine's target, the conversation browser included: the first tab a
-conversation opens has the browser's program install its pinned Chrome on
-the Host, as on any Host
-([Browser distribution](../browser/browser.md#browser-distribution)). On the
-Cloud it lands in the runner's temporary home, so each run of the command
-downloads it again.
+machine's target, the conversation browser included. Packaging
+`demi-browser` takes the Chrome for Testing archive of this machine's target
+from `.cache/resources/`, downloading it the first time
+([Packaging](../delivery/builds-and-releases.md#packaging)). The manager
+gives its Cloud's runners the artifact cache `.cache/dev-artifacts/` in the
+repository, which outlives every run, so a Cloud installs each program and
+Chrome once rather than at every wake or run
+([Install the selected package](../execution/native-runtime.md#install-the-selected-package)).
 
 ## Deployment and user ownership
 

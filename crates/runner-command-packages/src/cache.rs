@@ -2,7 +2,7 @@
 //! executable): one file per artifact digest, published only once its size
 //! and SHA-256 match what the descriptor declares, and reused unread from
 //! then on. Before it downloads an executable, it takes the copy the Host's
-//! image preinstalled (§ Preinstalled executables), which it checks the same
+//! image preinstalled (§ Preinstalled artifacts), which it checks the same
 //! way the first time the process needs it. The service registry starts one
 //! install per digest at a time, so concurrent callers share it.
 
