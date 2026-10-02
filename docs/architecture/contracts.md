@@ -99,12 +99,6 @@ union holders. Unreached types are left alone. `schema` selects schema output
 for a retained type; it does not make an unreached type a boundary. Roots are
 markers on types, never a second registry in the generator.
 
-`runnerwire.BackendURL` and `ManagedBoot` own their JSON codecs; they have no
-schema or TypeScript roots. `BackendURL` would need a new explicit mapping for
-its normalized, credential-free HTTP(S)/WS(S) URL string before one could expose
-it in a schema; `format http-url` describes a named string with different URL
-semantics and is not that mapping.
-
 Maps may use `string` or a defined string type such as `core.BlockID` as keys.
 Generated JSON and MessagePack validation runs the key type's own rules on
 every key, on decode and encode, without rewriting keys. A named map declaration
