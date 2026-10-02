@@ -244,6 +244,24 @@ test('a view says hello, learns the tabs and acknowledges what it shows', () => 
   expect(view.sent.at(-1)).toEqual({ type: 'ack', generation: 1, sequence: 4, decodeQueue: 0 })
 })
 
+test('a canvas that comes after its stream started shows it from a key frame it asks for', () => {
+  // After a reload the stream starts, and a still page sends its one key frame, before the view has a canvas.
+  const view = session()
+  view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
+  view.receive(moduleFrame({ type: 'stream', tab: TAB.id, generation: 2, width: 1600, height: 1200 }))
+  view.receive(video(TAB.id, 2, 1, true, [0, 0, 0, 1]))
+  const started: number[] = []
+  view.live.attach({ start: (generation) => started.push(generation), show: () => {}, stop: () => {} })
+  expect(started).toEqual([2])
+  expect(view.sent.at(-1)).toEqual({ type: 'keyframe', generation: 2 })
+  // The canvas of a tab the view moves to does not start on the pictures of the one it left.
+  const other = { ...TAB, id: 't2' }
+  view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB, other], watched: TAB.id }))
+  view.live.watch(other.id)
+  view.live.attach({ start: (generation) => started.push(generation), show: () => {}, stop: () => {} })
+  expect(started).toEqual([2])
+})
+
 test('a stalled stream discards input and resumes from a key frame', () => {
   const view = session()
   view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
