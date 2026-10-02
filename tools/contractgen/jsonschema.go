@@ -10,6 +10,8 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+
+	"github.com/wspl/demi/internal/contract"
 )
 
 // jsonSchemas derives command schemas before either output is written.
@@ -30,7 +32,7 @@ func (g *generator) jsonSchemas() (map[string][]byte, error) {
 		if len(emitter.definitions) > 0 {
 			object["$defs"] = emitter.definitions
 		}
-		data, err := json.Marshal(object)
+		data, err := contract.EncodeJSON(object)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %s: %w", d.position, d.name, err)
 		}

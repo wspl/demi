@@ -71,9 +71,6 @@ func CheckJSON(data []byte) error {
 	return nil
 }
 func scanJSON(d *json.Decoder, depth int) error {
-	if depth > 1000 {
-		return errors.New("JSON nesting exceeds 1000")
-	}
 	token, err := d.Token()
 	if err != nil {
 		return err
@@ -81,6 +78,12 @@ func scanJSON(d *json.Decoder, depth int) error {
 	delim, ok := token.(json.Delim)
 	if !ok {
 		return nil
+	}
+	// serde_json 1.0.151 de.rs starts remaining_depth at 128;
+	// check_recursion! decrements before entering an array/object and rejects
+	// zero. Thus 127 open containers are accepted, and the 128th is refused.
+	if depth >= 127 {
+		return errors.New("JSON recursion limit exceeded (128)")
 	}
 	switch delim {
 	case '{':
@@ -302,11 +305,11 @@ func EncodeObject(fields []Field) ([]byte, error) {
 		if i > 0 {
 			out.WriteByte(',')
 		}
-		key, err := json.Marshal(field.Name)
+		key, err := EncodeJSON(field.Name)
 		if err != nil {
 			return nil, At(field.Name, err)
 		}
-		value, err := json.Marshal(field.Value)
+		value, err := EncodeJSON(field.Value)
 		if err != nil {
 			return nil, At(field.Name, err)
 		}

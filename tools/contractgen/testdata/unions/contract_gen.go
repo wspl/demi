@@ -81,7 +81,7 @@ func (v ArtifactLocationJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateArtifactLocation(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateArtifactLocation(value ArtifactLocation) error {
 	return contractValidateArtifactLocation(value, 0)
@@ -128,7 +128,7 @@ func (v ArtifactOwnerJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateArtifactOwner(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateArtifactOwner(value ArtifactOwner) error { return contractValidateArtifactOwner(value, 0) }
 func contractValidateArtifactOwner(value ArtifactOwner, depth int) error {
@@ -381,7 +381,7 @@ func (v BlockID) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func DecodeBytes(data []byte) (Bytes, error) { return contract.Decode[Bytes](data) }
 func (v Bytes) Validate() error              { return contractValidateBytes(v, 0) }
@@ -414,7 +414,7 @@ func (v Bytes) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal([]byte(v))
+	return contract.EncodeJSON([]byte(v))
 }
 func DecodeEmpty(data []byte) (Empty, error) { return contract.Decode[Empty](data) }
 func (v Empty) Validate() error              { return contractValidateEmpty(v, 0) }
@@ -556,7 +556,7 @@ func (v EnsureReplyJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateEnsureReply(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateEnsureReply(value EnsureReply) error { return contractValidateEnsureReply(value, 0) }
 func contractValidateEnsureReply(value EnsureReply, depth int) error {
@@ -687,7 +687,7 @@ func (v ErrorCode) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func DecodeFailure(data []byte) (Failure, error) { return contract.Decode[Failure](data) }
 func (v Failure) Validate() error                { return contractValidateFailure(v, 0) }
@@ -808,7 +808,7 @@ func (v FrameJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateFrame(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateFrame(value Frame) error { return contractValidateFrame(value, 0) }
 func contractValidateFrame(value Frame, depth int) error {
@@ -1548,7 +1548,7 @@ func (v NodeJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateNode(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateNode(value Node) error { return contractValidateNode(value, 0) }
 func contractValidateNode(value Node, depth int) error {
@@ -1593,7 +1593,7 @@ func (v OrderedJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateOrdered(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateOrdered(value Ordered) error { return contractValidateOrdered(value, 0) }
 func contractValidateOrdered(value Ordered, depth int) error {
@@ -1852,7 +1852,7 @@ func (v StatusReplyJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateStatusReply(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateStatusReply(value StatusReply) error { return contractValidateStatusReply(value, 0) }
 func contractValidateStatusReply(value StatusReply, depth int) error {

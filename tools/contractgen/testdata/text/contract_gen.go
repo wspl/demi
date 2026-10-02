@@ -60,7 +60,7 @@ func (v Email) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func ParseEndpointURL(value string) (EndpointURL, error) {
 	{
@@ -115,7 +115,7 @@ func (v EndpointURL) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func DecodeName(data []byte) (Name, error) { return contract.Decode[Name](data) }
 func (v Name) Validate() error             { return contractValidateName(v, 0) }
@@ -148,7 +148,7 @@ func (v Name) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func DecodeReceived(data []byte) (Received, error) { return contract.Decode[Received](data) }
 func (v Received) Validate() error                 { return contractValidateReceived(v, 0) }
@@ -245,7 +245,7 @@ func (v ReceivedEmail) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func DecodeEmailMsgpack(data []byte) (Email, error) { return contract.DecodeMsgpack[Email](data) }
 func (v *Email) UnmarshalMsgpack(data []byte) error {
