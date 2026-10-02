@@ -1024,7 +1024,9 @@ not a tab registry, so the split introduces no dependency cycle.
   output streams are `internal/runnerwire`'s.
 - **Public boundary:** the `JobShell` implementation and the names the shell
   reserves (`BuiltinNames`), which the composition gives the command
-  dispatcher.
+  dispatcher. The interpreter work lives in
+  `internal/runner/shell/internal/engine`, which only the shell and its
+  `shelltest` import, so the test support runs the real implementation.
 - **Must not:** know jobs, their execution contexts, services or the
   connection: a declared command reaches the dispatcher only through the
   `cmdsdk.Handler` the job gives it.
@@ -2035,7 +2037,8 @@ internal/runner -> internal/commandwire, internal/cmdsdk, internal/runner/host, 
 internal/runner/process -> internal/artifacts, internal/commandwire, internal/cmdsdk, internal/runnerwire, internal/contract
 internal/runner/host -> internal/artifacts, internal/cmdsdk, internal/runner/process, internal/runnerwire
 internal/runner/jobs -> internal/commandwire, internal/cmdsdk, internal/declare, internal/runner/process, internal/runnerwire, internal/runner/cmdpkgs
-internal/runner/shell -> internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire
+internal/runner/shell -> internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire, internal/runner/shell/internal/engine
+internal/runner/shell/internal/engine -> internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire
 internal/runner/cmdpkgs -> internal/artifacts, internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire
 internal/machines -> internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire, internal/machines/sandbox, internal/machines/storage, internal/machines/network, internal/machines/system
 internal/machines/sandbox -> internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire, internal/machines/system, internal/contract
@@ -2086,7 +2089,7 @@ internal/agent/session/sessiontest -> internal/agent/session, internal/framewire
 internal/agent/tools/toolstest -> internal/agent/tools, internal/framewire, internal/agent/session, internal/agent/store, internal/agent/transcript, internal/core, internal/provider, internal/host, internal/agent/session/sessiontest
 internal/agent/server/servertest -> internal/agent/server, internal/framewire, internal/agent/session, internal/agent/store, internal/agent/tools, internal/agent/transcript, internal/core, internal/gates, internal/provider, internal/host, internal/agent/tools/toolstest, internal/gates/gatestest, internal/provider/providertest
 internal/runner/jobs/jobstest -> internal/runner/jobs, internal/commandwire, internal/cmdsdk, internal/declare, internal/runner/process, internal/runnerwire, internal/runner/cmdpkgs
-internal/runner/shell/shelltest -> internal/runner/shell, internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire
+internal/runner/shell/shelltest -> internal/runner/shell, internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire, internal/runner/shell/internal/engine
 internal/runner/cmdpkgs/cmdpkgstest -> internal/runner/cmdpkgs, internal/artifacts, internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire, internal/commandwire/commandwiretest
 internal/machines/system/systemtest -> internal/machines/system
 internal/machines/machinestest -> internal/machines, internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire, internal/machines/sandbox, internal/machines/storage, internal/machines/network, internal/machines/system
