@@ -804,7 +804,7 @@ later one is the current value of one part of it that changed:
 | `preferences` | `preferences` | A preferences patch |
 | `user` | `user` | The nickname or the email address changes |
 | `workspaces` | `workspaces`, in the user's order | A workspace is created, renamed, moved or deleted |
-| `devices` | `devices`, the paired ones and the Cloud's | A device is paired or revoked, its runner connects or disconnects, or the Cloud's device is made |
+| `devices` | `devices`, the paired ones and the Cloud's | A device is paired or revoked, its runner connects or disconnects, its runner's installs change, or the Cloud's device is made |
 | `providers` | `providers`, each with its details | An entry the user infers with, or an account of it, is created, changed or removed, a sign-in completes, an account's credential is renewed, or its quota snapshot is stored |
 | `cloud` | `cloud` | The Cloud's lifecycle or its reset moves |
 | `plugins` | `plugins`, the plugin list below | The user turns a plugin on or off, or saves its settings |
@@ -814,7 +814,13 @@ later one is the current value of one part of it that changed:
 The product state holds the current user, the instance mode, preferences, the
 provider entries of the user's scope, workspaces, devices (the paired ones and
 the user's Cloud device, which the file and working-tree routes address
-alike), the summaries of the active and then the
+alike, each with `installs`, the command packages its runner is installing
+now, as the runner last reported them, each as `{ package, artifact,
+phase, done, total }`, where `artifact` is `{ kind: "program" }` or `{ kind:
+"resource", title }`, `phase` is `download` or `unpack`, and `done` and
+`total` count bytes
+([Installation progress](../execution/native-runtime.md#installation-progress))),
+the summaries of the active and then the
 archived conversations, the Cloud's state, `plugins`, the plugin list, and
 `pluginStates`, the state of each plugin the user has on that declares one,
 by plugin id, and `publicUrl`,
@@ -879,7 +885,9 @@ The channel never renews its session; only requests do
 ## A user's plugins
 
 The plugin list is every plugin of the backend, in its order of
-registration, each with `id`, `name`, `description`, `enabled`, and, for a
+registration, each with `id`, `name`, `description`, `enabled`, `packages`,
+the ids of the command packages its commands, user streams and page methods
+bind that the backend's catalog serves, and, for a
 plugin that declares a settings schema, `settingsSchema` and the user's
 `settings`. `PUT /api/plugins/:plugin { enabled }` turns a plugin on or off
 for the caller and answers 204; the new list and the states of the plugins

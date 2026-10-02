@@ -20,8 +20,10 @@ gives the threads and the owner of each piece of state.
 
 ## Connection and identity
 
-Each backend registration has its own credentials, cache, local endpoint, and
-selected runner release. The runner keys installation state by normalized backend
+Each backend registration has its own credentials, artifact cache, local
+endpoint, and selected runner release; `DEMI_ARTIFACTS` can name a cache that
+registrations share
+([Install the selected package](native-runtime.md#install-the-selected-package)). The runner keys installation state by normalized backend
 URL and holds an OS lock while that installation is active. Separate
 registrations do not share their authorization context.
 
@@ -257,7 +259,7 @@ state, starting the service when needed, and answers `service_opened`, or
 `service_error` with `unknown_operation`, `service_failed`, or `refused`; no
 bytes move before that answer. Starting the service may need its executable:
 the runner asks the backend for its location as it does for a job's command
-([Install the selected executable](native-runtime.md#install-the-selected-executable)),
+([Install the selected package](native-runtime.md#install-the-selected-package)),
 naming the stream instead of a job, and the backend answers only while the
 stream is open. The input pipe ending ends the invocation's
 input; the invocation's completion ends the output pipe, which is how the
@@ -287,7 +289,7 @@ service's standard error enters the same way, one event per line as it arrives.
 
 | Source | Lines |
 | --- | --- |
-| `runner` | Connecting and losing the backend, starting and stopping services, a [preinstalled executable](native-runtime.md#preinstalled-executables) it does not use and why, opening, refusing and ending streams, failed Host operations, guest boot |
+| `runner` | Connecting and losing the backend, starting and stopping services, a [preinstalled artifact](native-runtime.md#preinstalled-artifacts) it does not use and why, opening, refusing and ending streams, failed Host operations, guest boot |
 | `service:<package>` | Every line a resident service writes to its standard error, as it arrives |
 | `stream:<operation>` | The standard error of a [service stream](#service-streams)'s invocation, for example `stream:browser.live` |
 

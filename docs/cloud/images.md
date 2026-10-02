@@ -84,13 +84,14 @@ options for a builder behind such a proxy.
 The base is the Ubuntu release that the build script pins, and the manifest
 records it. Its system package inventory has one source:
 [packages.txt](../../cloud-guest-image/rootfs/packages.txt). The build also
-installs standalone `uv`, pinned Chrome for Testing, and the shipped native
-artifacts. It records resolved versions and hashes rather than maintaining a
+installs standalone `uv` and the shipped native artifacts, pinned Chrome for
+Testing among them as `demi.browser`'s resource. It records resolved versions and hashes rather than maintaining a
 second version list in documentation.
 
-Chrome comes from the browser release pinned in the repository and is installed
-by the same installer that paired devices use, in the `shared-artifacts` crate, so one
-implementation downloads, verifies, and unpacks it everywhere. uv is checked
+Chrome comes from the `demi.browser` release the image embeds, which carries
+the archive pinned in the repository, and is unpacked by the same installer
+that runners use, in the `shared-artifacts` crate, so one implementation
+verifies and unpacks it everywhere. uv is checked
 against a digest pinned in the repository: a digest fetched from the same
 release as uv would prove only that the download arrived intact, not that it is
 the file that was reviewed. `cloud-guest-image/rootfs/uv.json` pins its
@@ -104,14 +105,15 @@ The image supplies `demi` UID/GID 1000, passwordless sudo, a minimal init
 the native runtime. It makes the runner's two directories on the system layer,
 private to `demi`: `/var/lib/demi` for the job directories and `/var/log/demi`
 for the Host log ([Images](managed-hosts.md#images)). Each embedded command
-package's executable lies at its content-addressed path,
+package's artifacts lie at their content-addressed paths: an executable as
 `/opt/demi/artifacts/<sha256>/<executable>`, the one file in the directory its
-SHA-256 names. The runner starts command services
-from these copies instead of downloading the executables, after checking each
-against the backend's pinned descriptor
-([Preinstalled executables](../execution/native-runtime.md#preinstalled-executables)).
+SHA-256 names, and a resource unpacked with its receipt in the directory its
+archive's SHA-256 names, such as Chrome's `chrome-linux64/` tree. The runner
+starts command services from these copies instead of downloading the
+artifacts, after checking each against the backend's pinned descriptor
+([Preinstalled artifacts](../execution/native-runtime.md#preinstalled-artifacts)).
 Their identities must therefore match the backend's selected releases: the
-runner downloads a selected executable that the image does not hold, on the
+runner downloads a selected artifact that the image does not hold, on the
 first command after every wake and reset. Rebuilding the runner alone does not
 refresh command binaries.
 

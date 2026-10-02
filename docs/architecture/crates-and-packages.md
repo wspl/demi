@@ -667,7 +667,7 @@ Each crate implements the provider contract for one vendor family.
   package) and a policy that runs every call in one command set
   (`CommandPolicy`). Behavior: [Runner](../execution/runner.md) and
   [Native command execution](../execution/native-runtime.md), which owns
-  [artifact-location admission](../execution/native-runtime.md#install-the-selected-executable).
+  [artifact-location admission](../execution/native-runtime.md#install-the-selected-package).
 - **Must not:** own sockets or HTTP routes (the backend's connection tasks and
   pipe routes feed it), claim policy, the device registry, credentials or
   conversation state.

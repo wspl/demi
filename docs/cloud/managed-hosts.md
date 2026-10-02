@@ -259,7 +259,7 @@ the manager never repairs it.
 The runner keeps its installation state in `/run/demi`: its lock, the record
 of its backend, its command contexts and the command cache, which every boot
 makes anew
-([Preinstalled executables](../execution/native-runtime.md#preinstalled-executables)
+([Preinstalled artifacts](../execution/native-runtime.md#preinstalled-artifacts)
 says why refilling the cache costs little). Two things of the runner's are on
 the system image instead, in directories the image makes for the `demi` user
 ([Root filesystem contents](images.md#root-filesystem-contents)):
