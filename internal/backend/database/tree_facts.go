@@ -1,8 +1,5 @@
 package database
 
-//revive:disable:unused-parameter
-// API checkpoint: parameters are consumed by the implementation checkpoint.
-
 import (
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/core"
@@ -40,7 +37,9 @@ const (
 )
 
 // EmptySummary returns the facts before a tree exists: idle, revision zero.
-func EmptySummary() SummaryFacts { panic("not written: b-database") }
+func EmptySummary() SummaryFacts {
+	return SummaryFacts{Phase: core.SessionPhaseIdle}
+}
 
 // NodeHistory is a subagent's record and blocks in a cold history read.
 type NodeHistory struct {

@@ -1,9 +1,7 @@
 package database
 
-//revive:disable:unused-parameter
-// API checkpoint: parameters are consumed by the implementation checkpoint.
-
 import (
+	"github.com/google/uuid"
 	"github.com/wspl/demi/internal/webapi"
 )
 
@@ -28,7 +26,11 @@ type WorkspaceInUse struct{ Count uint64 }
 func (*WorkspaceInUse) workspaceDeletion() {}
 
 // NewWorkspaceID returns a new workspace ID assigned by the backend.
-func NewWorkspaceID() webapi.WorkspaceID { panic("not written: b-database") }
+func NewWorkspaceID() webapi.WorkspaceID {
+	return webapi.WorkspaceID(uuid.NewString())
+}
 
 // DTO returns the workspace as the page lists it.
-func (w WorkspaceRecord) DTO() webapi.WorkspaceDTO { panic("not written: b-database") }
+func (w WorkspaceRecord) DTO() webapi.WorkspaceDTO {
+	return webapi.WorkspaceDTO{ID: w.ID, DeviceID: w.Device, Path: w.Path, Name: w.Name, CreatedAt: w.CreatedAt}
+}

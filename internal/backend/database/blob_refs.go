@@ -1,11 +1,10 @@
 package database
 
-//revive:disable:unused-parameter
-// API checkpoint: parameters are consumed by the implementation checkpoint.
-
 import (
 	"context"
 	"database/sql"
+	"math"
+	"slices"
 
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/transcript"
@@ -30,39 +29,149 @@ type RetiredNode struct {
 }
 
 // BlobRows derives the index rows of block in reference order.
-func BlobRows(block core.Block) []BlobRefRow { panic("not written: b-database") }
+func BlobRows(block core.Block) []BlobRefRow {
+	rows := make([]BlobRefRow, 0)
+	for part, ref := range store.BlockReferences(block) {
+		rows = append(rows, BlobRefRow{Part: part, Blob: ref.Blob, Holder: ref.Holder, At: block.CreatedAt()})
+	}
+	return rows
+}
 
 // HolderName returns the holder column's stored spelling.
-func HolderName(holder store.Holder) string { panic("not written: b-database") }
+func HolderName(holder store.Holder) string {
+	switch holder {
+	case store.Message:
+		return "message"
+	case store.ToolResult:
+		return "tool_result"
+	case store.EditCopy:
+		return "edit_copy"
+	}
+	return ""
+}
 
 // WriteBlock replaces a block and its index rows, adding old and new blobs to touched.
 func WriteBlock(ctx context.Context, tx *sql.Tx, node core.NodeID, index int, block core.Block, touched *[]core.BlobRef) error {
-	panic("not written: b-database")
+	document, err := encoded(block)
+	if err != nil {
+		return err
+	}
+	if err := execSQL(ctx, tx, "INSERT INTO blocks (node_id,idx,block) VALUES (?,?,?) ON CONFLICT (node_id,idx) DO UPDATE SET block=excluded.block", node, index, document); err != nil {
+		return err
+	}
+	if err := removedBlobs(ctx, tx, "DELETE FROM blob_refs WHERE node_id = ? AND idx = ? RETURNING blob", node, index, touched); err != nil {
+		return err
+	}
+	for _, row := range BlobRows(block) {
+		at, err := row.At.Millisecond()
+		if err != nil {
+			return err
+		}
+		if err := execSQL(ctx, tx, "INSERT INTO blob_refs (node_id,idx,part,blob,holder,at) VALUES (?,?,?,?,?,?)", node, index, row.Part, row.Blob, HolderName(row.Holder), at); err != nil {
+			return err
+		}
+		*touched = append(*touched, row.Blob)
+	}
+	return nil
 }
 
 // TruncateBlocks removes blocks and index rows from index on, adding removed blobs to touched.
 func TruncateBlocks(ctx context.Context, tx *sql.Tx, node core.NodeID, index int, touched *[]core.BlobRef) error {
-	panic("not written: b-database")
+	if err := removedBlobs(ctx, tx, "DELETE FROM blob_refs WHERE node_id = ? AND idx >= ? RETURNING blob", node, index, touched); err != nil {
+		return err
+	}
+	return execSQL(ctx, tx, "DELETE FROM blocks WHERE node_id = ? AND idx >= ?", node, index)
 }
 
 // SubtreeBlobs returns index blobs referenced by node and its descendants.
 func SubtreeBlobs(ctx context.Context, tx *sql.Tx, node core.NodeID) ([]core.BlobRef, error) {
-	panic("not written: b-database")
+	return queryRecords(ctx, tx, "blob_refs", `WITH RECURSIVE subtree (id) AS (SELECT ? UNION SELECT nodes.id FROM nodes JOIN subtree ON nodes.parent_id=subtree.id) SELECT blob FROM blob_refs WHERE node_id IN subtree`, func(r *storedRow) core.BlobRef { return checked(r, "blob", core.ParseBlobRef) }, node)
 }
 
 // Retirable reads indexed nodes with expired tool media and applies the agent's rule.
 func Retirable(ctx context.Context, tx *sql.Tx, retirement transcript.Retirement) ([]RetiredNode, error) {
-	panic("not written: b-database")
+	at, err := later(retirement.Now, -transcript.Kept)
+	expired := int64(math.MinInt64)
+	if err == nil {
+		expired, err = at.Millisecond()
+		if err != nil {
+			return nil, err
+		}
+	}
+	type nodeCount struct {
+		id    core.NodeID
+		count int64
+	}
+	nodes, err := queryRecords(ctx, tx, "nodes", "SELECT id,block_count FROM nodes WHERE id IN (SELECT node_id FROM blob_refs WHERE holder = ? AND at < ?) ORDER BY id", func(r *storedRow) nodeCount {
+		return nodeCount{id: checked(r, "id", core.ParseNodeID), count: r.integer("block_count")}
+	}, HolderName(store.ToolResult), expired)
+	if err != nil {
+		return nil, err
+	}
+	retired := make([]RetiredNode, 0)
+	for _, node := range nodes {
+		blocks, err := blocksOf(ctx, tx, node.id, node.count)
+		if err != nil {
+			return nil, err
+		}
+		changed := transcript.Retire(blocks, retirement)
+		if len(changed) > 0 {
+			retired = append(retired, RetiredNode{Node: node.id, Blocks: changed})
+		}
+	}
+	return retired, nil
 }
 
 // RetireMedia replaces expired tool media and its index rows, recording blob uses
 // before commit. It returns the changed block count without advancing revisions.
 // The caller owns tx and must roll it back on any error, including a store refusal.
 func RetireMedia(ctx context.Context, tx *sql.Tx, blobs OwnerBlobs, retirement transcript.Retirement) (int, error) {
-	panic("not written: b-database")
+	retired, err := Retirable(ctx, tx, retirement)
+	if err != nil {
+		return 0, err
+	}
+	touched := make([]core.BlobRef, 0)
+	changed := 0
+	for _, node := range retired {
+		for _, block := range node.Blocks {
+			if err := WriteBlock(ctx, tx, node.Node, block.Index, block.Value, &touched); err != nil {
+				return 0, err
+			}
+			changed++
+		}
+	}
+	return changed, blobs.CommitUses(ctx, touched)
 }
 
 // References returns distinct blobs held by blocks, queued messages and command outputs.
 func References(ctx context.Context, tx *sql.Tx) ([]core.BlobRef, error) {
-	panic("not written: b-database")
+	refs, err := CommandOutputReferences(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	indexed, err := queryRecords(ctx, tx, "blob_refs", "SELECT DISTINCT blob FROM blob_refs", func(r *storedRow) core.BlobRef { return checked(r, "blob", core.ParseBlobRef) })
+	if err != nil {
+		return nil, err
+	}
+	refs = append(refs, indexed...)
+	states, err := queryRecords(ctx, tx, "nodes", "SELECT state FROM nodes", func(r *storedRow) store.CheckpointState { return storedJSON(r, "state", store.DecodeCheckpointState) })
+	if err != nil {
+		return nil, err
+	}
+	for _, state := range states {
+		for _, message := range state.Queue {
+			refs = append(refs, store.ContentReferences(message.Content)...)
+		}
+	}
+	slices.Sort(refs)
+	return slices.Compact(refs), nil
+}
+
+func removedBlobs(ctx context.Context, tx *sql.Tx, query string, node core.NodeID, index int, touched *[]core.BlobRef) error {
+	rows, err := queryRecords(ctx, tx, "blob_refs", query, func(r *storedRow) core.BlobRef { return checked(r, "blob", core.ParseBlobRef) }, node, index)
+	if err != nil {
+		return err
+	}
+	*touched = append(*touched, rows...)
+	return nil
 }
