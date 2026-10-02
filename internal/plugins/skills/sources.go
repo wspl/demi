@@ -177,10 +177,10 @@ func skillLocation(skill userSkill) string {
 }
 
 // pageState orders the source summaries by the user's addition order.
-func pageState(all sources, fetching map[string]bool) State {
+func pageState(all sources, fetching map[string]bool) SkillsState {
 	ids := slices.Sorted(maps.Keys(all))
 	slices.SortStableFunc(ids, func(a, b string) int { return cmp.Compare(all[a].source.Added, all[b].source.Added) })
-	state := State{Sources: make([]SourceState, 0, len(ids))}
+	state := SkillsState{Sources: make([]SourceState, 0, len(ids))}
 	for _, id := range ids {
 		value := all[id].source
 		skills := make([]SkillState, 0, len(value.Skills))

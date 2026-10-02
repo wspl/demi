@@ -27,7 +27,7 @@ func New() (*Factory, error) {
 
 // NewResolving constructs a factory with a test's HTTP repositories and clock.
 func NewResolving(resolve Resolve, clock core.Clock) (*Factory, error) {
-	state, err := pageSchema(StateJSONSchema())
+	state, err := pageSchema(SkillsStatePluginJSONSchema())
 	if err != nil {
 		return nil, err
 	}
@@ -36,11 +36,11 @@ func NewResolving(resolve Resolve, clock core.Clock) (*Factory, error) {
 		name           string
 		params, result json.RawMessage
 	}{
-		{"add_source", AddSourceJSONSchema(), AddedSourceJSONSchema()},
-		{"update_source", SourceCallJSONSchema(), json.RawMessage(`{"type":"null"}`)},
-		{"remove_source", SourceCallJSONSchema(), json.RawMessage(`{"type":"null"}`)},
-		{"set_enabled", SetEnabledJSONSchema(), json.RawMessage(`{"type":"null"}`)},
-		{"set_source_enabled", SetSourceEnabledJSONSchema(), json.RawMessage(`{"type":"null"}`)},
+		{"add_source", AddSourcePluginJSONSchema(), AddedSourcePluginJSONSchema()},
+		{"update_source", SourceCallPluginJSONSchema(), json.RawMessage(`{"title":"null","type":"null"}`)},
+		{"remove_source", SourceCallPluginJSONSchema(), json.RawMessage(`{"title":"null","type":"null"}`)},
+		{"set_enabled", SetEnabledPluginJSONSchema(), json.RawMessage(`{"title":"null","type":"null"}`)},
+		{"set_source_enabled", SetSourceEnabledPluginJSONSchema(), json.RawMessage(`{"title":"null","type":"null"}`)},
 	} {
 		params, err := pageSchema(declaration.params)
 		if err != nil {

@@ -63,6 +63,9 @@ func (v AddSource) MarshalJSON() ([]byte, error) {
 func AddSourceJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`add_source { origin }`.\",\"properties\":{\"origin\":{\"type\":\"string\"}},\"required\":[\"origin\"],\"title\":\"AddSource\",\"type\":\"object\"}")
 }
+func AddSourcePluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`add_source { origin }`.\",\"properties\":{\"origin\":{\"type\":\"string\"}},\"required\":[\"origin\"],\"title\":\"AddSource\",\"type\":\"object\"}")
+}
 func DecodeAddedSource(data []byte) (AddedSource, error) { return contract.Decode[AddedSource](data) }
 func (v AddedSource) Validate() error                    { return contractValidateAddedSource(v, 0) }
 func contractValidateAddedSource(v AddedSource, depth int) error {
@@ -108,6 +111,9 @@ func (v AddedSource) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func AddedSourceJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"description\":\"What `add_source` answers: the new source's id.\",\"properties\":{\"source\":{\"type\":\"string\"}},\"required\":[\"source\"],\"title\":\"AddedSource\",\"type\":\"object\"}")
+}
+func AddedSourcePluginJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"description\":\"What `add_source` answers: the new source's id.\",\"properties\":{\"source\":{\"type\":\"string\"}},\"required\":[\"source\"],\"title\":\"AddedSource\",\"type\":\"object\"}")
 }
 func DecodeFailure(data []byte) (Failure, error) { return contract.Decode[Failure](data) }
@@ -257,7 +263,10 @@ func (v SetEnabled) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func SetEnabledJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`set_enabled { source, skill, enabled }`.\",\"properties\":{\"enabled\":{\"type\":\"boolean\"},\"skill\":{\"type\":\"string\"},\"source\":{\"type\":\"string\"}},\"required\":[\"source\",\"skill\",\"enabled\"],\"title\":\"SetEnabled\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`set_enabled { source, skill, enabled }`.\",\"properties\":{\"source\":{\"type\":\"string\"},\"skill\":{\"type\":\"string\"},\"enabled\":{\"type\":\"boolean\"}},\"required\":[\"source\",\"skill\",\"enabled\"],\"title\":\"SetEnabled\",\"type\":\"object\"}")
+}
+func SetEnabledPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`set_enabled { source, skill, enabled }`.\",\"properties\":{\"source\":{\"type\":\"string\"},\"skill\":{\"type\":\"string\"},\"enabled\":{\"type\":\"boolean\"}},\"required\":[\"source\",\"skill\",\"enabled\"],\"title\":\"SetEnabled\",\"type\":\"object\"}")
 }
 func DecodeSetSourceEnabled(data []byte) (SetSourceEnabled, error) {
 	return contract.Decode[SetSourceEnabled](data)
@@ -327,7 +336,10 @@ func (v SetSourceEnabled) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func SetSourceEnabledJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`set_source_enabled { source, enabled }`.\",\"properties\":{\"enabled\":{\"type\":\"boolean\"},\"source\":{\"type\":\"string\"}},\"required\":[\"source\",\"enabled\"],\"title\":\"SetSourceEnabled\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`set_source_enabled { source, enabled }`.\",\"properties\":{\"source\":{\"type\":\"string\"},\"enabled\":{\"type\":\"boolean\"}},\"required\":[\"source\",\"enabled\"],\"title\":\"SetSourceEnabled\",\"type\":\"object\"}")
+}
+func SetSourceEnabledPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`set_source_enabled { source, enabled }`.\",\"properties\":{\"source\":{\"type\":\"string\"},\"enabled\":{\"type\":\"boolean\"}},\"required\":[\"source\",\"enabled\"],\"title\":\"SetSourceEnabled\",\"type\":\"object\"}")
 }
 func DecodeSkillState(data []byte) (SkillState, error) { return contract.Decode[SkillState](data) }
 func (v SkillState) Validate() error                   { return contractValidateSkillState(v, 0) }
@@ -442,6 +454,63 @@ func (v SkillState) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "disableModelInvocation", Value: v.DisableModelInvocation})
 	return contract.EncodeObject(fields)
 }
+func DecodeSkillsState(data []byte) (SkillsState, error) { return contract.Decode[SkillsState](data) }
+func (v SkillsState) Validate() error                    { return contractValidateSkillsState(v, 0) }
+func contractValidateSkillsState(v SkillsState, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if v.Sources == nil {
+		return contract.At("sources", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.Sources {
+		_ = i
+		_ = item
+		if err := contractValidateSourceState(item, depth+1); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "sources", i), err)
+		}
+	}
+	return nil
+}
+func (v *SkillsState) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next SkillsState
+	{
+		raw, ok := obj["sources"]
+		if !ok {
+			return contract.At("sources", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]SourceState, error) { return contract.List(b, contract.Decode[SourceState]) }(raw)
+			if err != nil {
+				return contract.At("sources", err)
+			}
+			next.Sources = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v SkillsState) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "sources", Value: v.Sources})
+	return contract.EncodeObject(fields)
+}
+func SkillsStateJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"description\":\"The plugin's state for the user's pages.\",\"properties\":{\"sources\":{\"type\":\"array\",\"items\":{\"description\":\"A source as the page shows it.\",\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"origin\":{\"type\":\"string\"},\"commit\":{\"type\":[\"string\",\"null\"]},\"fetchedAt\":{\"description\":\"A moment in whole milliseconds, which JSON writes as\\n`2026-09-21T14:13:20.000Z`.\",\"type\":[\"string\",\"null\"],\"format\":\"date-time\"},\"fetching\":{\"type\":\"boolean\"},\"failure\":{\"description\":\"The last fetch's failure.\",\"type\":[\"object\",\"null\"],\"properties\":{\"at\":{\"description\":\"A moment in whole milliseconds, which JSON writes as\\n`2026-09-21T14:13:20.000Z`.\",\"type\":\"string\",\"format\":\"date-time\"},\"message\":{\"type\":\"string\"}},\"required\":[\"at\",\"message\"]},\"skills\":{\"type\":\"array\",\"items\":{\"description\":\"A user skill as the page shows it.\",\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"},\"description\":{\"type\":\"string\"},\"warnings\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"enabled\":{\"type\":\"boolean\"},\"disableModelInvocation\":{\"description\":\"The skill is never offered to the agent.\",\"type\":\"boolean\"}},\"required\":[\"name\",\"description\",\"warnings\",\"enabled\",\"disableModelInvocation\"]}},\"skipped\":{\"type\":\"array\",\"items\":{\"description\":\"A `SKILL.md` that is not a skill.\",\"type\":\"object\",\"properties\":{\"path\":{\"description\":\"Its path in the repository.\",\"type\":\"string\"},\"reason\":{\"type\":\"string\"}},\"required\":[\"path\",\"reason\"]}}},\"required\":[\"id\",\"origin\",\"fetching\",\"skills\",\"skipped\"]},\"description\":\"Every source, in the order the user added them.\"}},\"required\":[\"sources\"],\"title\":\"SkillsState\",\"type\":\"object\"}")
+}
+func SkillsStatePluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"SourceState\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"origin\":{\"type\":\"string\"},\"commit\":{\"type\":[\"string\",\"null\"]},\"fetchedAt\":{\"type\":[\"string\",\"null\"],\"description\":\"A moment in whole milliseconds, which JSON writes as\\n`2026-09-21T14:13:20.000Z`.\",\"format\":\"date-time\"},\"fetching\":{\"type\":\"boolean\"},\"failure\":{\"anyOf\":[{\"$ref\":\"#/$defs/Failure\"},{\"type\":\"null\"}]},\"skills\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/SkillState\"}},\"skipped\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Skipped\"}}},\"required\":[\"id\",\"origin\",\"fetching\",\"skills\",\"skipped\"],\"description\":\"A source as the page shows it.\"},\"Failure\":{\"type\":\"object\",\"properties\":{\"at\":{\"type\":\"string\",\"description\":\"A moment in whole milliseconds, which JSON writes as\\n`2026-09-21T14:13:20.000Z`.\",\"format\":\"date-time\"},\"message\":{\"type\":\"string\"}},\"required\":[\"at\",\"message\"],\"description\":\"The last fetch's failure.\"},\"SkillState\":{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"},\"description\":{\"type\":\"string\"},\"warnings\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"enabled\":{\"type\":\"boolean\"},\"disableModelInvocation\":{\"type\":\"boolean\",\"description\":\"The skill is never offered to the agent.\"}},\"required\":[\"name\",\"description\",\"warnings\",\"enabled\",\"disableModelInvocation\"],\"description\":\"A user skill as the page shows it.\"},\"Skipped\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"Its path in the repository.\"},\"reason\":{\"type\":\"string\"}},\"required\":[\"path\",\"reason\"],\"description\":\"A `SKILL.md` that is not a skill.\"}},\"description\":\"The plugin's state for the user's pages.\",\"properties\":{\"sources\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/SourceState\"},\"description\":\"Every source, in the order the user added them.\"}},\"required\":[\"sources\"],\"title\":\"SkillsState\",\"type\":\"object\"}")
+}
 func DecodeSkipped(data []byte) (Skipped, error) { return contract.Decode[Skipped](data) }
 func (v Skipped) Validate() error                { return contractValidateSkipped(v, 0) }
 func contractValidateSkipped(v Skipped, depth int) error {
@@ -555,6 +624,9 @@ func (v SourceCall) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func SourceCallJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`update_source { source }` and `remove_source { source }`.\",\"properties\":{\"source\":{\"type\":\"string\"}},\"required\":[\"source\"],\"title\":\"SourceCall\",\"type\":\"object\"}")
+}
+func SourceCallPluginJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`update_source { source }` and `remove_source { source }`.\",\"properties\":{\"source\":{\"type\":\"string\"}},\"required\":[\"source\"],\"title\":\"SourceCall\",\"type\":\"object\"}")
 }
 func DecodeSourceState(data []byte) (SourceState, error) { return contract.Decode[SourceState](data) }
@@ -742,60 +814,6 @@ func (v SourceState) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "skills", Value: v.Skills})
 	fields = append(fields, contract.Field{Name: "skipped", Value: v.Skipped})
 	return contract.EncodeObject(fields)
-}
-func DecodeState(data []byte) (State, error) { return contract.Decode[State](data) }
-func (v State) Validate() error              { return contractValidateState(v, 0) }
-func contractValidateState(v State, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	if v.Sources == nil {
-		return contract.At("sources", fmt.Errorf("required array is nil"))
-	}
-	for i, item := range v.Sources {
-		_ = i
-		_ = item
-		if err := contractValidateSourceState(item, depth+1); err != nil {
-			return contract.At(fmt.Sprintf("%s[%d]", "sources", i), err)
-		}
-	}
-	return nil
-}
-func (v *State) UnmarshalJSON(data []byte) error {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
-	if err != nil {
-		return err
-	}
-	var next State
-	{
-		raw, ok := obj["sources"]
-		if !ok {
-			return contract.At("sources", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := func(b []byte) ([]SourceState, error) { return contract.List(b, contract.Decode[SourceState]) }(raw)
-			if err != nil {
-				return contract.At("sources", err)
-			}
-			next.Sources = value
-		}
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v State) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "sources", Value: v.Sources})
-	return contract.EncodeObject(fields)
-}
-func StateJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"description\":\"The plugin's state for the user's pages.\",\"properties\":{\"sources\":{\"description\":\"Every source, in the order the user added them.\",\"items\":{\"description\":\"A source as the page shows it.\",\"properties\":{\"commit\":{\"type\":[\"string\",\"null\"]},\"failure\":{\"description\":\"The last fetch's failure.\",\"properties\":{\"at\":{\"description\":\"A moment in whole milliseconds, which JSON writes as\\n`2026-09-21T14:13:20.000Z`.\",\"format\":\"date-time\",\"type\":\"string\"},\"message\":{\"type\":\"string\"}},\"required\":[\"at\",\"message\"],\"type\":[\"object\",\"null\"]},\"fetchedAt\":{\"description\":\"A moment in whole milliseconds, which JSON writes as\\n`2026-09-21T14:13:20.000Z`.\",\"format\":\"date-time\",\"type\":[\"string\",\"null\"]},\"fetching\":{\"type\":\"boolean\"},\"id\":{\"type\":\"string\"},\"origin\":{\"type\":\"string\"},\"skills\":{\"items\":{\"description\":\"A user skill as the page shows it.\",\"properties\":{\"description\":{\"type\":\"string\"},\"disableModelInvocation\":{\"description\":\"The skill is never offered to the agent.\",\"type\":\"boolean\"},\"enabled\":{\"type\":\"boolean\"},\"name\":{\"type\":\"string\"},\"warnings\":{\"items\":{\"type\":\"string\"},\"type\":\"array\"}},\"required\":[\"name\",\"description\",\"warnings\",\"enabled\",\"disableModelInvocation\"],\"type\":\"object\"},\"type\":\"array\"},\"skipped\":{\"items\":{\"description\":\"A `SKILL.md` that is not a skill.\",\"properties\":{\"path\":{\"description\":\"Its path in the repository.\",\"type\":\"string\"},\"reason\":{\"type\":\"string\"}},\"required\":[\"path\",\"reason\"],\"type\":\"object\"},\"type\":\"array\"}},\"required\":[\"id\",\"origin\",\"fetching\",\"skills\",\"skipped\"],\"type\":\"object\"},\"type\":\"array\"}},\"required\":[\"sources\"],\"title\":\"State\",\"type\":\"object\"}")
 }
 func decodeSource(data []byte) (source, error) { return contract.Decode[source](data) }
 func (v source) Validate() error               { return contractValidateSource(v, 0) }

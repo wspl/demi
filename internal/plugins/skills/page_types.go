@@ -1,3 +1,6 @@
+//revive:disable:exported
+// Contract names preserve the Rust schema titles and generated TypeScript exports.
+
 package skills
 
 import "github.com/wspl/demi/internal/core"
@@ -64,7 +67,7 @@ type Failure struct {
 // +demi:root direction=receive output=plugin-skills
 // +demi:schema
 // +demi:tolerant
-type State struct {
+type SkillsState struct {
 	// Every source, in the order the user added them.
 	Sources []SourceState `json:"sources"`
 }

@@ -57,7 +57,7 @@ func (p *plugged) method(ctx context.Context, name string, args json.Marshaler) 
 	}
 	return result.Result, nil
 }
-func (p *plugged) state(t *testing.T) skills.State {
+func (p *plugged) state(t *testing.T) skills.SkillsState {
 	t.Helper()
 	reply, err := p.call.Call(t.Context(), &plugin.RequestPageState{User: "aaaaaaaaaaaaaaaaaaaaaaaaaa"}, p.demi.Port())
 	if err != nil {
@@ -67,7 +67,7 @@ func (p *plugged) state(t *testing.T) skills.State {
 	if !ok {
 		t.Fatalf("state returned %T", reply)
 	}
-	state, err := skills.DecodeState(result.State)
+	state, err := skills.DecodeSkillsState(result.State)
 	if err != nil {
 		t.Fatal(err)
 	}

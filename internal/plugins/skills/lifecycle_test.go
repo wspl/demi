@@ -127,7 +127,7 @@ func TestManifestAndRequestContracts(t *testing.T) {
 	if manifest.ID != "skills" || !manifest.Context || manifest.Page == nil || manifest.Page.Package != "@demicodes/plugin-skills" || manifest.Page.User == nil || manifest.Page.Conversation != nil || len(manifest.Page.Methods) != 5 {
 		t.Fatalf("manifest: %+v", manifest)
 	}
-	empty, err := (skills.State{Sources: []skills.SourceState{}}).MarshalJSON()
+	empty, err := (skills.SkillsState{Sources: []skills.SourceState{}}).MarshalJSON()
 	if err != nil {
 		t.Fatal(err)
 	}
