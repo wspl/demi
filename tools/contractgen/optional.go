@@ -17,7 +17,7 @@ func (g *generator) optionalObject(f *types.Var) *definition {
 		return nil
 	}
 	d := g.defs[typeKey(n)]
-	if d == nil || has(d.marks, "union") || has(d.marks, "variant") {
+	if d == nil || has(d.marks, "codec") || has(d.marks, "union") || has(d.marks, "variant") {
 		return nil
 	}
 	if _, ok := n.Underlying().(*types.Struct); !ok {
