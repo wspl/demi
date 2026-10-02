@@ -139,13 +139,9 @@ func (m ProviderModel) ThinkingCapabilities() []ThinkingCapability {
 func (m ModelSelection) ThinkingEffort() *string {
 	switch c := m.Thinking.(type) {
 	case *AdaptiveConfig:
-		if c != nil {
-			return &c.Effort
-		}
+		return &c.Effort
 	case *EffortConfig:
-		if c != nil {
-			return &c.Effort
-		}
+		return &c.Effort
 	case *DisabledConfig:
 		off := ThinkingOff
 		return &off

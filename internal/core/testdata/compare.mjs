@@ -1,5 +1,5 @@
 // Compare executable schemas; normalize only unordered JSON Schema sets.
-import {readFileSync, writeFileSync} from 'node:fs';
+import {readFileSync, readdirSync, writeFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import {stripTypeScriptTypes, createRequire} from 'node:module';
 import {isDeepStrictEqual} from 'node:util';
@@ -28,9 +28,22 @@ function normalize(value, key = '') {
 }
 const go = schemas(`${generated}/contracts.ts`);
 const rust = schemas(referencePath);
-// Go initialisms currently produce different TypeScript spelling.
-go.wireApiSchema = go.wireAPISchema;
-const names = Object.keys(go).filter(name => name in rust).sort();
+// The reference also contains framewire's types. Select core's exports by
+// Rust ownership, independently of what the Go generator produced.
+const rustSource = new URL('../../../crates/shared-types/src/', import.meta.url);
+const ownedTypes = new Set(readdirSync(rustSource).filter(name => name.endsWith('.rs')).flatMap(name =>
+  [...readFileSync(new URL(name, rustSource), 'utf8').matchAll(/pub (?:struct|enum) (\w+)/g)].map(match => match[1])));
+const ownedSchemas = new Set([...ownedTypes].map(name => name[0].toLowerCase() + name.slice(1) + 'Schema'));
+function exportsAt(path) {
+  return [...readFileSync(path, 'utf8').matchAll(/^export (?:const|type|function) (\w+)/gm)].map(match => match[1]).sort();
+}
+const expectedExports = exportsAt(referencePath).filter(name => ownedTypes.has(name) || ownedSchemas.has(name));
+const actualExports = exportsAt(`${generated}/contracts.ts`);
+if (!isDeepStrictEqual(actualExports, expectedExports)) {
+  throw new Error(`Core exports differ: missing=${JSON.stringify(expectedExports.filter(name => !actualExports.includes(name)))} extra=${JSON.stringify(actualExports.filter(name => !expectedExports.includes(name)))}`);
+}
+console.log(`Core contract exports exactly match reference: ${actualExports.length}`);
+const names = Object.keys(go).sort();
 const differences = [];
 for (const name of names) {
   const left = normalize(z.toJSONSchema(go[name], {io: 'input', reused: 'inline'}));
@@ -72,8 +85,8 @@ for (const [label, schema] of [['go', go.blockSchema], ['rust', rust.blockSchema
   console.log(`${label}: fixtures accepted=${accepted}; web mutations refused=${refused}; tolerated=${cases.length-refused}; Unicode 64/65 boundary passed`);
 }
 console.log(`Shared named schemas compared=${names.length}; differences=${JSON.stringify(differences)}`);
-console.log(`Additional Go exports=${JSON.stringify(Object.keys(go).filter(name => !(name in rust)).sort())}`);
-writeFileSync(`${generated}/schema-comparison.json`, JSON.stringify({shared: names, differences, additional: Object.keys(go).filter(name => !(name in rust)).sort()}, null, 2)+'\n');
+
+writeFileSync(`${generated}/schema-comparison.json`, JSON.stringify({shared: names, differences, exports: actualExports}, null, 2)+'\n');
 if (differences.length) process.exitCode = 1;
 // Keep a literal source diff alongside the normalized semantic comparison.
 for (const [path, output] of [[referencePath, `${generated}/rust-corresponding.ts`], [`${generated}/contracts.ts`, `${generated}/go-corresponding.ts`]]) {
@@ -98,6 +111,15 @@ for (const name of ['previewMediaType','showsInPlace']) {
   if (goTables[name](input) !== want || rustTables[name](input) !== want) throw new Error(`${name}: ${input}`);
  }
 }
-console.log('Preview table and all lookup fixtures match');
-console.log(`Missing reference table exports=${JSON.stringify(['ATTACHMENT_FILE_EXTENSIONS','VIDEO_FILE_EXTENSIONS'].filter(name => !(name in goTables)))}`);
-console.log('Go WireAPI emits wireAPISchema; reference exports wireApiSchema');
+// MAX_PAGE_MESSAGE_BYTES belongs to webapi, not shared-types.
+const expectedTableExports = exportsAt(`${reference}/tables.ts`).filter(name => name !== 'MAX_PAGE_MESSAGE_BYTES');
+const actualTableExports = exportsAt(`${generated}/tables.ts`);
+if (!isDeepStrictEqual(actualTableExports, expectedTableExports)) {
+  throw new Error(`Core table exports differ: ${JSON.stringify(actualTableExports)}`);
+}
+for (const name of ['ATTACHMENT_FILE_EXTENSIONS', 'VIDEO_FILE_EXTENSIONS']) {
+  if (JSON.stringify(goTables[name]) !== JSON.stringify(rustTables[name])) {
+    throw new Error(`${name} differs from reference`);
+  }
+}
+console.log('Core table exports, scalar values, preview table and lookup fixtures exactly match reference');

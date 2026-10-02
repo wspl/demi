@@ -11,8 +11,7 @@ const timestampLayout = "2006-01-02T15:04:05.000Z"
 const UnixEpoch Timestamp = "1970-01-01T00:00:00.000Z"
 
 // Clock supplies record timestamps. Elapsed durations use Go's monotonic clock.
-// An interface alias keeps this behavioral dependency outside contract generation.
-type Clock = interface{ Now() Timestamp }
+type Clock interface{ Now() Timestamp }
 
 // SystemClock reads wall time at millisecond precision.
 type SystemClock struct{}

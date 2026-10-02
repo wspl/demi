@@ -1,12 +1,12 @@
 package core
 
-// ToolView is a tool call's view.
+// A tool call's view.
 // +demi:union tag=kind
 //
 //sumtype:decl
 type ToolView interface{ isToolView() }
 
-// ShellToolView is a command's status and the end of its output, as the shell tools saw it.
+// A command's status and the end of its output, as the shell tools saw it.
 // Its characters are Unicode scalar values, counted from the end.
 type ShellToolView struct {
 	Status    ShellViewStatus `json:"status"`
@@ -28,35 +28,36 @@ type ShellToolView struct {
 	FilesTruncated *bool `json:"filesTruncated,omitempty"`
 }
 
-// RepeatedShellExec is a shell_exec the repeat guard suppressed: the script and how many times in a row it was asked for.
+// A `shell_exec` the repeat guard suppressed: the script and how many
+// times in a row it was asked for.
 // +demi:variant ToolView repeated_shell_exec
 type RepeatedShellExec struct {
 	Script string `json:"script"`
 	Count  uint32 `json:"count"`
 }
 
-// YieldWakeup is the wakeup a yield scheduled.
+// The wakeup a `yield` scheduled.
 // +demi:variant ToolView yield_wakeup
 type YieldWakeup struct {
 	WakeupID   WakeupID `json:"wakeupId"`
 	DurationMs uint32   `json:"durationMs"`
 }
 
-// ShellViewStatus describes where a command is: running, exited, or stopped.
+// Where a command is: running, exited, or stopped.
 // +demi:enum running exited aborted
 type ShellViewStatus string
 
-// OutputChunk is a run of a command's output from one stream.
+// A run of a command's output from one stream.
 type OutputChunk struct {
 	Stream StreamKind `json:"stream"`
 	Text   string     `json:"text"`
 }
 
-// StreamKind is a command's output stream.
+// A command's output stream.
 // +demi:enum stdout stderr
 type StreamKind string
 
-// EditedFile is a file a command changed (`edit-tracking.md` § Edit copies): its line
+// A file a command changed (`edit-tracking.md` § Edit copies): its line
 // counts and, per edit segment, the blobs of its two sides when they were
 // stored.
 type EditedFile struct {
@@ -70,17 +71,17 @@ type EditedFile struct {
 	Edits []EditSegment `json:"edits"`
 }
 
-// EditKind records whether a command created a file or changed one that existed.
+// Whether a command created a file or changed one that existed.
 // +demi:enum added modified
 type EditKind string
 
-// EditSegment is one edit segment of a file.
+// One edit segment of a file.
 type EditSegment struct {
 	// The file's two sides; absent when they were not stored.
 	Copies *EditCopies `json:"copies,omitempty"`
 }
 
-// EditCopies is the two sides of an edit segment, blobs of the conversation owner's
+// The two sides of an edit segment, blobs of the conversation owner's
 // namespace.
 type EditCopies struct {
 	// The file before the segment; the empty blob when the segment created
@@ -90,11 +91,11 @@ type EditCopies struct {
 	Modified BlobRef `json:"modified"`
 }
 
-// FailureSource describes where a provider failure came from.
+// Where a provider failure came from.
 // +demi:enum http stream transport unknown
 type FailureSource string
 
-// ProviderErrorDiagnostics is the diagnostics of a provider failure, saved with its `error` block. The
+// The diagnostics of a provider failure, saved with its `error` block. The
 // vendor's answer is in `upstream` exactly as it arrived: a stream's frame
 // text, or the JSON `{ status, headers, body }` of an HTTP failure; only the
 // provider that produced it reads it.
@@ -108,7 +109,7 @@ type ProviderErrorDiagnostics struct {
 	Upstream           *string       `json:"upstream,omitempty"`
 }
 
-// AgentMessage is a message between agents. The supervisor supplies the sender from the
+// A message between agents. The supervisor supplies the sender from the
 // invoking node, so a model cannot impersonate another sender.
 // +demi:check validateAgentMessage
 type AgentMessage struct {
@@ -125,7 +126,7 @@ type AgentMessage struct {
 	Event   AgentMessageEvent `json:"event"`
 }
 
-// Sender represents who sent an agent message.
+// Who sent an agent message.
 type Sender struct {
 	ID NodeID `json:"id"`
 	// The number the model knows the sender by: 0 for the root
@@ -139,26 +140,26 @@ type Sender struct {
 	Round uint64 `json:"round"`
 }
 
-// AgentMessageEvent represents what an agent message is.
+// What an agent message is.
 // +demi:union tag=type
 //
 //sumtype:decl
 type AgentMessageEvent interface{ isAgentMessageEvent() }
 
-// MessageEvent is an explicit communication between live agents.
+// An explicit communication between live agents.
 // +demi:variant AgentMessageEvent message
 type MessageEvent struct{}
 
-// CompletionEvent is a supervisor's receipt of a child's end.
+// A supervisor's receipt of a child's end.
 // +demi:variant AgentMessageEvent completion
 type CompletionEvent struct {
 	Outcome CompletionOutcome `json:"outcome"`
 }
 
-// CompletionOutcome represents how a child ended.
+// How a child ended.
 // +demi:enum completed failed aborted
 type CompletionOutcome string
 
-// ShellView wraps the shell payload as a tagged tool view.
+// A shell tool's command.
 // +demi:variant ToolView shell
 type ShellView struct{ ShellToolView }

@@ -40,12 +40,21 @@ func TestRustCorpus(t *testing.T) {
 			t.Fatal(err)
 		}
 		var tag struct {
-			Type string `json:"type"`
+			Type      string              `json:"type"`
+			ID        core.BlockID        `json:"id"`
+			CreatedAt core.Timestamp      `json:"createdAt"`
+			Model     core.ModelSelection `json:"model"`
 		}
 		if err := json.Unmarshal(fixture, &tag); err != nil {
 			t.Fatal(err)
 		}
 		kinds[tag.Type] = true
+		if block.ID() != tag.ID || block.CreatedAt() != tag.CreatedAt || !reflect.DeepEqual(block.Model(), tag.Model) {
+			t.Fatalf("%s: block accessors do not expose stored metadata", tag.ID)
+		}
+		if block.IsEditable() != (tag.Type == "user") {
+			t.Fatalf("%s: only user blocks are editable", tag.ID)
+		}
 		var left, right any
 		if err := json.Unmarshal(fixture, &left); err != nil {
 			t.Fatal(err)

@@ -1,19 +1,21 @@
 package core
 
-// PreviewType maps file extensions to a preview media type.
+// One media type the product knows files by. Its schema types the table
+// the page receives in `@demicodes/protocol`.
 // +demi:root direction=receive output=protocol
 // +demi:tolerant
 type PreviewType struct {
-	MediaType  string   `json:"mediaType"`
+	MediaType string `json:"mediaType"`
+	// Lowercase, without the dot.
 	Extensions []string `json:"extensions"`
-	InPlace    bool     `json:"inPlace"`
+	// Served as itself for the page to show in place; otherwise the page
+	// downloads it or renders it from its text.
+	InPlace bool `json:"inPlace"`
 }
 
-// PREVIEW_TYPES is the shared preview table; its name is the generated TypeScript API.
+// The file-type table.
 // +demi:table
-//
-//nolint:revive // contractgen requires this name to emit the established preview lookup API.
-var PREVIEW_TYPES = []PreviewType{
+var PreviewTypes = []PreviewType{
 	{MediaType: "image/png", Extensions: []string{"png"}, InPlace: true},
 	{MediaType: "image/jpeg", Extensions: []string{"jpg", "jpeg"}, InPlace: true},
 	{MediaType: "image/gif", Extensions: []string{"gif"}, InPlace: true},

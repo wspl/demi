@@ -4,7 +4,7 @@ import "fmt"
 
 // validateAgentMessageBlock enforces the receipt's identity relationship.
 func validateAgentMessageBlock(value AgentMessageBlock) error {
-	if value.ID != value.Message.ID {
+	if value.ID() != value.Message.ID {
 		return fmt.Errorf("id: must be the message's id, %s", value.Message.ID)
 	}
 	return nil

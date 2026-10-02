@@ -7,12 +7,15 @@ import (
 )
 
 // AttachmentFileExtensions are the image and document types implied by attachment support.
+// +demi:table
 var AttachmentFileExtensions = []FileExtension{FileExtensionPNG, FileExtensionJPG, FileExtensionJPEG, FileExtensionGIF, FileExtensionWebP, FileExtensionPDF}
 
 // VideoFileExtensions are the types implied only by known video support.
+// +demi:table
 var VideoFileExtensions = []FileExtension{FileExtensionMP4, FileExtensionMov, FileExtensionWebM, FileExtensionM4V}
 
-// ModelMediaType connects a sniffed medium to the catalog's extension.
+// A media type a model can receive, with the extension a model's catalog
+// accepts it by.
 type ModelMediaType struct {
 	MediaType string         `json:"mediaType"`
 	Kind      ModelMediaKind `json:"kind"`
@@ -20,7 +23,6 @@ type ModelMediaType struct {
 }
 
 // ModelMediaTypes is the closed set of native model media.
-// +demi:table
 var ModelMediaTypes = []ModelMediaType{
 	{MediaType: "image/png", Kind: ModelMediaKindImage, Extension: FileExtensionPNG},
 	{MediaType: "image/jpeg", Kind: ModelMediaKindImage, Extension: FileExtensionJPEG},
@@ -123,7 +125,7 @@ func PreviewMediaType(path string) *string {
 		}
 		return r
 	}, name[dot+1:])
-	for _, entry := range PREVIEW_TYPES {
+	for _, entry := range PreviewTypes {
 		if slices.Contains(entry.Extensions, extension) {
 			return &entry.MediaType
 		}
@@ -133,7 +135,7 @@ func PreviewMediaType(path string) *string {
 
 // ShowsInPlace reports whether the page can render this exact media type directly.
 func ShowsInPlace(mediaType string) bool {
-	for _, entry := range PREVIEW_TYPES {
+	for _, entry := range PreviewTypes {
 		if entry.InPlace && entry.MediaType == mediaType {
 			return true
 		}

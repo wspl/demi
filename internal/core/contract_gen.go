@@ -15,19 +15,19 @@ func contractValidateAbortBlock(v AbortBlock, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
-	if err := contractValidateBlockID(v.ID, depth+1); err != nil {
+	if err := contractValidateBlockID(v.BlockID, depth+1); err != nil {
 		return contract.At("id", err)
 	}
-	if err := contract.Text(string(v.ID), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.BlockID), 0, -1, ""); err != nil {
 		return contract.At("id", err)
 	}
-	if err := contractValidateTimestamp(v.CreatedAt, depth+1); err != nil {
+	if err := contractValidateTimestamp(v.Timestamp, depth+1); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contract.Text(string(v.CreatedAt), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.Timestamp), 0, -1, ""); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contractValidateModelSelection(v.Model, depth+1); err != nil {
+	if err := contractValidateModelSelection(v.Selection, depth+1); err != nil {
 		return contract.At("model", err)
 	}
 	return nil
@@ -63,7 +63,7 @@ func (v *AbortBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("id", err)
 			}
-			next.ID = value
+			next.BlockID = value
 		}
 	}
 	{
@@ -76,7 +76,7 @@ func (v *AbortBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("createdAt", err)
 			}
-			next.CreatedAt = value
+			next.Timestamp = value
 		}
 	}
 	{
@@ -89,7 +89,7 @@ func (v *AbortBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("model", err)
 			}
-			next.Model = value
+			next.Selection = value
 		}
 	}
 	{
@@ -117,9 +117,9 @@ func (v AbortBlock) MarshalJSON() ([]byte, error) {
 	}
 	fields := []contract.Field{}
 	fields = append(fields, contract.Field{Name: "type", Value: "abort"})
-	fields = append(fields, contract.Field{Name: "id", Value: v.ID})
-	fields = append(fields, contract.Field{Name: "createdAt", Value: v.CreatedAt})
-	fields = append(fields, contract.Field{Name: "model", Value: v.Model})
+	fields = append(fields, contract.Field{Name: "id", Value: v.BlockID})
+	fields = append(fields, contract.Field{Name: "createdAt", Value: v.Timestamp})
+	fields = append(fields, contract.Field{Name: "model", Value: v.Selection})
 	fields = append(fields, contract.Field{Name: "isResumed", Value: v.IsResumed})
 	return contract.EncodeObject(fields)
 }
@@ -542,10 +542,10 @@ func contractValidateAgentMessageBlock(v AgentMessageBlock, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
-	if err := contractValidateBlockID(v.ID, depth+1); err != nil {
+	if err := contractValidateBlockID(v.BlockID, depth+1); err != nil {
 		return contract.At("id", err)
 	}
-	if err := contract.Text(string(v.ID), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.BlockID), 0, -1, ""); err != nil {
 		return contract.At("id", err)
 	}
 	if err := contractValidateTurnID(v.TurnID, depth+1); err != nil {
@@ -554,13 +554,13 @@ func contractValidateAgentMessageBlock(v AgentMessageBlock, depth int) error {
 	if err := contract.Text(string(v.TurnID), 0, -1, ""); err != nil {
 		return contract.At("turnId", err)
 	}
-	if err := contractValidateTimestamp(v.CreatedAt, depth+1); err != nil {
+	if err := contractValidateTimestamp(v.Timestamp, depth+1); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contract.Text(string(v.CreatedAt), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.Timestamp), 0, -1, ""); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contractValidateModelSelection(v.Model, depth+1); err != nil {
+	if err := contractValidateModelSelection(v.Selection, depth+1); err != nil {
 		return contract.At("model", err)
 	}
 	if err := contractValidateAgentMessage(v.Message, depth+1); err != nil {
@@ -602,7 +602,7 @@ func (v *AgentMessageBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("id", err)
 			}
-			next.ID = value
+			next.BlockID = value
 		}
 	}
 	{
@@ -628,7 +628,7 @@ func (v *AgentMessageBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("createdAt", err)
 			}
-			next.CreatedAt = value
+			next.Timestamp = value
 		}
 	}
 	{
@@ -641,7 +641,7 @@ func (v *AgentMessageBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("model", err)
 			}
-			next.Model = value
+			next.Selection = value
 		}
 	}
 	{
@@ -669,10 +669,10 @@ func (v AgentMessageBlock) MarshalJSON() ([]byte, error) {
 	}
 	fields := []contract.Field{}
 	fields = append(fields, contract.Field{Name: "type", Value: "agent_message"})
-	fields = append(fields, contract.Field{Name: "id", Value: v.ID})
+	fields = append(fields, contract.Field{Name: "id", Value: v.BlockID})
 	fields = append(fields, contract.Field{Name: "turnId", Value: v.TurnID})
-	fields = append(fields, contract.Field{Name: "createdAt", Value: v.CreatedAt})
-	fields = append(fields, contract.Field{Name: "model", Value: v.Model})
+	fields = append(fields, contract.Field{Name: "createdAt", Value: v.Timestamp})
+	fields = append(fields, contract.Field{Name: "model", Value: v.Selection})
 	fields = append(fields, contract.Field{Name: "message", Value: v.Message})
 	return contract.EncodeObject(fields)
 }
@@ -1721,19 +1721,19 @@ func contractValidateCompactionBoundaryBlock(v CompactionBoundaryBlock, depth in
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
-	if err := contractValidateBlockID(v.ID, depth+1); err != nil {
+	if err := contractValidateBlockID(v.BlockID, depth+1); err != nil {
 		return contract.At("id", err)
 	}
-	if err := contract.Text(string(v.ID), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.BlockID), 0, -1, ""); err != nil {
 		return contract.At("id", err)
 	}
-	if err := contractValidateTimestamp(v.CreatedAt, depth+1); err != nil {
+	if err := contractValidateTimestamp(v.Timestamp, depth+1); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contract.Text(string(v.CreatedAt), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.Timestamp), 0, -1, ""); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contractValidateModelSelection(v.Model, depth+1); err != nil {
+	if err := contractValidateModelSelection(v.Selection, depth+1); err != nil {
 		return contract.At("model", err)
 	}
 	if err := contract.Text(string(v.Summary), 0, -1, ""); err != nil {
@@ -1775,7 +1775,7 @@ func (v *CompactionBoundaryBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("id", err)
 			}
-			next.ID = value
+			next.BlockID = value
 		}
 	}
 	{
@@ -1788,7 +1788,7 @@ func (v *CompactionBoundaryBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("createdAt", err)
 			}
-			next.CreatedAt = value
+			next.Timestamp = value
 		}
 	}
 	{
@@ -1801,7 +1801,7 @@ func (v *CompactionBoundaryBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("model", err)
 			}
-			next.Model = value
+			next.Selection = value
 		}
 	}
 	{
@@ -1842,9 +1842,9 @@ func (v CompactionBoundaryBlock) MarshalJSON() ([]byte, error) {
 	}
 	fields := []contract.Field{}
 	fields = append(fields, contract.Field{Name: "type", Value: "compaction_boundary"})
-	fields = append(fields, contract.Field{Name: "id", Value: v.ID})
-	fields = append(fields, contract.Field{Name: "createdAt", Value: v.CreatedAt})
-	fields = append(fields, contract.Field{Name: "model", Value: v.Model})
+	fields = append(fields, contract.Field{Name: "id", Value: v.BlockID})
+	fields = append(fields, contract.Field{Name: "createdAt", Value: v.Timestamp})
+	fields = append(fields, contract.Field{Name: "model", Value: v.Selection})
 	fields = append(fields, contract.Field{Name: "summary", Value: v.Summary})
 	fields = append(fields, contract.Field{Name: "summaryTokens", Value: v.SummaryTokens})
 	return contract.EncodeObject(fields)
@@ -1858,19 +1858,19 @@ func contractValidateCompactionMarkerBlock(v CompactionMarkerBlock, depth int) e
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
-	if err := contractValidateBlockID(v.ID, depth+1); err != nil {
+	if err := contractValidateBlockID(v.BlockID, depth+1); err != nil {
 		return contract.At("id", err)
 	}
-	if err := contract.Text(string(v.ID), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.BlockID), 0, -1, ""); err != nil {
 		return contract.At("id", err)
 	}
-	if err := contractValidateTimestamp(v.CreatedAt, depth+1); err != nil {
+	if err := contractValidateTimestamp(v.Timestamp, depth+1); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contract.Text(string(v.CreatedAt), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.Timestamp), 0, -1, ""); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contractValidateModelSelection(v.Model, depth+1); err != nil {
+	if err := contractValidateModelSelection(v.Selection, depth+1); err != nil {
 		return contract.At("model", err)
 	}
 	if err := contractValidateBlockID(v.BoundaryID, depth+1); err != nil {
@@ -1915,7 +1915,7 @@ func (v *CompactionMarkerBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("id", err)
 			}
-			next.ID = value
+			next.BlockID = value
 		}
 	}
 	{
@@ -1928,7 +1928,7 @@ func (v *CompactionMarkerBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("createdAt", err)
 			}
-			next.CreatedAt = value
+			next.Timestamp = value
 		}
 	}
 	{
@@ -1941,7 +1941,7 @@ func (v *CompactionMarkerBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("model", err)
 			}
-			next.Model = value
+			next.Selection = value
 		}
 	}
 	{
@@ -1982,9 +1982,9 @@ func (v CompactionMarkerBlock) MarshalJSON() ([]byte, error) {
 	}
 	fields := []contract.Field{}
 	fields = append(fields, contract.Field{Name: "type", Value: "compaction_marker"})
-	fields = append(fields, contract.Field{Name: "id", Value: v.ID})
-	fields = append(fields, contract.Field{Name: "createdAt", Value: v.CreatedAt})
-	fields = append(fields, contract.Field{Name: "model", Value: v.Model})
+	fields = append(fields, contract.Field{Name: "id", Value: v.BlockID})
+	fields = append(fields, contract.Field{Name: "createdAt", Value: v.Timestamp})
+	fields = append(fields, contract.Field{Name: "model", Value: v.Selection})
 	fields = append(fields, contract.Field{Name: "boundaryId", Value: v.BoundaryID})
 	fields = append(fields, contract.Field{Name: "compactedTokens", Value: v.CompactedTokens})
 	return contract.EncodeObject(fields)
@@ -2055,79 +2055,6 @@ func (v CompletionEvent) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "outcome", Value: v.Outcome})
 	return contract.EncodeObject(fields)
 }
-func DecodeCompletionID(data []byte) (CompletionID, error) {
-	return contract.Decode[CompletionID](data)
-}
-func (v CompletionID) Validate() error { return contractValidateCompletionID(v, 0) }
-func contractValidateCompletionID(v CompletionID, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	if err := contractValidateNodeID(v.Child, depth+1); err != nil {
-		return contract.At("child", err)
-	}
-	if err := contract.Text(string(v.Child), 0, -1, ""); err != nil {
-		return contract.At("child", err)
-	}
-	if v.Round > 9007199254740991 {
-		return contract.At("round", fmt.Errorf("outside numeric bounds"))
-	}
-	return nil
-}
-func (v *CompletionID) UnmarshalJSON(data []byte) error {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
-	if err != nil {
-		return err
-	}
-	var next CompletionID
-	for key := range obj {
-		switch key {
-		case "child", "round":
-		default:
-			return contract.At(key, fmt.Errorf("unknown field"))
-		}
-	}
-	{
-		raw, ok := obj["child"]
-		if !ok {
-			return contract.At("child", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[NodeID](raw)
-			if err != nil {
-				return contract.At("child", err)
-			}
-			next.Child = value
-		}
-	}
-	{
-		raw, ok := obj["round"]
-		if !ok {
-			return contract.At("round", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[uint64](raw)
-			if err != nil {
-				return contract.At("round", err)
-			}
-			next.Round = value
-		}
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v CompletionID) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "child", Value: v.Child})
-	fields = append(fields, contract.Field{Name: "round", Value: v.Round})
-	return contract.EncodeObject(fields)
-}
 func DecodeCompletionOutcome(data []byte) (CompletionOutcome, error) {
 	return contract.Decode[CompletionOutcome](data)
 }
@@ -2173,10 +2100,10 @@ func contractValidateContextBlock(v ContextBlock, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
-	if err := contractValidateBlockID(v.ID, depth+1); err != nil {
+	if err := contractValidateBlockID(v.BlockID, depth+1); err != nil {
 		return contract.At("id", err)
 	}
-	if err := contract.Text(string(v.ID), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.BlockID), 0, -1, ""); err != nil {
 		return contract.At("id", err)
 	}
 	if err := contractValidateTurnID(v.TurnID, depth+1); err != nil {
@@ -2185,13 +2112,13 @@ func contractValidateContextBlock(v ContextBlock, depth int) error {
 	if err := contract.Text(string(v.TurnID), 0, -1, ""); err != nil {
 		return contract.At("turnId", err)
 	}
-	if err := contractValidateTimestamp(v.CreatedAt, depth+1); err != nil {
+	if err := contractValidateTimestamp(v.Timestamp, depth+1); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contract.Text(string(v.CreatedAt), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.Timestamp), 0, -1, ""); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contractValidateModelSelection(v.Model, depth+1); err != nil {
+	if err := contractValidateModelSelection(v.Selection, depth+1); err != nil {
 		return contract.At("model", err)
 	}
 	if err := contract.Text(string(v.Source), 1, 64, ""); err != nil {
@@ -2233,7 +2160,7 @@ func (v *ContextBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("id", err)
 			}
-			next.ID = value
+			next.BlockID = value
 		}
 	}
 	{
@@ -2259,7 +2186,7 @@ func (v *ContextBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("createdAt", err)
 			}
-			next.CreatedAt = value
+			next.Timestamp = value
 		}
 	}
 	{
@@ -2272,7 +2199,7 @@ func (v *ContextBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("model", err)
 			}
-			next.Model = value
+			next.Selection = value
 		}
 	}
 	{
@@ -2313,10 +2240,10 @@ func (v ContextBlock) MarshalJSON() ([]byte, error) {
 	}
 	fields := []contract.Field{}
 	fields = append(fields, contract.Field{Name: "type", Value: "context"})
-	fields = append(fields, contract.Field{Name: "id", Value: v.ID})
+	fields = append(fields, contract.Field{Name: "id", Value: v.BlockID})
 	fields = append(fields, contract.Field{Name: "turnId", Value: v.TurnID})
-	fields = append(fields, contract.Field{Name: "createdAt", Value: v.CreatedAt})
-	fields = append(fields, contract.Field{Name: "model", Value: v.Model})
+	fields = append(fields, contract.Field{Name: "createdAt", Value: v.Timestamp})
+	fields = append(fields, contract.Field{Name: "model", Value: v.Selection})
 	fields = append(fields, contract.Field{Name: "source", Value: v.Source})
 	fields = append(fields, contract.Field{Name: "text", Value: v.Text})
 	return contract.EncodeObject(fields)
@@ -3085,19 +3012,19 @@ func contractValidateErrorBlock(v ErrorBlock, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
-	if err := contractValidateBlockID(v.ID, depth+1); err != nil {
+	if err := contractValidateBlockID(v.BlockID, depth+1); err != nil {
 		return contract.At("id", err)
 	}
-	if err := contract.Text(string(v.ID), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.BlockID), 0, -1, ""); err != nil {
 		return contract.At("id", err)
 	}
-	if err := contractValidateTimestamp(v.CreatedAt, depth+1); err != nil {
+	if err := contractValidateTimestamp(v.Timestamp, depth+1); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contract.Text(string(v.CreatedAt), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.Timestamp), 0, -1, ""); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contractValidateModelSelection(v.Model, depth+1); err != nil {
+	if err := contractValidateModelSelection(v.Selection, depth+1); err != nil {
 		return contract.At("model", err)
 	}
 	if err := contract.Text(string(v.Message), 0, -1, ""); err != nil {
@@ -3146,7 +3073,7 @@ func (v *ErrorBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("id", err)
 			}
-			next.ID = value
+			next.BlockID = value
 		}
 	}
 	{
@@ -3159,7 +3086,7 @@ func (v *ErrorBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("createdAt", err)
 			}
-			next.CreatedAt = value
+			next.Timestamp = value
 		}
 	}
 	{
@@ -3172,7 +3099,7 @@ func (v *ErrorBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("model", err)
 			}
-			next.Model = value
+			next.Selection = value
 		}
 	}
 	{
@@ -3227,9 +3154,9 @@ func (v ErrorBlock) MarshalJSON() ([]byte, error) {
 	}
 	fields := []contract.Field{}
 	fields = append(fields, contract.Field{Name: "type", Value: "error"})
-	fields = append(fields, contract.Field{Name: "id", Value: v.ID})
-	fields = append(fields, contract.Field{Name: "createdAt", Value: v.CreatedAt})
-	fields = append(fields, contract.Field{Name: "model", Value: v.Model})
+	fields = append(fields, contract.Field{Name: "id", Value: v.BlockID})
+	fields = append(fields, contract.Field{Name: "createdAt", Value: v.Timestamp})
+	fields = append(fields, contract.Field{Name: "model", Value: v.Selection})
 	fields = append(fields, contract.Field{Name: "message", Value: v.Message})
 	fields = append(fields, contract.Field{Name: "code", Value: v.Code})
 	if v.Diagnostics != nil {
@@ -4044,99 +3971,6 @@ func (v ModelMediaKind) MarshalJSON() ([]byte, error) {
 	}
 	return json.Marshal(string(v))
 }
-func DecodeModelMediaType(data []byte) (ModelMediaType, error) {
-	return contract.Decode[ModelMediaType](data)
-}
-func (v ModelMediaType) Validate() error { return contractValidateModelMediaType(v, 0) }
-func contractValidateModelMediaType(v ModelMediaType, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	if err := contract.Text(string(v.MediaType), 0, -1, ""); err != nil {
-		return contract.At("mediaType", err)
-	}
-	if err := contractValidateModelMediaKind(v.Kind, depth+1); err != nil {
-		return contract.At("kind", err)
-	}
-	if err := contract.Text(string(v.Kind), 0, -1, ""); err != nil {
-		return contract.At("kind", err)
-	}
-	if err := contractValidateFileExtension(v.Extension, depth+1); err != nil {
-		return contract.At("extension", err)
-	}
-	if err := contract.Text(string(v.Extension), 0, -1, ""); err != nil {
-		return contract.At("extension", err)
-	}
-	return nil
-}
-func (v *ModelMediaType) UnmarshalJSON(data []byte) error {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
-	if err != nil {
-		return err
-	}
-	var next ModelMediaType
-	for key := range obj {
-		switch key {
-		case "mediaType", "kind", "extension":
-		default:
-			return contract.At(key, fmt.Errorf("unknown field"))
-		}
-	}
-	{
-		raw, ok := obj["mediaType"]
-		if !ok {
-			return contract.At("mediaType", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[string](raw)
-			if err != nil {
-				return contract.At("mediaType", err)
-			}
-			next.MediaType = value
-		}
-	}
-	{
-		raw, ok := obj["kind"]
-		if !ok {
-			return contract.At("kind", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[ModelMediaKind](raw)
-			if err != nil {
-				return contract.At("kind", err)
-			}
-			next.Kind = value
-		}
-	}
-	{
-		raw, ok := obj["extension"]
-		if !ok {
-			return contract.At("extension", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[FileExtension](raw)
-			if err != nil {
-				return contract.At("extension", err)
-			}
-			next.Extension = value
-		}
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v ModelMediaType) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "mediaType", Value: v.MediaType})
-	fields = append(fields, contract.Field{Name: "kind", Value: v.Kind})
-	fields = append(fields, contract.Field{Name: "extension", Value: v.Extension})
-	return contract.EncodeObject(fields)
-}
 func DecodeModelSelection(data []byte) (ModelSelection, error) {
 	return contract.Decode[ModelSelection](data)
 }
@@ -4280,37 +4114,6 @@ func (v *NodeID) UnmarshalJSON(data []byte) error {
 	return nil
 }
 func (v NodeID) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	return json.Marshal(string(v))
-}
-func DecodeNotCompletionID(data []byte) (NotCompletionID, error) {
-	return contract.Decode[NotCompletionID](data)
-}
-func (v NotCompletionID) Validate() error { return contractValidateNotCompletionID(v, 0) }
-func contractValidateNotCompletionID(v NotCompletionID, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	if err := contract.Text(string(v), 0, -1, ""); err != nil {
-		return contract.At("", err)
-	}
-	return nil
-}
-func (v *NotCompletionID) UnmarshalJSON(data []byte) error {
-	value, err := contract.Decode[string](data)
-	if err != nil {
-		return err
-	}
-	next := NotCompletionID(value)
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v NotCompletionID) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
@@ -6376,19 +6179,19 @@ func contractValidateRedactedThinkingBlock(v RedactedThinkingBlock, depth int) e
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
-	if err := contractValidateBlockID(v.ID, depth+1); err != nil {
+	if err := contractValidateBlockID(v.BlockID, depth+1); err != nil {
 		return contract.At("id", err)
 	}
-	if err := contract.Text(string(v.ID), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.BlockID), 0, -1, ""); err != nil {
 		return contract.At("id", err)
 	}
-	if err := contractValidateTimestamp(v.CreatedAt, depth+1); err != nil {
+	if err := contractValidateTimestamp(v.Timestamp, depth+1); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contract.Text(string(v.CreatedAt), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.Timestamp), 0, -1, ""); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contractValidateModelSelection(v.Model, depth+1); err != nil {
+	if err := contractValidateModelSelection(v.Selection, depth+1); err != nil {
 		return contract.At("model", err)
 	}
 	if err := contract.Text(string(v.Data), 0, -1, ""); err != nil {
@@ -6427,7 +6230,7 @@ func (v *RedactedThinkingBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("id", err)
 			}
-			next.ID = value
+			next.BlockID = value
 		}
 	}
 	{
@@ -6440,7 +6243,7 @@ func (v *RedactedThinkingBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("createdAt", err)
 			}
-			next.CreatedAt = value
+			next.Timestamp = value
 		}
 	}
 	{
@@ -6453,7 +6256,7 @@ func (v *RedactedThinkingBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("model", err)
 			}
-			next.Model = value
+			next.Selection = value
 		}
 	}
 	{
@@ -6481,9 +6284,9 @@ func (v RedactedThinkingBlock) MarshalJSON() ([]byte, error) {
 	}
 	fields := []contract.Field{}
 	fields = append(fields, contract.Field{Name: "type", Value: "redacted_thinking"})
-	fields = append(fields, contract.Field{Name: "id", Value: v.ID})
-	fields = append(fields, contract.Field{Name: "createdAt", Value: v.CreatedAt})
-	fields = append(fields, contract.Field{Name: "model", Value: v.Model})
+	fields = append(fields, contract.Field{Name: "id", Value: v.BlockID})
+	fields = append(fields, contract.Field{Name: "createdAt", Value: v.Timestamp})
+	fields = append(fields, contract.Field{Name: "model", Value: v.Selection})
 	fields = append(fields, contract.Field{Name: "data", Value: v.Data})
 	return contract.EncodeObject(fields)
 }
@@ -6573,19 +6376,19 @@ func contractValidateResponseBlock(v ResponseBlock, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
-	if err := contractValidateBlockID(v.ID, depth+1); err != nil {
+	if err := contractValidateBlockID(v.BlockID, depth+1); err != nil {
 		return contract.At("id", err)
 	}
-	if err := contract.Text(string(v.ID), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.BlockID), 0, -1, ""); err != nil {
 		return contract.At("id", err)
 	}
-	if err := contractValidateTimestamp(v.CreatedAt, depth+1); err != nil {
+	if err := contractValidateTimestamp(v.Timestamp, depth+1); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contract.Text(string(v.CreatedAt), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.Timestamp), 0, -1, ""); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contractValidateModelSelection(v.Model, depth+1); err != nil {
+	if err := contractValidateModelSelection(v.Selection, depth+1); err != nil {
 		return contract.At("model", err)
 	}
 	if err := contractValidateTokenUsage(v.Usage, depth+1); err != nil {
@@ -6624,7 +6427,7 @@ func (v *ResponseBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("id", err)
 			}
-			next.ID = value
+			next.BlockID = value
 		}
 	}
 	{
@@ -6637,7 +6440,7 @@ func (v *ResponseBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("createdAt", err)
 			}
-			next.CreatedAt = value
+			next.Timestamp = value
 		}
 	}
 	{
@@ -6650,7 +6453,7 @@ func (v *ResponseBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("model", err)
 			}
-			next.Model = value
+			next.Selection = value
 		}
 	}
 	{
@@ -6678,9 +6481,9 @@ func (v ResponseBlock) MarshalJSON() ([]byte, error) {
 	}
 	fields := []contract.Field{}
 	fields = append(fields, contract.Field{Name: "type", Value: "response"})
-	fields = append(fields, contract.Field{Name: "id", Value: v.ID})
-	fields = append(fields, contract.Field{Name: "createdAt", Value: v.CreatedAt})
-	fields = append(fields, contract.Field{Name: "model", Value: v.Model})
+	fields = append(fields, contract.Field{Name: "id", Value: v.BlockID})
+	fields = append(fields, contract.Field{Name: "createdAt", Value: v.Timestamp})
+	fields = append(fields, contract.Field{Name: "model", Value: v.Selection})
 	fields = append(fields, contract.Field{Name: "usage", Value: v.Usage})
 	return contract.EncodeObject(fields)
 }
@@ -6691,10 +6494,10 @@ func contractValidateResumeBlock(v ResumeBlock, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
-	if err := contractValidateBlockID(v.ID, depth+1); err != nil {
+	if err := contractValidateBlockID(v.BlockID, depth+1); err != nil {
 		return contract.At("id", err)
 	}
-	if err := contract.Text(string(v.ID), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.BlockID), 0, -1, ""); err != nil {
 		return contract.At("id", err)
 	}
 	if err := contractValidateTurnID(v.TurnID, depth+1); err != nil {
@@ -6703,13 +6506,13 @@ func contractValidateResumeBlock(v ResumeBlock, depth int) error {
 	if err := contract.Text(string(v.TurnID), 0, -1, ""); err != nil {
 		return contract.At("turnId", err)
 	}
-	if err := contractValidateTimestamp(v.CreatedAt, depth+1); err != nil {
+	if err := contractValidateTimestamp(v.Timestamp, depth+1); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contract.Text(string(v.CreatedAt), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.Timestamp), 0, -1, ""); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contractValidateModelSelection(v.Model, depth+1); err != nil {
+	if err := contractValidateModelSelection(v.Selection, depth+1); err != nil {
 		return contract.At("model", err)
 	}
 	return nil
@@ -6745,7 +6548,7 @@ func (v *ResumeBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("id", err)
 			}
-			next.ID = value
+			next.BlockID = value
 		}
 	}
 	{
@@ -6771,7 +6574,7 @@ func (v *ResumeBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("createdAt", err)
 			}
-			next.CreatedAt = value
+			next.Timestamp = value
 		}
 	}
 	{
@@ -6784,7 +6587,7 @@ func (v *ResumeBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("model", err)
 			}
-			next.Model = value
+			next.Selection = value
 		}
 	}
 	if err := next.Validate(); err != nil {
@@ -6799,10 +6602,10 @@ func (v ResumeBlock) MarshalJSON() ([]byte, error) {
 	}
 	fields := []contract.Field{}
 	fields = append(fields, contract.Field{Name: "type", Value: "resume"})
-	fields = append(fields, contract.Field{Name: "id", Value: v.ID})
+	fields = append(fields, contract.Field{Name: "id", Value: v.BlockID})
 	fields = append(fields, contract.Field{Name: "turnId", Value: v.TurnID})
-	fields = append(fields, contract.Field{Name: "createdAt", Value: v.CreatedAt})
-	fields = append(fields, contract.Field{Name: "model", Value: v.Model})
+	fields = append(fields, contract.Field{Name: "createdAt", Value: v.Timestamp})
+	fields = append(fields, contract.Field{Name: "model", Value: v.Selection})
 	return contract.EncodeObject(fields)
 }
 func (*Retired) isGoneCause()                    {}
@@ -7985,10 +7788,10 @@ func contractValidateSteerBlock(v SteerBlock, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
-	if err := contractValidateBlockID(v.ID, depth+1); err != nil {
+	if err := contractValidateBlockID(v.BlockID, depth+1); err != nil {
 		return contract.At("id", err)
 	}
-	if err := contract.Text(string(v.ID), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.BlockID), 0, -1, ""); err != nil {
 		return contract.At("id", err)
 	}
 	if err := contractValidateTurnID(v.TurnID, depth+1); err != nil {
@@ -7997,13 +7800,13 @@ func contractValidateSteerBlock(v SteerBlock, depth int) error {
 	if err := contract.Text(string(v.TurnID), 0, -1, ""); err != nil {
 		return contract.At("turnId", err)
 	}
-	if err := contractValidateTimestamp(v.CreatedAt, depth+1); err != nil {
+	if err := contractValidateTimestamp(v.Timestamp, depth+1); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contract.Text(string(v.CreatedAt), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.Timestamp), 0, -1, ""); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contractValidateModelSelection(v.Model, depth+1); err != nil {
+	if err := contractValidateModelSelection(v.Selection, depth+1); err != nil {
 		return contract.At("model", err)
 	}
 	if v.Content == nil {
@@ -8049,7 +7852,7 @@ func (v *SteerBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("id", err)
 			}
-			next.ID = value
+			next.BlockID = value
 		}
 	}
 	{
@@ -8075,7 +7878,7 @@ func (v *SteerBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("createdAt", err)
 			}
-			next.CreatedAt = value
+			next.Timestamp = value
 		}
 	}
 	{
@@ -8088,7 +7891,7 @@ func (v *SteerBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("model", err)
 			}
-			next.Model = value
+			next.Selection = value
 		}
 	}
 	{
@@ -8116,10 +7919,10 @@ func (v SteerBlock) MarshalJSON() ([]byte, error) {
 	}
 	fields := []contract.Field{}
 	fields = append(fields, contract.Field{Name: "type", Value: "steer"})
-	fields = append(fields, contract.Field{Name: "id", Value: v.ID})
+	fields = append(fields, contract.Field{Name: "id", Value: v.BlockID})
 	fields = append(fields, contract.Field{Name: "turnId", Value: v.TurnID})
-	fields = append(fields, contract.Field{Name: "createdAt", Value: v.CreatedAt})
-	fields = append(fields, contract.Field{Name: "model", Value: v.Model})
+	fields = append(fields, contract.Field{Name: "createdAt", Value: v.Timestamp})
+	fields = append(fields, contract.Field{Name: "model", Value: v.Selection})
 	fields = append(fields, contract.Field{Name: "content", Value: v.Content})
 	return contract.EncodeObject(fields)
 }
@@ -8266,39 +8069,6 @@ func (v StreamView) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "truncated", Value: v.Truncated})
 	return contract.EncodeObject(fields)
 }
-func DecodeSystemClock(data []byte) (SystemClock, error) { return contract.Decode[SystemClock](data) }
-func (v SystemClock) Validate() error                    { return contractValidateSystemClock(v, 0) }
-func contractValidateSystemClock(v SystemClock, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	return nil
-}
-func (v *SystemClock) UnmarshalJSON(data []byte) error {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
-	if err != nil {
-		return err
-	}
-	var next SystemClock
-	for key := range obj {
-		switch key {
-		default:
-			return contract.At(key, fmt.Errorf("unknown field"))
-		}
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v SystemClock) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []contract.Field{}
-	return contract.EncodeObject(fields)
-}
 func (*TextBlock) isBlock()                          {}
 func DecodeTextBlock(data []byte) (TextBlock, error) { return contract.Decode[TextBlock](data) }
 func (v TextBlock) Validate() error                  { return contractValidateTextBlock(v, 0) }
@@ -8306,19 +8076,19 @@ func contractValidateTextBlock(v TextBlock, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
-	if err := contractValidateBlockID(v.ID, depth+1); err != nil {
+	if err := contractValidateBlockID(v.BlockID, depth+1); err != nil {
 		return contract.At("id", err)
 	}
-	if err := contract.Text(string(v.ID), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.BlockID), 0, -1, ""); err != nil {
 		return contract.At("id", err)
 	}
-	if err := contractValidateTimestamp(v.CreatedAt, depth+1); err != nil {
+	if err := contractValidateTimestamp(v.Timestamp, depth+1); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contract.Text(string(v.CreatedAt), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.Timestamp), 0, -1, ""); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contractValidateModelSelection(v.Model, depth+1); err != nil {
+	if err := contractValidateModelSelection(v.Selection, depth+1); err != nil {
 		return contract.At("model", err)
 	}
 	if err := contract.Text(string(v.Text), 0, -1, ""); err != nil {
@@ -8357,7 +8127,7 @@ func (v *TextBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("id", err)
 			}
-			next.ID = value
+			next.BlockID = value
 		}
 	}
 	{
@@ -8370,7 +8140,7 @@ func (v *TextBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("createdAt", err)
 			}
-			next.CreatedAt = value
+			next.Timestamp = value
 		}
 	}
 	{
@@ -8383,7 +8153,7 @@ func (v *TextBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("model", err)
 			}
-			next.Model = value
+			next.Selection = value
 		}
 	}
 	{
@@ -8421,9 +8191,9 @@ func (v TextBlock) MarshalJSON() ([]byte, error) {
 	}
 	fields := []contract.Field{}
 	fields = append(fields, contract.Field{Name: "type", Value: "text"})
-	fields = append(fields, contract.Field{Name: "id", Value: v.ID})
-	fields = append(fields, contract.Field{Name: "createdAt", Value: v.CreatedAt})
-	fields = append(fields, contract.Field{Name: "model", Value: v.Model})
+	fields = append(fields, contract.Field{Name: "id", Value: v.BlockID})
+	fields = append(fields, contract.Field{Name: "createdAt", Value: v.Timestamp})
+	fields = append(fields, contract.Field{Name: "model", Value: v.Selection})
 	fields = append(fields, contract.Field{Name: "text", Value: v.Text})
 	if v.Forkable {
 		fields = append(fields, contract.Field{Name: "forkable", Value: v.Forkable})
@@ -8439,19 +8209,19 @@ func contractValidateThinkingBlock(v ThinkingBlock, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
-	if err := contractValidateBlockID(v.ID, depth+1); err != nil {
+	if err := contractValidateBlockID(v.BlockID, depth+1); err != nil {
 		return contract.At("id", err)
 	}
-	if err := contract.Text(string(v.ID), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.BlockID), 0, -1, ""); err != nil {
 		return contract.At("id", err)
 	}
-	if err := contractValidateTimestamp(v.CreatedAt, depth+1); err != nil {
+	if err := contractValidateTimestamp(v.Timestamp, depth+1); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contract.Text(string(v.CreatedAt), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.Timestamp), 0, -1, ""); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contractValidateModelSelection(v.Model, depth+1); err != nil {
+	if err := contractValidateModelSelection(v.Selection, depth+1); err != nil {
 		return contract.At("model", err)
 	}
 	if err := contract.Text(string(v.Text), 0, -1, ""); err != nil {
@@ -8495,7 +8265,7 @@ func (v *ThinkingBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("id", err)
 			}
-			next.ID = value
+			next.BlockID = value
 		}
 	}
 	{
@@ -8508,7 +8278,7 @@ func (v *ThinkingBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("createdAt", err)
 			}
-			next.CreatedAt = value
+			next.Timestamp = value
 		}
 	}
 	{
@@ -8521,7 +8291,7 @@ func (v *ThinkingBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("model", err)
 			}
-			next.Model = value
+			next.Selection = value
 		}
 	}
 	{
@@ -8564,9 +8334,9 @@ func (v ThinkingBlock) MarshalJSON() ([]byte, error) {
 	}
 	fields := []contract.Field{}
 	fields = append(fields, contract.Field{Name: "type", Value: "thinking"})
-	fields = append(fields, contract.Field{Name: "id", Value: v.ID})
-	fields = append(fields, contract.Field{Name: "createdAt", Value: v.CreatedAt})
-	fields = append(fields, contract.Field{Name: "model", Value: v.Model})
+	fields = append(fields, contract.Field{Name: "id", Value: v.BlockID})
+	fields = append(fields, contract.Field{Name: "createdAt", Value: v.Timestamp})
+	fields = append(fields, contract.Field{Name: "model", Value: v.Selection})
 	fields = append(fields, contract.Field{Name: "text", Value: v.Text})
 	fields = append(fields, contract.Field{Name: "signature", Value: v.Signature})
 	return contract.EncodeObject(fields)
@@ -8920,19 +8690,19 @@ func contractValidateToolCallBlock(v ToolCallBlock, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
-	if err := contractValidateBlockID(v.ID, depth+1); err != nil {
+	if err := contractValidateBlockID(v.BlockID, depth+1); err != nil {
 		return contract.At("id", err)
 	}
-	if err := contract.Text(string(v.ID), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.BlockID), 0, -1, ""); err != nil {
 		return contract.At("id", err)
 	}
-	if err := contractValidateTimestamp(v.CreatedAt, depth+1); err != nil {
+	if err := contractValidateTimestamp(v.Timestamp, depth+1); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contract.Text(string(v.CreatedAt), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.Timestamp), 0, -1, ""); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contractValidateModelSelection(v.Model, depth+1); err != nil {
+	if err := contractValidateModelSelection(v.Selection, depth+1); err != nil {
 		return contract.At("model", err)
 	}
 	if err := contract.Text(string(v.ToolUseID), 0, -1, ""); err != nil {
@@ -8998,7 +8768,7 @@ func (v *ToolCallBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("id", err)
 			}
-			next.ID = value
+			next.BlockID = value
 		}
 	}
 	{
@@ -9011,7 +8781,7 @@ func (v *ToolCallBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("createdAt", err)
 			}
-			next.CreatedAt = value
+			next.Timestamp = value
 		}
 	}
 	{
@@ -9024,7 +8794,7 @@ func (v *ToolCallBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("model", err)
 			}
-			next.Model = value
+			next.Selection = value
 		}
 	}
 	{
@@ -9121,9 +8891,9 @@ func (v ToolCallBlock) MarshalJSON() ([]byte, error) {
 	}
 	fields := []contract.Field{}
 	fields = append(fields, contract.Field{Name: "type", Value: "tool_call"})
-	fields = append(fields, contract.Field{Name: "id", Value: v.ID})
-	fields = append(fields, contract.Field{Name: "createdAt", Value: v.CreatedAt})
-	fields = append(fields, contract.Field{Name: "model", Value: v.Model})
+	fields = append(fields, contract.Field{Name: "id", Value: v.BlockID})
+	fields = append(fields, contract.Field{Name: "createdAt", Value: v.Timestamp})
+	fields = append(fields, contract.Field{Name: "model", Value: v.Selection})
 	fields = append(fields, contract.Field{Name: "toolUseId", Value: v.ToolUseID})
 	fields = append(fields, contract.Field{Name: "toolName", Value: v.ToolName})
 	fields = append(fields, contract.Field{Name: "input", Value: v.Input})
@@ -9834,76 +9604,6 @@ func (v Unauthenticated) MarshalJSON() ([]byte, error) {
 	}
 	return contract.EncodeObject(fields)
 }
-func DecodeUnavailableSetting(data []byte) (UnavailableSetting, error) {
-	return contract.Decode[UnavailableSetting](data)
-}
-func (v UnavailableSetting) Validate() error { return contractValidateUnavailableSetting(v, 0) }
-func contractValidateUnavailableSetting(v UnavailableSetting, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	if err := contract.Text(string(v.Kind), 0, -1, ""); err != nil {
-		return contract.At("kind", err)
-	}
-	if err := contract.Text(string(v.Value), 0, -1, ""); err != nil {
-		return contract.At("value", err)
-	}
-	return nil
-}
-func (v *UnavailableSetting) UnmarshalJSON(data []byte) error {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
-	if err != nil {
-		return err
-	}
-	var next UnavailableSetting
-	for key := range obj {
-		switch key {
-		case "kind", "value":
-		default:
-			return contract.At(key, fmt.Errorf("unknown field"))
-		}
-	}
-	{
-		raw, ok := obj["kind"]
-		if !ok {
-			return contract.At("kind", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[string](raw)
-			if err != nil {
-				return contract.At("kind", err)
-			}
-			next.Kind = value
-		}
-	}
-	{
-		raw, ok := obj["value"]
-		if !ok {
-			return contract.At("value", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[string](raw)
-			if err != nil {
-				return contract.At("value", err)
-			}
-			next.Value = value
-		}
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v UnavailableSetting) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "kind", Value: v.Kind})
-	fields = append(fields, contract.Field{Name: "value", Value: v.Value})
-	return contract.EncodeObject(fields)
-}
 func (*UserAttachment) isUserContentBlock() {}
 func DecodeUserAttachment(data []byte) (UserAttachment, error) {
 	return contract.Decode[UserAttachment](data)
@@ -10043,10 +9743,10 @@ func contractValidateUserBlock(v UserBlock, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
-	if err := contractValidateBlockID(v.ID, depth+1); err != nil {
+	if err := contractValidateBlockID(v.BlockID, depth+1); err != nil {
 		return contract.At("id", err)
 	}
-	if err := contract.Text(string(v.ID), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.BlockID), 0, -1, ""); err != nil {
 		return contract.At("id", err)
 	}
 	if err := contractValidateTurnID(v.TurnID, depth+1); err != nil {
@@ -10055,13 +9755,13 @@ func contractValidateUserBlock(v UserBlock, depth int) error {
 	if err := contract.Text(string(v.TurnID), 0, -1, ""); err != nil {
 		return contract.At("turnId", err)
 	}
-	if err := contractValidateTimestamp(v.CreatedAt, depth+1); err != nil {
+	if err := contractValidateTimestamp(v.Timestamp, depth+1); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contract.Text(string(v.CreatedAt), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.Timestamp), 0, -1, ""); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contractValidateModelSelection(v.Model, depth+1); err != nil {
+	if err := contractValidateModelSelection(v.Selection, depth+1); err != nil {
 		return contract.At("model", err)
 	}
 	if v.Content == nil {
@@ -10112,7 +9812,7 @@ func (v *UserBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("id", err)
 			}
-			next.ID = value
+			next.BlockID = value
 		}
 	}
 	{
@@ -10138,7 +9838,7 @@ func (v *UserBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("createdAt", err)
 			}
-			next.CreatedAt = value
+			next.Timestamp = value
 		}
 	}
 	{
@@ -10151,7 +9851,7 @@ func (v *UserBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("model", err)
 			}
-			next.Model = value
+			next.Selection = value
 		}
 	}
 	{
@@ -10194,10 +9894,10 @@ func (v UserBlock) MarshalJSON() ([]byte, error) {
 	}
 	fields := []contract.Field{}
 	fields = append(fields, contract.Field{Name: "type", Value: "user"})
-	fields = append(fields, contract.Field{Name: "id", Value: v.ID})
+	fields = append(fields, contract.Field{Name: "id", Value: v.BlockID})
 	fields = append(fields, contract.Field{Name: "turnId", Value: v.TurnID})
-	fields = append(fields, contract.Field{Name: "createdAt", Value: v.CreatedAt})
-	fields = append(fields, contract.Field{Name: "model", Value: v.Model})
+	fields = append(fields, contract.Field{Name: "createdAt", Value: v.Timestamp})
+	fields = append(fields, contract.Field{Name: "model", Value: v.Selection})
 	fields = append(fields, contract.Field{Name: "content", Value: v.Content})
 	fields = append(fields, contract.Field{Name: "preamble", Value: v.Preamble})
 	return contract.EncodeObject(fields)
@@ -10625,10 +10325,10 @@ func contractValidateWakeupBlock(v WakeupBlock, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
-	if err := contractValidateBlockID(v.ID, depth+1); err != nil {
+	if err := contractValidateBlockID(v.BlockID, depth+1); err != nil {
 		return contract.At("id", err)
 	}
-	if err := contract.Text(string(v.ID), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.BlockID), 0, -1, ""); err != nil {
 		return contract.At("id", err)
 	}
 	if err := contractValidateTurnID(v.TurnID, depth+1); err != nil {
@@ -10637,13 +10337,13 @@ func contractValidateWakeupBlock(v WakeupBlock, depth int) error {
 	if err := contract.Text(string(v.TurnID), 0, -1, ""); err != nil {
 		return contract.At("turnId", err)
 	}
-	if err := contractValidateTimestamp(v.CreatedAt, depth+1); err != nil {
+	if err := contractValidateTimestamp(v.Timestamp, depth+1); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contract.Text(string(v.CreatedAt), 0, -1, ""); err != nil {
+	if err := contract.Text(string(v.Timestamp), 0, -1, ""); err != nil {
 		return contract.At("createdAt", err)
 	}
-	if err := contractValidateModelSelection(v.Model, depth+1); err != nil {
+	if err := contractValidateModelSelection(v.Selection, depth+1); err != nil {
 		return contract.At("model", err)
 	}
 	if err := contractValidateWakeupPlacement(v.Placement, depth+1); err != nil {
@@ -10685,7 +10385,7 @@ func (v *WakeupBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("id", err)
 			}
-			next.ID = value
+			next.BlockID = value
 		}
 	}
 	{
@@ -10711,7 +10411,7 @@ func (v *WakeupBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("createdAt", err)
 			}
-			next.CreatedAt = value
+			next.Timestamp = value
 		}
 	}
 	{
@@ -10724,7 +10424,7 @@ func (v *WakeupBlock) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return contract.At("model", err)
 			}
-			next.Model = value
+			next.Selection = value
 		}
 	}
 	{
@@ -10752,10 +10452,10 @@ func (v WakeupBlock) MarshalJSON() ([]byte, error) {
 	}
 	fields := []contract.Field{}
 	fields = append(fields, contract.Field{Name: "type", Value: "wakeup"})
-	fields = append(fields, contract.Field{Name: "id", Value: v.ID})
+	fields = append(fields, contract.Field{Name: "id", Value: v.BlockID})
 	fields = append(fields, contract.Field{Name: "turnId", Value: v.TurnID})
-	fields = append(fields, contract.Field{Name: "createdAt", Value: v.CreatedAt})
-	fields = append(fields, contract.Field{Name: "model", Value: v.Model})
+	fields = append(fields, contract.Field{Name: "createdAt", Value: v.Timestamp})
+	fields = append(fields, contract.Field{Name: "model", Value: v.Selection})
 	fields = append(fields, contract.Field{Name: "placement", Value: v.Placement})
 	return contract.EncodeObject(fields)
 }

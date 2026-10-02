@@ -8,9 +8,8 @@ import (
 
 // CompletionID names one execution round of a child.
 type CompletionID struct {
-	Child NodeID `json:"child"`
-	// +demi:range max=9007199254740991
-	Round uint64 `json:"round"`
+	Child NodeID
+	Round uint64
 }
 
 func (id CompletionID) String() string {
@@ -19,8 +18,11 @@ func (id CompletionID) String() string {
 
 // BlockID is the block identity of the completion receipt.
 func (id CompletionID) BlockID() (BlockID, error) {
-	if err := id.Validate(); err != nil {
+	if err := id.Child.Validate(); err != nil {
 		return "", fmt.Errorf("completion id: %w", err)
+	}
+	if id.Round > MaxSafeInteger {
+		return "", fmt.Errorf("completion id: round exceeds maximum safe integer")
 	}
 	return ParseBlockID(id.String())
 }
