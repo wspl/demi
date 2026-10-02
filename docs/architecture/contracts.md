@@ -76,7 +76,8 @@ never relax them.
 | `variant text` or `variant Block text` | Struct (or named scalar for an untagged union); pointer variant with the given wire tag value, naming its union when the package has several. The encoder adds the tag; no tag field is declared. A variant can implement several unions with the same wire representation. Untagged variants use `variant` without a tag and implement their sealing method. |
 | `enum value1 value2` | Named string type; closed set of wire strings, including singleton literals. |
 | `nullable` | Field; its value may be null. Without `omitempty` the key is required; with `omitempty` it may also be absent (below). |
-| `default` | Non-pointer field; it may be absent, which decodes to its zero value (an empty slice or map, `false`, `0`, `""`), as Rust's `#[serde(default)]` without `skip_serializing_if`; its key is always written. Schema and Zod mark it optional as the Rust generators do for such a field. |
+| `default` | Non-pointer scalar, slice or map field; it may be absent, which decodes to its zero value (an empty slice or map, `false`, `0`, `""`), as Rust's `#[serde(default)]` without `skip_serializing_if`; its key is always written. JSON Schema marks it optional and includes the zero value as `default`; Zod uses `.optional()` without inserting a value, as the Rust generators do. It cannot be combined with an omission tag. |
+| `integer string` | Integer type or field; also accepts a JSON string that Rust's `FromStr` for the same integer type accepts, as Rust's tool inputs do for numbers the model writes as strings. It encodes as an integer, and its schema and Zod stay those of the integer; null is refused. |
 | `tolerant` | Struct; ignore unknown keys in Go. Every other object is strict. |
 | `length chars min=1 max=64` | String type or field; Unicode scalar count. Arrays omit `chars` and count elements. Either bound may be omitted. |
 | `pattern ^[0-9a-f]{64}$` | String type or field; shared regex subset below. The remainder of the line is the pattern. |
@@ -100,6 +101,12 @@ union holders. Unreached types are left alone. `schema` selects schema output
 for a retained type; it does not make an unreached type a boundary. Roots are
 markers on types, never a second registry in the generator.
 
+A hand-written codec must carry `codec` on its owning type, including a named
+scalar such as `webapi.ExposeAddress`. A consuming package then invokes the
+owner's codecs rather than assuming the type has generated validation. The
+marker has the same meaning inside and outside its package. Merely having JSON
+methods does not declare a contract; generated methods also have those names.
+
 Maps may use `string` or a defined string type such as `core.BlockID` as keys.
 Generated JSON and MessagePack validation runs the key type's own rules on
 every key, on decode and encode, without rewriting keys. A named map declaration
@@ -119,6 +126,10 @@ from their owning Go declarations, without parallel TypeScript tables.
   present empty value is accepted, null is refused, and empty values are
   omitted when encoding JSON and MessagePack. This preserves manifest and
   package digests.
+- A scalar, slice or map with `default` accepts absence but always writes its
+  key. Defaulted nil slices and maps validate and encode as empty collections;
+  encoding does not mutate the caller. Present null remains invalid. Value
+  constraints still apply to the default, just as they do to explicit values.
 - Nullable fields are pointers without `omitempty`, with the nullable
   marker: their key is always written, nil writes null, and absence is
   refused. A nullable union uses a nil interface, never a pointer to an

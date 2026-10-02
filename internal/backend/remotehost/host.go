@@ -1,11 +1,16 @@
 package remotehost
 
-//revive:disable:unused-parameter
-// API checkpoint: keep parameter names for callers until the bodies are implemented.
-
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"math"
+	"strings"
+	"sync"
 
 	"github.com/wspl/demi/internal/commandwire"
 	"github.com/wspl/demi/internal/gates"
@@ -29,88 +34,332 @@ type DeviceSourceFunc func() DeviceLink
 type Admission func() (*gates.Lease, error)
 
 // Host is a host.Host over a runner connection, including its job and service facets.
-type Host struct{ _ byte }
+type Host struct {
+	key       host.Key
+	cwd       string
+	source    DeviceSourceFunc
+	admission Admission
+}
 
 // NewHost constructs a Host against the device owner's connection snapshots.
 func NewHost(key host.Key, defaultCWD string, source DeviceSourceFunc, admission Admission) *Host {
-	panic("not written: b-remotehost")
+	return &Host{key: key, cwd: defaultCWD, source: source, admission: admission}
 }
 
 // Online reports whether the device's runner is connected.
-func (h *Host) Online() bool { panic("not written: b-remotehost") }
+func (h *Host) Online() bool {
+	_, err := h.connection()
+	return err == nil
+}
 
 // Key returns the execution target's value identity.
-func (h *Host) Key() host.Key { panic("not written: b-remotehost") }
+func (h *Host) Key() host.Key {
+	return h.key
+}
 
 // DefaultCWD returns the base for relative paths.
-func (h *Host) DefaultCWD() string { panic("not written: b-remotehost") }
+func (h *Host) DefaultCWD() string {
+	return h.cwd
+}
 
 // Identity returns the runner's current or last reported account.
-func (h *Host) Identity() host.Identity { panic("not written: b-remotehost") }
+func (h *Host) Identity() host.Identity {
+	device := h.source()
+	if device.Link != nil {
+		return device.Link.Identity()
+	}
+	if device.Last != nil {
+		return *device.Last
+	}
+	return host.Identity{HomeDir: h.cwd}
+}
 
 // FS returns the Host's filesystem facet.
-func (h *Host) FS() host.FS { panic("not written: b-remotehost") }
+func (h *Host) FS() host.FS {
+	return remoteFS{host: h}
+}
 
 // Process returns the Host's process facet.
-func (h *Host) Process() host.Process { panic("not written: b-remotehost") }
+func (h *Host) Process() host.Process {
+	return processFacet{host: h}
+}
 
 // StartJob starts one shell job. Offline jobs are already ended; admission may refuse them.
 func (h *Host) StartJob(ctx context.Context, job JobStart) (*Job, error) {
-	panic("not written: b-remotehost")
+	lease, err := h.admit()
+	if err != nil {
+		return nil, err
+	}
+	jobCtx, cancel := context.WithCancel(context.Background())
+	running := &Job{id: rand.Text(), state: newJobState[JobEnd, JobOutput](), ctx: jobCtx, cancel: cancel, lease: lease, origin: JobOrigin{Host: h.key, Context: job.Context, Caller: job.Caller}, commands: job.Commands}
+	link, err := h.connection()
+	if err != nil {
+		running.finish(JobEnd{Status: host.ProcessEnd{Kind: host.ProcessLost, Reason: "runner disconnected"}})
+		return running, nil
+	}
+	running.link = link
+	link.mu.Lock()
+	if link.IsClosed() {
+		link.mu.Unlock()
+		running.finish(JobEnd{Status: host.ProcessEnd{Kind: host.ProcessLost, Reason: "runner disconnected"}})
+		return running, nil
+	}
+	link.jobs[running.id] = running
+	link.mu.Unlock()
+	if err := running.start(ctx, job); err != nil {
+		link.mu.Lock()
+		delete(link.jobs, running.id)
+		link.mu.Unlock()
+		running.finish(JobEnd{Status: host.ProcessEnd{Kind: host.ProcessLost, Reason: err.Error()}})
+		return nil, err
+	}
+	return running, nil
 }
 
 // ReadPipe opens the file before returning a pipe reader. Closing it stops the read.
 func (h *Host) ReadPipe(ctx context.Context, path string, span host.ByteRange) (*PipeReader, error) {
-	panic("not written: b-remotehost")
+	link, err := h.connection()
+	if err != nil {
+		return nil, err
+	}
+	lease, err := h.admit()
+	if err != nil {
+		return nil, err
+	}
+	if lease != nil {
+		defer lease.Release()
+	}
+	return filled(ctx, link, `Fs("readFile")`, func(id string, output runnerwire.PipeRef) runnerwire.Inbound {
+		request := &runnerwire.FSReadFile{ID: id, Path: path, CWD: new(h.cwd), Length: span.Length, Output: output}
+		if span.Offset > 0 {
+			request.Offset = new(span.Offset)
+		}
+		return request
+	})
 }
 
 // WritePipe creates a pipe to the runner that this process fills.
-func (h *Host) WritePipe() (*Pipe, error) { panic("not written: b-remotehost") }
+func (h *Host) WritePipe() (*Pipe, error) {
+	link, err := h.connection()
+	if err != nil {
+		return nil, err
+	}
+	return link.pipes.ToDevice(link.device), nil
+}
 
 // WriteFrom atomically replaces a file after input ends cleanly.
 func (h *Host) WriteFrom(ctx context.Context, path string, input *Pipe, options host.WriteOptions) error {
-	panic("not written: b-remotehost")
+	link, err := h.connection()
+	if err != nil {
+		return err
+	}
+	lease, err := h.admit()
+	if err != nil {
+		return err
+	}
+	if lease != nil {
+		defer lease.Release()
+	}
+	_, err = link.call(ctx, `Fs("writeFile")`, func(id string) runnerwire.Inbound {
+		request := &runnerwire.FSWriteFile{ID: id, Path: path, CWD: new(h.cwd), Input: input.WireRef()}
+		if options.CreateParents {
+			request.CreateParents = new(true)
+		}
+		return request
+	})
+	return err
 }
 
 // GitChanges reads the working-tree changes beneath root.
 func (h *Host) GitChanges(ctx context.Context, root string) (runnerwire.GitChanges, error) {
-	panic("not written: b-remotehost")
+	link, err := h.connection()
+	if err != nil {
+		return runnerwire.GitChanges{}, err
+	}
+	lease, err := h.admit()
+	if err != nil {
+		return runnerwire.GitChanges{}, err
+	}
+	if lease != nil {
+		defer lease.Release()
+	}
+	reply, err := link.call(ctx, `Git("changes")`, func(id string) runnerwire.Inbound { return &runnerwire.GitChangesMessage{ID: id, Root: root} })
+	if err != nil {
+		return runnerwire.GitChanges{}, err
+	}
+	if reply, ok := reply.(*runnerwire.GitOK); ok {
+		if result, ok := reply.Result.(*runnerwire.GitChangesResult); ok {
+			return result.Value, nil
+		}
+	}
+	return runnerwire.GitChanges{}, mismatch()
 }
 
 // GitShow reads a file's committed contents from root.
 func (h *Host) GitShow(ctx context.Context, root, path string) ([]byte, error) {
-	panic("not written: b-remotehost")
+	link, err := h.connection()
+	if err != nil {
+		return nil, err
+	}
+	lease, err := h.admit()
+	if err != nil {
+		return nil, err
+	}
+	if lease != nil {
+		defer lease.Release()
+	}
+	reader, err := filled(ctx, link, `Git("show")`, func(id string, output runnerwire.PipeRef) runnerwire.Inbound {
+		return &runnerwire.GitShow{ID: id, Root: root, Path: path, Output: output}
+	})
+	if err != nil {
+		return nil, err
+	}
+	return collect(ctx, reader, math.MaxInt)
 }
 
 // ReadLog reads up to limit lines after since, oldest first, optionally from one source.
 func (h *Host) ReadLog(ctx context.Context, since *uint64, limit uint64, source *string) (LogPage, error) {
-	panic("not written: b-remotehost")
+	link, err := h.connection()
+	if err != nil {
+		return LogPage{}, err
+	}
+	reply, err := link.call(ctx, "Log", func(id string) runnerwire.Inbound {
+		return &runnerwire.LogRead{ID: id, Since: since, Limit: limit, Source: source}
+	})
+	if err != nil {
+		return LogPage{}, err
+	}
+	if reply, ok := reply.(*runnerwire.LogLines); ok {
+		return LogPage{Lines: reply.Lines, Next: reply.Next}, nil
+	}
+	return LogPage{}, mismatch()
 }
 
 // OpenNet connects a TCP stream between the socket and two pipes.
 func (h *Host) OpenNet(ctx context.Context, hostname string, port uint16, input, output runnerwire.PipeRef) error {
-	panic("not written: b-remotehost")
+	link, err := h.connection()
+	if err != nil {
+		return err
+	}
+	lease, err := h.admit()
+	if err != nil {
+		return err
+	}
+	if lease != nil {
+		defer lease.Release()
+	}
+	_, err = link.call(ctx, "Net", func(id string) runnerwire.Inbound {
+		return &runnerwire.NetOpen{StreamID: id, Host: hostname, Port: port, Input: input, Output: output}
+	})
+	return err
 }
 
 // OpenService opens a resident user stream. Streams are retention, not activity.
 // The caller must Close the returned stream, including after Done.
 func (h *Host) OpenService(ctx context.Context, request ServiceRequest, input, output runnerwire.PipeRef) (*ServiceStream, error) {
-	panic("not written: b-remotehost")
+	link, err := h.connection()
+	if err != nil {
+		return nil, err
+	}
+	lifetime, cancel := context.WithCancel(link.ctx)
+	stream := &ServiceStream{link: link, id: rand.Text(), request: request, ctx: lifetime, cancel: cancel, done: make(chan struct{})}
+	link.mu.Lock()
+	if link.IsClosed() {
+		link.mu.Unlock()
+		cancel()
+		return nil, link.offline()
+	}
+	link.services[stream.id] = stream
+	link.mu.Unlock()
+	_, err = link.callID(ctx, stream.id, "Service", func(id string) runnerwire.Inbound {
+		message := &runnerwire.ServiceOpen{StreamID: id, Context: request.Context, Package: request.Package, Operation: request.Operation, JSON: request.JSON, CWD: request.CWD, Input: input, Output: output}
+		if request.Args != nil {
+			message.Args = new(request.Args)
+		}
+		return message
+	})
+	if err != nil {
+		stream.Close()
+		return nil, err
+	}
+	return stream, nil
 }
 
 // CallService sends one complete input and returns at most maxBytes of output.
 // A nonzero exit reports its code, stderr tail and whole stdout in ServiceCallError.
 func (h *Host) CallService(ctx context.Context, request ServiceRequest, input []byte, maxBytes int) ([]byte, error) {
-	panic("not written: b-remotehost")
+	link, err := h.connection()
+	if err != nil {
+		return nil, &ServiceCallError{Kind: ServiceHostError, Err: err}
+	}
+	incoming := link.pipes.ToDevice(link.device)
+	outgoing := link.pipes.FromDevice(link.device)
+	writer, err := incoming.Writer()
+	if err != nil {
+		return nil, &ServiceCallError{Kind: ServiceHostError, Err: err}
+	}
+	defer writer.Fail("the writer went away before the end")
+	reader, err := outgoing.Reader()
+	if err != nil {
+		return nil, &ServiceCallError{Kind: ServiceHostError, Err: err}
+	}
+	defer func() {
+		if closeErr := reader.Close(context.WithoutCancel(ctx)); closeErr != nil {
+			slog.Debug("service reader close failed", "error", closeErr)
+		}
+	}()
+	stream, err := h.OpenService(ctx, request, incoming.WireRef(), outgoing.WireRef())
+	if err != nil {
+		incoming.Fail("service call failed")
+		outgoing.Fail("service call failed")
+		return nil, &ServiceCallError{Kind: ServiceHostError, Err: err}
+	}
+	defer stream.Close()
+	if err = writer.Write(ctx, input); err != nil {
+		incoming.Fail("service call failed")
+		outgoing.Fail("service call failed")
+		return nil, &ServiceCallError{Kind: ServiceHostError, Err: &host.Error{Kind: host.Interrupted, Message: err.Error()}}
+	}
+	writer.End()
+	var output []byte
+	for {
+		chunk, readErr := reader.Next(ctx)
+		if errors.Is(readErr, io.EOF) {
+			break
+		}
+		if readErr != nil {
+			return nil, &ServiceCallError{Kind: ServiceHostError, Err: &host.Error{Kind: host.Interrupted, Message: readErr.Error()}}
+		}
+		if len(chunk) > maxBytes-len(output) {
+			incoming.Fail("service call failed")
+			outgoing.Fail("service call failed")
+			return nil, &ServiceCallError{Kind: ServiceTooLarge, Limit: maxBytes}
+		}
+		output = append(output, chunk...)
+	}
+	end, err := stream.Done(ctx)
+	if err != nil {
+		return nil, &ServiceCallError{Kind: ServiceHostError, Err: err}
+	}
+	if end.ExitCode != 0 {
+		return nil, &ServiceCallError{Kind: ServiceExited, ExitCode: end.ExitCode, Stderr: end.Stderr, Stdout: output}
+	}
+	return output, nil
 }
 
 // ReleaseConversation retires the conversation's resident services.
 func (h *Host) ReleaseConversation(ctx context.Context, conversation string) error {
-	panic("not written: b-remotehost")
+	link, err := h.connection()
+	if err != nil {
+		return nil
+	}
+	return link.ReleaseConversation(ctx, conversation)
 }
 
 // HostIdentity converts the runner account to the Host's identity.
-func HostIdentity(identity runnerwire.HostIdentity) host.Identity { panic("not written: b-remotehost") }
+func HostIdentity(identity runnerwire.HostIdentity) host.Identity {
+	return host.Identity{UID: identity.UID, GID: identity.GID, Hostname: identity.Hostname, HomeDir: identity.HomeDir}
+}
 
 // JobStart describes one shell job and its optional declared commands and pipes.
 type JobStart struct {
@@ -126,43 +375,103 @@ type JobStart struct {
 }
 
 // Job is one shell job on the runner. The owner releases it after keeping its output and edits.
-type Job struct{ _ byte }
+type Job struct {
+	id       string
+	link     *Link
+	state    *jobState[JobEnd, JobOutput]
+	ctx      context.Context
+	cancel   context.CancelFunc
+	origin   JobOrigin
+	commands *CommandSelection
+	lease    *gates.Lease
+	finished sync.Once
+}
 
 // ID returns the runner's job identifier.
-func (j *Job) ID() string { panic("not written: b-remotehost") }
+func (j *Job) ID() string {
+	return j.id
+}
 
 // NextOutput returns a view, or io.EOF after the job ends and all views are taken.
-func (j *Job) NextOutput(ctx context.Context) (JobOutput, error) { panic("not written: b-remotehost") }
+func (j *Job) NextOutput(ctx context.Context) (JobOutput, error) {
+	return j.state.next(ctx)
+}
 
 // Follow starts or stops output beyond each stream's initial view; ended jobs do nothing.
-func (j *Job) Follow(ctx context.Context, follow bool) error { panic("not written: b-remotehost") }
+func (j *Job) Follow(ctx context.Context, follow bool) error {
+	if !j.live() {
+		return nil
+	}
+	return j.link.send(ctx, &runnerwire.JobFollow{JobID: j.id, Follow: follow})
+}
 
 // RunningHint returns guidance from the latest declared command that supplies it.
-func (j *Job) RunningHint() *string { panic("not written: b-remotehost") }
+func (j *Job) RunningHint() *string {
+	return j.state.runningHint()
+}
 
 // Ended returns the terminal result, or nil while running.
-func (j *Job) Ended() *JobEnd { panic("not written: b-remotehost") }
+func (j *Job) Ended() *JobEnd {
+	return j.state.ended()
+}
 
 // End waits for the job's terminal result.
-func (j *Job) End(ctx context.Context) (JobEnd, error) { panic("not written: b-remotehost") }
+func (j *Job) End(ctx context.Context) (JobEnd, error) {
+	return j.state.wait(ctx)
+}
 
 // WriteStdin writes ordered frames within the runner's stdin chunk limit.
-func (j *Job) WriteStdin(ctx context.Context, bytes []byte) error { panic("not written: b-remotehost") }
+func (j *Job) WriteStdin(ctx context.Context, bytes []byte) error {
+	if !j.live() {
+		return nil
+	}
+	return sendStdin(ctx, j.link, bytes, func(chunk []byte) runnerwire.Inbound { return &runnerwire.JobStdin{JobID: j.id, Bytes: chunk} })
+}
 
 // CloseStdin ends the job's standard input; ended jobs do nothing.
-func (j *Job) CloseStdin(ctx context.Context) error { panic("not written: b-remotehost") }
+func (j *Job) CloseStdin(ctx context.Context) error {
+	if !j.live() {
+		return nil
+	}
+	return j.link.send(ctx, &runnerwire.JobStdinEnd{JobID: j.id})
+}
 
 // ReadOutput reads the kept output while running or ended, until release.
 func (j *Job) ReadOutput(ctx context.Context) (host.WholeOutput, error) {
-	panic("not written: b-remotehost")
+	if j.link == nil {
+		return host.WholeOutput{}, &host.Error{Kind: host.Offline, Message: "the job's runner is not connected"}
+	}
+	reader, err := filled(ctx, j.link, "JobRead", func(id string, output runnerwire.PipeRef) runnerwire.Inbound {
+		return &runnerwire.JobRead{ID: id, JobID: j.id, Output: output}
+	})
+	if err != nil {
+		return host.WholeOutput{}, err
+	}
+	data, err := collect(ctx, reader, runnerwire.JobKeptReadBytes)
+	if err != nil {
+		return host.WholeOutput{}, err
+	}
+	output, err := DecodeOutput(data, nil)
+	if err != nil {
+		return host.WholeOutput{}, &host.Error{Kind: host.Protocol, Message: "the job's kept output does not decode: " + err.Error()}
+	}
+	return output, nil
 }
 
 // Release tells the runner to remove the ended job's directory.
-func (j *Job) Release(ctx context.Context) error { panic("not written: b-remotehost") }
+func (j *Job) Release(ctx context.Context) error {
+	if j.link == nil {
+		return nil
+	}
+	return j.link.send(ctx, &runnerwire.JobRelease{JobID: j.id})
+}
 
 // Kill signals the job; ended jobs do nothing.
 func (j *Job) Kill(ctx context.Context, signal runnerwire.Signal) error {
-	panic("not written: b-remotehost")
+	if !j.live() {
+		return nil
+	}
+	return j.link.send(ctx, &runnerwire.JobKill{JobID: j.id, Signal: new(signal)})
 }
 
 // LogPage is a page of the Host's log with the next read's cursor.
@@ -197,15 +506,35 @@ type ServiceEnd struct {
 }
 
 // ServiceStream owns answers to a user stream's artifact requests until Close.
-type ServiceStream struct{ _ byte }
+type ServiceStream struct {
+	link    *Link
+	id      string
+	request ServiceRequest
+	ctx     context.Context
+	cancel  context.CancelFunc
+	done    chan struct{}
+	once    sync.Once
+	result  ServiceEnd
+	err     error
+}
 
 // Done waits for completion, failing if the runner leaves before reporting it.
 func (s *ServiceStream) Done(ctx context.Context) (ServiceEnd, error) {
-	panic("not written: b-remotehost")
+	select {
+	case <-s.done:
+		return s.result, s.err
+	case <-ctx.Done():
+		return ServiceEnd{}, ctx.Err()
+	}
 }
 
 // Close cancels artifact requests and releases the stream. It is idempotent.
-func (s *ServiceStream) Close() { panic("not written: b-remotehost") }
+func (s *ServiceStream) Close() {
+	s.link.mu.Lock()
+	delete(s.link.services, s.id)
+	s.link.mu.Unlock()
+	s.cancel()
+}
 
 // ServiceCallErrorKind identifies a one-shot service failure.
 type ServiceCallErrorKind uint8
@@ -230,9 +559,107 @@ type ServiceCallError struct {
 }
 
 // Error describes the failed service call.
-func (e *ServiceCallError) Error() string { panic("not written: b-remotehost") }
+func (e *ServiceCallError) Error() string {
+	switch e.Kind {
+	case ServiceHostError:
+		return e.Err.Error()
+	case ServiceExited:
+		return fmt.Sprintf("Service call exited with %d: %s", e.ExitCode, strings.TrimSpace(e.Stderr))
+	case ServiceTooLarge:
+		return fmt.Sprintf("Service answer exceeds %d bytes", e.Limit)
+	}
+	return "unknown service call error"
+}
 
 // Unwrap exposes an underlying Host failure for errors.Is and errors.As.
-func (e *ServiceCallError) Unwrap() error { panic("not written: b-remotehost") }
+func (e *ServiceCallError) Unwrap() error {
+	return e.Err
+}
 
 var _ host.Host = (*Host)(nil)
+
+// connection resolves the Host's current device connection for each operation.
+func (h *Host) connection() (*Link, error) {
+	link := h.source().Link
+	if link == nil {
+		return nil, &host.Error{Kind: host.Offline, Message: "runner disconnected"}
+	}
+	if link.IsClosed() {
+		return nil, link.offline()
+	}
+	return link, nil
+}
+
+// admit holds Cloud activity for precisely the operation's admitted lifetime.
+func (h *Host) admit() (*gates.Lease, error) {
+	if h.admission == nil {
+		return nil, nil
+	}
+	return h.admission()
+}
+
+// mismatch reports an operation reply with the wrong shape.
+func mismatch() error {
+	return &host.Error{Kind: host.Protocol, Message: "the runner answered another operation"}
+}
+
+// finish publishes a service invocation's terminal result exactly once.
+func (s *ServiceStream) finish(result ServiceEnd, err error) {
+	s.once.Do(func() {
+		s.result = result
+		s.err = err
+		s.cancel()
+		close(s.done)
+	})
+}
+
+// start sends a job's manifest and start contiguously with other job starts.
+func (j *Job) start(ctx context.Context, job JobStart) (err error) {
+	permit, err := j.link.jobTurn.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer permit.Release()
+	defer func() {
+		if err != nil {
+			j.link.manifest = ""
+		}
+	}()
+	var hash *string
+	if job.Commands != nil {
+		hash = new(job.Commands.Hash())
+		if j.link.manifest != *hash {
+			j.link.manifest = *hash
+			if err := j.link.send(ctx, &runnerwire.ManifestMessage{Manifest: job.Commands.wire}); err != nil {
+				return err
+			}
+		}
+	}
+	return j.link.send(ctx, &runnerwire.JobStart{JobID: j.id, ManifestHash: hash, Context: job.Context, Script: job.Script, CWD: job.CWD, Env: job.Env, Stdin: job.Stdin, Stdout: job.Stdout})
+}
+
+// finish releases a running job's admission before publishing its terminal result.
+func (j *Job) finish(end JobEnd) {
+	j.finished.Do(func() {
+		j.cancel()
+		if j.lease != nil {
+			j.lease.Release()
+		}
+		j.state.finish(end)
+	})
+}
+
+// live reports whether a job still has a runner and no terminal result.
+func (j *Job) live() bool { return j.link != nil && j.state.ended() == nil }
+
+// sendStdin preserves stdin ordering while splitting writes to the runner's frame bound.
+func sendStdin(ctx context.Context, link *Link, data []byte, frame func([]byte) runnerwire.Inbound) error {
+	for len(data) > 0 {
+		n := min(len(data), runnerwire.StdinChunkBytes)
+		if err := link.send(ctx, frame(data[:n])); err != nil {
+			return err
+		}
+		data = data[n:]
+	}
+	return nil
+}

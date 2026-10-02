@@ -321,7 +321,7 @@ func markers(doc *ast.CommentGroup) map[string]string {
 		}
 		key, value, _ := strings.Cut(strings.TrimPrefix(text, "+demi:"), " ")
 		switch key {
-		case "codec", "flatten", "union", "variant", "nullable", "length", "range", "enum", "pattern", "timestamp", "check", "id", "base64", "msgpack", "strict", "tolerant", "root", "format", "table", "schema":
+		case "default", "codec", "flatten", "union", "variant", "nullable", "length", "range", "enum", "pattern", "timestamp", "check", "id", "base64", "msgpack", "strict", "tolerant", "root", "format", "table", "schema":
 		default:
 			out["!error"] = "unsupported marker: " + key
 		}
@@ -486,7 +486,7 @@ func (g *generator) emitGo(d *definition) {
 				key = bounds(u.marks["union"])["content"]
 			}
 			m := maps.Clone(d.fields[f.Name()])
-			if g.optionalObject(f) != nil {
+			if g.optionalObject(f) != nil || has(m, "default") {
 				m["optional"] = ""
 			}
 			if len(strings.Split(reflect.StructTag(validationStruct.Tag(i)).Get("json"), ",")) > 1 {
@@ -553,7 +553,7 @@ func (g *generator) emitGo(d *definition) {
 		}
 		opts := strings.Split(reflect.StructTag(st.Tag(i)).Get("json"), ",")
 		key := opts[0]
-		optional := len(opts) > 1
+		optional := len(opts) > 1 || has(d.fields[f.Name()], "default")
 		nullable := has(d.fields[f.Name()], "nullable")
 		if optional && emptyCollection(f.Type()) {
 			g.line("next.%s=make(%s,0)", f.Name(), g.typeName(f.Type()))
