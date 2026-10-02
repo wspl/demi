@@ -151,7 +151,7 @@ const panelActiveConversationId = ref<string | null>('c-login')
  * the web browser decodes the pictures.
  */
 function useWorkTabs(
-  selection: string | null,
+  selection: string,
   { path = 'src/auth/cookie.ts', browser = galleryBrowser(), pictures }: {
     path?: string
     browser?: GalleryBrowser
@@ -271,7 +271,7 @@ browserWork.add(pageTabKind.kind, exposePageTab({
 }))
 /** The browser tab the specimen shows, as its kind reads it. */
 const shownBrowserTab = computed(() => {
-  const tab = selectedTab(browserWork.panel.value)
+  const tab = selectedTab(browserWork.panel.value, browserWork.kinds)
   const parsed = tab?.kind === 'browser' ? browserTabDataSchema.safeParse(tab.data) : null
   return parsed?.success ? (parsed.data.tab ?? null) : null
 })

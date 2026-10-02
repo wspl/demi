@@ -92,7 +92,7 @@ test('a retained edit opens in the Change view with the panel, only while the ch
   await nextTick()
   expect(readLocalState('one').workPanelOpen?.a).toBe(true)
   // The edit takes the selection in the Change view's pinned tab; nothing is saved over a panel that was never read.
-  expect(state.panel.selection).toBe('change')
+  expect(state.panel.history).toEqual(['change'])
   expect(state.pinned.change).toMatchObject({ mode: 'conversation', call: { commandId: 'call' } })
   signIn('two')
   await nextTick()
@@ -146,7 +146,7 @@ test('a new conversation\'s panel reads and sends nothing until its first send c
   const tab = work.add(id, 'page', { url: 'https://example.test/' })
   await settled()
   // The tab shows at once, selected, and nothing reached the backend.
-  expect(work.stateFor(id).panel).toEqual({ selection: tab, tabs: [{ id: tab, kind: 'page', data: { url: 'https://example.test/' } }] })
+  expect(work.stateFor(id).panel).toEqual({ history: [tab], tabs: [{ id: tab, kind: 'page', data: { url: 'https://example.test/' } }] })
   expect(work.recorded(id)).toBe(false)
   expect(route.reads).toBe(0)
   expect(route.sent).toEqual([])
@@ -178,17 +178,23 @@ test('the selection is this page\'s own, and a higher revision in the summary re
   expect(work.stateFor(id).panel.tabs.map((tab) => tab.id)).toEqual(['p1'])
   work.select(id, 'p1')
   await nextTick()
-  expect(readLocalState('one').workPanelSelection).toEqual({ [id]: 'p1' })
+  expect(readLocalState('one').workPanelHistory).toEqual({ [id]: ['p1'] })
 
   // Another page added a tab: its summary's revision rose.
   route.stored = { revision: 2, tabs: [...route.stored.tabs, { id: 'p2', kind: 'page', data: { url: 'https://b.test/' } }] }
   product.snapshot = summary(2)
   await settled()
   expect(work.stateFor(id).panel).toEqual({
-    selection: 'p1',
+    history: ['p1'],
     tabs: [
       { id: 'p1', kind: 'page', data: { url: 'https://a.test/' } },
       { id: 'p2', kind: 'page', data: { url: 'https://b.test/' } },
     ],
   })
+
+  // Closing the tab the page went to last leaves the one before it, which a reload shows again.
+  work.select(id, 'p2')
+  work.closeTabs(id, ['p2'])
+  await nextTick()
+  expect(readLocalState('one').workPanelHistory).toEqual({ [id]: ['p1'] })
 })

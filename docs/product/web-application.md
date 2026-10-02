@@ -108,7 +108,7 @@ tab it shows is of a kind a plugin registers ([Work panel kinds](../architecture
 ```text
 pinned      one tab of each pinned kind, in the page's memory: change, file
 tabs        [{ id, kind, data }], in order, the backend's, with a revision
-selection   a tab's id or a pinned kind's id, this page's own
+history     the tabs' and pinned kinds' ids this page selected, newest last
 ```
 
 - **Pinned tabs.** A pinned kind, such as the Change view's `change` and the
@@ -130,11 +130,16 @@ selection   a tab's id or a pinned kind's id, this page's own
   else about a kind. What protocol, stream or route a tab's content uses is
   the kind's own business, behind its content component. A new kind is a new
   registration and changes neither the panel nor the tab state.
-- **Selection.** Each page keeps its own selection for each conversation, in
-  the account's local preferences beside whether the panel is open, so two
-  pages never take the selection from each other. When it names nothing the
-  page shows, as for a tab another page closed or a plugin turned off, the
-  panel selects its first tab.
+- **Selection.** Each page keeps its own selection history for each
+  conversation, in the account's local preferences beside whether the panel
+  is open, so two pages never take the selection from each other. Selecting
+  a tab moves it to the newest end; a closed tab leaves the history; it keeps
+  at most 100 entries, more than a panel has tabs. The panel shows the newest
+  entry it still shows. So closing the shown tab shows the tab selected
+  before it: a user who went from File to tab A to tab B and closes B sees A,
+  and closing A then shows File. The same holds for a tab another page
+  closed or a plugin turned off. When no entry is left, the panel shows its
+  first tab, the Change view.
 - **Before the first send.** A new conversation has no backend record yet,
   and so no working directory on a Host
   ([Persistence and adapters](#persistence-and-adapters)). Its panel binds no
@@ -426,8 +431,7 @@ same upload adapter ([Attachments](product.md#attachments)); no message
 carries a file's bytes. The product reports the time zone and languages of the
 user's browser to the user's preferences when they change.
 The work panel keeps one file selection and one change selection per
-conversation. Closing the selected tab selects its nearest remaining
-predecessor, then the first remaining tab, then Change.
+conversation.
 The change summary comes from the uncommitted working-tree source, refreshed
 while the panel is visible, independently of which section is selected.
 Historical edit selection follows

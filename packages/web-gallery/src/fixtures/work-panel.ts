@@ -1,7 +1,8 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { browserPage } from '@demicodes/plugin-browser'
 import { PanelTabs, dataChanges } from '@demicodes/web-ui/agent/panel-changes'
-import { openIntent, removeTabs, type PanelState, type PinnedTabs } from '@demicodes/web-ui/agent/panel-tabs'
+import { openIntent, removeTabs, shownSelection, type PanelState, type PinnedTabs } from '@demicodes/web-ui/agent/panel-tabs'
+import { selectTab } from '@demicodes/web-ui/agent/tab-close'
 import type { CallEditSelection } from '@demicodes/web-ui/files/changes'
 import type { IntentRequest } from '@demicodes/web-ui/plugins/intents'
 import {
@@ -39,7 +40,7 @@ function isData(data: unknown): data is Record<string, unknown> {
 
 /**
  * One work panel the way the product's work store holds it
- * (`web-application.md` § Work panel): its selection, the pinned tabs' data,
+ * (`web-application.md` § Work panel): its selection history, the pinned tabs' data,
  * and the tabs of a panel kept as the backend keeps them, with the
  * specimen's changes shown at once over them; the plugin pages' kinds are
  * bound to it over the specimen's files and its own conversation browser,
@@ -82,19 +83,19 @@ export function useGalleryWork(
   backend.changed = () => void tabs.refresh()
   tabs.start()
 
-  const chosen = ref(selection)
+  const history = ref<readonly string[]>(selection === null ? [] : [selection])
   const pinned = ref<PinnedTabs>({})
-  const panel = computed<PanelState>(() => ({ selection: chosen.value, tabs: tabs.tabs.value }))
+  const panel = computed<PanelState>(() => ({ history: history.value, tabs: tabs.tabs.value }))
 
-  function select(next: string | null) {
-    chosen.value = next
+  function select(id: string) {
+    history.value = selectTab(history.value, id)
   }
   /** A new tab after the others, selected unless `options` says not; returns its id. */
   function add(kind: string, data: unknown, options = { select: true }): string {
     const id = crypto.randomUUID()
     tabs.change({ type: 'create', tab: { id, kind, data } })
     if (options.select) {
-      chosen.value = id
+      select(id)
     }
     return id
   }
@@ -111,9 +112,9 @@ export function useGalleryWork(
   function updatePinned(kind: string, data: unknown) {
     pinned.value = { ...pinned.value, [kind]: data }
   }
-  /** Closed tabs go at once; a closed selection passes to its nearest neighbour. */
+  /** Closed tabs go at once; the panel shows what was selected before a closed one. */
   function closeTabs(ids: string[]) {
-    chosen.value = removeTabs(panel.value, ids).selection
+    history.value = removeTabs(panel.value, ids).history
     for (const id of ids) {
       tabs.change({ type: 'remove', id })
     }
@@ -127,7 +128,7 @@ export function useGalleryWork(
     if (opened.created) {
       tabs.change({ type: 'create', tab: opened.created })
     }
-    chosen.value = opened.selection
+    select(opened.selection)
   }
 
   const host = galleryPageHost({ browser: browserPlugin(browser, plugin) }, {
@@ -144,6 +145,8 @@ export function useGalleryWork(
   const bound = bindPages(shown, host, CONVERSATION)
   onBeforeUnmount(() => bound.dispose())
   const kinds = bound.kinds
+  /** What the panel shows, as its strip marks it. */
+  const selected = computed(() => shownSelection(panel.value, kinds))
 
   /** A tool call's file pill, through the `edit` intent. */
   function selectEdit(edit: CallEditSelection) {
@@ -152,13 +155,14 @@ export function useGalleryWork(
   /** The panel as it started: every tab closed, the first selection again. */
   function reset() {
     closeTabs(tabs.tabs.value.map((tab) => tab.id))
-    chosen.value = selection
+    history.value = selection === null ? [] : [selection]
     pinned.value = {}
   }
   return {
     panel,
     pinned,
     kinds,
+    selected,
     browser,
     host,
     select,
