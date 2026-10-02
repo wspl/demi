@@ -151,33 +151,34 @@ its tabs.
 | Field | Meaning |
 | --- | --- |
 | `kind` | Its id, unique across plugins; the panel refuses a duplicate |
-| `schema` | The schema of a tab's `data`, checked where saved state enters the page |
+| `schema` | The schema of a tab's `data`, checked where the backend's panel enters the page |
 | `title(data, tab)`, `mark` | The tab's title, from its data and its conversation and panel session, and its strip mark (props: `data`) |
 | `content` | The tab's content (props: `conversation`, `session`, `tabId`, `data`, `shown`; emits `update` with the next `data`, and `close`) |
 | `create` | Whether the strip's new-tab control offers it, with its label, icon and a new tab's `data` |
-| `pinned` | The kind has one tab in every conversation's panel, ahead of the user's tabs, never created, closed or saved; its data starts from the data this gives and lives in the page's memory; its id is the kind's id |
+| `pinned` | The kind has one tab in every conversation's panel, ahead of the other tabs, never created, closed or kept by the backend; its data starts from the data this gives and lives in the page's memory; its id is the kind's id |
 | `picked(data)` | What a tab shows next when its user picks it in the strip, even while it is selected: the Change view returns to Uncommitted ([Delivery to the conversation](../execution/edit-tracking.md#delivery-to-the-conversation)) |
 | `badge` | What the strip shows after a pinned tab's title, such as the Change view's counts (props: `conversation`, `data`) |
 | `intents` | The [intents](#intents) it opens: for each, the data its tab shows next, from the payload and the data the tab shows now, or none |
-| `removed(data, tab)` | What the kind does when its user closes a tab of it, such as closing the browser's tab through the panel session |
 
 Because a kind is data on the page, the panel knows every kind of every page
 the user has on before it opens, and an intent can open a kind while the panel
-is closed.
+is closed. A kind that is not pinned is also named in its plugin's manifest,
+since the backend keeps its tabs, and what follows from a tab being created
+or closed, such as the browser closing its own tab, is the plugin's work on
+the backend ([Panel kinds](plugins.md#panel-kinds)), never the page's.
 
 ### Panel sessions
 
 Some kinds need something running for a conversation while its panel is open:
-the `browser` page keeps the conversation's one live view, and adds a panel
-tab for each tab the agent opened. A page's `panel` makes that for a
+the `browser` page keeps the conversation's one live view. A page's `panel` makes that for a
 conversation, with the page's context, when the conversation's panel opens
 with the plugin on, and ends it when the panel closes, shows another
 conversation or the plugin turns off. It runs in an effect scope of its own,
 so what it follows stops with it, and its `dispose`, if it has one, is called
 then. The page's kinds of that conversation receive it: their functions as
 `tab.session`, their contents as the `session` prop. A session reads the tabs
-of the page's own kinds and adds tabs of them; it holds nothing the panel
-saves.
+of the page's own kinds and adds tabs of them; it holds nothing the backend
+keeps.
 
 ## Intents
 
