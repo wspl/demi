@@ -3,6 +3,7 @@ package cmdpkgs
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -25,6 +26,20 @@ func (r *ServiceRegistry) live(life *serviceLife, descriptor commandwire.Package
 	executable, err := r.cache.Install(life.stop, Wanted{Package: descriptor.ID, Name: "program", Version: descriptor.Version, Artifact: artifact, Form: &commandwire.ArtifactFile{}}, resolver)
 	if err == nil {
 		err = r.runService(life, descriptor, executable, numbers)
+	}
+	select {
+	case <-life.ready:
+		var exit *ServiceExit
+		if errors.As(err, &exit) {
+			slog.Warn("service " + descriptor.ID + " " + exit.Reason.String())
+		} else {
+			slog.Info("service " + descriptor.ID + " stopped")
+		}
+	default:
+		var failure *RuntimeError
+		if !errors.Is(err, context.Canceled) && (!errors.As(err, &failure) || failure.Kind != Cancelled) {
+			slog.Warn("service " + descriptor.ID + " did not start: " + err.Error())
+		}
 	}
 	r.mu.Lock()
 	life.err = runtimeFailure(err)
@@ -118,7 +133,7 @@ func (r *ServiceRegistry) runService(life *serviceLife, descriptor commandwire.P
 		} // Closing interrupts every outstanding stream.
 		if !reaped {
 			if err := child.Kill(); err != nil {
-				slog.Warn("service kill: " + err.Error())
+				slog.Warn("service:" + descriptor.ID + " could not be killed: " + err.Error())
 			}
 			<-exited
 		}
@@ -190,7 +205,7 @@ func (r *ServiceRegistry) runService(life *serviceLife, descriptor commandwire.P
 		default:
 		}
 		if client != nil && !reaped {
-			reaped = shutdownService(context.Background(), client, exited)
+			reaped = shutdownService(context.Background(), client, exited, "service:"+descriptor.ID)
 		}
 		if life.stop.Err() != nil {
 			return &RuntimeError{Kind: Cancelled, Cause: life.stop.Err()}
@@ -224,6 +239,7 @@ func (r *ServiceRegistry) runService(life *serviceLife, descriptor commandwire.P
 			slog.Warn("service " + descriptor.ID + "'s artifacts stream broke: " + err.Error())
 		}
 	}()
+	slog.Info(fmt.Sprintf("service %s started (pid %d)", descriptor.ID, child.PID()))
 	r.mu.Lock()
 	life.client, life.info = client, info
 	life.connectionEnded = connection.ended
@@ -231,7 +247,7 @@ func (r *ServiceRegistry) runService(life *serviceLife, descriptor commandwire.P
 	r.mu.Unlock()
 	select {
 	case <-life.stop.Done():
-		reaped = shutdownService(context.Background(), client, exited)
+		reaped = shutdownService(context.Background(), client, exited, "service:"+descriptor.ID)
 		return &RuntimeError{Kind: Stopped}
 	case <-exited:
 		reaped = true
@@ -308,7 +324,7 @@ func connectionLost(err error) bool {
 // shutdownService asks a connected service to release its resources, giving the
 // request and process exit one shared six-second deadline, as the Rust owner does.
 // The caller keeps draining stderr, then kills and reaps if this returns false.
-func shutdownService(ctx context.Context, client *cmdsdk.Client, exited <-chan struct{}) bool {
+func shutdownService(ctx context.Context, client *cmdsdk.Client, exited <-chan struct{}, source string) bool {
 	ctx, cancel := context.WithTimeout(ctx, 6*time.Second)
 	defer cancel()
 	requested := make(chan struct{})
@@ -326,6 +342,7 @@ func shutdownService(ctx context.Context, client *cmdsdk.Client, exited <-chan s
 	case <-exited:
 		return true
 	case <-ctx.Done():
+		slog.Warn(source + " did not shut down within 6 seconds and was killed")
 		return false
 	}
 }

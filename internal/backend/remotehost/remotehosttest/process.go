@@ -47,15 +47,15 @@ func DefaultRunnerProcessOptions() RunnerProcessOptions {
 // RunnerProcess owns a runner, private home and state, and joined output readers.
 // Its constructor registers test cleanup; Stop also permits a subsequent restart.
 type RunnerProcess struct {
-	binary, home, state, backend string
-	options                      RunnerProcessOptions
-	command                      *exec.Cmd
-	done                         chan struct{}
-	waitErr                      error
-	mu                           sync.Mutex // Protects captured output, partial lines and pairing-code notifications.
-	output                       strings.Builder
-	codes                        []string
-	changed                      chan struct{}
+	binary, home, state, backend, temporary string
+	options                                 RunnerProcessOptions
+	command                                 *exec.Cmd
+	done                                    chan struct{}
+	waitErr                                 error
+	mu                                      sync.Mutex // Protects captured output, partial lines and pairing-code notifications.
+	output                                  strings.Builder
+	codes                                   []string
+	changed                                 chan struct{}
 }
 
 // StartRunnerProcess starts a runner for backend and registers cleanup with t.
@@ -69,14 +69,15 @@ func StartRunnerProcess(ctx context.Context, t testing.TB, backend string, optio
 		return nil, err
 	}
 	p := &RunnerProcess{binary: binary, home: home, state: t.TempDir(), backend: backend, options: options, changed: make(chan struct{})}
+	p.temporary, err = runnerTempDir(t)
+	if err != nil {
+		return nil, err
+	}
 	t.Cleanup(func() {
 		if err := p.Stop(context.Background()); err != nil {
 			t.Error(err)
 		}
 	})
-	if err := os.Mkdir(filepath.Join(p.state, "tmp"), 0700); err != nil {
-		return nil, err
-	}
 	if options.Token != nil {
 		if err := p.writeToken(*options.Token); err != nil {
 			return nil, err
@@ -121,7 +122,7 @@ func (p *RunnerProcess) Command(ctx context.Context) *exec.Cmd {
 	environment["HOME"] = p.home
 	environment["USERPROFILE"] = p.home
 	environment["DEMI_HOME"] = p.state
-	environment["TMPDIR"] = filepath.Join(p.state, "tmp")
+	environment["TMPDIR"] = p.temporary
 	environment["DEMI_RUNNER_NAME"] = p.options.Name
 	if p.options.Managed {
 		environment["DEMI_RUNNER_MANAGED"] = "1"
@@ -342,5 +343,23 @@ func (p *RunnerProcess) clearState(ctx context.Context, keepPersistent bool) err
 			return err
 		}
 	}
-	return os.Mkdir(filepath.Join(p.state, "tmp"), 0700)
+	return nil
+}
+
+// runnerTempDir leaves room for the runner's local command Unix socket path.
+func runnerTempDir(t testing.TB) (string, error) {
+	root := ""
+	if runtime.GOOS != "windows" {
+		root = "/tmp"
+	}
+	directory, err := os.MkdirTemp(root, "demi-")
+	if err != nil {
+		return "", err
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(directory); err != nil {
+			t.Error(err)
+		}
+	})
+	return directory, nil
 }

@@ -1,17 +1,18 @@
 --- a/interp/api.go
 +++ b/interp/api.go
-@@ -77,7 +77,9 @@
+@@ -77,7 +77,10 @@
  
  	// callHandler is a function allowing to replace a simple command's
  	// arguments. It may be nil.
 -	callHandler CallHandlerFunc
++	pipeHandler    func(context.Context) (io.ReadCloser, io.WriteCloser, error)
 +	customBuiltins map[string]ExecHandlerFunc
 +	scopeState     ScopeState
 +	callHandler    CallHandlerFunc
  
  	// execHandler is responsible for executing programs. It must not be nil.
  	execHandler ExecHandlerFunc
-@@ -152,6 +154,9 @@
+@@ -152,6 +155,9 @@
  	// subshells do not share nor inherit the background PIDs they can wait for.
  	bgProcs []bgProc
  
@@ -21,18 +22,19 @@
  	opts runnerOpts
  
  	origDir    string
-@@ -172,6 +177,10 @@
+@@ -172,6 +178,11 @@
  	// apply to the current shell, and not just the command.
  	// It is consumed by the enclosing statement once it finishes.
  	keepRedirs bool
 +
 +	// extraFiles holds redirections of descriptors above stderr. The open handler
 +	// retains responsibility for releasing exec's persistent files after Wait.
-+	extraFiles map[string]io.ReadWriteCloser
++	extraFiles     map[string]io.ReadWriteCloser
++	pipelineStatus []string
  
  	// Fake signal callbacks
  	callbackErr  string
-@@ -250,6 +259,10 @@
+@@ -250,6 +261,10 @@
  }
  
  type bgProc struct {
@@ -43,7 +45,7 @@
  	// closed when the background process finishes,
  	// after which point the result fields below are set.
  	done chan struct{}
-@@ -271,6 +284,7 @@
+@@ -271,6 +286,7 @@
  func New(opts ...RunnerOption) (*Runner, error) {
  	r := &Runner{
  		usedNew:        true,
@@ -51,7 +53,7 @@
  		openHandler:    DefaultOpenHandler(),
  		readDirHandler: DefaultReadDirHandler2(),
  		statHandler:    DefaultStatHandler(),
-@@ -616,7 +630,7 @@
+@@ -616,7 +632,7 @@
  // context cannot stop a blocked standard input read.
  func StdIO(in io.Reader, out, err io.Writer) RunnerOption {
  	return func(r *Runner) error {
@@ -60,18 +62,19 @@
  		if _err != nil {
  			return _err
  		}
-@@ -880,7 +894,10 @@
+@@ -880,7 +896,11 @@
  	// reset the internal state
  	*r = Runner{
  		Env:            r.Env,
 +		tasks:          r.tasks,
  		tempDir:        r.tempDir,
 +		customBuiltins: r.customBuiltins,
++		pipeHandler:    r.pipeHandler,
 +		scopeState:     r.scopeState,
  		callHandler:    r.callHandler,
  		execHandler:    r.execHandler,
  		openHandler:    r.openHandler,
-@@ -1037,6 +1054,18 @@
+@@ -1037,6 +1057,18 @@
  	return nil
  }
  
@@ -90,7 +93,7 @@
  // Exited reports whether the last Run call should exit an entire shell. This
  // can be triggered by the "exit" built-in command, for example.
  //
-@@ -1071,8 +1100,11 @@
+@@ -1071,8 +1103,12 @@
  	// sensitive ones like [errgroup.Group], and to do deep copies of slices.
  	r2 := &Runner{
  		Dir:            r.Dir,
@@ -98,11 +101,12 @@
  		tempDir:        r.tempDir,
  		Params:         r.Params,
 +		customBuiltins: r.customBuiltins,
++		pipeHandler:    r.pipeHandler,
 +		scopeState:     r.scopeState,
  		callHandler:    r.callHandler,
  		execHandler:    r.execHandler,
  		openHandler:    r.openHandler,
-@@ -1090,8 +1122,12 @@
+@@ -1090,8 +1126,12 @@
  
  		origStdout: r.origStdout, // used for process substitutions
  	}
@@ -115,6 +119,36 @@
  	r2.Funcs = maps.Clone(r.Funcs)
  	r2.Vars = make(map[string]expand.Variable)
  	r2.alias = maps.Clone(r.alias)
+@@ -1101,3 +1141,29 @@
+ 	r2.didReset = true
+ 	return r2
+ }
++
++// PipeHandler replaces shell pipe allocation. The caller supplies an inheritable
++// reader and owns its descriptor retry policy; the interpreter closes both ends.
++func PipeHandler(handler func(context.Context) (io.ReadCloser, io.WriteCloser, error)) RunnerOption {
++	return func(r *Runner) error {
++		r.pipeHandler = handler
++		return nil
++	}
++}
++
++func (r *Runner) pipe(ctx context.Context) (stdinFile, io.WriteCloser, error) {
++	if r.pipeHandler == nil {
++		return newPipe()
++	}
++	reader, writer, err := r.pipeHandler(ctx)
++	if err != nil {
++		return nil, nil, err
++	}
++	input, err := newStdinFile(reader, r.tasks)
++	if err != nil {
++		reader.Close()
++		writer.Close()
++		return nil, nil, err
++	}
++	return input, writer, nil
++}
 --- a/interp/builtin.go
 +++ b/interp/builtin.go
 @@ -11,6 +11,8 @@
@@ -1544,7 +1578,7 @@
  	// Some traps trigger on exit, so we do want those to run.
  	if !r.handlingTrap && (r.exit.returning || r.exit.exiting) {
  		return true
-@@ -316,17 +331,27 @@
+@@ -316,25 +331,43 @@
  		st2 := *st
  		st2.Background = false
  		st2.Disown = false
@@ -1577,7 +1611,12 @@
  	} else {
  		r.stmtSync(ctx, st)
  	}
-@@ -335,6 +360,10 @@
++	if b, ok := st.Cmd.(*syntax.BinaryCmd); !ok || (b.Op != syntax.Pipe && b.Op != syntax.PipeAll) {
++		r.pipelineStatus = []string{strconv.Itoa(int(r.exit.code))}
++	}
++	r.setVar("PIPESTATUS", expand.Variable{Kind: expand.Indexed, List: r.pipelineStatus})
+ 	r.lastExit = r.exit
+ }
  
  func (r *Runner) stmtSync(ctx context.Context, st *syntax.Stmt) {
  	oldIn, oldOut, oldErr := r.stdin, r.stdout, r.stderr
@@ -1588,7 +1627,7 @@
  	var closers []io.Closer
  	for _, rd := range st.Redirs {
  		cls, err := r.redir(ctx, rd)
-@@ -377,6 +406,7 @@
+@@ -377,6 +410,7 @@
  		r.keepRedirs = false
  	} else if len(st.Redirs) > 0 {
  		r.stdin, r.stdout, r.stderr = oldIn, oldOut, oldErr
@@ -1596,7 +1635,16 @@
  		for _, cls := range closers {
  			cls.Close()
  		}
-@@ -515,6 +545,7 @@
+@@ -498,7 +532,7 @@
+ 				r.stmt(ctx, cm.Y)
+ 			}
+ 		case syntax.Pipe, syntax.PipeAll:
+-			pr, pw, err := newPipe()
++			pr, pw, err := r.pipe(ctx)
+ 			if err != nil {
+ 				r.exit.fatal(err) // not being able to create a pipe is rare but critical
+ 				return
+@@ -515,6 +549,7 @@
  			var wg sync.WaitGroup
  			wg.Go(func() {
  				r2.stmt(ctx, cm.X)
@@ -1604,7 +1652,26 @@
  				r2.exit.exiting = false // subshells don't exit the parent shell
  				pw.Close()
  			})
-@@ -955,10 +986,10 @@
+@@ -522,6 +557,7 @@
+ 			pr.Close()
+ 			wg.Wait()
+ 			r.stdin = oldIn
++			r.pipelineStatus = append(append([]string{}, r2.pipelineStatus...), r.pipelineStatus...)
+ 			if r.opts[optPipeFail] && !r2.exit.ok() && r.exit.ok() {
+ 				r.exit = r2.exit
+ 			}
+@@ -945,8 +981,8 @@
+ 	}
+ }
+ 
+-func (r *Runner) hdocReader(rd *syntax.Redirect) (stdinFile, error) {
+-	pr, pw, err := newPipe()
++func (r *Runner) hdocReader(ctx context.Context, rd *syntax.Redirect) (stdinFile, error) {
++	pr, pw, err := r.pipe(ctx)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+@@ -955,10 +991,10 @@
  	// as pipe writes may block once the buffer gets full.
  	// We still construct and buffer the entire heredoc first,
  	// as doing it concurrently would lead to different semantics and be racy.
@@ -1617,7 +1684,16 @@
  	return pr, nil
  }
  
-@@ -1043,6 +1074,7 @@
+@@ -1034,7 +1070,7 @@
+ func (r *Runner) redir(ctx context.Context, rd *syntax.Redirect) (io.Closer, error) {
+ 	// Note that Hdoc is nil for an empty here-document.
+ 	if rd.Op == syntax.Hdoc || rd.Op == syntax.DashHdoc {
+-		pr, err := r.hdocReader(rd)
++		pr, err := r.hdocReader(ctx, rd)
+ 		if err != nil {
+ 			return nil, err
+ 		}
+@@ -1043,36 +1079,55 @@
  	}
  
  	orig := &r.stdout
@@ -1625,13 +1701,17 @@
  	if rd.N != nil {
  		switch rd.N.Value {
  		case "0":
-@@ -1053,7 +1085,12 @@
+-			// Note that the input redirects below always use stdin (0)
+-			// because we don't support anything else right now.
++			// Explicit standard input.
+ 		case "1":
+ 			// The default for the output redirects below.
  		case "2":
  			orig = &r.stderr
  		default:
 -			return nil, fmt.Errorf("unsupported redirect fd: %v", rd.N.Value)
 +			switch rd.Op {
-+			case syntax.RdrOut, syntax.AppOut, syntax.RdrInOut, syntax.DplOut:
++			case syntax.RdrOut, syntax.AppOut, syntax.RdrInOut, syntax.DplOut, syntax.RdrIn, syntax.DplIn:
 +				extraFD = rd.N.Value
 +			default:
 +				return nil, fmt.Errorf("unsupported redirect fd: %v", rd.N.Value)
@@ -1639,7 +1719,13 @@
  		}
  	}
  	arg := r.literal(rd.Word)
-@@ -1066,13 +1103,27 @@
+ 	switch rd.Op {
+ 	case syntax.WordHdoc:
+-		pr, pw, err := newPipe()
++		pr, pw, err := r.pipe(ctx)
+ 		if err != nil {
+ 			return nil, err
+ 		}
  		r.stdin = pr
  		// We write to the pipe in a new goroutine,
  		// as pipe writes may block once the buffer gets full.
@@ -1669,7 +1755,7 @@
  		switch arg {
  		case "1":
  			*orig = r.stdout
-@@ -1081,10 +1132,14 @@
+@@ -1081,18 +1136,48 @@
  		case "-":
  			*orig = io.Discard // closing the output writer
  		default:
@@ -1686,7 +1772,43 @@
  		syntax.RdrAll, syntax.AppAll:
  		// done further below
  	case syntax.DplIn:
-@@ -1100,22 +1155,34 @@
++		var input stdinFile
+ 		switch arg {
+ 		case "-":
+-			r.stdin = nil // closing the input file
++			if extraFD != "" {
++				delete(r.extraFiles, extraFD)
++				return nil, nil
++			}
++		case "0":
++			input = r.stdin
+ 		default:
+-			return nil, fmt.Errorf("unhandled %v arg: %q", rd.Op, arg)
++			file := r.extraFiles[arg]
++			if file == nil {
++				return nil, fmt.Errorf("unhandled %v arg: %q", rd.Op, arg)
++			}
++			var err error
++			input, err = newStdinFile(file, r.tasks)
++			if err != nil {
++				return nil, err
++			}
++		}
++		if extraFD != "" {
++			if r.extraFiles == nil {
++				r.extraFiles = make(map[string]io.ReadWriteCloser)
++			}
++			file, ok := any(input).(io.ReadWriteCloser)
++			if !ok {
++				file = retainedInput{input}
++			}
++			r.extraFiles[extraFD] = file
++		} else {
++			r.stdin = input
+ 		}
+ 		return nil, nil
+ 	default:
+@@ -1100,22 +1185,34 @@
  	}
  	mode := os.O_RDONLY
  	switch rd.Op {
@@ -1724,7 +1846,7 @@
  	case syntax.RdrOut, syntax.AppOut:
  		*orig = f
  	case syntax.RdrAll, syntax.AppAll:
-@@ -1125,6 +1192,20 @@
+@@ -1125,6 +1222,20 @@
  		return nil, fmt.Errorf("unhandled redirect op: %v", rd.Op)
  	}
  	return f, nil
@@ -1745,7 +1867,7 @@
  }
  
  func (r *Runner) loopStmtsBroken(ctx context.Context, stmts []*syntax.Stmt) bool {
-@@ -1180,7 +1261,7 @@
+@@ -1180,7 +1291,7 @@
  		r.exit.returning = false
  		return
  	}
@@ -1754,7 +1876,7 @@
  		r.exit = r.builtin(ctx, pos, name, args[1:])
  		return
  	}
-@@ -1202,7 +1283,9 @@
+@@ -1202,7 +1313,9 @@
  	dir, name := filepath.Split(path)
  	dir = strings.TrimSuffix(dir, "/")
  	if dir == r.tempDir && strings.HasPrefix(name, fifoNamePrefix) {
@@ -1765,6 +1887,17 @@
  	}
  
  	f, err := r.openHandler(r.handlerCtx(ctx, handlerKindOpen, todoPos), path, flags, mode)
+@@ -1234,3 +1347,10 @@
+ 	path := absPath(r.Dir, name)
+ 	return r.accessHandler(r.handlerCtx(ctx, handlerKindAccess, todoPos), path, mode)
+ }
++
++// retainedInput preserves read-only shell descriptors on js/wasm, where stdin
++// is not an os.File and therefore has no Write method. Native files stay intact
++// so external programs can inherit their descriptors.
++type retainedInput struct{ stdinFile }
++
++func (retainedInput) Write([]byte) (int, error) { return 0, os.ErrInvalid }
 --- /dev/null
 +++ b/interp/scope.go
 @@ -0,0 +1,98 @@
