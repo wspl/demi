@@ -44,7 +44,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Keys',
-    'The list is one tab stop. ↑↓ move and select, Shift+↑↓ extend, ⌘↑↓ jump to the ends, Space toggles, Enter opens a row or folds a project, ← → fold and unfold, ⌘A selects all, Esc collapses to the open conversation, F2 renames, ⌘⇧P pins; Alt+↑↓ reorders the focused entry.'
+    'The list is one tab stop. ↑↓ move and select, Shift+↑↓ extend, ⌘↑↓ jump to the ends, Space toggles, Enter opens a row or folds a project, ← → fold and unfold, ⌘A selects all, Esc collapses to the open conversation, F2 renames, ⌘⇧P pins; Alt+↑↓ reorders the focused entry. The focused entry scrolls into view, clear of the headings that stick above it.'
   ],
   [
     'Bottom',
