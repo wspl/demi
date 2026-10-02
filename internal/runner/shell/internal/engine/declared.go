@@ -1,4 +1,4 @@
-package shell
+package engine
 
 import (
 	"context"
@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/commandwire"
@@ -19,7 +18,7 @@ import (
 // declared passes a shell invocation directly to the job's handler with demand-driven input.
 func (e *execution) declared(ctx context.Context, args []string) error {
 	hc := interp.HandlerCtx(ctx)
-	commands := e.options.commands
+	commands := e.options.Commands
 	env := make(map[string]string)
 	for _, entry := range exported(hc.Env) {
 		name, value, _ := strings.Cut(entry, "=")
@@ -46,8 +45,19 @@ func (e *execution) declared(ctx context.Context, args []string) error {
 	}
 	var id [16]byte
 	_, _ = rand.Read(id[:]) // crypto/rand.Read fills the buffer or terminates the process.
+	id[6] = id[6]&0x0f | 0x40
+	id[8] = id[8]&0x3f | 0x80
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	reader := hc.Stdin
+	if file, ok := reader.(*os.File); ok && file != nil {
+		borrowed, err := borrowFile(ctx, file)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = borrowed.Close() }()
+		reader = borrowed
+	}
 	output, records := cmdsdk.OutputChannel(ctx)
 	type result struct {
 		completion commandwire.Completion
@@ -55,8 +65,15 @@ func (e *execution) declared(ctx context.Context, args []string) error {
 	}
 	done := make(chan result, 1)
 	go func() {
-		completion, err := commands.Handler.Invoke(ctx, cmdsdk.InvocationContext[commandwire.LocalInvocation]{Request: commandwire.LocalInvocation{Operation: process.Raw, InvocationID: hex.EncodeToString(id[:]), Args: encoded, Cwd: hc.Dir, Env: env}, Input: cmdsdk.NewInput(&invocationInput{reader: hc.Stdin, state: hc.Scope().(*interpreterScope)}), Output: output})
-		done <- result{completion, err}
+		finished := result{}
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				finished.err = errors.New("shell worker panicked")
+			}
+			done <- finished
+		}()
+		completion, err := commands.Handler.Invoke(ctx, cmdsdk.InvocationContext[commandwire.LocalInvocation]{Request: commandwire.LocalInvocation{Operation: process.Raw, InvocationID: hex.EncodeToString(id[:]), Args: encoded, Cwd: hc.Dir, Env: env}, Input: cmdsdk.NewInput(&invocationInput{reader: reader, state: hc.Scope().(*interpreterScope)}), Output: output})
+		finished = result{completion, err}
 	}()
 	drain := func(record commandwire.Record) error {
 		var writer io.Writer
@@ -118,16 +135,7 @@ func (i *invocationInput) Next(ctx context.Context) ([]byte, error) {
 	if i.reader == nil {
 		return nil, io.EOF
 	}
-	if file, ok := i.reader.(*os.File); ok {
-		done := make(chan struct{})
-		stop := context.AfterFunc(ctx, func() { _ = file.SetReadDeadline(time.Now()); close(done) })
-		defer func() {
-			if !stop() {
-				<-done
-				_ = file.SetReadDeadline(time.Time{})
-			}
-		}()
-	}
+
 	b := make([]byte, 64*1024)
 	n, err := i.reader.Read(b)
 	if ctx.Err() != nil {

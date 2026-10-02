@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -1184,6 +1185,9 @@ func (r *Runner) changeDir(ctx context.Context, cmd, path string) uint8 {
 }
 
 func absPath(dir, path string) string {
+	if runtime.GOOS == "windows" && len(path) >= 3 && path[0] == '/' && path[2] == '/' && ((path[1] >= 'A' && path[1] <= 'Z') || (path[1] >= 'a' && path[1] <= 'z')) {
+		path = path[1:2] + ":" + path[2:]
+	}
 	if path == "" {
 		return ""
 	}

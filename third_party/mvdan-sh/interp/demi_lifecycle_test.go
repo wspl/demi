@@ -5,6 +5,7 @@ package interp_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -460,5 +461,43 @@ func TestRegularFileWithFIFOPrefixStillReachesRecorder(t *testing.T) {
 	want := []string{filepath.Join(dir, "sh-interp-user-file")}
 	if got := recorder.Paths(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("regular file bypassed recorder: %v", got)
+	}
+}
+
+// A child must not disable polling or close the stdin the next command reads.
+func TestBorrowedFileKeepsShellInputCancellable(t *testing.T) {
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	defer writer.Close()
+	borrowed, err := interp.BorrowFile(t.Context(), reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := make(chan error, 1)
+	go func() { _, err := borrowed.Read(make([]byte, 1)); result <- err }()
+	if err := borrowed.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-result; !errors.Is(err, os.ErrClosed) {
+		t.Fatalf("borrowed read: %v", err)
+	}
+	if err := reader.SetReadDeadline(time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.Read(make([]byte, 1)); !errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Fatalf("shell input lost polling: %v", err)
+	}
+	if err := reader.SetReadDeadline(time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.Write([]byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	var data [1]byte
+	if _, err := reader.Read(data[:]); err != nil || data[0] != 'x' {
+		t.Fatalf("shell input: %q %v", data, err)
 	}
 }

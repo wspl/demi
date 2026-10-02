@@ -1,6 +1,6 @@
 //go:build darwin || linux
 
-package shell
+package engine
 
 import (
 	"context"
@@ -51,7 +51,7 @@ func (e *execution) kill(ctx context.Context, args []string) error {
 	}
 	for _, arg := range args {
 		if strings.HasPrefix(arg, "g") {
-			scope, cancel, err := interp.HandlerCtx(ctx).BackgroundScope(arg)
+			scope, _, err := interp.HandlerCtx(ctx).BackgroundScope(arg)
 			if err != nil {
 				return diagnostic(ctx, 1, "kill: %v\n", err)
 			}
@@ -63,7 +63,9 @@ func (e *execution) kill(ctx context.Context, args []string) error {
 			}
 			switch signal {
 			case unix.SIGINT, unix.SIGTERM, unix.SIGKILL, unix.SIGHUP, unix.SIGQUIT:
-				cancel()
+				if err := interp.HandlerCtx(ctx).TerminateBackground(arg, uint8(128+signal)); err != nil {
+					return err
+				}
 			}
 			continue
 		}
@@ -80,3 +82,5 @@ func (e *execution) kill(ctx context.Context, args []string) error {
 	}
 	return nil
 }
+
+func signalExitCode(name string) uint8 { return uint8(128 + unix.SignalNum(name)) }

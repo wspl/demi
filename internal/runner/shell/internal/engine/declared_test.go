@@ -1,4 +1,4 @@
-package shell
+package engine
 
 import (
 	"context"
@@ -48,11 +48,14 @@ func TestADeclaredCommandReachesTheJobsHandler(t *testing.T) {
 	root := t.TempDir()
 	handler := &recordingHandler{}
 	contextID := "0123456789abcdef0123456789abcdef"
-	job, err := New().Start(t.Context(), process.JobStart{Script: `/usr/bin/env; printf body | fixture --flag; echo " $?"`, Cwd: root, Env: map[string]string{"HOME": root, "PATH": os.Getenv("PATH")}, Commands: &process.JobCommands{Context: contextID, Roots: []string{"fixture"}, Handler: handler}})
+	job, err := StartJob(t.Context(), process.JobStart{Script: `/usr/bin/env; printf body | fixture --flag; echo " $?"`, Cwd: root, Env: map[string]string{"HOME": root, "PATH": os.Getenv("PATH")}, Commands: &process.JobCommands{Context: contextID, Roots: []string{"fixture"}, Handler: handler}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { job.Cancel(); job.Wait(context.Background()) }()
+	defer func() {
+		job.Cancel()
+		job.Wait(context.Background())
+	}()
 	var output strings.Builder
 	for chunk := range job.Output() {
 		if chunk.Stream == runnerwire.Stdout {

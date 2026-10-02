@@ -31,6 +31,8 @@ require (
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	golang.org/x/net v0.59.0 // indirect
+	golang.org/x/term v0.46.0 // indirect
+	mvdan.cc/sh/v3 v3.14.1
 )
 
 replace mvdan.cc/sh/v3 => ./third_party/mvdan-sh

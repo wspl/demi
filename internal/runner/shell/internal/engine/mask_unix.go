@@ -1,6 +1,6 @@
 //go:build darwin || linux
 
-package shell
+package engine
 
 import (
 	"context"
@@ -101,6 +101,9 @@ func symbolicPermissions(current uint32, mode string) (uint32, error) {
 			who |= bits
 			i++
 		}
+		if i == len(clause) {
+			return 0, fmt.Errorf("invalid mode")
+		}
 		if who == 0 {
 			who = 0777
 		}
@@ -125,9 +128,10 @@ func symbolicPermissions(current uint32, mode string) (uint32, error) {
 					}
 				case 'u', 'g', 'o':
 					shift := uint(0)
-					if clause[i] == 'u' {
+					switch clause[i] {
+					case 'u':
 						shift = 6
-					} else if clause[i] == 'g' {
+					case 'g':
 						shift = 3
 					}
 					p := (current >> shift) & 7

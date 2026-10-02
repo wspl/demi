@@ -1,4 +1,4 @@
-package shell
+package engine
 
 import (
 	"context"
@@ -19,123 +19,136 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
-type observation interface {
-	check()
-	waiting(int)
+// Observer exposes shell activity to test scopes.
+type Observer interface {
+	Check()
+	Waiting(int)
 }
 
-type executionOptions struct {
-	login          bool
-	cwd            string
-	env            map[string]string
-	stdin          *os.File
-	stdout, stderr io.Writer
-	commands       *process.JobCommands
-	edits          *cmdsdk.Recorder
-	observe        observation
+// Options supplies one interpreter invocation and its job-owned services.
+type Options struct {
+	Login          bool
+	Cwd            string
+	Env            map[string]string
+	Stdin          *os.File
+	Stdout, Stderr io.Writer
+	Commands       *process.JobCommands
+	Edits          *cmdsdk.Recorder
+	Observe        Observer
+	// Interrupt closes job-owned pipes after child starts have stopped.
+	Interrupt func()
 }
 
-type executionResult struct {
-	code uint8
-	cwd  string
+// Result preserves the foreground status and final working directory.
+type Result struct {
+	Code uint8
+	Cwd  string
 }
 
 // interpreterScope keeps per-subshell process attributes separate from job ownership.
 type interpreterScope struct {
 	attributes process.ChildAttributes
 	owner      *execution
-	mu         sync.Mutex // Protects child scopes and currently running commands.
-	children   []*interpreterScope
-	commands   map[*process.Command]struct{}
+	parent     *interpreterScope
+	traps      map[string]string
 }
 
 func (s *interpreterScope) Clone() interp.ScopeState {
-	clone := &interpreterScope{attributes: s.attributes, owner: s.owner}
+	clone := &interpreterScope{attributes: s.attributes, owner: s.owner, parent: s, traps: maps.Clone(s.traps)}
 	clone.attributes.Limits = append([]process.ResourceLimit(nil), s.attributes.Limits...)
-	s.mu.Lock()
-	s.children = append(s.children, clone)
-	s.mu.Unlock()
 	return clone
 }
 
-// signal sends to each process in a background scope without holding a lock over OS calls.
+// signal sends to active processes descended from this shell scope. The job
+// retains only active commands, not every scope ever made by a long-running loop.
 func (s *interpreterScope) signal(signal runnerwire.Signal) error {
-	s.mu.Lock()
-	children := append([]*interpreterScope(nil), s.children...)
-	commands := make([]*process.Command, 0, len(s.commands))
-	for command := range s.commands {
-		commands = append(commands, command)
+	s.owner.mu.Lock()
+	var commands []*process.Command
+	for command, scope := range s.owner.commands {
+		for ancestor := scope; ancestor != nil; ancestor = ancestor.parent {
+			if ancestor == s {
+				commands = append(commands, command)
+				break
+			}
+		}
 	}
-	s.mu.Unlock()
+	s.owner.mu.Unlock()
 	var err error
 	for _, command := range commands {
 		err = errors.Join(err, command.Signal(signal))
-	}
-	for _, child := range children {
-		err = errors.Join(err, child.signal(signal))
 	}
 	return err
 }
 
 func (s *interpreterScope) register(command *process.Command) func() {
-	s.mu.Lock()
-	if s.commands == nil {
-		s.commands = make(map[*process.Command]struct{})
+	s.owner.mu.Lock()
+	if s.owner.commands == nil {
+		s.owner.commands = make(map[*process.Command]*interpreterScope)
 	}
-	s.commands[command] = struct{}{}
-	s.mu.Unlock()
-	return func() { s.mu.Lock(); delete(s.commands, command); s.mu.Unlock() }
+	s.owner.commands[command] = s
+	s.owner.mu.Unlock()
+	return func() {
+		s.owner.mu.Lock()
+		delete(s.owner.commands, command)
+		s.owner.mu.Unlock()
+	}
 }
 
 func (s *interpreterScope) Check() {
-	if s.owner.options.observe != nil {
-		s.owner.options.observe.check()
+	if s.owner.options.Observe != nil {
+		s.owner.options.Observe.Check()
 	}
 }
 func (s *interpreterScope) Waiting(delta int) {
-	if s.owner.options.observe != nil {
-		s.owner.options.observe.waiting(delta)
+	if s.owner.options.Observe != nil {
+		s.owner.options.Observe.Waiting(delta)
 	}
 }
 
 type execution struct {
-	options executionOptions
-	mu      sync.Mutex // Protects retained redirections; never held during IO.
-	files   []io.Closer
+	options      Options
+	mu           sync.Mutex // Protects retained redirections; never held during IO.
+	files        []io.Closer
+	commands     map[*process.Command]*interpreterScope
+	starting     int
+	stopping     bool
+	launchesDone chan struct{}
 }
 
-// execute runs a job's interpreter, retaining redirections until all descendants finish.
-func execute(ctx context.Context, script string, options executionOptions) (result executionResult, err error) {
+// Execute runs a job's interpreter, retaining redirections until all descendants finish.
+func Execute(ctx context.Context, script string, options Options) (result Result, err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	defer interruptStreams(ctx, options)()
 	e := &execution{options: options}
+	defer e.interrupt(ctx)()
 	defer e.close()
 	state := &interpreterScope{owner: e}
-	env := make([]string, 0, len(options.env))
-	for name, value := range options.env {
+	env := make([]string, 0, len(options.Env))
+	for name, value := range options.Env {
 		env = append(env, name+"="+value)
 	}
-	r, err := interp.New(interp.Dir(options.cwd), interp.Env(expand.ListEnviron(env...)), interp.StdIO(options.stdin, options.stdout, options.stderr), interp.ExecHandler(e.external), interp.OpenHandler(e.open), interp.Builtins(e.builtins()), interp.WithScopeState(state))
+	r, err := interp.New(interp.Dir(options.Cwd), interp.Env(expand.ListEnviron(env...)), interp.StdIO(options.Stdin, options.Stdout, options.Stderr), interp.ExecHandlers(func(interp.ExecHandlerFunc) interp.ExecHandlerFunc { return e.external }), interp.OpenHandler(e.open), interp.Builtins(e.builtins()), interp.WithScopeState(state))
 	if err != nil {
 		return result, err
 	}
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			err = fmt.Errorf("shell worker panicked: %v", recovered)
+			err = errors.New("shell worker panicked")
 		}
 		if err != nil {
 			cancel()
 		}
 		r.Wait()
 	}()
-	if options.login {
+	if options.Login {
 		e.profile(ctx, r, "/etc/profile")
 		for _, name := range []string{".bash_profile", ".bash_login", ".profile"} {
-			if e.profile(ctx, r, filepath.Join(options.env["HOME"], name)) {
+			if e.profile(ctx, r, filepath.Join(options.Env["HOME"], name)) {
 				break
 			}
 		}
-		if err = restoreContext(ctx, r, options.env, options.cwd); err != nil {
+		if err = restoreContext(ctx, r, options.Env, options.Cwd); err != nil {
 			return result, err
 		}
 	}
@@ -144,11 +157,15 @@ func execute(ctx context.Context, script string, options executionOptions) (resu
 		return result, err
 	}
 	err = r.Run(ctx, node)
-	if status, ok := interp.IsExitStatus(err); ok {
-		result.code = status
+	if ctx.Err() != nil {
+		return result, ctx.Err()
+	}
+	var status interp.ExitStatus
+	if errors.As(err, &status) {
+		result.Code = uint8(status)
 		err = nil
 	}
-	result.cwd = r.Dir
+	result.Cwd = r.Dir
 	return result, err
 }
 
@@ -165,7 +182,7 @@ func (e *execution) profile(ctx context.Context, r *interp.Runner, path string) 
 		err = r.Run(ctx, node)
 	}
 	if err != nil {
-		_, _ = fmt.Fprintln(e.options.stderr, err)
+		_, _ = fmt.Fprintln(e.options.Stderr, err)
 	}
 	return true
 }
@@ -201,7 +218,7 @@ func restoreContext(ctx context.Context, r *interp.Runner, env map[string]string
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(&script, "cd -- %s\n", quoted)
+	fmt.Fprintf(&script, "cd %s\n", quoted)
 	node, err := syntax.NewParser().Parse(strings.NewReader(script.String()), "context")
 	if err != nil {
 		return err

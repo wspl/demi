@@ -259,9 +259,10 @@ func (e *exitStatus) fromHandlerError(err error) {
 }
 
 type bgProc struct {
-	state  ScopeState
-	cancel context.CancelFunc
-	waited bool
+	state     ScopeState
+	cancel    context.CancelFunc
+	terminate context.CancelCauseFunc
+	waited    bool
 	// closed when the background process finishes,
 	// after which point the result fields below are set.
 	done chan struct{}

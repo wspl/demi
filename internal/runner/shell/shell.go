@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/wspl/demi/internal/runner/process"
+	"github.com/wspl/demi/internal/runner/shell/internal/engine"
 	"mvdan.cc/sh/v3/interp"
 )
 
@@ -20,7 +21,7 @@ func New() *Shell { return &Shell{} }
 // The caller consumes output concurrently and always calls Wait, including
 // after cancellation, to join every interpreter task and child process.
 func (s *Shell) Start(ctx context.Context, job process.JobStart) (process.ShellJob, error) {
-	return startJob(ctx, job, nil)
+	return engine.StartJob(ctx, job, nil)
 }
 
 // BuiltinNames returns a fresh set of reserved command roots for the dispatcher.

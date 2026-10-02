@@ -1,6 +1,6 @@
 //go:build darwin || linux
 
-package shell
+package engine
 
 import (
 	"fmt"
@@ -15,7 +15,7 @@ import (
 
 func TestExecEndsTheShellWithItsCommandAndLeavesTheRunner(t *testing.T) {
 	result, output, stderr := shellFiles(t, t.TempDir(), `(exec /bin/sh -c 'exit 3'); echo "subshell $?"; exec /bin/sh -c 'echo last; exit 7'; echo after`, nil)
-	if result.code != 7 || output != "subshell 3\nlast\n" {
+	if result.Code != 7 || output != "subshell 3\nlast\n" {
 		t.Fatalf("result %+v output %q stderr %q", result, output, stderr)
 	}
 }
@@ -25,7 +25,7 @@ func TestUlimitLimitsTheJobsOwnProcessesOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, output, stderr := shellFiles(t, t.TempDir(), `ulimit -n 64; ulimit -n; /bin/sh -c 'ulimit -n'; ulimit -n 99999999999; echo "refused $?"; ulimit -Hn`, nil)
-	if result.code != 0 || output != "64\n64\nrefused 1\n64\n" || !strings.Contains(stderr, "open files: cannot modify limit") {
+	if result.Code != 0 || output != "64\n64\nrefused 1\n64\n" || !strings.Contains(stderr, "open files: cannot modify limit") {
 		t.Fatalf("result %+v output %q stderr %q", result, output, stderr)
 	}
 	if err := unix.Getrlimit(unix.RLIMIT_NOFILE, &after); err != nil {
@@ -50,7 +50,7 @@ func TestUmaskMasksTheJobsOwnProcessesAndFilesOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, output, stderr := shellFiles(t, root, `umask 077; umask; /bin/sh -c umask; umask -S; echo x > redirected; touch touched; mkdir made`, nil)
-	if result.code != 0 || output != "0077\n0077\nu=rwx,g=,o=\n" {
+	if result.Code != 0 || output != "0077\n0077\nu=rwx,g=,o=\n" {
 		t.Fatalf("result %+v output %q stderr %q", result, output, stderr)
 	}
 	for name, want := range map[string]os.FileMode{"redirected": 0600, "touched": 0600, "made": 0700} {
@@ -83,13 +83,34 @@ func TestUmaskMasksTheJobsOwnProcessesAndFilesOnly(t *testing.T) {
 }
 func TestKillRefusesTheRunner(t *testing.T) {
 	result, output, stderr := shellFiles(t, t.TempDir(), `kill $$; echo "runner $?"; kill -s TERM 0; echo "group $?"`, nil)
-	if result.code != 0 || output != "runner 1\ngroup 1\n" || strings.Count(stderr, "a job cannot signal the runner it runs in") != 2 {
+	if result.Code != 0 || output != "runner 1\ngroup 1\n" || strings.Count(stderr, "a job cannot signal the runner it runs in") != 2 {
 		t.Fatalf("result %+v output %q stderr %q", result, output, stderr)
 	}
 }
 func TestSuspendRefuses(t *testing.T) {
 	result, output, stderr := shellFiles(t, t.TempDir(), `suspend -f; echo "suspend $?"`, nil)
-	if result.code != 0 || output != "suspend 1\n" || !strings.Contains(stderr, "a job cannot suspend the runner it runs in") {
+	if result.Code != 0 || output != "suspend 1\n" || !strings.Contains(stderr, "a job cannot suspend the runner it runs in") {
 		t.Fatalf("result %+v output %q stderr %q", result, output, stderr)
+	}
+}
+
+func TestBackgroundKillDoesNotCancelParent(t *testing.T) {
+	result, output, stderr := shellFiles(t, t.TempDir(), `while :; do :; done & id=$!; kill "$id"; wait "$id"; printf '%s\n' "$?"; echo parent`, nil)
+	if result.Code != 0 || output != "143\nparent\n" || stderr != "" {
+		t.Fatalf("%+v: %q %q", result, output, stderr)
+	}
+}
+
+func TestTrapsAreScopeLocalAndTimesIdentifiesRunner(t *testing.T) {
+	result, output, stderr := shellFiles(t, t.TempDir(), `trap 'echo cleanup' INT TERM EXIT; (trap 'echo child' INT; trap -p INT); trap -p INT; false; times`, nil)
+	if result.Code != 0 || stderr != "" || !strings.Contains(output, "trap -- 'echo child' INT") || !strings.Contains(output, "trap -- 'echo cleanup' INT") || !strings.Contains(output, "runner:") || !strings.HasSuffix(output, "cleanup\n") {
+		t.Fatalf("%+v: %q %q", result, output, stderr)
+	}
+}
+
+func TestExternalSignalStatusAndExecOptions(t *testing.T) {
+	result, output, stderr := shellFiles(t, t.TempDir(), `/bin/sh -c 'kill -TERM $$'; echo "$?"; export DEMI_TEST_LEAK=wrong; exec -ca named /bin/sh -c 'printf "%s/%s" "$0" "${DEMI_TEST_LEAK-unset}"'; echo unreachable`, nil)
+	if result.Code != 0 || output != "143\nnamed/unset" || stderr != "" {
+		t.Fatalf("%+v %q %q", result, output, stderr)
 	}
 }

@@ -1,4 +1,4 @@
-package shell
+package engine
 
 import (
 	"os"
@@ -39,9 +39,9 @@ func TestRedirectionsDescriptorsAndUtilitiesRecordActualContents(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Utility-owned writes are explicitly deferred by the selected Go design.
-	result, _, stderr := shellFiles(t, root, `printf 'one\n' > file; printf 'changed\n' > restored; printf 'same\n' > restored; exec 3>>file; printf 'two\n' >&3; exec 3>&-`, func(o *executionOptions) { o.edits = recorder })
-	if result.code != 0 {
-		t.Fatalf("exit %d: %s", result.code, stderr)
+	result, _, stderr := shellFiles(t, root, `printf 'one\n' > file; printf 'changed\n' > restored; printf 'same\n' > restored; exec 3>>file; printf 'two\n' >&3; exec 3>&-`, func(o *Options) { o.Edits = recorder })
+	if result.Code != 0 {
+		t.Fatalf("exit %d: %s", result.Code, stderr)
 	}
 	journal := editJournal(t, recorder)
 	var changed []commandwire.EditFile
@@ -61,11 +61,11 @@ func TestRedirectionsDescriptorsAndUtilitiesRecordActualContents(t *testing.T) {
 func TestRedirectedExternalOutputIsForwardedThroughTheRecorder(t *testing.T) {
 	root := t.TempDir()
 	recorder := editRecorder(t, root, "job")
-	result, _, stderr := shellFiles(t, root, `/bin/sh -c 'printf child; printf error >&2' > out 2> err; cat out > observed; /bin/sh -c 'printf first; printf second >&2; printf third' > combined 2>&1`, func(o *executionOptions) { o.edits = recorder })
-	if result.code != 0 {
-		t.Fatalf("exit %d: %s", result.code, stderr)
+	result, _, stderr := shellFiles(t, root, `/bin/sh -c 'printf child; printf error >&2' > out 2> err; cat out > observed; /bin/sh -c 'printf first; printf second >&2; printf third' > combined 2>&1; /bin/sh -c 'printf numbered >&3' 3> numbered`, func(o *Options) { o.Edits = recorder })
+	if result.Code != 0 {
+		t.Fatalf("exit %d: %s", result.Code, stderr)
 	}
-	want := map[string]string{"out": "child", "err": "error", "observed": "child", "combined": "firstsecondthird"}
+	want := map[string]string{"out": "child", "err": "error", "observed": "child", "combined": "firstsecondthird", "numbered": "numbered"}
 	journal := editJournal(t, recorder)
 	for _, file := range journal.Files {
 		name := filepath.Base(file.Path)
@@ -92,9 +92,9 @@ func TestAnotherJobCannotChangeAnAlreadyCapturedAfterSide(t *testing.T) {
 		recorder *cmdsdk.Recorder
 		script   string
 	}{{a, "echo A > file"}, {b, "echo B > file"}, {a, "echo C > file"}} {
-		result, _, stderr := shellFiles(t, root, step.script, func(o *executionOptions) { o.edits = step.recorder })
-		if result.code != 0 {
-			t.Fatalf("exit %d: %s", result.code, stderr)
+		result, _, stderr := shellFiles(t, root, step.script, func(o *Options) { o.Edits = step.recorder })
+		if result.Code != 0 {
+			t.Fatalf("exit %d: %s", result.Code, stderr)
 		}
 	}
 	journal := editJournal(t, a)

@@ -86,3 +86,13 @@ func (hc HandlerContext) BackgroundScope(id string) (ScopeState, context.CancelF
 	bg := hc.runner.bgProcs[number-1]
 	return bg.state, bg.cancel, nil
 }
+
+// TerminateBackground cancels one background task with the status reported by wait.
+func (hc HandlerContext) TerminateBackground(id string, status uint8) error {
+	number, err := strconv.Atoi(strings.TrimPrefix(id, "g"))
+	if err != nil || !strings.HasPrefix(id, "g") || number < 1 || number > len(hc.runner.bgProcs) {
+		return fmt.Errorf("%s: no such job", id)
+	}
+	hc.runner.bgProcs[number-1].terminate(ExitStatus(status))
+	return nil
+}

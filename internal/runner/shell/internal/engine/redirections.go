@@ -1,4 +1,4 @@
-package shell
+package engine
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 // open captures truncation at open and wraps subsequent writes as separate mutations.
 func (e *execution) open(ctx context.Context, path string, flags int, mode os.FileMode) (io.ReadWriteCloser, error) {
 	hc := interp.HandlerCtx(ctx)
-	absolute, err := cmdsdk.Resolve(hc.Dir, path)
+	absolute, err := cmdsdk.Resolve(hc.Dir, shellPath(path))
 	if err != nil {
 		return nil, err
 	}
@@ -30,10 +30,10 @@ func (e *execution) open(ctx context.Context, path string, flags int, mode os.Fi
 		return nil, err
 	}
 	var result io.ReadWriteCloser = file
-	if writing && e.options.edits != nil {
+	if writing && e.options.Edits != nil {
 		info, statErr := file.Stat()
 		if statErr == nil && info.Mode().IsRegular() {
-			result = &recordedFile{file: file, path: absolute, owner: e, ctx: ctx}
+			result = &recordedFile{file: file, path: absolute, owner: e, ctx: ctx, readwrite: flags&os.O_RDWR != 0}
 		}
 	}
 	e.mu.Lock()
@@ -44,14 +44,14 @@ func (e *execution) open(ctx context.Context, path string, flags int, mode os.Fi
 
 // record starts a job mutation only for regular files or new paths.
 func (e *execution) record(ctx context.Context, path string, writing bool) *cmdsdk.Recording {
-	if !writing || e.options.edits == nil {
+	if !writing || e.options.Edits == nil {
 		return nil
 	}
 	if info, err := os.Stat(path); err == nil && !info.Mode().IsRegular() {
 		return nil
 	}
-	recording, err := e.options.edits.Begin(ctx)
-	if err != nil {
+	recording := e.options.Edits.Begin(ctx)
+	if recording == nil {
 		return nil
 	} // Recording is diagnostic and must not fail the mutation.
 	recording.Track(ctx, path)
@@ -59,10 +59,11 @@ func (e *execution) record(ctx context.Context, path string, writing bool) *cmds
 }
 
 type recordedFile struct {
-	file  *os.File
-	path  string
-	owner *execution
-	ctx   context.Context
+	file      *os.File
+	path      string
+	owner     *execution
+	ctx       context.Context
+	readwrite bool
 }
 
 func (f *recordedFile) Read(b []byte) (int, error) { return f.file.Read(b) }

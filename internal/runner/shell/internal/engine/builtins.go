@@ -1,4 +1,4 @@
-package shell
+package engine
 
 import (
 	"context"
@@ -10,9 +10,9 @@ import (
 
 // builtins replaces operations on the runner process and registers declared roots.
 func (e *execution) builtins() map[string]interp.ExecHandlerFunc {
-	handlers := map[string]interp.ExecHandlerFunc{"exec": e.execBuiltin, "umask": e.umask, "ulimit": e.ulimit, "kill": e.kill, "suspend": refuseSuspend, "fg": refuseJobControl, "bg": refuseJobControl}
-	if e.options.commands != nil {
-		for _, root := range e.options.commands.Roots {
+	handlers := map[string]interp.ExecHandlerFunc{"trap": e.trap, "times": e.times, "exec": e.execBuiltin, "umask": e.umask, "ulimit": e.ulimit, "kill": e.kill, "suspend": refuseSuspend, "fg": refuseJobControl, "bg": refuseJobControl}
+	if e.options.Commands != nil {
+		for _, root := range e.options.Commands.Roots {
 			handlers[root] = e.declared
 		}
 	}
@@ -54,26 +54,38 @@ func (e *execution) execBuiltin(ctx context.Context, args []string) error {
 			break
 		}
 		args = args[1:]
-		switch arg {
-		case "-c":
-			options.empty = true
-		case "-l":
-			login = true
-		case "-a":
-			if len(args) == 0 {
-				return diagnostic(ctx, 2, "exec: -a: option requires an argument\n")
+
+		flags := arg[1:]
+		for len(flags) > 0 {
+			flag := flags[0]
+			flags = flags[1:]
+			switch flag {
+			case 'c':
+				options.empty = true
+			case 'l':
+				login = true
+			case 'a':
+				if flags != "" {
+					options.argv0, flags = flags, ""
+				} else {
+					if len(args) == 0 {
+						return diagnostic(ctx, 2, "exec: -a: option requires an argument\n")
+					}
+					options.argv0, args = args[0], args[1:]
+				}
+			default:
+				return diagnostic(ctx, 2, "exec: -%c: invalid option\n", flag)
 			}
-			options.argv0 = args[0]
-			args = args[1:]
-		default:
-			return diagnostic(ctx, 2, "exec: %s: invalid option\n", arg)
 		}
 	}
 	if len(args) == 0 {
 		return hc.NativeBuiltin(ctx, []string{"exec"})
 	}
-	if options.argv0 == "" && login {
-		options.argv0 = "-" + args[0]
+	if login {
+		if options.argv0 == "" {
+			options.argv0 = args[0]
+		}
+		options.argv0 = "-" + options.argv0
 	}
 	ctx = context.WithValue(ctx, execKey{}, options)
 	err := hc.NativeBuiltin(ctx, append([]string{"command"}, args...))

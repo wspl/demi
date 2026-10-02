@@ -1,4 +1,4 @@
-package shell
+package engine
 
 import (
 	"context"
@@ -16,9 +16,7 @@ import (
 func (e *execution) external(ctx context.Context, args []string) error {
 	hc := interp.HandlerCtx(ctx)
 	state := hc.Scope().(*interpreterScope)
-	state.Waiting(1)
-	defer state.Waiting(-1)
-	path, err := interp.LookPathDir(hc.Dir, hc.Env, args[0])
+	path, err := interp.LookPathDir(hc.Dir, hc.Env, shellPath(args[0]))
 	if err != nil {
 		_, _ = fmt.Fprintln(hc.Stderr, err)
 		return interp.ExitStatus(127)
@@ -37,20 +35,48 @@ func (e *execution) external(ctx context.Context, args []string) error {
 	cmd.Stdin = hc.Stdin
 	cmd.Stdout = hc.Stdout
 	cmd.Stderr = hc.Stderr
-	if err = extraDescriptors(cmd, hc.Descriptors()); err != nil {
+	closeStreams, err := borrowStreams(ctx, cmd)
+	if err != nil {
 		return err
 	}
+	defer closeStreams()
+	launchDone := make(chan struct{})
+	finishedStart := false
+	finishDescriptors, err := extraDescriptors(ctx, launchDone, cmd, hc.Descriptors())
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if !finishedStart {
+			close(launchDone)
+		}
+		_ = finishDescriptors()
+	}() // Start failures have no output to forward.
 	child := process.Wrap(cmd, true, state.attributes)
-	if err = child.Start(ctx); err != nil {
+	releaseLaunch, err := e.beginLaunch(ctx)
+	if err != nil {
+		return err
+	}
+	err = child.Start(ctx)
+	close(launchDone)
+	finishedStart = true
+	releaseLaunch()
+	if err != nil {
 		if errors.Is(err, syscall.ENOEXEC) {
-			return hc.RunScript(ctx, path, args)
+			hc.Env = expand.ListEnviron(cmd.Env...)
+			return hc.RunScript(ctx, path, cmd.Args)
 		}
 		_, _ = fmt.Fprintln(hc.Stderr, err)
 		return interp.ExitStatus(126)
 	}
 	release := state.register(child)
 	defer release()
+	state.Waiting(1)
+	defer state.Waiting(-1)
 	status := child.Wait(ctx)
+	if err := finishDescriptors(); err != nil {
+		return err
+	}
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -63,12 +89,15 @@ func (e *execution) external(ctx context.Context, args []string) error {
 		}
 		return interp.ExitStatus(uint8(*status.Code))
 	}
+	if status.Signal != nil {
+		return interp.ExitStatus(signalExitCode(*status.Signal))
+	}
 	return interp.ExitStatus(1)
 }
 
 // exported supplies only variables marked for child inheritance.
 func exported(env expand.Environ) []string {
-	var result []string
+	result := make([]string, 0)
 	env.Each(func(name string, value expand.Variable) bool {
 		if value.Exported && value.IsSet() {
 			result = append(result, name+"="+value.String())

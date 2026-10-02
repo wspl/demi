@@ -1,6 +1,6 @@
 //go:build darwin || linux
 
-package shell
+package engine
 
 import (
 	"context"

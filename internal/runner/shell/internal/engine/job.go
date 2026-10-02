@@ -1,11 +1,13 @@
-package shell
+package engine
 
 import (
 	"context"
 	"errors"
+	"io"
 	"maps"
 	"os"
 	"sync"
+	"syscall"
 
 	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/runner/process"
@@ -24,8 +26,8 @@ type job struct {
 	cwd    *string
 }
 
-// startJob owns three pipe pairs and joins input, output and interpreter work.
-func startJob(ctx context.Context, start process.JobStart, observe observation) (process.ShellJob, error) {
+// StartJob owns three pipe pairs and joins input, output and interpreter work.
+func StartJob(ctx context.Context, start process.JobStart, observe Observer) (process.ShellJob, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	var files []*os.File
 	success := false
@@ -67,7 +69,7 @@ func startJob(ctx context.Context, start process.JobStart, observe observation) 
 	success = true
 	return j, nil
 }
-func (j *job) run(start process.JobStart, env map[string]string, files []*os.File, observe observation) {
+func (j *job) run(start process.JobStart, env map[string]string, files []*os.File, observe Observer) {
 	defer close(j.done)
 	defer j.cancel()
 	defer func() {
@@ -75,23 +77,12 @@ func (j *job) run(start process.JobStart, env map[string]string, files []*os.Fil
 			_ = f.Close()
 		}
 	}()
-	interrupted := make(chan struct{})
-	stop := context.AfterFunc(j.ctx, func() {
-		for _, f := range files {
-			_ = f.Close()
-		}
-		close(interrupted)
-	})
-	defer func() {
-		if !stop() {
-			<-interrupted
-		}
-	}()
 	inputCtx, stopInput := context.WithCancel(j.ctx)
 	inputDone := make(chan struct{})
+	var inputError error
 	go func() {
 		defer close(inputDone)
-		defer files[1].Close()
+		defer func() { _ = files[1].Close() }() // Cleanup also runs after cancellation closes the file.
 		for {
 			select {
 			case <-inputCtx.Done():
@@ -101,12 +92,16 @@ func (j *job) run(start process.JobStart, env map[string]string, files []*os.Fil
 					return
 				}
 				if _, err := files[1].Write(input.Bytes); err != nil {
+					if inputCtx.Err() == nil && !errors.Is(err, syscall.EPIPE) && !errors.Is(err, os.ErrClosed) {
+						inputError = err
+					}
 					return
 				}
 			}
 		}
 	}()
 	var drains sync.WaitGroup
+	var outputErrors [2]error
 	for index, stream := range []runnerwire.OutputStream{runnerwire.Stdout, runnerwire.Stderr} {
 		file := files[2+index*2]
 		drains.Go(func() {
@@ -122,12 +117,19 @@ func (j *job) run(start process.JobStart, env map[string]string, files []*os.Fil
 					}
 				}
 				if err != nil {
+					if !errors.Is(err, io.EOF) && j.ctx.Err() == nil {
+						outputErrors[index] = err
+					}
 					return
 				}
 			}
 		})
 	}
-	result, err := execute(j.ctx, start.Script, executionOptions{login: true, cwd: start.Cwd, env: env, stdin: files[0], stdout: files[3], stderr: files[5], commands: start.Commands, edits: start.Edits, observe: observe})
+	result, err := Execute(j.ctx, start.Script, Options{Login: true, Cwd: start.Cwd, Env: env, Stdin: files[0], Stdout: files[3], Stderr: files[5], Commands: start.Commands, Edits: start.Edits, Observe: observe, Interrupt: func() {
+		for _, file := range files {
+			_ = file.Close()
+		}
+	}})
 	stopInput()
 	_ = files[0].Close()
 	_ = files[1].Close()
@@ -148,9 +150,15 @@ func (j *job) run(start process.JobStart, env map[string]string, files []*os.Fil
 		message := err.Error()
 		j.exit.Error = &message
 	} else {
-		code := int32(result.code)
+		code := int32(result.Code)
 		j.exit.Code = &code
-		j.cwd = &result.cwd
+		j.cwd = &result.Cwd
+	}
+	if j.ctx.Err() == nil {
+		if failure := errors.Join(err, inputError, outputErrors[0], outputErrors[1]); failure != nil {
+			message := failure.Error()
+			j.exit.Error = &message
+		}
 	}
 }
 func (j *job) Input() chan<- process.Input        { return j.input }
