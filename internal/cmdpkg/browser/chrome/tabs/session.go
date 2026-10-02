@@ -1,8 +1,9 @@
 package tabs
 
-//revive:disable:unused-parameter API checkpoint: retain parameter names for dependent implementers.
-
 import (
+	"strconv"
+	"sync"
+
 	protocol "github.com/chromedp/cdproto/cdp"
 	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
 	"github.com/wspl/demi/internal/cmdpkg/browser/chrome/cdp"
@@ -17,19 +18,43 @@ type Session struct {
 }
 
 // Gate admits one command without queuing. Its zero value is ready for use.
-type Gate struct{}
+type Gate struct {
+	// mu protects admission and the retained session, never the command itself.
+	mu      sync.Mutex
+	held    bool
+	session Session
+}
 
 // TryCheckout returns nil while another command holds the session.
-func (g *Gate) TryCheckout() *Checkout { panic("not written: k-chrome-tabs") }
+func (g *Gate) TryCheckout() *Checkout {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.held {
+		return nil
+	}
+	g.held = true
+	return &Checkout{gate: g}
+}
 
 // Checkout leases the tab session. Its owner defers Release at acquisition.
-type Checkout struct{}
+type Checkout struct {
+	gate *Gate
+	once sync.Once
+}
 
 // Session returns the exclusively held data, valid only until Release.
-func (c *Checkout) Session() *Session { panic("not written: k-chrome-tabs") }
+func (c *Checkout) Session() *Session {
+	return &c.gate.session
+}
 
 // Release returns the session to its gate; repeated release is harmless.
-func (c *Checkout) Release() { panic("not written: k-chrome-tabs") }
+func (c *Checkout) Release() {
+	c.once.Do(func() {
+		c.gate.mu.Lock()
+		c.gate.held = false
+		c.gate.mu.Unlock()
+	})
+}
 
 // Reference identifies a node within the document in which it was observed.
 type Reference struct {
@@ -39,23 +64,52 @@ type Reference struct {
 }
 
 // References numbers nodes monotonically within a tab. Its zero value is ready.
-type References struct{}
+type References struct {
+	byID   map[browserop.NodeRef]Reference
+	byNode map[Reference]browserop.NodeRef
+	last   uint64
+}
 
 // Invalidate forgets old document references without reusing their numbers.
-func (r *References) Invalidate() { panic("not written: k-chrome-tabs") }
+func (r *References) Invalidate() {
+	clear(r.byID)
+	clear(r.byNode)
+}
 
 // Retain keeps only references whose node the predicate accepts.
-func (r *References) Retain(keep func(Reference) bool) { panic("not written: k-chrome-tabs") }
+func (r *References) Retain(keep func(Reference) bool) {
+	for id, reference := range r.byID {
+		if !keep(reference) {
+			delete(r.byID, id)
+			delete(r.byNode, reference)
+		}
+	}
+}
 
 // Lookup returns a retained node and whether the reference is still known.
 func (r *References) Lookup(id browserop.NodeRef) (Reference, bool) {
-	panic("not written: k-chrome-tabs")
+	node, ok := r.byID[id]
+	return node, ok
 }
 
 // Issue returns an existing node reference or the next number, subject to Rust's
 // 10,000-reference document limit.
 func (r *References) Issue(reference Reference) (browserop.NodeRef, error) {
-	panic("not written: k-chrome-tabs")
+	if id, ok := r.byNode[reference]; ok {
+		return id, nil
+	}
+	if len(r.byID) >= 10000 {
+		return "", &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "browser reference limit reached for this document"}
+	}
+	if r.byID == nil {
+		r.byID = make(map[browserop.NodeRef]Reference)
+		r.byNode = make(map[Reference]browserop.NodeRef)
+	}
+	r.last++
+	id := browserop.NodeRef("e" + strconv.FormatUint(r.last, 10))
+	r.byID[id] = reference
+	r.byNode[reference] = id
+	return id, nil
 }
 
 // Assets holds document-scoped inventories under the tab's command gate.

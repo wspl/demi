@@ -135,6 +135,11 @@ func (g *generator) check(p *packages.Package) error {
 					fieldType = pointer.Elem()
 				}
 				if named, ok := fieldType.(*types.Named); ok {
+					if child := g.defs[typeKey(named)]; child != nil {
+						if has(child.marks, "integer") && (has(m, "nullable") || has(m, "timestamp")) || has(m, "integer") && has(child.marks, "timestamp") {
+							return fail(f.Name() + ": integer string cannot be nullable or a timestamp")
+						}
+					}
 					if child := g.defs[typeKey(named)]; child != nil && has(child.marks, "codec") {
 						for marker := range m {
 							if marker != "nullable" {
@@ -252,6 +257,10 @@ func checkMarks(m map[string]string) error {
 	for _, key := range []string{"length", "range"} {
 		seen := map[string]bool{}
 		for _, arg := range strings.Fields(m[key]) {
+			if arg == "schema-only" && key == "range" && !seen[arg] {
+				seen[arg] = true
+				continue
+			}
 			if arg == "chars" && key == "length" {
 				continue
 			}

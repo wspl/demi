@@ -13,7 +13,9 @@ type Config struct {
 
 // DefaultConfig returns the one-second save interval and default retry and
 // compaction policies.
-func DefaultConfig() Config { panic("not written: a-session") }
+func DefaultConfig() Config {
+	return Config{PersistInterval: time.Second, Retry: DefaultRetryPolicy(), Compaction: DefaultCompactionConfig()}
+}
 
 // RetryPolicy controls when and how long a failed request is retried.
 type RetryPolicy struct {
@@ -29,7 +31,9 @@ type RetryPolicy struct {
 
 // DefaultRetryPolicy returns four attempts, a one-second base delay and a
 // thirty-second ceiling.
-func DefaultRetryPolicy() RetryPolicy { panic("not written: a-session") }
+func DefaultRetryPolicy() RetryPolicy {
+	return RetryPolicy{MaxAttempts: 4, BaseDelay: time.Second, MaxDelay: 30 * time.Second}
+}
 
 // CompactionConfig controls when a session compacts.
 type CompactionConfig struct {
@@ -40,4 +44,6 @@ type CompactionConfig struct {
 }
 
 // DefaultCompactionConfig returns the eighty-percent threshold.
-func DefaultCompactionConfig() CompactionConfig { panic("not written: a-session") }
+func DefaultCompactionConfig() CompactionConfig {
+	return CompactionConfig{ThresholdPercent: new(uint8(80))}
+}

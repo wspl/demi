@@ -3,69 +3,32 @@
 package storage_test
 
 import (
-	"archive/tar"
 	"crypto/sha256"
-	_ "embed"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/machines/storage"
+	"github.com/wspl/demi/internal/machines/storage/storagetest"
 	"github.com/wspl/demi/internal/machinewire"
 )
-
-//go:embed testdata/manifest.json
-var baseManifestFixture []byte
-
-// baseRelease creates a verified Cloud fixture from the Rust testing::entries scenario.
-// The checked-in contract fixture avoids a second hand-written manifest shape.
-func baseRelease(t *testing.T, extra ...archiveMember) (string, machinewire.CloudImageManifest) {
-	t.Helper()
-	directory := t.TempDir()
-	entries := []archiveMember{
-		{kind: tar.TypeReg, name: "usr/bin/demi-runner", data: []byte("runner")},
-		{kind: tar.TypeReg, name: "usr/bin/tini", data: []byte("tini")},
-		{kind: tar.TypeSymlink, name: "usr/sbin/init", link: "../bin/tini"},
-		{kind: tar.TypeReg, name: "etc/skel/.profile", data: []byte("export EDITOR=vi\n")},
-	}
-	archive := cloudArchive(t, directory, append(entries, extra...))
-	manifest, err := machinewire.DecodeCloudImageManifest(baseManifestFixture)
-	requireStorage(t, err)
-	runner := manifest.Runner.Targets[manifest.Architecture.Target()]
-	delete(manifest.Runner.Targets, manifest.Architecture.Target())
-	architecture, ok := machinewire.HostArchitecture()
-	if !ok {
-		t.Fatal("unsupported host architecture")
-	}
-	manifest.Architecture = architecture
-	manifest.Runner.Targets[architecture.Target()] = runner
-	compressed, err := os.ReadFile(archive)
-	requireStorage(t, err)
-	manifest.Rootfs.Size = uint64(len(compressed))
-	manifest.Rootfs.SHA256 = fmt.Sprintf("%x", sha256.Sum256(compressed))
-	return directory, manifest
-}
-
-// writeBaseManifest records a fixture through the contract's encoder.
-func writeBaseManifest(t *testing.T, directory string, manifest machinewire.CloudImageManifest) []byte {
-	t.Helper()
-	data, err := contract.EncodeJSON(manifest)
-	requireStorage(t, err)
-	requireStorage(t, os.WriteFile(filepath.Join(directory, "manifest.json"), data, 0600))
-	return data
-}
 
 // Cost: one bsdtar extraction and filesystem sync; normally <1 s in the VM.
 func TestVerifiedBaseImportedOnceUnderManifestDigest(t *testing.T) {
 	tools := storageTools(t)
-	image, manifest := baseRelease(t)
-	manifest.Executables["/usr/sbin/init"] = manifest.Executables[machinewire.InitPath]
-	data := writeBaseManifest(t, image, manifest)
+	architecture, ok := machinewire.HostArchitecture()
+	if !ok {
+		t.Fatal("unsupported host architecture")
+	}
+	image := storagetest.NewCloudImage(t, storagetest.Entries(), architecture)
+	image.Manifest.Executables["/usr/sbin/init"] = image.Manifest.Executables[machinewire.InitPath]
+	image.Write(t)
+	data, err := os.ReadFile(filepath.Join(image.Directory, "manifest.json"))
+	requireStorage(t, err)
 	bases := t.TempDir()
-	version, err := storage.ImportBase(t.Context(), tools, image, bases)
+	version, err := storage.ImportBase(t.Context(), tools, image.Directory, bases)
 	requireStorage(t, err)
 	if string(version) != fmt.Sprintf("%x", sha256.Sum256(data)) {
 		t.Fatal(version)
@@ -82,7 +45,7 @@ func TestVerifiedBaseImportedOnceUnderManifestDigest(t *testing.T) {
 		t.Fatalf("archive retained: %v", err)
 	}
 	requireStorage(t, os.Mkdir(filepath.Join(bases, ".base-stale"), 0700))
-	again, err := storage.ImportBase(t.Context(), tools, image, bases)
+	again, err := storage.ImportBase(t.Context(), tools, image.Directory, bases)
 	requireStorage(t, err)
 	if again != version {
 		t.Fatalf("version changed: %s", again)
@@ -93,7 +56,7 @@ func TestVerifiedBaseImportedOnceUnderManifestDigest(t *testing.T) {
 		t.Fatal(entries)
 	}
 	requireStorage(t, os.WriteFile(filepath.Join(base, "manifest.json"), []byte("{}"), 0600))
-	_, err = storage.ImportBase(t.Context(), tools, image, bases)
+	_, err = storage.ImportBase(t.Context(), tools, image.Directory, bases)
 	if !errors.Is(err, storage.ErrPinnedManifest) {
 		t.Fatalf("pinned bytes: %v", err)
 	}
@@ -104,7 +67,13 @@ func TestInvalidReleaseRefusedWithoutStage(t *testing.T) {
 	tools := storageTools(t)
 	for _, name := range []string{"archive", "architecture", "missing-init", "absent-executable", "executable-digest", "escape"} {
 		t.Run(name, func(t *testing.T) {
-			image, manifest := baseRelease(t, archiveMember{kind: tar.TypeSymlink, name: "usr/bin/escape", link: "/etc/hostname"})
+			architecture, ok := machinewire.HostArchitecture()
+			if !ok {
+				t.Fatal("unsupported host architecture")
+			}
+			members := append(storagetest.Entries(), storagetest.Entry{Path: "usr/bin/escape", Link: "/etc/hostname"})
+			image := storagetest.NewCloudImage(t, members, architecture)
+			manifest := &image.Manifest
 			switch name {
 			case "archive":
 				manifest.Rootfs.SHA256 = fmt.Sprintf("%064d", 0)
@@ -128,9 +97,9 @@ func TestInvalidReleaseRefusedWithoutStage(t *testing.T) {
 			case "escape":
 				manifest.Executables["/usr/bin/escape"] = manifest.Executables[machinewire.InitPath]
 			}
-			writeBaseManifest(t, image, manifest)
+			image.Write(t)
 			bases := t.TempDir()
-			_, err := storage.ImportBase(t.Context(), tools, image, bases)
+			_, err := storage.ImportBase(t.Context(), tools, image.Directory, bases)
 			var integrity *storage.ArchiveIntegrityError
 			var missing *storage.MissingExecutableError
 			var executable *storage.ExecutableIntegrityError

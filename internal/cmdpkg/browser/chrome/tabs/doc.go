@@ -2,6 +2,4 @@
 // lifetimes, and the registry and state shared by page actions and the live view.
 // It knows no conversations or viewers. Owners explicitly close and join their
 // resources; command checkouts release their tab gate without waiting.
-//
-// This is the k-chrome-tabs API checkpoint. Executable bodies follow after review.
 package tabs

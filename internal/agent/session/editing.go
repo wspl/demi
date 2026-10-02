@@ -1,11 +1,11 @@
 package session
 
-// revive:disable:unused-parameter API checkpoint stubs retain parameter names for callers.
-
 import (
 	"context"
 
 	"github.com/wspl/demi/internal/agent/store"
+	"github.com/wspl/demi/internal/agent/transcript"
+	"github.com/wspl/demi/internal/commandwire"
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/framewire"
 )
@@ -59,20 +59,35 @@ func (*EditProceed) editCheck()  {}
 
 // Acceptance is an in-flight edit's durable acceptance, shared by every caller
 // of the same request. Cancelling a wait does not cancel the admitted edit.
-type Acceptance struct{}
+type Acceptance struct{ result *editResult }
 
 // Wait waits for acceptance, returning the receipt or *EditError. A cancelled
 // wait returns its context error; a lost session returns EditClosed.
 func (a *Acceptance) Wait(ctx context.Context) (store.EditReceipt, error) {
-	panic("not written: a-session")
+	return a.wait(ctx)
 }
 
 // EditDigest returns the SHA-256 of the request's RFC 8785 canonical JSON,
 // before its uploads are resolved. Invalid constructed requests return an error.
-func EditDigest(request framewire.EditRequest) (string, error) { panic("not written: a-session") }
+func EditDigest(request framewire.EditRequest) (string, error) {
+	return commandwire.CanonicalDigest(request)
+}
 
 // ForkSeed prepares an idle root checkpoint through completed text target,
 // with the command state bound to that completion and no waiting work.
 func ForkSeed(blocks []core.Block, commands *store.CommandStateHistory, state store.CheckpointState, target core.BlockID) (store.Checkpoint, error) {
-	panic("not written: a-session")
+	prefix, err := transcript.ThroughAssistant(blocks, target)
+	if err != nil {
+		return store.Checkpoint{}, &ForkError{Kind: ForkTarget, Cause: err}
+	}
+	revision, ok := commands.Boundary(target, store.AfterAssistant)
+	if !ok {
+		return store.Checkpoint{}, &ForkError{Kind: ForkNoBoundary}
+	}
+	state.Phase = "idle"
+	state.Queue = []core.QueuedMessage{}
+	state.AgentInputs = []store.PendingAgentInput{}
+	state.Wakeups = []store.ScheduledWakeup{}
+	state.Edits = []store.EditReceipt{}
+	return store.Checkpoint{State: state, Transcript: prefix, CommandState: commands.Select(prefix, revision, true)}, nil
 }
