@@ -29,7 +29,7 @@ main() {
     esac
   done < <(git -C "${REPO}" worktree list --porcelain)
   git -C "${REPO}" for-each-ref --format='%(refname) %(objectname)' \
-    | grep -v '^refs/heads/gomig/' || true
+    | grep -v -e '^refs/heads/gomig/' -e '^refs/remotes/origin/gomig/' || true
   git -C "${REPO}" stash list --format='stash %H %gs'
 }
 
