@@ -43,11 +43,12 @@ plugins' services over HTTP         plugins' fixture services
   message content and tool views, and the file-type table with its lookup.
 - `@demicodes/utils` holds small helpers the web app's packages share.
 - `@demicodes/plugin-sdk` is the page API ([Plugin pages](../architecture/plugin-pages.md)):
-  the slots, the `PluginClient`, intents, services and the public components.
+  `definePage`, the page context `usePage()`, intents, the conversation files
+  service and the plugin kit.
 - `@demicodes/plugin-<name>` is a [plugin's page](../architecture/plugin-pages.md):
   the plugin's feature UI and the slots it fills, written only against
   `plugin-sdk`. `web` and the gallery show the packages of the generated
-  registry; `web` supplies the services over the
+  registry; `web` supplies the page context over the
   [page call route](web-api.md#plugin-calls) and the backend's other routes,
   the gallery over each specimen's fixture state.
 

@@ -72,8 +72,7 @@ on the browser protocol and `backend-host-access`'s on `backend-expose`.
    page calls, page states and user streams following the choices at once;
    `pluginsChanged` and the reload route; and the settings page's plugin list
    with its switches and the reload offer, in `web-ui`, `web` and
-   `web-gallery`. A plugin's settings form and its themes arrive with the
-   first plugin that declares a settings schema or a theme. Done.
+   `web-gallery`. Done.
 4. **Skills on the backend.** Plugins as context sources, asked only while
    their user has them on; `plugin-skills` with its sources, its values and
    blobs, the Host directories with their installation before a job, the Host
@@ -84,6 +83,13 @@ on the browser protocol and `backend-host-access`'s on `backend-expose`.
    `@demicodes/plugin-expose` (the conversation header tool) and
    `@demicodes/plugin-skills` (the settings section); their registration in
    `web` and their specimens in `web-gallery`. Done.
+6. **The page platform.** The manifest naming its packages and its page
+   package, with page state of two scopes and the topics each follows; the
+   port grouped by service; the conversation state route and the summary's
+   `pluginRevisions` and `workingTreeRevision`; `definePage` and `usePage()`;
+   kinds as data with intents for pinned and unpinned kinds and panel
+   sessions; the plugin kit; types and the registry generated from the
+   manifests ([Plugin pages](../architecture/plugin-pages.md)). Designed.
 
 ## Evidence required at a checkpoint
 
