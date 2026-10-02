@@ -1,8 +1,5 @@
 package database
 
-//revive:disable:unused-parameter
-// API checkpoint: parameters are consumed by the implementation checkpoint.
-
 import (
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/webapi"
@@ -131,5 +128,15 @@ type DepartedHost struct {
 
 // ColumnsForTarget returns a target as its typed SQL columns.
 func ColumnsForTarget(target webapi.ConversationTarget) TargetColumns {
-	panic("not written: b-database")
+	switch target := target.(type) {
+	case *webapi.ConversationTargetCloud:
+		return TargetColumns{Kind: "cloud", Path: target.Path}
+	case *webapi.ConversationTargetDevice:
+		device := string(target.DeviceID)
+		return TargetColumns{Kind: "device", Device: &device, Path: &target.Path}
+	case *webapi.ConversationTargetWorkspace:
+		workspace := string(target.WorkspaceID)
+		return TargetColumns{Kind: "workspace", Workspace: &workspace}
+	}
+	return TargetColumns{}
 }
