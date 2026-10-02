@@ -9,10 +9,11 @@ documents, which the first phase rewrites
 ([Phase 0](#phase-0-design-and-foundation)).
 
 For example, the runner's shell is migrated like this: an agent receives the
-work package `r-shell` and a worktree of its own, in which its sandbox lets
-it write only under `internal/runner/shell/`. It ports
-`crates/runner-shell`, runs the package checks, and reports. The tech lead reviews the diff, commits it on the package's branch
-and merges it into `gomig/main`. When the whole runner is merged, the Rust
+work package `r-shell` and a worktree of its own, whose write boundary is
+`internal/runner/shell/` and `third_party/mvdan-sh/`. It ports
+`crates/runner-shell` and its tests, runs the package checks, commits on its
+branch and reports. A script checks that every changed path lies inside the
+boundary; the tech lead reviews the diff and merges it into `gomig/main`. When the whole runner is merged, the Rust
 backend's own scenario tests run against the Go `demi-runner` binary; when
 they pass, the runner is accepted.
 
@@ -27,12 +28,25 @@ These decisions are the owner's and are not reopened by this plan:
 - The Go code follows Go's own idioms, not a transliteration of the Rust.
 - **No cgo, anywhere.** Every program builds with `CGO_ENABLED=0` for every
   target it ships on.
+- **No cgo, with one exception for tests:** `go test -race` on Linux builds
+  its test binary with `CGO_ENABLED=1`, because Go's race detector links
+  ThreadSanitizer through libc there (macOS needs no cgo for it). Product
+  builds and the cgo check are unaffected.
 - The embedded standard utilities (uutils coreutils, findutils, diffutils,
   sed, grep, ripgrep, jaq) are not migrated. The runner's shell runs the
-  system's own utilities.
+  system's own utilities, interpreted by a patched fork of `mvdan.cc/sh`.
+- On macOS, the tree watch calls FSEvents through `github.com/ebitengine/purego`,
+  in that one file only.
+- Every test moves to Go: each work package ports its crate's Rust tests.
+  Running Rust test binaries against Go programs is a transitional check
+  that ends with the Rust code.
+- Agents run Codex **without any sandbox**. Write boundaries are kept by the
+  rules and checks in [Isolation rules](#isolation-rules).
 - The migration and its acceptance are done by `gpt-6-astra` agents at the
   `low` reasoning level through the Codex CLI, as many at once as the work
   allows. Spikes are done by astra agents too.
+- Until gate G4, only bug fixes land on `feat/demi-next`; each becomes a
+  delta work package at the next gate.
 - The tech lead (Claude) owns the design, the work division, the reviews of
   design, taste and conventions, the commits and the merges.
 - The migration happens on a new branch, `gomig/main`, cut from
@@ -50,11 +64,8 @@ Checked on 2026-10-02 on the development Mac (Apple M5 Max, 18 cores,
 | `gpt-6-astra` offers the `low` effort | the Codex model catalog |
 | 16 astra sessions run at once without rate limiting; 11 long spike sessions ran concurrently for over an hour without a limit error | parallel `codex exec`; their logs |
 | Go 1.27.1 is installed | `brew install go`; `go version` |
-| In the `workspace-write` sandbox an agent can write only its working directory and the directories given with `--add-dir`; a write into another worktree fails with `Operation not permitted` | probe runs |
-| Starting an agent with `-C <worktree>/<package dir>` confines its writes to that directory: it cannot write `go.mod` at the root | probe run |
-| The sandbox blocks network access by default; `-c sandbox_workspace_write.network_access=true` enables it, which `go get` needs | probe runs |
-| The sandbox protects every `.git` directory: an agent cannot commit, stash, reset or check out, even with `--add-dir` on the repository's `.git` | probe run |
-| The Go build and module caches outside the worktree need `--add-dir ~/Library/Caches/go-build --add-dir ~/go` | probe run |
+| Rust's `vendor/` at the module root puts Go in vendor mode, so `go build` fails; `GOFLAGS=-mod=readonly` builds normally, until `z-remove-rust` removes `vendor/` | a module with one dependency |
+| Codex's `workspace-write` sandbox would refuse what the migration needs: commits (it protects every `.git`), FSEvents streams, Chrome, `ps` and, by default, network access; agents therefore run without it | probe runs and spikes |
 | A Rust test binary copied into a directory with a `.cargo-lock` file starts the programs it finds beside that file: 25 runner starts of the `backend-remote-host` suite went to a substitute `demi-runner` | relocation experiment, 56 of 57 tests passed; the one failure came from the substitute being a shell script that changed `argv[0]`, which the runner's command-alias mode dispatches on |
 | `feat/demi-next` at `eb6158b3` does not build on macOS; `73198853` does, and `gomig/main` starts there | `cargo test --workspace --features demi-runner/test-fixtures --no-run` |
 | A dedicated Linux VM, `gomig-spike` (Lima, Ubuntu 26.04 arm64, kernel 7.0, passwordless `sudo`), runs Linux-only work; the other VMs are not used | `limactl` |
@@ -96,7 +107,7 @@ authoritative package contract.
 | `machine-manager` | `internal/machines`, subpackages `sandbox`, `storage`, `network` | Linux only |
 | `backend`, `backend-*` | `internal/backend`, `internal/backend/{accounts,blobs,cloud,database,expose,hostaccess,http,idlewatch,pagesync,plugins,providers,remotehost,runners,usershard}` | |
 | `xtask` | `tools/release`, `tools/contractgen`, `tools/archcheck`, `tools/cgocheck` | |
-| `vendor/brush` | `third_party/mvdan-sh` | The patched `mvdan.cc/sh` fork, if [decision 3](#open-decisions-for-the-owner) is (A); the other vendored crates have no successor |
+| `vendor/brush` | `third_party/mvdan-sh` | The patched `mvdan.cc/sh` fork ([decision 3](#owner-decisions)); the other vendored crates have no successor |
 | binaries | `cmd/{demi-backend,demi-runner,demi-file,demi-browser,demi-claude-code,demi-machine-manager,demi-native-fixture}` | |
 
 A crate's `testing` feature becomes a test-support package beside it, named
@@ -111,7 +122,7 @@ real machines carries a build tag.
 |---|---|---|---|
 | Owner | The repository owner | Fixes scope and the decisions above; approves the Go design at gate G0 and the cutover at gate G4 | Review each work package |
 | Tech lead | Claude | Writes and keeps this plan and the work package briefs; decides the Go design; reviews every work package for design, taste and conventions; commits, merges and syncs branches; runs the gates | Write production code itself, apart from small fixes found in review |
-| Implementer | An astra agent, one per work package | Ports one work package inside its write boundary, writes its tests, runs its checks, reports | Commit, touch files outside its boundary, change another package's exported API, add a dependency |
+| Implementer | An astra agent, one per work package | Ports one work package and its tests inside its write boundary, runs its checks, commits on its own branch, reports | Push, merge, touch files outside its boundary or any other branch, worktree or stash, change another package's exported API, add a module its brief does not list |
 | Acceptance agent | An astra agent | Runs an acceptance suite against the built programs, triages each failure to the owning work package, writes the failure report | Fix the failure itself in another package's files |
 | Spike agent | An astra agent | Answers one technical question with running code and measurements | Produce code that is merged |
 
@@ -133,22 +144,22 @@ real machines carries a build tag.
 - Each work package gets a branch `gomig/<wp>` from the current
   `gomig/main` and a worktree `gomig-<wp>`. Work package branches stay local
   and are deleted after their merge.
-- The tech lead commits a work package on its branch (agents cannot), with a
-  Conventional Commit subject and the report's summary in the body, merges it
-  into `gomig/main` with `--no-ff`, and pushes `gomig/main`.
+- The agent commits on its own branch with Conventional Commit subjects. The
+  tech lead merges an accepted branch into `gomig/main` with `--no-ff`, puts
+  the report's summary in the merge commit, and pushes `gomig/main`.
 - When a work package needs code merged after its branch was cut, the tech
   lead merges `gomig/main` into its branch; the agent then continues.
 
 ### One directory or many worktrees
 
-Both layouts can confine an agent's writes to its own package directory,
-because the sandbox's writable root is the agent's working directory. They
-differ in what an agent sees of the others' work.
+The layouts differ in what an agent sees of the others' work, and, with no
+sandbox, in how far a mistake reaches.
 
 | Situation | One shared directory | One worktree per work package (chosen) |
 |---|---|---|
 | Agent A is halfway through `internal/agent/session` and the package does not compile; agent B, whose package imports it, runs `go test` | B's build fails on A's half-written code; B cannot tell whose fault it is and may waste its run on it | B builds against the last merged `session`, which compiles |
 | Two agents' changes must be reviewed and accepted separately | The tech lead separates them by path in one working tree, and a revert has to pick paths out of shared commits | Each work package is one branch and one diff |
+| An agent writes outside its boundary | The write lands in the tree everyone builds | The write stays in its worktree, and the boundary check refuses the branch |
 | An agent's run goes wrong and has to be thrown away | Its files are mixed into the live tree that others build against | The worktree is removed; nothing else changed |
 | An agent needs another package's latest merged work | It sees it at once | The tech lead merges `gomig/main` into its branch first |
 | Disk and caches | One checkout | One checkout per work package, about 0.5 GB each without Rust build products; Go's build and module caches are shared, so builds stay incremental |
@@ -160,29 +171,48 @@ own worktree.
 
 ## Isolation rules
 
-A work package has a **write boundary**: one or more package directories,
-listed in its brief. The boundary is enforced, not just requested.
+A work package has a **write boundary**: the directories and files listed
+in its brief. Agents run without a sandbox, so the boundary is kept by rules
+the agent follows and by checks it cannot skip:
 
-- The agent runs with `-C <worktree>/<first directory>` and an `--add-dir`
-  for each further directory of its boundary, plus the Go caches. It can
-  read the whole repository and `gomig-ref`; it can write nothing else.
-- A package directory has exactly one owner at a time. Two running work
-  packages never share a directory, so their merges never conflict.
-- `go.mod` and `go.sum` belong to the tech lead. Phase 0 pins every
-  dependency the spikes chose. An agent that needs another module stops and
-  says so in its report; the tech lead adds it to `gomig/main` and syncs the
-  branch.
-- A package's exported API belongs to the package's owner. A consumer that
-  needs a change describes it in its report; the tech lead decides and
-  routes it to the owner, never to the consumer.
-- Shared registries have one owner: the dependency table of the import
-  check and the generator's root list belong to the tech lead; `cmd/<program>`
-  belongs to the program's assembly work package.
-- Generated Go code is committed in the package that owns its source types,
-  so it belongs to that package's owner. The generated TypeScript is not
-  committed, as today.
-- Documents: each documentation work package owns named files. Two running
+- **The boundary check.** Before a merge, `scripts/gomig/boundary.sh <wp>`
+  lists every path the branch changed against `gomig/main`, committed or
+  not, and refuses the branch if one lies outside the boundary.
+- **The snapshot.** `scripts/gomig/agent.sh` records, before and after each
+  run, the state the agent must not touch: the owner's checkout, every other
+  worktree's status, every branch and tag but the agent's own, and the stash
+  list. Any difference is a violation the tech lead resolves before anything
+  else. The owner keeps working in the owner's checkout, so a difference
+  there is compared by hand with what the work package touched; the probe
+  run on 2026-10-02 showed exactly that case.
+- **Git rules.** An agent commits only on its own branch in its own
+  worktree. It never pushes, merges, rebases, deletes a branch, uses
+  `git stash` (the stash is shared by every worktree) or runs
+  `git worktree`.
+- **Processes.** An agent stops every process it started (Chrome, servers,
+  VM jobs) before it reports; the report names any it could not stop.
+
+A package directory has exactly one owner at a time. Two running work
+packages never share a directory, so their merges never conflict.
+
+- **Modules.** `go.mod` and `go.sum` belong to the tech lead. A brief lists
+  the modules its agent may add; the boundary check reports every change to
+  `go.mod` for the review. When two branches add modules, the tech lead
+  resolves the merge with `go mod tidy`.
+- **APIs.** A package's exported API belongs to the package's owner. A
+  consumer that needs a change describes it in its report; the tech lead
+  decides and routes it to the owner, never to the consumer.
+- **Registries.** The dependency table of the import check and the
+  generator's root list belong to the tech lead; `cmd/<program>` belongs to
+  the program's assembly work package.
+- **Generated code.** Generated Go is committed in the package that owns its
+  source types, so it belongs to that package's owner. The generated
+  TypeScript is not committed, as today.
+- **Documents.** A documentation work package owns named files. Two running
   work packages never edit the same file.
+- **Linux VMs.** Two work packages never share a VM, because their
+  privileged tests change the same kernel state (mounts, loop devices,
+  firewall tables).
 
 ## Work package lifecycle
 
@@ -190,13 +220,13 @@ listed in its brief. The boundary is enforced, not just requested.
 tech lead: brief + worktree + branch
    |
    v
-astra: port -> package checks -> REPORT -----> tech lead review
+astra: port -> checks -> commit -> REPORT ---> boundary check -> tech lead review
    ^                                                  |
    |   review findings (codex exec resume <session>)  | changes needed
    +--------------------------------------------------+
                                                       | accepted
                                                       v
-                       tech lead: commit on gomig/<wp> -> merge into gomig/main -> push
+                                   tech lead: merge into gomig/main -> push
 ```
 
 1. **Brief.** The tech lead writes the brief from a template: the Rust
@@ -204,18 +234,20 @@ astra: port -> package checks -> REPORT -----> tech lead review
    must export (from `crates-and-packages.md` and the Rust public items),
    the dependencies it may use, the tests to port or write, and the checks
    that define done.
-2. **Run.** `scripts/gomig/agent.sh` creates the worktree and starts the
-   agent with the sandbox, the boundary, `CGO_ENABLED=0` and
-   `GOFLAGS=-p=2`, recording its events in `gomig-ref/runs/`.
-3. **Checks before the report.** The agent runs the package checks:
-   `go build` of its packages for every target they ship on, `go vet`,
-   `golangci-lint`, the cgo check, the import check, and `go test -race`
-   for its packages and those that import them. A report without passing
-   checks is not reviewed.
-4. **Review.** The tech lead reviews the diff against the brief and the
-   [review checklist](#review-checklist). Findings go back to the same agent
-   session with `codex exec resume`, so it keeps its context.
-5. **Merge.** The tech lead commits, merges, runs the whole-tree checks in
+2. **Run.** `scripts/gomig/agent.sh` creates the worktree, takes the
+   snapshot and starts the agent with `CGO_ENABLED=0` and `GOFLAGS=-p=2`,
+   recording its events in `gomig-ref/runs/`; when the agent exits it takes
+   the snapshot again and reports any difference.
+3. **Checks before the report.** The agent runs `scripts/gomig/check.sh` on
+   its packages: `go build` for every target they ship on, `go vet`,
+   `golangci-lint`, the cgo check, the import check, the exhaustiveness
+   check, and `go test -race` for its packages and those that import them.
+   A report without passing checks is not reviewed.
+4. **Review.** The tech lead runs the boundary check, then reviews the diff
+   against the brief and the [review checklist](#review-checklist). Findings
+   go back to the same agent session with `scripts/gomig/resume.sh`, so it
+   keeps its context.
+5. **Merge.** The tech lead merges, runs the whole-tree checks in
    `gomig-lead`, pushes, and removes the worktree.
 
 A package with dependents is delivered in **two checkpoints**: first its
@@ -279,13 +311,14 @@ are rewritten for Go, because each work package implements against them.
 | `d-packages` | `docs/architecture/crates-and-packages.md` | The package contract: the package map below, each package's ownership, the dependency graph, module layout, boundary checks | the package map |
 | `d-delivery` | `docs/delivery/testing.md`, `docs/delivery/builds-and-releases.md` | Go test levels, commands and costs; Go builds for the six targets and releases | sp11 |
 | `d-execution` | `docs/execution/runner.md`, `docs/execution/edit-tracking.md`, `docs/execution/commands.md`, `docs/execution/native-runtime.md` | The shell on the chosen interpreter with the system's utilities, what edit tracking records now, the platform report to the model, the stream reset on a service abort | decisions 3 and 4 |
-| `f-skeleton` | the whole worktree; the review holds it to `go.mod`, `go.sum`, `cmd/`, `internal/*/doc.go`, `tools/archcheck/`, `tools/cgocheck/`, `.golangci.yml` and `scripts/gomig/check.sh` | The module with every dependency the spikes chose, every package directory with its package comment, the guard rails, the package check script | the package map |
-| `f-contractgen` | `tools/contractgen/`, `internal/contract/` | The generator and the encoding helpers every contract package uses, proven on the shared-types fixtures | sp01, sp02 |
-| `f-harness` | `scripts/gomig/accept/` | The cross-language acceptance harness, proven green with the Rust programs in place | none |
+| `f-skeleton` | `cmd/`, `internal/`, `tools/archcheck/`, `tools/cgocheck/`, `.golangci.yml`, `scripts/gomig/check.sh` | Every package directory with its package comment, the guard rails, the package check script | the package map |
+| `f-contractgen` | `tools/contractgen/`, `internal/contract/` (outside `f-skeleton`'s boundary) | The generator and the encoding helpers every contract package uses, proven on the shared-types fixtures | sp01, sp02 |
+| `f-harness` | `scripts/gomig/accept/` | The transitional harness that runs Rust test binaries against substituted programs, proven green with the Rust programs in place | none |
 
 The tech lead writes the Go section of `AGENTS.md`, the brief and report
-templates and the package map, creates the Lima VMs `gomig-vm-1` to
-`gomig-vm-3` for Linux work, and reviews the documents. **Gate G0:** the
+templates and the package map, creates `go.mod`, and reviews the
+documents. The Lima VMs for Linux work (`gomig-vm-1` to `gomig-vm-3`) are
+created before Phase 2. **Gate G0:** the
 owner approves the rewritten architecture documents.
 
 ### Phase 1: contracts and leaf libraries
@@ -327,8 +360,8 @@ tests pass; the whole tree passes the guard rails on all targets.
 
 | Work package | Accepts | How |
 |---|---|---|
-| `x-commands` | `demi-file`, `demi-browser`, `demi-claude-code` | The Rust runner and command-sdk suites with the Go programs substituted |
-| `x-runner` | `demi-runner` | The Rust backend scenarios, `backend-remote-host` and `backend-plugins` suites with the Go runner and Go command programs substituted |
+| `x-commands` | `demi-file`, `demi-browser`, `demi-claude-code` | Their ported Go tests; early on, the Rust runner and command-sdk suites with the Go programs substituted |
+| `x-runner` | `demi-runner` | Its ported Go tests; early on, the Rust backend scenarios, `backend-remote-host` and `backend-plugins` suites with the Go runner and Go command programs substituted |
 | `x-machines` | `demi-machine-manager` | The Go manager's tests and the Cloud real-machine suite in the Lima VM |
 | `x-webapp` | `demi-backend` | The web app contract suite (`bun run test` with `DEMI_TEST_PROGRAMS` pointing at the Go programs) |
 | `s-scenarios-*` | `demi-backend` | The Rust backend scenarios (`crates/backend/tests`) ported to Go, one work package per scenario file group |
@@ -336,7 +369,9 @@ tests pass; the whole tree passes the guard rails on all targets.
 
 An acceptance agent never fixes another package. It writes a failure
 report naming the owning work package, and the tech lead reopens that
-package with the report. **Gate G3:** every suite above passes.
+package with the report. **Gate G3:** every Go suite passes, the web app
+contract suite passes against the Go programs, and no Rust test is left
+without its Go port.
 
 ### Phase 4: cutover
 
@@ -382,9 +417,10 @@ agent-hour and review rounds per checkpoint, and this section is updated.
 
 The wires between Demi's programs do not depend on the language: MessagePack
 over a WebSocket to the runner, HTTP/2 to the command programs, JSON lines
-to the machine manager, HTTP and WebSockets to the web app. Each Go program
-is therefore accepted by the existing tests of the program on the other end
-of its wire, before the Go side has tests of its own at that level.
+to the machine manager, HTTP and WebSockets to the web app. Every Rust test is
+ported to Go, and the Go tests are what accept a program. Until a program's
+Go tests at that level exist, the existing tests of the program on the
+other end of its wire give an early signal; this ends with the Rust code.
 
 ```text
 Rust test binary (unchanged)                 Go program under test
@@ -411,8 +447,9 @@ on the day this plan was written. At each gate, the tech lead merges
 
 Eleven spikes ran at once on 2026-10-02, and a twelfth (sp04b) followed one of them, each an astra agent in its own
 worktree; their code and full reports stay on the local branches
-`gomig/sp*` and are never merged. The tech lead re-ran the two experiments the
-sandbox could not run (FSEvents and Chrome) outside it.
+`gomig/sp*` and are never merged. The spikes ran in Codex's sandbox; the tech lead
+re-ran outside it the two experiments the sandbox refused (FSEvents and
+Chrome).
 
 | Spike | Question | Verdict | What the migration does |
 |---|---|---|---|
@@ -420,28 +457,16 @@ sandbox could not run (FSEvents and Chrome) outside it.
 | sp02 wire | Runner MessagePack, machine-manager lines and the manifest digest, byte for byte | Works with caveats: 25 runner fixtures, the kept-record corpus, all 18 machine-manager lines and the manifest and package digests match | `github.com/vmihailenco/msgpack/v5` v5.4.1 with compact integers, declaration order, a sorted encoder for string maps and non-nil empty byte slices; `github.com/gowebpki/jcs` v1.0.2 for RFC 8785; encoders and decoders generated from the same Go types as sp01 |
 | sp03 HTTP/2 | The command wire in Go, interoperating with Rust | Works with caveats: streaming, client cancellation and bounded flow control interoperate both ways; a handler cannot choose `RST_STREAM(CANCEL)` for a service-side abort | `net/http` with unencrypted HTTP/2, one owned connection per service (`Transport.NewClientConn`), a 64 KiB stream window, the concurrent-stream limit and early-reset guard configured. The command wire says a service abort resets the stream and stops naming the code |
 | sp04 shell | The runner's shell on `mvdan.cc/sh` with the system's utilities | Does not work unmodified: commands and pipelines work, 50 concurrent jobs complete, cancellation by process group works, but v3.14.1 cannot join every task a job started at any depth and cannot cancel an unopened process substitution; 34 of 40 typical agent snippets print what `bash` prints | See sp04b |
-| sp04b shell fork | Can a small fork close those gaps and keep edit tracking of redirections? | Works with caveats: a patch of 311 added and 43 removed lines in nine files of `interp` joins every nested task, cancels used and unused process substitutions, and hands every writable redirection (`>`, `>>`, `<>`, `exec 3>f`) in all seven scopes to the open handler, 28 of 28 cases; each new test fails on the unpatched library. On macOS a FIFO's end of file needs a 10 ms recheck | [Decision 3](#open-decisions-for-the-owner), option A |
+| sp04b shell fork | Can a small fork close those gaps and keep edit tracking of redirections? | Works with caveats: a patch of 311 added and 43 removed lines in nine files of `interp` joins every nested task, cancels used and unused process substitutions, and hands every writable redirection (`>`, `>>`, `<>`, `exec 3>f`) in all seven scopes to the open handler, 28 of 28 cases; each new test fails on the unpatched library. On macOS a FIFO's end of file needs a 10 ms recheck | [Decision 3](#owner-decisions) |
 | sp05 namespaces | The machine manager's Linux primitives without cgo | Works with caveats: mount and network namespaces, recovery into a saved mount namespace, veth, nftables, loop devices, `FIFREEZE`/`FITHAW`, sparse copy and `sd_notify` all ran in the VM | One namespace-job entry point: a goroutine locks its thread, unshares `CLONE_FS`, does the whole job and exits without unlocking. Recovery starts `/proc/self/exe` from that entered thread, which `os.StartProcess` documents. `nftables.WithNetNSFd`; not `netlink.NewHandleAt`, whose restore path ignores an error; the two freeze ioctl numbers defined per architecture |
-| sp06 FSEvents | Watching repository trees on macOS without cgo | Works, through purego: outside the sandbox 100 events arrived with a median latency of 11 ms, and 200 start-stop cycles left threads, descriptors and memory flat. Inside the Codex sandbox the stream does not start. A full `lstat` walk of this repository takes 18 to 25 s, too slow to replace a watch | purego for FSEvents if the owner approves ([decision 1](#open-decisions-for-the-owner)); `fsnotify` on Linux and Windows |
+| sp06 FSEvents | Watching repository trees on macOS without cgo | Works, through purego: outside the sandbox 100 events arrived with a median latency of 11 ms, and 200 start-stop cycles left threads, descriptors and memory flat. Inside the Codex sandbox the stream does not start. A full `lstat` walk of this repository takes 18 to 25 s, too slow to replace a watch | purego for FSEvents ([decision 1](#owner-decisions)); `fsnotify` on Linux and Windows |
 | sp07 git | go-git for working-tree changes and skill fetches | Works with caveats: with an adapter, staged and unstaged changes, untracked files, renames and line counts matched `git` on this repository and on Kubernetes; `Worktree.Status()` itself is wrong on a restored-mtime edit and slow. A full status of Kubernetes takes 6.5 to 6.8 s with go-git's status, 1.9 s with the spike's parallel walk, and 0.23 s with the `git` CLI; this repository takes 0.13 to 0.15 s with the walk. A shallow HTTPS fetch of a skill source took 4.4 s | go-git for objects, the index and the transport; Demi's own parallel walk over a watched baseline, as the runner design already requires; line counts with a Myers diff |
 | sp08 Chrome | The conversation browser on chromedp | Works on cdproto, not on chromedp's actions: outside the sandbox, an unpacked extension, three tabs driven at once, a 9 MB full-page screenshot, acknowledged screencast frames, network and console events and a download all worked, with no goroutine left. chromedp itself lacks a bound on message size and the child-session guarantees Demi needs. Chrome does not start inside the Codex sandbox | `github.com/chromedp/cdproto` types behind Demi's own `cdp.Executor`: a bounded transport and a session router of Demi's, about 0.9 to 1.6 thousand lines for today's `src/cdp` |
 | sp09 SQLite | A cgo-free SQLite for the backend | Works with caveats: the real schemas and statements ran on both `modernc.org/sqlite` and `ncruces/go-sqlite3`, and each driver reopened the other's files | `modernc.org/sqlite` v1.60.1 behind `database/sql`: one `sql.DB` with one connection per writable database, every statement inside its `sql.Tx`, short read-only connections for cold reads, the global limit of 64 open writers kept as an explicit LRU. Appends ran at 3,884 transactions/s with a p99 of 0.65 ms |
 | sp10 shard | The user shard's guarantees in Go | Works with caveats: a mutex variant and an actor variant both held admission atomic under 10,000 interleaved races with `-race`, fired the idle watch at exactly 3,600 s of `synctest` time, and caught a forgotten lease | One `sync.Mutex` per shard with short critical sections; gates on `golang.org/x/sync/semaphore` (FIFO); leases released with `defer`, idempotent, and audited at shutdown in tests; `goleak` and `testing/synctest` |
 | sp11 matrix | Six targets without cgo, sizes, guard rails | Works: all 18 program and target builds pass with `CGO_ENABLED=0`, statically linked on Linux, in 64 s from clean and 5.5 s with no change. The runner skeleton is 10.5 MiB on macOS arm64 | Guard rails: the cgo check per target, an import-direction table checked over `go list -deps -json`, `go-check-sumtype -default-signifies-exhaustive=false`, `golangci-lint` v2.14.0 |
 
-### What the sandbox cannot do
-
-The Codex `workspace-write` sandbox refuses three things the migration needs:
-starting an FSEvents stream, starting Chrome, and listing processes (`ps`,
-`pgrep`). Tests that need them on macOS carry the build tag `hostonly`. An
-implementer runs every other test in its sandbox, and runs the Chrome tests
-in its Linux VM, where Chrome for Testing has a linux-arm64 build. The tech
-lead runs the `hostonly` tests outside the sandbox as part of the review,
-before the merge. No agent runs
-without the sandbox, because the sandbox is what keeps it inside its write
-boundary. Linux-only work runs in a Lima VM through `limactl`, which the
-sandbox allows; two work packages never share a VM, because their privileged
-tests change the same kernel state (mounts, loop devices, firewall tables).
+### Codex sessions
 
 A resumed session needs its first run to have exited: `codex exec resume`
 fails while the original process still writes the session.
@@ -477,42 +502,25 @@ These follow from the spikes and are the input to the Phase 0 documents.
 - **Tests use the standard library**, `github.com/google/go-cmp`,
   `go.uber.org/goleak` and `testing/synctest`; no assertion library.
 
-## Open decisions for the owner
+## Owner decisions
 
-1. **purego for FSEvents on macOS.** purego builds with `CGO_ENABLED=0` and
-   needs no C compiler, but it calls the CoreServices C API at run time
-   through `dlopen`. Without it, macOS has no tree watch: every working-tree
-   request walks the whole tree (0.13 s on this repository, about 2 s on one
-   the size of Kubernetes) instead of reading the watched baseline.
-   *Recommendation:* allow purego in the one darwin file of the tree watch,
-   and nowhere else.
-2. **The race detector on Linux needs cgo.** `go test -race` works with
-   `CGO_ENABLED=0` only on macOS. *Recommendation:* run `-race` on macOS;
-   Linux tests run without it; nothing that ships is built with cgo.
-3. **The shell interpreter.** sp04 showed `mvdan.cc/sh` cannot be used
-   unmodified. The choice is between (A) a vendored, patched fork of
-   `mvdan.cc/sh` running in the runner, as brush is vendored today, which
-   keeps declared commands as builtins, one shell dialect on every platform
-   and edit tracking of redirections; and (B) the system's `bash` started per
-   job, which gives real bash and lets the operating system cancel a job by
-   its process group, but loses edit tracking of redirections, runs bash 3.2
-   on macOS and needs Git for Windows' bash on Windows. *Recommendation:* (A).
-   sp04b showed the fork is a 354-line patch whose rebase on a compatible
-   upstream release takes about a day, and keeping the shell in the runner
-   keeps declared commands as builtins with no process per call, one shell
-   dialect on every platform, and edit tracking of redirections. The fork lives in
-   `third_party/mvdan-sh` behind a `replace` directive, with its patch kept
-   as a file so a rebase starts from it; `r-shell` owns both.
-4. **What using the system's utilities means for users.** With either
-   interpreter: edit tracking stops recording files that `sed -i`, `tee` and
-   `sort -o` write; a paired Mac runs BSD utilities with different flags from
-   the Cloud's GNU ones; a paired Windows device has no Unix utilities unless
-   the user installs them; the Cloud image must ship GNU coreutils,
-   findutils, diffutils, sed, grep, ripgrep and jq; and the runner must tell
-   the model which shell, platform and utility family a job runs with.
-   *Recommendation:* accept these, and update `edit-tracking.md` and
-   `runner.md` in Phase 0.
-5. **Rust changes during the migration.** Every change to `crates/` on
-   `feat/demi-next` must be ported again. *Recommendation:* only bug fixes
-   land on `feat/demi-next` until gate G4; each one becomes a delta work
-   package at the next gate.
+Decided on 2026-10-02:
+
+1. **purego for FSEvents** on macOS, in the tree watch's darwin file only.
+2. **`-race` on Linux** builds its test binary with `CGO_ENABLED=1` and
+   `-tags netgo,osusergo`, so the standard library keeps its pure-Go
+   resolver and user lookup as in the shipped build; macOS runs `-race` with
+   cgo off. Products are never built with cgo.
+3. **The shell interpreter is a patched fork of `mvdan.cc/sh`** in
+   `third_party/mvdan-sh`, behind a `replace` directive, with its patch kept
+   as a file so a rebase starts from it; `r-shell` owns both. sp04b showed
+   the patch is 354 lines and keeps declared commands as builtins, one shell
+   dialect on every platform, and edit tracking of redirections.
+4. **What the system's utilities cost users is pending, and must be done
+   later**, not in this migration: edit tracking of files that `sed -i`,
+   `tee` and `sort -o` write; the BSD utilities of a paired Mac; a Windows
+   device without Unix utilities; GNU coreutils, findutils, diffutils, sed,
+   grep, ripgrep and jq in the Cloud image; and telling the model which
+   shell, platform and utilities a job has. The design documents name each
+   as an open item.
+5. **Only bug fixes land on `feat/demi-next`** until gate G4.

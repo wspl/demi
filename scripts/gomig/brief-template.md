@@ -15,7 +15,7 @@ run delivers: the API checkpoint or the implementation checkpoint.>
 
 ## Write boundary
 
-You can write only these directories; your sandbox refuses anything else:
+Write only inside these paths; `scripts/gomig/boundary.sh` refuses a branch that changed anything else:
 
 - `<internal/...>`
 
@@ -46,5 +46,6 @@ Run from the repository root, all must pass:
 
 ## Report
 
-Write `REPORT.md` in your first boundary directory from
-`scripts/gomig/report-template.md`; the tech lead deletes it after the merge.
+Commit your work on your branch, then write the report to
+`/Users/zan/Projects/demi-worktrees/gomig-ref/reports/<id>.md` from
+`scripts/gomig/report-template.md`. The report is not part of the repository.
