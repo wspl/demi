@@ -167,7 +167,7 @@ func Record[T any](data []byte, decode func([]byte) (T, error), nullable bool) (
 	out := make(map[string]T, len(raw))
 	for key, item := range raw {
 		var value T
-		if !(nullable && IsNull(item)) {
+		if !nullable || !IsNull(item) {
 			value, err = decode(item)
 			if err != nil {
 				return nil, At(key, err)
@@ -179,12 +179,12 @@ func Record[T any](data []byte, decode func([]byte) (T, error), nullable bool) (
 }
 
 // Text validates lengths in Unicode scalar values and a generation-checked pattern.
-func Text(value string, min, max int, pattern string) error {
+func Text(value string, minimum, maximum int, pattern string) error {
 	if !utf8.ValidString(value) {
 		return errors.New("invalid UTF-8")
 	}
 	n := utf8.RuneCountInString(value)
-	if n < min || max >= 0 && n > max {
+	if n < minimum || maximum >= 0 && n > maximum {
 		return errors.New("string length outside bounds")
 	}
 	if pattern != "" {
@@ -244,7 +244,7 @@ func checkSurrogates(data []byte) error {
 		}
 		code, err := strconv.ParseUint(string(data[i+1:i+5]), 16, 16)
 		if err != nil {
-			return fmt.Errorf("Unicode escape: %w", err)
+			return fmt.Errorf("unicode escape: %w", err)
 		}
 		i += 4
 		if code >= 0xdc00 && code <= 0xdfff {
@@ -258,7 +258,7 @@ func checkSurrogates(data []byte) error {
 		}
 		low, err := strconv.ParseUint(string(data[i+3:i+7]), 16, 16)
 		if err != nil {
-			return fmt.Errorf("Unicode escape: %w", err)
+			return fmt.Errorf("unicode escape: %w", err)
 		}
 		if low < 0xdc00 || low > 0xdfff {
 			return errors.New("unpaired high surrogate")

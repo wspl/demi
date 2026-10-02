@@ -32,6 +32,7 @@ type definition struct {
 }
 
 type generator struct {
+	tables    []*table
 	defs      map[string]*definition
 	order     []string
 	goCode    bytes.Buffer
@@ -111,6 +112,28 @@ func generate(ctx context.Context, patterns []string, ts bool, tsDir string, ver
 					continue
 				}
 				for _, spec := range general.Specs {
+					if value, ok := spec.(*ast.ValueSpec); ok {
+						doc := general.Doc
+						if value.Doc != nil {
+							doc = value.Doc
+						}
+						marks := markers(doc)
+						if len(marks) > 0 {
+							marked = true
+							if general.Tok != token.VAR {
+								loadErr = fmt.Errorf("%s: %s: table requires a variable", p.Fset.Position(value.Pos()), value.Names[0].Name)
+								return
+							}
+							table, err := readTable(p, value, marks)
+							if err != nil {
+								loadErr = err
+								return
+							}
+							g.tables = append(g.tables, table)
+						}
+						continue
+					}
+
 					spec, ok := spec.(*ast.TypeSpec)
 					if !ok {
 						continue
@@ -180,7 +203,7 @@ func generate(ctx context.Context, patterns []string, ts bool, tsDir string, ver
 	if loadErr != nil {
 		return loadErr
 	}
-	if len(g.order) == 0 {
+	if len(g.order) == 0 && len(g.tables) == 0 {
 		return nil
 	}
 	sort.Strings(g.order)
@@ -209,7 +232,9 @@ func generate(ctx context.Context, patterns []string, ts bool, tsDir string, ver
 		}
 	}
 	for key := range g.received {
-		g.defs[key].marks["msgpack"] = ""
+		if !has(g.defs[key].marks, "msgpack") {
+			g.defs[key].marks["msgpack"] = ""
+		}
 		d := g.defs[key]
 		if err := checkMsgpackShape(d.typ.Underlying()); err != nil {
 			return fmt.Errorf("%s: %s: %w", d.position, d.name, err)
@@ -321,7 +346,7 @@ func markers(doc *ast.CommentGroup) map[string]string {
 		}
 		key, value, _ := strings.Cut(strings.TrimPrefix(text, "+demi:"), " ")
 		switch key {
-		case "union", "variant", "nullable", "length", "range", "enum", "pattern", "timestamp", "check", "id", "base64", "msgpack", "strict", "tolerant", "root":
+		case "union", "variant", "nullable", "length", "range", "enum", "pattern", "timestamp", "check", "id", "base64", "msgpack", "strict", "tolerant", "root", "format", "table":
 		default:
 			out["!error"] = "unsupported marker: " + key
 		}
@@ -438,7 +463,9 @@ func (g *generator) emitGo(d *definition) {
 		return
 	}
 	if has(d.marks, "id") {
-		g.line("func Parse%s(value string)(%s,error){v:=%s(value);if err:=v.Validate();err!=nil{return \"\",err};return v,nil}", name, name, name)
+		g.line("func Parse%s(value string)(%s,error){", name, name)
+		g.normalizeText(d, "value", "return \"\",err")
+		g.line("v:=%s(value);if err:=v.Validate();err!=nil{return \"\",err};return v,nil}", name)
 	}
 	st, isStruct := g.object(d)
 	union, variant, _ := strings.Cut(d.marks["variant"], " ")
@@ -473,7 +500,9 @@ func (g *generator) emitGo(d *definition) {
 	g.line("return nil }")
 	g.line("func(v *%s) UnmarshalJSON(data []byte)error{", name)
 	if !isStruct {
-		g.line("value,err:=%s(data); if err!=nil{return err}; next:=%s(value); if err:=next.Validate();err!=nil{return err}; *v=next; return nil}", g.decoder(d.typ.Underlying()), name)
+		g.line("value,err:=%s(data); if err!=nil{return err}", g.decoder(d.typ.Underlying()))
+		g.normalizeText(d, "value", "return err")
+		g.line("next:=%s(value); if err:=next.Validate();err!=nil{return err}; *v=next; return nil}", name)
 		g.line("func(v %s) MarshalJSON()([]byte,error){if err:=v.Validate();err!=nil{return nil,err};return json.Marshal(%s(v))}", name, g.typeName(d.typ.Underlying()))
 		return
 	}
@@ -573,6 +602,17 @@ func (g *generator) rules(t types.Type, expr, path string, m map[string]string) 
 		g.imports["math"] = "math"
 		g.line("if math.IsNaN(float64(%s)) || math.IsInf(float64(%s),0){return contract.At(%s,fmt.Errorf(\"number must be finite\"))}", expr, expr, path)
 	}
+	if format := m["format"]; format != "" {
+		if format == "trimmed" {
+			g.line("if contract.Trim(string(%s))!=string(%s){return contract.At(%s,fmt.Errorf(\"text is not trimmed\"))}", expr, expr, path)
+		} else {
+			helper := "Email"
+			if format == "http-url" {
+				helper = "HTTPURL"
+			}
+			g.line("if value,err:=contract.%s(string(%s));err!=nil{return contract.At(%s,err)}else if value!=string(%s){return contract.At(%s,fmt.Errorf(\"text is not canonical\"))}", helper, expr, path, expr, path)
+		}
+	}
 	if has(m, "base64") {
 		g.line("if err:=contract.Base64(string(%s));err!=nil{return contract.At(%s,err)}", expr, path)
 	}
@@ -589,20 +629,20 @@ func (g *generator) rules(t types.Type, expr, path string, m map[string]string) 
 	b := bounds(m["length"])
 	_, isString := t.Underlying().(*types.Basic)
 	if isString && t.Underlying().(*types.Basic).Info()&types.IsString != 0 {
-		min, max := b["min"], b["max"]
-		if min == "" {
-			min = "0"
+		minimum, maximum := b["min"], b["max"]
+		if minimum == "" {
+			minimum = "0"
 		}
-		if max == "" {
-			max = "-1"
+		if maximum == "" {
+			maximum = "-1"
 		}
-		g.line("if err:=contract.Text(string(%s),%s,%s,%s);err!=nil{return contract.At(%s,err)}", expr, min, max, q(m["pattern"]), path)
+		g.line("if err:=contract.Text(string(%s),%s,%s,%s);err!=nil{return contract.At(%s,err)}", expr, minimum, maximum, q(m["pattern"]), path)
 	} else {
-		if min := b["min"]; min != "" {
-			g.line("if len(%s)<%s{return contract.At(%s,fmt.Errorf(\"too few items\"))}", expr, min, path)
+		if minimum := b["min"]; minimum != "" {
+			g.line("if len(%s)<%s{return contract.At(%s,fmt.Errorf(\"too few items\"))}", expr, minimum, path)
 		}
-		if max := b["max"]; max != "" {
-			g.line("if len(%s)>%s{return contract.At(%s,fmt.Errorf(\"too many items\"))}", expr, max, path)
+		if maximum := b["max"]; maximum != "" {
+			g.line("if len(%s)>%s{return contract.At(%s,fmt.Errorf(\"too many items\"))}", expr, maximum, path)
 		}
 	}
 	for _, key := range []string{"min", "max"} {

@@ -35,13 +35,22 @@ func (g *generator) emitMsgpack(d *definition) {
 	name := d.name
 	if has(d.marks, "union") {
 		tag := bounds(d.marks["union"])["tag"]
-		g.line("func Decode%sMsgpack(data []byte)(%s,error){ obj,err:=contract.MsgpackObject(data);if err!=nil{return nil,err};tag,err:=contract.DecodeMsgpack[string](obj[%s]);if err!=nil{return nil,contract.At(%s,err)};switch tag{", name, name, q(tag), q(tag))
+		if d.marks["msgpack"] == "tuple" {
+			g.line("func Decode%sMsgpack(data []byte)(%s,error){obj,err:=contract.MsgpackObject(data);if err!=nil{return nil,err};if len(obj)!=1{return nil,fmt.Errorf(\"expected one external union tag\")};var tag string;for key:=range obj{tag=key};switch tag{", name, name)
+		} else {
+			g.line("func Decode%sMsgpack(data []byte)(%s,error){ obj,err:=contract.MsgpackObject(data);if err!=nil{return nil,err};tag,err:=contract.DecodeMsgpack[string](obj[%s]);if err!=nil{return nil,contract.At(%s,err)};switch tag{", name, name, q(tag), q(tag))
+		}
 		for _, v := range g.variants(d.key) {
 			_, value, _ := strings.Cut(v.marks["variant"], " ")
 			g.line("case %s: value,err:=contract.DecodeMsgpack[%s](data);return &value,err", q(value), v.name)
 		}
 		g.line("};return nil,fmt.Errorf(\"unknown union tag\")}")
 		g.line("func Encode%sMsgpack(v %s)([]byte,error){if err:=Validate%s(v);err!=nil{return nil,err};return contract.EncodeMsgpack(v)}", name, name, name)
+		return
+	}
+	if g.tupleUnion(d) {
+		st, _ := g.object(d)
+		g.emitTupleVariant(d, st)
 		return
 	}
 	g.line("func Decode%sMsgpack(data []byte)(%s,error){return contract.DecodeMsgpack[%s](data)}", name, name, name)
@@ -53,7 +62,9 @@ func (g *generator) emitMsgpack(d *definition) {
 	}
 	st, ok := g.object(d)
 	if !ok {
-		g.line("value,err:=%s(data);if err!=nil{return err};next:=%s(value);if err:=next.Validate();err!=nil{return err};*v=next;return nil}", g.msgDecoder(d.typ.Underlying()), name)
+		g.line("value,err:=%s(data);if err!=nil{return err}", g.msgDecoder(d.typ.Underlying()))
+		g.normalizeText(d, "value", "return err")
+		g.line("next:=%s(value);if err:=next.Validate();err!=nil{return err};*v=next;return nil}", name)
 		g.line("func(v %s) MarshalMsgpack()([]byte,error){if err:=v.Validate();err!=nil{return nil,err};return contract.EncodeMsgpack(%s(v))}", name, g.typeName(d.typ.Underlying()))
 		return
 	}
@@ -103,15 +114,7 @@ func (g *generator) emitMsgpack(d *definition) {
 				g.line("if v.%s{", f.Name())
 			}
 		}
-		value := "v." + f.Name()
-		if has(d.fields[f.Name()], "timestamp") {
-			if isPointer(f.Type()) {
-				g.line("var timestamp%s any;if v.%s!=nil{timestamp%s=contract.MsgpackTimestampValue(*v.%s)}", f.Name(), f.Name(), f.Name(), f.Name())
-				value = "timestamp" + f.Name()
-			} else {
-				value = "contract.MsgpackTimestampValue(" + value + ")"
-			}
-		}
+		value := g.msgValue(f, d.fields[f.Name()])
 		g.line("fields=append(fields,contract.Field{Name:%s,Value:%s})", q(opts[0]), value)
 		if len(opts) > 1 {
 			g.line("}")

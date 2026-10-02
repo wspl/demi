@@ -32,11 +32,42 @@
 // encoding/json.RawMessage. Timestamp domain types remain named strings in
 // their owning contract package; their marker enforces canonical UTC milliseconds.
 //
+// Named strings may use +demi:format trimmed or +demi:format email. Decoders
+// and Parse constructors trim JavaScript whitespace before length checks;
+// email also lowercases and checks the address grammar and 254-character cap.
+// Validation and encoding reject directly constructed noncanonical values.
+// Zod trims trimmed text before bounds, but preserves email case and refuses
+// surrounding whitespace. These sending constraints also apply when a type is
+// received; receive schemas still tolerate unknown object fields.
+// +demi:format http-url parses HTTP(S) endpoints using WHATWG rules and stores
+// their canonical serialization, including host punycode, default-port removal
+// and a slash for an empty path. Validation and encoding require that canonical
+// spelling. Zod uses z.url({ protocol: z.regexes.httpProtocol }), as the Rust
+// emitter does; its accepted input is canonicalized when decoded by Go.
+//
+// +demi:table on a package-level slice variable emits its literal struct rows
+// into protocol/tables.ts, preserving the variable name and JSON field names.
+// Rows must specify every field; values are scalar constants or slice literals,
+// with JavaScript-safe integers. Calls, mutable variable references, optional
+// fields and maps are refused rather than executed during generation. Each
+// scalar or scalar-slice field gets <Table>By<Field>(value), returning the first
+// matching row or undefined (slice fields use membership). This supports model
+// extension rows and named live-view constant rows without hardcoded values.
+// PREVIEW_TYPES additionally emits previewMediaType(path) and
+// showsInPlace(mediaType), with ASCII extension case folding and either path
+// separator. It must have mediaType, extensions and inPlace fields.
+//
 // +demi:msgpack enables generated MessagePack codecs throughout the reachable
 // shape. They use JSON field names and declaration order, compact integers,
 // binary byte slices, sorted string records and timestamp extensions. JSON and
 // MessagePack share presence, nullability and validation rules. MessagePack's
-// full 64-bit integer domain remains available to non-web roots.
+// full 64-bit integer domain remains available to non-web roots. On a union,
+// +demi:msgpack tuple selects kept-output encoding: one external tag mapped to
+// a declaration-order array, or to the field itself for a single-field variant.
+// Every tuple field is required (nullable is allowed). Standalone variants use
+// the same representation, while JSON retains its internally tagged object.
+// The record-stream owner splits records before calling the generated decoder;
+// each decoder requires exactly one record and refuses trailing bytes.
 //
 // +demi:root direction=receive|send output=protocol|web|plugin-<name> selects a
 // TypeScript root. Output is optional for roots only decoded by Go. Receive

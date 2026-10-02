@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wspl/demi/tools/contractgen/testdata/blocks"
+	contracts "github.com/wspl/demi/tools/contractgen/testdata/blocks"
 )
 
 const fixtureDir = "../../crates/shared-types/tests/shared-types/fixtures/"

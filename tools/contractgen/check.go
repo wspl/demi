@@ -110,6 +110,9 @@ func (g *generator) check(p *packages.Package) error {
 						return fail(f.Name() + ": unsupported JSON option " + opt)
 					}
 				}
+				if len(parts) > 1 && g.tupleUnion(d) {
+					return fail(f.Name() + ": tuple fields cannot be optional")
+				}
 				if len(parts) > 2 {
 					return fail(f.Name() + ": only one optionality option is allowed")
 				}
@@ -135,10 +138,17 @@ func (g *generator) check(p *packages.Package) error {
 	return nil
 }
 func checkMarks(m map[string]string) error {
+	if has(m, "format") && m["format"] != "email" && m["format"] != "http-url" && m["format"] != "trimmed" {
+		return fmt.Errorf("format requires email, http-url or trimmed")
+	}
+	if has(m, "msgpack") && m["msgpack"] != "" && m["msgpack"] != "tuple" {
+		return fmt.Errorf("msgpack accepts only tuple")
+	}
+
 	if problem := m["!error"]; problem != "" {
 		return fmt.Errorf("%s", problem)
 	}
-	for _, key := range []string{"nullable", "strict", "tolerant", "timestamp", "base64", "msgpack"} {
+	for _, key := range []string{"nullable", "strict", "tolerant", "timestamp", "base64", "table"} {
 		if m[key] != "" {
 			return fmt.Errorf("%s takes no arguments", key)
 		}
@@ -256,6 +266,13 @@ func (g *generator) tsSources() (map[string][]byte, error) {
 	protocol := g.received
 	g.received = received
 	sources := map[string][]byte{}
+	tables, err := g.tableSources()
+	if err != nil {
+		return nil, err
+	}
+	if len(tables) > 0 {
+		sources["tables"] = tables
+	}
 	names := make([]string, 0, len(outputs))
 	for out := range outputs {
 		names = append(names, out)
@@ -313,16 +330,21 @@ func (g *generator) writeTS(p *packages.Package, sources map[string][]byte, veri
 	sort.Strings(outputs)
 	for _, out := range outputs {
 		filename := "contracts.ts"
+		destination := out
+		if out == "tables" {
+			filename = "tables.ts"
+			destination = "protocol"
+		}
 		if strings.HasPrefix(out, "plugin-") {
 			filename = "plugin.ts"
 		}
-		dest := filepath.Join(dir, "packages", out, "src", "generated", filename)
+		dest := filepath.Join(dir, "packages", destination, "src", "generated", filename)
 		if out == "web" {
 			filename = "web-api.ts"
 			dest = filepath.Join(dir, "packages", "web", "src", "api", "generated", filename)
 		}
 		if g.tsDir != "" {
-			dest = filepath.Join(g.tsDir, out, filename)
+			dest = filepath.Join(g.tsDir, destination, filename)
 		}
 		if !verify {
 			if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
