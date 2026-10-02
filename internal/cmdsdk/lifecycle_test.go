@@ -297,17 +297,65 @@ func TestCancellationDeadlineRequiresServiceRetirement(t *testing.T) {
 		}
 	})
 }
-func TestConnectCancellationInterruptsUnreadPreface(t *testing.T) {
+func TestConnectUsesCallerDeadline(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		left, right := net.Pipe()
 		defer func() { _ = right.Close() }()
+		ctx, cancel := context.WithTimeout(t.Context(), 37*time.Second)
+		defer cancel()
 		start := time.Now()
-		_, err := Connect(t.Context(), left)
+		_, err := Connect(ctx, left)
 		if err == nil {
 			t.Fatal("connected to a peer that read nothing")
 		}
-		if time.Since(start) != phaseTimeout {
-			t.Fatalf("handshake timeout %s", time.Since(start))
+		if time.Since(start) != 37*time.Second {
+			t.Fatalf("caller handshake deadline: elapsed %s", time.Since(start))
 		}
 	})
+}
+
+// Both the response headers and body may wait longer than the former SDK
+// timeout. Only the caller decides when to give up waiting for service info.
+func TestInfoUsesCallerDeadline(t *testing.T) {
+	for _, headers := range []bool{false, true} {
+		t.Run(fmt.Sprint("headers=", headers), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				left, right := net.Pipe()
+				listener := &oneListener{conn: right, closed: make(chan struct{})}
+				handled := make(chan struct{})
+				server := &http.Server{Protocols: protocols(), HTTP2: h2Config(false), Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					defer close(handled)
+					if headers {
+						w.WriteHeader(http.StatusOK)
+						if err := http.NewResponseController(w).Flush(); err != nil {
+							return
+						}
+					}
+					<-r.Context().Done()
+				})}
+				served := make(chan error, 1)
+				go func() { served <- server.Serve(listener) }()
+				defer func() {
+					must(t, server.Close())
+					if err := <-served; !errors.Is(err, http.ErrServerClosed) {
+						t.Error(err)
+					}
+				}()
+				client, err := Connect(t.Context(), left)
+				must(t, err)
+				defer func() { _ = client.Close() }()
+				ctx, cancel := context.WithTimeout(t.Context(), 37*time.Second)
+				defer cancel()
+				start := time.Now()
+				_, err = client.Info(ctx)
+				if !errors.Is(err, context.DeadlineExceeded) {
+					t.Fatalf("info error: %v", err)
+				}
+				if time.Since(start) != 37*time.Second {
+					t.Fatalf("caller info deadline: elapsed %s", time.Since(start))
+				}
+				<-handled
+			})
+		})
+	}
 }

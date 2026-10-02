@@ -45,8 +45,6 @@ type Client struct{ connection *http.ClientConn }
 
 // Connect takes ownership of a caller-supplied duplex connection.
 func Connect(ctx context.Context, conn net.Conn) (*Client, error) {
-	ctx, cancel := context.WithTimeout(ctx, phaseTimeout)
-	defer cancel()
 	// NewClientConn writes its preface synchronously. Close the owned transport
 	// on cancellation so even a peer that reads nothing cannot strand that write.
 	interrupted := make(chan struct{})
@@ -96,10 +94,8 @@ func (c *Client) request(ctx context.Context, method, path string, body io.Reade
 	return response, nil
 }
 
-// Info reads and validates the service catalog within the metadata phase limit.
+// Info reads and validates the bounded service catalog using the caller's context.
 func (c *Client) Info(ctx context.Context) (commandwire.ServiceInfo, error) {
-	ctx, cancel := context.WithTimeout(ctx, phaseTimeout)
-	defer cancel()
 	r, err := c.request(ctx, http.MethodGet, commandwire.InfoPath, nil)
 	if err != nil {
 		return commandwire.ServiceInfo{}, err
