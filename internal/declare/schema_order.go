@@ -13,6 +13,8 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/santhosh-tekuri/jsonschema/v6/kind"
 	"golang.org/x/text/message"
+
+	"github.com/wspl/demi/internal/contract"
 )
 
 // documentOrder retains the object-member order used by the Rust schema and instance walkers.
@@ -356,12 +358,9 @@ func (s *Schema) literal(path []string) string {
 	case map[string]any:
 		parts := make([]string, 0, len(value))
 		for _, name := range s.order[prefix] {
-			var encoded bytes.Buffer
-			encoder := json.NewEncoder(&encoded)
-			encoder.SetEscapeHTML(false)
-			// Schema keys and values have already been validated as JSON.
-			_ = encoder.Encode(name)
-			parts = append(parts, strings.TrimSuffix(encoded.String(), "\n")+":"+s.literal(append(slices.Clone(path), name)))
+			// Schema keys have already been validated as JSON.
+			encoded, _ := contract.EncodeJSON(name)
+			parts = append(parts, string(encoded)+":"+s.literal(append(slices.Clone(path), name)))
 		}
 		return "{" + strings.Join(parts, ",") + "}"
 	case []any:
@@ -395,11 +394,8 @@ func (s *Schema) literal(path []string) string {
 		}
 		return text
 	default:
-		var encoded bytes.Buffer
-		encoder := json.NewEncoder(&encoded)
-		encoder.SetEscapeHTML(false)
 		// A scalar in a compiled schema is always JSON-encodable.
-		_ = encoder.Encode(value)
-		return strings.TrimSuffix(encoded.String(), "\n")
+		encoded, _ := contract.EncodeJSON(value)
+		return string(encoded)
 	}
 }

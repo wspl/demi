@@ -90,7 +90,7 @@ func Recorded(ctx context.Context, directory string, archive Archive) (string, e
 	if found.ArchiveHash != archive.Digest.SHA256 {
 		return "", &InstallationError{Directory: directory, Reason: "holds another archive"}
 	}
-	return filepath.Join(directory, filepath.FromSlash(archive.Entry)), nil
+	return artifactPath(directory, filepath.FromSlash(archive.Entry)), nil
 }
 
 // Installed checks an installation's receipt and current entry hash. An empty
@@ -103,7 +103,7 @@ func Installed(ctx context.Context, directory string, archive Archive) (string, 
 	if err != nil || found == nil {
 		return "", err
 	}
-	entry := filepath.Join(directory, filepath.FromSlash(archive.Entry))
+	entry := artifactPath(directory, filepath.FromSlash(archive.Entry))
 	digest, err := DigestFile(ctx, entry, entryBytes)
 	var tooLarge *TooLargeError
 	if errors.Is(err, os.ErrNotExist) || errors.As(err, &tooLarge) {
@@ -138,7 +138,7 @@ func InstallArchive(ctx context.Context, root string, archive Archive) (entry st
 	if err := os.MkdirAll(root, 0755); err != nil {
 		return "", nil, err
 	}
-	lock, err := AcquireInstallLock(ctx, filepath.Join(root, archive.Digest.SHA256+".lock"))
+	lock, err := AcquireInstallLock(ctx, artifactPath(root, archive.Digest.SHA256+".lock"))
 	if err != nil {
 		return "", nil, err
 	}
@@ -147,7 +147,7 @@ func InstallArchive(ctx context.Context, root string, archive Archive) (entry st
 			err = errors.Join(err, lock.Close())
 		}
 	}()
-	destination := filepath.Join(root, archive.Digest.SHA256)
+	destination := artifactPath(root, archive.Digest.SHA256)
 	entry, err = Installed(ctx, destination, archive)
 	if err != nil || entry != "" {
 		return entry, nil, err
@@ -160,7 +160,7 @@ func InstallArchive(ctx context.Context, root string, archive Archive) (entry st
 }
 
 // ArchivePath is where the caller writes the ZIP, verifying it during the write.
-func (u *Unpacking) ArchivePath() string { return filepath.Join(u.temporary, "archive.zip") }
+func (u *Unpacking) ArchivePath() string { return artifactPath(u.temporary, "archive.zip") }
 
 // Close discards staged files and releases the installation lock, idempotently.
 func (u *Unpacking) Close() error {
@@ -182,7 +182,7 @@ func (u *Unpacking) Finish(ctx context.Context) (entry string, err error) {
 	if u.temporary == "" {
 		return "", os.ErrClosed
 	}
-	extracted := filepath.Join(u.temporary, "extracted")
+	extracted := artifactPath(u.temporary, "extracted")
 	if err := extractZIP(ctx, u.ArchivePath(), extracted); err != nil {
 		return "", err
 	}
@@ -202,7 +202,7 @@ func (u *Unpacking) Publish(ctx context.Context, extracted string) (entry string
 }
 
 func publishInstallation(ctx context.Context, extracted, destination string, archive Archive) (string, error) {
-	found, err := DigestFile(ctx, filepath.Join(extracted, filepath.FromSlash(archive.Entry)), entryBytes)
+	found, err := DigestFile(ctx, artifactPath(extracted, filepath.FromSlash(archive.Entry)), entryBytes)
 	if errors.Is(err, os.ErrNotExist) {
 		return "", &ArchiveError{fmt.Errorf("holds no %s: %w", archive.Entry, err)}
 	}
@@ -215,7 +215,7 @@ func publishInstallation(ctx context.Context, extracted, destination string, arc
 	if err := PublishDirectory(ctx, extracted, destination); err != nil {
 		return "", err
 	}
-	return filepath.Join(destination, filepath.FromSlash(archive.Entry)), nil
+	return artifactPath(destination, filepath.FromSlash(archive.Entry)), nil
 }
 
 // ZipHolds reads only the directory of an archive to check for a file.
@@ -289,7 +289,11 @@ func extractEntry(ctx context.Context, root *os.Root, entry *zip.File) (err erro
 	if entry.FileInfo().IsDir() {
 		return root.MkdirAll(filepath.FromSlash(name), 0755)
 	}
-	if err := root.MkdirAll(filepath.FromSlash(path.Dir(name)), 0755); err != nil {
+	parent, _ := Parent(filepath.FromSlash(name))
+	if parent == "" {
+		parent = "."
+	}
+	if err := root.MkdirAll(parent, 0755); err != nil {
 		return err
 	}
 	input, err := entry.Open()
