@@ -21,6 +21,7 @@ futures-util.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tokio = { workspace = true, features = ["sync"] }
 
 [dev-dependencies]
 demi-plugin-interface = { path = "../plugin-interface", features = ["testing"] }

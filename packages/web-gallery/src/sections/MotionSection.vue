@@ -7,6 +7,7 @@ import ChromeRoll from '@demicodes/web-ui/ui/ChromeRoll.vue'
 import Fold from '@demicodes/web-ui/ui/Fold.vue'
 import FoldChevron from '@demicodes/web-ui/ui/FoldChevron.vue'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
+import ProgressLine from '@demicodes/web-ui/ui/ProgressLine.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import AgentMessageVirtualBlock from '@demicodes/web-ui/agent/blocks/AgentMessageVirtualBlock.vue'
@@ -23,6 +24,7 @@ const faceFaces = [
   { key: 'thinking', label: 'Thinking', icon: 'brain' },
 ] as const
 const foldOpen = ref(false)
+const progressLoading = ref(true)
 // Each replay remounts the rows, so they arrive again.
 const entranceKey = ref(0)
 const entranceThinkingStartedAt = new Date(Date.now() - 8_000).toISOString()
@@ -109,6 +111,21 @@ const exploratoryMarks: {
           </div>
         </GallerySpecimen>
       </div>
+    </GallerySection>
+
+    <GallerySection
+      title="ProgressLine"
+      note="A thin line along the top of what loads, over what it still shows, such as a browser tab's page while the next one loads. It appears only after 150 ms, so a load that ends at once shows nothing, and leaves at once when the load ends. Reduced motion shows it still."
+    >
+      <div class="specimen-row">
+        <GallerySpecimen variant="over a page that still shows">
+          <div class="relative h-24 w-64 overflow-hidden rounded-md border border-line bg-white p-3 text-[12px] text-neutral-700">
+            <ProgressLine :active="progressLoading" />
+            The page the tab showed before.
+          </div>
+        </GallerySpecimen>
+      </div>
+      <Button size="sm" @click="progressLoading = !progressLoading">{{ progressLoading ? 'Stop loading' : 'Load' }}</Button>
     </GallerySection>
 
     <GallerySection

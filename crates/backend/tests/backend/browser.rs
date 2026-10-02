@@ -103,11 +103,9 @@ async fn the_tab_methods_run_the_browsers_operations_as_the_user_on_the_conversa
         listed.json::<Value>(),
         json!({ "revision": 0, "state": { "tabs": [] } })
     );
-    for tab in [ABSENT, "not-a-tab"] {
-        let closed = call(&backend, &master, &id, "close", json!({ "tab": tab })).await;
-        assert_eq!(closed.status, StatusCode::OK, "{tab}");
-        assert_eq!(closed.json::<Value>(), Value::Null);
-    }
+    let synced = call(&backend, &master, &id, "sync", json!({})).await;
+    assert_eq!(synced.status, StatusCode::OK);
+    assert_eq!(synced.json::<Value>(), Value::Null);
     // A tab the browser does not have is the browser's answer.
     let tab_not_found = (
         StatusCode::CONFLICT,
@@ -125,7 +123,7 @@ async fn the_tab_methods_run_the_browsers_operations_as_the_user_on_the_conversa
     for (name, body) in [
         ("navigate", json!({ "tab": ABSENT })),
         ("history", json!({ "tab": ABSENT, "action": "sideways" })),
-        ("open", json!({ "url": "" })),
+        ("bind", json!({})),
     ] {
         let refused = call(&backend, &master, &id, name, body.clone()).await;
         assert_eq!(
@@ -163,9 +161,10 @@ async fn the_tab_methods_run_the_browsers_operations_as_the_user_on_the_conversa
         listed.refusal(),
         (StatusCode::CONFLICT, ErrorCode::ConversationArchived)
     );
-    let opened = call(&backend, &master, &id, "open", json!({})).await;
+    let navigate = json!({ "tab": ABSENT, "url": "https://example.test/" });
+    let navigated = call(&backend, &master, &id, "navigate", navigate).await;
     assert_eq!(
-        opened.refusal(),
+        navigated.refusal(),
         (StatusCode::CONFLICT, ErrorCode::ConversationArchived)
     );
     let elsewhere = uuid::Uuid::new_v4().to_string();
@@ -178,7 +177,7 @@ async fn the_tab_methods_run_the_browsers_operations_as_the_user_on_the_conversa
 }
 
 #[tokio::test]
-async fn a_stopped_cloud_is_not_woken_to_list_close_or_move_its_tabs() {
+async fn a_stopped_cloud_is_not_woken_to_list_sync_or_move_its_tabs() {
     let harness = Harness::new().with_browser_package();
     let (backend, master) = harness.start_set_up().await;
     // A new conversation works on the Cloud, which never started.
@@ -191,8 +190,8 @@ async fn a_stopped_cloud_is_not_woken_to_list_close_or_move_its_tabs() {
         String::from_utf8_lossy(&listed.body)
     );
     assert_eq!(listed.json::<Value>()["state"], json!({ "tabs": [] }));
-    let closed = call(&backend, &master, &id, "close", json!({ "tab": ABSENT })).await;
-    assert_eq!(closed.status, StatusCode::OK);
+    let synced = call(&backend, &master, &id, "sync", json!({})).await;
+    assert_eq!(synced.status, StatusCode::OK);
     let navigate = json!({ "tab": ABSENT, "url": "https://example.test/" });
     let stopped = call(&backend, &master, &id, "navigate", navigate).await;
     assert_eq!(
@@ -211,7 +210,7 @@ async fn a_stopped_cloud_is_not_woken_to_list_close_or_move_its_tabs() {
     backend.close().await;
 }
 
-// Several seconds: the Cloud boots, the tab close installs the builtin
+// Several seconds: the Cloud boots, the first listing installs the builtin
 // package on its runner, and the Cloud then idles for a window.
 #[tokio::test]
 async fn listing_a_running_clouds_tabs_does_not_keep_it_awake() {
@@ -234,21 +233,21 @@ async fn listing_a_running_clouds_tabs_does_not_keep_it_awake() {
         String::from_utf8_lossy(&listed.body)
     );
     let device = the_cloud(&harness);
-    // Closing a tab starts the browser's service, which the Cloud's runner
-    // installs first. The close restarts the window as it is admitted and is
-    // no activity after that, so a lease of the conversation's file gate,
-    // which is its work, keeps the Cloud up meanwhile.
+    // The first listing starts the browser's service, which the Cloud's
+    // runner installs first. A listing is no activity, so a lease of the
+    // conversation's file gate, which is its work, keeps the Cloud up
+    // meanwhile.
     let working = backend
         .file_gate(&master, &id)
         .await
         .enter(Purpose::Demand)
         .await;
-    let closed = call(&backend, &master, &id, "close", json!({ "tab": ABSENT })).await;
+    let first = tabs(&backend, &master, &id).await;
     assert_eq!(
-        closed.status,
+        first.status,
         StatusCode::OK,
         "{}",
-        String::from_utf8_lossy(&closed.body)
+        String::from_utf8_lossy(&first.body)
     );
     let rested = Instant::now();
     drop(working);
@@ -290,9 +289,9 @@ async fn a_backend_whose_catalog_serves_no_browser_has_no_tab_list_and_no_tab_me
         listed.refusal(),
         (StatusCode::NOT_FOUND, ErrorCode::UnknownPlugin)
     );
-    let opened = call(&backend, &master, &id, "open", json!({})).await;
+    let bound = call(&backend, &master, &id, "bind", json!({ "panelTab": "a" })).await;
     assert_eq!(
-        opened.refusal(),
+        bound.refusal(),
         (StatusCode::NOT_FOUND, ErrorCode::UnknownPluginMethod)
     );
     backend.close().await;
@@ -350,8 +349,8 @@ async fn a_job_that_ends_and_a_tab_method_raise_the_revisions_the_summary_carrie
     );
 
     // The user's own tab methods change the list too; the working tree is the jobs'.
-    let closed = call(&backend, &master, &id, "close", json!({ "tab": ABSENT })).await;
-    assert_eq!(closed.status, StatusCode::OK);
+    let synced = call(&backend, &master, &id, "sync", json!({})).await;
+    assert_eq!(synced.status, StatusCode::OK);
     let operated = summary(&backend, &master, &id).await;
     assert_eq!(revisions(&operated), (1, browser_at(2)));
     backend.close().await;

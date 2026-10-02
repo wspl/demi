@@ -993,6 +993,7 @@ impl Conversations {
                     title: listed.title.clone(),
                     url: listed.url.clone(),
                     created_by: listed.tab.created_by().clone(),
+                    loading: listed.tab.loading(),
                 })
                 .collect();
             return Ok(CommandOutput::Json(output::value(TabsResult {

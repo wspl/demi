@@ -28,7 +28,8 @@ const placement = computed(() => {
   const placed = placePicture(props.tab.viewport, panel.value)
   return { ...placed, left: placed.left + snap.value.x, top: placed.top + snap.value.y }
 })
-const stalled = computed(() => state.connection === 'stalled')
+/** Nothing arrives, or the view is connecting again after it ended: the last picture stays under a quiet note. */
+const stalled = computed(() => state.connection === 'stalled' || (state.connection === 'opening' && state.ended !== null))
 const cursor = computed(() => {
   // A page can name a cursor this web browser has no rule for, or an image.
   const name = state.cursor.cursor

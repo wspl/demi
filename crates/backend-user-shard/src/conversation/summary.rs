@@ -91,6 +91,7 @@ impl Shard {
             status,
             revision: facts.revision,
             draft_revision: record.draft_revision,
+            panel_revision: record.panel_revision,
             plugin_revisions,
             working_tree_revision,
         })

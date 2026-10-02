@@ -524,6 +524,9 @@ pub struct LiveTab {
     pub created_by: BrowserCreatedBy,
     #[garde(dive)]
     pub viewport: BrowserViewport,
+    /// Whether the browser loads the tab's top-level page.
+    #[garde(skip)]
+    pub loading: bool,
 }
 
 /// The watched tab's JavaScript dialog.

@@ -1,19 +1,20 @@
 //! The `browser` plugin (`plugins.md` § Built-in plugins): the `demi
 //! browser` group, every leaf bound to an operation of the `demi.browser`
 //! command package, which runs it on the Host; the `browser` user stream of
-//! the live view; and the tab list and tab methods of the work panel's
-//! `browser` kind.
+//! the live view; the tab list and tab methods of the work panel's
+//! `browser` kind; and the kind's tabs on the backend.
 
 mod browser;
 pub mod page;
+mod panel;
 
 use std::rc::Rc;
 
 use demi_command_declarations::NativeOperation;
 use demi_command_package_browser_protocol::{PACKAGE, live};
 use demi_plugin_interface::{
-    CommandPlugin, Manifest, Placement, Plugin, PluginError, PluginFactory, PluginId, PluginPort,
-    Reply, Request, Stream,
+    CommandPlugin, Manifest, PanelTabChange, Placement, Plugin, PluginError, PluginFactory,
+    PluginId, PluginPort, Reply, Request, Scope, Stream, Topic,
 };
 use futures_util::future::LocalBoxFuture;
 
@@ -53,6 +54,7 @@ impl PluginFactory for Browser {
     fn instance(&self) -> Rc<dyn Plugin> {
         Rc::new(Instance {
             commands: commands(),
+            work: panel::Work::default(),
         })
     }
 }
@@ -140,9 +142,11 @@ fn commands() -> CommandPlugin {
 }
 
 /// One user's browser plugin: its commands are all native, so only its
-/// conversation state, the tab list, and the tab methods reach it.
+/// conversation state, the tab list, the tab methods, its kind's tabs and
+/// the ends of jobs reach it.
 struct Instance {
     commands: CommandPlugin,
+    work: panel::Work,
 }
 
 impl Plugin for Instance {
@@ -156,10 +160,45 @@ impl Plugin for Instance {
                 Request::Command { invocation, .. } => {
                     self.commands.command(*invocation, &port).await
                 }
-                Request::PageCall { method, params, .. } => {
-                    let result = page::call(&method, params, &port).await?;
+                Request::PageCall {
+                    method,
+                    params,
+                    conversation: Some(conversation),
+                    ..
+                } => {
+                    let result =
+                        page::call(&method, params, &port, &self.work, &conversation).await?;
                     Ok(Reply::Result { result })
                 }
+                Request::PageCall {
+                    conversation: None, ..
+                } => Err(PluginError::undeclared("user method")),
+                Request::PanelTab {
+                    conversation,
+                    change,
+                    tab,
+                    ..
+                } => {
+                    match change {
+                        PanelTabChange::Created => {
+                            self.work.bind(&conversation, &port, &tab.id).await?;
+                        }
+                        PanelTabChange::Removed => {
+                            self.work.removed(&conversation, &port, &tab).await?;
+                        }
+                    }
+                    port.changed(Scope::Conversation).await?;
+                    Ok(Reply::Done)
+                }
+                Request::Topic {
+                    topic: Topic::Jobs,
+                    conversation: Some(conversation),
+                    ..
+                } => {
+                    self.work.sync(&conversation, &port).await?;
+                    Ok(Reply::Done)
+                }
+                Request::Topic { .. } => Err(PluginError::undeclared("topic")),
                 Request::PageState {
                     conversation: Some(_),
                     ..
