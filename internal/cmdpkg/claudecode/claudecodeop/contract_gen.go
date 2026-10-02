@@ -95,6 +95,141 @@ func (v Artifact) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "sha256", Value: v.SHA256})
 	return contract.EncodeObject(fields)
 }
+func DecodeEnsureReply(data []byte) (EnsureReply, error) {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return nil, err
+	}
+	tag, err := contract.Decode[bool](obj["ok"])
+	if err != nil {
+		return nil, fmt.Errorf("ok: %w", err)
+	}
+	switch tag {
+	case true:
+		value, err := contract.Decode[Ensured](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case false:
+		value, err := contract.Decode[Failed](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	}
+	return nil, fmt.Errorf("unknown EnsureReply tag %v", tag)
+}
+
+type EnsureReplyJSON struct{ Value EnsureReply }
+
+func (v *EnsureReplyJSON) UnmarshalJSON(data []byte) error {
+	value, err := DecodeEnsureReply(data)
+	if err == nil {
+		v.Value = value
+	}
+	return err
+}
+func (v EnsureReplyJSON) MarshalJSON() ([]byte, error) {
+	if err := ValidateEnsureReply(v.Value); err != nil {
+		return nil, err
+	}
+	return json.Marshal(v.Value)
+}
+func ValidateEnsureReply(value EnsureReply) error { return contractValidateEnsureReply(value, 0) }
+func contractValidateEnsureReply(value EnsureReply, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	switch v := value.(type) {
+	case *Ensured:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateEnsured(*v, depth+1)
+	case *Failed:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateFailed(*v, depth+1)
+	default:
+		return fmt.Errorf("nil or unsupported EnsureReply")
+	}
+}
+func DecodeEnsured(data []byte) (Ensured, error) { return contract.Decode[Ensured](data) }
+func (v Ensured) Validate() error                { return contractValidateEnsured(v, 0) }
+func contractValidateEnsured(v Ensured, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contractValidateInstalled(v.Installed, depth+1); err != nil {
+		return contract.At("", err)
+	}
+	return nil
+}
+func (v *Ensured) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next Ensured
+	for key := range obj {
+		switch key {
+		case "version", "path", "ok":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["ok"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[bool](raw)
+		if err != nil || value != true {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["version"]
+		if !ok {
+			return contract.At("version", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("version", err)
+			}
+			next.Installed.Version = value
+		}
+	}
+	{
+		raw, ok := obj["path"]
+		if !ok {
+			return contract.At("path", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("path", err)
+			}
+			next.Installed.Path = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v Ensured) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "ok", Value: true})
+	fields = append(fields, contract.Field{Name: "version", Value: v.Installed.Version})
+	fields = append(fields, contract.Field{Name: "path", Value: v.Installed.Path})
+	return contract.EncodeObject(fields)
+}
 func DecodeErrorCode(data []byte) (ErrorCode, error) { return contract.Decode[ErrorCode](data) }
 func (v ErrorCode) Validate() error                  { return contractValidateErrorCode(v, 0) }
 func contractValidateErrorCode(v ErrorCode, depth int) error {
@@ -128,6 +263,80 @@ func (v ErrorCode) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	return json.Marshal(string(v))
+}
+func DecodeFailed(data []byte) (Failed, error) { return contract.Decode[Failed](data) }
+func (v Failed) Validate() error               { return contractValidateFailed(v, 0) }
+func contractValidateFailed(v Failed, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contractValidateFailure(v.Failure, depth+1); err != nil {
+		return contract.At("", err)
+	}
+	return nil
+}
+func (v *Failed) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next Failed
+	for key := range obj {
+		switch key {
+		case "code", "message", "ok":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["ok"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[bool](raw)
+		if err != nil || value != false {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["code"]
+		if !ok {
+			return contract.At("code", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[ErrorCode](raw)
+			if err != nil {
+				return contract.At("code", err)
+			}
+			next.Failure.Code = value
+		}
+	}
+	{
+		raw, ok := obj["message"]
+		if !ok {
+			return contract.At("message", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("message", err)
+			}
+			next.Failure.Message = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v Failed) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "ok", Value: false})
+	fields = append(fields, contract.Field{Name: "code", Value: v.Failure.Code})
+	fields = append(fields, contract.Field{Name: "message", Value: v.Failure.Message})
+	return contract.EncodeObject(fields)
 }
 func DecodeFailure(data []byte) (Failure, error) { return contract.Decode[Failure](data) }
 func (v Failure) Validate() error                { return contractValidateFailure(v, 0) }
@@ -267,6 +476,13 @@ func (v Installed) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "version", Value: v.Version})
 	fields = append(fields, contract.Field{Name: "path", Value: v.Path})
 	return contract.EncodeObject(fields)
+}
+func ParseOperation(value string) (Operation, error) {
+	v := Operation(value)
+	if err := v.Validate(); err != nil {
+		return "", err
+	}
+	return v, nil
 }
 func DecodeOperation(data []byte) (Operation, error) { return contract.Decode[Operation](data) }
 func (v Operation) Validate() error                  { return contractValidateOperation(v, 0) }
@@ -458,6 +674,148 @@ func (v Status) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "platform", Value: v.Platform})
 	fields = append(fields, contract.Field{Name: "installed", Value: v.Installed})
 	return contract.EncodeObject(fields)
+}
+func DecodeStatusDone(data []byte) (StatusDone, error) { return contract.Decode[StatusDone](data) }
+func (v StatusDone) Validate() error                   { return contractValidateStatusDone(v, 0) }
+func contractValidateStatusDone(v StatusDone, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contractValidateStatus(v.Status, depth+1); err != nil {
+		return contract.At("", err)
+	}
+	return nil
+}
+func (v *StatusDone) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next StatusDone
+	for key := range obj {
+		switch key {
+		case "platform", "installed", "ok":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["ok"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[bool](raw)
+		if err != nil || value != true {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["platform"]
+		if !ok {
+			return contract.At("platform", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("platform", err)
+			}
+			next.Status.Platform = value
+		}
+	}
+	{
+		raw, ok := obj["installed"]
+		if !ok {
+			return contract.At("installed", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]Installed, error) { return contract.List(b, contract.Decode[Installed]) }(raw)
+			if err != nil {
+				return contract.At("installed", err)
+			}
+			next.Status.Installed = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v StatusDone) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "ok", Value: true})
+	fields = append(fields, contract.Field{Name: "platform", Value: v.Status.Platform})
+	fields = append(fields, contract.Field{Name: "installed", Value: v.Status.Installed})
+	return contract.EncodeObject(fields)
+}
+func DecodeStatusReply(data []byte) (StatusReply, error) {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return nil, err
+	}
+	tag, err := contract.Decode[bool](obj["ok"])
+	if err != nil {
+		return nil, fmt.Errorf("ok: %w", err)
+	}
+	switch tag {
+	case false:
+		value, err := contract.Decode[Failed](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case true:
+		value, err := contract.Decode[StatusDone](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	}
+	return nil, fmt.Errorf("unknown StatusReply tag %v", tag)
+}
+
+type StatusReplyJSON struct{ Value StatusReply }
+
+func (v *StatusReplyJSON) UnmarshalJSON(data []byte) error {
+	value, err := DecodeStatusReply(data)
+	if err == nil {
+		v.Value = value
+	}
+	return err
+}
+func (v StatusReplyJSON) MarshalJSON() ([]byte, error) {
+	if err := ValidateStatusReply(v.Value); err != nil {
+		return nil, err
+	}
+	return json.Marshal(v.Value)
+}
+func ValidateStatusReply(value StatusReply) error { return contractValidateStatusReply(value, 0) }
+func contractValidateStatusReply(value StatusReply, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	switch v := value.(type) {
+	case *Failed:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateFailed(*v, depth+1)
+	case *StatusDone:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateStatusDone(*v, depth+1)
+	default:
+		return fmt.Errorf("nil or unsupported StatusReply")
+	}
+}
+func ParseVersion(value string) (Version, error) {
+	v := Version(value)
+	if err := v.Validate(); err != nil {
+		return "", err
+	}
+	return v, nil
 }
 func DecodeVersion(data []byte) (Version, error) { return contract.Decode[Version](data) }
 func (v Version) Validate() error                { return contractValidateVersion(v, 0) }

@@ -1,7 +1,9 @@
 package claudecodeop_test
 
 import (
+	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -64,6 +66,83 @@ func TestVersionDirectoryNames(t *testing.T) {
 	} {
 		if _, err := claudecodeop.DecodeVersion([]byte(fmt.Sprintf("%q", invalid))); err == nil {
 			t.Errorf("version %q was accepted", invalid)
+		}
+	}
+}
+
+// The service stream exposes only stdout, so both outcomes must carry their
+// boolean discriminator alongside the answer. This test uses no IO or waits.
+func TestRepliesCarryOKBesideAnswer(t *testing.T) {
+	installed := claudecodeop.Installed{Version: "2.1.3", Path: "/opt/claude"}
+	failure := &claudecodeop.Failed{Failure: claudecodeop.Failure{
+		Code: claudecodeop.InstallFailed, Message: "digest differs",
+	}}
+	for _, tc := range []struct {
+		name  string
+		reply claudecodeop.StatusReply
+		wire  string
+	}{
+		{"done", &claudecodeop.StatusDone{Status: claudecodeop.Status{
+			Platform: "darwin-arm64", Installed: []claudecodeop.Installed{installed},
+		}}, `{"ok":true,"platform":"darwin-arm64","installed":[{"version":"2.1.3","path":"/opt/claude"}]}`},
+		{"failed", failure, `{"ok":false,"code":"install_failed","message":"digest differs"}`},
+	} {
+		t.Run("status/"+tc.name, func(t *testing.T) {
+			printed, err := json.Marshal(claudecodeop.StatusReplyJSON{Value: tc.reply})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(printed) != tc.wire {
+				t.Fatalf("encoded %s, want %s", printed, tc.wire)
+			}
+			decoded, err := claudecodeop.DecodeStatusReply(printed)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(decoded, tc.reply) {
+				t.Fatalf("decoded %#v, want %#v", decoded, tc.reply)
+			}
+		})
+	}
+	for _, tc := range []struct {
+		name  string
+		reply claudecodeop.EnsureReply
+		wire  string
+	}{
+		{"done", &claudecodeop.Ensured{Installed: installed}, `{"ok":true,"version":"2.1.3","path":"/opt/claude"}`},
+		{"failed", failure, `{"ok":false,"code":"install_failed","message":"digest differs"}`},
+	} {
+		t.Run("ensure/"+tc.name, func(t *testing.T) {
+			printed, err := json.Marshal(claudecodeop.EnsureReplyJSON{Value: tc.reply})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(printed) != tc.wire {
+				t.Fatalf("encoded %s, want %s", printed, tc.wire)
+			}
+			decoded, err := claudecodeop.DecodeEnsureReply(printed)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(decoded, tc.reply) {
+				t.Fatalf("decoded %#v, want %#v", decoded, tc.reply)
+			}
+		})
+	}
+	for _, wire := range []string{
+		`{"platform":"x","installed":[]}`,
+		`{"ok":"true","platform":"x","installed":[]}`,
+		`{"ok":null,"platform":"x","installed":[]}`,
+		`{"ok":true,"platform":"x","installed":[],"code":"install_failed","message":"mixed"}`,
+		`{"ok":false,"code":"unknown","message":"failed"}`,
+		`{"ok":false,"code":"install_failed"}`,
+		`{"ok":true,"version":"2.1.3"}`,
+	} {
+		if _, err := claudecodeop.DecodeStatusReply([]byte(wire)); err == nil {
+			t.Errorf("DecodeStatusReply(%s) succeeded", wire)
+		}
+		if _, err := claudecodeop.DecodeEnsureReply([]byte(wire)); err == nil {
+			t.Errorf("DecodeEnsureReply(%s) succeeded", wire)
 		}
 	}
 }
