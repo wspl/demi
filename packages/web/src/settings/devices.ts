@@ -5,6 +5,7 @@ import { reportError } from '@demicodes/web-ui/infra/errors'
 import { useProduct } from '../state/product'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
 import { cloudResetAnswerSchema, type CloudReset } from '../api/generated/web-api'
+import { cloudInstalls } from '../state/installs'
 
 export const useDeviceSettings = defineStore('device-settings', () => {
   const product = useProduct()
@@ -31,6 +32,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
       error: status.error ?? status.operation?.error ?? null,
       volumes: status.volumes,
       limits: status.limits,
+      installs: cloudInstalls(product.snapshot),
     }
   })
   async function revoke(id: string): Promise<void> {

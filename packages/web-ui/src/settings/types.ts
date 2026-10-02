@@ -1,6 +1,7 @@
 /** Presentation models for the settings surfaces. Hosts map their own state onto these. */
 import { VIDEO_FILE_EXTENSIONS } from '@demicodes/protocol'
 import type { Component } from 'vue'
+import type { HostInstall } from '../devices/installs'
 
 /** A section id. Hosts choose their own set; the built-in four cover the product today. */
 export type SettingsTab = string
@@ -33,6 +34,8 @@ export interface SettingsDevice {
   online: boolean
   /** When the host last connected; shown while it is offline. */
   seen?: string
+  /** What its runner installs now. */
+  installs: readonly HostInstall[]
 }
 
 /** A plugin as the Plugins page lists it. */
@@ -132,6 +135,8 @@ export interface SettingsProviderCli {
   install: { state: 'installing' } | { state: 'installed' } | { state: 'failed'; message: string } | null
   /** The machines that could be asked now, and what each has; null when one did not answer. */
   machines: Array<{ id: string; name: string; versions: string[] | null }>
+  /** What the user's Cloud installs of the CLI now, an update included. */
+  installs: readonly HostInstall[]
 }
 
 /**
@@ -148,9 +153,11 @@ export interface SettingsProviderEntry {
   apiKey: string
   keyConfigured?: boolean
   configured?: boolean
-  /** Its requests run as a process on a machine, started from a CLI Demi installs there. */
-  runsOnHost?: boolean
-  /** That CLI, once asked for; null while it is not known. */
+  /**
+   * The CLI its requests start on a machine, which Demi installs there, once
+   * asked for; null while it is not known, absent for a provider whose
+   * requests are HTTP.
+   */
   cli?: SettingsProviderCli | null
   /** Where the model list comes from: the vendor catalog, or ids the user typed. */
   modelSource: 'catalog' | 'manual'

@@ -1,5 +1,6 @@
 import type { Block, ProviderFailureFacts, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import type { FileBrowserPlatform } from '@demicodes/web-ui/files/types'
+import type { HostInstall } from '@demicodes/web-ui/devices/installs'
 import type {
   SidebarConversation,
   SidebarProject,
@@ -80,6 +81,8 @@ export interface Device {
   platform: FileBrowserPlatform
   home: string | null
   seen?: string
+  /** What its runner installs now. */
+  installs: readonly HostInstall[]
 }
 
 export interface Project extends SidebarProject {

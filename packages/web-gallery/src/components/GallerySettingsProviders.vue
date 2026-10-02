@@ -25,6 +25,7 @@ import {
   type MockProvider,
   type SettingsState,
 } from '../fixtures/settings'
+import { CLAUDE_CLI_ARTIFACTS, playInstalls } from '../fixtures/installs'
 
 /**
  * The shared providers page over the mock state. Everything the page emits is
@@ -212,6 +213,7 @@ function refreshUsage(p: SettingsProviderEntry, accountId: string, automatic = f
   }
 }
 onScopeDispose(() => {
+  cliInstalls.abort()
   for (const accounts of Object.values(usageTimers.value)) {
     for (const request of Object.values(accounts)) {
       window.clearTimeout(request.timer)
@@ -233,17 +235,32 @@ function checkCli(p: SettingsProviderEntry) {
   }, 1200)
 }
 
+/** How long the Cloud takes to wake and read the release before its download starts. */
+const CLI_WAKE_MS = 600
+/** Ends the specimen's CLI installs when the page goes. */
+const cliInstalls = new AbortController()
+
+/** Installing on Cloud while the Cloud wakes, then the download as the runner reports it, then installed. */
 function installCli(p: SettingsProviderEntry) {
-  if (!p.cli) {
+  const cli = p.cli
+  if (!cli || cli.install?.state === 'installing') {
     return
   }
-  p.cli.install = { state: 'installing' }
-  window.setTimeout(() => {
-    if (p.cli && 'version' in p.cli.newest) {
-      p.cli.install = { state: 'installed' }
-      p.cli.machines[0]!.versions = [p.cli.newest.version]
-    }
-  }, 2000)
+  cli.install = { state: 'installing' }
+  const wake = window.setTimeout(() => {
+    void playInstalls(CLAUDE_CLI_ARTIFACTS, (list) => {
+      cli.installs = list
+    }, cliInstalls.signal).then(() => {
+      if (cliInstalls.signal.aborted) {
+        return
+      }
+      cli.install = { state: 'installed' }
+      if ('version' in cli.newest) {
+        cli.machines[0]!.versions = [cli.newest.version]
+      }
+    })
+  }, CLI_WAKE_MS)
+  cliInstalls.signal.addEventListener('abort', () => window.clearTimeout(wake), { once: true })
 }
 
 function activateAccount(p: SettingsProviderEntry, id: string) {

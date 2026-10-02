@@ -23,6 +23,7 @@ import {
   type SettingsWireApi,
 } from '@demicodes/web-ui/settings/types'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
+import { cliInstalls } from '../state/installs'
 import {
   loginAnswerSchema,
   loginStartedSchema,
@@ -76,15 +77,18 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       }
     >
   >({})
-  /** Each process provider's CLI, as last read (`claude-code.md` § What the user sees). */
-  const clis = ref<Record<string, SettingsProviderCli>>({})
+  /**
+   * Each process provider's CLI, as last read (`claude-code.md` § What the
+   * user sees); its installs come from the product state instead.
+   */
+  const clis = ref<Record<string, Omit<SettingsProviderCli, 'installs'>>>({})
   let lifetime = new AbortController()
   const writes = new SerialQueue()
   const providers = computed(() => {
     const configured = resources.providers.map((provider) => ({
       ...provider,
       ...testResults.value[provider.id],
-      ...(provider.runsOnHost ? { cli: clis.value[provider.id] ?? null } : {}),
+      ...(provider.cliPackage === null ? {} : { cli: cliView(provider.id, provider.cliPackage) }),
       ...edits.value[provider.id],
       ...(manualDrafts.value[provider.id]
         ? {
@@ -167,6 +171,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       name,
       kind,
       providerType: id,
+      // Not configured, the entry has no provider to name a CLI.
+      cliPackage: null,
       configured: false,
       keyConfigured: false,
       vendorId: null,
@@ -521,9 +527,18 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     }
   }
 
+  /** The CLI of entry `id` as last read, with what the Cloud installs of `cliPackage` now. */
+  function cliView(id: string, cliPackage: string): SettingsProviderCli | null {
+    const reading = clis.value[id]
+    if (!reading) {
+      return null
+    }
+    return { ...reading, installs: cliInstalls(product.snapshot, cliPackage) }
+  }
+
   /** Loads the CLI of a provider the page is showing; its failure is not the page's. */
   function loadCli(provider: SettingsProviderEntry): void {
-    if (!provider.runsOnHost || provider.configured === false) {
+    if (provider.cli === undefined || provider.configured === false) {
       return
     }
     void readCli(provider.id, false, lifetime.signal).catch((error) => {

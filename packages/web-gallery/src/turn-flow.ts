@@ -1,22 +1,25 @@
-import { onBeforeUnmount, reactive } from 'vue'
+import { onBeforeUnmount, reactive, shallowRef } from 'vue'
 import type { Block, UserContentBlock } from '@demicodes/protocol'
 import { ACTIVITY_HANDOFF_MS } from '@demicodes/web-ui/agent/activity-slot'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { ChatSessionState, ConversationState } from '@demicodes/web-ui/agent/types'
+import type { HostInstall } from '@demicodes/web-ui/devices/installs'
 import { segmentStreamUnits } from '@demicodes/web-ui/ui/stream-reveal'
 import { demoModel, shellView } from './fixtures/blocks'
+import { CLAUDE_CLI_ARTIFACTS, playInstalls } from './fixtures/installs'
 import { printLive } from './live-command'
 
 /**
  * `turn` is a full turn from a sent message; `resume` and `retry` recover an
  * aborted or failed tail; `connect` opens over a dropped socket; `stream` is
- * thinking then reply with nothing waited for. Every fixture only changes
+ * thinking then reply with nothing waited for; `install` is a first request
+ * that waits while the Cloud installs its provider's CLI. Every fixture only changes
  * conversation state, the way the product's runtime does: the transcript's
  * tail row, its faces and the handoff into a block are `web-ui`'s.
  */
-export type TurnFlowKind = 'turn' | 'resume' | 'retry' | 'connect' | 'stream'
+export type TurnFlowKind = 'turn' | 'resume' | 'retry' | 'connect' | 'stream' | 'install'
 
 /** The state `ChatSession` reads, over the full live conversation state the runtime keeps. */
 export type TurnFlowState = ConversationState & ChatSessionState
@@ -79,6 +82,10 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     terminals: options.terminals ?? [],
   })
   const timers: number[] = []
+  /** What the conversation's Hosts install now, as `ChatSession` shows below the tail. */
+  const installs = shallowRef<readonly HostInstall[]>([])
+  /** Ends the install the flow plays, if one is under way. */
+  let installing: AbortController | null = null
   let token = 0
   let sequence = 0
   /** The call of the turn that runs now, whose command a stop ends. */
@@ -90,6 +97,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       window.clearTimeout(id)
     }
     timers.length = 0
+    installing?.abort()
+    installing = null
     // A stopped action stops the command its running call started.
     if (runningTool) {
       endTerminal(command(runningTool), 'aborted')
@@ -449,6 +458,23 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       return
     }
 
+    if (kind === 'install') {
+      // Requesting holds while the Cloud installs the CLI; then the turn goes on.
+      state.blocks = [userBlock([{ type: 'text', text: USER_TEXT }])]
+      state.phase = 'running'
+      const playing = new AbortController()
+      installing = playing
+      void playInstalls(CLAUDE_CLI_ARTIFACTS, (list) => {
+        installs.value = list
+      }, playing.signal).then(() => {
+        if (run === token) {
+          installing = null
+          thinkThenReply(run, WAIT_MS, THINK_2)
+        }
+      })
+      return
+    }
+
     if (kind === 'connect') {
       // The socket dropped while a turn was running: Connecting wins until it is back.
       state.blocks = [userBlock([{ type: 'text', text: USER_TEXT }])]
@@ -506,6 +532,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
 
   return {
     state,
+    installs,
     play,
     turn,
     resume,

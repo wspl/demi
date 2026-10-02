@@ -520,7 +520,11 @@ catalog never resends a failed message.
 `GET /api/models` is an account-wide catalog, independent of any conversation.
 Each provider carries its models, `sourceFetchedAt`, `stale` and `warnings`,
 its authentication and runtime health, the `availability` the backend derives
-from that health, and whether its transport is a process. `availability` is
+from that health, and `cliPackage`: the command package that installs the
+CLI its requests start on the user's Cloud, such as `demi.claude-code`, or
+null when its requests are HTTP. The page shows that package's installs
+([Installation progress](../execution/native-runtime.md#installation-progress)).
+The entries of the product state carry the same `cliPackage`. `availability` is
 `{ type: "unavailable", reason: "authentication", message }` while the
 credential is missing or refused, `{ type: "unavailable", reason: "runtime",
 message }` with the runtime's message while the provider cannot run, and
