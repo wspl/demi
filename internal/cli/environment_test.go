@@ -30,14 +30,14 @@ func TestUnknownVariable(t *testing.T) {
 			prefix:  "DEMI_",
 			known:   []string{"DEMI_PORT"},
 			environ: []string{"DEMI_PORRT=secret"},
-			want:    "unknown environment variable: DEMI_PORRT",
+			want:    "DEMI_PORRT",
 		},
 		{
 			name:    "obsolete managed setting is named",
 			prefix:  "DEMI_MANAGED_",
 			known:   []string{"DEMI_MANAGED_RUNSC"},
 			environ: []string{"DEMI_MANAGED_RUNSC=/opt/gvisor/runsc", "DEMI_MANAGED_FIRECRACKER=/old"},
-			want:    "unknown environment variable: DEMI_MANAGED_FIRECRACKER",
+			want:    "DEMI_MANAGED_FIRECRACKER",
 		},
 		{
 			name:    "manager ignores other prefixes",
@@ -48,46 +48,41 @@ func TestUnknownVariable(t *testing.T) {
 			name:    "first unknown in environment order",
 			prefix:  "DEMI_",
 			environ: []string{"DEMI_Z=1", "DEMI_A=2"},
-			want:    "unknown environment variable: DEMI_Z",
+			want:    "DEMI_Z",
 		},
 		{
 			name:    "known names must match exactly",
 			prefix:  "DEMI_",
 			known:   []string{"DEMI_PORT", "DEMI_MODE"},
 			environ: []string{"DEMI_PORT_EXTRA=1"},
-			want:    "unknown environment variable: DEMI_PORT_EXTRA",
+			want:    "DEMI_PORT_EXTRA",
 		},
 		{
 			name:    "known names are case sensitive",
 			prefix:  "DEMI_",
 			known:   []string{"DEMI_PORT"},
 			environ: []string{"DEMI_port=1"},
-			want:    "unknown environment variable: DEMI_port",
+			want:    "DEMI_port",
 		},
 		{
 			name:    "invalid Unicode names ignored and values opaque",
 			prefix:  "DEMI_",
 			known:   []string{"DEMI_PORT"},
 			environ: []string{"DEMI_\xff=1", "DEMI_PORT=\xff", "DEMI_未知=1"},
-			want:    "unknown environment variable: DEMI_未知",
+			want:    "DEMI_未知",
 		},
 		{
 			name:    "empty prefix checks all names",
 			environ: []string{"PATH=/bin"},
-			want:    "unknown environment variable: PATH",
+			want:    "PATH",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := cli.UnknownVariable(tt.prefix, tt.known, tt.environ)
-			if tt.want == "" {
-				if err != nil {
-					t.Fatalf("UnknownVariable() = %v, want nil", err)
-				}
-				return
-			}
-			if err == nil || err.Error() != tt.want {
-				t.Fatalf("UnknownVariable() = %v, want %q", err, tt.want)
+			name, found := cli.UnknownVariable(tt.prefix, tt.known, tt.environ)
+			wantFound := tt.want != ""
+			if name != tt.want || found != wantFound {
+				t.Fatalf("UnknownVariable() = (%q, %t), want (%q, %t)", name, found, tt.want, wantFound)
 			}
 		})
 	}
