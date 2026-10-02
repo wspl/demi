@@ -351,7 +351,8 @@ byte; `go test -race ./internal/...` passes.
 | Agent | `a-store`, `a-transcript`, `a-session`, `a-tools`, `a-server` |
 | Plugins | `g-browser`, `g-expose`, `g-skills`, `g-small` (changes, file, file browser, todo) |
 | Backend | `b-database`, `b-remotehost`, `b-blobs`, `b-accounts`, `b-pagesync`, `b-expose`, `b-runners`, `b-cloud`, `b-providers`, `b-plugins`, `b-hostaccess`, `b-usershard`, `b-http`, `b-backend` |
-| Tools | `t-release` (packaging, Cloud image, development store, Chrome pin) |
+| Tools | `t-release` (packaging, Cloud image, development store, Chrome pin), `t-pages` (the plugin page registry that `bun run contracts` writes for `web` and `web-gallery`, in `tools/contractgen`, after the plugins' API checkpoints) |
+| Documents | `d-hostaccess` (`docs/execution/sessions-and-targets.md` § Host operations for the Go shard and leases, before `b-hostaccess`) |
 
 The API checkpoints follow the dependency graph, so they form short levels:
 each takes one agent run, and the longest chain, from `l-host` to
