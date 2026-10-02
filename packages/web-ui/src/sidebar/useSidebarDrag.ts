@@ -6,7 +6,7 @@ type Entry = Pick<SidebarReorder, 'kind' | 'id'>
 
 /** Pointer sorting keeps the real list in place until drop and supports Escape cancellation. */
 export function useSidebarDrag(
-  container: Ref<HTMLElement | undefined>,
+  container: Readonly<Ref<HTMLElement | undefined>>,
   projects: () => readonly SidebarProject[],
   conversations: () => readonly SidebarConversation[],
   commit: (request: SidebarReorder) => void,
