@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -61,7 +62,7 @@ func TestEveryOperationDecodesItsSmallestInput(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if op.OperationName() != full {
+			if op.OperationName() != name {
 				t.Fatalf("name = %s", op.OperationName())
 			}
 			wantTab := name != "open" && name != "tabs" && name != "content.fetch"
@@ -143,6 +144,9 @@ func TestInputsAnswerTabTargetWaitAndDeadline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if open.(*browserop.OpenInput).Load != nil || browserop.DefaultLoad != browserop.LoadDomContentLoaded {
+		t.Fatal("open without load does not use DOMContentLoaded")
+	}
 	if open.Timeout() != 300*time.Second {
 		t.Fatalf("open deadline = %v", open.Timeout())
 	}
@@ -184,8 +188,17 @@ func TestInvocationDecodesToNamedOperation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if op.OperationName() != name {
-			t.Fatalf("name = %s", op.OperationName())
+		switch v := op.(type) {
+		case browserop.Input:
+			if v.OperationName() != strings.TrimPrefix(name, browserop.Prefix) {
+				t.Fatalf("name = %s", v.OperationName())
+			}
+		case *browserop.LiveInput:
+			if v.FullName() != name {
+				t.Fatalf("name = %s", v.FullName())
+			}
+		default:
+			t.Fatalf("operation = %T", op)
 		}
 	}
 	_, err := browserop.ParseOperation("browser.live", []byte(`{"tab":"t"}`))
@@ -217,7 +230,7 @@ func TestInvocationDecodesToNamedOperation(t *testing.T) {
 	}
 }
 
-func TestResultsPrintDocumentedNames(t *testing.T) {
+func TestResultsAndFailuresPrintDocumentedNames(t *testing.T) {
 	url := "https://example.test/"
 	tabs := []browserop.TabID{"t1"}
 	action := browserop.ActionResult{Operation: "click", Target: &browserop.ResolvedElement{Ref: "e2", Role: "button", Name: "Sign in"}, Result: json.RawMessage(`"completed"`), URL: &url, OpenedTabs: &tabs}
@@ -239,9 +252,41 @@ func TestResultsPrintDocumentedNames(t *testing.T) {
 	if _, err := browserop.DecodeReadResult([]byte(`{"value":1,"extra":2}`)); err == nil {
 		t.Fatal("unknown field accepted")
 	}
+	failure := browserop.BrowserFailure{
+		Code:    browserop.BrowserErrorCodePartialFailure,
+		Message: "some browser items failed",
+		Details: &browserop.ErrorDetails{
+			Action:           new(browserop.ActionProgressNotStarted),
+			Tab:              new("t1"),
+			DebuggingCallers: new([]uint64{1}),
+			AssetsExportResult: &browserop.AssetsExportResult{
+				Directory: "/out", Manifest: "/out/manifest.json",
+				Files: []browserop.ExportedAsset{{ID: "a", Path: "/out/a.png", Bytes: 3, MIMEType: "image/png"}},
+			},
+		},
+	}
+	printed, err := contract.EncodeJSON(failure)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := `{"code":"partial_failure","message":"some browser items failed","details":{"action":"not_started","tab":"t1","debuggingCallers":[1],"directory":"/out","manifest":"/out/manifest.json","files":[{"id":"a","path":"/out/a.png","bytes":3,"mimeType":"image/png"}]}}`
+	if !reflect.DeepEqual(jsonValue(t, []byte(expected)), jsonValue(t, printed)) {
+		t.Fatalf("failure JSON = %s, want %s", printed, expected)
+	}
+	decoded, err := browserop.DecodeBrowserFailure(printed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(decoded, failure) {
+		t.Fatalf("failure = %#v, want %#v", decoded, failure)
+	}
+
 }
 
 func TestFrameHeadersHaveDocumentedLayout(t *testing.T) {
+	if _, err := (browserop.VideoHeader{Tab: "invalid"}).Append(nil); err == nil {
+		t.Fatal("accepted invalid Go tab identity")
+	}
 	header := browserop.VideoHeader{Tab: "t1", Generation: 2, Sequence: 9, Key: true, Timestamp: 1.5, Width: 1280, Height: 720}
 	data, err := header.Append(nil)
 	if err != nil {
@@ -343,6 +388,14 @@ func TestReleaseRecordsAreChecked(t *testing.T) {
 }
 
 func TestTabIDsAndReferencesAreNumberedFromOne(t *testing.T) {
+	for _, number := range []uint64{0, 1000000000000000} {
+		if _, err := browserop.NumberedTabID(number); err == nil {
+			t.Errorf("accepted invalid tab number %d", number)
+		}
+		if _, err := browserop.NumberedNodeRef(number); err == nil {
+			t.Errorf("accepted invalid node number %d", number)
+		}
+	}
 	tab, err := browserop.NumberedTabID(7)
 	if err != nil || tab != "t7" {
 		t.Fatalf("tab = %q %v", tab, err)
@@ -388,5 +441,118 @@ func assertBadRelease(t *testing.T, record map[string]any) {
 	}
 	if _, err := browserop.DecodeBrowserRelease(data); err == nil {
 		t.Fatal("invalid release accepted")
+	}
+}
+
+func TestLiveMessagesDecodeAsThePageSendsThem(t *testing.T) {
+	data, err := os.ReadFile("testdata/live-viewer.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixtures struct {
+		Accepted []json.RawMessage `json:"accepted"`
+		Refused  []json.RawMessage `json:"refused"`
+	}
+	if err := json.Unmarshal(data, &fixtures); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range fixtures.Accepted {
+		decoded, err := browserop.DecodeLiveViewerMessage(value)
+		if err != nil {
+			t.Fatalf("%s: %v", value, err)
+		}
+		printed, err := contract.EncodeJSON(browserop.LiveViewerMessageJSON{Value: decoded})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(jsonValue(t, value), jsonValue(t, printed)) {
+			t.Fatalf("live message changed: got %s, want %s", printed, value)
+		}
+	}
+	for _, value := range fixtures.Refused {
+		if _, err := browserop.DecodeLiveViewerMessage(value); err == nil {
+			t.Errorf("accepted %s", value)
+		}
+	}
+}
+
+func TestOptionalVectorItemLimitsRemainGoOnly(t *testing.T) {
+	for _, tc := range []struct {
+		operation, field, rest string
+		min, max               int
+	}{
+		{"select", "value", "", 0, browserop.StdinBytes},
+		{"select", "option-label", "", 0, browserop.StdinBytes},
+		{"cdp.events", "method", "", 1, browserop.LocatorLength},
+		{"assets.export", "id", `,"inventory":"i","output-dir":"out"`, 1, browserop.LocatorLength},
+	} {
+		t.Run(tc.operation+"/"+tc.field, func(t *testing.T) {
+			for _, size := range []int{0, tc.max, tc.max + 1} {
+				args := []byte(`{"tab":"t1","` + tc.field + `":["` + strings.Repeat("😀", size) + `"]` + tc.rest + `}`)
+				_, err := browserop.ParseInput(tc.operation, args)
+				wantError := size < tc.min || size > tc.max
+				if (err != nil) != wantError {
+					t.Fatalf("%d Unicode scalars: %v", size, err)
+				}
+			}
+		})
+	}
+}
+
+func TestBrowserAccessorsReturnDetachedCopies(t *testing.T) {
+	input, err := browserop.ParseInput("click", []byte(`{"tab":"t1","role":"button","frame":["e2"],"nth":2,"within":"e3","wait-url":"**/done"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := input.ElementTarget()
+	*target.Role = "changed"
+	(*target.Frame)[0] = "e9"
+	*target.Nth = 9
+	*target.Within = "e9"
+	*input.TabID() = "t9"
+	*input.WaitURLPattern() = "changed"
+	again := input.ElementTarget()
+	if *again.Role != "button" || (*again.Frame)[0] != "e2" || *again.Nth != 2 || *again.Within != "e3" || *input.TabID() != "t1" || *input.WaitURLPattern() != "**/done" {
+		t.Fatalf("mutating accessor copies changed input: %#v", input)
+	}
+	query, err := browserop.ParseQuery([]byte(`{"and":[{"match":{"role":"row"}},{"match":{"text-match":"Order A"}}],"has":{"match":{"role":"button"}},"visible":true,"nth":0}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	branches := query.Branches()
+	if len(branches) != 4 || branches[1].Match.TextMatch == nil || *branches[1].Match.TextMatch != "Order A" || *branches[2].Match.Role != "row" || *branches[3].Match.Role != "button" {
+		t.Fatalf("wrong branch traversal: %#v", branches)
+	}
+	*branches[0].Visible = false
+	*branches[0].Nth = 5
+	*(*branches[0].And)[0].Match.Role = "changed"
+	*branches[1].Match.TextMatch = "changed"
+	*branches[3].Match.Role = "changed"
+	target = new((*query.And)[0].Match.Target())
+	*target.Role = "changed too"
+	if !*query.Visible || *query.Nth != 0 || *(*query.And)[0].Match.Role != "row" || *(*query.And)[1].Match.TextMatch != "Order A" || *query.Has.Match.Role != "button" {
+		t.Fatalf("mutating query copies changed source: %#v", query)
+	}
+}
+
+func TestObservationValuesKeepTheirScalarWireForm(t *testing.T) {
+	for _, value := range []string{`"hello"`, `3.5`} {
+		fixture := []byte(`{"matches":[{"ref":"e2","role":"textbox","name":"Value","value":` + value + `,"depth":1,"states":[]}],"count":1,"truncated":false}`)
+		decoded, err := browserop.DecodeFindResult(fixture)
+		if err != nil {
+			t.Fatal(err)
+		}
+		encoded, err := contract.EncodeJSON(decoded)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(jsonValue(t, fixture), jsonValue(t, encoded)) {
+			t.Fatalf("scalar changed: %s", encoded)
+		}
+	}
+	for _, invalid := range []string{`true`, `[]`, `{}`, `null`} {
+		if _, err := browserop.DecodeNodeValue([]byte(invalid)); err == nil {
+			t.Errorf("accepted node value %s", invalid)
+		}
 	}
 }

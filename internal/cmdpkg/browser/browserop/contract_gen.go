@@ -365,9 +365,6 @@ func contractValidateAssetsExportInput(v AssetsExportInput, depth int) error {
 		for i, item := range *v.ID {
 			_ = i
 			_ = item
-			if err := contractValidateLocatorText(item, depth+1); err != nil {
-				return contract.At(fmt.Sprintf("%s[%d]", "id", i), err)
-			}
 			if err := contract.Text(string(item), 0, -1, ""); err != nil {
 				return contract.At(fmt.Sprintf("%s[%d]", "id", i), err)
 			}
@@ -400,6 +397,9 @@ func contractValidateAssetsExportInput(v AssetsExportInput, depth int) error {
 		if (*v.TimeoutMS) > 300000 {
 			return contract.At("timeout", fmt.Errorf("outside numeric bounds"))
 		}
+	}
+	if err := validateAssetsExportInput(v); err != nil {
+		return err
 	}
 	return nil
 }
@@ -445,8 +445,8 @@ func (v *AssetsExportInput) UnmarshalJSON(data []byte) error {
 	{
 		raw, ok := obj["id"]
 		if ok {
-			value, err := func(b []byte) (*[]LocatorText, error) {
-				return contract.Pointer(b, func(b []byte) ([]LocatorText, error) { return contract.List(b, contract.Decode[LocatorText]) })
+			value, err := func(b []byte) (*[]string, error) {
+				return contract.Pointer(b, func(b []byte) ([]string, error) { return contract.List(b, contract.Decode[string]) })
 			}(raw)
 			if err != nil {
 				return contract.At("id", err)
@@ -528,7 +528,7 @@ func (v AssetsExportInput) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func AssetsExportInputJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`assets.export`: saves an inventory's assets to a directory with a manifest.\",\"properties\":{\"id\":{\"items\":{\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"type\":\"array\"},\"inventory\":{\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"kind\":{\"items\":{\"enum\":[\"font\",\"image\",\"stylesheet\",\"video\"],\"type\":\"string\"},\"type\":\"array\"},\"output-dir\":{\"description\":\"Output directory on the invoking Host\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"overwrite\":{\"type\":\"boolean\"},\"tab\":{\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"timeout\":{\"description\":\"Whole operation deadline in milliseconds\",\"format\":\"uint64\",\"maximum\":300000,\"minimum\":1,\"type\":\"integer\"}},\"required\":[\"tab\",\"inventory\",\"output-dir\"],\"title\":\"AssetsExportInput\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`assets.export`: saves an inventory's assets to a directory with a manifest.\",\"properties\":{\"id\":{\"items\":{\"type\":\"string\"},\"type\":\"array\"},\"inventory\":{\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"kind\":{\"items\":{\"enum\":[\"font\",\"image\",\"stylesheet\",\"video\"],\"type\":\"string\"},\"type\":\"array\"},\"output-dir\":{\"description\":\"Output directory on the invoking Host\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"overwrite\":{\"type\":\"boolean\"},\"tab\":{\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"timeout\":{\"description\":\"Whole operation deadline in milliseconds\",\"format\":\"uint64\",\"maximum\":300000,\"minimum\":1,\"type\":\"integer\"}},\"required\":[\"tab\",\"inventory\",\"output-dir\"],\"title\":\"AssetsExportInput\",\"type\":\"object\"}")
 }
 func DecodeAssetsExportResult(data []byte) (AssetsExportResult, error) {
 	return contract.Decode[AssetsExportResult](data)
@@ -1382,6 +1382,260 @@ func (v BrowserErrorCode) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	return contract.EncodeJSON(string(v))
+}
+func DecodeBrowserFailure(data []byte) (BrowserFailure, error) {
+	return contract.Decode[BrowserFailure](data)
+}
+func (v BrowserFailure) Validate() error { return contractValidateBrowserFailure(v, 0) }
+func contractValidateBrowserFailure(v BrowserFailure, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contractValidateBrowserErrorCode(v.Code, depth+1); err != nil {
+		return contract.At("code", err)
+	}
+	if err := contract.Text(string(v.Code), 0, -1, ""); err != nil {
+		return contract.At("code", err)
+	}
+	if err := contract.Text(string(v.Message), 0, -1, ""); err != nil {
+		return contract.At("message", err)
+	}
+	if v.Details != nil {
+		if err := contractValidateErrorDetails((*v.Details), depth+1); err != nil {
+			return contract.At("details", err)
+		}
+	}
+	return nil
+}
+func (v *BrowserFailure) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next BrowserFailure
+	for key := range obj {
+		switch key {
+		case "code", "message", "details":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["code"]
+		if !ok {
+			return contract.At("code", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[BrowserErrorCode](raw)
+			if err != nil {
+				return contract.At("code", err)
+			}
+			next.Code = value
+		}
+	}
+	{
+		raw, ok := obj["message"]
+		if !ok {
+			return contract.At("message", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("message", err)
+			}
+			next.Message = value
+		}
+	}
+	{
+		raw, ok := obj["details"]
+		if ok {
+			value, err := func(b []byte) (*ErrorDetails, error) { return contract.Pointer(b, contract.Decode[ErrorDetails]) }(raw)
+			if err != nil {
+				return contract.At("details", err)
+			}
+			next.Details = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v BrowserFailure) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "code", Value: v.Code})
+	fields = append(fields, contract.Field{Name: "message", Value: v.Message})
+	if v.Details != nil {
+		fields = append(fields, contract.Field{Name: "details", Value: v.Details})
+	}
+	return contract.EncodeObject(fields)
+}
+func DecodeBrowserNode(data []byte) (BrowserNode, error) { return contract.Decode[BrowserNode](data) }
+func (v BrowserNode) Validate() error                    { return contractValidateBrowserNode(v, 0) }
+func contractValidateBrowserNode(v BrowserNode, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if v.Ref != nil {
+		if err := contractValidateNodeRef((*v.Ref), depth+1); err != nil {
+			return contract.At("ref", err)
+		}
+		if err := contract.Text(string((*v.Ref)), 0, -1, ""); err != nil {
+			return contract.At("ref", err)
+		}
+	}
+	if err := contract.Text(string(v.Role), 0, -1, ""); err != nil {
+		return contract.At("role", err)
+	}
+	if err := contract.Text(string(v.Name), 0, -1, ""); err != nil {
+		return contract.At("name", err)
+	}
+	if v.Value != nil {
+		if err := contractValidateNodeValue((*v.Value), depth+1); err != nil {
+			return contract.At("value", err)
+		}
+	}
+	if v.States == nil {
+		return contract.At("states", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.States {
+		_ = i
+		_ = item
+		if err := contract.Text(string(item), 0, -1, ""); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "states", i), err)
+		}
+	}
+	if v.Bounds != nil {
+		if err := contractValidateBounds((*v.Bounds), depth+1); err != nil {
+			return contract.At("bounds", err)
+		}
+	}
+	return nil
+}
+func (v *BrowserNode) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next BrowserNode
+	for key := range obj {
+		switch key {
+		case "ref", "role", "name", "value", "depth", "states", "bounds":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["ref"]
+		if ok {
+			value, err := func(b []byte) (*NodeRef, error) { return contract.Pointer(b, contract.Decode[NodeRef]) }(raw)
+			if err != nil {
+				return contract.At("ref", err)
+			}
+			next.Ref = value
+		}
+	}
+	{
+		raw, ok := obj["role"]
+		if !ok {
+			return contract.At("role", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("role", err)
+			}
+			next.Role = value
+		}
+	}
+	{
+		raw, ok := obj["name"]
+		if !ok {
+			return contract.At("name", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("name", err)
+			}
+			next.Name = value
+		}
+	}
+	{
+		raw, ok := obj["value"]
+		if ok {
+			value, err := func(b []byte) (*NodeValue, error) { return contract.Pointer(b, DecodeNodeValue) }(raw)
+			if err != nil {
+				return contract.At("value", err)
+			}
+			next.Value = value
+		}
+	}
+	{
+		raw, ok := obj["depth"]
+		if !ok {
+			return contract.At("depth", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint](raw)
+			if err != nil {
+				return contract.At("depth", err)
+			}
+			next.Depth = value
+		}
+	}
+	{
+		raw, ok := obj["states"]
+		if !ok {
+			return contract.At("states", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]string, error) { return contract.List(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("states", err)
+			}
+			next.States = value
+		}
+	}
+	{
+		raw, ok := obj["bounds"]
+		if ok {
+			value, err := func(b []byte) (*Bounds, error) { return contract.Pointer(b, contract.Decode[Bounds]) }(raw)
+			if err != nil {
+				return contract.At("bounds", err)
+			}
+			next.Bounds = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v BrowserNode) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	if v.Ref != nil {
+		fields = append(fields, contract.Field{Name: "ref", Value: v.Ref})
+	}
+	fields = append(fields, contract.Field{Name: "role", Value: v.Role})
+	fields = append(fields, contract.Field{Name: "name", Value: v.Name})
+	if v.Value != nil {
+		fields = append(fields, contract.Field{Name: "value", Value: v.Value})
+	}
+	fields = append(fields, contract.Field{Name: "depth", Value: v.Depth})
+	fields = append(fields, contract.Field{Name: "states", Value: v.States})
+	if v.Bounds != nil {
+		fields = append(fields, contract.Field{Name: "bounds", Value: v.Bounds})
+	}
+	return contract.EncodeObject(fields)
 }
 func DecodeBrowserQuery(data []byte) (BrowserQuery, error) {
 	return contract.Decode[BrowserQuery](data)
@@ -2301,6 +2555,189 @@ func (v BrowserTarget) MarshalJSON() ([]byte, error) {
 	}
 	if v.Within != nil {
 		fields = append(fields, contract.Field{Name: "within", Value: v.Within})
+	}
+	return contract.EncodeObject(fields)
+}
+func DecodeBrowserTreeNode(data []byte) (BrowserTreeNode, error) {
+	return contract.Decode[BrowserTreeNode](data)
+}
+func (v BrowserTreeNode) Validate() error { return contractValidateBrowserTreeNode(v, 0) }
+func contractValidateBrowserTreeNode(v BrowserTreeNode, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if v.Ref != nil {
+		if err := contractValidateNodeRef((*v.Ref), depth+1); err != nil {
+			return contract.At("ref", err)
+		}
+		if err := contract.Text(string((*v.Ref)), 0, -1, ""); err != nil {
+			return contract.At("ref", err)
+		}
+	}
+	if v.Role != nil {
+		if err := contract.Text(string((*v.Role)), 0, -1, ""); err != nil {
+			return contract.At("role", err)
+		}
+	}
+	if v.Name != nil {
+		if err := contract.Text(string((*v.Name)), 0, -1, ""); err != nil {
+			return contract.At("name", err)
+		}
+	}
+	if v.Value != nil {
+		if err := contractValidateNodeValue((*v.Value), depth+1); err != nil {
+			return contract.At("value", err)
+		}
+	}
+	if v.Tag != nil {
+		if err := contract.Text(string((*v.Tag)), 0, -1, ""); err != nil {
+			return contract.At("tag", err)
+		}
+	}
+	if v.States != nil {
+		if (*v.States) == nil {
+			return contract.At("states", fmt.Errorf("required array is nil"))
+		}
+		for i, item := range *v.States {
+			_ = i
+			_ = item
+			if err := contract.Text(string(item), 0, -1, ""); err != nil {
+				return contract.At(fmt.Sprintf("%s[%d]", "states", i), err)
+			}
+		}
+	}
+	if v.Children != nil {
+		if (*v.Children) == nil {
+			return contract.At("children", fmt.Errorf("required array is nil"))
+		}
+		for i, item := range *v.Children {
+			_ = i
+			_ = item
+			if err := contractValidateBrowserTreeNode(item, depth+1); err != nil {
+				return contract.At(fmt.Sprintf("%s[%d]", "children", i), err)
+			}
+		}
+	}
+	return nil
+}
+func (v *BrowserTreeNode) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next BrowserTreeNode
+	for key := range obj {
+		switch key {
+		case "ref", "role", "name", "value", "tag", "states", "children":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["ref"]
+		if ok {
+			value, err := func(b []byte) (*NodeRef, error) { return contract.Pointer(b, contract.Decode[NodeRef]) }(raw)
+			if err != nil {
+				return contract.At("ref", err)
+			}
+			next.Ref = value
+		}
+	}
+	{
+		raw, ok := obj["role"]
+		if ok {
+			value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("role", err)
+			}
+			next.Role = value
+		}
+	}
+	{
+		raw, ok := obj["name"]
+		if ok {
+			value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("name", err)
+			}
+			next.Name = value
+		}
+	}
+	{
+		raw, ok := obj["value"]
+		if ok {
+			value, err := func(b []byte) (*NodeValue, error) { return contract.Pointer(b, DecodeNodeValue) }(raw)
+			if err != nil {
+				return contract.At("value", err)
+			}
+			next.Value = value
+		}
+	}
+	{
+		raw, ok := obj["tag"]
+		if ok {
+			value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("tag", err)
+			}
+			next.Tag = value
+		}
+	}
+	{
+		raw, ok := obj["states"]
+		if ok {
+			value, err := func(b []byte) (*[]string, error) {
+				return contract.Pointer(b, func(b []byte) ([]string, error) { return contract.List(b, contract.Decode[string]) })
+			}(raw)
+			if err != nil {
+				return contract.At("states", err)
+			}
+			next.States = value
+		}
+	}
+	{
+		raw, ok := obj["children"]
+		if ok {
+			value, err := func(b []byte) (*[]BrowserTreeNode, error) {
+				return contract.Pointer(b, func(b []byte) ([]BrowserTreeNode, error) { return contract.List(b, contract.Decode[BrowserTreeNode]) })
+			}(raw)
+			if err != nil {
+				return contract.At("children", err)
+			}
+			next.Children = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v BrowserTreeNode) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	if v.Ref != nil {
+		fields = append(fields, contract.Field{Name: "ref", Value: v.Ref})
+	}
+	if v.Role != nil {
+		fields = append(fields, contract.Field{Name: "role", Value: v.Role})
+	}
+	if v.Name != nil {
+		fields = append(fields, contract.Field{Name: "name", Value: v.Name})
+	}
+	if v.Value != nil {
+		fields = append(fields, contract.Field{Name: "value", Value: v.Value})
+	}
+	if v.Tag != nil {
+		fields = append(fields, contract.Field{Name: "tag", Value: v.Tag})
+	}
+	if v.States != nil {
+		fields = append(fields, contract.Field{Name: "states", Value: v.States})
+	}
+	if v.Children != nil {
+		fields = append(fields, contract.Field{Name: "children", Value: v.Children})
 	}
 	return contract.EncodeObject(fields)
 }
@@ -3829,9 +4266,6 @@ func contractValidateCdpEventsInput(v CdpEventsInput, depth int) error {
 		for i, item := range *v.Method {
 			_ = i
 			_ = item
-			if err := contractValidateLocatorText(item, depth+1); err != nil {
-				return contract.At(fmt.Sprintf("%s[%d]", "method", i), err)
-			}
 			if err := contract.Text(string(item), 0, -1, ""); err != nil {
 				return contract.At(fmt.Sprintf("%s[%d]", "method", i), err)
 			}
@@ -3862,6 +4296,9 @@ func contractValidateCdpEventsInput(v CdpEventsInput, depth int) error {
 		if (*v.TimeoutMS) > 300000 {
 			return contract.At("timeout", fmt.Errorf("outside numeric bounds"))
 		}
+	}
+	if err := validateCdpEventsInput(v); err != nil {
+		return err
 	}
 	return nil
 }
@@ -3894,8 +4331,8 @@ func (v *CdpEventsInput) UnmarshalJSON(data []byte) error {
 	{
 		raw, ok := obj["method"]
 		if ok {
-			value, err := func(b []byte) (*[]LocatorText, error) {
-				return contract.Pointer(b, func(b []byte) ([]LocatorText, error) { return contract.List(b, contract.Decode[LocatorText]) })
+			value, err := func(b []byte) (*[]string, error) {
+				return contract.Pointer(b, func(b []byte) ([]string, error) { return contract.List(b, contract.Decode[string]) })
 			}(raw)
 			if err != nil {
 				return contract.At("method", err)
@@ -3973,7 +4410,7 @@ func (v CdpEventsInput) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func CdpEventsInputJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`cdp.events`: reads the CDP events this caller's connection received\\nafter a cursor.\",\"properties\":{\"after\":{\"description\":\"Cursor returned by a previous read\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"limit\":{\"format\":\"uint\",\"maximum\":1000,\"minimum\":1,\"type\":\"integer\"},\"method\":{\"items\":{\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"type\":\"array\"},\"tab\":{\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"target\":{\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"timeout\":{\"description\":\"Whole operation deadline in milliseconds\",\"format\":\"uint64\",\"maximum\":300000,\"minimum\":1,\"type\":\"integer\"}},\"required\":[\"tab\"],\"title\":\"CdpEventsInput\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`cdp.events`: reads the CDP events this caller's connection received\\nafter a cursor.\",\"properties\":{\"after\":{\"description\":\"Cursor returned by a previous read\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"limit\":{\"format\":\"uint\",\"maximum\":1000,\"minimum\":1,\"type\":\"integer\"},\"method\":{\"items\":{\"type\":\"string\"},\"type\":\"array\"},\"tab\":{\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"target\":{\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"timeout\":{\"description\":\"Whole operation deadline in milliseconds\",\"format\":\"uint64\",\"maximum\":300000,\"minimum\":1,\"type\":\"integer\"}},\"required\":[\"tab\"],\"title\":\"CdpEventsInput\",\"type\":\"object\"}")
 }
 func DecodeCdpEventsResult(data []byte) (CdpEventsResult, error) {
 	return contract.Decode[CdpEventsResult](data)
@@ -5512,6 +5949,9 @@ func ClipboardReadInputJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`clipboard.read`: reads the tab's clipboard as text, or writes every\\nitem to a directory.\",\"properties\":{\"format\":{\"description\":\"What `clipboard.read` returns inline: the text; without it, every item\\nis written to files.\",\"enum\":[\"text\"],\"type\":\"string\"},\"output-dir\":{\"description\":\"Output directory on the invoking Host\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"overwrite\":{\"type\":\"boolean\"},\"tab\":{\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"timeout\":{\"description\":\"Whole operation deadline in milliseconds\",\"format\":\"uint64\",\"maximum\":300000,\"minimum\":1,\"type\":\"integer\"}},\"required\":[\"tab\"],\"title\":\"ClipboardReadInput\",\"type\":\"object\"}")
 }
 func DecodeClipboardReadResult(data []byte) (ClipboardReadResult, error) {
+	if err := contract.CheckJSON(data); err != nil {
+		return nil, err
+	}
 	if value, err := contract.Decode[ClipboardReadResultText](data); err == nil {
 		return &value, nil
 	}
@@ -6101,6 +6541,83 @@ func (v ContentFetchInput) MarshalJSON() ([]byte, error) {
 func ContentFetchInputJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`content.fetch`: loads URLs in temporary tabs and reads their content.\",\"properties\":{\"format\":{\"description\":\"The form a page's content takes: rendered text, HTML, or the DOM tree\\nserialized.\",\"enum\":[\"text\",\"html\",\"dom\"],\"type\":\"string\"},\"timeout\":{\"description\":\"Whole operation deadline in milliseconds\",\"format\":\"uint64\",\"maximum\":300000,\"minimum\":1,\"type\":\"integer\"},\"url\":{\"items\":{\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"maxItems\":10,\"minItems\":1,\"type\":\"array\"}},\"required\":[\"url\"],\"title\":\"ContentFetchInput\",\"type\":\"object\"}")
 }
+func DecodeContentFetchResult(data []byte) (ContentFetchResult, error) {
+	return contract.Decode[ContentFetchResult](data)
+}
+func (v ContentFetchResult) Validate() error { return contractValidateContentFetchResult(v, 0) }
+func contractValidateContentFetchResult(v ContentFetchResult, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if v.Pages == nil {
+		return contract.At("pages", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.Pages {
+		_ = i
+		_ = item
+		if err := contractValidateFetchedPage(item, depth+1); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "pages", i), err)
+		}
+	}
+	return nil
+}
+func (v *ContentFetchResult) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next ContentFetchResult
+	for key := range obj {
+		switch key {
+		case "pages", "truncated":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["pages"]
+		if !ok {
+			return contract.At("pages", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]FetchedPage, error) { return contract.List(b, contract.Decode[FetchedPage]) }(raw)
+			if err != nil {
+				return contract.At("pages", err)
+			}
+			next.Pages = value
+		}
+	}
+	{
+		raw, ok := obj["truncated"]
+		if !ok {
+			return contract.At("truncated", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[bool](raw)
+			if err != nil {
+				return contract.At("truncated", err)
+			}
+			next.Truncated = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v ContentFetchResult) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "pages", Value: v.Pages})
+	fields = append(fields, contract.Field{Name: "truncated", Value: v.Truncated})
+	return contract.EncodeObject(fields)
+}
+func ContentFetchResultJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"pages\":{\"items\":{\"additionalProperties\":false,\"description\":\"One URL `content.fetch` read, or its failure.\",\"properties\":{\"content\":{\"type\":\"string\"},\"error\":{\"additionalProperties\":false,\"description\":\"A failed operation, or a failed item of a batch such as a page of\\n`content.fetch`.\",\"properties\":{\"code\":{\"description\":\"Why an operation failed. Each cause keeps its own code.\",\"enum\":[\"invalid_input\",\"tab_not_found\",\"tab_busy\",\"stale_ref\",\"stale_cursor\",\"stale_inventory\",\"stale_tools\",\"target_not_found\",\"ambiguous_target\",\"not_actionable\",\"timeout\",\"dialog_blocked\",\"dialog_not_found\",\"invalid_dialog_action\",\"history_boundary\",\"navigation_failed\",\"protected_value\",\"side_effect_rejected\",\"unsupported_result\",\"unsupported_capability\",\"cdp_method_denied\",\"output_exists\",\"io_error\",\"result_too_large\",\"partial_failure\",\"driver_error\",\"browser_unavailable\",\"browser_lost\",\"cancelled\",\"outcome_unknown\"],\"type\":\"string\"},\"details\":{\"description\":\"What a failure knows beyond its code and message.\",\"properties\":{\"action\":{\"description\":\"How far an action's input got when it failed: not delivered, delivered\\nwith a later wait failing, or lost with the connection after delivery\\nbegan.\",\"enum\":[\"not_started\",\"completed\",\"unknown\"],\"type\":\"string\"},\"condition\":{\"description\":\"The element condition that was not met.\",\"type\":\"string\"},\"count\":{\"description\":\"How many elements an ambiguous target matched.\",\"format\":\"uint\",\"minimum\":0,\"type\":\"integer\"},\"debuggingCallers\":{\"description\":\"The numbers of the agents whose debugging connections hold the tab\\nwhen a command on it times out.\",\"items\":{\"format\":\"uint64\",\"minimum\":0,\"type\":\"integer\"},\"type\":\"array\"},\"delivered\":{\"description\":\"How many characters `type` delivered before it failed.\",\"format\":\"uint\",\"minimum\":0,\"type\":\"integer\"},\"directory\":{\"type\":\"string\"},\"files\":{\"items\":{\"additionalProperties\":false,\"description\":\"An asset `assets.export` saved.\",\"properties\":{\"bytes\":{\"format\":\"uint\",\"minimum\":0,\"type\":\"integer\"},\"id\":{\"type\":\"string\"},\"mimeType\":{\"type\":\"string\"},\"path\":{\"type\":\"string\"}},\"required\":[\"id\",\"path\",\"bytes\",\"mimeType\"],\"type\":\"object\"},\"type\":\"array\"},\"interceptor\":{\"description\":\"What intercepted the pointer instead of the target.\",\"type\":\"string\"},\"manifest\":{\"type\":\"string\"},\"tab\":{\"type\":\"string\"},\"url\":{\"description\":\"The tab's URL when the action failed.\",\"type\":\"string\"}},\"type\":\"object\"},\"message\":{\"type\":\"string\"}},\"required\":[\"code\",\"message\"],\"type\":\"object\"},\"requestedUrl\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"}},\"required\":[\"requestedUrl\",\"url\",\"title\",\"content\"],\"type\":\"object\"},\"type\":\"array\"},\"truncated\":{\"type\":\"boolean\"}},\"required\":[\"pages\",\"truncated\"],\"title\":\"ContentFetchResult\",\"type\":\"object\"}")
+}
 func DecodeContentFormat(data []byte) (ContentFormat, error) {
 	return contract.Decode[ContentFormat](data)
 }
@@ -6272,6 +6789,9 @@ func ContentReadInputJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`content.read`: reads a tab's content as text, HTML or DOM, inline or\\ninto a file.\",\"properties\":{\"format\":{\"description\":\"The form a page's content takes: rendered text, HTML, or the DOM tree\\nserialized.\",\"enum\":[\"text\",\"html\",\"dom\"],\"type\":\"string\"},\"output\":{\"description\":\"New output file on this Host\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"overwrite\":{\"type\":\"boolean\"},\"tab\":{\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"timeout\":{\"description\":\"Whole operation deadline in milliseconds\",\"format\":\"uint64\",\"maximum\":300000,\"minimum\":1,\"type\":\"integer\"}},\"required\":[\"tab\"],\"title\":\"ContentReadInput\",\"type\":\"object\"}")
 }
 func DecodeContentReadResult(data []byte) (ContentReadResult, error) {
+	if err := contract.CheckJSON(data); err != nil {
+		return nil, err
+	}
 	if value, err := contract.Decode[ContentReadResultInline](data); err == nil {
 		return &value, nil
 	}
@@ -7118,7 +7638,7 @@ func (v DialogInspectResult) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func DialogInspectResultJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"What `dialog.inspect` answers: the dialog, or `null` when none is open.\",\"properties\":{\"dialog\":{\"anyOf\":[{\"additionalProperties\":false,\"description\":\"A JavaScript dialog a tab shows.\",\"properties\":{\"message\":{\"type\":\"string\"},\"type\":{\"enum\":[\"alert\",\"confirm\",\"prompt\",\"beforeunload\"],\"type\":\"string\"}},\"required\":[\"type\",\"message\"],\"type\":\"object\"},{\"type\":\"null\"}]}},\"required\":[\"dialog\"],\"title\":\"DialogInspectResult\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"What `dialog.inspect` answers: the dialog, or `null` when none is open.\",\"properties\":{\"dialog\":{\"additionalProperties\":false,\"description\":\"A JavaScript dialog a tab shows.\",\"properties\":{\"message\":{\"type\":\"string\"},\"type\":{\"enum\":[\"alert\",\"confirm\",\"prompt\",\"beforeunload\"],\"type\":\"string\"}},\"required\":[\"type\",\"message\"],\"type\":[\"object\",\"null\"]}},\"required\":[\"dialog\"],\"title\":\"DialogInspectResult\",\"type\":\"object\"}")
 }
 func DecodeDialogOutcome(data []byte) (DialogOutcome, error) {
 	return contract.Decode[DialogOutcome](data)
@@ -7929,6 +8449,224 @@ func (v EndReason) MarshalJSON() ([]byte, error) {
 	}
 	return contract.EncodeJSON(string(v))
 }
+func DecodeErrorDetails(data []byte) (ErrorDetails, error) {
+	return contract.Decode[ErrorDetails](data)
+}
+func (v ErrorDetails) Validate() error { return contractValidateErrorDetails(v, 0) }
+func contractValidateErrorDetails(v ErrorDetails, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if v.Action != nil {
+		if err := contractValidateActionProgress((*v.Action), depth+1); err != nil {
+			return contract.At("action", err)
+		}
+		if err := contract.Text(string((*v.Action)), 0, -1, ""); err != nil {
+			return contract.At("action", err)
+		}
+	}
+	if v.Tab != nil {
+		if err := contract.Text(string((*v.Tab)), 0, -1, ""); err != nil {
+			return contract.At("tab", err)
+		}
+	}
+	if v.URL != nil {
+		if err := contract.Text(string((*v.URL)), 0, -1, ""); err != nil {
+			return contract.At("url", err)
+		}
+	}
+	if v.Condition != nil {
+		if err := contract.Text(string((*v.Condition)), 0, -1, ""); err != nil {
+			return contract.At("condition", err)
+		}
+	}
+	if v.Interceptor != nil {
+		if err := contract.Text(string((*v.Interceptor)), 0, -1, ""); err != nil {
+			return contract.At("interceptor", err)
+		}
+	}
+	if v.Count != nil {
+	}
+	if v.Delivered != nil {
+	}
+	if v.DebuggingCallers != nil {
+		if (*v.DebuggingCallers) == nil {
+			return contract.At("debuggingCallers", fmt.Errorf("required array is nil"))
+		}
+		for i, item := range *v.DebuggingCallers {
+			_ = i
+			_ = item
+		}
+	}
+	if v.AssetsExportResult != nil {
+		if err := contractValidateAssetsExportResult((*v.AssetsExportResult), depth+1); err != nil {
+			return contract.At("", err)
+		}
+	}
+	return nil
+}
+func (v *ErrorDetails) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next ErrorDetails
+	{
+		raw, ok := obj["action"]
+		if ok {
+			value, err := func(b []byte) (*ActionProgress, error) { return contract.Pointer(b, contract.Decode[ActionProgress]) }(raw)
+			if err != nil {
+				return contract.At("action", err)
+			}
+			next.Action = value
+		}
+	}
+	{
+		raw, ok := obj["tab"]
+		if ok {
+			value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("tab", err)
+			}
+			next.Tab = value
+		}
+	}
+	{
+		raw, ok := obj["url"]
+		if ok {
+			value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("url", err)
+			}
+			next.URL = value
+		}
+	}
+	{
+		raw, ok := obj["condition"]
+		if ok {
+			value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("condition", err)
+			}
+			next.Condition = value
+		}
+	}
+	{
+		raw, ok := obj["interceptor"]
+		if ok {
+			value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("interceptor", err)
+			}
+			next.Interceptor = value
+		}
+	}
+	{
+		raw, ok := obj["count"]
+		if ok {
+			value, err := func(b []byte) (*uint, error) { return contract.Pointer(b, contract.Decode[uint]) }(raw)
+			if err != nil {
+				return contract.At("count", err)
+			}
+			next.Count = value
+		}
+	}
+	{
+		raw, ok := obj["delivered"]
+		if ok {
+			value, err := func(b []byte) (*uint, error) { return contract.Pointer(b, contract.Decode[uint]) }(raw)
+			if err != nil {
+				return contract.At("delivered", err)
+			}
+			next.Delivered = value
+		}
+	}
+	{
+		raw, ok := obj["debuggingCallers"]
+		if ok {
+			value, err := func(b []byte) (*[]uint64, error) {
+				return contract.Pointer(b, func(b []byte) ([]uint64, error) { return contract.List(b, contract.Decode[uint64]) })
+			}(raw)
+			if err != nil {
+				return contract.At("debuggingCallers", err)
+			}
+			next.DebuggingCallers = value
+		}
+	}
+	{
+		parts := []contract.Field{}
+		source, err := contract.ObjectFields(data)
+		if err != nil {
+			return err
+		}
+		for _, field := range source {
+			switch field.Name {
+			case "directory":
+				parts = append(parts, field)
+			case "manifest":
+				parts = append(parts, field)
+			case "files":
+				parts = append(parts, field)
+			}
+		}
+		raw, err := contract.EncodeObject(parts)
+		if err != nil {
+			return err
+		}
+		if value, err := contract.Decode[AssetsExportResult](raw); err == nil {
+			next.AssetsExportResult = &value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v ErrorDetails) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	if v.Action != nil {
+		fields = append(fields, contract.Field{Name: "action", Value: v.Action})
+	}
+	if v.Tab != nil {
+		fields = append(fields, contract.Field{Name: "tab", Value: v.Tab})
+	}
+	if v.URL != nil {
+		fields = append(fields, contract.Field{Name: "url", Value: v.URL})
+	}
+	if v.Condition != nil {
+		fields = append(fields, contract.Field{Name: "condition", Value: v.Condition})
+	}
+	if v.Interceptor != nil {
+		fields = append(fields, contract.Field{Name: "interceptor", Value: v.Interceptor})
+	}
+	if v.Count != nil {
+		fields = append(fields, contract.Field{Name: "count", Value: v.Count})
+	}
+	if v.Delivered != nil {
+		fields = append(fields, contract.Field{Name: "delivered", Value: v.Delivered})
+	}
+	if v.DebuggingCallers != nil {
+		fields = append(fields, contract.Field{Name: "debuggingCallers", Value: v.DebuggingCallers})
+	}
+	if v.AssetsExportResult != nil {
+		{
+			raw, err := contract.EncodeJSON(v.AssetsExportResult)
+			if err != nil {
+				return nil, err
+			}
+			parts, err := contract.ObjectFields(raw)
+			if err != nil {
+				return nil, err
+			}
+			fields = append(fields, parts...)
+		}
+	}
+	return contract.EncodeObject(fields)
+}
 func DecodeEvalInput(data []byte) (EvalInput, error) { return contract.Decode[EvalInput](data) }
 func (v EvalInput) Validate() error                  { return contractValidateEvalInput(v, 0) }
 func contractValidateEvalInput(v EvalInput, depth int) error {
@@ -8379,6 +9117,179 @@ func (v ExportedAsset) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "path", Value: v.Path})
 	fields = append(fields, contract.Field{Name: "bytes", Value: v.Bytes})
 	fields = append(fields, contract.Field{Name: "mimeType", Value: v.MIMEType})
+	return contract.EncodeObject(fields)
+}
+func DecodeFailureDocument(data []byte) (FailureDocument, error) {
+	return contract.Decode[FailureDocument](data)
+}
+func (v FailureDocument) Validate() error { return contractValidateFailureDocument(v, 0) }
+func contractValidateFailureDocument(v FailureDocument, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contractValidateBrowserFailure(v.Error, depth+1); err != nil {
+		return contract.At("error", err)
+	}
+	return nil
+}
+func (v *FailureDocument) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next FailureDocument
+	for key := range obj {
+		switch key {
+		case "error":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["error"]
+		if !ok {
+			return contract.At("error", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[BrowserFailure](raw)
+			if err != nil {
+				return contract.At("error", err)
+			}
+			next.Error = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v FailureDocument) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "error", Value: v.Error})
+	return contract.EncodeObject(fields)
+}
+func DecodeFetchedPage(data []byte) (FetchedPage, error) { return contract.Decode[FetchedPage](data) }
+func (v FetchedPage) Validate() error                    { return contractValidateFetchedPage(v, 0) }
+func contractValidateFetchedPage(v FetchedPage, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v.RequestedURL), 0, -1, ""); err != nil {
+		return contract.At("requestedUrl", err)
+	}
+	if err := contract.Text(string(v.URL), 0, -1, ""); err != nil {
+		return contract.At("url", err)
+	}
+	if err := contract.Text(string(v.Title), 0, -1, ""); err != nil {
+		return contract.At("title", err)
+	}
+	if err := contract.Text(string(v.Content), 0, -1, ""); err != nil {
+		return contract.At("content", err)
+	}
+	if v.Error != nil {
+		if err := contractValidateBrowserFailure((*v.Error), depth+1); err != nil {
+			return contract.At("error", err)
+		}
+	}
+	return nil
+}
+func (v *FetchedPage) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next FetchedPage
+	for key := range obj {
+		switch key {
+		case "requestedUrl", "url", "title", "content", "error":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["requestedUrl"]
+		if !ok {
+			return contract.At("requestedUrl", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("requestedUrl", err)
+			}
+			next.RequestedURL = value
+		}
+	}
+	{
+		raw, ok := obj["url"]
+		if !ok {
+			return contract.At("url", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("url", err)
+			}
+			next.URL = value
+		}
+	}
+	{
+		raw, ok := obj["title"]
+		if !ok {
+			return contract.At("title", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("title", err)
+			}
+			next.Title = value
+		}
+	}
+	{
+		raw, ok := obj["content"]
+		if !ok {
+			return contract.At("content", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("content", err)
+			}
+			next.Content = value
+		}
+	}
+	{
+		raw, ok := obj["error"]
+		if ok {
+			value, err := func(b []byte) (*BrowserFailure, error) { return contract.Pointer(b, contract.Decode[BrowserFailure]) }(raw)
+			if err != nil {
+				return contract.At("error", err)
+			}
+			next.Error = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v FetchedPage) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "requestedUrl", Value: v.RequestedURL})
+	fields = append(fields, contract.Field{Name: "url", Value: v.URL})
+	fields = append(fields, contract.Field{Name: "title", Value: v.Title})
+	fields = append(fields, contract.Field{Name: "content", Value: v.Content})
+	if v.Error != nil {
+		fields = append(fields, contract.Field{Name: "error", Value: v.Error})
+	}
 	return contract.EncodeObject(fields)
 }
 func DecodeFillInput(data []byte) (FillInput, error) { return contract.Decode[FillInput](data) }
@@ -9014,6 +9925,95 @@ func (v FindInput) MarshalJSON() ([]byte, error) {
 }
 func FindInputJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`find`: lists the elements a target or a query tree matches.\",\"properties\":{\"body\":{\"description\":\"JSON query tree when --query is supplied\",\"maxLength\":1048576,\"type\":\"string\"},\"css\":{\"description\":\"CSS selector\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"exact\":{\"description\":\"Match the complete name or text\",\"type\":\"boolean\"},\"frame\":{\"description\":\"Frame references, outermost to innermost\",\"items\":{\"description\":\"A node reference, which `inspect`, `find` and `probe` return: `e` and\\na number unique within its tab. It stays valid while its document\\ndoes.\",\"pattern\":\"^e[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"type\":\"array\"},\"label\":{\"description\":\"Associated label text (label for, wrapping label, or aria-labelledby)\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"limit\":{\"format\":\"uint\",\"maximum\":1000,\"minimum\":1,\"type\":\"integer\"},\"name\":{\"description\":\"Accessible name, with --role\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"name-pattern\":{\"description\":\"Accessible-name regular expression, with --role\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"nth\":{\"description\":\"Explicit zero-based match index\",\"format\":\"uint\",\"maximum\":999,\"minimum\":0,\"type\":\"integer\"},\"offset\":{\"format\":\"uint\",\"minimum\":0,\"type\":\"integer\"},\"placeholder\":{\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"query\":{\"description\":\"Read a declarative query tree from stdin\",\"type\":\"boolean\"},\"ref\":{\"description\":\"A node reference returned by inspect or find\",\"pattern\":\"^e[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"role\":{\"description\":\"Accessible role, ASCII case-insensitive, such as button, textbox, or date\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"tab\":{\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"test-id\":{\"description\":\"data-testid attribute\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"text-match\":{\"description\":\"Visible text to match\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"text-pattern\":{\"description\":\"Rendered-text regular expression\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"timeout\":{\"description\":\"Whole operation deadline in milliseconds\",\"format\":\"uint64\",\"maximum\":300000,\"minimum\":1,\"type\":\"integer\"},\"within\":{\"description\":\"Container node reference\",\"pattern\":\"^e[1-9][0-9]{0,14}$\",\"type\":\"string\"}},\"required\":[\"tab\"],\"title\":\"FindInput\",\"type\":\"object\"}")
+}
+func DecodeFindResult(data []byte) (FindResult, error) { return contract.Decode[FindResult](data) }
+func (v FindResult) Validate() error                   { return contractValidateFindResult(v, 0) }
+func contractValidateFindResult(v FindResult, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if v.Matches == nil {
+		return contract.At("matches", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.Matches {
+		_ = i
+		_ = item
+		if err := contractValidateBrowserNode(item, depth+1); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "matches", i), err)
+		}
+	}
+	return nil
+}
+func (v *FindResult) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next FindResult
+	for key := range obj {
+		switch key {
+		case "matches", "count", "truncated":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["matches"]
+		if !ok {
+			return contract.At("matches", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]BrowserNode, error) { return contract.List(b, contract.Decode[BrowserNode]) }(raw)
+			if err != nil {
+				return contract.At("matches", err)
+			}
+			next.Matches = value
+		}
+	}
+	{
+		raw, ok := obj["count"]
+		if !ok {
+			return contract.At("count", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint](raw)
+			if err != nil {
+				return contract.At("count", err)
+			}
+			next.Count = value
+		}
+	}
+	{
+		raw, ok := obj["truncated"]
+		if !ok {
+			return contract.At("truncated", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[bool](raw)
+			if err != nil {
+				return contract.At("truncated", err)
+			}
+			next.Truncated = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v FindResult) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "matches", Value: v.Matches})
+	fields = append(fields, contract.Field{Name: "count", Value: v.Count})
+	fields = append(fields, contract.Field{Name: "truncated", Value: v.Truncated})
+	return contract.EncodeObject(fields)
+}
+func FindResultJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"What `find` answers. `count` is every current match, even when `offset`\\nand `limit` return fewer.\",\"properties\":{\"count\":{\"format\":\"uint\",\"minimum\":0,\"type\":\"integer\"},\"matches\":{\"items\":{\"additionalProperties\":false,\"description\":\"One accessibility node that `find` matched or `probe` found under a point.\",\"properties\":{\"bounds\":{\"additionalProperties\":false,\"description\":\"A node's box in viewport CSS pixels.\",\"properties\":{\"height\":{\"format\":\"double\",\"type\":\"number\"},\"width\":{\"format\":\"double\",\"type\":\"number\"},\"x\":{\"format\":\"double\",\"type\":\"number\"},\"y\":{\"format\":\"double\",\"type\":\"number\"}},\"required\":[\"x\",\"y\",\"width\",\"height\"],\"type\":\"object\"},\"depth\":{\"format\":\"uint\",\"minimum\":0,\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"ref\":{\"description\":\"A node reference, which `inspect`, `find` and `probe` return: `e` and\\na number unique within its tab. It stays valid while its document\\ndoes.\",\"pattern\":\"^e[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"role\":{\"type\":\"string\"},\"states\":{\"items\":{\"type\":\"string\"},\"type\":\"array\"},\"value\":{\"anyOf\":[{\"type\":\"string\"},{\"format\":\"double\",\"type\":\"number\"}],\"description\":\"A node's value: an input's text, or a range or progress number.\"}},\"required\":[\"role\",\"name\",\"depth\",\"states\"],\"type\":\"object\"},\"type\":\"array\"},\"truncated\":{\"type\":\"boolean\"}},\"required\":[\"matches\",\"count\",\"truncated\"],\"title\":\"FindResult\",\"type\":\"object\"}")
 }
 func DecodeForwardInput(data []byte) (ForwardInput, error) {
 	return contract.Decode[ForwardInput](data)
@@ -9829,35 +10829,6 @@ func (v InlineSvg) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "html", Value: v.HTML})
 	return contract.EncodeObject(fields)
 }
-func DecodeInputText(data []byte) (InputText, error) { return contract.Decode[InputText](data) }
-func (v InputText) Validate() error                  { return contractValidateInputText(v, 0) }
-func contractValidateInputText(v InputText, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	if err := contract.Text(string(v), 0, 1048576, ""); err != nil {
-		return contract.At("", err)
-	}
-	return nil
-}
-func (v *InputText) UnmarshalJSON(data []byte) error {
-	value, err := contract.Decode[string](data)
-	if err != nil {
-		return err
-	}
-	next := InputText(value)
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v InputText) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	return contract.EncodeJSON(string(v))
-}
 func DecodeInspectInput(data []byte) (InspectInput, error) {
 	return contract.Decode[InspectInput](data)
 }
@@ -10030,6 +11001,157 @@ func (v InspectInput) MarshalJSON() ([]byte, error) {
 }
 func InspectInputJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`inspect`: reads a tab's accessibility or DOM tree.\",\"properties\":{\"frame\":{\"description\":\"Frame references, outermost to innermost\",\"items\":{\"description\":\"A node reference, which `inspect`, `find` and `probe` return: `e` and\\na number unique within its tab. It stays valid while its document\\ndoes.\",\"pattern\":\"^e[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"type\":\"array\"},\"limit\":{\"format\":\"uint\",\"maximum\":1000,\"minimum\":1,\"type\":\"integer\"},\"tab\":{\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"timeout\":{\"description\":\"Whole operation deadline in milliseconds\",\"format\":\"uint64\",\"maximum\":300000,\"minimum\":1,\"type\":\"integer\"},\"view\":{\"description\":\"Which tree `inspect` returns.\",\"enum\":[\"accessibility\",\"dom\"],\"type\":\"string\"},\"within\":{\"description\":\"Container node reference\",\"pattern\":\"^e[1-9][0-9]{0,14}$\",\"type\":\"string\"}},\"required\":[\"tab\"],\"title\":\"InspectInput\",\"type\":\"object\"}")
+}
+func DecodeInspectResult(data []byte) (InspectResult, error) {
+	return contract.Decode[InspectResult](data)
+}
+func (v InspectResult) Validate() error { return contractValidateInspectResult(v, 0) }
+func contractValidateInspectResult(v InspectResult, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contractValidateTabID(v.Tab, depth+1); err != nil {
+		return contract.At("tab", err)
+	}
+	if err := contract.Text(string(v.Tab), 0, -1, ""); err != nil {
+		return contract.At("tab", err)
+	}
+	if err := contract.Text(string(v.URL), 0, -1, ""); err != nil {
+		return contract.At("url", err)
+	}
+	if err := contract.Text(string(v.Title), 0, -1, ""); err != nil {
+		return contract.At("title", err)
+	}
+	if err := contractValidateInspectView(v.View, depth+1); err != nil {
+		return contract.At("view", err)
+	}
+	if err := contract.Text(string(v.View), 0, -1, ""); err != nil {
+		return contract.At("view", err)
+	}
+	if v.Tree == nil {
+		return contract.At("tree", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.Tree {
+		_ = i
+		_ = item
+		if err := contractValidateBrowserTreeNode(item, depth+1); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "tree", i), err)
+		}
+	}
+	return nil
+}
+func (v *InspectResult) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next InspectResult
+	for key := range obj {
+		switch key {
+		case "tab", "url", "title", "view", "tree", "truncated":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["tab"]
+		if !ok {
+			return contract.At("tab", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[TabID](raw)
+			if err != nil {
+				return contract.At("tab", err)
+			}
+			next.Tab = value
+		}
+	}
+	{
+		raw, ok := obj["url"]
+		if !ok {
+			return contract.At("url", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("url", err)
+			}
+			next.URL = value
+		}
+	}
+	{
+		raw, ok := obj["title"]
+		if !ok {
+			return contract.At("title", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("title", err)
+			}
+			next.Title = value
+		}
+	}
+	{
+		raw, ok := obj["view"]
+		if !ok {
+			return contract.At("view", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[InspectView](raw)
+			if err != nil {
+				return contract.At("view", err)
+			}
+			next.View = value
+		}
+	}
+	{
+		raw, ok := obj["tree"]
+		if !ok {
+			return contract.At("tree", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]BrowserTreeNode, error) { return contract.List(b, contract.Decode[BrowserTreeNode]) }(raw)
+			if err != nil {
+				return contract.At("tree", err)
+			}
+			next.Tree = value
+		}
+	}
+	{
+		raw, ok := obj["truncated"]
+		if !ok {
+			return contract.At("truncated", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[bool](raw)
+			if err != nil {
+				return contract.At("truncated", err)
+			}
+			next.Truncated = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v InspectResult) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "tab", Value: v.Tab})
+	fields = append(fields, contract.Field{Name: "url", Value: v.URL})
+	fields = append(fields, contract.Field{Name: "title", Value: v.Title})
+	fields = append(fields, contract.Field{Name: "view", Value: v.View})
+	fields = append(fields, contract.Field{Name: "tree", Value: v.Tree})
+	fields = append(fields, contract.Field{Name: "truncated", Value: v.Truncated})
+	return contract.EncodeObject(fields)
+}
+func InspectResultJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"BrowserTreeNode\":{\"additionalProperties\":false,\"description\":\"One node of the tree `inspect` returns: an accessibility node, or a DOM\\nelement with its tag.\",\"properties\":{\"children\":{\"items\":{\"$ref\":\"#/$defs/BrowserTreeNode\"},\"type\":\"array\"},\"name\":{\"type\":\"string\"},\"ref\":{\"description\":\"A node reference, which `inspect`, `find` and `probe` return: `e` and\\na number unique within its tab. It stays valid while its document\\ndoes.\",\"pattern\":\"^e[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"role\":{\"type\":\"string\"},\"states\":{\"items\":{\"type\":\"string\"},\"type\":\"array\"},\"tag\":{\"type\":\"string\"},\"value\":{\"anyOf\":[{\"type\":\"string\"},{\"format\":\"double\",\"type\":\"number\"}],\"description\":\"A node's value: an input's text, or a range or progress number.\"}},\"type\":\"object\"}},\"additionalProperties\":false,\"properties\":{\"tab\":{\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"tree\":{\"items\":{\"additionalProperties\":false,\"description\":\"One node of the tree `inspect` returns: an accessibility node, or a DOM\\nelement with its tag.\",\"properties\":{\"children\":{\"items\":{\"$ref\":\"#/$defs/BrowserTreeNode\"},\"type\":\"array\"},\"name\":{\"type\":\"string\"},\"ref\":{\"description\":\"A node reference, which `inspect`, `find` and `probe` return: `e` and\\na number unique within its tab. It stays valid while its document\\ndoes.\",\"pattern\":\"^e[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"role\":{\"type\":\"string\"},\"states\":{\"items\":{\"type\":\"string\"},\"type\":\"array\"},\"tag\":{\"type\":\"string\"},\"value\":{\"anyOf\":[{\"type\":\"string\"},{\"format\":\"double\",\"type\":\"number\"}],\"description\":\"A node's value: an input's text, or a range or progress number.\"}},\"type\":\"object\"},\"type\":\"array\"},\"truncated\":{\"type\":\"boolean\"},\"url\":{\"type\":\"string\"},\"view\":{\"description\":\"Which tree `inspect` returns.\",\"enum\":[\"accessibility\",\"dom\"],\"type\":\"string\"}},\"required\":[\"tab\",\"url\",\"title\",\"view\",\"tree\",\"truncated\"],\"title\":\"InspectResult\",\"type\":\"object\"}")
 }
 func DecodeInspectView(data []byte) (InspectView, error) { return contract.Decode[InspectView](data) }
 func (v InspectView) Validate() error                    { return contractValidateInspectView(v, 0) }
@@ -12057,6 +13179,2030 @@ func (v LiveTab) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "viewport", Value: v.Viewport})
 	return contract.EncodeObject(fields)
 }
+func DecodeLiveViewerMessage(data []byte) (LiveViewerMessage, error) {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return nil, err
+	}
+	tag, err := contract.Decode[string](obj["type"])
+	if err != nil {
+		return nil, fmt.Errorf("type: %w", err)
+	}
+	switch tag {
+	case "ack":
+		value, err := contract.Decode[LiveViewerMessageAck](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "choice":
+		value, err := contract.Decode[LiveViewerMessageChoice](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "composition":
+		value, err := contract.Decode[LiveViewerMessageComposition](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "dialog":
+		value, err := contract.Decode[LiveViewerMessageDialog](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "hello":
+		value, err := contract.Decode[LiveViewerMessageHello](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "key":
+		value, err := contract.Decode[LiveViewerMessageKey](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "keyframe":
+		value, err := contract.Decode[LiveViewerMessageKeyframe](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "mode":
+		value, err := contract.Decode[LiveViewerMessageMode](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "panel":
+		value, err := contract.Decode[LiveViewerMessagePanel](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "paste":
+		value, err := contract.Decode[LiveViewerMessagePaste](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "pointer":
+		value, err := contract.Decode[LiveViewerMessagePointer](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "release":
+		value, err := contract.Decode[LiveViewerMessageRelease](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "text":
+		value, err := contract.Decode[LiveViewerMessageText](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "upload":
+		value, err := contract.Decode[LiveViewerMessageUpload](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "watch":
+		value, err := contract.Decode[LiveViewerMessageWatch](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "wheel":
+		value, err := contract.Decode[LiveViewerMessageWheel](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	}
+	return nil, fmt.Errorf("unknown LiveViewerMessage tag %q", tag)
+}
+
+type LiveViewerMessageJSON struct{ Value LiveViewerMessage }
+
+func (v *LiveViewerMessageJSON) UnmarshalJSON(data []byte) error {
+	value, err := DecodeLiveViewerMessage(data)
+	if err == nil {
+		v.Value = value
+	}
+	return err
+}
+func (v LiveViewerMessageJSON) MarshalJSON() ([]byte, error) {
+	if err := ValidateLiveViewerMessage(v.Value); err != nil {
+		return nil, err
+	}
+	return contract.EncodeJSON(v.Value)
+}
+func ValidateLiveViewerMessage(value LiveViewerMessage) error {
+	return contractValidateLiveViewerMessage(value, 0)
+}
+func contractValidateLiveViewerMessage(value LiveViewerMessage, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	switch v := value.(type) {
+	case *LiveViewerMessageAck:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateLiveViewerMessageAck(*v, depth+1)
+	case *LiveViewerMessageChoice:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateLiveViewerMessageChoice(*v, depth+1)
+	case *LiveViewerMessageComposition:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateLiveViewerMessageComposition(*v, depth+1)
+	case *LiveViewerMessageDialog:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateLiveViewerMessageDialog(*v, depth+1)
+	case *LiveViewerMessageHello:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateLiveViewerMessageHello(*v, depth+1)
+	case *LiveViewerMessageKey:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateLiveViewerMessageKey(*v, depth+1)
+	case *LiveViewerMessageKeyframe:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateLiveViewerMessageKeyframe(*v, depth+1)
+	case *LiveViewerMessageMode:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateLiveViewerMessageMode(*v, depth+1)
+	case *LiveViewerMessagePanel:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateLiveViewerMessagePanel(*v, depth+1)
+	case *LiveViewerMessagePaste:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateLiveViewerMessagePaste(*v, depth+1)
+	case *LiveViewerMessagePointer:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateLiveViewerMessagePointer(*v, depth+1)
+	case *LiveViewerMessageRelease:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateLiveViewerMessageRelease(*v, depth+1)
+	case *LiveViewerMessageText:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateLiveViewerMessageText(*v, depth+1)
+	case *LiveViewerMessageUpload:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateLiveViewerMessageUpload(*v, depth+1)
+	case *LiveViewerMessageWatch:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateLiveViewerMessageWatch(*v, depth+1)
+	case *LiveViewerMessageWheel:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateLiveViewerMessageWheel(*v, depth+1)
+	default:
+		return fmt.Errorf("nil or unsupported LiveViewerMessage")
+	}
+}
+func DecodeLiveViewerMessageAck(data []byte) (LiveViewerMessageAck, error) {
+	return contract.Decode[LiveViewerMessageAck](data)
+}
+func (v LiveViewerMessageAck) Validate() error { return contractValidateLiveViewerMessageAck(v, 0) }
+func contractValidateLiveViewerMessageAck(v LiveViewerMessageAck, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	return nil
+}
+func (v *LiveViewerMessageAck) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next LiveViewerMessageAck
+	for key := range obj {
+		switch key {
+		case "generation", "sequence", "decodeQueue", "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "ack" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["generation"]
+		if !ok {
+			return contract.At("generation", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint32](raw)
+			if err != nil {
+				return contract.At("generation", err)
+			}
+			next.Generation = value
+		}
+	}
+	{
+		raw, ok := obj["sequence"]
+		if !ok {
+			return contract.At("sequence", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint32](raw)
+			if err != nil {
+				return contract.At("sequence", err)
+			}
+			next.Sequence = value
+		}
+	}
+	{
+		raw, ok := obj["decodeQueue"]
+		if !ok {
+			return contract.At("decodeQueue", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint32](raw)
+			if err != nil {
+				return contract.At("decodeQueue", err)
+			}
+			next.DecodeQueue = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v LiveViewerMessageAck) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "ack"})
+	fields = append(fields, contract.Field{Name: "generation", Value: v.Generation})
+	fields = append(fields, contract.Field{Name: "sequence", Value: v.Sequence})
+	fields = append(fields, contract.Field{Name: "decodeQueue", Value: v.DecodeQueue})
+	return contract.EncodeObject(fields)
+}
+func DecodeLiveViewerMessageChoice(data []byte) (LiveViewerMessageChoice, error) {
+	return contract.Decode[LiveViewerMessageChoice](data)
+}
+func (v LiveViewerMessageChoice) Validate() error {
+	return contractValidateLiveViewerMessageChoice(v, 0)
+}
+func contractValidateLiveViewerMessageChoice(v LiveViewerMessageChoice, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contractValidateTabID(v.Tab, depth+1); err != nil {
+		return contract.At("tab", err)
+	}
+	if err := contract.Text(string(v.Tab), 0, -1, ""); err != nil {
+		return contract.At("tab", err)
+	}
+	if err := contractValidateControlToken(v.Token, depth+1); err != nil {
+		return contract.At("token", err)
+	}
+	if err := contract.Text(string(v.Token), 0, -1, ""); err != nil {
+		return contract.At("token", err)
+	}
+	if v.Revision > 9007199254740991 {
+		return contract.At("revision", fmt.Errorf("outside numeric bounds"))
+	}
+	if err := contract.Text(string(v.Value), 0, 10000, ""); err != nil {
+		return contract.At("value", err)
+	}
+	if v.Indices == nil {
+		return contract.At("indices", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.Indices {
+		_ = i
+		_ = item
+	}
+	if len(v.Indices) > 1000 {
+		return contract.At("indices", fmt.Errorf("too many items"))
+	}
+	return nil
+}
+func (v *LiveViewerMessageChoice) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next LiveViewerMessageChoice
+	for key := range obj {
+		switch key {
+		case "tab", "token", "revision", "value", "indices", "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "choice" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["tab"]
+		if !ok {
+			return contract.At("tab", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[TabID](raw)
+			if err != nil {
+				return contract.At("tab", err)
+			}
+			next.Tab = value
+		}
+	}
+	{
+		raw, ok := obj["token"]
+		if !ok {
+			return contract.At("token", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[ControlToken](raw)
+			if err != nil {
+				return contract.At("token", err)
+			}
+			next.Token = value
+		}
+	}
+	{
+		raw, ok := obj["revision"]
+		if !ok {
+			return contract.At("revision", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint64](raw)
+			if err != nil {
+				return contract.At("revision", err)
+			}
+			next.Revision = value
+		}
+	}
+	{
+		raw, ok := obj["value"]
+		if !ok {
+			return contract.At("value", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("value", err)
+			}
+			next.Value = value
+		}
+	}
+	{
+		raw, ok := obj["indices"]
+		if !ok {
+			return contract.At("indices", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]uint32, error) { return contract.List(b, contract.Decode[uint32]) }(raw)
+			if err != nil {
+				return contract.At("indices", err)
+			}
+			next.Indices = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v LiveViewerMessageChoice) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "choice"})
+	fields = append(fields, contract.Field{Name: "tab", Value: v.Tab})
+	fields = append(fields, contract.Field{Name: "token", Value: v.Token})
+	fields = append(fields, contract.Field{Name: "revision", Value: v.Revision})
+	fields = append(fields, contract.Field{Name: "value", Value: v.Value})
+	fields = append(fields, contract.Field{Name: "indices", Value: v.Indices})
+	return contract.EncodeObject(fields)
+}
+func DecodeLiveViewerMessageComposition(data []byte) (LiveViewerMessageComposition, error) {
+	return contract.Decode[LiveViewerMessageComposition](data)
+}
+func (v LiveViewerMessageComposition) Validate() error {
+	return contractValidateLiveViewerMessageComposition(v, 0)
+}
+func contractValidateLiveViewerMessageComposition(v LiveViewerMessageComposition, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contractValidateTabID(v.Tab, depth+1); err != nil {
+		return contract.At("tab", err)
+	}
+	if err := contract.Text(string(v.Tab), 0, -1, ""); err != nil {
+		return contract.At("tab", err)
+	}
+	if err := contract.Text(string(v.Text), 0, 20000, ""); err != nil {
+		return contract.At("text", err)
+	}
+	return nil
+}
+func (v *LiveViewerMessageComposition) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next LiveViewerMessageComposition
+	for key := range obj {
+		switch key {
+		case "tab", "text", "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "composition" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["tab"]
+		if !ok {
+			return contract.At("tab", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[TabID](raw)
+			if err != nil {
+				return contract.At("tab", err)
+			}
+			next.Tab = value
+		}
+	}
+	{
+		raw, ok := obj["text"]
+		if !ok {
+			return contract.At("text", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("text", err)
+			}
+			next.Text = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v LiveViewerMessageComposition) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "composition"})
+	fields = append(fields, contract.Field{Name: "tab", Value: v.Tab})
+	fields = append(fields, contract.Field{Name: "text", Value: v.Text})
+	return contract.EncodeObject(fields)
+}
+func DecodeLiveViewerMessageDialog(data []byte) (LiveViewerMessageDialog, error) {
+	return contract.Decode[LiveViewerMessageDialog](data)
+}
+func (v LiveViewerMessageDialog) Validate() error {
+	return contractValidateLiveViewerMessageDialog(v, 0)
+}
+func contractValidateLiveViewerMessageDialog(v LiveViewerMessageDialog, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contractValidateTabID(v.Tab, depth+1); err != nil {
+		return contract.At("tab", err)
+	}
+	if err := contract.Text(string(v.Tab), 0, -1, ""); err != nil {
+		return contract.At("tab", err)
+	}
+	if v.Text != nil {
+		if err := contract.Text(string((*v.Text)), 0, 2000, ""); err != nil {
+			return contract.At("text", err)
+		}
+	}
+	return nil
+}
+func (v *LiveViewerMessageDialog) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next LiveViewerMessageDialog
+	for key := range obj {
+		switch key {
+		case "tab", "accept", "text", "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "dialog" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["tab"]
+		if !ok {
+			return contract.At("tab", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[TabID](raw)
+			if err != nil {
+				return contract.At("tab", err)
+			}
+			next.Tab = value
+		}
+	}
+	{
+		raw, ok := obj["accept"]
+		if !ok {
+			return contract.At("accept", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[bool](raw)
+			if err != nil {
+				return contract.At("accept", err)
+			}
+			next.Accept = value
+		}
+	}
+	{
+		raw, ok := obj["text"]
+		if ok {
+			value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("text", err)
+			}
+			next.Text = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v LiveViewerMessageDialog) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "dialog"})
+	fields = append(fields, contract.Field{Name: "tab", Value: v.Tab})
+	fields = append(fields, contract.Field{Name: "accept", Value: v.Accept})
+	if v.Text != nil {
+		fields = append(fields, contract.Field{Name: "text", Value: v.Text})
+	}
+	return contract.EncodeObject(fields)
+}
+func DecodeLiveViewerMessageHello(data []byte) (LiveViewerMessageHello, error) {
+	return contract.Decode[LiveViewerMessageHello](data)
+}
+func (v LiveViewerMessageHello) Validate() error { return contractValidateLiveViewerMessageHello(v, 0) }
+func contractValidateLiveViewerMessageHello(v LiveViewerMessageHello, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contractValidatePlatform(v.Platform, depth+1); err != nil {
+		return contract.At("platform", err)
+	}
+	if err := contract.Text(string(v.Platform), 0, -1, ""); err != nil {
+		return contract.At("platform", err)
+	}
+	return nil
+}
+func (v *LiveViewerMessageHello) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next LiveViewerMessageHello
+	for key := range obj {
+		switch key {
+		case "platform", "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "hello" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["platform"]
+		if !ok {
+			return contract.At("platform", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[Platform](raw)
+			if err != nil {
+				return contract.At("platform", err)
+			}
+			next.Platform = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v LiveViewerMessageHello) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "hello"})
+	fields = append(fields, contract.Field{Name: "platform", Value: v.Platform})
+	return contract.EncodeObject(fields)
+}
+func DecodeLiveViewerMessageKey(data []byte) (LiveViewerMessageKey, error) {
+	return contract.Decode[LiveViewerMessageKey](data)
+}
+func (v LiveViewerMessageKey) Validate() error { return contractValidateLiveViewerMessageKey(v, 0) }
+func contractValidateLiveViewerMessageKey(v LiveViewerMessageKey, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contractValidateTabID(v.Tab, depth+1); err != nil {
+		return contract.At("tab", err)
+	}
+	if err := contract.Text(string(v.Tab), 0, -1, ""); err != nil {
+		return contract.At("tab", err)
+	}
+	if err := contractValidateKeyAction(v.Action, depth+1); err != nil {
+		return contract.At("action", err)
+	}
+	if err := contract.Text(string(v.Action), 0, -1, ""); err != nil {
+		return contract.At("action", err)
+	}
+	if err := contract.Text(string(v.Key), 0, 64, ""); err != nil {
+		return contract.At("key", err)
+	}
+	if err := contract.Text(string(v.Code), 0, 64, ""); err != nil {
+		return contract.At("code", err)
+	}
+	if v.Modifiers > 15 {
+		return contract.At("modifiers", fmt.Errorf("outside numeric bounds"))
+	}
+	if v.Location > 3 {
+		return contract.At("location", fmt.Errorf("outside numeric bounds"))
+	}
+	if v.Text != nil {
+		if err := contract.Text(string((*v.Text)), 1, 16, ""); err != nil {
+			return contract.At("text", err)
+		}
+	}
+	return nil
+}
+func (v *LiveViewerMessageKey) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next LiveViewerMessageKey
+	for key := range obj {
+		switch key {
+		case "tab", "action", "key", "code", "keyCode", "modifiers", "repeat", "location", "text", "altGraph", "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "key" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["tab"]
+		if !ok {
+			return contract.At("tab", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[TabID](raw)
+			if err != nil {
+				return contract.At("tab", err)
+			}
+			next.Tab = value
+		}
+	}
+	{
+		raw, ok := obj["action"]
+		if !ok {
+			return contract.At("action", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[KeyAction](raw)
+			if err != nil {
+				return contract.At("action", err)
+			}
+			next.Action = value
+		}
+	}
+	{
+		raw, ok := obj["key"]
+		if !ok {
+			return contract.At("key", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("key", err)
+			}
+			next.Key = value
+		}
+	}
+	{
+		raw, ok := obj["code"]
+		if !ok {
+			return contract.At("code", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("code", err)
+			}
+			next.Code = value
+		}
+	}
+	{
+		raw, ok := obj["keyCode"]
+		if !ok {
+			return contract.At("keyCode", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint8](raw)
+			if err != nil {
+				return contract.At("keyCode", err)
+			}
+			next.KeyCode = value
+		}
+	}
+	{
+		raw, ok := obj["modifiers"]
+		if !ok {
+			return contract.At("modifiers", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint8](raw)
+			if err != nil {
+				return contract.At("modifiers", err)
+			}
+			next.Modifiers = value
+		}
+	}
+	{
+		raw, ok := obj["repeat"]
+		if !ok {
+			return contract.At("repeat", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[bool](raw)
+			if err != nil {
+				return contract.At("repeat", err)
+			}
+			next.Repeat = value
+		}
+	}
+	{
+		raw, ok := obj["location"]
+		if !ok {
+			return contract.At("location", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint8](raw)
+			if err != nil {
+				return contract.At("location", err)
+			}
+			next.Location = value
+		}
+	}
+	{
+		raw, ok := obj["text"]
+		if ok {
+			value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("text", err)
+			}
+			next.Text = value
+		}
+	}
+	{
+		raw, ok := obj["altGraph"]
+		if !ok {
+			return contract.At("altGraph", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[bool](raw)
+			if err != nil {
+				return contract.At("altGraph", err)
+			}
+			next.AltGraph = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v LiveViewerMessageKey) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "key"})
+	fields = append(fields, contract.Field{Name: "tab", Value: v.Tab})
+	fields = append(fields, contract.Field{Name: "action", Value: v.Action})
+	fields = append(fields, contract.Field{Name: "key", Value: v.Key})
+	fields = append(fields, contract.Field{Name: "code", Value: v.Code})
+	fields = append(fields, contract.Field{Name: "keyCode", Value: v.KeyCode})
+	fields = append(fields, contract.Field{Name: "modifiers", Value: v.Modifiers})
+	fields = append(fields, contract.Field{Name: "repeat", Value: v.Repeat})
+	fields = append(fields, contract.Field{Name: "location", Value: v.Location})
+	if v.Text != nil {
+		fields = append(fields, contract.Field{Name: "text", Value: v.Text})
+	}
+	fields = append(fields, contract.Field{Name: "altGraph", Value: v.AltGraph})
+	return contract.EncodeObject(fields)
+}
+func DecodeLiveViewerMessageKeyframe(data []byte) (LiveViewerMessageKeyframe, error) {
+	return contract.Decode[LiveViewerMessageKeyframe](data)
+}
+func (v LiveViewerMessageKeyframe) Validate() error {
+	return contractValidateLiveViewerMessageKeyframe(v, 0)
+}
+func contractValidateLiveViewerMessageKeyframe(v LiveViewerMessageKeyframe, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	return nil
+}
+func (v *LiveViewerMessageKeyframe) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next LiveViewerMessageKeyframe
+	for key := range obj {
+		switch key {
+		case "generation", "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "keyframe" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["generation"]
+		if !ok {
+			return contract.At("generation", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint32](raw)
+			if err != nil {
+				return contract.At("generation", err)
+			}
+			next.Generation = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v LiveViewerMessageKeyframe) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "keyframe"})
+	fields = append(fields, contract.Field{Name: "generation", Value: v.Generation})
+	return contract.EncodeObject(fields)
+}
+func DecodeLiveViewerMessageMode(data []byte) (LiveViewerMessageMode, error) {
+	return contract.Decode[LiveViewerMessageMode](data)
+}
+func (v LiveViewerMessageMode) Validate() error { return contractValidateLiveViewerMessageMode(v, 0) }
+func contractValidateLiveViewerMessageMode(v LiveViewerMessageMode, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contractValidateTabID(v.Tab, depth+1); err != nil {
+		return contract.At("tab", err)
+	}
+	if err := contract.Text(string(v.Tab), 0, -1, ""); err != nil {
+		return contract.At("tab", err)
+	}
+	if err := contractValidateViewerMode(v.Mode, depth+1); err != nil {
+		return contract.At("mode", err)
+	}
+	if err := contract.Text(string(v.Mode), 0, -1, ""); err != nil {
+		return contract.At("mode", err)
+	}
+	return nil
+}
+func (v *LiveViewerMessageMode) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next LiveViewerMessageMode
+	for key := range obj {
+		switch key {
+		case "tab", "mode", "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "mode" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["tab"]
+		if !ok {
+			return contract.At("tab", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[TabID](raw)
+			if err != nil {
+				return contract.At("tab", err)
+			}
+			next.Tab = value
+		}
+	}
+	{
+		raw, ok := obj["mode"]
+		if !ok {
+			return contract.At("mode", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[ViewerMode](raw)
+			if err != nil {
+				return contract.At("mode", err)
+			}
+			next.Mode = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v LiveViewerMessageMode) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "mode"})
+	fields = append(fields, contract.Field{Name: "tab", Value: v.Tab})
+	fields = append(fields, contract.Field{Name: "mode", Value: v.Mode})
+	return contract.EncodeObject(fields)
+}
+func DecodeLiveViewerMessagePanel(data []byte) (LiveViewerMessagePanel, error) {
+	return contract.Decode[LiveViewerMessagePanel](data)
+}
+func (v LiveViewerMessagePanel) Validate() error { return contractValidateLiveViewerMessagePanel(v, 0) }
+func contractValidateLiveViewerMessagePanel(v LiveViewerMessagePanel, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if v.Width < 1 {
+		return contract.At("width", fmt.Errorf("outside numeric bounds"))
+	}
+	if v.Width > 4096 {
+		return contract.At("width", fmt.Errorf("outside numeric bounds"))
+	}
+	if v.Height < 1 {
+		return contract.At("height", fmt.Errorf("outside numeric bounds"))
+	}
+	if v.Height > 4096 {
+		return contract.At("height", fmt.Errorf("outside numeric bounds"))
+	}
+	if math.IsNaN(float64(v.DevicePixelRatio)) || math.IsInf(float64(v.DevicePixelRatio), 0) {
+		return contract.At("devicePixelRatio", fmt.Errorf("number must be finite"))
+	}
+	if v.DevicePixelRatio < 0.5 {
+		return contract.At("devicePixelRatio", fmt.Errorf("outside numeric bounds"))
+	}
+	if v.DevicePixelRatio > 4.0 {
+		return contract.At("devicePixelRatio", fmt.Errorf("outside numeric bounds"))
+	}
+	if v.ScreenWidth < 1 {
+		return contract.At("screenWidth", fmt.Errorf("outside numeric bounds"))
+	}
+	if v.ScreenWidth > 4096 {
+		return contract.At("screenWidth", fmt.Errorf("outside numeric bounds"))
+	}
+	if v.ScreenHeight < 1 {
+		return contract.At("screenHeight", fmt.Errorf("outside numeric bounds"))
+	}
+	if v.ScreenHeight > 4096 {
+		return contract.At("screenHeight", fmt.Errorf("outside numeric bounds"))
+	}
+	return nil
+}
+func (v *LiveViewerMessagePanel) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next LiveViewerMessagePanel
+	for key := range obj {
+		switch key {
+		case "width", "height", "devicePixelRatio", "screenWidth", "screenHeight", "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "panel" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["width"]
+		if !ok {
+			return contract.At("width", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint32](raw)
+			if err != nil {
+				return contract.At("width", err)
+			}
+			next.Width = value
+		}
+	}
+	{
+		raw, ok := obj["height"]
+		if !ok {
+			return contract.At("height", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint32](raw)
+			if err != nil {
+				return contract.At("height", err)
+			}
+			next.Height = value
+		}
+	}
+	{
+		raw, ok := obj["devicePixelRatio"]
+		if !ok {
+			return contract.At("devicePixelRatio", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[float64](raw)
+			if err != nil {
+				return contract.At("devicePixelRatio", err)
+			}
+			next.DevicePixelRatio = value
+		}
+	}
+	{
+		raw, ok := obj["screenWidth"]
+		if !ok {
+			return contract.At("screenWidth", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint32](raw)
+			if err != nil {
+				return contract.At("screenWidth", err)
+			}
+			next.ScreenWidth = value
+		}
+	}
+	{
+		raw, ok := obj["screenHeight"]
+		if !ok {
+			return contract.At("screenHeight", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint32](raw)
+			if err != nil {
+				return contract.At("screenHeight", err)
+			}
+			next.ScreenHeight = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v LiveViewerMessagePanel) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "panel"})
+	fields = append(fields, contract.Field{Name: "width", Value: v.Width})
+	fields = append(fields, contract.Field{Name: "height", Value: v.Height})
+	fields = append(fields, contract.Field{Name: "devicePixelRatio", Value: v.DevicePixelRatio})
+	fields = append(fields, contract.Field{Name: "screenWidth", Value: v.ScreenWidth})
+	fields = append(fields, contract.Field{Name: "screenHeight", Value: v.ScreenHeight})
+	return contract.EncodeObject(fields)
+}
+func DecodeLiveViewerMessagePaste(data []byte) (LiveViewerMessagePaste, error) {
+	return contract.Decode[LiveViewerMessagePaste](data)
+}
+func (v LiveViewerMessagePaste) Validate() error { return contractValidateLiveViewerMessagePaste(v, 0) }
+func contractValidateLiveViewerMessagePaste(v LiveViewerMessagePaste, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contractValidateTabID(v.Tab, depth+1); err != nil {
+		return contract.At("tab", err)
+	}
+	if err := contract.Text(string(v.Tab), 0, -1, ""); err != nil {
+		return contract.At("tab", err)
+	}
+	if err := contract.Text(string(v.Text), 0, 1000000, ""); err != nil {
+		return contract.At("text", err)
+	}
+	if err := contract.Text(string(v.HTML), 0, 4000000, ""); err != nil {
+		return contract.At("html", err)
+	}
+	return nil
+}
+func (v *LiveViewerMessagePaste) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next LiveViewerMessagePaste
+	for key := range obj {
+		switch key {
+		case "tab", "text", "html", "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "paste" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["tab"]
+		if !ok {
+			return contract.At("tab", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[TabID](raw)
+			if err != nil {
+				return contract.At("tab", err)
+			}
+			next.Tab = value
+		}
+	}
+	{
+		raw, ok := obj["text"]
+		if !ok {
+			return contract.At("text", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("text", err)
+			}
+			next.Text = value
+		}
+	}
+	{
+		raw, ok := obj["html"]
+		if !ok {
+			return contract.At("html", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("html", err)
+			}
+			next.HTML = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v LiveViewerMessagePaste) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "paste"})
+	fields = append(fields, contract.Field{Name: "tab", Value: v.Tab})
+	fields = append(fields, contract.Field{Name: "text", Value: v.Text})
+	fields = append(fields, contract.Field{Name: "html", Value: v.HTML})
+	return contract.EncodeObject(fields)
+}
+func DecodeLiveViewerMessagePointer(data []byte) (LiveViewerMessagePointer, error) {
+	return contract.Decode[LiveViewerMessagePointer](data)
+}
+func (v LiveViewerMessagePointer) Validate() error {
+	return contractValidateLiveViewerMessagePointer(v, 0)
+}
+func contractValidateLiveViewerMessagePointer(v LiveViewerMessagePointer, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contractValidateTabID(v.Tab, depth+1); err != nil {
+		return contract.At("tab", err)
+	}
+	if err := contract.Text(string(v.Tab), 0, -1, ""); err != nil {
+		return contract.At("tab", err)
+	}
+	if err := contractValidatePointerAction(v.Action, depth+1); err != nil {
+		return contract.At("action", err)
+	}
+	if err := contract.Text(string(v.Action), 0, -1, ""); err != nil {
+		return contract.At("action", err)
+	}
+	if math.IsNaN(float64(v.X)) || math.IsInf(float64(v.X), 0) {
+		return contract.At("x", fmt.Errorf("number must be finite"))
+	}
+	if v.X < 0.0 {
+		return contract.At("x", fmt.Errorf("outside numeric bounds"))
+	}
+	if v.X > 4096.0 {
+		return contract.At("x", fmt.Errorf("outside numeric bounds"))
+	}
+	if math.IsNaN(float64(v.Y)) || math.IsInf(float64(v.Y), 0) {
+		return contract.At("y", fmt.Errorf("number must be finite"))
+	}
+	if v.Y < 0.0 {
+		return contract.At("y", fmt.Errorf("outside numeric bounds"))
+	}
+	if v.Y > 4096.0 {
+		return contract.At("y", fmt.Errorf("outside numeric bounds"))
+	}
+	if err := contractValidatePointerButton(v.Button, depth+1); err != nil {
+		return contract.At("button", err)
+	}
+	if err := contract.Text(string(v.Button), 0, -1, ""); err != nil {
+		return contract.At("button", err)
+	}
+	if v.Buttons > 31 {
+		return contract.At("buttons", fmt.Errorf("outside numeric bounds"))
+	}
+	if v.ClickCount > 3 {
+		return contract.At("clickCount", fmt.Errorf("outside numeric bounds"))
+	}
+	if v.Modifiers > 15 {
+		return contract.At("modifiers", fmt.Errorf("outside numeric bounds"))
+	}
+	return nil
+}
+func (v *LiveViewerMessagePointer) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next LiveViewerMessagePointer
+	for key := range obj {
+		switch key {
+		case "tab", "action", "x", "y", "button", "buttons", "clickCount", "modifiers", "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "pointer" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["tab"]
+		if !ok {
+			return contract.At("tab", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[TabID](raw)
+			if err != nil {
+				return contract.At("tab", err)
+			}
+			next.Tab = value
+		}
+	}
+	{
+		raw, ok := obj["action"]
+		if !ok {
+			return contract.At("action", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[PointerAction](raw)
+			if err != nil {
+				return contract.At("action", err)
+			}
+			next.Action = value
+		}
+	}
+	{
+		raw, ok := obj["x"]
+		if !ok {
+			return contract.At("x", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[float64](raw)
+			if err != nil {
+				return contract.At("x", err)
+			}
+			next.X = value
+		}
+	}
+	{
+		raw, ok := obj["y"]
+		if !ok {
+			return contract.At("y", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[float64](raw)
+			if err != nil {
+				return contract.At("y", err)
+			}
+			next.Y = value
+		}
+	}
+	{
+		raw, ok := obj["button"]
+		if !ok {
+			return contract.At("button", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[PointerButton](raw)
+			if err != nil {
+				return contract.At("button", err)
+			}
+			next.Button = value
+		}
+	}
+	{
+		raw, ok := obj["buttons"]
+		if !ok {
+			return contract.At("buttons", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint8](raw)
+			if err != nil {
+				return contract.At("buttons", err)
+			}
+			next.Buttons = value
+		}
+	}
+	{
+		raw, ok := obj["clickCount"]
+		if !ok {
+			return contract.At("clickCount", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint8](raw)
+			if err != nil {
+				return contract.At("clickCount", err)
+			}
+			next.ClickCount = value
+		}
+	}
+	{
+		raw, ok := obj["modifiers"]
+		if !ok {
+			return contract.At("modifiers", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint8](raw)
+			if err != nil {
+				return contract.At("modifiers", err)
+			}
+			next.Modifiers = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v LiveViewerMessagePointer) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "pointer"})
+	fields = append(fields, contract.Field{Name: "tab", Value: v.Tab})
+	fields = append(fields, contract.Field{Name: "action", Value: v.Action})
+	fields = append(fields, contract.Field{Name: "x", Value: v.X})
+	fields = append(fields, contract.Field{Name: "y", Value: v.Y})
+	fields = append(fields, contract.Field{Name: "button", Value: v.Button})
+	fields = append(fields, contract.Field{Name: "buttons", Value: v.Buttons})
+	fields = append(fields, contract.Field{Name: "clickCount", Value: v.ClickCount})
+	fields = append(fields, contract.Field{Name: "modifiers", Value: v.Modifiers})
+	return contract.EncodeObject(fields)
+}
+func DecodeLiveViewerMessageRelease(data []byte) (LiveViewerMessageRelease, error) {
+	return contract.Decode[LiveViewerMessageRelease](data)
+}
+func (v LiveViewerMessageRelease) Validate() error {
+	return contractValidateLiveViewerMessageRelease(v, 0)
+}
+func contractValidateLiveViewerMessageRelease(v LiveViewerMessageRelease, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	return nil
+}
+func (v *LiveViewerMessageRelease) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next LiveViewerMessageRelease
+	for key := range obj {
+		switch key {
+		case "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "release" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v LiveViewerMessageRelease) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "release"})
+	return contract.EncodeObject(fields)
+}
+func DecodeLiveViewerMessageText(data []byte) (LiveViewerMessageText, error) {
+	return contract.Decode[LiveViewerMessageText](data)
+}
+func (v LiveViewerMessageText) Validate() error { return contractValidateLiveViewerMessageText(v, 0) }
+func contractValidateLiveViewerMessageText(v LiveViewerMessageText, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contractValidateTabID(v.Tab, depth+1); err != nil {
+		return contract.At("tab", err)
+	}
+	if err := contract.Text(string(v.Tab), 0, -1, ""); err != nil {
+		return contract.At("tab", err)
+	}
+	if err := contract.Text(string(v.Text), 0, 20000, ""); err != nil {
+		return contract.At("text", err)
+	}
+	return nil
+}
+func (v *LiveViewerMessageText) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next LiveViewerMessageText
+	for key := range obj {
+		switch key {
+		case "tab", "text", "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "text" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["tab"]
+		if !ok {
+			return contract.At("tab", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[TabID](raw)
+			if err != nil {
+				return contract.At("tab", err)
+			}
+			next.Tab = value
+		}
+	}
+	{
+		raw, ok := obj["text"]
+		if !ok {
+			return contract.At("text", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("text", err)
+			}
+			next.Text = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v LiveViewerMessageText) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "text"})
+	fields = append(fields, contract.Field{Name: "tab", Value: v.Tab})
+	fields = append(fields, contract.Field{Name: "text", Value: v.Text})
+	return contract.EncodeObject(fields)
+}
+func DecodeLiveViewerMessageUpload(data []byte) (LiveViewerMessageUpload, error) {
+	return contract.Decode[LiveViewerMessageUpload](data)
+}
+func (v LiveViewerMessageUpload) Validate() error {
+	return contractValidateLiveViewerMessageUpload(v, 0)
+}
+func contractValidateLiveViewerMessageUpload(v LiveViewerMessageUpload, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contractValidateTabID(v.Tab, depth+1); err != nil {
+		return contract.At("tab", err)
+	}
+	if err := contract.Text(string(v.Tab), 0, -1, ""); err != nil {
+		return contract.At("tab", err)
+	}
+	if err := contractValidateControlToken(v.Token, depth+1); err != nil {
+		return contract.At("token", err)
+	}
+	if err := contract.Text(string(v.Token), 0, -1, ""); err != nil {
+		return contract.At("token", err)
+	}
+	if v.Revision > 9007199254740991 {
+		return contract.At("revision", fmt.Errorf("outside numeric bounds"))
+	}
+	if v.Files == nil {
+		return contract.At("files", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.Files {
+		_ = i
+		_ = item
+		if err := contractValidateUploadFile(item, depth+1); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "files", i), err)
+		}
+	}
+	if len(v.Files) > 100 {
+		return contract.At("files", fmt.Errorf("too many items"))
+	}
+	return nil
+}
+func (v *LiveViewerMessageUpload) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next LiveViewerMessageUpload
+	for key := range obj {
+		switch key {
+		case "tab", "token", "revision", "upload", "files", "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "upload" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["tab"]
+		if !ok {
+			return contract.At("tab", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[TabID](raw)
+			if err != nil {
+				return contract.At("tab", err)
+			}
+			next.Tab = value
+		}
+	}
+	{
+		raw, ok := obj["token"]
+		if !ok {
+			return contract.At("token", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[ControlToken](raw)
+			if err != nil {
+				return contract.At("token", err)
+			}
+			next.Token = value
+		}
+	}
+	{
+		raw, ok := obj["revision"]
+		if !ok {
+			return contract.At("revision", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint64](raw)
+			if err != nil {
+				return contract.At("revision", err)
+			}
+			next.Revision = value
+		}
+	}
+	{
+		raw, ok := obj["upload"]
+		if !ok {
+			return contract.At("upload", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint32](raw)
+			if err != nil {
+				return contract.At("upload", err)
+			}
+			next.Upload = value
+		}
+	}
+	{
+		raw, ok := obj["files"]
+		if !ok {
+			return contract.At("files", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]UploadFile, error) { return contract.List(b, contract.Decode[UploadFile]) }(raw)
+			if err != nil {
+				return contract.At("files", err)
+			}
+			next.Files = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v LiveViewerMessageUpload) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "upload"})
+	fields = append(fields, contract.Field{Name: "tab", Value: v.Tab})
+	fields = append(fields, contract.Field{Name: "token", Value: v.Token})
+	fields = append(fields, contract.Field{Name: "revision", Value: v.Revision})
+	fields = append(fields, contract.Field{Name: "upload", Value: v.Upload})
+	fields = append(fields, contract.Field{Name: "files", Value: v.Files})
+	return contract.EncodeObject(fields)
+}
+func DecodeLiveViewerMessageWatch(data []byte) (LiveViewerMessageWatch, error) {
+	return contract.Decode[LiveViewerMessageWatch](data)
+}
+func (v LiveViewerMessageWatch) Validate() error { return contractValidateLiveViewerMessageWatch(v, 0) }
+func contractValidateLiveViewerMessageWatch(v LiveViewerMessageWatch, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if v.Tab != nil {
+		if err := contractValidateTabID((*v.Tab), depth+1); err != nil {
+			return contract.At("tab", err)
+		}
+		if err := contract.Text(string((*v.Tab)), 0, -1, ""); err != nil {
+			return contract.At("tab", err)
+		}
+	}
+	return nil
+}
+func (v *LiveViewerMessageWatch) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next LiveViewerMessageWatch
+	for key := range obj {
+		switch key {
+		case "tab", "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "watch" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["tab"]
+		if !ok {
+			return contract.At("tab", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			if !contract.IsNull(raw) {
+				value, err := func(b []byte) (*TabID, error) { return contract.Pointer(b, contract.Decode[TabID]) }(raw)
+				if err != nil {
+					return contract.At("tab", err)
+				}
+				next.Tab = value
+			}
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v LiveViewerMessageWatch) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "watch"})
+	fields = append(fields, contract.Field{Name: "tab", Value: v.Tab})
+	return contract.EncodeObject(fields)
+}
+func DecodeLiveViewerMessageWheel(data []byte) (LiveViewerMessageWheel, error) {
+	return contract.Decode[LiveViewerMessageWheel](data)
+}
+func (v LiveViewerMessageWheel) Validate() error { return contractValidateLiveViewerMessageWheel(v, 0) }
+func contractValidateLiveViewerMessageWheel(v LiveViewerMessageWheel, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contractValidateTabID(v.Tab, depth+1); err != nil {
+		return contract.At("tab", err)
+	}
+	if err := contract.Text(string(v.Tab), 0, -1, ""); err != nil {
+		return contract.At("tab", err)
+	}
+	if math.IsNaN(float64(v.X)) || math.IsInf(float64(v.X), 0) {
+		return contract.At("x", fmt.Errorf("number must be finite"))
+	}
+	if v.X < 0.0 {
+		return contract.At("x", fmt.Errorf("outside numeric bounds"))
+	}
+	if v.X > 4096.0 {
+		return contract.At("x", fmt.Errorf("outside numeric bounds"))
+	}
+	if math.IsNaN(float64(v.Y)) || math.IsInf(float64(v.Y), 0) {
+		return contract.At("y", fmt.Errorf("number must be finite"))
+	}
+	if v.Y < 0.0 {
+		return contract.At("y", fmt.Errorf("outside numeric bounds"))
+	}
+	if v.Y > 4096.0 {
+		return contract.At("y", fmt.Errorf("outside numeric bounds"))
+	}
+	if math.IsNaN(float64(v.DeltaX)) || math.IsInf(float64(v.DeltaX), 0) {
+		return contract.At("deltaX", fmt.Errorf("number must be finite"))
+	}
+	if v.DeltaX < -10000.0 {
+		return contract.At("deltaX", fmt.Errorf("outside numeric bounds"))
+	}
+	if v.DeltaX > 10000.0 {
+		return contract.At("deltaX", fmt.Errorf("outside numeric bounds"))
+	}
+	if math.IsNaN(float64(v.DeltaY)) || math.IsInf(float64(v.DeltaY), 0) {
+		return contract.At("deltaY", fmt.Errorf("number must be finite"))
+	}
+	if v.DeltaY < -10000.0 {
+		return contract.At("deltaY", fmt.Errorf("outside numeric bounds"))
+	}
+	if v.DeltaY > 10000.0 {
+		return contract.At("deltaY", fmt.Errorf("outside numeric bounds"))
+	}
+	if v.Modifiers > 15 {
+		return contract.At("modifiers", fmt.Errorf("outside numeric bounds"))
+	}
+	return nil
+}
+func (v *LiveViewerMessageWheel) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next LiveViewerMessageWheel
+	for key := range obj {
+		switch key {
+		case "tab", "x", "y", "deltaX", "deltaY", "modifiers", "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "wheel" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["tab"]
+		if !ok {
+			return contract.At("tab", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[TabID](raw)
+			if err != nil {
+				return contract.At("tab", err)
+			}
+			next.Tab = value
+		}
+	}
+	{
+		raw, ok := obj["x"]
+		if !ok {
+			return contract.At("x", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[float64](raw)
+			if err != nil {
+				return contract.At("x", err)
+			}
+			next.X = value
+		}
+	}
+	{
+		raw, ok := obj["y"]
+		if !ok {
+			return contract.At("y", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[float64](raw)
+			if err != nil {
+				return contract.At("y", err)
+			}
+			next.Y = value
+		}
+	}
+	{
+		raw, ok := obj["deltaX"]
+		if !ok {
+			return contract.At("deltaX", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[float64](raw)
+			if err != nil {
+				return contract.At("deltaX", err)
+			}
+			next.DeltaX = value
+		}
+	}
+	{
+		raw, ok := obj["deltaY"]
+		if !ok {
+			return contract.At("deltaY", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[float64](raw)
+			if err != nil {
+				return contract.At("deltaY", err)
+			}
+			next.DeltaY = value
+		}
+	}
+	{
+		raw, ok := obj["modifiers"]
+		if !ok {
+			return contract.At("modifiers", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint8](raw)
+			if err != nil {
+				return contract.At("modifiers", err)
+			}
+			next.Modifiers = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v LiveViewerMessageWheel) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "wheel"})
+	fields = append(fields, contract.Field{Name: "tab", Value: v.Tab})
+	fields = append(fields, contract.Field{Name: "x", Value: v.X})
+	fields = append(fields, contract.Field{Name: "y", Value: v.Y})
+	fields = append(fields, contract.Field{Name: "deltaX", Value: v.DeltaX})
+	fields = append(fields, contract.Field{Name: "deltaY", Value: v.DeltaY})
+	fields = append(fields, contract.Field{Name: "modifiers", Value: v.Modifiers})
+	return contract.EncodeObject(fields)
+}
 func DecodeLoad(data []byte) (Load, error) { return contract.Decode[Load](data) }
 func (v Load) Validate() error             { return contractValidateLoad(v, 0) }
 func contractValidateLoad(v Load, depth int) error {
@@ -13056,6 +16202,116 @@ func (v NodeRef) MarshalJSON() ([]byte, error) {
 	}
 	return contract.EncodeJSON(string(v))
 }
+func DecodeNodeValue(data []byte) (NodeValue, error) {
+	if err := contract.CheckJSON(data); err != nil {
+		return nil, err
+	}
+	if value, err := contract.Decode[NodeValueText](data); err == nil {
+		return &value, nil
+	}
+	if value, err := contract.Decode[NodeValueNumber](data); err == nil {
+		return &value, nil
+	}
+	return nil, fmt.Errorf("no matching NodeValue variant")
+}
+
+type NodeValueJSON struct{ Value NodeValue }
+
+func (v *NodeValueJSON) UnmarshalJSON(data []byte) error {
+	value, err := DecodeNodeValue(data)
+	if err == nil {
+		v.Value = value
+	}
+	return err
+}
+func (v NodeValueJSON) MarshalJSON() ([]byte, error) {
+	if err := ValidateNodeValue(v.Value); err != nil {
+		return nil, err
+	}
+	return contract.EncodeJSON(v.Value)
+}
+func ValidateNodeValue(value NodeValue) error { return contractValidateNodeValue(value, 0) }
+func contractValidateNodeValue(value NodeValue, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	switch v := value.(type) {
+	case *NodeValueText:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateNodeValueText(*v, depth+1)
+	case *NodeValueNumber:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateNodeValueNumber(*v, depth+1)
+	default:
+		return fmt.Errorf("nil or unsupported NodeValue")
+	}
+}
+func DecodeNodeValueNumber(data []byte) (NodeValueNumber, error) {
+	return contract.Decode[NodeValueNumber](data)
+}
+func (v NodeValueNumber) Validate() error { return contractValidateNodeValueNumber(v, 0) }
+func contractValidateNodeValueNumber(v NodeValueNumber, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
+		return contract.At("", fmt.Errorf("number must be finite"))
+	}
+	return nil
+}
+func (v *NodeValueNumber) UnmarshalJSON(data []byte) error {
+	value, err := contract.Decode[float64](data)
+	if err != nil {
+		return err
+	}
+	next := NodeValueNumber(value)
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v NodeValueNumber) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	return contract.EncodeJSON(float64(v))
+}
+func DecodeNodeValueText(data []byte) (NodeValueText, error) {
+	return contract.Decode[NodeValueText](data)
+}
+func (v NodeValueText) Validate() error { return contractValidateNodeValueText(v, 0) }
+func contractValidateNodeValueText(v NodeValueText, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v), 0, -1, ""); err != nil {
+		return contract.At("", err)
+	}
+	return nil
+}
+func (v *NodeValueText) UnmarshalJSON(data []byte) error {
+	value, err := contract.Decode[string](data)
+	if err != nil {
+		return err
+	}
+	next := NodeValueText(value)
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v NodeValueText) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	return contract.EncodeJSON(string(v))
+}
 func DecodeOpenInput(data []byte) (OpenInput, error) { return contract.Decode[OpenInput](data) }
 func (v OpenInput) Validate() error                  { return contractValidateOpenInput(v, 0) }
 func contractValidateOpenInput(v OpenInput, depth int) error {
@@ -13511,6 +16767,116 @@ func (v ProbeInput) MarshalJSON() ([]byte, error) {
 func ProbeInputJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`probe`: lists the nodes under a viewport point.\",\"properties\":{\"include-non-interactable\":{\"type\":\"boolean\"},\"output\":{\"description\":\"New output file on this Host\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"overwrite\":{\"type\":\"boolean\"},\"tab\":{\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"timeout\":{\"description\":\"Whole operation deadline in milliseconds\",\"format\":\"uint64\",\"maximum\":300000,\"minimum\":1,\"type\":\"integer\"},\"xy\":{\"description\":\"Viewport CSS coordinates: x,y\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"}},\"required\":[\"tab\",\"xy\"],\"title\":\"ProbeInput\",\"type\":\"object\"}")
 }
+func DecodeProbeResult(data []byte) (ProbeResult, error) { return contract.Decode[ProbeResult](data) }
+func (v ProbeResult) Validate() error                    { return contractValidateProbeResult(v, 0) }
+func contractValidateProbeResult(v ProbeResult, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if v.Matches == nil {
+		return contract.At("matches", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.Matches {
+		_ = i
+		_ = item
+		if err := contractValidateBrowserNode(item, depth+1); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "matches", i), err)
+		}
+	}
+	if err := contractValidateBrowserViewport(v.Viewport, depth+1); err != nil {
+		return contract.At("viewport", err)
+	}
+	if v.Path != nil {
+		if err := contract.Text(string((*v.Path)), 0, -1, ""); err != nil {
+			return contract.At("path", err)
+		}
+	}
+	return nil
+}
+func (v *ProbeResult) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next ProbeResult
+	for key := range obj {
+		switch key {
+		case "matches", "viewport", "path", "truncated":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["matches"]
+		if !ok {
+			return contract.At("matches", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]BrowserNode, error) { return contract.List(b, contract.Decode[BrowserNode]) }(raw)
+			if err != nil {
+				return contract.At("matches", err)
+			}
+			next.Matches = value
+		}
+	}
+	{
+		raw, ok := obj["viewport"]
+		if !ok {
+			return contract.At("viewport", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[BrowserViewport](raw)
+			if err != nil {
+				return contract.At("viewport", err)
+			}
+			next.Viewport = value
+		}
+	}
+	{
+		raw, ok := obj["path"]
+		if ok {
+			value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("path", err)
+			}
+			next.Path = value
+		}
+	}
+	{
+		raw, ok := obj["truncated"]
+		if !ok {
+			return contract.At("truncated", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[bool](raw)
+			if err != nil {
+				return contract.At("truncated", err)
+			}
+			next.Truncated = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v ProbeResult) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "matches", Value: v.Matches})
+	fields = append(fields, contract.Field{Name: "viewport", Value: v.Viewport})
+	if v.Path != nil {
+		fields = append(fields, contract.Field{Name: "path", Value: v.Path})
+	}
+	fields = append(fields, contract.Field{Name: "truncated", Value: v.Truncated})
+	return contract.EncodeObject(fields)
+}
+func ProbeResultJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"matches\":{\"items\":{\"additionalProperties\":false,\"description\":\"One accessibility node that `find` matched or `probe` found under a point.\",\"properties\":{\"bounds\":{\"additionalProperties\":false,\"description\":\"A node's box in viewport CSS pixels.\",\"properties\":{\"height\":{\"format\":\"double\",\"type\":\"number\"},\"width\":{\"format\":\"double\",\"type\":\"number\"},\"x\":{\"format\":\"double\",\"type\":\"number\"},\"y\":{\"format\":\"double\",\"type\":\"number\"}},\"required\":[\"x\",\"y\",\"width\",\"height\"],\"type\":\"object\"},\"depth\":{\"format\":\"uint\",\"minimum\":0,\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"ref\":{\"description\":\"A node reference, which `inspect`, `find` and `probe` return: `e` and\\na number unique within its tab. It stays valid while its document\\ndoes.\",\"pattern\":\"^e[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"role\":{\"type\":\"string\"},\"states\":{\"items\":{\"type\":\"string\"},\"type\":\"array\"},\"value\":{\"anyOf\":[{\"type\":\"string\"},{\"format\":\"double\",\"type\":\"number\"}],\"description\":\"A node's value: an input's text, or a range or progress number.\"}},\"required\":[\"role\",\"name\",\"depth\",\"states\"],\"type\":\"object\"},\"type\":\"array\"},\"path\":{\"type\":\"string\"},\"truncated\":{\"type\":\"boolean\"},\"viewport\":{\"additionalProperties\":false,\"description\":\"A tab's viewport (`live-view.md` § Modes): its CSS size, the pixel ratio\\nit renders at, and who decides them.\",\"properties\":{\"devicePixelRatio\":{\"format\":\"double\",\"minimum\":2.2250738585072014e-308,\"type\":\"number\"},\"height\":{\"format\":\"uint32\",\"minimum\":1,\"type\":\"integer\"},\"mode\":{\"description\":\"Who decides a tab's viewport (`live-view.md` § Modes): the user's\\npanel, a phone, or the agent.\",\"enum\":[\"web\",\"mobile\",\"custom\"],\"type\":\"string\"},\"width\":{\"format\":\"uint32\",\"minimum\":1,\"type\":\"integer\"}},\"required\":[\"width\",\"height\",\"devicePixelRatio\",\"mode\"],\"type\":\"object\"}},\"required\":[\"matches\",\"viewport\",\"truncated\"],\"title\":\"ProbeResult\",\"type\":\"object\"}")
+}
 func DecodeReadInput(data []byte) (ReadInput, error) { return contract.Decode[ReadInput](data) }
 func (v ReadInput) Validate() error                  { return contractValidateReadInput(v, 0) }
 func contractValidateReadInput(v ReadInput, depth int) error {
@@ -13867,6 +17233,9 @@ func (v ReadProperty) MarshalJSON() ([]byte, error) {
 	return contract.EncodeJSON(string(v))
 }
 func DecodeReadResult(data []byte) (ReadResult, error) {
+	if err := contract.CheckJSON(data); err != nil {
+		return nil, err
+	}
 	if value, err := contract.Decode[ReadResultOne](data); err == nil {
 		return &value, nil
 	}
@@ -14992,9 +18361,6 @@ func contractValidateSelectInput(v SelectInput, depth int) error {
 		for i, item := range *v.Value {
 			_ = i
 			_ = item
-			if err := contractValidateInputText(item, depth+1); err != nil {
-				return contract.At(fmt.Sprintf("%s[%d]", "value", i), err)
-			}
 			if err := contract.Text(string(item), 0, -1, ""); err != nil {
 				return contract.At(fmt.Sprintf("%s[%d]", "value", i), err)
 			}
@@ -15007,9 +18373,6 @@ func contractValidateSelectInput(v SelectInput, depth int) error {
 		for i, item := range *v.OptionLabel {
 			_ = i
 			_ = item
-			if err := contractValidateInputText(item, depth+1); err != nil {
-				return contract.At(fmt.Sprintf("%s[%d]", "option-label", i), err)
-			}
 			if err := contract.Text(string(item), 0, -1, ""); err != nil {
 				return contract.At(fmt.Sprintf("%s[%d]", "option-label", i), err)
 			}
@@ -15031,6 +18394,9 @@ func contractValidateSelectInput(v SelectInput, depth int) error {
 		if (*v.TimeoutMS) > 300000 {
 			return contract.At("timeout", fmt.Errorf("outside numeric bounds"))
 		}
+	}
+	if err := validateSelectInput(v); err != nil {
+		return err
 	}
 	return nil
 }
@@ -15205,8 +18571,8 @@ func (v *SelectInput) UnmarshalJSON(data []byte) error {
 	{
 		raw, ok := obj["value"]
 		if ok {
-			value, err := func(b []byte) (*[]InputText, error) {
-				return contract.Pointer(b, func(b []byte) ([]InputText, error) { return contract.List(b, contract.Decode[InputText]) })
+			value, err := func(b []byte) (*[]string, error) {
+				return contract.Pointer(b, func(b []byte) ([]string, error) { return contract.List(b, contract.Decode[string]) })
 			}(raw)
 			if err != nil {
 				return contract.At("value", err)
@@ -15217,8 +18583,8 @@ func (v *SelectInput) UnmarshalJSON(data []byte) error {
 	{
 		raw, ok := obj["option-label"]
 		if ok {
-			value, err := func(b []byte) (*[]InputText, error) {
-				return contract.Pointer(b, func(b []byte) ([]InputText, error) { return contract.List(b, contract.Decode[InputText]) })
+			value, err := func(b []byte) (*[]string, error) {
+				return contract.Pointer(b, func(b []byte) ([]string, error) { return contract.List(b, contract.Decode[string]) })
 			}(raw)
 			if err != nil {
 				return contract.At("option-label", err)
@@ -15317,7 +18683,7 @@ func (v SelectInput) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func SelectInputJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`select`: selects options of the target's select element by value,\\nlabel or index.\",\"properties\":{\"css\":{\"description\":\"CSS selector\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"exact\":{\"description\":\"Match the complete name or text\",\"type\":\"boolean\"},\"frame\":{\"description\":\"Frame references, outermost to innermost\",\"items\":{\"description\":\"A node reference, which `inspect`, `find` and `probe` return: `e` and\\na number unique within its tab. It stays valid while its document\\ndoes.\",\"pattern\":\"^e[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"type\":\"array\"},\"label\":{\"description\":\"Associated label text (label for, wrapping label, or aria-labelledby)\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"name\":{\"description\":\"Accessible name, with --role\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"name-pattern\":{\"description\":\"Accessible-name regular expression, with --role\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"nth\":{\"description\":\"Explicit zero-based match index\",\"format\":\"uint\",\"maximum\":999,\"minimum\":0,\"type\":\"integer\"},\"option-index\":{\"items\":{\"format\":\"uint\",\"minimum\":0,\"type\":\"integer\"},\"type\":\"array\"},\"option-label\":{\"items\":{\"maxLength\":1048576,\"type\":\"string\"},\"type\":\"array\"},\"placeholder\":{\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"ref\":{\"description\":\"A node reference returned by inspect or find\",\"pattern\":\"^e[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"role\":{\"description\":\"Accessible role, ASCII case-insensitive, such as button, textbox, or date\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"tab\":{\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"test-id\":{\"description\":\"data-testid attribute\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"text-match\":{\"description\":\"Visible text to match\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"text-pattern\":{\"description\":\"Rendered-text regular expression\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"timeout\":{\"description\":\"Whole operation deadline in milliseconds\",\"format\":\"uint64\",\"maximum\":300000,\"minimum\":1,\"type\":\"integer\"},\"value\":{\"items\":{\"maxLength\":1048576,\"type\":\"string\"},\"type\":\"array\"},\"within\":{\"description\":\"Container node reference\",\"pattern\":\"^e[1-9][0-9]{0,14}$\",\"type\":\"string\"}},\"required\":[\"tab\"],\"title\":\"SelectInput\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`select`: selects options of the target's select element by value,\\nlabel or index.\",\"properties\":{\"css\":{\"description\":\"CSS selector\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"exact\":{\"description\":\"Match the complete name or text\",\"type\":\"boolean\"},\"frame\":{\"description\":\"Frame references, outermost to innermost\",\"items\":{\"description\":\"A node reference, which `inspect`, `find` and `probe` return: `e` and\\na number unique within its tab. It stays valid while its document\\ndoes.\",\"pattern\":\"^e[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"type\":\"array\"},\"label\":{\"description\":\"Associated label text (label for, wrapping label, or aria-labelledby)\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"name\":{\"description\":\"Accessible name, with --role\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"name-pattern\":{\"description\":\"Accessible-name regular expression, with --role\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"nth\":{\"description\":\"Explicit zero-based match index\",\"format\":\"uint\",\"maximum\":999,\"minimum\":0,\"type\":\"integer\"},\"option-index\":{\"items\":{\"format\":\"uint\",\"minimum\":0,\"type\":\"integer\"},\"type\":\"array\"},\"option-label\":{\"items\":{\"type\":\"string\"},\"type\":\"array\"},\"placeholder\":{\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"ref\":{\"description\":\"A node reference returned by inspect or find\",\"pattern\":\"^e[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"role\":{\"description\":\"Accessible role, ASCII case-insensitive, such as button, textbox, or date\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"tab\":{\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"test-id\":{\"description\":\"data-testid attribute\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"text-match\":{\"description\":\"Visible text to match\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"text-pattern\":{\"description\":\"Rendered-text regular expression\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"timeout\":{\"description\":\"Whole operation deadline in milliseconds\",\"format\":\"uint64\",\"maximum\":300000,\"minimum\":1,\"type\":\"integer\"},\"value\":{\"items\":{\"type\":\"string\"},\"type\":\"array\"},\"within\":{\"description\":\"Container node reference\",\"pattern\":\"^e[1-9][0-9]{0,14}$\",\"type\":\"string\"}},\"required\":[\"tab\"],\"title\":\"SelectInput\",\"type\":\"object\"}")
 }
 func DecodeSelectTextInput(data []byte) (SelectTextInput, error) {
 	return contract.Decode[SelectTextInput](data)

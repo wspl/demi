@@ -343,13 +343,14 @@ type CheckInput struct {
 // label or index.
 // +demi:root
 // +demi:schema
+// +demi:check validateSelectInput
 type SelectInput struct {
 	// Browser tab ID returned by open or tabs
 	Tab TabID `json:"tab"`
 	BrowserTarget
-	Value       *[]InputText `json:"value,omitempty"`
-	OptionLabel *[]InputText `json:"option-label,omitempty"`
-	OptionIndex *[]uint      `json:"option-index,omitempty"`
+	Value       *[]string `json:"value,omitempty"`
+	OptionLabel *[]string `json:"option-label,omitempty"`
+	OptionIndex *[]uint   `json:"option-index,omitempty"`
 	// Whole operation deadline in milliseconds
 	// +demi:range min=1 max=300000
 	TimeoutMS *uint64 `json:"timeout,omitempty"`
@@ -600,10 +601,11 @@ type CdpSendInput struct {
 // after a cursor.
 // +demi:root
 // +demi:schema
+// +demi:check validateCdpEventsInput
 type CdpEventsInput struct {
 	// Browser tab ID returned by open or tabs
-	Tab    TabID          `json:"tab"`
-	Method *[]LocatorText `json:"method,omitempty"`
+	Tab    TabID     `json:"tab"`
+	Method *[]string `json:"method,omitempty"`
 	// Cursor returned by a previous read
 	// +demi:length chars min=1 max=4096
 	After *string `json:"after,omitempty"`
@@ -660,13 +662,14 @@ type AssetsListInput struct {
 // `assets.export`: saves an inventory's assets to a directory with a manifest.
 // +demi:root
 // +demi:schema
+// +demi:check validateAssetsExportInput
 type AssetsExportInput struct {
 	// Browser tab ID returned by open or tabs
 	Tab TabID `json:"tab"`
 	// +demi:length chars min=1 max=4096
-	Inventory string         `json:"inventory"`
-	ID        *[]LocatorText `json:"id,omitempty"`
-	Kind      *[]AssetKind   `json:"kind,omitempty"`
+	Inventory string       `json:"inventory"`
+	ID        *[]string    `json:"id,omitempty"`
+	Kind      *[]AssetKind `json:"kind,omitempty"`
 	// Output directory on the invoking Host
 	// +demi:length chars min=1 max=4096
 	OutputDir string `json:"output-dir"`
@@ -1933,6 +1936,3 @@ type ControlToken string
 
 // +demi:length chars min=1 max=4096
 type LocatorText string
-
-// +demi:length chars max=1048576
-type InputText string

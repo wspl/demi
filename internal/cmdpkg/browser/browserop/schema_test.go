@@ -9,9 +9,8 @@ import (
 	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
 )
 
-// TestSchemasMatchRustSnapshot protects the schemas currently expressible by
-// contractgen. The report lists the four blocked result schemas and four
-// emitted schemas whose canonical representation still differs from Rust.
+// TestSchemasMatchRustSnapshot compares every input and result of all 47
+// browser leaves with the Rust manifest snapshot, without schema exclusions.
 func TestSchemasMatchRustSnapshot(t *testing.T) {
 	data, err := os.ReadFile("testdata/schemas.json")
 	if err != nil {
@@ -22,6 +21,14 @@ func TestSchemasMatchRustSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	schemas := map[string]func() json.RawMessage{
+		"ContentFetchResult":   browserop.ContentFetchResultJSONSchema,
+		"ProbeResult":          browserop.ProbeResultJSONSchema,
+		"FindResult":           browserop.FindResultJSONSchema,
+		"InspectResult":        browserop.InspectResultJSONSchema,
+		"DialogInspectResult":  browserop.DialogInspectResultJSONSchema,
+		"AssetsExportInput":    browserop.AssetsExportInputJSONSchema,
+		"CdpEventsInput":       browserop.CdpEventsInputJSONSchema,
+		"SelectInput":          browserop.SelectInputJSONSchema,
 		"ActionResult":         browserop.ActionResultJSONSchema,
 		"AssetsExportResult":   browserop.AssetsExportResultJSONSchema,
 		"AssetsListInput":      browserop.AssetsListInputJSONSchema,
@@ -94,6 +101,14 @@ func TestSchemasMatchRustSnapshot(t *testing.T) {
 		"WebmcpCallResult":     browserop.WebmcpCallResultJSONSchema,
 		"WebmcpListInput":      browserop.WebmcpListInputJSONSchema,
 		"WebmcpListResult":     browserop.WebmcpListResultJSONSchema,
+	}
+	if len(reference) != 80 || len(schemas) != len(reference) {
+		t.Fatalf("schema coverage: got %d, reference %d, want 80 unique schemas across 47 leaves", len(schemas), len(reference))
+	}
+	for name := range reference {
+		if schemas[name] == nil {
+			t.Fatalf("missing schema %s", name)
+		}
 	}
 	for name, schema := range schemas {
 		t.Run(name, func(t *testing.T) {
