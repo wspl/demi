@@ -1,0 +1,14 @@
+[package]
+name = "demi-plugin-file-browser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+# No tests of its own: it declares only its identity; no doc examples.
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+demi-plugin-interface = { path = "../plugin-interface" }

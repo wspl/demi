@@ -1,4 +1,5 @@
-import type { EditCopies, EditedFile } from '@demicodes/protocol'
+import { editedFileSchema, type EditCopies } from '@demicodes/protocol'
+import { z } from 'zod'
 import { compareFileNames } from './file-browser-state'
 import { baseName } from './paths'
 import type { TreeRow } from './tree'
@@ -63,10 +64,11 @@ export interface ChangeSides { original: string; modified: string }
 export type ReadCallChange = (copies: EditCopies, signal?: AbortSignal) => Promise<ChangeSides | null>
 
 /** One file picked under a shell call, independent of the call's other files. */
-export interface CallEditSelection {
-  commandId: string
-  file: EditedFile
-}
+export const callEditSelectionSchema = z.object({
+  commandId: z.string(),
+  file: editedFileSchema,
+})
+export type CallEditSelection = z.infer<typeof callEditSelectionSchema>
 
 export interface CallChangeSource extends CallEditSelection {
   /** The two sides of segment `edit`; null when it has no copies or one of them is gone. */

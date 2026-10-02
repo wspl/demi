@@ -24,7 +24,7 @@ function open(): void {
   if ('web' in opens) {
     window.open(opens.web, '_blank', 'noopener,noreferrer')
   } else {
-    files()?.open(opens.file)
+    files()?.open?.(opens.file)
   }
 }
 // The wrapper breaks as the line around it does: tiptap's own `white-space:

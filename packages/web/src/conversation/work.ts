@@ -1,34 +1,30 @@
 import { reactive } from 'vue'
 import { defineStore } from 'pinia'
-import type { CallEditSelection, ChangeMode } from '@demicodes/web-ui/files/changes'
-import {
-  workPanelTabs,
-  goBackInTab,
-  goForwardInTab,
-  showChangeInTab,
-  showCallEdit,
-  showFileInTab,
-  type WorkTab,
-  type ChangeWorkTab,
-} from '@demicodes/web-ui/agent/work-panel'
 import {
   addTab,
   emptyPanelState,
+  openIntent,
   removeTabs,
   selectInPanel,
   updateTab,
   type PanelState,
+  type PinnedTabs,
 } from '@demicodes/web-ui/agent/panel-tabs'
+import { intentTarget } from '@demicodes/web-ui/plugins/slots'
+import type { IntentName, IntentPayloads } from '@demicodes/web-ui/plugins/intents'
 import { loadPanel, savePanel } from '../api/panel'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { useResources } from '../state/resources'
+import { useProduct } from '../state/product'
+import { PLUGIN_PAGES } from '../plugins/pages'
+import { pluginEnabled } from '../plugins/host'
 import { createWorkingTreeSource, type WorkingTreeSource } from './changes'
 
-/** One conversation's work panel: whether it is open, its fixed views, its saved selection and tabs, and its working tree. */
+/** One conversation's work panel: whether it is open, its pinned tabs, its saved selection and tabs, and its working tree. */
 export interface WorkState {
   open: boolean
-  /** The fixed Change and File views' own state. */
-  views: WorkTab[]
+  /** The pinned tabs' data, by kind, for the page's lifetime. */
+  pinned: PinnedTabs
   /** The selection and the user's tabs, saved with the conversation. */
   panel: PanelState
   /** The one read of the saved panel has started; it is not asked for again once it answered. */
@@ -46,11 +42,14 @@ export interface WorkState {
 /**
  * The work panel's state per conversation, for the page's lifetime: whether
  * the reader has it open beside that conversation, its tabs and their
- * selections, and the working-tree source behind its Change tab. The open flag
- * reads and writes account-local preferences; tab selections remain in memory.
+ * pinned tabs' data, and the working-tree source behind its files service.
+ * The open flag reads and writes account-local preferences; pinned tabs'
+ * data remains in memory.
  */
 export const useWorkPanel = defineStore('work-panel', () => {
   const resources = useResources()
+  const product = useProduct()
+  const enabled = (plugin: string) => pluginEnabled(product.snapshot, plugin)
   const states = reactive(new Map<string, WorkState>())
 
   function stateFor(conversationId: string): WorkState {
@@ -63,7 +62,7 @@ export const useWorkPanel = defineStore('work-panel', () => {
           resources.local.workPanelOpen ??= {}
           resources.local.workPanelOpen[conversationId] = open
         },
-        views: workPanelTabs(),
+        pinned: {},
         panel: emptyPanelState(),
         loading: false,
         loaded: false,
@@ -147,7 +146,7 @@ export const useWorkPanel = defineStore('work-panel', () => {
     state.open = open
   }
 
-  function select(conversationId: string, selection: string): void {
+  function select(conversationId: string, selection: string | null): void {
     change(conversationId, selectInPanel(stateFor(conversationId).panel, selection))
   }
 
@@ -170,36 +169,32 @@ export const useWorkPanel = defineStore('work-panel', () => {
     change(conversationId, removeTabs(stateFor(conversationId).panel, ids))
   }
 
-  /** A file by Host path, shown in the File view, with the panel opened for it. */
-  function open(conversationId: string, path: string): void {
+  /** A pinned tab's data, as its kind replaces it. */
+  function updatePinned(conversationId: string, kind: string, data: unknown): void {
     const state = stateFor(conversationId)
-    const next = showFileInTab(state.views, path)
-    state.views = next.tabs
-    if (next.activeId !== null) {
-      select(conversationId, next.activeId)
+    state.pinned = { ...state.pinned, [kind]: data }
+  }
+
+  /**
+   * Opens `intent` in the conversation's panel (`plugin-pages.md`
+   * § Intents): the page that declares it shows it in its pinned tab, which
+   * takes the selection, with the panel opened for it.
+   */
+  function openIn<Name extends IntentName>(conversationId: string, intent: Name, payload: IntentPayloads[Name]): void {
+    const state = stateFor(conversationId)
+    const opened = openIntent({ state: state.panel, pinned: state.pinned }, PLUGIN_PAGES, enabled, intent, payload)
+    if (!opened) {
+      return
     }
+    state.pinned = opened.pinned
+    change(conversationId, opened.state)
     state.open = true
   }
 
-  function showChange(state: WorkState, id: string, mode: ChangeMode, path: string | null, selection?: { call: ChangeWorkTab['call']; edit: number }): void {
-    state.views = showChangeInTab(state.views, id, mode, path, selection)
+  /** Whether any page the user has on opens `intent`. */
+  function canOpen(intent: IntentName): boolean {
+    return intentTarget(PLUGIN_PAGES, enabled, intent) !== null
   }
 
-  function selectEdit(conversationId: string, selection: CallEditSelection): void {
-    const state = stateFor(conversationId)
-    const next = showCallEdit(state.views, selection)
-    state.views = next.tabs
-    select(conversationId, next.activeId)
-    state.open = true
-  }
-
-  function back(state: WorkState, id: string): void {
-    state.views = goBackInTab(state.views, id)
-  }
-
-  function forward(state: WorkState, id: string): void {
-    state.views = goForwardInTab(state.views, id)
-  }
-
-  return { stateFor, setOpen, load, select, add, update, closeTabs, open, showChange, selectEdit, back, forward }
+  return { stateFor, setOpen, load, select, add, update, closeTabs, updatePinned, openIn, canOpen }
 })

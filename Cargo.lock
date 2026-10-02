@@ -1482,8 +1482,10 @@ dependencies = [
  "demi-host-interface",
  "demi-machine-manager-protocol",
  "demi-plugin-browser",
+ "demi-plugin-changes",
  "demi-plugin-expose",
  "demi-plugin-file",
+ "demi-plugin-file-browser",
  "demi-plugin-interface",
  "demi-plugin-skills",
  "demi-plugin-todo",
@@ -2228,6 +2230,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "demi-plugin-changes"
+version = "0.1.3"
+dependencies = [
+ "demi-plugin-interface",
+]
+
+[[package]]
 name = "demi-plugin-expose"
 version = "0.1.3"
 dependencies = [
@@ -2250,6 +2259,13 @@ dependencies = [
  "demi-command-declarations",
  "demi-command-package-file-protocol",
  "demi-host-interface",
+ "demi-plugin-interface",
+]
+
+[[package]]
+name = "demi-plugin-file-browser"
+version = "0.1.3"
+dependencies = [
  "demi-plugin-interface",
 ]
 

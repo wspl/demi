@@ -1,7 +1,10 @@
 import type { Component } from 'vue'
 import type { PanelTabKind } from '../agent/panel-kinds/kind'
 import type { SettingsNavGroup, SettingsNavItem } from '../settings/types'
+import type { ChangeSetSource, ReadCallChange } from '../files/changes'
+import type { FileBrowserSource } from '../files/types'
 import { conversationClient, type ConversationPluginClient, type PluginHost } from './client'
+import type { IntentName, IntentPayloads, IntentTarget, PageIntents } from './intents'
 
 /**
  * What a plugin package fills of the web app (`plugin-pages.md` § Slots):
@@ -15,6 +18,12 @@ export interface PluginPage {
   settings?: PluginSettingsSection
   /** Work panel kinds, made for each conversation whose panel is open. */
   panelKinds?: (context: PanelKindsContext) => PanelKinds
+  /**
+   * The intents its pinned kinds open. They are declared here rather than on
+   * a kind because an intent can arrive while the panel is closed and no
+   * kind is made.
+   */
+  intents?: PageIntents
   /**
    * A tool in the conversation header, which shows itself only while the
    * plugin's state has something to show. It receives `PluginHeaderToolProps`
@@ -31,10 +40,34 @@ export interface PluginSettingsSection {
   component: Component
 }
 
+/**
+ * A conversation's files as the work panel's kinds read them
+ * (`plugin-pages.md` § Services): a product service, whoever shows them.
+ */
+export interface ConversationFileService {
+  /** The Host's file tree and file contents, while the conversation's Host is known. */
+  workspace: { source: FileBrowserSource; root: string; name?: string } | null
+  /** Where the conversation's work runs, which a retained edit's paths are relative to. */
+  root: string | null
+  /** The working tree's uncommitted changes. */
+  changes: ChangeSetSource
+  /** The two sides of one call's retained edit. */
+  readCallChange: ReadCallChange
+}
+
+/** Opening intents for one conversation (`plugin-pages.md` § Intents). */
+export interface IntentService {
+  open<Name extends IntentName>(intent: Name, payload: IntentPayloads[Name]): void
+  /** Whether any page the user has on opens `intent`; a control that would open it shows only then. */
+  canOpen(intent: IntentName): boolean
+}
+
 /** What a conversation's work panel offers a plugin's kinds. */
 export interface PanelKindsContext {
   conversation: string
   plugin: ConversationPluginClient
+  files: ConversationFileService
+  intents: IntentService
   tabs: {
     /** The `data` of the panel's tabs of `kind`, as saved. */
     bound(kind: string): unknown[]
@@ -102,9 +135,30 @@ export function pluginPanelKinds(
         plugin: conversationClient(host, page.plugin, context.conversation),
       }),
     )
+  const kinds = made.flatMap((each) => each.kinds)
+  const ids = kinds.map((kind) => kind.kind)
+  const repeated = ids.find((id, index) => ids.indexOf(id) !== index)
+  if (repeated !== undefined) {
+    throw new Error(`two plugin pages register the work panel kind ${repeated}`)
+  }
   return {
-    kinds: made.flatMap((kinds) => kinds.kinds),
-    refresh: () => made.forEach((kinds) => kinds.refresh?.()),
+    kinds,
+    refresh: () => made.forEach((each) => each.refresh?.()),
     dispose: () => made.forEach((kinds) => kinds.dispose?.()),
   }
+}
+
+/** The first enabled page's target for `intent`, or null when no page the user has on opens it. */
+export function intentTarget<Name extends IntentName>(
+  pages: readonly PluginPage[],
+  enabled: (plugin: string) => boolean,
+  intent: Name,
+): IntentTarget<Name> | null {
+  for (const page of pages) {
+    const target = page.intents?.[intent]
+    if (target && enabled(page.plugin)) {
+      return target
+    }
+  }
+  return null
 }

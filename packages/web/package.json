@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@demicodes/plugin-browser": "workspace:^",
+    "@demicodes/plugin-changes": "workspace:^",
     "@demicodes/plugin-expose": "workspace:^",
+    "@demicodes/plugin-file-browser": "workspace:^",
     "@demicodes/plugin-sdk": "workspace:^",
     "@demicodes/plugin-skills": "workspace:^",
     "@demicodes/protocol": "workspace:^",

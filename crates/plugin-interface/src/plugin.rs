@@ -152,3 +152,23 @@ impl Plugin for CommandPlugin {
         })
     }
 }
+
+/// The instance of a plugin that declares nothing but its identity, such as
+/// one that only shows a page (`plugin-pages.md` § Registration): no request
+/// reaches it, and one that did would be refused.
+pub struct NoRequests;
+
+impl Plugin for NoRequests {
+    fn call(
+        &self,
+        request: Request,
+        _: PluginPort,
+    ) -> LocalBoxFuture<'_, Result<Reply, PluginError>> {
+        let what = match request {
+            Request::Command { .. } => "command",
+            Request::PageState { .. } | Request::PageCall { .. } => "page",
+            Request::Context { .. } => "context source",
+        };
+        Box::pin(async move { Err(PluginError::undeclared(what)) })
+    }
+}

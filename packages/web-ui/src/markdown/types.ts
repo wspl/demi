@@ -5,8 +5,12 @@
 export interface ConversationFiles {
   /** The URL an image at a Host path loads from. */
   imageUrl(path: string): string
-  /** Shows the file at a Host path in the work panel's File view. */
-  open(path: string): void
+  /**
+   * Shows the file at a Host path, through the `file` intent; absent while no
+   * plugin the user has on opens it, so a link to a file shows as text and a
+   * Host image only shows (`file-previews.md` § Files named in messages).
+   */
+  open?(path: string): void
 }
 
 /** The same for one message, with the working directory its relative paths resolve against. */

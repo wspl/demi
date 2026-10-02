@@ -15,6 +15,11 @@ export type {
   PluginSettingsSection,
 } from '@demicodes/web-ui/plugins/slots'
 export type { PanelTabKind } from '@demicodes/web-ui/agent/panel-kinds/kind'
+export type {
+  ConversationFileService,
+  IntentService,
+} from '@demicodes/web-ui/plugins/slots'
+export type { IntentName, IntentPayloads, IntentTarget, PageIntents } from '@demicodes/web-ui/plugins/intents'
 
 // The plugin client.
 export {
@@ -45,13 +50,32 @@ export {
 } from '@demicodes/web-ui/transport/liveness'
 export { formatTimeRemaining, useTimeRemaining } from '@demicodes/web-ui/composables/useRelativeTime'
 
+// The conversation's files, as the file previews show them.
+export {
+  callChangeSource,
+  callEditSelectionSchema,
+  emptyChangeSet,
+  type CallEditSelection,
+  type ChangeFile,
+  type ChangeMode,
+  type ChangeSetSource,
+  type ChangeSources,
+  type ReadCallChange,
+} from '@demicodes/web-ui/files/changes'
+export type { FileBrowserSource } from '@demicodes/web-ui/files/types'
+export { baseName, joinPath, relativePath } from '@demicodes/web-ui/files/paths'
+export { treeLayout } from '@demicodes/web-ui/files/tree-layout'
+
 // The public components.
 export { default as AddressBar } from '@demicodes/web-ui/agent/AddressBar.vue'
 export { default as Button } from '@demicodes/web-ui/ui/Button.vue'
+export { default as ChangeView } from '@demicodes/web-ui/files/ChangeView.vue'
 export { default as Dialog } from '@demicodes/web-ui/ui/Dialog.vue'
 export { default as Dropdown } from '@demicodes/web-ui/ui/Dropdown.vue'
 export { default as ExternalLink } from '@demicodes/web-ui/ui/ExternalLink.vue'
 export { default as Fold } from '@demicodes/web-ui/ui/Fold.vue'
+export { default as FileIcon } from '@demicodes/web-ui/files/FileIcon.vue'
+export { default as FileView } from '@demicodes/web-ui/files/FileView.vue'
 export { default as FoldChevron } from '@demicodes/web-ui/ui/FoldChevron.vue'
 export { default as HostInstalls } from '@demicodes/web-ui/devices/HostInstalls.vue'
 export { default as IconButton } from '@demicodes/web-ui/ui/IconButton.vue'

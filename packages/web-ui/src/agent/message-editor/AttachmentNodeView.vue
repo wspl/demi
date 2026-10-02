@@ -18,15 +18,15 @@ const transfer = computed(() => {
   const id = capsule.value?.id
   return id && transfers ? transfers.transfer(id) : undefined
 })
-/** In the conversation, a file on the conversation's Host opens in the File view. */
+/** In the conversation, a file on the conversation's Host opens through the `file` intent, where a plugin opens it. */
 const opens = computed(() => {
   const path = capsule.value?.path
-  return !props.editor.isEditable && !capsule.value?.host && path && files() ? path : null
+  return !props.editor.isEditable && !capsule.value?.host && path && files()?.open ? path : null
 })
 
 function open(): void {
   if (opens.value) {
-    files()?.open(opens.value)
+    files()?.open?.(opens.value)
   }
 }
 // The wrapper breaks as the line around it does: tiptap's own `white-space:

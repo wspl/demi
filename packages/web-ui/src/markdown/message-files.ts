@@ -20,7 +20,7 @@ export function useMessageFiles(): () => MessageFiles | undefined {
 /** A click on a message's file link opens the file; any other click is the page's. */
 export function openFileLink(event: MouseEvent, files: MessageFiles | undefined): void {
   const link = event.target instanceof Element ? event.target.closest('a[data-file-link]') : null
-  if (!link || !files)
+  if (!link || !files?.open)
     return
   event.preventDefault()
   files.open(link.getAttribute('href') ?? '')

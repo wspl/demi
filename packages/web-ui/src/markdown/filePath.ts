@@ -87,5 +87,8 @@ export function messageImage(
   if (!files)
     return null
   const path = messageHostPath(target, files.cwd)
-  return path === null ? null : { src: files.imageUrl(path), opens: { file: path } }
+  if (path === null)
+    return null
+  // A Host image opens whole only where a plugin opens files.
+  return { src: files.imageUrl(path), opens: files.open ? { file: path } : null }
 }

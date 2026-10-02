@@ -25,7 +25,7 @@ function webLink(url: string): string {
   return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">`
 }
 
-/** A link that opens a Host file in the File view. */
+/** A link that opens a Host file through the `file` intent. */
 function fileLink(path: string): string {
   return `<a href="${escapeHtml(path)}" data-file-link>`
 }
@@ -74,7 +74,8 @@ const messageRenderer: RendererObject = {
     }
     if (isHttpUrl(token.href))
       return `${webLink(token.href)}${body}</a>`
-    const path = hostPath(token.href)
+    // A file nobody opens is named as text.
+    const path = activeOptions?.files?.open ? hostPath(token.href) : null
     return path === null ? body : `${fileLink(path)}${body}</a>`
   },
   image(token) {

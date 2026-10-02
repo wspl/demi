@@ -185,7 +185,9 @@ async fn the_snapshot_is_the_users_product_state() {
             ("todo", true),
             ("browser", true),
             ("expose", true),
-            ("skills", true)
+            ("skills", true),
+            ("changes", true),
+            ("file-browser", true),
         ]
     );
     // The page's install command fetches the installer at that URL's origin,

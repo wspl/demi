@@ -50,6 +50,8 @@ demi-plugin-file = { path = "../plugin-file" }
 demi-plugin-interface = { path = "../plugin-interface" }
 demi-plugin-skills = { path = "../plugin-skills" }
 demi-plugin-todo = { path = "../plugin-todo" }
+demi-plugin-changes = { path = "../plugin-changes" }
+demi-plugin-file-browser = { path = "../plugin-file-browser" }
 demi-command-package-browser-protocol = { path = "../command-package-browser-protocol" }
 demi-command-declarations = { path = "../command-declarations" }
 demi-shared-types = { path = "../shared-types" }
