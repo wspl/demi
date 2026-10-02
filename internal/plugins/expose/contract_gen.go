@@ -81,6 +81,9 @@ func (v AddArgs) MarshalJSON() ([]byte, error) {
 func AddArgsJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi expose add`.\",\"properties\":{\"address\":{\"type\":\"string\",\"description\":\"host:port, or a bare port meaning 127.0.0.1\"},\"host\":{\"type\":\"string\",\"description\":\"Host name or device id from demi host list; the main host by default\"}},\"required\":[\"address\"],\"title\":\"AddArgs\",\"type\":\"object\"}")
 }
+func AddArgsPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi expose add`.\",\"properties\":{\"address\":{\"type\":\"string\",\"description\":\"host:port, or a bare port meaning 127.0.0.1\"},\"host\":{\"type\":\"string\",\"description\":\"Host name or device id from demi host list; the main host by default\"}},\"required\":[\"address\"],\"title\":\"AddArgs\",\"type\":\"object\"}")
+}
 func DecodeExposeAnswer(data []byte) (ExposeAnswer, error) {
 	return contract.Decode[ExposeAnswer](data)
 }
@@ -129,6 +132,9 @@ func (v ExposeAnswer) MarshalJSON() ([]byte, error) {
 }
 func ExposeAnswerJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"description\":\"`{ expose }`: what `add` and `renew` print with `--json`.\",\"properties\":{\"expose\":{\"type\":\"object\",\"properties\":{\"number\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"device\":{\"type\":\"string\",\"description\":\"The device's name.\"},\"address\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"},\"expiresAt\":{\"type\":\"string\",\"description\":\"A moment in whole milliseconds, which JSON writes as\\n`2026-09-21T14:13:20.000Z`.\",\"format\":\"date-time\"}},\"required\":[\"number\",\"device\",\"address\",\"url\",\"expiresAt\"],\"description\":\"An expose as the commands print it: by its number, never by its id,\\nwhich is the URL's credential.\"}},\"required\":[\"expose\"],\"title\":\"ExposeAnswer\",\"type\":\"object\"}")
+}
+func ExposeAnswerPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"ExposeLine\":{\"type\":\"object\",\"properties\":{\"number\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"device\":{\"type\":\"string\",\"description\":\"The device's name.\"},\"address\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"},\"expiresAt\":{\"type\":\"string\",\"description\":\"A moment in whole milliseconds, which JSON writes as\\n`2026-09-21T14:13:20.000Z`.\",\"format\":\"date-time\"}},\"required\":[\"number\",\"device\",\"address\",\"url\",\"expiresAt\"],\"description\":\"An expose as the commands print it: by its number, never by its id,\\nwhich is the URL's credential.\"}},\"description\":\"`{ expose }`: what `add` and `renew` print with `--json`.\",\"properties\":{\"expose\":{\"$ref\":\"#/$defs/ExposeLine\"}},\"required\":[\"expose\"],\"title\":\"ExposeAnswer\",\"type\":\"object\"}")
 }
 func DecodeExposeCall(data []byte) (ExposeCall, error) { return contract.Decode[ExposeCall](data) }
 func (v ExposeCall) Validate() error                   { return contractValidateExposeCall(v, 0) }
@@ -182,6 +188,9 @@ func (v ExposeCall) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func ExposeCallJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`renew { expose }` and `remove { expose }`.\",\"properties\":{\"expose\":{\"type\":\"string\",\"description\":\"The expose's id.\"}},\"required\":[\"expose\"],\"title\":\"ExposeCall\",\"type\":\"object\"}")
+}
+func ExposeCallPluginJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`renew { expose }` and `remove { expose }`.\",\"properties\":{\"expose\":{\"type\":\"string\",\"description\":\"The expose's id.\"}},\"required\":[\"expose\"],\"title\":\"ExposeCall\",\"type\":\"object\"}")
 }
 func DecodeExposeEntry(data []byte) (ExposeEntry, error) { return contract.Decode[ExposeEntry](data) }
@@ -448,6 +457,9 @@ func (v ExposeLine) MarshalJSON() ([]byte, error) {
 func ExposeLineJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"description\":\"An expose as the commands print it: by its number, never by its id,\\nwhich is the URL's credential.\",\"properties\":{\"number\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"device\":{\"type\":\"string\",\"description\":\"The device's name.\"},\"address\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"},\"expiresAt\":{\"type\":\"string\",\"description\":\"A moment in whole milliseconds, which JSON writes as\\n`2026-09-21T14:13:20.000Z`.\",\"format\":\"date-time\"}},\"required\":[\"number\",\"device\",\"address\",\"url\",\"expiresAt\"],\"title\":\"ExposeLine\",\"type\":\"object\"}")
 }
+func ExposeLinePluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"description\":\"An expose as the commands print it: by its number, never by its id,\\nwhich is the URL's credential.\",\"properties\":{\"number\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"device\":{\"type\":\"string\",\"description\":\"The device's name.\"},\"address\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"},\"expiresAt\":{\"type\":\"string\",\"description\":\"A moment in whole milliseconds, which JSON writes as\\n`2026-09-21T14:13:20.000Z`.\",\"format\":\"date-time\"}},\"required\":[\"number\",\"device\",\"address\",\"url\",\"expiresAt\"],\"title\":\"ExposeLine\",\"type\":\"object\"}")
+}
 func DecodeExposeLines(data []byte) (ExposeLines, error) { return contract.Decode[ExposeLines](data) }
 func (v ExposeLines) Validate() error                    { return contractValidateExposeLines(v, 0) }
 func contractValidateExposeLines(v ExposeLines, depth int) error {
@@ -501,6 +513,9 @@ func (v ExposeLines) MarshalJSON() ([]byte, error) {
 }
 func ExposeLinesJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"description\":\"`{ exposes }`: what `list` prints with `--json`.\",\"properties\":{\"exposes\":{\"type\":\"array\",\"items\":{\"description\":\"An expose as the commands print it: by its number, never by its id,\\nwhich is the URL's credential.\",\"type\":\"object\",\"properties\":{\"number\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"device\":{\"description\":\"The device's name.\",\"type\":\"string\"},\"address\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"},\"expiresAt\":{\"description\":\"A moment in whole milliseconds, which JSON writes as\\n`2026-09-21T14:13:20.000Z`.\",\"type\":\"string\",\"format\":\"date-time\"}},\"required\":[\"number\",\"device\",\"address\",\"url\",\"expiresAt\"]}}},\"required\":[\"exposes\"],\"title\":\"ExposeLines\",\"type\":\"object\"}")
+}
+func ExposeLinesPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"ExposeLine\":{\"type\":\"object\",\"properties\":{\"number\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"device\":{\"type\":\"string\",\"description\":\"The device's name.\"},\"address\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"},\"expiresAt\":{\"type\":\"string\",\"description\":\"A moment in whole milliseconds, which JSON writes as\\n`2026-09-21T14:13:20.000Z`.\",\"format\":\"date-time\"}},\"required\":[\"number\",\"device\",\"address\",\"url\",\"expiresAt\"],\"description\":\"An expose as the commands print it: by its number, never by its id,\\nwhich is the URL's credential.\"}},\"description\":\"`{ exposes }`: what `list` prints with `--json`.\",\"properties\":{\"exposes\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/ExposeLine\"}}},\"required\":[\"exposes\"],\"title\":\"ExposeLines\",\"type\":\"object\"}")
 }
 func DecodeExposeState(data []byte) (ExposeState, error) { return contract.Decode[ExposeState](data) }
 func (v ExposeState) Validate() error                    { return contractValidateExposeState(v, 0) }
@@ -570,6 +585,9 @@ func (v ExposeState) MarshalJSON() ([]byte, error) {
 func ExposeStateJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"description\":\"The plugin's state for the user's pages.\",\"properties\":{\"available\":{\"type\":\"boolean\",\"description\":\"Whether the instance has an expose domain; without one the product\\nshows no expose controls.\"},\"exposes\":{\"type\":\"array\",\"items\":{\"description\":\"An expose as the menu shows it, with the name of the device it is on.\",\"type\":\"object\",\"properties\":{\"id\":{\"description\":\"An expose's id, which the backend draws: a DNS label, and the only\\ncredential of the expose's URL.\",\"type\":\"string\",\"pattern\":\"^[a-z2-7]{26}$\"},\"number\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"maximum\":9007199254740991},\"deviceId\":{\"description\":\"A device's id, which the backend assigns when the device is paired or\\nits Cloud is first used.\",\"type\":\"string\",\"minLength\":1},\"deviceName\":{\"description\":\"The device's name, the Cloud's as `Cloud`.\",\"type\":\"string\"},\"address\":{\"description\":\"Where an expose's traffic goes on its device: `host:port` exactly as\\ngiven, or a bare port, which means `127.0.0.1:<port>`. The host is any\\nname or address the device can resolve, an IPv6 address in brackets; the\\nport is 1 to 65535.\",\"type\":\"string\"},\"url\":{\"type\":\"string\"},\"expiresAt\":{\"description\":\"A moment in whole milliseconds, which JSON writes as\\n`2026-09-21T14:13:20.000Z`.\",\"type\":\"string\",\"format\":\"date-time\"}},\"required\":[\"id\",\"number\",\"deviceId\",\"deviceName\",\"address\",\"url\",\"expiresAt\"]},\"description\":\"Every live expose of the user's, soonest expiry first.\"}},\"required\":[\"available\",\"exposes\"],\"title\":\"ExposeState\",\"type\":\"object\"}")
 }
+func ExposeStatePluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"ExposeEntry\":{\"type\":\"object\",\"properties\":{\"id\":{\"$ref\":\"#/$defs/ExposeId\"},\"number\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"maximum\":9007199254740991},\"deviceId\":{\"$ref\":\"#/$defs/DeviceId\"},\"deviceName\":{\"type\":\"string\",\"description\":\"The device's name, the Cloud's as `Cloud`.\"},\"address\":{\"$ref\":\"#/$defs/ExposeAddress\"},\"url\":{\"type\":\"string\"},\"expiresAt\":{\"type\":\"string\",\"description\":\"A moment in whole milliseconds, which JSON writes as\\n`2026-09-21T14:13:20.000Z`.\",\"format\":\"date-time\"}},\"required\":[\"id\",\"number\",\"deviceId\",\"deviceName\",\"address\",\"url\",\"expiresAt\"],\"description\":\"An expose as the menu shows it, with the name of the device it is on.\"},\"ExposeId\":{\"type\":\"string\",\"description\":\"An expose's id, which the backend draws: a DNS label, and the only\\ncredential of the expose's URL.\",\"pattern\":\"^[a-z2-7]{26}$\"},\"DeviceId\":{\"type\":\"string\",\"description\":\"A device's id, which the backend assigns when the device is paired or\\nits Cloud is first used.\",\"minLength\":1},\"ExposeAddress\":{\"type\":\"string\",\"description\":\"Where an expose's traffic goes on its device: `host:port` exactly as\\ngiven, or a bare port, which means `127.0.0.1:<port>`. The host is any\\nname or address the device can resolve, an IPv6 address in brackets; the\\nport is 1 to 65535.\"}},\"description\":\"The plugin's state for the user's pages.\",\"properties\":{\"available\":{\"type\":\"boolean\",\"description\":\"Whether the instance has an expose domain; without one the product\\nshows no expose controls.\"},\"exposes\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/ExposeEntry\"},\"description\":\"Every live expose of the user's, soonest expiry first.\"}},\"required\":[\"available\",\"exposes\"],\"title\":\"ExposeState\",\"type\":\"object\"}")
+}
 func DecodeListArgs(data []byte) (ListArgs, error) { return contract.Decode[ListArgs](data) }
 func (v ListArgs) Validate() error                 { return contractValidateListArgs(v, 0) }
 func contractValidateListArgs(v ListArgs, depth int) error {
@@ -604,6 +622,9 @@ func (v ListArgs) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func ListArgsJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi expose list`.\",\"title\":\"ListArgs\",\"type\":\"object\"}")
+}
+func ListArgsPluginJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi expose list`.\",\"title\":\"ListArgs\",\"type\":\"object\"}")
 }
 func DecodeNumberArgs(data []byte) (NumberArgs, error) { return contract.Decode[NumberArgs](data) }
@@ -655,6 +676,9 @@ func (v NumberArgs) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func NumberArgsJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi expose renew` and `remove`.\",\"properties\":{\"number\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0,\"description\":\"Expose number, as add and list print it\"}},\"required\":[\"number\"],\"title\":\"NumberArgs\",\"type\":\"object\"}")
+}
+func NumberArgsPluginJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi expose renew` and `remove`.\",\"properties\":{\"number\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0,\"description\":\"Expose number, as add and list print it\"}},\"required\":[\"number\"],\"title\":\"NumberArgs\",\"type\":\"object\"}")
 }
 func decodeNumbers(data []byte) (numbers, error) { return contract.Decode[numbers](data) }
