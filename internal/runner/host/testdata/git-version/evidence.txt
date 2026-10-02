@@ -50,7 +50,13 @@ PATH=/nonexistent ./sp07 clone <v5-probe>/tmp/skills tmp/local-skills refs/heads
   447 tracked files, shallow boundary matches head
   wall_ms=313.264125, cpu_ms=390.328, alloc_bytes=48741752
 
-Decision: v6.0.0-alpha.5. v5 passes status and HTTPS probes but does not pass
+Initial decision (superseded by round 1 review): v6.0.0-alpha.5. v5 passes status and HTTPS probes but does not pass
 sp07's in-process, no-executable shallow local clone. No status algorithm or
 line counter from the spike is copied into production; process.LineCounts
 remains the only production line counter.
+
+Round 1 review decision: stable v5.19.2. The status and shallow HTTPS probes
+cover product requirements. No product path shallow-clones a local repository:
+the runner never clones and user skill sources are GitHub owner/repo or HTTPS.
+The local-file transport failure is retained as evidence, not a rejection reason.
+Fetch tests must serve their repository over HTTP, never a local file path.

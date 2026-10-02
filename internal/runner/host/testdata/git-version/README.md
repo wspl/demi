@@ -1,11 +1,18 @@
 # go-git version evidence
 
-The r-host API checkpoint selects **v6.0.0-alpha.5** under the brief's
-“v5 if it passes the spike's tests, otherwise v6” rule. v5.19.2 passes the
-status fixtures and shallow HTTPS clone/fetch but fails the shallow local
-clone with no Git executable. Its default file transport launches Git;
-its in-process server refuses the shallow capability. The unmodified v6
-spike succeeds at that operation using its existing protocol-v1 adapter.
+The r-host API checkpoint selects **v5.19.2**, following the stable-v5
+decision in [Go migration](../../../../../docs/delivery/go-migration.md#tech-lead-decisions).
+It passes the status fixtures and shallow HTTPS clone/fetch. Its failure to
+shallow-clone a local repository without Git does not affect a product path:
+the runner never clones, and skill sources accept GitHub `owner/repo` or HTTPS
+repositories. The earlier v6 selection gave that out-of-scope probe weight it
+should not have had.
+
+Tests needing a repository to fetch must serve it over HTTP from the test,
+using go-git's server or the smart HTTP protocol, never a local file transport.
+The historical local-transport probe remains below solely as recorded evidence.
+No public Host API exposes go-git types, so switching versions requires no API
+signature changes. The retained patch documents v5 implementation adaptations.
 
 [evidence.txt](evidence.txt) records the commands and outcomes. The two
 comparison files record v5 against the existing Demi and Kubernetes fixtures.
