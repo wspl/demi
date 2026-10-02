@@ -454,7 +454,7 @@ when it starts.
 
 | Field | Meaning |
 | --- | --- |
-| Name | The `--profile` value. `default` is reserved: it names no profile, and a plugin that declares a profile named `default` stops the backend at startup, as does a name two plugins declare. |
+| Name | The `--profile` value. `default` is reserved: it names no profile, and a plugin that declares a profile named `default` is refused when it is registered, as is a name two plugins declare. |
 | Description | What the profile is for. |
 | Instructions | Optional. Replace the instructions in the child's system prompt ([Sessions and turns](runtime.md#sessions-and-turns)); the runtime's rules for its tools, the command help and the subagent preamble are still supplied. |
 | Commands | Optional. The command paths, such as `demi file`, the child keeps of its parent's commands; every other command of the parent's set is left out. |
