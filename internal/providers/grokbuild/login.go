@@ -104,7 +104,7 @@ func (k *loginKit) Login(ctx context.Context, pending func(core.LoginPending)) (
 }
 
 //nolint:staticcheck // ST1005: user-facing messages are copied verbatim from Rust.
-func (k *loginKit) login(ctx context.Context, pending func(core.LoginPending)) (account provider.NewAccount, err error) {
+func (k *loginKit) login(ctx context.Context, pending func(core.LoginPending)) (provider.NewAccount, error) {
 	response, err := k.post(ctx, "/oauth2/device/code", url.Values{"client_id": {clientID}, "scope": {scope}, "referrer": {"grok-build"}})
 	if err != nil {
 		return provider.NewAccount{}, err
@@ -124,16 +124,16 @@ func (k *loginKit) login(ctx context.Context, pending func(core.LoginPending)) (
 	if verification == nil {
 		return provider.NewAccount{}, errors.New("Grok device code failed: the response names no verification_uri")
 	}
-	ctx, cancel := context.WithTimeout(ctx, provider.DeviceLoginLifetime)
+	pollCtx, cancel := context.WithTimeout(ctx, provider.DeviceLoginLifetime)
 	defer cancel()
-	defer func() {
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			err = errors.New("Grok device login timed out before the user confirmed")
-		}
-	}()
 	code := string(device.Code)
 	pending(core.LoginPending{VerificationURL: string(*verification), UserCode: &code, ExpiresAt: tokenExpiry(k.clock.Now(), provider.DeviceLoginLifetime)})
-	answer, err := k.poll(ctx, device)
+	answer, err := k.poll(pollCtx, device)
+	pollErr := pollCtx.Err()
+	cancel() // Confirmation has ended; enrichment uses the caller's context.
+	if errors.Is(pollErr, context.DeadlineExceeded) {
+		return provider.NewAccount{}, errors.New("Grok device login timed out before the user confirmed")
+	}
 	if err != nil {
 		return provider.NewAccount{}, err
 	}

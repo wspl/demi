@@ -3,6 +3,7 @@ package grokbuild
 import (
 	"context"
 	"errors"
+	"net/http"
 	"net/url"
 	"testing"
 	"testing/synctest"
@@ -260,5 +261,46 @@ func TestLoginLongPollIntervalDeadline(t *testing.T) {
 		equal(t, 600*time.Second, time.Since(started))
 		equal(t, 1, len(v.Requests()))
 		equal(t, 0, len(pool.Entries()))
+	})
+}
+
+// enrichmentTransport spends two seconds of fake time fetching user details.
+// It keeps the scripted vendor's actual IO outside the synctest bubble.
+type enrichmentTransport struct{ base http.RoundTripper }
+
+func (d enrichmentTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	if request.URL.Path == "/v1/user" {
+		timer := time.NewTimer(2 * time.Second)
+		defer timer.Stop()
+		select {
+		case <-request.Context().Done():
+			return nil, request.Context().Err()
+		case <-timer.C:
+		}
+	}
+	return d.base.RoundTrip(request)
+}
+
+func TestLoginConfirmedBeforeDeadlineFinishesEnrichment(t *testing.T) {
+	v := providertest.StartVendor(t)
+	client := loginClient(t, v)
+	client.Transport = enrichmentTransport{base: client.Transport}
+	v.RespondAt("/oauth2/device/code", device(t, map[string]any{"interval": 599}))
+	v.RespondAt("/oauth2/token", confirmed(t, "at_1", nil))
+	v.RespondAt("/v1/user", answer(200, `{"userId":"user_1","email":"g@example.com"}`))
+	pool := provider.NewMemoryCredentialPool()
+	p := testProvider(v, pool, nil, client)
+	synctest.Test(t, func(t *testing.T) {
+		started := time.Now()
+		account, err := p.Accounts().Login(context.Background(), func(core.LoginPending) {})
+		if err != nil {
+			t.Fatal(err)
+		}
+		equal(t, 601*time.Second, time.Since(started))
+		equal(t, "g@example.com", account.Label)
+		s := loginStored(t, pool, account.ID)
+		equal(t, "user_1", *s.UserID)
+		equal(t, "g@example.com", *s.Email)
+		equal(t, 3, len(v.Requests()))
 	})
 }
