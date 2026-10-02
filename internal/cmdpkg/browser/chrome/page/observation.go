@@ -230,6 +230,9 @@ func (o *observation) describe(index int, depth uint, refs *tabs.References) (br
 		protected = o.protected(key)
 	}
 	for _, property := range node.ax.Properties {
+		if property.Value == nil || len(property.Value.Value) == 0 {
+			continue
+		}
 		raw := property.Value.Value
 		var value any
 		if err := json.Unmarshal(raw, &value); err != nil {
@@ -536,15 +539,11 @@ func (o *observation) scanFrame(ctx context.Context, frame protocol.FrameID, scr
 	if err != nil {
 		return nil, err
 	}
-	arguments := make([]*runtime.CallArgument, 0, len(args))
-	for _, arg := range args {
-		raw, err := cdp.Value(arg)
-		if err != nil {
-			return nil, err
-		}
-		arguments = append(arguments, &runtime.CallArgument{Value: raw})
+	call, err := pageScriptCall(script, args)
+	if err != nil {
+		return nil, err
 	}
-	object, exception, err := runtime.CallFunctionOn(script).WithObjectID(receiver.object).WithObjectGroup(objectGroup).WithArguments(arguments).WithSerializationOptions(&runtime.SerializationOptions{Serialization: runtime.SerializationOptionsSerializationDeep, MaxDepth: 2, AdditionalParameters: json.RawMessage(`{"maxNodeDepth":0}`)}).Do(protocol.WithExecutor(ctx, renderer))
+	object, exception, err := call.WithObjectID(receiver.object).WithObjectGroup(objectGroup).WithSerializationOptions(&runtime.SerializationOptions{Serialization: runtime.SerializationOptionsSerializationDeep, MaxDepth: 2, AdditionalParameters: json.RawMessage(`{"maxNodeDepth":0}`)}).Do(protocol.WithExecutor(ctx, renderer))
 	if err != nil {
 		return nil, err
 	}
