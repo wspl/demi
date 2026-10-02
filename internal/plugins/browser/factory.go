@@ -84,7 +84,7 @@ func (p *instance) Call(ctx context.Context, request plugin.Request, port plugin
 }
 
 func page() (plugin.Page, error) {
-	tabs, err := declare.NewSchema(BrowserTabsJSONSchema())
+	tabs, err := declare.NewSchema(BrowserTabsPluginJSONSchema())
 	if err != nil {
 		return plugin.Page{}, err
 	}
@@ -95,10 +95,10 @@ func page() (plugin.Page, error) {
 		params, result json.RawMessage
 		operations     []string
 	}{
-		{"open", OpenTabJSONSchema(), OpenedTabJSONSchema(), []string{"open"}},
-		{"close", CloseTabJSONSchema(), nullResult, []string{"close"}},
-		{"navigate", NavigateTabJSONSchema(), nullResult, []string{"goto"}},
-		{"history", TabHistoryJSONSchema(), nullResult, []string{"back", "forward", "reload"}},
+		{"open", OpenTabPluginJSONSchema(), OpenedTabPluginJSONSchema(), []string{"open"}},
+		{"close", CloseTabPluginJSONSchema(), nullResult, []string{"close"}},
+		{"navigate", NavigateTabPluginJSONSchema(), nullResult, []string{"goto"}},
+		{"history", TabHistoryPluginJSONSchema(), nullResult, []string{"back", "forward", "reload"}},
 	} {
 		params, err := declare.NewSchema(spec.params)
 		if err != nil {

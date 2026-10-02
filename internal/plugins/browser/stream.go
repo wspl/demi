@@ -12,11 +12,11 @@ const Stream = "browser"
 
 // LiveStream declares the live view from the protocol owner's message schemas.
 func LiveStream() (plugin.Stream, error) {
-	receives, err := declare.NewSchema(browserop.LiveModuleMessageJSONSchema())
+	receives, err := declare.NewSchema(browserop.LiveModuleMessagePluginJSONSchema())
 	if err != nil {
 		return plugin.Stream{}, err
 	}
-	sends, err := declare.NewSchema(browserop.LiveViewerMessageJSONSchema())
+	sends, err := declare.NewSchema(browserop.LiveViewerMessagePluginJSONSchema())
 	if err != nil {
 		return plugin.Stream{}, err
 	}
