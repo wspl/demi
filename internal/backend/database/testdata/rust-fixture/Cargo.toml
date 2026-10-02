@@ -1,0 +1,13 @@
+[package]
+name = "database-fixture"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+demi-backend-database = { path = "../../../../../crates/backend-database", features = ["testing"] }
+demi-shared-types = { path = "../../../../../crates/shared-types" }
+demi-web-api-protocol = { path = "../../../../../crates/web-api-protocol" }
+tokio = { version = "1", features = ["macros", "rt"] }
