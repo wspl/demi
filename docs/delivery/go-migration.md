@@ -81,6 +81,7 @@ authoritative package contract.
 | Rust crate | Go package | Notes |
 |---|---|---|
 | `shared-types` | `internal/core` | The data the web app, the agent and the backend share |
+| (none) | `internal/contract` | The generic runtime the generated contract code calls: strict object reading, presence and duplicate checks, field-path errors |
 | `conversation-socket-protocol` | `internal/framewire` | |
 | `command-protocol` | `internal/commandwire` | |
 | `command-declarations` | `internal/declare` | Argv parsing, help, schema checks |
@@ -202,9 +203,10 @@ packages never share a directory, so their merges never conflict.
 - **APIs.** A package's exported API belongs to the package's owner. A
   consumer that needs a change describes it in its report; the tech lead
   decides and routes it to the owner, never to the consumer.
-- **Registries.** The dependency table of the import check and the
-  generator's root list belong to the tech lead; `cmd/<program>` belongs to
-  the program's assembly work package.
+- **Registries.** The Go dependency graph in `crates-and-packages.md`, which
+  the import check reads, belongs to the tech lead; `cmd/<program>` belongs
+  to the program's assembly work package. The generator needs no root list:
+  a root is a marker on its type.
 - **Generated code.** Generated Go is committed in the package that owns its
   source types, so it belongs to that package's owner. The generated
   TypeScript is not committed, as today.
