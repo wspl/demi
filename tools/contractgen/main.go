@@ -438,7 +438,7 @@ func (g *generator) emitGo(d *definition) {
 			g.line("}; return nil,fmt.Errorf(\"unknown %s tag %s\",tag) }", name, verb)
 		}
 		// An interface cannot own UnmarshalJSON; the transport holder does.
-		g.line("type %sJSON struct { Value %s }; func(v *%sJSON) UnmarshalJSON(data []byte) error { value,err:=Decode%s(data); if err==nil {v.Value=value}; return err }; func(v %sJSON) MarshalJSON()([]byte,error){ if err:=Validate%s(v.Value);err!=nil{return nil,err}; return json.Marshal(v.Value) }", name, name, name, name, name, name)
+		g.line("type %sJSON struct { Value %s }; func(v *%sJSON) UnmarshalJSON(data []byte) error { value,err:=Decode%s(data); if err==nil {v.Value=value}; return err }; func(v %sJSON) MarshalJSON()([]byte,error){ if err:=Validate%s(v.Value);err!=nil{return nil,err}; return contract.EncodeJSON(v.Value) }", name, name, name, name, name, name)
 		g.line("func Validate%s(value %s)error{return contractValidate%s(value,0)}", name, name, name)
 		g.line("func contractValidate%s(value %s,depth int)error{if depth>1000{return fmt.Errorf(\"validation nesting exceeds 1000\")};switch v:=value.(type){", name, name)
 		for _, v := range g.variants(d.key) {
@@ -487,7 +487,7 @@ func (g *generator) emitGo(d *definition) {
 		g.line("value,err:=%s(data); if err!=nil{return err}", g.decoder(d.typ.Underlying()))
 		g.normalizeText(d, "value", "return err")
 		g.line("next:=%s(value); if err:=next.Validate();err!=nil{return err}; *v=next; return nil}", name)
-		g.line("func(v %s) MarshalJSON()([]byte,error){if err:=v.Validate();err!=nil{return nil,err};return json.Marshal(%s(v))}", name, g.typeName(d.typ.Underlying()))
+		g.line("func(v %s) MarshalJSON()([]byte,error){if err:=v.Validate();err!=nil{return nil,err};return contract.EncodeJSON(%s(v))}", name, g.typeName(d.typ.Underlying()))
 		return
 	}
 	g.line("obj,err:=contract.Decode[map[string]json.RawMessage](data); if err!=nil{return err}; var next %s", name)

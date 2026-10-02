@@ -110,7 +110,7 @@ func (v Environment) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(map[string]*string(v))
+	return contract.EncodeJSON(map[string]*string(v))
 }
 func (*FSUtimes) isMessage()                       {}
 func DecodeFSUtimes(data []byte) (FSUtimes, error) { return contract.Decode[FSUtimes](data) }
@@ -827,7 +827,7 @@ func (v MessageJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateMessage(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateMessage(value Message) error { return contractValidateMessage(value, 0) }
 func contractValidateMessage(value Message, depth int) error {
@@ -1886,7 +1886,7 @@ func (v Timestamp) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func (*VolumeGrow) isMessage()                         {}
 func DecodeVolumeGrow(data []byte) (VolumeGrow, error) { return contract.Decode[VolumeGrow](data) }

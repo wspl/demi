@@ -92,7 +92,7 @@ func (v Encoded) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func DecodeFlat(data []byte) (Flat, error) { return contract.Decode[Flat](data) }
 func (v Flat) Validate() error             { return contractValidateFlat(v, 0) }
@@ -196,7 +196,7 @@ func (v Identifier) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func DecodeNames(data []byte) (Names, error) { return contract.Decode[Names](data) }
 func (v Names) Validate() error              { return contractValidateNames(v, 0) }

@@ -189,7 +189,7 @@ func (v RecordJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateRecord(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateRecord(value Record) error { return contractValidateRecord(value, 0) }
 func contractValidateRecord(value Record, depth int) error {
@@ -243,7 +243,7 @@ func (v Stream) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func DecodeLeftOutMsgpack(data []byte) (LeftOut, error) { return contract.DecodeMsgpack[LeftOut](data) }
 func (v *LeftOut) UnmarshalMsgpack(data []byte) error {
