@@ -455,7 +455,12 @@ func (g *generator) emitGo(d *definition) {
 	st, isStruct := g.object(d)
 	tag, variant, kind := g.variantWire(d)
 	for _, union := range d.unions {
-		method := g.defs[union].typ.Underlying().(*types.Interface).Method(0).Name()
+		seal, err := unionSeal(g.defs[union].typ)
+		if err != nil {
+			g.err = fmt.Errorf("%s: %s: %w", d.position, d.name, err)
+			return
+		}
+		method := seal.Name()
 		if obj, _, _ := types.LookupFieldOrMethod(types.NewPointer(d.typ), true, d.typ.Obj().Pkg(), method); obj == nil {
 			g.line("func (*%s) %s() {}", name, method)
 		}

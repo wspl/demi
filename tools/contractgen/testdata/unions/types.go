@@ -201,3 +201,34 @@ type BlockID string
 type HTTPFailureRecord struct {
 	Code string `json:"code"`
 }
+
+// +demi:root
+// +demi:union tag=type
+type Document interface {
+	ID() string
+	CreatedAt() string
+	Model() string
+	IsEditable() bool
+	document()
+}
+
+// +demi:variant Document editable
+type EditableDocument struct {
+	Text string `json:"text"`
+}
+
+func (v *EditableDocument) ID() string      { return v.Text }
+func (*EditableDocument) CreatedAt() string { return "2026-10-03T00:00:00.000Z" }
+func (*EditableDocument) Model() string     { return "test" }
+func (*EditableDocument) IsEditable() bool  { return true }
+
+// +demi:variant Document fixed
+type FixedDocument struct {
+	Text string `json:"text"`
+}
+
+func (v *FixedDocument) ID() string      { return v.Text }
+func (*FixedDocument) CreatedAt() string { return "2026-10-03T00:00:00.000Z" }
+func (*FixedDocument) Model() string     { return "test" }
+func (*FixedDocument) IsEditable() bool  { return false }
+func (*FixedDocument) document()         {}

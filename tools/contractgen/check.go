@@ -41,19 +41,14 @@ func (g *generator) check(p *packages.Package) error {
 			return fail("strict and tolerant are mutually exclusive")
 		}
 		if has(d.marks, "union") {
-			iface, ok := d.typ.Underlying().(*types.Interface)
-			if !ok || iface.NumMethods() != 1 || iface.Method(0).Exported() {
-				return fail("union must be an interface with one unexported sealing method")
+			if _, err := unionSeal(d.typ); err != nil {
+				return fail(err.Error())
 			}
 			if d.marks["msgpack"] == "tuple" && (d.marks["union"] == "untagged" || g.unionKind(d) == "bool") {
 				return fail("tuple unions require string tags")
 			}
 			if bounds(d.marks["union"])["tag"] == "" && d.marks["union"] != "untagged" {
 				return fail("union requires tag=<field>")
-			}
-			signature := iface.Method(0).Type().(*types.Signature)
-			if signature.Params().Len() != 0 || signature.Results().Len() != 0 {
-				return fail("union sealing method must have no parameters or results")
 			}
 			tags := map[string]bool{}
 			for _, v := range g.variants(name) {
