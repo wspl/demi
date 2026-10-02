@@ -74,7 +74,7 @@ never relax them.
 | `union untagged` | Interface; decode the first strict struct or named scalar variant that decodes, in declaration order, in JSON and MessagePack. Encode the variant's own value. Zod uses an ordered `z.union`. |
 | `variant text` or `variant Block text` | Struct (or named scalar for an untagged union); pointer variant with the given wire tag value, naming its union when the package has several. The encoder adds the tag; no tag field is declared. A variant can implement several unions with the same wire representation. Untagged variants use `variant` without a tag and implement their sealing method. |
 | `enum value1 value2` | Named string type; closed set of wire strings, including singleton literals. |
-| `nullable` | Field; required key whose value may be null. |
+| `nullable` | Field; its value may be null. Without `omitempty` the key is required; with `omitempty` it may also be absent (below). |
 | `tolerant` | Struct; ignore unknown keys in Go. Every other object is strict. |
 | `length chars min=1 max=64` | String type or field; Unicode scalar count. Arrays omit `chars` and count elements. Either bound may be omitted. |
 | `pattern ^[0-9a-f]{64}$` | String type or field; shared regex subset below. The remainder of the line is the pattern. |
@@ -86,7 +86,7 @@ never relax them.
 | `msgpack` | Type; generate MessagePack codecs for it and everything it reaches: JSON field names in declaration order, a union's tag first, compact integers, string-keyed maps sorted. |
 | `msgpack tuple` | Union; the kept-output form: a one-entry map from variant name to its fields as a declaration-order tuple, a single field as the value itself. |
 | `format email`, `format http-url`, `format trimmed` | Named string type; email, HTTP(S) URL or trimmed-text behavior in the supported subset below. |
-| `table` | Package-level variable of a slice of structs or scalars; a constant table emitted with its generated lookups into `tables.ts`, such as the file-type table. Its TypeScript name is SCREAMING_SNAKE case (`PreviewTypes` becomes `PREVIEW_TYPES`). |
+| `table` | Package-level variable of a slice of structs or scalars, or a scalar constant; a constant table emitted with its generated lookups into `tables.ts`, such as the file-type table. Its TypeScript name is SCREAMING_SNAKE case (`PreviewTypes` becomes `PREVIEW_TYPES`). |
 
 A contract type is reached from a `root` or `msgpack` marker, including the
 marked type itself. A standalone `msgpack` marker is a MessagePack root.
@@ -123,6 +123,16 @@ from their owning Go declarations, without parallel TypeScript tables.
   interface. A nullable array is `*[]T`: nil means null and a pointer to an
   empty non-nil slice means `[]`. Ordinary arrays and maps require non-nil
   empty values to encode `[]` and `{}` rather than null.
+- An optional field that also accepts null is a pointer with `omitempty` and
+  the nullable marker, as Rust's `Option` with `#[serde(default)]`: absent and
+  null both decode to nil, and nil is omitted. A three-state field, Rust's
+  `double_option`, is `**T` with `omitempty` and the nullable marker: absent
+  is a nil outer pointer, null is a non-nil pointer to nil and writes null,
+  and a value is a pointer to a pointer to it. For example, a patch's
+  `BaseURL **EndpointURL` with tag `json:"baseUrl,omitempty"` leaves the
+  endpoint alone, removes its override, or sets it. Both forms are optional
+  in the schema with null added to the type, and `.nullable().optional()` in
+  Zod.
 - Untagged unions may contain strict structs or named strings, booleans and
   numbers; their pointer variants are tried in declaration order. For example,
   the browser's `NodeValue` tries text before a number. Tagged unions remain
