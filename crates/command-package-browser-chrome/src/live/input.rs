@@ -96,14 +96,19 @@ async fn run(
 ) {
     let mut tab: Option<BrowserTab> = None;
     let mut held = Held::default();
+    // The first item a merge took that did not merge, handled next.
+    let mut ahead: Option<Item> = None;
     loop {
-        let item = tokio::select! {
-            biased;
-            // What the viewer held went with the browser.
-            _ = ended.cancelled() => return,
-            item = items.recv() => match item {
-                Some(item) => item,
-                None => break,
+        let item = match ahead.take() {
+            Some(item) => item,
+            None => tokio::select! {
+                biased;
+                // What the viewer held went with the browser.
+                _ = ended.cancelled() => return,
+                item = items.recv() => match item {
+                    Some(item) => item,
+                    None => break,
+                },
             },
         };
         if overflowed.swap(false, Ordering::SeqCst) {
@@ -129,6 +134,8 @@ async fn run(
             Item::Release => release(tab.as_ref(), &mut held).await,
             Item::Message(message) => {
                 let Some(tab) = &tab else { continue };
+                let (message, next) = newest(message, &mut items);
+                ahead = next;
                 if let Err(error) = deliver(tab, &mut held, message, mac, &writer).await
                     && !tab.ended().is_cancelled()
                 {
@@ -138,6 +145,85 @@ async fn run(
         }
     }
     release(tab.as_ref(), &mut held).await;
+}
+
+/// `message` with the input queued behind it that only continues it
+/// (`live-view.md` § Input): consecutive wheel turns as one, and consecutive
+/// pointer moves as the latest. Also returns the first queued item that does
+/// not merge, which is handled next.
+fn newest(
+    mut message: LiveViewerMessage,
+    items: &mut mpsc::Receiver<Item>,
+) -> (LiveViewerMessage, Option<Item>) {
+    while let Ok(item) = items.try_recv() {
+        let Item::Message(next) = item else {
+            return (message, Some(item));
+        };
+        match merged(&message, next) {
+            Ok(merged) => message = merged,
+            Err(next) => return (message, Some(Item::Message(next))),
+        }
+    }
+    (message, None)
+}
+
+/// `message` and the `next` one as one, when `next` only continues it: a
+/// wheel turn of the same tab and modifiers adds its deltas and moves the
+/// point, and a pointer move with the same buttons replaces a move. Any
+/// other `next` comes back.
+fn merged(
+    message: &LiveViewerMessage,
+    next: LiveViewerMessage,
+) -> std::result::Result<LiveViewerMessage, LiveViewerMessage> {
+    match (message, next) {
+        (
+            LiveViewerMessage::Wheel {
+                tab,
+                delta_x,
+                delta_y,
+                modifiers,
+                ..
+            },
+            LiveViewerMessage::Wheel {
+                tab: next_tab,
+                x,
+                y,
+                delta_x: next_x,
+                delta_y: next_y,
+                modifiers: next_modifiers,
+            },
+        ) if *tab == next_tab && *modifiers == next_modifiers => Ok(LiveViewerMessage::Wheel {
+            tab: next_tab,
+            x,
+            y,
+            delta_x: delta_x + next_x,
+            delta_y: delta_y + next_y,
+            modifiers: next_modifiers,
+        }),
+        (
+            LiveViewerMessage::Pointer {
+                tab,
+                action: PointerAction::Move,
+                buttons,
+                modifiers,
+                ..
+            },
+            next,
+        ) if matches!(
+            &next,
+            LiveViewerMessage::Pointer {
+                tab: next_tab,
+                action: PointerAction::Move,
+                buttons: next_buttons,
+                modifiers: next_modifiers,
+                ..
+            } if next_tab == tab && next_buttons == buttons && next_modifiers == modifiers
+        ) =>
+        {
+            Ok(next)
+        }
+        (_, next) => Err(next),
+    }
 }
 
 /// The tab named in an input message, which must be the watched one.
@@ -431,5 +517,121 @@ async fn release(tab: Option<&BrowserTab>, held: &mut Held) {
         && !tab.ended().is_cancelled()
     {
         tracing::warn!("live view input release on {}: {error}", tab.id());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use demi_command_package_browser_protocol::live::PointerButton;
+
+    use super::*;
+
+    fn wheel(tab: &TabId, y: f64, delta_y: f64, modifiers: u8) -> Item {
+        Item::Message(LiveViewerMessage::Wheel {
+            tab: tab.clone(),
+            x: 10.0,
+            y,
+            delta_x: 0.0,
+            delta_y,
+            modifiers,
+        })
+    }
+
+    fn pointer(tab: &TabId, action: PointerAction, x: f64, buttons: u8) -> Item {
+        Item::Message(LiveViewerMessage::Pointer {
+            tab: tab.clone(),
+            action,
+            x,
+            y: 5.0,
+            button: PointerButton::None,
+            buttons,
+            click_count: 0,
+            modifiers: 0,
+        })
+    }
+
+    /// What reaches the page from `items`, taken as the input task takes them.
+    fn delivered(items: &mut mpsc::Receiver<Item>) -> Vec<LiveViewerMessage> {
+        let mut delivered = Vec::new();
+        let mut ahead = None;
+        loop {
+            let item = match ahead.take() {
+                Some(item) => item,
+                None => match items.try_recv() {
+                    Ok(item) => item,
+                    Err(_) => return delivered,
+                },
+            };
+            let Item::Message(message) = item else {
+                continue;
+            };
+            let (message, next) = newest(message, items);
+            ahead = next;
+            delivered.push(message);
+        }
+    }
+
+    #[test]
+    fn queued_wheel_turns_and_moves_reach_the_page_as_the_newest_input() {
+        let tab = TabId::numbered(1);
+        let (sender, mut items) = mpsc::channel(QUEUE);
+        // A flick queued behind a busy page, a turn with Shift held, hover moves, a drag's move and a press.
+        let queued = [
+            wheel(&tab, 100.0, 40.0, 0),
+            wheel(&tab, 110.0, 40.0, 0),
+            wheel(&tab, 120.0, 30.0, 0),
+            wheel(&tab, 120.0, 40.0, 8),
+            pointer(&tab, PointerAction::Move, 1.0, 0),
+            pointer(&tab, PointerAction::Move, 2.0, 0),
+            pointer(&tab, PointerAction::Move, 3.0, 1),
+            pointer(&tab, PointerAction::Down, 3.0, 1),
+        ];
+        for item in queued {
+            assert!(sender.try_send(item).is_ok());
+        }
+        let delivered = delivered(&mut items);
+        assert_eq!(delivered.len(), 5, "{delivered:?}");
+        assert!(matches!(
+            delivered[0],
+            LiveViewerMessage::Wheel {
+                y: 120.0,
+                delta_y: 110.0,
+                modifiers: 0,
+                ..
+            }
+        ));
+        assert!(matches!(
+            delivered[1],
+            LiveViewerMessage::Wheel {
+                delta_y: 40.0,
+                modifiers: 8,
+                ..
+            }
+        ));
+        assert!(matches!(
+            delivered[2],
+            LiveViewerMessage::Pointer {
+                action: PointerAction::Move,
+                x: 2.0,
+                buttons: 0,
+                ..
+            }
+        ));
+        assert!(matches!(
+            delivered[3],
+            LiveViewerMessage::Pointer {
+                action: PointerAction::Move,
+                x: 3.0,
+                buttons: 1,
+                ..
+            }
+        ));
+        assert!(matches!(
+            delivered[4],
+            LiveViewerMessage::Pointer {
+                action: PointerAction::Down,
+                ..
+            }
+        ));
     }
 }
