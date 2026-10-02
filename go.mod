@@ -5,6 +5,7 @@ go 1.27
 toolchain go1.27.1
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/dlclark/regexp2 v1.12.0
 	github.com/gowebpki/jcs v1.0.2
 	github.com/klauspost/compress v1.20.1
