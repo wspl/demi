@@ -1,7 +1,5 @@
 package tabs
 
-//revive:disable:unused-parameter API checkpoint: retain parameter names for dependent implementers.
-
 import (
 	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
 )
@@ -24,7 +22,14 @@ type Snapshot struct {
 }
 
 // Find returns the tab with this public ID, or nil if absent.
-func (s *Snapshot) Find(id browserop.TabID) *Tab { panic("not written: k-chrome-tabs") }
+func (s *Snapshot) Find(id browserop.TabID) *Tab {
+	for _, listed := range s.Tabs {
+		if listed.Tab.ID() == id {
+			return listed.Tab
+		}
+	}
+	return nil
+}
 
 // Closed describes whether closing a tab empties its environment.
 type Closed uint8

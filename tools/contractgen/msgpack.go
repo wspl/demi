@@ -89,7 +89,7 @@ func (g *generator) emitMsgpack(d *definition) {
 	}
 	st, ok := g.object(d)
 	if !ok {
-		g.line("value,err:=%s(data);if err!=nil{return err}", g.msgDecoder(d.typ.Underlying()))
+		g.line("value,err:=%s(data);if err!=nil{return err}", g.integerDecoder(d.typ.Underlying(), d.marks, true))
 		g.normalizeText(d, "value", "return err")
 		g.line("next:=%s(value);if err:=next.Validate();err!=nil{return err};*v=next;return nil}", name)
 		g.line("func(v %s) MarshalMsgpack()([]byte,error){if err:=v.Validate();err!=nil{return nil,err};return contract.EncodeMsgpack(%s(v))}", name, g.typeName(d.typ.Underlying()))
@@ -182,7 +182,7 @@ func (g *generator) emitMsgpack(d *definition) {
 // msgFieldDecoder applies scalar wire annotations before the parent validator.
 func (g *generator) msgFieldDecoder(t types.Type, m map[string]string) string {
 	if !has(m, "timestamp") {
-		return g.msgDecoder(t)
+		return g.integerDecoder(t, m, true)
 	}
 	if p, ok := t.(*types.Pointer); ok {
 		return "func(b []byte)(" + g.typeName(t) + ",error){return contract.Pointer(b," + g.msgFieldDecoder(p.Elem(), m) + ")}"

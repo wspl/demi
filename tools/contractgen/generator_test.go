@@ -37,7 +37,7 @@ func TestGenerationRefusals(t *testing.T) {
 // This verifies bootstrap and determinism through the CLI's loader.
 // Local package loads cost roughly one second; no network or services are used.
 func TestRegeneration(t *testing.T) {
-	if err := generate(t.Context(), []string{"./testdata/private", "./testdata/presence", "./testdata/codecs", "./testdata/blocks", "./testdata/runner", "./testdata/features", "./testdata/text", "./testdata/tables", "./testdata/kept", "./testdata/schemas", "./testdata/generics", "./testdata/remaining", "./testdata/keyed", "./testdata/browser", "./testdata/reachability", "./testdata/packedonly", "./testdata/schemacheck"}, false, "", true); err != nil {
+	if err := generate(t.Context(), []string{"./testdata/integers", "./testdata/private", "./testdata/presence", "./testdata/codecs", "./testdata/blocks", "./testdata/runner", "./testdata/features", "./testdata/text", "./testdata/tables", "./testdata/kept", "./testdata/schemas", "./testdata/generics", "./testdata/remaining", "./testdata/keyed", "./testdata/browser", "./testdata/reachability", "./testdata/packedonly", "./testdata/schemacheck"}, false, "", true); err != nil {
 		t.Fatal(err)
 	}
 	dest := t.TempDir()

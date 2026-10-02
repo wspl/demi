@@ -1,33 +1,141 @@
-//revive:disable:unused-parameter API checkpoint retains parameter names for callers; bodies follow after merge.
-
 package cmdpkgs
 
 import (
 	"context"
+	"math/bits"
+	"slices"
+	"sync"
 
 	"github.com/wspl/demi/internal/runnerwire"
 )
 
 // Installs tracks downloads and unpacking in progress. Its zero value is usable.
 // Share a pointer rather than copying it after first use.
-type Installs struct{}
+type Installs struct {
+	mu      sync.Mutex
+	list    []*installing
+	changed chan struct{}
+	closed  bool
+}
+
+func (i *Installs) notification() chan struct{} {
+	if i.changed == nil {
+		i.changed = make(chan struct{})
+	}
+	return i.changed
+}
+func (i *Installs) notify() {
+	close(i.notification())
+	i.changed = make(chan struct{})
+}
 
 // Subscribe observes the current installs and subsequent changes.
-func (i *Installs) Subscribe() *InstallsReceiver { panic("not written: r-cmdpkgs") }
+func (i *Installs) Subscribe() *InstallsReceiver {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return &InstallsReceiver{installs: i, seen: i.notification()}
+}
 
 // Close ends reporting and wakes receivers after the owner has joined its installs.
 // Repeated calls do nothing.
-func (i *Installs) Close() { panic("not written: r-cmdpkgs") }
+func (i *Installs) Close() {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if !i.closed {
+		i.closed = true
+		close(i.notification())
+	}
+}
 
 // InstallsReceiver observes installation snapshots. Each observer has its own cursor.
-type InstallsReceiver struct{}
+// One goroutine owns a receiver; use Subscribe for another observer.
+type InstallsReceiver struct {
+	installs *Installs
+	seen     <-chan struct{}
+}
 
 // Current reads and marks the current list seen, keeping the oldest installs
 // when there are more than a wire message can carry.
-func (r *InstallsReceiver) Current() []runnerwire.Install { panic("not written: r-cmdpkgs") }
+func (r *InstallsReceiver) Current() []runnerwire.Install {
+	i := r.installs
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	r.seen = i.notification()
+	result := make([]runnerwire.Install, 0, min(len(i.list), runnerwire.MaxInstalls))
+	for _, item := range i.list[:min(len(i.list), runnerwire.MaxInstalls)] {
+		result = append(result, item.value)
+	}
+	return result
+}
 
 // Changed waits past the last observed list. It returns false when reporting ends,
 // or an error when ctx is cancelled.
 func (r *InstallsReceiver) Changed(ctx context.Context) (bool, error) {
-	panic("not written: r-cmdpkgs")
+	i := r.installs
+	i.mu.Lock()
+	if r.seen != i.notification() {
+		r.seen = i.changed
+		i.mu.Unlock()
+		return true, nil
+	}
+	closed := i.closed
+	i.mu.Unlock()
+	if closed {
+		return false, nil
+	}
+	select {
+	case <-ctx.Done():
+		return false, ctx.Err()
+	case <-r.seen:
+		i.mu.Lock()
+		r.seen = i.notification()
+		closed = i.closed
+		i.mu.Unlock()
+		return !closed, nil
+	}
+}
+
+type installing struct {
+	installs *Installs
+	value    runnerwire.Install
+}
+
+func (i *Installs) start(w Wanted) *installing {
+	item := &installing{installs: i, value: runnerwire.Install{Package: w.Package, Name: w.Name, Version: w.Version, Phase: runnerwire.InstallPhaseDownload, Total: w.Artifact.Size}}
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.list = append(i.list, item)
+	i.notify()
+	return item
+}
+func (i *installing) close() {
+	owner := i.installs
+	owner.mu.Lock()
+	defer owner.mu.Unlock()
+	owner.list = slices.DeleteFunc(owner.list, func(item *installing) bool { return item == i })
+	owner.notify()
+}
+func (i *installing) downloaded(done uint64) {
+	owner := i.installs
+	owner.mu.Lock()
+	defer owner.mu.Unlock()
+	done = min(done, i.value.Total)
+	// Divide a full-width product: progress must not overflow for a large artifact.
+	hundredth := func(n uint64) uint64 {
+		hi, lo := bits.Mul64(n, 100)
+		q, _ := bits.Div64(hi, lo, i.value.Total)
+		return q
+	}
+	if done != i.value.Done && (done == i.value.Total || hundredth(done) > hundredth(i.value.Done)) {
+		i.value.Done = done
+		owner.notify()
+	}
+}
+func (i *installing) unpacking() {
+	owner := i.installs
+	owner.mu.Lock()
+	defer owner.mu.Unlock()
+	i.value.Phase = runnerwire.InstallPhaseUnpack
+	i.value.Done = i.value.Total
+	owner.notify()
 }

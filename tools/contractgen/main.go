@@ -321,7 +321,7 @@ func markers(doc *ast.CommentGroup) map[string]string {
 		}
 		key, value, _ := strings.Cut(strings.TrimPrefix(text, "+demi:"), " ")
 		switch key {
-		case "default", "codec", "flatten", "union", "variant", "nullable", "length", "range", "enum", "pattern", "timestamp", "check", "id", "base64", "msgpack", "strict", "tolerant", "root", "format", "table", "schema":
+		case "integer", "default", "codec", "flatten", "union", "variant", "nullable", "length", "range", "enum", "pattern", "timestamp", "check", "id", "base64", "msgpack", "strict", "tolerant", "root", "format", "table", "schema":
 		default:
 			out["!error"] = "unsupported marker: " + key
 		}
@@ -513,7 +513,7 @@ func (g *generator) emitGo(d *definition) {
 	}
 	g.line("func(v *%s) UnmarshalJSON(data []byte)error{", name)
 	if !isStruct {
-		g.line("value,err:=%s(data); if err!=nil{return err}", g.decoder(d.typ.Underlying()))
+		g.line("value,err:=%s(data); if err!=nil{return err}", g.integerDecoder(d.typ.Underlying(), d.marks, false))
 		g.normalizeText(d, "value", "return err")
 		g.line("next:=%s(value); if err:=next.Validate();err!=nil{return err}; *v=next; return nil}", name)
 		g.line("func(v %s) MarshalJSON()([]byte,error){if err:=v.Validate();err!=nil{return nil,err};return contract.EncodeJSON(%s(v))}", name, g.typeName(d.typ.Underlying()))
@@ -570,7 +570,7 @@ func (g *generator) emitGo(d *definition) {
 				g.line("if !contract.IsNull(raw) {")
 			}
 		}
-		g.line("value,err:=%s(raw); if err!=nil{return contract.At(%s,err)}; next.%s=value", g.decoder(f.Type()), q(key), f.Name())
+		g.line("value,err:=%s(raw); if err!=nil{return contract.At(%s,err)}; next.%s=value", g.integerDecoder(f.Type(), d.fields[f.Name()], false), q(key), f.Name())
 		if nullable {
 			g.line("}")
 		}
