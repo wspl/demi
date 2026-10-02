@@ -1,11 +1,11 @@
-//! The `file-browser` plugin (`plugins.md` § Built-in plugins): its id, name
-//! and description and nothing else. Its page,
+//! The `file-browser` plugin (`plugins.md` § Built-in plugins): its identity and
+//! its page package, and nothing else. Its page,
 //! `@demicodes/plugin-file-browser`, shows the work panel's File view over
 //! the product's file routes (`plugin-pages.md` § Registration).
 
 use std::rc::Rc;
 
-use demi_plugin_interface::{Manifest, NoRequests, Plugin, PluginFactory, PluginId};
+use demi_plugin_interface::{Manifest, NoRequests, Page, Plugin, PluginFactory, PluginId};
 
 /// The plugin's factory.
 pub struct FileBrowser {
@@ -14,13 +14,13 @@ pub struct FileBrowser {
 
 impl FileBrowser {
     pub fn new() -> Self {
-        Self {
-            manifest: Manifest::new(
-                PluginId::try_from("file-browser").expect("a valid plugin id"),
-                "File browser",
-                "Shows the conversation's files in the work panel's File view.",
-            ),
-        }
+        let mut manifest = Manifest::new(
+            PluginId::try_from("file-browser").expect("a valid plugin id"),
+            "File browser",
+            "File browser",
+        );
+        manifest.page = Some(Page::new("@demicodes/plugin-file-browser"));
+        Self { manifest }
     }
 }
 

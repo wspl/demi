@@ -9,8 +9,7 @@ import ConversationComposer from './ConversationComposer.vue'
 import WorkspaceInfo from '../targets/WorkspaceInfo.vue'
 import PluginHeaderTools from '@demicodes/web-ui/plugins/PluginHeaderTools.vue'
 import { PLUGIN_PAGES } from '../plugins/generated/pages'
-import { pluginEnabled } from '../plugins/host'
-import { hostName } from '../targets/session-tools'
+import { pluginEnabled } from '../plugins/enabled'
 import { executionFor } from '../targets/execution'
 import { cliPackageOf, conversationInstalls } from '../state/installs'
 import { useConversations } from './store'
@@ -103,7 +102,7 @@ const selectEdit = computed<EditSelectionHandler | undefined>(() => {
   if (!current || !work.canOpen('edit')) {
     return undefined
   }
-  return (selection) => work.openIn(current.id, 'edit', selection)
+  return (selection) => work.openIn(current.id, { intent: 'edit', payload: selection })
 })
 
 /** The Host files the conversation's messages name: images from its raw route, files opened through the `file` intent while a plugin opens it. */
@@ -115,7 +114,7 @@ const files = computed<ConversationFiles | undefined>(() => {
   const contents = rawFileContents(conversationFileRoutes(current.id).raw)
   return {
     imageUrl: (path) => contents.url(path),
-    open: work.canOpen('file') ? (path) => work.openIn(current.id, 'file', { path }) : undefined,
+    open: work.canOpen('file') ? (path) => work.openIn(current.id, { intent: 'file', payload: { path } }) : undefined,
   }
 })
 
@@ -180,10 +179,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
       <PluginHeaderTools
         :pages="PLUGIN_PAGES"
         :enabled="(plugin: string) => pluginEnabled(product.snapshot, plugin)"
-        :conversation-id="conversation.id"
-        :host-name="(id: string) => hostName(product.snapshot?.devices ?? [], id)"
-        @open-tab="(kind, data) => work.add(conversation!.id, kind, data)"
-        @manage-devices="resources.openSettings('devices')"
+        :conversation="conversation.id"
       />
     </template>
     <template #composer

@@ -1,22 +1,34 @@
 import { z } from 'zod'
-import { PluginCallError, type PluginHost } from '@demicodes/web-ui/plugins/client'
+import type { PageHost } from '@demicodes/web-ui/plugins/page'
+import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { userStreamAt } from '@demicodes/web-ui/transport/user-stream'
-import { ApiError, apiRequest, apiUrl, jsonBody, readResponse } from '../api/client'
-import type { ProductState } from '../api/generated/web-api'
-import { executionFor } from '../targets/execution'
+import { apiRequest, apiUrl, jsonBody, readResponse } from '../api/client'
+import { conversationFiles } from '../conversation/files'
+import { useWorkPanel } from '../conversation/work'
+import { useProduct } from '../state/product'
 import { packageInstalls } from '../state/installs'
+import { useResources } from '../state/resources'
+import { executionFor } from '../targets/execution'
+import { callFailure } from './errors'
+import { conversationStates } from './states'
 
 /**
- * The plugins' host in the product (`plugins.md` § The page): each plugin's
- * state from the product state the sync channel keeps, which drops a plugin
- * the user turned off; its calls over the plugin call routes
- * (`web-api.md` § Plugin calls); its user streams; and the installs of its
- * packages on a conversation's main Host, from that device's in the product
- * state.
+ * The plugin pages' host in the product (`plugins.md` § The page): each
+ * plugin's user state from the product state the sync channel keeps, which
+ * drops a plugin the user turned off; its conversation states by revision;
+ * its calls over the plugin call routes (`web-api.md` § Plugin calls); its
+ * user streams; the installs of its packages on a conversation's main Host,
+ * from that device's in the product state; and the shell's own services:
+ * the conversations' files, intents and panels, and the settings dialog.
  */
-export function productPluginHost(snapshot: () => ProductState | null): PluginHost {
+export function productPageHost(): PageHost {
+  const product = useProduct()
+  const work = useWorkPanel()
+  const resources = useResources()
+  const states = conversationStates(() => product.snapshot)
   return {
-    state: (plugin) => snapshot()?.pluginStates[plugin],
+    userState: (plugin) => product.snapshot?.pluginStates[plugin],
+    followState: states.follow,
     async call(plugin, method, params, conversation, options) {
       const scope = conversation === null ? '' : `/conversations/${encodeURIComponent(conversation)}`
       try {
@@ -28,10 +40,7 @@ export function productPluginHost(snapshot: () => ProductState | null): PluginHo
         })
         return await readResponse(response, z.unknown())
       } catch (error) {
-        if (error instanceof ApiError) {
-          throw new PluginCallError(error.reason ?? error.code ?? `status_${error.status}`, error.message)
-        }
-        throw error
+        throw callFailure(error)
       }
     },
     stream(name, conversation) {
@@ -41,7 +50,7 @@ export function productPluginHost(snapshot: () => ProductState | null): PluginHo
       return userStreamAt(url.toString())
     },
     installs(plugin, conversation) {
-      const state = snapshot()
+      const state = product.snapshot
       const summary = state?.conversations.find((entry) => entry.id === conversation)
       if (!state || !summary) {
         return []
@@ -49,10 +58,17 @@ export function productPluginHost(snapshot: () => ProductState | null): PluginHo
       const packages = state.plugins.find((entry) => entry.id === plugin)?.packages ?? []
       return packageInstalls(state, executionFor(summary).deviceId, packages)
     },
+    files: conversationFiles,
+    intents: {
+      open: (conversation, request) => work.openIn(conversation, request),
+      canOpen: (intent) => work.canOpen(intent),
+    },
+    panel: {
+      tabs: (conversation, kind) =>
+        work.stateFor(conversation).panel.tabs.filter((tab) => tab.kind === kind).map((tab) => tab.data),
+      add: (conversation, kind, data, options = { select: false }) => void work.add(conversation, kind, data, options),
+    },
+    openSettings: (section) => resources.openSettings(section),
+    overlays: appOverlayStore,
   }
-}
-
-/** Whether the user has `plugin` on, by the product state's plugin list. */
-export function pluginEnabled(snapshot: ProductState | null, plugin: string): boolean {
-  return snapshot?.plugins.some((entry) => entry.id === plugin && entry.enabled) ?? false
 }

@@ -37,8 +37,13 @@ pub enum Request {
         turn: TurnId,
         seen: Vec<String>,
     },
-    /// The plugin's state for the user's pages.
-    PageState { user: UserId },
+    /// The plugin's page state: the user's, or, with `conversation`, that
+    /// conversation's.
+    PageState {
+        user: UserId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        conversation: Option<ConversationId>,
+    },
     /// A page called a method, with parameters that are valid against the
     /// method's schema; `conversation` is the conversation a method of the
     /// conversation scope was called for.
@@ -66,7 +71,7 @@ pub enum Reply {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         text: Option<String>,
     },
-    /// The page state, valid against the declared schema.
+    /// The page state, valid against its scope's declared schema.
     State { state: Value },
     /// A page call's result, valid against the method's result schema.
     Result { result: Value },

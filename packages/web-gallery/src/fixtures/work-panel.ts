@@ -12,21 +12,38 @@ import {
   type PinnedTabs,
 } from '@demicodes/web-ui/agent/panel-tabs'
 import type { CallEditSelection } from '@demicodes/web-ui/files/changes'
-import type { IntentName, IntentPayloads } from '@demicodes/web-ui/plugins/intents'
+import type { IntentRequest } from '@demicodes/web-ui/plugins/intents'
 import {
-  intentTarget,
-  pluginPanelKinds,
+  bindPages,
+  intentKind,
+  type AnyPluginPage,
   type ConversationFileService,
-  type PluginPage,
-} from '@demicodes/web-ui/plugins/slots'
+} from '@demicodes/web-ui/plugins/page'
 import { PLUGIN_PAGES } from '../generated/pages'
+import { readGalleryEdit } from './blobs'
 import { galleryBrowserTabs } from './live-browser'
-import { browserPlugin, galleryPluginHost } from './plugins'
+import type { createGalleryWorkspace } from './workspace'
+import { browserPlugin, galleryPageHost } from './plugins'
+
+/** The gallery workspace as the work panel's kinds read a conversation's files. */
+export function galleryFiles(workspace: ReturnType<typeof createGalleryWorkspace>): ConversationFileService {
+  return {
+    workspace: { source: workspace.source, root: workspace.root },
+    root: workspace.root,
+    changes: workspace.changes,
+    edit: readGalleryEdit,
+    // The gallery's working tree changes only when a specimen changes it.
+    showChanges: () => {},
+  }
+}
+
+/** The conversation every gallery panel shows. */
+const CONVERSATION = 'gallery'
 
 /**
  * One work panel's state the way the product's work store holds it
  * (`web-application.md` § Work panel): the selection and the user's tabs,
- * the pinned tabs' data, and the kinds the plugin pages make for it over the
+ * the pinned tabs' data, and the plugin pages' kinds bound to it over the
  * specimen's files and its own conversation browser. Intents open in it as
  * they open in the product.
  */
@@ -38,7 +55,7 @@ export function useGalleryWork(
     /** Whether the web browser decodes the pictures; by default it asks the web browser, as the product does. */
     pictures?: () => Promise<boolean>
     /** The plugin pages whose kinds the panel shows; every one the product shows by default. */
-    pages?: readonly PluginPage[]
+    pages?: readonly AnyPluginPage[]
   },
 ) {
   const panel = ref<PanelState>({ ...emptyPanelState(), selection })
@@ -47,27 +64,30 @@ export function useGalleryWork(
   const shown = pages ?? PLUGIN_PAGES.map((page) => (page.plugin === 'browser' && pictures ? browserPage({ pictures }) : page))
   const enabled = () => true
 
-  function openIn<Name extends IntentName>(intent: Name, payload: IntentPayloads[Name]) {
-    const opened = openIntent({ state: panel.value, pinned: pinned.value }, shown, enabled, intent, payload)
+  function openIn(request: IntentRequest) {
+    const opened = openIntent({ state: panel.value, pinned: pinned.value }, shown, enabled, request)
     if (opened) {
       panel.value = opened.state
       pinned.value = opened.pinned
     }
   }
 
-  const plugins = pluginPanelKinds(shown, galleryPluginHost({ browser: browserPlugin(tabs) }), enabled, {
-    conversation: 'gallery',
+  const host = galleryPageHost({ browser: browserPlugin(tabs) }, {
     files,
-    intents: { open: openIn, canOpen: (intent) => intentTarget(shown, enabled, intent) !== null },
-    tabs: {
-      bound: (kind) => panel.value.tabs.filter((tab) => tab.kind === kind).map((tab) => tab.data),
-      add: (kind, data) => {
-        panel.value = addTab(panel.value, { kind, data }, { select: false }).state
+    intents: {
+      open: (_conversation, request) => openIn(request),
+      canOpen: (intent) => intentKind(shown, enabled, intent) !== null,
+    },
+    panel: {
+      tabs: (_conversation, kind) => panel.value.tabs.filter((tab) => tab.kind === kind).map((tab) => tab.data),
+      add: (_conversation, kind, data, options = { select: false }) => {
+        panel.value = addTab(panel.value, { kind, data }, options).state
       },
     },
   })
-  onBeforeUnmount(() => plugins.dispose())
-  const kinds = plugins.kinds
+  const bound = bindPages(shown, host, CONVERSATION)
+  onBeforeUnmount(() => bound.dispose())
+  const kinds = bound.kinds
 
   function select(next: string | null) {
     panel.value = selectInPanel(panel.value, next)
@@ -95,7 +115,7 @@ export function useGalleryWork(
   }
   /** A tool call's file pill, through the `edit` intent. */
   function selectEdit(edit: CallEditSelection) {
-    openIn('edit', edit)
+    openIn({ intent: 'edit', payload: edit })
   }
   function reset() {
     panel.value = { ...emptyPanelState(), selection }
@@ -106,7 +126,7 @@ export function useGalleryWork(
     pinned,
     kinds,
     tabs,
-    refresh: plugins.refresh,
+    host,
     select,
     add,
     update,

@@ -15,8 +15,8 @@ mod request;
 pub mod testing;
 
 pub use manifest::{
-    Commands, DEMI_ROOT, DEMI_SUMMARY, EXECUTION_SOURCE, Follows, Manifest, Method, Page,
-    Placement, PluginId, PluginIdError, Scope, Stream,
+    Commands, Constant, DEMI_ROOT, DEMI_SUMMARY, EXECUTION_SOURCE, Manifest, Method, Page,
+    Placement, PluginId, PluginIdError, Scope, State, Stream, Topic,
 };
 pub use plugin::{CommandPlugin, NoRequests, Plugin, PluginFactory, PortHandled};
 pub use port::{

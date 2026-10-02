@@ -8,9 +8,8 @@
  * § Liveness and reconnection).
  */
 import { liveViewerMessageSchema, type BrowserViewport, type LiveControl, type LiveDialog, type LiveTab, type LiveViewerMessage } from '../generated/plugin'
-import { LIVE_CAPTURE_FAILED, LIVE_FILE_CHUNK_BYTES, LIVE_STALL_MS } from '../generated/live'
+import { LIVE_CAPTURE_FAILED, LIVE_FILE_CHUNK_BYTES, LIVE_STALL_MS } from '../generated/plugin'
 import { reactive } from 'vue'
-import { reportError } from '@demicodes/plugin-sdk'
 import { waitToReconnect, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/plugin-sdk'
 import type { OpenUserStream, StreamBytes, UserStream } from '@demicodes/plugin-sdk'
 import { LiveFrameReader, encodeFile, encodeMessage, type LiveFrame, type LiveVideoFrame } from './frames'
@@ -61,6 +60,8 @@ export interface LiveSessionOptions {
    * page through a new view.
    */
   onEnded?: (reason: string) => void
+  /** Reports a defect of the page, such as a message the protocol refuses. */
+  defect: (message: string, error: unknown) => void
   now?: () => number
 }
 
@@ -190,7 +191,7 @@ export class LiveSession {
   private send(message: LiveViewerMessage): void {
     const checked = liveViewerMessageSchema.safeParse(message)
     if (!checked.success) {
-      reportError(`The live view built an invalid ${message.type} message`, checked.error)
+      this.options.defect(`The live view built an invalid ${message.type} message`, checked.error)
       return
     }
     this.stream?.send(encodeMessage(checked.data))
@@ -217,7 +218,7 @@ export class LiveSession {
       frames = reader.read(bytes)
     } catch (error) {
       // The module ships with this page, so a frame the protocol refuses is its defect.
-      reportError('The live view received a frame the protocol refuses', error)
+      this.options.defect('The live view received a frame the protocol refuses', error)
       this.end(REFUSED_FRAME)
       return
     }

@@ -721,11 +721,13 @@ or on another plugin.
 - **Owns:** the `demi browser` group, declared from
   `command-package-browser-protocol` types, every leaf bound to a
   `demi.browser` operation ([Command contract](../browser/browser.md#command-contract));
-  the `browser` user stream, bound to `browser.live`; and the tab methods,
-  which call the browser's operations as package calls
+  the `browser` user stream, bound to `browser.live`, with its messages and
+  frame constants; and the tab list, its conversation state, and the tab
+  methods, which call the browser's operations as package calls
   ([The tab methods](../browser/live-view.md#the-tab-methods)).
-- **Public boundary:** its factory, and its page types, which `xtask
-  contracts` generates into `@demicodes/plugin-browser`.
+- **Public boundary:** its factory, whose manifest names its page package,
+  `@demicodes/plugin-browser`, which `xtask contracts` generates the page's
+  types into.
 - **Must not:** implement a browser operation or hold browser state; the
   conversation browser's crates do.
 
@@ -735,8 +737,9 @@ or on another plugin.
   model sees and the values that keep them, the one-hour policy, and its page
   state and the `renew` and `remove` methods
   ([Host expose](../execution/expose.md)).
-- **Public boundary:** its factory, and its page types, which `xtask
-  contracts` generates into `@demicodes/plugin-expose`.
+- **Public boundary:** its factory, whose manifest names its page package,
+  `@demicodes/plugin-expose`, which `xtask contracts` generates the page's
+  types into.
 - **Must not:** hold an expose record or relay a byte; `backend-expose` does.
 
 #### `plugin-skills`
@@ -747,8 +750,9 @@ or on another plugin.
   its context blocks with the catalog of the skills that are on; the project
   skills it finds in a conversation's repository; and its page state and page
   methods.
-- **Public boundary:** its factory, and its page types, which `xtask
-  contracts` generates into `@demicodes/plugin-skills`.
+- **Public boundary:** its factory, whose manifest names its page package,
+  `@demicodes/plugin-skills`, which `xtask contracts` generates the page's
+  types into.
 - **Must not:** write to a Host, send a credential when it fetches, or block
   the shard thread.
 
@@ -1295,8 +1299,9 @@ demi-backend (executable: configuration, composition)
 #### `xtask`
 
 - **Owns:** the repository's development commands: `xtask contracts` (the
-  TypeScript emitter, with the page types of each plugin that has a page
-  package and the plugin page registry of `web` and `web-gallery`, which
+  TypeScript emitter, with the page types of each plugin whose manifest
+  names a page package, read from the manifests of the backend's plugins,
+  and the plugin page registry of `web` and `web-gallery`, which
   `bun run contracts` runs after it builds the workspace;
   [Contracts](contracts.md#generated-typescript),
   [Registration](plugin-pages.md#registration)), native build and
@@ -1547,7 +1552,7 @@ runner -> command-protocol, command-sdk, runner-host, runner-jobs, runner-proces
 command-package-file -> shared-artifacts, command-protocol, command-sdk, shared-types, command-package-file-protocol, shared-gates
 command-package-browser -> command-package-browser-chrome, command-package-browser-protocol, command-protocol, command-sdk
 command-package-claude-code -> command-package-claude-code-protocol, command-protocol, command-sdk
-xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, backend, plugin-browser, plugin-expose, plugin-skills
+xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, backend, plugin-interface
 ```
 
 ### TypeScript packages

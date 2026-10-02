@@ -42,7 +42,10 @@ impl Plugged {
     }
 
     pub async fn state(&self) -> SkillsState {
-        let request = Request::PageState { user: user() };
+        let request = Request::PageState {
+            user: user(),
+            conversation: None,
+        };
         match self.plugin.call(request, self.demi.port()).await.unwrap() {
             Reply::State { state } => serde_json::from_value(state).unwrap(),
             reply => panic!("{reply:?}"),

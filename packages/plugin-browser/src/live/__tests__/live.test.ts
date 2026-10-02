@@ -202,6 +202,8 @@ function session(options: Partial<LiveSessionOptions> = {}) {
     },
     platform: 'mac',
     now: () => now,
+    // The defects these tests plant are the frames and messages they check the view's answer to.
+    defect: () => {},
     ...options,
   })
   live.attach(sink)

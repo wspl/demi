@@ -3,9 +3,7 @@ import { computed, ref } from 'vue'
 import { z } from 'zod'
 import SettingsSkills from './SettingsSkills.vue'
 import type { SettingsSkillDraft, SettingsSkillSource } from './types'
-import type { OverlayStore } from '@demicodes/plugin-sdk'
-import { usePlugin } from '@demicodes/plugin-sdk'
-import { reportError } from '@demicodes/plugin-sdk'
+import { usePage } from '@demicodes/plugin-sdk'
 import {
   addedSourceSchema,
   skillsStateSchema,
@@ -20,12 +18,12 @@ import {
  * Skills page over the plugin's state and methods. Every change comes back
  * with the state the plugin sends to each of the user's pages.
  */
-defineProps<{ overlayStore: OverlayStore }>()
-
-const plugin = usePlugin('skills', skillsStateSchema)
+const page = usePage()
+const plugin = page.plugin
+const state = plugin.state(skillsStateSchema)
 
 const sources = computed<SettingsSkillSource[]>(() =>
-  (plugin.state.value?.sources ?? []).map((source) => ({
+  (state.value?.sources ?? []).map((source) => ({
     id: source.id,
     origin: source.origin,
     commit: source.commit ?? undefined,
@@ -53,7 +51,7 @@ async function change(
   try {
     await plugin.call(method, params, z.null())
   } catch (error) {
-    reportError(couldNot, error, { userVisible: true })
+    page.errors.report(couldNot, error)
   } finally {
     pending.value = pending.value.filter((id) => id !== source)
   }
@@ -63,7 +61,7 @@ async function add(draft: SettingsSkillDraft): Promise<void> {
   try {
     await plugin.call('add_source', { origin: draft.origin } satisfies AddSource, addedSourceSchema)
   } catch (error) {
-    reportError('Could not add the source', error, { userVisible: true })
+    page.errors.report('Could not add the source', error)
   }
 }
 </script>
@@ -72,7 +70,7 @@ async function add(draft: SettingsSkillDraft): Promise<void> {
   <SettingsSkills
     :sources="sources"
     :pending="pending"
-    :overlay-store="overlayStore"
+    :overlay-store="page.overlays"
     @add="add"
     @update="(source) => change(source, 'update_source', { source }, 'Could not update the source')"
     @remove="(source) => change(source, 'remove_source', { source }, 'Could not remove the source')"
