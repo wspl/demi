@@ -8,12 +8,15 @@ import { errorBodySchema, type ErrorCode } from './generated/web-api'
 export class ApiError extends Error {
   readonly status: number
   readonly code: ErrorCode | null
+  /** A plugin's own word for its refusal, with `plugin_refused`. */
+  readonly reason: string | null
 
-  constructor(status: number, code: ErrorCode | null, message: string) {
+  constructor(status: number, code: ErrorCode | null, message: string, reason: string | null = null) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.code = code
+    this.reason = reason
   }
 }
 
@@ -113,6 +116,7 @@ export function apiError(status: number, text: string): ApiError {
     status,
     parsed.success ? parsed.data.code : null,
     parsed.success ? parsed.data.message : `Request failed (${status})`,
+    parsed.success ? parsed.data.reason ?? null : null,
   )
 }
 

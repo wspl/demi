@@ -12,9 +12,9 @@ use std::rc::Rc;
 use axum::extract::ws::{CloseFrame, Message, Utf8Bytes, WebSocket, close_code};
 use demi_backend_database::accounts::TokenHash;
 use demi_backend_page_sync::{Part, Registration};
+use demi_plugin_interface::Follows;
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::auth::UserDto;
-use demi_web_api_protocol::exposes::ExposeDto;
 use demi_web_api_protocol::state::SyncEvent;
 use futures_util::StreamExt as _;
 use futures_util::stream::SplitStream;
@@ -69,7 +69,7 @@ impl End {
 enum Woke {
     Marked,
     Heartbeat,
-    /// An expose the page shows expired.
+    /// The earliest of the user's exposes expired.
     ExposeExpired,
 }
 
@@ -93,7 +93,7 @@ impl Shard {
                 shard: &self,
                 page: &mut page,
                 session,
-                exposes: Vec::new(),
+                expiry: None,
             };
             tokio::select! {
                 biased;
@@ -119,8 +119,9 @@ struct Channel<'a> {
     shard: &'a Shard,
     page: &'a mut PageSocket,
     session: ChannelSession,
-    /// The exposes the page was last sent, for their expiry.
-    exposes: Vec<ExposeDto>,
+    /// The earliest expiry of the user's exposes when the page was last
+    /// sent a state that follows them; none while no plugin follows them.
+    expiry: Option<Timestamp>,
 }
 
 impl Channel<'_> {
@@ -144,18 +145,18 @@ impl Channel<'_> {
             .syncs
             .pass(super::SyncStep::Snapshot)
             .await;
-        self.exposes.clone_from(&state.exposes);
         self.send(&SyncEvent::Snapshot {
             state: Box::new(state),
         })
         .await?;
+        self.read_expiry().await?;
         loop {
             let woke = {
                 let clock = &*self.shard.services().clock;
                 tokio::select! {
                     () = self.registration.marked() => Woke::Marked,
                     () = self.page.silent() => Woke::Heartbeat,
-                    () = first_expiry(clock, &self.exposes) => Woke::ExposeExpired,
+                    () = first_expiry(clock, self.expiry) => Woke::ExposeExpired,
                 }
             };
             self.check_session().await?;
@@ -176,7 +177,11 @@ impl Channel<'_> {
                     }
                 }
                 Woke::Heartbeat => self.send(&SyncEvent::Heartbeat).await?,
-                Woke::ExposeExpired => self.send_part(&Part::Exposes).await?,
+                Woke::ExposeExpired => {
+                    for part in self.expose_followers() {
+                        self.send_part(&part).await?;
+                    }
+                }
             }
         }
     }
@@ -221,12 +226,46 @@ impl Channel<'_> {
         let Some(event) = read else {
             return Ok(());
         };
-        match &event {
-            SyncEvent::User { user } => self.session.user = user.clone(),
-            SyncEvent::Exposes { exposes } => self.exposes.clone_from(exposes),
-            _ => {}
+        if let SyncEvent::User { user } = &event {
+            self.session.user = user.clone();
         }
-        self.send(&event).await
+        self.send(&event).await?;
+        if self.expose_followers().contains(part) {
+            self.read_expiry().await?;
+        }
+        Ok(())
+    }
+
+    /// The parts of the plugins whose state follows the user's exposes.
+    fn expose_followers(&self) -> Vec<Part> {
+        self.shard
+            .services()
+            .plugins
+            .followers(Follows::Exposes)
+            .map(|plugin| Part::Plugin(plugin.as_str().to_owned()))
+            .collect()
+    }
+
+    /// Reads when the earliest of the user's exposes expires, so the
+    /// states that follow them are sent again then.
+    async fn read_expiry(&mut self) -> Result<(), End> {
+        if self.expose_followers().is_empty() {
+            return Ok(());
+        }
+        let exposes = self
+            .shard
+            .expose_shard()
+            .list_exposes()
+            .await
+            .map_err(|error| {
+                tracing::error!(
+                    error = &error as &dyn std::error::Error,
+                    "a page's exposes could not be read"
+                );
+                End::InternalError
+            })?;
+        self.expiry = exposes.iter().map(|expose| expose.record.expires_at).min();
+        Ok(())
     }
 
     async fn send(&mut self, event: &SyncEvent) -> Result<(), End> {

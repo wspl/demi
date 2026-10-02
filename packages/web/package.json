@@ -16,7 +16,9 @@
     "vue-router": "^5.3.1",
     "pinia": "^3.0.3",
     "zod": "^4.0.0",
-    "@demicodes/utils": "workspace:^"
+    "@demicodes/utils": "workspace:^",
+    "@demicodes/plugin-browser": "workspace:^",
+    "@demicodes/plugin-expose": "workspace:^"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.1",

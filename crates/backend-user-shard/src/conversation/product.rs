@@ -16,23 +16,17 @@ use demi_plugin_interface::EXECUTION_SOURCE;
 use demi_shared_types::TurnId;
 use futures_util::future::LocalBoxFuture;
 
-use crate::services::Services;
 use crate::shard::Shard;
+use demi_backend_plugins::UserPlugins;
 
 /// The product's instructions, which open every node's system prompt.
 pub(crate) const INSTRUCTIONS: &str = "You are a coding agent. Use shell session tools to inspect, edit, test, and verify the workspace.\n\nTreat cwd as the task workspace. Create, edit, and verify task files there by default; do not create a separate project directory under /tmp or another absolute path unless the user asks for it or the workspace is unusable.";
 
-/// The command set of `user`'s conversations: the plugins' commands and the
-/// product's `demi host` group.
-pub(crate) fn conversation_commands(
-    services: &Services,
-    user: &str,
-    shard: Weak<Shard>,
-) -> CommandSet {
+/// The command set of the user's conversations: the commands of the
+/// user's plugins and the product's `demi host` group.
+pub(crate) fn conversation_commands(plugins: &UserPlugins, shard: Weak<Shard>) -> CommandSet {
     let hosts: Weak<dyn HostShard> = shard;
-    services
-        .plugins
-        .instances(user)
+    plugins
         .commands(vec![host_group(hosts)])
         .expect("the plugins' commands were checked at startup")
 }

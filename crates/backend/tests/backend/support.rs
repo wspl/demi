@@ -4,7 +4,6 @@
 //! the backend's local store serves its runners, and an HTTP client that
 //! sends a session's cookie.
 
-use std::collections::BTreeMap;
 use std::future::Future;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
@@ -34,6 +33,9 @@ use demi_command_package_browser_protocol::{
 };
 use demi_command_protocol::testing::built_program;
 use demi_command_protocol::{PackageDescriptor, host_target};
+use demi_plugin_interface::{
+    Manifest, Plugin, PluginError, PluginFactory, PluginId, PluginPort, Reply, Request, Stream,
+};
 pub use demi_provider_common::testing::ManualClock;
 use demi_shared_types::Clock;
 use demi_web_api_protocol::auth::{Identity, Role, UserDto};
@@ -41,11 +43,13 @@ use demi_web_api_protocol::devices::{ClaimedDevice, DeviceDto, Devices};
 use demi_web_api_protocol::error::{ErrorBody, ErrorCode};
 use demi_web_api_protocol::settings::InstanceMode;
 use demi_web_api_protocol::state::{ProductState, SyncEvent};
+use futures_util::future::LocalBoxFuture;
 use futures_util::{SinkExt as _, StreamExt as _};
 use reqwest::header::{COOKIE, HeaderMap, SET_COOKIE};
 use reqwest::{Method, StatusCode};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
+use std::rc::Rc;
 use tokio::sync::OnceCell;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest as _;
@@ -236,7 +240,9 @@ pub struct Harness {
     release: Option<&'static Built>,
     /// The URL runners connect to; without it, the listener's own address.
     pub public_url: Option<url::Url>,
-    user_streams: Option<BTreeMap<String, NativeOperation>>,
+    /// The user streams of a test plugin registered beside the built-in
+    /// ones.
+    user_streams: Option<Vec<Stream>>,
     pub lifecycle: LifecycleTuning,
     pub cloud: CloudTuning,
     /// Runs the Clouds of every backend this harness starts, unless
@@ -356,7 +362,10 @@ impl Harness {
                 "stall_release",
                 "stalled",
             ]
-            .map(|name| (name.to_owned(), stream(name)))
+            .map(|name| Stream {
+                name: name.to_owned(),
+                operation: stream(name),
+            })
             .into(),
         );
         self.release = Some(&*FIXTURE);
@@ -513,7 +522,9 @@ impl Harness {
                 .unwrap();
         }
         if let Some(streams) = &self.user_streams {
-            config.user_streams = streams.clone();
+            config
+                .plugins
+                .push(Box::new(StreamsPlugin::new(streams.clone())));
         }
         config.models_dev_url = self
             .models_dev_url
@@ -738,6 +749,18 @@ impl TestBackend {
         self.backend
             .file_gate(&session.user.id, &conversation)
             .await
+    }
+
+    /// A new expose of `address` on the user's `device` for an hour, as the
+    /// `expose` plugin makes it.
+    pub async fn create_expose(
+        &self,
+        user: &demi_web_api_protocol::ids::UserId,
+        device: &demi_web_api_protocol::ids::DeviceId,
+        address: &str,
+    ) -> Result<demi_backend_expose::records::Expose, demi_backend_expose::records::ExposeError>
+    {
+        self.backend.create_expose(user, device, address).await
     }
 
     /// The `ws://` URL of `path`.
@@ -1015,5 +1038,41 @@ pub fn session_from(answer: &Answer) -> Session {
     Session {
         cookie: pair,
         user: answer.json::<Identity>().user,
+    }
+}
+
+/// A plugin that declares only user streams, bound to the runner's native
+/// test fixture.
+struct StreamsPlugin(Manifest);
+
+impl StreamsPlugin {
+    fn new(streams: Vec<Stream>) -> Self {
+        let mut manifest = Manifest::new(
+            PluginId::try_from("fixture").unwrap(),
+            "Fixture streams",
+            "The native test fixture's user streams.",
+        );
+        manifest.streams = streams;
+        Self(manifest)
+    }
+}
+
+impl PluginFactory for StreamsPlugin {
+    fn manifest(&self) -> &Manifest {
+        &self.0
+    }
+
+    fn instance(&self) -> Rc<dyn Plugin> {
+        Rc::new(NoRequests)
+    }
+}
+
+/// An instance that is sent no request: the plugin declares no command and
+/// no page.
+struct NoRequests;
+
+impl Plugin for NoRequests {
+    fn call(&self, _: Request, _: PluginPort) -> LocalBoxFuture<'_, Result<Reply, PluginError>> {
+        unreachable!("a plugin of streams only receives no request")
     }
 }

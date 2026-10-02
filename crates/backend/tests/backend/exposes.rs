@@ -1,10 +1,10 @@
-//! Exposes (`expose.md`, `web-api.md` § Exposes): a service on a device
+//! Exposes (`expose.md`): a service on a device
 //! under a public URL. A visitor's request reaches the exposed service on a
 //! real runner's device as the visitor sent it, and the service's answer,
 //! streamed or upgraded, comes back as the service sent it. An expose
 //! answers anyone for an hour, longer when renewed; only its owner lists,
-//! renews or removes it, the page through the Web API and the agent through
-//! `demi host expose`. Its open connections end with it: at its expiry, its
+//! renews or removes it, the page through the `expose` plugin's state and
+//! methods and the agent through `demi expose`. Its open connections end with it: at its expiry, its
 //! removal, its device's revocation and its Cloud's stop, whether idle,
 //! dead, reset or found stopped, but not at a checkpoint; an offline device
 //! keeps its exposes. An expose sheds a 65th connection, and closes one on
@@ -18,13 +18,15 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use demi_agent_tools::testing::shown_output;
+use demi_backend_expose::records::ExposeError;
+use demi_plugin_expose::page::{ExposeEntry, ExposeState};
 use demi_provider_common::testing::MockVendor;
 use demi_shared_gates::Purpose;
 use demi_shared_types::Clock as _;
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::cloud::ResetPhase;
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::exposes::{ExposeAnswer, ExposeDto, Exposes};
+use demi_web_api_protocol::ids::DeviceId;
 use futures_util::{SinkExt as _, StreamExt as _};
 use jiff::SignedDuration;
 use reqwest::StatusCode;
@@ -300,8 +302,8 @@ async fn an_expose_answers_anyone_for_an_hour_and_only_its_owner_lists_renews_or
     let fixture = HttpFixture::start(Arc::new(Notify::new())).await;
 
     // Made on a connected device of the caller's for an hour, under a URL
-    // with the backend's scheme and port; the snapshot shows it with the
-    // domain, and a visitor without a session reaches the service.
+    // with the backend's scheme and port; the plugin's state shows it with
+    // its number, and a visitor without a session reaches the service.
     let exposed = expose(&backend, &master, laptop.id(), fixture.port).await;
     let port = backend.address().port();
     assert_eq!(
@@ -312,18 +314,14 @@ async fn an_expose_answers_anyone_for_an_hour_and_only_its_owner_lists_renews_or
         exposed.address.as_str(),
         format!("127.0.0.1:{}", fixture.port)
     );
-    assert_eq!(exposed.created_at, harness.clock.now());
     assert_eq!(
-        exposed.expires_at.as_millisecond() - exposed.created_at.as_millisecond(),
-        3_600_000
+        exposed.expires_at.as_millisecond(),
+        harness.clock.now().as_millisecond() + 3_600_000
     );
-    let state = backend.sync(&master).await.snapshot().await;
+    assert_eq!(exposed.number, 1);
+    let state = state(&backend, &master).await;
+    assert!(state.available);
     assert_eq!(state.exposes, std::slice::from_ref(&exposed));
-    assert_eq!(state.expose_domain.as_deref(), Some(DOMAIN));
-    assert_eq!(
-        list(&backend, &master).await,
-        std::slice::from_ref(&exposed)
-    );
     let host = host_of(&exposed);
     assert_eq!(
         fetch(&backend, &host, "/hello").await,
@@ -335,53 +333,28 @@ async fn an_expose_answers_anyone_for_an_hour_and_only_its_owner_lists_renews_or
     harness.add_user(OTHER_EMAIL, OTHER_PASSWORD, Role::User);
     let other = backend.login(OTHER_EMAIL, OTHER_PASSWORD).await;
     assert!(list(&backend, &other).await.is_empty());
-    let renewal = backend
-        .post(
-            &format!("/api/exposes/{}/renew", exposed.id),
-            Some(&other),
-            json!({}),
-        )
+    for method in ["renew", "remove"] {
+        let refused = call(&backend, &other, method, exposed.id.as_str()).await;
+        assert_eq!(refusal(&refused), not_found(), "{method}");
+    }
+    let foreign = backend
+        .create_expose(&other.user.id, &device(laptop.id()), "8080")
         .await;
-    assert_eq!(
-        renewal.refusal(),
-        (StatusCode::NOT_FOUND, ErrorCode::ExposeNotFound)
-    );
-    let removal = backend
-        .delete(&format!("/api/exposes/{}", exposed.id), &other)
-        .await;
-    assert_eq!(
-        removal.refusal(),
-        (StatusCode::NOT_FOUND, ErrorCode::ExposeNotFound)
-    );
-    let foreign = json!({ "deviceId": laptop.id(), "address": "8080" });
-    let refused = backend.post("/api/exposes", Some(&other), foreign).await;
-    assert_eq!(
-        refused.refusal(),
-        (StatusCode::NOT_FOUND, ErrorCode::DeviceNotFound)
-    );
-    let portless = json!({ "deviceId": laptop.id(), "address": "localhost" });
-    let refused = backend.post("/api/exposes", Some(&master), portless).await;
-    assert_eq!(
-        refused.refusal(),
-        (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody)
+    assert!(
+        matches!(foreign, Err(ExposeError::DeviceNotFound)),
+        "{foreign:?}"
     );
 
     // Renewed before its hour, it lives an hour from the renewal.
     harness.clock.advance(SignedDuration::from_mins(50));
-    let renewal = backend
-        .post(
-            &format!("/api/exposes/{}/renew", exposed.id),
-            Some(&master),
-            json!({}),
-        )
-        .await;
+    let renewal = call(&backend, &master, "renew", exposed.id.as_str()).await;
     assert_eq!(
         renewal.status,
         StatusCode::OK,
         "{}",
         String::from_utf8_lossy(&renewal.body)
     );
-    let renewed = renewal.json::<ExposeAnswer>().expose;
+    let renewed = list(&backend, &master).await.remove(0);
     assert_eq!(
         renewed.expires_at.as_millisecond(),
         harness.clock.now().as_millisecond() + 3_600_000
@@ -398,33 +371,18 @@ async fn an_expose_answers_anyone_for_an_hour_and_only_its_owner_lists_renews_or
     assert_eq!(status, 404);
     assert!(page.contains("does not exist"), "{page}");
     assert_eq!(stored_exposes(&harness), 0);
-    let renewal = backend
-        .post(
-            &format!("/api/exposes/{}/renew", exposed.id),
-            Some(&master),
-            json!({}),
-        )
-        .await;
-    assert_eq!(
-        renewal.refusal(),
-        (StatusCode::NOT_FOUND, ErrorCode::ExposeNotFound)
-    );
+    let renewal = call(&backend, &master, "renew", exposed.id.as_str()).await;
+    assert_eq!(refusal(&renewal), not_found());
 
-    // Removed, it is gone at once.
+    // Removed, it is gone at once; it took a number never given before.
     let removed = expose(&backend, &master, laptop.id(), fixture.port).await;
-    let removal = backend
-        .delete(&format!("/api/exposes/{}", removed.id), &master)
-        .await;
-    assert_eq!(removal.status, StatusCode::NO_CONTENT);
+    assert_eq!(removed.number, 2);
+    let removal = call(&backend, &master, "remove", removed.id.as_str()).await;
+    assert_eq!(removal.status, StatusCode::OK);
     assert_eq!(fetch(&backend, &host_of(&removed), "/hello").await.0, 404);
     assert!(list(&backend, &master).await.is_empty());
-    let again = backend
-        .delete(&format!("/api/exposes/{}", removed.id), &master)
-        .await;
-    assert_eq!(
-        again.refusal(),
-        (StatusCode::NOT_FOUND, ErrorCode::ExposeNotFound)
-    );
+    let again = call(&backend, &master, "remove", removed.id.as_str()).await;
+    assert_eq!(refusal(&again), not_found());
     backend.close().await;
 }
 
@@ -441,10 +399,8 @@ async fn open_connections_end_with_their_expose_and_an_offline_device_keeps_its_
     // connection closes, and the runner closes its socket to the service.
     let removed = expose(&backend, &master, laptop.id(), fixture.port).await;
     let held = hold(&backend, &host_of(&removed)).await;
-    let removal = backend
-        .delete(&format!("/api/exposes/{}", removed.id), &master)
-        .await;
-    assert_eq!(removal.status, StatusCode::NO_CONTENT);
+    let removal = call(&backend, &master, "remove", removed.id.as_str()).await;
+    assert_eq!(removal.status, StatusCode::OK);
     held.ended().await;
     assert_eq!(fixture.next().await, Seen::Released);
 
@@ -468,11 +424,16 @@ async fn open_connections_end_with_their_expose_and_an_offline_device_keeps_its_
     assert_eq!(status, 502);
     assert!(page.contains("device_offline"), "{page}");
     assert_eq!(list(&backend, &master).await, std::slice::from_ref(&kept));
-    let offline = json!({ "deviceId": laptop.id(), "address": fixture.port.to_string() });
-    let refused = backend.post("/api/exposes", Some(&master), offline).await;
-    assert_eq!(
-        refused.refusal(),
-        (StatusCode::CONFLICT, ErrorCode::DeviceOffline)
+    let offline = backend
+        .create_expose(
+            &master.user.id,
+            &device(laptop.id()),
+            &fixture.port.to_string(),
+        )
+        .await;
+    assert!(
+        matches!(offline, Err(ExposeError::DeviceOffline(_))),
+        "{offline:?}"
     );
     laptop.runner.start_again();
     backend.until_online(&master, laptop.id(), true).await;
@@ -542,9 +503,9 @@ async fn a_relayed_connection_nothing_moves_on_closes_after_the_idle_limit() {
 }
 
 // Several seconds: a real device installs the builtin package, and three turns
-// run `demi host expose`.
+// run `demi expose`.
 #[tokio::test]
-async fn the_agent_exposes_a_service_and_lists_renews_and_removes_exposes_with_demi_host_expose() {
+async fn the_agent_exposes_a_service_and_lists_renews_and_removes_exposes_with_demi_expose() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new()
         .with_file_package()
@@ -558,7 +519,7 @@ async fn the_agent_exposes_a_service_and_lists_renews_and_removes_exposes_with_d
 
     // `add` exposes a service on the conversation's main Host; each of the
     // user's exposes takes the user's next number.
-    let add = format!("demi host expose add {}", fixture.port);
+    let add = format!("demi expose add {}", fixture.port);
     let added = work
         .turn(vec![
             shell("t1", &format!("{add} && {add}"), 20_000),
@@ -593,11 +554,7 @@ async fn the_agent_exposes_a_service_and_lists_renews_and_removes_exposes_with_d
     // `list` shows every expose of the user under a header, or as JSON.
     let listed = work
         .turn(vec![
-            shell(
-                "t2",
-                "demi host expose list && demi host expose list --json",
-                20_000,
-            ),
+            shell("t2", "demi expose list && demi expose list --json", 20_000),
             say("listed"),
         ])
         .await;
@@ -619,10 +576,19 @@ async fn the_agent_exposes_a_service_and_lists_renews_and_removes_exposes_with_d
         );
         assert!(listed.received[0].contains(&row), "{}", listed.received[0]);
     }
-    let json = serde_json::to_string(&Exposes {
-        exposes: exposed.clone(),
-    })
-    .unwrap();
+    let lines: Vec<_> = exposed
+        .iter()
+        .map(|expose| {
+            json!({
+                "number": expose.number,
+                "device": "laptop",
+                "address": expose.address.as_str(),
+                "url": expose.url,
+                "expiresAt": expose.expires_at,
+            })
+        })
+        .collect();
+    let json = serde_json::to_string(&json!({ "exposes": lines })).unwrap();
     assert!(listed.received[0].contains(&json), "{}", listed.received[0]);
 
     // Another user's exposes are numbered apart: theirs is 1 too.
@@ -637,8 +603,8 @@ async fn the_agent_exposes_a_service_and_lists_renews_and_removes_exposes_with_d
     // add takes a number never given; a host the conversation does not
     // reach is refused.
     let changes = format!(
-        "demi host expose renew 1 && demi host expose remove 1 && demi host expose renew 1; echo exit=$?; \
-         {add}; demi host expose add 8080 --host nope; echo exit=$?"
+        "demi expose renew 1 && demi expose remove 1 && demi expose renew 1; echo exit=$?; \
+         {add}; demi expose add 8080 --host nope; echo exit=$?"
     );
     let changed = work
         .turn(vec![shell("t3", &changes, 20_000), say("changed")])
@@ -647,7 +613,7 @@ async fn the_agent_exposes_a_service_and_lists_renews_and_removes_exposes_with_d
     for expected in [
         "Expose 1 expires in 60 minutes.\n",
         "Removed expose 1; its URL no longer works.\n",
-        "expose renew: No expose 1 (expose_not_found)\n",
+        "expose renew: no expose 1\n",
         "Expires in 60 minutes (expose 3).\n",
         "host nope is not reachable from this conversation",
     ] {
@@ -664,15 +630,15 @@ async fn without_an_expose_domain_exposes_are_unavailable() {
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     let laptop = backend.pair(&master, "laptop").await;
-    let body = json!({ "deviceId": laptop.id(), "address": "1234" });
-    let refused = backend.post("/api/exposes", Some(&master), body).await;
-    assert_eq!(
-        refused.refusal(),
-        (StatusCode::CONFLICT, ErrorCode::ExposeUnavailable)
+    let refused = backend
+        .create_expose(&master.user.id, &device(laptop.id()), "1234")
+        .await;
+    assert!(
+        matches!(refused, Err(ExposeError::Unavailable)),
+        "{refused:?}"
     );
-    let state = backend.sync(&master).await.snapshot().await;
-    assert_eq!((state.exposes, state.expose_domain), (Vec::new(), None));
-    assert!(list(&backend, &master).await.is_empty());
+    let state = state(&backend, &master).await;
+    assert_eq!((state.available, state.exposes), (false, Vec::new()));
     backend.close().await;
 }
 
@@ -817,8 +783,8 @@ async fn a_clouds_exposes_end_when_it_dies_resets_or_is_found_stopped_and_before
     harness
         .control_database()
         .execute(
-            "INSERT INTO exposes (id, number, user_id, device_id, address, created_at, expires_at)
-             VALUES ('k7x2maqw4p3s6tavaw2y4z6aab', 9, ?1, ?2, '127.0.0.1:1', ?3, ?4)",
+            "INSERT INTO exposes (id, user_id, device_id, address, created_at, expires_at)
+             VALUES ('k7x2maqw4p3s6tavaw2y4z6aab', ?1, ?2, '127.0.0.1:1', ?3, ?4)",
             rusqlite::params![master.user.id.as_str(), device, now, now + 3_600_000],
         )
         .unwrap();
@@ -827,35 +793,72 @@ async fn a_clouds_exposes_end_when_it_dies_resets_or_is_found_stopped_and_before
     backend.close().await;
 }
 
-/// A new expose of the fixture on `port` of `device`, as the page makes it.
-async fn expose(backend: &TestBackend, session: &Session, device: &str, port: u16) -> ExposeDto {
-    let body = json!({ "deviceId": device, "address": port.to_string() });
-    let created = backend.post("/api/exposes", Some(session), body).await;
-    assert_eq!(
-        created.status,
-        StatusCode::CREATED,
-        "{}",
-        String::from_utf8_lossy(&created.body)
-    );
-    created.json::<ExposeAnswer>().expose
+/// What a page's call of a method answers when the user has no such live
+/// expose.
+fn not_found() -> (StatusCode, ErrorCode, Option<String>) {
+    (
+        StatusCode::CONFLICT,
+        ErrorCode::PluginRefused,
+        Some("expose_not_found".to_owned()),
+    )
+}
+
+fn device(id: &str) -> DeviceId {
+    DeviceId::try_from(id).unwrap()
+}
+
+/// A new expose of the fixture on `port` of `device` for an hour, as the
+/// `expose` plugin makes it, as the plugin's state then shows it.
+async fn expose(backend: &TestBackend, session: &Session, device: &str, port: u16) -> ExposeEntry {
+    let created = backend
+        .create_expose(&session.user.id, &self::device(device), &port.to_string())
+        .await
+        .unwrap();
+    list(backend, session)
+        .await
+        .into_iter()
+        .find(|expose| expose.id == created.record.id)
+        .expect("the plugin's state shows a new expose")
 }
 
 /// The `Host` a visitor of the expose sends: its URL's host and port.
-fn host_of(expose: &ExposeDto) -> String {
+fn host_of(expose: &ExposeEntry) -> String {
     let url = url::Url::parse(&expose.url).unwrap();
     format!("{}:{}", url.host_str().unwrap(), url.port().unwrap())
 }
 
-/// The session's exposes, as `GET /api/exposes` lists them.
-async fn list(backend: &TestBackend, session: &Session) -> Vec<ExposeDto> {
-    let listed = backend.get("/api/exposes", Some(session)).await;
-    assert_eq!(
-        listed.status,
-        StatusCode::OK,
-        "{}",
-        String::from_utf8_lossy(&listed.body)
-    );
-    listed.json::<Exposes>().exposes
+/// The `expose` plugin's state for the session's pages.
+async fn state(backend: &TestBackend, session: &Session) -> ExposeState {
+    let mut product = backend.sync(session).await.snapshot().await;
+    let state = product
+        .plugin_states
+        .remove("expose")
+        .expect("the expose plugin has a page state");
+    serde_json::from_value(state).unwrap()
+}
+
+/// The session's exposes, as the plugin's state lists them.
+async fn list(backend: &TestBackend, session: &Session) -> Vec<ExposeEntry> {
+    state(backend, session).await.exposes
+}
+
+/// A page's call of the plugin's method `method` for the expose `id`.
+async fn call(
+    backend: &TestBackend,
+    session: &Session,
+    method: &str,
+    id: &str,
+) -> crate::support::Answer {
+    let path = format!("/api/plugins/expose/calls/{method}");
+    backend
+        .post(&path, Some(session), json!({ "expose": id }))
+        .await
+}
+
+/// A refusal with the plugin's reason.
+fn refusal(answer: &crate::support::Answer) -> (StatusCode, ErrorCode, Option<String>) {
+    let error = answer.error();
+    (answer.status, error.code, error.reason)
 }
 
 /// How many expose records the control database holds.

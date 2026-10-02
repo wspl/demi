@@ -10,7 +10,6 @@
 
 pub mod attachments;
 pub mod auth;
-pub mod browser;
 pub mod cloud;
 pub mod conversations;
 pub mod devices;

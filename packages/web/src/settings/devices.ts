@@ -5,6 +5,8 @@ import { reportError } from '@demicodes/web-ui/infra/errors'
 import { useProduct } from '../state/product'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
 import { renewExpose, removeExpose } from '../api/exposes'
+import { pluginState } from '../state/plugins'
+import { exposeStateSchema } from '@demicodes/plugin-expose'
 import { cloudResetAnswerSchema, type CloudReset } from '../api/generated/web-api'
 
 export const useDeviceSettings = defineStore('device-settings', () => {
@@ -35,7 +37,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
       limits: status.limits,
     }
   })
-  const exposes = computed(() => product.snapshot?.exposes ?? [])
+  const exposes = computed(() => pluginState(product.snapshot, 'expose', exposeStateSchema)?.exposes ?? [])
 
   /** Shared body of renew and remove: one request per expose, whose outcome the channel brings. */
   async function exposeWrite(

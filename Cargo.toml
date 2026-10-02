@@ -29,6 +29,7 @@ members = [
   "crates/plugin-todo",
   "crates/plugin-file",
   "crates/plugin-browser",
+  "crates/plugin-expose",
   "crates/backend-plugins",
   "crates/command-protocol",
   "crates/command-sdk",

@@ -12,6 +12,7 @@ mod host;
 #[cfg(test)]
 mod host_tests;
 mod page_socket;
+mod plugins;
 mod policy;
 
 pub(crate) use self::page_socket::{PageGone, PageSocket};
@@ -27,6 +28,7 @@ use std::sync::Arc;
 use demi_agent_server::AgentServer;
 use demi_backend_cloud::machine::Cloud;
 use demi_backend_expose::relay::Exposes;
+use demi_backend_plugins::UserPlugins;
 use demi_backend_providers::usage::rate_limit::RequestRateLimit;
 use demi_backend_remote_host::{ARRIVAL, Pipes};
 use demi_backend_runners::devices::Devices;
@@ -104,6 +106,8 @@ pub struct Shard {
     claude_cli: ClaudeCli,
     /// The user's exposes with relayed connections open.
     exposes: Exposes,
+    /// An instance of every plugin for the user.
+    plugins: UserPlugins,
 }
 
 impl Shard {
@@ -118,12 +122,22 @@ impl Shard {
         // conversations counts against.
         let limit = services.conversation_tuning.requests_per_minute;
         let rate_limit = Rc::new(RefCell::new(RequestRateLimit::new(limit)));
+        let plugins = UserPlugins::new(
+            services.plugins.clone(),
+            user.clone(),
+            Rc::new(plugins::ShardPort {
+                shard: shard.clone(),
+            }),
+            services.control.clone(),
+            services.sync.of(&user),
+        );
         let ConversationParts { agent, titles } = conversation::conversation_parts(
             shard.clone(),
             user.clone(),
             services.clone(),
             http.clone(),
             rate_limit,
+            &plugins,
         );
         Self {
             user,
@@ -145,7 +159,13 @@ impl Shard {
             idle_watches: ConversationWatches::default(),
             claude_cli: ClaudeCli::default(),
             exposes: Exposes::default(),
+            plugins,
         }
+    }
+
+    /// The user's plugins.
+    pub fn plugins(&self) -> &UserPlugins {
+        &self.plugins
     }
 
     /// The shard, for a task that outlives the call that starts it. A
