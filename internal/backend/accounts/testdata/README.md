@@ -1,11 +1,13 @@
 # Accounts reference fixtures
 
-`reference/` is a standalone fixture writer using the same Rust Argon2 and
-ICU versions as the reference backend. It is not part of a Go test or build.
+The standalone Rust fixture writer lives outside the repository at
+`/Users/zan/Projects/demi-worktrees/gomig-ref/oracles/b-accounts/reference`.
+It uses the reference backend's Argon2 and ICU versions and is not part of a
+Go test or build.
 Run from the repository root:
 
 ```sh
-cargo run --offline --manifest-path internal/backend/accounts/testdata/reference/Cargo.toml
+cargo run --offline --manifest-path /Users/zan/Projects/demi-worktrees/gomig-ref/oracles/b-accounts/reference/Cargo.toml -- "$PWD/internal/backend/accounts/testdata"
 ```
 
 It writes `passwords.tsv` (password, base64 salt, PHC) and `locales.tsv`

@@ -24,7 +24,7 @@ type HashError struct{ Err error }
 func (e *HashError) Error() string { return "argon2 failed: " + e.Err.Error() }
 func (e *HashError) Unwrap() error { return e.Err }
 
-// PasswordHasher bounds concurrent password hashes to the machine's CPU count.
+// PasswordHasher bounds concurrent password hashes to the runtime's available CPU parallelism.
 // An admitted hash runs in its caller's goroutine and retains its permit until
 // completion, even if the request is canceled while Argon2 runs.
 type PasswordHasher struct {
@@ -34,7 +34,7 @@ type PasswordHasher struct {
 
 // NewPasswordHasher makes the fixed dummy hash used for unknown accounts.
 func NewPasswordHasher(ctx context.Context) (*PasswordHasher, error) {
-	h := &PasswordHasher{permits: semaphore.NewWeighted(int64(runtime.NumCPU()))}
+	h := &PasswordHasher{permits: semaphore.NewWeighted(int64(runtime.GOMAXPROCS(0)))}
 	secret, err := uuid.NewRandom()
 	if err != nil {
 		return nil, fmt.Errorf("generate dummy password: %w", err)

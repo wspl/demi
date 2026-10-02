@@ -8,7 +8,9 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/wspl/demi/internal/backend/database/databasetest"
 	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/webapi"
 )
 
@@ -33,36 +35,49 @@ func TestRustLocaleFixtures(t *testing.T) {
 }
 
 type preferenceStore struct {
-	caller webapi.UserID
-	patch  *webapi.PreferencesPatch
+	patch *webapi.PreferencesPatch
 }
 
 func (*preferenceStore) Preferences(context.Context, webapi.UserID) (webapi.Preferences, error) {
 	return webapi.Preferences{}, nil
 }
-func (s *preferenceStore) PatchPreferences(_ context.Context, caller webapi.UserID, patch webapi.PreferencesPatch) (webapi.Preferences, error) {
-	s.caller = caller
+func (s *preferenceStore) PatchPreferences(_ context.Context, _ webapi.UserID, patch webapi.PreferencesPatch) (webapi.Preferences, error) {
 	s.patch = &patch
 	return webapi.Preferences{Locale: patch.Locale}, nil
 }
 
 func TestPreferencePatchCanonicalizesBeforeStorage(t *testing.T) {
-	store := &preferenceStore{}
-	service := NewPreferences(store)
+	control := databasetest.Control(t.Context(), t, core.SystemClock{})
+	user := databasetest.Master(t.Context(), t, control)
+	service := NewPreferences(control)
+	initial, err := webapi.DecodePreferencesPatch([]byte(`{"appearance":{"theme":"dark"},"shortcuts":{"new":"N","sidebar":"S"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Patch(t.Context(), user.ID, initial); err != nil {
+		t.Fatal(err)
+	}
 	patch, err := webapi.DecodePreferencesPatch([]byte(`{"locale":{"timeZone":"asia/shanghai","languages":["zh-cn","EN","zh-CN","iw"]},"shortcuts":{"new":null}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = service.Patch(t.Context(), "caller", patch)
+	saved, err := service.Patch(t.Context(), user.ID, patch)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := commandwire.CommandLocale{TimeZone: "Asia/Shanghai", Languages: []commandwire.LanguageTag{"zh-CN", "en", "he"}}
-	if diff := cmp.Diff(want, *store.patch.Locale); diff != "" {
+	read, err := service.Read(t.Context(), user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff(saved, read); diff != "" {
 		t.Fatal(diff)
 	}
-	if store.caller != "caller" || store.patch.Shortcuts.New == nil || *store.patch.Shortcuts.New != nil {
-		t.Fatal("patch lost caller or explicit null")
+	want := commandwire.CommandLocale{TimeZone: "Asia/Shanghai", Languages: []commandwire.LanguageTag{"zh-CN", "en", "he"}}
+	if diff := cmp.Diff(&want, read.Locale); diff != "" {
+		t.Fatal(diff)
+	}
+	if read.Shortcuts.New != nil || read.Shortcuts.Sidebar == nil || *read.Shortcuts.Sidebar != "S" || read.Appearance.Theme == nil || *read.Appearance.Theme != webapi.ThemeDark {
+		t.Fatalf("patch did not preserve omitted fields or remove explicit null: %+v", read)
 	}
 	if patch.Locale.TimeZone != "asia/shanghai" || len(patch.Locale.Languages) != 4 {
 		t.Fatal("mutated caller input")

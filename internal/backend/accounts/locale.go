@@ -49,7 +49,7 @@ func Check(patch webapi.PreferencesPatch) (CheckedPatch, error) {
 }
 
 // ICU's normalized names include aliases and are independent of the host's
-// tzdata. Regenerate with testdata/reference, using the reference's ICU version.
+// tzdata. The external oracle is documented in testdata/README.md.
 //
 //go:embed iana_names.txt
 var ianaNames string

@@ -1,30 +1,59 @@
 package accounts
 
 import (
-	"context"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/backend/database"
+	"github.com/wspl/demi/internal/backend/database/databasetest"
+	"github.com/wspl/demi/internal/core"
 )
 
-type checkingSessionStore struct {
-	SessionStore
-	policy database.SessionPolicy
-}
+// accountClock moves account record expiry time without wall-time waits or virtualized IO.
+type accountClock struct{ at core.Timestamp }
 
-func (s *checkingSessionStore) ResolveWebSession(_ context.Context, _ database.TokenHash, policy database.SessionPolicy) (*database.ResolvedSession, error) {
-	s.policy = policy
-	return &database.ResolvedSession{Renewed: false}, nil
-}
+func (c *accountClock) Now() core.Timestamp { return c.at }
 
-func TestSynchronizationCheckNeverRenews(t *testing.T) {
-	store := &checkingSessionStore{}
-	session, err := NewWebSessions(store).Check(t.Context(), database.TokenHash{})
-	if err != nil || session == nil || session.Renewed {
-		t.Fatalf("check: %+v %v", session, err)
+func TestWebSessionLifecycle(t *testing.T) {
+	clock := &accountClock{at: "2026-01-01T00:00:00.000Z"}
+	control := databasetest.Control(t.Context(), t, clock)
+	user := databasetest.Master(t.Context(), t, control)
+	sessions := NewWebSessions(control)
+	opened, err := sessions.Open(t.Context(), user.ID)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if store.policy.RenewBelow != 0 || store.policy.Lifetime != 30*24*time.Hour {
-		t.Fatalf("check policy: %+v", store.policy)
+	if opened.ExpiresAt != "2026-01-31T00:00:00.000Z" {
+		t.Fatalf("initial expiry: %s", opened.ExpiresAt)
+	}
+	// Exactly fifteen days remaining does not renew; less than fifteen does.
+	clock.at = "2026-01-16T00:00:00.000Z"
+	resolved, err := sessions.Resolve(t.Context(), opened.Token)
+	if err != nil || resolved == nil || resolved.User.ID != user.ID || resolved.Renewed || resolved.ExpiresAt != opened.ExpiresAt {
+		t.Fatalf("resolve at renewal boundary: %+v, %v", resolved, err)
+	}
+	clock.at = "2026-01-17T00:00:00.000Z"
+	checked, err := sessions.Check(t.Context(), database.HashToken(opened.Token))
+	if err != nil || checked == nil || checked.Renewed || checked.ExpiresAt != opened.ExpiresAt {
+		t.Fatalf("synchronization check renewed: %+v, %v", checked, err)
+	}
+	resolved, err = sessions.Resolve(t.Context(), opened.Token)
+	if err != nil || resolved == nil || !resolved.Renewed || resolved.ExpiresAt != "2026-02-16T00:00:00.000Z" {
+		t.Fatalf("request renewal: %+v, %v", resolved, err)
+	}
+	if err := sessions.Close(t.Context(), opened.Token); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err = sessions.Resolve(t.Context(), opened.Token)
+	if err != nil || resolved != nil {
+		t.Fatalf("closed session resolved: %+v, %v", resolved, err)
+	}
+	opened, err = sessions.Open(t.Context(), user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock.at = opened.ExpiresAt
+	resolved, err = sessions.Resolve(t.Context(), opened.Token)
+	if err != nil || resolved != nil {
+		t.Fatalf("expired session resolved: %+v, %v", resolved, err)
 	}
 }
