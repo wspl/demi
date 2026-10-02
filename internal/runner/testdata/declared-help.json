@@ -1,0 +1,25 @@
+{
+  "hash": "bb5468def87809d019a317f6d82fea2cfde5faacce749e494cc34416b5b0530a",
+  "roots": {
+    "fixture": {
+      "tree": {
+        "name": "fixture",
+        "summary": "Remote declaration",
+        "kind": "rpc",
+        "stdinField": "body",
+        "input": {
+          "type": "object",
+          "properties": {
+            "body": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "body"
+          ]
+        }
+      }
+    }
+  },
+  "packages": {}
+}
