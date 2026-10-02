@@ -59,6 +59,10 @@ func (g *generator) emitJSONFields(d *definition, st *types.Struct, tag, variant
 	}
 	for i := 0; i < st.NumFields(); i++ {
 		f := st.Field(i)
+		if g.flattenedUnion(d, f) != nil {
+			g.emitFlattenEncode(f, false)
+			continue
+		}
 		opts := strings.Split(reflect.StructTag(st.Tag(i)).Get("json"), ",")
 		if len(opts) > 1 {
 			if isPointer(f.Type()) {

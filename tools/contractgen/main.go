@@ -258,10 +258,6 @@ func generate(ctx context.Context, patterns []string, ts bool, tsDir string, ver
 		if !has(g.defs[key].marks, "msgpack") {
 			g.defs[key].marks["msgpack"] = ""
 		}
-		d := g.defs[key]
-		if err := checkMsgpackShape(d.typ.Underlying()); err != nil {
-			return fmt.Errorf("%s: %s: %w", d.position, d.name, err)
-		}
 	}
 	sources, err := g.tsSources()
 	if err != nil {
@@ -327,7 +323,7 @@ func markers(doc *ast.CommentGroup) map[string]string {
 		}
 		key, value, _ := strings.Cut(strings.TrimPrefix(text, "+demi:"), " ")
 		switch key {
-		case "union", "variant", "nullable", "length", "range", "enum", "pattern", "timestamp", "check", "id", "base64", "msgpack", "strict", "tolerant", "root", "format", "table", "schema":
+		case "flatten", "union", "variant", "nullable", "length", "range", "enum", "pattern", "timestamp", "check", "id", "base64", "msgpack", "strict", "tolerant", "root", "format", "table", "schema":
 		default:
 			out["!error"] = "unsupported marker: " + key
 		}
@@ -474,6 +470,9 @@ func (g *generator) emitGo(d *definition) {
 		for i := 0; i < validationStruct.NumFields(); i++ {
 			f := validationStruct.Field(i)
 			key := strings.Split(reflect.StructTag(validationStruct.Tag(i)).Get("json"), ",")[0]
+			if u := g.adjacentUnion(d); u != nil {
+				key = bounds(u.marks["union"])["content"]
+			}
 			m := d.fields[f.Name()]
 			if len(strings.Split(reflect.StructTag(validationStruct.Tag(i)).Get("json"), ",")) > 1 {
 				m["optional"] = ""
@@ -487,6 +486,10 @@ func (g *generator) emitGo(d *definition) {
 		g.line("if err:=%s(v);err!=nil{return err}", custom)
 	}
 	g.line("return nil }")
+	if g.adjacentUnion(d) != nil {
+		g.emitAdjacentVariant(d, st, false)
+		return
+	}
 	g.line("func(v *%s) UnmarshalJSON(data []byte)error{", name)
 	if !isStruct {
 		g.line("value,err:=%s(data); if err!=nil{return err}", g.decoder(d.typ.Underlying()))
@@ -499,8 +502,8 @@ func (g *generator) emitGo(d *definition) {
 	if !has(d.marks, "tolerant") {
 		g.line("for key:=range obj{switch key{")
 		keys := []string{}
-		for i := 0; i < st.NumFields(); i++ {
-			keys = append(keys, q(strings.Split(reflect.StructTag(st.Tag(i)).Get("json"), ",")[0]))
+		for _, key := range g.propertyNames(d, st) {
+			keys = append(keys, q(key))
 		}
 		if tag != "" {
 			keys = append(keys, q(tag))
@@ -515,6 +518,10 @@ func (g *generator) emitGo(d *definition) {
 	}
 	for i := 0; i < st.NumFields(); i++ {
 		f := st.Field(i)
+		if g.flattenedUnion(d, f) != nil {
+			g.emitFlattenDecode(d, f, false)
+			continue
+		}
 		opts := strings.Split(reflect.StructTag(st.Tag(i)).Get("json"), ",")
 		key := opts[0]
 		optional := len(opts) > 1
@@ -622,7 +629,7 @@ func (g *generator) rules(t types.Type, expr, path string, m map[string]string) 
 	if has(m, "base64") && !emptyCollection(t) {
 		g.line("if err:=contract.Base64(string(%s));err!=nil{return contract.At(%s,err)}", expr, path)
 	}
-	if has(m, "timestamp") {
+	if has(m, "timestamp") && !integerTimestamp(t) {
 		g.line("if err:=contract.Timestamp(string(%s));err!=nil{return contract.At(%s,err)}", expr, path)
 	}
 	if values := m["enum"]; values != "" {
