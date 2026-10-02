@@ -1478,11 +1478,21 @@ not a tab registry, so the split introduces no dependency cycle.
   `internal/runner/cmdpkgs/cmdpkgstest` and whose service uses `internal/cmdsdk`.
 - **Must not:** contain business logic or be imported by another package.
 
+#### `internal/programtest`
+
+- **Owns:** the repository's programs for tests: it builds each program a
+  test asks for once per test binary, with `go build` into a temporary
+  directory it removes when the test binary ends, or takes it from the
+  directory `DEMI_TEST_PROGRAMS` names.
+- **Public boundary:** a function that returns a program's path for a test.
+- **Must not:** be imported by production code, or rebuild a program that
+  `DEMI_TEST_PROGRAMS` supplies.
+
 #### `internal/commandwire/commandwiretest`
 
-- **Owns:** discovery of the programs a test starts beside it (`BuiltProgram`) and
-  the operations of the runner's native fixture service
+- **Owns:** the operations of the runner's native fixture service
   (`FixtureOperations`), which the tests at both ends of the wire use.
+  Finding built programs is `internal/programtest`'s.
 - **Public boundary:** these fixtures for black-box tests of the owner and its
   consumers. Every worker and resource has test cleanup.
 - **Must not:** implement product behavior or import a consumer of its owner.
@@ -2016,6 +2026,8 @@ tools/release -> internal/framewire, internal/artifacts, internal/cmdpkg/browser
 tools/contractgen -> none
 tools/archcheck -> none
 tools/cgocheck -> none
+scripts/gomig/accept -> none
+internal/programtest -> none
 cmd/demi-backend -> internal/backend
 cmd/demi-runner -> internal/runner
 cmd/demi-file -> internal/cmdpkg/file
@@ -2103,11 +2115,13 @@ web-gallery -> plugin-browser, plugin-changes, plugin-expose, plugin-file-browse
 - **Tests.** Tests live beside code in `_test.go` files, black-box
   `package x_test` by default. Internal tests are for behavior not observable
   at the public boundary. Test support is the owner's `<name>test` subpackage,
-  never one that imports its consumers. Suites needing real programs or
-  machines use `//go:build acceptance`; Linux-only code uses `//go:build linux`,
-  combined with `acceptance` when needed. Process-wide resource changes run
-  in isolated subprocesses. Tests find built programs through
-  `commandwiretest.BuiltProgram`; TypeScript uses `DEMI_TEST_PROGRAMS`.
+  never one that imports its consumers. Tests that start the repository's own
+  programs get them from `internal/programtest` and run in the default
+  `go test ./...`; only suites that need resources outside the repository
+  (real Chrome, the Claude Code CLI, a real Cloud) use `//go:build acceptance`
+  ([Testing](../delivery/testing.md)). Linux-only code uses
+  `//go:build linux`. Process-wide resource changes run in isolated
+  subprocesses.
   Shipped JavaScript, such as the capture extension, has adjacent Bun tests
   run by `bun run test`. Tests wait for events or `testing/synctest`, never
   wall-time sleeps, and never call real models. Real-model acceptance runs
