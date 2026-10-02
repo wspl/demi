@@ -43,10 +43,12 @@ func TestTypedCDPAndLossDoNotBlockControlReplies(t *testing.T) {
 	}
 	defer subscription.Close()
 	result, exception, err := params.Do(protocol.WithExecutor(t.Context(), connection))
-	if err != nil || exception != nil || string(result.Value) != `"<>&
-
-"` {
+	if err != nil || exception != nil || result == nil {
 		t.Fatalf("result=%v exception=%v err=%v", result, exception, err)
+	}
+	// Spell Unicode separators explicitly: line-based source edits must not change them.
+	if want := "\"<>&\u2028\u2029\""; string(result.Value) != want {
+		t.Fatalf("result value=%q, want %q", result.Value, want)
 	}
 	for range 19 {
 		if err := server.Emit(t.Context(), cdp.Event{Method: "Runtime.consoleAPICalled", Params: json.RawMessage(`{"type":"log","args":[],"executionContextId":1,"timestamp":0}`)}); err != nil {
