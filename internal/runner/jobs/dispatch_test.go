@@ -3,6 +3,7 @@ package jobs_test
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"testing"
@@ -221,4 +222,33 @@ func TestBackendCommandsAreNeverTurnedAway(t *testing.T) {
 	cancel()
 	workers.Wait()
 	<-drained
+}
+
+// Invalid finite stdin is rejected before dispatch; only a local socket is used.
+func TestFiniteStdinReportsUTF8Detail(t *testing.T) {
+	fixture, execution, _ := dispatchFixture(t)
+	raw, err := process.NewRawCommand(execution.ID, "fixture", nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args, err := raw.MarshalJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := localRequest()
+	request.Operation = process.Raw
+	request.Args = args
+	stderr := &outputBuffer{}
+	result, err := process.Forward(testContext(t), fixture.Server.Endpoint(), request, process.Stdio{Stdin: io.NopCloser(strings.NewReader("ok\xff")), Stdout: &outputBuffer{}, Stderr: stderr})
+	if err != nil || result.ExitCode != 1 {
+		t.Fatalf("invalid stdin: %+v %v", result, err)
+	}
+	if got, want := stderr.String(), "demi-runner: invalid utf-8 sequence of 1 bytes from index 2\n"; got != want {
+		t.Fatalf("stderr = %q, want %q", got, want)
+	}
+	select {
+	case frame := <-fixture.Outgoing:
+		t.Fatalf("invalid stdin reached backend: %x", frame)
+	default:
+	}
 }

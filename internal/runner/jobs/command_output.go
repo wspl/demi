@@ -2,11 +2,11 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
 	"github.com/wspl/demi/internal/cmdsdk"
+	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/declare"
 )
 
@@ -34,8 +34,8 @@ func (o *commandOutput) finish(ctx context.Context, code uint8) error {
 	if code != 0 || o.schema == nil {
 		return nil
 	}
-	if !json.Valid(o.bytes) {
-		return errors.New("--json output is not JSON: invalid JSON")
+	if err := contract.CheckJSON(o.bytes); err != nil {
+		return fmt.Errorf("--json output is not JSON: %w", err)
 	}
 	if err := o.schema.Check(o.bytes); err != nil {
 		return fmt.Errorf("--json output does not match its schema: %w", err)

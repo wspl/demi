@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/declare"
 	"github.com/wspl/demi/internal/runner/cmdpkgs"
 	"github.com/wspl/demi/internal/runner/process"
@@ -123,8 +123,8 @@ func (d *Dispatcher) command(ctx context.Context, inv cmdsdk.InvocationContext[c
 				bytes = append(bytes, chunk...)
 			}
 		}
-		if !utf8.Valid(bytes) {
-			return commandwire.Completion{}, errors.New("invalid utf-8 sequence")
+		if err := contract.CheckUTF8(bytes); err != nil {
+			return commandwire.Completion{}, err
 		}
 		text := string(bytes)
 		body = &text
