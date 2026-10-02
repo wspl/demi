@@ -1,8 +1,9 @@
 package server
 
-// revive:disable:unused-parameter API checkpoint stubs retain parameter names for callers.
-
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 // ErrWorking means the conversation's tree works, which a reload does not interrupt.
 var ErrWorking = errors.New("the conversation's agents are working")
@@ -26,10 +27,15 @@ type ResolveError struct {
 }
 
 // Error returns the provider-resolution failure's text.
-func (e *ResolveError) Error() string { panic("not written: a-server") }
+func (e *ResolveError) Error() string {
+	if e.Kind == ResolveUnknown {
+		return fmt.Sprintf("Provider %q is not available", e.Provider)
+	}
+	return e.Message
+}
 
 // Unwrap preserves the underlying failure for errors.Is and errors.As.
-func (e *ResolveError) Unwrap() error { panic("not written: a-server") }
+func (e *ResolveError) Unwrap() error { return e.Cause }
 
 // RestoreErrorKind distinguishes opening a tree from continuing it.
 type RestoreErrorKind uint8
@@ -48,7 +54,12 @@ type RestoreError struct {
 }
 
 // Error returns the restoration failure's text.
-func (e *RestoreError) Error() string { panic("not written: a-server") }
+func (e *RestoreError) Error() string {
+	if e.Kind == RestoreOpen {
+		return fmt.Sprintf("the tree did not open: %v", e.Cause)
+	}
+	return fmt.Sprintf("the restored tree did not continue: %v", e.Cause)
+}
 
 // Unwrap preserves the opening or store failure.
-func (e *RestoreError) Unwrap() error { panic("not written: a-server") }
+func (e *RestoreError) Unwrap() error { return e.Cause }

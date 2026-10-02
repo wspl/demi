@@ -1,9 +1,11 @@
 package server
 
-// revive:disable:unused-parameter API checkpoint stubs retain parameter names for callers.
-
 import (
 	"context"
+	"fmt"
+	"slices"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
@@ -51,20 +53,96 @@ Examples:
 "你好啊" -> 打招呼`
 
 // TitleFromMessage gives the first message's initial title: its start, on one line.
-func TitleFromMessage(text string) string { panic("not written: a-server") }
+func TitleFromMessage(text string) string {
+	text = strings.Join(strings.Fields(text), " ")
+	return text[:core.CharOffset(text, TitleMaxChars)]
+}
 
 // TitleInput numbers user messages oldest first, cutting each to 400 scalar
 // values and the whole to 4,000. When they do not fit, the first and most
 // recent stay, with an ellipsis line for the middle.
-func TitleInput(messages []string) string { panic("not written: a-server") }
+func TitleInput(messages []string) string {
+	lines := []string{}
+	for _, message := range messages {
+		text := strings.Join(strings.Fields(message), " ")
+		text = text[:core.CharOffset(text, 400)]
+		if text != "" {
+			lines = append(lines, fmt.Sprintf("%d. %s", len(lines)+1, text))
+		}
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	room := TitleInputMaxChars - utf8.RuneCountInString(lines[0])
+	start := len(lines)
+	for start > 1 {
+		needed := utf8.RuneCountInString(lines[start-1]) + 1
+		if needed > room {
+			break
+		}
+		room -= needed
+		start--
+	}
+	kept := []string{lines[0]}
+	if start > 1 {
+		kept = append(kept, "…")
+	}
+	return strings.Join(append(kept, lines[start:]...), "\n")
+}
 
 // TitleFromResponse takes the first nonblank answer line without surrounding
 // quotes, cut to TitleMaxChars. Nil means nothing usable remains.
-func TitleFromResponse(text string) *string { panic("not written: a-server") }
+func TitleFromResponse(text string) *string {
+	for line := range strings.SplitSeq(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		line = strings.TrimSpace(strings.TrimRight(strings.TrimLeft(line, "\"'“‘「『"), "\"'”’」』"))
+		line = strings.TrimSpace(line[:core.CharOffset(line, TitleMaxChars)])
+		if line == "" {
+			return nil
+		}
+		return &line
+	}
+	return nil
+}
 
 // LowestThinking returns the model's lowest named effort; a budget model
 // thinks only when asked, so nil is its least configuration.
-func LowestThinking(model core.Model) core.ThinkingConfig { panic("not written: a-server") }
+func LowestThinking(model core.Model) core.ThinkingConfig {
+	order := []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}
+	for _, capability := range model.Thinking {
+		var efforts []string
+		adaptive := false
+		switch c := capability.(type) {
+		case *core.AdaptiveCapability:
+			efforts, adaptive = c.Efforts, true
+		case *core.EffortCapability:
+			efforts = c.Efforts
+		case *core.BudgetCapability, *core.DisabledCapability:
+			continue
+		}
+		if len(efforts) == 0 {
+			continue
+		}
+		best, rank := efforts[0], len(order)+1
+		for _, effort := range efforts {
+			r := slices.Index(order, effort)
+			if r < 0 {
+				r = len(order)
+			}
+			if r < rank {
+				best, rank = effort, r
+			}
+		}
+		if adaptive {
+			return &core.AdaptiveConfig{Effort: best}
+		}
+		return &core.EffortConfig{Effort: best}
+	}
+	return nil
+}
 
 // TitleError means the provider refused or failed the title request.
 type TitleError struct {
@@ -73,10 +151,10 @@ type TitleError struct {
 }
 
 // Error returns the provider failure's text.
-func (e *TitleError) Error() string { panic("not written: a-server") }
+func (e *TitleError) Error() string { return e.Message }
 
 // Unwrap preserves the underlying provider failure.
-func (e *TitleError) Unwrap() error { panic("not written: a-server") }
+func (e *TitleError) Unwrap() error { return e.Cause }
 
 // Title asks selection's model for a title from the user's messages, using
 // the lowest thinking and default service tier. Thinking output is ignored;
@@ -84,5 +162,23 @@ func (e *TitleError) Unwrap() error { panic("not written: a-server") }
 // *TitleError. The caller owns runtime and closes it after the request.
 // This is no session turn and adds nothing to a transcript.
 func Title(ctx context.Context, runtime provider.Runtime, sessionID, requestID string, selection core.ModelSelection, messages []string) (*string, error) {
-	panic("not written: a-server")
+	input := TitleInput(messages)
+	if input == "" {
+		return nil, nil
+	}
+	request := provider.InferenceRequest{SessionID: sessionID, TurnID: "title:" + requestID, RequestID: requestID, ModelID: selection.Model.ID, OutputLimit: selection.Model.OutputLimit, OutputCap: new(TitleOutputCap), SystemPrompt: TitleInstruction, Items: []provider.InferenceItem{&provider.UserMessage{Content: []provider.UserPart{&provider.TextPart{Text: input}}}}, Tools: []provider.ToolDefinition{}, Thinking: LowestThinking(selection.Model)}
+	var answer strings.Builder
+	for event := range runtime.Run(ctx, request) {
+		switch e := event.(type) {
+		case *provider.TextDelta:
+			answer.WriteString(e.Text)
+		case *provider.Error:
+			return nil, &TitleError{Message: e.Failure.Message}
+		case *provider.ThinkingStart, *provider.ThinkingDelta, *provider.ThinkingSignature, *provider.RedactedThinking, *provider.ToolCall, *provider.Response:
+		}
+	}
+	if ctx.Err() != nil {
+		return nil, nil
+	}
+	return TitleFromResponse(answer.String()), nil
 }
