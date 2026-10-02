@@ -41,7 +41,7 @@ func (v *commandInput) UnmarshalJSON(data []byte) error {
 			return contract.At("commandId", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[uint64](raw)
+			value, err := func(b []byte) (uint64, error) { v, err := contract.Integer[uint64](b); return uint64(v), err }(raw)
 			if err != nil {
 				return contract.At("commandId", err)
 			}
@@ -78,6 +78,35 @@ func (v commandInput) MarshalJSON() ([]byte, error) {
 func commandInputJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"commandId\":{\"format\":\"uint64\",\"minimum\":0,\"type\":\"integer\"},\"description\":{\"description\":\"Concise title for the concrete user-visible state or result to make visible or confirm. Do not describe waiting, pausing, tool mechanics, generic actions, object labels, steps, tool names, ids, internals, or reasons.\",\"type\":\"string\"}},\"required\":[\"commandId\"],\"title\":\"commandInput\",\"type\":\"object\"}")
 }
+func decodeDelayMS(data []byte) (delayMS, error) { return contract.Decode[delayMS](data) }
+func (v delayMS) Validate() error                { return contractValidateDelayMS(v, 0) }
+func contractValidateDelayMS(v delayMS, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := validateDelayMS(v); err != nil {
+		return err
+	}
+	return nil
+}
+func (v *delayMS) UnmarshalJSON(data []byte) error {
+	value, err := contract.Decode[uint32](data)
+	if err != nil {
+		return err
+	}
+	next := delayMS(value)
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v delayMS) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	return contract.EncodeJSON(uint32(v))
+}
 func decodeShellExecInput(data []byte) (shellExecInput, error) {
 	return contract.Decode[shellExecInput](data)
 }
@@ -96,11 +125,8 @@ func contractValidateShellExecInput(v shellExecInput, depth int) error {
 	}
 	if v.ShellID != nil {
 	}
-	if v.TimeoutMS < 1 {
-		return contract.At("timeoutMs", fmt.Errorf("outside numeric bounds"))
-	}
-	if v.TimeoutMS > 600000 {
-		return contract.At("timeoutMs", fmt.Errorf("outside numeric bounds"))
+	if err := contractValidateDelayMS(v.TimeoutMS, depth+1); err != nil {
+		return contract.At("timeoutMs", err)
 	}
 	return nil
 }
@@ -143,7 +169,9 @@ func (v *shellExecInput) UnmarshalJSON(data []byte) error {
 	{
 		raw, ok := obj["shellId"]
 		if ok {
-			value, err := func(b []byte) (*uint64, error) { return contract.Pointer(b, contract.Decode[uint64]) }(raw)
+			value, err := func(b []byte) (*uint64, error) {
+				return contract.Pointer(b, func(b []byte) (uint64, error) { v, err := contract.Integer[uint64](b); return uint64(v), err })
+			}(raw)
 			if err != nil {
 				return contract.At("shellId", err)
 			}
@@ -156,7 +184,7 @@ func (v *shellExecInput) UnmarshalJSON(data []byte) error {
 			return contract.At("timeoutMs", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[uint32](raw)
+			value, err := contract.Decode[delayMS](raw)
 			if err != nil {
 				return contract.At("timeoutMs", err)
 			}
@@ -185,7 +213,7 @@ func (v shellExecInput) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func shellExecInputJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"description\":{\"description\":\"Concise title for the concrete user-visible state or result to make visible or confirm. Do not describe waiting, pausing, tool mechanics, generic actions, object labels, steps, tool names, ids, internals, or reasons.\",\"type\":\"string\"},\"script\":{\"type\":\"string\"},\"shellId\":{\"format\":\"uint64\",\"minimum\":0,\"type\":\"integer\"},\"timeoutMs\":{\"format\":\"uint32\",\"maximum\":600000,\"minimum\":1,\"type\":\"integer\"}},\"required\":[\"script\",\"timeoutMs\"],\"title\":\"shellExecInput\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"description\":{\"description\":\"Concise title for the concrete user-visible state or result to make visible or confirm. Do not describe waiting, pausing, tool mechanics, generic actions, object labels, steps, tool names, ids, internals, or reasons.\",\"type\":\"string\"},\"script\":{\"type\":\"string\"},\"shellId\":{\"default\":null,\"format\":\"uint64\",\"minimum\":0,\"type\":\"integer\"},\"timeoutMs\":{\"format\":\"uint32\",\"maximum\":600000,\"minimum\":1,\"type\":\"integer\"}},\"required\":[\"script\",\"timeoutMs\"],\"title\":\"shellExecInput\",\"type\":\"object\"}")
 }
 func decodeShellWriteInput(data []byte) (shellWriteInput, error) {
 	return contract.Decode[shellWriteInput](data)
@@ -199,6 +227,9 @@ func contractValidateShellWriteInput(v shellWriteInput, depth int) error {
 		if err := contract.Text(string((*v.Description)), 0, -1, ""); err != nil {
 			return contract.At("description", err)
 		}
+	}
+	if err := contractValidateStdin(v.Stdin, depth+1); err != nil {
+		return contract.At("stdin", err)
 	}
 	if err := contract.Text(string(v.Stdin), 1, -1, ""); err != nil {
 		return contract.At("stdin", err)
@@ -224,7 +255,7 @@ func (v *shellWriteInput) UnmarshalJSON(data []byte) error {
 			return contract.At("commandId", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[uint64](raw)
+			value, err := func(b []byte) (uint64, error) { v, err := contract.Integer[uint64](b); return uint64(v), err }(raw)
 			if err != nil {
 				return contract.At("commandId", err)
 			}
@@ -247,7 +278,7 @@ func (v *shellWriteInput) UnmarshalJSON(data []byte) error {
 			return contract.At("stdin", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[string](raw)
+			value, err := contract.Decode[stdin](raw)
 			if err != nil {
 				return contract.At("stdin", err)
 			}
@@ -275,6 +306,38 @@ func (v shellWriteInput) MarshalJSON() ([]byte, error) {
 func shellWriteInputJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"commandId\":{\"format\":\"uint64\",\"minimum\":0,\"type\":\"integer\"},\"description\":{\"description\":\"Concise title for the concrete user-visible state or result to make visible or confirm. Do not describe waiting, pausing, tool mechanics, generic actions, object labels, steps, tool names, ids, internals, or reasons.\",\"type\":\"string\"},\"stdin\":{\"minLength\":1,\"type\":\"string\"}},\"required\":[\"commandId\",\"stdin\"],\"title\":\"shellWriteInput\",\"type\":\"object\"}")
 }
+func decodeStdin(data []byte) (stdin, error) { return contract.Decode[stdin](data) }
+func (v stdin) Validate() error              { return contractValidateStdin(v, 0) }
+func contractValidateStdin(v stdin, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v), 0, -1, ""); err != nil {
+		return contract.At("", err)
+	}
+	if err := validateStdin(v); err != nil {
+		return err
+	}
+	return nil
+}
+func (v *stdin) UnmarshalJSON(data []byte) error {
+	value, err := contract.Decode[string](data)
+	if err != nil {
+		return err
+	}
+	next := stdin(value)
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v stdin) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	return contract.EncodeJSON(string(v))
+}
 func decodeYieldInput(data []byte) (yieldInput, error) { return contract.Decode[yieldInput](data) }
 func (v yieldInput) Validate() error                   { return contractValidateYieldInput(v, 0) }
 func contractValidateYieldInput(v yieldInput, depth int) error {
@@ -286,11 +349,8 @@ func contractValidateYieldInput(v yieldInput, depth int) error {
 			return contract.At("description", err)
 		}
 	}
-	if v.DurationMS < 1 {
-		return contract.At("durationMs", fmt.Errorf("outside numeric bounds"))
-	}
-	if v.DurationMS > 600000 {
-		return contract.At("durationMs", fmt.Errorf("outside numeric bounds"))
+	if err := contractValidateDelayMS(v.DurationMS, depth+1); err != nil {
+		return contract.At("durationMs", err)
 	}
 	return nil
 }
@@ -323,7 +383,7 @@ func (v *yieldInput) UnmarshalJSON(data []byte) error {
 			return contract.At("durationMs", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[uint32](raw)
+			value, err := contract.Decode[delayMS](raw)
 			if err != nil {
 				return contract.At("durationMs", err)
 			}

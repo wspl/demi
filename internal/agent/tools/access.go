@@ -168,7 +168,7 @@ func runTool(ctx context.Context, call session.ToolInvocation, node core.NodeID,
 		if decodeErr != nil {
 			return session.ToolOutcome{}, inputRefusal(call.ToolName, decodeErr)
 		}
-		return session.ToolOutcome{Effect: &session.ScheduleYield{DurationMS: input.DurationMS}}, nil
+		return session.ToolOutcome{Effect: &session.ScheduleYield{DurationMS: uint32(input.DurationMS)}}, nil
 	case ShellExec:
 		input, decodeErr := decodeShellExecInput(call.Input)
 		if decodeErr != nil {
@@ -211,7 +211,7 @@ func runTool(ctx context.Context, call session.ToolInvocation, node core.NodeID,
 			return session.ToolOutcome{}, inputRefusal(call.ToolName, decodeErr)
 		}
 		command := core.CommandID(strconv.FormatUint(input.CommandID, 10))
-		environment, err = s.Write(ctx, command, input.Stdin)
+		environment, err = s.Write(ctx, command, string(input.Stdin))
 		if err == nil {
 			status, err = environment.Status(command)
 		}

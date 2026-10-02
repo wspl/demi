@@ -51,19 +51,44 @@ func TestSchemaDeclaresIntegerWindowsAndHandles(t *testing.T) {
 	for _, input := range []string{`{"commandId":17}`, `{"commandId":"17"}`, `{"commandId":"+0017"}`} {
 		got, err := decodeCommandInput([]byte(input))
 		if err != nil || got.CommandID != 17 {
-			t.Errorf("numbered handle %s: %+v, %v (requires f-contractgen10 integer string support)", input, got, err)
+			t.Errorf("numbered handle %s: %+v, %v", input, got, err)
 		}
 	}
 }
 
 func TestRefusalNamesToolAndOffendingField(t *testing.T) {
+	for _, tc := range []struct{ tool, input, want string }{
+		{"shell_exec", `{"script":"true","timeoutMs":0}`, "timeoutMs: 0 is not a whole number of milliseconds from 1 to 600000"},
+		{"shell_exec", `{"script":"true","timeoutMs":600001}`, "timeoutMs: 600001 is not a whole number of milliseconds from 1 to 600000"},
+		{"yield", `{"durationMs":0}`, "durationMs: 0 is not a whole number of milliseconds from 1 to 600000"},
+		{"yield", `{"durationMs":600001}`, "durationMs: 600001 is not a whole number of milliseconds from 1 to 600000"},
+		{"shell_write", `{"commandId":7,"stdin":""}`, "stdin: must not be empty; use shell_status to poll"},
+	} {
+		t.Run(tc.tool+tc.input, func(t *testing.T) {
+			var err error
+			switch tc.tool {
+			case "shell_exec":
+				_, err = decodeShellExecInput([]byte(tc.input))
+			case "yield":
+				_, err = decodeYieldInput([]byte(tc.input))
+			case "shell_write":
+				_, err = decodeShellWriteInput([]byte(tc.input))
+			}
+			if err == nil {
+				t.Fatal("invalid input accepted")
+			}
+			want := tc.tool + " input is invalid:\n" + tc.want
+			if got := inputRefusal(tc.tool, err).Error(); got != want {
+				t.Fatal(cmp.Diff(want, got))
+			}
+		})
+	}
+
 	cases := []struct{ input, field string }{
 		{`{"script":"true","timeoutMs":1,"shellId":"main"}`, "shellId"},
 		{`{"script":"true","timeoutMs":1,"shellId":null}`, "shellId"},
 		{`{"script":"true","timeoutMs":1,"maxOutputBytes":10}`, "maxOutputBytes"},
 		{`{"script":"true","timeoutMs":1.5}`, "timeoutMs"},
-		{`{"script":"true","timeoutMs":0}`, "timeoutMs"},
-		{`{"script":"true","timeoutMs":600001}`, "timeoutMs"},
 		{`{"script":"true","timeoutMs":1,"description":null}`, "description"},
 		{`"not json"`, ""},
 	}
@@ -79,9 +104,6 @@ func TestRefusalNamesToolAndOffendingField(t *testing.T) {
 			}
 		})
 	}
-	if _, err := decodeShellWriteInput([]byte(`{"commandId":7,"stdin":""}`)); err == nil || !strings.Contains(err.Error(), "stdin") {
-		t.Fatalf("empty stdin accepted or unnamed: %v", err)
-	}
 	got, err := decodeShellExecInput([]byte(`{"script":"ls","timeoutMs":600000,"description":"Files"}`))
 	if err != nil || got.Script != "ls" || got.TimeoutMS != 600000 || got.ShellID != nil {
 		t.Fatalf("valid input: %+v %v", got, err)
@@ -89,7 +111,7 @@ func TestRefusalNamesToolAndOffendingField(t *testing.T) {
 	for _, input := range []string{`{"script":"ls","timeoutMs":1,"shellId":3}`, `{"script":"ls","timeoutMs":1,"shellId":"3"}`} {
 		got, err := decodeShellExecInput([]byte(input))
 		if err != nil || got.ShellID == nil || *got.ShellID != 3 {
-			t.Errorf("valid optional numbered handle %s: %+v %v (requires f-contractgen10 integer string support)", input, got, err)
+			t.Errorf("valid optional numbered handle %s: %+v %v", input, got, err)
 		}
 	}
 }
