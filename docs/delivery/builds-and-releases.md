@@ -1,43 +1,43 @@
 # Builds and releases
 
-The backend, the machine manager, the runner, and the command programs are
-Rust executables built from one Cargo workspace. A developer builds all of them
-on their own machine: the cross tools installed there compile every target, and
-`cargo xtask` runs the builds, packages the releases, pins the Chrome for
-Testing release, and assembles the Cloud image.
-[Crates and packages](../architecture/crates-and-packages.md#crates) lists the
-crates; this document covers the executables, their targets, and their
-releases.
+Trying a runner change on an x86_64 Linux machine that is also its Cloud's
+execution host needs one Go target, `linux/amd64`. Build and package that
+target, refresh the local Cloud image, and accept the change on both Hosts.
+A published release carries every target of its executable.
 
-For example, trying a runner change on an x86_64 Linux machine that is also
-its own Cloud's execution host needs one target, `x86_64-unknown-linux-musl`:
-the machine runs it as a paired device, and so does the Cloud guest. The
-developer builds and packages that target, refreshes the local Cloud image,
-and accepts the change on both Hosts. A published release carries every
-target.
+The backend, machine manager, runner, and command programs are Go executables
+in one module. A developer's Mac builds all six targets with Go itself.
+`go run ./tools/release` builds and packages releases, pins Chrome for
+Testing, and assembles the Cloud image.
+[Package responsibilities](../architecture/crates-and-packages.md) defines
+who owns each program; this document defines how it is delivered.
 
 ```text
-cargo xtask native build     compiles each executable for its targets
-        |                    into the Cargo target directory
-        v
-cargo xtask native package   one release directory per executable
-        |
-        +-- runner release ---------> backend: installers, runner downloads
-        +-- command packages -------> backend: object storage, or its own route in development
-        +-- Linux runner, packages -> cargo xtask cloud-image package: Cloud image
-        +-- backend ----------------> a Linux server
-        +-- machine manager --------> the Cloud host's service
+go run ./tools/release native build     executable artifacts per target
+                      |
+                      v
+go run ./tools/release native package   one release directory per executable
+                      |
+                      +-- runner release -------> backend: installers, downloads
+                      +-- command packages -----> backend: object storage or development store
+                      +-- Linux runner/packages -> Cloud image packaging on Linux
+                      +-- backend --------------> Linux server
+                      +-- machine manager ------> Cloud host service
 ```
 
 ## Executables and targets
 
-The workspace builds for six targets, each with one cross tool:
+The release target identifiers remain stable. The release tool maps them to
+Go's `GOOS` and `GOARCH`; no cross compiler or platform SDK is needed.
 
-| Platform | Target triples | Cross tool |
+| Platform | Release target | Go target (`GOOS/GOARCH`) |
 | --- | --- | --- |
-| macOS | `aarch64-apple-darwin`, `x86_64-apple-darwin` | cargo-zigbuild with an Apple SDK |
-| Linux | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl` | cargo-zigbuild |
-| Windows | `aarch64-pc-windows-msvc`, `x86_64-pc-windows-msvc` | cargo-xwin with LLVM and the Microsoft SDK |
+| macOS arm64 | `aarch64-apple-darwin` | `darwin/arm64` |
+| macOS x86_64 | `x86_64-apple-darwin` | `darwin/amd64` |
+| Linux arm64 | `aarch64-unknown-linux-musl` | `linux/arm64` |
+| Linux x86_64 | `x86_64-unknown-linux-musl` | `linux/amd64` |
+| Windows arm64 | `aarch64-pc-windows-msvc` | `windows/arm64` |
+| Windows x86_64 | `x86_64-pc-windows-msvc` | `windows/amd64` |
 
 Each executable is built for the targets where it runs:
 
@@ -45,187 +45,137 @@ Each executable is built for the targets where it runs:
 | --- | --- | --- |
 | `demi-runner` | All six | Paired devices run macOS, Linux, or Windows on arm64 or x86_64, and the Cloud guest runs Linux |
 | `demi-file`, `demi-browser`, `demi-claude-code` | All six | A published command package supplies its operations on every target ([Publish a complete release](../execution/native-runtime.md#publish-a-complete-release)) |
-| `demi-backend` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl`, `aarch64-apple-darwin`, `x86_64-apple-darwin` | Servers run Linux; a developer may also run the backend on a Mac, with the Cloud in a Lima VM ([Develop on a Mac with Lima](../guides/mac-development.md)) |
-| `demi-machine-manager` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl` | The machine manager drives gVisor, Linux namespaces, cgroups, loop devices, and nftables, which exist only on Linux |
+| `demi-backend` | `linux/arm64`, `linux/amd64`, `darwin/arm64`, `darwin/amd64` | Servers run Linux; developers also run the backend on a Mac, with the Cloud in a Lima VM ([Develop on a Mac with Lima](../guides/mac-development.md)) |
+| `demi-machine-manager` | `linux/arm64`, `linux/amd64` | The manager drives gVisor, Linux namespaces, cgroups, loop devices, and nftables |
 
-Linux executables link musl statically, so one file runs on any distribution
-and inside the Cloud guest, whatever C library the host has. Windows
-executables link the C runtime statically, so they need no separately installed
-runtime.
+Linux executables are statically linked and need no host C library, including
+inside the Cloud guest. Windows executables need no separately installed C
+runtime. The target identifiers describe the release protocol, not a C
+linking requirement. Cross compilation does not accept kernel behavior or
+packaged resources: release acceptance executes them on their platforms.
 
-`xtask` itself is not released. It runs on the developer's machine. The Linux
-builder of the Cloud image runs a Linux musl build of it, which the developer's
-machine cross-compiles beside the native builds, for an arm64 builder with
-([guest image build](../../cloud-guest-image/README.md)):
+The release tool is not a product release. It runs on the developer's machine;
+for image assembly, cross-build it for the Linux builder's architecture and
+run it there ([guest image build](../../cloud-guest-image/README.md)):
 
 ```sh
-cargo zigbuild --release --locked -p xtask \
-  --target aarch64-unknown-linux-musl --target-dir .cache/native-target
+CGO_ENABLED=0 GOFLAGS=-mod=readonly GOOS=linux GOARCH=arm64 \
+  go build -trimpath -ldflags='-s -w' \
+  -o .cache/release-linux-arm64 ./tools/release
 ```
 
 ## Toolchain
 
-`rust-toolchain.toml` pins the Rust toolchain, a nightly of a fixed date, and
-lists the six targets, which rustup installs with it. Nightly is the toolchain
-for development and releases alike, so that the build and the code can use
-what is not yet stable:
+`go.mod` pins Go 1.27.1 through `toolchain go1.27.1`, for development and
+releases. Developers and CI use that version; move the pin in a change of its
+own that passes [Validation](#validation). The module's `toolchain` directive
+selects the default toolchain, so also check `go version` in the build
+environment rather than silently using a newer installed version.
 
-- The compiler's and Cargo's own options are adopted when a measurement shows
-  them faster or smaller, and the measurement goes beside the option. On the
-  pinned nightly the toolchain alone rebuilt 10 to 25% faster after an edit
-  than 1.98.1 (4 x86-64 cores, seven edit scenarios). The parallel front end
-  (`-Z threads=8`) was slower there, because Cargo already keeps every core
-  busy, and the Cranelift backend was no faster after an edit and does not
-  catch panics, which the runner and the command services rely on
-  ([Build profiles](#build-profiles)); neither is enabled.
-- A crate uses an unstable language or library feature where it makes the
-  code clearly simpler or faster, enabled with `#![feature]` at the crate's
-  root. Each is taken up when the code that it simplifies changes, not in a
-  sweep.
-- The pin moves to a newer nightly as a change of its own, which passes the
-  checks of [Validation](#validation) on it. The contract crates are ordinary Rust, and no build
-script generates contract code or needs the frontend's tooling, so a Cargo build
-needs only this toolchain and, for host builds, a C compiler for the
-dependencies that compile C code. The web app's TypeScript contracts come from
-a separate command, `xtask contracts`, which the frontend's scripts run through
-`bun run contracts` before they need them
+**Open item: minimum macOS version.** The installed Go 1.27.1 toolchain's
+`doc/` files and `go doc runtime` do not establish its macOS support floor.
+Confirm that floor before specifying the minimum supported macOS release;
+a successful cross-build alone does not establish runtime support.
+
+Every product build uses `CGO_ENABLED=0`, including the backend's
+`modernc.org/sqlite` driver through `database/sql`. No C compiler is needed.
+The tree watch's macOS FSEvents file uses purego; that narrow native API call
+does not enable cgo. The Linux race-test exception is described in
+[Testing](testing.md#race-detection).
+
+During the migration, set these for every command below, including `go run`,
+`go generate`, and the Go commands launched by scripts:
+
+```sh
+export CGO_ENABLED=0
+export GOFLAGS=-mod=readonly
+```
+
+`GOFLAGS=-mod=readonly` prevents the reference code's root `vendor/` directory
+from selecting Go vendor mode. Remove that temporary requirement when the
+migration removes the directory. Module and checksum changes are reviewed,
+not silently made by a build.
+
+Generated Go contracts are committed. `go generate` invokes
+`tools/contractgen` to regenerate decoders, encoders, validation, and Zod from
+marked Go types; frontend scripts invoke generation through `bun run contracts`
 ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
-
-Cross builds use cargo-zigbuild with Zig for the Apple and Linux targets, and
-cargo-xwin with LLVM for the Windows targets. With these tools one machine,
-Linux or macOS, builds every target; no target needs a build machine of its own
-platform. `scripts/native/Dockerfile` pins their versions. Install the same
-versions on the build machine; on macOS:
-
-```sh
-brew install zig@<zig version> llvm lld
-cargo install --locked cargo-zigbuild --version <cargo-zigbuild version>
-cargo install --locked cargo-xwin --version <cargo-xwin version>
-```
-
-Homebrew does not link these formulae. `cargo xtask` takes Zig from
-`CARGO_ZIGBUILD_ZIG_PATH` and the LLVM tools from `PATH`:
-
-```sh
-export CARGO_ZIGBUILD_ZIG_PATH="$(brew --prefix zig@<zig version>)/bin/zig"
-export PATH="$(brew --prefix llvm)/bin:$(brew --prefix lld)/bin:$PATH"
-```
-
-`cargo xtask` is an alias, in the repository's `.cargo/config.toml`, for
-`cargo run --package xtask --`. It selects one crate, so it builds `xtask` with
-a copy of the dependencies of its own ([Validation](#validation)); after a
-build of the whole workspace, `target/debug/xtask` runs the same commands
-without that copy, as `bun run contracts` does.
-
-`cargo xtask` pins the remaining inputs: the Apple SDK version, the Windows SDK
-and C runtime versions that cargo-xwin downloads, and the minimum macOS
-version. The Apple targets need an Apple SDK directory, passed with `--sdk` or
-`SDKROOT`; `cargo xtask` checks its SDK metadata against the pin before
-building. `aws-lc-sys`, the C library of rustls's provider, compiles with cargo-xwin's
-`clang` on Windows, so the build explicitly selects the MSVC driver dialect and
-release optimization to match cargo-xwin's SDK flags, and uses the crate's
-prebuilt NASM objects for its x86-64 assembly instead of a NASM install.
+Building Go programs needs no frontend tools and does not regenerate contracts.
 
 ## Build profiles
 
-The workspace's `Cargo.toml` holds the two profiles, and nothing else sets
-compiler options: no `RUSTFLAGS`, no per-machine configuration.
+The release tool owns release flags: `-trimpath -ldflags='-s -w'`. They remove
+local source paths and strip symbol and debug tables, reducing what every
+paired device downloads and every Cloud image carries. Development builds
+keep Go's normal debug information. Do not add per-machine compiler flags;
+adopt an optimization only with a measurement recorded beside its setting.
+Go's build cache handles incremental compilation; keep it between builds.
 
-The release profile makes the executables small, because every paired device
-downloads each one and every Cloud image carries them: fat link-time
-optimization (`lto = "fat"`), one code-generation unit per crate
-(`codegen-units = 1`), optimization for size (`opt-level = "s"`) and stripped
-symbols (`strip = true`). Together these make the runner and the command programs
-about 40% smaller than thin link-time optimization at `opt-level = 3`, and a
-release build takes about half as long again. `opt-level = "z"` would save a
-quarter more, but it also gives up the speed optimizations that `"s"` keeps,
-and the runner's utilities run searches and sorts in process. Panics unwind in
-every profile: the runner contains a utility's panic to its job
-([Shell jobs](../execution/runner.md#shell-jobs)), and a resident command
-service fails one invocation, not every conversation it holds; `panic =
-"abort"` would end the whole process.
+A panic in a shell utility must stay within its job
+([Shell jobs](../execution/runner.md#shell-jobs)); a resident command service
+fails one invocation, not every conversation it holds. Recovery belongs at
+the owning goroutine's boundary; no panic crosses a package boundary.
 
-The development profile keeps line tables for backtraces and no other debug
-information, builds dependencies without debug information, and optimizes the
-few dependencies whose unoptimized code slows the tests, each with the
-measurement in a comment beside it. Incremental compilation stays on for the
-workspace's crates: it makes a rebuild after an edit two to three times
-faster. The vendored crates are path dependencies, which Cargo would compile
-incrementally too; they never change, so they build without it.
+The sp11 matrix measured these stripped **skeleton sizes as a lower bound**
+on functionality, not a production size promise (MiB = 1,048,576 bytes):
 
-Cargo never deletes a compiled unit. Each change to a dependency, its version
-or its features produces new units beside the old ones, so a target directory
-grows without bound, and a build in a directory of hundreds of thousands of
-stale files spends most of its time in the kernel. When a target directory
-has grown large, delete it by hand: a full build of the one selection
-([Validation](#validation)) takes about a minute.
+| Skeleton | darwin/amd64 | darwin/arm64 | linux/amd64 | linux/arm64 | windows/amd64 | windows/arm64 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Runner | 11.35 | 10.55 | 11.09 | 10.31 | 11.54 | 10.49 |
+| Backend | 19.96 | 19.01 | 19.82 | 18.81 | — | — |
+| Browser | 6.98 | 6.59 | 6.79 | 6.44 | 7.01 | 6.48 |
+| Machine manager | — | — | 4.18 | 4.00 | — | — |
+
+These retain representative library operations, not the full applications.
+The backend skeleton links two SQLite engines; the product chooses modernc.
+Browser sizes exclude Chrome and its resources. No file or Claude Code
+program size was measured. The same 18 builds took 64.224 seconds with an
+initially empty build cache and 5.499 seconds unchanged, with dependencies
+already downloaded. These are single observations on the development Mac,
+not build budgets or evidence of production size or performance gains.
+[Migration spike results](go-migration.md#spike-results) indexes the evidence.
 
 ## Cross builds
 
-Build on the machine itself, with its own cross tools; the build container
-below is only for a machine that lacks them:
+Build on the developer's machine with the pinned Go toolchain:
 
 ```sh
-cargo xtask native build \
-  --sdk /Library/Developer/CommandLineTools/SDKs/MacOSX<version>.sdk
-```
-
-Without `--package` or `--target` options, `cargo xtask native build` builds
-the runner and the command programs for all six targets. Repeated
-`--package <crate>` options name the executables to build, including
-`demi-backend` and `demi-machine-manager`. Repeated `--target <triple>` options name
-the targets; without them each named executable is built for every target
-[Executables and targets](#executables-and-targets) gives it. A named target
-that a named executable does not run on, such as `demi-machine-manager` for a macOS
-target, is refused before anything builds. `--artifacts`
-selects the Cargo target directory; its default is `.cache/native-target`.
-
-Development builds only the targets of the Hosts in use, and packages a
-release of the same targets (see [Packaging](#packaging)). Building six targets
-to try a change on one machine is wasted time:
-
-```sh
-cargo xtask native build \
-  --sdk /Library/Developer/CommandLineTools/SDKs/MacOSX<version>.sdk \
+go run ./tools/release native build \
   --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
 ```
 
-A release build of the Linux targets prints `warning: linker stderr: ignoring
-deprecated linker optimization setting '1'` once per program. Nothing in the
-repository sets it: rustc passes `-O1` to a GNU-style linker at optimization
-levels 2 and 3, and Zig 0.12 to 0.16 ignores the flag and says so. It is
-harmless; cargo-zigbuild drops the flag in the first release after 0.23.4.
+Without `--package` or `--target`, the release tool builds the runner and
+command programs for all six targets. Repeated `--package <executable>`
+options select programs, including the backend and machine manager. Repeated
+`--target <release-target>` options select targets from the mapping above;
+without them each selected executable gets every target it supports. An
+unsupported program/target pair is refused before any build starts.
+`--artifacts` selects the output directory, defaulting to `.cache/native-target`.
 
-`--container <image>` runs the same build inside the image the Dockerfile
-describes, for a machine without the tools. A bind-mounted checkout is slow
-there, and the container and the machine do not share a Cargo target
-directory, so prefer the machine's own tools. The container's target path is
-`/build`, because clang-cl reads `/output` as an output flag.
-
-```sh
-docker build -t demi-native-tools -f scripts/native/Dockerfile .
-cargo xtask native build \
-  --container demi-native-tools --sdk /path/to/MacOSX<version>.sdk
-```
+Development builds and packages only the targets of the Hosts in use. A
+published release builds every supported target. There is no separate build
+container or cross-tool installation step; the Linux image assembler still
+needs its Linux host tools as specified by the image contract.
 
 ## Packaging
 
-`cargo xtask native package` turns built executables into a release directory.
+`go run ./tools/release native package` turns built executables into a release
+directory.
 It takes the same repeated `--target` options as the build and packages exactly
 those targets; without them it requires every target of the executable.
-`--artifacts` names the Cargo target directory the build wrote, with the
+`--artifacts` names the artifact directory the build wrote, with the
 build's default.
 
 ```sh
-cargo xtask native package --package demi-file \
+go run ./tools/release native package --package demi-file \
   --artifacts .cache/native-target --output .cache/releases/demi-file-<version>
-cargo xtask native package --package demi-browser \
+go run ./tools/release native package --package demi-browser \
   --artifacts .cache/native-target --output .cache/releases/demi-browser-<version>
-cargo xtask native package --package demi-claude-code \
+go run ./tools/release native package --package demi-claude-code \
   --artifacts .cache/native-target --output .cache/releases/demi-claude-<version>
-cargo xtask native package --package demi-runner \
+go run ./tools/release native package --package demi-runner \
   --artifacts .cache/native-target --output .cache/releases/runners
-cargo xtask native package --package demi-backend \
+go run ./tools/release native package --package demi-backend \
   --artifacts .cache/native-target --output .cache/releases/demi-backend-<version>
 ```
 
@@ -234,12 +184,13 @@ Each executable has its own kind of release:
 - **Command packages.** Each command program is released on its own. Its
   release directory holds `descriptor.json` and one subdirectory per target
   with the executable. The descriptor's id and operations are the ones the
-  package's contract crate declares (`command-package-file-protocol` for `demi-file`,
-  `command-package-browser-protocol` for `demi-browser`, `command-package-claude-code-protocol` for
-  `demi-claude-code`), the operation list the program routes by, so a release
+  package's contract declares (`internal/cmdpkg/file/fileop` for `demi-file`,
+  `internal/cmdpkg/browser/browserop` for `demi-browser`, and
+  `internal/cmdpkg/claudecode/claudecodeop` for `demi-claude-code`), the operation
+  list the program routes by, so a release
   cannot advertise an operation the program does not serve; its version is
   the workspace version. A package that needs resources gets them from the
-  record its contract crate keeps: `demi-browser`'s release carries the
+  record its contract package keeps: `demi-browser`'s release carries the
   pinned Chrome for Testing archive of each packaged target that has one,
   as `resources/<sha256>`, and its descriptor names it as the resource
   `chrome`. Packaging downloads each archive it lacks into
@@ -254,7 +205,7 @@ Each executable has its own kind of release:
   the runners installed from them.
 - **Backend and machine manager.** Each is released as one executable per
   target that carries the workspace version
-  ([Package versioning](package-versioning.md#rust-executables)). Its release
+  ([Package versioning](package-versioning.md)). Its release
   directory holds `release.json` and one subdirectory per target with the
   executable. `release.json` names the executable, the version, and each
   target's executable SHA-256 and byte size, the same entry as a
@@ -270,6 +221,7 @@ Each executable has its own kind of release:
   }
   ```
 
+  The byte size above illustrates the record; it is not a measured Go size.
   No Demi program reads the record; it tells whoever copies the executable
   to a server what to check the copy against. Since a packaged version is
   immutable (below), a development build of an unchanged version goes to a
@@ -277,7 +229,7 @@ Each executable has its own kind of release:
 
 Every release is published the same way, through the one verified publication
 of the artifact library
-([Crates and packages](../architecture/crates-and-packages.md#crates)): stage
+([Package responsibilities](../architecture/crates-and-packages.md)): stage
 every artifact, verify each copy's size and SHA-256, publish once, and refuse
 conflicting metadata or corrupt bytes already in place. A release already in
 place with the same record and bytes is the one being published, so packaging
@@ -305,25 +257,25 @@ development store instead and serves their executables itself
 ([Development backend](../backend/backend.md#development-backend)).
 
 The Cloud image embeds a Linux runner release and the command package releases.
-`cargo xtask cloud-image package` assembles the image on a Linux builder of the
-image's architecture: [Cloud images](../cloud/images.md) defines the image, and
+`go run ./tools/release cloud-image package` assembles the image on a Linux
+builder of the image's architecture: [Cloud images](../cloud/images.md) defines the image, and
 the [guest image build](../../cloud-guest-image/README.md) gives the steps.
 
 ## Chrome for Testing
 
 Each Demi release pins one Chrome for Testing version
 ([Browser distribution](../browser/browser.md#browser-distribution)).
-`cargo xtask browser-release` pins the version it is given:
+`go run ./tools/release browser-release` pins the version it is given:
 
 ```sh
-cargo xtask browser-release 153.0.8010.36
+go run ./tools/release browser-release 153.0.8010.36
 ```
 
 It reads that version's official download metadata and, for each platform
 Demi supports, downloads the `chrome` archive from Chrome for Testing's
 download host through the artifact library, measures its size and SHA-256, and
 checks that it holds the executable the record names. It then writes the
-release record, `crates/command-package-browser-protocol/src/release/chrome.json`, from which
+release record, `internal/cmdpkg/browser/browserop/release/chrome.json`, from which
 packaging writes the `chrome` resource of `demi-browser`'s releases; commit it
 with the change that adopts the version. Chrome for Testing publishes no
 Windows arm64 build, so the record carries five of the six targets. The
@@ -332,103 +284,165 @@ against the record.
 
 ## Validation
 
-[Testing](testing.md) says what a test must be; this section says how the tests run.
+[Testing](testing.md) defines what a test protects. Developers and CI run the
+same commands below with the environment in [Toolchain](#toolchain). There is
+currently no hosted CI; that does not change the required checks. Release
+acceptance runs the shared Go suites on each platform that ships a feature.
 
-There is no hosted CI. Developers run the checks on their machines, and
-release acceptance runs the shared Rust suite on each platform that ships a
-feature.
-
-Every Rust command but the Chrome suite's selects the same thing: the whole
-workspace with the runner's `test-fixtures` feature, which turns on the
-runner libraries' test support and so builds the fixture programs the tests
-start. Cargo unifies features over what one command
-selects, so a command that selected one crate or other features would build
-its own copy of every shared dependency.
-
-| Command | What it runs |
+| Command | What it checks |
 | --- | --- |
-| `cargo check --workspace --all-targets --features demi-runner/test-fixtures` | The type check of every crate, test and example |
-| `cargo fmt --all --check` | The formatting of every crate, which `rustfmt`'s defaults decide; `cargo fmt --all` applies it |
-| `cargo clippy --workspace --all-targets --features demi-runner/test-fixtures` | Clippy's default lints over the same selection, which pass with no warning; a lint that is wrong at one place is allowed there with its reason (`#[allow(clippy::<lint>, reason = "...")]`) |
-| `cargo test --workspace --features demi-runner/test-fixtures` | The Rust tests, the crate boundary check among them ([Boundary checks](../architecture/crates-and-packages.md#boundary-checks)); `--test <name>` runs one test target |
-| `DEMI_TEST_CHROME=<chrome> cargo test --workspace --features demi-runner/test-fixtures --test browser -- --include-ignored --test-threads=1` | The tests that start Chrome, one at a time, with the executable of the pinned Chrome for Testing release, unpacked; they run as an ordinary user, since Chrome refuses root on Linux with its sandbox |
-| `DEMI_TEST_CHROME=<chrome> cargo test --workspace --features demi-runner/test-fixtures --test backend -- --ignored real_browser` | The browser suite's scenario through the backend and a paired device's runner ([Browser suite](scenarios.md#browser-suite)), as an ordinary user with the same executable |
-| `DEMI_TEST_CLAUDE_CODE=<claude> SSL_CERT_FILE=$PWD/crates/backend/tests/backend/claude_code/distribution-ca.pem cargo test --workspace --features demi-runner/test-fixtures --test backend -- --ignored claude_code` | The Claude Code suite, with the executable of the vendor's CLI and the CA of the suite's local distribution |
-| `bun run test` | The TypeScript tests, the package boundary check among them ([Boundary checks](../architecture/crates-and-packages.md#boundary-checks)), and the test of the capture extension's JavaScript, which sits beside the extension in `command-package-browser-chrome`; it first builds the programs the tests start, with the same selection |
-| `sudo bash crates/machine-manager/scripts/cloud-suite.sh --image <release> --native <configuration> --work <directory>` | The Cloud suite on Linux, as root, against a machine manager with its resource limits off that the script starts in a stand-in execution host; against an installed manager, the suite's variables and its `cargo test` command instead ([Cloud suite](scenarios.md#cloud-suite)) |
+| `go vet ./...` | Static checks of host-buildable packages and tests |
+| `gofmt -l cmd internal tools` | Formatting; output must be empty (`gofmt -w` applies it) |
+| `go test ./...` | Package tests, including repository-program scenarios; `go test ./internal/gates -run <pattern>` selects one behavior while editing |
+| `golangci-lint run ./...` | Pinned v2.14.0, with `staticcheck`, `errcheck`, `govet`, and `revive`; no warnings; a local suppression names its reason |
+| `go run ./tools/archcheck` | Declared package dependency direction, including test imports and otherwise unused packages |
+| `go run ./tools/cgocheck` | No selected cgo dependencies and no failed package loads on every shipping target, always with `CGO_ENABLED=0` |
+| `go-check-sumtype -default-signifies-exhaustive=false ./...` | Exhaustive switches over annotated sealed interfaces; a default does not excuse a missing variant |
+| `bash scripts/gomig/check.sh <package>...` | During migration: builds on shipping targets, vet, lint, cgo, imports, exhaustiveness, and race tests of the packages and their importers |
+| `bun run test` | TypeScript tests, package boundaries, web app contract scenarios, and capture-extension JavaScript tests |
 
-A test that starts another program, such as a runner or `demi-file`,
-starts the one Cargo built into the target directory the test runs from
-(`command_protocol::testing::built_program`); it builds nothing itself.
-`cargo test` of the whole selection builds every program first: Cargo builds
-a package's executables for that package's integration tests, so every crate
-whose program a test starts has an integration test binary. One test target
-builds only what it links, so before running one alone that
-starts another crate's program, build the selection with
-`cargo build --workspace --all-targets --features demi-runner/test-fixtures`.
-The TypeScript tests take the programs from `DEMI_TEST_PROGRAMS`, which
-`bun run test` sets to that directory. An ordinary test run starts no Chrome;
-release acceptance runs the Chrome tests. `DEMI_TEST_CHROME` names the
-executable of an installation of the pinned release that the user running the
-tests can read in full, such as the one a runner installs in its artifact
-cache. A test that drives the browser program answers its request for Chrome
-with that executable, as the runner would; the scenario through the backend
-installs that release into its runner's artifact cache, as the runner
-installs a download, with hard links where the system allows them
-([Install artifacts](../execution/native-runtime.md#install-artifacts)):
-no test downloads Chrome or needs the home. The live view tests decode the H.264
-pictures the view streams with WebCodecs in the Chrome under test, as the page
-does. On Linux the Chrome tests need an ordinary user: Chrome for Testing
-refuses to start as root with its sandbox, which Demi keeps
-([Native driver](../browser/browser.md#native-driver)). An ordinary test run
-also skips the Cloud suite, which needs a machine manager, a Cloud image, and
-root. The machine manager builds only for Linux, and on Linux the one
-selection builds and runs its tests
-([Verification](../cloud/managed-hosts.md#verification)); on a Mac they run in
-a Lima VM ([Develop on a Mac with Lima](../guides/mac-development.md#machine-manager-tests)). The tests that need
-root are ignored in an ordinary run; as root, the manager's unit test
-executable with `--include-ignored` runs them, each in mount and network
-namespaces of its own:
+The release target table drives builds and checks. Run lint, import and
+exhaustiveness checks under each applicable `GOOS`/`GOARCH`, as well as host
+checks; a Mac run alone cannot inspect Linux-only manager code. Pin the
+standalone sumtype tool to v0.5.0. Check acceptance-tagged packages with vet,
+lint, imports, and exhaustiveness too; leaving those files out of the ordinary
+build must not exempt them. Run the race suite on its execution host:
 
 ```sh
-cargo test --workspace --features demi-runner/test-fixtures --no-run
-sudo target/debug/build/demi-machine-manager/<hash>/out/demi_machine_manager-<hash> --include-ignored
+# macOS
+CGO_ENABLED=0 go test -race ./...
+
+# Linux; the test binary alone uses the C race runtime.
+CGO_ENABLED=1 go test -race -tags netgo,osusergo ./...
 ```
 
-The Claude Code suite runs as an ordinary user, as the Cloud's runner does:
-the CLI refuses the provider's permission mode as root. Its local
-distribution serves HTTPS, since `demi.claude-code` downloads nothing else, and
-`SSL_CERT_FILE` names the CA the suite carries for it, for the test process and
-the runners it starts only. The backend in the test process and the Cloud's
-`demi.claude-code` trust that CA because the one selection builds reqwest with the
-machine's roots, which the variable replaces; a selection without them fails
-the suite's install with an unknown issuer. The CA's key was discarded, and
-its certificate and the distribution's expire on 2126-09-03.
+### Programs used by tests
 
-[Scenarios](scenarios.md) defines the suites that run the whole backend.
+Backend scenarios with real runners, runner suites, and command-program suites
+run in the default `go test ./...`; they need no manual prebuild. One shared
+test-support package, `internal/programtest`, supplies the repository's own
+programs. When `DEMI_TEST_PROGRAMS` is unset, it builds each requested program
+once per test binary from the module with `go build -o <temporary dir>`.
+Go's build cache makes repeat builds take seconds. The package owns the
+shared temporary directory until the test binary's users have finished, then
+removes it; individual tests still stop and wait for the processes they start.
+Builds use `CGO_ENABLED=0` even when the calling test uses Linux's race runtime.
+
+When `DEMI_TEST_PROGRAMS` is set, `internal/programtest` uses that directory
+instead of building. It resolves program names with `.exe` on Windows and
+fails clearly if a requested executable is absent; it never silently rebuilds
+an explicitly supplied program. TypeScript suites and release acceptance set
+this variable to test the intended artifacts. For example, on a Mac:
+
+```sh
+mkdir -p .cache/test-programs
+go build -o .cache/test-programs/ ./cmd/...
+export DEMI_TEST_PROGRAMS="$PWD/.cache/test-programs"
+go test -tags acceptance -count=1 ./...
+```
+
+The command builds the programs available on the current platform, including
+fixture programs; Linux also builds the machine manager. `bun run test` uses
+an explicitly supplied `DEMI_TEST_PROGRAMS` directory and otherwise prepares
+those programs once; to run selected TypeScript tests, build first and set
+the same variable. Test fixture and scripted-machine support stays out of
+product binaries.
+
+Only suites that need resources outside the repository use `acceptance`:
+real Chrome, the Claude Code CLI, and a real Cloud. They also skip unless
+their required environment is supplied. The commands below use the prebuilt
+directory above; their test names select each resource suite:
+
+```sh
+DEMI_TEST_CHROME=<chrome> \
+  go test -tags acceptance -count=1 -p=1 -parallel=1 \
+  ./internal/cmdpkg/browser/... -run Chrome
+DEMI_TEST_CHROME=<chrome> \
+  go test -tags acceptance -count=1 ./internal/backend/... -run RealBrowser
+DEMI_TEST_CLAUDE_CODE=<claude> SSL_CERT_FILE=<suite-distribution-ca.pem> \
+  go test -tags acceptance -count=1 ./internal/backend/... -run ClaudeCode
+```
+
+[Scenarios](scenarios.md) owns the suite behavior and resource configuration.
+The Chrome tests run outside an execution sandbox, on macOS and in Linux,
+as an ordinary user; Chrome's own sandbox stays enabled. Linux Chrome refuses
+root. `DEMI_TEST_CHROME` names the executable of the pinned unpacked Chrome
+for Testing release, with its full installation readable by that user. The
+browser program receives that path as it would from a runner; backend
+scenarios install it in the runner's artifact cache, with hard links where
+available ([Install artifacts](../execution/native-runtime.md#install-artifacts)).
+No test downloads Chrome or uses the user's home. Live-view tests decode H.264
+with WebCodecs in that Chrome, as the page does. Cross-build success does not
+replace these checks or acceptance of the extension and browser cleanup.
+
+The Cloud suite runs on Linux as root, with a real manager and image, and
+runs serially because backend reconciliation stops the manager's Clouds.
+With the four resource variables in [Cloud suite](scenarios.md#cloud-suite)
+set in the root test environment, run:
+
+```sh
+go test -tags acceptance -count=1 -p=1 -parallel=1 -v \
+  ./internal/backend/... -run RealCloud
+```
+
+The stand-in execution-host harness must also support a machine without an
+installed manager, disable manager resource limits for the suite, and clean
+up and audit all processes, mounts, loop devices, network state, and listeners
+on success, failure, and interruption, as specified in that scenario contract.
+A Mac runs Linux manager tests in Lima
+([Machine manager tests](../guides/mac-development.md#machine-manager-tests)).
+Privileged manager tests carry `acceptance`; compile their test binaries as
+an ordinary user, then run those binaries as root with the needed environment.
+Each test owns its mount and network namespaces. Ordinary package tests
+require neither root nor a real manager. Release acceptance separately checks
+Linux amd64 and arm64 and the resource limits the stand-in leaves out
+([Verification](../cloud/managed-hosts.md#verification)).
+
+The Claude Code suite runs as an ordinary user, as the Cloud's runner does;
+the CLI refuses the provider's permission mode as root. The local distribution
+uses HTTPS. `SSL_CERT_FILE` names its fixture CA only for the test and its
+children; the backend downloader and Cloud command program must both trust it
+through Go's certificate-root loading. Keep the fixture certificate and
+server certificate, whose keys are not regenerated during a run and whose
+expiry is 2126-09-03. The CA private key was discarded. The real CLI calls a
+local scripted endpoint with a made-up token and telemetry disabled, never a
+real model ([Claude Code suite](scenarios.md#claude-code-suite)).
 
 Release acceptance also checks the artifacts and installers on each platform:
 
-- A Linux executable with an ELF interpreter or a shared-library dependency
-  fails.
+- A Linux executable with an ELF interpreter or shared-library dependency
+  fails acceptance.
 - Windows exercises the PowerShell installer; Linux and macOS exercise the
-  shell installer. These checks include registration separation, release
-  reuse, and draining upgrades.
+  shell installer, including registration separation, release reuse, and
+  draining upgrades.
 - Each installer and publication fixture runs three times per platform to
-  exercise repeated process startup and teardown.
+  exercise repeated startup and teardown; disable test-result caching for
+  these repeats.
+- The manual real-machine checks in
+  [Scenarios](scenarios.md#real-machine-acceptance) cover what automation leaves
+  out, including the Cloud conversation browser's live view.
 
-`crates/command-sdk/examples/benchmark.rs` is a standalone synthetic
-service and client. Build it with
-`cargo build --release -p demi-command-sdk --example benchmark`, then run
-`target/release/examples/benchmark` to measure the machine and build it runs on.
-It never calls a model.
+Synthetic service/client benchmarks belong to the command SDK's Go benchmarks.
+Run them explicitly with `go test -run '^$' -bench . ./internal/cmdsdk`; they
+measure the current machine and build and never call a model. They are outside
+the regular suite.
 
 ## Cloud image refresh
 
 The Cloud runs the Linux target that matches its execution host. Build and
 package that target together with the paired-device target used for acceptance.
-The [Cloud image contract](../cloud/images.md#acceptance-and-local-refresh) owns
-embedding, manager restart, local reset, and checking the identities of the
-running artifacts; rebuilding a native release alone does not refresh a pinned
-Cloud. A change to the machine manager itself is built for its host's Linux
-target and installed with the service ([Cloud setup](../cloud/setup.md)).
+`go run ./tools/release cloud-image package` assembles the image on its Linux
+builder. The [Cloud image contract](../cloud/images.md#acceptance-and-local-refresh)
+owns embedding, manager restart, local reset, and checking running artifact
+identities; rebuilding a native release alone does not refresh a pinned Cloud.
+A manager change is built for its host's Linux target and installed with the
+service ([Cloud setup](../cloud/setup.md)).
+
+The shell now uses the Host's system utilities. The following user-facing
+consequences remain open work after the migration, per
+[owner decision 4](go-migration.md#owner-decisions): tracking writes by
+`sed -i`, `tee`, and `sort -o`; the BSD utilities of a paired Mac; Windows
+devices without Unix utilities; including GNU coreutils, findutils, diffutils,
+sed, grep, ripgrep, and jq in the Cloud image; and telling the model which
+shell, platform, and utilities a job has. Cross-build or image acceptance must
+not be reported as resolving those items.

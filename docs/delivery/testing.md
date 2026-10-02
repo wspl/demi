@@ -21,7 +21,7 @@ backend's scenario suites in [Scenarios](scenarios.md).
 - A behavior is tested once, at one level, not again in every layer beneath
   it.
 - Do not write tests that restate the implementation: serialization that a
-  derive produces, constants, accessors, the steps inside a function, or the
+  generator produces, constants, accessors, the steps inside a function, or the
   shape of a value no other component reads.
 - Do not write checks that cannot fail, such as asserting that output contains
   no panic.
@@ -35,8 +35,9 @@ backend's scenario suites in [Scenarios](scenarios.md).
 
 ## Levels
 
-- **Scenarios first.** The default test runs the real programs through their
-  real boundaries: the backend over HTTP and WebSocket, real runner processes,
+- **Scenarios first.** The default choice for a behavior is a scenario through
+  real programs and their boundaries: the backend over HTTP and WebSocket,
+  real runner processes,
   and a scripted model ([Scenarios](scenarios.md)). One scenario covers many
   modules working together and survives refactoring, since it depends on no
   internals.
@@ -46,12 +47,12 @@ backend's scenario suites in [Scenarios](scenarios.md).
   scenario would cost more than the logic is worth.
 - **Contracts at their boundary.** A wire format that another program or the
   web app reads is pinned where it is encoded or decoded, with the values the
-  other side depends on. A format that nothing outside the crate reads is not
+  other side depends on. A format that nothing outside the package reads is not
   pinned. When the other side's types are generated from the same
   definitions, as the web app's are
   ([Generated TypeScript](../architecture/contracts.md#generated-typescript)),
   generation carries the field names and tags, and a test that pins them
-  restates the derive. Pin what generation does not carry: the fixtures both
+  restates the generator. Pin what generation does not carry: the fixtures both
   sides decode, the rules the generator translates (strict or tolerant,
   optional or nullable, bounds), checks that only one side makes, and stored
   formats.
@@ -76,7 +77,13 @@ backend's scenario suites in [Scenarios](scenarios.md).
   for the event that ends the window (the stop), with a deadline that guards
   against a hang, and asserts that it came no earlier than the window allows.
   It does not sleep across the window and then look.
-- Timer logic runs on a paused or injected clock where the code allows it
+- Timer logic runs inside `testing/synctest.Test`: its bubble owns the
+  goroutines and advances virtual time when they are durably blocked.
+  `synctest.Wait` waits for that blocked state before an assertion; it is not
+  a substitute for joining work. This pins an idle deadline exactly without
+  spending an hour of wall time. Real sockets, child processes and machines
+  stay outside the bubble: wait for their events with a hang deadline, and
+  use an injected clock for expiry where needed
   ([Tests and time](../architecture/concurrency.md#tests-and-time)). In the
   web app's packages, bun's `jest.useFakeTimers()` is that clock: it moves
   `setTimeout`, `setInterval`, `Date.now` and `performance.now`, while
@@ -95,9 +102,9 @@ backend's scenario suites in [Scenarios](scenarios.md).
 
 ## Cost
 
-- A test takes about 1 second, and a test binary or file about 10 seconds. A
-  test that needs more states why in a comment: which contract it proves that
-  no cheaper test can.
+- A test takes about 1 second, and a package test run or TypeScript file about
+  10 seconds. A test that needs more states why in a comment: which contract
+  it proves that no cheaper test can.
 - Soaks, benchmarks and long waits stay out of the regular suite.
 - A commit that adds or changes tests states their measured time.
 
@@ -112,23 +119,64 @@ backend's scenario suites in [Scenarios](scenarios.md).
   Claude Code suites exist, and release acceptance checks by hand what they
   leave out
   ([Real machine acceptance](scenarios.md#real-machine-acceptance)).
-- Each crate has one test binary, which tests its public boundary
-  ([Module layout](../architecture/crates-and-packages.md#module-layout)); a
-  test gets a binary of its own only when it changes or exhausts process-wide
-  state, such as the open-file limit. A behavior that can be reached only
-  through a crate's private items may mean that the crate holds two parts.
-  Split it only where
-  [build isolation](../architecture/crates-and-packages.md#module-layout)
-  allows; otherwise the crate keeps its tests as unit tests.
+- Go tests live beside their package in `_test.go` files. Prefer the public
+  boundary (`package name_test`) where it exposes the behavior. A behavior
+  reachable only through private state may indicate separate responsibilities;
+  split only where the [package design](../architecture/crates-and-packages.md#module-layout)
+  permits it, otherwise use a same-package test.
+- Go builds each package's test binary incrementally and caches successful
+  results in package-list mode. There is no rule to combine unrelated tests
+  into a few binaries or to keep one fixed package selection. Run the affected
+  package while editing; use `-run` for one behavior and `-count=1` when an
+  actual repeat is required for proof or measurement.
 - A new test goes into the existing test file for the code it covers. A test
   for a fixed bug sits beside the tests of the behavior it restores and is
-  named after that behavior.
-- Test support belongs to the crate that owns what is faked or observed, behind
-  that crate's `testing` feature, never in its production build.
+  named after that behavior. Use table tests when several inputs exercise the
+  same behavior, with named subtests that identify the failing case.
+- Tests use the standard library, `github.com/google/go-cmp` for useful value
+  differences, and `go.uber.org/goleak`; no assertion library. Use
+  `t.Context()` for work owned by a test. It is canceled before cleanup runs;
+  cleanup must then wait for the work to end. Register resource cleanup at
+  acquisition with `t.Cleanup` or `defer`, including failure paths.
+- Every worker has an owner that cancels and joins it. Use
+  `goleak.VerifyTestMain` after package cleanup to detect leaked goroutines;
+  do not hide application workers with broad ignore lists. Leases and permits
+  need explicit release and a shutdown audit where owned; garbage collection
+  and a clean goroutine count do not prove their release.
+- Test support belongs beside the package that owns what is faked or observed,
+  in a package with a `test` suffix, such as `providertest`. Production code
+  never imports it, so it is not linked into product executables.
+- Backend scenarios with real runners, runner suites, and command-program
+  suites stay in the default `go test ./...`. Tests obtain the repository's
+  programs through the shared `internal/programtest` package: it builds each
+  requested program once per test binary from the module into a temporary
+  directory, or uses `DEMI_TEST_PROGRAMS` when set. The TypeScript suites and
+  release acceptance supply that directory. See
+  [Programs used by tests](builds-and-releases.md#programs-used-by-tests).
+- Only suites that need resources outside the repository carry
+  `//go:build acceptance`: real Chrome (`DEMI_TEST_CHROME`), the Claude Code
+  CLI, or a real Cloud. They also skip without the environment that supplies
+  their resources, as specified in
+  [Scenarios](scenarios.md#real-machine-acceptance).
+
+## Race detection
+
+Run `go test -race` on macOS with `CGO_ENABLED=0`. On Linux, only the race
+test binary uses `CGO_ENABLED=1 -tags netgo,osusergo`: the race runtime needs
+ThreadSanitizer through libc and a C compiler there, while those tags keep
+DNS resolution and user lookup in Go, as in the shipped build. Product builds
+and the per-target cgo check always use `CGO_ENABLED=0`. The exact commands
+are in [Validation](builds-and-releases.md#validation).
+
+A passing race run checks the paths the tests exercised; it does not prove
+atomic admission, correct cancellation, timely lease release, or absence of
+deadlock. Test those observable behaviors with controlled interleavings and
+cleanup checks as well.
 
 ## Coverage
 
-- Line coverage is measured with `cargo llvm-cov` for the Rust workspace and
+- Line coverage is measured with `go test -coverprofile=coverage.out ./...`
+  and inspected with `go tool cover -func=coverage.out` for Go, and with
   `bun test --coverage` for the web app's packages, and reported when a body of
   tests is added or reviewed.
 - A new test either covers code that no test reached or adds an edge case that
