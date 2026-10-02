@@ -1,8 +1,8 @@
 import { defineComponent, h } from 'vue'
 import { Globe } from '@lucide/vue'
-import { EXPOSE_ICON } from '../../hosts/icons'
-import { ICON_PX } from '../../ui/icon-metrics'
-import type { PanelTabKind } from './kind'
+import { EXPOSE_ICON } from '../types'
+import { ICON_PX } from '@demicodes/plugin-sdk'
+import type { PanelTabKind } from '@demicodes/plugin-sdk'
 import PageTabContent from './PageTabContent.vue'
 import { pageTabDataSchema, pageTabTitle, type PageTabData } from './page-data'
 

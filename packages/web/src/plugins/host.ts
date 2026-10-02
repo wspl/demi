@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { PluginCallError, type PluginHost } from '@demicodes/web-ui/plugins/client'
-import { liveStreamAt } from '@demicodes/web-ui/transport/live-stream'
+import { userStreamAt } from '@demicodes/web-ui/transport/user-stream'
 import { ApiError, apiRequest, apiUrl, jsonBody, readResponse } from '../api/client'
 import type { ProductState } from '../api/generated/web-api'
 import { executionFor } from '../targets/execution'
@@ -38,7 +38,7 @@ export function productPluginHost(snapshot: () => ProductState | null): PluginHo
       const path = `/conversations/${encodeURIComponent(conversation)}/streams/${encodeURIComponent(name)}`
       const url = new URL(apiUrl(path), window.location.href)
       url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-      return liveStreamAt(url.toString())
+      return userStreamAt(url.toString())
     },
     installs(plugin, conversation) {
       const state = snapshot()

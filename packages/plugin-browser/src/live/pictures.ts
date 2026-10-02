@@ -3,8 +3,8 @@
  * Delivery): WebCodecs decodes the Host's H.264, the page shows the newest
  * frame it has, and tells the module what it showed.
  */
-import { LIVE_VIDEO_CODEC } from '@demicodes/protocol'
-import { reportError } from '../infra/errors'
+import { LIVE_VIDEO_CODEC } from '../generated/live'
+import { reportError } from '@demicodes/plugin-sdk'
 import type { LiveVideoFrame } from './frames'
 import type { PictureSink } from './session'
 

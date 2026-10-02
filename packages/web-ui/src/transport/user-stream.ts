@@ -1,15 +1,15 @@
 /**
- * The product's live browser view: the conversation's `browser` user stream
- * (`web-api.md` § User streams), which carries the live protocol's bytes.
+ * A plugin's user stream over the product's WebSocket at `url`
+ * (`web-api.md` § User streams): bytes sent before the socket opens wait
+ * for it, and the close reason ends the stream.
  */
-import type { LiveBytes } from '../browser/frames'
-import type { OpenLiveStream } from '../browser/session'
+import type { OpenUserStream, StreamBytes } from '../plugins/streams'
 
-export function liveStreamAt(url: string): OpenLiveStream {
+export function userStreamAt(url: string): OpenUserStream {
   return (handlers) => {
     const socket = new WebSocket(url)
     socket.binaryType = 'arraybuffer'
-    const queued: LiveBytes[] = []
+    const queued: StreamBytes[] = []
     socket.addEventListener('open', () => {
       for (const bytes of queued) {
         socket.send(bytes)

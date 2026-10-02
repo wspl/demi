@@ -3,19 +3,10 @@
  * Framing and versions): the stream carries bytes, so each message is a
  * length, a kind and a payload.
  */
-import {
-  LIVE_CONTROL_FRAME,
-  LIVE_FILE_FRAME,
-  LIVE_FILE_HEADER_BYTES,
-  LIVE_MAX_FRAME_BYTES,
-  LIVE_VIDEO_FRAME,
-  LIVE_VIDEO_HEADER_BYTES,
-  LIVE_VIDEO_TAB_BYTES,
-  liveModuleMessageSchema,
-  type LiveModuleMessage,
-  type LiveViewerMessage,
-} from '@demicodes/protocol'
+import { liveModuleMessageSchema, type LiveModuleMessage, type LiveViewerMessage } from '../generated/plugin'
+import { LIVE_CONTROL_FRAME, LIVE_FILE_FRAME, LIVE_FILE_HEADER_BYTES, LIVE_MAX_FRAME_BYTES, LIVE_VIDEO_FRAME, LIVE_VIDEO_HEADER_BYTES, LIVE_VIDEO_TAB_BYTES } from '../generated/live'
 import { z } from 'zod'
+import type { StreamBytes } from '@demicodes/plugin-sdk'
 
 /** A picture of one tab, in the generation the module announced. */
 export interface LiveVideoFrame {
@@ -30,8 +21,6 @@ export interface LiveVideoFrame {
   data: Uint8Array
 }
 
-/** Bytes the page sends: their own buffer, as a socket requires. */
-export type LiveBytes = Uint8Array<ArrayBuffer>
 
 export type LiveFrame =
   | { kind: 'message'; message: LiveModuleMessage }
@@ -42,7 +31,7 @@ const decoder = new TextDecoder()
 /** JSON is UTF-8, so a control message that is not is refused rather than repaired. */
 const strictDecoder = new TextDecoder('utf-8', { fatal: true })
 
-function framed(kind: number, payload: Uint8Array): LiveBytes {
+function framed(kind: number, payload: Uint8Array): StreamBytes {
   const bytes = new Uint8Array(5 + payload.length)
   new DataView(bytes.buffer).setUint32(0, 1 + payload.length)
   bytes[4] = kind
@@ -51,7 +40,7 @@ function framed(kind: number, payload: Uint8Array): LiveBytes {
 }
 
 /** One of the viewer's messages, ready to send. */
-export function encodeMessage(message: LiveViewerMessage): LiveBytes {
+export function encodeMessage(message: LiveViewerMessage): StreamBytes {
   return framed(LIVE_CONTROL_FRAME, encoder.encode(JSON.stringify(message)))
 }
 
@@ -59,7 +48,7 @@ export function encodeMessage(message: LiveViewerMessage): LiveBytes {
  * A picture as the module frames it (`live-view.md` § The stream), for a
  * view without a Host, such as the gallery's.
  */
-export function encodeVideo(frame: LiveVideoFrame): LiveBytes {
+export function encodeVideo(frame: LiveVideoFrame): StreamBytes {
   const payload = new Uint8Array(LIVE_VIDEO_HEADER_BYTES + frame.data.length)
   const header = new DataView(payload.buffer)
   payload.set(encoder.encode(frame.tab).subarray(0, LIVE_VIDEO_TAB_BYTES))
@@ -75,7 +64,7 @@ export function encodeVideo(frame: LiveVideoFrame): LiveBytes {
 }
 
 /** Bytes of the `file`th file of `upload`. */
-export function encodeFile(upload: number, file: number, data: Uint8Array): LiveBytes {
+export function encodeFile(upload: number, file: number, data: Uint8Array): StreamBytes {
   const payload = new Uint8Array(LIVE_FILE_HEADER_BYTES + data.length)
   const header = new DataView(payload.buffer)
   header.setUint32(0, upload)

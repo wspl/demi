@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { exposePageTab, loadPageAddress, pageTabDataSchema, pageTabTitle } from '../panel-kinds/page-data'
+import { exposePageTab, loadPageAddress, pageTabDataSchema, pageTabTitle } from '../page/page-data'
 
 test('an expose opens a tab on its URL, named by the address it exposes', () => {
   const data = exposePageTab({ url: 'https://abc.expose.demi.example/', address: '127.0.0.1:5173' })

@@ -74,7 +74,7 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
         id: 'plugins',
         label: 'Plugins',
         icon: Blocks,
-        keywords: ['plugin', 'extension', 'browser', 'expose', 'todo', 'file']
+        keywords: ['plugin', 'extension']
       },
       {
         id: 'mcp',
