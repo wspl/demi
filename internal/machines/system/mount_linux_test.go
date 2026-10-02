@@ -1,0 +1,284 @@
+//go:build linux
+
+package system_test
+
+import (
+	"context"
+	"errors"
+	"io"
+	"os"
+	"path/filepath"
+	"runtime"
+	"testing"
+	"time"
+
+	"github.com/wspl/demi/internal/machines/system"
+	"github.com/wspl/demi/internal/machines/system/systemtest"
+	"go.uber.org/goleak"
+	"golang.org/x/sys/unix"
+)
+
+func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+
+// isolated runs an explicitly root-invoked test with its mount cleanup on the
+// namespace thread, before the thread exits. Each scenario normally costs <1 s.
+func isolated(t *testing.T, job func(context.Context)) {
+	t.Helper()
+	if os.Geteuid() != 0 {
+		t.Skip("needs an explicit root invocation of the Linux suite")
+	}
+	if err := systemtest.Isolate(t.Context(), func(ctx context.Context) error {
+		job(ctx)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// makeImage creates the disposable ext4 fixture used by the manager's mount tests.
+func makeImage(ctx context.Context, t *testing.T, path string) {
+	t.Helper()
+	tools, err := systemtest.OnPath(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tools.Run(ctx, system.Mke2fs, []string{"-q", "-t", "ext4", "-F", path, "32m"}, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// mountImage holds the loop descriptor until the fixture filesystem is mounted.
+func mountImage(ctx context.Context, t *testing.T, image, target string) {
+	t.Helper()
+	device, err := system.Attach(ctx, image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := device.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	if err := system.Ext4(ctx, device.Path(), target); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// unmount checks fixture cleanup on the namespace thread, even on test failure.
+func unmount(ctx context.Context, t *testing.T, target string) {
+	t.Helper()
+	if err := system.Unmount(context.WithoutCancel(ctx), target); err != nil {
+		t.Error(err)
+	}
+}
+
+func TestOverlayPreservesRootMode(t *testing.T) {
+	isolated(t, func(ctx context.Context) {
+		unix.Umask(0077)
+		dir := t.TempDir()
+		base, volume, root := filepath.Join(dir, "base"), filepath.Join(dir, "volume"), filepath.Join(dir, "root")
+		for _, path := range []string{base, volume, root} {
+			if err := os.Mkdir(path, 0700); err != nil {
+				t.Fatal(err)
+			}
+		}
+		image := filepath.Join(dir, "system.ext4")
+		makeImage(ctx, t, image)
+		mountImage(ctx, t, image, volume)
+		defer unmount(ctx, t, volume)
+		for _, mode := range []os.FileMode{0755, 0500} {
+			func() {
+				if err := system.Overlay(ctx, base, volume, root); err != nil {
+					t.Fatal(err)
+				}
+				defer unmount(ctx, t, root)
+				info, err := os.Stat(root)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if info.Mode().Perm() != mode {
+					t.Errorf("root mode = %o, want %o", info.Mode().Perm(), mode)
+				}
+				if err := os.Chmod(root, 0500); err != nil {
+					t.Fatal(err)
+				}
+			}()
+		}
+	})
+}
+
+// loopAttached observes the kernel's backing-file reference, not our Go handle.
+func loopAttached(t *testing.T, image string) bool {
+	t.Helper()
+	entries, err := os.ReadDir("/sys/block")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		content, err := os.ReadFile(filepath.Join("/sys/block", entry.Name(), "loop/backing_file"))
+		// Auto-clear can remove the association between readdir and read.
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, unix.ENODEV) {
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(content) == image+"\n" {
+			return true
+		}
+	}
+	return false
+}
+
+// awaitLoopDetach waits for kernel auto-clear, with a hang deadline rather than a sleep.
+func awaitLoopDetach(t *testing.T, image string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for loopAttached(t, image) {
+		if time.Now().After(deadline) {
+			t.Fatalf("loop device still attached to %s", image)
+		}
+		runtime.Gosched()
+	}
+}
+
+func TestLoopDetachesAfterUnmountAndFailedMount(t *testing.T) {
+	isolated(t, func(ctx context.Context) {
+		dir := t.TempDir()
+		image, target := filepath.Join(dir, "home.ext4"), filepath.Join(dir, "home")
+		if err := os.Mkdir(target, 0700); err != nil {
+			t.Fatal(err)
+		}
+		makeImage(ctx, t, image)
+		func() {
+			mountImage(ctx, t, image, target)
+			defer unmount(ctx, t, target)
+			if !loopAttached(t, image) {
+				t.Fatal("mounted image lost its loop device")
+			}
+			mounted, exists, err := system.MountRoot(ctx, target)
+			if err != nil || !mounted || !exists {
+				t.Fatalf("mount root = %v, %v, %v", mounted, exists, err)
+			}
+		}()
+		awaitLoopDetach(t, image)
+		mounted, exists, err := system.MountRoot(ctx, target)
+		if err != nil || mounted || !exists {
+			t.Fatalf("unmounted root = %v, %v, %v", mounted, exists, err)
+		}
+		garbage := filepath.Join(dir, "garbage.img")
+		file, err := os.Create(garbage)
+		if err != nil {
+			t.Fatal(err)
+		}
+		truncateErr := file.Truncate(8 << 20)
+		closeErr := file.Close()
+		if err := errors.Join(truncateErr, closeErr); err != nil {
+			t.Fatal(err)
+		}
+		func() {
+			device, err := system.Attach(ctx, garbage)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				if err := device.Close(); err != nil {
+					t.Error(err)
+				}
+			}()
+			if err := system.Ext4(ctx, device.Path(), target); err == nil {
+				t.Fatal("mounted non-ext4 image")
+			}
+		}()
+		awaitLoopDetach(t, garbage)
+		mounted, exists, err = system.MountRoot(ctx, filepath.Join(dir, "absent"))
+		if err != nil || mounted || exists {
+			t.Fatalf("absent root = %v, %v, %v", mounted, exists, err)
+		}
+	})
+}
+
+func TestBindReadOnlyAndDetach(t *testing.T) {
+	isolated(t, func(ctx context.Context) {
+		dir := t.TempDir()
+		source, target := filepath.Join(dir, "source"), filepath.Join(dir, "target")
+		for _, path := range []string{source, target} {
+			if err := os.Mkdir(path, 0700); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := system.Tmpfs(ctx, source, "size=1m"); err != nil {
+			t.Fatal(err)
+		}
+		defer unmount(ctx, t, source)
+		if err := os.WriteFile(filepath.Join(source, "file"), []byte("kept"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := system.Bind(ctx, source, target); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := system.Detach(context.WithoutCancel(ctx), target); err != nil {
+				t.Error(err)
+			}
+		}()
+		if err := system.MakePrivate(ctx, target); err != nil {
+			t.Fatal(err)
+		}
+		if err := system.RemountReadOnly(ctx, target); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(target, "new"), nil, 0600); !errors.Is(err, unix.EROFS) {
+			t.Fatalf("write to read-only bind: %v", err)
+		}
+		if data, err := os.ReadFile(filepath.Join(target, "file")); err != nil || string(data) != "kept" {
+			t.Fatalf("bind read = %q, %v", data, err)
+		}
+	})
+}
+
+func TestLoopRefreshCapacity(t *testing.T) {
+	isolated(t, func(ctx context.Context) {
+		image := filepath.Join(t.TempDir(), "grow.img")
+		file, err := os.Create(image)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := file.Close(); err != nil {
+				t.Error(err)
+			}
+		}()
+		if err := file.Truncate(8 << 20); err != nil {
+			t.Fatal(err)
+		}
+		device, err := system.Attach(ctx, image)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := device.Close(); err != nil {
+				t.Error(err)
+			}
+		}()
+		if err := file.Truncate(16 << 20); err != nil {
+			t.Fatal(err)
+		}
+		if err := system.RefreshCapacity(ctx, device.Number()); err != nil {
+			t.Fatal(err)
+		}
+		block, err := os.Open(device.Path())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := block.Close(); err != nil {
+				t.Error(err)
+			}
+		}()
+		size, err := block.Seek(0, io.SeekEnd)
+		if err != nil || size != 16<<20 {
+			t.Fatalf("device capacity = %d, %v", size, err)
+		}
+	})
+}
