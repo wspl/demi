@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
+	"runtime"
 	"strings"
 	"unicode"
+
+	"github.com/wspl/demi/internal/runner/process"
 )
 
 // RuntimeError identifies why a service could not be acquired or why it ended.
@@ -86,8 +88,8 @@ func (e *ServiceExit) Error() string {
 // ExitReason identifies natural exit, protocol failure or startup deadline.
 type ExitReason struct {
 	Kind ExitKind
-	// State preserves the OS exit status for a natural exit.
-	State *os.ProcessState
+	// State preserves the process owner’s exit record for a natural exit.
+	State process.Exit
 	// Detail is the protocol diagnostic or startup phase for a forced stop.
 	Detail string
 }
@@ -108,7 +110,7 @@ const (
 func (r ExitReason) String() string {
 	switch r.Kind {
 	case ProcessExited:
-		return fmt.Sprintf("exited with %s", r.State)
+		return "exited with " + serviceExitStatus(r.State, runtime.GOOS)
 	case ProtocolBroken:
 		return fmt.Sprintf("broke the protocol (%s) and was stopped", r.Detail)
 	case StartupDeadline:

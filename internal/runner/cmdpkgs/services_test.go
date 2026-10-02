@@ -232,8 +232,15 @@ func TestDeadServiceReportsStatusAndStderr(t *testing.T) {
 	}
 	failure := resident.Failure(t.Context(), err)
 	var exit *cmdpkgs.ServiceExit
-	if !errors.As(failure, &exit) || exit.Reason.State.ExitCode() != 3 || !strings.Contains(exit.Stderr, "fixture crashing on purpose") {
+	if !errors.As(failure, &exit) || exit.Reason.State.Code == nil || *exit.Reason.State.Code != 3 || !strings.Contains(exit.Stderr, "fixture crashing on purpose") {
 		t.Fatalf("failure: %v", failure)
+	}
+	wantStatus := "exit status: 3"
+	if runtime.GOOS == "windows" {
+		wantStatus = "exit code: 3"
+	}
+	if want := "native service demi.fixture exited with " + wantStatus + "; its standard error ended with:\nfixture crashing on purpose"; failure.Error() != want {
+		t.Fatalf("failure text = %q; want %q", failure, want)
 	}
 	next := acquire(t, r, d, resolver)
 	invoke(t, next, "retain", "after")

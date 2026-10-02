@@ -94,8 +94,12 @@ func (r *ServiceRegistry) runService(life *serviceLife, descriptor commandwire.P
 	for _, pipe := range []*os.File{stdin, stdout, stderr} {
 		_ = pipe.Close()
 	} // Parent no longer owns the child ends.
-	exited := make(chan process.Exit, 1)
-	go func() { exited <- child.Wait(childctx) }()
+	exited := make(chan struct{})
+	var state process.Exit
+	go func() {
+		state = child.Wait(childctx)
+		close(exited)
+	}()
 	tail := process.NewTail(runnerwire.ServiceStderrChars)
 	drained := make(chan struct{})
 	go drainStderr(diagnostic, descriptor.ID, tail, drained)
@@ -118,7 +122,6 @@ func (r *ServiceRegistry) runService(life *serviceLife, descriptor commandwire.P
 			}
 			<-exited
 		}
-		state := cmd.ProcessState
 		streamWork.Wait()
 		serviceArtifacts.close()
 		timer := time.NewTimer(250 * time.Millisecond)
@@ -305,7 +308,7 @@ func connectionLost(err error) bool {
 // shutdownService asks a connected service to release its resources, giving the
 // request and process exit one shared six-second deadline, as the Rust owner does.
 // The caller keeps draining stderr, then kills and reaps if this returns false.
-func shutdownService(ctx context.Context, client *cmdsdk.Client, exited <-chan process.Exit) bool {
+func shutdownService(ctx context.Context, client *cmdsdk.Client, exited <-chan struct{}) bool {
 	ctx, cancel := context.WithTimeout(ctx, 6*time.Second)
 	defer cancel()
 	requested := make(chan struct{})
