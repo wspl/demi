@@ -68,8 +68,8 @@ pub fn protocol() -> Vec<Root> {
 /// `packages/web/src/api/generated`: every REST request and response body.
 pub fn web() -> Vec<Root> {
     use api::{
-        attachments, auth, browser, cloud, conversations, devices, drafts, error, exposes, files,
-        hosts, panel, providers, settings, sidebar, state, usage, users, workspaces,
+        attachments, auth, cloud, conversations, devices, drafts, error, files, hosts, panel,
+        providers, settings, sidebar, state, usage, users, workspaces,
     };
     vec![
         receives::<error::ErrorBody>(),
@@ -116,9 +116,6 @@ pub fn web() -> Vec<Root> {
         receives::<cloud::CloudStatus>(),
         sends::<cloud::CloudReset>(),
         receives::<cloud::CloudResetAnswer>(),
-        receives::<exposes::Exposes>(),
-        sends::<exposes::CreateExpose>(),
-        receives::<exposes::ExposeAnswer>(),
         sends::<conversations::CreateConversation>(),
         receives::<conversations::ConversationAnswer>(),
         receives::<conversations::Conversations>(),
@@ -156,9 +153,32 @@ pub fn web() -> Vec<Root> {
         sends::<drafts::DraftSave>(),
         sends::<drafts::ReplacedDraftAction>(),
         receives::<drafts::DraftAnswer>(),
-        receives::<browser::BrowserTabs>(),
-        sends::<browser::OpenTab>(),
-        sends::<browser::NavigateTab>(),
-        sends::<browser::TabHistory>(),
+    ]
+}
+
+/// Each plugin page package's generated directory, with the types of its
+/// plugin's state, parameters and results (`plugins.md` § The page).
+pub fn plugins() -> Vec<(&'static str, Vec<Root>)> {
+    use demi_plugin_browser::page as browser;
+    use demi_plugin_expose::page as expose;
+    vec![
+        (
+            "packages/plugin-browser/src/generated",
+            vec![
+                receives::<browser::BrowserTabs>(),
+                sends::<browser::OpenTab>(),
+                receives::<browser::OpenedTab>(),
+                sends::<browser::CloseTab>(),
+                sends::<browser::NavigateTab>(),
+                sends::<browser::TabHistory>(),
+            ],
+        ),
+        (
+            "packages/plugin-expose/src/generated",
+            vec![
+                receives::<expose::ExposeState>(),
+                sends::<expose::ExposeCall>(),
+            ],
+        ),
     ]
 }

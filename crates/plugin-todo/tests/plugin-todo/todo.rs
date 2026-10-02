@@ -16,6 +16,7 @@ use demi_plugin_interface::{
     },
 };
 use demi_plugin_todo::Todo;
+use demi_web_api_protocol::ids::UserId;
 use serde_json::{Value, json};
 
 /// The plugin's instance behind the loopback, and the `demi` root a runner
@@ -49,8 +50,8 @@ async fn call(
         pipes: None,
     };
     let request = Request::Command {
-        user: "u1".into(),
-        invocation,
+        user: UserId::try_from("u1").unwrap(),
+        invocation: Box::new(invocation),
     };
     let reply = plugin.call(request, port(memory.clone())).await?;
     assert_eq!(reply, Reply::Exit { code: 0 });

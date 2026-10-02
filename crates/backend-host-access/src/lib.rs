@@ -3,7 +3,7 @@
 //! target resolution and the transitions that end a target (switch, archive,
 //! detach); file transfers, uploads, remote files and user streams; the
 //! shell environments of the agent's nodes over it; and the product's
-//! `demi host` group with its `expose` leaves.
+//! `demi host` group.
 //!
 //! Host access's operations are methods of `dyn HostShard`, what host access
 //! needs of its user's shard (`concurrency.md` § The user shard), which the
@@ -11,7 +11,6 @@
 
 pub mod access;
 pub mod blobs;
-pub mod expose_commands;
 pub mod host_commands;
 pub mod lease;
 pub mod remote_files;
@@ -29,7 +28,6 @@ use demi_backend_blobs::blobs::UserBlobs;
 use demi_backend_cloud::CloudShard;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::conversations::ConversationDb;
-use demi_backend_expose::ExposeShard;
 use demi_backend_remote_host::Pipes;
 use demi_backend_runners::devices::Devices;
 use demi_backend_runners::native::NativeCatalog;
@@ -69,9 +67,6 @@ pub trait HostShard {
     /// The shard as the user's Cloud sees it, whose admission an operation
     /// on the Cloud takes.
     fn cloud_shard(&self) -> &(dyn CloudShard + 'static);
-    /// The shard as the user's exposes see it, which `demi host expose`
-    /// acts on.
-    fn expose_shard(&self) -> &(dyn ExposeShard + 'static);
     /// The shard, for a task that outlives the call that starts it.
     fn this(&self) -> Rc<dyn HostShard>;
     /// Starts the conversation's idle watch unless one runs, as each Host

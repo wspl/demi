@@ -17,6 +17,8 @@ demi-command-protocol = { path = "../command-protocol", features = ["testing"] }
 demi-shared-types = { path = "../shared-types" }
 demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
 demi-runner-protocol = { path = "../runner-protocol" }
+demi-plugin-browser = { path = "../plugin-browser" }
+demi-plugin-expose = { path = "../plugin-expose" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
 axum = "0.8"
 clap = { version = "4", features = ["derive", "env"] }

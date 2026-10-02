@@ -11,7 +11,6 @@ use demi_backend_accounts::passwords::HashError;
 use demi_backend_blobs::ObjectError;
 use demi_backend_cloud::machine::CloudError;
 use demi_backend_database::StorageError;
-use demi_backend_expose::records::ExposeError;
 use demi_backend_providers::llm::assembly::AssemblyError;
 use demi_backend_providers::vault::accounts::AccountRefusal;
 use demi_backend_providers::vault::logins::LoginRefusal;
@@ -35,8 +34,15 @@ impl ApiError {
             body: ErrorBody {
                 code,
                 message: message.into(),
+                reason: None,
             },
         }
+    }
+
+    /// The error with a plugin's own word for its refusal.
+    pub(crate) fn with_reason(mut self, reason: String) -> Self {
+        self.body.reason = Some(reason);
+        self
     }
 
     pub(crate) fn unauthenticated() -> Self {
@@ -268,15 +274,6 @@ impl From<CloudError> for ApiError {
     }
 }
 
-impl From<ExposeError> for ApiError {
-    fn from(error: ExposeError) -> Self {
-        match error.code() {
-            Some((code, status)) => Self::new(status_of(status), code, error.to_string()),
-            None => Self::internal(&error),
-        }
-    }
-}
-
 impl From<HostAccessError> for ApiError {
     fn from(error: HostAccessError) -> Self {
         match error {
@@ -303,7 +300,7 @@ impl From<StreamError> for ApiError {
 }
 
 /// An HTTP status a refusal names.
-fn status_of(status: u16) -> StatusCode {
+pub(crate) fn status_of(status: u16) -> StatusCode {
     StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
 }
 

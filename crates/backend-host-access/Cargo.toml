@@ -17,7 +17,6 @@ bench = false
 demi-agent-store = { path = "../agent-store" }
 demi-agent-tools = { path = "../agent-tools" }
 demi-backend-cloud = { path = "../backend-cloud" }
-demi-backend-expose = { path = "../backend-expose" }
 demi-backend-blobs = { path = "../backend-blobs" }
 demi-backend-runners = { path = "../backend-runners" }
 demi-backend-database = { path = "../backend-database" }

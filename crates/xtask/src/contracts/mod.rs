@@ -1,8 +1,9 @@
 //! `xtask contracts`: the TypeScript emitter (`contracts.md` § Generated
 //! TypeScript). It asks schemars for the JSON Schema of every Rust type the
 //! web app receives or sends, in memory, and writes Zod v4 source with
-//! `z.infer` types into `@demicodes/protocol` and
-//! `packages/web/src/api/generated`. A schema outside the emitter's subset
+//! `z.infer` types into `@demicodes/protocol`,
+//! `packages/web/src/api/generated` and each plugin page package's
+//! `src/generated`. A schema outside the emitter's subset
 //! fails generation and names the type.
 
 mod roots;
@@ -50,10 +51,13 @@ pub fn run() -> Result<Vec<PathBuf>, Error> {
     let repository = crate::repository();
     let generated = generate()?;
     let mut written = Vec::new();
-    for (directory, files) in [
+    let directories = [
         (PROTOCOL_DIRECTORY, generated.protocol),
         (WEB_DIRECTORY, generated.web),
-    ] {
+    ]
+    .into_iter()
+    .chain(generated.plugins);
+    for (directory, files) in directories {
         replace_directory(&repository.join(directory), &files)?;
         written.extend(
             files
@@ -68,6 +72,8 @@ pub fn run() -> Result<Vec<PathBuf>, Error> {
 struct Generated {
     protocol: Vec<(&'static str, String)>,
     web: Vec<(&'static str, String)>,
+    /// Each plugin page package's directory and its files.
+    plugins: Vec<(&'static str, Vec<(&'static str, String)>)>,
 }
 
 fn generate() -> Result<Generated, Error> {
@@ -97,30 +103,61 @@ fn generate() -> Result<Generated, Error> {
         .collect();
     let (web, web_imports) = module(&definitions, &received, &web_names)?;
 
-    let mut web_source = String::from(HEADER);
-    web_source.push_str("import { z } from \"zod\"\n");
-    if !web_imports.is_empty() {
-        let names: Vec<String> = web_imports
-            .iter()
-            .map(|name| zod::schema_name(name))
-            .collect();
-        web_source.push_str(&format!(
-            "import {{ {} }} from \"{PROTOCOL_MODULE}\"\n",
-            names.join(", ")
-        ));
-    }
-    web_source.push_str(&web);
-
     let mut contracts = String::from(HEADER);
     contracts.push_str("import { z } from \"zod\"\n");
     contracts.push_str(&protocol);
+    let plugins = roots::plugins()
+        .into_iter()
+        .map(|(directory, roots)| Ok((directory, vec![("plugin.ts", plugin_module(roots)?)])))
+        .collect::<Result<_, Error>>()?;
     Ok(Generated {
         protocol: vec![
             ("contracts.ts", contracts),
             ("tables.ts", tables::module(HEADER)),
         ],
-        web: vec![("web-api.ts", web_source)],
+        web: vec![("web-api.ts", source(&web, &web_imports))],
+        plugins,
     })
+}
+
+/// A plugin page package's module: the definitions its plugin's `roots`
+/// bring, beside those `@demicodes/protocol` declares, which it imports.
+/// Each plugin's types are generated apart from the web app's, so a package
+/// never imports from `web`.
+fn plugin_module(roots: Vec<Root>) -> Result<String, Error> {
+    let mut generator = SchemaGenerator::default();
+    register(&mut generator, roots::protocol())?;
+    let protocol_names: BTreeSet<String> = generator.definitions().keys().cloned().collect();
+    let plugin_roots = register(&mut generator, roots)?;
+    let definitions = read_definitions(generator.take_definitions(true))?;
+    let received = received(
+        &definitions,
+        plugin_roots
+            .iter()
+            .filter(|(_, direction)| *direction == Direction::Receives),
+    );
+    let names: BTreeSet<String> = definitions
+        .keys()
+        .filter(|name| !protocol_names.contains(*name))
+        .cloned()
+        .collect();
+    let (declarations, imports) = module(&definitions, &received, &names)?;
+    Ok(source(&declarations, &imports))
+}
+
+/// A generated module's text: the header, its imports and `declarations`.
+fn source(declarations: &str, imports: &BTreeSet<String>) -> String {
+    let mut text = String::from(HEADER);
+    text.push_str("import { z } from \"zod\"\n");
+    if !imports.is_empty() {
+        let names: Vec<String> = imports.iter().map(|name| zod::schema_name(name)).collect();
+        text.push_str(&format!(
+            "import {{ {} }} from \"{PROTOCOL_MODULE}\"\n",
+            names.join(", ")
+        ));
+    }
+    text.push_str(declarations);
+    text
 }
 
 /// Adds each root's schema to the generator and answers the definition each
