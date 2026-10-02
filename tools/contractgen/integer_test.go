@@ -99,17 +99,14 @@ func TestIntegerSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var reference any
-	if err := json.Unmarshal(raw, &reference); err != nil {
+	var want bytes.Buffer
+	if err := json.Compact(&want, raw); err != nil {
 		t.Fatal(err)
 	}
-	want, err := contract.EncodeJSON(reference)
-	if err != nil {
-		t.Fatal(err)
+	if got := integers.InputJSONSchema(); !bytes.Equal(got, want.Bytes()) {
+		t.Fatalf("schema: %s; Rust: %s", got, want.Bytes())
 	}
-	if got := integers.InputJSONSchema(); !bytes.Equal(got, want) {
-		t.Fatalf("schema: %s; Rust: %s", got, want)
-	}
+
 	dest := t.TempDir()
 	if err := generate(t.Context(), []string{"./testdata/integers"}, true, dest, false); err != nil {
 		t.Fatal(err)

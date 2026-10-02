@@ -1,7 +1,16 @@
 {
-  "title": "Numeric",
-  "type": "object",
+  "additionalProperties": false,
   "properties": {
+    "rune": {
+      "type": "integer",
+      "format": "int32"
+    },
+    "byte": {
+      "type": "integer",
+      "format": "uint8",
+      "minimum": 0,
+      "maximum": 255
+    },
     "i8": {
       "type": "integer",
       "format": "int8",
@@ -60,16 +69,6 @@
     "f64": {
       "type": "number",
       "format": "double"
-    },
-    "rune": {
-      "type": "integer",
-      "format": "int32"
-    },
-    "byte": {
-      "type": "integer",
-      "format": "uint8",
-      "minimum": 0,
-      "maximum": 255
     }
   },
   "required": [
@@ -88,5 +87,6 @@
     "f32",
     "f64"
   ],
-  "additionalProperties": false
+  "title": "Numeric",
+  "type": "object"
 }

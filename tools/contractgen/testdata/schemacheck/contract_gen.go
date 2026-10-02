@@ -85,7 +85,7 @@ func (v CheckedInput) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func CheckedInputJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"number\":{\"format\":\"double\",\"maximum\":10,\"minimum\":1,\"type\":\"number\"},\"stdin\":{\"type\":\"string\"}},\"required\":[\"number\",\"stdin\"],\"title\":\"CheckedInput\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"number\":{\"type\":\"number\",\"format\":\"double\",\"minimum\":1,\"maximum\":10},\"stdin\":{\"type\":\"string\"}},\"required\":[\"number\",\"stdin\"],\"title\":\"CheckedInput\",\"type\":\"object\"}")
 }
 func DecodeCheckedNumber(data []byte) (CheckedNumber, error) {
 	return contract.Decode[CheckedNumber](data)
@@ -212,6 +212,62 @@ func (v CheckedText) MarshalJSON() ([]byte, error) {
 func CheckedTextJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"minLength\":1,\"title\":\"CheckedText\",\"type\":\"string\"}")
 }
+func DecodeCodecEnvelope(data []byte) (CodecEnvelope, error) {
+	return contract.Decode[CodecEnvelope](data)
+}
+func (v CodecEnvelope) Validate() error { return contractValidateCodecEnvelope(v, 0) }
+func contractValidateCodecEnvelope(v CodecEnvelope, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	return nil
+}
+func (v *CodecEnvelope) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next CodecEnvelope
+	for key := range obj {
+		switch key {
+		case "value":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["value"]
+		if !ok {
+			return contract.At("value", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[CodecText](raw)
+			if err != nil {
+				return contract.At("value", err)
+			}
+			next.Value = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v CodecEnvelope) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "value", Value: v.Value})
+	return contract.EncodeObject(fields)
+}
+func CodecEnvelopeJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"value\":{\"type\":\"string\",\"minLength\":3,\"maxLength\":30,\"pattern\":\"^[a-z@.]+$\",\"format\":\"email\"}},\"required\":[\"value\"],\"title\":\"CodecEnvelope\",\"type\":\"object\"}")
+}
+func CodecTextJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"format\":\"email\",\"maxLength\":30,\"minLength\":3,\"pattern\":\"^[a-z@.]+$\",\"title\":\"CodecText\",\"type\":\"string\"}")
+}
 func DecodeEnvelope(data []byte) (Envelope, error) { return contract.Decode[Envelope](data) }
 func (v Envelope) Validate() error                 { return contractValidateEnvelope(v, 0) }
 func contractValidateEnvelope(v Envelope, depth int) error {
@@ -324,7 +380,7 @@ func (v PlainRange) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func PlainRangeJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"value\":{\"format\":\"double\",\"maximum\":10,\"minimum\":1,\"type\":\"number\"}},\"required\":[\"value\"],\"title\":\"PlainRange\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"value\":{\"type\":\"number\",\"format\":\"double\",\"minimum\":1,\"maximum\":10}},\"required\":[\"value\"],\"title\":\"PlainRange\",\"type\":\"object\"}")
 }
 func DecodeSchemaRange(data []byte) (SchemaRange, error) { return contract.Decode[SchemaRange](data) }
 func (v SchemaRange) Validate() error                    { return contractValidateSchemaRange(v, 0) }
@@ -378,7 +434,7 @@ func (v SchemaRange) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func SchemaRangeJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"value\":{\"format\":\"double\",\"maximum\":10,\"minimum\":1,\"type\":\"number\"}},\"required\":[\"value\"],\"title\":\"SchemaRange\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"value\":{\"type\":\"number\",\"format\":\"double\",\"minimum\":1,\"maximum\":10}},\"required\":[\"value\"],\"title\":\"SchemaRange\",\"type\":\"object\"}")
 }
 func DecodeStdin(data []byte) (Stdin, error) { return contract.Decode[Stdin](data) }
 func (v Stdin) Validate() error              { return contractValidateStdin(v, 0) }

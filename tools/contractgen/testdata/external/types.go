@@ -5,7 +5,8 @@ import "github.com/wspl/demi/internal/webapi"
 
 //go:generate go run ../..
 
-// +demi:root
+// +demi:root direction=receive output=plugin-external
+// +demi:schema
 type Expose struct {
 	Address webapi.ExposeAddress `json:"address"`
 }
