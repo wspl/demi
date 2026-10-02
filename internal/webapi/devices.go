@@ -88,8 +88,10 @@ type DeviceLog struct {
 type DeviceLogQuery struct {
 	// The `next` of an earlier answer; without it the answer ends at the
 	// newest line.
-	Since  *uint64    `json:"since,omitempty"`
-	Limit  LogLimit   `json:"limit"`
+	// +demi:nullable
+	Since *uint64  `json:"since,omitempty"`
+	Limit LogLimit `json:"limit"`
+	// +demi:nullable
 	Source *LogSource `json:"source,omitempty"`
 }
 

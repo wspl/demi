@@ -81,6 +81,7 @@ type ChangeSides struct {
 // +demi:root
 // +demi:tolerant
 type DirectoryQuery struct {
+	// +demi:nullable
 	Path *NonEmptyPath `json:"path,omitempty"`
 }
 
@@ -89,6 +90,7 @@ type DirectoryQuery struct {
 // +demi:root
 // +demi:tolerant
 type DeviceDirectoryQuery struct {
+	// +demi:nullable
 	Path *AbsolutePath `json:"path,omitempty"`
 }
 
@@ -113,6 +115,7 @@ type RemoveQuery struct {
 type RawFileQuery struct {
 	Path NonEmptyPath `json:"path"`
 	// The ETag the request expects the file to still have.
+	// +demi:nullable
 	Version  *NonEmptyPath `json:"version,omitempty"`
 	Download StrictBool    `json:"download,omitempty"`
 }

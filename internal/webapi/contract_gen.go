@@ -3775,9 +3775,6 @@ func contractValidateConversationPatch(v ConversationPatch, depth int) error {
 		}
 	}
 	if v.ThinkingEffort != nil {
-		if (*v.ThinkingEffort) == nil {
-			return contract.At("thinkingEffort", fmt.Errorf("required pointer is nil"))
-		}
 		if (*v.ThinkingEffort) != nil {
 			if err := contract.Text(string((*(*v.ThinkingEffort))), 1, -1, ""); err != nil {
 				return contract.At("thinkingEffort", err)
@@ -3785,9 +3782,6 @@ func contractValidateConversationPatch(v ConversationPatch, depth int) error {
 		}
 	}
 	if v.ServiceTierID != nil {
-		if (*v.ServiceTierID) == nil {
-			return contract.At("serviceTierId", fmt.Errorf("required pointer is nil"))
-		}
 		if (*v.ServiceTierID) != nil {
 			if err := contract.Text(string((*(*v.ServiceTierID))), 1, -1, ""); err != nil {
 				return contract.At("serviceTierId", err)
@@ -3857,25 +3851,33 @@ func (v *ConversationPatch) UnmarshalJSON(data []byte) error {
 	{
 		raw, ok := obj["thinkingEffort"]
 		if ok {
-			value, err := func(b []byte) (**string, error) {
-				return contract.Pointer(b, func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) })
-			}(raw)
-			if err != nil {
-				return contract.At("thinkingEffort", err)
+			if contract.IsNull(raw) {
+				next.ThinkingEffort = new(*string)
+			} else {
+				value, err := func(b []byte) (**string, error) {
+					return contract.Pointer(b, func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) })
+				}(raw)
+				if err != nil {
+					return contract.At("thinkingEffort", err)
+				}
+				next.ThinkingEffort = value
 			}
-			next.ThinkingEffort = value
 		}
 	}
 	{
 		raw, ok := obj["serviceTierId"]
 		if ok {
-			value, err := func(b []byte) (**string, error) {
-				return contract.Pointer(b, func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) })
-			}(raw)
-			if err != nil {
-				return contract.At("serviceTierId", err)
+			if contract.IsNull(raw) {
+				next.ServiceTierID = new(*string)
+			} else {
+				value, err := func(b []byte) (**string, error) {
+					return contract.Pointer(b, func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) })
+				}(raw)
+				if err != nil {
+					return contract.At("serviceTierId", err)
+				}
+				next.ServiceTierID = value
 			}
-			next.ServiceTierID = value
 		}
 	}
 	{
@@ -6129,11 +6131,13 @@ func (v *DeviceDirectoryQuery) UnmarshalJSON(data []byte) error {
 	{
 		raw, ok := obj["path"]
 		if ok {
-			value, err := func(b []byte) (*AbsolutePath, error) { return contract.Pointer(b, contract.Decode[AbsolutePath]) }(raw)
-			if err != nil {
-				return contract.At("path", err)
+			if !contract.IsNull(raw) {
+				value, err := func(b []byte) (*AbsolutePath, error) { return contract.Pointer(b, contract.Decode[AbsolutePath]) }(raw)
+				if err != nil {
+					return contract.At("path", err)
+				}
+				next.Path = value
 			}
-			next.Path = value
 		}
 	}
 	if err := next.Validate(); err != nil {
@@ -6423,11 +6427,13 @@ func (v *DeviceLogQuery) UnmarshalJSON(data []byte) error {
 	{
 		raw, ok := obj["since"]
 		if ok {
-			value, err := func(b []byte) (*uint64, error) { return contract.Pointer(b, contract.Decode[uint64]) }(raw)
-			if err != nil {
-				return contract.At("since", err)
+			if !contract.IsNull(raw) {
+				value, err := func(b []byte) (*uint64, error) { return contract.Pointer(b, contract.Decode[uint64]) }(raw)
+				if err != nil {
+					return contract.At("since", err)
+				}
+				next.Since = value
 			}
-			next.Since = value
 		}
 	}
 	{
@@ -6446,11 +6452,13 @@ func (v *DeviceLogQuery) UnmarshalJSON(data []byte) error {
 	{
 		raw, ok := obj["source"]
 		if ok {
-			value, err := func(b []byte) (*LogSource, error) { return contract.Pointer(b, contract.Decode[LogSource]) }(raw)
-			if err != nil {
-				return contract.At("source", err)
+			if !contract.IsNull(raw) {
+				value, err := func(b []byte) (*LogSource, error) { return contract.Pointer(b, contract.Decode[LogSource]) }(raw)
+				if err != nil {
+					return contract.At("source", err)
+				}
+				next.Source = value
 			}
-			next.Source = value
 		}
 	}
 	if err := next.Validate(); err != nil {
@@ -6751,11 +6759,13 @@ func (v *DirectoryQuery) UnmarshalJSON(data []byte) error {
 	{
 		raw, ok := obj["path"]
 		if ok {
-			value, err := func(b []byte) (*NonEmptyPath, error) { return contract.Pointer(b, contract.Decode[NonEmptyPath]) }(raw)
-			if err != nil {
-				return contract.At("path", err)
+			if !contract.IsNull(raw) {
+				value, err := func(b []byte) (*NonEmptyPath, error) { return contract.Pointer(b, contract.Decode[NonEmptyPath]) }(raw)
+				if err != nil {
+					return contract.At("path", err)
+				}
+				next.Path = value
 			}
-			next.Path = value
 		}
 	}
 	if err := next.Validate(); err != nil {
@@ -7624,11 +7634,13 @@ func (v *ErrorBody) UnmarshalJSON(data []byte) error {
 	{
 		raw, ok := obj["reason"]
 		if ok {
-			value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) }(raw)
-			if err != nil {
-				return contract.At("reason", err)
+			if !contract.IsNull(raw) {
+				value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) }(raw)
+				if err != nil {
+					return contract.At("reason", err)
+				}
+				next.Reason = value
 			}
-			next.Reason = value
 		}
 	}
 	if err := next.Validate(); err != nil {
@@ -11162,9 +11174,6 @@ func contractValidateProviderPatch(v ProviderPatch, depth int) error {
 		}
 	}
 	if v.BaseURL != nil {
-		if (*v.BaseURL) == nil {
-			return contract.At("baseUrl", fmt.Errorf("required pointer is nil"))
-		}
 		if (*v.BaseURL) != nil {
 			if err := contractValidateEndpointURL((*(*v.BaseURL)), depth+1); err != nil {
 				return contract.At("baseUrl", err)
@@ -11175,9 +11184,6 @@ func contractValidateProviderPatch(v ProviderPatch, depth int) error {
 		}
 	}
 	if v.Models != nil {
-		if (*v.Models) == nil {
-			return contract.At("models", fmt.Errorf("required pointer is nil"))
-		}
 		if (*v.Models) != nil {
 			if err := contractValidateConfiguredModels((*(*v.Models)), depth+1); err != nil {
 				return contract.At("models", err)
@@ -11222,27 +11228,35 @@ func (v *ProviderPatch) UnmarshalJSON(data []byte) error {
 	{
 		raw, ok := obj["baseUrl"]
 		if ok {
-			value, err := func(b []byte) (**EndpointURL, error) {
-				return contract.Pointer(b, func(b []byte) (*EndpointURL, error) { return contract.Pointer(b, contract.Decode[EndpointURL]) })
-			}(raw)
-			if err != nil {
-				return contract.At("baseUrl", err)
+			if contract.IsNull(raw) {
+				next.BaseURL = new(*EndpointURL)
+			} else {
+				value, err := func(b []byte) (**EndpointURL, error) {
+					return contract.Pointer(b, func(b []byte) (*EndpointURL, error) { return contract.Pointer(b, contract.Decode[EndpointURL]) })
+				}(raw)
+				if err != nil {
+					return contract.At("baseUrl", err)
+				}
+				next.BaseURL = value
 			}
-			next.BaseURL = value
 		}
 	}
 	{
 		raw, ok := obj["models"]
 		if ok {
-			value, err := func(b []byte) (**ConfiguredModels, error) {
-				return contract.Pointer(b, func(b []byte) (*ConfiguredModels, error) {
-					return contract.Pointer(b, contract.Decode[ConfiguredModels])
-				})
-			}(raw)
-			if err != nil {
-				return contract.At("models", err)
+			if contract.IsNull(raw) {
+				next.Models = new(*ConfiguredModels)
+			} else {
+				value, err := func(b []byte) (**ConfiguredModels, error) {
+					return contract.Pointer(b, func(b []byte) (*ConfiguredModels, error) {
+						return contract.Pointer(b, contract.Decode[ConfiguredModels])
+					})
+				}(raw)
+				if err != nil {
+					return contract.At("models", err)
+				}
+				next.Models = value
 			}
-			next.Models = value
 		}
 	}
 	if err := next.Validate(); err != nil {
@@ -12096,11 +12110,13 @@ func (v *RawFileQuery) UnmarshalJSON(data []byte) error {
 	{
 		raw, ok := obj["version"]
 		if ok {
-			value, err := func(b []byte) (*NonEmptyPath, error) { return contract.Pointer(b, contract.Decode[NonEmptyPath]) }(raw)
-			if err != nil {
-				return contract.At("version", err)
+			if !contract.IsNull(raw) {
+				value, err := func(b []byte) (*NonEmptyPath, error) { return contract.Pointer(b, contract.Decode[NonEmptyPath]) }(raw)
+				if err != nil {
+					return contract.At("version", err)
+				}
+				next.Version = value
 			}
-			next.Version = value
 		}
 	}
 	{
@@ -12985,9 +13001,6 @@ func contractValidateShortcutsPatch(v ShortcutsPatch, depth int) error {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
 	if v.New != nil {
-		if (*v.New) == nil {
-			return contract.At("new", fmt.Errorf("required pointer is nil"))
-		}
 		if (*v.New) != nil {
 			if err := contract.Text(string((*(*v.New))), 0, 64, ""); err != nil {
 				return contract.At("new", err)
@@ -12995,9 +13008,6 @@ func contractValidateShortcutsPatch(v ShortcutsPatch, depth int) error {
 		}
 	}
 	if v.Sidebar != nil {
-		if (*v.Sidebar) == nil {
-			return contract.At("sidebar", fmt.Errorf("required pointer is nil"))
-		}
 		if (*v.Sidebar) != nil {
 			if err := contract.Text(string((*(*v.Sidebar))), 0, 64, ""); err != nil {
 				return contract.At("sidebar", err)
@@ -13005,9 +13015,6 @@ func contractValidateShortcutsPatch(v ShortcutsPatch, depth int) error {
 		}
 	}
 	if v.Settings != nil {
-		if (*v.Settings) == nil {
-			return contract.At("settings", fmt.Errorf("required pointer is nil"))
-		}
 		if (*v.Settings) != nil {
 			if err := contract.Text(string((*(*v.Settings))), 0, 64, ""); err != nil {
 				return contract.At("settings", err)
@@ -13032,37 +13039,49 @@ func (v *ShortcutsPatch) UnmarshalJSON(data []byte) error {
 	{
 		raw, ok := obj["new"]
 		if ok {
-			value, err := func(b []byte) (**string, error) {
-				return contract.Pointer(b, func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) })
-			}(raw)
-			if err != nil {
-				return contract.At("new", err)
+			if contract.IsNull(raw) {
+				next.New = new(*string)
+			} else {
+				value, err := func(b []byte) (**string, error) {
+					return contract.Pointer(b, func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) })
+				}(raw)
+				if err != nil {
+					return contract.At("new", err)
+				}
+				next.New = value
 			}
-			next.New = value
 		}
 	}
 	{
 		raw, ok := obj["sidebar"]
 		if ok {
-			value, err := func(b []byte) (**string, error) {
-				return contract.Pointer(b, func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) })
-			}(raw)
-			if err != nil {
-				return contract.At("sidebar", err)
+			if contract.IsNull(raw) {
+				next.Sidebar = new(*string)
+			} else {
+				value, err := func(b []byte) (**string, error) {
+					return contract.Pointer(b, func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) })
+				}(raw)
+				if err != nil {
+					return contract.At("sidebar", err)
+				}
+				next.Sidebar = value
 			}
-			next.Sidebar = value
 		}
 	}
 	{
 		raw, ok := obj["settings"]
 		if ok {
-			value, err := func(b []byte) (**string, error) {
-				return contract.Pointer(b, func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) })
-			}(raw)
-			if err != nil {
-				return contract.At("settings", err)
+			if contract.IsNull(raw) {
+				next.Settings = new(*string)
+			} else {
+				value, err := func(b []byte) (**string, error) {
+					return contract.Pointer(b, func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) })
+				}(raw)
+				if err != nil {
+					return contract.At("settings", err)
+				}
+				next.Settings = value
 			}
-			next.Settings = value
 		}
 	}
 	if err := next.Validate(); err != nil {
@@ -16438,11 +16457,11 @@ func (v Workspaces) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "workspaces", Value: v.Workspaces})
 	return contract.EncodeObject(fields)
 }
-func DecodeexposeAddressText(data []byte) (exposeAddressText, error) {
+func decodeExposeAddressText(data []byte) (exposeAddressText, error) {
 	return contract.Decode[exposeAddressText](data)
 }
-func (v exposeAddressText) Validate() error { return contractValidateexposeAddressText(v, 0) }
-func contractValidateexposeAddressText(v exposeAddressText, depth int) error {
+func (v exposeAddressText) Validate() error { return contractValidateExposeAddressText(v, 0) }
+func contractValidateExposeAddressText(v exposeAddressText, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}

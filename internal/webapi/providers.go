@@ -103,9 +103,11 @@ type ProviderPatch struct {
 	// +demi:length chars min=1 max=80
 	Label *Trimmed `json:"label,omitempty"`
 	// +demi:length chars min=1
-	APIKey  *string            `json:"apiKey,omitempty"`
-	BaseURL **EndpointURL      `json:"baseUrl,omitempty"`
-	Models  **ConfiguredModels `json:"models,omitempty"`
+	APIKey *string `json:"apiKey,omitempty"`
+	// +demi:nullable
+	BaseURL **EndpointURL `json:"baseUrl,omitempty"`
+	// +demi:nullable
+	Models **ConfiguredModels `json:"models,omitempty"`
 }
 
 // An entry as the web app sees it: its family, label, endpoint, vendor and

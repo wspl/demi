@@ -90,10 +90,13 @@ type Shortcuts struct {
 // removes it, and an absent one stays as saved.
 type ShortcutsPatch struct {
 	// +demi:length chars max=64
+	// +demi:nullable
 	New **string `json:"new,omitempty"`
 	// +demi:length chars max=64
+	// +demi:nullable
 	Sidebar **string `json:"sidebar,omitempty"`
 	// +demi:length chars max=64
+	// +demi:nullable
 	Settings **string `json:"settings,omitempty"`
 }
 

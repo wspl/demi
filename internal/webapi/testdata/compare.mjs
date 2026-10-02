@@ -1,4 +1,4 @@
-// Compare executable web schemas, normalizing only unordered schema sets.
+// Compare executable web schemas, normalizing unordered sets and equivalent recursive definitions.
 // Usage: node compare.mjs <contractgen -ts-dir output> <Rust generated root>.
 import {readFileSync, writeFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
@@ -32,6 +32,34 @@ function normalize(value, key = '') {
   return value;
 }
 
+// Zod numbers recursive JSON definitions in traversal order. Merge only
+// definitions proven identical after replacing their own self-reference;
+// references to other definitions are excluded from this equivalence rule.
+function canonicalSchema(schema) {
+  const value = structuredClone(schema);
+  const aliases = new Map();
+  const signatures = new Map();
+  for (const name of Object.keys(value.$defs ?? {}).sort()) {
+    const self = `#/$defs/${name}`;
+    let independent = true;
+    const signature = JSON.stringify(normalize(JSON.parse(JSON.stringify(value.$defs[name], (key, item) => {
+      if (key !== '$ref') return item;
+      if (item === self) return '#self';
+      independent = false;
+      return item;
+    }))));
+    if (!independent) continue;
+    if (signatures.has(signature)) {
+      aliases.set(self, `#/$defs/${signatures.get(signature)}`);
+      delete value.$defs[name];
+    } else {
+      signatures.set(signature, name);
+    }
+  }
+  return normalize(JSON.parse(JSON.stringify(value, (key, item) =>
+    key === '$ref' && aliases.has(item) ? aliases.get(item) : item)));
+}
+
 function exportsAt(path) {
   return [...readFileSync(path, 'utf8').matchAll(/^export (?:const|type|function) (\w+)/gm)]
       .map(match => match[1]).sort();
@@ -50,13 +78,19 @@ for (const name of Object.keys(rust)) {
     differences.push({name, missing: true});
     continue;
   }
-  const left = normalize(z.toJSONSchema(go[name], {io: 'input', reused: 'inline'}));
-  const right = normalize(z.toJSONSchema(rust[name], {io: 'input', reused: 'inline'}));
+  const left = canonicalSchema(z.toJSONSchema(go[name], {io: 'input', reused: 'inline'}));
+  const right = canonicalSchema(z.toJSONSchema(rust[name], {io: 'input', reused: 'inline'}));
   if (!isDeepStrictEqual(left, right)) {
     differences.push({name, go: left, rust: right});
   }
 }
+const tableLine = path => readFileSync(path, 'utf8')
+    .match(/^export const MAX_PAGE_MESSAGE_BYTES = .+$/m)?.[0];
+const goLimit = tableLine(`${generated}/protocol/tables.ts`);
+const rustLimit = tableLine(`${reference}/packages/protocol/src/generated/tables.ts`);
+const tableMatch = goLimit !== undefined && goLimit === rustLimit;
 const result = {
+  tableMatch,
   compared: Object.keys(rust).length,
   exports: actualExports.length,
   exportMatch,
@@ -66,6 +100,6 @@ const result = {
 };
 writeFileSync(`${generated}/comparison.json`, JSON.stringify(result, null, 2) + '\n');
 console.log(JSON.stringify({...result, differences: differences.map(value => value.name)}));
-if (!exportMatch || differences.length) {
+if (!exportMatch || !tableMatch || differences.length) {
   process.exitCode = 1;
 }

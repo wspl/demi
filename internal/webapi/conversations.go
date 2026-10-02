@@ -216,10 +216,12 @@ type ConversationPatch struct {
 	// The conversation's thinking effort: one its model lists, `disabled`
 	// for thinking off, or null for the model's default.
 	// +demi:length chars min=1
+	// +demi:nullable
 	ThinkingEffort **string `json:"thinkingEffort,omitempty"`
 	// The conversation's service tier: one its model lists, or null for the
 	// vendor's default.
 	// +demi:length chars min=1
+	// +demi:nullable
 	ServiceTierID **string `json:"serviceTierId,omitempty"`
 	// A switch of the conversation's execution target.
 	Target *ConversationTarget `json:"target,omitempty"`

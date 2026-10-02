@@ -84,7 +84,7 @@ type exposeAddressText string
 
 // DecodeExposeAddress decodes and normalizes an expose address.
 func DecodeExposeAddress(data []byte) (ExposeAddress, error) {
-	text, err := DecodeexposeAddressText(data)
+	text, err := decodeExposeAddressText(data)
 	if err != nil {
 		return "", err
 	}

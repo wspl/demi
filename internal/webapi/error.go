@@ -11,6 +11,7 @@ type ErrorBody struct {
 	Message string `json:"message"`
 	// With `plugin_refused`, the plugin's snake_case word for the refusal,
 	// such as `tab_not_found`.
+	// +demi:nullable
 	Reason *string `json:"reason,omitempty"`
 }
 
