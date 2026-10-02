@@ -3,6 +3,9 @@
   "description": "The changes plugin's page: the Change view, a pinned work panel kind.",
   "version": "0.0.0",
   "private": true,
+  "demi": {
+    "plugin": "changes"
+  },
   "type": "module",
   "exports": {
     ".": "./src/index.ts",

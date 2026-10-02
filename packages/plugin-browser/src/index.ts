@@ -50,3 +50,6 @@ export function browserPage(options: BrowserTabsOptions = {}): PluginPage {
     },
   }
 }
+
+/** The page the registry imports (`plugin-pages.md` § Registration). */
+export default browserPage()

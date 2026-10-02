@@ -10,7 +10,7 @@ import GallerySettingsFull from '../components/GallerySettingsFull.vue'
 import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
 import { createSettingsState } from '../fixtures/settings'
 import { galleryPluginHost, skillsPlugin } from '../fixtures/plugins'
-import { GALLERY_PLUGIN_PAGES } from '../plugin-pages'
+import { PLUGIN_PAGES } from '../generated/pages'
 import { providePluginHost } from '@demicodes/web-ui/plugins/client'
 import { withPluginSections } from '@demicodes/web-ui/plugins/slots'
 import { useGalleryView } from '../gallery-views'
@@ -74,7 +74,7 @@ const full = createSettingsState()
 // fixture's Plugins page has their plugin on, as the product's do.
 providePluginHost(galleryPluginHost({ skills: skillsPlugin(full.skills) }))
 const sections = computed(() =>
-  withPluginSections(SETTINGS_SECTIONS, GALLERY_PLUGIN_PAGES, (plugin) =>
+  withPluginSections(SETTINGS_SECTIONS, PLUGIN_PAGES, (plugin) =>
     full.plugins.some((entry) => entry.id === plugin && entry.enabled),
   ),
 )
