@@ -94,7 +94,11 @@ func (e *schemaEmitter) schema(t types.Type, marks map[string]string) (any, erro
 				}
 				branches = append(branches, child)
 			}
-			s["oneOf"] = branches
+			if d.marks["union"] == "untagged" {
+				s["anyOf"] = branches
+			} else {
+				s["oneOf"] = branches
+			}
 		} else if st, ok := g.object(d); ok {
 			// Flattening changes properties, but embedded custom checks still run
 			// in the decoder and must not disappear from schema eligibility.
@@ -109,9 +113,14 @@ func (e *schemaEmitter) schema(t types.Type, marks map[string]string) (any, erro
 			}
 			properties := map[string]any{}
 			required := []string{}
-			if union, tag, ok := strings.Cut(d.marks["variant"], " "); ok {
-				name := bounds(g.defs[union].marks["union"])["tag"]
-				properties[name] = map[string]any{"type": "string", "const": tag}
+			if name, tag, kind := g.variantWire(d); name != "" {
+				var value any = tag
+				typ := "string"
+				if kind == "bool" {
+					typ = "boolean"
+					value = tag == "true"
+				}
+				properties[name] = map[string]any{"type": typ, "const": value}
 				required = append(required, name)
 			}
 			for i := 0; i < st.NumFields(); i++ {

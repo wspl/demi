@@ -1,7 +1,10 @@
 package kept
 
+//go:generate go run ../..
+
 // +demi:union tag=type
 // +demi:msgpack tuple
+// +demi:root
 type Record interface{ record() }
 
 // +demi:enum stdout stderr

@@ -37,12 +37,20 @@ func (g *generator) emitMsgpack(d *definition) {
 		tag := bounds(d.marks["union"])["tag"]
 		if d.marks["msgpack"] == "tuple" {
 			g.line("func Decode%sMsgpack(data []byte)(%s,error){obj,err:=contract.MsgpackObject(data);if err!=nil{return nil,err};if len(obj)!=1{return nil,fmt.Errorf(\"expected one external union tag\")};var tag string;for key:=range obj{tag=key};switch tag{", name, name)
+		} else if d.marks["union"] == "untagged" {
+			g.line("func Decode%sMsgpack(data []byte)(%s,error){", name, name)
+			for _, v := range g.variants(d.key) {
+				g.line("if value,err:=contract.DecodeMsgpack[%s](data);err==nil{return &value,nil}", v.name)
+			}
+			g.line("return nil,fmt.Errorf(\"no matching union variant\")} ")
+			g.line("func Encode%sMsgpack(v %s)([]byte,error){if err:=Validate%s(v);err!=nil{return nil,err};return contract.EncodeMsgpack(v)}", name, name, name)
+			return
 		} else {
-			g.line("func Decode%sMsgpack(data []byte)(%s,error){ obj,err:=contract.MsgpackObject(data);if err!=nil{return nil,err};tag,err:=contract.DecodeMsgpack[string](obj[%s]);if err!=nil{return nil,contract.At(%s,err)};switch tag{", name, name, q(tag), q(tag))
+			g.line("func Decode%sMsgpack(data []byte)(%s,error){ obj,err:=contract.MsgpackObject(data);if err!=nil{return nil,err};tag,err:=contract.DecodeMsgpack[%s](obj[%s]);if err!=nil{return nil,contract.At(%s,err)};switch tag{", name, name, g.unionKind(d), q(tag), q(tag))
 		}
 		for _, v := range g.variants(d.key) {
 			_, value, _ := strings.Cut(v.marks["variant"], " ")
-			g.line("case %s: value,err:=contract.DecodeMsgpack[%s](data);return &value,err", q(value), v.name)
+			g.line("case %s: value,err:=contract.DecodeMsgpack[%s](data);return &value,err", tagLiteral(value), v.name)
 		}
 		g.line("};return nil,fmt.Errorf(\"unknown union tag\")}")
 		g.line("func Encode%sMsgpack(v %s)([]byte,error){if err:=Validate%s(v);err!=nil{return nil,err};return contract.EncodeMsgpack(v)}", name, name, name)
@@ -68,20 +76,19 @@ func (g *generator) emitMsgpack(d *definition) {
 		g.line("func(v %s) MarshalMsgpack()([]byte,error){if err:=v.Validate();err!=nil{return nil,err};return contract.EncodeMsgpack(%s(v))}", name, g.typeName(d.typ.Underlying()))
 		return
 	}
-	union, variant, _ := strings.Cut(d.marks["variant"], " ")
-	tag := ""
-	if union != "" {
-		tag = bounds(g.defs[union].marks["union"])["tag"]
-	}
+	tag, variant, kind := g.variantWire(d)
 	g.line("obj,err:=contract.MsgpackObject(data);if err!=nil{return err};var next %s", name)
 	if tag != "" {
-		g.line("tag,err:=contract.DecodeMsgpack[string](obj[%s]);if err!=nil{return contract.At(%s,err)};if tag!=%s{return fmt.Errorf(\"invalid union tag\")};delete(obj,%s)", q(tag), q(tag), q(variant), q(tag))
+		g.line("tag,err:=contract.DecodeMsgpack[%s](obj[%s]);if err!=nil{return contract.At(%s,err)};if tag!=%s{return fmt.Errorf(\"invalid union tag\")};delete(obj,%s)", kind, q(tag), q(tag), tagLiteral(variant), q(tag))
 	}
 	for i := 0; i < st.NumFields(); i++ {
 		f := st.Field(i)
 		opts := strings.Split(reflect.StructTag(st.Tag(i)).Get("json"), ",")
 		key := opts[0]
 		m := d.fields[f.Name()]
+		if len(opts) > 1 && emptyCollection(f.Type()) {
+			g.line("next.%s=make(%s,0)", f.Name(), g.typeName(f.Type()))
+		}
 		g.line("{raw,present:=obj[%s];delete(obj,%s)", q(key), q(key))
 		if len(opts) == 1 {
 			g.line("if !present{return contract.At(%s,fmt.Errorf(\"required field is absent\"))}", q(key))
@@ -102,7 +109,7 @@ func (g *generator) emitMsgpack(d *definition) {
 	g.line("if err:=next.Validate();err!=nil{return err};*v=next;return nil}")
 	g.line("func(v %s) MarshalMsgpack()([]byte,error){if err:=v.Validate();err!=nil{return nil,err};fields:=[]contract.Field{}", name)
 	if tag != "" {
-		g.line("fields=append(fields,contract.Field{Name:%s,Value:%s})", q(tag), q(variant))
+		g.line("fields=append(fields,contract.Field{Name:%s,Value:%s})", q(tag), tagLiteral(variant))
 	}
 	for i := 0; i < st.NumFields(); i++ {
 		f := st.Field(i)
@@ -110,6 +117,8 @@ func (g *generator) emitMsgpack(d *definition) {
 		if len(opts) > 1 {
 			if isPointer(f.Type()) {
 				g.line("if v.%s!=nil{", f.Name())
+			} else if emptyCollection(f.Type()) {
+				g.line("if len(v.%s)>0{", f.Name())
 			} else {
 				g.line("if v.%s{", f.Name())
 			}

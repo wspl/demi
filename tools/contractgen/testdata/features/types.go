@@ -51,6 +51,7 @@ type Page[T any] struct {
 type Names Page[Identifier]
 
 // +demi:msgpack
+// +demi:root
 type Records struct {
 	Values map[string]*string `json:"values"`
 	// +demi:timestamp

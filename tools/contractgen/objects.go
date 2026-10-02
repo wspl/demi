@@ -55,7 +55,7 @@ func (g *generator) object(d *definition) (*types.Struct, bool) {
 func (g *generator) emitJSONFields(d *definition, st *types.Struct, tag, variant string) {
 	g.line("func(v %s)MarshalJSON()([]byte,error){if err:=v.Validate();err!=nil{return nil,err};fields:=[]contract.Field{}", d.name)
 	if tag != "" {
-		g.line("fields=append(fields,contract.Field{Name:%s,Value:%s})", q(tag), q(variant))
+		g.line("fields=append(fields,contract.Field{Name:%s,Value:%s})", q(tag), tagLiteral(variant))
 	}
 	for i := 0; i < st.NumFields(); i++ {
 		f := st.Field(i)
@@ -63,6 +63,8 @@ func (g *generator) emitJSONFields(d *definition, st *types.Struct, tag, variant
 		if len(opts) > 1 {
 			if isPointer(f.Type()) {
 				g.line("if v.%s!=nil{", f.Name())
+			} else if emptyCollection(f.Type()) {
+				g.line("if len(v.%s)>0{", f.Name())
 			} else {
 				g.line("if v.%s{", f.Name())
 			}

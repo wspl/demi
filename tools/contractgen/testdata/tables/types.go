@@ -1,5 +1,7 @@
 package tables
 
+//go:generate go run ../..
+
 type PreviewType struct {
 	MediaType  string   `json:"mediaType"`
 	Extensions []string `json:"extensions"`
@@ -7,7 +9,7 @@ type PreviewType struct {
 }
 
 // +demi:table
-var PREVIEW_TYPES = []PreviewType{
+var PreviewTypes = []PreviewType{
 	{MediaType: "image/png", Extensions: []string{"png"}, InPlace: true},
 	{MediaType: "image/jpeg", Extensions: []string{"jpg", "jpeg"}, InPlace: true},
 	{MediaType: "image/gif", Extensions: []string{"gif"}, InPlace: true},
@@ -55,3 +57,9 @@ var LiveViewFrameConstants = []FrameConstant{
 	{"MAX_FRAME_BYTES", 16 * 1024 * 1024}, {"FILE_CHUNK_BYTES", 64 * 1024},
 	{"HEARTBEAT_MS", 250}, {"STALL_MS", 1000},
 }
+
+// +demi:table
+var AttachmentFileExtensions = []string{"png", "jpg", "jpeg", "gif", "webp", "pdf"}
+
+// +demi:table
+var VideoFileExtensions = []string{"mp4", "mov", "webm", "m4v"}
