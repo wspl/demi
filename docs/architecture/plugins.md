@@ -554,8 +554,10 @@ web (product)                        web-gallery
 - **The client.** A plugin's components reach their plugin only through the
   `PluginClient` they receive with `usePlugin()`: its state, which follows
   the sync channel; `call(method, params)`, for the user, or for the
-  conversation the component shows; and the plugin's user streams of that
-  conversation. They know no route. `web`
+  conversation the component shows; the plugin's user streams of that
+  conversation; and, for that conversation, the installs of the plugin's
+  packages on the conversation's main Host, from that device's `installs`
+  in the product state. They know no route. `web`
   supplies the client over HTTP; the gallery supplies one over the
   specimen's fixture state, so every control of a specimen acts on that state
   ([Web architecture](../product/web-application.md#package-responsibilities)).
@@ -563,6 +565,14 @@ web (product)                        web-gallery
   crate. `xtask contracts` generates their schemas into the plugin package's
   `src/generated/`, and the client validates every state and result it
   receives with them.
+- **Installs.** The first use of a plugin's package on a Host can wait for
+  the runner to install it, minutes for the browser's Chrome
+  ([Installation progress](../execution/native-runtime.md#installation-progress)).
+  A component that waits for such a call shows the client's installs with
+  `web-ui`'s one installs component, the artifact, its phase and its bytes,
+  instead of a bare spinner: the browser tab shows `Installing demi.browser:
+  Chrome for Testing 153.0.8010.36, 120 of 196 MB` while its first tab opens.
+  No plugin declares or starts an install: it follows from the call.
 - **Where behavior lives.** A plugin package holds what `web` holds for the
   product: composition, data and handlers. A reusable component or behavior
   belongs to `web-ui`, as the rest of the web app's does.

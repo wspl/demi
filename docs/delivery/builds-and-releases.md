@@ -238,7 +238,13 @@ Each executable has its own kind of release:
   `command-package-browser-protocol` for `demi-browser`, `command-package-claude-code-protocol` for
   `demi-claude-code`), the operation list the program routes by, so a release
   cannot advertise an operation the program does not serve; its version is
-  the workspace version.
+  the workspace version. A package that needs resources gets them from the
+  record its contract crate keeps: `demi-browser`'s release carries the
+  pinned Chrome for Testing archive of each packaged target that has one,
+  as `resources/<sha256>`, and its descriptor names it as the resource
+  `chrome`. Packaging downloads each archive it lacks into
+  `.cache/resources/<sha256>`, checks it against the record, and copies it
+  from there, so packaging again downloads nothing.
   [Bind an exact package](../execution/native-runtime.md#bind-an-exact-package)
   defines the descriptor.
 - **Runner.** A runner release is a directory named by the hash of its
@@ -317,12 +323,12 @@ It reads that version's official download metadata and, for each platform
 Demi supports, downloads the `chrome` archive from Chrome for Testing's
 download host through the artifact library, measures its size and SHA-256, and
 checks that it holds the executable the record names. It then writes the
-release record, `crates/command-package-browser-protocol/src/release/chrome.json`, which
-`command-package-browser-chrome` compiles in and the Cloud image build installs from; commit it
+release record, `crates/command-package-browser-protocol/src/release/chrome.json`, from which
+packaging writes the `chrome` resource of `demi-browser`'s releases; commit it
 with the change that adopts the version. Chrome for Testing publishes no
 Windows arm64 build, so the record carries five of the six targets. The
-downloads are not kept: every installer downloads its archive again and checks
-it against the record.
+downloads are not kept: packaging downloads each archive again and checks it
+against the record.
 
 ## Validation
 
@@ -364,12 +370,13 @@ The TypeScript tests take the programs from `DEMI_TEST_PROGRAMS`, which
 `bun run test` sets to that directory. An ordinary test run starts no Chrome;
 release acceptance runs the Chrome tests. `DEMI_TEST_CHROME` names the
 executable of an installation of the pinned release that the user running the
-tests can read in full, such as the one Demi installs under `~/.demi/browsers`.
-The tests that go through the browser service install that release into a
-temporary directory of their own, as the service installs a download, with
-hard links where the system allows them, and give the service that directory
-([Browser distribution](../browser/browser.md#browser-distribution)): no test
-downloads Chrome or needs the home. The live view tests decode the H.264
+tests can read in full, such as the one a runner installs in its artifact
+cache. A test that starts the browser program names it as the program's
+`chrome` resource; the scenario through the backend installs that release
+into its runner's artifact cache, as the runner installs a download, with
+hard links where the system allows them
+([Install the selected package](../execution/native-runtime.md#install-the-selected-package)):
+no test downloads Chrome or needs the home. The live view tests decode the H.264
 pictures the view streams with WebCodecs in the Chrome under test, as the page
 does. On Linux the Chrome tests need an ordinary user: Chrome for Testing
 refuses to start as root with its sandbox, which Demi keeps

@@ -293,10 +293,10 @@ platform, download location, byte size and SHA-256 established by the Demi relea
 pipeline. `cargo xtask browser-release` resolves the official version and
 download metadata during release preparation
 ([Chrome for Testing](../delivery/builds-and-releases.md#chrome-for-testing));
-Host startup installs the pinned artifact rather than resolving a moving channel
+A Host installs the pinned artifact rather than resolving a moving channel
 such as `latest`. Validate downloaded bytes before publishing the installation.
-Paired-device installation and Cloud image preparation consume the same release
-record through the same installer, the artifact library's archive
+Paired-device installation and Cloud image preparation install the same
+archive through the same installer, the artifact library's archive
 installation, which is the one verified-download and atomic-publish path every
 Demi installer uses. Browser and driver/CDP compatibility must pass acceptance
 together.
@@ -316,21 +316,19 @@ process; they are not a promise to keep an old browser indefinitely.
 
 Each Demi release pins one Chrome for Testing version. Its release record
 contains official archive URLs, exact sizes and SHA-256 digests for supported
-platforms. The native browser service installs and verifies that release lazily
-before its first open. Installation is shared across conversation profiles: a
-service installs the release once for all its conversations, and an
-installation lock keeps two services from installing the same release at the
-same time. The guest image preinstalls the same verified archive and its Linux
-system libraries.
-On Unix, the service first checks the pinned installation under `/opt/demi/browsers`;
-otherwise it installs under the Host user's `.demi/browsers`. Both locations use
-the same receipt and executable integrity checks; an invalid installation fails
-without falling back to another location. An unsupported
-platform fails explicitly rather than using a different browser. The service
-program fixes both directories when it starts, reading the user's home once,
-and the browser service takes them as configuration; nothing deeper looks for
-a home. The Chrome tests give it a temporary directory that already holds the
-release ([Validation](../delivery/builds-and-releases.md#validation)).
+platforms. Chrome is a resource of the `demi.browser` command package
+([Bind an exact package](../execution/native-runtime.md#bind-an-exact-package)):
+packaging puts the pinned archive of each target into the package's release,
+and the runner installs it with the program, before the program's first
+start on a Host, and shows its progress to the user like any artifact's
+([Install the selected package](../execution/native-runtime.md#install-the-selected-package)).
+The installation is shared by every conversation and every service of the
+runner. A Cloud image preinstalls the same verified archive at its
+content-addressed path, with its Linux system libraries. The program
+receives the path of the `chrome` executable when it starts and only uses
+it; it never downloads or looks for Chrome, and a program started without
+it fails each operation that needs Chrome. An unsupported platform fails
+the installation explicitly rather than using a different browser.
 
 ### Native driver
 
