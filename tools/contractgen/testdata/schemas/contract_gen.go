@@ -105,7 +105,10 @@ func (v BackInput) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func BackInputJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`back`: goes one entry back in a tab's history.\",\"properties\":{\"load\":{\"description\":\"How far a navigation loads before it answers.\",\"enum\":[\"commit\",\"domcontentloaded\",\"load\"],\"type\":\"string\"},\"tab\":{\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"timeout\":{\"description\":\"Whole operation deadline in milliseconds\",\"format\":\"uint64\",\"maximum\":300000,\"minimum\":1,\"type\":\"integer\"}},\"required\":[\"tab\"],\"title\":\"BackInput\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`back`: goes one entry back in a tab's history.\",\"properties\":{\"tab\":{\"type\":\"string\",\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"load\":{\"type\":\"string\",\"enum\":[\"commit\",\"domcontentloaded\",\"load\"],\"description\":\"How far a navigation loads before it answers.\"},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"BackInput\",\"type\":\"object\"}")
+}
+func BackInputPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"Load\":{\"type\":\"string\",\"enum\":[\"commit\",\"domcontentloaded\",\"load\"],\"description\":\"How far a navigation loads before it answers.\"}},\"additionalProperties\":false,\"description\":\"`back`: goes one entry back in a tab's history.\",\"properties\":{\"tab\":{\"$ref\":\"#/$defs/TabId\",\"description\":\"Browser tab ID returned by open or tabs\"},\"load\":{\"$ref\":\"#/$defs/Load\"},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"BackInput\",\"type\":\"object\"}")
 }
 func DecodeBrowserViewport(data []byte) (BrowserViewport, error) {
 	return contract.Decode[BrowserViewport](data)
@@ -295,7 +298,10 @@ func (v CdpDetachInput) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func CdpDetachInputJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`cdp.detach`: ends this caller's debugging connection to a tab.\",\"properties\":{\"tab\":{\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"timeout\":{\"description\":\"Whole operation deadline in milliseconds\",\"format\":\"uint64\",\"maximum\":300000,\"minimum\":1,\"type\":\"integer\"}},\"required\":[\"tab\"],\"title\":\"CdpDetachInput\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`cdp.detach`: ends this caller's debugging connection to a tab.\",\"properties\":{\"tab\":{\"type\":\"string\",\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"CdpDetachInput\",\"type\":\"object\"}")
+}
+func CdpDetachInputPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"}},\"additionalProperties\":false,\"description\":\"`cdp.detach`: ends this caller's debugging connection to a tab.\",\"properties\":{\"tab\":{\"$ref\":\"#/$defs/TabId\",\"description\":\"Browser tab ID returned by open or tabs\"},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"CdpDetachInput\",\"type\":\"object\"}")
 }
 func DecodeCdpDetachResult(data []byte) (CdpDetachResult, error) {
 	return contract.Decode[CdpDetachResult](data)
@@ -354,7 +360,10 @@ func (v CdpDetachResult) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func CdpDetachResultJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"detached\":{\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"}},\"required\":[\"detached\"],\"title\":\"CdpDetachResult\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"detached\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"}},\"required\":[\"detached\"],\"title\":\"CdpDetachResult\",\"type\":\"object\"}")
+}
+func CdpDetachResultPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"}},\"additionalProperties\":false,\"properties\":{\"detached\":{\"$ref\":\"#/$defs/TabId\"}},\"required\":[\"detached\"],\"title\":\"CdpDetachResult\",\"type\":\"object\"}")
 }
 func DecodeCloseInput(data []byte) (CloseInput, error) { return contract.Decode[CloseInput](data) }
 func (v CloseInput) Validate() error                   { return contractValidateCloseInput(v, 0) }
@@ -432,7 +441,10 @@ func (v CloseInput) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func CloseInputJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`close`: closes a tab.\",\"properties\":{\"tab\":{\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"timeout\":{\"description\":\"Whole operation deadline in milliseconds\",\"format\":\"uint64\",\"maximum\":300000,\"minimum\":1,\"type\":\"integer\"}},\"required\":[\"tab\"],\"title\":\"CloseInput\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`close`: closes a tab.\",\"properties\":{\"tab\":{\"type\":\"string\",\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"CloseInput\",\"type\":\"object\"}")
+}
+func CloseInputPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"}},\"additionalProperties\":false,\"description\":\"`close`: closes a tab.\",\"properties\":{\"tab\":{\"$ref\":\"#/$defs/TabId\",\"description\":\"Browser tab ID returned by open or tabs\"},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"CloseInput\",\"type\":\"object\"}")
 }
 func DecodeCloseResult(data []byte) (CloseResult, error) { return contract.Decode[CloseResult](data) }
 func (v CloseResult) Validate() error                    { return contractValidateCloseResult(v, 0) }
@@ -489,7 +501,10 @@ func (v CloseResult) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func CloseResultJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"closed\":{\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"}},\"required\":[\"closed\"],\"title\":\"CloseResult\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"closed\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"}},\"required\":[\"closed\"],\"title\":\"CloseResult\",\"type\":\"object\"}")
+}
+func CloseResultPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"}},\"additionalProperties\":false,\"properties\":{\"closed\":{\"$ref\":\"#/$defs/TabId\"}},\"required\":[\"closed\"],\"title\":\"CloseResult\",\"type\":\"object\"}")
 }
 func DecodeCollection(data []byte) (Collection, error) { return contract.Decode[Collection](data) }
 func (v Collection) Validate() error                   { return contractValidateCollection(v, 0) }
@@ -579,7 +594,10 @@ func (v Collection) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func CollectionJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"properties\":{\"labels\":{\"additionalProperties\":{\"type\":[\"string\",\"null\"]},\"type\":\"object\"},\"values\":{\"items\":{\"format\":\"uint8\",\"maximum\":8,\"minimum\":1,\"type\":\"integer\"},\"maxItems\":2,\"minItems\":1,\"type\":\"array\"}},\"required\":[\"values\",\"labels\"],\"title\":\"Collection\",\"type\":\"object\"}")
+	return json.RawMessage("{\"properties\":{\"values\":{\"type\":\"array\",\"items\":{\"type\":\"integer\",\"format\":\"uint8\",\"minimum\":1,\"maximum\":8},\"minItems\":1,\"maxItems\":2},\"labels\":{\"type\":\"object\",\"additionalProperties\":{\"type\":[\"string\",\"null\"]}}},\"required\":[\"values\",\"labels\"],\"title\":\"Collection\",\"type\":\"object\"}")
+}
+func CollectionPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"Small\":{\"type\":\"integer\",\"format\":\"uint8\",\"minimum\":1,\"maximum\":8}},\"properties\":{\"values\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Small\"},\"minItems\":1,\"maxItems\":2},\"labels\":{\"type\":\"object\",\"additionalProperties\":{\"type\":[\"string\",\"null\"]}}},\"required\":[\"values\",\"labels\"],\"title\":\"Collection\",\"type\":\"object\"}")
 }
 func DecodeConstraints(data []byte) (Constraints, error) { return contract.Decode[Constraints](data) }
 func (v Constraints) Validate() error                    { return contractValidateConstraints(v, 0) }
@@ -684,7 +702,10 @@ func (v Constraints) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func ConstraintsJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"choice\":{\"enum\":[\"fast\"],\"type\":\"string\"},\"number\":{\"format\":\"uint8\",\"maximum\":7,\"minimum\":2,\"type\":\"integer\"},\"text\":{\"allOf\":[{\"pattern\":\"^[a-z]+$\"},{\"pattern\":\"^a[a-z]*$\"}],\"maxLength\":3,\"minLength\":2,\"type\":\"string\"}},\"required\":[\"number\",\"choice\",\"text\"],\"title\":\"Constraints\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"number\":{\"type\":\"integer\",\"format\":\"uint8\",\"minimum\":2,\"maximum\":7},\"choice\":{\"type\":\"string\",\"enum\":[\"fast\"]},\"text\":{\"type\":\"string\",\"minLength\":2,\"maxLength\":3,\"allOf\":[{\"pattern\":\"^[a-z]+$\"},{\"pattern\":\"^a[a-z]*$\"}]}},\"required\":[\"number\",\"choice\",\"text\"],\"title\":\"Constraints\",\"type\":\"object\"}")
+}
+func ConstraintsPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"Small\":{\"type\":\"integer\",\"format\":\"uint8\",\"minimum\":1,\"maximum\":8},\"Mode\":{\"type\":\"string\",\"enum\":[\"fast\",\"slow\"]},\"Label\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":4,\"pattern\":\"^[a-z]+$\"}},\"additionalProperties\":false,\"properties\":{\"number\":{\"$ref\":\"#/$defs/Small\",\"minimum\":2,\"maximum\":7},\"choice\":{\"$ref\":\"#/$defs/Mode\",\"enum\":[\"fast\",\"other\"]},\"text\":{\"$ref\":\"#/$defs/Label\",\"minLength\":2,\"maxLength\":3,\"pattern\":\"^a[a-z]*$\"}},\"required\":[\"number\",\"choice\",\"text\"],\"title\":\"Constraints\",\"type\":\"object\"}")
 }
 func DecodeCreateArgs(data []byte) (CreateArgs, error) { return contract.Decode[CreateArgs](data) }
 func (v CreateArgs) Validate() error                   { return contractValidateCreateArgs(v, 0) }
@@ -755,7 +776,10 @@ func (v CreateArgs) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func CreateArgsJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`file.create`: creates a new file; an existing file is left as it is.\",\"properties\":{\"content\":{\"description\":\"File content\",\"type\":\"string\"},\"path\":{\"description\":\"Target file path\",\"type\":\"string\"}},\"required\":[\"path\",\"content\"],\"title\":\"CreateArgs\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`file.create`: creates a new file; an existing file is left as it is.\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"Target file path\"},\"content\":{\"type\":\"string\",\"description\":\"File content\"}},\"required\":[\"path\",\"content\"],\"title\":\"CreateArgs\",\"type\":\"object\"}")
+}
+func CreateArgsPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`file.create`: creates a new file; an existing file is left as it is.\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"Target file path\"},\"content\":{\"type\":\"string\",\"description\":\"File content\"}},\"required\":[\"path\",\"content\"],\"title\":\"CreateArgs\",\"type\":\"object\"}")
 }
 func DecodeEditArgs(data []byte) (EditArgs, error) { return contract.Decode[EditArgs](data) }
 func (v EditArgs) Validate() error                 { return contractValidateEditArgs(v, 0) }
@@ -879,7 +903,10 @@ func (v EditArgs) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func EditArgsJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`file.edit`: replaces one occurrence of exact text in an existing file.\",\"properties\":{\"context\":{\"description\":\"Line number used to choose the nearest occurrence\",\"format\":\"uint\",\"minimum\":1,\"type\":\"integer\"},\"new\":{\"description\":\"Replacement text\",\"type\":\"string\"},\"occurrence\":{\"description\":\"1-based occurrence to replace\",\"format\":\"uint\",\"minimum\":1,\"type\":\"integer\"},\"old\":{\"description\":\"Exact text to replace\",\"minLength\":1,\"type\":\"string\"},\"path\":{\"description\":\"Target file path\",\"type\":\"string\"}},\"required\":[\"path\",\"old\",\"new\"],\"title\":\"EditArgs\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`file.edit`: replaces one occurrence of exact text in an existing file.\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"Target file path\"},\"old\":{\"type\":\"string\",\"description\":\"Exact text to replace\",\"minLength\":1},\"new\":{\"type\":\"string\",\"description\":\"Replacement text\"},\"occurrence\":{\"type\":\"integer\",\"format\":\"uint\",\"minimum\":1,\"description\":\"1-based occurrence to replace\"},\"context\":{\"type\":\"integer\",\"format\":\"uint\",\"minimum\":1,\"description\":\"Line number used to choose the nearest occurrence\"}},\"required\":[\"path\",\"old\",\"new\"],\"title\":\"EditArgs\",\"type\":\"object\"}")
+}
+func EditArgsPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`file.edit`: replaces one occurrence of exact text in an existing file.\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"Target file path\"},\"old\":{\"type\":\"string\",\"description\":\"Exact text to replace\",\"minLength\":1},\"new\":{\"type\":\"string\",\"description\":\"Replacement text\"},\"occurrence\":{\"type\":\"integer\",\"format\":\"uint\",\"minimum\":1,\"description\":\"1-based occurrence to replace\"},\"context\":{\"type\":\"integer\",\"format\":\"uint\",\"minimum\":1,\"description\":\"Line number used to choose the nearest occurrence\"}},\"required\":[\"path\",\"old\",\"new\"],\"title\":\"EditArgs\",\"type\":\"object\"}")
 }
 func DecodeExampleArgs(data []byte) (ExampleArgs, error) { return contract.Decode[ExampleArgs](data) }
 func (v ExampleArgs) Validate() error                    { return contractValidateExampleArgs(v, 0) }
@@ -1041,7 +1068,10 @@ func (v ExampleArgs) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func ExampleArgsJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi example`.\",\"properties\":{\"count\":{\"description\":\"How many times\",\"format\":\"uint32\",\"maximum\":9,\"minimum\":1,\"type\":\"integer\"},\"labels\":{\"items\":{\"type\":\"string\"},\"type\":\"array\"},\"mode\":{\"enum\":[\"fast\",\"slow\"],\"type\":\"string\"},\"no-cache\":{\"type\":\"boolean\"},\"path\":{\"description\":\"The file to read\",\"type\":\"string\"},\"tags\":{\"items\":{\"type\":\"string\"},\"type\":\"array\"}},\"required\":[\"path\",\"tags\"],\"title\":\"ExampleArgs\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi example`.\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"The file to read\"},\"count\":{\"type\":\"integer\",\"format\":\"uint32\",\"minimum\":1,\"description\":\"How many times\",\"maximum\":9},\"mode\":{\"type\":\"string\",\"enum\":[\"fast\",\"slow\"]},\"tags\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"labels\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"no-cache\":{\"type\":\"boolean\"}},\"required\":[\"path\",\"tags\"],\"title\":\"ExampleArgs\",\"type\":\"object\"}")
+}
+func ExampleArgsPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"Mode\":{\"type\":\"string\",\"enum\":[\"fast\",\"slow\"]}},\"additionalProperties\":false,\"description\":\"The input of `demi example`.\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"The file to read\"},\"count\":{\"type\":\"integer\",\"format\":\"uint32\",\"minimum\":1,\"description\":\"How many times\",\"maximum\":9},\"mode\":{\"$ref\":\"#/$defs/Mode\"},\"tags\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"labels\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"no-cache\":{\"type\":\"boolean\"}},\"required\":[\"path\",\"tags\"],\"title\":\"ExampleArgs\",\"type\":\"object\"}")
 }
 func DecodeExposeAnswer(data []byte) (ExposeAnswer, error) {
 	return contract.Decode[ExposeAnswer](data)
@@ -1090,7 +1120,10 @@ func (v ExposeAnswer) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func ExposeAnswerJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"description\":\"`{ expose }`: what `add` and `renew` print with `--json`.\",\"properties\":{\"expose\":{\"description\":\"An expose as the commands print it: by its number, never by its id,\\nwhich is the URL's credential.\",\"properties\":{\"address\":{\"type\":\"string\"},\"device\":{\"description\":\"The device's name.\",\"type\":\"string\"},\"expiresAt\":{\"format\":\"date-time\",\"type\":\"string\"},\"number\":{\"format\":\"uint64\",\"minimum\":0,\"type\":\"integer\"},\"url\":{\"type\":\"string\"}},\"required\":[\"number\",\"device\",\"address\",\"url\",\"expiresAt\"],\"type\":\"object\"}},\"required\":[\"expose\"],\"title\":\"ExposeAnswer\",\"type\":\"object\"}")
+	return json.RawMessage("{\"description\":\"`{ expose }`: what `add` and `renew` print with `--json`.\",\"properties\":{\"expose\":{\"type\":\"object\",\"properties\":{\"number\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"device\":{\"type\":\"string\",\"description\":\"The device's name.\"},\"address\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"},\"expiresAt\":{\"type\":\"string\",\"format\":\"date-time\"}},\"required\":[\"number\",\"device\",\"address\",\"url\",\"expiresAt\"],\"description\":\"An expose as the commands print it: by its number, never by its id,\\nwhich is the URL's credential.\"}},\"required\":[\"expose\"],\"title\":\"ExposeAnswer\",\"type\":\"object\"}")
+}
+func ExposeAnswerPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"ExposeLine\":{\"type\":\"object\",\"properties\":{\"number\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"device\":{\"type\":\"string\",\"description\":\"The device's name.\"},\"address\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"},\"expiresAt\":{\"type\":\"string\",\"format\":\"date-time\"}},\"required\":[\"number\",\"device\",\"address\",\"url\",\"expiresAt\"],\"description\":\"An expose as the commands print it: by its number, never by its id,\\nwhich is the URL's credential.\"}},\"description\":\"`{ expose }`: what `add` and `renew` print with `--json`.\",\"properties\":{\"expose\":{\"$ref\":\"#/$defs/ExposeLine\"}},\"required\":[\"expose\"],\"title\":\"ExposeAnswer\",\"type\":\"object\"}")
 }
 func DecodeExposeLine(data []byte) (ExposeLine, error) { return contract.Decode[ExposeLine](data) }
 func (v ExposeLine) Validate() error                   { return contractValidateExposeLine(v, 0) }
@@ -1256,7 +1289,10 @@ func (v ExposeLines) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func ExposeLinesJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"description\":\"`{ exposes }`: what `list` prints with `--json`.\",\"properties\":{\"exposes\":{\"items\":{\"description\":\"An expose as the commands print it: by its number, never by its id,\\nwhich is the URL's credential.\",\"properties\":{\"address\":{\"type\":\"string\"},\"device\":{\"description\":\"The device's name.\",\"type\":\"string\"},\"expiresAt\":{\"format\":\"date-time\",\"type\":\"string\"},\"number\":{\"format\":\"uint64\",\"minimum\":0,\"type\":\"integer\"},\"url\":{\"type\":\"string\"}},\"required\":[\"number\",\"device\",\"address\",\"url\",\"expiresAt\"],\"type\":\"object\"},\"type\":\"array\"}},\"required\":[\"exposes\"],\"title\":\"ExposeLines\",\"type\":\"object\"}")
+	return json.RawMessage("{\"description\":\"`{ exposes }`: what `list` prints with `--json`.\",\"properties\":{\"exposes\":{\"type\":\"array\",\"items\":{\"description\":\"An expose as the commands print it: by its number, never by its id,\\nwhich is the URL's credential.\",\"type\":\"object\",\"properties\":{\"number\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"device\":{\"description\":\"The device's name.\",\"type\":\"string\"},\"address\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"},\"expiresAt\":{\"type\":\"string\",\"format\":\"date-time\"}},\"required\":[\"number\",\"device\",\"address\",\"url\",\"expiresAt\"]}}},\"required\":[\"exposes\"],\"title\":\"ExposeLines\",\"type\":\"object\"}")
+}
+func ExposeLinesPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"ExposeLine\":{\"type\":\"object\",\"properties\":{\"number\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"device\":{\"type\":\"string\",\"description\":\"The device's name.\"},\"address\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"},\"expiresAt\":{\"type\":\"string\",\"format\":\"date-time\"}},\"required\":[\"number\",\"device\",\"address\",\"url\",\"expiresAt\"],\"description\":\"An expose as the commands print it: by its number, never by its id,\\nwhich is the URL's credential.\"}},\"description\":\"`{ exposes }`: what `list` prints with `--json`.\",\"properties\":{\"exposes\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/ExposeLine\"}}},\"required\":[\"exposes\"],\"title\":\"ExposeLines\",\"type\":\"object\"}")
 }
 func (*Failure) outcome()                        {}
 func DecodeFailure(data []byte) (Failure, error) { return contract.Decode[Failure](data) }
@@ -1418,7 +1454,10 @@ func (v ForwardInput) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func ForwardInputJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`forward`: goes one entry forward in a tab's history.\",\"properties\":{\"load\":{\"description\":\"How far a navigation loads before it answers.\",\"enum\":[\"commit\",\"domcontentloaded\",\"load\"],\"type\":\"string\"},\"tab\":{\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"timeout\":{\"description\":\"Whole operation deadline in milliseconds\",\"format\":\"uint64\",\"maximum\":300000,\"minimum\":1,\"type\":\"integer\"}},\"required\":[\"tab\"],\"title\":\"ForwardInput\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`forward`: goes one entry forward in a tab's history.\",\"properties\":{\"tab\":{\"type\":\"string\",\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"load\":{\"type\":\"string\",\"enum\":[\"commit\",\"domcontentloaded\",\"load\"],\"description\":\"How far a navigation loads before it answers.\"},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"ForwardInput\",\"type\":\"object\"}")
+}
+func ForwardInputPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"Load\":{\"type\":\"string\",\"enum\":[\"commit\",\"domcontentloaded\",\"load\"],\"description\":\"How far a navigation loads before it answers.\"}},\"additionalProperties\":false,\"description\":\"`forward`: goes one entry forward in a tab's history.\",\"properties\":{\"tab\":{\"$ref\":\"#/$defs/TabId\",\"description\":\"Browser tab ID returned by open or tabs\"},\"load\":{\"$ref\":\"#/$defs/Load\"},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"ForwardInput\",\"type\":\"object\"}")
 }
 func DecodeGotoInput(data []byte) (GotoInput, error) { return contract.Decode[GotoInput](data) }
 func (v GotoInput) Validate() error                  { return contractValidateGotoInput(v, 0) }
@@ -1534,7 +1573,10 @@ func (v GotoInput) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func GotoInputJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`goto`: navigates a tab to a URL.\",\"properties\":{\"load\":{\"description\":\"How far a navigation loads before it answers.\",\"enum\":[\"commit\",\"domcontentloaded\",\"load\"],\"type\":\"string\"},\"tab\":{\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"timeout\":{\"description\":\"Whole operation deadline in milliseconds\",\"format\":\"uint64\",\"maximum\":300000,\"minimum\":1,\"type\":\"integer\"},\"url\":{\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"}},\"required\":[\"tab\",\"url\"],\"title\":\"GotoInput\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`goto`: navigates a tab to a URL.\",\"properties\":{\"tab\":{\"type\":\"string\",\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"url\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":4096},\"load\":{\"type\":\"string\",\"enum\":[\"commit\",\"domcontentloaded\",\"load\"],\"description\":\"How far a navigation loads before it answers.\"},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\",\"url\"],\"title\":\"GotoInput\",\"type\":\"object\"}")
+}
+func GotoInputPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"Load\":{\"type\":\"string\",\"enum\":[\"commit\",\"domcontentloaded\",\"load\"],\"description\":\"How far a navigation loads before it answers.\"}},\"additionalProperties\":false,\"description\":\"`goto`: navigates a tab to a URL.\",\"properties\":{\"tab\":{\"$ref\":\"#/$defs/TabId\",\"description\":\"Browser tab ID returned by open or tabs\"},\"url\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":4096},\"load\":{\"$ref\":\"#/$defs/Load\"},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\",\"url\"],\"title\":\"GotoInput\",\"type\":\"object\"}")
 }
 func DecodeLabel(data []byte) (Label, error) { return contract.Decode[Label](data) }
 func (v Label) Validate() error              { return contractValidateLabel(v, 0) }
@@ -1725,7 +1767,10 @@ func (v NavigationResult) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func NavigationResultJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"What a navigation answers: the URL it observed, with the title when the\\nsame document reported it in time.\",\"properties\":{\"tab\":{\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"}},\"required\":[\"tab\",\"url\"],\"title\":\"NavigationResult\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"What a navigation answers: the URL it observed, with the title when the\\nsame document reported it in time.\",\"properties\":{\"tab\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"url\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"}},\"required\":[\"tab\",\"url\"],\"title\":\"NavigationResult\",\"type\":\"object\"}")
+}
+func NavigationResultPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"}},\"additionalProperties\":false,\"description\":\"What a navigation answers: the URL it observed, with the title when the\\nsame document reported it in time.\",\"properties\":{\"tab\":{\"$ref\":\"#/$defs/TabId\"},\"url\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"}},\"required\":[\"tab\",\"url\"],\"title\":\"NavigationResult\",\"type\":\"object\"}")
 }
 func DecodeNumeric(data []byte) (Numeric, error) { return contract.Decode[Numeric](data) }
 func (v Numeric) Validate() error                { return contractValidateNumeric(v, 0) }
@@ -1964,7 +2009,10 @@ func (v Numeric) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func NumericJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"byte\":{\"format\":\"uint8\",\"maximum\":255,\"minimum\":0,\"type\":\"integer\"},\"f32\":{\"format\":\"float\",\"type\":\"number\"},\"f64\":{\"format\":\"double\",\"type\":\"number\"},\"i16\":{\"format\":\"int16\",\"maximum\":32767,\"minimum\":-32768,\"type\":\"integer\"},\"i32\":{\"format\":\"int32\",\"type\":\"integer\"},\"i64\":{\"format\":\"int64\",\"type\":\"integer\"},\"i8\":{\"format\":\"int8\",\"maximum\":127,\"minimum\":-128,\"type\":\"integer\"},\"int\":{\"format\":\"int\",\"type\":\"integer\"},\"rune\":{\"format\":\"int32\",\"type\":\"integer\"},\"u16\":{\"format\":\"uint16\",\"maximum\":65535,\"minimum\":0,\"type\":\"integer\"},\"u32\":{\"format\":\"uint32\",\"minimum\":0,\"type\":\"integer\"},\"u64\":{\"format\":\"uint64\",\"minimum\":0,\"type\":\"integer\"},\"u8\":{\"format\":\"uint8\",\"maximum\":255,\"minimum\":0,\"type\":\"integer\"},\"uint\":{\"format\":\"uint\",\"minimum\":0,\"type\":\"integer\"}},\"required\":[\"rune\",\"byte\",\"i8\",\"i16\",\"i32\",\"i64\",\"int\",\"u8\",\"u16\",\"u32\",\"u64\",\"uint\",\"f32\",\"f64\"],\"title\":\"Numeric\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"rune\":{\"type\":\"integer\",\"format\":\"int32\"},\"byte\":{\"type\":\"integer\",\"format\":\"uint8\",\"minimum\":0,\"maximum\":255},\"i8\":{\"type\":\"integer\",\"format\":\"int8\",\"minimum\":-128,\"maximum\":127},\"i16\":{\"type\":\"integer\",\"format\":\"int16\",\"minimum\":-32768,\"maximum\":32767},\"i32\":{\"type\":\"integer\",\"format\":\"int32\"},\"i64\":{\"type\":\"integer\",\"format\":\"int64\"},\"int\":{\"type\":\"integer\",\"format\":\"int\"},\"u8\":{\"type\":\"integer\",\"format\":\"uint8\",\"minimum\":0,\"maximum\":255},\"u16\":{\"type\":\"integer\",\"format\":\"uint16\",\"minimum\":0,\"maximum\":65535},\"u32\":{\"type\":\"integer\",\"format\":\"uint32\",\"minimum\":0},\"u64\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"uint\":{\"type\":\"integer\",\"format\":\"uint\",\"minimum\":0},\"f32\":{\"type\":\"number\",\"format\":\"float\"},\"f64\":{\"type\":\"number\",\"format\":\"double\"}},\"required\":[\"rune\",\"byte\",\"i8\",\"i16\",\"i32\",\"i64\",\"int\",\"u8\",\"u16\",\"u32\",\"u64\",\"uint\",\"f32\",\"f64\"],\"title\":\"Numeric\",\"type\":\"object\"}")
+}
+func NumericPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"rune\":{\"type\":\"integer\",\"format\":\"int32\"},\"byte\":{\"type\":\"integer\",\"format\":\"uint8\",\"minimum\":0,\"maximum\":255},\"i8\":{\"type\":\"integer\",\"format\":\"int8\",\"minimum\":-128,\"maximum\":127},\"i16\":{\"type\":\"integer\",\"format\":\"int16\",\"minimum\":-32768,\"maximum\":32767},\"i32\":{\"type\":\"integer\",\"format\":\"int32\"},\"i64\":{\"type\":\"integer\",\"format\":\"int64\"},\"int\":{\"type\":\"integer\",\"format\":\"int\"},\"u8\":{\"type\":\"integer\",\"format\":\"uint8\",\"minimum\":0,\"maximum\":255},\"u16\":{\"type\":\"integer\",\"format\":\"uint16\",\"minimum\":0,\"maximum\":65535},\"u32\":{\"type\":\"integer\",\"format\":\"uint32\",\"minimum\":0},\"u64\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"uint\":{\"type\":\"integer\",\"format\":\"uint\",\"minimum\":0},\"f32\":{\"type\":\"number\",\"format\":\"float\"},\"f64\":{\"type\":\"number\",\"format\":\"double\"}},\"required\":[\"rune\",\"byte\",\"i8\",\"i16\",\"i32\",\"i64\",\"int\",\"u8\",\"u16\",\"u32\",\"u64\",\"uint\",\"f32\",\"f64\"],\"title\":\"Numeric\",\"type\":\"object\"}")
 }
 func DecodeOpenInput(data []byte) (OpenInput, error) { return contract.Decode[OpenInput](data) }
 func (v OpenInput) Validate() error                  { return contractValidateOpenInput(v, 0) }
@@ -2060,7 +2108,10 @@ func (v OpenInput) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func OpenInputJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`open`: opens a tab at a URL, starting the browser when it does not run.\",\"properties\":{\"load\":{\"description\":\"How far a navigation loads before it answers.\",\"enum\":[\"commit\",\"domcontentloaded\",\"load\"],\"type\":\"string\"},\"timeout\":{\"description\":\"Whole operation deadline in milliseconds\",\"format\":\"uint64\",\"maximum\":300000,\"minimum\":1,\"type\":\"integer\"},\"url\":{\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"}},\"required\":[\"url\"],\"title\":\"OpenInput\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`open`: opens a tab at a URL, starting the browser when it does not run.\",\"properties\":{\"url\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":4096},\"load\":{\"type\":\"string\",\"enum\":[\"commit\",\"domcontentloaded\",\"load\"],\"description\":\"How far a navigation loads before it answers.\"},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"url\"],\"title\":\"OpenInput\",\"type\":\"object\"}")
+}
+func OpenInputPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"Load\":{\"type\":\"string\",\"enum\":[\"commit\",\"domcontentloaded\",\"load\"],\"description\":\"How far a navigation loads before it answers.\"}},\"additionalProperties\":false,\"description\":\"`open`: opens a tab at a URL, starting the browser when it does not run.\",\"properties\":{\"url\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":4096},\"load\":{\"$ref\":\"#/$defs/Load\"},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"url\"],\"title\":\"OpenInput\",\"type\":\"object\"}")
 }
 func DecodeOpenResult(data []byte) (OpenResult, error) { return contract.Decode[OpenResult](data) }
 func (v OpenResult) Validate() error                   { return contractValidateOpenResult(v, 0) }
@@ -2170,7 +2221,10 @@ func (v OpenResult) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func OpenResultJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"What `open` answers: the new tab, with its title and viewport when the\\npage reported them in time.\",\"properties\":{\"tab\":{\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"},\"viewport\":{\"additionalProperties\":false,\"description\":\"A tab's viewport (`live-view.md` § Modes): its CSS size, the pixel ratio\\nit renders at, and who decides them.\",\"properties\":{\"devicePixelRatio\":{\"format\":\"double\",\"minimum\":2.2250738585072014e-308,\"type\":\"number\"},\"height\":{\"format\":\"uint32\",\"minimum\":1,\"type\":\"integer\"},\"mode\":{\"description\":\"Who decides a tab's viewport (`live-view.md` § Modes): the user's\\npanel, a phone, or the agent.\",\"enum\":[\"web\",\"mobile\",\"custom\"],\"type\":\"string\"},\"width\":{\"format\":\"uint32\",\"minimum\":1,\"type\":\"integer\"}},\"required\":[\"width\",\"height\",\"devicePixelRatio\",\"mode\"],\"type\":\"object\"}},\"required\":[\"tab\",\"url\"],\"title\":\"OpenResult\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"What `open` answers: the new tab, with its title and viewport when the\\npage reported them in time.\",\"properties\":{\"tab\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"url\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"viewport\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"width\":{\"type\":\"integer\",\"format\":\"uint32\",\"minimum\":1},\"height\":{\"type\":\"integer\",\"format\":\"uint32\",\"minimum\":1},\"devicePixelRatio\":{\"type\":\"number\",\"format\":\"double\",\"minimum\":2.2250738585072014e-308},\"mode\":{\"type\":\"string\",\"enum\":[\"web\",\"mobile\",\"custom\"],\"description\":\"Who decides a tab's viewport (`live-view.md` § Modes): the user's\\npanel, a phone, or the agent.\"}},\"required\":[\"width\",\"height\",\"devicePixelRatio\",\"mode\"],\"description\":\"A tab's viewport (`live-view.md` § Modes): its CSS size, the pixel ratio\\nit renders at, and who decides them.\"}},\"required\":[\"tab\",\"url\"],\"title\":\"OpenResult\",\"type\":\"object\"}")
+}
+func OpenResultPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"BrowserViewport\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"width\":{\"type\":\"integer\",\"format\":\"uint32\",\"minimum\":1},\"height\":{\"type\":\"integer\",\"format\":\"uint32\",\"minimum\":1},\"devicePixelRatio\":{\"type\":\"number\",\"format\":\"double\",\"minimum\":2.2250738585072014e-308},\"mode\":{\"$ref\":\"#/$defs/ViewportMode\"}},\"required\":[\"width\",\"height\",\"devicePixelRatio\",\"mode\"],\"description\":\"A tab's viewport (`live-view.md` § Modes): its CSS size, the pixel ratio\\nit renders at, and who decides them.\"},\"ViewportMode\":{\"type\":\"string\",\"enum\":[\"web\",\"mobile\",\"custom\"],\"description\":\"Who decides a tab's viewport (`live-view.md` § Modes): the user's\\npanel, a phone, or the agent.\"}},\"additionalProperties\":false,\"description\":\"What `open` answers: the new tab, with its title and viewport when the\\npage reported them in time.\",\"properties\":{\"tab\":{\"$ref\":\"#/$defs/TabId\"},\"url\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"viewport\":{\"$ref\":\"#/$defs/BrowserViewport\"}},\"required\":[\"tab\",\"url\"],\"title\":\"OpenResult\",\"type\":\"object\"}")
 }
 func DecodeOutcome(data []byte) (Outcome, error) {
 	obj, err := contract.Decode[map[string]json.RawMessage](data)
@@ -2234,7 +2288,10 @@ func contractValidateOutcome(value Outcome, depth int) error {
 	}
 }
 func OutcomeJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"oneOf\":[{\"additionalProperties\":false,\"properties\":{\"kind\":{\"const\":\"ok\",\"type\":\"string\"},\"value\":{\"type\":[\"string\",\"null\"]}},\"required\":[\"kind\",\"value\"],\"type\":\"object\"},{\"additionalProperties\":false,\"properties\":{\"kind\":{\"const\":\"error\",\"type\":\"string\"},\"message\":{\"type\":\"string\"}},\"required\":[\"kind\",\"message\"],\"type\":\"object\"}],\"title\":\"Outcome\"}")
+	return json.RawMessage("{\"oneOf\":[{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"value\":{\"type\":[\"string\",\"null\"]},\"kind\":{\"type\":\"string\",\"const\":\"ok\"}},\"required\":[\"kind\",\"value\"]},{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"message\":{\"type\":\"string\"},\"kind\":{\"type\":\"string\",\"const\":\"error\"}},\"required\":[\"kind\",\"message\"]}],\"title\":\"Outcome\"}")
+}
+func OutcomePluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"oneOf\":[{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"value\":{\"type\":[\"string\",\"null\"]},\"kind\":{\"type\":\"string\",\"const\":\"ok\"}},\"required\":[\"kind\",\"value\"]},{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"message\":{\"type\":\"string\"},\"kind\":{\"type\":\"string\",\"const\":\"error\"}},\"required\":[\"kind\",\"message\"]}],\"title\":\"Outcome\"}")
 }
 func DecodePatchArgs(data []byte) (PatchArgs, error) { return contract.Decode[PatchArgs](data) }
 func (v PatchArgs) Validate() error                  { return contractValidatePatchArgs(v, 0) }
@@ -2288,7 +2345,10 @@ func (v PatchArgs) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func PatchArgsJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`file.patch`: applies a unified diff to one or more files.\",\"properties\":{\"patch\":{\"description\":\"Unified diff content\",\"type\":\"string\"}},\"required\":[\"patch\"],\"title\":\"PatchArgs\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`file.patch`: applies a unified diff to one or more files.\",\"properties\":{\"patch\":{\"type\":\"string\",\"description\":\"Unified diff content\"}},\"required\":[\"patch\"],\"title\":\"PatchArgs\",\"type\":\"object\"}")
+}
+func PatchArgsPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`file.patch`: applies a unified diff to one or more files.\",\"properties\":{\"patch\":{\"type\":\"string\",\"description\":\"Unified diff content\"}},\"required\":[\"patch\"],\"title\":\"PatchArgs\",\"type\":\"object\"}")
 }
 func DecodeReadArgs(data []byte) (ReadArgs, error) { return contract.Decode[ReadArgs](data) }
 func (v ReadArgs) Validate() error                 { return contractValidateReadArgs(v, 0) }
@@ -2342,7 +2402,10 @@ func (v ReadArgs) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func ReadArgsJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`file.read`: writes the file's bytes to stdout.\",\"properties\":{\"path\":{\"description\":\"File path to read\",\"type\":\"string\"}},\"required\":[\"path\"],\"title\":\"ReadArgs\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`file.read`: writes the file's bytes to stdout.\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"File path to read\"}},\"required\":[\"path\"],\"title\":\"ReadArgs\",\"type\":\"object\"}")
+}
+func ReadArgsPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`file.read`: writes the file's bytes to stdout.\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"File path to read\"}},\"required\":[\"path\"],\"title\":\"ReadArgs\",\"type\":\"object\"}")
 }
 func DecodeRecursive(data []byte) (Recursive, error) { return contract.Decode[Recursive](data) }
 func (v Recursive) Validate() error                  { return contractValidateRecursive(v, 0) }
@@ -2399,6 +2462,9 @@ func (v Recursive) MarshalJSON() ([]byte, error) {
 func RecursiveJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"A recursive result with a documented child.\\n\\nParagraphs and line breaks remain product text.\",\"properties\":{\"next\":{\"$ref\":\"#\",\"description\":\"The next child, when present.\"}},\"title\":\"Recursive\",\"type\":\"object\"}")
 }
+func RecursivePluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"A recursive result with a documented child.\\n\\nParagraphs and line breaks remain product text.\",\"properties\":{\"next\":{\"$ref\":\"#\",\"description\":\"The next child, when present.\"}},\"title\":\"Recursive\",\"type\":\"object\"}")
+}
 func DecodeRecursiveResult(data []byte) (RecursiveResult, error) {
 	return contract.Decode[RecursiveResult](data)
 }
@@ -2453,7 +2519,10 @@ func (v RecursiveResult) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func RecursiveResultJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"$defs\":{\"Recursive\":{\"additionalProperties\":false,\"description\":\"A recursive result with a documented child.\\n\\nParagraphs and line breaks remain product text.\",\"properties\":{\"next\":{\"$ref\":\"#/$defs/Recursive\",\"description\":\"The next child, when present.\"}},\"type\":\"object\"}},\"additionalProperties\":false,\"properties\":{\"tree\":{\"additionalProperties\":false,\"description\":\"A recursive result with a documented child.\\n\\nParagraphs and line breaks remain product text.\",\"properties\":{\"next\":{\"$ref\":\"#/$defs/Recursive\",\"description\":\"The next child, when present.\"}},\"type\":\"object\"}},\"required\":[\"tree\"],\"title\":\"RecursiveResult\",\"type\":\"object\"}")
+	return json.RawMessage("{\"$defs\":{\"Recursive\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"next\":{\"$ref\":\"#/$defs/Recursive\",\"description\":\"The next child, when present.\"}},\"description\":\"A recursive result with a documented child.\\n\\nParagraphs and line breaks remain product text.\"}},\"additionalProperties\":false,\"properties\":{\"tree\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"next\":{\"$ref\":\"#/$defs/Recursive\",\"description\":\"The next child, when present.\"}},\"description\":\"A recursive result with a documented child.\\n\\nParagraphs and line breaks remain product text.\"}},\"required\":[\"tree\"],\"title\":\"RecursiveResult\",\"type\":\"object\"}")
+}
+func RecursiveResultPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"Recursive\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"next\":{\"$ref\":\"#/$defs/Recursive\",\"description\":\"The next child, when present.\"}},\"description\":\"A recursive result with a documented child.\\n\\nParagraphs and line breaks remain product text.\"}},\"additionalProperties\":false,\"properties\":{\"tree\":{\"$ref\":\"#/$defs/Recursive\"}},\"required\":[\"tree\"],\"title\":\"RecursiveResult\",\"type\":\"object\"}")
 }
 func DecodeReloadInput(data []byte) (ReloadInput, error) { return contract.Decode[ReloadInput](data) }
 func (v ReloadInput) Validate() error                    { return contractValidateReloadInput(v, 0) }
@@ -2552,7 +2621,10 @@ func (v ReloadInput) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func ReloadInputJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`reload`: reloads a tab's document.\",\"properties\":{\"load\":{\"description\":\"How far a navigation loads before it answers.\",\"enum\":[\"commit\",\"domcontentloaded\",\"load\"],\"type\":\"string\"},\"tab\":{\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"timeout\":{\"description\":\"Whole operation deadline in milliseconds\",\"format\":\"uint64\",\"maximum\":300000,\"minimum\":1,\"type\":\"integer\"}},\"required\":[\"tab\"],\"title\":\"ReloadInput\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`reload`: reloads a tab's document.\",\"properties\":{\"tab\":{\"type\":\"string\",\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"load\":{\"type\":\"string\",\"enum\":[\"commit\",\"domcontentloaded\",\"load\"],\"description\":\"How far a navigation loads before it answers.\"},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"ReloadInput\",\"type\":\"object\"}")
+}
+func ReloadInputPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"Load\":{\"type\":\"string\",\"enum\":[\"commit\",\"domcontentloaded\",\"load\"],\"description\":\"How far a navigation loads before it answers.\"}},\"additionalProperties\":false,\"description\":\"`reload`: reloads a tab's document.\",\"properties\":{\"tab\":{\"$ref\":\"#/$defs/TabId\",\"description\":\"Browser tab ID returned by open or tabs\"},\"load\":{\"$ref\":\"#/$defs/Load\"},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"ReloadInput\",\"type\":\"object\"}")
 }
 func DecodeSmall(data []byte) (Small, error) { return contract.Decode[Small](data) }
 func (v Small) Validate() error              { return contractValidateSmall(v, 0) }
@@ -2801,7 +2873,10 @@ func (v ViewportResetInput) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func ViewportResetInputJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`viewport.reset`: returns a tab's viewport to the user's panel.\",\"properties\":{\"tab\":{\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"timeout\":{\"description\":\"Whole operation deadline in milliseconds\",\"format\":\"uint64\",\"maximum\":300000,\"minimum\":1,\"type\":\"integer\"}},\"required\":[\"tab\"],\"title\":\"ViewportResetInput\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`viewport.reset`: returns a tab's viewport to the user's panel.\",\"properties\":{\"tab\":{\"type\":\"string\",\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"ViewportResetInput\",\"type\":\"object\"}")
+}
+func ViewportResetInputPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"}},\"additionalProperties\":false,\"description\":\"`viewport.reset`: returns a tab's viewport to the user's panel.\",\"properties\":{\"tab\":{\"$ref\":\"#/$defs/TabId\",\"description\":\"Browser tab ID returned by open or tabs\"},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"ViewportResetInput\",\"type\":\"object\"}")
 }
 func DecodeViewportResult(data []byte) (ViewportResult, error) {
 	return contract.Decode[ViewportResult](data)
@@ -2857,7 +2932,10 @@ func (v ViewportResult) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func ViewportResultJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"viewport\":{\"additionalProperties\":false,\"description\":\"A tab's viewport (`live-view.md` § Modes): its CSS size, the pixel ratio\\nit renders at, and who decides them.\",\"properties\":{\"devicePixelRatio\":{\"format\":\"double\",\"minimum\":2.2250738585072014e-308,\"type\":\"number\"},\"height\":{\"format\":\"uint32\",\"minimum\":1,\"type\":\"integer\"},\"mode\":{\"description\":\"Who decides a tab's viewport (`live-view.md` § Modes): the user's\\npanel, a phone, or the agent.\",\"enum\":[\"web\",\"mobile\",\"custom\"],\"type\":\"string\"},\"width\":{\"format\":\"uint32\",\"minimum\":1,\"type\":\"integer\"}},\"required\":[\"width\",\"height\",\"devicePixelRatio\",\"mode\"],\"type\":\"object\"}},\"required\":[\"viewport\"],\"title\":\"ViewportResult\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"viewport\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"width\":{\"type\":\"integer\",\"format\":\"uint32\",\"minimum\":1},\"height\":{\"type\":\"integer\",\"format\":\"uint32\",\"minimum\":1},\"devicePixelRatio\":{\"type\":\"number\",\"format\":\"double\",\"minimum\":2.2250738585072014e-308},\"mode\":{\"type\":\"string\",\"enum\":[\"web\",\"mobile\",\"custom\"],\"description\":\"Who decides a tab's viewport (`live-view.md` § Modes): the user's\\npanel, a phone, or the agent.\"}},\"required\":[\"width\",\"height\",\"devicePixelRatio\",\"mode\"],\"description\":\"A tab's viewport (`live-view.md` § Modes): its CSS size, the pixel ratio\\nit renders at, and who decides them.\"}},\"required\":[\"viewport\"],\"title\":\"ViewportResult\",\"type\":\"object\"}")
+}
+func ViewportResultPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"BrowserViewport\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"width\":{\"type\":\"integer\",\"format\":\"uint32\",\"minimum\":1},\"height\":{\"type\":\"integer\",\"format\":\"uint32\",\"minimum\":1},\"devicePixelRatio\":{\"type\":\"number\",\"format\":\"double\",\"minimum\":2.2250738585072014e-308},\"mode\":{\"$ref\":\"#/$defs/ViewportMode\"}},\"required\":[\"width\",\"height\",\"devicePixelRatio\",\"mode\"],\"description\":\"A tab's viewport (`live-view.md` § Modes): its CSS size, the pixel ratio\\nit renders at, and who decides them.\"},\"ViewportMode\":{\"type\":\"string\",\"enum\":[\"web\",\"mobile\",\"custom\"],\"description\":\"Who decides a tab's viewport (`live-view.md` § Modes): the user's\\npanel, a phone, or the agent.\"}},\"additionalProperties\":false,\"properties\":{\"viewport\":{\"$ref\":\"#/$defs/BrowserViewport\"}},\"required\":[\"viewport\"],\"title\":\"ViewportResult\",\"type\":\"object\"}")
 }
 func DecodeViewportSetInput(data []byte) (ViewportSetInput, error) {
 	return contract.Decode[ViewportSetInput](data)
@@ -3001,7 +3079,10 @@ func (v ViewportSetInput) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func ViewportSetInputJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`viewport.set`: gives a tab the agent's viewport.\",\"properties\":{\"height\":{\"format\":\"uint32\",\"maximum\":4096,\"minimum\":1,\"type\":\"integer\"},\"scale\":{\"description\":\"Device pixel ratio, 1 by default\",\"format\":\"double\",\"maximum\":4.0,\"minimum\":0.5,\"type\":\"number\"},\"tab\":{\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"timeout\":{\"description\":\"Whole operation deadline in milliseconds\",\"format\":\"uint64\",\"maximum\":300000,\"minimum\":1,\"type\":\"integer\"},\"width\":{\"format\":\"uint32\",\"maximum\":4096,\"minimum\":1,\"type\":\"integer\"}},\"required\":[\"tab\",\"width\",\"height\"],\"title\":\"ViewportSetInput\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`viewport.set`: gives a tab the agent's viewport.\",\"properties\":{\"tab\":{\"type\":\"string\",\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"width\":{\"type\":\"integer\",\"format\":\"uint32\",\"minimum\":1,\"maximum\":4096},\"height\":{\"type\":\"integer\",\"format\":\"uint32\",\"minimum\":1,\"maximum\":4096},\"scale\":{\"type\":\"number\",\"format\":\"double\",\"description\":\"Device pixel ratio, 1 by default\",\"minimum\":0.5,\"maximum\":4.0},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\",\"width\",\"height\"],\"title\":\"ViewportSetInput\",\"type\":\"object\"}")
+}
+func ViewportSetInputPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"}},\"additionalProperties\":false,\"description\":\"`viewport.set`: gives a tab the agent's viewport.\",\"properties\":{\"tab\":{\"$ref\":\"#/$defs/TabId\",\"description\":\"Browser tab ID returned by open or tabs\"},\"width\":{\"type\":\"integer\",\"format\":\"uint32\",\"minimum\":1,\"maximum\":4096},\"height\":{\"type\":\"integer\",\"format\":\"uint32\",\"minimum\":1,\"maximum\":4096},\"scale\":{\"type\":\"number\",\"format\":\"double\",\"description\":\"Device pixel ratio, 1 by default\",\"minimum\":0.5,\"maximum\":4.0},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\",\"width\",\"height\"],\"title\":\"ViewportSetInput\",\"type\":\"object\"}")
 }
 func DecodeWebmcpCallInput(data []byte) (WebmcpCallInput, error) {
 	return contract.Decode[WebmcpCallInput](data)
@@ -3132,7 +3213,10 @@ func (v WebmcpCallInput) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func WebmcpCallInputJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`webmcp.call`: calls one of the page's WebMCP tools with JSON arguments.\",\"properties\":{\"arguments\":{\"maxLength\":1048576,\"type\":\"string\"},\"tab\":{\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"timeout\":{\"description\":\"Whole operation deadline in milliseconds\",\"format\":\"uint64\",\"maximum\":300000,\"minimum\":1,\"type\":\"integer\"},\"tool\":{\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"},\"tools\":{\"description\":\"The generation `webmcp.list` returned\",\"maxLength\":4096,\"minLength\":1,\"type\":\"string\"}},\"required\":[\"tab\",\"tool\",\"tools\",\"arguments\"],\"title\":\"WebmcpCallInput\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`webmcp.call`: calls one of the page's WebMCP tools with JSON arguments.\",\"properties\":{\"tab\":{\"type\":\"string\",\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"tool\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":4096},\"tools\":{\"type\":\"string\",\"description\":\"The generation `webmcp.list` returned\",\"minLength\":1,\"maxLength\":4096},\"arguments\":{\"type\":\"string\",\"maxLength\":1048576},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\",\"tool\",\"tools\",\"arguments\"],\"title\":\"WebmcpCallInput\",\"type\":\"object\"}")
+}
+func WebmcpCallInputPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"}},\"additionalProperties\":false,\"description\":\"`webmcp.call`: calls one of the page's WebMCP tools with JSON arguments.\",\"properties\":{\"tab\":{\"$ref\":\"#/$defs/TabId\",\"description\":\"Browser tab ID returned by open or tabs\"},\"tool\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":4096},\"tools\":{\"type\":\"string\",\"description\":\"The generation `webmcp.list` returned\",\"minLength\":1,\"maxLength\":4096},\"arguments\":{\"type\":\"string\",\"maxLength\":1048576},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\",\"tool\",\"tools\",\"arguments\"],\"title\":\"WebmcpCallInput\",\"type\":\"object\"}")
 }
 func DecodeWebmcpCallResult(data []byte) (WebmcpCallResult, error) {
 	return contract.Decode[WebmcpCallResult](data)
@@ -3205,5 +3289,8 @@ func (v WebmcpCallResult) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func WebmcpCallResultJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"name\":{\"type\":\"string\"},\"result\":true},\"required\":[\"name\",\"result\"],\"title\":\"WebmcpCallResult\",\"type\":\"object\"}")
+}
+func WebmcpCallResultPluginJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"name\":{\"type\":\"string\"},\"result\":true},\"required\":[\"name\",\"result\"],\"title\":\"WebmcpCallResult\",\"type\":\"object\"}")
 }

@@ -1,9 +1,8 @@
 {
+  "additionalProperties": false,
   "description": "A failed operation, or a failed item of a batch such as a page of\n`content.fetch`.",
-  "type": "object",
   "properties": {
     "code": {
-      "description": "Why an operation failed. Each cause keeps its own code.",
       "type": "string",
       "enum": [
         "invalid_input",
@@ -36,59 +35,59 @@
         "browser_lost",
         "cancelled",
         "outcome_unknown"
-      ]
+      ],
+      "description": "Why an operation failed. Each cause keeps its own code."
     },
     "message": {
       "type": "string"
     },
     "details": {
-      "description": "What a failure knows beyond its code and message.",
       "type": "object",
       "properties": {
         "action": {
-          "description": "How far an action's input got when it failed: not delivered, delivered\nwith a later wait failing, or lost with the connection after delivery\nbegan.",
           "type": "string",
           "enum": [
             "not_started",
             "completed",
             "unknown"
-          ]
+          ],
+          "description": "How far an action's input got when it failed: not delivered, delivered\nwith a later wait failing, or lost with the connection after delivery\nbegan."
         },
         "tab": {
           "type": "string"
         },
         "url": {
-          "description": "The tab's URL when the action failed.",
-          "type": "string"
+          "type": "string",
+          "description": "The tab's URL when the action failed."
         },
         "condition": {
-          "description": "The element condition that was not met.",
-          "type": "string"
+          "type": "string",
+          "description": "The element condition that was not met."
         },
         "interceptor": {
-          "description": "What intercepted the pointer instead of the target.",
-          "type": "string"
+          "type": "string",
+          "description": "What intercepted the pointer instead of the target."
         },
         "count": {
-          "description": "How many elements an ambiguous target matched.",
           "type": "integer",
           "format": "uint",
-          "minimum": 0
+          "minimum": 0,
+          "description": "How many elements an ambiguous target matched."
         },
         "delivered": {
-          "description": "How many characters `type` delivered before it failed.",
           "type": "integer",
           "format": "uint",
-          "minimum": 0
+          "minimum": 0,
+          "description": "How many characters `type` delivered before it failed."
         },
         "debuggingCallers": {
-          "description": "The numbers of the agents whose debugging connections hold the tab\nwhen a command on it times out.",
           "type": "array",
           "items": {
             "type": "integer",
             "format": "uint64",
             "minimum": 0
-          }
+          },
+          "description": "The numbers of the agents whose debugging connections hold the tab\nwhen a command on it times out."
         },
         "directory": {
           "type": "string"
@@ -126,13 +125,14 @@
             ]
           }
         }
-      }
+      },
+      "description": "What a failure knows beyond its code and message."
     }
   },
-  "additionalProperties": false,
   "required": [
     "code",
     "message"
   ],
-  "title": "BrowserFailure"
+  "title": "BrowserFailure",
+  "type": "object"
 }

@@ -1,6 +1,7 @@
 package browserop
 
 // What the page sends.
+// +demi:schema
 // +demi:union tag=type
 //
 // +demi:root direction=send output=plugin-browser

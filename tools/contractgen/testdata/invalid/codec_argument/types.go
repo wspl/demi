@@ -1,5 +1,5 @@
 package invalid
 
 // +demi:root
-// +demi:codec string
+// +demi:codec number
 type Broken struct{}

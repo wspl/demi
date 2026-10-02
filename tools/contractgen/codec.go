@@ -12,9 +12,16 @@ func checkCodec(d *definition, msgpack bool) error {
 	if _, ok := d.typ.Underlying().(*types.Interface); ok {
 		return fmt.Errorf("codec requires a concrete named type")
 	}
+	if d.marks["codec"] == "string" && !types.Identical(d.typ.Underlying(), types.Typ[types.String]) {
+		return fmt.Errorf("codec string requires a string underlying type")
+	}
 	for marker := range d.marks {
 		switch marker {
 		case "codec", "root", "msgpack", "schema":
+		case "pattern", "length", "format":
+			if d.marks["codec"] != "string" {
+				return fmt.Errorf("codec string is required for %s", marker)
+			}
 		default:
 			return fmt.Errorf("codec cannot be combined with %s", marker)
 		}

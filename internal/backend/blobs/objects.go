@@ -1,12 +1,10 @@
-// Named parameters document this API checkpoint; bodies follow after its merge.
-//revive:disable:unused-parameter
-
 package blobs
 
 import (
 	"context"
 
 	"gocloud.dev/blob"
+	"gocloud.dev/blob/fileblob"
 )
 
 // Objects is the object-store boundary used by blob namespaces. A *blob.Bucket
@@ -29,5 +27,15 @@ type Objects interface {
 // Open opens the S3 bucket s3 names, or the existing data directory when s3
 // is nil. The caller must close the returned bucket at shutdown.
 func Open(ctx context.Context, dataDir string, s3 *S3Config) (*blob.Bucket, error) {
-	panic("not written: b-blobs")
+	if err := ctx.Err(); err != nil {
+		return nil, &Error{Err: err}
+	}
+	if s3 != nil {
+		return s3.Open(ctx)
+	}
+	bucket, err := fileblob.OpenBucket(dataDir, nil)
+	if err != nil {
+		return nil, &Error{Err: err}
+	}
+	return bucket, nil
 }

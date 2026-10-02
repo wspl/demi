@@ -1,6 +1,7 @@
 package fileop_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -97,15 +98,11 @@ func TestSchemasMatchRustManifest(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			// Schemas are test metadata, not incoming operation arguments.
-			var got, want any
-			if err := json.Unmarshal(data, &want); err != nil {
+			var want bytes.Buffer
+			if err := json.Compact(&want, data); err != nil {
 				t.Fatal(err)
 			}
-			if err := json.Unmarshal(tc.schema(), &got); err != nil {
-				t.Fatal(err)
-			}
-			if !reflect.DeepEqual(got, want) {
+			if !bytes.Equal(tc.schema(), want.Bytes()) {
 				t.Fatalf("schema differs from Rust manifest\ngot: %s\nwant: %s", tc.schema(), data)
 			}
 		})
