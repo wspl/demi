@@ -494,7 +494,9 @@ Chrome).
 ### Codex sessions
 
 A resumed session needs its first run to have exited: `codex exec resume`
-fails while the original process still writes the session.
+fails while the original process still writes the session. `codex queue` does not reach a running `codex exec`: the run ends its
+turn and exits without reading the queued message, so new instructions reach
+a running agent only through the next `resume.sh` round.
 
 ## Tech lead decisions
 
