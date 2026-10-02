@@ -175,7 +175,7 @@ function detach(id: string): void {
         <template #tools>
           <PluginHeaderTools
             :pages="GALLERY_PLUGIN_PAGES"
-            :enabled="() => true"
+            :shown="() => true"
             conversation-id="shared-product-session"
             :host-name="hostName"
             @open-tab="productWould('Open the expose in a work panel page tab')"

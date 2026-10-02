@@ -9,6 +9,9 @@ export * from './generated/plugin'
 
 export const skillsPage: PluginPage = {
   plugin: 'skills',
+  uses: {
+    methods: ['add_source', 'update_source', 'remove_source', 'set_enabled', 'set_source_enabled'],
+  },
   settings: {
     group: 'Agent',
     item: {
