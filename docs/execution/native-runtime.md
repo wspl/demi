@@ -718,8 +718,10 @@ Service                        Runner                          Backend
   service may therefore reserve a few ahead: a number it never uses is a gap,
   never a repeat. At most 32 requests are answered at a time on a connection;
   one beyond that, or one that repeats an id still in flight, is refused.
-- The stream ends with the service. Service shutdown ends it, and a request
-  still waiting fails. A lost backend connection stops the runner's services
+- The stream ends with the service. Service shutdown ends it once the
+  service's invocations have drained and its handler has closed, so work that
+  finishes during the drain can still be answered; a request still waiting then
+  fails. A lost backend connection stops the runner's services
   in any case ([Command lifetime](runner.md#command-lifetime)).
 
 ### User streams
