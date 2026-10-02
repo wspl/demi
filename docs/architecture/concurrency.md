@@ -40,7 +40,7 @@ platform APIs that require thread affinity.
 
 | Program | State owners | Concurrency bounds |
 | --- | --- | --- |
-| Backend | One `Shard` per user behind one mutex; edge request and copy goroutines; shared services own cross-user state | Edge admission semaphores, CPU-sized password-hash admission, database writer LRU and cold-read admission; conversation gates |
+| Backend | One `Shard` per user behind one mutex; edge request and copy goroutines; shared services own cross-user state | Password hashes, at most one per CPU; at most 64 open conversation writers and 64 cold-read connections; conversation gates |
 | Runner | Registration owns installation, token, status and reconnect state; each backend connection owns its jobs and child work; each shell job owns its interpreter and descendants; a log writer owns Host log files | The runner's Load semaphores for finite Host work; streams use their own backpressure |
 | `demi-browser` | Invocation goroutines and one browser owner per conversation, with child tab, capture and live-hub owners | Bounded transport and output, tab admission and operation gates |
 | `demi-file` | Invocation goroutines; one file-mutation gate | Mutations run serially; reads use independent invocation streams |
@@ -70,13 +70,9 @@ shared database service: one connection per writable database
 ```
 
 Handlers parse, authenticate, check ownership and call the shard or a shared
-service. The edge bounds admitted request work and aggregate disk and large
-serialization work with service-owned semaphores; password hashes have a
-separate limit equal to the machine's CPU count. Admission precedes launching
-additional workers, so a bounded work queue does not hide unbounded goroutines
-waiting to send. HTTP body limits and stream backpressure bound bytes, not
-just request counts. Concrete capacities and overload responses belong to
-[Backend](../backend/backend.md), not to shard state.
+service. A request's disk work and serialization run in its own goroutine;
+password hashes are the one CPU-bound step with a limit, one per CPU. HTTP
+body limits and stream backpressure bound bytes.
 
 ### Runner
 
@@ -334,8 +330,9 @@ serialization and CPU work run in the owning operation without a state lock;
 they do not require a helper goroutine solely because they block. When work
 needs parallel execution, its owner starts and joins bounded workers.
 
-The backend's admission, the runner's Load limits, command operation gates and
-the machine manager's operation semaphore are the bounds described above.
+The backend's hash, writer and cold-read limits, the runner's Load limits,
+command operation gates and the machine manager's operation semaphore are the
+bounds described above.
 Neither the scheduler nor the number of OS threads is an admission policy.
 Cancellation of a context does not interrupt arbitrary IO: use context-aware
 APIs or have the resource owner close or set deadlines on the actual pipe or
@@ -358,8 +355,9 @@ it and closes the database before reusing the slot. If every slot is pinned,
 new admission waits with its context. Shutdown drains and closes all writers.
 Per-database pool sizes and idle lifetimes do not enforce the global limit.
 Cold history and summary reads use short-lived read-only connections, never
-create a missing database, and have aggregate read admission to bound file
-descriptors. Their result sets, transactions and connections are closed in the
+create a missing database, and at most 64 are open at once across the
+backend, so a page that reads hundreds of summaries cannot exhaust file
+descriptors; a read waits for a free connection with its context. Their result sets, transactions and connections are closed in the
 acquiring scope. [Storage](../backend/storage.md) owns schema, transaction,
 blob publication, SQLite configuration and lifecycle coordination rules.
 
