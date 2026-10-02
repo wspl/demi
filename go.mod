@@ -30,3 +30,7 @@ require (
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	golang.org/x/net v0.59.0 // indirect
 )
+
+require mvdan.cc/sh/v3 v3.14.1
+
+replace mvdan.cc/sh/v3 => ./third_party/mvdan-sh
