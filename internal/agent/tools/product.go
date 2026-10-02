@@ -1,7 +1,5 @@
 package tools
 
-// revive:disable:unused-parameter API checkpoint stubs retain parameter names for callers.
-
 import (
 	"context"
 
@@ -28,7 +26,7 @@ type ToolsetSource interface {
 }
 
 // Current returns this fixed toolset.
-func (t Toolset) Current(ctx context.Context) (Toolset, error) { panic("not written: a-tools") }
+func (t Toolset) Current(_ context.Context) (Toolset, error) { return t, nil }
 
 // NodeContext identifies the node a product question concerns.
 type NodeContext struct {

@@ -397,7 +397,7 @@ func launchIn(ctx context.Context, options LaunchOptions, numbers NumberSource, 
 	if err := browser.SetDownloadBehavior(browser.SetDownloadBehaviorBehaviorAllowAndName).WithDownloadPath(e.DownloadDirectory()).WithEventsEnabled(true).Do(protocol.WithExecutor(setup, e.connection)); err != nil {
 		return nil, err
 	}
-	events, err := e.connection.Subscribe("Target.targetCreated", "Target.targetInfoChanged", "Target.targetDestroyed")
+	events, err := e.connection.SubscribeWithCapacity(256, "Target.targetCreated", "Target.targetInfoChanged", "Target.targetDestroyed")
 	if err != nil {
 		return nil, err
 	}

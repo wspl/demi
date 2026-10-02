@@ -534,6 +534,9 @@ These follow from the spikes and are the input to the Phase 0 documents.
   `github.com/sergi/go-diff` with interned lines and no timeout for line
   counts, in `internal/runner/process`; the standard library with
   `golang.org/x/image` (WebP decoding, scaling) for images.
+- **YAML is `github.com/goccy/go-yaml`**, in strict mode where Rust's
+  `serde_saphyr` deserializes into a typed struct: skill front matter is its
+  only use.
 - **Phase 2 does not wait for gate G1.** A Phase 2 work package starts when
   every package its graph line names is merged; G1 still closes Phase 1, and
   a G1 finding goes back to the contract package that owns it.
