@@ -36,17 +36,7 @@ go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run "$@"
 step='sumtype'
 go run github.com/alecthomas/go-check-sumtype/cmd/go-check-sumtype@v0.5.0 -default-signifies-exhaustive=false "$@"
 step='architecture'
-if [[ "${GOMIG_ARCHCHECK_FIXTURE_ONLY:-0}" == 1 ]]; then
-  # Phase 0 only: the brief permits fixture tests until d-packages lands.
-  if grep -q '^### Go packages$' docs/architecture/crates-and-packages.md; then
-    echo 'fixture-only architecture check is forbidden when the Go graph exists' >&2
-    exit 1
-  fi
-  echo 'gomig: Go graph absent; running archcheck fixture tests (Phase 0)'
-  go test ./tools/archcheck
-else
-  go run ./tools/archcheck
-fi
+go run ./tools/archcheck
 step='cgo'
 go run ./tools/cgocheck
 step='race tests'

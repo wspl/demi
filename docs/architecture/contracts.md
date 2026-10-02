@@ -66,27 +66,25 @@ never relax them.
 
 | Marker after `// +demi:` | Placement and meaning |
 |---|---|
-| `root boundary=json` or `root boundary=msgpack` | Type; emit a boundary decoder and encoder. Repeat for both encodings. |
-| `root ts=protocol direction=receive` | Type; publish to the protocol destination. `ts=web` or `ts=plugin-<name>` chooses the other destinations; direction is `send`, `receive` or `both`, from the web app's perspective. Repeat for multiple destinations. |
-| `union tag=type` | Interface; internally tagged union. The tag may instead be `op`, `status` or `kind`, as the wire requires. |
-| `variant Block text` | Struct; pointer variant of the named union with the given wire tag value. The encoder adds the tag; no duplicate tag field is declared. |
+| `root direction=receive output=protocol` | Type; a TypeScript root. `direction` is `receive` or `send`, from the web app's perspective; `output` is `protocol`, `web` or `plugin-<name>`. Every root and every type a boundary decodes gets `Decode<Type>`. |
+| `union tag=type` | Interface with one unexported sealing method; internally tagged union. The tag may instead be `op`, `status` or `kind`, as the wire requires. |
+| `variant text` or `variant Block text` | Struct; pointer variant with the given wire tag value, naming its union when the package has several. The encoder adds the tag; no tag field is declared. |
 | `enum value1 value2` | Named string type; closed set of wire strings, including singleton literals. |
 | `nullable` | Field; required key whose value may be null. |
-| `strict` / `tolerant` | Struct; refuse / ignore unknown keys in Go. Each contract object declares exactly one; nested objects have their own choice. |
-| `length min=1 max=64` | String type or field; Unicode scalar count. Either bound may be omitted. |
+| `tolerant` | Struct; ignore unknown keys in Go. Every other object is strict. |
+| `length chars min=1 max=64` | String type or field; Unicode scalar count. Arrays omit `chars` and count elements. Either bound may be omitted. |
 | `pattern ^[0-9a-f]{64}$` | String type or field; shared regex subset below. The remainder of the line is the pattern. |
 | `range min=0 max=9007199254740991` | Numeric type or field; either bound may be omitted. Integer kind comes from the Go type; web integers must fit the safe range. |
-| `custom validateName` | Type or field; call the named Go function after structural checks. It takes the corresponding Go value and returns an error, without IO or mutation. Repeat for rules in declaration order. |
-| `identifier` | Named string type; emit `Parse<ID>(string) (<ID>, error)` using its declared length, pattern and custom constraints. |
-| `timestamp` | Named string type for canonical JSON time, or named `int64` for runner milliseconds since the Unix epoch encoded as a MessagePack timestamp. |
-| `bytes` | Named byte-slice type or byte-slice field; base64 in JSON, bin in MessagePack. |
-| `msgpack name=wireName` | Field; override its JSON name for MessagePack. Declaration order is wire order; a union's tag comes first. |
-| `msgpack representation=external-tuple` | Union; kept-output form: a one-entry map from variant name to its fields as a declaration-order tuple (a single field is the value directly). |
-| `msgpack sorted` | String-keyed map type or field; encode keys in ascending string order. Required for runner-wire maps. |
-| `format email` / `format http-url` / `format trimmed` | Named string type; email, HTTP(S) URL or trimmed-text behavior in the supported subset below. |
+| `check validateName` | Type; call the named `func(Type) error` after structural checks, in Go only, without IO or mutation. |
+| `id` or `id pattern=<regexp>` | Named string type; emit `Parse<Type>(string) (<Type>, error)` with its length, pattern and checks. |
+| `timestamp` | Named string type for canonical JSON time, or the runner's milliseconds encoded as a MessagePack timestamp. |
+| `base64` | Byte-slice type or field; base64 in JSON, bin in MessagePack. |
+| `msgpack` | Type; generate MessagePack codecs for it and everything it reaches: JSON field names in declaration order, a union's tag first, compact integers, string-keyed maps sorted. |
+| `msgpack tuple` | Union; the kept-output form: a one-entry map from variant name to its fields as a declaration-order tuple, a single field as the value itself. |
+| `format email`, `format http-url`, `format trimmed` | Named string type; email, HTTP(S) URL or trimmed-text behavior in the supported subset below. |
+| `table` | Package-level variable of a slice of structs; a constant table emitted with its generated lookups into `tables.ts`, such as the file-type table. |
 
-A TypeScript root also requires the JSON codec. Roots are markers on types,
-never a second registry in the generator.
+Roots are markers on types, never a second registry in the generator.
 Named generic instantiations can be roots. Constant tables and lookups come
 from their owning Go declarations, without parallel TypeScript tables.
 
@@ -142,23 +140,21 @@ custom rules in the one definition the Go compiler checks. Declaration
 loading must work without existing generated files: source types and rule
 signatures cannot depend on generated method bodies.
 
-Each contract package commits one generated file, `contracts_gen.go`, beside
+Each contract package commits one generated file, `contract_gen.go`, beside
 its declarations. It contains `Decode<Type>([]byte) (<Type>, error)` for
-boundary roots, `Encode<Type>(<Type>) ([]byte, error)` functions,
-`Validate() error` methods, object and variant `MarshalJSON` and
-`UnmarshalJSON` methods, and a `<Union>JSON` holder with a `Value <Union>`
-field and both JSON methods. Interfaces cannot own JSON methods; nested
-unions use generated field dispatch. Union validation is exposed as
-`Validate<Union>(<Union>) error`. JSON methods and holders use the same
-checks as direct decoding, including tags. Encoders validate constructed
-values before writing them. Errors include wire field paths and array
-indices, with wrapped causes.
+JSON, `Validate() error` methods, `MarshalJSON` and `UnmarshalJSON` methods on
+objects and variants, and a `<Union>JSON` holder with a `Value <Union>` field
+and both JSON methods, because an interface cannot own methods. Nested unions
+use generated field dispatch, and union validation is
+`Validate<Union>(<Union>) error`. JSON methods and holders run the same checks
+as direct decoding, including tags; encoding validates the value before
+writing it. Errors carry wire field paths and array indices, with wrapped
+causes.
 
-MessagePack roots get generated encoders and decoders in that file too.
-Roots with both formats use `Decode<Type>JSON` and `Decode<Type>Msgpack`;
-roots with one format use `Decode<Type>`. Encoders follow the same suffix
-rule. Zod source is emitted separately to the TypeScript destinations below
-and is not committed.
+Types reached from a `msgpack` root get `MarshalMsgpack` and `UnmarshalMsgpack`
+methods, `Decode<Type>Msgpack`, and, for a union, `Encode<Union>Msgpack`.
+Zod source is emitted separately to the TypeScript destinations below and is
+not committed.
 
 The runner uses `github.com/vmihailenco/msgpack/v5` with
 `UseCompactInts(true)`, declaration-order struct maps, tag first, and sorted
@@ -265,7 +261,7 @@ These are the points where values enter, and what a failure does:
 ```text
 Go types + JSON tags + markers
    | tools/contractgen: one checked type model
-   +-> contracts_gen.go in each owning package (committed)
+   +-> contract_gen.go in each owning package (committed)
    +-> Zod source + z.infer types (uncommitted)
        -> packages/protocol/src/generated/
        -> packages/web/src/api/generated/
