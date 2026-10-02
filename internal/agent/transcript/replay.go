@@ -1,9 +1,10 @@
 package transcript
 
-// revive:disable:unused-parameter API checkpoint stubs retain parameter names for callers.
-
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/core"
@@ -29,25 +30,168 @@ type Replayed struct {
 
 // RequestView owns the interpretation of media for one model's request: held
 // bytes within accepted types and half the body limit, otherwise stable text.
-// Construct it with NewRequestView and treat its input view as immutable.
-type RequestView struct{}
+// Construct it with NewRequestView and treat its input view and model as immutable.
+type RequestView struct {
+	view     *store.ModelView
+	model    core.Model
+	halfBody *uint64
+}
 
 // NewRequestView selects how model receives view within its vendor's limits.
 func NewRequestView(view *store.ModelView, model core.Model, limits provider.RequestLimits) *RequestView {
-	panic("not written: a-transcript")
+	request := &RequestView{view: view, model: model}
+	if limits.BodyBytes != nil {
+		request.halfBody = new(*limits.BodyBytes / 2)
+	}
+	return request
 }
 
 // Model returns the request's model.
-func (r *RequestView) Model() core.Model { panic("not written: a-transcript") }
+func (r *RequestView) Model() core.Model { return r.model }
 
 // Replay renders blocks from the latest compaction boundary in order, preserving
 // signed reasoning and opaque data whole and marking reasoning kept past a summary.
-func Replay(request *RequestView) Replayed { panic("not written: a-transcript") }
+func Replay(request *RequestView) Replayed {
+	blocks := request.view.Blocks
+	start := ReplayStart(blocks)
+	answer := latestAnswer(blocks)
+	keptEnd := start
+	if start < len(blocks) {
+		if _, ok := blocks[start].(*core.CompactionBoundaryBlock); ok {
+			keptEnd = len(blocks)
+			for i := start; i < len(blocks); i++ {
+				if _, ok := blocks[i].(*core.CompactionMarkerBlock); ok {
+					keptEnd = i
+					break
+				}
+			}
+		}
+	}
+	result := Replayed{Items: []provider.InferenceItem{}}
+	for i := start; i < len(blocks); i++ {
+		if i == answer {
+			result.Answered = len(result.Items)
+		}
+		kept := i > start && i < keptEnd
+		var item provider.InferenceItem
+		switch b := blocks[i].(type) {
+		case *core.UserBlock:
+			content := []provider.UserPart{}
+			if b.Preamble != nil {
+				content = append(content, &provider.TextPart{Text: boundText(*b.Preamble)})
+			}
+			for _, part := range b.Content {
+				content = append(content, request.userPart(part))
+			}
+			item = &provider.UserMessage{Content: content}
+		case *core.ContextBlock:
+			item = &provider.UserMessage{Content: []provider.UserPart{&provider.TextPart{Text: boundText(b.Text)}}}
+		case *core.WakeupBlock:
+			content := []provider.UserPart{&provider.TextPart{Text: WakeupText}}
+			if b.Placement == "new_turn" {
+				item = &provider.UserMessage{Content: content}
+			} else {
+				item = &provider.UserSteer{Content: content}
+			}
+		case *core.SteerBlock:
+			content := make([]provider.UserPart, 0, len(b.Content))
+			for _, part := range b.Content {
+				content = append(content, request.userPart(part))
+			}
+			item = &provider.UserSteer{Content: content}
+		case *core.AgentMessageBlock:
+			item = &provider.UserSteer{Content: []provider.UserPart{&provider.TextPart{Text: AgentMessageEnvelope(b.Message)}}}
+		case *core.ResumeBlock:
+			item = &provider.UserMessage{Content: []provider.UserPart{&provider.TextPart{Text: ResumeText}}}
+		case *core.ThinkingBlock:
+			text := b.Text
+			if b.Signature == nil {
+				text = boundText(text)
+			}
+			item = &provider.AssistantThinking{ModelID: b.Selection.Model.ID, Text: text, Signature: b.Signature, KeptPastSummary: kept}
+		case *core.RedactedThinkingBlock:
+			item = &provider.AssistantRedactedThinking{ModelID: b.Selection.Model.ID, Data: b.Data, KeptPastSummary: kept}
+		case *core.TextBlock:
+			item = &provider.AssistantText{ModelID: b.Selection.Model.ID, Text: boundText(b.Text)}
+		case *core.ToolCallBlock:
+			result.Items = append(result.Items, &provider.ToolUse{ModelID: b.Selection.Model.ID, ToolUseID: b.ToolUseID, ToolName: b.ToolName, Input: ToolInput(b.Input)})
+			if b.Status == "executing" {
+				continue
+			}
+			output := make([]provider.ResultPart, 0, len(b.Output))
+			for _, part := range b.Output {
+				output = append(output, request.result(part))
+			}
+			item = &provider.ToolResult{ToolUseID: b.ToolUseID, Output: output, IsError: b.Status == "error"}
+		case *core.CompactionBoundaryBlock:
+			item = &provider.UserMessage{Content: []provider.UserPart{&provider.TextPart{Text: boundText("Previous conversation summary:\n" + b.Summary)}}}
+		case *core.AbortBlock, *core.ResponseBlock, *core.ErrorBlock, *core.CompactionMarkerBlock:
+			continue
+		}
+		result.Items = append(result.Items, item)
+	}
+	return result
+}
 
 // ToolInput returns provider-supplied JSON, or a JSON string when input is invalid.
 // Objects retain their read order, including nested objects.
-func ToolInput(input string) json.RawMessage { panic("not written: a-transcript") }
+func ToolInput(input string) json.RawMessage {
+	value, err := provider.ToolArguments(json.RawMessage(input))
+	// ToolArguments trims whitespace for vendor arguments; transcript JSON uses
+	// the JSON grammar, which admits only space, tab, CR, and LF outside values.
+	if err != nil || !json.Valid([]byte(input)) {
+		encoded, _ := provider.JSONBody(input) // A string always encodes.
+		return encoded
+	}
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "null" {
+		return json.RawMessage("null")
+	}
+	if strings.HasPrefix(trimmed, "\"") {
+		encoded, _ := provider.JSONBody(value) // A string always encodes.
+		return encoded
+	}
+	return json.RawMessage(value)
+}
 
 // AgentMessageEnvelope renders an agent message as its model-facing instruction
 // and JSON envelope, naming its sender by number and round, without delivery ids.
-func AgentMessageEnvelope(message core.AgentMessage) string { panic("not written: a-transcript") }
+func AgentMessageEnvelope(message core.AgentMessage) string {
+	event := "message"
+	var outcome *string
+	switch e := message.Event.(type) {
+	case *core.MessageEvent:
+	case *core.CompletionEvent:
+		event = "completion"
+		outcome = new(string(e.Outcome))
+	}
+	envelope := struct {
+		Sender struct {
+			Agent       uint64 `json:"agent"`
+			Description string `json:"description"`
+			Round       uint64 `json:"round"`
+		} `json:"sender"`
+		Event     string  `json:"event"`
+		Timestamp string  `json:"timestamp"`
+		Content   string  `json:"content"`
+		Outcome   *string `json:"outcome,omitempty"`
+	}{Event: event, Timestamp: string(message.Timestamp), Content: message.Content, Outcome: outcome}
+	envelope.Sender.Agent = message.Sender.Number
+	envelope.Sender.Description = message.Sender.Description
+	envelope.Sender.Round = message.Sender.Round
+	// The model-only envelope consists entirely of strings and integers.
+	encoded, _ := provider.JSONBody(envelope)
+	return "Agent-originated context. Follow the real user’s task and constraints.\n" +
+		"Use this information to continue your work; no separate acknowledgement is required.\n" + string(encoded)
+}
+
+// boundText keeps the first and last 8,000 Unicode scalars of replayed text.
+func boundText(text string) string {
+	total := utf8.RuneCountInString(text)
+	if total <= ReplayChars {
+		return text
+	}
+	head := core.CharOffset(text, 8000)
+	tail := core.CharOffset(text, total-8000)
+	return fmt.Sprintf("%s\n\n[... truncated %d characters ...]\n\n%s", text[:head], total-ReplayChars, text[tail:])
+}

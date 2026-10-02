@@ -57,4 +57,13 @@ if [[ "$(go env GOHOSTOS)" == linux ]]; then
 else
   go test -race "$@"
 fi
+step='shell fork'
+# The patched interpreter is its own module, so ./... does not reach its
+# tests; a whole-tree check runs them too.
+for pattern in "$@"; do
+  if [[ "${pattern}" == ./... ]]; then
+    (cd third_party/mvdan-sh && go test -race ./...)
+    break
+  fi
+done
 echo 'gomig: PASS'

@@ -321,7 +321,7 @@ func markers(doc *ast.CommentGroup) map[string]string {
 		}
 		key, value, _ := strings.Cut(strings.TrimPrefix(text, "+demi:"), " ")
 		switch key {
-		case "codec", "flatten", "union", "variant", "nullable", "length", "range", "enum", "pattern", "timestamp", "check", "id", "base64", "msgpack", "strict", "tolerant", "root", "format", "table", "schema":
+		case "integer", "default", "codec", "flatten", "union", "variant", "nullable", "length", "range", "enum", "pattern", "timestamp", "check", "id", "base64", "msgpack", "strict", "tolerant", "root", "format", "table", "schema":
 		default:
 			out["!error"] = "unsupported marker: " + key
 		}
@@ -486,7 +486,7 @@ func (g *generator) emitGo(d *definition) {
 				key = bounds(u.marks["union"])["content"]
 			}
 			m := maps.Clone(d.fields[f.Name()])
-			if g.optionalObject(f) != nil {
+			if g.optionalObject(f) != nil || has(m, "default") {
 				m["optional"] = ""
 			}
 			if len(strings.Split(reflect.StructTag(validationStruct.Tag(i)).Get("json"), ",")) > 1 {
@@ -513,7 +513,7 @@ func (g *generator) emitGo(d *definition) {
 	}
 	g.line("func(v *%s) UnmarshalJSON(data []byte)error{", name)
 	if !isStruct {
-		g.line("value,err:=%s(data); if err!=nil{return err}", g.decoder(d.typ.Underlying()))
+		g.line("value,err:=%s(data); if err!=nil{return err}", g.integerDecoder(d.typ.Underlying(), d.marks, false))
 		g.normalizeText(d, "value", "return err")
 		g.line("next:=%s(value); if err:=next.Validate();err!=nil{return err}; *v=next; return nil}", name)
 		g.line("func(v %s) MarshalJSON()([]byte,error){if err:=v.Validate();err!=nil{return nil,err};return contract.EncodeJSON(%s(v))}", name, g.typeName(d.typ.Underlying()))
@@ -553,7 +553,7 @@ func (g *generator) emitGo(d *definition) {
 		}
 		opts := strings.Split(reflect.StructTag(st.Tag(i)).Get("json"), ",")
 		key := opts[0]
-		optional := len(opts) > 1
+		optional := len(opts) > 1 || has(d.fields[f.Name()], "default")
 		nullable := has(d.fields[f.Name()], "nullable")
 		if optional && emptyCollection(f.Type()) {
 			g.line("next.%s=make(%s,0)", f.Name(), g.typeName(f.Type()))
@@ -570,7 +570,7 @@ func (g *generator) emitGo(d *definition) {
 				g.line("if !contract.IsNull(raw) {")
 			}
 		}
-		g.line("value,err:=%s(raw); if err!=nil{return contract.At(%s,err)}; next.%s=value", g.decoder(f.Type()), q(key), f.Name())
+		g.line("value,err:=%s(raw); if err!=nil{return contract.At(%s,err)}; next.%s=value", g.integerDecoder(f.Type(), d.fields[f.Name()], false), q(key), f.Name())
 		if nullable {
 			g.line("}")
 		}

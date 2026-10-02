@@ -1,9 +1,8 @@
-//revive:disable:unused-parameter API checkpoint retains parameter names for callers; bodies follow after merge.
-
 package cmdpkgs
 
 import (
 	"context"
+	"path/filepath"
 	"time"
 
 	"github.com/wspl/demi/internal/commandwire"
@@ -19,7 +18,24 @@ type ArtifactSource struct {
 
 // SourceFromLocation checks a backend location against this machine's path rules.
 func SourceFromLocation(location commandwire.ArtifactLocation) (ArtifactSource, error) {
-	panic("not written: r-cmdpkgs")
+	switch loc := location.(type) {
+	case *commandwire.ArtifactPath:
+		if !filepath.IsAbs(loc.Path) {
+			return ArtifactSource{}, &RuntimeError{Kind: LocationFailure, Detail: "local artifact path must be absolute"}
+		}
+		return ArtifactSource{Path: loc.Path}, nil
+	case *commandwire.ArtifactURL:
+		source := ArtifactSource{URL: loc.URL}
+		if loc.ExpiresAt != nil {
+			if *loc.ExpiresAt < 0 {
+				return ArtifactSource{}, &RuntimeError{Kind: LocationFailure, Detail: "invalid artifact URL expiry"}
+			}
+			expiry := time.UnixMilli(*loc.ExpiresAt)
+			source.ExpiresAt = &expiry
+		}
+		return source, nil
+	}
+	return ArtifactSource{}, &RuntimeError{Kind: LocationFailure, Detail: "missing artifact location"}
 }
 
 // ArtifactResolver resolves only artifacts authorized by the calling registration's

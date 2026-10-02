@@ -3,6 +3,4 @@
 // lifetime, and return operation errors preserving input progress and causes.
 // CommandAdmitted and ScreenshotBytes instead use the caller's existing checkout.
 // No page function owns a tab, environment, or CDP session.
-//
-// This is the k-chrome-page API checkpoint; executable bodies follow review.
 package page
