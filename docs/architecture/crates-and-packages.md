@@ -1986,7 +1986,8 @@ External libraries and the third-party fork are outside these graphs.
 
 Paths are relative to `github.com/wspl/demi`. The table maps the crate graph,
 adds the contract runtime used by generated code, and distributes split
-packages' edges within their boundary. Test support has its own lines.
+packages' edges within their boundary. Every package may import `internal/contract`, the runtime of generated
+contract code, whether or not its line names it. Test support has its own lines.
 Production imports follow the listed edges. For `TestImports` and
 `XTestImports`, an owner may also import its own support and a consumer may
 import support of a listed dependency. The check resolves such test-only
@@ -2040,7 +2041,7 @@ internal/agent/store -> internal/framewire, internal/core, internal/provider, in
 internal/agent/transcript -> internal/framewire, internal/agent/store, internal/core, internal/provider
 internal/agent/session -> internal/framewire, internal/agent/store, internal/agent/transcript, internal/commandwire, internal/core, internal/gates, internal/provider, internal/host, internal/contract
 internal/agent/tools -> internal/framewire, internal/agent/session, internal/agent/store, internal/agent/transcript, internal/core, internal/provider, internal/host, internal/contract
-internal/agent/server -> internal/framewire, internal/agent/session, internal/agent/store, internal/agent/tools, internal/agent/transcript, internal/core, internal/gates, internal/provider, internal/host
+internal/agent/server -> internal/framewire, internal/agent/session, internal/agent/store, internal/agent/tools, internal/agent/transcript, internal/core, internal/gates, internal/provider, internal/host, internal/declare
 internal/runner -> internal/commandwire, internal/cmdsdk, internal/runner/host, internal/runner/jobs, internal/runner/process, internal/runnerwire, internal/runner/cmdpkgs, internal/runner/shell
 internal/runner/process -> internal/artifacts, internal/commandwire, internal/cmdsdk, internal/runnerwire, internal/contract
 internal/runner/host -> internal/artifacts, internal/cmdsdk, internal/runner/process, internal/runnerwire
@@ -2095,7 +2096,7 @@ internal/agent/store/storetest -> internal/agent/store, internal/framewire, inte
 internal/agent/transcript/transcripttest -> internal/agent/transcript, internal/framewire, internal/agent/store, internal/core, internal/provider, internal/agent/store/storetest
 internal/agent/session/sessiontest -> internal/agent/session, internal/framewire, internal/agent/store, internal/agent/transcript, internal/commandwire, internal/core, internal/gates, internal/provider, internal/host, internal/agent/transcript/transcripttest, internal/provider/providertest
 internal/agent/tools/toolstest -> internal/agent/tools, internal/framewire, internal/agent/session, internal/agent/store, internal/agent/transcript, internal/core, internal/provider, internal/host, internal/agent/session/sessiontest
-internal/agent/server/servertest -> internal/agent/server, internal/framewire, internal/agent/session, internal/agent/store, internal/agent/tools, internal/agent/transcript, internal/core, internal/gates, internal/provider, internal/host, internal/agent/tools/toolstest, internal/gates/gatestest, internal/provider/providertest
+internal/agent/server/servertest -> internal/agent/server, internal/framewire, internal/agent/session, internal/agent/store, internal/agent/tools, internal/agent/transcript, internal/core, internal/gates, internal/provider, internal/host, internal/agent/tools/toolstest, internal/gates/gatestest, internal/provider/providertest, internal/agent/store/storetest
 internal/runner/jobs/jobstest -> internal/runner/jobs, internal/commandwire, internal/cmdsdk, internal/declare, internal/runner/process, internal/runnerwire, internal/runner/cmdpkgs
 internal/runner/shell/shelltest -> internal/runner/shell, internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire, internal/runner/shell/internal/engine
 internal/runner/cmdpkgs/cmdpkgstest -> internal/runner/cmdpkgs, internal/artifacts, internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire, internal/commandwire/commandwiretest, internal/contract
