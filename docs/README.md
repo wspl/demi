@@ -72,6 +72,7 @@ layout and interaction; these documents do not repeat it.
 - [Testing](delivery/testing.md): what a test protects, its level, how it proves itself, time and stability, cost, resources and coverage.
 - [Builds and releases](delivery/builds-and-releases.md): the toolchain, cross builds, `cargo xtask` packaging, the Chrome for Testing pin, targets per executable and Cloud image refresh.
 - [Package versioning](delivery/package-versioning.md): the npm release set and changesets, and how the Rust executables are versioned.
+- [Migration to Go](delivery/go-migration.md): the plan for replacing the Rust programs with Go, its work packages, isolation rules, roadmap, acceptance and the spike results behind it.
 
 ## How do I extend Demi?
 
