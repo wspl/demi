@@ -3,7 +3,6 @@ package runners_test
 import (
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -13,22 +12,9 @@ import (
 	"github.com/wspl/demi/internal/host"
 )
 
-// The default test builds via remotehosttest/programtest. It skips only the
-// explicit migration placeholder, until r-runner merges; every other failure fails.
-// Once available, one runner covers listings and text reads in under ten seconds.
+// One real runner covers listings and text reads in under ten seconds.
+// remotehosttest/programtest builds the runner used by the default suite.
 func TestRunnerFileListingsAndText(t *testing.T) {
-	binary, err := remotehosttest.RunnerBinary(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	output, err := exec.CommandContext(t.Context(), binary, "--help").CombinedOutput()
-	var exit *exec.ExitError
-	if errors.As(err, &exit) && exit.ExitCode() == 1 && string(output) == "demi-runner: not migrated yet\n" {
-		t.Skip("awaits r-runner merge: programtest built the explicit migration placeholder")
-	}
-	if err != nil {
-		t.Fatalf("runner help: %v: %s", err, output)
-	}
 	fixture, err := remotehosttest.StartRunnerFixture(t.Context(), t, remotehosttest.FixtureOptions{})
 	if err != nil {
 		t.Fatal(err)

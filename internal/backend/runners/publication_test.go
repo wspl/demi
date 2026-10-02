@@ -267,10 +267,10 @@ func TestNativeConfiguration(t *testing.T) {
 	if config.prefix() != "native" || config.Releases[0].Directory != filepath.Join(filepath.Dir(path), "demi-file") {
 		t.Fatalf("config %+v", config)
 	}
-	// The deployment design allows every segment to start with '_' or '-'.
+	// The prefix must begin with a letter or digit.
 	write(`{"prefix":"_native/-artifacts","releases":[],"store":{"provider":"s3","bucket":"b","region":"r"}}`)
-	if _, err := readNativeConfig(t.Context(), path); err != nil {
-		t.Fatalf("documented prefix refused: %v", err)
+	if _, err := readNativeConfig(t.Context(), path); err == nil {
+		t.Fatal("prefix beginning with underscore accepted")
 	}
 	write(`{"releases":[{"directory":"demi-file","executable":"demi-file"}],"store":{"provider":"local"}}`)
 	config, err = readNativeConfig(t.Context(), path)

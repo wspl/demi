@@ -8,8 +8,7 @@ import (
 )
 
 // The package suite uses tiny artifacts, loopback fixtures and virtual timers.
-// Its measured race-test cost is under three seconds while the runner is a
-// placeholder; the real-runner scenario has its separate ten-second budget.
+// The real-runner scenario has a ten-second budget, excluding its program build.
 func TestMain(m *testing.M) { goleak.VerifyTestMain(programTests{m}) }
 
 type programTests struct{ m *testing.M }
