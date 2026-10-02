@@ -1,6 +1,7 @@
 package commandwire_test
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -307,4 +308,92 @@ func TestReleaseTargetArtifacts(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRunnerMessagePackCorpus pins commandwire's embedded values to the
+// rmp_serde::to_vec_named bytes used by the runner. It needs only fixture IO
+// and takes less than a second; parent encodings include nested wire values.
+func TestRunnerMessagePackCorpus(t *testing.T) {
+	for _, tc := range []struct {
+		fixture   string
+		path      string
+		roundTrip func([]byte) ([]byte, error)
+	}{
+		{"backend-to-runner/artifact_location.path", "location", runnerRoundTrip(commandwire.DecodeArtifactLocationMsgpack)},
+		{"backend-to-runner/artifact_location.url", "location", runnerRoundTrip(commandwire.DecodeArtifactLocationMsgpack)},
+		{"backend-to-runner/job_start", "context", runnerRoundTrip(commandwire.DecodeCommandContextMsgpack)},
+		{"backend-to-runner/job_start.minimal", "context", runnerRoundTrip(commandwire.DecodeCommandContextMsgpack)},
+		{"backend-to-runner/service_open", "context", runnerRoundTrip(commandwire.DecodeCommandContextMsgpack)},
+		{"backend-to-runner/service_open.minimal", "context", runnerRoundTrip(commandwire.DecodeCommandContextMsgpack)},
+		{"backend-to-runner/service_open", "package", runnerRoundTrip(commandwire.DecodePackageDescriptorMsgpack)},
+		{"backend-to-runner/service_open.minimal", "package", runnerRoundTrip(commandwire.DecodePackageDescriptorMsgpack)},
+		{"runner-to-backend/job_exit", "files.[].kind", runnerRoundTrip(commandwire.DecodeEditKindMsgpack)},
+		{"runner-to-backend/job_exit", "files.[].edits.[]", runnerRoundTrip(commandwire.DecodeEditCopiesMsgpack)},
+		{"runner-to-backend/numbers_reserve", "sequence", runnerRoundTrip(commandwire.DecodeServiceSequenceMsgpack)},
+	} {
+		t.Run(tc.fixture+"/"+tc.path, func(t *testing.T) {
+			data, err := os.ReadFile("testdata/runner/" + tc.fixture + ".msgpack")
+			if err != nil {
+				t.Fatal(err)
+			}
+			parts := runnerParts(t, data, strings.Split(tc.path, "."))
+			if len(parts) == 0 {
+				t.Fatal("fixture contains no selected commandwire values")
+			}
+			for i, want := range parts {
+				got, err := tc.roundTrip(want)
+				if err != nil {
+					t.Fatalf("part %d: %v", i, err)
+				}
+				if !bytes.Equal(got, want) {
+					t.Errorf("part %d: MessagePack = %x; Rust wrote %x", i, got, want)
+				}
+			}
+		})
+	}
+}
+
+// runnerRoundTrip uses a generated commandwire decoder before re-encoding
+// the embedded value with its generated MessagePack method.
+func runnerRoundTrip[T any](decode func([]byte) (T, error)) func([]byte) ([]byte, error) {
+	return func(data []byte) ([]byte, error) {
+		value, err := decode(data)
+		if err != nil {
+			return nil, err
+		}
+		return contract.EncodeMsgpack(value)
+	}
+}
+
+// runnerParts extracts commandwire values without declaring the runner's
+// envelope types again or re-encoding the oracle bytes. [] selects all array
+// entries.
+func runnerParts(t *testing.T, data []byte, path []string) [][]byte {
+	t.Helper()
+	if len(path) == 0 {
+		return [][]byte{data}
+	}
+	var children [][]byte
+	if path[0] == "[]" {
+		var err error
+		children, err = contract.MsgpackList(data, func(raw []byte) ([]byte, error) { return raw, nil })
+		if err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		fields, err := contract.MsgpackObject(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, ok := fields[path[0]]
+		if !ok {
+			t.Fatalf("fixture is missing %s", path[0])
+		}
+		children = append(children, raw)
+	}
+	var parts [][]byte
+	for _, child := range children {
+		parts = append(parts, runnerParts(t, child, path[1:])...)
+	}
+	return parts
 }

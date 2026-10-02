@@ -8,8 +8,9 @@ import (
 	"strings"
 )
 
-// markReceived propagates tolerant web input through every reachable definition.
-func (g *generator) markReceived(name string) {
+// markReceived follows reachable contracts. MessagePack excludes keys because
+// map keys use string encoding rather than the named type's value codec.
+func (g *generator) markReceived(name string, includeKeys bool) {
 	if g.received[name] {
 		return
 	}
@@ -21,7 +22,7 @@ func (g *generator) markReceived(name string) {
 	}
 	if has(d.marks, "union") {
 		for _, v := range g.variants(name) {
-			g.markReceived(v.key)
+			g.markReceived(v.key, includeKeys)
 		}
 	}
 	var visit func(types.Type)
@@ -31,12 +32,15 @@ func (g *generator) markReceived(name string) {
 		}
 		switch t := t.(type) {
 		case *types.Named:
-			g.markReceived(typeKey(t))
+			g.markReceived(typeKey(t), includeKeys)
 		case *types.Pointer:
 			visit(t.Elem())
 		case *types.Slice:
 			visit(t.Elem())
 		case *types.Map:
+			if includeKeys {
+				visit(t.Key())
+			}
 			visit(t.Elem())
 		case *types.Struct:
 			for i := 0; i < t.NumFields(); i++ {
@@ -67,8 +71,16 @@ func (g *generator) emitTS(name string) {
 		return
 	}
 	g.active[name] = true
+	if g.adjacentUnion(d) != nil {
+		g.err = fmt.Errorf("adjacent union variant is not supported in TypeScript")
+		return
+	}
 	var code string
 	if has(d.marks, "union") {
+		if bounds(d.marks["union"])["content"] != "" {
+			g.err = fmt.Errorf("adjacent union is not supported in TypeScript")
+			return
+		}
 		if d.marks["union"] == "untagged" {
 			g.err = fmt.Errorf("untagged union is not supported in TypeScript")
 			return
@@ -203,7 +215,7 @@ func (g *generator) tsType(t types.Type, m map[string]string) (string, bool) {
 	case "http-url":
 		code = "z.url({ protocol: z.regexes.httpProtocol })"
 	}
-	if has(m, "timestamp") {
+	if has(m, "timestamp") && !integerTimestamp(t) {
 		code = "z.iso.datetime({ precision: 3 })"
 	}
 	if has(m, "base64") {

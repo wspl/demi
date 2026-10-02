@@ -3077,3 +3077,764 @@ func (v UserCaller) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "kind", Value: "user"})
 	return contract.EncodeObject(fields)
 }
+func DecodeAgentCallerMsgpack(data []byte) (AgentCaller, error) {
+	return contract.DecodeMsgpack[AgentCaller](data)
+}
+func (v *AgentCaller) UnmarshalMsgpack(data []byte) error {
+	obj, err := contract.MsgpackObject(data)
+	if err != nil {
+		return err
+	}
+	var next AgentCaller
+	tag, err := contract.DecodeMsgpack[string](obj["kind"])
+	if err != nil {
+		return contract.At("kind", err)
+	}
+	if tag != "agent" {
+		return fmt.Errorf("invalid union tag")
+	}
+	delete(obj, "kind")
+	{
+		raw, present := obj["number"]
+		delete(obj, "number")
+		if !present {
+			return contract.At("number", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := contract.DecodeMsgpack[uint64](raw)
+			if err != nil {
+				return contract.At("number", err)
+			}
+			next.Number = value
+		}
+	}
+	for key := range obj {
+		return contract.At(key, fmt.Errorf("unknown field"))
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v AgentCaller) MarshalMsgpack() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "kind", Value: "agent"})
+	fields = append(fields, contract.Field{Name: "number", Value: v.Number})
+	return contract.EncodeMsgpackObject(fields)
+}
+func DecodeArtifactLocationMsgpack(data []byte) (ArtifactLocation, error) {
+	if value, err := contract.DecodeMsgpack[ArtifactURL](data); err == nil {
+		return &value, nil
+	}
+	if value, err := contract.DecodeMsgpack[ArtifactPath](data); err == nil {
+		return &value, nil
+	}
+	return nil, fmt.Errorf("no matching union variant")
+}
+func EncodeArtifactLocationMsgpack(v ArtifactLocation) ([]byte, error) {
+	if err := ValidateArtifactLocation(v); err != nil {
+		return nil, err
+	}
+	return contract.EncodeMsgpack(v)
+}
+func DecodeArtifactPathMsgpack(data []byte) (ArtifactPath, error) {
+	return contract.DecodeMsgpack[ArtifactPath](data)
+}
+func (v *ArtifactPath) UnmarshalMsgpack(data []byte) error {
+	obj, err := contract.MsgpackObject(data)
+	if err != nil {
+		return err
+	}
+	var next ArtifactPath
+	{
+		raw, present := obj["path"]
+		delete(obj, "path")
+		if !present {
+			return contract.At("path", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := contract.DecodeMsgpack[string](raw)
+			if err != nil {
+				return contract.At("path", err)
+			}
+			next.Path = value
+		}
+	}
+	for key := range obj {
+		return contract.At(key, fmt.Errorf("unknown field"))
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v ArtifactPath) MarshalMsgpack() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "path", Value: v.Path})
+	return contract.EncodeMsgpackObject(fields)
+}
+func DecodeArtifactURLMsgpack(data []byte) (ArtifactURL, error) {
+	return contract.DecodeMsgpack[ArtifactURL](data)
+}
+func (v *ArtifactURL) UnmarshalMsgpack(data []byte) error {
+	obj, err := contract.MsgpackObject(data)
+	if err != nil {
+		return err
+	}
+	var next ArtifactURL
+	{
+		raw, present := obj["url"]
+		delete(obj, "url")
+		if !present {
+			return contract.At("url", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := contract.DecodeMsgpack[string](raw)
+			if err != nil {
+				return contract.At("url", err)
+			}
+			next.URL = value
+		}
+	}
+	{
+		raw, present := obj["expiresAt"]
+		delete(obj, "expiresAt")
+		if present {
+			value, err := func(b []byte) (*int64, error) { return contract.Pointer(b, contract.DecodeMsgpack[int64]) }(raw)
+			if err != nil {
+				return contract.At("expiresAt", err)
+			}
+			next.ExpiresAt = value
+		}
+	}
+	for key := range obj {
+		return contract.At(key, fmt.Errorf("unknown field"))
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v ArtifactURL) MarshalMsgpack() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "url", Value: v.URL})
+	if v.ExpiresAt != nil {
+		fields = append(fields, contract.Field{Name: "expiresAt", Value: v.ExpiresAt})
+	}
+	return contract.EncodeMsgpackObject(fields)
+}
+func DecodeCommandCallerMsgpack(data []byte) (CommandCaller, error) {
+	obj, err := contract.MsgpackObject(data)
+	if err != nil {
+		return nil, err
+	}
+	tag, err := contract.DecodeMsgpack[string](obj["kind"])
+	if err != nil {
+		return nil, contract.At("kind", err)
+	}
+	switch tag {
+	case "agent":
+		value, err := contract.DecodeMsgpack[AgentCaller](data)
+		return &value, err
+	case "user":
+		value, err := contract.DecodeMsgpack[UserCaller](data)
+		return &value, err
+	}
+	return nil, fmt.Errorf("unknown union tag")
+}
+func EncodeCommandCallerMsgpack(v CommandCaller) ([]byte, error) {
+	if err := ValidateCommandCaller(v); err != nil {
+		return nil, err
+	}
+	return contract.EncodeMsgpack(v)
+}
+func DecodeCommandContextMsgpack(data []byte) (CommandContext, error) {
+	return contract.DecodeMsgpack[CommandContext](data)
+}
+func (v *CommandContext) UnmarshalMsgpack(data []byte) error {
+	obj, err := contract.MsgpackObject(data)
+	if err != nil {
+		return err
+	}
+	var next CommandContext
+	{
+		raw, present := obj["conversation"]
+		delete(obj, "conversation")
+		if !present {
+			return contract.At("conversation", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := contract.DecodeMsgpack[string](raw)
+			if err != nil {
+				return contract.At("conversation", err)
+			}
+			next.Conversation = value
+		}
+	}
+	{
+		raw, present := obj["caller"]
+		delete(obj, "caller")
+		if !present {
+			return contract.At("caller", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := DecodeCommandCallerMsgpack(raw)
+			if err != nil {
+				return contract.At("caller", err)
+			}
+			next.Caller = value
+		}
+	}
+	{
+		raw, present := obj["locale"]
+		delete(obj, "locale")
+		if !present {
+			return contract.At("locale", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := contract.DecodeMsgpack[CommandLocale](raw)
+			if err != nil {
+				return contract.At("locale", err)
+			}
+			next.Locale = value
+		}
+	}
+	for key := range obj {
+		return contract.At(key, fmt.Errorf("unknown field"))
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v CommandContext) MarshalMsgpack() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "conversation", Value: v.Conversation})
+	fields = append(fields, contract.Field{Name: "caller", Value: v.Caller})
+	fields = append(fields, contract.Field{Name: "locale", Value: v.Locale})
+	return contract.EncodeMsgpackObject(fields)
+}
+func DecodeCommandLocaleMsgpack(data []byte) (CommandLocale, error) {
+	return contract.DecodeMsgpack[CommandLocale](data)
+}
+func (v *CommandLocale) UnmarshalMsgpack(data []byte) error {
+	obj, err := contract.MsgpackObject(data)
+	if err != nil {
+		return err
+	}
+	var next CommandLocale
+	{
+		raw, present := obj["timeZone"]
+		delete(obj, "timeZone")
+		if !present {
+			return contract.At("timeZone", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := contract.DecodeMsgpack[string](raw)
+			if err != nil {
+				return contract.At("timeZone", err)
+			}
+			next.TimeZone = value
+		}
+	}
+	{
+		raw, present := obj["languages"]
+		delete(obj, "languages")
+		if !present {
+			return contract.At("languages", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := func(b []byte) ([]LanguageTag, error) {
+				return contract.MsgpackList(b, contract.DecodeMsgpack[LanguageTag])
+			}(raw)
+			if err != nil {
+				return contract.At("languages", err)
+			}
+			next.Languages = value
+		}
+	}
+	for key := range obj {
+		return contract.At(key, fmt.Errorf("unknown field"))
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v CommandLocale) MarshalMsgpack() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "timeZone", Value: v.TimeZone})
+	fields = append(fields, contract.Field{Name: "languages", Value: v.Languages})
+	return contract.EncodeMsgpackObject(fields)
+}
+func DecodeEditCopiesMsgpack(data []byte) (EditCopies, error) {
+	return contract.DecodeMsgpack[EditCopies](data)
+}
+func (v *EditCopies) UnmarshalMsgpack(data []byte) error {
+	obj, err := contract.MsgpackObject(data)
+	if err != nil {
+		return err
+	}
+	var next EditCopies
+	{
+		raw, present := obj["original"]
+		delete(obj, "original")
+		if present {
+			value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.DecodeMsgpack[string]) }(raw)
+			if err != nil {
+				return contract.At("original", err)
+			}
+			next.Original = value
+		}
+	}
+	{
+		raw, present := obj["modified"]
+		delete(obj, "modified")
+		if present {
+			value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.DecodeMsgpack[string]) }(raw)
+			if err != nil {
+				return contract.At("modified", err)
+			}
+			next.Modified = value
+		}
+	}
+	for key := range obj {
+		return contract.At(key, fmt.Errorf("unknown field"))
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v EditCopies) MarshalMsgpack() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	if v.Original != nil {
+		fields = append(fields, contract.Field{Name: "original", Value: v.Original})
+	}
+	if v.Modified != nil {
+		fields = append(fields, contract.Field{Name: "modified", Value: v.Modified})
+	}
+	return contract.EncodeMsgpackObject(fields)
+}
+func DecodeEditKindMsgpack(data []byte) (EditKind, error) {
+	return contract.DecodeMsgpack[EditKind](data)
+}
+func (v *EditKind) UnmarshalMsgpack(data []byte) error {
+	value, err := contract.DecodeMsgpack[string](data)
+	if err != nil {
+		return err
+	}
+	next := EditKind(value)
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v EditKind) MarshalMsgpack() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	return contract.EncodeMsgpack(string(v))
+}
+func DecodeLanguageTagMsgpack(data []byte) (LanguageTag, error) {
+	return contract.DecodeMsgpack[LanguageTag](data)
+}
+func (v *LanguageTag) UnmarshalMsgpack(data []byte) error {
+	value, err := contract.DecodeMsgpack[string](data)
+	if err != nil {
+		return err
+	}
+	next := LanguageTag(value)
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v LanguageTag) MarshalMsgpack() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	return contract.EncodeMsgpack(string(v))
+}
+func DecodePackageArtifactMsgpack(data []byte) (PackageArtifact, error) {
+	return contract.DecodeMsgpack[PackageArtifact](data)
+}
+func (v *PackageArtifact) UnmarshalMsgpack(data []byte) error {
+	obj, err := contract.MsgpackObject(data)
+	if err != nil {
+		return err
+	}
+	var next PackageArtifact
+	{
+		raw, present := obj["sha256"]
+		delete(obj, "sha256")
+		if !present {
+			return contract.At("sha256", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := contract.DecodeMsgpack[string](raw)
+			if err != nil {
+				return contract.At("sha256", err)
+			}
+			next.SHA256 = value
+		}
+	}
+	{
+		raw, present := obj["size"]
+		delete(obj, "size")
+		if !present {
+			return contract.At("size", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := contract.DecodeMsgpack[uint64](raw)
+			if err != nil {
+				return contract.At("size", err)
+			}
+			next.Size = value
+		}
+	}
+	for key := range obj {
+		return contract.At(key, fmt.Errorf("unknown field"))
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v PackageArtifact) MarshalMsgpack() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "sha256", Value: v.SHA256})
+	fields = append(fields, contract.Field{Name: "size", Value: v.Size})
+	return contract.EncodeMsgpackObject(fields)
+}
+func DecodePackageDescriptorMsgpack(data []byte) (PackageDescriptor, error) {
+	return contract.DecodeMsgpack[PackageDescriptor](data)
+}
+func (v *PackageDescriptor) UnmarshalMsgpack(data []byte) error {
+	obj, err := contract.MsgpackObject(data)
+	if err != nil {
+		return err
+	}
+	var next PackageDescriptor
+	{
+		raw, present := obj["id"]
+		delete(obj, "id")
+		if !present {
+			return contract.At("id", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := contract.DecodeMsgpack[string](raw)
+			if err != nil {
+				return contract.At("id", err)
+			}
+			next.ID = value
+		}
+	}
+	{
+		raw, present := obj["version"]
+		delete(obj, "version")
+		if !present {
+			return contract.At("version", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := contract.DecodeMsgpack[string](raw)
+			if err != nil {
+				return contract.At("version", err)
+			}
+			next.Version = value
+		}
+	}
+	{
+		raw, present := obj["protocolVersion"]
+		delete(obj, "protocolVersion")
+		if !present {
+			return contract.At("protocolVersion", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := contract.DecodeMsgpack[uint64](raw)
+			if err != nil {
+				return contract.At("protocolVersion", err)
+			}
+			next.ProtocolVersion = value
+		}
+	}
+	{
+		raw, present := obj["operations"]
+		delete(obj, "operations")
+		if !present {
+			return contract.At("operations", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := func(b []byte) ([]string, error) { return contract.MsgpackList(b, contract.DecodeMsgpack[string]) }(raw)
+			if err != nil {
+				return contract.At("operations", err)
+			}
+			next.Operations = value
+		}
+	}
+	{
+		raw, present := obj["targets"]
+		delete(obj, "targets")
+		if !present {
+			return contract.At("targets", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := func(b []byte) (map[string]PackageArtifact, error) {
+				return contract.MsgpackRecord(b, contract.DecodeMsgpack[PackageArtifact], false)
+			}(raw)
+			if err != nil {
+				return contract.At("targets", err)
+			}
+			next.Targets = value
+		}
+	}
+	next.Resources = make(map[string]PackageResource, 0)
+	{
+		raw, present := obj["resources"]
+		delete(obj, "resources")
+		if present {
+			value, err := func(b []byte) (map[string]PackageResource, error) {
+				return contract.MsgpackRecord(b, contract.DecodeMsgpack[PackageResource], false)
+			}(raw)
+			if err != nil {
+				return contract.At("resources", err)
+			}
+			next.Resources = value
+		}
+	}
+	for key := range obj {
+		return contract.At(key, fmt.Errorf("unknown field"))
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v PackageDescriptor) MarshalMsgpack() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "id", Value: v.ID})
+	fields = append(fields, contract.Field{Name: "version", Value: v.Version})
+	fields = append(fields, contract.Field{Name: "protocolVersion", Value: v.ProtocolVersion})
+	fields = append(fields, contract.Field{Name: "operations", Value: v.Operations})
+	fields = append(fields, contract.Field{Name: "targets", Value: v.Targets})
+	if len(v.Resources) > 0 {
+		fields = append(fields, contract.Field{Name: "resources", Value: v.Resources})
+	}
+	return contract.EncodeMsgpackObject(fields)
+}
+func DecodePackageResourceMsgpack(data []byte) (PackageResource, error) {
+	return contract.DecodeMsgpack[PackageResource](data)
+}
+func (v *PackageResource) UnmarshalMsgpack(data []byte) error {
+	obj, err := contract.MsgpackObject(data)
+	if err != nil {
+		return err
+	}
+	var next PackageResource
+	{
+		raw, present := obj["title"]
+		delete(obj, "title")
+		if !present {
+			return contract.At("title", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := contract.DecodeMsgpack[string](raw)
+			if err != nil {
+				return contract.At("title", err)
+			}
+			next.Title = value
+		}
+	}
+	{
+		raw, present := obj["targets"]
+		delete(obj, "targets")
+		if !present {
+			return contract.At("targets", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := func(b []byte) (map[string]ResourceArtifact, error) {
+				return contract.MsgpackRecord(b, contract.DecodeMsgpack[ResourceArtifact], false)
+			}(raw)
+			if err != nil {
+				return contract.At("targets", err)
+			}
+			next.Targets = value
+		}
+	}
+	for key := range obj {
+		return contract.At(key, fmt.Errorf("unknown field"))
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v PackageResource) MarshalMsgpack() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "title", Value: v.Title})
+	fields = append(fields, contract.Field{Name: "targets", Value: v.Targets})
+	return contract.EncodeMsgpackObject(fields)
+}
+func DecodeResourceArtifactMsgpack(data []byte) (ResourceArtifact, error) {
+	return contract.DecodeMsgpack[ResourceArtifact](data)
+}
+func (v *ResourceArtifact) UnmarshalMsgpack(data []byte) error {
+	obj, err := contract.MsgpackObject(data)
+	if err != nil {
+		return err
+	}
+	var next ResourceArtifact
+	{
+		raw, present := obj["sha256"]
+		delete(obj, "sha256")
+		if !present {
+			return contract.At("sha256", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := contract.DecodeMsgpack[string](raw)
+			if err != nil {
+				return contract.At("sha256", err)
+			}
+			next.SHA256 = value
+		}
+	}
+	{
+		raw, present := obj["size"]
+		delete(obj, "size")
+		if !present {
+			return contract.At("size", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := contract.DecodeMsgpack[uint64](raw)
+			if err != nil {
+				return contract.At("size", err)
+			}
+			next.Size = value
+		}
+	}
+	{
+		raw, present := obj["entry"]
+		delete(obj, "entry")
+		if !present {
+			return contract.At("entry", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := contract.DecodeMsgpack[string](raw)
+			if err != nil {
+				return contract.At("entry", err)
+			}
+			next.Entry = value
+		}
+	}
+	for key := range obj {
+		return contract.At(key, fmt.Errorf("unknown field"))
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v ResourceArtifact) MarshalMsgpack() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "sha256", Value: v.SHA256})
+	fields = append(fields, contract.Field{Name: "size", Value: v.Size})
+	fields = append(fields, contract.Field{Name: "entry", Value: v.Entry})
+	return contract.EncodeMsgpackObject(fields)
+}
+func DecodeServiceSequenceMsgpack(data []byte) (ServiceSequence, error) {
+	return contract.DecodeMsgpack[ServiceSequence](data)
+}
+func (v *ServiceSequence) UnmarshalMsgpack(data []byte) error {
+	value, err := contract.DecodeMsgpack[string](data)
+	if err != nil {
+		return err
+	}
+	next := ServiceSequence(value)
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v ServiceSequence) MarshalMsgpack() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	return contract.EncodeMsgpack(string(v))
+}
+func DecodeUserCallerMsgpack(data []byte) (UserCaller, error) {
+	return contract.DecodeMsgpack[UserCaller](data)
+}
+func (v *UserCaller) UnmarshalMsgpack(data []byte) error {
+	obj, err := contract.MsgpackObject(data)
+	if err != nil {
+		return err
+	}
+	var next UserCaller
+	tag, err := contract.DecodeMsgpack[string](obj["kind"])
+	if err != nil {
+		return contract.At("kind", err)
+	}
+	if tag != "user" {
+		return fmt.Errorf("invalid union tag")
+	}
+	delete(obj, "kind")
+	for key := range obj {
+		return contract.At(key, fmt.Errorf("unknown field"))
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v UserCaller) MarshalMsgpack() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "kind", Value: "user"})
+	return contract.EncodeMsgpackObject(fields)
+}

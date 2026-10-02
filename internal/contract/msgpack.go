@@ -3,6 +3,7 @@ package contract
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -21,46 +22,17 @@ func MsgpackNull(data []byte) bool { return len(data) == 1 && data[0] == msgpcod
 
 // MsgpackObject preserves presence and refuses duplicate names before dispatch.
 func MsgpackObject(data []byte) (map[string][]byte, error) {
-	if err := CheckMsgpack(data); err != nil {
-		return nil, err
-	}
-	r := bytes.NewReader(data)
-	d := msgpack.NewDecoder(r)
-	code, err := d.PeekCode()
+	fields, err := MsgpackFields(data)
 	if err != nil {
 		return nil, err
 	}
-	if !msgpcode.IsFixedMap(code) && code != msgpcode.Map16 && code != msgpcode.Map32 {
-		return nil, errors.New("expected object")
-	}
-	n, err := d.DecodeMapLen()
-	if err != nil {
-		return nil, err
-	}
-	if n > len(data)/2 {
-		return nil, errors.New("invalid object length")
-	}
-	out := make(map[string][]byte, n)
-	for i := 0; i < n; i++ {
-		raw, err := d.DecodeRaw()
-		if err != nil {
-			return nil, err
+	out := make(map[string][]byte, len(fields))
+	for _, field := range fields {
+		raw, ok := field.Value.(msgpack.RawMessage)
+		if !ok {
+			return nil, At(field.Name, errors.New("expected raw MessagePack field"))
 		}
-		key, err := DecodeMsgpack[string](raw)
-		if err != nil {
-			return nil, err
-		}
-		if _, ok := out[key]; ok {
-			return nil, At(key, errors.New("duplicate key"))
-		}
-		raw, err = d.DecodeRaw()
-		if err != nil {
-			return nil, At(key, err)
-		}
-		out[key] = raw
-	}
-	if r.Len() != 0 {
-		return nil, errors.New("trailing MessagePack data")
+		out[field.Name] = raw
 	}
 	return out, nil
 }
@@ -187,11 +159,16 @@ func MsgpackList[T any](data []byte, decode func([]byte) (T, error)) ([]T, error
 
 // MsgpackRecord checks every string key and nullable record value.
 func MsgpackRecord[T any](data []byte, decode func([]byte) (T, error), nullable bool) (map[string]T, error) {
+	return MsgpackKeyedRecord[string](data, decode, nullable)
+}
+
+// MsgpackKeyedRecord retains named string keys for generated key validation.
+func MsgpackKeyedRecord[K ~string, T any](data []byte, decode func([]byte) (T, error), nullable bool) (map[K]T, error) {
 	raw, err := MsgpackObject(data)
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string]T, len(raw))
+	out := make(map[K]T, len(raw))
 	for key, item := range raw {
 		var value T
 		if !nullable || !MsgpackNull(item) {
@@ -200,7 +177,7 @@ func MsgpackRecord[T any](data []byte, decode func([]byte) (T, error), nullable 
 				return nil, At(key, err)
 			}
 		}
-		out[key] = value
+		out[K(key)] = value
 	}
 	return out, nil
 }
@@ -237,31 +214,14 @@ func EncodeMsgpackObject(fields []Field) ([]byte, error) {
 
 // MsgpackTimestamp admits only the standard timestamp extension and milliseconds.
 func MsgpackTimestamp(data []byte) (string, error) {
-	r := bytes.NewReader(data)
-	d := msgpack.NewDecoder(r)
-	id, n, err := d.DecodeExtHeader()
+	seconds, nanos, err := msgpackTime(data)
 	if err != nil {
 		return "", err
 	}
-	if id != -1 || n != 4 && n != 8 && n != 12 || r.Len() != n {
-		return "", errors.New("invalid timestamp extension")
-	}
-	payload := data[len(data)-n:]
-	var nanos uint32
-	switch n {
-	case 8:
-		nanos = uint32(binary.BigEndian.Uint64(payload) >> 34)
-	case 12:
-		nanos = binary.BigEndian.Uint32(payload)
-	}
-	if nanos >= 1e9 || nanos%1e6 != 0 {
+	if nanos%1e6 != 0 {
 		return "", errors.New("timestamp is not whole milliseconds")
 	}
-	tm, err := msgpack.NewDecoder(bytes.NewReader(data)).DecodeTime()
-	if err != nil {
-		return "", err
-	}
-	value := tm.UTC().Format("2006-01-02T15:04:05.000Z")
+	value := time.Unix(seconds, int64(nanos)).UTC().Format("2006-01-02T15:04:05.000Z")
 	if err := Timestamp(value); err != nil {
 		return "", err
 	}
@@ -385,6 +345,9 @@ func encodeMsgpackValue(e *msgpack.Encoder, v reflect.Value) error {
 			return e.EncodeNil()
 		}
 	}
+	if raw, ok := v.Interface().(json.RawMessage); ok {
+		return encodeOpaqueMsgpack(e, raw)
+	}
 	if _, ok := v.Interface().(msgpack.Marshaler); ok {
 		return e.Encode(v.Interface())
 	}
@@ -457,4 +420,57 @@ func EncodeMsgpackTuple(tag string, fields []any) ([]byte, error) {
 		value = fields[0]
 	}
 	return EncodeMsgpackObject([]Field{{Name: tag, Value: value}})
+}
+
+// MsgpackMillis reads the runner timestamp, truncating sub-millisecond precision.
+func MsgpackMillis(data []byte) (int64, error) {
+	seconds, nanos, err := msgpackTime(data)
+	if err != nil {
+		return 0, err
+	}
+	if seconds > math.MaxInt64/1000 || seconds < math.MinInt64/1000 {
+		return 0, errors.New("timestamp overflow")
+	}
+	millis := seconds * 1000
+	fraction := int64(nanos / 1e6)
+	if millis > math.MaxInt64-fraction {
+		return 0, errors.New("timestamp overflow")
+	}
+	return millis + fraction, nil
+}
+
+// EncodeMsgpackMillis writes signed epoch milliseconds in the shortest form.
+func EncodeMsgpackMillis(value int64) ([]byte, error) {
+	return EncodeMsgpack(time.UnixMilli(value))
+}
+
+// msgpackTime validates extension bytes before any time library normalizes them.
+func msgpackTime(data []byte) (int64, uint32, error) {
+	r := bytes.NewReader(data)
+	d := msgpack.NewDecoder(r)
+	id, n, err := d.DecodeExtHeader()
+	if err != nil {
+		return 0, 0, err
+	}
+	if id != -1 || n != 4 && n != 8 && n != 12 || r.Len() != n {
+		return 0, 0, errors.New("invalid timestamp extension")
+	}
+	payload := data[len(data)-n:]
+	var seconds int64
+	var nanos uint32
+	switch n {
+	case 4:
+		seconds = int64(binary.BigEndian.Uint32(payload))
+	case 8:
+		value := binary.BigEndian.Uint64(payload)
+		seconds = int64(value & 0x3ffffffff)
+		nanos = uint32(value >> 34)
+	case 12:
+		nanos = binary.BigEndian.Uint32(payload)
+		seconds = int64(binary.BigEndian.Uint64(payload[4:]))
+	}
+	if nanos >= 1e9 {
+		return 0, 0, errors.New("invalid timestamp nanoseconds")
+	}
+	return seconds, nanos, nil
 }

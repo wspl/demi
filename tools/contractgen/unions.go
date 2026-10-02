@@ -133,7 +133,7 @@ func (g *generator) retainContracts() error {
 	g.received = map[string]bool{}
 	for _, key := range g.order {
 		if has(g.defs[key].marks, "root") {
-			g.markReceived(key)
+			g.markReceived(key, true)
 		}
 	}
 	if g.err != nil {
@@ -153,7 +153,7 @@ func (g *generator) retainContracts() error {
 		}
 		for _, union := range d.unions {
 			u := g.defs[union]
-			if bounds(u.marks["union"])["tag"] != bounds(g.defs[d.unions[0]].marks["union"])["tag"] || u.marks["msgpack"] != g.defs[d.unions[0]].marks["msgpack"] {
+			if bounds(u.marks["union"])["content"] != bounds(g.defs[d.unions[0]].marks["union"])["content"] || bounds(u.marks["union"])["tag"] != bounds(g.defs[d.unions[0]].marks["union"])["tag"] || u.marks["msgpack"] != g.defs[d.unions[0]].marks["msgpack"] {
 				return fmt.Errorf("%s: %s: shared variant requires the same wire representation", d.position, d.name)
 			}
 		}

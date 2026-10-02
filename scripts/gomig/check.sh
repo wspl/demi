@@ -29,6 +29,14 @@ for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 wi
   fi
 done
 
+step='file names'
+# The module layout forbids catch-all files (crates-and-packages.md § Module
+# layout): a file is named for its one responsibility.
+catch_all=$(find cmd internal tools scripts -name '*.go' \( -name 'util*.go' -o -name 'helper*.go' -o -name 'misc*.go' -o -name 'common*.go' \) -not -path '*/testdata/*')
+if [[ -n "${catch_all}" ]]; then
+  echo "catch-all files: ${catch_all}" >&2
+  false
+fi
 step='vet'
 go vet "$@"
 step='golangci-lint'

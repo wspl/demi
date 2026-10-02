@@ -50,6 +50,11 @@ func (g *generator) check(p *packages.Package) error {
 			if bounds(d.marks["union"])["tag"] == "" && d.marks["union"] != "untagged" {
 				return fail("union requires tag=<field>")
 			}
+			if content := bounds(d.marks["union"])["content"]; content != "" {
+				if content == bounds(d.marks["union"])["tag"] || d.marks["msgpack"] == "tuple" {
+					return fail("adjacent content requires a distinct key and map encoding")
+				}
+			}
 			tags := map[string]bool{}
 			for _, v := range g.variants(name) {
 				_, tag, _ := strings.Cut(v.marks["variant"], " ")
@@ -93,6 +98,9 @@ func (g *generator) check(p *packages.Package) error {
 			if g.err != nil {
 				return g.err
 			}
+			if g.adjacentUnion(d) != nil && st.NumFields() > 1 {
+				return fail("adjacent variants require zero fields or one content field")
+			}
 			seen := map[string]bool{}
 			if union, _, ok := strings.Cut(d.marks["variant"], " "); ok {
 				seen[bounds(g.defs[union].marks["union"])["tag"]] = true
@@ -107,6 +115,19 @@ func (g *generator) check(p *packages.Package) error {
 					return fail(f.Name() + ": " + err.Error())
 				}
 				tag := reflect.StructTag(st.Tag(i)).Get("json")
+				if has(m, "flatten") {
+					u := g.flattenedUnion(d, f)
+					if g.adjacentUnion(d) != nil || u == nil || !has(u.marks, "union") || bounds(u.marks["union"])["content"] == "" || tag != "" || !f.Exported() || len(m) != 1 {
+						return fail(f.Name() + ": flatten requires an adjacent union field without a JSON tag or other rules")
+					}
+					for _, key := range []string{bounds(u.marks["union"])["tag"], bounds(u.marks["union"])["content"]} {
+						if seen[key] {
+							return fail(f.Name() + ": duplicate flattened field " + key)
+						}
+						seen[key] = true
+					}
+					continue
+				}
 				parts := strings.Split(tag, ",")
 				if !f.Exported() || parts[0] == "" || parts[0] == "-" || seen[parts[0]] {
 					return fail(f.Name() + ": requires a unique explicit JSON field name")
@@ -116,6 +137,9 @@ func (g *generator) check(p *packages.Package) error {
 					if opt != "omitempty" && opt != "omitzero" {
 						return fail(f.Name() + ": unsupported JSON option " + opt)
 					}
+				}
+				if len(parts) > 1 && g.adjacentUnion(d) != nil {
+					return fail(f.Name() + ": adjacent content cannot be optional")
 				}
 				if len(parts) > 1 && g.tupleUnion(d) {
 					return fail(f.Name() + ": tuple fields cannot be optional")
@@ -155,13 +179,13 @@ func checkMarks(m map[string]string) error {
 	if problem := m["!error"]; problem != "" {
 		return fmt.Errorf("%s", problem)
 	}
-	for _, key := range []string{"nullable", "strict", "tolerant", "timestamp", "base64", "table", "schema"} {
+	for _, key := range []string{"nullable", "strict", "tolerant", "timestamp", "base64", "table", "schema", "flatten"} {
 		if m[key] != "" {
 			return fmt.Errorf("%s takes no arguments", key)
 		}
 	}
 	for _, key := range []string{"union", "root"} {
-		allowed := map[string]bool{"tag": true}
+		allowed := map[string]bool{"tag": true, "content": true}
 		if key == "root" {
 			allowed = map[string]bool{"direction": true, "output": true}
 		}
@@ -234,8 +258,11 @@ func (g *generator) checkType(t types.Type) error {
 	case *types.Slice:
 		return g.checkType(t.Elem())
 	case *types.Map:
-		if !types.Identical(t.Key(), types.Typ[types.String]) {
+		if b, ok := t.Key().Underlying().(*types.Basic); !ok || b.Kind() != types.String {
 			return fmt.Errorf("record keys must be strings")
+		}
+		if err := g.checkType(t.Key()); err != nil {
+			return err
 		}
 		return g.checkType(t.Elem())
 	case *types.Basic:
@@ -263,7 +290,7 @@ func (g *generator) tsSources() (map[string][]byte, error) {
 	for _, roots := range outputs {
 		for _, key := range roots {
 			if bounds(g.defs[key].marks["root"])["direction"] == "receive" {
-				g.markReceived(key)
+				g.markReceived(key, true)
 			}
 		}
 	}
@@ -271,7 +298,7 @@ func (g *generator) tsSources() (map[string][]byte, error) {
 	// Protocol ownership is reachability, independent of strictness.
 	g.received = map[string]bool{}
 	for _, key := range outputs["protocol"] {
-		g.markReceived(key)
+		g.markReceived(key, true)
 	}
 	protocol := g.received
 	g.received = received
@@ -363,28 +390,6 @@ func (g *generator) writeTS(p *packages.Package, sources map[string][]byte, veri
 		}
 		if err := writeGenerated(dest, sources[out], verify); err != nil {
 			return err
-		}
-	}
-	return nil
-}
-
-// checkMsgpackShape refuses JSON's opaque token stream on a different codec.
-func checkMsgpackShape(t types.Type) error {
-	if isJSON(t) {
-		return fmt.Errorf("opaque JSON has no MessagePack representation")
-	}
-	switch t := t.(type) {
-	case *types.Pointer:
-		return checkMsgpackShape(t.Elem())
-	case *types.Slice:
-		return checkMsgpackShape(t.Elem())
-	case *types.Map:
-		return checkMsgpackShape(t.Elem())
-	case *types.Struct:
-		for i := 0; i < t.NumFields(); i++ {
-			if err := checkMsgpackShape(t.Field(i).Type()); err != nil {
-				return fmt.Errorf("%s: %w", t.Field(i).Name(), err)
-			}
 		}
 	}
 	return nil

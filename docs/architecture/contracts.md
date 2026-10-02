@@ -69,6 +69,8 @@ never relax them.
 | `root direction=receive output=protocol` | Type; a contract root. Without `output`, this is a Go-only boundary and `direction` may be omitted. `direction` is `receive` or `send`, from the web app's perspective; `output` is `protocol`, `web` or `plugin-<name>`. Every root and every type a boundary decodes gets `Decode<Type>`. |
 | `schema` | Type; generate `<Type>JSONSchema() json.RawMessage` for a command input or result from the same checked contract model. |
 | `union tag=type` | Interface with exactly one unexported method, a parameterless and resultless seal selected independently of method order; exported methods are allowed and implemented by every variant. Internally tagged union. The tag may instead be `op`, `status`, `kind` or `ok`, as the wire requires. `variant true` and `variant false` use JSON boolean tags, never strings. |
+| `union tag=op content=result` | Go-only adjacent union. A zero-field variant has nil content; a single required field is the content itself (including a named object or array). More than one field is refused; compose a named content object instead. The tag must precede content on decode. |
+| `flatten` | Field of an adjacent union, without a JSON tag or other field markers; contributes the tag and content at that field's position in its parent object. An adjacent variant's content field cannot itself be flattened. Keys must not collide with sibling or parent tag keys. |
 | `union untagged` | Go-only interface; decode the first strict struct variant that decodes, in declaration order, in JSON and MessagePack. Encode the variant's own object. TypeScript reachability is an error. |
 | `variant text` or `variant Block text` | Struct; pointer variant with the given wire tag value, naming its union when the package has several. The encoder adds the tag; no tag field is declared. A variant can implement several unions with the same wire representation. Untagged variants use `variant` without a tag and implement their sealing method. |
 | `enum value1 value2` | Named string type; closed set of wire strings, including singleton literals. |
@@ -79,7 +81,7 @@ never relax them.
 | `range min=0 max=9007199254740991` | Numeric type or field; either bound may be omitted. Integer kind comes from the Go type; web integers must fit the safe range. |
 | `check validateName` | Type; call the named `func(Type) error` after structural checks, in Go only, without IO or mutation. |
 | `id` or `id pattern=<regexp>` | Named string type; emit `Parse<Type>(string) (<Type>, error)` with its length, pattern and checks. |
-| `timestamp` | Named string type for canonical JSON time, or the runner's milliseconds encoded as a MessagePack timestamp. |
+| `timestamp` | Named string type for canonical JSON time, or named `int64` for runner milliseconds since the Unix epoch (an integer in JSON and a timestamp extension in MessagePack). |
 | `base64` | Byte-slice type or field; base64 in JSON, bin in MessagePack. |
 | `msgpack` | Type; generate MessagePack codecs for it and everything it reaches: JSON field names in declaration order, a union's tag first, compact integers, string-keyed maps sorted. |
 | `msgpack tuple` | Union; the kept-output form: a one-entry map from variant name to its fields as a declaration-order tuple, a single field as the value itself. |
@@ -91,6 +93,13 @@ itself. Unreached types are left alone, even in a package that also holds
 runtime types. `schema` and `msgpack` select generated capabilities; they do
 not make an unreached type a boundary. Roots are markers on types, never a
 second registry in the generator.
+
+Maps may use `string` or a defined string type such as `core.BlockID` as keys.
+Generated JSON and MessagePack validation runs the key type's own rules on
+every key, on decode and encode, without rewriting keys. A named map declaration
+(`type Failures map[core.BlockID]core.ProviderFailureFacts`) can own generated methods;
+a Go type alias is not needed for this contract.
+
 Named generic instantiations can be roots. Constant tables and lookups come
 from their owning Go declarations, without parallel TypeScript tables.
 
@@ -178,6 +187,19 @@ nanoseconds below one billion, and overflow converting seconds to signed
 64-bit milliseconds before the library can normalize invalid values. The
 runner timestamp retains its wire rule of discarding sub-millisecond
 nanoseconds; the exact JSON spelling rule applies to JSON timestamps.
+
+Opaque `json.RawMessage` fields carry JSON values in MessagePack, never bin:
+objects retain insertion order, arrays retain order, nonnegative integers use
+u64, negative integers use i64, and other numbers use float64. Decoding restores
+JSON through `contract.EncodeJSON`, preserving integer precision and object
+order. Binary and extension values are not JSON values.
+
+Adjacent unions write tag then content. Flattening inserts both at the field's
+position, so runner replies write `type`, `id`, `op`, `result`. Decoding requires
+`op` before `result`, and empty variants require explicit nil (JSON null), never
+an empty object. Adjacent unions are refused for TypeScript roots because the
+Rust emitter did not support them.
+
 Kept-output records use their external tag and tuple representation. Decoders distinguish absent keys from nil, reject duplicate
 keys, unknown tags, invalid scalar kinds, overflow and trailing data, and
 enforce the same presence and bounds rules as JSON.
@@ -223,8 +245,12 @@ Go's machine-sized integers to Rust's `isize`/`usize`, fixed widths use
 `int8` through `uint64`, and floats use `float`/`double`. Unsigned integers
 have minimum zero; 8- and 16-bit integers also carry their representation
 bounds. Wider integers and floats acquire no extra limits from the generator.
-Named-type and field constraints both apply. `timestamp` emits
-`type: "string", format: "date-time"`. Opaque JSON emits `true`.
+Named-type and field constraints both apply. `timestamp` on a string emits
+`type: "string", format: "date-time"`; on `int64` it retains the integer schema.
+Adjacent variants describe the tag and content properties; flattened unions
+constrain those properties with `allOf` while the containing object owns
+unknown-field checks. Key order is checked by the decoder, not JSON Schema.
+Opaque JSON emits `true`.
 Root direction and MessagePack markers do not change the JSON representation.
 
 A root's `title` is its type name. A contract type's and field's Go doc
@@ -264,6 +290,10 @@ Every value from outside a process follows the same rule:
 - Each boundary uses a generated decoder per message family. Closed sets
   use enums or unions, identifiers use validated named types, and integers
   use integer types.
+- JSON syntax errors wrap `contract.ErrSyntax`: malformed JSON, invalid UTF-8
+  or escaped Unicode, trailing data, and the recursion limit. Callers use
+  `errors.Is(err, contract.ErrSyntax)` even through field-path errors. Shape
+  and validation failures, including duplicate keys, do not wrap this sentinel.
 - JSON decoders build on stable `encoding/json` through `internal/contract`.
   They check UTF-8 before parsing and reject unpaired escaped surrogates
   instead of letting the library replace them. They reject duplicate keys
@@ -392,7 +422,8 @@ Go types + JSON tags + markers
   this web-facing rule.
 - **Tolerant values where the web app receives.** Receive-only schemas may
   accept more than Go can hold, because the backend never sends the
-  difference: failure-map keys may be empty even when a block ID cannot,
+  difference: failure-map keys may be empty even when a block ID cannot
+  (`z.record(z.string(), ...)`, matching the Rust emitter),
   and email text may carry capitals that `EmailAddress` lowercases. Where
   the web sends a value, its schema refuses whatever Go refuses: trimmed
   names are trimmed before length checks, blank names fail, endpoints must
