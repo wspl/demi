@@ -1988,12 +1988,12 @@ internal/plugins/filebrowser -> internal/plugin
 internal/plugins/skills -> internal/plugin, internal/core
 internal/plugins/todo -> internal/plugin, internal/host
 internal/provider -> internal/core, internal/gates, internal/contract
-internal/providers/anthropicapi -> internal/core, internal/provider
-internal/providers/openaiapi -> internal/core, internal/provider
-internal/providers/google -> internal/core, internal/provider
-internal/providers/codex -> internal/core, internal/provider
-internal/providers/grokbuild -> internal/core, internal/provider
-internal/providers/claudecode -> internal/core, internal/provider, internal/host
+internal/providers/anthropicapi -> internal/core, internal/provider, internal/contract
+internal/providers/openaiapi -> internal/core, internal/provider, internal/contract
+internal/providers/google -> internal/core, internal/provider, internal/contract
+internal/providers/codex -> internal/core, internal/provider, internal/contract
+internal/providers/grokbuild -> internal/core, internal/provider, internal/contract
+internal/providers/claudecode -> internal/core, internal/provider, internal/host, internal/contract
 internal/agent/store -> internal/framewire, internal/core, internal/provider, internal/host
 internal/agent/transcript -> internal/framewire, internal/agent/store, internal/core, internal/provider
 internal/agent/session -> internal/framewire, internal/agent/store, internal/agent/transcript, internal/commandwire, internal/core, internal/gates, internal/provider, internal/host
