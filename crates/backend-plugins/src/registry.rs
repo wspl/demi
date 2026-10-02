@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 use demi_command_declarations::{LeafKind, NativeOperation, Node};
 use demi_host_interface::RegisterError;
 use demi_plugin_interface::{
-    Commands, Follows, Manifest, Page, Placement, PluginFactory, PluginId, Stream,
+    Commands, Manifest, Page, Placement, PluginFactory, PluginId, Scope, State, Stream, Topic,
 };
 use demi_shared_types::Profile;
 
@@ -30,6 +30,14 @@ pub enum RegistryError {
     Taken { plugin: PluginId, command: String },
     #[error("plugin \"{plugin}\" declares the user stream \"{name}\", which is taken")]
     Stream { plugin: PluginId, name: String },
+    #[error("plugin \"{plugin}\"'s page package \"{package}\" is another plugin's")]
+    PagePackage { plugin: PluginId, package: String },
+    #[error("plugin \"{plugin}\"'s {scope:?} state follows {topic:?}, a topic of another scope")]
+    Topic {
+        plugin: PluginId,
+        scope: Scope,
+        topic: Topic,
+    },
     #[error("plugin \"{plugin}\"'s commands are refused: {error}")]
     Commands {
         plugin: PluginId,
@@ -52,6 +60,11 @@ impl Registered {
     pub(crate) fn id(&self) -> &PluginId {
         &self.factory.manifest().id
     }
+
+    /// Its page's state of `scope`, if it declares one.
+    pub(crate) fn state(&self, scope: Scope) -> Option<&State> {
+        self.page.as_ref().and_then(|page| page.state(scope))
+    }
 }
 
 /// The backend's plugins, shared by every shard thread.
@@ -61,9 +74,6 @@ pub struct Registry {
 }
 
 impl Registry {
-    /// The registry of `factories`, in their order. What binds an operation
-    /// `serves` refuses is left out, and logged; a manifest that breaks a
-    /// rule stops the start.
     /// The plugins that are context sources, in registration order, which
     /// a node asks before each provider request while its user has them on.
     pub fn context_sources(&self) -> Vec<PluginId> {
@@ -74,6 +84,9 @@ impl Registry {
             .collect()
     }
 
+    /// The registry of `factories`, in their order. What binds an operation
+    /// `serves` refuses is left out, and logged; a manifest that breaks a
+    /// rule stops the start.
     pub fn new(
         factories: Vec<Box<dyn PluginFactory>>,
         serves: impl Fn(&NativeOperation) -> bool,
@@ -81,6 +94,7 @@ impl Registry {
         let mut ids = BTreeSet::new();
         let mut profile_names = BTreeSet::new();
         let mut stream_names = BTreeSet::new();
+        let mut page_packages = BTreeSet::new();
         let mut plugins = Vec::new();
         let mut profiles = Vec::new();
         for factory in factories {
@@ -111,6 +125,28 @@ impl Registry {
                         plugin: manifest.id.clone(),
                         name: stream.name.clone(),
                     });
+                }
+            }
+            if let Some(page) = &manifest.page {
+                if !page_packages.insert(page.package.clone()) {
+                    return Err(RegistryError::PagePackage {
+                        plugin: manifest.id.clone(),
+                        package: page.package.clone(),
+                    });
+                }
+                for scope in [Scope::User, Scope::Conversation] {
+                    let topics = page.state(scope).map(|state| &state.topics[..]);
+                    let foreign = topics
+                        .unwrap_or_default()
+                        .iter()
+                        .find(|topic| topic.scope() != scope);
+                    if let Some(topic) = foreign {
+                        return Err(RegistryError::Topic {
+                            plugin: manifest.id.clone(),
+                            scope,
+                            topic: *topic,
+                        });
+                    }
                 }
             }
             plugins.push(served(factory, &serves));
@@ -159,18 +195,22 @@ impl Registry {
             .flat_map(|registered| &registered.streams)
     }
 
-    /// The plugins whose page state follows `change`, in registration
-    /// order.
-    pub fn followers(&self, change: Follows) -> impl Iterator<Item = &PluginId> {
+    /// The plugins whose page state of `topic`'s scope follows it, in
+    /// registration order.
+    pub fn followers(&self, topic: Topic) -> impl Iterator<Item = &PluginId> {
+        self.following(topic).map(|(_, registered)| registered.id())
+    }
+
+    /// The followers of `topic` with their indices.
+    pub(crate) fn following(&self, topic: Topic) -> impl Iterator<Item = (usize, &Registered)> {
         self.plugins
             .iter()
-            .filter(move |registered| {
+            .enumerate()
+            .filter(move |(_, registered)| {
                 registered
-                    .page
-                    .as_ref()
-                    .is_some_and(|page| page.follows.contains(&change))
+                    .state(topic.scope())
+                    .is_some_and(|state| state.topics.contains(&topic))
             })
-            .map(Registered::id)
     }
 
     pub(crate) fn plugin(&self, id: &str) -> Option<(usize, &Registered)> {
@@ -220,6 +260,23 @@ fn served(
     }
     let page = manifest.page.as_ref().map(|page| {
         let mut page = page.clone();
+        for (scope, state) in [
+            ("user", &mut page.user),
+            ("conversation", &mut page.conversation),
+        ] {
+            let kept = state.as_ref().is_none_or(|state| {
+                let operations: Vec<&NativeOperation> = state.operations.iter().collect();
+                let kept = operations.iter().all(|operation| serves(operation));
+                if kept {
+                    bound(&operations);
+                }
+                kept
+            });
+            if !kept {
+                left_out("page state", scope);
+                *state = None;
+            }
+        }
         page.methods.retain(|method| {
             let operations: Vec<&NativeOperation> = method.operations.iter().collect();
             let kept = operations.iter().all(|operation| serves(operation));

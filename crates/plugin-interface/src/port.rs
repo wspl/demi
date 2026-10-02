@@ -13,7 +13,7 @@ use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::exposes::ExposeAddress;
 use demi_web_api_protocol::ids::{DeviceId, ExposeId};
 
-use crate::PluginId;
+use crate::{PluginId, Scope};
 use futures_util::future::LocalBoxFuture;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -58,8 +58,9 @@ pub enum PortMessage {
     /// Reads paths on the request's conversation's main Host, if it is
     /// running, without waking it.
     ReadHostFiles { reads: Vec<HostRead> },
-    /// The plugin's part of the user's product state changed.
-    Changed,
+    /// The plugin's page state of `scope` changed: the user's, or the
+    /// request's conversation's.
+    Changed { scope: Scope },
     /// Runs one operation of a package the plugin's commands bind, on the
     /// request's conversation's main Host.
     PackageCall {
@@ -599,9 +600,11 @@ impl PluginPort {
         self.done("remove_value", message).await
     }
 
-    /// Marks the plugin's part of the user's product state as changed.
-    pub async fn changed(&self) -> Result<(), PortFailure> {
-        self.done("changed", PortMessage::Changed).await
+    /// Marks the plugin's page state of `scope` as changed, so the pages
+    /// that show it read it again; [`PortRefusal::NoConversation`] for the
+    /// conversation scope of a request without one.
+    pub async fn changed(&self, scope: Scope) -> Result<(), PortFailure> {
+        self.done("changed", PortMessage::Changed { scope }).await
     }
 
     pub async fn package_call(

@@ -8,8 +8,7 @@ import { exposePage } from '@demicodes/plugin-expose'
 import { fileBrowserPage } from '@demicodes/plugin-file-browser'
 import { pageTabKind } from '@demicodes/plugin-expose/page/page'
 import { exposePageTab } from '@demicodes/plugin-expose/page/page-data'
-import { readGalleryEdit } from '../fixtures/blobs'
-import { useGalleryWork } from '../fixtures/work-panel'
+import { galleryFiles, useGalleryWork } from '../fixtures/work-panel'
 import { createGalleryWorkspace } from '../fixtures/workspace'
 
 /**
@@ -29,12 +28,7 @@ const TITLES = [
 const workspace = createGalleryWorkspace()
 // Change and File pinned before the pages, as the product's panel has them.
 const { panel, pinned, kinds } = useGalleryWork(null, {
-  files: {
-    workspace: { source: workspace.source, root: workspace.root },
-    root: workspace.root,
-    changes: workspace.changes,
-    readCallChange: readGalleryEdit,
-  },
+  files: galleryFiles(workspace),
   pages: [changesPage, fileBrowserPage, exposePage],
 })
 let opened = 0

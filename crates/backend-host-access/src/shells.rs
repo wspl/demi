@@ -82,10 +82,27 @@ impl dyn HostShard + '_ {
                 ));
             }
             self.install_directories(device, admitted).await?;
+            // Dropped once the job ends, or when it is stopped.
+            let _ended = JobEnd {
+                shard: self,
+                conversation: id,
+            };
             job.await;
             Ok(())
         })
         .await?
+    }
+}
+
+/// Tells the shard that a job ended, however it ends.
+struct JobEnd<'a> {
+    shard: &'a (dyn HostShard + 'a),
+    conversation: &'a ConversationId,
+}
+
+impl Drop for JobEnd<'_> {
+    fn drop(&mut self) {
+        self.shard.job_ended(self.conversation);
     }
 }
 

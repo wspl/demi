@@ -83,13 +83,13 @@ on the browser protocol and `backend-host-access`'s on `backend-expose`.
    `@demicodes/plugin-expose` (the conversation header tool) and
    `@demicodes/plugin-skills` (the settings section); their registration in
    `web` and their specimens in `web-gallery`. Done.
-6. **The page platform.** The manifest naming its packages and its page
-   package, with page state of two scopes and the topics each follows; the
-   port grouped by service; the conversation state route and the summary's
+6. **The page platform.** The manifest naming its page package, with page
+   state of two scopes, the topics each follows and the operations each
+   reads; the topics `exposes` and `jobs`; the conversation state route and the summary's
    `pluginRevisions` and `workingTreeRevision`; `definePage` and `usePage()`;
    kinds as data with intents for pinned and unpinned kinds and panel
    sessions; the plugin kit; types and the registry generated from the
-   manifests ([Plugin pages](../architecture/plugin-pages.md)). Designed.
+   manifests ([Plugin pages](../architecture/plugin-pages.md)). Done.
 
 ## Evidence required at a checkpoint
 

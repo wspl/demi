@@ -94,7 +94,10 @@ impl World {
 
     /// The plugin's state for the user's pages.
     async fn state(&self) -> Value {
-        let request = Request::PageState { user: user() };
+        let request = Request::PageState {
+            user: user(),
+            conversation: None,
+        };
         match self.plugin.call(request, self.demi.port()).await.unwrap() {
             Reply::State { state } => state,
             reply => panic!("{reply:?}"),
@@ -240,6 +243,7 @@ async fn the_page_state_shows_every_live_expose_with_its_number_and_the_menu_ren
                 "id": expose.id,
                 "number": 1,
                 "deviceId": "device-laptop",
+                "deviceName": "laptop",
                 "address": "127.0.0.1:5173",
                 "url": expose.url,
                 "expiresAt": minutes(60),

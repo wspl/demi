@@ -81,6 +81,10 @@ pub trait HostShard {
     fn directory_sets(&self) -> LocalBoxFuture<'_, Result<DirectorySets, String>>;
     /// What the shard remembers of its Hosts' directories.
     fn plugin_installs(&self) -> &PluginInstalls;
+    /// A job of the conversation ended, finished or stopped, which may have
+    /// changed its working tree and what its plugins show (`plugins.md`
+    /// § Topics).
+    fn job_ended(&self, conversation: &ConversationId);
 }
 
 /// The root node of a conversation's tree, whose id is the conversation's in

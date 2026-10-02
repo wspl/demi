@@ -273,6 +273,10 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             "/conversations/{id}/plugins/{plugin}/calls/{method}",
             post(plugins::conversation_call),
         )
+        .route(
+            "/conversations/{id}/plugins/{plugin}/state",
+            get(plugins::conversation_state),
+        )
         .route("/plugins/{plugin}/calls/{method}", post(plugins::user_call))
         .route("/plugins/{plugin}", put(plugins::switch))
         .route("/conversations/{id}/reload", post(plugins::reload))

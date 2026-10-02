@@ -1,8 +1,9 @@
 //! Plugin calls at the edge (`web-api.md` § Plugin calls): a page's call of
-//! a plugin's method, for the user or for one of the user's conversations.
-//! The user's shard checks the parameters against the method's schema and
-//! the user's instance answers; what the call changes reaches the user's
-//! pages on the synchronization channel.
+//! a plugin's method, for the user or for one of the user's conversations,
+//! and the read of a plugin's state for one conversation (§ Conversation
+//! state of plugins). The user's shard checks the parameters against the
+//! method's schema and the user's instance answers; what the call changes
+//! reaches the user's pages on the synchronization channel.
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -12,7 +13,7 @@ use demi_backend_user_shard::shard::ReloadRefusal;
 use demi_plugin_interface::{PluginError, PortRefusal};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::UserId;
-use demi_web_api_protocol::plugins::PluginSwitch;
+use demi_web_api_protocol::plugins::{PluginStateAnswer, PluginSwitch};
 use serde_json::Value;
 
 use super::AppState;
@@ -108,6 +109,28 @@ pub(super) async fn conversation_call(
     page_call(&state, &user.id, call).await
 }
 
+/// `GET /conversations/:id/plugins/:plugin/state`, for a conversation the
+/// user owns.
+pub(super) async fn conversation_state(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path((id, plugin)): Path<(String, String)>,
+) -> Result<Json<PluginStateAnswer>, ApiError> {
+    let record = owned(&state.services, &user.id, &id).await?;
+    let answer = state
+        .shards
+        .of(&user.id)
+        .call(move |shard, cancel| async move {
+            shard
+                .plugins()
+                .conversation_state(&plugin, record.id, cancel)
+                .await
+        })
+        .await?
+        .map_err(refused)?;
+    Ok(Json(answer))
+}
+
 async fn page_call(
     state: &AppState,
     user: &UserId,
@@ -122,7 +145,8 @@ async fn page_call(
     Ok(Json(result))
 }
 
-/// What a call that did not answer answers (`web-api.md` § Plugin calls).
+/// What a call or a state read that did not answer answers (`web-api.md`
+/// § Plugin calls).
 fn refused(error: PageCallError) -> ApiError {
     let message = error.to_string();
     match error {

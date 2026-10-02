@@ -1,6 +1,7 @@
+import { computed } from 'vue'
 import { z } from 'zod'
 import { BrowserTabsError, type BrowserTabsApi } from './live/tabs'
-import { PluginCallError, type ConversationPluginClient } from '@demicodes/plugin-sdk'
+import { PluginCallError, type ConversationPlugin } from '@demicodes/plugin-sdk'
 import {
   browserTabsSchema,
   openedTabSchema,
@@ -18,24 +19,34 @@ import {
  */
 const OPEN_TIMEOUT_MS = 310_000
 
+/** A refusal as the tab's content shows it, with the plugin's reason. */
+function tabsError(error: PluginCallError): BrowserTabsError {
+  return new BrowserTabsError(error.reason, error.message)
+}
+
 /**
- * The conversation browser's tab methods and its `browser` user stream over
- * the plugin's client (`live-view.md` § The tab methods). A refusal keeps
- * the plugin's reason, for the tab's content to show.
+ * The conversation browser's tab list, its tab methods and its `browser`
+ * user stream over the plugin (`live-view.md` § The tab methods), for a
+ * panel session, whose effect scope the tab list is followed in.
  */
-export function browserTabsApi(plugin: ConversationPluginClient): BrowserTabsApi {
+export function browserTabsApi(plugin: ConversationPlugin): BrowserTabsApi {
+  const tabs = plugin.state(browserTabsSchema)
   async function call<T>(method: string, params: object, result: z.ZodType<T>, timeoutMs?: number): Promise<T> {
     try {
       return await plugin.call(method, params, result, { timeoutMs })
     } catch (error) {
-      if (error instanceof PluginCallError) {
-        throw new BrowserTabsError(error.reason, error.message)
-      }
-      throw error
+      throw error instanceof PluginCallError ? tabsError(error) : error
     }
   }
   return {
-    list: () => call('tabs', {}, browserTabsSchema),
+    tabs: {
+      value: tabs.value,
+      error: computed(() => {
+        const error = tabs.error.value
+        return error ? tabsError(error) : null
+      }),
+      read: tabs.read,
+    },
     open: async (url) => (await call('open', { url } satisfies OpenTab, openedTabSchema, OPEN_TIMEOUT_MS)).tab,
     close: async (tab) => {
       await call('close', { tab } satisfies CloseTab, z.null())
