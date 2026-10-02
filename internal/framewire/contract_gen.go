@@ -1880,6 +1880,49 @@ func (v ExitedStatus) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "exitCode", Value: v.ExitCode})
 	return contract.EncodeObject(fields)
 }
+func DecodeFailures(data []byte) (Failures, error) { return contract.Decode[Failures](data) }
+func (v Failures) Validate() error                 { return contractValidateFailures(v, 0) }
+func contractValidateFailures(v Failures, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if v == nil {
+		return contract.At("", fmt.Errorf("required record is nil"))
+	}
+	for key, item := range v {
+		_ = item
+		if err := key.Validate(); err != nil {
+			return contract.At(fmt.Sprintf("%s[%q]", "", key), err)
+		}
+		if err := contract.Text(string(key), 0, -1, ""); err != nil {
+			return contract.At(fmt.Sprintf("%s[%q]", "", key), err)
+		}
+		if err := item.Validate(); err != nil {
+			return contract.At(fmt.Sprintf("%s[%q]", "", key), err)
+		}
+	}
+	return nil
+}
+func (v *Failures) UnmarshalJSON(data []byte) error {
+	value, err := func(b []byte) (map[core.BlockID]core.ProviderFailureFacts, error) {
+		return contract.KeyedRecord[core.BlockID](b, contract.Decode[core.ProviderFailureFacts], false)
+	}(data)
+	if err != nil {
+		return err
+	}
+	next := Failures(value)
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v Failures) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	return contract.EncodeJSON(map[core.BlockID]core.ProviderFailureFacts(v))
+}
 func (*HeartbeatFrame) isServerFrame() {}
 func DecodeHeartbeatFrame(data []byte) (HeartbeatFrame, error) {
 	return contract.Decode[HeartbeatFrame](data)
@@ -4817,21 +4860,9 @@ func contractValidateSubagentTranscriptPatchFrame(v SubagentTranscriptPatchFrame
 		return contract.At("revision", fmt.Errorf("outside numeric bounds"))
 	}
 	if v.Failures != nil {
-		if (*v.Failures) == nil {
-			return contract.At("failures", fmt.Errorf("required record is nil"))
+		if err := contractValidateFailures((*v.Failures), depth+1); err != nil {
+			return contract.At("failures", err)
 		}
-		for key, item := range *v.Failures {
-			_ = item
-			if err := contract.Text(key, 0, -1, ""); err != nil {
-				return contract.At("failures", err)
-			}
-			if err := item.Validate(); err != nil {
-				return contract.At(fmt.Sprintf("%s[%q]", "failures", key), err)
-			}
-		}
-	}
-	if err := validateSubagentTranscriptPatchFrame(v); err != nil {
-		return err
 	}
 	return nil
 }
@@ -4891,11 +4922,7 @@ func (v *SubagentTranscriptPatchFrame) UnmarshalJSON(data []byte) error {
 	{
 		raw, ok := obj["failures"]
 		if ok {
-			value, err := func(b []byte) (*map[string]core.ProviderFailureFacts, error) {
-				return contract.Pointer(b, func(b []byte) (map[string]core.ProviderFailureFacts, error) {
-					return contract.Record(b, contract.Decode[core.ProviderFailureFacts], false)
-				})
-			}(raw)
+			value, err := func(b []byte) (*Failures, error) { return contract.Pointer(b, contract.Decode[Failures]) }(raw)
 			if err != nil {
 				return contract.At("failures", err)
 			}
@@ -4953,21 +4980,9 @@ func contractValidateSubagentTranscriptResetFrame(v SubagentTranscriptResetFrame
 		return contract.At("revision", fmt.Errorf("outside numeric bounds"))
 	}
 	if v.Failures != nil {
-		if (*v.Failures) == nil {
-			return contract.At("failures", fmt.Errorf("required record is nil"))
+		if err := contractValidateFailures((*v.Failures), depth+1); err != nil {
+			return contract.At("failures", err)
 		}
-		for key, item := range *v.Failures {
-			_ = item
-			if err := contract.Text(key, 0, -1, ""); err != nil {
-				return contract.At("failures", err)
-			}
-			if err := item.Validate(); err != nil {
-				return contract.At(fmt.Sprintf("%s[%q]", "failures", key), err)
-			}
-		}
-	}
-	if err := validateSubagentTranscriptResetFrame(v); err != nil {
-		return err
 	}
 	return nil
 }
@@ -5027,11 +5042,7 @@ func (v *SubagentTranscriptResetFrame) UnmarshalJSON(data []byte) error {
 	{
 		raw, ok := obj["failures"]
 		if ok {
-			value, err := func(b []byte) (*map[string]core.ProviderFailureFacts, error) {
-				return contract.Pointer(b, func(b []byte) (map[string]core.ProviderFailureFacts, error) {
-					return contract.Record(b, contract.Decode[core.ProviderFailureFacts], false)
-				})
-			}(raw)
+			value, err := func(b []byte) (*Failures, error) { return contract.Pointer(b, contract.Decode[Failures]) }(raw)
 			if err != nil {
 				return contract.At("failures", err)
 			}
@@ -5273,21 +5284,9 @@ func contractValidateTranscriptPatchFrame(v TranscriptPatchFrame, depth int) err
 		return contract.At("revision", fmt.Errorf("outside numeric bounds"))
 	}
 	if v.Failures != nil {
-		if (*v.Failures) == nil {
-			return contract.At("failures", fmt.Errorf("required record is nil"))
+		if err := contractValidateFailures((*v.Failures), depth+1); err != nil {
+			return contract.At("failures", err)
 		}
-		for key, item := range *v.Failures {
-			_ = item
-			if err := contract.Text(key, 0, -1, ""); err != nil {
-				return contract.At("failures", err)
-			}
-			if err := item.Validate(); err != nil {
-				return contract.At(fmt.Sprintf("%s[%q]", "failures", key), err)
-			}
-		}
-	}
-	if err := validateTranscriptPatchFrame(v); err != nil {
-		return err
 	}
 	return nil
 }
@@ -5334,11 +5333,7 @@ func (v *TranscriptPatchFrame) UnmarshalJSON(data []byte) error {
 	{
 		raw, ok := obj["failures"]
 		if ok {
-			value, err := func(b []byte) (*map[string]core.ProviderFailureFacts, error) {
-				return contract.Pointer(b, func(b []byte) (map[string]core.ProviderFailureFacts, error) {
-					return contract.Record(b, contract.Decode[core.ProviderFailureFacts], false)
-				})
-			}(raw)
+			value, err := func(b []byte) (*Failures, error) { return contract.Pointer(b, contract.Decode[Failures]) }(raw)
 			if err != nil {
 				return contract.At("failures", err)
 			}
@@ -5387,21 +5382,9 @@ func contractValidateTranscriptResetFrame(v TranscriptResetFrame, depth int) err
 		return contract.At("version", err)
 	}
 	if v.Failures != nil {
-		if (*v.Failures) == nil {
-			return contract.At("failures", fmt.Errorf("required record is nil"))
+		if err := contractValidateFailures((*v.Failures), depth+1); err != nil {
+			return contract.At("failures", err)
 		}
-		for key, item := range *v.Failures {
-			_ = item
-			if err := contract.Text(key, 0, -1, ""); err != nil {
-				return contract.At("failures", err)
-			}
-			if err := item.Validate(); err != nil {
-				return contract.At(fmt.Sprintf("%s[%q]", "failures", key), err)
-			}
-		}
-	}
-	if err := validateTranscriptResetFrame(v); err != nil {
-		return err
 	}
 	return nil
 }
@@ -5448,11 +5431,7 @@ func (v *TranscriptResetFrame) UnmarshalJSON(data []byte) error {
 	{
 		raw, ok := obj["failures"]
 		if ok {
-			value, err := func(b []byte) (*map[string]core.ProviderFailureFacts, error) {
-				return contract.Pointer(b, func(b []byte) (map[string]core.ProviderFailureFacts, error) {
-					return contract.Record(b, contract.Decode[core.ProviderFailureFacts], false)
-				})
-			}(raw)
+			value, err := func(b []byte) (*Failures, error) { return contract.Pointer(b, contract.Decode[Failures]) }(raw)
 			if err != nil {
 				return contract.At("failures", err)
 			}

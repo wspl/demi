@@ -2,7 +2,6 @@
 package framewire
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -19,7 +18,7 @@ type ClientFrame = clientFrame
 // What the providers read out of the error blocks a frame carries, by block
 // id (`backend.md` § Failure facts). Attached when the frame is sent, never
 // stored.
-type Failures = map[string]core.ProviderFailureFacts
+type Failures map[core.BlockID]core.ProviderFailureFacts
 
 // ErrNotJSON means the message is not JSON; the connection closes.
 var ErrNotJSON = errors.New("the message is not JSON")
@@ -32,10 +31,7 @@ var ErrInvalidFrame = errors.New("invalid frame")
 // it, before anything acts on it.
 func DecodeClientFrame(data []byte) (ClientFrame, error) {
 	if err := contract.CheckJSON(data); err != nil {
-		// Field-path errors (duplicate keys or excessive nesting) make a
-		// frame invalid. Malformed JSON and Unicode close the connection.
-		var field *contract.Error
-		if !json.Valid(data) || !errors.As(err, &field) {
+		if errors.Is(err, contract.ErrSyntax) {
 			return nil, fmt.Errorf("%w: %w", ErrNotJSON, err)
 		}
 		return nil, fmt.Errorf("%w: %w", ErrInvalidFrame, err)
@@ -81,46 +77,4 @@ func validateEditAndSend(v EditAndSendFrame) error {
 		}
 	}
 	return contract.At("request.content", errors.New("a message must contain text or a file"))
-}
-
-// validateFailures checks the block identifiers used as failure keys.
-func validateFailures(v Failures) error {
-	for id := range v {
-		if _, err := core.ParseBlockID(id); err != nil {
-			return contract.At(id, err)
-		}
-	}
-	return nil
-}
-
-// validateTranscriptResetFrame checks failure-map block identifiers.
-func validateTranscriptResetFrame(v TranscriptResetFrame) error {
-	if v.Failures == nil {
-		return nil
-	}
-	return contract.At("failures", validateFailures(*v.Failures))
-}
-
-// validateTranscriptPatchFrame checks failure-map block identifiers.
-func validateTranscriptPatchFrame(v TranscriptPatchFrame) error {
-	if v.Failures == nil {
-		return nil
-	}
-	return contract.At("failures", validateFailures(*v.Failures))
-}
-
-// validateSubagentTranscriptResetFrame checks failure-map block identifiers.
-func validateSubagentTranscriptResetFrame(v SubagentTranscriptResetFrame) error {
-	if v.Failures == nil {
-		return nil
-	}
-	return contract.At("failures", validateFailures(*v.Failures))
-}
-
-// validateSubagentTranscriptPatchFrame checks failure-map block identifiers.
-func validateSubagentTranscriptPatchFrame(v SubagentTranscriptPatchFrame) error {
-	if v.Failures == nil {
-		return nil
-	}
-	return contract.At("failures", validateFailures(*v.Failures))
 }

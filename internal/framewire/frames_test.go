@@ -236,3 +236,12 @@ func mutate(t *testing.T, value any, pointer string, replacement any, remove boo
 		}
 	}
 }
+
+// TestNestingLimitClosesConnection protects the socket's syntax-error policy.
+func TestNestingLimitClosesConnection(t *testing.T) {
+	data := []byte(strings.Repeat("[", 128) + "0" + strings.Repeat("]", 128))
+	_, err := framewire.DecodeClientFrame(data)
+	if !errors.Is(err, framewire.ErrNotJSON) || !errors.Is(err, contract.ErrSyntax) {
+		t.Fatalf("expected wrapped syntax error that closes the connection, got %v", err)
+	}
+}

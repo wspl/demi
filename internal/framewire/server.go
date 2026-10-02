@@ -37,22 +37,20 @@ type RejectedFrame struct {
 // Every block, with the transcript's version.
 // +demi:variant ServerFrame transcript_reset
 // +demi:tolerant
-// +demi:check validateTranscriptResetFrame
 type TranscriptResetFrame struct {
-	Blocks   []core.Block                          `json:"blocks"`
-	Version  TranscriptVersion                     `json:"version"`
-	Failures *map[string]core.ProviderFailureFacts `json:"failures,omitempty"`
+	Blocks   []core.Block      `json:"blocks"`
+	Version  TranscriptVersion `json:"version"`
+	Failures *Failures         `json:"failures,omitempty"`
 }
 
 // The patches of one batch; `revision` is one past the previous frame's.
 // +demi:variant ServerFrame transcript_patch
 // +demi:tolerant
-// +demi:check validateTranscriptPatchFrame
 type TranscriptPatchFrame struct {
 	Patches []TranscriptPatch `json:"patches"`
 	// +demi:range max=9007199254740991
-	Revision uint64                                `json:"revision"`
-	Failures *map[string]core.ProviderFailureFacts `json:"failures,omitempty"`
+	Revision uint64    `json:"revision"`
+	Failures *Failures `json:"failures,omitempty"`
 }
 
 // +demi:variant ServerFrame phase
@@ -139,24 +137,22 @@ type SubagentFrame struct {
 
 // +demi:variant ServerFrame subagent_transcript_reset
 // +demi:tolerant
-// +demi:check validateSubagentTranscriptResetFrame
 type SubagentTranscriptResetFrame struct {
 	SubagentID core.NodeID  `json:"subagentId"`
 	Blocks     []core.Block `json:"blocks"`
 	// +demi:range max=9007199254740991
-	Revision uint64                                `json:"revision"`
-	Failures *map[string]core.ProviderFailureFacts `json:"failures,omitempty"`
+	Revision uint64    `json:"revision"`
+	Failures *Failures `json:"failures,omitempty"`
 }
 
 // +demi:variant ServerFrame subagent_transcript_patch
 // +demi:tolerant
-// +demi:check validateSubagentTranscriptPatchFrame
 type SubagentTranscriptPatchFrame struct {
 	SubagentID core.NodeID       `json:"subagentId"`
 	Patches    []TranscriptPatch `json:"patches"`
 	// +demi:range max=9007199254740991
-	Revision uint64                                `json:"revision"`
-	Failures *map[string]core.ProviderFailureFacts `json:"failures,omitempty"`
+	Revision uint64    `json:"revision"`
+	Failures *Failures `json:"failures,omitempty"`
 }
 
 // The connection is detached.
