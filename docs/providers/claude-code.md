@@ -114,8 +114,8 @@ reaches the operations through a
 arguments: the record is the stream's input, read to its end, and the answer is
 one JSON document on its output, since the output is all a service stream
 brings back: `{ ok: true, … }`, or `{ ok: false, code, message }` with one of
-`invalid_release`, `unsupported_platform`, `download_failed`,
-`verification_failed`, `install_failed`. A failed invocation's nonzero exit
+`invalid_release`, `unsupported_platform` or `install_failed`, which
+carries the runner's reason when it could not install the CLI. A failed invocation's nonzero exit
 does not discard this document: the backend validates it and reports its code,
 message and requested version. An output with no document is a service that
 failed. The command context names the conversation being served, or the

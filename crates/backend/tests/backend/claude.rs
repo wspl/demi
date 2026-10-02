@@ -9,14 +9,18 @@
 //! new account's token.
 //!
 //! The distribution is a server the test scripts, and `demi.claude-code` is the
-//! workspace's own, which downloads only over HTTPS: every install from the
+//! workspace's own, which takes HTTPS downloads only: every install from the
 //! scripted distribution fails. The Cloud's CLI is therefore a script the
-//! test puts in its home with a receipt, where `claude-code.ensure` installs; it
-//! answers each message with where it runs and with which token. No test
-//! runs the real CLI.
+//! test installs in the Cloud runner's artifact cache, as the runner installs
+//! a download; it answers each message with where it runs and with which
+//! token. No test runs the real CLI.
 
-use std::os::unix::fs::PermissionsExt as _;
 use std::time::Duration;
+
+use demi_command_protocol::{ArtifactForm, PackageArtifact};
+use demi_runner_command_packages::cache::{ArtifactCache, Wanted};
+use demi_runner_command_packages::{ArtifactResolver, ArtifactSource, Installs, RuntimeError};
+use tokio_util::sync::CancellationToken;
 
 use demi_provider_common::testing::{MockResponse, MockVendor};
 use demi_shared_types::Block;
@@ -71,22 +75,46 @@ fn manifest(version: &str) -> MockResponse {
         .chunk(body.to_string())
 }
 
-/// Puts `version` of the scripted CLI in the Cloud's home, with the receipt
-/// an install leaves, and answers the executable's path.
-fn install_by_hand(home: &str, version: &str) -> String {
-    let directory = format!("{home}/.demi/claude/{version}");
-    std::fs::create_dir_all(&directory).unwrap();
-    let executable = format!("{directory}/claude");
-    std::fs::write(&executable, SCRIPTED_CLI).unwrap();
-    std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let receipt = json!({
-        "version": version,
-        "platform": "linux-x64",
-        "sha256": "ab".repeat(32),
-        "size": SCRIPTED_CLI.len(),
-    });
-    std::fs::write(format!("{directory}/receipt.json"), receipt.to_string()).unwrap();
-    executable
+/// Installs `version` of the scripted CLI in `cache`, a runner's artifact
+/// cache, as the runner installs a download of it, and answers the
+/// executable's path.
+async fn install_by_hand(cache: &std::path::Path, version: &str) -> String {
+    let source = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(source.path(), SCRIPTED_CLI).unwrap();
+    let cache = ArtifactCache::new(cache.to_owned(), None, Installs::default())
+        .await
+        .unwrap();
+    let wanted = Wanted {
+        package: demi_command_package_claude_code_protocol::PACKAGE,
+        name: "Claude Code",
+        version,
+        artifact: PackageArtifact {
+            sha256: format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(SCRIPTED_CLI)),
+            size: SCRIPTED_CLI.len() as u64,
+        },
+        form: &ArtifactForm::File,
+    };
+    let resolver = Local(source.path().to_owned());
+    let path = cache
+        .install(&wanted, &resolver, &CancellationToken::new())
+        .await
+        .unwrap();
+    path.to_string_lossy().into_owned()
+}
+
+/// Locates an artifact at a file of this machine.
+struct Local(std::path::PathBuf);
+
+impl ArtifactResolver for Local {
+    fn resolve<'a>(
+        &'a self,
+        _: &'a PackageArtifact,
+        _: &'a CancellationToken,
+    ) -> futures_util::future::BoxFuture<'a, Result<ArtifactSource, RuntimeError>> {
+        Box::pin(std::future::ready(Ok(ArtifactSource::Local(
+            self.0.clone(),
+        ))))
+    }
 }
 
 async fn cli(backend: &TestBackend, session: &Session, provider: &str) -> ProviderCli {
@@ -255,7 +283,7 @@ async fn a_conversation_on_a_paired_device_infers_through_the_clouds_cli_with_th
 
     // A Cloud with an older CLI answers with it; **Install** says so.
     let home = harness.manager.home(cloud);
-    let older = install_by_hand(&home, OLDER);
+    let older = install_by_hand(&harness.manager.artifacts(cloud), OLDER).await;
     let started = backend
         .post(
             &format!("/api/providers/{provider}/cli/install"),

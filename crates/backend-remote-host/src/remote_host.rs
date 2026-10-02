@@ -8,7 +8,7 @@
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
 use bytes::{Bytes, BytesMut};
-use demi_command_protocol::{CommandContext, PackageDescriptor};
+use demi_command_protocol::{ArtifactLocation, CommandContext, PackageArtifact, PackageDescriptor};
 use demi_host_interface::{
     ByteRange, ByteStream, CpOptions, DirEntry, FileContents, FileKind, FileStat, Host, HostError,
     HostErrorKind, HostFs, HostIdentity, HostKey, HostProcess, JobCaller, MkdirOptions, Process,
@@ -325,6 +325,7 @@ impl RemoteHost {
                 ServiceEntry {
                     package: request.package.clone(),
                     resolver: request.resolver.clone(),
+                    attached: request.attached.clone(),
                     cancel: CancellationToken::new(),
                     done: Some(done),
                 },
@@ -661,8 +662,20 @@ pub struct ServiceRequest {
     pub json: Option<bool>,
     /// The conversation's directory, the invocation's working directory.
     pub cwd: String,
-    /// Where the service's executable comes from, while the stream is open.
+    /// Where the package's artifacts come from, while the stream is open.
     pub resolver: Rc<dyn ArtifactResolver>,
+    /// Other artifacts the invocation may install, each with its location,
+    /// such as the downloads of a release the backend chose
+    /// (`native-runtime.md` § Where an artifact comes from).
+    pub attached: Vec<AttachedArtifact>,
+}
+
+/// An artifact a user stream may install beside its package's own, and
+/// where it is downloaded from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttachedArtifact {
+    pub artifact: PackageArtifact,
+    pub location: ArtifactLocation,
 }
 
 /// How a user stream's invocation completed.

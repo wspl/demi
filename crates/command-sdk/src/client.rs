@@ -1,14 +1,14 @@
 use bytes::Bytes;
 use demi_command_protocol::{
-    CONVERSATION_PATH, ConversationRequest, INFO_PATH, INVOKE_PATH, MAX_METADATA_BYTES,
-    MAX_RECORD_BYTES, Metadata, NUMBERS_PATH, NumbersOpen, ProtocolError, Record, RecordDecoder,
-    SHUTDOWN_PATH, ServiceInfo, encode_input,
+    ARTIFACTS_PATH, CONVERSATION_PATH, ConversationRequest, INFO_PATH, INVOKE_PATH,
+    MAX_METADATA_BYTES, MAX_RECORD_BYTES, Metadata, NUMBERS_PATH, ProtocolError, Record,
+    RecordDecoder, SHUTDOWN_PATH, ServiceInfo, StreamOpen, encode_input,
 };
 use http::{Method, Request};
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::{
-    NumbersStream, ServiceError,
+    RequestStream, ServiceError,
     stream::{CONNECTION_WINDOW, send_bytes},
 };
 
@@ -72,11 +72,19 @@ impl Client {
 
     /// Opens the service's numbers stream (`native-runtime.md`
     /// § Conversation numbers), which the caller answers.
-    pub async fn numbers(&self) -> Result<NumbersStream, ServiceError> {
-        let (input, output) = self
-            .invoke_at(NUMBERS_PATH, NumbersOpen {}.encode()?)
-            .await?;
-        Ok(NumbersStream { input, output })
+    pub async fn numbers(&self) -> Result<RequestStream, ServiceError> {
+        self.request_stream(NUMBERS_PATH).await
+    }
+
+    /// Opens the service's artifacts stream (`native-runtime.md` § The
+    /// artifacts stream), which the caller answers.
+    pub async fn artifacts(&self) -> Result<RequestStream, ServiceError> {
+        self.request_stream(ARTIFACTS_PATH).await
+    }
+
+    async fn request_stream(&self, path: &'static str) -> Result<RequestStream, ServiceError> {
+        let (input, output) = self.invoke_at(path, StreamOpen {}.encode()?).await?;
+        Ok(RequestStream { input, output })
     }
 
     async fn invoke_at(

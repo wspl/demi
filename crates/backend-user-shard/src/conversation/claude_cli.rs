@@ -15,12 +15,14 @@ use bytes::Bytes;
 use demi_backend_cloud::access::MachineAccess;
 use demi_backend_database::StorageError;
 use demi_backend_providers::llm::claude_releases::ReleaseError;
-use demi_backend_remote_host::{RemoteHost, ServiceCallError, ServiceRequest};
+use demi_backend_remote_host::{AttachedArtifact, RemoteHost, ServiceCallError, ServiceRequest};
 use demi_backend_runners::command_context::{command_context, provider_context};
 use demi_command_package_claude_code_protocol::{
     Installed, Operation, PACKAGE, Release, Reply, Status,
 };
-use demi_command_protocol::{CommandCaller, CommandContext};
+use demi_command_protocol::{
+    ArtifactLocation, ArtifactUrl, CommandCaller, CommandContext, PackageArtifact,
+};
 use demi_host_interface::{Host as _, MkdirOptions, Process, SpawnRequest};
 use demi_provider_claude_code::{CliSite, Placement, StartError};
 use demi_web_api_protocol::ids::{ConversationId, ProviderId, UserId};
@@ -311,7 +313,15 @@ impl Shard {
 
 /// The versions `target` has, newest first.
 async fn installed(services: &Services, target: &CliTarget) -> Result<Vec<Installed>, CliError> {
-    let status: Status = call(services, target, Operation::Status, Bytes::new(), None).await?;
+    let status: Status = call(
+        services,
+        target,
+        Operation::Status,
+        Bytes::new(),
+        Vec::new(),
+        None,
+    )
+    .await?;
     Ok(status.installed)
 }
 
@@ -326,11 +336,28 @@ async fn ensure(
         reason,
     };
     let record = serde_json::to_vec(release).map_err(|error| failed(error.to_string()))?;
+    // The runner may download each of the release's executables from its
+    // official URL (`claude-code.md` § The package).
+    let attached = release
+        .platforms
+        .values()
+        .map(|artifact| AttachedArtifact {
+            artifact: PackageArtifact {
+                sha256: artifact.sha256.clone(),
+                size: artifact.size,
+            },
+            location: ArtifactLocation::Url(ArtifactUrl {
+                url: artifact.url.clone(),
+                expires_at: None,
+            }),
+        })
+        .collect();
     let installed: Installed = call(
         services,
         target,
         Operation::Ensure,
         Bytes::from(record),
+        attached,
         Some(&release.version),
     )
     .await?;
@@ -338,13 +365,15 @@ async fn ensure(
 }
 
 /// Runs `operation` of the package on `target` with `input` as its whole
-/// input, and decodes the one document it answers. A nonzero exit keeps a
-/// failure document; an output with no document is a service that failed.
+/// input and `attached` as the artifacts it may install, and decodes the one
+/// document it answers. A nonzero exit keeps a failure document; an output
+/// with no document is a service that failed.
 async fn call<T: DeserializeOwned>(
     services: &Services,
     target: &CliTarget,
     operation: Operation,
     input: Bytes,
+    attached: Vec<AttachedArtifact>,
     version: Option<&str>,
 ) -> Result<T, CliError> {
     let failed = |reason: String| CliError {
@@ -369,6 +398,7 @@ async fn call<T: DeserializeOwned>(
         json: None,
         cwd: target.home.clone(),
         resolver: services.native.resolver(&services.public_url),
+        attached,
     };
     let (output, exit) = match target
         .host

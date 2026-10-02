@@ -4,7 +4,6 @@ use futures_util::FutureExt;
 use std::{collections::BTreeMap, future::Future, sync::Arc};
 
 use demi_browser::DemiBrowser;
-use demi_command_package_browser_chrome::driver::installation::Chrome;
 use demi_command_protocol::{
     CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Record,
 };
@@ -214,12 +213,21 @@ impl BrowserFixture {
     }
 }
 
-/// The pinned Chrome for Testing that `DEMI_TEST_CHROME` names, as the
-/// runner names the `chrome` resource's entry: no test downloads Chrome.
-pub fn test_chrome() -> Chrome {
-    Chrome::new(Some(std::path::PathBuf::from(
-        std::env::var_os("DEMI_TEST_CHROME").expect("DEMI_TEST_CHROME"),
-    )))
+/// The answer a runner gives the browser's request for Chrome: the pinned
+/// Chrome for Testing that `DEMI_TEST_CHROME` names. No test downloads
+/// Chrome.
+pub fn answer_chrome(
+    _: demi_command_protocol::ArtifactAsk,
+) -> Result<demi_command_protocol::ArtifactReply, String> {
+    let chrome = std::env::var("DEMI_TEST_CHROME").expect("DEMI_TEST_CHROME");
+    Ok(demi_command_protocol::ArtifactReply::Path(chrome))
+}
+
+/// The service, whose requests for Chrome [`answer_chrome`] answers.
+pub fn test_browser() -> DemiBrowser {
+    let service = DemiBrowser::new();
+    service.artifacts(demi_command_sdk::testing::artifacts_from(answer_chrome));
+    service
 }
 
 pub async fn with_browser_fixture<F, W>(exercise: F)
@@ -237,7 +245,7 @@ where
     F: FnOnce(BrowserFixture) -> W,
     W: Future<Output = BrowserFixture>,
 {
-    let service = DemiBrowser::new(test_chrome());
+    let service = test_browser();
     service.numbers(numbers);
     let fixture = BrowserFixture {
         service: Arc::new(service),

@@ -111,7 +111,7 @@ async fn a_failed_number_draw_fails_only_the_step_that_needs_a_number() {
             let Some(draw) = draws.recv().await else {
                 break;
             };
-            drawn.push(draw.count);
+            drawn.push(draw.request.count);
             // A step that stopped waiting needs no answer.
             let _left = draw.answer.send(answer.map_err(str::to_owned));
         }

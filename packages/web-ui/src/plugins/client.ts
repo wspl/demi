@@ -23,12 +23,14 @@ export class PluginCallError extends Error {
 
 /**
  * A command package install under way on a Host (`native-runtime.md`
- * § Installation progress): the package, the artifact it obtains, the phase,
- * and the bytes downloaded of the artifact's size.
+ * § Installation progress): the package, the artifact's name and version,
+ * the phase, and the bytes downloaded of the artifact's size.
  */
 export interface PackageInstall {
   package: string
-  artifact: { kind: 'program' } | { kind: 'resource'; title: string }
+  /** The artifact's line, such as `program` or `Chrome for Testing`. */
+  name: string
+  version: string
   phase: 'download' | 'unpack'
   done: number
   total: number

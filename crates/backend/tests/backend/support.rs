@@ -28,12 +28,11 @@ use demi_backend_user_shard::tuning::{
     ConversationTuning, ExposeTuning, LifecycleTuning, PageTuning, RunnerTuning,
 };
 use demi_command_declarations::NativeOperation;
-use demi_command_package_browser_protocol::release::{BrowserRelease, RESOURCE};
 use demi_command_package_browser_protocol::{
     Operation as BrowserOperation, PACKAGE as BROWSER_PACKAGE,
 };
 use demi_command_protocol::testing::built_program;
-use demi_command_protocol::{PackageDescriptor, PackageResource, ResourceArtifact, host_target};
+use demi_command_protocol::{PackageDescriptor, host_target};
 use demi_plugin_interface::{
     Manifest, Plugin, PluginError, PluginFactory, PluginId, PluginPort, Reply, Request, Stream,
 };
@@ -87,8 +86,6 @@ const RELEASES: &str = concat!(env!("CARGO_TARGET_TMPDIR"), "/backend-releases")
 pub struct Built {
     pub descriptor: PackageDescriptor,
     pub program: PathBuf,
-    /// The archive of each of the descriptor's resources, by its SHA-256.
-    archives: Vec<(String, Vec<u8>)>,
     published: OnceCell<NativeCatalog>,
 }
 
@@ -98,28 +95,8 @@ impl Built {
         Self {
             descriptor,
             program,
-            archives: Vec::new(),
             published: OnceCell::new(),
         }
-    }
-
-    /// The package with the resource `name`, whose archive for this
-    /// machine's target holds `files` and whose entry is `entry`.
-    fn with_resource(mut self, name: &str, entry: &str, files: &[(&str, &[u8])]) -> Self {
-        let bytes = demi_shared_artifacts::testing::zip(files);
-        let sha256 = format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(&bytes));
-        let archive = ResourceArtifact {
-            sha256: sha256.clone(),
-            size: bytes.len() as u64,
-            entry: entry.to_owned(),
-        };
-        let resource = PackageResource {
-            title: format!("{name} stand-in"),
-            targets: [(host_target().to_owned(), archive)].into(),
-        };
-        self.descriptor.resources.insert(name.to_owned(), resource);
-        self.archives.push((sha256, bytes));
-        self
     }
 
     /// The catalog of this package's development release for this machine's
@@ -155,12 +132,6 @@ impl Built {
         let _ = std::fs::remove_file(&staged);
         std::os::unix::fs::symlink(&self.program, &staged).unwrap();
         std::fs::rename(&staged, &link).unwrap();
-        if !self.archives.is_empty() {
-            std::fs::create_dir_all(release.join("resources")).unwrap();
-        }
-        for (sha256, bytes) in &self.archives {
-            replace(&release.join("resources").join(sha256), bytes);
-        }
         replace(
             &release.join("descriptor.json"),
             &serde_json::to_vec(&self.descriptor).unwrap(),
@@ -194,28 +165,14 @@ static FILE: LazyLock<Built> = LazyLock::new(|| {
     )
 });
 
-/// `demi.browser`, from `demi-browser`, whose `chrome` resource is a
-/// stand-in archive with Chrome's entry for this machine's target: a runner
-/// installs it as it installs Chrome, and the browser suite puts the real
-/// Chrome in its place ([`chrome_resource`]).
+/// `demi.browser`, from `demi-browser`.
 static BROWSER: LazyLock<Built> = LazyLock::new(|| {
-    let entry = BrowserRelease::pinned()
-        .unwrap()
-        .platform(host_target())
-        .map(|platform| platform.executable.clone())
-        .unwrap_or_else(|| "chrome/chrome".to_owned());
     Built::new(
         BROWSER_PACKAGE,
         built_program("demi-browser"),
         BrowserOperation::names(),
     )
-    .with_resource(RESOURCE, &entry, &[(&entry, b"stand-in chrome")])
 });
-
-/// The browser package's `chrome` resource for this machine's target.
-pub fn chrome_resource() -> ResourceArtifact {
-    BROWSER.descriptor.resources[RESOURCE].targets[host_target()].clone()
-}
 
 /// `demi.claude-code`, from `demi-claude-code`.
 static CLAUDE: LazyLock<Built> = LazyLock::new(|| {
@@ -232,7 +189,6 @@ static CLAUDE: LazyLock<Built> = LazyLock::new(|| {
 pub static FIXTURE: LazyLock<Built> = LazyLock::new(|| Built {
     descriptor: NativeFixture::load().descriptor,
     program: native_fixture_binary(),
-    archives: Vec::new(),
     published: OnceCell::new(),
 });
 

@@ -12,7 +12,7 @@ import type { PackageInstall } from './client'
 defineProps<{ installs: readonly PackageInstall[] }>()
 
 function artifact(install: PackageInstall): string {
-  return install.artifact.kind === 'resource' ? install.artifact.title : 'program'
+  return `${install.name} ${install.version}`
 }
 
 function progress(install: PackageInstall): string {
@@ -27,7 +27,7 @@ function progress(install: PackageInstall): string {
   <ul class="flex w-full max-w-80 flex-col gap-3 text-left">
     <li
       v-for="install in installs"
-      :key="`${install.package} ${artifact(install)}`"
+      :key="`${install.package} ${install.name}`"
       class="flex flex-col gap-1.5"
     >
       <span class="text-fg-subtle [overflow-wrap:anywhere]">Installing {{ install.package }}: {{ artifact(install) }}</span>

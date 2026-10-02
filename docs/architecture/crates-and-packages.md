@@ -1523,7 +1523,7 @@ machine-manager -> shared-artifacts, shared-cli, machine-manager-protocol, runne
 runner -> command-protocol, command-sdk, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell
 command-package-file -> shared-artifacts, command-protocol, command-sdk, shared-types, command-package-file-protocol, shared-gates
 command-package-browser -> command-package-browser-chrome, command-package-browser-protocol, command-protocol, command-sdk
-command-package-claude-code -> shared-artifacts, command-package-claude-code-protocol, command-protocol, command-sdk
+command-package-claude-code -> command-package-claude-code-protocol, command-protocol, command-sdk
 xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, plugin-browser, plugin-expose, plugin-skills
 ```
 
