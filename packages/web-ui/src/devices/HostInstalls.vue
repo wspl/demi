@@ -1,21 +1,21 @@
 <script setup lang="ts">
 import ProgressBar from '../ui/ProgressBar.vue'
 import { formatBytes } from '../files/format'
-import type { PackageInstall } from './client'
+import type { HostInstall } from './installs'
 
 /**
- * What a Host installs before a plugin's first call can run
- * (`native-runtime.md` § Installation progress): each artifact with its
- * phase and bytes, such as `Installing demi.browser: Chrome for Testing
- * 153.0.8010.36`, `120 MB of 196 MB`.
+ * What Hosts install while someone waits on them (`native-runtime.md`
+ * § Installation progress): each artifact with its phase and bytes, such as
+ * `Installing demi.browser: Chrome for Testing 153.0.8010.36`,
+ * `120 MB of 196 MB`. It takes its container's width.
  */
-defineProps<{ installs: readonly PackageInstall[] }>()
+defineProps<{ installs: readonly HostInstall[] }>()
 
-function artifact(install: PackageInstall): string {
+function artifact(install: HostInstall): string {
   return `${install.name} ${install.version}`
 }
 
-function progress(install: PackageInstall): string {
+function progress(install: HostInstall): string {
   if (install.phase === 'unpack') {
     return 'Unpacking…'
   }
@@ -24,7 +24,7 @@ function progress(install: PackageInstall): string {
 </script>
 
 <template>
-  <ul class="flex w-full max-w-80 flex-col gap-3 text-left">
+  <ul class="flex w-full flex-col gap-3 text-left text-[13px]">
     <li
       v-for="install in installs"
       :key="`${install.package} ${install.name}`"

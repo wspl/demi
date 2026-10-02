@@ -410,9 +410,13 @@ records a spawn leaves out the environment, so the token is never written.
 
 ## What the user sees
 
-Installing is not an event of the conversation. A request whose Cloud has no
-usable CLI installs one and then proceeds, under the same **Requesting** the
-request would show anyway; an update installs with nothing shown at all.
+Installing is not an event of the conversation: it leaves nothing in the
+transcript. A request whose Cloud has no usable CLI installs one and then
+proceeds, under the same **Requesting** the request would show anyway, with
+the download's progress below it while it lasts
+([Installation progress](../execution/native-runtime.md#installation-progress)).
+An update installs beside the version in use, so no request waits for it;
+its progress shows only where the Cloud's installs of the CLI show anyway.
 
 A failure is always shown, with its reason and the version: the release could
 not be read, the download failed or did not match its digest, the platform has
@@ -425,7 +429,10 @@ Backend shutdown cancels an install in progress; the next request, or
 **Install**, starts it again.
 
 Settings show, for a Claude Code entry, the vendor's newest version and the
-version the user's Cloud has when it can be asked now. Updates are automatic;
+version the user's Cloud has when it can be asked now, and, while the Cloud
+downloads or unpacks a CLI, that install's progress. Before the download
+starts, while the Cloud wakes and the release is read, the entry says
+**Installing on Cloud**. Updates are automatic;
 **Check for updates** refreshes the release information, and **Install** retries
 a failed installation. The routes are listed in
 [Web API](../product/web-api.md#model-configuration-and-provider-inspection).

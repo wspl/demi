@@ -15,6 +15,8 @@ import type { LocalState } from './local'
 
 export interface ProductProvider extends SettingsProviderEntry {
   providerType: string
+  /** The package of the CLI its requests start on the Cloud; null when they are HTTP. */
+  cliPackage: string | null
   configured: boolean
   keyConfigured: boolean
 }
@@ -106,7 +108,7 @@ export function providerView(
     kind: entry.kind,
     providerType: entry.providerType,
     configured: true,
-    runsOnHost: details?.requiresProcessCapableHost ?? catalog?.requiresProcessCapableHost ?? false,
+    cliPackage: details?.cliPackage ?? catalog?.cliPackage ?? null,
     // An API-key entry is created with its key, which is kept until the entry goes.
     keyConfigured: entry.kind === 'api_key',
     vendorId: entry.vendorId,

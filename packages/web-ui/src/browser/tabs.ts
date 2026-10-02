@@ -12,7 +12,7 @@ import type { BrowserCreatedBy } from '@demicodes/protocol'
 import { viewerClipboard } from './clipboard'
 import { viewerPlatform } from './input'
 import { picturesSupported } from './pictures'
-import type { PackageInstall } from '../plugins/client'
+import type { HostInstall } from '../devices/installs'
 import { LiveSession, type OpenLiveStream } from './session'
 
 /** What a new tab shows before the user goes anywhere. */
@@ -62,7 +62,7 @@ export interface BrowserTabsApi {
   history(tab: string, action: 'back' | 'forward' | 'reload'): Promise<void>
   stream: OpenLiveStream
   /** What the Host installs before the browser can start, read reactively. */
-  installs(): readonly PackageInstall[]
+  installs(): readonly HostInstall[]
 }
 
 /** The panel's tab state, as far as a kind may touch it. */

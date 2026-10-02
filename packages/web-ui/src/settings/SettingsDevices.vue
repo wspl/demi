@@ -4,6 +4,7 @@ import CloudSettings from '../cloud/CloudSettings.vue'
 import type { CloudState } from '../cloud/types'
 import { Monitor } from '@lucide/vue'
 import CornerDot from '../ui/CornerDot.vue'
+import HostInstalls from '../devices/HostInstalls.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import SettingsGroup from './SettingsGroup.vue'
@@ -75,6 +76,9 @@ const { isOpen, phase, open, close, submit } = useDevicePairing(
                   : 'Offline'
             "
           >
+            <template v-if="device.installs.length" #detail>
+              <HostInstalls :installs="device.installs" />
+            </template>
             <template #leading>
               <span class="relative flex">
                 <Monitor :size="ICON_PX.in28" />

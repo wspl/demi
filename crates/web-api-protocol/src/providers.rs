@@ -275,8 +275,12 @@ pub struct ProviderDetails {
     #[schemars(with = "Nullable<QuotaSnapshot>")]
     pub quota: Option<QuotaSnapshot>,
     pub quota_capability: QuotaCapability,
-    /// Whether the provider runs a process on the user's Cloud.
-    pub requires_process_capable_host: bool,
+    /// The command package that installs the CLI the provider's requests
+    /// start on the user's Cloud, such as `demi.claude-code`; null when its
+    /// requests are HTTP.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
+    pub cli_package: Option<String>,
 }
 
 /// An entry in the product state: the entry and what the backend could read
@@ -531,7 +535,11 @@ pub struct ModelCatalog {
 pub struct CatalogProvider {
     pub provider_id: ProviderId,
     pub display_name: String,
-    pub requires_process_capable_host: bool,
+    /// The command package that installs the CLI the provider's requests
+    /// start on the user's Cloud; null when its requests are HTTP.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
+    pub cli_package: Option<String>,
     pub models: Vec<CatalogModel>,
     /// When the source was last downloaded; the Unix epoch for a configured
     /// or built-in list, and for a catalog no refresh has filled.

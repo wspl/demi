@@ -17,7 +17,8 @@ import { encodeVideo } from '@demicodes/web-ui/browser/frames'
 import type { OpenLiveStream, LiveStreamHandlers } from '@demicodes/web-ui/browser/session'
 import { CONTROL, META } from '@demicodes/web-ui/browser/input'
 import { BrowserTabsError, type BrowserTabInfo, type BrowserTabsApi } from '@demicodes/web-ui/browser/tabs'
-import type { PackageInstall } from '@demicodes/web-ui/plugins/client'
+import type { HostInstall } from '@demicodes/web-ui/devices/installs'
+import { BROWSER_ARTIFACTS, playInstalls } from './installs'
 
 const FPS = 10
 const encoder = new TextEncoder()
@@ -73,25 +74,6 @@ const SELECT: LiveControl = {
 
 /** How long the gallery's conversation browser takes over a request, as a Host takes a moment. */
 const REQUEST_DELAY_MS = 900
-/** How often a simulated install moves on, a tenth of an artifact at a time. */
-const INSTALL_STEP_MS = 250
-
-/**
- * What the Host installs before its first browser starts, as a paired
- * device downloads it (`native-runtime.md` § Installation progress).
- */
-const FIRST_INSTALLS: readonly PackageInstall[] = [
-  { package: 'demi.browser', name: 'program', version: '0.1.3', phase: 'download', done: 0, total: 41_943_040 },
-  {
-    package: 'demi.browser',
-    name: 'Chrome for Testing',
-    version: '153.0.8010.36',
-    phase: 'download',
-    done: 0,
-    total: 195_711_476,
-  },
-]
-
 /** Tab ids as the protocol spells them: `t` and the tab's number in the conversation. */
 function galleryTabs(): LiveTab[] {
   return [
@@ -381,62 +363,30 @@ export function galleryBrowserTabs(
   { install = false }: { install?: boolean } = {},
 ): BrowserTabsApi {
   const views = new Set<GalleryBrowser>()
-  const installs = shallowRef<readonly PackageInstall[]>([])
+  const installs = shallowRef<readonly HostInstall[]>([])
   // The simulated install every request waits for once; none without `install`.
   let installed: Promise<void> | null = install ? null : Promise.resolve()
   // The next tab's number, as the conversation gives them: never one given before.
   let next = Math.max(0, ...tabs.map((tab) => Number(tab.id.slice(1)))) + 1
-  // Each request's timer removes itself when it answers; none outlives its 900 ms.
-  const timers = new Set<ReturnType<typeof setTimeout>>()
 
-  /** Steps through each artifact's download, then unpacks the last, as the runner reports it. */
+  /** The browser's first install, which every request waits for once. */
   function installOnce(): Promise<void> {
-    installed ??= new Promise((resolve) => {
-      let index = 0
-      let tenth = 0
-      const step = () => {
-        const artifact = FIRST_INSTALLS[index]
-        if (!artifact) {
-          installs.value = []
-          resolve()
-          return
-        }
-        // The executable is a plain file; only Chrome's archive unpacks.
-        const archive = artifact.name !== 'program'
-        const unpacking = archive && tenth > 10
-        installs.value = [{
-          ...artifact,
-          phase: unpacking ? 'unpack' : 'download',
-          done: Math.min(artifact.total, Math.round((artifact.total * tenth) / 10)),
-        }]
-        if (tenth >= (archive ? 14 : 10)) {
-          index += 1
-          tenth = 0
-        } else {
-          tenth += 1
-        }
-        const timer = setTimeout(() => {
-          timers.delete(timer)
-          step()
-        }, INSTALL_STEP_MS)
-        timers.add(timer)
-      }
-      step()
+    installed ??= playInstalls(BROWSER_ARTIFACTS, (list) => {
+      installs.value = list
     })
     return installed
   }
 
+  /** Answers after the install and a Host's moment; the timer ends by itself within 900 ms. */
   function later<T>(answer: () => T): Promise<T> {
     return installOnce().then(() => new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        timers.delete(timer)
+      setTimeout(() => {
         try {
           resolve(answer())
         } catch (error) {
           reject(error)
         }
       }, REQUEST_DELAY_MS)
-      timers.add(timer)
     }))
   }
 

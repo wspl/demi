@@ -1,3 +1,5 @@
+import type { HostInstall } from '../devices/installs'
+
 /** The two writable filesystems of a Cloud, in bytes: system and home. */
 export interface CloudVolumes {
   systemBytes: number
@@ -17,4 +19,6 @@ export interface CloudState {
   volumes: CloudVolumes | null
   /** The most each filesystem may grow to. */
   limits: CloudVolumes
+  /** What the Cloud's runner installs now. */
+  installs: readonly HostInstall[]
 }
