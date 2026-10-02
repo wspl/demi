@@ -521,7 +521,15 @@ Demi implements `exec`, `ulimit`, `umask` and `kill` as its own builtins in
 `internal/runner/shell`, with state per interpreter scope, cloned for subshells.
 
 A job's limits apply to its system programs, including utilities; in-process
-builtins retain the runner's limits. The remaining process-related builtins
+builtins retain the runner's limits.
+
+A process whose job set its own mask or limits starts through the runner's
+own executable: that copy sets them and replaces itself with the program, so
+the program keeps the copy's process ID, process group and descriptors, and a
+program that cannot start reports the same failure, through a descriptor
+that closes when the program runs, as a direct start would, including the
+busy-program wait. The runner itself never changes its mask or limits for a
+job. A process whose job set neither starts directly. Windows has neither. The remaining process-related builtins
 behave as follows:
 
 | Builtin | In a job |
