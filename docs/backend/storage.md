@@ -31,7 +31,7 @@ conversation's host access; they are not conversation database content.
 
 | Store | Owns | Writer |
 |---|---|---|
-| `control.sqlite` | Accounts, auth sessions, preferences, devices, workspaces, exposes, conversation index, providers, model catalogs, usage, attachment metadata, operation records, plugin values and Host directories | The control service, on its database thread |
+| `control.sqlite` | Accounts, auth sessions, preferences, devices, workspaces, exposes, conversation index, providers, model catalogs, usage, attachment metadata, operation records, the users' plugin choices, plugin values and Host directories | The control service, on its database thread |
 | Conversation database | Root and subagent nodes, checkpoint state, transcript blocks, command history, the records of commands' outputs | The shard of the user who owns the conversation |
 | User blob namespace | Uploaded bytes, transcript media, edit copies, commands' whole outputs and the files plugins keep, addressed by content hash | The upload route, the conversation socket when an uploaded image enters fitted, a session when a tool's medium enters its transcript, and the backend when a command ends |
 
@@ -164,7 +164,10 @@ input, which the multi-worker control service also relies on
   key, the JSON document, its revision, and the SHA-256 of each blob the value
   names. A write names the revision it read and commits only if the row still
   has it, in one transaction, so two writes never build on the same revision;
-  a value's first write expects none. `plugin_directories` stores each
+  a value's first write expects none. `user_plugins` stores each choice a
+  user made about a plugin: user, plugin id, whether it is on, and its
+  settings as a JSON document, absent until the user saves them. A plugin
+  with no row is on and has no settings. `plugin_directories` stores each
   plugin's [Host directories](../architecture/plugins.md#host-directories) for
   a user: user, plugin id, the directory's name, its digest and its listing,
   each file's path, mode and SHA-256. A plugin's set for a user is replaced
