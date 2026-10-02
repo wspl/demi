@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/wspl/demi/internal/core"
@@ -239,4 +240,64 @@ func TestInlineMediaAndPlaceholders(t *testing.T) {
  {"type":"text","text":"[video]"}]`)
 	result := messages[2].(map[string]any)["content"].([]any)[0].(map[string]any)
 	equalJSON(t, result["content"], `[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw=="}},{"type":"text","text":"[video:video/webm]"}]`)
+}
+
+// TestRequestWireOrder pins the bytes used by the vendor's prompt cache. Each
+// case costs one local scripted request; the expected field order follows
+// Body, Message, Content, Block, ResultBlock, Base64, Tool and Thinking in
+// crates/provider-anthropic-api/src/request.rs.
+func TestRequestWireOrder(t *testing.T) {
+	const messages = `"model":"model-1","messages":[` +
+		`{"role":"user","content":[{"type":"text","text":"hello <>&\u2028\u2029"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw=="}},{"type":"document","source":{"type":"base64","media_type":"application/pdf","data":"JVBERg=="},"title":"spec.pdf","cache_control":{"type":"ephemeral","ttl":"1h"}}]},` +
+		`{"role":"assistant","content":[{"type":"text","text":"Reading"},{"type":"thinking","thinking":"plan","signature":"sig"},{"type":"redacted_thinking","data":"opaque"},{"type":"tool_use","id":"call-1","name":"read","input":{"z":1,"a":{"y":2,"b":3}}},{"type":"tool_use","id":"call-2","name":"read","input":{}}]},` +
+		`{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-1","content":[{"type":"text","text":"result"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw=="}}],"is_error":true},{"type":"tool_result","tool_use_id":"call-2","content":[],"cache_control":{"type":"ephemeral","ttl":"1h"}}]}],"max_tokens":8192,"stream":true,`
+	const tool = `"tools":[{"name":"read","description":"Read a file","input_schema":{"type":"object","properties":{"z":{"type":"number"},"a":{"type":"object","properties":{"y":{"type":"number"},"b":{"type":"number"}}}}}`
+	const system = `"system":[{"type":"text","text":"system","cache_control":{"type":"ephemeral","ttl":"1h"}}],`
+	// Rust emits these Unicode separators literally, not as JSON escapes.
+	prefix := strings.ReplaceAll(strings.ReplaceAll(messages, `\u2028`, "\u2028"), `\u2029`, "\u2029")
+	for _, c := range []struct {
+		name, system string
+		thinking     core.ThinkingConfig
+		nullInput    bool
+		want         string
+	}{
+		{"adaptive", "system", &core.EffortConfig{Effort: "high"}, false, "{" + prefix + system + tool + `}],"thinking":{"type":"adaptive","display":"summarized"},"output_config":{"effort":"high"},"service_tier":"standard_only"}`},
+		{"budget", "system", &core.BudgetConfig{BudgetTokens: 1024}, true, "{" + prefix + system + tool + `}],"thinking":{"type":"enabled","budget_tokens":1024},"service_tier":"standard_only"}`},
+		{"tool-cache", "", &core.AdaptiveConfig{Effort: "max"}, false, "{" + prefix + tool + `,"cache_control":{"type":"ephemeral","ttl":"1h"}}],"thinking":{"type":"adaptive","display":"summarized"},"output_config":{"effort":"max"},"service_tier":"standard_only"}`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			png := provider.MediaBytes{Data: []byte{0x89, 'P', 'N', 'G'}, MediaType: "image/png"}
+			signature := "anthropic:sig"
+			answered := 1
+			limit := uint32(8192)
+			tier := "standard_only"
+			emptyCall := &provider.ToolUse{ToolUseID: "call-2", ToolName: "read"}
+			if c.nullInput {
+				emptyCall.Input = []byte(`null`)
+			}
+			request := providertest.InferenceRequest()
+			request.SystemPrompt = c.system
+			request.OutputLimit = &limit
+			request.ServiceTierID = &tier
+			request.Thinking = c.thinking
+			request.PromptCache.AnsweredItems = &answered
+			request.Tools = []provider.ToolDefinition{{Name: "read", Description: "Read a file", InputSchema: []byte(`{"type":"object","properties":{"z":{"type":"number"},"a":{"type":"object","properties":{"y":{"type":"number"},"b":{"type":"number"}}}}}`)}}
+			request.Items = []provider.InferenceItem{
+				&provider.UserMessage{Content: []provider.UserPart{&provider.TextPart{Text: "hello <>&\u2028\u2029"}, &provider.ImagePart{Medium: &png}, &provider.DocumentPart{Bytes: provider.MediaBytes{Data: []byte("%PDF"), MediaType: "application/pdf"}, FileName: "spec.pdf"}}},
+				&provider.AssistantText{Text: "Reading"},
+				&provider.AssistantThinking{Text: "plan", Signature: &signature},
+				&provider.AssistantRedactedThinking{Data: "anthropic:opaque"},
+				&provider.ToolUse{ToolUseID: "call-1", ToolName: "read", Input: []byte(`{"z":1,"a":{"y":2,"b":3}}`)},
+				emptyCall,
+				&provider.ToolResult{ToolUseID: "call-1", Output: []provider.ResultPart{&provider.TextPart{Text: "result"}, &provider.ResultImage{Bytes: png}}, IsError: true},
+				&provider.ToolResult{ToolUseID: "call-2"},
+			}
+			v := providertest.StartVendor(t)
+			v.Respond(recorded(`{"type":"message_stop"}`))
+			equalEvents(t, providertest.Run(t.Context(), t, testRuntime(t, v, provider.VendorPolicy{}), request), []provider.Event{&provider.Response{}})
+			if got := string(v.Requests()[0].Body); got != c.want {
+				t.Fatalf("request bytes:\n%s\nwant:\n%s", got, c.want)
+			}
+		})
+	}
 }

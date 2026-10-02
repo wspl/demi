@@ -11,23 +11,6 @@ import (
 
 const signatureTag = "anthropic:"
 
-type block map[string]any
-type message struct {
-	Role    string  `json:"role"`
-	Content []block `json:"content"`
-}
-type requestBody struct {
-	Model        string    `json:"model"`
-	Messages     []message `json:"messages"`
-	MaxTokens    uint32    `json:"max_tokens"`
-	Stream       bool      `json:"stream"`
-	System       []block   `json:"system,omitempty"`
-	Tools        []block   `json:"tools,omitempty"`
-	Thinking     block     `json:"thinking,omitempty"`
-	OutputConfig block     `json:"output_config,omitempty"`
-	ServiceTier  *string   `json:"service_tier,omitempty"`
-}
-
 // encodeRequest maps the transcript and cache boundaries onto a Messages request.
 func encodeRequest(request provider.InferenceRequest, policy provider.VendorPolicy) ([]byte, error) {
 	body := requestBody{Model: request.ModelID, Messages: []message{}, MaxTokens: 32000, Stream: true, ServiceTier: request.ServiceTierID}
@@ -36,24 +19,28 @@ func encodeRequest(request provider.InferenceRequest, policy provider.VendorPoli
 	}
 	body.Thinking, body.OutputConfig = thinking(request.Thinking, body.MaxTokens, policy)
 	if !core.IsBlank(request.SystemPrompt) {
-		body.System = []block{textBlock(request.SystemPrompt)}
+		body.System = []*content{{block: newTextBlock(request.SystemPrompt)}}
 	}
-	for _, tool := range request.Tools {
-		body.Tools = append(body.Tools, block{"name": tool.Name, "description": tool.Description, "input_schema": tool.InputSchema})
+	for _, definition := range request.Tools {
+		body.Tools = append(body.Tools, tool{Name: definition.Name, Description: definition.Description, InputSchema: definition.InputSchema})
 	}
-	var answered block
-	var lastMarkable block
+	var answered *content
+	var lastMarkable *content
 	for index, item := range request.Items {
-		role, content := itemContent(item)
-		if len(content) > 0 {
+		role, blocks := itemContent(item)
+		contents := make([]*content, 0, len(blocks))
+		for _, b := range blocks {
+			contents = append(contents, &content{block: b})
+		}
+		if len(contents) > 0 {
 			end := len(body.Messages) - 1
 			if end >= 0 && body.Messages[end].Role == role {
-				body.Messages[end].Content = append(body.Messages[end].Content, content...)
+				body.Messages[end].Content = append(body.Messages[end].Content, contents...)
 			} else {
-				body.Messages = append(body.Messages, message{Role: role, Content: content})
+				body.Messages = append(body.Messages, message{Role: role, Content: contents})
 			}
-			for _, b := range content {
-				if b["type"] != "thinking" && b["type"] != "redacted_thinking" {
+			for _, b := range contents {
+				if b.canMark() {
 					lastMarkable = b
 				}
 			}
@@ -66,7 +53,7 @@ func encodeRequest(request provider.InferenceRequest, policy provider.VendorPoli
 		if len(body.System) > 0 {
 			mark(body.System[len(body.System)-1])
 		} else if len(body.Tools) > 0 {
-			mark(body.Tools[len(body.Tools)-1])
+			body.Tools[len(body.Tools)-1].CacheControl = &cacheControl{Type: "ephemeral", TTL: "1h"}
 		}
 		if answered != nil {
 			mark(answered)
@@ -79,10 +66,10 @@ func encodeRequest(request provider.InferenceRequest, policy provider.VendorPoli
 }
 
 // mark gives a vendor cache boundary a one-hour lifetime.
-func mark(b block) { b["cache_control"] = block{"type": "ephemeral", "ttl": "1h"} }
+func mark(c *content) { c.cache = &cacheControl{Type: "ephemeral", TTL: "1h"} }
 
 // thinking converts configured reasoning into the vendor's budget or effort.
-func thinking(config core.ThinkingConfig, maxTokens uint32, policy provider.VendorPolicy) (block, block) {
+func thinking(config core.ThinkingConfig, maxTokens uint32, policy provider.VendorPolicy) (thinkingConfig, *outputConfig) {
 	var budget uint32
 	var effort string
 	isBudget := false
@@ -102,7 +89,7 @@ func thinking(config core.ThinkingConfig, maxTokens uint32, policy provider.Vend
 		}
 	}
 	if !isBudget && !policy.EffortAsBudget {
-		return block{"type": "adaptive", "display": display}, block{"effort": effort}
+		return &adaptiveThinking{Type: "adaptive", Display: display}, &outputConfig{Effort: effort}
 	}
 	if !isBudget {
 		budget = provider.EffortBudget(effort)
@@ -111,7 +98,7 @@ func thinking(config core.ThinkingConfig, maxTokens uint32, policy provider.Vend
 	if maxTokens > 2048 {
 		ceiling = maxTokens - 1024
 	}
-	return block{"type": "enabled", "budget_tokens": max(uint32(1024), min(budget, ceiling))}, nil
+	return &enabledThinking{Type: "enabled", BudgetTokens: max(uint32(1024), min(budget, ceiling))}, nil
 }
 
 // itemContent maps one transcript item, omitting reasoning that cannot be replayed.
@@ -122,7 +109,7 @@ func itemContent(item provider.InferenceItem) (string, []block) {
 	case *provider.UserSteer:
 		return "user", userContent(item.Content)
 	case *provider.AssistantText:
-		return "assistant", []block{textBlock(item.Text)}
+		return "assistant", []block{newTextBlock(item.Text)}
 	case *provider.AssistantThinking:
 		if item.KeptPastSummary || item.Signature == nil {
 			return "", nil
@@ -131,35 +118,32 @@ func itemContent(item provider.InferenceItem) (string, []block) {
 		if !ok {
 			return "", nil
 		}
-		return "assistant", []block{{"type": "thinking", "thinking": item.Text, "signature": signature}}
+		return "assistant", []block{&thinkingBlock{Type: "thinking", Thinking: item.Text, Signature: signature}}
 	case *provider.AssistantRedactedThinking:
 		data, ok := strings.CutPrefix(item.Data, signatureTag)
 		if item.KeptPastSummary || !ok {
 			return "", nil
 		}
-		return "assistant", []block{{"type": "redacted_thinking", "data": data}}
+		return "assistant", []block{&redactedThinkingBlock{Type: "redacted_thinking", Data: data}}
 	case *provider.ToolUse:
 		input := item.Input
 		if len(input) == 0 || strings.TrimSpace(string(input)) == "null" {
 			input = json.RawMessage(`{}`)
 		}
-		return "assistant", []block{{"type": "tool_use", "id": item.ToolUseID, "name": item.ToolName, "input": input}}
+		return "assistant", []block{&toolUseBlock{Type: "tool_use", ID: item.ToolUseID, Name: item.ToolName, Input: input}}
 	case *provider.ToolResult:
-		b := block{"type": "tool_result", "tool_use_id": item.ToolUseID, "content": resultContent(item.Output)}
-		if item.IsError {
-			b["is_error"] = true
-		}
+		b := &toolResultBlock{Type: "tool_result", ToolUseID: item.ToolUseID, Content: resultContent(item.Output), IsError: item.IsError}
 		return "user", []block{b}
 	}
 	return "", nil
 }
 
-// textBlock constructs a Messages text block.
-func textBlock(text string) block { return block{"type": "text", "text": text} }
+// newTextBlock constructs a Messages text block.
+func newTextBlock(text string) *textBlock { return &textBlock{Type: "text", Text: text} }
 
 // source constructs the vendor's inline base64 source.
-func source(bytes provider.MediaBytes) block {
-	return block{"type": "base64", "media_type": bytes.MediaType, "data": base64.StdEncoding.EncodeToString(bytes.Data)}
+func source(bytes provider.MediaBytes) base64Source {
+	return base64Source{Type: "base64", MediaType: bytes.MediaType, Data: base64.StdEncoding.EncodeToString(bytes.Data)}
 }
 
 // userContent maps native media and the API's unsupported-media placeholders.
@@ -168,34 +152,34 @@ func userContent(parts []provider.UserPart) []block {
 	for _, part := range parts {
 		switch p := part.(type) {
 		case *provider.TextPart:
-			out = append(out, textBlock(p.Text))
+			out = append(out, newTextBlock(p.Text))
 		case *provider.VideoPart:
-			out = append(out, textBlock("[video]"))
+			out = append(out, newTextBlock("[video]"))
 		case *provider.ImagePart:
 			switch medium := p.Medium.(type) {
 			case *provider.MediaBytes:
-				out = append(out, block{"type": "image", "source": source(*medium)})
+				out = append(out, &imageBlock{Type: "image", Source: source(*medium)})
 			case *provider.MediaURL:
-				out = append(out, textBlock("[image:"+medium.URL+"]"))
+				out = append(out, newTextBlock("[image:"+medium.URL+"]"))
 			}
 		case *provider.DocumentPart:
-			out = append(out, block{"type": "document", "source": source(p.Bytes), "title": p.FileName})
+			out = append(out, &documentBlock{Type: "document", Source: source(p.Bytes), Title: p.FileName})
 		}
 	}
 	return out
 }
 
 // resultContent maps a tool result's text and media onto Messages blocks.
-func resultContent(parts []provider.ResultPart) []block {
-	out := make([]block, 0, len(parts))
+func resultContent(parts []provider.ResultPart) []resultBlock {
+	out := make([]resultBlock, 0, len(parts))
 	for _, part := range parts {
 		switch p := part.(type) {
 		case *provider.TextPart:
-			out = append(out, textBlock(p.Text))
+			out = append(out, newTextBlock(p.Text))
 		case *provider.ResultImage:
-			out = append(out, block{"type": "image", "source": source(p.Bytes)})
+			out = append(out, &imageBlock{Type: "image", Source: source(p.Bytes)})
 		case *provider.ResultVideo:
-			out = append(out, textBlock("[video:"+p.Bytes.MediaType+"]"))
+			out = append(out, newTextBlock("[video:"+p.Bytes.MediaType+"]"))
 		}
 	}
 	return out
