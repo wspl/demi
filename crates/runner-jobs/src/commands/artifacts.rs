@@ -1,5 +1,5 @@
-//! Where artifacts are (`native-runtime.md` § Install the selected
-//! executable): the backend answers only for live work on the connection
+//! Where artifacts are (`native-runtime.md` § Install
+//! artifacts): the backend answers only for live work on the connection
 //! that the artifact belongs to, a job or an open user stream.
 
 use crate::commands::contexts::Contexts;

@@ -324,14 +324,17 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
     coordinated across processes by an OS file lock;
   - path resolution against an invocation's working directory, and waiting out
     a lack of open file descriptors;
-  - a command program's launch arguments, `--command-service` and the entry
-    of each of its package's resources, which the runner writes
-    (`launch_arguments`) and the program reads (`Launch`).
+  - a command program's launch argument, `--command-service`, which the
+    program reads (`Launch`), and the handler's artifacts source
+    (`Artifacts`), which asks the runner to install an artifact for the
+    invocation or says which of a line it has.
 - **Public boundary:** the client, the service entry point, the handler and IO
-  traits, the launch arguments, and the edit recorder; `command_sdk::testing` starts a service
+  traits, the launch argument, the artifacts source, and the edit recorder; `command_sdk::testing` starts a service
   binary and drives it with a client (`ServiceProcess`), gives a handler
   numbers from counters that start at 1 (`counting_numbers`) or answers a
-  service's numbers stream from them (`answer_numbers`), and counts the
+  service's numbers stream from them (`answer_numbers`), answers a service's
+  artifacts stream or gives a handler artifacts from a function
+  (`answer_artifacts`, `artifacts_from`), and counts the
   process's pauses before trying an operation again (`pauses`), which show an
   operation waiting out a lack of open files. The runner and every command program use
   this one SDK; a command program depends on it and on `command-protocol`
@@ -671,7 +674,7 @@ Each crate implements the provider contract for one vendor family.
   package) and a policy that runs every call in one command set
   (`CommandPolicy`). Behavior: [Runner](../execution/runner.md) and
   [Native command execution](../execution/native-runtime.md), which owns
-  [artifact-location admission](../execution/native-runtime.md#install-the-selected-package).
+  [artifact-location admission](../execution/native-runtime.md#install-artifacts).
 - **Must not:** own sockets or HTTP routes (the backend's connection tasks and
   pipe routes feed it), claim policy, the device registry, credentials or
   conversation state.
@@ -789,12 +792,13 @@ demi-runner (executable: connection, registration, Host log, composition)
 
 #### `runner-command-packages`
 
-- **Owns:** the artifact cache, the preinstalled artifacts of a Cloud
-  image, the installs in progress, and the resident service registry:
-  installing a pinned executable and its package's resources, starting,
-  checking and reusing a service, its leases, conversation status and
-  release, its numbers stream through a source the composition supplies
-  (`NumberSource`), and its retirement
+- **Owns:** the artifact cache with its lines, the preinstalled artifacts of
+  a Cloud image, the installs in progress, and the resident service
+  registry: installing a pinned executable, starting, checking and reusing a
+  service, its leases, conversation status and release, its numbers stream
+  through a source the composition supplies (`NumberSource`), its artifacts
+  stream, whose installs resolve through the invocation's work, and its
+  retirement
   ([Native command execution](../execution/native-runtime.md)).
 - **Public boundary:** the registry and its handles (`ServiceHandle`), the
   cache, the installs a connection reports (`InstallsReceiver`), and

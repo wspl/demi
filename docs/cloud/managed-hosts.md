@@ -257,12 +257,13 @@ the manager never repairs it.
 | Runtime mounts | `/run`, `/tmp`, `/dev/shm`, boot credential, resolver configuration; the runner's installation state in `/run/demi` | Recreate | Recreate |
 
 The runner keeps its installation state in `/run/demi`: its lock, the record
-of its backend, its command contexts and the command cache, which every boot
-makes anew
-([Preinstalled artifacts](../execution/native-runtime.md#preinstalled-artifacts)
-says why refilling the cache costs little). Two things of the runner's are on
-the system image instead, in directories the image makes for the `demi` user
-([Root filesystem contents](images.md#root-filesystem-contents)):
+of its backend and its command contexts, which every boot makes anew. Its
+artifact cache is `.demi/artifacts` in the `demi` user's home, on the home
+image, so an artifact the image does not hold, such as a newer Claude Code
+CLI, is downloaded once and survives stops, wakes and resets
+([The cache](../execution/native-runtime.md#the-cache)). Two things of the
+runner's are on the system image, in directories the image makes for the
+`demi` user ([Root filesystem contents](images.md#root-filesystem-contents)):
 
 - `/var/lib/demi/jobs/`, the job root: the directory of each running job,
   with its kept output of up to 16 MiB and its scratch directory

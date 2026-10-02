@@ -815,10 +815,10 @@ The product state holds the current user, the instance mode, preferences, the
 provider entries of the user's scope, workspaces, devices (the paired ones and
 the user's Cloud device, which the file and working-tree routes address
 alike, each with `installs`, the command packages its runner is installing
-now, as the runner last reported them, each as `{ package, artifact,
-phase, done, total }`, where `artifact` is `{ kind: "program" }` or `{ kind:
-"resource", title }`, `phase` is `download` or `unpack`, and `done` and
-`total` count bytes
+now, as the runner last reported them, each as `{ package, name, version,
+phase, done, total }`, where `name` and `version` are the artifact's, such as
+`Chrome for Testing` and `153.0.8010.36`, `phase` is `download` or `unpack`,
+and `done` and `total` count bytes
 ([Installation progress](../execution/native-runtime.md#installation-progress))),
 the summaries of the active and then the
 archived conversations, the Cloud's state, `plugins`, the plugin list, and

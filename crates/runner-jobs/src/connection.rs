@@ -101,8 +101,8 @@ impl ConnectionHandle {
     }
 
     /// Asks the backend where the artifact `sha256` is, on behalf of the live
-    /// work `owner` names (`native-runtime.md` § Install the selected
-    /// executable).
+    /// work `owner` names (`native-runtime.md` § Install
+    /// artifacts).
     pub async fn locate(
         &self,
         owner: wire::ArtifactOwner,

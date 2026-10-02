@@ -23,7 +23,7 @@ gives the threads and the owner of each piece of state.
 Each backend registration has its own credentials, artifact cache, local
 endpoint, and selected runner release; `DEMI_ARTIFACTS` can name a cache that
 registrations share
-([Install the selected package](native-runtime.md#install-the-selected-package)). The runner keys installation state by normalized backend
+([Install artifacts](native-runtime.md#install-artifacts)). The runner keys installation state by normalized backend
 URL and holds an OS lock while that installation is active. Separate
 registrations do not share their authorization context.
 
@@ -257,9 +257,11 @@ standard error goes to the [Host's log](#host-log). The runner
 starts the invocation in the resident service that holds the conversation's
 state, starting the service when needed, and answers `service_opened`, or
 `service_error` with `unknown_operation`, `service_failed`, or `refused`; no
-bytes move before that answer. Starting the service may need its executable:
-the runner asks the backend for its location as it does for a job's command
-([Install the selected package](native-runtime.md#install-the-selected-package)),
+bytes move before that answer. The request may also attach artifacts with
+their locations, which the stream may install beside its package's own. Starting
+the service may need its executable, and the invocation may ask for other
+artifacts: the runner asks the backend for their locations as it does for a
+job's command ([Install artifacts](native-runtime.md#install-artifacts)),
 naming the stream instead of a job, and the backend answers only while the
 stream is open. The input pipe ending ends the invocation's
 input; the invocation's completion ends the output pipe, which is how the

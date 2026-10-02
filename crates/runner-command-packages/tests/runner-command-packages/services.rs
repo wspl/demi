@@ -385,8 +385,8 @@ async fn a_service_that_dies_reports_its_status_and_standard_error() {
 }
 
 /// Callers asking at once share one start; one that gives up leaves the
-/// start to the others (`native-runtime.md` § Install the selected
-/// executable).
+/// start to the others (`native-runtime.md` § Install
+/// artifacts).
 #[tokio::test]
 async fn a_caller_that_gives_up_leaves_the_shared_start_to_the_others() {
     tokio::time::timeout(Duration::from_secs(60), async {

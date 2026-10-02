@@ -683,7 +683,7 @@ from `.cache/resources/`, downloading it the first time
 gives its Cloud's runners the artifact cache `.cache/dev-artifacts/` in the
 repository, which outlives every run, so a Cloud installs each program and
 Chrome once rather than at every wake or run
-([Install the selected package](../execution/native-runtime.md#install-the-selected-package)).
+([Install artifacts](../execution/native-runtime.md#install-artifacts)).
 
 ## Deployment and user ownership
 

@@ -137,15 +137,15 @@ carry in its executable, too large or released by someone else. For example,
 `chrome`, titled `Chrome for Testing 153.0.8010.36`, and for
 `x86_64-unknown-linux-musl` the official zip archive of that version with its
 size and SHA-256 and the entry `chrome-linux64/chrome`, the file the program
-starts. The runner installs the resource with the executable, before the
-program starts, and tells the program where its entry is
-([Install the selected package](#install-the-selected-package)). A resource
+starts. The release carries the archive, and the backend serves it beside the
+executable; the program asks the runner for it when it first needs it
+([Install artifacts](#install-artifacts)). A resource
 name is 1 to 64 lowercase letters, digits and hyphens, starting with a letter;
 an entry is a relative path inside the archive, with `/` between its
 components. A resource may lack targets the release carries: Chrome for
-Testing has no Windows arm64 build, so on that target installing
-`demi.browser` fails with `Chrome for Testing 153.0.8010.36 is unavailable on
-aarch64-pc-windows-msvc`, and so does every operation of the package there.
+Testing has no Windows arm64 build, so on that target `demi-browser` fails
+each operation that needs Chrome with `Chrome for Testing 153.0.8010.36 is
+unavailable on aarch64-pc-windows-msvc`, and asks for nothing.
 Packaging writes the resources from the record the package's contract crate
 keeps, for `chrome` the pinned browser release
 ([Browser distribution](../browser/browser.md#browser-distribution)).
@@ -169,42 +169,86 @@ definitions take effect when the backend restarts. The catalog does not support
 live updates. Existing contexts retain their pinned binding. Connection loss and
 context disposal follow the [runner command lifetime](runner.md#command-lifetime).
 
-## Install the selected package
+## Install artifacts
 
-Before a package's program starts on a Host, the runner installs the
-package's **artifacts** for the Host's target: its executable, then each of
-its resources in name order. For the patch example, an arm64 Mac selects the
-`aarch64-apple-darwin` executable from the pinned descriptor, and `demi.file`
-has no resource. The runner takes the first of these that it has for each
-artifact's digest:
+An **artifact** is a file the runner installs on its Host for a command
+package: the package's executable, or anything else the package's program
+needs there, such as `demi.browser`'s Chrome for Testing or
+`demi.claude-code`'s Claude Code CLI. Every artifact is installed the same
+way, through one cache, and reported the same way while it installs. What
+differs is only who asks for it and why:
+
+| Artifact | Who asks, and when | Where its digest comes from |
+| --- | --- | --- |
+| A package's executable | The runner, before it starts the program | The pinned descriptor |
+| A resource the release carries, such as Chrome | The program, through the [artifacts stream](#the-artifacts-stream), when it first needs it | The release's record, which the program and the descriptor share |
+| A file the backend chose at run time, such as a Claude Code CLI version | The program, through the artifacts stream, during the call that named it | The record the backend gave the call |
+
+An artifact has a **form**: `file`, one executable file, or `archive`, a zip
+archive that is unpacked and that names its **entry**, the file its user
+starts, as a relative path with `/` between the components. It has the
+package it belongs to, a **name** and a **version** for the user, such as
+`Chrome for Testing` and `153.0.8010.36` (an executable's name is `program`
+and its version the package's), and the SHA-256 and size of its bytes. The
+package and the name together are the artifact's **line**: the versions of
+one thing, of which the Host needs only the newest.
+
+For example, the first `demi browser open` on an arm64 Mac:
+
+```text
+runner   descriptor of demi.browser 0.1.3, target aarch64-apple-darwin
+           install demi.browser / program 0.1.3, file          -> starts the program
+program  first tab: Chrome is needed
+           artifacts stream: install Chrome for Testing 153.0.8010.36,
+           archive with entry chrome-mac-arm64/.../Google Chrome for Testing
+runner     cache? image? no -> asks the backend where, downloads, unpacks
+           -> answers the entry's path; the program starts Chrome from it
+```
+
+### Where an artifact comes from
+
+The runner takes the first of these that it has for an artifact's digest:
 
 1. A verified entry of its own cache.
 2. A verified copy that the Host's image preinstalled
    ([Preinstalled artifacts](#preinstalled-artifacts)); a Mac has none.
-3. A download: the runner asks the backend where to download the executable.
+3. A download: the runner asks the backend where to download the artifact.
 
 The download request names the artifact's exact digest and target and the
 live work it serves: the job and the hash of the manifest it runs with, or a
-[service stream](runner.md#service-streams).
+[service stream](runner.md#service-streams). The runner knows which: it
+installs an executable for the job or stream that needs the service, and a
+program's request names the invocation it serves, which the runner started
+for one job or one stream.
 
 The backend answers only for live work on that connection that the artifact
-belongs to: a job whose pinned manifest has that hash and names a package that
-carries the digest for the target, as its executable or a resource's archive,
-or an open user stream whose package does.
+belongs to:
+
+- an artifact of a package the work binds: for a job, a package its pinned
+  manifest with that hash names; for a stream, the stream's package. A
+  package's artifacts are its executable for the target and each archive its
+  `resources` carry for the target
+  ([Bind an exact package](#bind-an-exact-package));
+- an artifact the backend attached to the stream when it opened it, with its
+  location. For example, the backend opens `claude-code.ensure` with a
+  release record and attaches each of the record's downloads, located at the
+  vendor's official URL ([The package](../providers/claude-code.md#the-package)).
+
 At most 32 requests are answered at a time on a connection; one beyond that, or
 one that repeats an id still in flight, is refused. When the job exits or the
 stream ends, its outstanding requests are cancelled and get no answer. The
-backend validates the location its resolver returns before sending it.
+backend validates the location before sending it.
 
-The location is an HTTP or HTTPS URL without credentials. With object
-storage, the backend signs an HTTPS GET URL valid for five minutes, so private
-storage needs no change to its bucket policy; the runner downloads directly
-from storage, and credentials remain in the backend. A development store
-answers with a URL on the backend itself
-([Backend deployment configuration](#backend-deployment-configuration)). The
-scheme cannot change what runs: the runner checks the download against the
-size and SHA-256 of the pinned descriptor, which it received over its
-authenticated connection to the backend.
+The location is an HTTP or HTTPS URL without credentials. For a package's
+artifact with object storage, the backend signs an HTTPS GET URL valid for
+five minutes, so private storage needs no change to its bucket policy; the
+runner downloads directly from storage, and credentials remain in the
+backend. A development store answers with a URL on the backend itself
+([Backend deployment configuration](#backend-deployment-configuration)). An
+attached artifact's location is the one attached. The scheme cannot change
+what runs: the runner checks the download against the size and SHA-256 it
+was given, which reached it over its authenticated connection to the
+backend, in the pinned descriptor or in the call's own input.
 
 The runner obtains URLs on demand. URLs never become package identity or permanent
 manifest fields. An expired URL can be refreshed for the same digest. Other
@@ -214,84 +258,141 @@ To download, the runner completes these steps:
 
 1. Download to a temporary file, decoding the response's content coding, and
    enforce the declared size on the decoded bytes. The runner accepts `zstd`
-   and no coding; a response with any other coding fails the download.
+   and no coding; a response with any other coding fails the download. It
+   follows no redirect.
 2. Verify the size and SHA-256 of the decoded bytes.
-3. For an executable, apply executable permissions where required and publish
-   the verified file atomically into the cache as `<sha256>`. For a resource,
-   unpack the archive into a temporary directory, check that its entry is
-   there, write a receipt naming the archive's SHA-256 and the entry's, and
-   publish the directory atomically into the cache as `<sha256>/`; the
-   archive itself is not kept. This is the artifact library's archive
-   installation, the one the Cloud image build uses.
+3. For a `file`, apply executable permissions where required and publish the
+   verified file atomically into the cache as `<sha256>`. For an `archive`,
+   unpack it into a temporary directory, check that its entry is there,
+   write a receipt naming the archive's SHA-256 and the entry's, and publish
+   the directory atomically into the cache as `<sha256>/`; the archive itself
+   is not kept. This is the artifact library's archive installation, the one
+   the Cloud image build uses.
 
-A download has no overall deadline, since a resource of hundreds of megabytes
+A download has no overall deadline, since an artifact of hundreds of megabytes
 takes minutes on a slow link and the user sees its progress
 ([Installation progress](#installation-progress)); it fails when the
 connection makes no progress for 60 seconds, or when its work is cancelled.
-
-The cache is private to the runner's user and only publication writes it, so
-an entry is verified once, as it is published. A later start reuses the entry
-without reading it: for an executable the runner checks only that it is a
-regular file of the declared size, for a resource only that the directory
-holds a receipt naming the archive's SHA-256, and a mismatch fails the
-install rather than being repaired. Hashing the entry again would make every
-service start read the whole executable or resource.
-
-The cache is `artifacts/` in the runner's installation state, or the
-directory `DEMI_ARTIFACTS` names. Runners of one user may share a directory:
-an artifact is published under its digest, a resource under a lock file
-beside it, so two runners that install one artifact at once download it once
-or twice but publish one copy, and neither fails. The
-[development backend](../backend/backend.md#one-command-development-backend)
-gives its Cloud's runners one directory that outlives them for this reason.
 
 Concurrent callers share one download per digest. Cancelling one caller preserves
 a download still needed by another. If the download fails or is cancelled, the
 runner releases the response and removes the temporary file or directory. The
 runner never executes partial or mismatched files.
 
+### The cache
+
+The cache is private to the runner's user and only publication writes it, so
+an entry is verified once, as it is published. A later use takes the entry
+without reading it: for a `file` the runner checks only that it is a regular
+file of the declared size, for an `archive` only that the directory holds a
+receipt naming the archive's SHA-256, and a mismatch fails the install
+rather than being repaired. Hashing the entry again would make every service
+start read the whole executable or archive.
+
+Beside each entry the cache records its line and version. Once an artifact is
+installed, the runner removes the other artifacts of its line, except those a
+running service of this runner holds: the service's own executable and what
+it was given through its artifacts stream. Those go at a later install of the
+line. So a Host keeps one Claude Code CLI, one Chrome and one executable of
+each package, however often each is updated, beside what still runs.
+
+The cache is `artifacts/` in a paired device's installation state. A Cloud's
+is `.demi/artifacts` in the home of its `demi` user, on the home image, which
+stops, wakes and resets keep ([Images](../cloud/managed-hosts.md#images)): a
+Claude Code CLI downloaded once stays until a newer one replaces it.
+`DEMI_ARTIFACTS` names another directory. Runners of one user may share one:
+an artifact is published under its digest, an archive under a lock file
+beside it, so two runners that install one artifact at once download it once
+or twice but publish one copy, and neither fails; each removes only what its
+own services do not hold, so runners of different releases that share a
+cache can remove each other's older versions, which they then download again.
+The [development backend](../backend/backend.md#one-command-development-backend)
+gives its Cloud's runners one directory that outlives them for this reason.
+
+### The artifacts stream
+
+A program asks the runner for artifacts over a stream the runner opens, as
+it opens the [numbers stream](#conversation-numbers):
+
+```text
+Service                        Runner                          Backend
+  |<-- POST /v1/artifacts --------|  opened after GET /v1/info     |
+  |--- {id 4, install: {...}} --->|  cache? image? no              |
+  |                               |--- artifact_resolve ---------->|
+  |                               |<-- artifact_location ----------|
+  |                               |    download, verify, unpack    |
+  |<-- {id 4, path} --------------|                                |
+```
+
+- Once it has checked a new service's catalog, and before it admits a call,
+  the runner opens one `POST /v1/artifacts` request with the metadata `{}`.
+  It stays open for the service's life. The SDK gives a handler its artifacts
+  source with each invocation, bound to that invocation, and a request made
+  before the stream opens waits for it.
+- The service writes each request as one standard output record, JSON with
+  `id`, its own number for the request, unique among its requests in flight,
+  and one of:
+  - `install`: `invocation`, the invocation it serves, which must be one the
+    runner started in this service and that has not ended; `name`,
+    `version`, `sha256`, `size`; and `form`, `{ kind: "file" }` or
+    `{ kind: "archive", entry }`. The runner answers `{id, path}`, the
+    absolute path of the file or of the archive's entry, once the artifact
+    is installed.
+  - `installed`: `name`. The runner answers `{id, installed}`: the artifacts
+    of that line its cache and the image hold, each with its `version`,
+    `sha256` and `path`, the cache's newest install first. It reads only the
+    Host and asks the backend nothing.
+- A request that fails is answered `{id, error}`, with the reason. The runner
+  keeps at most 32 requests of a service in flight and refuses one beyond
+  that at once. An install's request ends with its invocation: when the
+  invocation ends, the runner cancels the download it waits for, unless
+  another request needs the same artifact.
+- The stream ends with the service; a request still waiting fails.
+
+A program uses only the paths the runner answers: it never downloads or
+looks for an artifact itself. It knows what it asks for from its own release
+record, as `demi-browser` knows the pinned Chrome for Testing, or from the
+call's input, as `demi-claude-code` receives the release the backend chose.
+
 ### Installation progress
 
 The first `demi browser open` on a paired laptop downloads the `demi-browser`
 executable, then Chrome. The user sees both in the conversation's browser
-tab: `Installing demi.browser: program, 40 of 120 MB`, then `Installing
+tab: `Installing demi.browser: program 0.1.3, 40 of 120 MB`, then `Installing
 demi.browser: Chrome for Testing 153.0.8010.36, 120 of 196 MB`, then
-`unpacking`, and the tab opens once the program starts. The same holds for a
-first `demi file` on a Host, whose page shows it wherever a plugin's page
-shows its packages' progress ([The page](../architecture/plugins.md#the-page)).
+`unpacking`, and the tab opens once Chrome starts. A new Claude Code CLI
+installing on the Cloud shows the same way, as `demi.claude-code: Claude Code
+2.1.278`, wherever a page shows the Cloud's installs
+([The page](../architecture/plugins.md#the-page)).
 
 The runner reports what it installs as **installs**: one entry for each
-package whose artifacts it is obtaining now, with the package id, the
-artifact (the program, or a resource by its title), the phase, `download` or
-`unpack`, and the bytes downloaded of the artifact's size. It sends the
-list of every install in progress on its connection, `installs { installs }`,
-when an install starts or ends, when a phase changes, and when an artifact's
-download passes another hundredth of its size, so a 196 MB archive sends at
-most about a hundred messages. A list is the whole truth: the backend keeps
-the last one per device and drops it when the connection ends. An install
-that fails or is cancelled leaves the list; the job or call that needed the
-package reports why. An artifact the cache or the image already holds sends
-nothing.
+artifact it is obtaining now, with the package, the artifact's name and
+version, the phase, `download` or `unpack`, and the bytes downloaded of the
+artifact's size. It sends the list of every install in progress on its
+connection, `installs { installs }`, when an install starts or ends, when a
+phase changes, and when an artifact's download passes another hundredth of
+its size, so a 196 MB archive sends at most about a hundred messages. A list
+is the whole truth: the backend keeps the last one per device and drops it
+when the connection ends. An install that fails or is cancelled leaves the
+list; the job or call that needed the artifact reports why. An artifact the
+cache or the image already holds sends nothing.
 
 The backend shows each device's installs in the product state
 ([Page synchronization](../product/web-api.md#page-synchronization)). Since
-installing is a step of the package's first use, the progress needs no
+installing is a step of an artifact's first use, the progress needs no
 separate start: a conversation that never uses the browser downloads no
 Chrome, and a shell job that waits for an install shows its command's
 running hint meanwhile, as it does for any wait.
 
 ### Preinstalled artifacts
 
-A Cloud's runner keeps its cache with its other state in `/run/demi`, which
-every wake and reset recreates empty
-([Images](../cloud/managed-hosts.md#images)). The Cloud image, though, already
-holds the artifacts of each command package it was built with
-([Cloud images](../cloud/images.md#root-filesystem-contents)). So the runner
-looks there before it asks the backend: the directory
-`/opt/demi/artifacts/<sha256>`, named by the SHA-256 that the pinned
-descriptor gives the artifact, holds an executable as its one file, under
-the name its release gives it, or a resource unpacked with its receipt, as
-the runner's own cache holds it. For example, the first `demi file patch` on a
+A Cloud image holds the artifacts of each command package it was built with
+([Cloud images](../cloud/images.md#root-filesystem-contents)), so a new or
+reset Cloud need not download them. The runner looks there before it asks
+the backend: the directory `/opt/demi/artifacts/<sha256>`, named by the
+artifact's SHA-256, holds a `file` as its one file, under the name its
+release gives it, or an `archive` unpacked with its receipt, as the runner's
+own cache holds it. For example, the first `demi file patch` on a
 Cloud after a reset finds `/opt/demi/artifacts/<sha256>/demi-file`, checks
 it, and starts the service from there, without asking the backend for a
 location or downloading anything.
@@ -299,32 +400,27 @@ location or downloading anything.
 The copy lies outside the runner's private cache, so the runner checks it as
 it checks a download instead of trusting it as it trusts a cache entry:
 
-- For an executable, the directory must hold exactly one regular file, with
-  the size and SHA-256 of the pinned descriptor. A descriptor does not name
-  the file, so the runner takes the directory's one file. For a resource, the
+- For a `file`, the directory must hold exactly one regular file, with the
+  size and SHA-256 the runner was given. A request does not name the file,
+  so the runner takes the directory's one file. For an `archive`, the
   receipt must name the archive's SHA-256, and the entry must have the
   SHA-256 the receipt gives it.
 - The runner checks a copy once per runner process, the first time it needs
   it. A copy that matched is used in place, like a cache hit, and is not read
   again while the process runs.
 - A copy that does not match is not used. The runner writes why to the
-  [Host log](runner.md#host-log) and downloads the executable into its cache;
-  since the cache comes first, later starts use that download. The runner
-  never depends on the copy: the backend serves every selected executable, so
-  a damaged image costs a download, not a command.
-- When the directory does not exist, the runner downloads the executable and
+  [Host log](runner.md#host-log) and downloads the artifact into its cache;
+  since the cache comes first, later uses take that download. The runner
+  never depends on the copy: the backend locates every artifact it grants,
+  so a damaged image costs a download, not a command.
+- When the directory does not exist, the runner downloads the artifact and
   logs nothing. That is the case on every paired device and on a Cloud whose
   image holds other releases: the runner does not ask which kind of Host it
   runs on. A Windows runner does not look, since Cloud images are Linux only.
 
 ## Invoke and retire a service
 
-The runner launches the verified executable with `--command-service`,
-followed by `--resource <name>=<path>` for each of the package's resources,
-where `<path>` is the absolute path of the resource's entry, for example
-`--resource chrome=/home/ada/.demi/instances/demi.example/artifacts/167a…/chrome-linux64/chrome`.
-The program uses only those paths: it never downloads or looks for what a
-resource provides. The first
+The runner launches the verified executable with `--command-service`. The first
 patch call checks the service before invoking `file.patch`. Later calls reuse
 the process and connection, with one HTTP/2 stream per invocation.
 
@@ -359,7 +455,7 @@ Calls share a resident service only when all three values match:
 
 - Runner registration
 - Execution user and security context
-- The package's artifacts: the executable's digest and each resource's
+- Artifact digest
 
 Concurrent startup requests within that scope share one launch. Different
 immutable artifacts can run side by side. No service crosses a privilege boundary.
@@ -828,7 +924,7 @@ An executable's object holds the executable compressed with zstd and carries
 `Content-Encoding: zstd`; descriptors and mappings are stored as they are.
 HTTP's own content coding is the mechanism: object storage serves the stored
 bytes with the coding they were stored with, and the runner's HTTP client
-decodes them ([Install the selected package](#install-the-selected-package)),
+decodes them ([Install artifacts](#install-artifacts)),
 so no descriptor, manifest or cache entry knows about compression. zstd rather
 than gzip because it matters here: the release runner compresses to about 28%
 of its size with zstd and to 41% with gzip. A resource's archive is stored as

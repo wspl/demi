@@ -1,5 +1,5 @@
-//! The verified artifact cache (`native-runtime.md` § Install the selected
-//! package): an executable as one file per digest, published only once its
+//! The verified artifact cache (`native-runtime.md` § Install
+//! artifacts): an executable as one file per digest, published only once its
 //! size and SHA-256 match what the descriptor declares, and a resource as
 //! its archive unpacked into a directory per digest with a receipt; both
 //! reused unread from then on. Before it downloads an artifact, it takes the

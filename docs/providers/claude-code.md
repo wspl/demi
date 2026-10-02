@@ -88,10 +88,11 @@ wake one.
 A newer version does not interrupt work. A machine that already has a usable
 version keeps answering with it while the newer one installs beside it; the
 next CLI process after the install is the newer one. Only a machine with no
-usable version waits for an install. Installing a version removes the others:
-a process already running one keeps its executable where the system allows a
-file in use to be removed, and where it does not, the removal is left for a
-later install.
+usable version waits for an install. Installing a version removes the others,
+as installing any artifact removes the older ones of its line
+([The cache](../execution/native-runtime.md#the-cache)): a process already
+running one keeps its executable where the system allows a file in use to be
+removed, and where it does not, the removal is left for a later install.
 
 ## The package
 
@@ -104,7 +105,7 @@ was. It has two operations:
 | Operation | Input | Answer |
 |---|---|---|
 | `claude-code.ensure` | A release record: `{ version, platforms }`, each platform's official `url`, byte `size` and `sha256` | `{ version, path }`: the executable's absolute path |
-| `claude-code.status` | — | `{ platform, installed }`: this machine's platform key and the versions it has, newest first |
+| `claude-code.status` | — | `{ platform, installed }`: this machine's platform key and the versions it has, newest first, each with its path |
 
 The backend and the package decode these records with the same Rust types
 ([Contract crates](../architecture/contracts.md#contract-crates)). The backend
@@ -127,14 +128,22 @@ and the CLI's `linux-*` and `linux-*-musl` builds are not interchangeable. A
 platform the release does not carry is `unsupported_platform`, never another
 platform's build.
 
-`claude-code.ensure` installs under the Host user's `.demi/claude/<version>/`; a
-Cloud image may carry a version under `/opt/demi/claude/<version>/`, which is
-used when it is the wanted one. It downloads to a temporary file, enforces the
-size, verifies the digest, and only then publishes the executable atomically,
-with the same verified download and publication every Demi installer uses.
-Callers asking for the same version share one download. A file that fails
-verification is removed and the install fails; there is no fallback to another
-version, location or executable.
+The package installs nothing itself. The CLI is an artifact of the package,
+installed as every artifact is, through the runner's cache
+([Install artifacts](../execution/native-runtime.md#install-artifacts)):
+
+- `claude-code.ensure` picks the machine's platform from the record and asks
+  the runner, over its artifacts stream, to install the `file` named
+  `Claude Code` at the record's version with that platform's size and
+  SHA-256, and answers the path the runner gives. The backend attached the
+  record's downloads, at their official URLs, to the stream it opened the
+  call with, so the runner may fetch them; the runner verifies the bytes,
+  shares one download among callers of one version, shows the install's
+  progress like any other, and keeps no failed file. There is no fallback to
+  another version, location or executable.
+- `claude-code.status` asks the runner which `Claude Code` artifacts it has,
+  in its cache or in a Cloud image's preinstalled ones, and answers their
+  versions and paths, newest install first. It reads only the Cloud.
 
 The backend starts the CLI through the ordinary Host process interface with the
 path `claude-code.ensure` answered, the account's token, a configuration home of
