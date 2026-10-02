@@ -13,6 +13,8 @@ import (
 // given, or a bare port, which means `127.0.0.1:<port>`. The host is any
 // name or address the device can resolve, an IPv6 address in brackets; the
 // port is 1 to 65535.
+//
+// +demi:codec
 type ExposeAddress string
 
 // ErrExposeAddress explains why a text is not an expose's address.
