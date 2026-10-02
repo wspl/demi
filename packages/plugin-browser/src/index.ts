@@ -22,6 +22,7 @@ export { browserTabsApi } from './tabs'
 export function browserPage(options: BrowserTabsOptions = {}): PluginPage {
   return {
     plugin: 'browser',
+    uses: { methods: ['tabs', 'open', 'close', 'navigate', 'history'], streams: ['browser'] },
     panelKinds: ({ plugin, tabs }) => {
       const controller = new BrowserTabsController(
         browserTabsApi(plugin),

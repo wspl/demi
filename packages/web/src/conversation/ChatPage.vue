@@ -8,8 +8,9 @@ import { conversationPageKind } from '@demicodes/web-ui/agent/session-status'
 import ConversationComposer from './ConversationComposer.vue'
 import WorkspaceInfo from '../targets/WorkspaceInfo.vue'
 import PluginHeaderTools from '@demicodes/web-ui/plugins/PluginHeaderTools.vue'
+import type { PluginPage } from '@demicodes/web-ui/plugins/slots'
 import { PLUGIN_PAGES } from '../plugins/pages'
-import { pluginEnabled } from '../plugins/host'
+import { pageShown } from '../plugins/host'
 import { hostName } from '../targets/session-tools'
 import { useConversations } from './store'
 import { useResources } from '../state/resources'
@@ -165,7 +166,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     <template #tools>
       <PluginHeaderTools
         :pages="PLUGIN_PAGES"
-        :enabled="(plugin: string) => pluginEnabled(product.snapshot, plugin)"
+        :shown="(page: PluginPage) => pageShown(product.snapshot, page)"
         :conversation-id="conversation.id"
         :host-name="(id: string) => hostName(product.snapshot?.devices ?? [], id)"
         @open-tab="(kind, data) => work.add(conversation!.id, kind, data)"

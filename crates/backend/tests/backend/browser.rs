@@ -165,6 +165,18 @@ async fn the_tab_methods_run_the_browsers_operations_as_the_user_on_the_conversa
 async fn a_stopped_cloud_is_not_woken_to_list_close_or_move_its_tabs() {
     let harness = Harness::new().with_browser_package();
     let (backend, master) = harness.start_set_up().await;
+    // The pages see the tab methods and the stream the catalog serves.
+    let state = backend.sync(&master).await.snapshot().await;
+    let browser = state
+        .plugins
+        .iter()
+        .find(|plugin| plugin.id == "browser")
+        .unwrap();
+    assert_eq!(
+        browser.methods,
+        ["tabs", "open", "close", "navigate", "history"]
+    );
+    assert_eq!(browser.streams, ["browser"]);
     // A new conversation works on the Cloud, which never started.
     let id = conversation(&backend, &master).await;
     let listed = call(&backend, &master, &id, "tabs", json!({})).await;
@@ -273,6 +285,17 @@ async fn a_backend_whose_catalog_serves_no_browser_has_no_tab_methods() {
     assert_eq!(
         listed.refusal(),
         (StatusCode::NOT_FOUND, ErrorCode::UnknownPluginMethod)
+    );
+    // The pages see none, so they offer no browser tab.
+    let state = backend.sync(&master).await.snapshot().await;
+    let browser = state
+        .plugins
+        .iter()
+        .find(|plugin| plugin.id == "browser")
+        .unwrap();
+    assert!(
+        browser.methods.is_empty() && browser.streams.is_empty(),
+        "{browser:?}"
     );
     backend.close().await;
 }
