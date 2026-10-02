@@ -8,9 +8,7 @@ import (
 	"path/filepath"
 )
 
-// Generate the contract file alone: contractgen currently treats every type
-// in a marked package as a contract, including runtime resources.
-//go:generate go run github.com/wspl/demi/tools/contractgen receipt.go
+//go:generate go run github.com/wspl/demi/tools/contractgen .
 
 // ReceiptFile is the receipt's name inside an installation.
 const ReceiptFile = "receipt.json"
