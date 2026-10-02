@@ -55,7 +55,7 @@ func (g *generator) emitAdjacentVariant(d *definition, st *types.Struct, msg boo
 		g.line("if !%s(obj[%s]){return contract.At(%s,fmt.Errorf(\"expected nil content\"))}", null, q(content), q(content))
 	} else {
 		f := st.Field(0)
-		decoder := g.decoder(f.Type())
+		decoder := g.integerDecoder(f.Type(), d.fields[f.Name()], false)
 		if msg {
 			decoder = g.msgFieldDecoder(f.Type(), d.fields[f.Name()])
 		}

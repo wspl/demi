@@ -185,6 +185,17 @@ func (e *schemaEmitter) schema(t types.Type, marks map[string]string) (any, erro
 				if err != nil {
 					return nil, fmt.Errorf("%s.%s: %w", d.name, f.Name(), err)
 				}
+				if pointer, ok := f.Type().(*types.Pointer); ok && len(opts) > 1 {
+					numbered := has(m, "integer")
+					if named, ok := pointer.Elem().(*types.Named); ok {
+						numbered = numbered || has(g.defs[typeKey(named)].marks, "integer")
+					}
+					if numbered {
+						// Rust's default + some_numbered emits this annotation,
+						// even though an explicit null is refused by the decoder.
+						child.(map[string]any)["default"] = nil
+					}
+				}
 				if has(m, "default") {
 					value := any(nil)
 					switch underlying := f.Type().Underlying().(type) {
