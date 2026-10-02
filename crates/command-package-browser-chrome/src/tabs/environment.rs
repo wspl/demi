@@ -517,7 +517,8 @@ where
 /// when a restart emptied a `/tmp` held in memory: no running environment
 /// has one.
 pub async fn sweep_orphans(chrome: &crate::driver::installation::Chrome) {
-    sweep_orphans_in(&DirectoryBases::host(), chrome.roots(), Owner::current()).await;
+    let installations = chrome.roots().await;
+    sweep_orphans_in(&DirectoryBases::host(), installations, Owner::current()).await;
 }
 
 async fn sweep_orphans_in(bases: &DirectoryBases, installations: Vec<PathBuf>, owner: Owner) {

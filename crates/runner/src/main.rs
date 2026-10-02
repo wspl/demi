@@ -301,7 +301,12 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
     let options = Options {
         backend,
         log: log.reader(),
-        artifacts: artifacts.unwrap_or_else(|| directory.join("artifacts")),
+        // A Cloud keeps its artifacts on its home image, which its stops,
+        // wakes and resets keep (`native-runtime.md` § The cache).
+        artifacts: artifacts.unwrap_or_else(|| match &boot {
+            Some(_) => home.join(".demi/artifacts"),
+            None => directory.join("artifacts"),
+        }),
         directory,
         jobs,
         executable: std::env::current_exe()?,

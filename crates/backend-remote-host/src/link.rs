@@ -398,6 +398,7 @@ pub(crate) struct SpawnEntry {
 pub(crate) struct ServiceEntry {
     pub(crate) package: PackageDescriptor,
     pub(crate) resolver: Rc<dyn crate::ArtifactResolver>,
+    pub(crate) attached: Vec<crate::AttachedArtifact>,
     pub(crate) cancel: CancellationToken,
     pub(crate) done: Option<oneshot::Sender<Result<crate::ServiceEnd, HostError>>>,
 }
@@ -948,13 +949,23 @@ impl Link {
             let Some(grant) = grant else {
                 return;
             };
+            let attached = grant
+                .attached
+                .iter()
+                .find(|attached| attached.artifact.sha256 == sha256)
+                .map(|attached| attached.location.clone());
             let artifact = grant
                 .packages
                 .iter()
                 .find_map(|package| package.carries(&target, &sha256));
-            let location = match artifact {
-                None => Err("Artifact does not belong to the live work's packages".to_owned()),
-                Some(artifact) => tokio::select! {
+            let location = match (attached, artifact) {
+                (Some(location), _) => garde::Validate::validate(&location)
+                    .map(|()| location)
+                    .map_err(|report| report.to_string()),
+                (None, None) => {
+                    Err("Artifact does not belong to the live work's packages".to_owned())
+                }
+                (None, Some(artifact)) => tokio::select! {
                     biased;
                     _ = grant.cancel.cancelled() => {
                         link.0.state.borrow_mut().artifact_requests.remove(&id);
@@ -1036,6 +1047,7 @@ impl Link {
                 (commands.hash() == owner.manifest_hash).then(|| Grant {
                     packages: commands.packages(),
                     resolver: commands.resolver(),
+                    attached: Vec::new(),
                     cancel: job.cancel.clone(),
                 })
             }
@@ -1044,6 +1056,7 @@ impl Link {
                 Some(Grant {
                     packages: vec![service.package.clone()],
                     resolver: service.resolver.clone(),
+                    attached: service.attached.clone(),
                     cancel: service.cancel.clone(),
                 })
             }
@@ -1134,6 +1147,9 @@ impl StateView<'_> {
 struct Grant {
     packages: Vec<PackageDescriptor>,
     resolver: Rc<dyn crate::ArtifactResolver>,
+    /// Artifacts the work may install beside its packages', located
+    /// already.
+    attached: Vec<crate::AttachedArtifact>,
     cancel: CancellationToken,
 }
 

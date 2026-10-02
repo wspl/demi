@@ -2,16 +2,20 @@
 //! The `demi-claude-code` program at its boundary (`claude-code.md` § The
 //! package): the command service it serves on its standard input and
 //! output, as a runner starts it, answers each invocation with one document
-//! and says a failure in its completion too.
+//! and says a failure in its completion too. Its artifacts stream is
+//! answered as a runner answers it.
 //! As an integration test of the package, it also makes `cargo test` build
-//! the program, which the backend's scenarios start. `HOME` names the user's
-//! root on Unix only.
-
-use std::path::{Path, PathBuf};
+//! the program, which the backend's scenarios start.
 
 use bytes::Bytes;
-use demi_command_protocol::{CommandCaller, CommandContext, CommandLocale, Completion, Invocation};
-use demi_command_sdk::{Exchange, Input, OutputSink, testing::ServiceProcess};
+use demi_command_protocol::{
+    ArtifactAsk, ArtifactReply, CommandCaller, CommandContext, CommandLocale, Completion,
+    InstalledArtifact, Invocation,
+};
+use demi_command_sdk::{
+    Exchange, Input, OutputSink,
+    testing::{ServiceProcess, answer_artifacts},
+};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
@@ -87,33 +91,26 @@ fn record(version: &str, url: &str) -> Vec<u8> {
         .into_bytes()
 }
 
-/// A verified installation of `version` under `home`, with its receipt, as
-/// `claude-code.ensure` leaves it: the service answers from it without a
-/// download.
-fn installed(home: &Path, version: &str) -> PathBuf {
-    let directory = home.join(".demi/claude").join(version);
-    std::fs::create_dir_all(&directory).unwrap();
-    let executable = directory.join("claude");
-    std::fs::write(&executable, BODY).unwrap();
-    let receipt = json!({
-        "version": version,
-        "platform": demi_claude_code::platform::current().unwrap(),
-        "sha256": format!("{:x}", Sha256::digest(BODY)),
-        "size": BODY.len(),
-    });
-    std::fs::write(directory.join("receipt.json"), receipt.to_string()).unwrap();
-    executable
-}
-
 #[tokio::test]
 async fn the_service_answers_one_document_for_each_invocation() {
-    let home = tempfile::tempdir().unwrap();
-    let path = installed(home.path(), "2.1.278");
+    let path = "/cache/claude";
     let service = ServiceProcess::start(
         env!("CARGO_BIN_EXE_demi-claude-code"),
         &["--command-service"],
-        &[("HOME", home.path().to_str().unwrap())],
+        &[],
     )
+    .await
+    .unwrap();
+    let _artifacts = answer_artifacts(service.client(), move |ask| {
+        Ok(match ask {
+            ArtifactAsk::Install(_) => ArtifactReply::Path(path.into()),
+            ArtifactAsk::Installed(_) => ArtifactReply::Installed(vec![InstalledArtifact {
+                version: "2.1.278".into(),
+                sha256: format!("{:x}", Sha256::digest(BODY)),
+                path: path.into(),
+            }]),
+        })
+    })
     .await
     .unwrap();
     let info = service.client().info().await.unwrap();
@@ -145,7 +142,7 @@ async fn the_service_answers_one_document_for_each_invocation() {
     );
     assert_eq!(completion.exit_code, 0);
 
-    // The program downloads over HTTPS only, from any address.
+    // A record names HTTPS downloads only, from any address.
     let (document, completion) = invoke(
         &service,
         "claude-code.ensure",

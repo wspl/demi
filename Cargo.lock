@@ -1494,6 +1494,7 @@ dependencies = [
  "demi-provider-google",
  "demi-provider-grok-build",
  "demi-provider-openai-api",
+ "demi-runner-command-packages",
  "demi-runner-protocol",
  "demi-shared-artifacts",
  "demi-shared-cli",
@@ -1971,16 +1972,14 @@ dependencies = [
  "demi-command-package-claude-code-protocol",
  "demi-command-protocol",
  "demi-command-sdk",
- "demi-shared-artifacts",
  "futures-util",
- "reqwest",
  "serde",
  "serde_json",
  "sha2",
- "tempfile",
  "thiserror",
  "tokio",
  "tokio-util",
+ "url",
 ]
 
 [[package]]
@@ -2493,6 +2492,7 @@ dependencies = [
  "futures-util",
  "process-wrap",
  "reqwest",
+ "serde",
  "serde_json",
  "sha2",
  "tempfile",

@@ -1,6 +1,5 @@
 use bytes::Bytes;
 use demi_browser::DemiBrowser;
-use demi_command_package_browser_chrome::driver::installation::Chrome;
 use demi_command_protocol::{
     CommandCaller, CommandContext, CommandLocale, ConversationRequest, Invocation, Record,
 };
@@ -12,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 
 #[tokio::test]
 async fn release_cancels_a_browser_command_blocked_on_output() {
-    let service = DemiBrowser::new(Chrome::new(None));
+    let service = DemiBrowser::new();
     let cancel = CancellationToken::new();
     let (output, mut records) = Output::channel(cancel.clone());
     for _ in 0..4 {

@@ -19,10 +19,11 @@ pub enum ServiceSequence {
     Tab,
 }
 
-/// The metadata that opens the numbers stream, which carries nothing.
+/// The metadata that opens a stream the runner answers a service's requests
+/// on, the numbers stream or the artifacts stream, which carries nothing.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(deny_unknown_fields)]
-pub struct NumbersOpen {}
+pub struct StreamOpen {}
 
 /// One request for `count` numbers of the conversation's `sequence`; the
 /// service writes each as one standard output record. `id` is the service's

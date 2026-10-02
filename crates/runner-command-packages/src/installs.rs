@@ -7,7 +7,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use demi_runner_protocol::wire::{Install, InstallArtifact, InstallPhase, MAX_INSTALLS};
+use demi_runner_protocol::wire::{Install, InstallPhase, MAX_INSTALLS};
 use tokio::sync::watch;
 
 /// The installs in progress, which every clone shares.
@@ -32,13 +32,15 @@ impl Installs {
         InstallsReceiver(self.list.subscribe())
     }
 
-    /// Adds the download of `artifact` of `package`, whose size is `total`;
-    /// the returned install leaves the list when dropped.
-    pub(crate) fn start(&self, package: &str, artifact: InstallArtifact, total: u64) -> Installing {
+    /// Adds the download of `package`'s artifact `name` at `version`,
+    /// whose size is `total`; the returned install leaves the list when
+    /// dropped.
+    pub(crate) fn start(&self, package: &str, name: &str, version: &str, total: u64) -> Installing {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
         let install = Install {
             package: package.to_owned(),
-            artifact,
+            name: name.to_owned(),
+            version: version.to_owned(),
             phase: InstallPhase::Download,
             done: 0,
             total,
@@ -127,7 +129,7 @@ mod tests {
     fn an_install_changes_the_list_at_each_hundredth_and_leaves_it_when_done() {
         let installs = Installs::default();
         let mut reported = installs.subscribe();
-        let installing = installs.start("demi.browser", InstallArtifact::Program, 1000);
+        let installing = installs.start("demi.browser", "program", "0.1.3", 1000);
         assert!(reported.0.has_changed().unwrap());
         assert_eq!(reported.current()[0].done, 0);
         installing.downloaded(9);

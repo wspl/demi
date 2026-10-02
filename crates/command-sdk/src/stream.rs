@@ -36,6 +36,10 @@ pub enum ServiceError {
     /// (`native-runtime.md` § Conversation numbers).
     #[error("conversation numbers: {0}")]
     Numbers(String),
+    /// The runner installed no artifact the service asked for
+    /// (`native-runtime.md` § The artifacts stream).
+    #[error("artifact: {0}")]
+    Artifacts(String),
     #[error("conversation cleanup failed; retire the service process: {0}")]
     ConversationCleanup(String),
     #[error("handler exceeded cancellation deadline; retire the service process")]

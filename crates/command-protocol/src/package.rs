@@ -25,7 +25,7 @@ pub const TARGETS: &[&str] = &[
 /// The largest integer a JavaScript peer holds exactly, as core's
 /// `MAX_SAFE_INTEGER`. This crate keeps its own: every command program links
 /// it, and it depends on no other crate of the workspace, core included.
-const MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
+pub(crate) const MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
 
 /// One target's executable: its SHA-256 and size.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
@@ -319,7 +319,7 @@ fn resource_targets(targets: &BTreeMap<String, ResourceArtifact>, _: &()) -> gar
 }
 
 /// A garde rule: an entry is a relative path of normal components.
-fn archive_entry(value: &str, _: &()) -> garde::Result {
+pub(crate) fn archive_entry(value: &str, _: &()) -> garde::Result {
     let normal = !value.is_empty()
         && value
             .split('/')

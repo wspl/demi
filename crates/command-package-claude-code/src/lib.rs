@@ -1,33 +1,48 @@
 //! The `demi.claude-code` command package: Demi's own verified copy of the Claude
-//! Code CLI on the machine that runs it (`claude-code.md` § The package).
+//! Code CLI on the machine that runs it, which the runner installs
+//! (`claude-code.md` § The package).
 
 pub mod install;
 pub mod platform;
 pub mod release;
 
-use std::{future::Future, pin::Pin, sync::Arc};
+use std::{future::Future, pin::Pin};
 
 use bytes::Bytes;
 use demi_command_package_claude_code_protocol::{Failure, Installed, Operation, Reply};
 use demi_command_protocol::{CommandError, Completion, Invocation};
-use demi_command_sdk::{Handler, Input, InvocationContext, ServiceError};
+use demi_command_sdk::{Artifacts, Handler, Input, InvocationContext, ServiceError};
 use serde::Serialize;
+use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
-use install::{EnsureError, Installer};
+use install::EnsureError;
 
 /// A release record is a few hundred bytes for each platform.
 const MAX_INPUT_BYTES: usize = 64 * 1024;
 
 /// The service holds no conversation state, so the trait's empty conversation
 /// status and its `close` stand.
-#[derive(Default)]
 pub struct DemiClaude {
-    installer: Arc<Installer>,
+    /// The service's artifacts source, which it takes before it admits a
+    /// call.
+    artifacts: watch::Sender<Option<Artifacts>>,
+}
+
+impl Default for DemiClaude {
+    fn default() -> Self {
+        Self {
+            artifacts: watch::Sender::new(None),
+        }
+    }
 }
 
 impl Handler for DemiClaude {
     type Metadata = Invocation;
+
+    fn artifacts(&self, artifacts: Artifacts) {
+        self.artifacts.send_replace(Some(artifacts));
+    }
 
     fn operations(&self) -> Vec<String> {
         Operation::ALL
@@ -40,7 +55,7 @@ impl Handler for DemiClaude {
         &self,
         context: InvocationContext,
     ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
-        let installer = self.installer.clone();
+        let artifacts = self.artifacts.borrow().clone();
         Box::pin(async move {
             let InvocationContext {
                 request,
@@ -51,11 +66,18 @@ impl Handler for DemiClaude {
             let Some(operation) = Operation::parse(&request.operation) else {
                 return Err(ServiceError::UnknownOperation(request.operation));
             };
-            let result = match operation {
-                Operation::Ensure => ensure(&installer, input, &cancellation)
-                    .await
-                    .and_then(document),
-                Operation::Status => installer.status().await.and_then(document),
+            let result = match artifacts {
+                None => Err(EnsureError::InstallFailed(
+                    "demi-claude-code has no artifacts source".into(),
+                )),
+                Some(artifacts) => match operation {
+                    Operation::Ensure => {
+                        ensure(&artifacts, &request.invocation_id, input, &cancellation)
+                            .await
+                            .and_then(document)
+                    }
+                    Operation::Status => install::status(&artifacts).await.and_then(document),
+                },
             };
             let (body, completion) = match result {
                 Ok(body) => (
@@ -94,13 +116,17 @@ impl Handler for DemiClaude {
 }
 
 async fn ensure(
-    installer: &Installer,
+    artifacts: &Artifacts,
+    invocation: &str,
     input: Input,
     cancel: &CancellationToken,
 ) -> Result<Installed, EnsureError> {
     let input = read_input(input, cancel).await?;
-    let release = installer.release(&input)?;
-    installer.ensure(&release, cancel).await
+    let release = install::release(&input)?;
+    tokio::select! {
+        _ = cancel.cancelled() => Err(EnsureError::Cancelled),
+        installed = install::ensure(artifacts, invocation, &release) => installed,
+    }
 }
 
 /// Read the invocation's input to its end, refusing more than `MAX_INPUT_BYTES`.

@@ -6,16 +6,11 @@
 //! standard error.
 
 use std::{
-    collections::BTreeMap,
-    future::Future,
-    path::{Path, PathBuf},
-    process::Stdio,
-    sync::Arc,
-    time::Duration,
+    collections::BTreeMap, future::Future, path::Path, process::Stdio, sync::Arc, time::Duration,
 };
 
 use demi_command_protocol::{PackageDescriptor, ServiceInfo};
-use demi_command_sdk::{Client, NumbersStream, ServiceError};
+use demi_command_sdk::{ArtifactsAsk, Client, NumbersAsk, RequestStream, ServiceError};
 use process_wrap::tokio::ChildWrapper;
 use tokio::{
     io::AsyncReadExt,
@@ -32,6 +27,7 @@ use demi_runner_process::{
 };
 use demi_runner_protocol::wire;
 
+use crate::invocations::ServiceArtifacts;
 use crate::{ExitReason, NumberSource, RuntimeError, ServiceExit};
 
 /// How long a new service has to finish the handshake and answer its catalog.
@@ -51,8 +47,9 @@ pub struct ResidentService {
     info: ServiceInfo,
     pid: u32,
     owner: JoinHandle<Ended>,
-    /// Relays the service's numbers stream until the service ends it.
-    _numbers: AbortOnDropHandle<()>,
+    /// Answers the service's numbers and artifacts streams until the
+    /// service ends them.
+    _streams: AbortOnDropHandle<()>,
 }
 
 /// How a service process ended.
@@ -64,22 +61,22 @@ pub struct Ended {
 }
 
 impl ResidentService {
-    /// Starts `executable`, given the entry of each of its resources by
-    /// name, checks that it serves `descriptor`, and opens its numbers
-    /// stream, whose requests go to `numbers`. Cancelling `stop` asks the
-    /// service to shut down, also while it starts.
-    pub async fn start(
+    /// Starts `executable`, checks that it serves `descriptor`, and opens
+    /// its numbers stream, whose requests go to `numbers`, and its
+    /// artifacts stream, which `artifacts` answers. Cancelling `stop` asks
+    /// the service to shut down, also while it starts.
+    pub(crate) async fn start(
         executable: &Path,
-        resources: &BTreeMap<String, PathBuf>,
         descriptor: &PackageDescriptor,
         cwd: &Path,
         env: &BTreeMap<String, String>,
         numbers: Arc<dyn NumberSource>,
+        artifacts: Arc<ServiceArtifacts>,
         stop: CancellationToken,
     ) -> Result<Self, RuntimeError> {
         let mut command = Command::new(executable);
         command
-            .args(demi_command_sdk::launch_arguments(resources))
+            .arg(demi_command_sdk::COMMAND_SERVICE)
             .current_dir(cwd)
             .env_clear()
             .envs(env)
@@ -116,24 +113,30 @@ impl ResidentService {
                 Err(_) => return Ok(None),
             };
             let info = client.info().await?;
-            // The numbers stream opens before any call, and only for a
-            // service that serves its descriptor.
+            // The streams open before any call, and only for a service that
+            // serves its descriptor.
             let stream = if descriptor.serves(&info) {
-                Some(client.numbers().await?)
+                Some((client.numbers().await?, client.artifacts().await?))
             } else {
                 None
             };
             Ok::<_, ServiceError>(Some((client, info, stream)))
         };
         let started = tokio::time::timeout(START_TIMEOUT, started).await;
-        if let Ok(Ok(Some((client, info, Some(stream))))) = started {
-            let relay = relay(descriptor.id.clone(), stream, numbers);
+        if let Ok(Ok(Some((client, info, Some((numbers_stream, artifacts_stream)))))) = started {
+            let service = descriptor.id.clone();
+            let streams = async move {
+                tokio::join!(
+                    answer_numbers(&service, numbers_stream, numbers),
+                    answer_artifacts(&service, artifacts_stream, artifacts),
+                );
+            };
             return Ok(Self {
                 client,
                 info,
                 pid,
                 owner,
-                _numbers: AbortOnDropHandle::new(tokio::spawn(relay)),
+                _streams: AbortOnDropHandle::new(tokio::spawn(streams)),
             });
         }
         owner_stop.cancel();
@@ -174,15 +177,34 @@ impl ResidentService {
 }
 
 /// Answers the service's numbers stream from `numbers`, the backend
-/// connection the service started under (`native-runtime.md`
-/// § Conversation numbers), until the service ends it. A stream that broke
-/// is logged: the service's own calls fail with it.
-async fn relay(service: String, stream: NumbersStream, numbers: Arc<dyn NumberSource>) {
+/// (`native-runtime.md` § Conversation numbers), until the service ends it.
+/// A stream that broke is logged: the service's draws then fail.
+async fn answer_numbers(service: &str, stream: RequestStream, numbers: Arc<dyn NumberSource>) {
     let answered = stream
-        .answer(|request| numbers.reserve(request.conversation, request.sequence, request.count))
+        .answer::<NumbersAsk, _>(|request| {
+            numbers.reserve(request.conversation, request.sequence, request.count)
+        })
         .await;
     if let Err(error) = answered {
         tracing::warn!("service {service}'s numbers stream broke: {error}");
+    }
+}
+
+/// Answers the service's artifacts stream from `artifacts`
+/// (`native-runtime.md` § The artifacts stream), until the service ends it.
+/// A stream that broke is logged: the service's requests then fail.
+async fn answer_artifacts(service: &str, stream: RequestStream, artifacts: Arc<ServiceArtifacts>) {
+    let answered = stream
+        .answer::<ArtifactsAsk, _>(|request| {
+            let artifacts = artifacts.clone();
+            async move {
+                let ask = request.ask().map_err(|error| error.to_string())?;
+                artifacts.answer(ask).await
+            }
+        })
+        .await;
+    if let Err(error) = answered {
+        tracing::warn!("service {service}'s artifacts stream broke: {error}");
     }
 }
 
