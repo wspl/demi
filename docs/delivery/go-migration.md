@@ -122,8 +122,8 @@ real machines carries a build tag.
 
 | Role | Who | Does | Does not |
 |---|---|---|---|
-| Owner | The repository owner | Fixes scope and the decisions above; approves the Go design at gate G0 and the cutover at gate G4 | Review each work package |
-| Tech lead | Claude | Writes and keeps this plan and the work package briefs; decides the Go design; reviews every work package for design, taste and conventions; commits, merges and syncs branches; runs the gates | Write production code itself, apart from small fixes found in review |
+| Owner | The repository owner | Fixes scope and the decisions above | Review each work package or approve gates |
+| Tech lead | Claude | Writes and keeps this plan and the work package briefs; decides the Go design; reviews every work package for design, taste and conventions; accepts a behavior change that is reasonable and refuses one that is not; merges and syncs branches; runs every gate | Write or fix code: review findings go back to the work package's agent; the tech lead touches only what a merge needs, such as `go.mod` |
 | Implementer | An astra agent, one per work package | Ports one work package and its tests inside its write boundary, runs its checks, commits on its own branch, reports | Push, merge, touch files outside its boundary or any other branch, worktree or stash, change another package's exported API, add a module its brief does not list |
 | Acceptance agent | An astra agent | Runs an acceptance suite against the built programs, triages each failure to the owning work package, writes the failure report | Fix the failure itself in another package's files |
 | Spike agent | An astra agent | Answers one technical question with running code and measurements | Produce code that is merged |
@@ -293,13 +293,13 @@ Inside a phase, work packages start as soon as the API checkpoints they
 depend on are merged, not when the whole previous level is done.
 
 ```text
-Phase 0  design + foundation        8 at once     gate G0: owner approves the Go design
+Phase 0  design + foundation        8 at once     gate G0: the Go design accepted
 Phase 1  contracts + leaf libraries up to 8       gate G1: generated TypeScript and corpora match
 Phase 2  API checkpoints, then      up to 16      gate G2: every package implemented,
          implementations                                   unit tests pass
 Phase 3  programs + acceptance      up to 12      gate G3: Rust suites pass against Go programs;
                                                            all-Go suites pass
-Phase 4  cutover                    up to 10      gate G4: owner approves; Rust removed
+Phase 4  cutover                    up to 10      gate G4: Rust removed, release accepted
 ```
 
 ### Phase 0: design and foundation
@@ -321,8 +321,9 @@ are rewritten for Go, because each work package implements against them.
 The tech lead writes the Go section of `AGENTS.md`, the brief and report
 templates and the package map, creates `go.mod`, and reviews the
 documents. The Lima VMs for Linux work (`gomig-vm-1` to `gomig-vm-3`) are
-created before Phase 2. **Gate G0:** the
-owner approves the rewritten architecture documents.
+created before Phase 2. **Gate G0:** the tech
+lead accepts the rewritten architecture documents and every behavior change
+they make.
 
 ### Phase 1: contracts and leaf libraries
 
@@ -386,8 +387,8 @@ without its Go port.
 | `z-release` | The six-target release and the Cloud image built from Go |
 
 The tech lead rewrites `AGENTS.md` for Go only. **Gate G4:** a release
-builds for all targets, the real-machine acceptance passes, and the owner
-approves the merge of `gomig/main`.
+builds for all targets and the real-machine acceptance passes; `gomig/main`
+is then ready to merge.
 
 ### Concurrency and pace
 
