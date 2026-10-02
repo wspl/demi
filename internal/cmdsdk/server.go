@@ -122,6 +122,7 @@ func serve[M commandwire.Metadata](ctx context.Context, conn net.Conn, h Handler
 	phase := serviceAccepting
 	opened := map[string]bool{}
 	var calls sync.WaitGroup
+	var work sync.WaitGroup
 	fail := func(e error) {
 		select {
 		case fatal <- e:
@@ -143,7 +144,6 @@ func serve[M commandwire.Metadata](ctx context.Context, conn net.Conn, h Handler
 		if r.Method == http.MethodPost && r.URL.Path == commandwire.ShutdownPath {
 			if phase != serviceDraining {
 				phase = serviceDraining
-				finish()
 				close(shutdown)
 			}
 			mu.Unlock()
@@ -154,6 +154,9 @@ func serve[M commandwire.Metadata](ctx context.Context, conn net.Conn, h Handler
 		stream := r.Method == http.MethodPost && (r.URL.Path == commandwire.NumbersPath || r.URL.Path == commandwire.ArtifactsPath)
 		if stream {
 			opened[r.URL.Path] = true
+		} else if !stopped {
+			work.Add(1)
+			defer work.Done()
 		}
 		mu.Unlock()
 		if stopped {
@@ -252,10 +255,37 @@ func serve[M commandwire.Metadata](ctx context.Context, conn net.Conn, h Handler
 	serving := make(chan error, 1)
 	go func() { serving <- server.Serve(listener) }()
 	var outcome error
+	closeHandler := sync.OnceFunc(func() {
+		if hook, ok := any(h).(interface{ Close(context.Context) error }); ok {
+			closing, cancelClose := context.WithTimeout(context.Background(), cancelTimeout)
+			defer cancelClose()
+			done := make(chan error, 1)
+			go func() {
+				var closeErr error
+				defer func() {
+					if p := recover(); p != nil {
+						closeErr = fmt.Errorf("command close panicked: %v", p)
+					}
+					done <- closeErr
+				}()
+				closeErr = hook.Close(closing)
+			}()
+			select {
+			case e := <-done:
+				outcome = errors.Join(outcome, e)
+			case <-closing.Done():
+				outcome = errors.Join(outcome, ErrCancellationDeadline)
+			}
+		}
+	})
 	select {
 	case <-shutdown:
-		// Shutdown drains accepted invocations; it does not cancel normal work.
-		outcome = server.Shutdown(owner)
+		// Drain commands before closing the handler, retaining its runner streams
+		// until cleanup finishes. HTTP shutdown can then drain those streams too.
+		work.Wait()
+		closeHandler()
+		finish()
+		outcome = errors.Join(outcome, server.Shutdown(owner))
 	case <-ctx.Done():
 	case <-watched.done:
 	case outcome = <-fatal:
@@ -272,27 +302,7 @@ func serve[M commandwire.Metadata](ctx context.Context, conn net.Conn, h Handler
 		outcome = errors.Join(outcome, serveErr)
 	}
 	outcome = errors.Join(outcome, closeErr)
-	if hook, ok := any(h).(interface{ Close(context.Context) error }); ok {
-		closing, cancelClose := context.WithTimeout(context.Background(), cancelTimeout)
-		defer cancelClose()
-		done := make(chan error, 1)
-		go func() {
-			var closeErr error
-			defer func() {
-				if p := recover(); p != nil {
-					closeErr = fmt.Errorf("command close panicked: %v", p)
-				}
-				done <- closeErr
-			}()
-			closeErr = hook.Close(closing)
-		}()
-		select {
-		case e := <-done:
-			outcome = errors.Join(outcome, e)
-		case <-closing.Done():
-			outcome = errors.Join(outcome, ErrCancellationDeadline)
-		}
-	}
+	closeHandler()
 	select {
 	case e := <-fatal:
 		outcome = errors.Join(outcome, e)

@@ -24,6 +24,7 @@ func Serve(ctx context.Context, args []string) error {
 	s := newService()
 	sweep, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
+	s.sweepDone = done
 	go func() {
 		defer close(done)
 		if err := tabs.SweepOrphans(sweep, &s.chrome); err != nil && !errors.Is(err, context.Canceled) {
@@ -37,6 +38,7 @@ func Serve(ctx context.Context, args []string) error {
 }
 
 type service struct {
+	sweepDone <-chan struct{} // Serve owns the startup sweep; Close joins it before streams end.
 	chrome    tabs.Chrome
 	mu        sync.Mutex // Map and admission only; Chrome work never holds this lock.
 	browsers  map[string]*conversation
@@ -148,6 +150,9 @@ func (s *service) Close(ctx context.Context) error {
 	var err error
 	for failure := range failures {
 		err = errors.Join(err, failure)
+	}
+	if s.sweepDone != nil {
+		<-s.sweepDone
 	}
 	s.cleanup = err
 	close(s.closeDone)

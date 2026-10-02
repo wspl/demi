@@ -271,6 +271,29 @@ func TestResidentProgramListsWithoutChromeAndShutsDown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The runner keeps its artifact stream open for the startup sweep, even
+	// when no invocation needs an installed browser.
+	ctx, cancel := context.WithCancel(t.Context())
+	artifacts, err := process.Client.Artifacts(ctx)
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	answered := make(chan error, 1)
+	go func() {
+		answered <- artifacts.AnswerArtifacts(ctx, func(_ context.Context, q commandwire.ArtifactRequest) (commandwire.ArtifactAnswer, error) {
+			if q.Install != nil {
+				return commandwire.ArtifactAnswer{}, errors.New("tab listing requested a Chrome install")
+			}
+			installed := []commandwire.InstalledArtifact{}
+			return commandwire.ArtifactAnswer{ID: q.ID, Installed: &installed}, nil
+		})
+		close(answered)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		<-answered
+	})
 	info, err := process.Client.Info(t.Context())
 	if err != nil || !slices.Equal(info.Operations, browserop.OperationNames()) {
 		t.Fatalf("info=%+v err=%v", info, err)
@@ -306,6 +329,9 @@ func TestResidentProgramListsWithoutChromeAndShutsDown(t *testing.T) {
 		t.Fatalf("stdout=%q completed=%v", stdout, completed)
 	}
 	if err := process.Shutdown(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-answered; err != nil {
 		t.Fatal(err)
 	}
 }
