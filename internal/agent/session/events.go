@@ -1,7 +1,5 @@
 package session
 
-// revive:disable:unused-parameter API checkpoint stubs retain parameter names for callers.
-
 import (
 	"context"
 
@@ -34,11 +32,11 @@ const (
 
 // ActionHandle resolves when an admitted action ends. Abandoning the handle or
 // cancelling a wait does not stop the action; Abort stops it explicitly.
-type ActionHandle struct{}
+type ActionHandle struct{ result *actionResult }
 
 // Wait waits for the action's result. An action failure returns *ErrorReport;
 // a cancelled wait returns the context error. Multiple waiters share the result.
-func (a *ActionHandle) Wait(ctx context.Context) (ActionEnd, error) { panic("not written: a-session") }
+func (a *ActionHandle) Wait(ctx context.Context) (ActionEnd, error) { return a.waitAction(ctx) }
 
 // Event is a change reported once complete, in commit order outside the state
 // lock. Its data remains immutable for every listener.
@@ -84,11 +82,14 @@ func (*ErrorEvent) sessionEvent()           {}
 func (*ActionFailed) sessionEvent()         {}
 
 // Subscription owns an event listener. Its owner defers Release.
-type Subscription struct{}
+type Subscription struct {
+	session *Session
+	id      uint64
+}
 
 // Release ends the subscription, idempotently. It does not join a callback
 // already being delivered and is safe to call from that callback.
-func (s *Subscription) Release() { panic("not written: a-session") }
+func (s *Subscription) Release() { s.session.mutate(func(c *coreState) { delete(c.listeners, s.id) }) }
 
 // Settle says whether the session will do anything more by itself.
 type Settle uint8
@@ -105,7 +106,8 @@ const (
 // Status is an immutable snapshot of whether a session acts and what could
 // make it act later. Read the predicate, then wait on Changed and reload Status.
 type Status struct {
-	Settle Settle
+	changed chan struct{}
+	Settle  Settle
 	// Wakeups means a yield wakeup is scheduled, or fired and not yet written.
 	Wakeups bool
 	// AgentInput means an agent message waits for a boundary.
@@ -114,4 +116,4 @@ type Status struct {
 
 // Changed closes after a newer status is published. Notifications may coalesce.
 // The snapshot and its notification are captured together, so no wake is lost.
-func (s Status) Changed() <-chan struct{} { panic("not written: a-session") }
+func (s Status) Changed() <-chan struct{} { return s.changed }

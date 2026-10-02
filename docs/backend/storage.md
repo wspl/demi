@@ -242,7 +242,7 @@ most 64 writer connections are open at once, and opening another closes the
 least recently used. Closing a connection loses nothing; the next operation
 opens it again. A read that needs no live session, such as a summary, cold
 history, or the files a command edited, uses a short-lived read-only
-connection on the blocking pool instead. It takes no writer slot and never
+connection in the request's own goroutine instead. It takes no writer slot and never
 creates a database file, so a page's snapshot, which reads the summaries of
 hundreds of conversations, does not close the writers of running sessions. Backend
 shutdown closes every connection.
@@ -311,12 +311,12 @@ blobs/<userId>/<sha256>           uploads, transcript media, edit copies and com
 
 A single-backend deployment keeps the object store in its data directory;
 `DEMI_OBJECT_STORE_CONFIG` puts it in an S3 bucket, which the multi-worker
-deployment requires. The backend reaches it through the `object_store`
-library, so one code path serves a local directory and S3, and conditional
+deployment requires. The backend reaches it through `gocloud.dev/blob`
+(`fileblob`, `s3blob`), so one code path serves a local directory and S3, and conditional
 creation and checksums come from the library.
 
-A blob put hashes the bytes with SHA-256 on the blocking pool, since a 25 MiB
-upload would hold an async thread for tens of milliseconds, and then asks
+A blob put hashes the bytes with SHA-256 in the request's goroutine, outside
+any lock, and then asks
 whether the key exists: a HEAD request on S3, the file's metadata locally. A
 key that exists is success, and no bytes are sent: the same key always names
 the same bytes, so repeated uploads of one file store it once. Otherwise the

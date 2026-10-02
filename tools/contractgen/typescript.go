@@ -78,7 +78,7 @@ func (g *generator) emitTS(name string) {
 		g.err = fmt.Errorf("adjacent union variant is not supported in TypeScript")
 		return
 	}
-	if has(d.marks, "codec") {
+	if has(d.marks, "codec") && d.marks["codec"] != "string" {
 		g.err = fmt.Errorf("codec has no explicit TypeScript mapping")
 		return
 	}

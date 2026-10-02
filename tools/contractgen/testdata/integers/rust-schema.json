@@ -1,1 +1,1 @@
-{"title":"Input","type":"object","properties":{"commandId":{"type":"integer","format":"uint64","minimum":0},"shellId":{"type":"integer","format":"uint64","minimum":0,"default":null}},"additionalProperties":false,"required":["commandId"]}
+{"additionalProperties":false,"properties":{"commandId":{"type":"integer","format":"uint64","minimum":0},"shellId":{"type":"integer","format":"uint64","minimum":0,"default":null}},"required":["commandId"],"title":"Input","type":"object"}
