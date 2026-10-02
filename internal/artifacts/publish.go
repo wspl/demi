@@ -5,9 +5,9 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 )
 
 // Mode specifies whether an artifact may replace an existing file.
@@ -54,6 +54,10 @@ func NewStaged(ctx context.Context, path string, publication Publication) (*Stag
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	parent, ok := Parent(path)
+	if !ok {
+		return nil, fmt.Errorf("a file needs a parent directory: %w", os.ErrInvalid)
+	}
 	mode := os.FileMode(0666)
 	switch publication.Permissions {
 	case Private, Keep:
@@ -65,7 +69,7 @@ func NewStaged(ctx context.Context, path string, publication Publication) (*Stag
 	var err error
 	for {
 		// Six random characters keep the runner's recognizable partial-file name.
-		name := filepath.Join(filepath.Dir(path), ".demi-partial-"+rand.Text()[:6])
+		name := artifactPath(parent, ".demi-partial-"+rand.Text()[:6])
 		file, err = os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, mode)
 		if !errors.Is(err, os.ErrExist) {
 			break
@@ -146,7 +150,11 @@ func (s *Staged) Publish(ctx context.Context) (err error) {
 	}
 	s.temporary = ""
 	if s.publication.Durable {
-		return syncDirectory(context.WithoutCancel(ctx), filepath.Dir(s.path))
+		parent, _ := Parent(s.path)
+		if parent == "" {
+			parent = "."
+		}
+		return syncDirectory(context.WithoutCancel(ctx), parent)
 	}
 	return nil
 }
