@@ -2022,13 +2022,13 @@ internal/cli -> none
 internal/version -> none
 internal/host -> internal/commandwire, internal/declare, internal/core, internal/contract
 internal/plugin -> internal/declare, internal/core, internal/host, internal/webapi, internal/contract
-internal/plugins/browser -> internal/plugin, internal/declare, internal/cmdpkg/browser/browserop, internal/host, internal/webapi
-internal/plugins/changes -> internal/plugin
-internal/plugins/expose -> internal/plugin, internal/host, internal/core, internal/webapi
-internal/plugins/file -> internal/plugin, internal/declare, internal/cmdpkg/file/fileop, internal/host
-internal/plugins/filebrowser -> internal/plugin
-internal/plugins/skills -> internal/plugin, internal/core
-internal/plugins/todo -> internal/plugin, internal/host
+internal/plugins/browser -> internal/plugin, internal/declare, internal/cmdpkg/browser/browserop, internal/host, internal/webapi, internal/contract
+internal/plugins/changes -> internal/plugin, internal/declare, internal/contract
+internal/plugins/expose -> internal/plugin, internal/host, internal/core, internal/webapi, internal/declare, internal/contract
+internal/plugins/file -> internal/plugin, internal/declare, internal/cmdpkg/file/fileop, internal/host, internal/contract
+internal/plugins/filebrowser -> internal/plugin, internal/declare, internal/contract
+internal/plugins/skills -> internal/plugin, internal/core, internal/declare, internal/contract
+internal/plugins/todo -> internal/plugin, internal/host, internal/declare, internal/contract
 internal/provider -> internal/core, internal/gates, internal/contract
 internal/providers/anthropicapi -> internal/core, internal/provider, internal/contract
 internal/providers/openaiapi -> internal/core, internal/provider, internal/contract
