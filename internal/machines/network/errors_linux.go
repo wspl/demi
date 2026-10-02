@@ -4,6 +4,7 @@ package network
 
 import (
 	"errors"
+	"fmt"
 	"net/netip"
 )
 
@@ -26,7 +27,9 @@ type OverlapError struct {
 }
 
 // Error describes the conflicting route.
-func (e *OverlapError) Error() string { panic("not written: m-network") }
+func (e *OverlapError) Error() string {
+	return fmt.Sprintf("DEMI_MANAGED_SUBNET overlaps host route %s", e.Route)
+}
 
 // FirewallError reports a refused Cloud firewall transaction.
 type FirewallError struct {
@@ -35,7 +38,9 @@ type FirewallError struct {
 }
 
 // Error describes the failed firewall transaction.
-func (e *FirewallError) Error() string { panic("not written: m-network") }
+func (e *FirewallError) Error() string {
+	return fmt.Sprintf("Cannot apply the Cloud firewall: %v", e.Source)
+}
 
 // Unwrap preserves the underlying failure for errors.Is and errors.As.
-func (e *FirewallError) Unwrap() error { panic("not written: m-network") }
+func (e *FirewallError) Unwrap() error { return e.Source }

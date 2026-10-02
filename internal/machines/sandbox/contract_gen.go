@@ -300,3 +300,1445 @@ func (v Status) MarshalJSON() ([]byte, error) {
 	}
 	return contract.EncodeJSON(string(v))
 }
+func decodeNamespaceOwner(data []byte) (namespaceOwner, error) {
+	return contract.Decode[namespaceOwner](data)
+}
+func (v namespaceOwner) Validate() error { return contractValidateNamespaceOwner(v, 0) }
+func contractValidateNamespaceOwner(v namespaceOwner, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v.DataDir), 0, -1, ""); err != nil {
+		return contract.At("dataDir", err)
+	}
+	return nil
+}
+func (v *namespaceOwner) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next namespaceOwner
+	for key := range obj {
+		switch key {
+		case "dataDir":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["dataDir"]
+		if !ok {
+			return contract.At("dataDir", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("dataDir", err)
+			}
+			next.DataDir = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v namespaceOwner) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "dataDir", Value: v.DataDir})
+	return contract.EncodeObject(fields)
+}
+func decodeOciCPU(data []byte) (ociCPU, error) { return contract.Decode[ociCPU](data) }
+func (v ociCPU) Validate() error               { return contractValidateOciCPU(v, 0) }
+func contractValidateOciCPU(v ociCPU, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	return nil
+}
+func (v *ociCPU) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next ociCPU
+	for key := range obj {
+		switch key {
+		case "quota", "period":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["quota"]
+		if !ok {
+			return contract.At("quota", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[int64](raw)
+			if err != nil {
+				return contract.At("quota", err)
+			}
+			next.Quota = value
+		}
+	}
+	{
+		raw, ok := obj["period"]
+		if !ok {
+			return contract.At("period", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint64](raw)
+			if err != nil {
+				return contract.At("period", err)
+			}
+			next.Period = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v ociCPU) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "quota", Value: v.Quota})
+	fields = append(fields, contract.Field{Name: "period", Value: v.Period})
+	return contract.EncodeObject(fields)
+}
+func decodeOciCapabilities(data []byte) (ociCapabilities, error) {
+	return contract.Decode[ociCapabilities](data)
+}
+func (v ociCapabilities) Validate() error { return contractValidateOciCapabilities(v, 0) }
+func contractValidateOciCapabilities(v ociCapabilities, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if v.Bounding == nil {
+		return contract.At("bounding", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.Bounding {
+		_ = i
+		_ = item
+		if err := contract.Text(string(item), 0, -1, ""); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "bounding", i), err)
+		}
+	}
+	if v.Effective == nil {
+		return contract.At("effective", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.Effective {
+		_ = i
+		_ = item
+		if err := contract.Text(string(item), 0, -1, ""); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "effective", i), err)
+		}
+	}
+	if v.Inheritable == nil {
+		return contract.At("inheritable", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.Inheritable {
+		_ = i
+		_ = item
+		if err := contract.Text(string(item), 0, -1, ""); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "inheritable", i), err)
+		}
+	}
+	if v.Permitted == nil {
+		return contract.At("permitted", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.Permitted {
+		_ = i
+		_ = item
+		if err := contract.Text(string(item), 0, -1, ""); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "permitted", i), err)
+		}
+	}
+	if v.Ambient == nil {
+		return contract.At("ambient", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.Ambient {
+		_ = i
+		_ = item
+		if err := contract.Text(string(item), 0, -1, ""); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "ambient", i), err)
+		}
+	}
+	return nil
+}
+func (v *ociCapabilities) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next ociCapabilities
+	for key := range obj {
+		switch key {
+		case "bounding", "effective", "inheritable", "permitted", "ambient":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["bounding"]
+		if !ok {
+			return contract.At("bounding", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]string, error) { return contract.List(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("bounding", err)
+			}
+			next.Bounding = value
+		}
+	}
+	{
+		raw, ok := obj["effective"]
+		if !ok {
+			return contract.At("effective", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]string, error) { return contract.List(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("effective", err)
+			}
+			next.Effective = value
+		}
+	}
+	{
+		raw, ok := obj["inheritable"]
+		if !ok {
+			return contract.At("inheritable", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]string, error) { return contract.List(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("inheritable", err)
+			}
+			next.Inheritable = value
+		}
+	}
+	{
+		raw, ok := obj["permitted"]
+		if !ok {
+			return contract.At("permitted", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]string, error) { return contract.List(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("permitted", err)
+			}
+			next.Permitted = value
+		}
+	}
+	{
+		raw, ok := obj["ambient"]
+		if !ok {
+			return contract.At("ambient", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]string, error) { return contract.List(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("ambient", err)
+			}
+			next.Ambient = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v ociCapabilities) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "bounding", Value: v.Bounding})
+	fields = append(fields, contract.Field{Name: "effective", Value: v.Effective})
+	fields = append(fields, contract.Field{Name: "inheritable", Value: v.Inheritable})
+	fields = append(fields, contract.Field{Name: "permitted", Value: v.Permitted})
+	fields = append(fields, contract.Field{Name: "ambient", Value: v.Ambient})
+	return contract.EncodeObject(fields)
+}
+func decodeOciLinux(data []byte) (ociLinux, error) { return contract.Decode[ociLinux](data) }
+func (v ociLinux) Validate() error                 { return contractValidateOciLinux(v, 0) }
+func contractValidateOciLinux(v ociLinux, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if v.Resources != nil {
+		if err := contractValidateOciResources((*v.Resources), depth+1); err != nil {
+			return contract.At("resources", err)
+		}
+	}
+	if v.CgroupsPath != nil {
+		if err := contract.Text(string((*v.CgroupsPath)), 0, -1, ""); err != nil {
+			return contract.At("cgroupsPath", err)
+		}
+	}
+	if v.Namespaces == nil {
+		return contract.At("namespaces", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.Namespaces {
+		_ = i
+		_ = item
+		if err := contractValidateOciNamespace(item, depth+1); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "namespaces", i), err)
+		}
+	}
+	if v.MaskedPaths == nil {
+		return contract.At("maskedPaths", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.MaskedPaths {
+		_ = i
+		_ = item
+		if err := contract.Text(string(item), 0, -1, ""); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "maskedPaths", i), err)
+		}
+	}
+	if v.ReadonlyPaths == nil {
+		return contract.At("readonlyPaths", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.ReadonlyPaths {
+		_ = i
+		_ = item
+		if err := contract.Text(string(item), 0, -1, ""); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "readonlyPaths", i), err)
+		}
+	}
+	return nil
+}
+func (v *ociLinux) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next ociLinux
+	for key := range obj {
+		switch key {
+		case "resources", "cgroupsPath", "namespaces", "maskedPaths", "readonlyPaths":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["resources"]
+		if ok {
+			value, err := func(b []byte) (*ociResources, error) { return contract.Pointer(b, contract.Decode[ociResources]) }(raw)
+			if err != nil {
+				return contract.At("resources", err)
+			}
+			next.Resources = value
+		}
+	}
+	{
+		raw, ok := obj["cgroupsPath"]
+		if ok {
+			value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("cgroupsPath", err)
+			}
+			next.CgroupsPath = value
+		}
+	}
+	{
+		raw, ok := obj["namespaces"]
+		if !ok {
+			return contract.At("namespaces", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]ociNamespace, error) { return contract.List(b, contract.Decode[ociNamespace]) }(raw)
+			if err != nil {
+				return contract.At("namespaces", err)
+			}
+			next.Namespaces = value
+		}
+	}
+	{
+		raw, ok := obj["maskedPaths"]
+		if !ok {
+			return contract.At("maskedPaths", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]string, error) { return contract.List(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("maskedPaths", err)
+			}
+			next.MaskedPaths = value
+		}
+	}
+	{
+		raw, ok := obj["readonlyPaths"]
+		if !ok {
+			return contract.At("readonlyPaths", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]string, error) { return contract.List(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("readonlyPaths", err)
+			}
+			next.ReadonlyPaths = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v ociLinux) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	if v.Resources != nil {
+		fields = append(fields, contract.Field{Name: "resources", Value: v.Resources})
+	}
+	if v.CgroupsPath != nil {
+		fields = append(fields, contract.Field{Name: "cgroupsPath", Value: v.CgroupsPath})
+	}
+	fields = append(fields, contract.Field{Name: "namespaces", Value: v.Namespaces})
+	fields = append(fields, contract.Field{Name: "maskedPaths", Value: v.MaskedPaths})
+	fields = append(fields, contract.Field{Name: "readonlyPaths", Value: v.ReadonlyPaths})
+	return contract.EncodeObject(fields)
+}
+func decodeOciMemory(data []byte) (ociMemory, error) { return contract.Decode[ociMemory](data) }
+func (v ociMemory) Validate() error                  { return contractValidateOciMemory(v, 0) }
+func contractValidateOciMemory(v ociMemory, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	return nil
+}
+func (v *ociMemory) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next ociMemory
+	for key := range obj {
+		switch key {
+		case "limit", "swap":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["limit"]
+		if !ok {
+			return contract.At("limit", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[int64](raw)
+			if err != nil {
+				return contract.At("limit", err)
+			}
+			next.Limit = value
+		}
+	}
+	{
+		raw, ok := obj["swap"]
+		if !ok {
+			return contract.At("swap", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[int64](raw)
+			if err != nil {
+				return contract.At("swap", err)
+			}
+			next.Swap = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v ociMemory) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "limit", Value: v.Limit})
+	fields = append(fields, contract.Field{Name: "swap", Value: v.Swap})
+	return contract.EncodeObject(fields)
+}
+func decodeOciMount(data []byte) (ociMount, error) { return contract.Decode[ociMount](data) }
+func (v ociMount) Validate() error                 { return contractValidateOciMount(v, 0) }
+func contractValidateOciMount(v ociMount, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v.Destination), 0, -1, ""); err != nil {
+		return contract.At("destination", err)
+	}
+	if err := contract.Text(string(v.Type), 0, -1, ""); err != nil {
+		return contract.At("type", err)
+	}
+	if err := contract.Text(string(v.Source), 0, -1, ""); err != nil {
+		return contract.At("source", err)
+	}
+	if v.Options == nil {
+		return contract.At("options", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.Options {
+		_ = i
+		_ = item
+		if err := contract.Text(string(item), 0, -1, ""); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "options", i), err)
+		}
+	}
+	return nil
+}
+func (v *ociMount) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next ociMount
+	for key := range obj {
+		switch key {
+		case "destination", "type", "source", "options":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["destination"]
+		if !ok {
+			return contract.At("destination", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("destination", err)
+			}
+			next.Destination = value
+		}
+	}
+	{
+		raw, ok := obj["type"]
+		if !ok {
+			return contract.At("type", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("type", err)
+			}
+			next.Type = value
+		}
+	}
+	{
+		raw, ok := obj["source"]
+		if !ok {
+			return contract.At("source", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("source", err)
+			}
+			next.Source = value
+		}
+	}
+	{
+		raw, ok := obj["options"]
+		if !ok {
+			return contract.At("options", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]string, error) { return contract.List(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("options", err)
+			}
+			next.Options = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v ociMount) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "destination", Value: v.Destination})
+	fields = append(fields, contract.Field{Name: "type", Value: v.Type})
+	fields = append(fields, contract.Field{Name: "source", Value: v.Source})
+	fields = append(fields, contract.Field{Name: "options", Value: v.Options})
+	return contract.EncodeObject(fields)
+}
+func decodeOciNamespace(data []byte) (ociNamespace, error) {
+	return contract.Decode[ociNamespace](data)
+}
+func (v ociNamespace) Validate() error { return contractValidateOciNamespace(v, 0) }
+func contractValidateOciNamespace(v ociNamespace, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v.Type), 0, -1, ""); err != nil {
+		return contract.At("type", err)
+	}
+	if v.Path != nil {
+		if err := contract.Text(string((*v.Path)), 0, -1, ""); err != nil {
+			return contract.At("path", err)
+		}
+	}
+	return nil
+}
+func (v *ociNamespace) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next ociNamespace
+	for key := range obj {
+		switch key {
+		case "type", "path":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["type"]
+		if !ok {
+			return contract.At("type", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("type", err)
+			}
+			next.Type = value
+		}
+	}
+	{
+		raw, ok := obj["path"]
+		if ok {
+			value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("path", err)
+			}
+			next.Path = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v ociNamespace) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: v.Type})
+	if v.Path != nil {
+		fields = append(fields, contract.Field{Name: "path", Value: v.Path})
+	}
+	return contract.EncodeObject(fields)
+}
+func decodeOciPids(data []byte) (ociPids, error) { return contract.Decode[ociPids](data) }
+func (v ociPids) Validate() error                { return contractValidateOciPids(v, 0) }
+func contractValidateOciPids(v ociPids, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	return nil
+}
+func (v *ociPids) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next ociPids
+	for key := range obj {
+		switch key {
+		case "limit":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["limit"]
+		if !ok {
+			return contract.At("limit", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[int64](raw)
+			if err != nil {
+				return contract.At("limit", err)
+			}
+			next.Limit = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v ociPids) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "limit", Value: v.Limit})
+	return contract.EncodeObject(fields)
+}
+func decodeOciProcess(data []byte) (ociProcess, error) { return contract.Decode[ociProcess](data) }
+func (v ociProcess) Validate() error                   { return contractValidateOciProcess(v, 0) }
+func contractValidateOciProcess(v ociProcess, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contractValidateOciUser(v.User, depth+1); err != nil {
+		return contract.At("user", err)
+	}
+	if v.Args == nil {
+		return contract.At("args", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.Args {
+		_ = i
+		_ = item
+		if err := contract.Text(string(item), 0, -1, ""); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "args", i), err)
+		}
+	}
+	if v.Env == nil {
+		return contract.At("env", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.Env {
+		_ = i
+		_ = item
+		if err := contract.Text(string(item), 0, -1, ""); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "env", i), err)
+		}
+	}
+	if err := contract.Text(string(v.Cwd), 0, -1, ""); err != nil {
+		return contract.At("cwd", err)
+	}
+	if err := contractValidateOciCapabilities(v.Capabilities, depth+1); err != nil {
+		return contract.At("capabilities", err)
+	}
+	if v.Rlimits == nil {
+		return contract.At("rlimits", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.Rlimits {
+		_ = i
+		_ = item
+		if err := contractValidateOciRlimit(item, depth+1); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "rlimits", i), err)
+		}
+	}
+	return nil
+}
+func (v *ociProcess) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next ociProcess
+	for key := range obj {
+		switch key {
+		case "terminal", "user", "args", "env", "cwd", "capabilities", "rlimits", "noNewPrivileges":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["terminal"]
+		if !ok {
+			return contract.At("terminal", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[bool](raw)
+			if err != nil {
+				return contract.At("terminal", err)
+			}
+			next.Terminal = value
+		}
+	}
+	{
+		raw, ok := obj["user"]
+		if !ok {
+			return contract.At("user", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[ociUser](raw)
+			if err != nil {
+				return contract.At("user", err)
+			}
+			next.User = value
+		}
+	}
+	{
+		raw, ok := obj["args"]
+		if !ok {
+			return contract.At("args", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]string, error) { return contract.List(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("args", err)
+			}
+			next.Args = value
+		}
+	}
+	{
+		raw, ok := obj["env"]
+		if !ok {
+			return contract.At("env", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]string, error) { return contract.List(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("env", err)
+			}
+			next.Env = value
+		}
+	}
+	{
+		raw, ok := obj["cwd"]
+		if !ok {
+			return contract.At("cwd", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("cwd", err)
+			}
+			next.Cwd = value
+		}
+	}
+	{
+		raw, ok := obj["capabilities"]
+		if !ok {
+			return contract.At("capabilities", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[ociCapabilities](raw)
+			if err != nil {
+				return contract.At("capabilities", err)
+			}
+			next.Capabilities = value
+		}
+	}
+	{
+		raw, ok := obj["rlimits"]
+		if !ok {
+			return contract.At("rlimits", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]ociRlimit, error) { return contract.List(b, contract.Decode[ociRlimit]) }(raw)
+			if err != nil {
+				return contract.At("rlimits", err)
+			}
+			next.Rlimits = value
+		}
+	}
+	{
+		raw, ok := obj["noNewPrivileges"]
+		if !ok {
+			return contract.At("noNewPrivileges", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[bool](raw)
+			if err != nil {
+				return contract.At("noNewPrivileges", err)
+			}
+			next.NoNewPrivileges = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v ociProcess) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "terminal", Value: v.Terminal})
+	fields = append(fields, contract.Field{Name: "user", Value: v.User})
+	fields = append(fields, contract.Field{Name: "args", Value: v.Args})
+	fields = append(fields, contract.Field{Name: "env", Value: v.Env})
+	fields = append(fields, contract.Field{Name: "cwd", Value: v.Cwd})
+	fields = append(fields, contract.Field{Name: "capabilities", Value: v.Capabilities})
+	fields = append(fields, contract.Field{Name: "rlimits", Value: v.Rlimits})
+	fields = append(fields, contract.Field{Name: "noNewPrivileges", Value: v.NoNewPrivileges})
+	return contract.EncodeObject(fields)
+}
+func decodeOciResources(data []byte) (ociResources, error) {
+	return contract.Decode[ociResources](data)
+}
+func (v ociResources) Validate() error { return contractValidateOciResources(v, 0) }
+func contractValidateOciResources(v ociResources, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contractValidateOciMemory(v.Memory, depth+1); err != nil {
+		return contract.At("memory", err)
+	}
+	if err := contractValidateOciCPU(v.CPU, depth+1); err != nil {
+		return contract.At("cpu", err)
+	}
+	if err := contractValidateOciPids(v.Pids, depth+1); err != nil {
+		return contract.At("pids", err)
+	}
+	return nil
+}
+func (v *ociResources) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next ociResources
+	for key := range obj {
+		switch key {
+		case "memory", "cpu", "pids":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["memory"]
+		if !ok {
+			return contract.At("memory", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[ociMemory](raw)
+			if err != nil {
+				return contract.At("memory", err)
+			}
+			next.Memory = value
+		}
+	}
+	{
+		raw, ok := obj["cpu"]
+		if !ok {
+			return contract.At("cpu", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[ociCPU](raw)
+			if err != nil {
+				return contract.At("cpu", err)
+			}
+			next.CPU = value
+		}
+	}
+	{
+		raw, ok := obj["pids"]
+		if !ok {
+			return contract.At("pids", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[ociPids](raw)
+			if err != nil {
+				return contract.At("pids", err)
+			}
+			next.Pids = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v ociResources) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "memory", Value: v.Memory})
+	fields = append(fields, contract.Field{Name: "cpu", Value: v.CPU})
+	fields = append(fields, contract.Field{Name: "pids", Value: v.Pids})
+	return contract.EncodeObject(fields)
+}
+func decodeOciRlimit(data []byte) (ociRlimit, error) { return contract.Decode[ociRlimit](data) }
+func (v ociRlimit) Validate() error                  { return contractValidateOciRlimit(v, 0) }
+func contractValidateOciRlimit(v ociRlimit, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v.Type), 0, -1, ""); err != nil {
+		return contract.At("type", err)
+	}
+	return nil
+}
+func (v *ociRlimit) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next ociRlimit
+	for key := range obj {
+		switch key {
+		case "type", "hard", "soft":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["type"]
+		if !ok {
+			return contract.At("type", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("type", err)
+			}
+			next.Type = value
+		}
+	}
+	{
+		raw, ok := obj["hard"]
+		if !ok {
+			return contract.At("hard", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint64](raw)
+			if err != nil {
+				return contract.At("hard", err)
+			}
+			next.Hard = value
+		}
+	}
+	{
+		raw, ok := obj["soft"]
+		if !ok {
+			return contract.At("soft", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint64](raw)
+			if err != nil {
+				return contract.At("soft", err)
+			}
+			next.Soft = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v ociRlimit) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: v.Type})
+	fields = append(fields, contract.Field{Name: "hard", Value: v.Hard})
+	fields = append(fields, contract.Field{Name: "soft", Value: v.Soft})
+	return contract.EncodeObject(fields)
+}
+func decodeOciRoot(data []byte) (ociRoot, error) { return contract.Decode[ociRoot](data) }
+func (v ociRoot) Validate() error                { return contractValidateOciRoot(v, 0) }
+func contractValidateOciRoot(v ociRoot, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v.Path), 0, -1, ""); err != nil {
+		return contract.At("path", err)
+	}
+	return nil
+}
+func (v *ociRoot) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next ociRoot
+	for key := range obj {
+		switch key {
+		case "path", "readonly":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["path"]
+		if !ok {
+			return contract.At("path", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("path", err)
+			}
+			next.Path = value
+		}
+	}
+	{
+		raw, ok := obj["readonly"]
+		if !ok {
+			return contract.At("readonly", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[bool](raw)
+			if err != nil {
+				return contract.At("readonly", err)
+			}
+			next.Readonly = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v ociRoot) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "path", Value: v.Path})
+	fields = append(fields, contract.Field{Name: "readonly", Value: v.Readonly})
+	return contract.EncodeObject(fields)
+}
+func decodeOciSpec(data []byte) (ociSpec, error) { return contract.Decode[ociSpec](data) }
+func (v ociSpec) Validate() error                { return contractValidateOciSpec(v, 0) }
+func contractValidateOciSpec(v ociSpec, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v.Version), 0, -1, ""); err != nil {
+		return contract.At("ociVersion", err)
+	}
+	if err := contractValidateOciRoot(v.Root, depth+1); err != nil {
+		return contract.At("root", err)
+	}
+	if v.Mounts == nil {
+		return contract.At("mounts", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.Mounts {
+		_ = i
+		_ = item
+		if err := contractValidateOciMount(item, depth+1); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "mounts", i), err)
+		}
+	}
+	if err := contractValidateOciProcess(v.Process, depth+1); err != nil {
+		return contract.At("process", err)
+	}
+	if err := contract.Text(string(v.Hostname), 0, -1, ""); err != nil {
+		return contract.At("hostname", err)
+	}
+	if err := contractValidateOciLinux(v.Linux, depth+1); err != nil {
+		return contract.At("linux", err)
+	}
+	return nil
+}
+func (v *ociSpec) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next ociSpec
+	for key := range obj {
+		switch key {
+		case "ociVersion", "root", "mounts", "process", "hostname", "linux":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["ociVersion"]
+		if !ok {
+			return contract.At("ociVersion", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("ociVersion", err)
+			}
+			next.Version = value
+		}
+	}
+	{
+		raw, ok := obj["root"]
+		if !ok {
+			return contract.At("root", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[ociRoot](raw)
+			if err != nil {
+				return contract.At("root", err)
+			}
+			next.Root = value
+		}
+	}
+	{
+		raw, ok := obj["mounts"]
+		if !ok {
+			return contract.At("mounts", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]ociMount, error) { return contract.List(b, contract.Decode[ociMount]) }(raw)
+			if err != nil {
+				return contract.At("mounts", err)
+			}
+			next.Mounts = value
+		}
+	}
+	{
+		raw, ok := obj["process"]
+		if !ok {
+			return contract.At("process", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[ociProcess](raw)
+			if err != nil {
+				return contract.At("process", err)
+			}
+			next.Process = value
+		}
+	}
+	{
+		raw, ok := obj["hostname"]
+		if !ok {
+			return contract.At("hostname", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("hostname", err)
+			}
+			next.Hostname = value
+		}
+	}
+	{
+		raw, ok := obj["linux"]
+		if !ok {
+			return contract.At("linux", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[ociLinux](raw)
+			if err != nil {
+				return contract.At("linux", err)
+			}
+			next.Linux = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v ociSpec) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "ociVersion", Value: v.Version})
+	fields = append(fields, contract.Field{Name: "root", Value: v.Root})
+	fields = append(fields, contract.Field{Name: "mounts", Value: v.Mounts})
+	fields = append(fields, contract.Field{Name: "process", Value: v.Process})
+	fields = append(fields, contract.Field{Name: "hostname", Value: v.Hostname})
+	fields = append(fields, contract.Field{Name: "linux", Value: v.Linux})
+	return contract.EncodeObject(fields)
+}
+func decodeOciUser(data []byte) (ociUser, error) { return contract.Decode[ociUser](data) }
+func (v ociUser) Validate() error                { return contractValidateOciUser(v, 0) }
+func contractValidateOciUser(v ociUser, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	return nil
+}
+func (v *ociUser) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next ociUser
+	for key := range obj {
+		switch key {
+		case "uid", "gid", "umask":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["uid"]
+		if !ok {
+			return contract.At("uid", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint32](raw)
+			if err != nil {
+				return contract.At("uid", err)
+			}
+			next.UID = value
+		}
+	}
+	{
+		raw, ok := obj["gid"]
+		if !ok {
+			return contract.At("gid", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint32](raw)
+			if err != nil {
+				return contract.At("gid", err)
+			}
+			next.GID = value
+		}
+	}
+	{
+		raw, ok := obj["umask"]
+		if !ok {
+			return contract.At("umask", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint32](raw)
+			if err != nil {
+				return contract.At("umask", err)
+			}
+			next.Umask = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v ociUser) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "uid", Value: v.UID})
+	fields = append(fields, contract.Field{Name: "gid", Value: v.GID})
+	fields = append(fields, contract.Field{Name: "umask", Value: v.Umask})
+	return contract.EncodeObject(fields)
+}
+func decodeRuntimeContainer(data []byte) (runtimeContainer, error) {
+	return contract.Decode[runtimeContainer](data)
+}
+func (v runtimeContainer) Validate() error { return contractValidateRuntimeContainer(v, 0) }
+func contractValidateRuntimeContainer(v runtimeContainer, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v.ID), 0, -1, ""); err != nil {
+		return contract.At("id", err)
+	}
+	if err := contractValidateStatus(v.Status, depth+1); err != nil {
+		return contract.At("status", err)
+	}
+	if err := contract.Text(string(v.Status), 0, -1, ""); err != nil {
+		return contract.At("status", err)
+	}
+	return nil
+}
+func (v *runtimeContainer) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next runtimeContainer
+	{
+		raw, ok := obj["id"]
+		if !ok {
+			return contract.At("id", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("id", err)
+			}
+			next.ID = value
+		}
+	}
+	{
+		raw, ok := obj["status"]
+		if !ok {
+			return contract.At("status", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[Status](raw)
+			if err != nil {
+				return contract.At("status", err)
+			}
+			next.Status = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v runtimeContainer) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "id", Value: v.ID})
+	fields = append(fields, contract.Field{Name: "status", Value: v.Status})
+	return contract.EncodeObject(fields)
+}
+func decodeRuntimeListing(data []byte) (runtimeListing, error) {
+	return contract.Decode[runtimeListing](data)
+}
+func (v runtimeListing) Validate() error { return contractValidateRuntimeListing(v, 0) }
+func contractValidateRuntimeListing(v runtimeListing, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if v == nil {
+		return contract.At("", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v {
+		_ = i
+		_ = item
+		if err := contractValidateRuntimeContainer(item, depth+1); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "", i), err)
+		}
+	}
+	return nil
+}
+func (v *runtimeListing) UnmarshalJSON(data []byte) error {
+	value, err := func(b []byte) ([]runtimeContainer, error) { return contract.List(b, contract.Decode[runtimeContainer]) }(data)
+	if err != nil {
+		return err
+	}
+	next := runtimeListing(value)
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v runtimeListing) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	return contract.EncodeJSON([]runtimeContainer(v))
+}

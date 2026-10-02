@@ -89,7 +89,7 @@ func (g *generator) emitMsgpack(d *definition) {
 	}
 	st, ok := g.object(d)
 	if !ok {
-		g.line("value,err:=%s(data);if err!=nil{return err}", g.msgDecoder(d.typ.Underlying()))
+		g.line("value,err:=%s(data);if err!=nil{return err}", g.integerDecoder(d.typ.Underlying(), d.marks, true))
 		g.normalizeText(d, "value", "return err")
 		g.line("next:=%s(value);if err:=next.Validate();err!=nil{return err};*v=next;return nil}", name)
 		g.line("func(v %s) MarshalMsgpack()([]byte,error){if err:=v.Validate();err!=nil{return nil,err};return contract.EncodeMsgpack(%s(v))}", name, g.typeName(d.typ.Underlying()))
@@ -117,11 +117,11 @@ func (g *generator) emitMsgpack(d *definition) {
 		opts := strings.Split(reflect.StructTag(st.Tag(i)).Get("json"), ",")
 		key := opts[0]
 		m := d.fields[f.Name()]
-		if len(opts) > 1 && emptyCollection(f.Type()) {
+		if (len(opts) > 1 || has(m, "default")) && emptyCollection(f.Type()) {
 			g.line("next.%s=make(%s,0)", f.Name(), g.typeName(f.Type()))
 		}
 		g.line("{raw,present:=obj[%s];delete(obj,%s)", q(key), q(key))
-		if len(opts) == 1 {
+		if len(opts) == 1 && !has(m, "default") {
 			g.line("if !present{return contract.At(%s,fmt.Errorf(\"required field is absent\"))}", q(key))
 		}
 		g.line("if present{")
@@ -142,7 +142,9 @@ func (g *generator) emitMsgpack(d *definition) {
 		g.line("for key:=range obj{return contract.At(key,fmt.Errorf(\"unknown field\"))}")
 	}
 	g.line("if err:=next.Validate();err!=nil{return err};*v=next;return nil}")
-	g.line("func(v %s) MarshalMsgpack()([]byte,error){if err:=v.Validate();err!=nil{return nil,err};fields:=[]contract.Field{}", name)
+	g.line("func(v %s) MarshalMsgpack()([]byte,error){", name)
+	g.emitDefaultCollections(d, st)
+	g.line("if err:=v.Validate();err!=nil{return nil,err};fields:=[]contract.Field{}")
 	if tag != "" {
 		g.line("fields=append(fields,contract.Field{Name:%s,Value:%s})", q(tag), tagLiteral(variant))
 	}
@@ -180,7 +182,7 @@ func (g *generator) emitMsgpack(d *definition) {
 // msgFieldDecoder applies scalar wire annotations before the parent validator.
 func (g *generator) msgFieldDecoder(t types.Type, m map[string]string) string {
 	if !has(m, "timestamp") {
-		return g.msgDecoder(t)
+		return g.integerDecoder(t, m, true)
 	}
 	if p, ok := t.(*types.Pointer); ok {
 		return "func(b []byte)(" + g.typeName(t) + ",error){return contract.Pointer(b," + g.msgFieldDecoder(p.Elem(), m) + ")}"

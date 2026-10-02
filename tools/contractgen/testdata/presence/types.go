@@ -32,3 +32,24 @@ type TimestampPatch struct {
 type InstallEnvelope struct {
 	Install runnerwire.Install `json:"install"`
 }
+
+// +demi:root direction=send output=plugin-presence
+// +demi:msgpack
+// +demi:schema
+type Defaults struct {
+	// +demi:default
+	// +demi:length max=2
+	Items []string `json:"items"`
+	// +demi:default
+	Labels Labels `json:"labels"`
+	// +demi:default
+	Enabled bool `json:"enabled"`
+	// +demi:default
+	// +demi:range max=10
+	Count uint32 `json:"count"`
+	// +demi:default
+	// +demi:length max=4
+	Text string `json:"text"`
+}
+
+type Labels map[string]string
