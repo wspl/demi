@@ -1,7 +1,6 @@
 package declare
 
 import (
-	"encoding/json"
 	"fmt"
 )
 
@@ -117,7 +116,7 @@ func (l *Leaf[B]) MarshalJSON() ([]byte, error) {
 
 // marshalNode keeps the generated codec call outside generic function bodies.
 func marshalNode(wire rawNode) ([]byte, error) {
-	return json.Marshal(rawNodeJSON{Value: wire})
+	return (rawNodeJSON{Value: wire}).MarshalJSON()
 }
 
 // nodeToWire separates command runtime state from the manifest's raw data.

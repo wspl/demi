@@ -49,8 +49,8 @@ func PublishRelease(ctx context.Context, directory string, record ReleaseRecord,
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	parent := filepath.Dir(directory)
-	if parent == "." || filepath.Base(directory) == "." {
+	parent, ok := Parent(directory)
+	if !ok || parent == "" || filepath.Base(directory) == "." || filepath.Base(directory) == ".." {
 		return fmt.Errorf("release directory needs a parent: %w", fs.ErrInvalid)
 	}
 	if err := os.MkdirAll(parent, 0755); err != nil {
@@ -63,15 +63,15 @@ func PublishRelease(ctx context.Context, directory string, record ReleaseRecord,
 	defer func() { err = errors.Join(err, os.RemoveAll(stage)) }()
 	directories := map[string]bool{stage: true}
 	for _, file := range files {
-		destination := filepath.Join(stage, file.Path)
-		for d := filepath.Dir(destination); d != stage; d = filepath.Dir(d) {
+		destination := artifactPath(stage, file.Path)
+		for d, _ := Parent(destination); d != stage; d, _ = Parent(d) {
 			directories[d] = true
 		}
 		if err := stageReleaseFile(ctx, file, destination); err != nil {
 			return err
 		}
 	}
-	if err := PublishBytes(ctx, filepath.Join(stage, record.Name), record.Bytes, Publication{Durable: true}); err != nil {
+	if err := PublishBytes(ctx, artifactPath(stage, record.Name), record.Bytes, Publication{Durable: true}); err != nil {
 		return err
 	}
 	ordered := make([]string, 0, len(directories))
@@ -97,7 +97,8 @@ func PublishRelease(ctx context.Context, directory string, record ReleaseRecord,
 	return syncDirectory(context.WithoutCancel(ctx), parent)
 }
 func stageReleaseFile(ctx context.Context, file ReleaseFile, destination string) (err error) {
-	if err := os.MkdirAll(filepath.Dir(destination), 0755); err != nil {
+	parent, _ := Parent(destination)
+	if err := os.MkdirAll(parent, 0755); err != nil {
 		return err
 	}
 	input, err := os.Open(file.Source)
@@ -123,7 +124,7 @@ func stageReleaseFile(ctx context.Context, file ReleaseFile, destination string)
 	return output.Sync()
 }
 func releaseInPlace(ctx context.Context, directory string, record ReleaseRecord, files []ReleaseFile) error {
-	name := filepath.Join(directory, record.Name)
+	name := artifactPath(directory, record.Name)
 	data, err := os.ReadFile(name)
 	if errors.Is(err, os.ErrNotExist) || (err == nil && !bytes.Equal(data, record.Bytes)) {
 		return &ConflictError{name}
@@ -132,7 +133,7 @@ func releaseInPlace(ctx context.Context, directory string, record ReleaseRecord,
 		return err
 	}
 	for _, file := range files {
-		name := filepath.Join(directory, file.Path)
+		name := artifactPath(directory, file.Path)
 		found, err := DigestFile(ctx, name, file.Digest.Size)
 		var tooLarge *TooLargeError
 		if errors.Is(err, os.ErrNotExist) || errors.As(err, &tooLarge) || (err == nil && found != file.Digest) {

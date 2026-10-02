@@ -3,7 +3,6 @@ package cmdsdk
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -186,7 +185,7 @@ func (r *Recording) Close(ctx context.Context) {
 			}
 		}
 	}
-	b, err := json.Marshal(r.journal)
+	b, err := r.journal.MarshalJSON()
 	if err == nil {
 		err = publishSnapshot(ctx, filepath.Join(r.directory, "journal.json"), b)
 	}
