@@ -8,7 +8,7 @@
 mod echo;
 
 use std::os::unix::ffi::OsStrExt as _;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Stdio};
 use std::time::Duration;
 
@@ -20,6 +20,8 @@ use serde_json::json;
 use tokio::io::{AsyncBufReadExt as _, BufReader};
 use tokio::signal::unix::SignalKind;
 use tokio_util::sync::CancellationToken;
+
+use crate::native::{Executable, development_package};
 
 /// The master account `xtask dev` seeds.
 const EMAIL: &str = "developer@example.test";
@@ -63,6 +65,8 @@ pub enum Error {
     Backend(String),
     #[error("{0}")]
     Seed(String),
+    #[error("a command program's development release: {0}")]
+    Release(#[from] crate::native::Error),
     #[error(transparent)]
     Http(#[from] reqwest::Error),
     #[error(transparent)]
@@ -157,11 +161,7 @@ async fn session(
     let manager = processes.manager.insert(spawn_manager()?);
     let socket = manager_socket(manager.process.as_mut()).await?;
 
-    let native = root.join("native.json");
-    // The development store, with no command release to serve, as the web
-    // app contract suite configures it.
-    let config = json!({ "releases": [], "store": { "provider": "local" } });
-    tokio::fs::write(&native, config.to_string()).await?;
+    let native = native_config(root).await?;
     let origin = format!("http://127.0.0.1:{}", options.port);
     let backend = processes.backend.insert(spawn_backend(
         &root.join("backend"),
@@ -194,6 +194,32 @@ async fn session(
         status = backend.wait() => Err(Error::Backend(format!("exited: {}", status?))),
         status = manager.process.wait() => Err(Error::Manager(format!("exited: {}", status?))),
     }
+}
+
+/// Publishes a development release of each command program the build
+/// made, for this machine's target, under `root`, and writes the native
+/// configuration that names them with the development store; answers its
+/// path.
+async fn native_config(root: &Path) -> Result<PathBuf, Error> {
+    // Never cancelled: an interrupt drops the whole session instead.
+    let cancel = CancellationToken::new();
+    let mut releases = Vec::new();
+    for command in Executable::COMMANDS {
+        let name = command.name();
+        let directory = format!("releases/{name}");
+        development_package(
+            command,
+            built_program(name),
+            &root.join(&directory),
+            &cancel,
+        )
+        .await?;
+        releases.push(json!({ "directory": directory, "executable": name }));
+    }
+    let native = root.join("native.json");
+    let config = json!({ "releases": releases, "store": { "provider": "local" } });
+    tokio::fs::write(&native, config.to_string()).await?;
+    Ok(native)
 }
 
 /// A command for the program `name` the workspace built beside this one,

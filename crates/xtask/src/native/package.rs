@@ -67,41 +67,50 @@ struct Built {
     targets: BTreeMap<String, PackageArtifact>,
 }
 
-/// Publishes the release `options` name and says what it published.
-async fn package(options: &Options, cancel: &CancellationToken) -> Result<String, Error> {
-    let executable = options.package;
-    let release = match executable {
-        Executable::Runner => Release::Runner,
-        Executable::File => Release::Package {
-            id: demi_command_package_file_protocol::PACKAGE,
-            operations: demi_command_package_file_protocol::OPERATIONS
-                .iter()
-                .map(|&name| name.to_owned())
-                .collect(),
-        },
-        Executable::Browser => Release::Package {
-            id: demi_command_package_browser_protocol::PACKAGE,
-            operations: demi_command_package_browser_protocol::Operation::names()
-                .map(String::from)
-                .collect(),
-        },
-        Executable::Claude => Release::Package {
-            id: demi_command_package_claude_code_protocol::PACKAGE,
-            operations: demi_command_package_claude_code_protocol::Operation::ALL
-                .map(|operation| operation.name().to_owned())
-                .to_vec(),
-        },
-        Executable::Backend | Executable::Machines => Release::Executable,
-    };
-    let artifacts = super::artifacts(options.artifacts.as_deref())?;
-    let output = std::path::absolute(&options.output)?;
-    let mut built = Built {
-        files: Vec::new(),
-        targets: BTreeMap::new(),
-    };
-    for target in super::targets(&[executable], &options.targets)? {
-        let name = executable.file_name(target);
-        let source = artifacts.join(target).join("release").join(&name);
+impl Release {
+    fn of(executable: Executable) -> Self {
+        match executable {
+            Executable::Runner => Self::Runner,
+            Executable::File => Self::Package {
+                id: demi_command_package_file_protocol::PACKAGE,
+                operations: demi_command_package_file_protocol::OPERATIONS
+                    .iter()
+                    .map(|&name| name.to_owned())
+                    .collect(),
+            },
+            Executable::Browser => Self::Package {
+                id: demi_command_package_browser_protocol::PACKAGE,
+                operations: demi_command_package_browser_protocol::Operation::names()
+                    .map(String::from)
+                    .collect(),
+            },
+            Executable::Claude => Self::Package {
+                id: demi_command_package_claude_code_protocol::PACKAGE,
+                operations: demi_command_package_claude_code_protocol::Operation::ALL
+                    .map(|operation| operation.name().to_owned())
+                    .to_vec(),
+            },
+            Executable::Backend | Executable::Machines => Self::Executable,
+        }
+    }
+}
+
+impl Built {
+    fn new() -> Self {
+        Self {
+            files: Vec::new(),
+            targets: BTreeMap::new(),
+        }
+    }
+
+    /// Adds `source`, the build of `executable` for `target`.
+    async fn add(
+        &mut self,
+        executable: Executable,
+        target: &'static str,
+        source: PathBuf,
+        cancel: &CancellationToken,
+    ) -> Result<(), Error> {
         let digest = match demi_shared_artifacts::digest(&source, u64::MAX, cancel).await {
             Ok(digest) => digest,
             Err(demi_shared_artifacts::Error::Io(error))
@@ -115,27 +124,68 @@ async fn package(options: &Options, cancel: &CancellationToken) -> Result<String
             }
             Err(error) => return Err(error.into()),
         };
-        built.targets.insert(
+        self.targets.insert(
             target.to_owned(),
             PackageArtifact {
                 sha256: digest.sha256.clone(),
                 size: digest.size,
             },
         );
-        built.files.push(ReleaseFile {
+        self.files.push(ReleaseFile {
             source,
-            path: Path::new(target).join(name),
+            path: Path::new(target).join(executable.file_name(target)),
             digest,
             executable: true,
         });
+        Ok(())
     }
-    match release {
+}
+
+/// Publishes the release `options` name and says what it published.
+async fn package(options: &Options, cancel: &CancellationToken) -> Result<String, Error> {
+    let executable = options.package;
+    let artifacts = super::artifacts(options.artifacts.as_deref())?;
+    let output = std::path::absolute(&options.output)?;
+    let mut built = Built::new();
+    for target in super::targets(&[executable], &options.targets)? {
+        let source = artifacts
+            .join(target)
+            .join("release")
+            .join(executable.file_name(target));
+        built.add(executable, target, source, cancel).await?;
+    }
+    match Release::of(executable) {
         Release::Runner => runner(&output, built, cancel).await,
         Release::Package { id, operations } => {
             command_package(&output, id, operations, built, cancel).await
         }
         Release::Executable => executable_release(&output, executable, built, cancel).await,
     }
+}
+
+/// Publishes at `output` the development release of `command`, one of
+/// [`Executable::COMMANDS`], whose one target is this machine's and whose
+/// program is `program` (`backend.md` § One-command development backend).
+pub async fn development_package(
+    command: Executable,
+    program: PathBuf,
+    output: &Path,
+    cancel: &CancellationToken,
+) -> Result<(), Error> {
+    let Release::Package { id, operations } = Release::of(command) else {
+        panic!("{} is not a command program", command.name());
+    };
+    let mut built = Built::new();
+    built
+        .add(
+            command,
+            demi_command_protocol::host_target(),
+            program,
+            cancel,
+        )
+        .await?;
+    command_package(output, id, operations, built, cancel).await?;
+    Ok(())
 }
 
 /// Publishes the command package `id`, which serves `operations`, at
