@@ -1,0 +1,12 @@
+[package]
+name = "accounts-reference"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+argon2 = { version = "=0.5.3", features = ["std"] }
+icu_locale = "=2.3.1"
+icu_time = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
