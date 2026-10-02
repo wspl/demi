@@ -21,7 +21,6 @@ const JobKeptPartBytes = JobKeptBytes / 2
 const JobKeptReadBytes = JobKeptBytes + 32
 
 // One record of a kept output.
-// +demi:root
 // +demi:union tag=type
 // +demi:msgpack tuple
 //
@@ -38,7 +37,6 @@ const (
 )
 
 // Bytes that travel as MessagePack `bin`.
-// +demi:base64
 type WireBytes []byte
 
 // One read of the job's stdout or stderr.

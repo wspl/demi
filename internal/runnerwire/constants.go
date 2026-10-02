@@ -41,3 +41,6 @@ const ServiceStderrChars = 16 * 1024
 // directory named by its SHA-256, under the name its release gives it, such
 // as `/opt/demi/artifacts/<sha256>/demi-file`.
 const ArtifactsPath = "/opt/demi/artifacts"
+
+// The most installs one list carries: one per service starting at once.
+const MaxInstalls = 64

@@ -8,216 +8,14 @@ import (
 	"github.com/wspl/demi/internal/contract"
 )
 
-func (*KeptLeftOut) keptRecord()                         {}
-func DecodeKeptLeftOut(data []byte) (KeptLeftOut, error) { return contract.Decode[KeptLeftOut](data) }
-func (v KeptLeftOut) Validate() error                    { return contractValidateKeptLeftOut(v, 0) }
-func contractValidateKeptLeftOut(v KeptLeftOut, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	return nil
-}
-func (v *KeptLeftOut) UnmarshalJSON(data []byte) error {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
-	if err != nil {
-		return err
-	}
-	var next KeptLeftOut
-	for key := range obj {
-		switch key {
-		case "bytes", "type":
-		default:
-			return contract.At(key, fmt.Errorf("unknown field"))
-		}
-	}
-	if raw, ok := obj["type"]; !ok {
-		return fmt.Errorf("missing union tag")
-	} else {
-		value, err := contract.Decode[string](raw)
-		if err != nil || value != "left_out" {
-			return fmt.Errorf("invalid union tag")
-		}
-	}
-	{
-		raw, ok := obj["bytes"]
-		if !ok {
-			return contract.At("bytes", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[uint64](raw)
-			if err != nil {
-				return contract.At("bytes", err)
-			}
-			next.Bytes = value
-		}
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v KeptLeftOut) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "type", Value: "left_out"})
-	fields = append(fields, contract.Field{Name: "bytes", Value: v.Bytes})
-	return contract.EncodeObject(fields)
-}
-func (*KeptOutput) keptRecord()                        {}
-func DecodeKeptOutput(data []byte) (KeptOutput, error) { return contract.Decode[KeptOutput](data) }
-func (v KeptOutput) Validate() error                   { return contractValidateKeptOutput(v, 0) }
-func contractValidateKeptOutput(v KeptOutput, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	if err := contractValidateOutputStream(v.Stream, depth+1); err != nil {
-		return contract.At("stream", err)
-	}
-	if err := contract.Text(string(v.Stream), 0, -1, ""); err != nil {
-		return contract.At("stream", err)
-	}
-	if err := contractValidateWireBytes(v.Bytes, depth+1); err != nil {
-		return contract.At("bytes", err)
-	}
-	return nil
-}
-func (v *KeptOutput) UnmarshalJSON(data []byte) error {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
-	if err != nil {
-		return err
-	}
-	var next KeptOutput
-	for key := range obj {
-		switch key {
-		case "stream", "bytes", "type":
-		default:
-			return contract.At(key, fmt.Errorf("unknown field"))
-		}
-	}
-	if raw, ok := obj["type"]; !ok {
-		return fmt.Errorf("missing union tag")
-	} else {
-		value, err := contract.Decode[string](raw)
-		if err != nil || value != "output" {
-			return fmt.Errorf("invalid union tag")
-		}
-	}
-	{
-		raw, ok := obj["stream"]
-		if !ok {
-			return contract.At("stream", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[OutputStream](raw)
-			if err != nil {
-				return contract.At("stream", err)
-			}
-			next.Stream = value
-		}
-	}
-	{
-		raw, ok := obj["bytes"]
-		if !ok {
-			return contract.At("bytes", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[WireBytes](raw)
-			if err != nil {
-				return contract.At("bytes", err)
-			}
-			next.Bytes = value
-		}
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v KeptOutput) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "type", Value: "output"})
-	fields = append(fields, contract.Field{Name: "stream", Value: v.Stream})
-	fields = append(fields, contract.Field{Name: "bytes", Value: v.Bytes})
-	return contract.EncodeObject(fields)
-}
-func DecodeKeptRecord(data []byte) (KeptRecord, error) {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
-	if err != nil {
-		return nil, err
-	}
-	tag, err := contract.Decode[string](obj["type"])
-	if err != nil {
-		return nil, fmt.Errorf("type: %w", err)
-	}
-	switch tag {
-	case "left_out":
-		value, err := contract.Decode[KeptLeftOut](data)
-		if err != nil {
-			return nil, err
-		}
-		return &value, nil
-	case "output":
-		value, err := contract.Decode[KeptOutput](data)
-		if err != nil {
-			return nil, err
-		}
-		return &value, nil
-	}
-	return nil, fmt.Errorf("unknown KeptRecord tag %q", tag)
-}
-
-type KeptRecordJSON struct{ Value KeptRecord }
-
-func (v *KeptRecordJSON) UnmarshalJSON(data []byte) error {
-	value, err := DecodeKeptRecord(data)
-	if err == nil {
-		v.Value = value
-	}
-	return err
-}
-func (v KeptRecordJSON) MarshalJSON() ([]byte, error) {
-	if err := ValidateKeptRecord(v.Value); err != nil {
-		return nil, err
-	}
-	return contract.EncodeJSON(v.Value)
-}
-func ValidateKeptRecord(value KeptRecord) error { return contractValidateKeptRecord(value, 0) }
-func contractValidateKeptRecord(value KeptRecord, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	switch v := value.(type) {
-	case *KeptLeftOut:
-		if v == nil {
-			return fmt.Errorf("nil variant")
-		}
-		return contractValidateKeptLeftOut(*v, depth+1)
-	case *KeptOutput:
-		if v == nil {
-			return fmt.Errorf("nil variant")
-		}
-		return contractValidateKeptOutput(*v, depth+1)
-	default:
-		return fmt.Errorf("nil or unsupported KeptRecord")
-	}
-}
-func DecodeOutputStream(data []byte) (OutputStream, error) {
-	return contract.Decode[OutputStream](data)
-}
-func (v OutputStream) Validate() error { return contractValidateOutputStream(v, 0) }
-func contractValidateOutputStream(v OutputStream, depth int) error {
+func DecodeChangeKind(data []byte) (ChangeKind, error) { return contract.Decode[ChangeKind](data) }
+func (v ChangeKind) Validate() error                   { return contractValidateChangeKind(v, 0) }
+func contractValidateChangeKind(v ChangeKind, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
 	switch string(v) {
-	case "stdout", "stderr":
+	case "added", "modified", "deleted", "renamed":
 	default:
 		return contract.At("", fmt.Errorf("unknown value"))
 	}
@@ -226,23 +24,670 @@ func contractValidateOutputStream(v OutputStream, depth int) error {
 	}
 	return nil
 }
-func (v *OutputStream) UnmarshalJSON(data []byte) error {
+func (v *ChangeKind) UnmarshalJSON(data []byte) error {
 	value, err := contract.Decode[string](data)
 	if err != nil {
 		return err
 	}
-	next := OutputStream(value)
+	next := ChangeKind(value)
 	if err := next.Validate(); err != nil {
 		return err
 	}
 	*v = next
 	return nil
 }
-func (v OutputStream) MarshalJSON() ([]byte, error) {
+func (v ChangeKind) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
 	return contract.EncodeJSON(string(v))
+}
+func ParseDeviceToken(value string) (DeviceToken, error) {
+	v := DeviceToken(value)
+	if err := v.Validate(); err != nil {
+		return "", err
+	}
+	return v, nil
+}
+func DecodeDeviceToken(data []byte) (DeviceToken, error) { return contract.Decode[DeviceToken](data) }
+func (v DeviceToken) Validate() error                    { return contractValidateDeviceToken(v, 0) }
+func contractValidateDeviceToken(v DeviceToken, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v), 0, -1, ""); err != nil {
+		return contract.At("", err)
+	}
+	if err := validateDeviceToken(v); err != nil {
+		return err
+	}
+	return nil
+}
+func (v *DeviceToken) UnmarshalJSON(data []byte) error {
+	value, err := contract.Decode[string](data)
+	if err != nil {
+		return err
+	}
+	next := DeviceToken(value)
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v DeviceToken) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	return contract.EncodeJSON(string(v))
+}
+func DecodeGitChange(data []byte) (GitChange, error) { return contract.Decode[GitChange](data) }
+func (v GitChange) Validate() error                  { return contractValidateGitChange(v, 0) }
+func contractValidateGitChange(v GitChange, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v.Path), 0, -1, ""); err != nil {
+		return contract.At("path", err)
+	}
+	if err := contract.Text(string(v.Status), 0, -1, "^(?:[MTADRC][ MTDAR]| [MTDAR]|\\?\\?|DD|AU|UD|UA|DU|AA|UU)$"); err != nil {
+		return contract.At("status", err)
+	}
+	if err := contractValidateChangeKind(v.Kind, depth+1); err != nil {
+		return contract.At("kind", err)
+	}
+	if err := contract.Text(string(v.Kind), 0, -1, ""); err != nil {
+		return contract.At("kind", err)
+	}
+	if v.From != nil {
+		if err := contract.Text(string((*v.From)), 0, -1, ""); err != nil {
+			return contract.At("from", err)
+		}
+	}
+	if v.Added > 9007199254740991 {
+		return contract.At("added", fmt.Errorf("outside numeric bounds"))
+	}
+	if v.Removed > 9007199254740991 {
+		return contract.At("removed", fmt.Errorf("outside numeric bounds"))
+	}
+	return nil
+}
+func (v *GitChange) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next GitChange
+	for key := range obj {
+		switch key {
+		case "path", "status", "kind", "from", "added", "removed":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["path"]
+		if !ok {
+			return contract.At("path", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("path", err)
+			}
+			next.Path = value
+		}
+	}
+	{
+		raw, ok := obj["status"]
+		if !ok {
+			return contract.At("status", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("status", err)
+			}
+			next.Status = value
+		}
+	}
+	{
+		raw, ok := obj["kind"]
+		if !ok {
+			return contract.At("kind", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[ChangeKind](raw)
+			if err != nil {
+				return contract.At("kind", err)
+			}
+			next.Kind = value
+		}
+	}
+	{
+		raw, ok := obj["from"]
+		if ok {
+			value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("from", err)
+			}
+			next.From = value
+		}
+	}
+	{
+		raw, ok := obj["added"]
+		if !ok {
+			return contract.At("added", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint64](raw)
+			if err != nil {
+				return contract.At("added", err)
+			}
+			next.Added = value
+		}
+	}
+	{
+		raw, ok := obj["removed"]
+		if !ok {
+			return contract.At("removed", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint64](raw)
+			if err != nil {
+				return contract.At("removed", err)
+			}
+			next.Removed = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v GitChange) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "path", Value: v.Path})
+	fields = append(fields, contract.Field{Name: "status", Value: v.Status})
+	fields = append(fields, contract.Field{Name: "kind", Value: v.Kind})
+	if v.From != nil {
+		fields = append(fields, contract.Field{Name: "from", Value: v.From})
+	}
+	fields = append(fields, contract.Field{Name: "added", Value: v.Added})
+	fields = append(fields, contract.Field{Name: "removed", Value: v.Removed})
+	return contract.EncodeObject(fields)
+}
+func DecodeGitChanges(data []byte) (GitChanges, error) { return contract.Decode[GitChanges](data) }
+func (v GitChanges) Validate() error                   { return contractValidateGitChanges(v, 0) }
+func contractValidateGitChanges(v GitChanges, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if v.Head != nil {
+		if err := contract.Text(string((*v.Head)), 0, -1, ""); err != nil {
+			return contract.At("head", err)
+		}
+	}
+	if v.Files == nil {
+		return contract.At("files", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.Files {
+		_ = i
+		_ = item
+		if err := contractValidateGitChange(item, depth+1); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "files", i), err)
+		}
+	}
+	return nil
+}
+func (v *GitChanges) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next GitChanges
+	for key := range obj {
+		switch key {
+		case "repository", "head", "files", "truncated", "watched":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["repository"]
+		if !ok {
+			return contract.At("repository", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[bool](raw)
+			if err != nil {
+				return contract.At("repository", err)
+			}
+			next.Repository = value
+		}
+	}
+	{
+		raw, ok := obj["head"]
+		if !ok {
+			return contract.At("head", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			if !contract.IsNull(raw) {
+				value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) }(raw)
+				if err != nil {
+					return contract.At("head", err)
+				}
+				next.Head = value
+			}
+		}
+	}
+	{
+		raw, ok := obj["files"]
+		if !ok {
+			return contract.At("files", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]GitChange, error) { return contract.List(b, contract.Decode[GitChange]) }(raw)
+			if err != nil {
+				return contract.At("files", err)
+			}
+			next.Files = value
+		}
+	}
+	{
+		raw, ok := obj["truncated"]
+		if !ok {
+			return contract.At("truncated", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[bool](raw)
+			if err != nil {
+				return contract.At("truncated", err)
+			}
+			next.Truncated = value
+		}
+	}
+	{
+		raw, ok := obj["watched"]
+		if !ok {
+			return contract.At("watched", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[bool](raw)
+			if err != nil {
+				return contract.At("watched", err)
+			}
+			next.Watched = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v GitChanges) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "repository", Value: v.Repository})
+	fields = append(fields, contract.Field{Name: "head", Value: v.Head})
+	fields = append(fields, contract.Field{Name: "files", Value: v.Files})
+	fields = append(fields, contract.Field{Name: "truncated", Value: v.Truncated})
+	fields = append(fields, contract.Field{Name: "watched", Value: v.Watched})
+	return contract.EncodeObject(fields)
+}
+func DecodeInstall(data []byte) (Install, error) { return contract.Decode[Install](data) }
+func (v Install) Validate() error                { return contractValidateInstall(v, 0) }
+func contractValidateInstall(v Install, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v.Package), 1, -1, ""); err != nil {
+		return contract.At("package", err)
+	}
+	if err := contract.Text(string(v.Name), 1, -1, ""); err != nil {
+		return contract.At("name", err)
+	}
+	if err := contract.Text(string(v.Version), 1, -1, ""); err != nil {
+		return contract.At("version", err)
+	}
+	if err := contractValidateInstallPhase(v.Phase, depth+1); err != nil {
+		return contract.At("phase", err)
+	}
+	if err := contract.Text(string(v.Phase), 0, -1, ""); err != nil {
+		return contract.At("phase", err)
+	}
+	if v.Done > 9007199254740991 {
+		return contract.At("done", fmt.Errorf("outside numeric bounds"))
+	}
+	if v.Total < 1 {
+		return contract.At("total", fmt.Errorf("outside numeric bounds"))
+	}
+	if v.Total > 9007199254740991 {
+		return contract.At("total", fmt.Errorf("outside numeric bounds"))
+	}
+	if err := validateInstall(v); err != nil {
+		return err
+	}
+	return nil
+}
+func (v *Install) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next Install
+	for key := range obj {
+		switch key {
+		case "package", "name", "version", "phase", "done", "total":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["package"]
+		if !ok {
+			return contract.At("package", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("package", err)
+			}
+			next.Package = value
+		}
+	}
+	{
+		raw, ok := obj["name"]
+		if !ok {
+			return contract.At("name", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("name", err)
+			}
+			next.Name = value
+		}
+	}
+	{
+		raw, ok := obj["version"]
+		if !ok {
+			return contract.At("version", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("version", err)
+			}
+			next.Version = value
+		}
+	}
+	{
+		raw, ok := obj["phase"]
+		if !ok {
+			return contract.At("phase", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[InstallPhase](raw)
+			if err != nil {
+				return contract.At("phase", err)
+			}
+			next.Phase = value
+		}
+	}
+	{
+		raw, ok := obj["done"]
+		if !ok {
+			return contract.At("done", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint64](raw)
+			if err != nil {
+				return contract.At("done", err)
+			}
+			next.Done = value
+		}
+	}
+	{
+		raw, ok := obj["total"]
+		if !ok {
+			return contract.At("total", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint64](raw)
+			if err != nil {
+				return contract.At("total", err)
+			}
+			next.Total = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v Install) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "package", Value: v.Package})
+	fields = append(fields, contract.Field{Name: "name", Value: v.Name})
+	fields = append(fields, contract.Field{Name: "version", Value: v.Version})
+	fields = append(fields, contract.Field{Name: "phase", Value: v.Phase})
+	fields = append(fields, contract.Field{Name: "done", Value: v.Done})
+	fields = append(fields, contract.Field{Name: "total", Value: v.Total})
+	return contract.EncodeObject(fields)
+}
+func DecodeInstallPhase(data []byte) (InstallPhase, error) {
+	return contract.Decode[InstallPhase](data)
+}
+func (v InstallPhase) Validate() error { return contractValidateInstallPhase(v, 0) }
+func contractValidateInstallPhase(v InstallPhase, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	switch string(v) {
+	case "download", "unpack":
+	default:
+		return contract.At("", fmt.Errorf("unknown value"))
+	}
+	if err := contract.Text(string(v), 0, -1, ""); err != nil {
+		return contract.At("", err)
+	}
+	return nil
+}
+func (v *InstallPhase) UnmarshalJSON(data []byte) error {
+	value, err := contract.Decode[string](data)
+	if err != nil {
+		return err
+	}
+	next := InstallPhase(value)
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v InstallPhase) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	return contract.EncodeJSON(string(v))
+}
+func DecodeManifest(data []byte) (Manifest, error) { return contract.Decode[Manifest](data) }
+func (v Manifest) Validate() error                 { return contractValidateManifest(v, 0) }
+func contractValidateManifest(v Manifest, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v.Hash), 0, -1, ""); err != nil {
+		return contract.At("hash", err)
+	}
+	if v.Roots == nil {
+		return contract.At("roots", fmt.Errorf("required record is nil"))
+	}
+	for key, item := range v.Roots {
+		_ = item
+		if err := contract.Text(key, 0, -1, ""); err != nil {
+			return contract.At("roots", err)
+		}
+		if err := contractValidateRoot(item, depth+1); err != nil {
+			return contract.At(fmt.Sprintf("%s[%q]", "roots", key), err)
+		}
+	}
+	if v.Packages == nil {
+		return contract.At("packages", fmt.Errorf("required record is nil"))
+	}
+	for key, item := range v.Packages {
+		_ = item
+		if err := contract.Text(key, 0, -1, ""); err != nil {
+			return contract.At("packages", err)
+		}
+		if err := item.Validate(); err != nil {
+			return contract.At(fmt.Sprintf("%s[%q]", "packages", key), err)
+		}
+	}
+	if err := verifyManifest(v); err != nil {
+		return err
+	}
+	return nil
+}
+func (v *Manifest) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next Manifest
+	for key := range obj {
+		switch key {
+		case "hash", "roots", "packages":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["hash"]
+		if !ok {
+			return contract.At("hash", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("hash", err)
+			}
+			next.Hash = value
+		}
+	}
+	{
+		raw, ok := obj["roots"]
+		if !ok {
+			return contract.At("roots", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) (map[string]Root, error) { return contract.Record(b, contract.Decode[Root], false) }(raw)
+			if err != nil {
+				return contract.At("roots", err)
+			}
+			next.Roots = value
+		}
+	}
+	{
+		raw, ok := obj["packages"]
+		if !ok {
+			return contract.At("packages", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) (map[string]commandwire.PackageDescriptor, error) {
+				return contract.Record(b, contract.Decode[commandwire.PackageDescriptor], false)
+			}(raw)
+			if err != nil {
+				return contract.At("packages", err)
+			}
+			next.Packages = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v Manifest) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "hash", Value: v.Hash})
+	fields = append(fields, contract.Field{Name: "roots", Value: v.Roots})
+	fields = append(fields, contract.Field{Name: "packages", Value: v.Packages})
+	return contract.EncodeObject(fields)
+}
+func DecodeRoot(data []byte) (Root, error) { return contract.Decode[Root](data) }
+func (v Root) Validate() error             { return contractValidateRoot(v, 0) }
+func contractValidateRoot(v Root, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.CheckJSON(v.Tree); err != nil {
+		return contract.At("tree", err)
+	}
+	return nil
+}
+func (v *Root) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next Root
+	for key := range obj {
+		switch key {
+		case "tree":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["tree"]
+		if !ok {
+			return contract.At("tree", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.JSON(raw)
+			if err != nil {
+				return contract.At("tree", err)
+			}
+			next.Tree = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v Root) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "tree", Value: v.Tree})
+	return contract.EncodeObject(fields)
+}
+func ParseRunnerPlatform(value string) (RunnerPlatform, error) {
+	v := RunnerPlatform(value)
+	if err := v.Validate(); err != nil {
+		return "", err
+	}
+	return v, nil
 }
 func DecodeRunnerPlatform(data []byte) (RunnerPlatform, error) {
 	return contract.Decode[RunnerPlatform](data)
@@ -404,211 +849,107 @@ func (v RunnerRelease) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "targets", Value: v.Targets})
 	return contract.EncodeObject(fields)
 }
-func DecodeSignal(data []byte) (Signal, error) { return contract.Decode[Signal](data) }
-func (v Signal) Validate() error               { return contractValidateSignal(v, 0) }
-func contractValidateSignal(v Signal, depth int) error {
+func DecoderawBackendURL(data []byte) (rawBackendURL, error) {
+	return contract.Decode[rawBackendURL](data)
+}
+func (v rawBackendURL) Validate() error { return contractValidaterawBackendURL(v, 0) }
+func contractValidaterawBackendURL(v rawBackendURL, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	switch string(v) {
-	case "SIGTERM", "SIGKILL", "SIGINT", "SIGHUP", "SIGQUIT", "SIGUSR1", "SIGUSR2", "SIGSTOP", "SIGCONT":
-	default:
-		return contract.At("", fmt.Errorf("unknown value"))
 	}
 	if err := contract.Text(string(v), 0, -1, ""); err != nil {
 		return contract.At("", err)
 	}
 	return nil
 }
-func (v *Signal) UnmarshalJSON(data []byte) error {
+func (v *rawBackendURL) UnmarshalJSON(data []byte) error {
 	value, err := contract.Decode[string](data)
 	if err != nil {
 		return err
 	}
-	next := Signal(value)
+	next := rawBackendURL(value)
 	if err := next.Validate(); err != nil {
 		return err
 	}
 	*v = next
 	return nil
 }
-func (v Signal) MarshalJSON() ([]byte, error) {
+func (v rawBackendURL) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
 	return contract.EncodeJSON(string(v))
 }
-func DecodeWireBytes(data []byte) (WireBytes, error) { return contract.Decode[WireBytes](data) }
-func (v WireBytes) Validate() error                  { return contractValidateWireBytes(v, 0) }
-func contractValidateWireBytes(v WireBytes, depth int) error {
+func DecoderawManagedBoot(data []byte) (rawManagedBoot, error) {
+	return contract.Decode[rawManagedBoot](data)
+}
+func (v rawManagedBoot) Validate() error { return contractValidaterawManagedBoot(v, 0) }
+func contractValidaterawManagedBoot(v rawManagedBoot, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
-	if v == nil {
-		return contract.At("", fmt.Errorf("required array is nil"))
+	if err := contract.Text(string(v.BackendURL), 0, -1, ""); err != nil {
+		return contract.At("backendUrl", err)
 	}
-	for i, item := range v {
-		_ = i
-		_ = item
+	if err := contractValidateDeviceToken(v.DeviceToken, depth+1); err != nil {
+		return contract.At("deviceToken", err)
+	}
+	if err := contract.Text(string(v.DeviceToken), 0, -1, ""); err != nil {
+		return contract.At("deviceToken", err)
 	}
 	return nil
 }
-func (v *WireBytes) UnmarshalJSON(data []byte) error {
-	value, err := contract.Bytes(data)
+func (v *rawManagedBoot) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
 	if err != nil {
 		return err
 	}
-	next := WireBytes(value)
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v WireBytes) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	return contract.EncodeJSON([]byte(v))
-}
-func DecodeKeptLeftOutMsgpack(data []byte) (KeptLeftOut, error) {
-	return contract.DecodeMsgpack[KeptLeftOut](data)
-}
-func (v *KeptLeftOut) UnmarshalMsgpack(data []byte) error {
-	fields, err := contract.MsgpackTuple(data, "left_out", 1)
-	if err != nil {
-		return err
-	}
-	var next KeptLeftOut
-	{
-		raw := fields[0]
-		value, err := contract.DecodeMsgpack[uint64](raw)
-		if err != nil {
-			return contract.At("bytes", err)
-		}
-		next.Bytes = value
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v KeptLeftOut) MarshalMsgpack() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []any{}
-	fields = append(fields, v.Bytes)
-	return contract.EncodeMsgpackTuple("left_out", fields)
-}
-func DecodeKeptOutputMsgpack(data []byte) (KeptOutput, error) {
-	return contract.DecodeMsgpack[KeptOutput](data)
-}
-func (v *KeptOutput) UnmarshalMsgpack(data []byte) error {
-	fields, err := contract.MsgpackTuple(data, "output", 2)
-	if err != nil {
-		return err
-	}
-	var next KeptOutput
-	{
-		raw := fields[0]
-		value, err := contract.DecodeMsgpack[OutputStream](raw)
-		if err != nil {
-			return contract.At("stream", err)
-		}
-		next.Stream = value
-	}
-	{
-		raw := fields[1]
-		value, err := contract.DecodeMsgpack[WireBytes](raw)
-		if err != nil {
-			return contract.At("bytes", err)
-		}
-		next.Bytes = value
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v KeptOutput) MarshalMsgpack() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []any{}
-	fields = append(fields, v.Stream)
-	fields = append(fields, v.Bytes)
-	return contract.EncodeMsgpackTuple("output", fields)
-}
-func DecodeKeptRecordMsgpack(data []byte) (KeptRecord, error) {
-	obj, err := contract.MsgpackObject(data)
-	if err != nil {
-		return nil, err
-	}
-	if len(obj) != 1 {
-		return nil, fmt.Errorf("expected one external union tag")
-	}
-	var tag string
+	var next rawManagedBoot
 	for key := range obj {
-		tag = key
+		switch key {
+		case "backendUrl", "deviceToken":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
 	}
-	switch tag {
-	case "left_out":
-		value, err := contract.DecodeMsgpack[KeptLeftOut](data)
-		return &value, err
-	case "output":
-		value, err := contract.DecodeMsgpack[KeptOutput](data)
-		return &value, err
+	{
+		raw, ok := obj["backendUrl"]
+		if !ok {
+			return contract.At("backendUrl", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("backendUrl", err)
+			}
+			next.BackendURL = value
+		}
 	}
-	return nil, fmt.Errorf("unknown union tag")
-}
-func EncodeKeptRecordMsgpack(v KeptRecord) ([]byte, error) {
-	if err := ValidateKeptRecord(v); err != nil {
-		return nil, err
+	{
+		raw, ok := obj["deviceToken"]
+		if !ok {
+			return contract.At("deviceToken", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[DeviceToken](raw)
+			if err != nil {
+				return contract.At("deviceToken", err)
+			}
+			next.DeviceToken = value
+		}
 	}
-	return contract.EncodeMsgpack(v)
-}
-func DecodeOutputStreamMsgpack(data []byte) (OutputStream, error) {
-	return contract.DecodeMsgpack[OutputStream](data)
-}
-func (v *OutputStream) UnmarshalMsgpack(data []byte) error {
-	value, err := contract.DecodeMsgpack[string](data)
-	if err != nil {
-		return err
-	}
-	next := OutputStream(value)
 	if err := next.Validate(); err != nil {
 		return err
 	}
 	*v = next
 	return nil
 }
-func (v OutputStream) MarshalMsgpack() ([]byte, error) {
+func (v rawManagedBoot) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return contract.EncodeMsgpack(string(v))
-}
-func DecodeWireBytesMsgpack(data []byte) (WireBytes, error) {
-	return contract.DecodeMsgpack[WireBytes](data)
-}
-func (v *WireBytes) UnmarshalMsgpack(data []byte) error {
-	value, err := contract.DecodeMsgpack[[]byte](data)
-	if err != nil {
-		return err
-	}
-	next := WireBytes(value)
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v WireBytes) MarshalMsgpack() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	return contract.EncodeMsgpack([]byte(v))
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "backendUrl", Value: v.BackendURL})
+	fields = append(fields, contract.Field{Name: "deviceToken", Value: v.DeviceToken})
+	return contract.EncodeObject(fields)
 }
