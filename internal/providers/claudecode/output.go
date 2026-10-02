@@ -131,7 +131,11 @@ func (b contentBlock) call() (*provider.ToolCall, error) {
 	if len(input) == 0 || string(input) == "null" {
 		input = json.RawMessage(`{}`)
 	}
-	return &provider.ToolCall{ToolUseID: text, ToolName: toolName(*b.Name), Input: input}, nil
+	canonical, err := serdeValue(input).MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	return &provider.ToolCall{ToolUseID: text, ToolName: toolName(*b.Name), Input: canonical}, nil
 }
 func toolName(name string) string {
 	if rest, ok := strings.CutPrefix(name, "mcp__"); ok {

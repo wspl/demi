@@ -100,7 +100,7 @@ func (l *live) drain(ctx context.Context) {
 			if errors.Is(err, io.EOF) {
 				if len(buffered) > 0 {
 					if !utf8.Valid(buffered) {
-						l.enqueue(queuedLine{err: errors.New("Claude Code's output cannot be read: invalid utf-8 sequence")})
+						l.enqueue(queuedLine{err: errors.New("Claude Code's output cannot be read: Unable to decode input as UTF8")})
 						return
 					}
 					l.enqueue(queuedLine{text: strings.TrimSuffix(string(buffered), "\r")})
@@ -132,7 +132,7 @@ func (l *live) drain(ctx context.Context) {
 			}
 			text := strings.TrimSuffix(string(buffered[:i]), "\r")
 			if !utf8.ValidString(text) {
-				l.enqueue(queuedLine{err: errors.New("Claude Code's output cannot be read: invalid utf-8 sequence")})
+				l.enqueue(queuedLine{err: errors.New("Claude Code's output cannot be read: Unable to decode input as UTF8")})
 				return
 			}
 			l.enqueue(queuedLine{text: text})
@@ -204,7 +204,7 @@ func (l *live) read(q queuedLine) (*outputLine, error) {
 }
 
 //nolint:staticcheck // Product failure text is copied verbatim from Rust.
-func (l *live) write(ctx context.Context, value any) error {
+func (l *live) write(ctx context.Context, value inputLine) error {
 	data, err := provider.JSONBody(value)
 	if err != nil {
 		return fmt.Errorf("Claude Code API request body was not built: %w", err)
@@ -237,7 +237,7 @@ func (l *live) serves(r provider.InferenceRequest) bool {
 func (l *live) prepare(ctx context.Context, r provider.InferenceRequest) error {
 	if l.mcp != nil {
 		id := controlID()
-		if err := l.write(ctx, map[string]any{"type": "control_request", "request_id": id, "request": map[string]any{"subtype": "initialize", "sdkMcpServers": []string{"main"}, "systemPrompt": r.SystemPrompt}}); err != nil {
+		if err := l.write(ctx, initializeInput{"control_request", id, initializeRequest{"initialize", []string{"main"}, r.SystemPrompt}}); err != nil {
 			return err
 		}
 		var kept []queuedLine
@@ -280,7 +280,11 @@ func (l *live) prepare(ctx context.Context, r provider.InferenceRequest) error {
 			}
 		}
 	}
-	if err := l.write(ctx, transcript(r.Items)); err != nil {
+	history, err := transcript(r.Items)
+	if err != nil {
+		return err
+	}
+	if err := l.write(ctx, history); err != nil {
 		return err
 	}
 	l.sent = len(userMessages(r.Items))

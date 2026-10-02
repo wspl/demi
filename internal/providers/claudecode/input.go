@@ -22,20 +22,10 @@ func spawnRequest(site Site, r provider.InferenceRequest, token provider.Secret)
 	return host.SpawnRequest{Command: site.Executable, Args: args, CWD: &site.RunDir, Env: host.SpawnEnv{Mode: host.Overlay, Values: values}, Retained: true}
 }
 
-type inputBlock struct {
-	Type   string `json:"type"`
-	Source any    `json:"source"`
-}
-
-type inputText struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-}
-
 // textBlock keeps empty text present on the wire too.
-func textBlock(text string) any { return inputText{"text", text} }
-func userContent(parts []provider.UserPart) []any {
-	blocks := make([]any, 0, len(parts))
+func textBlock(text string) inputText { return inputText{"text", text} }
+func userContent(parts []provider.UserPart) []inputContent {
+	blocks := make([]inputContent, 0, len(parts))
 	for _, part := range parts {
 		switch p := part.(type) {
 		case *provider.TextPart:
@@ -43,25 +33,25 @@ func userContent(parts []provider.UserPart) []any {
 		case *provider.VideoPart:
 			blocks = append(blocks, textBlock("[video]"))
 		case *provider.ImagePart:
-			var source any
+			var source imageSource
 			switch m := p.Medium.(type) {
 			case *provider.MediaBytes:
 				source = mediaSource(*m)
 			case *provider.MediaURL:
-				source = map[string]any{"type": "url", "url": m.URL}
+				source = urlSource{"url", m.URL}
 			}
-			blocks = append(blocks, inputBlock{Type: "image", Source: source})
+			blocks = append(blocks, inputImage{Type: "image", Source: source})
 		case *provider.DocumentPart:
-			blocks = append(blocks, map[string]any{"type": "document", "source": mediaSource(p.Bytes), "title": p.FileName})
+			blocks = append(blocks, inputDocument{"document", mediaSource(p.Bytes), p.FileName})
 		}
 	}
 	return blocks
 }
-func mediaSource(b provider.MediaBytes) any {
-	return map[string]any{"type": "base64", "media_type": b.MediaType, "data": base64.StdEncoding.EncodeToString(b.Data)}
+func mediaSource(b provider.MediaBytes) base64Source {
+	return base64Source{"base64", b.MediaType, base64.StdEncoding.EncodeToString(b.Data)}
 }
-func userLine(content []any) any {
-	return map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": content}}
+func userLine(content []inputContent) userInput {
+	return userInput{"user", inputMessage{"user", content}}
 }
 func userMessages(items []provider.InferenceItem) [][]provider.UserPart {
 	var result [][]provider.UserPart
@@ -79,12 +69,12 @@ func userMessages(items []provider.InferenceItem) [][]provider.UserPart {
 
 type transcriptPart struct {
 	role   string
-	blocks []any
+	blocks []inputContent
 }
 
-func transcript(items []provider.InferenceItem) any {
+func transcript(items []provider.InferenceItem) (userInput, error) {
 	var parts []transcriptPart
-	add := func(role string, blocks []any) {
+	add := func(role string, blocks []inputContent) {
 		if len(blocks) == 0 {
 			return
 		}
@@ -102,10 +92,14 @@ func transcript(items []provider.InferenceItem) any {
 			add("User:", userContent(i.Content))
 		case *provider.AssistantText:
 			if i.Text != "" {
-				add("Assistant:", []any{textBlock(i.Text)})
+				add("Assistant:", []inputContent{textBlock(i.Text)})
 			}
 		case *provider.ToolUse:
-			add("Assistant:", []any{textBlock(fmt.Sprintf("[Earlier in this conversation I called the tool %s with input: %s.", i.ToolName, i.Input))})
+			input, err := serdeValue(i.Input).MarshalJSON()
+			if err != nil {
+				return userInput{}, err
+			}
+			add("Assistant:", []inputContent{textBlock(fmt.Sprintf("[Earlier in this conversation I called the tool %s with input: %s.", i.ToolName, input))})
 		case *provider.ToolResult:
 			from := ""
 			for _, earlier := range items {
@@ -118,14 +112,14 @@ func transcript(items []provider.InferenceItem) any {
 			if i.IsError {
 				prefix += " an error"
 			}
-			add("Assistant:", []any{textBlock(prefix + from + ": " + provider.ToolOutputTextOf(i.Output) + "]")})
+			add("Assistant:", []inputContent{textBlock(prefix + from + ": " + provider.ToolOutputTextOf(i.Output) + "]")})
 		case *provider.AssistantThinking, *provider.AssistantRedactedThinking:
 		}
 	}
 	if len(parts) == 1 && parts[0].role == "User:" {
-		return userLine(parts[0].blocks)
+		return userLine(parts[0].blocks), nil
 	}
-	blocks := make([]any, 0)
+	blocks := make([]inputContent, 0)
 	var text strings.Builder
 	for _, part := range parts {
 		if text.Len() > 0 {
@@ -156,5 +150,5 @@ func transcript(items []provider.InferenceItem) any {
 	if text.Len() > 0 {
 		blocks = append(blocks, textBlock(text.String()))
 	}
-	return userLine(blocks)
+	return userLine(blocks), nil
 }

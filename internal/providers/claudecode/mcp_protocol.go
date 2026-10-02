@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/version"
 )
 
 // These are the revisions understood by the reference's rmcp 3.4.1 server.
@@ -27,8 +28,8 @@ type mcpImplementation struct {
 	Version string `json:"version"`
 }
 
-// The reference workspace version, until assembly supplies a shared Go build version.
-var mcpIdentity = mcpImplementation{Name: "demi", Version: "0.1.3"}
+// The MCP identity carries the executable release version.
+var mcpIdentity = mcpImplementation{Name: "demi", Version: version.Release}
 
 type initializeParams struct {
 	Version      string                     `json:"protocolVersion"`
@@ -43,7 +44,7 @@ type requestMetadata struct {
 
 // admit applies the reference SDK's handshake and inline metadata rules.
 // A rejected first request ends its MCP server; later requests cannot revive it.
-func (m *mcpServer) admit(method string, params json.RawMessage, initialize bool) (bool, any) {
+func (m *mcpServer) admit(method string, params json.RawMessage, initialize bool) (bool, *mcpError) {
 	if initialize || m.phase == mcpInitial && method == "ping" {
 		return false, nil
 	}
@@ -64,7 +65,7 @@ func (m *mcpServer) admit(method string, params json.RawMessage, initialize bool
 		m.phase = mcpInline
 	}
 	if meta.Version.Value != nil && !slices.Contains(mcpVersions, *meta.Version.Value) {
-		return false, map[string]any{"code": -32022, "message": "Unsupported protocol version", "data": map[string]any{"requested": *meta.Version.Value, "supported": mcpVersions}}
+		return false, &mcpError{Code: -32022, Message: "Unsupported protocol version", Data: &unsupportedVersion{*meta.Version.Value, mcpVersions}}
 	}
 	modern := meta.Version.Value != nil && *meta.Version.Value >= "2026-07-28"
 	if m.phase == mcpInline || method == "discover" || modern {
@@ -74,7 +75,7 @@ func (m *mcpServer) admit(method string, params json.RawMessage, initialize bool
 	}
 	return modern, nil
 }
-func missingMetadata(meta requestMetadata) any {
+func missingMetadata(meta requestMetadata) *mcpError {
 	var missing []string
 	if meta.Version.Value == nil {
 		missing = append(missing, "io.modelcontextprotocol/protocolVersion")
@@ -85,20 +86,20 @@ func missingMetadata(meta requestMetadata) any {
 	if len(missing) == 0 {
 		return nil
 	}
-	return map[string]any{"code": -32602, "message": "request _meta is missing or has malformed required fields: " + strings.Join(missing, ", ")}
+	return &mcpError{Code: -32602, Message: "request _meta is missing or has malformed required fields: " + strings.Join(missing, ", ")}
 }
 
 // emptyCatalog supplies the reference SDK's empty directories for capabilities
 // Demi does not advertise. Malformed pagination is an unrecognized request.
-func emptyCatalog(method string, params json.RawMessage) (any, bool) {
-	key := ""
+func emptyCatalog(method string, params json.RawMessage) (mcpResult, bool) {
+	var result mcpResult
 	switch method {
 	case "resources/list":
-		key = "resources"
+		result = &resourcesResult{Resources: []struct{}{}}
 	case "resources/templates/list":
-		key = "resourceTemplates"
+		result = &templatesResult{Templates: []struct{}{}}
 	case "prompts/list":
-		key = "prompts"
+		result = &promptsResult{Prompts: []struct{}{}}
 	default:
 		return nil, false
 	}
@@ -109,11 +110,11 @@ func emptyCatalog(method string, params json.RawMessage) (any, bool) {
 			return nil, false
 		}
 	}
-	return map[string]any{key: []any{}}, true
+	return result, true
 }
 
 // completion reads only the reference SDK's declared completion arguments.
-func completion(params json.RawMessage) (any, bool) {
+func completion(params json.RawMessage) (mcpResult, bool) {
 	request, err := provider.DecodeUntagged[struct {
 		Ref      json.RawMessage `json:"ref"`
 		Argument struct {
@@ -145,7 +146,7 @@ func completion(params json.RawMessage) (any, bool) {
 	if err != nil || ref == nil {
 		return nil, false
 	}
-	return map[string]any{"completion": map[string]any{"values": []string{}}}, true
+	return &completionResult{Completion: completionInfo{Values: []string{}}}, true
 }
 
 // controlID names a CLI initialization or a tool call the CLI did not name.

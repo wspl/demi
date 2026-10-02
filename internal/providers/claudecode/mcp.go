@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/provider"
 )
 
@@ -15,7 +16,7 @@ import (
 type mcpServer struct {
 	tools    []provider.ToolDefinition
 	open     map[string]mcpRequest
-	ready    map[string]any
+	ready    map[string]mcpResult
 	replies  []mcpReply
 	requests map[string][]string
 	phase    mcpPhase
@@ -29,28 +30,28 @@ type mcpRequest struct {
 }
 type mcpReply struct {
 	request mcpRequest
-	result  any
-	failure any
+	result  mcpResult
+	failure *mcpError
 }
 
 func newMCP(tools []provider.ToolDefinition) *mcpServer {
-	return &mcpServer{tools: tools, open: make(map[string]mcpRequest), ready: make(map[string]any), requests: make(map[string][]string)}
+	return &mcpServer{tools: tools, open: make(map[string]mcpRequest), ready: make(map[string]mcpResult), requests: make(map[string][]string)}
 }
-func toolResult(r *provider.ToolResult) any {
-	content := make([]any, 0, len(r.Output))
+func toolResult(r *provider.ToolResult) *callResult {
+	content := make([]mcpContent, 0, len(r.Output))
 	for _, part := range r.Output {
 		switch p := part.(type) {
 		case *provider.TextPart:
 			content = append(content, textBlock(p.Text))
 		case *provider.ResultImage:
-			content = append(content, map[string]any{"type": "image", "data": base64.StdEncoding.EncodeToString(p.Bytes.Data), "mimeType": p.Bytes.MediaType})
+			content = append(content, mcpImage{"image", base64.StdEncoding.EncodeToString(p.Bytes.Data), p.Bytes.MediaType})
 		case *provider.ResultVideo:
 			content = append(content, textBlock("[video:"+p.Bytes.MediaType+"]"))
 		}
 	}
-	return map[string]any{"content": content, "isError": r.IsError}
+	return &callResult{Content: content, IsError: r.IsError}
 }
-func (m *mcpServer) deliver(id string, result any) {
+func (m *mcpServer) deliver(id string, result mcpResult) {
 	if pending, ok := m.open[id]; ok {
 		delete(m.open, id)
 		m.replies = append(m.replies, mcpReply{request: pending, result: result})
@@ -86,22 +87,18 @@ func (l *live) reply(ctx context.Context, r mcpReply) error {
 			l.mcp.requests[key] = waiting[1:]
 		}
 	}
-	value := map[string]any{"jsonrpc": "2.0", "id": r.request.id}
+	var value rpcMessage
 	if r.failure != nil {
-		value["error"] = r.failure
+		value = rpcError{"2.0", r.request.id, r.failure}
 	} else {
-		if r.request.modern {
-			if result, ok := r.result.(map[string]any); ok && len(result) > 0 {
-				result["resultType"] = "complete"
-			}
-		}
-		value["result"] = r.result
+		r.result.setModern(r.request.modern)
+		value = rpcSuccess{"2.0", r.request.id, r.result}
 	}
-	return l.write(ctx, map[string]any{"type": "control_response", "response": map[string]any{"subtype": "success", "request_id": r.request.control, "response": map[string]any{"mcp_response": value}}})
+	return l.write(ctx, responseInput{"control_response", controlSuccess{"success", r.request.control, mcpReplyBody{value}}})
 }
 func (l *live) control(ctx context.Context, line controlLine) (*provider.ToolCall, error) {
 	refuse := func(message string) (*provider.ToolCall, error) {
-		return nil, l.write(ctx, map[string]any{"type": "control_response", "response": map[string]any{"subtype": "error", "request_id": line.ID, "error": message}})
+		return nil, l.write(ctx, responseInput{"control_response", controlError{"error", line.ID, message}})
 	}
 	r := line.Request
 	if r.Subtype != "mcp_message" {
@@ -171,7 +168,7 @@ func (l *live) control(ctx context.Context, line controlLine) (*provider.ToolCal
 				for id, open := range l.mcp.open {
 					if string(open.id) == string(params.ID) {
 						delete(l.mcp.open, id)
-						l.mcp.replies = append(l.mcp.replies, mcpReply{request: open, failure: map[string]any{"code": -32603, "message": "The tool call was cancelled"}})
+						l.mcp.replies = append(l.mcp.replies, mcpReply{request: open, failure: &mcpError{Code: -32603, Message: "The tool call was cancelled"}})
 					}
 				}
 			}
@@ -181,16 +178,16 @@ func (l *live) control(ctx context.Context, line controlLine) (*provider.ToolCal
 			l.mcp.failure = "expect initialized request, but received a notification or response"
 		}
 		pending.id = json.RawMessage(`0`)
-		return nil, l.reply(ctx, mcpReply{request: pending, result: map[string]any{}})
+		return nil, l.reply(ctx, mcpReply{request: pending, result: &emptyResult{}})
 	}
 	if string(message.ID) == "null" {
 		return refuse("The SDK MCP message cannot be read: invalid request id")
 	}
 	pending.routed = true
 	l.mcp.requests[string(pending.id)] = append(l.mcp.requests[string(pending.id)], line.ID)
-	result := any(map[string]any{})
+	var result mcpResult = &emptyResult{}
 	unknown := func() (*provider.ToolCall, error) {
-		return nil, l.reply(ctx, mcpReply{request: pending, failure: map[string]any{"code": -32601, "message": *message.Method}})
+		return nil, l.reply(ctx, mcpReply{request: pending, failure: &mcpError{Code: -32601, Message: *message.Method}})
 	}
 	params, initErr := provider.DecodeUntagged[initializeParams](string(message.Params))
 	isInitialize := *message.Method == "initialize" && initErr == nil
@@ -211,13 +208,13 @@ func (l *live) control(ctx context.Context, line controlLine) (*provider.ToolCal
 		default:
 			negotiated = "2025-11-25"
 		}
-		result = map[string]any{"protocolVersion": negotiated, "capabilities": map[string]any{"tools": map[string]any{}}, "serverInfo": mcpIdentity}
+		result = &initializeResult{negotiated, mcpCapabilities{}, mcpIdentity}
 	case "ping":
 		if modern || l.mcp.phase == mcpInline {
 			return unknown()
 		}
 	case "discover":
-		result = map[string]any{"resultType": "complete", "supportedVersions": mcpVersions, "capabilities": map[string]any{"tools": map[string]any{}}, "ttlMs": 0, "cacheScope": "private", "_meta": map[string]any{"io.modelcontextprotocol/serverInfo": mcpIdentity}}
+		result = &discoverResult{"complete", mcpVersions, mcpCapabilities{}, 0, "private", serverMetadata{mcpIdentity}}
 	case "tools/list":
 		if len(message.Params) > 0 && string(message.Params) != "null" {
 			if _, err := provider.DecodeUntagged[struct {
@@ -226,20 +223,37 @@ func (l *live) control(ctx context.Context, line controlLine) (*provider.ToolCal
 				return unknown()
 			}
 		}
-		tools := make([]any, 0, len(l.mcp.tools))
+		tools := make([]mcpTool, 0, len(l.mcp.tools))
 		for _, tool := range l.mcp.tools {
-			tools = append(tools, map[string]any{"name": tool.Name, "description": tool.Description, "inputSchema": tool.InputSchema})
+			tools = append(tools, mcpTool{tool.Name, tool.Description, serdeValue(tool.InputSchema)})
 		}
-		result = map[string]any{"tools": tools}
+		result = &toolsResult{Tools: tools}
 	case "tools/call":
 		params, e := provider.DecodeUntagged[struct {
 			Name      string                      `json:"name"`
-			Arguments *map[string]json.RawMessage `json:"arguments"`
+			Arguments json.RawMessage             `json:"arguments" wire:"optional"`
 			Meta      *map[string]json.RawMessage `json:"_meta"`
 		}](string(message.Params))
 		if e != nil {
 			return unknown()
 		}
+		args := params.Arguments
+		if len(args) == 0 || contract.IsNull(args) {
+			args = json.RawMessage(`{}`)
+		}
+		canonical, e := serdeValue(args).MarshalJSON()
+		if e != nil {
+			return unknown()
+		}
+		fields, e := contract.ObjectFields(canonical)
+		if e != nil {
+			return unknown()
+		}
+		input, e := contract.EncodeObject(fields)
+		if e != nil {
+			return nil, fmt.Errorf("encode SDK MCP arguments: %w", e)
+		}
+
 		toolID := ""
 		if params.Meta != nil {
 			value := (*params.Meta)["claudecode/toolUseId"]
@@ -254,16 +268,9 @@ func (l *live) control(ctx context.Context, line controlLine) (*provider.ToolCal
 			delete(l.mcp.ready, toolID)
 			return nil, l.reply(ctx, mcpReply{request: pending, result: ready})
 		}
-		args := map[string]json.RawMessage{}
-		if params.Arguments != nil {
-			args = *params.Arguments
-		}
-		input, e := provider.JSONBody(args)
-		if e != nil {
-			return nil, fmt.Errorf("encode SDK MCP arguments: %w", e)
-		}
+
 		if previous, ok := l.mcp.open[toolID]; ok {
-			l.mcp.replies = append(l.mcp.replies, mcpReply{request: previous, failure: map[string]any{"code": -32603, "message": "The tool call ended with its process"}})
+			l.mcp.replies = append(l.mcp.replies, mcpReply{request: previous, failure: &mcpError{Code: -32603, Message: "The tool call ended with its process"}})
 		}
 		l.mcp.open[toolID] = pending
 		return &provider.ToolCall{ToolUseID: toolID, ToolName: toolName(params.Name), Input: input}, nil

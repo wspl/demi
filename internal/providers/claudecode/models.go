@@ -26,7 +26,7 @@ func (p *Provider) ListModels(ctx context.Context) (core.ProviderModelList, erro
 		if !strings.HasPrefix(model.ID, "claude-") {
 			continue
 		}
-		major, minor, ok := version(model.ID)
+		major, minor, ok := modelVersion(model.ID)
 		if !ok {
 			list.Warnings = append(list.Warnings, "Skipped Claude model with unparseable version: "+model.ID)
 			continue
@@ -42,8 +42,8 @@ func (p *Provider) ListModels(ctx context.Context) (core.ProviderModelList, erro
 		if c := cmp.Compare(modelFamily(a.ID), modelFamily(b.ID)); c != 0 {
 			return c
 		}
-		am, an, _ := version(a.ID)
-		bm, bn, _ := version(b.ID)
+		am, an, _ := modelVersion(a.ID)
+		bm, bn, _ := modelVersion(b.ID)
 		if c := cmp.Compare(bm, am); c != 0 {
 			return c
 		}
@@ -56,7 +56,7 @@ func (p *Provider) ListModels(ctx context.Context) (core.ProviderModelList, erro
 	return *list, nil
 }
 
-func version(id string) (uint64, uint64, bool) {
+func modelVersion(id string) (uint64, uint64, bool) {
 	rest, ok := strings.CutPrefix(id, "claude-")
 	if !ok {
 		return 0, 0, false
