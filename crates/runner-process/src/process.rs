@@ -346,7 +346,8 @@ pub fn umask() -> u32 {
         let strict = rustix::fs::Mode::from_raw_mode(0o077);
         let umask = rustix::process::umask(strict);
         rustix::process::umask(umask);
-        umask.as_raw_mode()
+        #[allow(clippy::useless_conversion, reason = "mode_t is u16 on macOS, u32 on Linux")]
+        u32::from(umask.as_raw_mode())
     })
 }
 

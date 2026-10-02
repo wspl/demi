@@ -20,7 +20,6 @@ bytes.workspace = true
 filetime = "0.2"
 futures-util.workspace = true
 gix = { version = "0.87", default-features = false, features = ["status", "blob-diff", "sha1", "parallel"] }
-notify = "8.2"
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
@@ -34,6 +33,10 @@ rustix = { version = "1", features = ["fs"] }
 # The working-tree watch's FSEvents stream (`src/tree_watch.rs`).
 [target.'cfg(target_os = "macos")'.dependencies]
 fsevent-sys = "4.1"
+
+# The working-tree watch elsewhere (`src/tree_watch.rs`).
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+notify = "8.2"
 
 [dev-dependencies]
 rmp-serde = "1.3"
