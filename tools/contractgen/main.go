@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -698,6 +699,9 @@ func (g *generator) rules(t types.Type, expr, path string, m map[string]string) 
 		if maximum := b["max"]; maximum != "" {
 			g.line("if len(%s)>%s{return contract.At(%s,fmt.Errorf(\"too many items\"))}", expr, maximum, path)
 		}
+	}
+	if slices.Contains(strings.Fields(m["range"]), "schema-only") {
+		return
 	}
 	for _, key := range []string{"min", "max"} {
 		if bound := bounds(m["range"])[key]; bound != "" {

@@ -53,6 +53,36 @@ func openFIFO(ctx context.Context, path string, flags int) (io.ReadWriteCloser, 
 		unix.Close(fd)
 		return nil, err
 	}
+	return ownedContextFile(ctx, fd)
+}
+
+// BorrowFile gives a child IO adapter a cancellable duplicate of a shell file.
+// It never hands the original file to os/exec: File.Fd would disable polling on
+// that file, leaving a later shell read impossible to cancel. Close releases
+// only the duplicate, so a command that stops reading cannot close shell stdin.
+func BorrowFile(ctx context.Context, file *os.File) (io.ReadWriteCloser, error) {
+	raw, err := file.SyscallConn()
+	if err != nil {
+		return nil, err
+	}
+	fd := -1
+	var duplicateErr error
+	if err := raw.Control(func(original uintptr) {
+		fd, duplicateErr = unix.FcntlInt(original, unix.F_DUPFD_CLOEXEC, 0)
+	}); err != nil {
+		return nil, err
+	}
+	if duplicateErr != nil {
+		return nil, duplicateErr
+	}
+	if err := unix.SetNonblock(fd, true); err != nil {
+		unix.Close(fd)
+		return nil, err
+	}
+	return ownedContextFile(ctx, fd)
+}
+
+func ownedContextFile(ctx context.Context, fd int) (io.ReadWriteCloser, error) {
 	wake, signal, err := os.Pipe()
 	if err != nil {
 		unix.Close(fd)
@@ -60,7 +90,6 @@ func openFIFO(ctx context.Context, path string, flags int) (io.ReadWriteCloser, 
 	}
 	f := &fifoFile{ctx: ctx, fd: fd, wake: wake, signal: signal, canceled: make(chan struct{})}
 	f.stop = context.AfterFunc(ctx, func() {
-		// Closing the write end wakes poll through POLLHUP without a blocking write.
 		signal.Close()
 		close(f.canceled)
 	})
@@ -79,14 +108,18 @@ type fifoFile struct {
 	once     sync.Once
 	mu       sync.Mutex
 	closed   bool
+	active   sync.WaitGroup
 }
 
 func (f *fifoFile) io(p []byte, writing bool) (int, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	if f.closed {
+		f.mu.Unlock()
 		return 0, os.ErrClosed
 	}
+	f.active.Add(1)
+	f.mu.Unlock()
+	defer f.active.Done()
 	for {
 		if err := f.ctx.Err(); err != nil {
 			return 0, err
@@ -146,14 +179,15 @@ func (f *fifoFile) Write(p []byte) (int, error) {
 }
 func (f *fifoFile) Close() error {
 	f.once.Do(func() {
+		f.mu.Lock()
+		f.closed = true
+		f.mu.Unlock()
 		if f.stop() {
 			f.signal.Close()
 		} else {
 			<-f.canceled
 		}
-		f.mu.Lock()
-		defer f.mu.Unlock()
-		f.closed = true
+		f.active.Wait()
 		unix.Close(f.fd)
 		f.wake.Close()
 	})

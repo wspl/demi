@@ -1,6 +1,17 @@
 --- a/interp/api.go
 +++ b/interp/api.go
-@@ -152,6 +152,9 @@
+@@ -77,7 +77,9 @@
+ 
+ 	// callHandler is a function allowing to replace a simple command's
+ 	// arguments. It may be nil.
+-	callHandler CallHandlerFunc
++	customBuiltins map[string]ExecHandlerFunc
++	scopeState     ScopeState
++	callHandler    CallHandlerFunc
+ 
+ 	// execHandler is responsible for executing programs. It must not be nil.
+ 	execHandler ExecHandlerFunc
+@@ -152,6 +154,9 @@
  	// subshells do not share nor inherit the background PIDs they can wait for.
  	bgProcs []bgProc
  
@@ -10,7 +21,7 @@
  	opts runnerOpts
  
  	origDir    string
-@@ -172,6 +175,10 @@
+@@ -172,6 +177,10 @@
  	// apply to the current shell, and not just the command.
  	// It is consumed by the enclosing statement once it finishes.
  	keepRedirs bool
@@ -21,7 +32,18 @@
  
  	// Fake signal callbacks
  	callbackErr  string
-@@ -271,6 +278,7 @@
+@@ -250,6 +259,10 @@
+ }
+ 
+ type bgProc struct {
++	state     ScopeState
++	cancel    context.CancelFunc
++	terminate context.CancelCauseFunc
++	waited    bool
+ 	// closed when the background process finishes,
+ 	// after which point the result fields below are set.
+ 	done chan struct{}
+@@ -271,6 +284,7 @@
  func New(opts ...RunnerOption) (*Runner, error) {
  	r := &Runner{
  		usedNew:        true,
@@ -29,7 +51,7 @@
  		openHandler:    DefaultOpenHandler(),
  		readDirHandler: DefaultReadDirHandler2(),
  		statHandler:    DefaultStatHandler(),
-@@ -616,7 +624,7 @@
+@@ -616,7 +630,7 @@
  // context cannot stop a blocked standard input read.
  func StdIO(in io.Reader, out, err io.Writer) RunnerOption {
  	return func(r *Runner) error {
@@ -38,15 +60,18 @@
  		if _err != nil {
  			return _err
  		}
-@@ -880,6 +888,7 @@
+@@ -880,7 +894,10 @@
  	// reset the internal state
  	*r = Runner{
  		Env:            r.Env,
 +		tasks:          r.tasks,
  		tempDir:        r.tempDir,
++		customBuiltins: r.customBuiltins,
++		scopeState:     r.scopeState,
  		callHandler:    r.callHandler,
  		execHandler:    r.execHandler,
-@@ -1037,6 +1046,18 @@
+ 		openHandler:    r.openHandler,
+@@ -1037,6 +1054,18 @@
  	return nil
  }
  
@@ -65,25 +90,1087 @@
  // Exited reports whether the last Run call should exit an entire shell. This
  // can be triggered by the "exit" built-in command, for example.
  //
-@@ -1071,6 +1092,7 @@
+@@ -1071,8 +1100,11 @@
  	// sensitive ones like [errgroup.Group], and to do deep copies of slices.
  	r2 := &Runner{
  		Dir:            r.Dir,
 +		tasks:          &taskGroup{parent: r.tasks},
  		tempDir:        r.tempDir,
  		Params:         r.Params,
++		customBuiltins: r.customBuiltins,
++		scopeState:     r.scopeState,
  		callHandler:    r.callHandler,
-@@ -1092,6 +1114,7 @@
+ 		execHandler:    r.execHandler,
+ 		openHandler:    r.openHandler,
+@@ -1090,8 +1122,12 @@
+ 
+ 		origStdout: r.origStdout, // used for process substitutions
  	}
++	if r.scopeState != nil {
++		r2.scopeState = r.scopeState.Clone()
++	}
  	r2.writeEnv = newOverlayEnviron(r.writeEnv, background)
  	// Funcs are copied, since they might be modified.
 +	r2.extraFiles = maps.Clone(r.extraFiles)
  	r2.Funcs = maps.Clone(r.Funcs)
  	r2.Vars = make(map[string]expand.Variable)
  	r2.alias = maps.Clone(r.alias)
+--- a/interp/builtin.go
++++ b/interp/builtin.go
+@@ -11,6 +11,8 @@
+ 	"fmt"
+ 	"os"
+ 	"path/filepath"
++	"reflect"
++	"runtime"
+ 	"slices"
+ 	"strconv"
+ 	"strings"
+@@ -35,87 +37,89 @@
+ // IsBuiltin returns true if the given word is a POSIX Shell
+ // or Bash builtin.
+ func IsBuiltin(name string) bool {
+-	switch name {
+-	case
+-		// POSIX Shell regular built-ins, that is, the utilities which the shell
+-		// must provide as built-ins, from section 1.d obtained in September 2025 from:
+-		// https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_09_01_01
+-		"alias",
+-		"bg",
+-		"cd",
+-		"command",
+-		"false",
+-		"fc",
+-		"fg",
+-		"getopts",
+-		"hash",
+-		"jobs",
+-		"kill",
+-		"newgrp",
+-		"pwd",
+-		"read",
+-		"true",
+-		"umask",
+-		"unalias",
+-		"wait",
+-
+-		// POSIX Shell special built-ins, obtained in September 2025 from:
+-		// https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_14
+-		"break",
+-		":",
+-		"continue",
+-		".",
+-		"eval",
+-		"exec",
+-		"exit",
+-		"export",   // NOTE: our parser treats this as a keyword
+-		"readonly", // NOTE: our parser treats this as a keyword
+-		"return",
+-		"set",
+-		"shift",
+-		"times",
+-		"trap",
+-		"unset",
+-
+-		// Bash built-ins which are not present in POSIX, obtained in September 2025 from:
+-		// https://man.archlinux.org/man/bash.1.en#SHELL_BUILTIN_COMMANDS
+-		"source",
+-		"bind",
+-		"builtin",
+-		"caller",
+-		"compgen",
+-		"complete",
+-		"compopt",
+-		"declare", // NOTE: our parser treats this as a keyword
+-		"typeset", // NOTE: our parser treats this as a keyword
+-		"dirs",
+-		"disown",
+-		"enable",
+-		"history",
+-		"help",
+-		"let", // NOTE: our parser treats this as a keyword
+-		"local",
+-		"logout",
+-		"mapfile",
+-		"readarray",
+-		"popd",
+-		"pushd",
+-		"shopt",
+-		"suspend",
+-		"type",
+-		"ulimit",
+-
+-		// POSIX utilities which the shell need not provide as built-ins,
+-		// so they are separate executables found via PATH, but which we
+-		// implement as built-ins just like Bash does. Obtained in September
+-		// 2025 from https://pubs.opengroup.org/onlinepubs/9699919799/utilities/contents.html
+-		"echo",
+-		"printf",
+-		"test",
+-		"[": // NOTE: an alias for "test", not documented separately
+-		return true
+-	}
+-	return false
++	return slices.Contains(builtinNames, name)
++}
++
++// BuiltinNames returns the native names recognized by IsBuiltin.
++func BuiltinNames() []string { return slices.Clone(builtinNames) }
++
++var builtinNames = []string{
++	// POSIX Shell regular built-ins, that is, the utilities which the shell
++	// must provide as built-ins, from section 1.d obtained in September 2025 from:
++	// https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_09_01_01
++	"alias",
++	"bg",
++	"cd",
++	"command",
++	"false",
++	"fc",
++	"fg",
++	"getopts",
++	"hash",
++	"jobs",
++	"kill",
++	"newgrp",
++	"pwd",
++	"read",
++	"true",
++	"umask",
++	"unalias",
++	"wait",
++
++	// POSIX Shell special built-ins, obtained in September 2025 from:
++	// https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_14
++	"break",
++	":",
++	"continue",
++	".",
++	"eval",
++	"exec",
++	"exit",
++	"export",   // NOTE: our parser treats this as a keyword
++	"readonly", // NOTE: our parser treats this as a keyword
++	"return",
++	"set",
++	"shift",
++	"times",
++	"trap",
++	"unset",
++
++	// Bash built-ins which are not present in POSIX, obtained in September 2025 from:
++	// https://man.archlinux.org/man/bash.1.en#SHELL_BUILTIN_COMMANDS
++	"source",
++	"bind",
++	"builtin",
++	"caller",
++	"compgen",
++	"complete",
++	"compopt",
++	"declare", // NOTE: our parser treats this as a keyword
++	"typeset", // NOTE: our parser treats this as a keyword
++	"dirs",
++	"disown",
++	"enable",
++	"history",
++	"help",
++	"let", // NOTE: our parser treats this as a keyword
++	"local",
++	"logout",
++	"mapfile",
++	"readarray",
++	"popd",
++	"pushd",
++	"shopt",
++	"suspend",
++	"type",
++	"ulimit",
++
++	// POSIX utilities which the shell need not provide as built-ins,
++	// so they are separate executables found via PATH, but which we
++	// implement as built-ins just like Bash does. Obtained in September
++	// 2025 from https://pubs.opengroup.org/onlinepubs/9699919799/utilities/contents.html
++	"echo",
++	"printf",
++	"test",
++	"[", // NOTE: an alias for "test", not documented separately
+ }
+ 
+ // TODO: atoi is duplicated in the expand package.
+@@ -151,6 +155,14 @@
+ }
+ 
+ func (r *Runner) builtin(ctx context.Context, pos syntax.Pos, name string, args []string) (exit exitStatus) {
++	if handler := r.customBuiltins[name]; handler != nil {
++		exit.fromHandlerError(handler(r.handlerCtx(ctx, handlerKindExec, pos), append([]string{name}, args...)))
++		return exit
++	}
++	return r.nativeBuiltin(ctx, pos, name, args)
++}
++
++func (r *Runner) nativeBuiltin(ctx context.Context, pos syntax.Pos, name string, args []string) (exit exitStatus) {
+ 	failf := func(code uint8, format string, args ...any) exitStatus {
+ 		r.errf(format, args...)
+ 		exit.code = code
+@@ -336,38 +348,76 @@
+ 			return failf(2, "usage: cd [dir]\n")
+ 		}
+ 		exit.code = r.changeDir(ctx, "cd", path)
++	case "jobs":
++		for index, bg := range r.bgProcs {
++			status := "Running"
++			select {
++			case <-bg.done:
++				status = "Done"
++			default:
++			}
++			r.outf("[%d] %s g%d\n", index+1, status, index+1)
++		}
+ 	case "wait":
+-		fp := flagParser{remaining: args}
+-		for fp.more() {
+-			switch flag := fp.flag(); flag {
+-			case "-n", "-p":
+-				return failf(2, "wait: unsupported option %q\n", flag)
+-			default:
+-				return failf(2, "wait: invalid option %q\n", flag)
+-			}
+-		}
++		next := len(args) > 0 && args[0] == "-n"
++		if next {
++			args = args[1:]
++		}
++		var indices []int
+ 		if len(args) == 0 {
+-			// Note that "wait" without arguments always returns exit status zero.
+-			for _, bg := range r.bgProcs {
+-				<-bg.done
+-			}
+-			break
+-		}
+-		for _, arg := range args {
+-			arg, ok := strings.CutPrefix(arg, "g")
+-			pid := atoi(arg)
+-			if !ok || pid <= 0 || pid > int64(len(r.bgProcs)) {
+-				return failf(1, "wait: pid %s is not a child of this shell\n", arg)
+-			}
+-			bg := r.bgProcs[pid-1]
+-			<-bg.done
+-			exit = *bg.exit
++			for index, bg := range r.bgProcs {
++				if !next || !bg.waited {
++					indices = append(indices, index)
++				}
++			}
++		} else {
++			for _, arg := range args {
++				number, err := strconv.Atoi(strings.TrimPrefix(arg, "g"))
++				if err != nil || !strings.HasPrefix(arg, "g") || number < 1 || number > len(r.bgProcs) {
++					return failf(1, "wait: pid %s is not a child of this shell\n", arg)
++				}
++				if !next || !r.bgProcs[number-1].waited {
++					indices = append(indices, number-1)
++				}
++			}
++		}
++		if next {
++			if len(indices) == 0 {
++				exit.code = 127
++				break
++			}
++			cases := []reflect.SelectCase{{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(ctx.Done())}}
++			for _, index := range indices {
++				cases = append(cases, reflect.SelectCase{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(r.bgProcs[index].done)})
++			}
++			chosen, _, _ := reflect.Select(cases)
++			if chosen == 0 {
++				exit.fatal(ctx.Err())
++				break
++			}
++			index := indices[chosen-1]
++			r.bgProcs[index].waited = true
++			exit = *r.bgProcs[index].exit
++		} else {
++			for _, index := range indices {
++				bg := &r.bgProcs[index]
++				select {
++				case <-ctx.Done():
++					exit.fatal(ctx.Err())
++					return exit
++				case <-bg.done:
++				}
++				bg.waited = true
++				if len(args) > 0 {
++					exit = *bg.exit
++				}
++			}
+ 		}
+ 	case "builtin":
+ 		if len(args) < 1 {
+ 			break
+ 		}
+-		if !IsBuiltin(args[0]) {
++		if !r.isBuiltin(args[0]) {
+ 			exit.code = 1
+ 			return exit
+ 		}
+@@ -430,7 +480,7 @@
+ 				}
+ 				continue
+ 			}
+-			if IsBuiltin(arg) {
++			if r.isBuiltin(arg) {
+ 				if mode == "-t" {
+ 					r.out("builtin\n")
+ 				} else {
+@@ -566,7 +616,7 @@
+ 			break
+ 		}
+ 		if !show {
+-			if IsBuiltin(args[0]) {
++			if r.isBuiltin(args[0]) {
+ 				return r.builtin(ctx, pos, args[0], args[1:])
+ 			}
+ 			r.exec(ctx, pos, args)
+@@ -576,7 +626,7 @@
+ 		last := uint8(0)
+ 		for _, arg := range args {
+ 			last = 0
+-			if r.Funcs[arg] != nil || IsBuiltin(arg) {
++			if r.Funcs[arg] != nil || r.isBuiltin(arg) {
+ 				r.outf("%s\n", arg)
+ 			} else if path, err := LookPathDir(r.Dir, r.writeEnv, arg); err == nil {
+ 				r.outf("%s\n", path)
+@@ -1063,6 +1113,10 @@
+ }
+ 
+ func (r *Runner) readLine(ctx context.Context, raw bool) ([]byte, error) {
++	if r.scopeState != nil {
++		r.scopeState.Waiting(1)
++		defer r.scopeState.Waiting(-1)
++	}
+ 	if r.stdin == nil {
+ 		return nil, errors.New("interp: can't read, there's no stdin")
+ 	}
+@@ -1131,6 +1185,9 @@
+ }
+ 
+ func absPath(dir, path string) string {
++	if runtime.GOOS == "windows" && len(path) >= 3 && path[0] == '/' && path[2] == '/' && ((path[1] >= 'A' && path[1] <= 'Z') || (path[1] >= 'a' && path[1] <= 'z')) {
++		path = path[1:2] + ":" + path[2:]
++	}
+ 	if path == "" {
+ 		return ""
+ 	}
+--- /dev/null
++++ b/interp/demi_lifecycle_test.go
+@@ -0,0 +1,503 @@
++//go:build unix
++
++package interp_test
++
++import (
++	"bytes"
++	"context"
++	"errors"
++	"fmt"
++	"io"
++	"os"
++	"path/filepath"
++	"reflect"
++	"strings"
++	"sync"
++	"testing"
++	"time"
++
++	"mvdan.cc/sh/v3/expand"
++	"mvdan.cc/sh/v3/interp"
++	"mvdan.cc/sh/v3/syntax"
++)
++
++func script(t *testing.T, src string) *syntax.File {
++	t.Helper()
++	f, err := syntax.NewParser().Parse(strings.NewReader(src), "scenario")
++	if err != nil {
++		t.Fatal(err)
++	}
++	return f
++}
++
++// These scenario tests use only channels and context cancellation for ordering.
++// The one-second deadlines guard hangs; the usual whole test cost is <100 ms.
++func TestRecursiveJoin(t *testing.T) {
++	for _, src := range []string{
++		`( ( record & ) & )`,
++		`f() { (record &) & }; f`,
++		`x=$( (record &) ); : "$x"`,
++		`cat <( (record &) )`,
++		`(record &) | cat`,
++	} {
++		t.Run(src, func(t *testing.T) {
++			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
++			defer cancel()
++			var mu sync.Mutex
++			records := 0
++			r, err := interp.New(interp.ExecHandlers(func(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
++				return func(ctx context.Context, args []string) error {
++					if args[0] != "record" {
++						return next(ctx, args)
++					}
++					mu.Lock()
++					records++
++					mu.Unlock()
++					return nil
++				}
++			}))
++			if err != nil {
++				t.Fatal(err)
++			}
++			if err = r.Run(ctx, script(t, src)); err != nil {
++				t.Fatal(err)
++			}
++			joined := make(chan struct{})
++			go func() { r.Wait(); close(joined) }()
++			select {
++			case <-joined:
++			case <-ctx.Done():
++				t.Fatal("recursive join did not finish")
++			}
++			mu.Lock()
++			defer mu.Unlock()
++			if records != 1 {
++				t.Fatalf("completed job lost nested command: got %d records", records)
++			}
++		})
++	}
++}
++
++func TestRecursiveCancellation(t *testing.T) {
++	ctx, cancel := context.WithCancel(context.Background())
++	defer cancel()
++	started := make(chan struct{})
++	stopped := make(chan struct{})
++	r, err := interp.New(interp.ExecHandlers(func(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
++		return func(ctx context.Context, args []string) error {
++			if args[0] != "hold" {
++				return next(ctx, args)
++			}
++			close(started)
++			<-ctx.Done()
++			close(stopped)
++			return ctx.Err()
++		}
++	}))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err = r.Run(ctx, script(t, `( (hold &) & )`)); err != nil {
++		t.Fatal(err)
++	}
++	<-started
++	cancel()
++	r.Wait()
++	select {
++	case <-stopped:
++	default:
++		t.Fatal("job completed before its nested handler stopped")
++	}
++}
++
++func TestUnusedProcessSubstitutionCancellation(t *testing.T) {
++	for _, src := range []string{`: <(echo unused)`, `: >(read -r unused)`} {
++		t.Run(src, func(t *testing.T) {
++			dir := t.TempDir()
++			ctx, cancel := context.WithCancel(context.Background())
++			defer cancel()
++			r, err := interp.New(interp.Env(expand.ListEnviron("TMPDIR=" + dir)))
++			if err != nil {
++				t.Fatal(err)
++			}
++			if err = r.Run(ctx, script(t, src)); err != nil {
++				t.Fatal(err)
++			}
++			cancel()
++			done := make(chan error, 1)
++			wait := script(t, "wait")
++			go func() { done <- r.Run(context.Background(), wait.Stmts[0]) }()
++			select {
++			case err := <-done:
++				if err != nil {
++					t.Fatal(err)
++				}
++			case <-time.After(time.Second):
++				// Rescue the original library after observing the regression, so even
++				// the unpatched test run leaves no blocked FIFO task or temporary path.
++				paths, e := os.ReadDir(dir)
++				if e != nil {
++					t.Fatal(e)
++				}
++				for _, p := range paths {
++					f, e := os.OpenFile(filepath.Join(dir, p.Name()), os.O_RDWR, 0)
++					if e != nil {
++						t.Fatal(e)
++					}
++					defer f.Close()
++				}
++				<-done
++				t.Fatal("cancelled process substitution still waits for an unopened FIFO")
++			}
++			r.Wait()
++			entries, err := os.ReadDir(dir)
++			if err != nil {
++				t.Fatal(err)
++			}
++			if len(entries) != 0 {
++				t.Fatalf("cancelled job leaked FIFO paths: %v", entries)
++			}
++		})
++	}
++}
++
++func TestProcessSubstitutionOutputAndEOF(t *testing.T) {
++	for _, src := range []string{
++		`cat <(printf 'payload\n')`,
++		`cat <( (printf 'payload\n' &) )`,
++		`printf 'payload\n' > >(cat)`,
++	} {
++		t.Run(src, func(t *testing.T) {
++			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
++			defer cancel()
++			var output bytes.Buffer
++			r, err := interp.New(interp.StdIO(nil, &output, io.Discard))
++			if err != nil {
++				t.Fatal(err)
++			}
++			if err = r.Run(ctx, script(t, src)); err != nil {
++				t.Fatal(err)
++			}
++			r.Wait()
++			if output.String() != "payload\n" {
++				t.Fatalf("lost output or EOF: %q", output.String())
++			}
++		})
++	}
++}
++
++func TestRedirectionScope(t *testing.T) {
++	wrappers := map[string]string{
++		"top":                  "%s",
++		"subshell":             "(%s)",
++		"function":             "f() { %s; }; f",
++		"background":           "( %s ) &",
++		"nested-background":    "( ( %s ) & )",
++		"command-substitution": "x=$( %s )",
++		"process-substitution": "cat <( %s )",
++	}
++	redirects := map[string]string{"truncate": ": > %s", "append": ": >> %s", "readwrite": ": <> %s", "descriptor": "exec 3> %s"}
++	for scope, wrapper := range wrappers {
++		for kind, redirect := range redirects {
++			t.Run(scope+"/"+kind, func(t *testing.T) {
++				dir := t.TempDir()
++				var recorder demiRecorder
++				defer recorder.Close()
++				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
++				defer cancel()
++				r, err := interp.New(interp.Dir(dir), interp.OpenHandler(recorder.Open))
++				if err != nil {
++					t.Fatal(err)
++				}
++				src := fmt.Sprintf(wrapper, fmt.Sprintf(redirect, "edited"))
++				if err = r.Run(ctx, script(t, src)); err != nil {
++					t.Fatal(err)
++				}
++				r.Wait()
++				want := []string{filepath.Join(dir, "edited")}
++				if got := recorder.Paths(); !reflect.DeepEqual(got, want) {
++					t.Fatalf("recorded %v; want %v", got, want)
++				}
++			})
++		}
++	}
++}
++
++func TestReadAndExternalEditsAreExcluded(t *testing.T) {
++	dir := t.TempDir()
++	if err := os.WriteFile(filepath.Join(dir, "input"), []byte("read"), 0600); err != nil {
++		t.Fatal(err)
++	}
++	var recorder demiRecorder
++	defer recorder.Close()
++	r, err := interp.New(interp.Dir(dir), interp.OpenHandler(recorder.Open))
++	if err != nil {
++		t.Fatal(err)
++	}
++	err = r.Run(context.Background(), script(t, `cat < input > /dev/null; /bin/sh -c ': > external'`))
++	if err != nil {
++		t.Fatal(err)
++	}
++	r.Wait()
++	if got := recorder.Paths(); len(got) != 0 {
++		t.Fatalf("recorded out-of-scope files: %v", got)
++	}
++}
++
++func TestProcessSubstitutionBlockedWriteCancellation(t *testing.T) {
++	dir := t.TempDir()
++	ctx, cancel := context.WithCancel(context.Background())
++	defer cancel()
++	writing := make(chan struct{})
++	peers := make(chan *os.File, 1)
++	r, err := interp.New(interp.Env(expand.ListEnviron("TMPDIR="+dir)), interp.ExecHandlers(func(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
++		return func(ctx context.Context, args []string) error {
++			switch args[0] {
++			case "burst":
++				close(writing)
++				_, err := io.CopyN(interp.HandlerCtx(ctx).Stdout, strings.NewReader(strings.Repeat("x", 4<<20)), 4<<20)
++				return err
++			case "peer":
++				f, err := os.Open(args[1])
++				if err != nil {
++					return err
++				}
++				peers <- f
++				// Keep the peer descriptor open after cancellation and until join returns.
++				// The writer must be cancelled, not merely rescued by reader EOF.
++				<-ctx.Done()
++				return ctx.Err()
++			}
++			return next(ctx, args)
++		}
++	}))
++	if err != nil {
++		t.Fatal(err)
++	}
++	done := make(chan error, 1)
++	f := script(t, `peer <(burst)`)
++	go func() { done <- r.Run(ctx, f) }()
++	<-writing
++	peer := <-peers
++	defer peer.Close()
++	// Observing the first byte proves the 4 MiB write has entered the FIFO.
++	// Leave the rest unread so cancellation must wake its blocked writer.
++	first := make([]byte, 1)
++	if _, err := io.ReadFull(peer, first); err != nil {
++		t.Fatal(err)
++	}
++	cancel()
++	select {
++	case <-done:
++	case <-time.After(time.Second):
++		t.Fatal("foreground did not cancel")
++	}
++	joined := make(chan struct{})
++	go func() { r.Wait(); close(joined) }()
++	select {
++	case <-joined:
++	case <-time.After(time.Second):
++		t.Fatal("full FIFO did not cancel")
++	}
++	entries, err := os.ReadDir(dir)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if len(entries) != 0 {
++		t.Fatalf("leaked FIFO: %v", entries)
++	}
++}
++
++func TestDescriptorWritesAndNonTruncatingReadwrite(t *testing.T) {
++	dir := t.TempDir()
++	var recorder demiRecorder
++	defer recorder.Close()
++	r, err := interp.New(interp.Dir(dir), interp.OpenHandler(recorder.Open))
++	if err != nil {
++		t.Fatal(err)
++	}
++	src := `printf original > kept; : <> kept; exec 3> descriptor; printf payload >&3; (printf child >&3); printf appended >> kept`
++	if err = r.Run(context.Background(), script(t, src)); err != nil {
++		t.Fatal(err)
++	}
++	r.Wait()
++	for path, want := range map[string]string{"kept": "originalappended", "descriptor": "payloadchild"} {
++		got, err := os.ReadFile(filepath.Join(dir, path))
++		if err != nil {
++			t.Fatal(err)
++		}
++		if string(got) != want {
++			t.Fatalf("%s: got %q; want %q", path, got, want)
++		}
++	}
++}
++
++func TestProcessSubstitutionDoesNotLeakDescriptors(t *testing.T) {
++	// No GC is used: completion must release the job's descriptors itself.
++	run := func() {
++		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
++		defer cancel()
++		r, err := interp.New()
++		if err != nil {
++			t.Fatal(err)
++		}
++		if err = r.Run(ctx, script(t, `while IFS= read -r line; do :; done < <(printf 'line\n')`)); err != nil {
++			t.Fatal(err)
++		}
++		r.Wait()
++		if err := ctx.Err(); err != nil {
++			t.Fatalf("normal EOF needed cancellation: %v", err)
++		}
++	}
++	run()
++	before, err := os.ReadDir("/dev/fd")
++	if err != nil {
++		t.Fatal(err)
++	}
++	for range 20 {
++		run()
++	}
++	after, err := os.ReadDir("/dev/fd")
++	if err != nil {
++		t.Fatal(err)
++	}
++	if len(after) != len(before) {
++		t.Fatalf("descriptors grew from %d to %d after joined jobs", len(before), len(after))
++	}
++}
++
++func TestProcessSubstitutionBlockedReadCancellation(t *testing.T) {
++	dir := t.TempDir()
++	ctx, cancel := context.WithCancel(context.Background())
++	defer cancel()
++	reading := make(chan struct{})
++	peers := make(chan *os.File, 1)
++	r, err := interp.New(interp.Env(expand.ListEnviron("TMPDIR="+dir)), interp.ExecHandlers(func(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
++		return func(ctx context.Context, args []string) error {
++			switch args[0] {
++			case "drain":
++				close(reading)
++				_, err := io.Copy(io.Discard, interp.HandlerCtx(ctx).Stdin)
++				return err
++			case "peer":
++				f, err := os.OpenFile(args[1], os.O_WRONLY, 0)
++				if err != nil {
++					return err
++				}
++				peers <- f
++				<-ctx.Done()
++				return ctx.Err()
++			}
++			return next(ctx, args)
++		}
++	}))
++	if err != nil {
++		t.Fatal(err)
++	}
++	done := make(chan error, 1)
++	f := script(t, `peer >(drain)`)
++	go func() { done <- r.Run(ctx, f) }()
++	<-reading
++	peer := <-peers
++	defer peer.Close()
++	cancel()
++	select {
++	case <-done:
++	case <-time.After(time.Second):
++		t.Fatal("foreground did not cancel")
++	}
++	joined := make(chan struct{})
++	go func() { r.Wait(); close(joined) }()
++	select {
++	case <-joined:
++	case <-time.After(time.Second):
++		t.Fatal("empty FIFO did not cancel with writer still open")
++	}
++	entries, err := os.ReadDir(dir)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if len(entries) != 0 {
++		t.Fatalf("leaked FIFO: %v", entries)
++	}
++}
++
++func TestNoShebangScriptSharesJobOwnershipAndRecorder(t *testing.T) {
++	dir := t.TempDir()
++	if err := os.WriteFile(filepath.Join(dir, "script"), []byte("( (printf done > marker &) & )\n"), 0700); err != nil {
++		t.Fatal(err)
++	}
++	var recorder demiRecorder
++	defer recorder.Close()
++	r, err := interp.New(interp.Dir(dir), interp.OpenHandler(recorder.Open))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err = r.Run(context.Background(), script(t, "./script")); err != nil {
++		t.Fatal(err)
++	}
++	r.Wait()
++	want := []string{filepath.Join(dir, "marker")}
++	if got := recorder.Paths(); !reflect.DeepEqual(got, want) {
++		t.Fatalf("fallback escaped recorder: got %v; want %v", got, want)
++	}
++	if data, err := os.ReadFile(want[0]); err != nil || string(data) != "done" {
++		t.Fatalf("fallback background write incomplete: %q, %v", data, err)
++	}
++}
++
++func TestRegularFileWithFIFOPrefixStillReachesRecorder(t *testing.T) {
++	dir := t.TempDir()
++	var recorder demiRecorder
++	defer recorder.Close()
++	r, err := interp.New(interp.Dir(dir), interp.Env(expand.ListEnviron("TMPDIR="+dir)), interp.OpenHandler(recorder.Open))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err = r.Run(context.Background(), script(t, `: > "$TMPDIR/sh-interp-user-file"`)); err != nil {
++		t.Fatal(err)
++	}
++	r.Wait()
++	want := []string{filepath.Join(dir, "sh-interp-user-file")}
++	if got := recorder.Paths(); !reflect.DeepEqual(got, want) {
++		t.Fatalf("regular file bypassed recorder: %v", got)
++	}
++}
++
++// A child must not disable polling or close the stdin the next command reads.
++func TestBorrowedFileKeepsShellInputCancellable(t *testing.T) {
++	reader, writer, err := os.Pipe()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer reader.Close()
++	defer writer.Close()
++	borrowed, err := interp.BorrowFile(t.Context(), reader)
++	if err != nil {
++		t.Fatal(err)
++	}
++	result := make(chan error, 1)
++	go func() { _, err := borrowed.Read(make([]byte, 1)); result <- err }()
++	if err := borrowed.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if err := <-result; !errors.Is(err, os.ErrClosed) {
++		t.Fatalf("borrowed read: %v", err)
++	}
++	if err := reader.SetReadDeadline(time.Now()); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := reader.Read(make([]byte, 1)); !errors.Is(err, os.ErrDeadlineExceeded) {
++		t.Fatalf("shell input lost polling: %v", err)
++	}
++	if err := reader.SetReadDeadline(time.Time{}); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := writer.Write([]byte("x")); err != nil {
++		t.Fatal(err)
++	}
++	var data [1]byte
++	if _, err := reader.Read(data[:]); err != nil || data[0] != 'x' {
++		t.Fatalf("shell input: %q %v", data, err)
++	}
++}
+--- /dev/null
++++ b/interp/demi_recorder_test.go
+@@ -0,0 +1,72 @@
++//go:build unix
++
++package interp_test
++
++import (
++	"context"
++	"io"
++	"os"
++	"path/filepath"
++	"sort"
++	"sync"
++
++	"mvdan.cc/sh/v3/interp"
++)
++
++// Recorder records successful write-capable opens of regular files, not reads,
++// devices, FIFOs, or files an external utility opens for itself. It deliberately
++// does not implement production mutation snapshots or the shared edit lock.
++type demiRecorder struct {
++	mu    sync.Mutex
++	paths map[string]bool
++	files []io.Closer
++}
++
++func (r *demiRecorder) Open(ctx context.Context, path string, flags int, mode os.FileMode) (io.ReadWriteCloser, error) {
++	f, err := interp.DefaultOpenHandler()(ctx, path, flags, mode)
++	if err != nil {
++		return nil, err
++	}
++	// Retain handles so exec's persistent redirections are closed after job join.
++	r.mu.Lock()
++	defer r.mu.Unlock()
++	r.files = append(r.files, f)
++	if flags&(os.O_WRONLY|os.O_RDWR) != 0 {
++		absolute := path
++		if !filepath.IsAbs(absolute) {
++			absolute = filepath.Join(interp.HandlerCtx(ctx).Dir, path)
++		}
++		info, err := os.Stat(absolute)
++		if err != nil {
++			f.Close()
++			return nil, err
++		}
++		if info.Mode().IsRegular() {
++			if r.paths == nil {
++				r.paths = make(map[string]bool)
++			}
++			r.paths[filepath.Clean(absolute)] = true
++		}
++	}
++	return f, nil
++}
++func (r *demiRecorder) Paths() []string {
++	r.mu.Lock()
++	defer r.mu.Unlock()
++	paths := make([]string, 0, len(r.paths))
++	for path := range r.paths {
++		paths = append(paths, path)
++	}
++	sort.Strings(paths)
++	return paths
++}
++func (r *demiRecorder) Close() {
++	r.mu.Lock()
++	defer r.mu.Unlock()
++	for _, f := range r.files {
++		// Most handles have already been closed by the interpreter. Closing the
++		// same os.File again is safe and cannot close a reused numeric descriptor.
++		f.Close()
++	}
++	r.files = nil
++}
+--- /dev/null
++++ b/interp/demi_scope_test.go
+@@ -0,0 +1,122 @@
++package interp_test
++
++import (
++	"bytes"
++	"context"
++	"strings"
++	"testing"
++
++	"mvdan.cc/sh/v3/interp"
++	"mvdan.cc/sh/v3/syntax"
++)
++
++type scopeValue struct{ value string }
++
++func (s *scopeValue) Clone() interp.ScopeState { return &scopeValue{value: s.value} }
++func (*scopeValue) Check()                     {}
++func (*scopeValue) Waiting(int)                {}
++
++// TestHostBuiltinScopes proves host overrides work through command and builtin,
++// and that changing subshell attributes cannot change the parent scope.
++func TestHostBuiltinScopes(t *testing.T) {
++	var output bytes.Buffer
++	handler := func(ctx context.Context, args []string) error {
++		hc := interp.HandlerCtx(ctx)
++		state := hc.Scope().(*scopeValue)
++		if len(args) > 1 {
++			state.value = args[1]
++			return nil
++		}
++		_, err := hc.Stdout.Write([]byte(state.value + "\n"))
++		return err
++	}
++	r, err := interp.New(interp.StdIO(nil, &output, nil), interp.WithScopeState(&scopeValue{value: "initial"}), interp.Builtins(map[string]interp.ExecHandlerFunc{"umask": handler, "declared": handler}))
++	if err != nil {
++		t.Fatal(err)
++	}
++	f, err := syntax.NewParser().Parse(strings.NewReader(`umask parent; (command umask child; builtin umask); umask; declared; type -t declared`), "scope")
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err = r.Run(t.Context(), f); err != nil {
++		t.Fatal(err)
++	}
++	r.Wait()
++	if got := output.String(); got != "child\nparent\nparent\nbuiltin\n" {
++		t.Fatalf("output %q", got)
++	}
++}
++
++// TestHostExecScope proves a host builtin can exit only its current scope.
++func TestHostExecScope(t *testing.T) {
++	var output bytes.Buffer
++	r, err := interp.New(interp.StdIO(nil, &output, nil), interp.Builtins(map[string]interp.ExecHandlerFunc{"exec": func(ctx context.Context, _ []string) error { return interp.HandlerCtx(ctx).Exit(interp.ExitStatus(7)) }}))
++	if err != nil {
++		t.Fatal(err)
++	}
++	f, err := syntax.NewParser().Parse(strings.NewReader(`(exec); echo "subshell $?"; exec; echo unreachable`), "scope")
++	if err != nil {
++		t.Fatal(err)
++	}
++	err = r.Run(t.Context(), f)
++	r.Wait()
++	if code, ok := interp.IsExitStatus(err); !ok || code != 7 {
++		t.Fatalf("exit: %v", err)
++	}
++	if output.String() != "subshell 7\n" {
++		t.Fatalf("output %q", output.String())
++	}
++}
++
++// TestWaitNextJoinsCompletedTask uses a handler event to establish completion.
++func TestWaitNextJoinsCompletedTask(t *testing.T) {
++	ready := make(chan struct{})
++	var output bytes.Buffer
++	r, err := interp.New(interp.StdIO(nil, &output, nil), interp.ExecHandler(func(ctx context.Context, args []string) error {
++		if args[0] == "finish" {
++			close(ready)
++			return interp.ExitStatus(7)
++		}
++		<-ready
++		return nil
++	}))
++	if err != nil {
++		t.Fatal(err)
++	}
++	f, err := syntax.NewParser().Parse(strings.NewReader(`finish & observe; wait -n; echo $?; wait -n; echo $?`), "wait")
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err = r.Run(t.Context(), f); err != nil {
++		t.Fatal(err)
++	}
++	r.Wait()
++	if output.String() != "7\n127\n" {
++		t.Fatalf("output %q", output.String())
++	}
++}
++
++// TestBackgroundTerminationStatus proves task cancellation is a wait status,
++// rather than a fatal cancellation of the shell which waits for it.
++func TestBackgroundTerminationStatus(t *testing.T) {
++	var output bytes.Buffer
++	r, err := interp.New(interp.StdIO(nil, &output, nil), interp.Builtins(map[string]interp.ExecHandlerFunc{
++		"terminate": func(ctx context.Context, args []string) error {
++			return interp.HandlerCtx(ctx).TerminateBackground(args[1], 143)
++		},
++	}))
++	if err != nil {
++		t.Fatal(err)
++	}
++	f, err := syntax.NewParser().Parse(strings.NewReader(`while :; do :; done & terminate "$!"; wait "$!"; echo $?; echo parent`), "background")
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := r.Run(t.Context(), f); err != nil {
++		t.Fatal(err)
++	}
++	r.Wait()
++	if output.String() != "143\nparent\n" {
++		t.Fatalf("output %q", output.String())
++	}
++}
 --- /dev/null
 +++ b/interp/fifo_unix.go
-@@ -0,0 +1,161 @@
+@@ -0,0 +1,195 @@
 +// Copyright (c) 2026, the Demi contributors
 +// See LICENSE for licensing information
 +
@@ -139,6 +1226,36 @@
 +		unix.Close(fd)
 +		return nil, err
 +	}
++	return ownedContextFile(ctx, fd)
++}
++
++// BorrowFile gives a child IO adapter a cancellable duplicate of a shell file.
++// It never hands the original file to os/exec: File.Fd would disable polling on
++// that file, leaving a later shell read impossible to cancel. Close releases
++// only the duplicate, so a command that stops reading cannot close shell stdin.
++func BorrowFile(ctx context.Context, file *os.File) (io.ReadWriteCloser, error) {
++	raw, err := file.SyscallConn()
++	if err != nil {
++		return nil, err
++	}
++	fd := -1
++	var duplicateErr error
++	if err := raw.Control(func(original uintptr) {
++		fd, duplicateErr = unix.FcntlInt(original, unix.F_DUPFD_CLOEXEC, 0)
++	}); err != nil {
++		return nil, err
++	}
++	if duplicateErr != nil {
++		return nil, duplicateErr
++	}
++	if err := unix.SetNonblock(fd, true); err != nil {
++		unix.Close(fd)
++		return nil, err
++	}
++	return ownedContextFile(ctx, fd)
++}
++
++func ownedContextFile(ctx context.Context, fd int) (io.ReadWriteCloser, error) {
 +	wake, signal, err := os.Pipe()
 +	if err != nil {
 +		unix.Close(fd)
@@ -146,7 +1263,6 @@
 +	}
 +	f := &fifoFile{ctx: ctx, fd: fd, wake: wake, signal: signal, canceled: make(chan struct{})}
 +	f.stop = context.AfterFunc(ctx, func() {
-+		// Closing the write end wakes poll through POLLHUP without a blocking write.
 +		signal.Close()
 +		close(f.canceled)
 +	})
@@ -165,14 +1281,18 @@
 +	once     sync.Once
 +	mu       sync.Mutex
 +	closed   bool
++	active   sync.WaitGroup
 +}
 +
 +func (f *fifoFile) io(p []byte, writing bool) (int, error) {
 +	f.mu.Lock()
-+	defer f.mu.Unlock()
 +	if f.closed {
++		f.mu.Unlock()
 +		return 0, os.ErrClosed
 +	}
++	f.active.Add(1)
++	f.mu.Unlock()
++	defer f.active.Done()
 +	for {
 +		if err := f.ctx.Err(); err != nil {
 +			return 0, err
@@ -232,14 +1352,15 @@
 +}
 +func (f *fifoFile) Close() error {
 +	f.once.Do(func() {
++		f.mu.Lock()
++		f.closed = true
++		f.mu.Unlock()
 +		if f.stop() {
 +			f.signal.Close()
 +		} else {
 +			<-f.canceled
 +		}
-+		f.mu.Lock()
-+		defer f.mu.Unlock()
-+		f.closed = true
++		f.active.Wait()
 +		unix.Close(f.fd)
 +		f.wake.Close()
 +	})
@@ -247,15 +1368,21 @@
 +}
 --- a/interp/handler.go
 +++ b/interp/handler.go
-@@ -238,10 +238,12 @@
+@@ -237,11 +237,17 @@
+ 		Dir(hc.Dir),
  		Env(expand.ListEnviron(execEnv(hc.Env)...)),
  		StdIO(hc.Stdin, hc.Stdout, hc.Stderr),
- 		ExecHandler(DefaultExecHandler(killTimeout)),
+-		ExecHandler(DefaultExecHandler(killTimeout)),
++		ExecHandler(hc.runner.execHandler),
++		Builtins(hc.runner.customBuiltins),
 +		OpenHandler(hc.runner.openHandler),
  	)
  	if err != nil {
  		return err
  	}
++	if hc.runner.scopeState != nil {
++		r.scopeState = hc.runner.scopeState.Clone()
++	}
 +	r.tasks.parent = hc.runner.tasks
  	r.Params = args[1:]
  	return r.Run(ctx, file)
@@ -319,13 +1446,29 @@
  			r2.exit.exiting = false // subshells don't exit the parent shell
  			r.lastExpandExit = r2.exit
  			if r2.exit.fatalExit {
-@@ -114,45 +116,46 @@
- 				exit: new(exitStatus),
+@@ -109,50 +111,60 @@
+ 			stdout := r.origStdout
+ 			// TODO: note that `man bash` mentions that `wait` only waits for the last
+ 			// process substitution as long as it is $!; the logic here would mean we wait for all of them.
++			bgCtx, terminate := context.WithCancelCause(ctx)
++			cancel := func() { terminate(nil) }
+ 			bg := bgProc{
+-				done: make(chan struct{}),
+-				exit: new(exitStatus),
++				state:     r2.scopeState,
++				cancel:    cancel,
++				terminate: terminate,
++				done:      make(chan struct{}),
++				exit:      new(exitStatus),
  			}
  			r.bgProcs = append(r.bgProcs, bg)
 -			go func() {
 +			r.tasks.Go(func() {
++				defer cancel()
  				defer func() {
++					if status, ok := context.Cause(bgCtx).(ExitStatus); ok {
++						r2.exit = exitStatus{code: uint8(status)}
++					}
  					*bg.exit = r2.exit
  					close(bg.done)
  				}()
@@ -339,7 +1482,7 @@
 +				if ps.Op == syntax.CmdOut {
 +					flag = os.O_RDONLY
 +				}
-+				f, err := openFIFO(ctx, path, flag)
++				f, err := openFIFO(bgCtx, path, flag)
 +				if err != nil {
 +					r2.exit.fatal(err)
 +					return
@@ -382,7 +1525,8 @@
 -					// Should only happen if we forgot a case above.
  					panic(fmt.Sprintf("unexpected process substitution operator: %q", ps.Op))
  				}
- 				r2.stmts(ctx, ps.Stmts)
+-				r2.stmts(ctx, ps.Stmts)
++				r2.stmts(bgCtx, ps.Stmts)
 +				r2.tasks.Wait()
  				r2.exit.exiting = false // subshells don't exit the parent shell
 -			}()
@@ -390,14 +1534,42 @@
  			return path, nil
  		},
  	}
-@@ -321,12 +324,12 @@
- 			exit: new(exitStatus),
+@@ -292,6 +304,9 @@
+ }
+ 
+ func (r *Runner) stop(ctx context.Context) bool {
++	if r.scopeState != nil {
++		r.scopeState.Check()
++	}
+ 	// Some traps trigger on exit, so we do want those to run.
+ 	if !r.handlingTrap && (r.exit.returning || r.exit.exiting) {
+ 		return true
+@@ -316,17 +331,27 @@
+ 		st2 := *st
+ 		st2.Background = false
+ 		st2.Disown = false
++		bgCtx, terminate := context.WithCancelCause(ctx)
++		cancel := func() { terminate(nil) }
+ 		bg := bgProc{
+-			done: make(chan struct{}),
+-			exit: new(exitStatus),
++			state:     r2.scopeState,
++			cancel:    cancel,
++			terminate: terminate,
++			done:      make(chan struct{}),
++			exit:      new(exitStatus),
  		}
  		r.bgProcs = append(r.bgProcs, bg)
 -		go func() {
+-			r2.Run(ctx, &st2)
 +		r.tasks.Go(func() {
- 			r2.Run(ctx, &st2)
++			defer cancel()
++			r2.Run(bgCtx, &st2)
++			r2.Wait()
  			r2.exit.exiting = false // subshells don't exit the parent shell
++			if status, ok := context.Cause(bgCtx).(ExitStatus); ok {
++				r2.exit = exitStatus{code: uint8(status)}
++			}
  			*bg.exit = r2.exit
  			close(bg.done)
 -		}()
@@ -405,7 +1577,7 @@
  	} else {
  		r.stmtSync(ctx, st)
  	}
-@@ -335,6 +338,10 @@
+@@ -335,6 +360,10 @@
  
  func (r *Runner) stmtSync(ctx context.Context, st *syntax.Stmt) {
  	oldIn, oldOut, oldErr := r.stdin, r.stdout, r.stderr
@@ -416,7 +1588,7 @@
  	var closers []io.Closer
  	for _, rd := range st.Redirs {
  		cls, err := r.redir(ctx, rd)
-@@ -377,6 +384,7 @@
+@@ -377,6 +406,7 @@
  		r.keepRedirs = false
  	} else if len(st.Redirs) > 0 {
  		r.stdin, r.stdout, r.stderr = oldIn, oldOut, oldErr
@@ -424,7 +1596,7 @@
  		for _, cls := range closers {
  			cls.Close()
  		}
-@@ -515,6 +523,7 @@
+@@ -515,6 +545,7 @@
  			var wg sync.WaitGroup
  			wg.Go(func() {
  				r2.stmt(ctx, cm.X)
@@ -432,7 +1604,7 @@
  				r2.exit.exiting = false // subshells don't exit the parent shell
  				pw.Close()
  			})
-@@ -955,10 +964,10 @@
+@@ -955,10 +986,10 @@
  	// as pipe writes may block once the buffer gets full.
  	// We still construct and buffer the entire heredoc first,
  	// as doing it concurrently would lead to different semantics and be racy.
@@ -445,7 +1617,7 @@
  	return pr, nil
  }
  
-@@ -1043,6 +1052,7 @@
+@@ -1043,6 +1074,7 @@
  	}
  
  	orig := &r.stdout
@@ -453,13 +1625,13 @@
  	if rd.N != nil {
  		switch rd.N.Value {
  		case "0":
-@@ -1053,7 +1063,12 @@
+@@ -1053,7 +1085,12 @@
  		case "2":
  			orig = &r.stderr
  		default:
 -			return nil, fmt.Errorf("unsupported redirect fd: %v", rd.N.Value)
 +			switch rd.Op {
-+			case syntax.RdrOut, syntax.AppOut, syntax.RdrInOut:
++			case syntax.RdrOut, syntax.AppOut, syntax.RdrInOut, syntax.DplOut:
 +				extraFD = rd.N.Value
 +			default:
 +				return nil, fmt.Errorf("unsupported redirect fd: %v", rd.N.Value)
@@ -467,7 +1639,7 @@
  		}
  	}
  	arg := r.literal(rd.Word)
-@@ -1066,11 +1081,11 @@
+@@ -1066,13 +1103,27 @@
  		r.stdin = pr
  		// We write to the pipe in a new goroutine,
  		// as pipe writes may block once the buffer gets full.
@@ -480,8 +1652,24 @@
 +		})
  		return pr, nil
  	case syntax.DplOut:
++		if extraFD != "" {
++			if arg == "-" {
++				delete(r.extraFiles, extraFD)
++				return nil, nil
++			}
++			if file := r.extraFiles[arg]; file != nil {
++				if r.extraFiles == nil {
++					r.extraFiles = make(map[string]io.ReadWriteCloser)
++				}
++				r.extraFiles[extraFD] = file
++				return nil, nil
++			}
++			return nil, fmt.Errorf("unhandled %v arg: %q", rd.Op, arg)
++		}
  		switch arg {
-@@ -1081,10 +1096,14 @@
+ 		case "1":
+ 			*orig = r.stdout
+@@ -1081,10 +1132,14 @@
  		case "-":
  			*orig = io.Discard // closing the output writer
  		default:
@@ -498,7 +1686,7 @@
  		syntax.RdrAll, syntax.AppAll:
  		// done further below
  	case syntax.DplIn:
-@@ -1100,6 +1119,8 @@
+@@ -1100,22 +1155,34 @@
  	}
  	mode := os.O_RDONLY
  	switch rd.Op {
@@ -507,7 +1695,10 @@
  	case syntax.AppOut, syntax.AppAll:
  		mode = os.O_WRONLY | os.O_CREATE | os.O_APPEND
  	case syntax.RdrOut, syntax.RdrAll:
-@@ -1109,13 +1130,23 @@
+ 		mode = os.O_WRONLY | os.O_CREATE | os.O_TRUNC
+ 	}
+-	f, err := r.open(ctx, arg, mode, 0o644, false)
++	f, err := r.open(ctx, arg, mode, 0o666, false)
  	if err != nil {
  		return nil, err
  	}
@@ -533,7 +1724,7 @@
  	case syntax.RdrOut, syntax.AppOut:
  		*orig = f
  	case syntax.RdrAll, syntax.AppAll:
-@@ -1125,6 +1156,20 @@
+@@ -1125,6 +1192,20 @@
  		return nil, fmt.Errorf("unhandled redirect op: %v", rd.Op)
  	}
  	return f, nil
@@ -554,7 +1745,16 @@
  }
  
  func (r *Runner) loopStmtsBroken(ctx context.Context, stmts []*syntax.Stmt) bool {
-@@ -1202,7 +1247,9 @@
+@@ -1180,7 +1261,7 @@
+ 		r.exit.returning = false
+ 		return
+ 	}
+-	if IsBuiltin(name) {
++	if r.isBuiltin(name) {
+ 		r.exit = r.builtin(ctx, pos, name, args[1:])
+ 		return
+ 	}
+@@ -1202,7 +1283,9 @@
  	dir, name := filepath.Split(path)
  	dir = strings.TrimSuffix(dir, "/")
  	if dir == r.tempDir && strings.HasPrefix(name, fifoNamePrefix) {
@@ -565,6 +1765,107 @@
  	}
  
  	f, err := r.openHandler(r.handlerCtx(ctx, handlerKindOpen, todoPos), path, flags, mode)
+--- /dev/null
++++ b/interp/scope.go
+@@ -0,0 +1,98 @@
++// Copyright (c) 2026, the Demi contributors
++// See LICENSE for licensing information
++
++package interp
++
++import (
++	"context"
++	"fmt"
++	"io"
++	"maps"
++	"strconv"
++	"strings"
++)
++
++// ScopeState is host state that follows interpreter scopes. Clone must return
++// independently mutable state for a subshell. Check and Waiting observe progress
++// and interruptible reads; they must not block and may run concurrently on clones.
++type ScopeState interface {
++	Clone() ScopeState
++	Check()
++	Waiting(delta int)
++}
++
++// WithScopeState attaches host state without storing it in shell variables.
++func WithScopeState(state ScopeState) RunnerOption {
++	return func(r *Runner) error {
++		r.scopeState = state
++		return nil
++	}
++}
++
++// Builtins registers host builtins, replacing native builtins with matching names.
++// Functions may still shadow these names, as with native builtins. The map is
++// copied, then shared immutably by subshells. Handlers must cooperate with ctx.
++func Builtins(handlers map[string]ExecHandlerFunc) RunnerOption {
++	return func(r *Runner) error {
++		r.customBuiltins = maps.Clone(handlers)
++		return nil
++	}
++}
++
++func (r *Runner) isBuiltin(name string) bool {
++	return r.customBuiltins[name] != nil || IsBuiltin(name)
++}
++
++// Scope returns the state of the scope invoking the handler.
++func (hc HandlerContext) Scope() ScopeState { return hc.runner.scopeState }
++
++// Descriptors returns a copy of the shell's descriptors above standard error.
++// The interpreter retains ownership; a handler must not close them.
++func (hc HandlerContext) Descriptors() map[string]io.ReadWriteCloser {
++	return maps.Clone(hc.runner.extraFiles)
++}
++
++// NativeBuiltin invokes the original builtin, bypassing a host override.
++func (hc HandlerContext) NativeBuiltin(ctx context.Context, args []string) error {
++	exit := hc.runner.nativeBuiltin(ctx, hc.Pos, args[0], args[1:])
++	if exit != (exitStatus{}) {
++		return errBuiltinExitStatus(exit)
++	}
++	return nil
++}
++
++// Exit finishes the current shell with the result of a command. Subshell exit
++// does not exit its parent. A host exec builtin uses this after running its command.
++func (hc HandlerContext) Exit(err error) error {
++	var exit exitStatus
++	exit.fromHandlerError(err)
++	exit.exiting = true
++	return errBuiltinExitStatus(exit)
++}
++
++// RunScript runs an executable without a shebang as a script in a child scope.
++// It preserves the host's handlers, ownership and scope state.
++func (hc HandlerContext) RunScript(ctx context.Context, path string, args []string) error {
++	return runScriptENOEXEC(ctx, hc, 0, path, args)
++}
++
++// BackgroundScope returns host state and cancellation for a shell background ID.
++// The caller may inspect state concurrently only as its ScopeState permits.
++func (hc HandlerContext) BackgroundScope(id string) (ScopeState, context.CancelFunc, error) {
++	number, err := strconv.Atoi(strings.TrimPrefix(id, "g"))
++	if err != nil || !strings.HasPrefix(id, "g") || number < 1 || number > len(hc.runner.bgProcs) {
++		return nil, nil, fmt.Errorf("%s: no such job", id)
++	}
++	bg := hc.runner.bgProcs[number-1]
++	return bg.state, bg.cancel, nil
++}
++
++// TerminateBackground cancels one background task with the status reported by wait.
++func (hc HandlerContext) TerminateBackground(id string, status uint8) error {
++	number, err := strconv.Atoi(strings.TrimPrefix(id, "g"))
++	if err != nil || !strings.HasPrefix(id, "g") || number < 1 || number > len(hc.runner.bgProcs) {
++		return fmt.Errorf("%s: no such job", id)
++	}
++	hc.runner.bgProcs[number-1].terminate(ExitStatus(status))
++	return nil
++}
 --- a/interp/stdin_js.go
 +++ b/interp/stdin_js.go
 @@ -45,7 +45,7 @@

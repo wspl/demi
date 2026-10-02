@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -35,87 +37,89 @@ import (
 // IsBuiltin returns true if the given word is a POSIX Shell
 // or Bash builtin.
 func IsBuiltin(name string) bool {
-	switch name {
-	case
-		// POSIX Shell regular built-ins, that is, the utilities which the shell
-		// must provide as built-ins, from section 1.d obtained in September 2025 from:
-		// https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_09_01_01
-		"alias",
-		"bg",
-		"cd",
-		"command",
-		"false",
-		"fc",
-		"fg",
-		"getopts",
-		"hash",
-		"jobs",
-		"kill",
-		"newgrp",
-		"pwd",
-		"read",
-		"true",
-		"umask",
-		"unalias",
-		"wait",
+	return slices.Contains(builtinNames, name)
+}
 
-		// POSIX Shell special built-ins, obtained in September 2025 from:
-		// https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_14
-		"break",
-		":",
-		"continue",
-		".",
-		"eval",
-		"exec",
-		"exit",
-		"export",   // NOTE: our parser treats this as a keyword
-		"readonly", // NOTE: our parser treats this as a keyword
-		"return",
-		"set",
-		"shift",
-		"times",
-		"trap",
-		"unset",
+// BuiltinNames returns the native names recognized by IsBuiltin.
+func BuiltinNames() []string { return slices.Clone(builtinNames) }
 
-		// Bash built-ins which are not present in POSIX, obtained in September 2025 from:
-		// https://man.archlinux.org/man/bash.1.en#SHELL_BUILTIN_COMMANDS
-		"source",
-		"bind",
-		"builtin",
-		"caller",
-		"compgen",
-		"complete",
-		"compopt",
-		"declare", // NOTE: our parser treats this as a keyword
-		"typeset", // NOTE: our parser treats this as a keyword
-		"dirs",
-		"disown",
-		"enable",
-		"history",
-		"help",
-		"let", // NOTE: our parser treats this as a keyword
-		"local",
-		"logout",
-		"mapfile",
-		"readarray",
-		"popd",
-		"pushd",
-		"shopt",
-		"suspend",
-		"type",
-		"ulimit",
+var builtinNames = []string{
+	// POSIX Shell regular built-ins, that is, the utilities which the shell
+	// must provide as built-ins, from section 1.d obtained in September 2025 from:
+	// https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_09_01_01
+	"alias",
+	"bg",
+	"cd",
+	"command",
+	"false",
+	"fc",
+	"fg",
+	"getopts",
+	"hash",
+	"jobs",
+	"kill",
+	"newgrp",
+	"pwd",
+	"read",
+	"true",
+	"umask",
+	"unalias",
+	"wait",
 
-		// POSIX utilities which the shell need not provide as built-ins,
-		// so they are separate executables found via PATH, but which we
-		// implement as built-ins just like Bash does. Obtained in September
-		// 2025 from https://pubs.opengroup.org/onlinepubs/9699919799/utilities/contents.html
-		"echo",
-		"printf",
-		"test",
-		"[": // NOTE: an alias for "test", not documented separately
-		return true
-	}
-	return false
+	// POSIX Shell special built-ins, obtained in September 2025 from:
+	// https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_14
+	"break",
+	":",
+	"continue",
+	".",
+	"eval",
+	"exec",
+	"exit",
+	"export",   // NOTE: our parser treats this as a keyword
+	"readonly", // NOTE: our parser treats this as a keyword
+	"return",
+	"set",
+	"shift",
+	"times",
+	"trap",
+	"unset",
+
+	// Bash built-ins which are not present in POSIX, obtained in September 2025 from:
+	// https://man.archlinux.org/man/bash.1.en#SHELL_BUILTIN_COMMANDS
+	"source",
+	"bind",
+	"builtin",
+	"caller",
+	"compgen",
+	"complete",
+	"compopt",
+	"declare", // NOTE: our parser treats this as a keyword
+	"typeset", // NOTE: our parser treats this as a keyword
+	"dirs",
+	"disown",
+	"enable",
+	"history",
+	"help",
+	"let", // NOTE: our parser treats this as a keyword
+	"local",
+	"logout",
+	"mapfile",
+	"readarray",
+	"popd",
+	"pushd",
+	"shopt",
+	"suspend",
+	"type",
+	"ulimit",
+
+	// POSIX utilities which the shell need not provide as built-ins,
+	// so they are separate executables found via PATH, but which we
+	// implement as built-ins just like Bash does. Obtained in September
+	// 2025 from https://pubs.opengroup.org/onlinepubs/9699919799/utilities/contents.html
+	"echo",
+	"printf",
+	"test",
+	"[", // NOTE: an alias for "test", not documented separately
 }
 
 // TODO: atoi is duplicated in the expand package.
@@ -151,6 +155,14 @@ func (hc HandlerContext) Builtin(ctx context.Context, args []string) error {
 }
 
 func (r *Runner) builtin(ctx context.Context, pos syntax.Pos, name string, args []string) (exit exitStatus) {
+	if handler := r.customBuiltins[name]; handler != nil {
+		exit.fromHandlerError(handler(r.handlerCtx(ctx, handlerKindExec, pos), append([]string{name}, args...)))
+		return exit
+	}
+	return r.nativeBuiltin(ctx, pos, name, args)
+}
+
+func (r *Runner) nativeBuiltin(ctx context.Context, pos syntax.Pos, name string, args []string) (exit exitStatus) {
 	failf := func(code uint8, format string, args ...any) exitStatus {
 		r.errf(format, args...)
 		exit.code = code
@@ -336,38 +348,76 @@ func (r *Runner) builtin(ctx context.Context, pos syntax.Pos, name string, args 
 			return failf(2, "usage: cd [dir]\n")
 		}
 		exit.code = r.changeDir(ctx, "cd", path)
-	case "wait":
-		fp := flagParser{remaining: args}
-		for fp.more() {
-			switch flag := fp.flag(); flag {
-			case "-n", "-p":
-				return failf(2, "wait: unsupported option %q\n", flag)
+	case "jobs":
+		for index, bg := range r.bgProcs {
+			status := "Running"
+			select {
+			case <-bg.done:
+				status = "Done"
 			default:
-				return failf(2, "wait: invalid option %q\n", flag)
 			}
+			r.outf("[%d] %s g%d\n", index+1, status, index+1)
 		}
+	case "wait":
+		next := len(args) > 0 && args[0] == "-n"
+		if next {
+			args = args[1:]
+		}
+		var indices []int
 		if len(args) == 0 {
-			// Note that "wait" without arguments always returns exit status zero.
-			for _, bg := range r.bgProcs {
-				<-bg.done
+			for index, bg := range r.bgProcs {
+				if !next || !bg.waited {
+					indices = append(indices, index)
+				}
 			}
-			break
+		} else {
+			for _, arg := range args {
+				number, err := strconv.Atoi(strings.TrimPrefix(arg, "g"))
+				if err != nil || !strings.HasPrefix(arg, "g") || number < 1 || number > len(r.bgProcs) {
+					return failf(1, "wait: pid %s is not a child of this shell\n", arg)
+				}
+				if !next || !r.bgProcs[number-1].waited {
+					indices = append(indices, number-1)
+				}
+			}
 		}
-		for _, arg := range args {
-			arg, ok := strings.CutPrefix(arg, "g")
-			pid := atoi(arg)
-			if !ok || pid <= 0 || pid > int64(len(r.bgProcs)) {
-				return failf(1, "wait: pid %s is not a child of this shell\n", arg)
+		if next {
+			if len(indices) == 0 {
+				exit.code = 127
+				break
 			}
-			bg := r.bgProcs[pid-1]
-			<-bg.done
-			exit = *bg.exit
+			cases := []reflect.SelectCase{{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(ctx.Done())}}
+			for _, index := range indices {
+				cases = append(cases, reflect.SelectCase{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(r.bgProcs[index].done)})
+			}
+			chosen, _, _ := reflect.Select(cases)
+			if chosen == 0 {
+				exit.fatal(ctx.Err())
+				break
+			}
+			index := indices[chosen-1]
+			r.bgProcs[index].waited = true
+			exit = *r.bgProcs[index].exit
+		} else {
+			for _, index := range indices {
+				bg := &r.bgProcs[index]
+				select {
+				case <-ctx.Done():
+					exit.fatal(ctx.Err())
+					return exit
+				case <-bg.done:
+				}
+				bg.waited = true
+				if len(args) > 0 {
+					exit = *bg.exit
+				}
+			}
 		}
 	case "builtin":
 		if len(args) < 1 {
 			break
 		}
-		if !IsBuiltin(args[0]) {
+		if !r.isBuiltin(args[0]) {
 			exit.code = 1
 			return exit
 		}
@@ -430,7 +480,7 @@ func (r *Runner) builtin(ctx context.Context, pos syntax.Pos, name string, args 
 				}
 				continue
 			}
-			if IsBuiltin(arg) {
+			if r.isBuiltin(arg) {
 				if mode == "-t" {
 					r.out("builtin\n")
 				} else {
@@ -566,7 +616,7 @@ func (r *Runner) builtin(ctx context.Context, pos syntax.Pos, name string, args 
 			break
 		}
 		if !show {
-			if IsBuiltin(args[0]) {
+			if r.isBuiltin(args[0]) {
 				return r.builtin(ctx, pos, args[0], args[1:])
 			}
 			r.exec(ctx, pos, args)
@@ -576,7 +626,7 @@ func (r *Runner) builtin(ctx context.Context, pos syntax.Pos, name string, args 
 		last := uint8(0)
 		for _, arg := range args {
 			last = 0
-			if r.Funcs[arg] != nil || IsBuiltin(arg) {
+			if r.Funcs[arg] != nil || r.isBuiltin(arg) {
 				r.outf("%s\n", arg)
 			} else if path, err := LookPathDir(r.Dir, r.writeEnv, arg); err == nil {
 				r.outf("%s\n", path)
@@ -1063,6 +1113,10 @@ func (r *Runner) printOptLine(name string, enabled, supported bool) {
 }
 
 func (r *Runner) readLine(ctx context.Context, raw bool) ([]byte, error) {
+	if r.scopeState != nil {
+		r.scopeState.Waiting(1)
+		defer r.scopeState.Waiting(-1)
+	}
 	if r.stdin == nil {
 		return nil, errors.New("interp: can't read, there's no stdin")
 	}
@@ -1131,6 +1185,9 @@ func (r *Runner) changeDir(ctx context.Context, cmd, path string) uint8 {
 }
 
 func absPath(dir, path string) string {
+	if runtime.GOOS == "windows" && len(path) >= 3 && path[0] == '/' && path[2] == '/' && ((path[1] >= 'A' && path[1] <= 'Z') || (path[1] >= 'a' && path[1] <= 'z')) {
+		path = path[1:2] + ":" + path[2:]
+	}
 	if path == "" {
 		return ""
 	}

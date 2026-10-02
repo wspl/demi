@@ -3,7 +3,10 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/wspl/demi/tools/contractgen/testdata/presence"
@@ -81,6 +84,58 @@ func TestInstallSchemaBounds(t *testing.T) {
 		field := schema.Properties["install"].Properties[name]
 		if field.MinLength != 1 || field.MaxLength != maximum {
 			t.Errorf("%s bounds: %+v; want 1..%d", name, field, maximum)
+		}
+	}
+}
+
+// Schema-only bounds preserve schema bytes while the owner controls Go errors.
+// In-memory generated boundary calls; budget below one second.
+func TestSchemaOnlyRange(t *testing.T) {
+	plain := strings.Replace(string(schemacheck.PlainRangeJSONSchema()), "PlainRange", "SchemaRange", 1)
+	if got := string(schemacheck.SchemaRangeJSONSchema()); got != plain {
+		t.Fatalf("schema = %s; want %s", got, plain)
+	}
+	for _, raw := range []string{`{"value":0}`, `{"value":11}`} {
+		if _, err := schemacheck.DecodeSchemaRange([]byte(raw)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := schemacheck.DecodePlainRange([]byte(raw)); err == nil {
+			t.Fatal("plain range accepted out-of-range input")
+		}
+	}
+	for _, tc := range []struct{ raw, want string }{
+		{`{"number":0,"stdin":"x"}`, "number: reserved value"},
+		{`{"number":11,"stdin":"x"}`, "number: reserved value"},
+		{`{"number":4,"stdin":"x"}`, "number: reserved value"},
+		{`{"number":5,"stdin":""}`, "stdin: must not be empty; use shell_status to poll"},
+		{`{"number":5,"stdin":"x"}`, ""},
+	} {
+		_, err := schemacheck.DecodeCheckedInput([]byte(tc.raw))
+		if tc.want == "" {
+			if err != nil {
+				t.Fatal(err)
+			}
+		} else if err == nil || err.Error() != tc.want {
+			t.Fatalf("%s: got %v; want %s", tc.raw, err, tc.want)
+		}
+	}
+}
+
+// Zod must retain the same bounds for schema-only and ordinary ranges.
+// One fixture package load, no JavaScript process; budget below one second.
+func TestSchemaOnlyRangeZod(t *testing.T) {
+	dest := t.TempDir()
+	if err := generate(t.Context(), []string{"./testdata/schemacheck"}, true, dest, false); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dest, "plugin-schemacheck", "plugin.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"plainRange", "schemaRange"} {
+		want := "export const " + name + "Schema = z.object({\"value\": z.number().min(1).max(10)})"
+		if !strings.Contains(string(data), want) {
+			t.Fatalf("missing %s in %s", want, data)
 		}
 	}
 }

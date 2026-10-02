@@ -237,11 +237,15 @@ func runScriptENOEXEC(ctx context.Context, hc HandlerContext, killTimeout time.D
 		Dir(hc.Dir),
 		Env(expand.ListEnviron(execEnv(hc.Env)...)),
 		StdIO(hc.Stdin, hc.Stdout, hc.Stderr),
-		ExecHandler(DefaultExecHandler(killTimeout)),
+		ExecHandler(hc.runner.execHandler),
+		Builtins(hc.runner.customBuiltins),
 		OpenHandler(hc.runner.openHandler),
 	)
 	if err != nil {
 		return err
+	}
+	if hc.runner.scopeState != nil {
+		r.scopeState = hc.runner.scopeState.Clone()
 	}
 	r.tasks.parent = hc.runner.tasks
 	r.Params = args[1:]
