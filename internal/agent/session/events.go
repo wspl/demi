@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 
+	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/framewire"
 )
@@ -12,6 +13,15 @@ import (
 type TranscriptSnapshot struct {
 	Blocks  []core.Block
 	Version framewire.TranscriptVersion
+}
+
+// Snapshot is the client-visible state at one session decision. Its values
+// are detached or immutable, like the corresponding individual reads.
+type Snapshot struct {
+	Transcript    TranscriptSnapshot
+	Phase         core.SessionPhase
+	Queue         []core.QueuedMessage
+	PendingSteers []core.PendingSteer
 }
 
 // ActionEnd says how an action ended when it did not fail.
@@ -49,6 +59,14 @@ type TranscriptChanged struct {
 	Patches  []framewire.TranscriptPatch
 	Revision uint64
 }
+
+// EditCommitted publishes a new edit's durable receipt immediately after its
+// rewrite and before replacement progress. The server sends EditResult to the
+// initiating connections from this callback, not from an Acceptance.Wait wake.
+// A duplicate request returns its receipt without publishing another event.
+type EditCommitted struct{ Receipt store.EditReceipt }
+
+func (*EditCommitted) sessionEvent() {}
 
 // PhaseChanged reports the client-visible session phase.
 type PhaseChanged struct{ Phase core.SessionPhase }

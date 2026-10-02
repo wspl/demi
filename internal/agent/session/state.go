@@ -167,13 +167,15 @@ func (s *Session) deliver() {
 
 // eventLocked queues session listener delivery after the current state change.
 func (s *Session) eventLocked(event Event) {
+	// Fix membership at the decision, not at delivery: a later observer's
+	// snapshot already contains this change even if a callback is still pending.
+	limit := s.core.nextListener
 	s.core.effects = append(s.core.effects, func() {
 		// Visit subscription identities in registration order. Reentrant changes
 		// enqueue behind this event, and a released slot is skipped.
 		var next uint64
 		for {
 			s.mu.Lock()
-			limit := s.core.nextListener
 			if next >= limit {
 				s.mu.Unlock()
 				return

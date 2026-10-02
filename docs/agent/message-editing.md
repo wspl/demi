@@ -98,6 +98,14 @@ and comes before any frame of the replacement's turn. Both follow the commit:
 before it, the backend has sent a client nothing of the edit but the session's
 phase, and the replacement's inference has not started.
 
+The session publishes the operation and turn IDs as an acceptance event in
+the same ordered stream as the rewrite and replacement progress. The server
+answers the initiating connections from that event; waking an acceptance
+waiter alone does not order its reply before later events. Matching requests
+already in flight share that one acceptance; a retry of an already accepted
+operation returns its stored receipt without another rewrite or acceptance
+event.
+
 Each accepted operation leaves a receipt in the checkpoint: its operation ID,
 the replacement's turn ID, and a digest of the request. The digest is the
 SHA-256 of the request's RFC 8785 canonical JSON, so equal requests have equal

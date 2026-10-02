@@ -1344,8 +1344,12 @@ ended while no page watched shows as ended.
   seconds, two and a half heartbeats, takes the connection as broken, closes
   it and opens the conversation again
   ([Liveness and reconnection](../product/web-application.md#liveness-and-reconnection)).
-- The open handshake is one step: nothing can happen to the session between
-  `opened` and `pending_steers`, so the snapshot frames agree with each other.
+- The open handshake reads the transcript, phase, queue and pending steers
+  from one session snapshot and subscribes atomically to changes after it.
+  The server sends `opened` and the snapshot frames before those changes;
+  callbacks still pending for changes included in the snapshot are not
+  replayed. Root and child opens and transcript sync use this same boundary,
+  so the next transcript patch is exactly one revision after the reset.
 - Each `transcript_patch` carries the revision one past the previous frame's.
   The client applies a patch whose revision is one past its own, ignores one
   whose revision is not greater than its own, and sends `sync_transcript` when
