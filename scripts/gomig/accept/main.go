@@ -1,3 +1,5 @@
+//go:build darwin || linux
+
 // Command accept runs transitional Rust and web suites against replacement programs.
 //
 // Run from the repository root on macOS or Linux:
@@ -94,7 +96,8 @@ func run(ctx context.Context, args []string, output io.Writer) (err error) {
 		}
 		suiteErr := runSuite(ctx, *ref, directory, suite, flags.Args(), output)
 		if suiteErr != nil {
-			fmt.Fprintf(output, "%s: %v\n", suite, suiteErr)
+			// The error is also returned; a failed progress write changes nothing.
+			_, _ = fmt.Fprintf(output, "%s: %v\n", suite, suiteErr)
 			err = errors.Join(err, fmt.Errorf("%s: %w", suite, suiteErr))
 		}
 	}
@@ -255,11 +258,12 @@ func runSuite(ctx context.Context, ref, directory, suite string, args []string, 
 	command.Stderr = command.Stdout
 	command.WaitDelay = 10 * time.Second
 	prepareProcess(command)
-	fmt.Fprintf(output, "\n=== %s ===\n", suite)
+	// Progress lines are for the reader; the suite's result does not depend on them.
+	_, _ = fmt.Fprintf(output, "\n=== %s ===\n", suite)
 	runErr := command.Run()
 	cleanupErr := cleanupProcess(command)
 	summary, summaryErr := summarize(suite, captured.String())
-	fmt.Fprintln(output, summary)
+	_, _ = fmt.Fprintln(output, summary)
 	return errors.Join(runErr, cleanupErr, summaryErr)
 }
 
