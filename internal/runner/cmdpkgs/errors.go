@@ -1,8 +1,13 @@
-//revive:disable:unused-parameter API checkpoint retains parameter names for callers; bodies follow after merge.
-
 package cmdpkgs
 
-import "os"
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"strings"
+	"unicode"
+)
 
 // RuntimeError identifies why a service could not be acquired or why it ended.
 // Cause is available through errors.Is and errors.As.
@@ -37,10 +42,30 @@ const (
 )
 
 // Error describes the runtime failure.
-func (e *RuntimeError) Error() string { panic("not written: r-cmdpkgs") }
+func (e *RuntimeError) Error() string {
+	switch e.Kind {
+	case ArtifactFailure:
+		return fmt.Sprintf("native artifact: %v", e.Cause)
+	case LocationFailure:
+		return "native artifact location: " + e.Detail
+	case Cancelled:
+		return "native runtime was cancelled"
+	case CatalogMismatch:
+		return "native service does not match its package descriptor"
+	case Deadline:
+		return fmt.Sprintf("native service did not answer within its %s deadline", e.Detail)
+	case Stopped:
+		return "native service was shut down"
+	default:
+		if e.Cause != nil {
+			return e.Cause.Error()
+		}
+		return e.Detail
+	}
+}
 
 // Unwrap returns the underlying artifact, IO, protocol or exit error.
-func (e *RuntimeError) Unwrap() error { panic("not written: r-cmdpkgs") }
+func (e *RuntimeError) Unwrap() error { return e.Cause }
 
 // ServiceExit reports a service's end and the tail of its standard error.
 type ServiceExit struct {
@@ -50,7 +75,13 @@ type ServiceExit struct {
 }
 
 // Error describes the exit and includes nonempty standard error.
-func (e *ServiceExit) Error() string { panic("not written: r-cmdpkgs") }
+func (e *ServiceExit) Error() string {
+	text := fmt.Sprintf("native service %s %s", e.Service, e.Reason)
+	if tail := strings.TrimRightFunc(e.Stderr, unicode.IsSpace); tail != "" {
+		text += "; its standard error ended with:\n" + tail
+	}
+	return text
+}
 
 // ExitReason identifies natural exit, protocol failure or startup deadline.
 type ExitReason struct {
@@ -74,4 +105,34 @@ const (
 )
 
 // String describes how the service ended.
-func (r ExitReason) String() string { panic("not written: r-cmdpkgs") }
+func (r ExitReason) String() string {
+	switch r.Kind {
+	case ProcessExited:
+		return fmt.Sprintf("exited with %s", r.State)
+	case ProtocolBroken:
+		return fmt.Sprintf("broke the protocol (%s) and was stopped", r.Detail)
+	case StartupDeadline:
+		return fmt.Sprintf("did not answer within its %s deadline and was stopped", r.Detail)
+	default:
+		return r.Detail
+	}
+}
+
+// runtimeFailure retains causes while exposing the runtime's public error category.
+func runtimeFailure(err error) error {
+	if err == nil {
+		return nil
+	}
+	var failure *RuntimeError
+	if errors.As(err, &failure) {
+		return err
+	}
+	var exit *ServiceExit
+	if errors.As(err, &exit) {
+		return &RuntimeError{Kind: Exited, Cause: err}
+	}
+	if errors.Is(err, context.Canceled) {
+		return &RuntimeError{Kind: Cancelled, Cause: err}
+	}
+	return &RuntimeError{Kind: IOFailure, Cause: err}
+}

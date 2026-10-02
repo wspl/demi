@@ -1,8 +1,11 @@
-//revive:disable:unused-parameter API checkpoint retains parameter names for callers; bodies follow after merge.
-
 package cmdpkgs
 
-import "context"
+import (
+	"context"
+	"errors"
+	"io"
+	"sync"
+)
 
 // Decision is a registry retention decision, exposed for deterministic tests.
 type Decision uint8
@@ -29,13 +32,77 @@ type DecisionEvent struct {
 // Decisions observes future decisions in order until ctx or the registry ends.
 // This test observation stream has the Rust broadcast's 64-event capacity.
 func (r *ServiceRegistry) Decisions(ctx context.Context) *DecisionReceiver {
-	panic("not written: r-cmdpkgs")
+	d := &r.decisions
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return &DecisionReceiver{log: d, ctx: ctx, next: d.next}
 }
 
 // DecisionReceiver observes registry decisions without holding services alive.
-type DecisionReceiver struct{}
+type DecisionReceiver struct {
+	log  *decisionLog
+	ctx  context.Context
+	next uint64
+}
+type decisionLog struct {
+	mu      sync.Mutex
+	events  [64]DecisionEvent
+	next    uint64
+	closed  bool
+	changed chan struct{}
+}
+
+func (d *decisionLog) notify() {
+	if d.changed != nil {
+		close(d.changed)
+	}
+	d.changed = make(chan struct{})
+}
+func (d *decisionLog) add(digest string, decision Decision) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.events[d.next%64] = DecisionEvent{Digest: digest, Decision: decision}
+	d.next++
+	d.notify()
+}
+func (d *decisionLog) close() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.closed = true
+	d.notify()
+}
 
 // Next waits for a decision, reporting lag or closure as an error.
 func (r *DecisionReceiver) Next(ctx context.Context) (DecisionEvent, error) {
-	panic("not written: r-cmdpkgs")
+	d := r.log
+	for {
+		d.mu.Lock()
+		if d.next-r.next > 64 {
+			r.next = d.next - 64
+			d.mu.Unlock()
+			return DecisionEvent{}, errors.New("registry decision receiver lagged")
+		}
+		if r.next < d.next {
+			event := d.events[r.next%64]
+			r.next++
+			d.mu.Unlock()
+			return event, nil
+		}
+		if d.closed {
+			d.mu.Unlock()
+			return DecisionEvent{}, io.EOF
+		}
+		if d.changed == nil {
+			d.changed = make(chan struct{})
+		}
+		changed := d.changed
+		d.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return DecisionEvent{}, ctx.Err()
+		case <-r.ctx.Done():
+			return DecisionEvent{}, r.ctx.Err()
+		case <-changed:
+		}
+	}
 }
