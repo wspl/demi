@@ -20,8 +20,10 @@ import { addTab, emptyPanelState, removeTabs, selectInPanel, selectedTab, update
 import type { PanelTabKind } from '@demicodes/web-ui/agent/panel-kinds/kind'
 import { pageTabKind } from '@demicodes/web-ui/agent/panel-kinds/page'
 import { exposePageTab } from '@demicodes/web-ui/agent/panel-kinds/page-data'
-import { browserTabKind } from '@demicodes/web-ui/browser/kind'
-import { BrowserTabsController, browserTabDataSchema, type BrowserTabsApi } from '@demicodes/web-ui/browser/tabs'
+import { browserTabDataSchema, type BrowserTabsApi } from '@demicodes/web-ui/browser/tabs'
+import { pluginPanelKinds } from '@demicodes/web-ui/plugins/slots'
+import { browserPage } from '@demicodes/plugin-browser'
+import { browserPlugin, galleryPluginHost } from '../fixtures/plugins'
 import { callChangeSource, type CallEditSelection, type ChangeMode, type ChangeSources } from '@demicodes/web-ui/files/changes'
 import ChangeView from '@demicodes/web-ui/files/ChangeView.vue'
 import FileView from '@demicodes/web-ui/files/FileView.vue'
@@ -162,17 +164,23 @@ function useWorkTabs(
 ) {
   const views = ref(workPanelTabs(path))
   const panel = ref<PanelState>({ ...emptyPanelState(), selection })
-  const browser = new BrowserTabsController(tabs, {
-    bound: () => panel.value.tabs.flatMap((tab) => {
-      const parsed = tab.kind === 'browser' ? browserTabDataSchema.safeParse(tab.data) : null
-      return parsed?.success ? [parsed.data] : []
-    }),
-    add: (data) => {
-      panel.value = addTab(panel.value, { kind: 'browser', data }, { select: false }).state
+  // The plugins' kinds over the specimen's own conversation browser.
+  const plugins = pluginPanelKinds(
+    [browserPage({ pictures })],
+    galleryPluginHost({ browser: browserPlugin(tabs) }),
+    () => true,
+    {
+      conversation: 'gallery',
+      tabs: {
+        bound: (kind) => panel.value.tabs.filter((tab) => tab.kind === kind).map((tab) => tab.data),
+        add: (kind, data) => {
+          panel.value = addTab(panel.value, { kind, data }, { select: false }).state
+        },
+      },
     },
-  }, { pictures })
-  onBeforeUnmount(() => browser.dispose())
-  const kinds: PanelTabKind[] = [browserTabKind(browser), pageTabKind]
+  )
+  onBeforeUnmount(() => plugins.dispose())
+  const kinds: PanelTabKind[] = [...plugins.kinds, pageTabKind]
   function select(next: string) {
     panel.value = selectInPanel(panel.value, next)
   }
@@ -220,7 +228,7 @@ function useWorkTabs(
     views.value = workPanelTabs(path)
     panel.value = { ...emptyPanelState(), selection }
   }
-  return { views, panel, kinds, browser, select, add, update, closeTabs, open, showChange, selectEdit, back, forward, reset }
+  return { views, panel, kinds, tabs, refresh: plugins.refresh, select, add, update, closeTabs, open, showChange, selectEdit, back, forward, reset }
 }
 const workspace = createGalleryWorkspace()
 const fileViewTree = ref(true)
@@ -293,8 +301,7 @@ const sessionFiles: ConversationFiles = {
 const exhibitWork = useWorkTabs('file', { tabs: galleryBrowserTabs([]) })
 const editWork = useWorkTabs('change')
 // The gallery's own conversation browser stands behind every specimen's `browser`
-// kind; this one lists its tabs.
-void editWork.browser.refresh()
+// kind, which lists its tabs as it is made.
 provideEditSelection(editWork.selectEdit)
 const changeUncommitted = useChangeTab('uncommitted', 'src/auth/cookie.ts', { uncommitted: workspace.changes, conversation: null })
 const changePicked = useChangeTab('conversation', 'src/auth/cookie.ts', {
@@ -322,7 +329,6 @@ const changeStale = useChangeTab('uncommitted', 'src/auth/cookie.ts', {
 })
 // A page opened the way an expose row opens it, with the expose glyph, beside the conversation browser's own tabs.
 const browserWork = useWorkTabs('change', { path: '' })
-void browserWork.browser.refresh()
 browserWork.add(pageTabKind.kind, exposePageTab({
   url: `data:text/html,${encodeURIComponent('<body style="font:14px system-ui;padding:24px"><h1>Dev server</h1><p>A page shown in the tab\'s sandboxed frame.</p><a href="https://example.com" target="_blank">A link that opens a popup</a></body>')}`,
   address: '127.0.0.1:5173',
@@ -339,13 +345,12 @@ async function closeOnDevice() {
   if (tab === null) {
     return
   }
-  await browserWork.browser.api.close(tab)
-  await browserWork.browser.refresh()
+  await browserWork.tabs.close(tab)
+  browserWork.refresh()
 }
 // The same conversation browser, viewed in a web browser that cannot decode H.264, such as a Chromium without
 // proprietary codecs.
 const undecodedWork = useWorkTabs('change', { path: '', pictures: async () => false })
-void undecodedWork.browser.refresh()
 // The Session view is the product's ChatSession over a scripted runtime; Turns and Stream replay one flow each.
 const sessionFlow = useTurnFlow({
   id: 'gallery-session',
