@@ -14,7 +14,7 @@ function pick(path: string): void {
   const current = call.value
   const file = current?.files?.find((entry) => entry.path === path)
   if (current && file) {
-    select?.({ commandId: current.commandId, file })
+    select()?.({ commandId: current.commandId, file })
   }
 }
 </script>
@@ -25,6 +25,7 @@ function pick(path: string): void {
     class="py-1"
     :style="{ paddingLeft: `${ICON_PX.in28 + 8}px` }"
     :files="call.files"
+    :selectable="select() !== undefined"
     @select="pick"
   />
 </template>

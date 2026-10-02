@@ -6,6 +6,8 @@ import { useSession } from '../auth/session'
 import { identitySchema } from '../api/generated/web-api'
 import { readLocalState } from '../state/local'
 import { useResources } from '../state/resources'
+import { useProduct } from '../state/product'
+import { productState } from '../__tests__/product-state'
 import type { PanelState } from '@demicodes/web-ui/agent/panel-tabs'
 import { useWorkPanel } from './work'
 
@@ -68,18 +70,30 @@ test('panel open and closed choices survive reload with the panel share in the s
   expect(readLocalState('one').workPanelOpen?.a).toBe(false)
 })
 
-test('opening a retained edit persists the panel and account changes isolate choices', async () => {
+test('a retained edit opens in the Change view with the panel, only while the changes plugin is on', async () => {
   signIn('one')
+  const product = useProduct()
+  const changes = { id: 'changes', name: 'Changes', description: 'Shows changes.', enabled: false, packages: [] }
+  product.snapshot = productState({ plugins: [changes] })
   const work = useWorkPanel()
   const state = work.stateFor('a')
-  work.selectEdit('a', {
+  const edit = {
     commandId: 'call',
-    file: { path: 'index.ts', kind: 'modified', added: 1, removed: 1, edits: [{}] },
-  })
+    file: { path: 'index.ts', kind: 'modified' as const, added: 1, removed: 1, edits: [{}] },
+  }
+  // Off, nothing opens the edit: the transcript's pills are no controls.
+  expect(work.canOpen('edit')).toBe(false)
+  work.openIn('a', 'edit', edit)
+  expect(state.open).toBe(false)
+
+  product.snapshot = productState({ plugins: [{ ...changes, enabled: true }] })
+  expect(work.canOpen('edit')).toBe(true)
+  work.openIn('a', 'edit', edit)
   await nextTick()
   expect(readLocalState('one').workPanelOpen?.a).toBe(true)
-  // The edit takes the selection; nothing is saved over a panel that was never read.
+  // The edit takes the selection in the Change view's pinned tab; nothing is saved over a panel that was never read.
   expect(state.panel.selection).toBe('change')
+  expect(state.pinned.change).toMatchObject({ mode: 'conversation', call: { commandId: 'call' } })
   signIn('two')
   await nextTick()
   expect(state.open).toBe(false)

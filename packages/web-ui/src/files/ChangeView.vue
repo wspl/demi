@@ -42,6 +42,8 @@ const props = defineProps<{
   contents?: FileContents
   canBack?: boolean
   canForward?: boolean
+  /** Whether the page can open a file, so the view offers Open file and follows links to files. */
+  opens?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -217,7 +219,7 @@ onBeforeUnmount(() => {
           icon-only
           class="shrink-0"
         />
-        <Tooltip content="Open file" class="shrink-0">
+        <Tooltip v-if="opens !== false" content="Open file" class="shrink-0">
           <IconButton
             :icon="FileOutput"
             variant="ghost"
@@ -259,11 +261,11 @@ onBeforeUnmount(() => {
       v-bind="labels"
     >
       <template v-if="hasBefore" #before>
-        <MarkdownDocument v-if="kind === 'markdown'" :text="state.sides.original" :place="place" @open="emit('open', $event)" />
+        <MarkdownDocument v-if="kind === 'markdown'" :text="state.sides.original" :place="place" @open="opens !== false && emit('open', $event)" />
         <ImagePreview v-else :src="svgImageUrl(state.sides.original)" :name="baseName(committedPath)" />
       </template>
       <template v-if="hasAfter" #after>
-        <MarkdownDocument v-if="kind === 'markdown'" :text="state.sides.modified" :place="place" @open="emit('open', $event)" />
+        <MarkdownDocument v-if="kind === 'markdown'" :text="state.sides.modified" :place="place" @open="opens !== false && emit('open', $event)" />
         <ImagePreview v-else :src="svgImageUrl(state.sides.modified)" :name="baseName(absolutePath)" />
       </template>
     </PreviewPair>

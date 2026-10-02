@@ -373,7 +373,7 @@ function click(event: MouseEvent): void {
   }
   const current = files()
   const path = kind === 'file' && current ? messageHostPath(target, current.cwd) : null
-  if (current && path !== null) {
+  if (current?.open && path !== null) {
     current.open(path)
   }
 }

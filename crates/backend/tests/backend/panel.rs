@@ -23,8 +23,8 @@ async fn a_work_panel_is_saved_whole_read_back_as_saved_and_never_interpreted() 
     );
     let path = format!("/api/conversations/{id}/panel");
     let read = || async { backend.get(&path, Some(&master)).await.json::<Value>() };
-    // A conversation that never saved has the empty panel.
-    assert_eq!(read().await, json!({ "selection": "change", "tabs": [] }));
+    // A conversation that never saved has the empty panel, which selects nothing.
+    assert_eq!(read().await, json!({ "selection": null, "tabs": [] }));
 
     let panel = json!({
         "selection": "tab-1",
@@ -39,7 +39,7 @@ async fn a_work_panel_is_saved_whole_read_back_as_saved_and_never_interpreted() 
     );
     assert_eq!(read().await, panel);
     // The last save wins.
-    let emptied = json!({ "selection": "file", "tabs": [] });
+    let emptied = json!({ "selection": null, "tabs": [] });
     assert_eq!(
         backend.put(&path, &master, emptied.clone()).await.status,
         StatusCode::NO_CONTENT

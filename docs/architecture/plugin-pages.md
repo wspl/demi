@@ -98,38 +98,39 @@ the panel:
   the kind's initial data. Its id is the kind's id, which the saved selection
   may name. The Change view (`change`) and the File view (`file`) are the
   pinned kinds of `changes` and `file-browser`.
-- **`intents`.** The [intents](#intents) the kind opens, each a function from
-  the intent's payload and the current data of the kind's pinned tab, or none,
-  to the data the tab shows next.
 - **`picked`.** What a tab shows next when its user picks it in the strip,
   even while it is selected. The Change view returns to Uncommitted this way
   ([Delivery to the conversation](../execution/edit-tracking.md#delivery-to-the-conversation)).
 
 A plugin makes its kinds for one conversation when the panel opens beside it.
 The panel calls the kinds' `refresh()` after each of the conversation's tool
-calls finishes and when the page becomes visible again, since either may have
-changed what a kind shows, and `dispose()` when the panel closes, shows another
-conversation or the plugin turns off. A kind's id is unique across plugins;
-the registry refuses a duplicate.
+calls finishes, since a tool call may have changed what a kind shows, and
+`dispose()` when the panel closes, shows another conversation or the plugin
+turns off. A kind that must read again when the page is shown again, as the
+browser's tab list and the Change view's counts must, watches the page's
+visibility itself. A kind's id is unique across plugins; the registry refuses
+a duplicate.
 
 ## Intents
 
 An intent is a request to show something, named by what it shows rather than
-by who shows it. The SDK defines each intent and its payload schema:
+by who shows it. The SDK defines each intent and its payload:
 
 | Intent | Payload | Opened by the shell from |
 | --- | --- | --- |
 | `file` | `{ path }`, an absolute path on the conversation's Host | A file a message names ([Files named in messages](../product/file-previews.md#files-named-in-messages)), an attachment's capsule |
 | `edit` | One call's edit of one file, as the transcript's tool block names it | A tool call's file pill, a message edit's selection |
 
-To open an intent, the panel takes the first enabled kind that declares it. A
-pinned kind's tab takes the data the kind returns and is selected; another
-kind gets a new tab with that data, selected. The panel opens if it was
-closed. Whoever shows a control that opens an intent asks the panel first
-whether any kind opens it, and shows plain text otherwise. A plugin's
-components open intents through the same service as the shell, and open a
-tab of the plugin's own kinds with its data; a plugin cannot add a tab of
-another plugin's kind.
+A page declares the intents it opens, each with the pinned kind whose tab
+shows it, on its `PluginPage` rather than on the kind, since an intent can
+arrive while the panel is closed and no kind is made. To open an intent, the
+panel takes the first enabled page that declares it: that kind's pinned tab
+takes the data the page returns from the payload and the tab's current data,
+and is selected, and the panel opens if it was closed. Whoever shows a control
+that opens an intent asks the panel first whether any page opens it, and
+shows plain text otherwise. A plugin's components open intents through the
+same service as the shell, and open a tab of the plugin's own kinds with its
+data; a plugin cannot add a tab of another plugin's kind.
 
 ## Services
 
@@ -140,7 +141,7 @@ over the backend and the gallery over fixtures:
 | --- | --- |
 | Plugin client | The plugin's state, its page calls, its user streams and the installs of its packages ([Plugins](plugins.md#the-page)) |
 | Conversation files | For a conversation whose Host is known: the file tree, text and raw reads, the working tree's changes and a call's retained edits ([File previews](../product/file-previews.md), [Edit tracking](../execution/edit-tracking.md)) |
-| Intents | Opening an intent, and whether any kind opens it |
+| Intents | Opening an intent, and whether any page the user has on opens it |
 | Panel | Adding a tab of the plugin's own kinds |
 | Settings | Opening a settings section, such as Devices |
 | Errors and overlays | Reporting an error the user sees, and the overlay store dialogs open in |

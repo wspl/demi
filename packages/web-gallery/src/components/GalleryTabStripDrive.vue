@@ -2,10 +2,15 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
-import { workPanelTabs } from '@demicodes/web-ui/agent/work-panel'
-import { addTab, emptyPanelState, removeTabs, selectInPanel, type PanelState } from '@demicodes/web-ui/agent/panel-tabs'
+import { addTab, emptyPanelState, removeTabs, selectInPanel } from '@demicodes/web-ui/agent/panel-tabs'
+import { changesPage } from '@demicodes/plugin-changes'
+import { exposePage } from '@demicodes/plugin-expose'
+import { fileBrowserPage } from '@demicodes/plugin-file-browser'
 import { pageTabKind } from '@demicodes/plugin-expose/page/page'
 import { exposePageTab } from '@demicodes/plugin-expose/page/page-data'
+import { readGalleryEdit } from '../fixtures/blobs'
+import { useGalleryWork } from '../fixtures/work-panel'
+import { createGalleryWorkspace } from '../fixtures/workspace'
 
 /**
  * The work panel's tab strip in a frame of the given width, with every motion
@@ -21,9 +26,17 @@ const TITLES = [
   'Design review', 'Error dashboard', 'Release notes', 'Issue tracker',
 ]
 
-const views = workPanelTabs()
-const kinds = [pageTabKind]
-const panel = ref<PanelState>(emptyPanelState())
+const workspace = createGalleryWorkspace()
+// Change and File pinned before the pages, as the product's panel has them.
+const { panel, pinned, kinds } = useGalleryWork(null, {
+  files: {
+    workspace: { source: workspace.source, root: workspace.root },
+    root: workspace.root,
+    changes: workspace.changes,
+    readCallChange: readGalleryEdit,
+  },
+  pages: [changesPage, fileBrowserPage, exposePage],
+})
 let opened = 0
 
 function openPage(): void {
@@ -93,7 +106,10 @@ function closeAt(index: number): void {
 }
 
 function closeActive(): void {
-  closeTabs([panel.value.selection])
+  const selection = panel.value.selection
+  if (selection !== null) {
+    closeTabs([selection])
+  }
 }
 
 function closeOthers(): void {
@@ -149,8 +165,8 @@ const count = computed(() => ids().length)
       :style="{ width: props.width }"
     >
       <WorkPanel
-        :views="views"
         :panel="panel"
+        :pinned="pinned"
         :kinds="kinds"
         @select="panel = selectInPanel(panel, $event)"
         @close-tabs="closeTabs"

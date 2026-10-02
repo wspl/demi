@@ -1,25 +1,8 @@
-<script lang="ts">
-import { ref } from 'vue'
-
-// Markdown and SVG: what each view shows them as holds across files,
-// conversations and panels for the page's lifetime (`file-previews.md`).
-const fileMode = ref<'preview' | 'source'>('preview')
-const changePresentation = ref<'diff' | 'preview'>('diff')
-</script>
-
 <script setup lang="ts">
-import { computed } from 'vue'
-import { File, FileDiff, PanelRightClose, Plus, X } from '@lucide/vue'
+import { computed, ref } from 'vue'
+import { PanelRightClose, Plus, X } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import Tooltip from '../ui/Tooltip.vue'
-import { ICON_PX } from '../ui/icon-metrics'
-import FileIcon from '../files/FileIcon.vue'
-import ChangeView from '../files/ChangeView.vue'
-import FileView from '../files/FileView.vue'
-import { TREE_WIDTH } from '../files/file-view'
-import { callChangeSource, emptyChangeSet, type ReadCallChange, type ChangeMode, type ChangeSetSource, type ChangeSources } from '../files/changes'
-import { joinPath, relativePath } from '../files/paths'
-import type { FileBrowserSource } from '../files/types'
 import TabItem from './TabItem.vue'
 import TabStrip from './TabStrip.vue'
 import Menu from '../ui/Menu.vue'
@@ -28,63 +11,51 @@ import Popover from '../ui/Popover.vue'
 import { useContextMenuOwner } from '../composables/useContextMenuOwner'
 import { appOverlayStore } from '../overlay/appOverlay'
 import { tabsToClose, type TabCloseScope } from './tab-close'
-import { changeTabPath, workTabTitle, type ChangeWorkTab, type WorkTab } from './work-panel'
-import type { PanelState } from './panel-tabs'
+import { pinnedData, shownSelection, type PanelState, type PinnedTabs } from './panel-tabs'
 import { resolvePanelTab, type PanelTabKind } from './panel-kinds/kind'
 
 /**
- * The fixed Change and File views beside a strip of the user's tabs
- * (`web-application.md` § Work panel). The panel shows a tab through its
- * kind's registration and knows nothing else about it.
+ * The work panel's frame (`web-application.md` § Work panel): the pinned
+ * tab of each pinned kind, the strip of the user's tabs, and what the
+ * selected one shows. Every tab is of a kind a plugin registers; the panel
+ * shows it through its kind and knows nothing else about it.
  */
 const props = defineProps<{
-  /** The fixed views' own state. They are not tabs; they only compete for the selection. */
-  views: readonly WorkTab[]
   /** The selection and the user's tabs. */
   panel: PanelState
+  /** The pinned tabs' data, by kind. */
+  pinned: PinnedTabs
   kinds: readonly PanelTabKind[]
-  readCallChange?: ReadCallChange
-  historyRoot?: string
-  workspace?: { source: FileBrowserSource; root: string; name?: string; changes?: ChangeSetSource }
 }>()
 const emit = defineEmits<{
   select: [selection: string]
   addTab: [kind: string, data: unknown]
   updateTab: [id: string, data: unknown]
+  updatePinned: [kind: string, data: unknown]
   closeTabs: [ids: string[]]
-  showChange: [id: string, mode: ChangeMode, path: string | null, selection?: { call: ChangeWorkTab['call']; edit: number }]
-  open: [path: string]
-  back: [id: string]
-  forward: [id: string]
   close: []
 }>()
 
-// File and Change share their tree's visibility and width, so both hold across files and views.
-const treeOpen = ref(true)
-const treeWidth = ref<number>(TREE_WIDTH.default)
-const active = computed(() => props.views.find((view) => view.id === props.panel.selection) ?? null)
-const changes = computed<ChangeSources>(() => {
-  const call = active.value?.kind === 'change' ? active.value.call : null
-  return {
-    uncommitted: props.workspace?.changes ?? emptyChangeSet,
-    conversation: call && props.readCallChange ? callChangeSource(call, props.readCallChange) : null,
-  }
-})
-const totals = computed(() => changes.value.uncommitted.files.reduce(
-  (sum, file) => ({ added: sum.added + file.added, removed: sum.removed + file.removed }),
-  { added: 0, removed: 0 },
-))
+/** Each pinned kind with the data its tab shows. */
+const pinnedTabs = computed(() =>
+  props.kinds
+    .filter((kind) => kind.pinned)
+    .map((kind) => ({ kind, data: pinnedData(props.pinned, kind) })),
+)
+const selection = computed(() => shownSelection(props.panel, props.kinds))
 
-function select(tab: WorkTab): void {
-  if (tab.kind === 'change') {
-    emit('showChange', tab.id, 'uncommitted', tab.uncommitted)
+/** Picking a pinned tab may change what it shows, even while it is selected. */
+function pick(kind: PanelTabKind, data: unknown): void {
+  if (kind.picked) {
+    emit('updatePinned', kind.kind, kind.picked(data))
   }
-  emit('select', tab.id)
+  emit('select', kind.kind)
 }
 
 /** Each tab with its kind and checked data, in the user's order. */
 const tabs = computed(() => props.panel.tabs.map((tab) => resolvePanelTab(tab, props.kinds)))
-const shownTab = computed(() => tabs.value.find((item) => item.tab.id === props.panel.selection) ?? null)
+const shownPinned = computed(() => pinnedTabs.value.find((item) => item.kind.kind === selection.value) ?? null)
+const shownTab = computed(() => tabs.value.find((item) => item.tab.id === selection.value) ?? null)
 /** The kinds the strip's new-tab control offers. */
 const creatable = computed(() => props.kinds.filter((kind) => kind.create))
 const menuId = ref<string | null>(null)
@@ -103,43 +74,25 @@ function closeScope(scope: TabCloseScope): void {
   }
   menu.close()
 }
-
-/** Resolve the changed file within the selected change mode. */
-function changeSelection(tab: ChangeWorkTab): string | null {
-  return changeTabPath(tab, tab.mode, changes.value.uncommitted.files)
-}
-
-function absolutePath(path: string): string {
-  return path.startsWith('/') ? path : joinPath(props.workspace?.root ?? '/', path)
-}
-
-function openFromTree(path: string): void {
-  emit('open', relativePath(props.workspace?.root ?? '/', path))
-}
 </script>
 
 <template>
   <aside class="flex h-full min-w-0 flex-col overflow-hidden border-l border-line bg-surface text-fg">
     <div class="flex h-11 shrink-0 items-center gap-1 pl-2 pr-3">
-      <div class="flex shrink-0 items-center gap-1" role="group" aria-label="Work panel views">
+      <div v-if="pinnedTabs.length" class="flex shrink-0 items-center gap-1" role="group" aria-label="Pinned tabs">
         <button
-          v-for="tab in views"
-          :key="tab.id"
+          v-for="item in pinnedTabs"
+          :key="item.kind.kind"
           type="button"
-          :aria-pressed="tab.id === panel.selection"
-          :title="tab.kind === 'file' ? tab.path || 'File' : 'Change'"
+          :aria-pressed="item.kind.kind === selection"
+          :title="item.kind.title(item.data)"
           class="flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 text-chrome hover:bg-surface-base hover:text-fg"
-          :class="tab.id === panel.selection ? 'bg-surface-base text-fg-emphasis' : 'text-fg-subtle'"
-          @click="select(tab)"
+          :class="item.kind.kind === selection ? 'bg-surface-base text-fg-emphasis' : 'text-fg-subtle'"
+          @click="pick(item.kind, item.data)"
         >
-          <FileIcon v-if="tab.kind === 'file' && tab.path" :name="tab.path" :is-directory="false" :size="ICON_PX.markIn28" />
-          <File v-else-if="tab.kind === 'file'" :size="ICON_PX.markIn28" />
-          <FileDiff v-else :size="ICON_PX.markIn28" />
-          <span>{{ tab.kind === 'file' ? tab.path ? `File: ${workTabTitle(tab)}` : 'File' : 'Change' }}</span>
-          <span v-if="tab.kind === 'change'" class="flex items-center gap-0.5 text-[11px] tabular-nums">
-            <span class="text-on-success">+{{ totals.added }}</span>
-            <span class="text-on-danger">−{{ totals.removed }}</span>
-          </span>
+          <component :is="item.kind.mark" :data="item.data" />
+          <span>{{ item.kind.title(item.data) }}</span>
+          <component :is="item.kind.badge" v-if="item.kind.badge" :data="item.data" />
         </button>
       </div>
       <TabStrip class="min-w-0 flex-1" surface="raised">
@@ -147,7 +100,7 @@ function openFromTree(path: string): void {
           v-for="item in tabs"
           :key="item.tab.id"
           :title="item.title"
-          :is-active="item.tab.id === panel.selection"
+          :is-active="item.tab.id === selection"
           tabindex="0"
           @pointerdown="emit('select', item.tab.id)"
           @keydown.enter="emit('select', item.tab.id)"
@@ -180,72 +133,40 @@ function openFromTree(path: string): void {
       </Tooltip>
     </div>
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <slot :tab="active">
-        <component
-          :is="shownTab.kind.content"
-          v-if="shownTab?.kind"
-          :key="shownTab.tab.id"
-          :tab-id="shownTab.tab.id"
-          :data="shownTab.data"
-          shown
-          @update="emit('updateTab', shownTab.tab.id, $event)"
-          @close="emit('closeTabs', [shownTab.tab.id])"
-        />
-        <div
-          v-else-if="shownTab"
-          class="flex flex-1 select-none flex-col items-center justify-center gap-1 px-6 text-center text-[13px] text-fg-faint"
-        >
-          <span>This tab cannot be shown.</span>
-          <span class="font-mono text-[11px]">{{ shownTab.tab.kind }}</span>
-        </div>
-        <!-- File navigation reuses the view and its unfolded tree. -->
-        <FileView
-          v-else-if="active?.kind === 'file' && workspace"
-          v-model:tree="treeOpen"
-          v-model:tree-width="treeWidth"
-          v-model:mode="fileMode"
-          :source="workspace.source"
-          :root="workspace.root"
-          :root-name="workspace.name"
-          :path="active.path ? absolutePath(active.path) : null"
-          :can-back="active.back.length > 0"
-          :can-forward="active.forward.length > 0"
-          @open="openFromTree"
-          @back="emit('back', active.id)"
-          @forward="emit('forward', active.id)"
-        />
-        <ChangeView
-          v-else-if="active?.kind === 'change'"
-          v-model:tree="treeOpen"
-          v-model:tree-width="treeWidth"
-          v-model:presentation="changePresentation"
-          :mode="active.mode"
-          :selected="changeSelection(active)"
-          :changes="changes"
-          :edit="active.edit"
-          :root="workspace?.root ?? historyRoot ?? '/'"
-          :root-name="workspace?.name"
-          :contents="workspace?.source.contents"
-          :can-back="active.back.length > 0"
-          :can-forward="active.forward.length > 0"
-          @update:mode="emit('showChange', active.id, $event, changeTabPath(active, $event))"
-          @update:edit="emit('showChange', active.id, active.mode, changeSelection(active), { call: active.call, edit: $event })"
-          @update:selected="emit('showChange', active.id, active.mode, $event)"
-          @back="emit('back', active.id)"
-          @forward="emit('forward', active.id)"
-          @open="emit('open', $event)"
-        />
-        <div
-          v-else
-          class="flex flex-1 select-none flex-col items-center justify-center gap-1 text-[13px] text-fg-faint"
-        >
-          <template v-if="active?.kind === 'file'">
-            <span>File</span>
-            <span class="max-w-full truncate px-4 font-mono text-[11px]">{{ active.path }}</span>
-          </template>
-          <span v-else-if="active">Change</span>
-          <span v-else>No files open</span>
-        </div>
+      <!-- A host that shows only the strip, as a specimen of it does, fills the body itself. -->
+      <slot>
+      <component
+        :is="shownPinned.kind.content"
+        v-if="shownPinned"
+        :key="shownPinned.kind.kind"
+        :tab-id="shownPinned.kind.kind"
+        :data="shownPinned.data"
+        shown
+        @update="emit('updatePinned', shownPinned.kind.kind, $event)"
+      />
+      <component
+        :is="shownTab.kind.content"
+        v-else-if="shownTab?.kind"
+        :key="shownTab.tab.id"
+        :tab-id="shownTab.tab.id"
+        :data="shownTab.data"
+        shown
+        @update="emit('updateTab', shownTab.tab.id, $event)"
+        @close="emit('closeTabs', [shownTab.tab.id])"
+      />
+      <div
+        v-else-if="shownTab"
+        class="flex flex-1 select-none flex-col items-center justify-center gap-1 px-6 text-center text-[13px] text-fg-faint"
+      >
+        <span>This tab cannot be shown.</span>
+        <span class="font-mono text-[11px]">{{ shownTab.tab.kind }}</span>
+      </div>
+      <div
+        v-else
+        class="flex flex-1 select-none flex-col items-center justify-center gap-1 text-[13px] text-fg-faint"
+      >
+        <span>Nothing open</span>
+      </div>
       </slot>
     </div>
     <Popover

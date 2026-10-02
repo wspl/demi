@@ -10,6 +10,6 @@
       "@demicodes/*": ["../*/src/index.ts"]
     }
   },
-  "include": ["src"],
+  "include": ["src", "../web-ui/src/env.d.ts"],
   "exclude": ["node_modules", "dist"]
 }

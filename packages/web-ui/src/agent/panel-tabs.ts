@@ -1,4 +1,8 @@
 import { closeTabs } from './tab-close'
+import type { PanelTabKind } from './panel-kinds/kind'
+import type { PluginPage } from '../plugins/slots'
+import { intentTarget } from '../plugins/slots'
+import type { IntentName, IntentPayloads } from '../plugins/intents'
 
 /**
  * A tab of the work panel: a fact, `{ id, kind, data }`. What its content is
@@ -11,30 +15,71 @@ export interface PanelTab {
   data: unknown
 }
 
-/** The fixed views compete with the tabs for the selection; they are not tabs. */
-export const FIXED_VIEWS = ['change', 'file'] as const
-export type FixedView = (typeof FIXED_VIEWS)[number]
-
 /**
  * The work panel's state (`web-application.md` § Work panel): a selection
  * and the user's tabs, in their order. The host saves it as the backend's
  * work panel document (`web-api.md` § Work panel state).
  */
 export interface PanelState {
-  /** A fixed view or a tab's id. */
-  selection: string
+  /** A tab's id or a pinned kind's id; null names nothing. */
+  selection: string | null
   tabs: PanelTab[]
 }
 
 export function emptyPanelState(): PanelState {
-  return { selection: 'change', tabs: [] }
+  return { selection: null, tabs: [] }
 }
 
-export function isFixedView(selection: string): selection is FixedView {
-  return FIXED_VIEWS.some((view) => view === selection)
+/**
+ * The pinned tabs' data, by kind, as the page keeps it in memory
+ * (`web-application.md` § Work panel): a kind that has none yet shows its
+ * first data.
+ */
+export type PinnedTabs = Readonly<Record<string, unknown>>
+
+/** The data the pinned tab of `kind` shows. */
+export function pinnedData(pinned: PinnedTabs, kind: PanelTabKind): unknown {
+  return Object.hasOwn(pinned, kind.kind) ? pinned[kind.kind] : kind.pinned?.data()
 }
 
-/** The selected tab, or null while a fixed view or a tab that is gone is selected. */
+/**
+ * What the panel shows: the selection when it names a pinned kind or a tab
+ * the page shows, else its first pinned tab, else its first tab, else
+ * nothing.
+ */
+export function shownSelection(state: PanelState, kinds: readonly PanelTabKind[]): string | null {
+  const pinned = kinds.filter((kind) => kind.pinned).map((kind) => kind.kind)
+  const names = state.selection
+  if (names !== null && (pinned.includes(names) || state.tabs.some((tab) => tab.id === names))) {
+    return names
+  }
+  return pinned[0] ?? state.tabs[0]?.id ?? null
+}
+
+/**
+ * The panel after `intent` opened: the target's pinned tab takes the data the
+ * page's target gives it and the selection; null when no page the user has on
+ * opens the intent.
+ */
+export function openIntent<Name extends IntentName>(
+  panel: { state: PanelState; pinned: PinnedTabs },
+  pages: readonly PluginPage[],
+  enabled: (plugin: string) => boolean,
+  intent: Name,
+  payload: IntentPayloads[Name],
+): { state: PanelState; pinned: PinnedTabs } | null {
+  const target = intentTarget(pages, enabled, intent)
+  if (!target) {
+    return null
+  }
+  const current = Object.hasOwn(panel.pinned, target.kind) ? panel.pinned[target.kind] : null
+  return {
+    state: { ...panel.state, selection: target.kind },
+    pinned: { ...panel.pinned, [target.kind]: target.open(payload, current) },
+  }
+}
+
+/** The selected tab, or null while a pinned tab or a tab that is gone is selected. */
 export function selectedTab(state: PanelState): PanelTab | null {
   return state.tabs.find((tab) => tab.id === state.selection) ?? null
 }
@@ -65,13 +110,14 @@ export function updateTab(state: PanelState, id: string, data: unknown): PanelSt
 
 /**
  * The state after `ids` close. A closed selection passes to the nearest
- * remaining tab before it, then the first remaining tab, then Change.
+ * remaining tab before it, then the first remaining tab, then to nothing,
+ * which shows the first pinned tab; another selection stays.
  */
 export function removeTabs(state: PanelState, ids: readonly string[]): PanelState {
-  const selection = isFixedView(state.selection) ? null : state.selection
-  const next = closeTabs(state.tabs, selection, ids)
+  const closing = state.selection !== null && ids.includes(state.selection)
+  const next = closeTabs(state.tabs, closing ? state.selection : null, ids)
   return {
-    selection: selection === null ? state.selection : (next.activeId ?? 'change'),
+    selection: closing ? next.activeId : state.selection,
     tabs: next.tabs,
   }
 }
@@ -88,6 +134,6 @@ export function moveTab(state: PanelState, id: string, beforeId: string | null):
   return { ...state, tabs: [...others.slice(0, at), moving, ...others.slice(at)] }
 }
 
-export function selectInPanel(state: PanelState, selection: string): PanelState {
+export function selectInPanel(state: PanelState, selection: string | null): PanelState {
   return { ...state, selection }
 }

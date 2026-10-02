@@ -23,6 +23,16 @@ export interface PanelTabKind<Data = unknown> {
   content: Component
   /** The user closed a tab of this kind; the panel has already removed it. */
   removed?(data: Data): void
+  /**
+   * The kind has one tab in every conversation's panel, ahead of the user's
+   * tabs, which is never created, closed or saved; its data starts here and
+   * lives in the page's memory. Its id is the kind's id.
+   */
+  pinned?: { data(): Data }
+  /** What a tab shows next when its user picks it in the strip, even while it is selected. */
+  picked?(data: Data): Data
+  /** What the strip shows after a pinned tab's title, such as its counts. Props: `data`. */
+  badge?: Component
   /** The kind is offered on the strip's new-tab control; `data` is a new tab's. */
   create?: {
     label: string
