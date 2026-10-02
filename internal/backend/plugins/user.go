@@ -1,12 +1,16 @@
 package plugins
 
-//revive:disable:unused-parameter
-// API checkpoint: bodies follow after the API is merged.
-
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"slices"
+	"strings"
+	"sync"
 
+	"github.com/wspl/demi/internal/backend/database"
+	"github.com/wspl/demi/internal/backend/pagesync"
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/plugin"
@@ -15,28 +19,174 @@ import (
 
 // User owns one user's plugin instances and enabled set. Share it by pointer;
 // methods support concurrent calls. Its shard owns and closes it after stopping
-// callers. Command sets keep their instances until the shard closes the user.
-type User struct{}
+// callers. Command sets retain the user host, including while plugins are off.
+type User struct {
+	registry *Registry
+	id       webapi.UserID
+	shard    PluginShard
+	control  *database.ControlService
+	marks    pagesync.UserMarks
+	// admission serializes choice reads/commits and instance admission/drop across
+	// IO. Callers release it before invoking plugins; port operations never take it.
+	admission chan struct{}
+	enabled   []bool
+	instances []*instance
+	streams   []chan struct{}
+	closed    bool
+	// mu protects only conversation revisions; never held during external calls.
+	mu        sync.Mutex
+	revisions map[webapi.ConversationID][]uint64
+}
+
+type instance struct {
+	plugin plugin.Plugin
+	ctx    context.Context
+	cancel context.CancelFunc
+	calls  sync.WaitGroup
+}
 
 // NewUser creates one instance of every registered plugin for user. The shard
 // supplies storage, page marks and product services without exposing its state.
 func NewUser(registry *Registry, user webapi.UserID, shard PluginShard) *User {
-	panic("not written: b-plugins")
+	u := &User{registry: registry, id: user, shard: shard, control: shard.Control(), marks: shard.Marks(), admission: make(chan struct{}, 1), revisions: map[webapi.ConversationID][]uint64{}}
+	for _, p := range registry.plugins {
+		u.instances = append(u.instances, newInstance(p.factory))
+		u.streams = append(u.streams, make(chan struct{}))
+	}
+	return u
+}
+
+// newInstance gives the user's plugin instance an explicit cancellation owner.
+func newInstance(factory plugin.Factory) *instance {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &instance{plugin: factory.Instance(), ctx: ctx, cancel: cancel}
+}
+
+// enter serializes plugin choices and instance ownership without a mutex over IO.
+func (u *User) enter(ctx context.Context) error {
+	select {
+	case u.admission <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// leave releases the user's plugin admission permit.
+func (u *User) leave() { <-u.admission }
+
+// drop ends admitted calls before asking a plugin to join its retained work.
+func (i *instance) drop(_ context.Context) {
+	if i == nil {
+		return
+	}
+	i.cancel()
+	i.calls.Wait()
+	if closer, ok := i.plugin.(plugin.Closer); ok {
+		closer.Close()
+	}
 }
 
 // Close ends user streams and calls plugin.Closer on owned instances, joining
 // their work before returning. The owner supplies a usable cleanup context.
-func (u *User) Close(ctx context.Context) error { panic("not written: b-plugins") }
+func (u *User) Close(ctx context.Context) error {
+	if err := u.enter(ctx); err != nil {
+		return err
+	}
+	defer u.leave()
+	if u.closed {
+		return nil
+	}
+	u.closed = true
+	for i, instance := range u.instances {
+		close(u.streams[i])
+		if instance != nil {
+			instance.cancel()
+		}
+	}
+	for i, instance := range u.instances {
+		instance.drop(context.WithoutCancel(ctx))
+		u.instances[i] = nil
+	}
+	return nil
+}
+
+// choices reads the durable choices once while the admission permit is held.
+func (u *User) choices(ctx context.Context) error {
+	if u.closed {
+		return context.Canceled
+	}
+	if u.enabled != nil {
+		return nil
+	}
+	choices, err := u.control.UserPlugins(ctx, u.id)
+	if err != nil {
+		return err
+	}
+	u.enabled = make([]bool, len(u.registry.plugins))
+	for i, p := range u.registry.plugins {
+		enabled, found := choices[string(p.manifest.ID)]
+		u.enabled[i] = !found || enabled
+	}
+	return nil
+}
+
+// enabledSet takes a consistent snapshot of the user's plugin choices.
+func (u *User) enabledSet(ctx context.Context) ([]bool, error) {
+	if err := u.enter(ctx); err != nil {
+		return nil, err
+	}
+	defer u.leave()
+	if err := u.choices(ctx); err != nil {
+		return nil, err
+	}
+	return slices.Clone(u.enabled), nil
+}
 
 // Entries returns the registered plugins and their enabled choices for settings.
 func (u *User) Entries(ctx context.Context) ([]webapi.PluginEntry, error) {
-	panic("not written: b-plugins")
+	enabled, err := u.enabledSet(ctx)
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]webapi.PluginEntry, 0, len(enabled))
+	for i, p := range u.registry.plugins {
+		entries = append(entries, webapi.PluginEntry{ID: string(p.manifest.ID), Name: p.manifest.Name, Description: p.manifest.Description, Enabled: enabled[i], Packages: slices.Clone(p.packages)})
+	}
+	return entries, nil
 }
 
 // Switch changes the choice, marks the plugin list and state, and ends the
 // plugin's streams when disabled. It returns whether the choice changed.
 func (u *User) Switch(ctx context.Context, id string, enabled bool) (bool, error) {
-	panic("not written: b-plugins")
+	index, p := u.registry.lookup(id)
+	if p == nil {
+		return false, &SwitchError{Plugin: id}
+	}
+	if err := u.enter(ctx); err != nil {
+		return false, &SwitchError{Plugin: id, Err: err}
+	}
+	defer u.leave()
+	if err := u.choices(ctx); err != nil {
+		return false, &SwitchError{Plugin: id, Err: err}
+	}
+	if u.enabled[index] == enabled {
+		return false, nil
+	}
+	// Once the durable choice commits, publish and clean up even if its caller leaves.
+	if err := u.control.SetUserPlugin(context.WithoutCancel(ctx), u.id, id, enabled); err != nil {
+		return false, &SwitchError{Plugin: id, Err: err}
+	}
+	u.enabled[index] = enabled
+	if !enabled {
+		close(u.streams[index])
+		u.streams[index] = make(chan struct{})
+		u.instances[index].drop(context.WithoutCancel(ctx))
+		u.instances[index] = nil
+	}
+	u.marks.Mark(pagesync.Part{Kind: pagesync.Plugins})
+	u.marks.Mark(pagesync.Part{Kind: pagesync.Plugin, PluginID: id})
+	return true, nil
 }
 
 // Toolset contains the commands, profiles and revision a conversation tree takes.
@@ -51,11 +201,42 @@ type Toolset struct {
 
 // Toolset composes enabled commands with product groups under demi and profiles.
 func (u *User) Toolset(ctx context.Context, product []host.Declared) (Toolset, error) {
-	panic("not written: b-plugins")
+	enabled, err := u.enabledSet(ctx)
+	if err != nil {
+		return Toolset{}, err
+	}
+	commands, err := u.registry.compose(u, product, enabled)
+	if err != nil {
+		return Toolset{}, err
+	}
+	profiles := []core.Profile{}
+	for i, p := range u.registry.plugins {
+		if enabled[i] {
+			profiles = append(profiles, copyProfiles(p.manifest.Profiles)...)
+		}
+	}
+	return Toolset{Commands: commands, Profiles: profiles, Revision: u.revisionOf(enabled)}, nil
+}
+
+// revisionOf identifies the enabled command/profile contributions in order.
+func (u *User) revisionOf(enabled []bool) string {
+	ids := []string{}
+	for i, p := range u.registry.plugins {
+		if enabled[i] && (len(p.manifest.Commands) != 0 || len(p.manifest.Profiles) != 0) {
+			ids = append(ids, string(p.manifest.ID))
+		}
+	}
+	return strings.Join(ids, ",")
 }
 
 // Revision returns the current toolset revision.
-func (u *User) Revision(ctx context.Context) (string, error) { panic("not written: b-plugins") }
+func (u *User) Revision(ctx context.Context) (string, error) {
+	enabled, err := u.enabledSet(ctx)
+	if err != nil {
+		return "", err
+	}
+	return u.revisionOf(enabled), nil
+}
 
 // ContextAsk is what a node gives a context source before a provider request.
 type ContextAsk struct {
@@ -73,7 +254,21 @@ type ContextAsk struct {
 
 // Context asks a source for new context; nil means no new block, including when disabled.
 func (u *User) Context(ctx context.Context, id plugin.ID, asked ContextAsk) (*string, error) {
-	panic("not written: b-plugins")
+	index, p := u.registry.lookup(string(id))
+	if p == nil {
+		return nil, nil
+	}
+	reply, err := u.request(ctx, index, &plugin.RequestContext{User: u.id, Conversation: asked.Conversation, Node: asked.Node, CWD: asked.Cwd, Turn: asked.Turn, Seen: slices.Clone(asked.Seen)}, &asked.Conversation, nil)
+	if err != nil {
+		return nil, err
+	}
+	if reply == nil {
+		return nil, nil
+	}
+	if contextReply, ok := reply.(*plugin.ReplyContext); ok {
+		return contextReply.Text, nil
+	}
+	return nil, wrongReply("a context request", reply)
 }
 
 // Directories pairs a registered plugin with its current Host directory set.
@@ -87,41 +282,147 @@ type Directories struct {
 // Directories returns every plugin's Host directories in registration order.
 // Disabled plugins have empty sets so host access removes their installations.
 func (u *User) Directories(ctx context.Context) ([]Directories, error) {
-	panic("not written: b-plugins")
+	enabled, err := u.enabledSet(ctx)
+	if err != nil {
+		return nil, err
+	}
+	stored, err := u.control.PluginDirectories(ctx, u.id)
+	if err != nil {
+		return nil, err
+	}
+	directories := make([]Directories, 0, len(enabled))
+	for i, p := range u.registry.plugins {
+		set := []plugin.HostDirectory{}
+		if enabled[i] {
+			if value := stored[string(p.manifest.ID)]; value != nil {
+				set = value
+			}
+		}
+		directories = append(directories, Directories{Plugin: p.manifest.ID, Directories: set})
+	}
+	return directories, nil
 }
 
 // StreamEnd returns a channel closed when the stream's plugin is disabled or
 // the user closes. A nil channel means the stream does not exist or is disabled.
 func (u *User) StreamEnd(ctx context.Context, name string) (<-chan struct{}, error) {
-	panic("not written: b-plugins")
+	if err := u.enter(ctx); err != nil {
+		return nil, err
+	}
+	defer u.leave()
+	if err := u.choices(ctx); err != nil {
+		return nil, err
+	}
+	for i, p := range u.registry.plugins {
+		if u.enabled[i] {
+			for _, stream := range p.manifest.Streams {
+				if stream.Name == name {
+					return u.streams[i], nil
+				}
+			}
+		}
+	}
+	return nil, nil
 }
 
 // PageStates returns declared user states of enabled plugins keyed by id.
 // These values are passed to the product state's generated encoder.
 func (u *User) PageStates(ctx context.Context) (map[string]json.RawMessage, error) {
-	panic("not written: b-plugins")
+	states := map[string]json.RawMessage{}
+	for _, p := range u.registry.plugins {
+		state, err := u.PageState(ctx, string(p.manifest.ID))
+		if err != nil {
+			return nil, err
+		}
+		if state != nil {
+			states[string(p.manifest.ID)] = state
+		}
+	}
+	return states, nil
 }
 
 // PageState returns nil for an absent, disabled or undeclared user state.
 func (u *User) PageState(ctx context.Context, id string) (json.RawMessage, error) {
-	panic("not written: b-plugins")
+	index, p := u.registry.lookup(id)
+	if p == nil || p.manifest.Page == nil || p.manifest.Page.User == nil {
+		return nil, nil
+	}
+	return u.stateOf(ctx, index, nil)
 }
 
 // ConversationState reads the revision before the state so concurrent changes
 // advance beyond the returned revision.
 func (u *User) ConversationState(ctx context.Context, id string, conversation webapi.ConversationID) (webapi.PluginStateAnswer, error) {
-	panic("not written: b-plugins")
+	index, p := u.registry.lookup(id)
+	if p == nil || p.manifest.Page == nil || p.manifest.Page.Conversation == nil {
+		return webapi.PluginStateAnswer{}, &PageCallError{Kind: UnknownPlugin, Plugin: id}
+	}
+	revision := u.revision(index, conversation)
+	state, err := u.stateOf(ctx, index, &conversation)
+	if err != nil {
+		return webapi.PluginStateAnswer{}, &PageCallError{Kind: PluginFailed, Err: err}
+	}
+	if state == nil {
+		return webapi.PluginStateAnswer{}, &PageCallError{Kind: Disabled, Plugin: id}
+	}
+	return webapi.PluginStateAnswer{Revision: revision, State: state}, nil
+}
+
+// stateOf dispatches the page's state request in its declared scope.
+func (u *User) stateOf(ctx context.Context, index int, conversation *webapi.ConversationID) (json.RawMessage, error) {
+	reply, err := u.request(ctx, index, &plugin.RequestPageState{User: u.id, Conversation: conversation}, conversation, nil)
+	if err != nil || reply == nil {
+		return nil, err
+	}
+	if state, ok := reply.(*plugin.ReplyState); ok {
+		return state.State, nil
+	}
+	return nil, wrongReply("its page state", reply)
+}
+
+// revision reads one plugin's conversation revision under the revision mutex.
+func (u *User) revision(index int, conversation webapi.ConversationID) uint64 {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if revisions := u.revisions[conversation]; revisions != nil {
+		return revisions[index]
+	}
+	return 0
 }
 
 // Revisions returns every declared conversation state's revision, including
 // disabled plugins, for the conversation summary.
 func (u *User) Revisions(conversation webapi.ConversationID) []webapi.PluginRevision {
-	panic("not written: b-plugins")
+	revisions := []webapi.PluginRevision{}
+	for i, p := range u.registry.plugins {
+		if p.manifest.Page != nil && p.manifest.Page.Conversation != nil {
+			revisions = append(revisions, webapi.PluginRevision{Plugin: string(p.manifest.ID), Revision: u.revision(i, conversation)})
+		}
+	}
+	return revisions
 }
 
 // Fire marks each follower's state changed; conversation is nil for user topics.
 func (u *User) Fire(topic plugin.Topic, conversation *webapi.ConversationID) {
-	panic("not written: b-plugins")
+	for _, id := range u.registry.Followers(topic) {
+		index, _ := u.registry.lookup(string(id))
+		u.changed(index, conversation)
+	}
+}
+
+// changed publishes one plugin's state invalidation after releasing the mutex.
+func (u *User) changed(index int, conversation *webapi.ConversationID) {
+	part := pagesync.Part{Kind: pagesync.Plugin, PluginID: string(u.registry.plugins[index].manifest.ID)}
+	if conversation != nil {
+		u.mu.Lock()
+		if u.revisions[*conversation] == nil {
+			u.revisions[*conversation] = make([]uint64, len(u.registry.plugins))
+		}
+		u.revisions[*conversation][index]++
+		u.mu.Unlock()
+		part = pagesync.Part{Kind: pagesync.Conversation, ConversationID: *conversation}
+	}
+	u.marks.Mark(part)
 }
 
 // PageCall is a page's call of a plugin method, assembled by the route.
@@ -139,5 +440,82 @@ type PageCall struct {
 // PageCall validates parameters against the declared method schema and calls
 // the enabled instance. It returns a PageCallError on refusal or plugin failure.
 func (u *User) PageCall(ctx context.Context, call PageCall) (json.RawMessage, error) {
-	panic("not written: b-plugins")
+	index, p := u.registry.lookup(call.Plugin)
+	if p == nil {
+		return nil, &PageCallError{Kind: UnknownPlugin, Plugin: call.Plugin}
+	}
+	enabled, err := u.enabledSet(ctx)
+	if err != nil {
+		return nil, &PageCallError{Kind: PluginFailed, Err: err}
+	}
+	if !enabled[index] {
+		return nil, &PageCallError{Kind: Disabled, Plugin: call.Plugin}
+	}
+	scope := plugin.ScopeUser
+	if call.Conversation != nil {
+		scope = plugin.ScopeConversation
+	}
+	var method *plugin.Method
+	if p.manifest.Page != nil {
+		for i := range p.manifest.Page.Methods {
+			m := &p.manifest.Page.Methods[i]
+			if m.Name == call.Method && m.Scope == scope {
+				method = m
+				break
+			}
+		}
+	}
+	if method == nil {
+		return nil, &PageCallError{Kind: UnknownMethod, Plugin: call.Plugin, Method: call.Method}
+	}
+	if err := method.Params.Check(call.Params); err != nil {
+		return nil, &PageCallError{Kind: InvalidParams, Message: err.Error(), Err: err}
+	}
+	if trimmed := bytes.TrimSpace(call.Params); len(trimmed) == 0 || trimmed[0] != '{' {
+		return nil, &PageCallError{Kind: InvalidParams, Message: "the parameters are not an object"}
+	}
+	reply, err := u.request(ctx, index, &plugin.RequestPageCall{User: u.id, Method: call.Method, Params: slices.Clone(call.Params), Conversation: call.Conversation}, call.Conversation, nil)
+	if err != nil {
+		return nil, &PageCallError{Kind: PluginFailed, Err: err}
+	}
+	if reply == nil {
+		return nil, &PageCallError{Kind: Disabled, Plugin: call.Plugin}
+	}
+	if result, ok := reply.(*plugin.ReplyResult); ok {
+		return result.Result, nil
+	}
+	return nil, &PageCallError{Kind: PluginFailed, Err: wrongReply("a page call", reply)}
+}
+
+// request admits calls atomically with a switch, then releases admission before
+// plugin code runs. RPC commands of old trees remain callable while disabled.
+func (u *User) request(ctx context.Context, index int, request plugin.Request, conversation *webapi.ConversationID, rpc *host.RPCPort) (plugin.Reply, error) {
+	if err := u.enter(ctx); err != nil {
+		return nil, err
+	}
+	if err := u.choices(ctx); err != nil {
+		u.leave()
+		return nil, err
+	}
+	if rpc == nil && !u.enabled[index] {
+		u.leave()
+		return nil, nil
+	}
+	if u.instances[index] == nil {
+		u.instances[index] = newInstance(u.registry.plugins[index].factory)
+	}
+	instance := u.instances[index]
+	instance.calls.Add(1)
+	u.leave()
+	defer instance.calls.Done()
+	callCtx, cancel := context.WithCancel(ctx)
+	stop := context.AfterFunc(instance.ctx, cancel)
+	defer stop()
+	defer cancel()
+	return instance.plugin.Call(callCtx, request, plugin.NewPort(requestPort{user: u, index: index, conversation: conversation, rpc: rpc, lifetime: instance.ctx}))
+}
+
+// wrongReply reports a plugin reply that does not match its request.
+func wrongReply(request string, reply plugin.Reply) error {
+	return &plugin.ErrorFailed{Message: fmt.Sprintf("the plugin answered %s with %v", request, reply)}
 }

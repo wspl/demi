@@ -1,6 +1,10 @@
 package plugins
 
-import "github.com/wspl/demi/internal/plugin"
+import (
+	"fmt"
+
+	"github.com/wspl/demi/internal/plugin"
+)
 
 // RegistryErrorKind identifies a startup manifest refusal.
 type RegistryErrorKind uint8
@@ -42,10 +46,36 @@ type RegistryError struct {
 }
 
 // Error returns the Rust-compatible startup diagnostic.
-func (e *RegistryError) Error() string { panic("not written: b-plugins") }
+func (e *RegistryError) Error() string {
+	switch e.Kind {
+	case DuplicateID:
+		return fmt.Sprintf("two plugins have the id \"%s\"", e.Plugin)
+	case InvalidProfile:
+		return fmt.Sprintf("plugin \"%s\" declares the profile \"%s\", which %s", e.Plugin, e.Name, e.Reason)
+	case TakenCommand:
+		return fmt.Sprintf("plugin \"%s\" declares \"%s\", which is taken", e.Plugin, e.Name)
+	case TakenStream:
+		return fmt.Sprintf("plugin \"%s\" declares the user stream \"%s\", which is taken", e.Plugin, e.Name)
+	case TakenPagePackage:
+		return fmt.Sprintf("plugin \"%s\"'s page package \"%s\" is another plugin's", e.Plugin, e.Name)
+	case ForeignTopic:
+		scope := "User"
+		if e.Scope == plugin.ScopeConversation {
+			scope = "Conversation"
+		}
+		topic := "Exposes"
+		if e.Topic == plugin.TopicJobs {
+			topic = "Jobs"
+		}
+		return fmt.Sprintf("plugin \"%s\"'s %s state follows %s, a topic of another scope", e.Plugin, scope, topic)
+	case RefusedCommands:
+		return fmt.Sprintf("plugin \"%s\"'s commands are refused: %v", e.Plugin, e.Err)
+	}
+	return "unknown plugin registry error"
+}
 
 // Unwrap returns the command registration failure, when present.
-func (e *RegistryError) Unwrap() error { panic("not written: b-plugins") }
+func (e *RegistryError) Unwrap() error { return e.Err }
 
 // PageCallErrorKind identifies why a page call did not answer.
 type PageCallErrorKind uint8
@@ -78,10 +108,24 @@ type PageCallError struct {
 }
 
 // Error returns the Rust-compatible page diagnostic.
-func (e *PageCallError) Error() string { panic("not written: b-plugins") }
+func (e *PageCallError) Error() string {
+	switch e.Kind {
+	case UnknownPlugin:
+		return fmt.Sprintf("No plugin \"%s\"", e.Plugin)
+	case Disabled:
+		return fmt.Sprintf("The plugin \"%s\" is off", e.Plugin)
+	case UnknownMethod:
+		return fmt.Sprintf("The plugin \"%s\" has no method \"%s\" here", e.Plugin, e.Method)
+	case InvalidParams:
+		return e.Message
+	case PluginFailed:
+		return e.Err.Error()
+	}
+	return "unknown plugin page error"
+}
 
 // Unwrap returns the underlying plugin failure, when present.
-func (e *PageCallError) Unwrap() error { panic("not written: b-plugins") }
+func (e *PageCallError) Unwrap() error { return e.Err }
 
 // SwitchError means a plugin choice could not be changed. A nil Err means
 // Plugin is unknown; otherwise Err is the underlying storage failure.
@@ -93,7 +137,12 @@ type SwitchError struct {
 }
 
 // Error returns the Rust-compatible switch diagnostic.
-func (e *SwitchError) Error() string { panic("not written: b-plugins") }
+func (e *SwitchError) Error() string {
+	if e.Err != nil {
+		return e.Err.Error()
+	}
+	return fmt.Sprintf("No plugin \"%s\"", e.Plugin)
+}
 
 // Unwrap returns the underlying storage failure, when present.
-func (e *SwitchError) Unwrap() error { panic("not written: b-plugins") }
+func (e *SwitchError) Unwrap() error { return e.Err }
