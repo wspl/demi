@@ -4,8 +4,10 @@ package database
 import (
 	"encoding/json"
 	"fmt"
+	store "github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/contract"
 	core "github.com/wspl/demi/internal/core"
+	plugin "github.com/wspl/demi/internal/plugin"
 	webapi "github.com/wspl/demi/internal/webapi"
 )
 
@@ -719,5 +721,206 @@ func (v TargetSwitch) MarshalJSON() ([]byte, error) {
 	fields := []contract.Field{}
 	fields = append(fields, contract.Field{Name: "from", Value: v.From})
 	fields = append(fields, contract.Field{Name: "to", Value: v.To})
+	return contract.EncodeObject(fields)
+}
+func decodeBlobNames(data []byte) (blobNames, error) { return contract.Decode[blobNames](data) }
+func (v blobNames) Validate() error                  { return contractValidateBlobNames(v, 0) }
+func contractValidateBlobNames(v blobNames, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if v == nil {
+		return contract.At("", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v {
+		_ = i
+		_ = item
+		if err := item.Validate(); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "", i), err)
+		}
+		if err := contract.Text(string(item), 0, -1, ""); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "", i), err)
+		}
+	}
+	return nil
+}
+func (v *blobNames) UnmarshalJSON(data []byte) error {
+	value, err := func(b []byte) ([]core.BlobRef, error) { return contract.List(b, contract.Decode[core.BlobRef]) }(data)
+	if err != nil {
+		return err
+	}
+	next := blobNames(value)
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v blobNames) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	return contract.EncodeJSON([]core.BlobRef(v))
+}
+func decodeCommandValues(data []byte) (commandValues, error) {
+	return contract.Decode[commandValues](data)
+}
+func (v commandValues) Validate() error { return contractValidateCommandValues(v, 0) }
+func contractValidateCommandValues(v commandValues, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if v == nil {
+		return contract.At("", fmt.Errorf("required record is nil"))
+	}
+	for key, item := range v {
+		_ = item
+		if err := key.Validate(); err != nil {
+			return contract.At(fmt.Sprintf("%s[%q]", "", key), err)
+		}
+		if err := contract.Text(string(key), 0, -1, ""); err != nil {
+			return contract.At(fmt.Sprintf("%s[%q]", "", key), err)
+		}
+		if err := contract.CheckJSON(item); err != nil {
+			return contract.At(fmt.Sprintf("%s[%q]", "", key), err)
+		}
+	}
+	return nil
+}
+func (v *commandValues) UnmarshalJSON(data []byte) error {
+	value, err := func(b []byte) (map[store.CommandStorageKey]json.RawMessage, error) {
+		return contract.KeyedRecord[store.CommandStorageKey](b, contract.JSON, false)
+	}(data)
+	if err != nil {
+		return err
+	}
+	next := commandValues(value)
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v commandValues) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	return contract.EncodeJSON(map[store.CommandStorageKey]json.RawMessage(v))
+}
+func decodeDirectoryFiles(data []byte) (directoryFiles, error) {
+	return contract.Decode[directoryFiles](data)
+}
+func (v directoryFiles) Validate() error { return contractValidateDirectoryFiles(v, 0) }
+func contractValidateDirectoryFiles(v directoryFiles, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if v == nil {
+		return contract.At("", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v {
+		_ = i
+		_ = item
+		if err := item.Validate(); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "", i), err)
+		}
+	}
+	return nil
+}
+func (v *directoryFiles) UnmarshalJSON(data []byte) error {
+	value, err := func(b []byte) ([]plugin.DirectoryFile, error) {
+		return contract.List(b, contract.Decode[plugin.DirectoryFile])
+	}(data)
+	if err != nil {
+		return err
+	}
+	next := directoryFiles(value)
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v directoryFiles) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	return contract.EncodeJSON([]plugin.DirectoryFile(v))
+}
+func decodeDraftVersion(data []byte) (draftVersion, error) {
+	return contract.Decode[draftVersion](data)
+}
+func (v draftVersion) Validate() error { return contractValidateDraftVersion(v, 0) }
+func contractValidateDraftVersion(v draftVersion, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v.Text), 0, -1, ""); err != nil {
+		return contract.At("text", err)
+	}
+	if v.Files == nil {
+		return contract.At("files", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.Files {
+		_ = i
+		_ = item
+		if err := webapi.ValidateDraftFile(item); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "files", i), err)
+		}
+	}
+	return nil
+}
+func (v *draftVersion) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next draftVersion
+	for key := range obj {
+		switch key {
+		case "text", "files":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["text"]
+		if !ok {
+			return contract.At("text", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("text", err)
+			}
+			next.Text = value
+		}
+	}
+	{
+		raw, ok := obj["files"]
+		if !ok {
+			return contract.At("files", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]webapi.DraftFile, error) { return contract.List(b, webapi.DecodeDraftFile) }(raw)
+			if err != nil {
+				return contract.At("files", err)
+			}
+			next.Files = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v draftVersion) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "text", Value: v.Text})
+	fields = append(fields, contract.Field{Name: "files", Value: v.Files})
 	return contract.EncodeObject(fields)
 }

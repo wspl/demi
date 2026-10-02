@@ -41,6 +41,14 @@ if [[ -n "${catch_all}" ]]; then
   echo "catch-all files: ${catch_all}" >&2
   false
 fi
+step='no rust'
+# The Go tree holds no Rust: a fixture generator written in Rust lives outside
+# the repository and only its output is committed.
+rust=$(find cmd internal tools scripts third_party \( -name '*.rs' -o -name 'Cargo.toml' -o -name 'Cargo.lock' \) -not -path '*/node_modules/*')
+if [[ -n "${rust}" ]]; then
+  echo "rust in the Go tree: ${rust}" >&2
+  false
+fi
 step='vet'
 go vet "$@"
 step='golangci-lint'

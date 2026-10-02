@@ -1,37 +1,86 @@
 package database
 
-//revive:disable:unused-parameter
-// API checkpoint: parameters are consumed by the implementation checkpoint.
-
 import (
 	"context"
 	"database/sql"
+	"sync"
 )
 
-// CommitPoint is where a checkpoint transaction commits, immediately unless
-// a test holds commits. Production callers use the store's transaction owner.
-type CommitPoint struct{}
+// CommitPoint is the checkpoint's commit, optionally held by a test.
+type CommitPoint struct{ hold *CommitHold }
 
-// CommitPoint captures the checkpoint commit point for this database.
-func (d *ConversationDB) CommitPoint() CommitPoint { panic("not written: b-database") }
-
-// Commit commits tx after any test hold is released. Its caller owns rollback
-// on failure. The checkpoint owns its commit-guard check.
-func (p CommitPoint) Commit(ctx context.Context, tx *sql.Tx) error { panic("not written: b-database") }
-
-// CommitHold stops checkpoints after their rows are written and before commit.
-// The owner must release the hold on every path; databasetest registers cleanup.
-type CommitHold struct{}
-
-// HoldCommits holds checkpoints from now until the returned hold is released.
-// Tests should use databasetest.HoldCommits, which registers cleanup.
-func (s *ConversationStores) HoldCommits() *CommitHold { panic("not written: b-database") }
-
-// UntilWaiting waits until count checkpoint commits are held, or ctx is canceled.
-func (h *CommitHold) UntilWaiting(ctx context.Context, count int) error {
-	panic("not written: b-database")
+// CommitPoint captures the current test hold.
+func (d *ConversationDB) CommitPoint() CommitPoint {
+	d.stores.mu.Lock()
+	defer d.stores.mu.Unlock()
+	return CommitPoint{hold: d.stores.hold}
 }
 
-// Release lets waiting and subsequent checkpoint commits through.
-// Repeated calls are harmless.
-func (h *CommitHold) Release() { panic("not written: b-database") }
+// Commit waits for its captured hold and commits the transaction.
+func (p CommitPoint) Commit(ctx context.Context, tx *sql.Tx) error {
+	if p.hold != nil {
+		if err := p.hold.pass(ctx); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// CommitHold stops checkpoints immediately before commit; its owner releases it.
+type CommitHold struct {
+	mu       sync.Mutex
+	waiting  int
+	changed  chan struct{}
+	released chan struct{}
+	once     sync.Once
+}
+
+// HoldCommits holds new checkpoints; tests use databasetest for cleanup ownership.
+func (s *ConversationStores) HoldCommits() *CommitHold {
+	h := &CommitHold{changed: make(chan struct{}), released: make(chan struct{})}
+	s.mu.Lock()
+	s.hold = h
+	s.mu.Unlock()
+	return h
+}
+
+// UntilWaiting waits for count simultaneous checkpoints or cancellation.
+func (h *CommitHold) UntilWaiting(ctx context.Context, count int) error {
+	for {
+		h.mu.Lock()
+		if h.waiting >= count {
+			h.mu.Unlock()
+			return nil
+		}
+		changed := h.changed
+		h.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-changed:
+		}
+	}
+}
+
+// Release lets current and later checkpoints through, once.
+func (h *CommitHold) Release() { h.once.Do(func() { close(h.released) }) }
+func (h *CommitHold) pass(ctx context.Context) error {
+	h.mu.Lock()
+	h.waiting++
+	close(h.changed)
+	h.changed = make(chan struct{})
+	h.mu.Unlock()
+	defer func() {
+		h.mu.Lock()
+		h.waiting--
+		close(h.changed)
+		h.changed = make(chan struct{})
+		h.mu.Unlock()
+	}()
+	select {
+	case <-h.released:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}

@@ -1,70 +1,275 @@
 package database
 
-//revive:disable:unused-parameter
-// API checkpoint: parameters are consumed by the implementation checkpoint.
-
 import (
 	"context"
+	"database/sql"
+	"errors"
+	"fmt"
 
 	"github.com/wspl/demi/internal/agent/store"
+	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/core"
 )
 
 // TreeStore is one conversation's agent tree in its database, with its owner's blobs.
-type TreeStore struct{}
+type TreeStore struct {
+	db    *ConversationDB
+	blobs OwnerBlobs
+	saved Saved
+}
 
 // NewTreeStore binds a conversation database, its owner's blobs and commit callback.
 func NewTreeStore(db *ConversationDB, blobs OwnerBlobs, saved Saved) *TreeStore {
-	panic("not written: b-database")
+	return &TreeStore{db: db, blobs: blobs, saved: saved}
 }
 
 var _ store.TreeStore = (*TreeStore)(nil)
 
 // Node returns a node's record, or nil when it does not exist.
 func (s *TreeStore) Node(ctx context.Context, id core.NodeID) (*store.NodeRecord, error) {
-	panic("not written: b-database")
+	var result *store.NodeRecord
+	err := s.db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		var err error
+		result, err = nodeByID(ctx, tx, id)
+		return err
+	})
+	return result, agentError(err)
 }
 
 // Children returns direct children in number order, live and archived alike.
 func (s *TreeStore) Children(ctx context.Context, parent core.NodeID) ([]store.NodeRecord, error) {
-	panic("not written: b-database")
+	var result []store.NodeRecord
+	err := s.db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		var err error
+		result, err = childrenOf(ctx, tx, parent)
+		return err
+	})
+	return result, agentError(err)
 }
 
 // CreateNode commits the record and first checkpoint; an existing node is refused.
 func (s *TreeStore) CreateNode(ctx context.Context, record store.NodeRecord, initial store.CheckpointUpdate) error {
-	panic("not written: b-database")
+	completions, err := initial.CarriedCompletions()
+	if err != nil {
+		return err
+	}
+	var due WakeupDue
+	err = s.db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		existing, err := nodeByID(ctx, tx, record.ID)
+		if err != nil {
+			return err
+		}
+		if existing != nil {
+			return &store.Error{Kind: store.OperationFailed, Message: fmt.Sprintf("node %s already exists", record.ID)}
+		}
+		phase, closed, result, failure, err := closeColumns(record.Closed)
+		if err != nil {
+			return err
+		}
+		at, err := record.StartedAt.Millisecond()
+		if err != nil {
+			return err
+		}
+		state, err := encoded(initial.State)
+		if err != nil {
+			return err
+		}
+		if err := execSQL(ctx, tx, `INSERT INTO nodes (id,number,parent_id,description,profile,round,started_at,can_spawn,closed_phase,closed_at,result,failure,delivered,state,block_count,command_revision,output_revision) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,0,0)`, record.ID, record.Number, record.Parent, record.Description, record.Profile, record.Round, at, record.CanSpawnSubagents, phase, closed, result, failure, record.Delivered, state); err != nil {
+			return err
+		}
+		if initial.CommandState == nil {
+			initial.CommandState = new(store.InitialCommandState())
+		}
+		if err := writeCheckpoint(ctx, tx, s.blobs, record.ID, initial, completions); err != nil {
+			return err
+		}
+		due, err = earliestWakeup(ctx, tx)
+		return err
+	})
+	if err != nil {
+		return agentError(err)
+	}
+	s.notify(record.ID, due)
+	return nil
 }
 
 // SessionStore returns the node's checkpoint store. Saves also mark carried
 // child completions delivered in the same commit.
-func (s *TreeStore) SessionStore(id core.NodeID) store.SessionStore { panic("not written: b-database") }
+func (s *TreeStore) SessionStore(id core.NodeID) store.SessionStore {
+	return &sessionStore{tree: s, node: id}
+}
 
 // CloseNode closes a node after its final checkpoint, initially undelivered.
 func (s *TreeStore) CloseNode(ctx context.Context, id core.NodeID, closed store.NodeClose) error {
-	panic("not written: b-database")
+	err := s.db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		phase, at, result, failure, err := closeColumns(&closed)
+		if err != nil {
+			return err
+		}
+		changed, err := affected(ctx, tx, "UPDATE nodes SET closed_phase=?,closed_at=?,result=?,failure=?,delivered=0 WHERE id=?", phase, at, result, failure, id)
+		if err != nil {
+			return err
+		}
+		if !changed {
+			return missingNode(id)
+		}
+		return nil
+	})
+	return agentError(err)
 }
 
 // ReopenNode starts a new round and queues its reviving message atomically.
 func (s *TreeStore) ReopenNode(ctx context.Context, id core.NodeID, round uint64, startedAt core.Timestamp, message core.QueuedMessage) error {
-	panic("not written: b-database")
+	err := s.db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		state, err := nodeState(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if state == nil {
+			return missingNode(id)
+		}
+		state.Queue = []core.QueuedMessage{message}
+		document, err := encoded(*state)
+		if err != nil {
+			return err
+		}
+		at, err := startedAt.Millisecond()
+		if err != nil {
+			return err
+		}
+		return execSQL(ctx, tx, "UPDATE nodes SET round=?,started_at=?,closed_phase=NULL,closed_at=NULL,result=NULL,failure=NULL,delivered=0,state=? WHERE id=?", round, at, document, id)
+	})
+	return agentError(err)
 }
 
 // MarkDelivered marks only the named current round delivered.
 func (s *TreeStore) MarkDelivered(ctx context.Context, id core.NodeID, round uint64) error {
-	panic("not written: b-database")
+	err := s.db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		node, err := nodeByID(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if node == nil {
+			return missingNode(id)
+		}
+		return execSQL(ctx, tx, "UPDATE nodes SET delivered=1 WHERE id=? AND round=?", id, round)
+	})
+	return agentError(err)
 }
 
 // DeleteNode deletes the node and all descendants with all their rows.
 func (s *TreeStore) DeleteNode(ctx context.Context, id core.NodeID) error {
-	panic("not written: b-database")
+	var due WakeupDue
+	err := s.db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		removed, err := SubtreeBlobs(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if err := s.blobs.CommitUses(ctx, removed); err != nil {
+			return err
+		}
+		if err := execSQL(ctx, tx, "DELETE FROM nodes WHERE id=?", id); err != nil {
+			return err
+		}
+		due, err = earliestWakeup(ctx, tx)
+		return err
+	})
+	if err != nil {
+		return agentError(err)
+	}
+	s.notify(id, due)
+	return nil
 }
 
 // NextNumber records the following number before returning this one.
 func (s *TreeStore) NextNumber(ctx context.Context, sequence core.Sequence) (uint64, error) {
-	panic("not written: b-database")
+	var number uint64
+	err := s.db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		var err error
+		number, err = NextNumber(ctx, tx, sequence)
+		return err
+	})
+	return number, agentError(err)
 }
 
 // CommandOutput returns an ended command's output record, or nil if unknown.
 func (s *TreeStore) CommandOutput(ctx context.Context, command core.CommandID) (store.StoredOutput, error) {
-	panic("not written: b-database")
+	var row *CommandOutput
+	_, err := s.db.Read(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		var err error
+		row, err = ReadCommandOutput(ctx, tx, command)
+		return err
+	})
+	if err != nil {
+		return nil, agentError(err)
+	}
+	if row == nil {
+		return nil, nil
+	}
+	switch output := row.Output.(type) {
+	case *OutputNotStored:
+		return &store.OutputNotStored{Reason: output.Reason}, nil
+	case *OutputRemoved:
+		return &store.OutputRemoved{At: output.At}, nil
+	case *OutputStored:
+		data, found, err := s.blobs.Media().Read(ctx, output.Blob)
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			return nil, &store.Error{Kind: store.OperationFailed, Message: fmt.Sprintf("the blob %s of the output of %s is missing", output.Blob, command)}
+		}
+		whole, err := remotehost.DecodeOutput(data, output.Missing)
+		if err != nil {
+			return nil, &store.Error{Kind: store.Corrupt, Message: fmt.Sprintf("the output of %s does not decode: %v", command, err), Cause: err}
+		}
+		return &store.OutputStored{Output: whole}, nil
+	}
+	return nil, nil
+}
+
+func agentError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var existing *store.Error
+	if errors.As(err, &existing) {
+		return err
+	}
+	kind := store.OperationFailed
+	var storage *Error
+	if errors.As(err, &storage) && storage.Kind == Corrupt {
+		kind = store.Corrupt
+	}
+	return &store.Error{Kind: kind, Message: err.Error(), Cause: err}
+}
+func missingNode(id core.NodeID) error {
+	return &store.Error{Kind: store.OperationFailed, Message: fmt.Sprintf("no node %s", id)}
+}
+func (s *TreeStore) notify(id core.NodeID, due WakeupDue) {
+	if s.saved != nil {
+		s.saved(id, due)
+	}
+}
+func earliestWakeup(ctx context.Context, tx *sql.Tx) (WakeupDue, error) {
+	row, err := queryRecord(ctx, tx, "nodes", "SELECT MIN(wakeup_at) AS wakeup_at FROM nodes", func(r *storedRow) WakeupDue { return rowWakeup(r, "wakeup_at") })
+	if err != nil {
+		return nil, err
+	}
+	return *row, nil
+}
+func stateWakeup(state store.CheckpointState) WakeupDue {
+	var earliest *core.Timestamp
+	for _, wakeup := range state.Wakeups {
+		if wakeup.DueAt == nil {
+			return &WakeupAtStart{}
+		}
+		if earliest == nil || *wakeup.DueAt < *earliest {
+			earliest = wakeup.DueAt
+		}
+	}
+	if earliest == nil {
+		return nil
+	}
+	return &WakeupAt{At: *earliest}
 }

@@ -29,11 +29,11 @@ func New() (*Factory, error) {
 	if err != nil {
 		return nil, fmt.Errorf("declare expose commands: %w", err)
 	}
-	state, err := declare.NewSchema(ExposeStateJSONSchema())
+	state, err := declare.NewSchema(ExposeStatePluginJSONSchema())
 	if err != nil {
 		return nil, fmt.Errorf("declare expose state: %w", err)
 	}
-	params, err := declare.NewSchema(ExposeCallJSONSchema())
+	params, err := declare.NewSchema(ExposeCallPluginJSONSchema())
 	if err != nil {
 		return nil, fmt.Errorf("declare expose calls: %w", err)
 	}
