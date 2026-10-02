@@ -1,3 +1,5 @@
+//go:build acceptance
+
 package main
 
 import (
@@ -11,6 +13,8 @@ import (
 )
 
 // This executes the generated TypeScript consumers, including formatting rules.
+// It needs npm ci in testdata, a resource outside the repository, so it runs
+// only with the acceptance tag (docs/delivery/testing.md).
 // Local package loading and Node cost below one second; npm ci in testdata supplies
 // the pinned Zod dependency. The test never installs packages or uses the network.
 func TestTableAndTextTypeScript(t *testing.T) {
