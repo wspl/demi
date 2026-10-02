@@ -111,13 +111,22 @@ func (r *Runner) fillExpandConfig(ctx context.Context) {
 			stdout := r.origStdout
 			// TODO: note that `man bash` mentions that `wait` only waits for the last
 			// process substitution as long as it is $!; the logic here would mean we wait for all of them.
+			bgCtx, terminate := context.WithCancelCause(ctx)
+			cancel := func() { terminate(nil) }
 			bg := bgProc{
-				done: make(chan struct{}),
-				exit: new(exitStatus),
+				state:     r2.scopeState,
+				cancel:    cancel,
+				terminate: terminate,
+				done:      make(chan struct{}),
+				exit:      new(exitStatus),
 			}
 			r.bgProcs = append(r.bgProcs, bg)
 			r.tasks.Go(func() {
+				defer cancel()
 				defer func() {
+					if status, ok := context.Cause(bgCtx).(ExitStatus); ok {
+						r2.exit = exitStatus{code: uint8(status)}
+					}
 					*bg.exit = r2.exit
 					close(bg.done)
 				}()
@@ -131,7 +140,7 @@ func (r *Runner) fillExpandConfig(ctx context.Context) {
 				if ps.Op == syntax.CmdOut {
 					flag = os.O_RDONLY
 				}
-				f, err := openFIFO(ctx, path, flag)
+				f, err := openFIFO(bgCtx, path, flag)
 				if err != nil {
 					r2.exit.fatal(err)
 					return
@@ -152,7 +161,7 @@ func (r *Runner) fillExpandConfig(ctx context.Context) {
 				default:
 					panic(fmt.Sprintf("unexpected process substitution operator: %q", ps.Op))
 				}
-				r2.stmts(ctx, ps.Stmts)
+				r2.stmts(bgCtx, ps.Stmts)
 				r2.tasks.Wait()
 				r2.exit.exiting = false // subshells don't exit the parent shell
 			})
@@ -295,6 +304,9 @@ func (r *Runner) errf(format string, a ...any) {
 }
 
 func (r *Runner) stop(ctx context.Context) bool {
+	if r.scopeState != nil {
+		r.scopeState.Check()
+	}
 	// Some traps trigger on exit, so we do want those to run.
 	if !r.handlingTrap && (r.exit.returning || r.exit.exiting) {
 		return true
@@ -319,14 +331,24 @@ func (r *Runner) stmt(ctx context.Context, st *syntax.Stmt) {
 		st2 := *st
 		st2.Background = false
 		st2.Disown = false
+		bgCtx, terminate := context.WithCancelCause(ctx)
+		cancel := func() { terminate(nil) }
 		bg := bgProc{
-			done: make(chan struct{}),
-			exit: new(exitStatus),
+			state:     r2.scopeState,
+			cancel:    cancel,
+			terminate: terminate,
+			done:      make(chan struct{}),
+			exit:      new(exitStatus),
 		}
 		r.bgProcs = append(r.bgProcs, bg)
 		r.tasks.Go(func() {
-			r2.Run(ctx, &st2)
+			defer cancel()
+			r2.Run(bgCtx, &st2)
+			r2.Wait()
 			r2.exit.exiting = false // subshells don't exit the parent shell
+			if status, ok := context.Cause(bgCtx).(ExitStatus); ok {
+				r2.exit = exitStatus{code: uint8(status)}
+			}
 			*bg.exit = r2.exit
 			close(bg.done)
 		})
@@ -1064,7 +1086,7 @@ func (r *Runner) redir(ctx context.Context, rd *syntax.Redirect) (io.Closer, err
 			orig = &r.stderr
 		default:
 			switch rd.Op {
-			case syntax.RdrOut, syntax.AppOut, syntax.RdrInOut:
+			case syntax.RdrOut, syntax.AppOut, syntax.RdrInOut, syntax.DplOut:
 				extraFD = rd.N.Value
 			default:
 				return nil, fmt.Errorf("unsupported redirect fd: %v", rd.N.Value)
@@ -1088,6 +1110,20 @@ func (r *Runner) redir(ctx context.Context, rd *syntax.Redirect) (io.Closer, err
 		})
 		return pr, nil
 	case syntax.DplOut:
+		if extraFD != "" {
+			if arg == "-" {
+				delete(r.extraFiles, extraFD)
+				return nil, nil
+			}
+			if file := r.extraFiles[arg]; file != nil {
+				if r.extraFiles == nil {
+					r.extraFiles = make(map[string]io.ReadWriteCloser)
+				}
+				r.extraFiles[extraFD] = file
+				return nil, nil
+			}
+			return nil, fmt.Errorf("unhandled %v arg: %q", rd.Op, arg)
+		}
 		switch arg {
 		case "1":
 			*orig = r.stdout
@@ -1126,7 +1162,7 @@ func (r *Runner) redir(ctx context.Context, rd *syntax.Redirect) (io.Closer, err
 	case syntax.RdrOut, syntax.RdrAll:
 		mode = os.O_WRONLY | os.O_CREATE | os.O_TRUNC
 	}
-	f, err := r.open(ctx, arg, mode, 0o644, false)
+	f, err := r.open(ctx, arg, mode, 0o666, false)
 	if err != nil {
 		return nil, err
 	}
@@ -1225,7 +1261,7 @@ func (r *Runner) call(ctx context.Context, pos syntax.Pos, args []string) {
 		r.exit.returning = false
 		return
 	}
-	if IsBuiltin(name) {
+	if r.isBuiltin(name) {
 		r.exit = r.builtin(ctx, pos, name, args[1:])
 		return
 	}

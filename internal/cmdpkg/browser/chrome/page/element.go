@@ -49,17 +49,26 @@ func resolveElement(ctx context.Context, page cdp.FrameTarget, backend protocol.
 	return targetElement{page: page, backend: backend, object: object.ObjectID}, nil
 }
 
+// pageScriptCall preserves empty and null page-algorithm arguments across CDP.
+func pageScriptCall(script string, args []any) (*runtime.CallFunctionOnParams, error) {
+	// cdproto's CallArgument.Value has json/v2 omitempty: [], "" and null
+	// disappear. A nonempty envelope retains those values inside its args field.
+	payload, err := cdp.Value(struct {
+		Args []any `json:"args"`
+	}{Args: args})
+	if err != nil {
+		return nil, err
+	}
+	return runtime.CallFunctionOn(fmt.Sprintf("function(input) { return (%s).apply(this, input.args); }", script)).WithArguments([]*runtime.CallArgument{{Value: payload}}), nil
+}
+
 // elementCall runs a page algorithm with the selected node as its receiver.
 func elementCall(ctx context.Context, element targetElement, script string, gesture bool, args ...any) (json.RawMessage, error) {
-	arguments := make([]*runtime.CallArgument, 0, len(args))
-	for _, arg := range args {
-		raw, err := cdp.Value(arg)
-		if err != nil {
-			return nil, err
-		}
-		arguments = append(arguments, &runtime.CallArgument{Value: raw})
+	call, err := pageScriptCall(script, args)
+	if err != nil {
+		return nil, err
 	}
-	object, exception, err := runtime.CallFunctionOn(script).WithObjectID(element.object).WithArguments(arguments).WithAwaitPromise(true).WithUserGesture(gesture).WithReturnByValue(true).Do(protocol.WithExecutor(ctx, element.page))
+	object, exception, err := call.WithObjectID(element.object).WithAwaitPromise(true).WithUserGesture(gesture).WithReturnByValue(true).Do(protocol.WithExecutor(ctx, element.page))
 	if err != nil {
 		return nil, err
 	}
