@@ -9,7 +9,7 @@ import (
 	provider "github.com/wspl/demi/internal/provider"
 )
 
-func Parseissuer(value string) (issuer, error) {
+func parseIssuer(value string) (issuer, error) {
 	{
 		normalized, err := contract.HTTPURL(value)
 		if err != nil {
@@ -23,9 +23,9 @@ func Parseissuer(value string) (issuer, error) {
 	}
 	return v, nil
 }
-func Decodeissuer(data []byte) (issuer, error) { return contract.Decode[issuer](data) }
-func (v issuer) Validate() error               { return contractValidateissuer(v, 0) }
-func contractValidateissuer(v issuer, depth int) error {
+func decodeIssuer(data []byte) (issuer, error) { return contract.Decode[issuer](data) }
+func (v issuer) Validate() error               { return contractValidateIssuer(v, 0) }
+func contractValidateIssuer(v issuer, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -64,9 +64,9 @@ func (v issuer) MarshalJSON() ([]byte, error) {
 	}
 	return contract.EncodeJSON(string(v))
 }
-func Decodeprincipal(data []byte) (principal, error) { return contract.Decode[principal](data) }
-func (v principal) Validate() error                  { return contractValidateprincipal(v, 0) }
-func contractValidateprincipal(v principal, depth int) error {
+func decodePrincipal(data []byte) (principal, error) { return contract.Decode[principal](data) }
+func (v principal) Validate() error                  { return contractValidatePrincipal(v, 0) }
+func contractValidatePrincipal(v principal, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -132,9 +132,9 @@ func (v principal) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "id", Value: v.ID})
 	return contract.EncodeObject(fields)
 }
-func Decodesecret(data []byte) (secret, error) { return contract.Decode[secret](data) }
-func (v secret) Validate() error               { return contractValidatesecret(v, 0) }
-func contractValidatesecret(v secret, depth int) error {
+func decodeSecret(data []byte) (secret, error) { return contract.Decode[secret](data) }
+func (v secret) Validate() error               { return contractValidateSecret(v, 0) }
+func contractValidateSecret(v secret, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -160,7 +160,7 @@ func contractValidatesecret(v secret, depth int) error {
 			return contract.At("expiresAt", err)
 		}
 	}
-	if err := contractValidateissuer(v.Issuer, depth+1); err != nil {
+	if err := contractValidateIssuer(v.Issuer, depth+1); err != nil {
 		return contract.At("issuer", err)
 	}
 	if err := contract.Text(string(v.Issuer), 0, -1, ""); err != nil {
@@ -170,7 +170,7 @@ func contractValidatesecret(v secret, depth int) error {
 		return contract.At("clientId", err)
 	}
 	if v.Principal != nil {
-		if err := contractValidateprincipal((*v.Principal), depth+1); err != nil {
+		if err := contractValidatePrincipal((*v.Principal), depth+1); err != nil {
 			return contract.At("principal", err)
 		}
 	}
