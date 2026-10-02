@@ -2340,11 +2340,11 @@ func (v WakeParams) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func (*checkpointResult) operationResult() {}
-func DecodecheckpointResult(data []byte) (checkpointResult, error) {
+func decodeCheckpointResult(data []byte) (checkpointResult, error) {
 	return contract.Decode[checkpointResult](data)
 }
-func (v checkpointResult) Validate() error { return contractValidatecheckpointResult(v, 0) }
-func contractValidatecheckpointResult(v checkpointResult, depth int) error {
+func (v checkpointResult) Validate() error { return contractValidateCheckpointResult(v, 0) }
+func contractValidateCheckpointResult(v checkpointResult, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -2389,13 +2389,13 @@ func (v checkpointResult) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject([]contract.Field{{Name: "op", Value: "checkpoint"}, {Name: "result", Value: nil}})
 }
 func (*currentBaseVersionResult) operationResult() {}
-func DecodecurrentBaseVersionResult(data []byte) (currentBaseVersionResult, error) {
+func decodeCurrentBaseVersionResult(data []byte) (currentBaseVersionResult, error) {
 	return contract.Decode[currentBaseVersionResult](data)
 }
 func (v currentBaseVersionResult) Validate() error {
-	return contractValidatecurrentBaseVersionResult(v, 0)
+	return contractValidateCurrentBaseVersionResult(v, 0)
 }
-func contractValidatecurrentBaseVersionResult(v currentBaseVersionResult, depth int) error {
+func contractValidateCurrentBaseVersionResult(v currentBaseVersionResult, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -2448,11 +2448,11 @@ func (v currentBaseVersionResult) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject([]contract.Field{{Name: "op", Value: "current_base_version"}, {Name: "result", Value: v.Value}})
 }
 func (*growVolumeResult) operationResult() {}
-func DecodegrowVolumeResult(data []byte) (growVolumeResult, error) {
+func decodeGrowVolumeResult(data []byte) (growVolumeResult, error) {
 	return contract.Decode[growVolumeResult](data)
 }
-func (v growVolumeResult) Validate() error { return contractValidategrowVolumeResult(v, 0) }
-func contractValidategrowVolumeResult(v growVolumeResult, depth int) error {
+func (v growVolumeResult) Validate() error { return contractValidateGrowVolumeResult(v, 0) }
+func contractValidateGrowVolumeResult(v growVolumeResult, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -2497,11 +2497,11 @@ func (v growVolumeResult) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject([]contract.Field{{Name: "op", Value: "grow_volume"}, {Name: "result", Value: nil}})
 }
 func (*hibernateResult) operationResult() {}
-func DecodehibernateResult(data []byte) (hibernateResult, error) {
+func decodeHibernateResult(data []byte) (hibernateResult, error) {
 	return contract.Decode[hibernateResult](data)
 }
-func (v hibernateResult) Validate() error { return contractValidatehibernateResult(v, 0) }
-func contractValidatehibernateResult(v hibernateResult, depth int) error {
+func (v hibernateResult) Validate() error { return contractValidateHibernateResult(v, 0) }
+func contractValidateHibernateResult(v hibernateResult, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -2546,11 +2546,11 @@ func (v hibernateResult) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject([]contract.Field{{Name: "op", Value: "hibernate"}, {Name: "result", Value: nil}})
 }
 func (*imageStateResult) operationResult() {}
-func DecodeimageStateResult(data []byte) (imageStateResult, error) {
+func decodeImageStateResult(data []byte) (imageStateResult, error) {
 	return contract.Decode[imageStateResult](data)
 }
-func (v imageStateResult) Validate() error { return contractValidateimageStateResult(v, 0) }
-func contractValidateimageStateResult(v imageStateResult, depth int) error {
+func (v imageStateResult) Validate() error { return contractValidateImageStateResult(v, 0) }
+func contractValidateImageStateResult(v imageStateResult, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -2605,7 +2605,7 @@ func (v imageStateResult) MarshalJSON() ([]byte, error) {
 	}
 	return contract.EncodeObject([]contract.Field{{Name: "op", Value: "image_state"}, {Name: "result", Value: v.Value}})
 }
-func DecodeoperationResult(data []byte) (operationResult, error) {
+func decodeOperationResult(data []byte) (operationResult, error) {
 	obj, err := contract.Decode[map[string]json.RawMessage](data)
 	if err != nil {
 		return nil, err
@@ -2676,22 +2676,22 @@ func DecodeoperationResult(data []byte) (operationResult, error) {
 type operationResultJSON struct{ Value operationResult }
 
 func (v *operationResultJSON) UnmarshalJSON(data []byte) error {
-	value, err := DecodeoperationResult(data)
+	value, err := decodeOperationResult(data)
 	if err == nil {
 		v.Value = value
 	}
 	return err
 }
 func (v operationResultJSON) MarshalJSON() ([]byte, error) {
-	if err := ValidateoperationResult(v.Value); err != nil {
+	if err := validateOperationResult(v.Value); err != nil {
 		return nil, err
 	}
 	return contract.EncodeJSON(v.Value)
 }
-func ValidateoperationResult(value operationResult) error {
-	return contractValidateoperationResult(value, 0)
+func validateOperationResult(value operationResult) error {
+	return contractValidateOperationResult(value, 0)
 }
-func contractValidateoperationResult(value operationResult, depth int) error {
+func contractValidateOperationResult(value operationResult, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -2700,57 +2700,57 @@ func contractValidateoperationResult(value operationResult, depth int) error {
 		if v == nil {
 			return fmt.Errorf("nil variant")
 		}
-		return contractValidatecheckpointResult(*v, depth+1)
+		return contractValidateCheckpointResult(*v, depth+1)
 	case *currentBaseVersionResult:
 		if v == nil {
 			return fmt.Errorf("nil variant")
 		}
-		return contractValidatecurrentBaseVersionResult(*v, depth+1)
+		return contractValidateCurrentBaseVersionResult(*v, depth+1)
 	case *growVolumeResult:
 		if v == nil {
 			return fmt.Errorf("nil variant")
 		}
-		return contractValidategrowVolumeResult(*v, depth+1)
+		return contractValidateGrowVolumeResult(*v, depth+1)
 	case *hibernateResult:
 		if v == nil {
 			return fmt.Errorf("nil variant")
 		}
-		return contractValidatehibernateResult(*v, depth+1)
+		return contractValidateHibernateResult(*v, depth+1)
 	case *imageStateResult:
 		if v == nil {
 			return fmt.Errorf("nil variant")
 		}
-		return contractValidateimageStateResult(*v, depth+1)
+		return contractValidateImageStateResult(*v, depth+1)
 	case *reconcileResult:
 		if v == nil {
 			return fmt.Errorf("nil variant")
 		}
-		return contractValidatereconcileResult(*v, depth+1)
+		return contractValidateReconcileResult(*v, depth+1)
 	case *resetResult:
 		if v == nil {
 			return fmt.Errorf("nil variant")
 		}
-		return contractValidateresetResult(*v, depth+1)
+		return contractValidateResetResult(*v, depth+1)
 	case *runtimeStateResult:
 		if v == nil {
 			return fmt.Errorf("nil variant")
 		}
-		return contractValidateruntimeStateResult(*v, depth+1)
+		return contractValidateRuntimeStateResult(*v, depth+1)
 	case *wakeResult:
 		if v == nil {
 			return fmt.Errorf("nil variant")
 		}
-		return contractValidatewakeResult(*v, depth+1)
+		return contractValidateWakeResult(*v, depth+1)
 	default:
 		return fmt.Errorf("nil or unsupported operationResult")
 	}
 }
 func (*reconcileResult) operationResult() {}
-func DecodereconcileResult(data []byte) (reconcileResult, error) {
+func decodeReconcileResult(data []byte) (reconcileResult, error) {
 	return contract.Decode[reconcileResult](data)
 }
-func (v reconcileResult) Validate() error { return contractValidatereconcileResult(v, 0) }
-func contractValidatereconcileResult(v reconcileResult, depth int) error {
+func (v reconcileResult) Validate() error { return contractValidateReconcileResult(v, 0) }
+func contractValidateReconcileResult(v reconcileResult, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -2795,9 +2795,9 @@ func (v reconcileResult) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject([]contract.Field{{Name: "op", Value: "reconcile"}, {Name: "result", Value: nil}})
 }
 func (*resetResult) operationResult()                    {}
-func DecoderesetResult(data []byte) (resetResult, error) { return contract.Decode[resetResult](data) }
-func (v resetResult) Validate() error                    { return contractValidateresetResult(v, 0) }
-func contractValidateresetResult(v resetResult, depth int) error {
+func decodeResetResult(data []byte) (resetResult, error) { return contract.Decode[resetResult](data) }
+func (v resetResult) Validate() error                    { return contractValidateResetResult(v, 0) }
+func contractValidateResetResult(v resetResult, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -2842,11 +2842,11 @@ func (v resetResult) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject([]contract.Field{{Name: "op", Value: "reset"}, {Name: "result", Value: nil}})
 }
 func (*runtimeStateResult) operationResult() {}
-func DecoderuntimeStateResult(data []byte) (runtimeStateResult, error) {
+func decodeRuntimeStateResult(data []byte) (runtimeStateResult, error) {
 	return contract.Decode[runtimeStateResult](data)
 }
-func (v runtimeStateResult) Validate() error { return contractValidateruntimeStateResult(v, 0) }
-func contractValidateruntimeStateResult(v runtimeStateResult, depth int) error {
+func (v runtimeStateResult) Validate() error { return contractValidateRuntimeStateResult(v, 0) }
+func contractValidateRuntimeStateResult(v runtimeStateResult, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -2899,9 +2899,9 @@ func (v runtimeStateResult) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject([]contract.Field{{Name: "op", Value: "runtime_state"}, {Name: "result", Value: v.Value}})
 }
 func (*wakeResult) operationResult()                   {}
-func DecodewakeResult(data []byte) (wakeResult, error) { return contract.Decode[wakeResult](data) }
-func (v wakeResult) Validate() error                   { return contractValidatewakeResult(v, 0) }
-func contractValidatewakeResult(v wakeResult, depth int) error {
+func decodeWakeResult(data []byte) (wakeResult, error) { return contract.Decode[wakeResult](data) }
+func (v wakeResult) Validate() error                   { return contractValidateWakeResult(v, 0) }
+func contractValidateWakeResult(v wakeResult, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}

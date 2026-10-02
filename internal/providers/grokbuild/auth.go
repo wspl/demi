@@ -101,7 +101,7 @@ func (a *auth) stored(ctx context.Context) (secret, *provider.AuthFailure) {
 	if failure != nil {
 		return secret{}, failure
 	}
-	stored, err := provider.ReadSecret(ctx, doc, Decodesecret)
+	stored, err := provider.ReadSecret(ctx, doc, decodeSecret)
 	if err != nil {
 		f := provider.AccountAuthFailure("Grok", err)
 		return secret{}, &f
@@ -113,7 +113,7 @@ func (a *auth) credentials(ctx context.Context, client *http.Client, refused *pr
 	if failure != nil {
 		return secret{}, failure
 	}
-	s, err := provider.Renew(ctx, doc, Decodesecret, func(s secret) bool {
+	s, err := provider.Renew(ctx, doc, decodeSecret, func(s secret) bool {
 		return s.RefreshToken != nil && ((refused != nil && s.AccessToken == *refused) || s.expiring(a.clock.Now()))
 	}, func(ctx context.Context, s secret) (secret, error) { return a.refresh(ctx, client, s) })
 	if err != nil {

@@ -198,8 +198,8 @@ func (g *generator) check(p *packages.Package) error {
 						return fail(f.Name() + ": optional values use pointers, default-false booleans, or omitempty collections")
 					}
 				}
-				if has(m, "nullable") && len(parts) > 1 {
-					return fail(f.Name() + ": nullable must be required")
+				if has(m, "nullable") && len(parts) > 1 && (parts[1] != "omitempty" || !isPointer(f.Type())) {
+					return fail(f.Name() + ": optional nullable fields require a pointer with omitempty")
 				}
 				if err := g.checkType(f.Type()); err != nil {
 					return fail(f.Name() + ": " + err.Error())

@@ -63,3 +63,15 @@ var AttachmentFileExtensions = []string{"png", "jpg", "jpeg", "gif", "webp", "pd
 
 // +demi:table
 var VideoFileExtensions = []string{"mp4", "mov", "webm", "m4v"}
+
+// +demi:table
+const MaxPageMessageBytes = 1024 * 1024
+
+// +demi:table
+const TableLabel = "limits"
+
+// +demi:table
+const TableEnabled = true
+
+// +demi:table
+const TableRatio = 0.5

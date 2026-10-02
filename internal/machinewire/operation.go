@@ -21,8 +21,8 @@ type Unit struct{}
 //sumtype:decl
 type operationResult interface{ operationResult() }
 
-// decodeOperationResult selects the result schema from the outstanding operation.
-func decodeOperationResult[T any](op string, data []byte, decode func([]byte) (T, error)) (T, error) {
+// decodeResultFor selects the result schema from the outstanding operation.
+func decodeResultFor[T any](op string, data []byte, decode func([]byte) (T, error)) (T, error) {
 	envelope, err := contract.EncodeObject([]contract.Field{{Name: "op", Value: op}, {Name: "result", Value: json.RawMessage(data)}})
 	if err != nil {
 		var zero T
@@ -40,7 +40,7 @@ func (p ReconcileParams) Call() MachineCall { return &Reconcile{Params: p} }
 
 // DecodeOutput checks the result of this operation's successful reply.
 func (ReconcileParams) DecodeOutput(data []byte) (Unit, error) {
-	_, err := decodeOperationResult("reconcile", data, DecodereconcileResult)
+	_, err := decodeResultFor("reconcile", data, decodeReconcileResult)
 	return Unit{}, err
 }
 
@@ -55,7 +55,7 @@ func (p CurrentBaseVersionParams) Call() MachineCall { return &CurrentBaseVersio
 // DecodeOutput checks the result of this operation's successful reply.
 func (CurrentBaseVersionParams) DecodeOutput(data []byte) (BaseVersion, error) {
 	var zero BaseVersion
-	value, err := decodeOperationResult("current_base_version", data, DecodecurrentBaseVersionResult)
+	value, err := decodeResultFor("current_base_version", data, decodeCurrentBaseVersionResult)
 	if err != nil {
 		return zero, err
 	}
@@ -74,7 +74,7 @@ func (p ImageStateParams) Call() MachineCall { return &ImageState{Params: p} }
 // DecodeOutput checks the result of this operation's successful reply.
 func (ImageStateParams) DecodeOutput(data []byte) (*MachineImageState, error) {
 	var zero *MachineImageState
-	value, err := decodeOperationResult("image_state", data, DecodeimageStateResult)
+	value, err := decodeResultFor("image_state", data, decodeImageStateResult)
 	if err != nil {
 		return zero, err
 	}
@@ -92,7 +92,7 @@ func (p RuntimeStateParams) Call() MachineCall { return &RuntimeStateCall{Params
 // DecodeOutput checks the result of this operation's successful reply.
 func (RuntimeStateParams) DecodeOutput(data []byte) (RuntimeState, error) {
 	var zero RuntimeState
-	value, err := decodeOperationResult("runtime_state", data, DecoderuntimeStateResult)
+	value, err := decodeResultFor("runtime_state", data, decodeRuntimeStateResult)
 	if err != nil {
 		return zero, err
 	}
@@ -108,7 +108,7 @@ func (p WakeParams) Call() MachineCall { return &Wake{Params: p} }
 
 // DecodeOutput checks the result of this operation's successful reply.
 func (WakeParams) DecodeOutput(data []byte) (Unit, error) {
-	_, err := decodeOperationResult("wake", data, DecodewakeResult)
+	_, err := decodeResultFor("wake", data, decodeWakeResult)
 	return Unit{}, err
 }
 
@@ -121,7 +121,7 @@ func (p HibernateParams) Call() MachineCall { return &Hibernate{Params: p} }
 
 // DecodeOutput checks the result of this operation's successful reply.
 func (HibernateParams) DecodeOutput(data []byte) (Unit, error) {
-	_, err := decodeOperationResult("hibernate", data, DecodehibernateResult)
+	_, err := decodeResultFor("hibernate", data, decodeHibernateResult)
 	return Unit{}, err
 }
 
@@ -134,7 +134,7 @@ func (p CheckpointParams) Call() MachineCall { return &Checkpoint{Params: p} }
 
 // DecodeOutput checks the result of this operation's successful reply.
 func (CheckpointParams) DecodeOutput(data []byte) (Unit, error) {
-	_, err := decodeOperationResult("checkpoint", data, DecodecheckpointResult)
+	_, err := decodeResultFor("checkpoint", data, decodeCheckpointResult)
 	return Unit{}, err
 }
 
@@ -147,7 +147,7 @@ func (p GrowVolumeParams) Call() MachineCall { return &GrowVolume{Params: p} }
 
 // DecodeOutput checks the result of this operation's successful reply.
 func (GrowVolumeParams) DecodeOutput(data []byte) (Unit, error) {
-	_, err := decodeOperationResult("grow_volume", data, DecodegrowVolumeResult)
+	_, err := decodeResultFor("grow_volume", data, decodeGrowVolumeResult)
 	return Unit{}, err
 }
 
@@ -160,6 +160,6 @@ func (p ResetParams) Call() MachineCall { return &Reset{Params: p} }
 
 // DecodeOutput checks the result of this operation's successful reply.
 func (ResetParams) DecodeOutput(data []byte) (Unit, error) {
-	_, err := decodeOperationResult("reset", data, DecoderesetResult)
+	_, err := decodeResultFor("reset", data, decodeResetResult)
 	return Unit{}, err
 }

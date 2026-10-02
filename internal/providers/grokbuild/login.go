@@ -64,7 +64,7 @@ func (v *verificationURI) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	canonical, err := Parseissuer(s)
+	canonical, err := parseIssuer(s)
 	if err != nil {
 		return errors.New("a verification address is https, or http on localhost")
 	}
@@ -137,7 +137,7 @@ func (k *loginKit) login(ctx context.Context, pending func(core.LoginPending)) (
 	if err != nil {
 		return provider.NewAccount{}, err
 	}
-	storedIssuer, err := Parseissuer(k.issuer.String())
+	storedIssuer, err := parseIssuer(k.issuer.String())
 	if err != nil {
 		return provider.NewAccount{}, errors.New("an issuer is an http or https URL")
 	}

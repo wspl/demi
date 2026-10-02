@@ -6,7 +6,7 @@ import (
 
 // DecodeDeclaration reads a command tree with unpinned native operations.
 func DecodeDeclaration(document []byte) (Node[NativeOperation], error) {
-	wire, err := DecoderawNode(document)
+	wire, err := decodeRawNode(document)
 	if err != nil {
 		return nil, err
 	}
@@ -15,7 +15,7 @@ func DecodeDeclaration(document []byte) (Node[NativeOperation], error) {
 
 // DecodeManifestNode reads a command tree with pinned native operations.
 func DecodeManifestNode(document []byte) (Node[Binding], error) {
-	wire, err := DecoderawNode(document)
+	wire, err := decodeRawNode(document)
 	if err != nil {
 		return nil, err
 	}

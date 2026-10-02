@@ -616,6 +616,8 @@ func (v Records) MarshalMsgpack() ([]byte, error) {
 	}
 	fields := []contract.Field{}
 	fields = append(fields, contract.Field{Name: "values", Value: v.Values})
-	fields = append(fields, contract.Field{Name: "at", Value: contract.MsgpackTimestampValue(v.At)})
+	var timestampAt any
+	timestampAt = contract.MsgpackTimestampValue(v.At)
+	fields = append(fields, contract.Field{Name: "at", Value: timestampAt})
 	return contract.EncodeMsgpackObject(fields)
 }
