@@ -22,10 +22,13 @@ const work = useWorkPanel()
 
 const state = computed(() => work.stateFor(props.conversationId))
 
+const recorded = computed(() => work.recorded(props.conversationId))
+
 /**
  * The pages' kinds for this conversation (`plugin-pages.md` § Panel
  * sessions), for as long as the panel is open beside it with each plugin on.
- * A closed panel holds no session and no view.
+ * A closed panel, or one beside a conversation its first send has not
+ * created yet, holds no session and no view.
  */
 const bound = shallowRef<BoundKinds | null>(null)
 watch(
@@ -33,12 +36,13 @@ watch(
     [
       props.conversationId,
       state.value.open,
+      recorded.value,
       PLUGIN_PAGES.map((page) => pluginEnabled(product.snapshot, page.plugin)).join(),
     ] as const,
-  ([conversationId, open]) => {
+  ([conversationId, open, isRecorded]) => {
     bound.value?.dispose()
     bound.value = null
-    if (!open) {
+    if (!open || !isRecorded) {
       return
     }
     void work.load(conversationId)
@@ -72,6 +76,7 @@ function closeTabs(ids: string[]): void {
     :panel="state.panel"
     :pinned="state.pinned"
     :kinds="kinds"
+    :before-first-message="!recorded"
     @select="work.select(conversationId, $event)"
     @add-tab="(kind, data) => work.add(conversationId, kind, data)"
     @update-tab="(id, data) => work.update(conversationId, id, data)"
