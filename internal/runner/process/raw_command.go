@@ -2,7 +2,7 @@ package process
 
 //revive:disable:unused-parameter // API checkpoint: stub parameter names document the boundary.
 
-//go:generate go run ../../../tools/contractgen ./raw_command.go
+//go:generate go run ../../../tools/contractgen
 
 //revive:disable:exported // Contract descriptions copy the Rust product text verbatim.
 

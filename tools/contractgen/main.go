@@ -77,19 +77,22 @@ func run() error {
 	return generate(context.Background(), patterns, *ts, *tsDir, *verify)
 }
 
-// generate strips ordinary function bodies so generation also works before
+// generateBatch strips ordinary function bodies so generation also works before
 // generated methods exist. Generic declarations retain the bodies Go requires.
 // Type errors in declarations remain fatal.
-func generate(ctx context.Context, patterns []string, ts bool, tsDir string, verify bool) error {
-	config := &packages.Config{Context: ctx, Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports | packages.NeedDeps,
+func generateBatch(ctx context.Context, patterns []string, ts bool, tsDir string, verify bool, stripped map[string]bool, overlay map[string][]byte, emit func(string, []byte) error) error {
+	config := &packages.Config{Context: ctx, Overlay: overlay, Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports | packages.NeedDeps,
 		ParseFile: func(fset *token.FileSet, filename string, src []byte) (*ast.File, error) {
 			file, err := parser.ParseFile(fset, filename, src, parser.ParseComments)
 			if err != nil {
 				return nil, err
 			}
-			if filepath.Base(filename) == "contract_gen.go" {
+			if stripped[filename] {
 				file.Decls = nil
 				file.Imports = nil
+				return file, nil
+			}
+			if filepath.Base(filename) == "contract_gen.go" {
 				return file, nil
 			}
 			for _, decl := range file.Decls {
@@ -302,7 +305,7 @@ func generate(ctx context.Context, patterns []string, ts bool, tsDir string, ver
 		if err != nil {
 			return fmt.Errorf("format generated code: %w", err)
 		}
-		if err := writeGenerated(filepath.Join(filepath.Dir(p.GoFiles[0]), "contract_gen.go"), code, verify); err != nil {
+		if err := emit(filepath.Join(filepath.Dir(p.GoFiles[0]), "contract_gen.go"), code); err != nil {
 			return err
 		}
 	}
