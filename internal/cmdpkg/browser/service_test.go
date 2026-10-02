@@ -38,26 +38,11 @@ func call(t *testing.T, s *service, request cmdsdk.InvocationContext[commandwire
 	t.Helper()
 	output, records := cmdsdk.OutputChannel(t.Context())
 	request.Output = output
-	completion, err := s.Invoke(t.Context(), request)
+	completion, stdout, stderr, err := collectInvocation(t.Context(), s, request, records)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var stdout, stderr []byte
-	for {
-		select {
-		case record := <-records:
-			switch r := record.(type) {
-			case commandwire.Stdout:
-				stdout = append(stdout, r...)
-			case commandwire.Stderr:
-				stderr = append(stderr, r...)
-			case commandwire.Completed, commandwire.InputPull:
-				t.Fatalf("unexpected record %T", record)
-			}
-		default:
-			return completion, stdout, stderr
-		}
-	}
+	return completion, stdout, stderr
 }
 
 func callLifecycle(t *testing.T, s *service, request commandwire.ConversationRequest) []byte {
@@ -441,5 +426,70 @@ func TestUserCloseOfExpiredTabIsHarmless(t *testing.T) {
 	failure, err := browserop.DecodeFailureDocument(stderr)
 	if err != nil || completion.ExitCode != 1 || failure.Error.Code != "tab_not_found" {
 		t.Fatalf("agent close=%s err=%v", stderr, err)
+	}
+}
+
+func TestRefusedArgumentsRetainOnlyStringDiagnosticTab(t *testing.T) {
+	s := newService()
+	defer func() {
+		if err := s.Close(t.Context()); err != nil {
+			t.Error(err)
+		}
+	}()
+	for _, test := range []struct {
+		args string
+		tab  *string
+	}{
+		{`{"tab":"t1","timeout":"bad"}`, new("t1")},
+		{`{"tab":42,"timeout":"bad"}`, nil},
+		{`{"tab":null,"timeout":"bad"}`, nil},
+	} {
+		completion, _, stderr := call(t, s, invocation("info", test.args, "one"))
+		failure, err := browserop.DecodeFailureDocument(stderr)
+		if err != nil || completion.ExitCode != 2 || failure.Error.Details == nil {
+			t.Fatalf("%s %v", stderr, err)
+		}
+		got := failure.Error.Details.Tab
+		if (got == nil) != (test.tab == nil) || got != nil && *got != *test.tab {
+			t.Fatalf("diagnostic tab for %s: %s", test.args, stderr)
+		}
+	}
+}
+
+// collectInvocation drains browser output while joining the invocation that owns it.
+func collectInvocation(ctx context.Context, s *service, request cmdsdk.InvocationContext[commandwire.Invocation], records <-chan commandwire.Record) (commandwire.Completion, []byte, []byte, error) {
+	type answer struct {
+		completion commandwire.Completion
+		err        error
+	}
+	done := make(chan answer, 1)
+	go func() {
+		c, err := s.Invoke(ctx, request)
+		done <- answer{c, err}
+	}()
+	var stdout, stderr []byte
+	appendRecord := func(record commandwire.Record) {
+		switch r := record.(type) {
+		case commandwire.Stdout:
+			stdout = append(stdout, r...)
+		case commandwire.Stderr:
+			stderr = append(stderr, r...)
+		case commandwire.Completed, commandwire.InputPull:
+		}
+	}
+	for {
+		select {
+		case record := <-records:
+			appendRecord(record)
+		case result := <-done:
+			for {
+				select {
+				case record := <-records:
+					appendRecord(record)
+				default:
+					return result.completion, stdout, stderr, result.err
+				}
+			}
+		}
 	}
 }

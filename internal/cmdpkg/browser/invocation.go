@@ -2,6 +2,7 @@ package browser
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/wspl/demi/internal/cmdpkg/browser/chrome/live"
 	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/contract"
 )
 
 func (s *service) Invoke(ctx context.Context, invocation cmdsdk.InvocationContext[commandwire.Invocation]) (commandwire.Completion, error) {
@@ -49,7 +51,7 @@ func (s *service) Invoke(ctx context.Context, invocation cmdsdk.InvocationContex
 		}
 		deadline := time.Now().Add(command.Timeout())
 		work, finish := context.WithDeadline(ctx, deadline)
-		result, executeErr := s.execute(work, b, &invocation, command, deadline)
+		result, executeErr := s.execute(work, ctx, b, &invocation, command, deadline)
 		err = executeErr
 		if errors.Is(work.Err(), context.DeadlineExceeded) && (cdp.ErrorCode(err) == "cancelled" || cdp.ErrorCode(err) == "timeout") {
 			err = &cdp.BrowserError{Kind: cdp.KindAction, Details: cdp.ErrorDetails(err), Cause: &cdp.BrowserError{Kind: cdp.KindTimeout}}
@@ -80,15 +82,24 @@ func failure(ctx context.Context, b *conversation, invocation cmdsdk.InvocationC
 		action := browserop.ActionProgress("not_started")
 		details.Action = &action
 	}
-	// Only the generated input decoder supplies targeting data. Invalid arguments
-	// have no trusted tab; their diagnostic remains the decoder's refusal.
-	input, decodeErr := browserop.ParseOperation(invocation.Request.Operation, invocation.Request.Args)
-	if decodeErr == nil {
-		if command, ok := input.(browserop.Input); ok && command.TabID() != nil && details.Tab == nil {
-			tab := string(*command.TabID())
-			details.Tab = &tab
+	if details.Tab == nil {
+		// A refused object may still name a tab. This is diagnostic data only;
+		// dispatch always uses the generated operation decoder above.
+		if fields, fieldErr := contract.ObjectFields(invocation.Request.Args); fieldErr == nil {
+			for _, field := range fields {
+				if field.Name == "tab" {
+					raw, ok := field.Value.(json.RawMessage)
+					if !ok || contract.IsNull(raw) {
+						continue
+					}
+					if tab, textErr := contract.Decode[string](raw); textErr == nil {
+						details.Tab = &tab
+					}
+				}
+			}
 		}
 	}
+
 	if code == "timeout" && details.Tab != nil {
 		environment, _, lookupErr := b.Running(ctx)
 		if lookupErr == nil && environment != nil {

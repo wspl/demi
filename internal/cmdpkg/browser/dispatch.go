@@ -27,7 +27,7 @@ func resultOutput(result any, err error) (commandOutput, error) {
 	return commandOutput{json: raw}, err
 }
 
-func (s *service) execute(ctx context.Context, b *conversation, invocation *cmdsdk.InvocationContext[commandwire.Invocation], command browserop.Input, deadline time.Time) (commandOutput, error) {
+func (s *service) execute(ctx, cancellation context.Context, b *conversation, invocation *cmdsdk.InvocationContext[commandwire.Invocation], command browserop.Input, deadline time.Time) (commandOutput, error) {
 	var start *starting
 	_, user := invocation.Request.Context.Caller.(*commandwire.UserCaller)
 	switch command.(type) {
@@ -141,7 +141,12 @@ func (s *service) execute(ctx context.Context, b *conversation, invocation *cmds
 		}
 		operation := tab.Operation(ctx, deadline)
 		defer operation.Close()
-		raw, err := cdp.ExecuteCommand(ctx, operation, tab.Debug(), caller, tab.ID(), command)
+		// CDP event expiry returns an empty page; only invocation cancellation
+		// detaches the subscription. The operation retains the absolute deadline.
+		raw, err := cdp.ExecuteCommand(cancellation, operation, tab.Debug(), caller, tab.ID(), command)
+		if cancellation.Err() != nil {
+			err = cdp.AfterCleanup(err, tab.Debug().Detach(context.WithoutCancel(cancellation), caller))
+		}
 		return commandOutput{json: raw}, err
 	case *browserop.WebmcpListInput, *browserop.WebmcpCallInput:
 		return webMCP(ctx, tab, command, deadline)

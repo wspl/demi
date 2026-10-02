@@ -20,9 +20,14 @@ import (
 )
 
 type browserFixture struct {
-	s    *service
-	root string
-	url  string
+	headers      <-chan http.Header
+	conversation string
+	env          map[string]string
+	s            *service
+	root         string
+	url          string
+	caller       uint64
+	locale       *commandwire.CommandLocale
 }
 
 // chromeFixture exercises production composition, including the live hub. Each
@@ -33,12 +38,24 @@ func chromeFixture(t *testing.T) *browserFixture {
 	if executable == "" {
 		t.Skip("set DEMI_TEST_CHROME to the pinned Chrome for Testing executable")
 	}
-	f := &browserFixture{s: newService(), root: t.TempDir()}
+	f := &browserFixture{s: newService(), root: t.TempDir(), conversation: "acceptance"}
 	f.s.SetNumbers(cmdsdktest.CountingNumbers(t))
 	f.s.SetArtifacts(cmdsdktest.ArtifactsFrom(t, func(_ context.Context, q commandwire.ArtifactRequest) (commandwire.ArtifactAnswer, error) {
 		return commandwire.ArtifactAnswer{ID: q.ID, Path: &executable}, nil
 	}))
-	server := httptest.NewServer(http.FileServer(http.Dir("testdata")))
+	headers := make(chan http.Header, 16)
+	f.headers = headers
+	site := browserSite(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/fidelity.html" || r.URL.Path == "/live.html" {
+			select {
+			case headers <- r.Header.Clone():
+			case <-r.Context().Done():
+				return
+			}
+		}
+		site.ServeHTTP(w, r)
+	}))
 	f.url = server.URL
 	t.Cleanup(server.Close)
 	t.Cleanup(func() {
@@ -64,8 +81,17 @@ func browserArgs(t *testing.T, template string, values ...any) string {
 
 func (f *browserFixture) result(t *testing.T, operation, args string) (commandwire.Completion, []byte, []byte) {
 	t.Helper()
-	request := invocation(operation, args, "acceptance")
+	request := invocation(operation, args, f.conversation)
 	request.Request.Cwd = f.root
+	if f.env != nil {
+		request.Request.Env = f.env
+	}
+	if f.caller != 0 {
+		request.Request.Context.Caller = &commandwire.AgentCaller{Number: f.caller}
+	}
+	if f.locale != nil {
+		request.Request.Context.Locale = *f.locale
+	}
 	return call(t, f.s, request)
 }
 func (f *browserFixture) call(t *testing.T, operation, args string) []byte {
@@ -230,9 +256,10 @@ func TestAssetsExportObservedContentAndKeepPartialSuccess(t *testing.T) {
 		t.Fatal(result)
 	}
 	manifest, err := os.ReadFile(result.Manifest)
-	if err != nil || !strings.Contains(string(manifest), `"failures":[]`) {
-		t.Fatalf("manifest=%s err=%v", manifest, err)
+	if err != nil {
+		t.Fatal(err)
 	}
+	expectValue(t, observedField(t, manifest, "failures"), []string{})
 	for _, file := range result.Files {
 		data, err := os.ReadFile(file.Path)
 		if err != nil || !strings.Contains(string(data), "<svg") {
