@@ -1,8 +1,5 @@
 package database
 
-//revive:disable:unused-parameter
-// API checkpoint: parameters are consumed by the implementation checkpoint.
-
 import (
 	"github.com/wspl/demi/internal/webapi"
 )
@@ -49,4 +46,16 @@ const (
 )
 
 // Error describes why the draft was not changed.
-func (e *DraftRefusal) Error() string { panic("not written: b-database") }
+func (e *DraftRefusal) Error() string {
+	switch e.Reason {
+	case DraftArchived:
+		return "conversation is archived"
+	case DraftUploadNotFound:
+		return "draft upload not found: " + string(e.Upload)
+	case DraftTooLarge:
+		return "draft is too large"
+	case DraftChanged:
+		return "replaced draft has changed"
+	}
+	return "draft refused"
+}
