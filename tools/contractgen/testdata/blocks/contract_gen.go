@@ -608,7 +608,7 @@ func (v AgentMessageEventJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateAgentMessageEvent(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateAgentMessageEvent(value AgentMessageEvent) error {
 	return contractValidateAgentMessageEvent(value, 0)
@@ -809,7 +809,7 @@ func (v BlobRef) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func DecodeBlock(data []byte) (Block, error) {
 	obj, err := contract.Decode[map[string]json.RawMessage](data)
@@ -928,7 +928,7 @@ func (v BlockJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateBlock(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateBlock(value Block) error { return contractValidateBlock(value, 0) }
 func contractValidateBlock(value Block, depth int) error {
@@ -1049,7 +1049,7 @@ func (v BlockId) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func (*BudgetCapability) isThinkingCapability() {}
 func DecodeBudgetCapability(data []byte) (BudgetCapability, error) {
@@ -1245,7 +1245,7 @@ func (v CommandId) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func (*CompactionBoundaryBlock) isBlock() {}
 func DecodeCompactionBoundaryBlock(data []byte) (CompactionBoundaryBlock, error) {
@@ -1626,7 +1626,7 @@ func (v CompletionOutcome) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func (*ContextBlock) isBlock() {}
 func DecodeContextBlock(data []byte) (ContextBlock, error) {
@@ -2008,7 +2008,7 @@ func (v DocumentSourceJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateDocumentSource(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateDocumentSource(value DocumentSource) error {
 	return contractValidateDocumentSource(value, 0)
@@ -2133,7 +2133,7 @@ func (v EditKind) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func DecodeEditSegment(data []byte) (EditSegment, error) { return contract.Decode[EditSegment](data) }
 func (v EditSegment) Validate() error                    { return contractValidateEditSegment(v, 0) }
@@ -2735,7 +2735,7 @@ func (v FailureSource) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func DecodeFileExtension(data []byte) (FileExtension, error) {
 	return contract.Decode[FileExtension](data)
@@ -2771,7 +2771,7 @@ func (v FileExtension) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func DecodeGoneCause(data []byte) (GoneCause, error) {
 	obj, err := contract.Decode[map[string]json.RawMessage](data)
@@ -2812,7 +2812,7 @@ func (v GoneCauseJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateGoneCause(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateGoneCause(value GoneCause) error { return contractValidateGoneCause(value, 0) }
 func contractValidateGoneCause(value GoneCause, depth int) error {
@@ -2873,7 +2873,7 @@ func (v MediaSourceJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateMediaSource(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateMediaSource(value MediaSource) error { return contractValidateMediaSource(value, 0) }
 func contractValidateMediaSource(value MediaSource, depth int) error {
@@ -3297,7 +3297,7 @@ func (v ModelMediaKind) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func DecodeModelSelection(data []byte) (ModelSelection, error) {
 	return contract.Decode[ModelSelection](data)
@@ -3445,7 +3445,7 @@ func (v NodeId) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func (*NotStored) isGoneCause()                      {}
 func DecodeNotStored(data []byte) (NotStored, error) { return contract.Decode[NotStored](data) }
@@ -4386,7 +4386,7 @@ func (v ShellId) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func (*ShellToolView) isToolView() {}
 func DecodeShellToolView(data []byte) (ShellToolView, error) {
@@ -4657,7 +4657,7 @@ func (v ShellViewStatus) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func (*SteerBlock) isBlock()                           {}
 func DecodeSteerBlock(data []byte) (SteerBlock, error) { return contract.Decode[SteerBlock](data) }
@@ -4836,7 +4836,7 @@ func (v StreamKind) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func (*TextBlock) isBlock()                          {}
 func DecodeTextBlock(data []byte) (TextBlock, error) { return contract.Decode[TextBlock](data) }
@@ -5161,7 +5161,7 @@ func (v ThinkingCapabilityJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateThinkingCapability(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateThinkingCapability(value ThinkingCapability) error {
 	return contractValidateThinkingCapability(value, 0)
@@ -5246,7 +5246,7 @@ func (v ThinkingConfigJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateThinkingConfig(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateThinkingConfig(value ThinkingConfig) error {
 	return contractValidateThinkingConfig(value, 0)
@@ -5314,7 +5314,7 @@ func (v ThinkingSummary) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func DecodeTimestamp(data []byte) (Timestamp, error) { return contract.Decode[Timestamp](data) }
 func (v Timestamp) Validate() error                  { return contractValidateTimestamp(v, 0) }
@@ -5346,7 +5346,7 @@ func (v Timestamp) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func DecodeTokenUsage(data []byte) (TokenUsage, error) { return contract.Decode[TokenUsage](data) }
 func (v TokenUsage) Validate() error                   { return contractValidateTokenUsage(v, 0) }
@@ -5705,7 +5705,7 @@ func (v ToolCallStatus) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func (*ToolGone) isToolResultContentBlock()        {}
 func DecodeToolGone(data []byte) (ToolGone, error) { return contract.Decode[ToolGone](data) }
@@ -5982,7 +5982,7 @@ func (v ToolMediaSourceJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateToolMediaSource(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateToolMediaSource(value ToolMediaSource) error {
 	return contractValidateToolMediaSource(value, 0)
@@ -6052,7 +6052,7 @@ func (v ToolResultContentBlockJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateToolResultContentBlock(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateToolResultContentBlock(value ToolResultContentBlock) error {
 	return contractValidateToolResultContentBlock(value, 0)
@@ -6253,7 +6253,7 @@ func (v ToolViewJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateToolView(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateToolView(value ToolView) error { return contractValidateToolView(value, 0) }
 func contractValidateToolView(value ToolView, depth int) error {
@@ -6314,7 +6314,7 @@ func (v TurnId) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func (*UserBlock) isBlock()                          {}
 func DecodeUserBlock(data []byte) (UserBlock, error) { return contract.Decode[UserBlock](data) }
@@ -6545,7 +6545,7 @@ func (v UserContentBlockJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateUserContentBlock(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateUserContentBlock(value UserContentBlock) error {
 	return contractValidateUserContentBlock(value, 0)
@@ -7073,7 +7073,7 @@ func (v WakeupId) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func DecodeWakeupPlacement(data []byte) (WakeupPlacement, error) {
 	return contract.Decode[WakeupPlacement](data)
@@ -7109,7 +7109,7 @@ func (v WakeupPlacement) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func (*YieldWakeup) isToolView()                         {}
 func DecodeYieldWakeup(data []byte) (YieldWakeup, error) { return contract.Decode[YieldWakeup](data) }

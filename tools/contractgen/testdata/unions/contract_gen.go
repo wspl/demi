@@ -81,7 +81,7 @@ func (v ArtifactLocationJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateArtifactLocation(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateArtifactLocation(value ArtifactLocation) error {
 	return contractValidateArtifactLocation(value, 0)
@@ -128,7 +128,7 @@ func (v ArtifactOwnerJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateArtifactOwner(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateArtifactOwner(value ArtifactOwner) error { return contractValidateArtifactOwner(value, 0) }
 func contractValidateArtifactOwner(value ArtifactOwner, depth int) error {
@@ -381,7 +381,7 @@ func (v BlockID) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func DecodeBytes(data []byte) (Bytes, error) { return contract.Decode[Bytes](data) }
 func (v Bytes) Validate() error              { return contractValidateBytes(v, 0) }
@@ -414,7 +414,131 @@ func (v Bytes) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal([]byte(v))
+	return contract.EncodeJSON([]byte(v))
+}
+func DecodeDocument(data []byte) (Document, error) {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return nil, err
+	}
+	tag, err := contract.Decode[string](obj["type"])
+	if err != nil {
+		return nil, fmt.Errorf("type: %w", err)
+	}
+	switch tag {
+	case "editable":
+		value, err := contract.Decode[EditableDocument](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "fixed":
+		value, err := contract.Decode[FixedDocument](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	}
+	return nil, fmt.Errorf("unknown Document tag %q", tag)
+}
+
+type DocumentJSON struct{ Value Document }
+
+func (v *DocumentJSON) UnmarshalJSON(data []byte) error {
+	value, err := DecodeDocument(data)
+	if err == nil {
+		v.Value = value
+	}
+	return err
+}
+func (v DocumentJSON) MarshalJSON() ([]byte, error) {
+	if err := ValidateDocument(v.Value); err != nil {
+		return nil, err
+	}
+	return contract.EncodeJSON(v.Value)
+}
+func ValidateDocument(value Document) error { return contractValidateDocument(value, 0) }
+func contractValidateDocument(value Document, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	switch v := value.(type) {
+	case *EditableDocument:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateEditableDocument(*v, depth+1)
+	case *FixedDocument:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateFixedDocument(*v, depth+1)
+	default:
+		return fmt.Errorf("nil or unsupported Document")
+	}
+}
+func (*EditableDocument) document() {}
+func DecodeEditableDocument(data []byte) (EditableDocument, error) {
+	return contract.Decode[EditableDocument](data)
+}
+func (v EditableDocument) Validate() error { return contractValidateEditableDocument(v, 0) }
+func contractValidateEditableDocument(v EditableDocument, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v.Text), 0, -1, ""); err != nil {
+		return contract.At("text", err)
+	}
+	return nil
+}
+func (v *EditableDocument) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next EditableDocument
+	for key := range obj {
+		switch key {
+		case "text", "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "editable" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["text"]
+		if !ok {
+			return contract.At("text", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("text", err)
+			}
+			next.Text = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v EditableDocument) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "editable"})
+	fields = append(fields, contract.Field{Name: "text", Value: v.Text})
+	return contract.EncodeObject(fields)
 }
 func DecodeEmpty(data []byte) (Empty, error) { return contract.Decode[Empty](data) }
 func (v Empty) Validate() error              { return contractValidateEmpty(v, 0) }
@@ -556,7 +680,7 @@ func (v EnsureReplyJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateEnsureReply(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateEnsureReply(value EnsureReply) error { return contractValidateEnsureReply(value, 0) }
 func contractValidateEnsureReply(value EnsureReply, depth int) error {
@@ -687,7 +811,7 @@ func (v ErrorCode) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func DecodeFailure(data []byte) (Failure, error) { return contract.Decode[Failure](data) }
 func (v Failure) Validate() error                { return contractValidateFailure(v, 0) }
@@ -769,6 +893,68 @@ func (v Failure) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "message", Value: v.Message})
 	return contract.EncodeObject(fields)
 }
+func DecodeFixedDocument(data []byte) (FixedDocument, error) {
+	return contract.Decode[FixedDocument](data)
+}
+func (v FixedDocument) Validate() error { return contractValidateFixedDocument(v, 0) }
+func contractValidateFixedDocument(v FixedDocument, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v.Text), 0, -1, ""); err != nil {
+		return contract.At("text", err)
+	}
+	return nil
+}
+func (v *FixedDocument) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next FixedDocument
+	for key := range obj {
+		switch key {
+		case "text", "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "fixed" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["text"]
+		if !ok {
+			return contract.At("text", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("text", err)
+			}
+			next.Text = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v FixedDocument) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "fixed"})
+	fields = append(fields, contract.Field{Name: "text", Value: v.Text})
+	return contract.EncodeObject(fields)
+}
 func DecodeFrame(data []byte) (Frame, error) {
 	obj, err := contract.Decode[map[string]json.RawMessage](data)
 	if err != nil {
@@ -808,7 +994,7 @@ func (v FrameJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateFrame(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateFrame(value Frame) error { return contractValidateFrame(value, 0) }
 func contractValidateFrame(value Frame, depth int) error {
@@ -1548,7 +1734,7 @@ func (v NodeJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateNode(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateNode(value Node) error { return contractValidateNode(value, 0) }
 func contractValidateNode(value Node, depth int) error {
@@ -1593,7 +1779,7 @@ func (v OrderedJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateOrdered(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateOrdered(value Ordered) error { return contractValidateOrdered(value, 0) }
 func contractValidateOrdered(value Ordered, depth int) error {
@@ -1852,7 +2038,7 @@ func (v StatusReplyJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateStatusReply(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateStatusReply(value StatusReply) error { return contractValidateStatusReply(value, 0) }
 func contractValidateStatusReply(value StatusReply, depth int) error {

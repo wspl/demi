@@ -6,6 +6,7 @@ toolchain go1.27.1
 
 require (
 	github.com/dlclark/regexp2 v1.12.0
+	github.com/gowebpki/jcs v1.0.2
 	github.com/klauspost/compress v1.20.1
 	github.com/nlnwa/whatwg-url v0.6.2
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3

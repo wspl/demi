@@ -1,6 +1,7 @@
 package declare_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -227,8 +228,6 @@ func TestALeafNamesValidInputs(t *testing.T) {
 }
 
 func TestALeafRunsOneWay(t *testing.T) {
-	t.Skip("needs f-contractgen3: untagged unions")
-	// Once generated codecs exist, this table runs through their NodeJSON holder.
 	for _, test := range []struct {
 		document string
 		valid    bool
@@ -237,8 +236,7 @@ func TestALeafRunsOneWay(t *testing.T) {
 		{`{"name":"add","summary":"Add","kind":"rpc","binding":{"package":"demi.file","operation":"file.read","descriptorHash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}`, false},
 		{`{"name":"read","summary":"Read","kind":"native"}`, false},
 	} {
-		var node declare.Node[declare.Binding]
-		err := json.Unmarshal([]byte(test.document), &node)
+		_, err := declare.DecodeManifestNode([]byte(test.document))
 		if (err == nil) != test.valid {
 			t.Errorf("%s: %v", test.document, err)
 		}
@@ -263,14 +261,17 @@ func TestGroupsNameDistinctSubcommands(t *testing.T) {
 }
 
 // TestHelpAndCommandLinesMatchRecordedCases executes the Rust fixture with a
-// plain Go tree; only decoding the manifest itself awaits generated codecs.
+// tree decoded through the generated manifest boundary.
 func TestHelpAndCommandLinesMatchRecordedCases(t *testing.T) {
 	data, err := os.ReadFile("testdata/cli.json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	var fixture struct {
-		Help  string
+		Help     string
+		Manifest struct {
+			Roots map[string]struct{ Tree json.RawMessage }
+		}
 		Cases []struct {
 			Argv    []string
 			Stdin   *string
@@ -281,11 +282,10 @@ func TestHelpAndCommandLinesMatchRecordedCases(t *testing.T) {
 	if err := json.Unmarshal(data, &fixture); err != nil {
 		t.Fatal(err)
 	}
-	leaf := commandLeaf(t, "read", `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","properties":{"path":{"type":"string","description":"File path"},"count":{"default":2,"description":"Count","type":"integer","exclusiveMinimum":0,"maximum":9007199254740991},"upper":{"description":"Uppercase","type":"boolean"},"tag":{"description":"Tags","type":"array","items":{"type":"string"}},"body":{"type":"string","description":"Text body"},"args":{"description":"Forwarded arguments","type":"array","items":{"type":"string"}}},"required":["path","body"]}`, []string{"path"}, "body", "args")
-	leaf.Summary = "Read a native file."
-	leaf.Kind = &declare.Native[declare.Binding]{Binding: declare.Binding{Package: "demicodes.fixture", Operation: "file.read", DescriptorHash: "7d320ed041df0a3277ce2946c2893522cac021e30c3876dc2cb58ac29bfbe636"}}
-	leaf.Output = &declare.LeafOutput{JSON: commandSchema(t, `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","properties":{"ok":{"type":"boolean"}},"required":["ok"],"additionalProperties":false}`)}
-	tree := &declare.Group[declare.Binding]{Name: "fixture", Summary: "CLI fixture.", Subcommands: []declare.Node[declare.Binding]{leaf}}
+	tree, err := declare.DecodeManifestNode(fixture.Manifest.Roots["fixture"].Tree)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := tree.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -323,36 +323,50 @@ func TestHelpAndCommandLinesMatchRecordedCases(t *testing.T) {
 }
 
 func TestManifestFixtureDecodes(t *testing.T) {
-	t.Skip("needs f-contractgen3: untagged unions")
-	data, err := os.ReadFile("testdata/cli.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var fixture map[string]json.RawMessage
-	if err := json.Unmarshal(data, &fixture); err != nil {
-		t.Fatal(err)
-	}
-	var manifest map[string]json.RawMessage
-	if err := json.Unmarshal(fixture["manifest"], &manifest); err != nil {
-		t.Fatal(err)
-	}
-	var roots map[string]map[string]json.RawMessage
-	if err := json.Unmarshal(manifest["roots"], &roots); err != nil {
-		t.Fatal(err)
-	}
-	var node declare.Node[declare.Binding]
-	if err := json.Unmarshal(roots["fixture"]["tree"], &node); err != nil {
-		t.Fatal(err)
-	}
-	if err := node.Validate(); err != nil {
-		t.Fatal(err)
-	}
-	var help string
-	if err := json.Unmarshal(fixture["help"], &help); err != nil {
-		t.Fatal(err)
-	}
-	if node.Help("fixture") != help {
-		t.Fatal("decoded manifest help differs")
+	for _, name := range []string{"cli.json", "manifest.json"} {
+		t.Run(name, func(t *testing.T) {
+			data, err := os.ReadFile("testdata/" + name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Only the test envelope is decoded here; trees use the boundary decoder.
+			var document map[string]json.RawMessage
+			if err := json.Unmarshal(data, &document); err != nil {
+				t.Fatal(err)
+			}
+			if manifest, ok := document["manifest"]; ok {
+				if err := json.Unmarshal(manifest, &document); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var roots map[string]struct{ Tree json.RawMessage }
+			if err := json.Unmarshal(document["roots"], &roots); err != nil {
+				t.Fatal(err)
+			}
+			if len(roots) == 0 {
+				t.Fatal("fixture has no trees")
+			}
+			for _, root := range roots {
+				node, err := declare.DecodeManifestNode(root.Tree)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := node.Validate(); err != nil {
+					t.Fatal(err)
+				}
+				encoded, err := json.Marshal(node)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var compact bytes.Buffer
+				if err := json.Compact(&compact, root.Tree); err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(encoded, compact.Bytes()) {
+					t.Fatalf("tree bytes changed:\n%s\n%s", compact.Bytes(), encoded)
+				}
+			}
+		})
 	}
 }
 

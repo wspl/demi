@@ -1563,7 +1563,7 @@ func (v Label) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func DecodeLoad(data []byte) (Load, error) { return contract.Decode[Load](data) }
 func (v Load) Validate() error             { return contractValidateLoad(v, 0) }
@@ -1597,7 +1597,7 @@ func (v Load) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func DecodeMode(data []byte) (Mode, error) { return contract.Decode[Mode](data) }
 func (v Mode) Validate() error             { return contractValidateMode(v, 0) }
@@ -1631,7 +1631,7 @@ func (v Mode) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func DecodeNavigationResult(data []byte) (NavigationResult, error) {
 	return contract.Decode[NavigationResult](data)
@@ -2211,7 +2211,7 @@ func (v OutcomeJSON) MarshalJSON() ([]byte, error) {
 	if err := ValidateOutcome(v.Value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(v.Value)
+	return contract.EncodeJSON(v.Value)
 }
 func ValidateOutcome(value Outcome) error { return contractValidateOutcome(value, 0) }
 func contractValidateOutcome(value Outcome, depth int) error {
@@ -2584,7 +2584,7 @@ func (v Small) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(uint8(v))
+	return contract.EncodeJSON(uint8(v))
 }
 func (*Success) outcome()                        {}
 func DecodeSuccess(data []byte) (Success, error) { return contract.Decode[Success](data) }
@@ -2685,7 +2685,7 @@ func (v TabID) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func DecodeViewportMode(data []byte) (ViewportMode, error) {
 	return contract.Decode[ViewportMode](data)
@@ -2721,7 +2721,7 @@ func (v ViewportMode) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(v))
+	return contract.EncodeJSON(string(v))
 }
 func DecodeViewportResetInput(data []byte) (ViewportResetInput, error) {
 	return contract.Decode[ViewportResetInput](data)

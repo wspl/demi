@@ -334,3 +334,33 @@ func TestUnionGeneration(t *testing.T) {
 		}
 	}
 }
+
+// Union accessors remain callable after decoding, and never become wire fields.
+// This exercises both generated and hand-written seals; budget <1 second, no IO.
+func TestUnionExportedMethods(t *testing.T) {
+	for _, tc := range []struct {
+		tag      string
+		editable bool
+	}{
+		{"editable", true},
+		{"fixed", false},
+	} {
+		t.Run(tc.tag, func(t *testing.T) {
+			wire := `{"type":"` + tc.tag + `","text":"document_id"}`
+			value, err := unions.DecodeDocument([]byte(wire))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if value.ID() != "document_id" || value.CreatedAt() != "2026-10-03T00:00:00.000Z" || value.Model() != "test" || value.IsEditable() != tc.editable {
+				t.Fatalf("decoded union lost its accessors: %#v", value)
+			}
+			encoded, err := (unions.DocumentJSON{Value: value}).MarshalJSON()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(encoded) != wire {
+				t.Fatalf("encoded %s; want %s", encoded, wire)
+			}
+		})
+	}
+}

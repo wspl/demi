@@ -75,8 +75,9 @@ func run() error {
 	return generate(context.Background(), patterns, *ts, *tsDir, *verify)
 }
 
-// generate loads declarations without function bodies so generation also works
-// before generated methods exist. Type errors in declarations remain fatal.
+// generate strips ordinary function bodies so generation also works before
+// generated methods exist. Generic declarations retain the bodies Go requires.
+// Type errors in declarations remain fatal.
 func generate(ctx context.Context, patterns []string, ts bool, tsDir string, verify bool) error {
 	config := &packages.Config{Context: ctx, Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports | packages.NeedDeps,
 		ParseFile: func(fset *token.FileSet, filename string, src []byte) (*ast.File, error) {
@@ -90,9 +91,21 @@ func generate(ctx context.Context, patterns []string, ts bool, tsDir string, ver
 				return file, nil
 			}
 			for _, decl := range file.Decls {
-				if fn, ok := decl.(*ast.FuncDecl); ok {
-					fn.Body = nil
+				fn, ok := decl.(*ast.FuncDecl)
+				if !ok || fn.Type.TypeParams.NumFields() > 0 {
+					continue
 				}
+				if fn.Recv.NumFields() > 0 {
+					receiver := ast.Unparen(fn.Recv.List[0].Type)
+					if pointer, ok := receiver.(*ast.StarExpr); ok {
+						receiver = ast.Unparen(pointer.X)
+					}
+					switch receiver.(type) {
+					case *ast.IndexExpr, *ast.IndexListExpr:
+						continue
+					}
+				}
+				fn.Body = nil
 			}
 			return file, nil
 		}}
@@ -425,7 +438,7 @@ func (g *generator) emitGo(d *definition) {
 			g.line("}; return nil,fmt.Errorf(\"unknown %s tag %s\",tag) }", name, verb)
 		}
 		// An interface cannot own UnmarshalJSON; the transport holder does.
-		g.line("type %sJSON struct { Value %s }; func(v *%sJSON) UnmarshalJSON(data []byte) error { value,err:=Decode%s(data); if err==nil {v.Value=value}; return err }; func(v %sJSON) MarshalJSON()([]byte,error){ if err:=Validate%s(v.Value);err!=nil{return nil,err}; return json.Marshal(v.Value) }", name, name, name, name, name, name)
+		g.line("type %sJSON struct { Value %s }; func(v *%sJSON) UnmarshalJSON(data []byte) error { value,err:=Decode%s(data); if err==nil {v.Value=value}; return err }; func(v %sJSON) MarshalJSON()([]byte,error){ if err:=Validate%s(v.Value);err!=nil{return nil,err}; return contract.EncodeJSON(v.Value) }", name, name, name, name, name, name)
 		g.line("func Validate%s(value %s)error{return contractValidate%s(value,0)}", name, name, name)
 		g.line("func contractValidate%s(value %s,depth int)error{if depth>1000{return fmt.Errorf(\"validation nesting exceeds 1000\")};switch v:=value.(type){", name, name)
 		for _, v := range g.variants(d.key) {
@@ -442,7 +455,12 @@ func (g *generator) emitGo(d *definition) {
 	st, isStruct := g.object(d)
 	tag, variant, kind := g.variantWire(d)
 	for _, union := range d.unions {
-		method := g.defs[union].typ.Underlying().(*types.Interface).Method(0).Name()
+		seal, err := unionSeal(g.defs[union].typ)
+		if err != nil {
+			g.err = fmt.Errorf("%s: %s: %w", d.position, d.name, err)
+			return
+		}
+		method := seal.Name()
 		if obj, _, _ := types.LookupFieldOrMethod(types.NewPointer(d.typ), true, d.typ.Obj().Pkg(), method); obj == nil {
 			g.line("func (*%s) %s() {}", name, method)
 		}
@@ -474,7 +492,7 @@ func (g *generator) emitGo(d *definition) {
 		g.line("value,err:=%s(data); if err!=nil{return err}", g.decoder(d.typ.Underlying()))
 		g.normalizeText(d, "value", "return err")
 		g.line("next:=%s(value); if err:=next.Validate();err!=nil{return err}; *v=next; return nil}", name)
-		g.line("func(v %s) MarshalJSON()([]byte,error){if err:=v.Validate();err!=nil{return nil,err};return json.Marshal(%s(v))}", name, g.typeName(d.typ.Underlying()))
+		g.line("func(v %s) MarshalJSON()([]byte,error){if err:=v.Validate();err!=nil{return nil,err};return contract.EncodeJSON(%s(v))}", name, g.typeName(d.typ.Underlying()))
 		return
 	}
 	g.line("obj,err:=contract.Decode[map[string]json.RawMessage](data); if err!=nil{return err}; var next %s", name)
