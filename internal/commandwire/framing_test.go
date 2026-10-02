@@ -127,3 +127,63 @@ func TestBoundedFrames(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// unrelatedMetadata models another package's value that happens to validate.
+type unrelatedMetadata struct{}
+
+func (unrelatedMetadata) Validate() error { return nil }
+
+func TestMetadataAdmission(t *testing.T) {
+	if reflect.TypeOf(commandwire.EncodeMetadata).In(0) != reflect.TypeFor[commandwire.Metadata]() {
+		t.Fatal("EncodeMetadata must take the sealed Metadata interface")
+	}
+	for _, tc := range []struct {
+		name    string
+		value   any
+		allowed bool
+	}{
+		{"native", commandwire.Invocation{}, true},
+		{"local", commandwire.LocalInvocation{}, true},
+		{"native pointer", &commandwire.Invocation{}, true},
+		{"local pointer", &commandwire.LocalInvocation{}, true},
+		{"foreign validator", unrelatedMetadata{}, false},
+		{"stream open", commandwire.StreamOpen{}, false},
+		{"conversation release", &commandwire.ConversationRelease{}, false},
+		{"conversation query", &commandwire.ConversationQuery{}, false},
+		{"completion", commandwire.Completion{}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, ok := tc.value.(commandwire.Metadata)
+			if ok != tc.allowed {
+				t.Fatalf("Metadata admission = %v; want %v", ok, tc.allowed)
+			}
+		})
+	}
+}
+
+func TestLifecycleMetadataFraming(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		encode func() ([]byte, error)
+		want   string
+	}{
+		{"stream open", commandwire.StreamOpen{}.Encode, `{}`},
+		{"release", func() ([]byte, error) {
+			return commandwire.EncodeConversationRequest(&commandwire.ConversationRelease{Conversation: "conv_1"})
+		}, `{"operation":"release","conversation":"conv_1"}`},
+		{"status", func() ([]byte, error) { return commandwire.EncodeConversationRequest(&commandwire.ConversationQuery{}) }, `{"operation":"status"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			frame, err := tc.encode()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(frame) < 4 || int(binary.BigEndian.Uint32(frame[:4])) != len(frame)-4 || string(frame[4:]) != tc.want {
+				t.Fatalf("metadata frame = %q; want length-prefixed %s", frame, tc.want)
+			}
+		})
+	}
+	if _, err := commandwire.EncodeConversationRequest(&commandwire.ConversationRelease{Conversation: "../invalid"}); err == nil {
+		t.Fatal("invalid conversation release was framed")
+	}
+}

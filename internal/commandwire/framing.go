@@ -90,11 +90,43 @@ func EncodeRecord(record Record) ([]byte, error) {
 	return result, nil
 }
 
-// EncodeMetadata validates and length-prefixes command invocation or stream metadata.
-func EncodeMetadata(value interface{ Validate() error }) ([]byte, error) {
+// The metadata that opens an invocation stream: the native protocol's
+// [`Invocation`], or the local command client's [`LocalInvocation`], which
+// shares its framing, input demand and completion.
+type Metadata interface {
+	metadata()
+	Validate() error
+}
+
+func (Invocation) metadata()      {}
+func (LocalInvocation) metadata() {}
+
+// EncodeMetadata validates and length-prefixes command invocation metadata.
+func EncodeMetadata(value Metadata) ([]byte, error) {
 	if err := value.Validate(); err != nil {
 		return nil, fmt.Errorf("metadata: %w", err)
 	}
+	return encodeMetadata(value)
+}
+
+// EncodeConversationRequest validates and frames a conversation lifecycle request.
+func EncodeConversationRequest(value ConversationRequest) ([]byte, error) {
+	if err := ValidateConversationRequest(value); err != nil {
+		return nil, fmt.Errorf("metadata: %w", err)
+	}
+	return encodeMetadata(value)
+}
+
+// Encode frames the metadata opening a numbers or artifacts stream.
+func (value StreamOpen) Encode() ([]byte, error) {
+	if err := value.Validate(); err != nil {
+		return nil, fmt.Errorf("metadata: %w", err)
+	}
+	return encodeMetadata(value)
+}
+
+// encodeMetadata applies the shared command metadata length prefix and limit.
+func encodeMetadata(value any) ([]byte, error) {
 	data, err := json.Marshal(value)
 	if err != nil {
 		return nil, fmt.Errorf("encode metadata: %w", err)
