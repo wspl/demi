@@ -460,6 +460,17 @@ themselves only. Interleaving is expected behavior:
 Keys and buttons held down are tracked per source, each viewer and each agent
 command. A source's end releases only what it holds.
 
+The page takes the newest input, never a backlog of old input. Chrome answers
+a dispatched event only once the page's renderer has handled it, and a busy
+renderer answers slowly, while a trackpad sends a wheel turn every frame. So
+input that arrives while the tab is still taking the previous event does not
+wait behind it to be delivered one by one: consecutive wheel turns with the
+same modifiers become one turn with their deltas summed, at the latest point,
+and consecutive pointer moves with the same buttons become the latest one.
+For example, a two-second flick that queued 200 small turns behind a busy page
+scrolls the whole distance in the next turn Chrome takes, and stops when the
+fingers stop. Any other input ends the merge, and is delivered in order.
+
 | Input | Delivery |
 | --- | --- |
 | Keys | One key event per key, carrying the character it types; Enter carries `\r`, so newlines, form submission and button activation work. The key mapping is the one the agent's `key` and `type` commands use. |
