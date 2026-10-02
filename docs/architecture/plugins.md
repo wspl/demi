@@ -311,21 +311,32 @@ it, as a slot of the page does.
 ## The contract
 
 A plugin is a factory and the instances it makes. The factory is shared by
-every shard thread and carries the manifest. The plugin host asks it for one
+every shard and carries the manifest. The plugin host asks it for one
 instance per [user shard](concurrency.md#the-user-shard), and that instance
-handles the user's requests on the shard's thread:
+handles the user's requests:
 
-```rust
-pub trait PluginFactory: Send + Sync {
-    fn manifest(&self) -> &Manifest;
-    /// One instance for one user's shard.
-    fn instance(&self) -> Rc<dyn Plugin>;
+```go
+type Factory interface {
+	Manifest() Manifest
+	// One instance for one user's shard.
+	Instance() Plugin
 }
 
-pub trait Plugin {
-    fn call(&self, request: Request, port: PluginPort) -> LocalBoxFuture<'_, Result<Reply, PluginError>>;
+type Plugin interface {
+	Call(context.Context, Request, Port) (Reply, error)
+}
+
+// Implemented by an instance that owns work beyond its calls.
+type Closer interface {
+	Close()
 }
 ```
+
+An instance whose work outlives a call, such as a skill fetch that continues
+after the page call that started it, implements `Closer`. The host calls
+`Close` when it drops the instance, when the user's shard closes or the
+plugin is turned off, and `Close` cancels that work and returns once it has
+ended. Every other instance owns nothing past its calls.
 
 Each request names its user, since a plugin process would serve every user:
 
