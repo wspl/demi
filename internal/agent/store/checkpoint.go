@@ -1,8 +1,5 @@
 package store
 
-// API checkpoint: named parameters document the interface until bodies are ported.
-//revive:disable:unused-parameter
-
 import "github.com/wspl/demi/internal/core"
 
 // Checkpoint is a node's checkpoint as the store gives it back.
@@ -32,5 +29,29 @@ type CheckpointUpdate struct {
 // CarriedCompletions returns the distinct child rounds carried by waiting
 // input or changed agent-message blocks, which this save marks delivered.
 func (u CheckpointUpdate) CarriedCompletions() ([]core.CompletionID, error) {
-	panic("not written: a-store")
+	messages := make([]core.AgentMessage, 0, len(u.State.AgentInputs))
+	for _, input := range u.State.AgentInputs {
+		messages = append(messages, input.Message)
+	}
+	for _, changed := range u.ChangedBlocks {
+		if block, ok := changed.Block.(*core.AgentMessageBlock); ok {
+			messages = append(messages, block.Message)
+		}
+	}
+	rounds := []core.CompletionID{}
+	seen := map[core.CompletionID]bool{}
+	for _, message := range messages {
+		if _, ok := message.Event.(*core.CompletionEvent); !ok {
+			continue
+		}
+		round, err := core.ParseCompletionID(string(message.ID))
+		if err != nil {
+			return nil, &Error{Kind: Corrupt, Message: err.Error(), Cause: err}
+		}
+		if !seen[round] {
+			seen[round] = true
+			rounds = append(rounds, round)
+		}
+	}
+	return rounds, nil
 }
