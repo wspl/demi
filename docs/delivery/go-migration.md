@@ -283,8 +283,13 @@ The tech lead checks every work package for:
 - **Tests.** The rules of `docs/delivery/testing.md`: behavior at its
   boundary, once; no sleeps (`testing/synctest` or events); the planted
   defect fails it; no assertion library beyond `go-cmp`.
-- **Fidelity.** Behavior matches the design documents and the Rust tests it
-  ports; any deliberate difference is named in the report and approved.
+- **Fidelity.** The Go code does what the Rust code does: nothing left out,
+  nothing added. A difference is allowed only as a bug fix or a reasonable
+  normalization, named in the report, and accepted by the tech lead; anything
+  else goes back. The report's three fidelity tables (each Rust test to its Go
+  test, each public Rust item to its Go identifier, and every Go behavior with
+  no Rust counterpart) are checked line by line against the Rust source, and
+  the diff is read for logic that none of them names.
 
 ## Roadmap
 
