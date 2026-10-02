@@ -6,6 +6,7 @@ import "encoding/json"
 //go:generate go run ../..
 
 // `file.read`: writes the file's bytes to stdout.
+// +demi:root
 // +demi:schema
 type ReadArgs struct {
 	// File path to read
@@ -13,6 +14,7 @@ type ReadArgs struct {
 }
 
 // `file.create`: creates a new file; an existing file is left as it is.
+// +demi:root
 // +demi:schema
 type CreateArgs struct {
 	// Target file path
@@ -22,6 +24,7 @@ type CreateArgs struct {
 }
 
 // `file.edit`: replaces one occurrence of exact text in an existing file.
+// +demi:root
 // +demi:schema
 type EditArgs struct {
 	// Target file path
@@ -40,6 +43,7 @@ type EditArgs struct {
 }
 
 // `file.patch`: applies a unified diff to one or more files.
+// +demi:root
 // +demi:schema
 type PatchArgs struct {
 	// Unified diff content
@@ -56,6 +60,7 @@ type Load string
 type TabID string
 
 // `open`: opens a tab at a URL, starting the browser when it does not run.
+// +demi:root
 // +demi:schema
 type OpenInput struct {
 	// +demi:length chars min=1 max=4096
@@ -68,6 +73,7 @@ type OpenInput struct {
 
 // What `open` answers: the new tab, with its title and viewport when the
 // page reported them in time.
+// +demi:root
 // +demi:schema
 type OpenResult struct {
 	Tab      TabID            `json:"tab"`
@@ -77,6 +83,7 @@ type OpenResult struct {
 }
 
 // `goto`: navigates a tab to a URL.
+// +demi:root
 // +demi:schema
 type GotoInput struct {
 	// Browser tab ID returned by open or tabs
@@ -90,6 +97,7 @@ type GotoInput struct {
 }
 
 // `back`: goes one entry back in a tab's history.
+// +demi:root
 // +demi:schema
 type BackInput struct {
 	// Browser tab ID returned by open or tabs
@@ -101,15 +109,18 @@ type BackInput struct {
 }
 
 // `forward`: goes one entry forward in a tab's history.
+// +demi:root
 // +demi:schema
 type ForwardInput BackInput
 
 // `reload`: reloads a tab's document.
+// +demi:root
 // +demi:schema
 type ReloadInput BackInput
 
 // What a navigation answers: the URL it observed, with the title when the
 // same document reported it in time.
+// +demi:root
 // +demi:schema
 type NavigationResult struct {
 	Tab   TabID   `json:"tab"`
@@ -118,6 +129,7 @@ type NavigationResult struct {
 }
 
 // `close`: closes a tab.
+// +demi:root
 // +demi:schema
 type CloseInput struct {
 	// Browser tab ID returned by open or tabs
@@ -127,6 +139,7 @@ type CloseInput struct {
 	Timeout *uint64 `json:"timeout,omitempty"`
 }
 
+// +demi:root
 // +demi:schema
 type CloseResult struct {
 	Closed TabID `json:"closed"`
@@ -150,6 +163,7 @@ type BrowserViewport struct {
 }
 
 // `viewport.set`: gives a tab the agent's viewport.
+// +demi:root
 // +demi:schema
 type ViewportSetInput struct {
 	// Browser tab ID returned by open or tabs
@@ -167,24 +181,29 @@ type ViewportSetInput struct {
 }
 
 // `viewport.reset`: returns a tab's viewport to the user's panel.
+// +demi:root
 // +demi:schema
 type ViewportResetInput CloseInput
 
+// +demi:root
 // +demi:schema
 type ViewportResult struct {
 	Viewport BrowserViewport `json:"viewport"`
 }
 
 // `cdp.detach`: ends this caller's debugging connection to a tab.
+// +demi:root
 // +demi:schema
 type CdpDetachInput CloseInput
 
+// +demi:root
 // +demi:schema
 type CdpDetachResult struct {
 	Detached TabID `json:"detached"`
 }
 
 // `webmcp.call`: calls one of the page's WebMCP tools with JSON arguments.
+// +demi:root
 // +demi:schema
 type WebmcpCallInput struct {
 	// Browser tab ID returned by open or tabs
@@ -201,6 +220,7 @@ type WebmcpCallInput struct {
 	Timeout *uint64 `json:"timeout,omitempty"`
 }
 
+// +demi:root
 // +demi:schema
 type WebmcpCallResult struct {
 	Name   string          `json:"name"`
@@ -221,6 +241,7 @@ type ExposeLine struct {
 }
 
 // `{ expose }`: what `add` and `renew` print with `--json`.
+// +demi:root
 // +demi:schema
 // +demi:tolerant
 type ExposeAnswer struct {
@@ -228,6 +249,7 @@ type ExposeAnswer struct {
 }
 
 // `{ exposes }`: what `list` prints with `--json`.
+// +demi:root
 // +demi:schema
 // +demi:tolerant
 type ExposeLines struct {
@@ -235,6 +257,7 @@ type ExposeLines struct {
 }
 
 // The input of `demi example`.
+// +demi:root
 // +demi:schema
 type ExampleArgs struct {
 	// The file to read
@@ -251,6 +274,7 @@ type ExampleArgs struct {
 // +demi:enum fast slow
 type Mode string
 
+// +demi:root
 // +demi:schema
 // +demi:union tag=kind
 type Outcome interface{ outcome() }
@@ -266,6 +290,7 @@ type Failure struct {
 	Message string `json:"message"`
 }
 
+// +demi:root
 // +demi:schema
 // +demi:tolerant
 type Collection struct {
@@ -277,6 +302,7 @@ type Collection struct {
 // +demi:range min=1 max=8
 type Small uint8
 
+// +demi:root
 // +demi:schema
 type Constraints struct {
 	// +demi:range min=2 max=7
@@ -292,6 +318,7 @@ type Constraints struct {
 // +demi:pattern ^[a-z]+$
 type Label string
 
+// +demi:root
 // +demi:schema
 type Numeric struct {
 	Rune rune    `json:"rune"`
@@ -313,12 +340,14 @@ type Numeric struct {
 // A recursive result with a documented child.
 //
 // Paragraphs and line breaks remain product text.
+// +demi:root
 // +demi:schema
 type Recursive struct {
 	// The next child, when present.
 	Next *Recursive `json:"next,omitempty"`
 }
 
+// +demi:root
 // +demi:schema
 type RecursiveResult struct {
 	Tree Recursive `json:"tree"`

@@ -40,6 +40,11 @@ func checkRuleType(t types.Type, m map[string]string, field bool) error {
 	stringType := isBasic && basic.Info()&types.IsString != 0
 	numeric := isBasic && basic.Info()&(types.IsInteger|types.IsFloat) != 0
 	for _, key := range []string{"pattern", "enum", "timestamp", "base64", "id", "format"} {
+		if key == "base64" {
+			if slice, ok := t.Underlying().(*types.Slice); ok && types.Identical(slice.Elem(), types.Typ[types.Uint8]) {
+				continue
+			}
+		}
 		if has(m, key) && !stringType {
 			return fmt.Errorf("%s requires a string", key)
 		}

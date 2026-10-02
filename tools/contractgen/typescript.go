@@ -15,6 +15,10 @@ func (g *generator) markReceived(name string) {
 	}
 	g.received[name] = true
 	d := g.defs[name]
+	if d == nil {
+		g.err = fmt.Errorf("external contract %s is not loaded", name)
+		return
+	}
 	if has(d.marks, "union") {
 		for _, v := range g.variants(name) {
 			g.markReceived(v.key)
@@ -45,12 +49,12 @@ func (g *generator) markReceived(name string) {
 
 func (g *generator) emitTS(name string) {
 	d := g.defs[name]
-	if old, ok := g.tsNames[d.name]; ok && old != name {
+	if old, ok := g.tsNames[tsName(d.name)]; ok && old != name {
 		g.err = fmt.Errorf("%s: %s: duplicate TypeScript name also from %s", d.position, d.name, old)
 		return
 	}
-	g.tsNames[d.name] = name
-	if g.shared[name] {
+	g.tsNames[tsName(d.name)] = name
+	if g.shared[name] && (has(d.marks, "root") || !has(d.marks, "variant") && !isPrivateScalar(d)) {
 		g.tsImports[schema(d.name)] = true
 		return
 	}
@@ -65,12 +69,16 @@ func (g *generator) emitTS(name string) {
 	g.active[name] = true
 	var code string
 	if has(d.marks, "union") {
+		if d.marks["union"] == "untagged" {
+			g.err = fmt.Errorf("untagged union is not supported in TypeScript")
+			return
+		}
 		tag := bounds(d.marks["union"])["tag"]
 		var variants []string
 		for _, v := range g.variants(name) {
 			g.emitTS(v.key)
 			_, value, _ := strings.Cut(v.marks["variant"], " ")
-			variants = append(variants, schema(v.name)+".extend({"+q(tag)+": z.literal("+q(value)+")})")
+			variants = append(variants, schema(v.name)+".extend({"+q(tag)+": z.literal("+tagLiteral(value)+")})")
 		}
 		code = "z.discriminatedUnion(" + q(tag) + ", [" + strings.Join(variants, ", ") + "])"
 	} else if st, ok := g.object(d); ok {
@@ -106,7 +114,11 @@ func (g *generator) emitTS(name string) {
 			g.err = fmt.Errorf("%s: recursion outside an object property", name)
 		}
 	}
-	fmt.Fprintf(&g.ts, "export const %s = %s\nexport type %s = z.infer<typeof %s>\n", schema(d.name), code, d.name, schema(d.name))
+	export := "export "
+	if !has(d.marks, "root") && (has(d.marks, "variant") || isPrivateScalar(d)) {
+		export = ""
+	}
+	fmt.Fprintf(&g.ts, "%sconst %s = %s\n%stype %s = z.infer<typeof %s>\n", export, schema(d.name), code, export, tsName(d.name), schema(d.name))
 	g.active[name] = false
 	g.emitted[name] = true
 }

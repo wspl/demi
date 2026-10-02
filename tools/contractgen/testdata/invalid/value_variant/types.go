@@ -4,6 +4,7 @@ package invalid
 type Union interface{ isUnion() }
 
 // +demi:variant value
+// +demi:root direction=receive
 type Broken struct{}
 
 func (Broken) isUnion() {}

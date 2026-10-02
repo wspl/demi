@@ -45,7 +45,10 @@ func (g *generator) check(p *packages.Package) error {
 			if !ok || iface.NumMethods() != 1 || iface.Method(0).Exported() {
 				return fail("union must be an interface with one unexported sealing method")
 			}
-			if bounds(d.marks["union"])["tag"] == "" {
+			if d.marks["msgpack"] == "tuple" && (d.marks["union"] == "untagged" || g.unionKind(d) == "bool") {
+				return fail("tuple unions require string tags")
+			}
+			if bounds(d.marks["union"])["tag"] == "" && d.marks["union"] != "untagged" {
 				return fail("union requires tag=<field>")
 			}
 			signature := iface.Method(0).Type().(*types.Signature)
@@ -55,10 +58,19 @@ func (g *generator) check(p *packages.Package) error {
 			tags := map[string]bool{}
 			for _, v := range g.variants(name) {
 				_, tag, _ := strings.Cut(v.marks["variant"], " ")
-				if tags[tag] {
+				if tags[tag] && d.marks["union"] != "untagged" {
 					return fail("duplicate variant tag " + tag)
 				}
+				if tag == "" && d.marks["union"] != "untagged" {
+					return fail("tagged variant requires a tag")
+				}
 				tags[tag] = true
+				if d.marks["union"] == "untagged" && has(v.marks, "tolerant") {
+					return fail("untagged variants must be strict")
+				}
+				if _, _, kind := g.variantWire(v); d.marks["union"] != "untagged" && kind != g.unionKind(d) {
+					return fail("union cannot mix boolean and string tags")
+				}
 			}
 			if len(g.variants(name)) == 0 {
 				return fail("union has no variants; use variant <Union> <tag>")
@@ -66,7 +78,7 @@ func (g *generator) check(p *packages.Package) error {
 		}
 		if variant := d.marks["variant"]; variant != "" {
 			parts := strings.Fields(variant)
-			if len(parts) != 2 || g.defs[parts[0]] == nil || !has(g.defs[parts[0]].marks, "union") {
+			if len(parts) < 1 || len(parts) > 2 || g.defs[parts[0]] == nil || !has(g.defs[parts[0]].marks, "union") {
 				return fail("variant requires a known union and tag")
 			}
 			if iface, ok := g.defs[parts[0]].typ.Underlying().(*types.Interface); ok && types.Implements(d.typ, iface) {
@@ -75,7 +87,7 @@ func (g *generator) check(p *packages.Package) error {
 		}
 		if root, ok := d.marks["root"]; ok {
 			args := bounds(root)
-			if args["direction"] != "receive" && args["direction"] != "send" {
+			if args["direction"] != "receive" && args["direction"] != "send" && (args["direction"] != "" || args["output"] != "") {
 				return fail("root requires direction=receive|send")
 			}
 			if out := args["output"]; out != "" && out != "protocol" && out != "web" && !regexp.MustCompile(`^plugin-[a-z][a-z0-9-]*$`).MatchString(out) {
@@ -116,10 +128,10 @@ func (g *generator) check(p *packages.Package) error {
 				if len(parts) > 2 {
 					return fail(f.Name() + ": only one optionality option is allowed")
 				}
-				if len(parts) > 1 && !isPointer(f.Type()) {
+				if len(parts) > 1 && !isPointer(f.Type()) && (parts[1] != "omitempty" || !emptyCollection(f.Type())) {
 					b, ok := f.Type().Underlying().(*types.Basic)
 					if !ok || b.Kind() != types.Bool {
-						return fail(f.Name() + ": optional values use pointers (except default-false booleans)")
+						return fail(f.Name() + ": optional values use pointers, default-false booleans, or omitempty collections")
 					}
 				}
 				if has(m, "nullable") && len(parts) > 1 {
@@ -160,6 +172,9 @@ func checkMarks(m map[string]string) error {
 		}
 		seen := map[string]bool{}
 		for _, arg := range strings.Fields(m[key]) {
+			if key == "union" && m[key] == "untagged" {
+				continue
+			}
 			name, value, ok := strings.Cut(arg, "=")
 			if !ok || !allowed[name] || value == "" || seen[name] {
 				return fmt.Errorf("invalid %s argument %q", key, arg)

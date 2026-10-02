@@ -1,5 +1,7 @@
 package text
 
+//go:generate go run ../..
+
 // +demi:root direction=send output=web
 // +demi:format email
 // +demi:msgpack
