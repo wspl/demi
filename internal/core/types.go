@@ -6,39 +6,46 @@ package core
 // of the blocks they become.
 // +demi:length min=1
 // +demi:id
+// +demi:schema-primitive
 type BlockID string
 
 // A turn: every block a turn writes carries it. A message's id, which the
 // web app chooses, is the id of the turn the message starts.
 // +demi:length min=1
 // +demi:id
+// +demi:schema-primitive
 type TurnID string
 
 // An agent node: the root of a conversation or one of its subagents.
 // +demi:length min=1
 // +demi:id
+// +demi:schema-primitive
 type NodeID string
 
 // A scheduled yield wakeup.
 // +demi:length min=1
 // +demi:id
+// +demi:schema-primitive
 type WakeupID string
 
 // A shell of a node's shell environment.
 // +demi:length min=1
 // +demi:id
+// +demi:schema-primitive
 type ShellID string
 
 // A command a shell runs; its handle for `shell_status`, `shell_write`
 // and `shell_abort`.
 // +demi:length min=1
 // +demi:id
+// +demi:schema-primitive
 type CommandID string
 
 // A blob's name: the SHA-256 of its bytes in lowercase hexadecimal
 // (`storage.md` § Encodings and digests). A blob belongs to its owner's
 // namespace, so a name grants no access across users.
 // +demi:id
+// +demi:schema-primitive
 // +demi:pattern ^[0-9a-f]{64}$
 type BlobRef string
 

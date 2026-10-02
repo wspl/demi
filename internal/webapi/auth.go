@@ -115,6 +115,7 @@ type EmailChangeConfirm struct {
 }
 
 // A password as a request carries it. `Debug` never shows it.
+// +demi:schema-primitive
 type Password string
 
 // Whether this role administers `other`: a role acts only on the roles
