@@ -98,7 +98,7 @@ type rawManagedBoot struct {
 
 // DecodeManagedBoot decodes a boot file's JSON; its values are checked as they are read.
 func DecodeManagedBoot(data []byte) (ManagedBoot, error) {
-	raw, err := DecoderawManagedBoot(data)
+	raw, err := decodeRawManagedBoot(data)
 	if err != nil {
 		return ManagedBoot{}, fmt.Errorf("invalid managed boot file: %w", err)
 	}
@@ -140,7 +140,7 @@ func (u BackendURL) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON parses the URL after its generated string decoder.
 func (u *BackendURL) UnmarshalJSON(data []byte) error {
-	raw, err := DecoderawBackendURL(data)
+	raw, err := decodeRawBackendURL(data)
 	if err != nil {
 		return err
 	}

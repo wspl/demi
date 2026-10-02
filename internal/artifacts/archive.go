@@ -70,7 +70,7 @@ func readInstallation(ctx context.Context, directory string) (*receipt, error) {
 	if data == nil {
 		return nil, &InstallationError{Directory: directory, Reason: "has no receipt"}
 	}
-	found, err := Decodereceipt(data)
+	found, err := decodeReceipt(data)
 	if err != nil {
 		return nil, &InstallationError{directory, "has an invalid receipt", err}
 	}

@@ -29,14 +29,27 @@ func readTable(p *packages.Package, spec *ast.ValueSpec, marks map[string]string
 	if err := checkMarks(marks); err != nil {
 		return fail(err)
 	}
-	if len(marks) != 1 || !has(marks, "table") || len(spec.Names) != 1 || len(spec.Values) != 1 {
-		return fail(fmt.Errorf("table requires one slice variable and no other markers"))
+	if len(marks) != 1 || !has(marks, "table") || len(spec.Names) != 1 || len(spec.Values) > 1 {
+		return fail(fmt.Errorf("table requires one slice variable or scalar constant and no other markers"))
 	}
 	obj := p.TypesInfo.Defs[spec.Names[0]]
 	if obj == nil {
-		return fail(fmt.Errorf("cannot resolve table variable"))
+		return fail(fmt.Errorf("cannot resolve table declaration"))
 	}
 	typ := obj.Type()
+	if constant, ok := obj.(*types.Const); ok {
+		if _, err := tableTSType(typ); err != nil {
+			return fail(err)
+		}
+		value, err := tableScalar(constant.Val(), typ)
+		if err != nil {
+			return fail(err)
+		}
+		return &table{name: strings.ToUpper(strings.Join(words(spec.Names[0].Name), "_")), position: p.Fset.Position(spec.Pos()).String(), value: value}, nil
+	}
+	if len(spec.Values) != 1 {
+		return fail(fmt.Errorf("table variable requires a literal initializer"))
+	}
 	slice, ok := typ.Underlying().(*types.Slice)
 	if !ok {
 		return fail(fmt.Errorf("table requires a slice of structs"))
@@ -75,24 +88,7 @@ func readTable(p *packages.Package, spec *ast.ValueSpec, marks map[string]string
 // tableValue admits only literal contract data and compile-time scalar constants.
 func tableValue(p *packages.Package, expr ast.Expr, typ types.Type) (any, error) {
 	if v := p.TypesInfo.Types[expr].Value; v != nil {
-		switch v.Kind() {
-		case constant.String:
-			return constant.StringVal(v), nil
-		case constant.Bool:
-			return constant.BoolVal(v), nil
-		case constant.Int:
-			n, ok := constant.Int64Val(v)
-			if !ok || n < -9007199254740991 || n > 9007199254740991 {
-				return nil, fmt.Errorf("table integer is outside JavaScript's safe range")
-			}
-			return n, nil
-		case constant.Float:
-			n, _ := constant.Float64Val(v)
-			if basic, ok := typ.Underlying().(*types.Basic); ok && basic.Kind() == types.Float32 {
-				n = float64(float32(n))
-			}
-			return n, nil
-		}
+		return tableScalar(v, typ)
 	}
 	literal, ok := expr.(*ast.CompositeLit)
 	if !ok {
@@ -151,6 +147,29 @@ func tableValue(p *packages.Package, expr ast.Expr, typ types.Type) (any, error)
 	return nil, fmt.Errorf("unsupported table value %s", typ)
 }
 
+// tableScalar converts compile-time constants to safe TypeScript table values.
+func tableScalar(v constant.Value, typ types.Type) (any, error) {
+	switch v.Kind() {
+	case constant.String:
+		return constant.StringVal(v), nil
+	case constant.Bool:
+		return constant.BoolVal(v), nil
+	case constant.Int:
+		n, ok := constant.Int64Val(v)
+		if !ok || n < -9007199254740991 || n > 9007199254740991 {
+			return nil, fmt.Errorf("table integer is outside JavaScript's safe range")
+		}
+		return n, nil
+	case constant.Float:
+		n, _ := constant.Float64Val(v)
+		if basic, ok := typ.Underlying().(*types.Basic); ok && basic.Kind() == types.Float32 {
+			n = float64(float32(n))
+		}
+		return n, nil
+	}
+	return nil, fmt.Errorf("unsupported table constant %s", typ)
+}
+
 // tableSources emits constant data and lookups from the owning Go declarations.
 func (g *generator) tableSources() ([]byte, error) {
 	if len(g.tables) == 0 {
@@ -170,6 +189,10 @@ func (g *generator) tableSources() ([]byte, error) {
 			return nil, fmt.Errorf("%s: %s: %w", table.position, table.name, err)
 		}
 		if table.fields == nil {
+			if table.scalar == "" {
+				fmt.Fprintf(&out, "export const %s = %s\n", table.name, value)
+				continue
+			}
 			fmt.Fprintf(&out, "export const %s: readonly %s[] = %s\n", table.name, table.scalar, value)
 			continue
 		}
