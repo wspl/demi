@@ -28,7 +28,7 @@ bytes.workspace = true
 demi-command-package-claude-code-protocol = { path = "../command-package-claude-code-protocol" }
 demi-command-protocol = { path = "../command-protocol" }
 demi-command-sdk = { path = "../command-sdk" }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+reqwest = { workspace = true, features = ["rustls", "stream"] }
 serde.workspace = true
 serde_json.workspace = true
 tempfile = "3"

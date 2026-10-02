@@ -170,7 +170,7 @@ input, which the multi-worker control service also relies on
   with no row is on and has no settings. `plugin_directories` stores each
   plugin's [Host directories](../architecture/plugins.md#host-directories) for
   a user: user, plugin id, the directory's name, its digest and its listing,
-  each file's path, mode and SHA-256. A plugin's set for a user is replaced
+  each file's path, whether it is executable, and its SHA-256. A plugin's set for a user is replaced
   whole in one transaction. The plugin host decodes a value only as JSON; the
   plugin decodes it into its own type and refuses one that does not fit, as
   every reader of a stored value does.

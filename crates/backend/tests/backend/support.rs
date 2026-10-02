@@ -36,6 +36,7 @@ use demi_command_protocol::{PackageDescriptor, host_target};
 use demi_plugin_interface::{
     Manifest, Plugin, PluginError, PluginFactory, PluginId, PluginPort, Reply, Request, Stream,
 };
+use demi_plugin_skills::testing::Repos;
 pub use demi_provider_common::testing::ManualClock;
 use demi_shared_types::Clock;
 use demi_web_api_protocol::auth::{Identity, Role, UserDto};
@@ -260,6 +261,8 @@ pub struct Harness {
     /// Counts what reaches the object store of every backend this harness
     /// starts.
     objects: Option<ObjectCounts>,
+    /// The repositories the skills plugin fetches instead of the internet's.
+    skill_repos: Option<Arc<Repos>>,
 }
 
 impl Harness {
@@ -310,7 +313,15 @@ impl Harness {
             expose_domain: None,
             exposes: ExposeTuning::default(),
             objects: None,
+            skill_repos: None,
         }
+    }
+
+    /// Backends whose skills plugin fetches `repos` for the origins
+    /// `owner/repo`.
+    pub fn with_skill_repos(mut self, repos: &Arc<Repos>) -> Self {
+        self.skill_repos = Some(repos.clone());
+        self
     }
 
     /// Backends whose object store counts what reaches it in `counts`.
@@ -525,6 +536,14 @@ impl Harness {
             config
                 .plugins
                 .push(Box::new(StreamsPlugin::new(streams.clone())));
+        }
+        if let Some(repos) = &self.skill_repos {
+            let skills = config
+                .plugins
+                .iter_mut()
+                .find(|plugin| plugin.manifest().id.as_str() == "skills")
+                .expect("the backend has the skills plugin");
+            *skills = Box::new(repos.skills());
         }
         config.models_dev_url = self
             .models_dev_url

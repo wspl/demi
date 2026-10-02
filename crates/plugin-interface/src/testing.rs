@@ -10,7 +10,7 @@ use std::rc::Rc;
 
 use demi_command_declarations::NativeOperation;
 use demi_host_interface::{PortError, PortTransport};
-use demi_shared_types::Timestamp;
+use demi_shared_types::{B64Bytes, BlobRef, Timestamp};
 use demi_web_api_protocol::exposes::ExposeAddress;
 use demi_web_api_protocol::ids::{DeviceId, ExposeId};
 use futures_util::future::LocalBoxFuture;
@@ -19,8 +19,9 @@ use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    CallKind, ConversationHost, ExposeList, ExposeRecord, ExposeRefusal, Plugin, PluginError,
-    PluginPort, PluginTransport, PortAnswer, PortMessage, PortRefusal, Reply, Request, StoredValue,
+    CallKind, ConversationHost, DirectoryPath, EntryKind, ExposeList, ExposeRecord, ExposeRefusal,
+    HostDirectory, HostEntry, HostFile, HostRead, Plugin, PluginError, PluginId, PluginPort,
+    PluginTransport, PortAnswer, PortMessage, PortRefusal, Reply, Request, StoredValue,
 };
 
 /// `plugin` behind the JSON loopback.
@@ -84,14 +85,24 @@ pub struct PackageCall {
 }
 
 /// Demi's side of a plugin's port, in memory: an rpc transport, the
-/// plugin's values, the conversation's Hosts, the user's exposes on a clock
-/// the test sets, the package calls a test answers, and how often the
-/// plugin marked its state as changed.
+/// plugin's values and the blobs they name, the user's blobs, the plugin's
+/// Host directories, the files of the conversation's main Host, the
+/// conversation's Hosts, the user's exposes on a clock the test sets, the
+/// package calls a test answers, and how often the plugin marked its state
+/// as changed.
 pub struct TestDemi {
+    /// The plugin whose port this is, which names its directories' paths.
+    pub plugin: RefCell<PluginId>,
     /// What answers a command's rpc messages, which a test may replace
     /// before each command.
     pub rpc: RefCell<Option<Rc<dyn PortTransport>>>,
     values: RefCell<BTreeMap<String, StoredValue>>,
+    value_blobs: RefCell<BTreeMap<String, Vec<BlobRef>>>,
+    blobs: RefCell<BTreeMap<BlobRef, B64Bytes>>,
+    directories: RefCell<Vec<HostDirectory>>,
+    /// The files of the conversation's main Host by absolute path, its
+    /// directories being their parents; none while the Host is not running.
+    pub host_files: RefCell<Option<BTreeMap<String, Vec<u8>>>>,
     pub hosts: RefCell<Vec<ConversationHost>>,
     /// Whether the instance has an expose domain.
     pub exposes_available: Cell<bool>,
@@ -102,6 +113,8 @@ pub struct TestDemi {
     /// Each package call the plugin made.
     pub called: RefCell<Vec<PackageCall>>,
     changed: Cell<u32>,
+    /// Woken at each port message the plugin sends.
+    answered: tokio::sync::Notify,
 }
 
 impl TestDemi {
@@ -115,8 +128,13 @@ impl TestDemi {
 
     fn empty(rpc: Option<Rc<dyn PortTransport>>) -> Self {
         Self {
+            plugin: RefCell::new(PluginId::try_from("test").expect("a plugin id")),
             rpc: RefCell::new(rpc),
             values: RefCell::default(),
+            value_blobs: RefCell::default(),
+            blobs: RefCell::default(),
+            directories: RefCell::default(),
+            host_files: RefCell::default(),
             hosts: RefCell::default(),
             exposes_available: Cell::new(true),
             exposes: RefCell::default(),
@@ -125,12 +143,52 @@ impl TestDemi {
             package_calls: RefCell::default(),
             called: RefCell::default(),
             changed: Cell::new(0),
+            answered: tokio::sync::Notify::new(),
+        }
+    }
+
+    /// Resolves once `check` holds, checking again after each port message
+    /// the plugin sends, as a plugin's task does after the call that
+    /// started it.
+    pub async fn until(&self, check: impl Fn(&Self) -> bool) {
+        loop {
+            let answered = self.answered.notified();
+            let mut answered = std::pin::pin!(answered);
+            answered.as_mut().enable();
+            if check(self) {
+                return;
+            }
+            answered.await;
         }
     }
 
     /// A port of one request over this Demi.
     pub fn port(self: &Rc<Self>) -> PluginPort {
         PluginPort::new(self.clone(), CancellationToken::new())
+    }
+
+    /// The plugin's value `key`.
+    pub fn value(&self, key: &str) -> Option<StoredValue> {
+        self.values.borrow().get(key).cloned()
+    }
+
+    /// The blobs the value `key` names.
+    pub fn value_blobs(&self, key: &str) -> Vec<BlobRef> {
+        self.value_blobs
+            .borrow()
+            .get(key)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// The bytes of the blob `blob`, if the plugin put it.
+    pub fn blob_bytes(&self, blob: &BlobRef) -> Option<B64Bytes> {
+        self.blobs.borrow().get(blob).cloned()
+    }
+
+    /// The plugin's set of Host directories.
+    pub fn directories(&self) -> Vec<HostDirectory> {
+        self.directories.borrow().clone()
     }
 
     /// How many times the plugin marked its state as changed.
@@ -167,15 +225,60 @@ impl TestDemi {
                 key,
                 value,
                 revision,
+                blobs,
             } => {
                 let mut values = self.values.borrow_mut();
                 let stored = values.get(&key).map(|stored| stored.revision);
                 if stored != revision {
                     return Err(PortRefusal::Conflict);
                 }
+                let known = self.blobs.borrow();
+                let unknown = blobs.iter().find(|blob| !known.contains_key(*blob));
+                assert!(
+                    unknown.is_none(),
+                    "the value names a blob it never put: {unknown:?}"
+                );
                 let revision = revision.map_or(1, |revision| revision + 1);
+                self.value_blobs.borrow_mut().insert(key.clone(), blobs);
                 values.insert(key, StoredValue { value, revision });
                 PortAnswer::Written { revision }
+            }
+            PortMessage::RemoveValue { key, revision } => {
+                let mut values = self.values.borrow_mut();
+                if values.get(&key).map(|stored| stored.revision) != Some(revision) {
+                    return Err(PortRefusal::Conflict);
+                }
+                values.remove(&key);
+                self.value_blobs.borrow_mut().remove(&key);
+                PortAnswer::Done
+            }
+            PortMessage::PutBlob { bytes } => {
+                let blob = BlobRef::of(bytes.as_bytes());
+                self.blobs.borrow_mut().insert(blob.clone(), bytes);
+                PortAnswer::Blob { blob }
+            }
+            PortMessage::GetBlob { blob } => PortAnswer::Bytes {
+                bytes: self.blobs.borrow().get(&blob).cloned(),
+            },
+            PortMessage::SetDirectories { directories } => {
+                HostDirectory::check_set(&directories).expect("the plugin's set is valid");
+                let plugin = self.plugin.borrow();
+                let paths = directories
+                    .iter()
+                    .map(|directory| DirectoryPath {
+                        name: directory.name.clone(),
+                        path: directory.path(&plugin),
+                    })
+                    .collect();
+                self.directories.replace(directories);
+                PortAnswer::Directories { paths }
+            }
+            PortMessage::ReadHostFiles { reads } => {
+                let files = self.host_files.borrow();
+                let files = files.as_ref().ok_or(PortRefusal::NotRunning)?;
+                PortAnswer::HostFiles {
+                    files: reads.iter().map(|read| host_file(files, read)).collect(),
+                }
             }
             PortMessage::Changed => {
                 self.changed.set(self.changed.get() + 1);
@@ -309,10 +412,46 @@ impl PluginTransport for TestDemi {
                 let response = rpc.request(request).await?;
                 return Ok(PortAnswer::Rpc { response });
             }
-            Ok(self
+            let answer = self
                 .answer(message)
-                .unwrap_or_else(|refusal| PortAnswer::Refused { refusal }))
+                .unwrap_or_else(|refusal| PortAnswer::Refused { refusal });
+            self.answered.notify_waiters();
+            Ok(answer)
         })
+    }
+}
+
+/// What `read` finds among `files`: a file, a directory that holds one, or
+/// nothing.
+fn host_file(files: &BTreeMap<String, Vec<u8>>, read: &HostRead) -> HostFile {
+    if let Some(bytes) = files.get(&read.path) {
+        let limit = usize::try_from(read.limit).unwrap_or(usize::MAX);
+        return HostFile::File {
+            bytes: B64Bytes::new(bytes[..bytes.len().min(limit)].to_vec()),
+            size: u64::try_from(bytes.len()).expect("a test file's size fits"),
+        };
+    }
+    let prefix = format!("{}/", read.path.trim_end_matches('/'));
+    let mut entries: Vec<HostEntry> = Vec::new();
+    for path in files.keys() {
+        let Some(rest) = path.strip_prefix(&prefix) else {
+            continue;
+        };
+        let (name, kind) = match rest.split_once('/') {
+            Some((name, _)) => (name, EntryKind::Directory),
+            None => (rest, EntryKind::File),
+        };
+        if !entries.iter().any(|entry| entry.name == name) {
+            entries.push(HostEntry {
+                name: name.to_owned(),
+                kind,
+            });
+        }
+    }
+    if entries.is_empty() {
+        HostFile::Missing
+    } else {
+        HostFile::Directory { entries }
     }
 }
 

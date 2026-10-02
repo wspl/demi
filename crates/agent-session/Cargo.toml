@@ -44,5 +44,5 @@ demi-provider-codex = { path = "../provider-codex", features = ["testing"] }
 demi-provider-google = { path = "../provider-google" }
 demi-provider-grok-build = { path = "../provider-grok-build" }
 demi-provider-openai-api = { path = "../provider-openai-api" }
-reqwest = { version = "0.12", default-features = false }
+reqwest.workspace = true
 tokio = { workspace = true, features = ["test-util"] }

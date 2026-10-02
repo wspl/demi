@@ -27,7 +27,7 @@ axum = { version = "0.8", optional = true }
 bytes.workspace = true
 futures-util.workspace = true
 jiff.workspace = true
-object_store = { version = "0.13", default-features = false, features = ["aws", "fs"] }
+object_store = { workspace = true, features = ["aws", "fs"] }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

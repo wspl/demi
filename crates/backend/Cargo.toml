@@ -48,6 +48,7 @@ demi-plugin-browser = { path = "../plugin-browser" }
 demi-plugin-expose = { path = "../plugin-expose" }
 demi-plugin-file = { path = "../plugin-file" }
 demi-plugin-interface = { path = "../plugin-interface" }
+demi-plugin-skills = { path = "../plugin-skills" }
 demi-plugin-todo = { path = "../plugin-todo" }
 demi-command-package-browser-protocol = { path = "../command-package-browser-protocol" }
 demi-command-declarations = { path = "../command-declarations" }
@@ -91,12 +92,13 @@ demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
 demi-provider-common = { path = "../provider-common", features = ["testing"] }
 demi-runner-protocol = { path = "../runner-protocol" }
 demi-host-interface = { path = "../host-interface", features = ["testing"] }
+demi-plugin-skills = { path = "../plugin-skills", features = ["testing"] }
 bytes.workspace = true
 # The upload and retention scenarios look for images' base64 in what a
 # provider was sent.
 data-encoding = "2"
 futures-util.workspace = true
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+reqwest = { workspace = true, features = ["rustls", "stream"] }
 serde.workspace = true
 serde_json.workspace = true
 uuid = { version = "1", features = ["v4"] }

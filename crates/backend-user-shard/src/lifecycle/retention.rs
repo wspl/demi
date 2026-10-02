@@ -294,9 +294,10 @@ impl Shard {
     }
 
     /// Every blob the user's reference sources name: the upload records,
-    /// which cover drafts, and each conversation's database, archived ones
-    /// and Fork destinations not published yet included. The first source
-    /// that cannot be read fails it.
+    /// which cover drafts, the plugins' values and Host directories, and
+    /// each conversation's database, archived ones and Fork destinations not
+    /// published yet included. The first source that cannot be read fails
+    /// it.
     async fn references(&self) -> Result<BTreeSet<BlobRef>, String> {
         let services = self.services();
         let control = &services.control;
@@ -306,6 +307,12 @@ impl Shard {
             .map_err(|error| format!("the upload records cannot be read: {error}"))?
             .into_iter()
             .collect();
+        references.extend(
+            control
+                .plugin_blobs(self.user().clone())
+                .await
+                .map_err(|error| format!("the plugins' records cannot be read: {error}"))?,
+        );
         let mut conversations = control
             .conversation_order(self.user().clone())
             .await

@@ -12,6 +12,7 @@ use demi_backend_database::control::ControlService;
 use demi_backend_database::conversations::ConversationDb;
 use demi_backend_host_access::HostShard;
 use demi_backend_host_access::access::Conversations;
+use demi_backend_host_access::plugin_files::{DirectorySets, PluginInstalls};
 use demi_backend_remote_host::Pipes;
 use demi_backend_runners::devices::Devices;
 use demi_backend_runners::native::NativeCatalog;
@@ -19,6 +20,7 @@ use demi_backend_runners::public_url::PublicUrl;
 use demi_backend_runners::router::CommandRouter;
 use demi_shared_types::Clock;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
+use futures_util::future::LocalBoxFuture;
 use tokio_util::task::TaskTracker;
 
 use super::Shard;
@@ -82,6 +84,19 @@ impl HostShard for Shard {
 
     fn track_idle(&self, conversation: &ConversationId) {
         Shard::track_idle(self, conversation);
+    }
+
+    fn directory_sets(&self) -> LocalBoxFuture<'_, Result<DirectorySets, String>> {
+        Box::pin(async move {
+            self.plugins
+                .directories()
+                .await
+                .map_err(|error| format!("the plugins' Host directories cannot be read: {error}"))
+        })
+    }
+
+    fn plugin_installs(&self) -> &PluginInstalls {
+        &self.plugin_installs
     }
 }
 

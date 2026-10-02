@@ -12,7 +12,7 @@ use std::{
     cell::{Cell, RefCell},
     collections::{HashMap, HashSet, VecDeque},
     fmt::Display,
-    rc::Rc,
+    rc::{Rc, Weak},
     time::Duration,
 };
 
@@ -143,6 +143,19 @@ impl PartialEq for Link {
 }
 
 impl Eq for Link {}
+
+/// A connection's identity that does not keep the connection: what is
+/// remembered for as long as a connection lasts, such as the directories a
+/// Host was checked for, compares with it.
+#[derive(Clone)]
+pub struct WeakLink(Weak<Inner>);
+
+impl WeakLink {
+    /// Whether `link` is the connection this names.
+    pub fn is(&self, link: &Link) -> bool {
+        Weak::ptr_eq(&self.0, &Rc::downgrade(&link.0))
+    }
+}
 
 pub(crate) struct Inner {
     device: String,
@@ -388,6 +401,10 @@ pub(crate) struct ServiceEntry {
 }
 
 impl Link {
+    pub fn downgrade(&self) -> WeakLink {
+        WeakLink(Rc::downgrade(&self.0))
+    }
+
     /// A connection, and the driver its owner serves the socket with.
     pub fn new(options: LinkOptions) -> (Link, LinkDriver) {
         let (outbound, frames) = mpsc::channel(OUTBOUND_FRAMES);
