@@ -231,3 +231,90 @@ func TestForwardRestoresSharedOutputFlags(t *testing.T) {
 		t.Fatalf("shared output flags: %x -> %x: %v", flags, after, err)
 	}
 }
+
+// forwardOutput signals when forwarding reaches a pipe the caller never drains.
+type forwardOutput struct {
+	*io.PipeWriter
+	started chan struct{}
+}
+
+func (w *forwardOutput) Write(b []byte) (int, error) {
+	close(w.started)
+	return w.PipeWriter.Write(b)
+}
+
+func TestForwardConnectionLossInterruptsBlockedOutput(t *testing.T) {
+	// Uses one local connection and event waits; the test binary's timeout is
+	// only a hang guard. Both output streams must release their blocked write.
+	for _, stderr := range []bool{false, true} {
+		name := "stdout"
+		if stderr {
+			name = "stderr"
+		}
+		t.Run(name, func(t *testing.T) {
+			directory, err := os.MkdirTemp("", "demi-ipc-")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = os.RemoveAll(directory) }()
+			endpoint := filepath.Join(directory, "socket")
+			listener, err := net.Listen("unix", endpoint)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = listener.Close() }()
+			reader, writer := io.Pipe()
+			defer func() { _ = reader.Close() }()
+			blocked := &forwardOutput{PipeWriter: writer, started: make(chan struct{})}
+			stdio := Stdio{Stdin: io.NopCloser(strings.NewReader("")), Stdout: blocked, Stderr: &bufferOutput{}}
+			if stderr {
+				stdio.Stdout, stdio.Stderr = stdio.Stderr, stdio.Stdout
+			}
+			accepted := make(chan net.Conn, 1)
+			served := make(chan error, 1)
+			go func() {
+				conn, err := listener.Accept()
+				if err != nil {
+					served <- err
+					return
+				}
+				accepted <- conn
+				served <- cmdsdk.ServeLocal(t.Context(), conn, localHandler{invoke: func(ctx context.Context, call cmdsdk.InvocationContext[commandwire.LocalInvocation]) (commandwire.Completion, error) {
+					var err error
+					if stderr {
+						err = call.Output.Stderr(ctx, []byte("blocked"))
+					} else {
+						err = call.Output.Stdout(ctx, []byte("blocked"))
+					}
+					if err != nil {
+						return commandwire.Completion{}, err
+					}
+					<-ctx.Done()
+					return commandwire.Completion{}, ctx.Err()
+				}})
+			}()
+			forwarded := make(chan error, 1)
+			go func() {
+				_, err := Forward(t.Context(), endpoint, commandwire.LocalInvocation{Operation: Raw, InvocationID: "lost", Args: json.RawMessage(`{}`), Cwd: directory, Env: map[string]string{}}, stdio)
+				forwarded <- err
+			}()
+			conn := <-accepted
+			select {
+			case <-blocked.started:
+			case err := <-forwarded:
+				<-served
+				t.Fatalf("forwarding ended before output: %v", err)
+			}
+			if err := conn.Close(); err != nil {
+				t.Error(err)
+			}
+			if err := <-forwarded; err == nil {
+				t.Error("connection loss succeeded")
+			}
+			<-served
+			if t.Context().Err() != nil {
+				t.Fatal("forwarding needed caller cancellation")
+			}
+		})
+	}
+}

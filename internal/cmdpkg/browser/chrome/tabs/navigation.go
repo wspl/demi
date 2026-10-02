@@ -149,7 +149,7 @@ func (n *NavigationObservation) Close() {
 
 // ObserveNavigation installs an observer on the tab's session before page input.
 func (t *Tab) ObserveNavigation(ctx context.Context) (*NavigationObservation, error) {
-	events, err := t.Subscribe("Network.requestWillBeSent", "Network.loadingFailed", "Page.frameNavigated", "Page.navigatedWithinDocument", "Page.lifecycleEvent", "Page.frameStartedLoading")
+	events, err := t.session.SubscribeWithCapacity(256, "Network.requestWillBeSent", "Network.loadingFailed", "Page.frameNavigated", "Page.navigatedWithinDocument", "Page.lifecycleEvent", "Page.frameStartedLoading")
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +221,7 @@ func (t *Tab) Navigate(ctx context.Context, navigation Navigation, load browsero
 
 // WaitCurrentLoad waits for this tab's current document load state.
 func (t *Tab) WaitCurrentLoad(ctx context.Context, load browserop.Load) error {
-	events, err := t.Subscribe("Page.lifecycleEvent", "Page.frameNavigated")
+	events, err := t.session.SubscribeWithCapacity(256, "Page.lifecycleEvent", "Page.frameNavigated")
 	if err != nil {
 		return err
 	}
