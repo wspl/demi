@@ -7,9 +7,13 @@ import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
 import { conversationPageKind } from '@demicodes/web-ui/agent/session-status'
 import ConversationComposer from './ConversationComposer.vue'
 import WorkspaceInfo from '../targets/WorkspaceInfo.vue'
-import SessionTools from '../targets/SessionTools.vue'
+import PluginHeaderTools from '@demicodes/web-ui/plugins/PluginHeaderTools.vue'
+import { PLUGIN_PAGES } from '../plugins/pages'
+import { pluginEnabled } from '../plugins/host'
+import { hostName } from '../targets/session-tools'
 import { useConversations } from './store'
 import { useResources } from '../state/resources'
+import { useProduct } from '../state/product'
 import { useWorkPanel } from './work'
 import { conversationFileRoutes, rawFileContents } from '../api/files'
 import type { EditSelectionHandler } from '@demicodes/web-ui/agent/edit-selection'
@@ -18,6 +22,7 @@ import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
 
 const store = useConversations()
 const resources = useResources()
+const product = useProduct()
 const work = useWorkPanel()
 const route = useRoute()
 const router = useRouter()
@@ -157,7 +162,16 @@ async function fork(request: MessageForkRequest): Promise<void> {
     <template #workspace
       ><WorkspaceInfo :project="project" :conversation="conversation"
     /></template>
-    <template #tools><SessionTools :conversation-id="conversation.id" /></template>
+    <template #tools>
+      <PluginHeaderTools
+        :pages="PLUGIN_PAGES"
+        :enabled="(plugin: string) => pluginEnabled(product.snapshot, plugin)"
+        :conversation-id="conversation.id"
+        :host-name="(id: string) => hostName(product.snapshot?.devices ?? [], id)"
+        @open-tab="(kind, data) => work.add(conversation!.id, kind, data)"
+        @manage-devices="resources.openSettings('devices')"
+      />
+    </template>
     <template #composer
       ><ConversationComposer
         :key="conversation.id"

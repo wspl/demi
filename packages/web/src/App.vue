@@ -23,7 +23,12 @@ import { useResources } from './state/resources'
 import { useSession } from './auth/session'
 import { claimDevice, useDeviceInstallation } from './devices/pairing'
 import { blobUrl } from './api/uploads'
+import { providePluginHost } from '@demicodes/web-ui/plugins/client'
+import { productPluginHost } from './plugins/host'
+import { useProduct } from './state/product'
 provideBlobUrl(blobUrl)
+const product = useProduct()
+providePluginHost(productPluginHost(() => product.snapshot))
 const imageViewer = provideImageViewer()
 const session = useSession()
 const conversations = useConversations()

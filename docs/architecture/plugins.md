@@ -548,7 +548,9 @@ web (product)                        web-gallery
   something to show. A slot's components receive what the page around them
   offers, such as opening a work panel tab of a kind with its `data`. `web`
   and `web-gallery` import the packages they show from a static list and
-  register their slots; a computed import does not exist.
+  register their slots; a computed import does not exist. A plugin the user
+  has off fills no slot: its settings section leaves the rail, and its work
+  panel kinds and header tool go.
 - **The client.** A plugin's components reach their plugin only through the
   `PluginClient` they receive with `usePlugin()`: its state, which follows
   the sync channel; `call(method, params)`, for the user, or for the
