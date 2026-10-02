@@ -553,10 +553,10 @@ not a tab registry, so the split introduces no dependency cycle.
     and `demi shell output` read alike; where an environment takes the numbers
     of its commands and shells, the conversation's sequences (`Numbers`,
     [Identifiers the model
-    sees](../agent/runtime.md#identifiers-the-model-sees)); and the keeper to
-    which an environment hands what a command leaves when it ends, its whole
-    output and its edit copies, which the product implements over its storage
-    ([The whole output](../agent/runtime.md#the-whole-output)).
+    sees](../agent/runtime.md#identifiers-the-model-sees)). The keeper to
+    which the remote environment hands what a command leaves when it ends is
+    `internal/backend/remotehost`'s: its argument is the runner wire's job file
+    change ([The whole output](../agent/runtime.md#the-whole-output)).
 - **Public boundary:** the items above; test support is in
   `internal/host/hosttest`. The Host rules are in [Host
   operations](../execution/runner.md#host-operations); the handler interface is
@@ -1976,7 +1976,7 @@ internal/cmdpkg/claudecode -> internal/cmdpkg/claudecode/claudecodeop, internal/
 internal/gates -> none
 internal/artifacts -> internal/contract
 internal/cli -> none
-internal/host -> internal/commandwire, internal/declare, internal/core
+internal/host -> internal/commandwire, internal/declare, internal/core, internal/contract
 internal/plugin -> internal/declare, internal/core, internal/host, internal/webapi
 internal/plugins/browser -> internal/plugin, internal/declare, internal/cmdpkg/browser/browserop, internal/host, internal/webapi
 internal/plugins/changes -> internal/plugin
@@ -2040,7 +2040,7 @@ internal/cmdsdk/cmdsdktest -> internal/cmdsdk, internal/artifacts, internal/comm
 internal/cmdpkg/claudecode/claudecodetest -> internal/cmdpkg/claudecode, internal/cmdpkg/claudecode/claudecodeop, internal/commandwire, internal/cmdsdk
 internal/gates/gatestest -> internal/gates
 internal/artifacts/artifactstest -> internal/artifacts
-internal/host/hosttest -> internal/host, internal/commandwire, internal/declare, internal/core
+internal/host/hosttest -> internal/host, internal/commandwire, internal/declare, internal/core, internal/contract
 internal/plugin/plugintest -> internal/plugin, internal/declare, internal/core, internal/host, internal/webapi
 internal/plugins/skills/skillstest -> internal/plugins/skills, internal/plugin, internal/core
 internal/provider/providertest -> internal/provider, internal/core, internal/gates
