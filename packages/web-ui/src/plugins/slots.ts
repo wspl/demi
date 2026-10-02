@@ -11,12 +11,6 @@ import { conversationClient, type ConversationPluginClient, type PluginHost } fr
 export interface PluginPage {
   /** The plugin's id, whose state and calls the slots reach. */
   plugin: string
-  /**
-   * The page methods and user streams the slots use: while the backend
-   * serves one of them not, as when its catalog lacks the package they bind,
-   * the page fills no slot.
-   */
-  uses?: { methods?: readonly string[]; streams?: readonly string[] }
   /** A settings section: its navigation entry, in a group of the rail, and its page. */
   settings?: PluginSettingsSection
   /** Work panel kinds, made for each conversation whose panel is open. */
@@ -64,43 +58,18 @@ export interface PluginHeaderToolProps {
   hostName: (id: string) => string
 }
 
-/** A plugin as the product state lists it, as far as its page's slots ask. */
-export interface ListedPlugin {
-  id: string
-  enabled: boolean
-  methods: readonly string[]
-  streams: readonly string[]
-}
-
 /**
- * Whether `page` fills its slots: its plugin is listed and on, and serves
- * every method and stream the page uses.
- */
-export function pluginPageShown(page: PluginPage, plugins: readonly ListedPlugin[]): boolean {
-  const plugin = plugins.find((candidate) => candidate.id === page.plugin)
-  if (!plugin?.enabled) {
-    return false
-  }
-  const methods = page.uses?.methods ?? []
-  const streams = page.uses?.streams ?? []
-  return (
-    methods.every((method) => plugin.methods.includes(method)) &&
-    streams.every((stream) => plugin.streams.includes(stream))
-  )
-}
-
-/**
- * The settings rail with each shown page's section joined to its group, at
- * the group's end; a group the rail lacks is added at the end.
+ * The settings rail with each enabled page's section joined to its group,
+ * at the group's end; a group the rail lacks is added at the end.
  */
 export function withPluginSections(
   groups: readonly SettingsNavGroup[],
   pages: readonly PluginPage[],
-  shown: (page: PluginPage) => boolean,
+  enabled: (plugin: string) => boolean,
 ): SettingsNavGroup[] {
   const joined = groups.map((group) => ({ ...group, items: [...group.items] }))
   for (const page of pages) {
-    if (!page.settings || !shown(page)) {
+    if (!page.settings || !enabled(page.plugin)) {
       continue
     }
     const group = joined.find((candidate) => candidate.label === page.settings!.group)
@@ -118,15 +87,15 @@ export function pluginSettingsPage(pages: readonly PluginPage[], tab: string): C
   return pages.find((page) => page.settings?.item.id === tab)?.settings?.component ?? null
 }
 
-/** Every shown page's kinds for one conversation's panel, refreshed and disposed together. */
+/** Every enabled page's kinds for one conversation's panel, refreshed and disposed together. */
 export function pluginPanelKinds(
   pages: readonly PluginPage[],
   host: PluginHost,
-  shown: (page: PluginPage) => boolean,
+  enabled: (plugin: string) => boolean,
   context: Omit<PanelKindsContext, 'plugin'>,
 ): Required<PanelKinds> {
   const made = pages
-    .filter((page) => page.panelKinds && shown(page))
+    .filter((page) => page.panelKinds && enabled(page.plugin))
     .map((page) =>
       page.panelKinds!({
         ...context,

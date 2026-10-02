@@ -293,8 +293,8 @@ impl UserPlugins {
         Ok(enabled)
     }
 
-    /// The backend's plugins with whether the user has each on and the
-    /// page methods and user streams it serves, for the pages.
+    /// The backend's plugins with whether the user has each on, for the
+    /// settings page.
     pub async fn entries(&self) -> Result<Vec<PluginEntry>, StorageError> {
         let enabled = self.enabled().await?;
         Ok(self
@@ -305,24 +305,11 @@ impl UserPlugins {
             .zip(enabled)
             .map(|(registered, enabled)| {
                 let manifest = registered.factory.manifest();
-                let mut methods: Vec<String> = Vec::new();
-                for method in registered.page.iter().flat_map(|page| &page.methods) {
-                    // A name may serve both scopes.
-                    if !methods.contains(&method.name) {
-                        methods.push(method.name.clone());
-                    }
-                }
                 PluginEntry {
                     id: manifest.id.to_string(),
                     name: manifest.name.clone(),
                     description: manifest.description.clone(),
                     enabled,
-                    methods,
-                    streams: registered
-                        .streams
-                        .iter()
-                        .map(|stream| stream.name.clone())
-                        .collect(),
                 }
             })
             .collect())
