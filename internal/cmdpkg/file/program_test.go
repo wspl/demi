@@ -236,3 +236,39 @@ func TestPatchFailureRestoresEarlierFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Cost: one shared executable build and local filesystem IO, with no timed waits.
+func TestCreatePreservesSymlinkParent(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation requires Windows privileges")
+	}
+	workspace := t.TempDir()
+	other := t.TempDir()
+	target := filepath.Join(other, "directory")
+	if err := os.Mkdir(target, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(workspace, "link")); err != nil {
+		t.Fatal(err)
+	}
+	process := startFile(t)
+	for _, name := range []string{"file", "new/file"} {
+		// Preserve the caller's components: Join would erase link/.. here.
+		path := workspace + "/link/../" + name
+		result, _ := callFile(t, process.Client, workspace, "file.create", fileop.CreateArgs{Path: path, Content: "created\n"})
+		if result.ExitCode != 0 {
+			t.Fatalf("create %s: %+v", name, result.Error)
+		}
+		if got := string(contents(t, other+"/"+name)); got != "created\n" {
+			t.Fatalf("create %s: got %q", name, got)
+		}
+	}
+	for _, name := range []string{"file", "new"} {
+		if _, err := os.Stat(filepath.Join(workspace, name)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("created in cleaned parent: %s, %v", name, err)
+		}
+	}
+	if err := process.Shutdown(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+}

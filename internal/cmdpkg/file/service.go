@@ -160,9 +160,12 @@ func atomicWrite(ctx context.Context, path string, data []byte, create bool) err
 			path = resolved
 		}
 	}
-	parent := filepath.Dir(path)
-	if parent == path {
+	parent, ok := artifacts.Parent(path)
+	if !ok {
 		return errors.New("File has no parent directory")
+	}
+	if parent == "" {
+		parent = "."
 	}
 	if err := os.MkdirAll(parent, 0777); err != nil {
 		return err
