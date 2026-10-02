@@ -1,0 +1,22 @@
+{
+  "observedAt": "2026-09-23T10:04:12.000Z",
+  "source": "observation",
+  "plan": {
+    "id": "pro",
+    "label": "Pro"
+  },
+  "accountLabel": null,
+  "windows": [
+    {
+      "id": "primary",
+      "label": "5-hour",
+      "usedPercent": 34.0,
+      "used": null,
+      "limit": null,
+      "unit": "percent",
+      "resetsAt": "2026-09-23T12:30:00.000Z",
+      "severity": "normal",
+      "scope": null
+    }
+  ]
+}
