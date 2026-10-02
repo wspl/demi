@@ -120,8 +120,11 @@ input, which the multi-worker control service also relies on
   belongs to the conversation database. `conversation_hosts` stores attached
   devices with a name unique within the conversation and their last cwd.
   `conversation_panels` stores each conversation's
-  [work panel state](../product/web-api.md#work-panel-state) as one JSON
-  document, replaced whole by every save and deleted with its conversation.
+  [work panel tabs](../product/web-api.md#work-panel-state): the revision,
+  the tabs as one JSON document, and the ids the panel ever had. Each change
+  reads the row and writes it in one transaction, so the changes of one
+  conversation apply one at a time, and the row is deleted with its
+  conversation.
   `conversation_drafts` stores each conversation's
   [draft](../product/web-api.md#conversation-drafts): its revision, its text
   and files as one JSON document with the revision they were written at, and
