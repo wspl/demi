@@ -23,6 +23,7 @@ type EditContext struct {
 
 // The copies of one edit segment: the file before and after it.
 // +demi:check validateEditCopies
+// +demi:msgpack
 type EditCopies struct {
 	// +demi:length chars min=1
 	Original *string `json:"original,omitempty"`
@@ -32,6 +33,7 @@ type EditCopies struct {
 
 // Whether an edited file existed before the job.
 // +demi:enum added modified
+// +demi:msgpack
 type EditKind string
 
 const (

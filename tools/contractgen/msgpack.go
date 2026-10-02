@@ -8,6 +8,9 @@ import (
 
 // msgDecoder selects the generated decoder for a runner field's Go shape.
 func (g *generator) msgDecoder(t types.Type) string {
+	if isJSON(t) {
+		return "contract.MsgpackJSON"
+	}
 	switch t := t.(type) {
 	case *types.Pointer:
 		return "func(b []byte)(" + g.typeName(t) + ",error){ return contract.Pointer(b," + g.msgDecoder(t.Elem()) + ") }"
@@ -62,7 +65,17 @@ func (g *generator) emitMsgpack(d *definition) {
 		return
 	}
 	g.line("func Decode%sMsgpack(data []byte)(%s,error){return contract.DecodeMsgpack[%s](data)}", name, name, name)
+	if g.adjacentUnion(d) != nil {
+		st, _ := g.object(d)
+		g.emitAdjacentVariant(d, st, true)
+		return
+	}
 	g.line("func (v *%s) UnmarshalMsgpack(data []byte)error{", name)
+	if has(d.marks, "timestamp") && integerTimestamp(d.typ) {
+		g.line("value,err:=contract.MsgpackMillis(data);if err!=nil{return err};next:=%s(value);if err:=next.Validate();err!=nil{return err};*v=next;return nil}", name)
+		g.line("func(v %s) MarshalMsgpack()([]byte,error){if err:=v.Validate();err!=nil{return nil,err};return contract.EncodeMsgpackMillis(int64(v))}", name)
+		return
+	}
 	if has(d.marks, "timestamp") {
 		g.line("value,err:=contract.MsgpackTimestamp(data);if err!=nil{return err};next:=%s(value);if err:=next.Validate();err!=nil{return err};*v=next;return nil}", name)
 		g.line("func(v %s) MarshalMsgpack()([]byte,error){return contract.EncodeMsgpackTimestamp(string(v))}", name)
@@ -83,6 +96,10 @@ func (g *generator) emitMsgpack(d *definition) {
 	}
 	for i := 0; i < st.NumFields(); i++ {
 		f := st.Field(i)
+		if g.flattenedUnion(d, f) != nil {
+			g.emitFlattenDecode(d, f, true)
+			continue
+		}
 		opts := strings.Split(reflect.StructTag(st.Tag(i)).Get("json"), ",")
 		key := opts[0]
 		m := d.fields[f.Name()]
@@ -113,6 +130,10 @@ func (g *generator) emitMsgpack(d *definition) {
 	}
 	for i := 0; i < st.NumFields(); i++ {
 		f := st.Field(i)
+		if g.flattenedUnion(d, f) != nil {
+			g.emitFlattenEncode(f, true)
+			continue
+		}
 		opts := strings.Split(reflect.StructTag(st.Tag(i)).Get("json"), ",")
 		if len(opts) > 1 {
 			if isPointer(f.Type()) {

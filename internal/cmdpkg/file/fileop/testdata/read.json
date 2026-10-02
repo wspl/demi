@@ -1,0 +1,15 @@
+{
+  "additionalProperties": false,
+  "description": "`file.read`: writes the file's bytes to stdout.",
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "File path to read"
+    }
+  },
+  "required": [
+    "path"
+  ],
+  "title": "ReadArgs",
+  "type": "object"
+}

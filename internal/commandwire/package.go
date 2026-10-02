@@ -72,6 +72,7 @@ type PackageResource struct {
 // carry fewer.
 // +demi:check validatePackageDescriptor
 // +demi:root
+// +demi:msgpack
 type PackageDescriptor struct {
 	// +demi:pattern ^[a-z0-9]+([.-][a-z0-9]+)+$
 	ID string `json:"id"`
@@ -122,6 +123,7 @@ func (p PackageDescriptor) Serves(info ServiceInfo) bool {
 // Where a runner fetches an artifact.
 // +demi:union untagged
 // +demi:root
+// +demi:msgpack
 //
 //sumtype:decl
 type ArtifactLocation interface{ artifactLocation() }
