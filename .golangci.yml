@@ -11,6 +11,16 @@ linters:
   settings:
     revive:
       enable-default-rules: true
+  exclusions:
+    rules:
+      # A contract type's and field's doc comment is product text, copied
+      # verbatim from the Rust doc comment: the generated JSON Schema's
+      # description, which --help and the model's tool schemas show
+      # (docs/architecture/contracts.md). It need not start with the name.
+      - path: ^internal/(core|framewire|commandwire|runnerwire|machinewire|webapi|cmdpkg/[a-z]+/[a-z]+op|plugins/[a-z]+)/
+        linters:
+          - revive
+        text: "^exported: comment on exported"
 formatters:
   enable:
     - gofmt
