@@ -75,8 +75,9 @@ func run() error {
 	return generate(context.Background(), patterns, *ts, *tsDir, *verify)
 }
 
-// generate loads declarations without function bodies so generation also works
-// before generated methods exist. Type errors in declarations remain fatal.
+// generate strips ordinary function bodies so generation also works before
+// generated methods exist. Generic declarations retain the bodies Go requires.
+// Type errors in declarations remain fatal.
 func generate(ctx context.Context, patterns []string, ts bool, tsDir string, verify bool) error {
 	config := &packages.Config{Context: ctx, Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports | packages.NeedDeps,
 		ParseFile: func(fset *token.FileSet, filename string, src []byte) (*ast.File, error) {
@@ -90,9 +91,21 @@ func generate(ctx context.Context, patterns []string, ts bool, tsDir string, ver
 				return file, nil
 			}
 			for _, decl := range file.Decls {
-				if fn, ok := decl.(*ast.FuncDecl); ok {
-					fn.Body = nil
+				fn, ok := decl.(*ast.FuncDecl)
+				if !ok || fn.Type.TypeParams.NumFields() > 0 {
+					continue
 				}
+				if fn.Recv.NumFields() > 0 {
+					receiver := ast.Unparen(fn.Recv.List[0].Type)
+					if pointer, ok := receiver.(*ast.StarExpr); ok {
+						receiver = ast.Unparen(pointer.X)
+					}
+					switch receiver.(type) {
+					case *ast.IndexExpr, *ast.IndexListExpr:
+						continue
+					}
+				}
+				fn.Body = nil
 			}
 			return file, nil
 		}}
