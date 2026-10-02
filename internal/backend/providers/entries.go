@@ -1,18 +1,35 @@
-//revive:disable:unused-parameter // API checkpoint keeps parameter names for callers; bodies follow after merge.
 package providers
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"reflect"
+	"strings"
+	"sync"
+	"unicode/utf8"
 
+	"github.com/google/uuid"
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/pagesync"
+	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/webapi"
 )
 
 // Vault is the credential vault. Share its pointer across owners.
-type Vault struct{}
+type Vault struct {
+	control *database.ControlService
+	key     *VaultKey
+	mode    webapi.InstanceMode
+	sync    *pagesync.SyncRegistry
+	gates   provider.RefreshGates
+	// mu protects the cached master identity only, never database reads.
+	mu     sync.Mutex
+	master *webapi.UserID
+}
 
 // ProviderEntry is a provider entry, read and decoded.
 type ProviderEntry struct {
@@ -51,93 +68,335 @@ type APIKeyConfig struct {
 }
 
 // Kind returns the entry credential kind.
-func (e ProviderEntry) Kind() webapi.CredentialKind { panic("not written: b-providers") }
+func (e ProviderEntry) Kind() webapi.CredentialKind {
+	if _, ok := e.Credential.(*APIKeyConfig); ok {
+		return webapi.CredentialKindAPIKey
+	}
+	return webapi.CredentialKindSubscription
+}
 
 // Active returns a subscription entry's active account.
-func (e ProviderEntry) Active() *webapi.CredentialID { panic("not written: b-providers") }
+func (e ProviderEntry) Active() *webapi.CredentialID {
+	if c, ok := e.Credential.(*SubscriptionCredential); ok {
+		return c.Active
+	}
+	return nil
+}
 
 // DTO returns the entry as the web app sees it: never its key.
-func (e ProviderEntry) DTO() webapi.ProviderDTO { panic("not written: b-providers") }
+func (e ProviderEntry) DTO() webapi.ProviderDTO {
+	dto := webapi.ProviderDTO{ID: e.ID, Kind: e.Kind(), ProviderType: e.Family, Label: e.Label, CreatedAt: e.CreatedAt}
+	if c, ok := e.Credential.(*APIKeyConfig); ok {
+		dto.WireAPI = c.WireAPI
+		dto.VendorID = c.VendorID
+		dto.BaseURL = c.BaseURL
+		dto.Models = c.Models
+	}
+	return dto
+}
 
 // NewVault creates a vault with instance scope and page notifications.
 func NewVault(control *database.ControlService, key *VaultKey, mode webapi.InstanceMode, sync *pagesync.SyncRegistry) *Vault {
-	panic("not written: b-providers")
+	return &Vault{control: control, key: key, mode: mode, sync: sync}
 }
 
 // Control returns the control store.
-func (v *Vault) Control() *database.ControlService { panic("not written: b-providers") }
+func (v *Vault) Control() *database.ControlService {
+	return v.control
+}
 
 // Key returns the vault encryption key.
-func (v *Vault) Key() *VaultKey { panic("not written: b-providers") }
+func (v *Vault) Key() *VaultKey {
+	return v.key
+}
 
 // Gates returns the account refresh gates.
-func (v *Vault) Gates() *provider.RefreshGates { panic("not written: b-providers") }
+func (v *Vault) Gates() *provider.RefreshGates {
+	return &v.gates
+}
 
 // Configures reports whether user configures entries of their scope.
-func (v *Vault) Configures(user webapi.UserDTO) bool { panic("not written: b-providers") }
+func (v *Vault) Configures(user webapi.UserDTO) bool {
+	return v.mode == webapi.InstanceModeIsolated || user.Role == webapi.RoleMaster
+}
 
 // OwnerFor resolves whose entries user infers with.
 func (v *Vault) OwnerFor(ctx context.Context, user webapi.UserID) (webapi.UserID, error) {
-	panic("not written: b-providers")
+	if v.mode == webapi.InstanceModeIsolated {
+		return user, nil
+	}
+	v.mu.Lock()
+	master := v.master
+	v.mu.Unlock()
+	if master != nil {
+		return *master, nil
+	}
+	master, err := v.control.Master(ctx)
+	if err != nil {
+		return "", err
+	}
+	if master == nil {
+		return "", &database.Error{Kind: database.Corrupt, Table: "users", Column: "role", Reason: "a shared instance has no master account"}
+	}
+	v.mu.Lock()
+	v.master = master
+	v.mu.Unlock()
+	return *master, nil
 }
 
 // MarkChanged marks providers changed for every user who infers with owner entries.
-func (v *Vault) MarkChanged(owner webapi.UserID) { panic("not written: b-providers") }
+func (v *Vault) MarkChanged(owner webapi.UserID) {
+	if v.mode == webapi.InstanceModeShared {
+		v.sync.MarkEveryone(pagesync.Part{Kind: pagesync.Providers})
+	} else {
+		v.sync.Mark(owner, pagesync.Part{Kind: pagesync.Providers})
+	}
+}
 
 // MarkEntryChanged marks the entry changed; lookup failures are logged.
 func (v *Vault) MarkEntryChanged(ctx context.Context, id webapi.ProviderID) {
-	panic("not written: b-providers")
+	if v.mode == webapi.InstanceModeShared {
+		v.sync.MarkEveryone(pagesync.Part{Kind: pagesync.Providers})
+		return
+	}
+	row, err := v.control.Provider(ctx, id)
+	if err != nil {
+		slog.Warn("a change of an entry was not marked on its owner's pages", "provider", id, "error", err)
+		return
+	}
+	if row != nil {
+		v.sync.Mark(row.Owner, pagesync.Part{Kind: pagesync.Providers})
+	}
 }
 
 // Visible returns the entry when it belongs to user scope, or nil.
 func (v *Vault) Visible(ctx context.Context, user webapi.UserID, id webapi.ProviderID) (*ProviderEntry, error) {
-	panic("not written: b-providers")
+	owner, err := v.OwnerFor(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+	e, err := v.Entry(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if e != nil && e.Owner != owner {
+		return nil, nil
+	}
+	return e, nil
 }
 
 // Entries returns owner entries, oldest first.
 func (v *Vault) Entries(ctx context.Context, owner webapi.UserID) ([]ProviderEntry, error) {
-	panic("not written: b-providers")
+	rows, err := v.control.Providers(ctx, owner)
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]ProviderEntry, 0, len(rows))
+	for _, row := range rows {
+		e, err := v.decode(row)
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, e)
+	}
+	return entries, nil
 }
 
 // Entry reads and decodes an entry, or returns nil.
 func (v *Vault) Entry(ctx context.Context, id webapi.ProviderID) (*ProviderEntry, error) {
-	panic("not written: b-providers")
+	row, err := v.control.Provider(ctx, id)
+	if err != nil || row == nil {
+		return nil, err
+	}
+	e, err := v.decode(*row)
+	if err != nil {
+		return nil, err
+	}
+	return &e, nil
 }
 
 // CreateAPIKey stores a new API-key entry.
 func (v *Vault) CreateAPIKey(ctx context.Context, owner webapi.UserID, family, label string, config APIKeyConfig) (ProviderEntry, error) {
-	panic("not written: b-providers")
+	randomID, err := uuid.NewRandom()
+	if err != nil {
+		return ProviderEntry{}, fmt.Errorf("create provider identity: %w", err)
+	}
+	id, err := webapi.ParseProviderID(randomID.String())
+	if err != nil {
+		return ProviderEntry{}, err
+	}
+	sealed, err := v.sealConfig(id, config)
+	if err != nil {
+		return ProviderEntry{}, err
+	}
+	ctx = context.WithoutCancel(ctx)
+	row, err := v.control.InsertProvider(ctx, database.NewProvider{ID: id, Owner: owner, Family: family, Kind: webapi.CredentialKindAPIKey, Label: label, Config: &sealed}, nil)
+	if err != nil {
+		return ProviderEntry{}, err
+	}
+	v.MarkChanged(row.Owner)
+	return v.decode(*row)
 }
 
 // CreateSubscription publishes the entry and staged accounts atomically; nil means it already exists.
 func (v *Vault) CreateSubscription(ctx context.Context, owner webapi.UserID, family, label string, staged *provider.MemoryCredentialPool) (*ProviderEntry, error) {
-	panic("not written: b-providers")
+	randomID, err := uuid.NewRandom()
+	if err != nil {
+		return nil, fmt.Errorf("create provider identity: %w", err)
+	}
+	id, err := webapi.ParseProviderID(randomID.String())
+	if err != nil {
+		return nil, err
+	}
+	accounts := []database.CredentialWrite{}
+	for _, a := range staged.Entries() {
+		account, err := webapi.ParseCredentialID(a.Meta.ID)
+		if err != nil {
+			return nil, &database.Error{Kind: database.Corrupt, Table: "provider_credentials", Column: "id", Reason: "a login staged an account whose id is invalid"}
+		}
+		sealed, err := v.SealSecret(id, account, a.Secret)
+		if err != nil {
+			return nil, err
+		}
+		accounts = append(accounts, database.CredentialWrite{ID: account, IdentityKey: a.Meta.IdentityKey, Label: a.Meta.Label, Detail: a.Meta.Detail, Source: a.Meta.Source, Secret: sealed})
+	}
+	selected, err := staged.Active(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var active *webapi.CredentialID
+	for i := range accounts {
+		if selected != nil && string(accounts[i].ID) == *selected {
+			active = &accounts[i].ID
+			break
+		}
+	}
+	if active == nil && len(accounts) > 0 {
+		active = &accounts[0].ID
+	}
+	ctx = context.WithoutCancel(ctx)
+	row, err := v.control.InsertProvider(ctx, database.NewProvider{ID: id, Owner: owner, Family: family, Kind: webapi.CredentialKindSubscription, Label: label, Active: active}, accounts)
+	if err != nil || row == nil {
+		return nil, err
+	}
+	v.MarkChanged(row.Owner)
+	e, err := v.decode(*row)
+	if err != nil {
+		return nil, err
+	}
+	return &e, nil
 }
 
 // Update replaces label or configuration; nil means the entry no longer exists.
 func (v *Vault) Update(ctx context.Context, id webapi.ProviderID, label *string, config *APIKeyConfig) (*ProviderEntry, error) {
-	panic("not written: b-providers")
+	var sealed *[]byte
+	if config != nil {
+		b, err := v.sealConfig(id, *config)
+		if err != nil {
+			return nil, err
+		}
+		sealed = &b
+	}
+	ctx = context.WithoutCancel(ctx)
+	row, err := v.control.UpdateProvider(ctx, id, label, sealed)
+	if err != nil || row == nil {
+		return nil, err
+	}
+	v.MarkChanged(row.Owner)
+	e, err := v.decode(*row)
+	if err != nil {
+		return nil, err
+	}
+	return &e, nil
 }
 
 // Delete deletes the entry and its accounts.
 func (v *Vault) Delete(ctx context.Context, entry ProviderEntry) error {
-	panic("not written: b-providers")
+	ctx = context.WithoutCancel(ctx)
+	if err := v.control.DeleteProvider(ctx, entry.ID); err != nil {
+		return err
+	}
+	v.MarkChanged(entry.Owner)
+	return nil
 }
 
 // Pool returns the credential pool bound to an entry.
-func (v *Vault) Pool(id webapi.ProviderID) provider.CredentialPool { panic("not written: b-providers") }
+func (v *Vault) Pool(id webapi.ProviderID) provider.CredentialPool {
+	return NewVaultCredentialPool(v, id)
+}
 
 // Accounts reads an entry account records.
 func (v *Vault) Accounts(ctx context.Context, id webapi.ProviderID) ([]database.CredentialRow, error) {
-	panic("not written: b-providers")
+	return v.control.Credentials(ctx, id)
 }
 
 // Account reads an account record, or nil.
 func (v *Vault) Account(ctx context.Context, id webapi.ProviderID, account webapi.CredentialID) (*database.CredentialRow, error) {
-	panic("not written: b-providers")
+	return v.control.Credential(ctx, id, account)
 }
 
 // SealSecret seals a secret document for its account row.
 func (v *Vault) SealSecret(id webapi.ProviderID, account webapi.CredentialID, secret string) ([]byte, error) {
-	panic("not written: b-providers")
+	return v.key.Seal(SecretRow{Provider: id, Account: account}, []byte(secret))
+}
+
+// sealConfig serializes the single configuration contract before encrypting it.
+func (v *Vault) sealConfig(id webapi.ProviderID, config APIKeyConfig) ([]byte, error) {
+	document, err := contract.EncodeJSON(config)
+	if err != nil {
+		return nil, fmt.Errorf("encode provider configuration: %w", err)
+	}
+	return v.key.Seal(ConfigRow{Provider: id}, document)
+}
+
+// decode opens a stored provider configuration without exposing secret values in errors.
+func (v *Vault) decode(row database.ProviderRow) (ProviderEntry, error) {
+	var credential EntryCredential
+	switch {
+	case row.Kind == webapi.CredentialKindAPIKey && row.Config != nil:
+		document, err := v.key.Open(ConfigRow{Provider: row.ID}, *row.Config)
+		if err != nil {
+			return ProviderEntry{}, corruptConfig(err.Error())
+		}
+		if !utf8.Valid(document) {
+			return ProviderEntry{}, corruptConfig("the configuration is not UTF-8")
+		}
+		config, err := provider.DecodeSecretDocument(string(document), DecodeAPIKeyConfig)
+		if err != nil {
+			return ProviderEntry{}, corruptConfig(configFault(err))
+		}
+		credential = &config
+	case row.Kind == webapi.CredentialKindSubscription && row.Config == nil:
+		credential = &SubscriptionCredential{Active: row.Active}
+	default:
+		return ProviderEntry{}, corruptConfig("the configuration does not match the entry's kind")
+	}
+	return ProviderEntry{ID: row.ID, Owner: row.Owner, Family: row.Family, Label: row.Label, Credential: credential, CreatedAt: row.CreatedAt}, nil
+}
+func corruptConfig(reason string) error {
+	return &database.Error{Kind: database.Corrupt, Table: "providers", Column: "config", Reason: reason}
+}
+
+// configFault only discloses field names declared by the vault contract. Unknown
+// keys are untrusted text and can themselves contain a credential.
+func configFault(err error) string {
+	var fault *provider.SecretDecodeError
+	if !errors.As(err, &fault) {
+		return "the configuration cannot be read"
+	}
+	safe := *fault
+	safe.Path = "."
+	root := fault.Path
+	if i := strings.IndexAny(root, ".[ "); i >= 0 {
+		root = root[:i]
+	}
+	shape := reflect.TypeFor[APIKeyConfig]()
+	for i := 0; i < shape.NumField(); i++ {
+		name, _, _ := strings.Cut(shape.Field(i).Tag.Get("json"), ",")
+		if root == name {
+			safe.Path = name
+			break
+		}
+	}
+	return safe.Error()
 }

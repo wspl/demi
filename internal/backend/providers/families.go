@@ -1,10 +1,11 @@
-//revive:disable:unused-parameter // API checkpoint keeps parameter names for callers; bodies follow after merge.
 package providers
 
 import (
 	"context"
 	"net/http"
 	"net/url"
+	"sort"
+	"sync"
 
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
@@ -67,15 +68,43 @@ type AccountBinding struct {
 }
 
 // FamilyRegistry is the families of a backend by name. Its zero value is ready to use.
-type FamilyRegistry struct{}
+type FamilyRegistry struct {
+	// mu protects registry lookups and replacement; no family callback runs under it.
+	mu       sync.Mutex
+	families map[string]ProviderFamily
+}
 
 // Register replaces the family registered under name.
 func (r *FamilyRegistry) Register(name string, family ProviderFamily) {
-	panic("not written: b-providers")
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.families == nil {
+		r.families = make(map[string]ProviderFamily)
+	}
+	r.families[name] = family
 }
 
 // Family finds a registered family, or nil.
-func (r *FamilyRegistry) Family(name string) ProviderFamily { panic("not written: b-providers") }
+func (r *FamilyRegistry) Family(name string) ProviderFamily {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.families[name]
+}
 
 // Subscriptions returns the names of subscription families, in order.
-func (r *FamilyRegistry) Subscriptions() []string { panic("not written: b-providers") }
+func (r *FamilyRegistry) Subscriptions() []string {
+	r.mu.Lock()
+	snapshot := make(map[string]ProviderFamily, len(r.families))
+	for name, family := range r.families {
+		snapshot[name] = family
+	}
+	r.mu.Unlock()
+	names := []string{}
+	for name, family := range snapshot {
+		if family.Credential() == webapi.CredentialKindSubscription {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}

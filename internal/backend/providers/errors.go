@@ -1,5 +1,6 @@
-//revive:disable:unused-parameter // API checkpoint keeps parameter names for callers; bodies follow after merge.
 package providers
+
+import "fmt"
 
 // FamilyErrorKind identifies why the operation failed.
 type FamilyErrorKind uint8
@@ -17,7 +18,12 @@ type FamilyError struct {
 }
 
 // Error returns the failure message.
-func (e *FamilyError) Error() string { panic("not written: b-providers") }
+func (e *FamilyError) Error() string {
+	if e.Kind == FamilyWrongCredential {
+		return "the entry's credential is not one its family takes"
+	}
+	return e.Message
+}
 
 // AssemblyErrorKind identifies why the operation failed.
 type AssemblyErrorKind uint8
@@ -38,10 +44,18 @@ type AssemblyError struct {
 }
 
 // Error returns the failure message.
-func (e *AssemblyError) Error() string { panic("not written: b-providers") }
+func (e *AssemblyError) Error() string {
+	switch e.Kind {
+	case AssemblyUnknownFamily:
+		return "the provider family " + e.Family + " is not available"
+	case AssemblyNoProcessRuntime:
+		return "the provider family " + e.Family + " cannot run its process"
+	}
+	return e.Err.Error()
+}
 
 // Unwrap returns the underlying failure.
-func (e *AssemblyError) Unwrap() error { panic("not written: b-providers") }
+func (e *AssemblyError) Unwrap() error { return e.Err }
 
 // AccountRefusalKind identifies why the operation failed.
 type AccountRefusalKind uint8
@@ -65,10 +79,24 @@ type AccountRefusal struct {
 }
 
 // Error returns the failure message.
-func (e *AccountRefusal) Error() string { panic("not written: b-providers") }
+func (e *AccountRefusal) Error() string {
+	switch e.Kind {
+	case AccountExists:
+		return "Add this token to the existing Claude Code provider"
+	case AccountNotFound:
+		return "No such account"
+	case AccountActive:
+		return "Select another account before removing the active one, or delete the provider"
+	case AccountTokenImportFailed:
+		return "The setup token could not be imported"
+	case AccountAssembly:
+		return e.Err.Error()
+	}
+	return e.Message
+}
 
 // Unwrap returns the underlying failure.
-func (e *AccountRefusal) Unwrap() error { panic("not written: b-providers") }
+func (e *AccountRefusal) Unwrap() error { return e.Err }
 
 // LoginRefusalKind identifies why the operation failed.
 type LoginRefusalKind uint8
@@ -89,31 +117,45 @@ type LoginRefusal struct {
 }
 
 // Error returns the failure message.
-func (e *LoginRefusal) Error() string { panic("not written: b-providers") }
+func (e *LoginRefusal) Error() string {
+	switch e.Kind {
+	case LoginNoLoginFlow:
+		return e.Family + " has no device login"
+	case LoginExists:
+		return "This scope already has a " + e.Family + " subscription"
+	case LoginBusy:
+		return "Another provider operation is still running"
+	}
+	return e.Err.Error()
+}
 
 // Unwrap returns the underlying failure.
-func (e *LoginRefusal) Unwrap() error { panic("not written: b-providers") }
+func (e *LoginRefusal) Unwrap() error { return e.Err }
 
-// RateLimited reports A request that exceeds the limit; it never reaches the vendor and does not count.
+// RateLimited reports a request that exceeds the limit; it never reaches the vendor and does not count.
 type RateLimited struct{ Limit int }
 
 // Error returns the failure message.
-func (e *RateLimited) Error() string { panic("not written: b-providers") }
+func (e *RateLimited) Error() string {
+	return fmt.Sprintf("Provider request rate limit reached (%d per minute)", e.Limit)
+}
 
-// NotConfigured reports A model the configured list does not name; its request fails.
+// NotConfigured reports a model the configured list does not name; its request fails.
 type NotConfigured struct{ Model string }
 
 // Error returns the failure message.
-func (e *NotConfigured) Error() string { panic("not written: b-providers") }
+func (e *NotConfigured) Error() string {
+	return "the model " + e.Model + " is not in the provider's configured list"
+}
 
-// Unsealable reports A sealed value that was altered, moved, or sealed under another key.
+// Unsealable reports a sealed value that was altered, moved, or sealed under another key.
 type Unsealable struct{}
 
 // Error returns the failure message.
-func (e *Unsealable) Error() string { panic("not written: b-providers") }
+func (e *Unsealable) Error() string { return "the sealed value does not open" }
 
-// ReleaseError reports Why the newest release could not be read.
+// ReleaseError reports why the newest release could not be read.
 type ReleaseError struct{ Message string }
 
 // Error returns the failure message.
-func (e *ReleaseError) Error() string { panic("not written: b-providers") }
+func (e *ReleaseError) Error() string { return e.Message }
