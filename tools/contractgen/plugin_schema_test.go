@@ -53,20 +53,8 @@ func TestBrowserPluginSchemas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	overlay := map[string][]byte{}
-	for _, name := range []string{"types.go", "viewer.go"} {
-		path := filepath.Join(directory, name)
-		source, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, root := range []string{"LiveModuleMessage", "LiveViewerMessage"} {
-			source = bytes.ReplaceAll(source, []byte("type "+root+" interface"), []byte("// +demi:schema\ntype "+root+" interface"))
-		}
-		overlay[path] = source
-	}
 	err = generateBatch(t.Context(), []string{directory}, false, "", false,
-		map[string]bool{filepath.Join(directory, "contract_gen.go"): true}, overlay,
+		map[string]bool{filepath.Join(directory, "contract_gen.go"): true}, map[string][]byte{},
 		func(path string, source []byte) error {
 			file, err := parser.ParseFile(token.NewFileSet(), path, source, 0)
 			if err != nil {
