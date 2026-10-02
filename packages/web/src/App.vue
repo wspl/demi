@@ -73,10 +73,10 @@ const asideOpen = computed({
   },
 })
 watch(
-  () => [
-    activeId.value,
-    conversations.items.find((item) => item.id === activeId.value)?.unread,
-    conversations.items.find((item) => item.id === activeId.value)?.load,
+  [
+    activeId,
+    () => conversations.items.find((item) => item.id === activeId.value)?.unread,
+    () => conversations.items.find((item) => item.id === activeId.value)?.load,
   ],
   () => {
     if (activeId.value) {

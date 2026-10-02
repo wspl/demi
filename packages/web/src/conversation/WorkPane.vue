@@ -31,14 +31,12 @@ const recorded = computed(() => work.recorded(props.conversationId))
  * created yet, holds no session and no view.
  */
 const bound = shallowRef<BoundKinds | null>(null)
+/** Which pages the user has on, as one value that changes only when one is turned on or off. */
+const enabledPages = computed(() => PLUGIN_PAGES.map((page) => pluginEnabled(product.snapshot, page.plugin)).join())
+// Each source is compared on its own: any change of the product state, such as a summary the panel's
+// revision changed, must not end the pages' sessions, which would remount every tab's content.
 watch(
-  () =>
-    [
-      props.conversationId,
-      state.value.open,
-      recorded.value,
-      PLUGIN_PAGES.map((page) => pluginEnabled(product.snapshot, page.plugin)).join(),
-    ] as const,
+  [() => props.conversationId, () => state.value.open, recorded, enabledPages],
   ([conversationId, open, isRecorded]) => {
     bound.value?.dispose()
     bound.value = null
