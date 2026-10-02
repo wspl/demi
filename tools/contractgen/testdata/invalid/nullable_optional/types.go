@@ -4,5 +4,5 @@ package invalid
 // +demi:root direction=receive
 type Broken struct {
 	// +demi:nullable
-	Value *string `json:"value,omitempty"`
+	Value *string `json:"value,omitzero"`
 }

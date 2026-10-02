@@ -353,14 +353,20 @@ Every job, stream and request shares the runner's one table of open files. A
 job's login shell alone can hold about a hundred while it reads a profile that
 loads a version manager such as nvm, and launchd gives a service on macOS a
 limit of 256. So when it starts, the runner raises its own limit as far as the
-system allows: to the hard limit, and on macOS to at most the kernel's limit
-for one process. Every process it starts gets back the limit the runner was
+system allows: Go's runtime raises it before the runner runs, to one below the
+hard limit, and on macOS to at most the kernel's limit for one process, and
+the runner never sets it itself, since that would make its processes inherit
+the raised limit. Every process it starts gets back the limit the runner was
 started with, the one it would have from a terminal, unless its job's `ulimit`
 set another ([Builtins that act on a process](#builtins-that-act-on-a-process)),
 because some programs
 misbehave with a very high one: a program that uses `select()` cannot watch a
 descriptor numbered 1024 or above, and some programs close every descriptor up
-to their limit before they start. Windows has no such limit.
+to their limit before they start. The runner learns that limit, which its
+`ulimit` reports, once as it starts: it starts its own executable in a probe
+mode, as it starts a job's program with a mask or limits of its own
+([Builtins that act on a process](#builtins-that-act-on-a-process)), and that
+copy, which got the limit back, reports it. Windows has no such limit.
 
 Every pipe, local command connection and open file holds one while it lasts,
 and a network stream holds three: its socket and two pipes. When none is left,
@@ -521,7 +527,15 @@ Demi implements `exec`, `ulimit`, `umask` and `kill` as its own builtins in
 `internal/runner/shell`, with state per interpreter scope, cloned for subshells.
 
 A job's limits apply to its system programs, including utilities; in-process
-builtins retain the runner's limits. The remaining process-related builtins
+builtins retain the runner's limits.
+
+A process whose job set its own mask or limits starts through the runner's
+own executable: that copy sets them and replaces itself with the program, so
+the program keeps the copy's process ID, process group and descriptors, and a
+program that cannot start reports the same failure, through a descriptor
+that closes when the program runs, as a direct start would, including the
+busy-program wait. The runner itself never changes its mask or limits for a
+job. A process whose job set neither starts directly. Windows has neither. The remaining process-related builtins
 behave as follows:
 
 | Builtin | In a job |

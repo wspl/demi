@@ -1,0 +1,66 @@
+{
+  "model": "gpt-test",
+  "input": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "hello"
+        }
+      ]
+    },
+    {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "Use tool",
+          "annotations": []
+        }
+      ]
+    },
+    {
+      "type": "function_call",
+      "id": "fc-1",
+      "call_id": "call-1",
+      "name": "read_file",
+      "arguments": "{\"path\":\"a.ts\"}"
+    },
+    {
+      "type": "function_call_output",
+      "call_id": "call-1",
+      "output": "contents"
+    }
+  ],
+  "stream": true,
+  "store": false,
+  "include": [
+    "reasoning.encrypted_content"
+  ],
+  "prompt_cache_key": "session-1",
+  "instructions": "system instructions",
+  "tools": [
+    {
+      "type": "function",
+      "name": "read_file",
+      "description": "Read a file",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ],
+  "tool_choice": "auto",
+  "parallel_tool_calls": true,
+  "reasoning": {
+    "effort": "high",
+    "summary": "auto"
+  },
+  "service_tier": "priority"
+}

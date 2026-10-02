@@ -8,7 +8,9 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/contract"
+	"github.com/wspl/demi/tools/contractgen/testdata/codecs"
 	"github.com/wspl/demi/tools/contractgen/testdata/features"
+	"github.com/wspl/demi/tools/contractgen/testdata/presence"
 	"github.com/wspl/demi/tools/contractgen/testdata/runner"
 )
 
@@ -122,5 +124,223 @@ func TestRecordEncoding(t *testing.T) {
 	}
 	if !bytes.Equal(input, encoded) {
 		t.Fatalf("record encoding differs: %x", encoded)
+	}
+}
+
+// Empty tolerant boundaries still require objects. Both wire formats exercise
+// generated code; local CPU only, budget below one second.
+func TestEmptyTolerantObject(t *testing.T) {
+	for _, input := range []string{`{}`, `{"future":{"nested":[1,true]}}`} {
+		value, err := codecs.DecodeEmpty([]byte(input))
+		if err != nil {
+			t.Fatalf("%s: %v", input, err)
+		}
+		data, err := contract.EncodeJSON(value)
+		if err != nil || string(data) != `{}` {
+			t.Fatalf("empty object encoding: %s, %v", data, err)
+		}
+	}
+	for _, input := range []string{`[]`, `null`, `true`, `1`, `"text"`, `{"x":1,"x":2}`} {
+		if _, err := codecs.DecodeEmpty([]byte(input)); err == nil {
+			t.Errorf("accepted %s", input)
+		}
+	}
+	for _, input := range [][]byte{{0x80}, {0x81, 0xa1, 'x', 0xc3}} {
+		value, err := codecs.DecodeEmptyMsgpack(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := contract.EncodeMsgpack(value)
+		if err != nil || !bytes.Equal(data, []byte{0x80}) {
+			t.Fatalf("empty MessagePack object: %x, %v", data, err)
+		}
+	}
+	for _, input := range [][]byte{{0x90}, {0xc0}, {0xc3}, {1}, {0xa1, 'x'}} {
+		if _, err := codecs.DecodeEmptyMsgpack(input); err == nil {
+			t.Errorf("accepted %x", input)
+		}
+	}
+}
+
+// An outside package must delegate boot validation and URL normalization to the
+// owning codec. The values mirror the Rust URL boundary; CPU budget <1 second.
+func TestOpaqueBootCodec(t *testing.T) {
+	input := `{"boot":{"backendUrl":"HTTPS://DEMI.EXAMPLE.COM:443/a/../","deviceToken":"secret"}}`
+	value, err := codecs.DecodeWake([]byte(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := contract.EncodeJSON(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"boot":{"backendUrl":"https://demi.example.com/","deviceToken":"secret"}}`
+	if string(data) != want {
+		t.Fatalf("normalized boot = %s; want %s", data, want)
+	}
+	for _, invalid := range []string{
+		strings.Replace(input, "DEMI.EXAMPLE.COM", "user:pass@DEMI.EXAMPLE.COM", 1),
+		strings.Replace(input, "secret", "", 1),
+		strings.Replace(input, "secret", "a b", 1),
+		strings.Replace(input, `"deviceToken":"secret"`, `"deviceToken":"secret","extra":true`, 1),
+	} {
+		if _, err := codecs.DecodeWake([]byte(invalid)); err == nil {
+			t.Errorf("accepted invalid boot: %s", invalid)
+		}
+	}
+	if _, err := contract.EncodeJSON(codecs.Wake{}); err == nil {
+		t.Fatal("encoder bypassed the boot codec's validation")
+	}
+	address, err := codecs.DecodeAddress([]byte(`{"url":"WSS://DEMI.EXAMPLE.COM:443/a/../"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err = contract.EncodeJSON(address)
+	if err != nil || string(data) != `{"url":"wss://demi.example.com/"}` {
+		t.Fatalf("normalized URL: %s, %v", data, err)
+	}
+	if _, err := codecs.DecodeAddress([]byte(`{"url":"https://user@demi.example.com"}`)); err == nil {
+		t.Fatal("address accepted credentials")
+	}
+}
+
+// A codec with private fields supplies both wire formats and no Validate method.
+// Its normalization and refusals prove delegation; CPU budget <1 second.
+func TestOpaqueWireCodecs(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		decode func([]byte) (codecs.Envelope, error)
+		encode func(any) ([]byte, error)
+		input  []byte
+		want   []byte
+		bad    []byte
+	}{
+		{"JSON", codecs.DecodeEnvelope, contract.EncodeJSON, []byte(`{"value":"UPPER"}`), []byte(`{"value":"upper"}`), []byte(`{"value":""}`)},
+		{"MessagePack", codecs.DecodeEnvelopeMsgpack, contract.EncodeMsgpack, []byte{0x81, 0xa5, 'v', 'a', 'l', 'u', 'e', 0xa5, 'U', 'P', 'P', 'E', 'R'}, []byte{0x81, 0xa5, 'v', 'a', 'l', 'u', 'e', 0xa5, 'u', 'p', 'p', 'e', 'r'}, []byte{0x81, 0xa5, 'v', 'a', 'l', 'u', 'e', 0xa0}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			value, err := tc.decode(tc.input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := tc.encode(value)
+			if err != nil || !bytes.Equal(data, tc.want) {
+				t.Fatalf("encoded %x, want %x: %v", data, tc.want, err)
+			}
+			if _, err := tc.decode(tc.bad); err == nil {
+				t.Fatal("decoder bypassed codec validation")
+			}
+		})
+	}
+}
+
+// Nullable option and double-option states must survive both wire boundaries.
+// These local fixtures take less than a second and wait on no resources.
+func TestNullableOptionalPresence(t *testing.T) {
+	for _, tc := range []struct {
+		name, input, want string
+	}{
+		{"absent", `{}`, `{}`},
+		{"null", `{"option":null,"double":null,"items":null}`, `{"double":null,"items":null}`},
+		{"value", `{"option":"ok","double":"yes","items":["a"]}`, `{"option":"ok","double":"yes","items":["a"]}`},
+		{"empty", `{"option":"","double":"","items":[]}`, `{"option":"","double":"","items":[]}`},
+	} {
+		for _, format := range []string{"JSON", "MessagePack"} {
+			t.Run(tc.name+"/"+format, func(t *testing.T) {
+				input := []byte(tc.input)
+				decode := presence.DecodePatch
+				encode := contract.EncodeJSON
+				if format == "MessagePack" {
+					var err error
+					input, err = contract.EncodeMsgpack(json.RawMessage(input))
+					if err != nil {
+						t.Fatal(err)
+					}
+					decode = presence.DecodePatchMsgpack
+					encode = contract.EncodeMsgpack
+				}
+				value, err := decode(input)
+				if err != nil {
+					t.Fatal(err)
+				}
+				switch tc.name {
+				case "absent":
+					if value.Option != nil || value.Double != nil || value.Items != nil {
+						t.Fatal("absence created pointers")
+					}
+				case "null":
+					if value.Option != nil || value.Double == nil || *value.Double != nil || value.Items == nil || *value.Items != nil {
+						t.Fatal("null lost its option state")
+					}
+				default:
+					if value.Option == nil || value.Double == nil || *value.Double == nil || value.Items == nil || *value.Items == nil {
+						t.Fatal("value lost its option state")
+					}
+				}
+				if err := value.Validate(); err != nil {
+					t.Fatal(err)
+				}
+				data, err := encode(value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if format == "MessagePack" {
+					data, err = contract.MsgpackJSON(data)
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+				if string(data) != tc.want {
+					t.Fatalf("encoded %s, want %s", data, tc.want)
+				}
+			})
+		}
+	}
+	for _, input := range []string{`{"option":"longer"}`, `{"double":"longer"}`, `{"items":1}`} {
+		if _, err := presence.DecodePatch([]byte(input)); err == nil {
+			t.Errorf("JSON accepted %s", input)
+		}
+		packed, err := contract.EncodeMsgpack(json.RawMessage(input))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := presence.DecodePatchMsgpack(packed); err == nil {
+			t.Errorf("MessagePack accepted %s", input)
+		}
+	}
+	text := "longer"
+	pointer := &text
+	bad := presence.Patch{Double: &pointer}
+	if err := bad.Validate(); err == nil {
+		t.Fatal("double-option bypassed its value constraint")
+	}
+	if _, err := contract.EncodeJSON(bad); err == nil {
+		t.Fatal("JSON encoded invalid double-option")
+	}
+	if _, err := contract.EncodeMsgpack(bad); err == nil {
+		t.Fatal("MessagePack encoded invalid double-option")
+	}
+}
+
+// Timestamp fields must retain presence while using the MessagePack extension.
+// Local codecs only; budget below one second.
+func TestNullableTimestampPresence(t *testing.T) {
+	for _, input := range []string{`{}`, `{"at":null}`, `{"at":"2026-01-01T00:00:00.000Z"}`} {
+		value, err := presence.DecodeTimestampPatch([]byte(input))
+		if err != nil {
+			t.Fatal(err)
+		}
+		packed, err := contract.EncodeMsgpack(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		decoded, err := presence.DecodeTimestampPatchMsgpack(packed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := contract.EncodeJSON(decoded)
+		if err != nil || string(data) != input {
+			t.Fatalf("timestamp presence: %s, want %s: %v", data, input, err)
+		}
 	}
 }
