@@ -173,14 +173,35 @@ scoped extension in [Lifecycle access](#lifecycle-access); it still uses this
 entry. Any other change to wake or gate behavior must be decided here, not
 introduced as a bypass in code.
 
-The conversation's host access runs in the user's shard, the part of the
-backend that holds everything belonging to one user on a single thread
+The conversation's host access runs through the user's shard, the part of the
+backend that holds everything belonging to one user behind one `sync.Mutex`,
+with short critical sections
 ([The user shard](../architecture/concurrency.md#the-user-shard)). The file
 gates, the admission of file transfers and user streams, and the transitions
 that end them live there too. A runner connection makes a conversation's Host
 handle only against a lease of that conversation's file gate, which only the
 host access takes, so no other code can make one
 ([`backend-runners`](../architecture/crates-and-packages.md#backend-runners)).
+
+Admission checks and the state changes they guard happen in one critical
+section: checking that transfers and streams are open and registering an
+operation, including one still waiting for admission, are atomic. A transition
+closes that admission under the same mutex, then cancels registered operations
+and waits for their admission release outside it before reserving the file
+gate. Admission stays closed until every closing transition has finished.
+No IO, gate acquisition, channel operation, callback or join runs under the
+shard mutex; after work outside it, the shard rechecks the relevant state
+before applying the result.
+
+The file and activity gates come from `internal/gates`
+([Locks](../architecture/concurrency.md#locks)). Each acquiring scope defers
+the lease's, reservation's or permit's idempotent `Release` for success,
+failure and cancellation, or explicitly hands that duty to another owner.
+Every function that waits takes `context.Context` first; request departure
+cancels request-scoped waits. Every goroutine has an owner that registers it
+before starting it, cancels it when ending its work and joins it before
+disposing its state
+([Cancellation and cleanup](../architecture/concurrency.md#cancellation-and-cleanup)).
 
 Admission is a loop, because the two things it waits for, the conversation's
 file gate and a Cloud's admission, are also what a transition takes. A Cloud's
@@ -217,13 +238,17 @@ loss of its device cuts it off, it fails with that cause.
 
 Two operations last as long as the user's browser decides. The user's shard
 admits each one like any operation, and the backend's edge carries its bytes:
-the part of the backend that serves HTTP and moves bytes on threads shared
-by all users ([Programs and threads](../architecture/concurrency.md#programs-and-threads)).
+the part of the backend that serves HTTP in request goroutines and moves bytes
+in owned copy goroutines ([Programs and threads](../architecture/concurrency.md#programs-and-threads)).
 With the pipe ends, the shard hands the edge a lease. The edge holds the lease
-while bytes move and drops it when it is done, which releases the admission in
-the shard. When the shard ends the operation first, it releases the admission
-at once, without waiting for the edge, and the edge sees the lease end and
-stops. For example, a download of `report.txt` from the Cloud:
+while bytes move; the receiving goroutine defers `lease.Release()`, which ends
+the admission in the shard when the copy finishes, fails or is cancelled.
+If the handoff fails, the sender releases the lease. When the shard ends the
+operation first, it releases the admission at once, without waiting for the
+edge, and cancels the lease's context so the edge stops. The edge still calls
+`Release`; revocation does not remove its cleanup duty. The copy owner closes
+or sets deadlines on blocked IO to make cancellation effective, and joins its
+goroutines. For example, a download of `report.txt` from the Cloud:
 
 ```text
 Web app            Edge                          User's shard                 Runner
@@ -233,7 +258,7 @@ Web app            Edge                          User's shard                 Ru
   |                 |                               |-- read into a pipe ------->|
   |                 |<-- pipe end and lease --------|                            |
   |<-- bytes -------|<-- bytes from the pipe ------------------------------------|
-  |                 |-- last byte sent: drop lease->| release both               |
+  |                 |-- last byte: lease.Release()->| release both               |
 ```
 
 The first is a file transfer: the bytes of a
@@ -284,6 +309,8 @@ look at what runs there, such as listing the tabs, is not.
 Backend shutdown ends every open transfer and user stream before it saves and
 stops the user's Cloud, so a download left open never keeps a Cloud from being
 saved.
+Shutdown joins the shard's admission owners and the edge's request and copy
+goroutines before disposing their state, then audits outstanding leases.
 
 ### Every way to a Host
 
@@ -328,6 +355,12 @@ conversation's host access to each device the change leaves, then commits the
 target/archive change, also when a release failed
 ([A release that fails](resource-lifecycle.md#a-release-that-fails)). The old
 binding remains authoritative until commit.
+Once a switch, archive or detach holds the conversation, it belongs to
+shard-owned work. Its commit and required bookkeeping run with
+`context.WithoutCancel` and are awaited even if the requester leaves; shutdown
+joins that work. Deferred cleanup releases the file reservation, reopens
+transfer and stream admission once every closing transition has finished,
+then releases the tree reservation.
 The release is a runner message, not Host IO: it needs no file gate, and it is
 skipped for a device whose runner is not connected, a stopped Cloud among
 them, because the connection loss or the stop has already ended the
