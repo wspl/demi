@@ -108,8 +108,8 @@ calls finishes, since a tool call may have changed what a kind shows, and
 `dispose()` when the panel closes, shows another conversation or the plugin
 turns off. A kind that must read again when the page is shown again, as the
 browser's tab list and the Change view's counts must, watches the page's
-visibility itself. A kind's id is unique across plugins; the registry refuses
-a duplicate.
+visibility itself. A kind's id is unique across plugins; the panel refuses a
+duplicate when it makes the kinds.
 
 ## Intents
 
@@ -171,10 +171,12 @@ A page package says which plugin it is in its `package.json`,
 `"demi": { "plugin": "<id>" }`, and its entry's default export is its
 `PluginPage`. `xtask contracts` writes the registry, the static list of
 imports that `web` and `web-gallery` show, from the page packages each of
-them depends on. Generation fails when a package's id is not one the backend
-registers or when two packages declare one kind. Adding a plugin page to the
-product is adding the dependency; no import is written by hand, and no import
-is computed.
+them depends on, in the order the backend registers their plugins; that order
+is the order of the slots they fill. Generation fails when a package's id is
+not one the backend registers. Two pages that register one kind fail when the
+panel makes the kinds, which every specimen and the product's tests do.
+Adding a plugin page to the product is adding the dependency; no import is
+written by hand, and no import is computed.
 
 ## Versions
 

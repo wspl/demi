@@ -3,9 +3,10 @@
 //! web app receives or sends, in memory, and writes Zod v4 source with
 //! `z.infer` types into `@demicodes/protocol`,
 //! `packages/web/src/api/generated` and each plugin page package's
-//! `src/generated`. A schema outside the emitter's subset
-//! fails generation and names the type.
+//! `src/generated`, and the plugin page registry of `web` and `web-gallery`.
+//! A schema outside the emitter's subset fails generation and names the type.
 
+mod registry;
 mod roots;
 mod shape;
 mod tables;
@@ -43,6 +44,14 @@ pub enum Error {
         path: PathBuf,
         source: std::io::Error,
     },
+    #[error("{path}: {source}")]
+    Read {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    /// The plugin page registry cannot be written as it stands.
+    #[error("{0}")]
+    Registry(String),
 }
 
 /// Generates every module and answers the files it wrote, relative to the
@@ -56,7 +65,8 @@ pub fn run() -> Result<Vec<PathBuf>, Error> {
         (WEB_DIRECTORY, generated.web),
     ]
     .into_iter()
-    .chain(generated.plugins);
+    .chain(generated.plugins)
+    .chain(registry::modules(&repository, HEADER)?);
     for (directory, files) in directories {
         replace_directory(&repository.join(directory), &files)?;
         written.extend(
@@ -68,12 +78,18 @@ pub fn run() -> Result<Vec<PathBuf>, Error> {
     Ok(written)
 }
 
+/// The generated modules of one directory, by file name.
+type Files = Vec<(&'static str, String)>;
+
+/// A directory, relative to the repository, and the modules it holds.
+type Directory = (&'static str, Files);
+
 /// The generated files, by name, of each directory.
 struct Generated {
-    protocol: Vec<(&'static str, String)>,
-    web: Vec<(&'static str, String)>,
+    protocol: Files,
+    web: Files,
     /// Each plugin page package's directory and its files.
-    plugins: Vec<(&'static str, Vec<(&'static str, String)>)>,
+    plugins: Vec<Directory>,
 }
 
 fn generate() -> Result<Generated, Error> {

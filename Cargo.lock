@@ -9352,6 +9352,7 @@ version = "0.1.3"
 dependencies = [
  "axum",
  "clap",
+ "demi-backend",
  "demi-command-package-browser-protocol",
  "demi-command-package-claude-code-protocol",
  "demi-command-package-file-protocol",

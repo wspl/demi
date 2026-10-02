@@ -3,6 +3,9 @@
   "description": "The Host expose plugin's page: its conversation header tool.",
   "version": "0.0.0",
   "private": true,
+  "demi": {
+    "plugin": "expose"
+  },
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
