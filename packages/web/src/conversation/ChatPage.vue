@@ -97,14 +97,16 @@ function saveScroll(id: string, state: PersistedScrollState | null): void {
   }
 }
 
-const selectEdit: EditSelectionHandler = (selection) => {
+/** A tool call's file pill opens its edit through the `edit` intent, while a plugin opens it. */
+const selectEdit = computed<EditSelectionHandler | undefined>(() => {
   const current = conversation.value
-  if (current) {
-    work.selectEdit(current.id, selection)
+  if (!current || !work.canOpen('edit')) {
+    return undefined
   }
-}
+  return (selection) => work.openIn(current.id, 'edit', selection)
+})
 
-/** The Host files the conversation's messages name: images from its raw route, files opened in its work panel. */
+/** The Host files the conversation's messages name: images from its raw route, files opened through the `file` intent while a plugin opens it. */
 const files = computed<ConversationFiles | undefined>(() => {
   const current = conversation.value
   if (!current) {
@@ -113,7 +115,7 @@ const files = computed<ConversationFiles | undefined>(() => {
   const contents = rawFileContents(conversationFileRoutes(current.id).raw)
   return {
     imageUrl: (path) => contents.url(path),
-    open: (path) => work.open(current.id, path),
+    open: work.canOpen('file') ? (path) => work.openIn(current.id, 'file', { path }) : undefined,
   }
 })
 

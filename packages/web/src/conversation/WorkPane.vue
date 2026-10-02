@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, shallowRef, watch } from 'vue'
 import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
 import type { PanelTabKind } from '@demicodes/web-ui/agent/panel-kinds/kind'
 import { usePluginHost } from '@demicodes/web-ui/plugins/client'
-import { pluginPanelKinds, type PanelKinds } from '@demicodes/web-ui/plugins/slots'
+import { pluginPanelKinds, type ConversationFileService, type PanelKinds } from '@demicodes/web-ui/plugins/slots'
 import { PLUGIN_PAGES } from '../plugins/pages'
 import { pluginEnabled } from '../plugins/host'
 import { useProduct } from '../state/product'
@@ -15,12 +15,10 @@ import { useConversations } from './store'
 import { useWorkPanel } from './work'
 
 /**
- * The work panel beside one conversation: its saved tabs and fixed views from
- * the work store, the tab kinds it can show, and
- * the workspace from the conversation's execution target, the Host's
- * files and its working tree. The fixed Change summary follows the conversation:
- * refresh on panel opening, completed tool calls, and page visibility. Conversation diffs read retained contents independently of
- * the live device.
+ * The work panel beside one conversation: its saved tabs and pinned tabs from
+ * the work store, and the kinds the plugin pages make for it over the
+ * conversation's files service and its intents. After each finished tool
+ * call the kinds read again what the agent may have changed.
  */
 const props = defineProps<{ conversationId: string }>()
 const emit = defineEmits<{ close: [] }>()
@@ -35,26 +33,43 @@ const state = computed(() => work.stateFor(props.conversationId))
 const conversation = computed(
   () => conversations.items.find((item) => item.id === props.conversationId) ?? null,
 )
+/** Where the conversation's work runs. */
+const execution = computed(() => (conversation.value ? executionFor(conversation.value) : null))
+/** The Host's tree and contents, while the conversation's device and directory are known. */
 const workspace = computed(() => {
-  if (!conversation.value) {
-    return undefined
-  }
-  const execution = executionFor(conversation.value)
-  const device = resources.deviceById(execution.deviceId)
-  if (!device || !execution.path) {
-    return undefined
+  const target = execution.value
+  const device = target ? resources.deviceById(target.deviceId) : null
+  if (!target || !device || !target.path) {
+    return null
   }
   return {
     source: fileSource(conversationFileRoutes(props.conversationId), device),
-    root: execution.path,
+    root: target.path,
     // The Cloud's own session directory has no name worth showing; it is the workspace.
-    name: execution.directory === null ? 'Workspace' : undefined,
-    changes: state.value.changes,
+    name: target.directory === null ? 'Workspace' : undefined,
   }
 })
 
 /**
- * The plugins' tab kinds for this conversation (`plugins.md` § The page),
+ * The conversation's files as the kinds read them (`plugin-pages.md`
+ * § Services). Each field is read when a kind reads it, so it follows the
+ * conversation's Host.
+ */
+const files: ConversationFileService = {
+  get workspace() {
+    return workspace.value
+  },
+  get root() {
+    return execution.value?.path ?? null
+  },
+  get changes() {
+    return state.value.changes
+  },
+  readCallChange: readEditCopies,
+}
+
+/**
+ * The plugins' tab kinds for this conversation (`plugin-pages.md` § Work panel kinds),
  * for as long as the panel is open beside it and the user has each plugin
  * on. A closed panel reads no tab list and holds no view.
  */
@@ -79,6 +94,11 @@ watch(
       (plugin) => pluginEnabled(product.snapshot, plugin),
       {
         conversation: conversationId,
+        files,
+        intents: {
+          open: (intent, payload) => work.openIn(conversationId, intent, payload),
+          canOpen: (intent) => work.canOpen(intent),
+        },
         tabs: {
           bound: (kind) =>
             work.stateFor(conversationId).panel.tabs.filter((tab) => tab.kind === kind).map((tab) => tab.data),
@@ -105,9 +125,6 @@ function closeTabs(ids: string[]): void {
   }
 }
 
-// The fixed Change summary remains visible across all sections.
-watch(state, (current) => current.changes.refresh(), { immediate: true })
-
 /** The conversation's tool calls that have finished; each may have changed files. */
 const finishedToolCalls = computed(
   () =>
@@ -115,44 +132,27 @@ const finishedToolCalls = computed(
       (block) => block.type === 'tool_call' && block.status !== 'executing',
     ).length ?? 0,
 )
+// The agent may have changed what a kind shows, as the working tree or the
+// conversation browser's tabs; a kind reads again itself when the page is
+// shown again.
 watch(finishedToolCalls, () => {
-  state.value.changes.refresh()
-  // The agent may have changed what a plugin's tabs show, as the
-  // conversation browser's tabs.
   plugins.value?.refresh()
 })
-
-// A plugin's kinds read what they show themselves when the page is shown again.
-function refreshVisible(): void {
-  if (document.visibilityState === 'visible') {
-    state.value.changes.refresh()
-  }
-}
-onMounted(() => {
-  document.addEventListener('visibilitychange', refreshVisible)
-})
 onBeforeUnmount(() => {
-  document.removeEventListener('visibilitychange', refreshVisible)
   plugins.value?.dispose()
 })
 </script>
 
 <template>
   <WorkPanel
-    :views="state.views"
     :panel="state.panel"
+    :pinned="state.pinned"
     :kinds="kinds"
-    :workspace="workspace"
-    :read-call-change="readEditCopies"
-    :history-root="conversation ? executionFor(conversation).path ?? undefined : undefined"
     @select="work.select(conversationId, $event)"
     @add-tab="(kind, data) => work.add(conversationId, kind, data)"
     @update-tab="(id, data) => work.update(conversationId, id, data)"
+    @update-pinned="(kind, data) => work.updatePinned(conversationId, kind, data)"
     @close-tabs="closeTabs"
-    @show-change="(id, mode, path, selection) => work.showChange(state, id, mode, path, selection)"
-    @open="work.open(conversationId, $event)"
-    @back="work.back(state, $event)"
-    @forward="work.forward(state, $event)"
     @close="emit('close')"
   />
 </template>

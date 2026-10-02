@@ -14,8 +14,10 @@ import type { ActivityKind, HandoffBlock } from '@demicodes/web-ui/agent/activit
 import { provideEditSelection } from '@demicodes/web-ui/agent/edit-selection'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import type { ConversationFiles } from '@demicodes/web-ui/markdown/types'
-import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
-import { changeWorkTab, changeTabPath, workPanelTabs, findChangeWorkTab, goBackInTab, goForwardInTab, showChangeInTab, showCallEdit, showFileInTab, type ChangeWorkTab, type WorkTab } from '@demicodes/web-ui/agent/work-panel'
+import GalleryWorkPanel from '../components/GalleryWorkPanel.vue'
+import { useGalleryWork } from '../fixtures/work-panel'
+import type { ConversationFileService } from '@demicodes/web-ui/plugins/slots'
+import { changePath, firstChangeData, goBack as changeBack, goForward as changeForward, showChange } from '@demicodes/plugin-changes/data'
 import { addTab, emptyPanelState, removeTabs, selectInPanel, selectedTab, updateTab, type PanelState } from '@demicodes/web-ui/agent/panel-tabs'
 import type { PanelTabKind } from '@demicodes/web-ui/agent/panel-kinds/kind'
 import { pageTabKind } from '@demicodes/plugin-expose/page/page'
@@ -146,91 +148,35 @@ const panelProjects = ref(demoProjects())
 const panelConversations = ref(demoConversations())
 const panelActiveConversationId = ref<string | null>('c-login')
 /**
- * One work-panel specimen's state, held by the gallery as the product's store
- * holds it: the fixed views, the selection and tabs, and the `browser` kind
- * over the gallery's own conversation browser, or over the one the specimen
- * supplies. The kind reads that browser's tabs whenever the page is shown
- * again, so a panel whose strip starts empty supplies a conversation browser
- * without tabs. A specimen can also say whether the web browser decodes the
- * pictures; by default it asks the web browser, as the product does.
+ * One specimen's work panel over the gallery workspace, as the product's work
+ * store holds one: the plugins' kinds, with the `browser` kind over the
+ * gallery's own conversation browser or the one the specimen supplies, and
+ * the File view on `path` when one is given. A specimen can also say whether
+ * the web browser decodes the pictures.
  */
 function useWorkTabs(
-  selection: string,
+  selection: string | null,
   { path = 'src/auth/cookie.ts', tabs = galleryBrowserTabs(), pictures }: {
     path?: string
     tabs?: BrowserTabsApi
     pictures?: () => Promise<boolean>
   } = {},
 ) {
-  const views = ref(workPanelTabs(path))
-  const panel = ref<PanelState>({ ...emptyPanelState(), selection })
-  // The plugins' kinds over the specimen's own conversation browser.
-  const plugins = pluginPanelKinds(
-    [browserPage({ pictures })],
-    galleryPluginHost({ browser: browserPlugin(tabs) }),
-    () => true,
-    {
-      conversation: 'gallery',
-      tabs: {
-        bound: (kind) => panel.value.tabs.filter((tab) => tab.kind === kind).map((tab) => tab.data),
-        add: (kind, data) => {
-          panel.value = addTab(panel.value, { kind, data }, { select: false }).state
-        },
-      },
-    },
-  )
-  onBeforeUnmount(() => plugins.dispose())
-  const kinds: PanelTabKind[] = [...plugins.kinds, pageTabKind]
-  function select(next: string) {
-    panel.value = selectInPanel(panel.value, next)
+  const work = useGalleryWork(selection, { files: galleryFiles, tabs, pictures })
+  if (path) {
+    work.openIn('file', { path: `${workspace.root}/${path}` })
+    work.select(selection)
   }
-  function add(kind: string, data: unknown) {
-    panel.value = addTab(panel.value, { kind, data }, { select: true }).state
-  }
-  function update(id: string, data: unknown) {
-    panel.value = updateTab(panel.value, id, data)
-  }
-  /** A closed tab goes at once; its kind then does what a closed tab of it needs. */
-  function closeTabs(ids: string[]) {
-    const closing = panel.value.tabs.filter((tab) => ids.includes(tab.id))
-    panel.value = removeTabs(panel.value, ids)
-    for (const tab of closing) {
-      const kind = kinds.find((candidate) => candidate.kind === tab.kind)
-      const parsed = kind?.schema.safeParse(tab.data)
-      if (kind?.removed && parsed?.success) {
-        kind.removed(parsed.data)
-      }
-    }
-  }
-  function showChange(id: string, mode: ChangeMode, path: string | null, selection?: { call: ChangeWorkTab['call']; edit: number }) {
-    views.value = showChangeInTab(views.value, id, mode, path, selection)
-  }
-  /** A file by workspace path, shown in the File view in place. */
-  function open(path: string) {
-    const next = showFileInTab(views.value, path)
-    views.value = next.tabs
-    if (next.activeId !== null) {
-      select(next.activeId)
-    }
-  }
-  function back(id: string) {
-    views.value = goBackInTab(views.value, id)
-  }
-  function forward(id: string) {
-    views.value = goForwardInTab(views.value, id)
-  }
-  function selectEdit(selection: CallEditSelection) {
-    const next = showCallEdit(views.value, selection)
-    views.value = next.tabs
-    select(next.activeId)
-  }
-  function reset() {
-    views.value = workPanelTabs(path)
-    panel.value = { ...emptyPanelState(), selection }
-  }
-  return { views, panel, kinds, tabs, refresh: plugins.refresh, select, add, update, closeTabs, open, showChange, selectEdit, back, forward, reset }
+  return work
 }
 const workspace = createGalleryWorkspace()
+/** The gallery workspace as the work panel's kinds read a conversation's files. */
+const galleryFiles: ConversationFileService = {
+  workspace: { source: workspace.source, root: workspace.root },
+  root: workspace.root,
+  changes: workspace.changes,
+  readCallChange: readGalleryEdit,
+}
 const fileViewTree = ref(true)
 const changeViewTree = ref(true)
 const fileViewMode = ref<'preview' | 'source'>('preview')
@@ -240,14 +186,13 @@ const previewFiles = [
   'README.md', 'assets/logo.svg', 'assets/photo.png', 'assets/demo.mp4',
   'assets/tone.m4a', 'docs/guide.pdf', 'dist/app.zip', 'src/auth/cookie.ts',
 ]
-/** One change tab on its own, stepped the way the panel steps the host's: for the Change view specimens. */
+/** One Change view on its own, stepped the way the `change` kind steps it: for the Change view specimens. */
 function useChangeTab(mode: ChangeMode, path: string | null, changes: ChangeSources) {
-  const tabs = ref<WorkTab[]>(showChangeInTab([changeWorkTab('c', mode)], 'c', mode, path, { call: changes.conversation, edit: 0 }))
-  const tab = computed(() => findChangeWorkTab(tabs.value)!)
-  /** The file the tab holds in its mode, else the first there is. */
-  const selected = computed(() => changeTabPath(tab.value, tab.value.mode, changes.uncommitted.files))
+  const tab = ref(showChange(firstChangeData(), mode, path, { call: changes.conversation, edit: 0 }))
+  /** The file the view holds in its mode, else the first there is. */
+  const selected = computed(() => changePath(tab.value, tab.value.mode, changes.uncommitted.files))
   function show(mode: ChangeMode, path: string | null) {
-    tabs.value = showChangeInTab(tabs.value, 'c', mode, path)
+    tab.value = showChange(tab.value, mode, path)
   }
   return {
     tab,
@@ -258,10 +203,10 @@ function useChangeTab(mode: ChangeMode, path: string | null, changes: ChangeSour
         ? { ...tab.value.call, read: changes.conversation.read }
         : null,
     })),
-    setMode: (mode: ChangeMode) => show(mode, changeTabPath(tab.value, mode)),
+    setMode: (mode: ChangeMode) => show(mode, changePath(tab.value, mode)),
     select: (path: string | null) => show(tab.value.mode, path),
-    back: () => (tabs.value = goBackInTab(tabs.value, 'c')),
-    forward: () => (tabs.value = goForwardInTab(tabs.value, 'c')),
+    back: () => (tab.value = changeBack(tab.value)),
+    forward: () => (tab.value = changeForward(tab.value)),
   }
 }
 const fileViewPath = ref(`${workspace.root}/src/auth/cookie.ts`)
@@ -293,7 +238,7 @@ const panelWork = useWorkTabs('change', { tabs: galleryBrowserTabs([], { install
 const sessionFiles: ConversationFiles = {
   imageUrl: (path) => workspace.source.contents.url(path),
   open: (path) => {
-    panelWork.open(path)
+    panelWork.openIn('file', { path })
     panelAsideOpen.value = true
     view.value = 'panel'
   },
@@ -303,7 +248,7 @@ const exhibitWork = useWorkTabs('file', { tabs: galleryBrowserTabs([]) })
 const editWork = useWorkTabs('change')
 // The gallery's own conversation browser stands behind every specimen's `browser`
 // kind, which lists its tabs as it is made.
-provideEditSelection(editWork.selectEdit)
+provideEditSelection(() => editWork.selectEdit)
 const changeUncommitted = useChangeTab('uncommitted', 'src/auth/cookie.ts', { uncommitted: workspace.changes, conversation: null })
 const changePicked = useChangeTab('conversation', 'src/auth/cookie.ts', {
   uncommitted: workspace.changes,
@@ -1377,12 +1322,7 @@ onBeforeUnmount(() => {
         </div>
       </GallerySection>
       <div class="h-[480px] overflow-hidden rounded-lg border border-line">
-        <WorkPanel
-          :views="editWork.views.value" :panel="editWork.panel.value" :kinds="editWork.kinds"
-          :workspace="workspace" :read-call-change="readGalleryEdit"
-          @select="editWork.select" @add-tab="editWork.add" @update-tab="editWork.update" @close-tabs="editWork.closeTabs" @show-change="editWork.showChange" @open="editWork.open"
-          @back="editWork.back" @forward="editWork.forward"
-        />
+        <GalleryWorkPanel :work="editWork" />
       </div>
       <GallerySection
         title="Changed files"
@@ -1757,18 +1697,7 @@ onBeforeUnmount(() => {
                 </template>
               </ChatSession>
               <template #aside>
-                <WorkPanel
-                  :read-call-change="readGalleryEdit"
-                  :views="panelWork.views.value" :panel="panelWork.panel.value" :kinds="panelWork.kinds"
-                  :workspace="workspace"
-                  @select="panelWork.select"
-                  @add-tab="panelWork.add" @update-tab="panelWork.update" @close-tabs="panelWork.closeTabs"
-                  @show-change="panelWork.showChange"
-                  @open="panelWork.open"
-                  @back="panelWork.back"
-                  @forward="panelWork.forward"
-                  @close="panelAsideOpen = false"
-                />
+                <GalleryWorkPanel :work="panelWork" @close="panelAsideOpen = false" />
               </template>
             </SidebarLayout>
           </div>
@@ -1780,39 +1709,17 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Work panel"
-        note="Change and File are fixed views, content-sized buttons outside the tab strip: they are not tabs, never shrink or scroll with them, and only compete with them for the selection. The strip holds the user's tabs, content-sized and capped at 160px, with scrolling and close menus that affect only tabs. The add control opens a tab in the conversation's browser: globe-plus while the strip is empty, a plain plus beside tabs. The new tab stands in the strip at once, selected, on about:blank, and its content says the browser is starting until its picture arrives; the gallery's browser takes about a second, as a Host takes a moment. A page the device closed keeps its tab, which says so and offers Close tab and Reload; a request the Host refuses shows its message with Retry. While a view connects the content only says that it waits. A viewer's browser that cannot decode the Host's H.264, such as a Chromium built without proprietary codecs, opens no view: its browser tab says so in place of the picture, as the last specimen's does in any browser. A page holds no view while it is hidden, behind another browser tab or in a minimized window, and opens a new one when it is shown again: switch away from the gallery and back, and the picture connects again, its moving mark starting over. Resizing keeps the previous picture's aspect ratio until the browser supplies a frame at the new size; the old picture is never stretched to the new viewport. The viewport control is a square icon button, a computer or a phone, as far from the address as the navigation group is; its menu rows carry the same icons. A page tab opens only from an expose, with the expose glyph and the exposed address as its name, and frames its page in a sandbox: Refresh reloads it, the trailing control opens it in an ordinary browser tab, and Back and Forward stay unavailable because a framed page keeps its history to itself. Change groups its added/removed counts with a 2px gap and shows uncommitted totals and returns to Uncommitted when clicked; file pills still open retained edits there. File uses a Lucide outline icon until a file is selected, then its file-type icon. Every tab content puts its address row immediately below the strip; the same divider as File and Change separates it from the page. Browser and File navigation buttons have no extra gap between them; both address bars leave 12px after the navigation group. A tab the user just made opens with its address focused and selected, waiting for where to go. A click into an address selects it whole, a second click places the caret, and Enter submits it and lets the field go, so keys reach the page again."
+        note="Change and File are pinned tabs, the `change` and `file` kinds of the changes and file-browser plugins: content-sized buttons outside the tab strip that are never created, closed or saved, never shrink or scroll with the strip, and only compete with its tabs for the selection. The strip holds the user's tabs, content-sized and capped at 160px, with scrolling and close menus that affect only tabs. The add control opens a tab in the conversation's browser: globe-plus while the strip is empty, a plain plus beside tabs. The new tab stands in the strip at once, selected, on about:blank, and its content says the browser is starting until its picture arrives; the gallery's browser takes about a second, as a Host takes a moment. A page the device closed keeps its tab, which says so and offers Close tab and Reload; a request the Host refuses shows its message with Retry. While a view connects the content only says that it waits. A viewer's browser that cannot decode the Host's H.264, such as a Chromium built without proprietary codecs, opens no view: its browser tab says so in place of the picture, as the last specimen's does in any browser. A page holds no view while it is hidden, behind another browser tab or in a minimized window, and opens a new one when it is shown again: switch away from the gallery and back, and the picture connects again, its moving mark starting over. Resizing keeps the previous picture's aspect ratio until the browser supplies a frame at the new size; the old picture is never stretched to the new viewport. The viewport control is a square icon button, a computer or a phone, as far from the address as the navigation group is; its menu rows carry the same icons. A page tab opens only from an expose, with the expose glyph and the exposed address as its name, and frames its page in a sandbox: Refresh reloads it, the trailing control opens it in an ordinary browser tab, and Back and Forward stay unavailable because a framed page keeps its history to itself. Change groups its added/removed counts with a 2px gap and shows uncommitted totals and returns to Uncommitted when clicked; file pills still open retained edits there. File uses a Lucide outline icon until a file is selected, then its file-type icon. Every tab content puts its address row immediately below the strip; the same divider as File and Change separates it from the page. Browser and File navigation buttons have no extra gap between them; both address bars leave 12px after the navigation group. A tab the user just made opens with its address focused and selected, waiting for where to go. A click into an address selects it whole, a second click places the caret, and Enter submits it and lets the field go, so keys reach the page again."
       >
         <div class="grid gap-6 md:grid-cols-2">
           <GallerySpecimen variant="tabs" wide>
             <div class="gallery-frame flex h-[24rem] overflow-hidden">
-              <WorkPanel
-                class="w-full"
-                :views="exhibitWork.views.value" :panel="exhibitWork.panel.value" :kinds="exhibitWork.kinds"
-                :workspace="workspace"
-                @select="exhibitWork.select"
-                @add-tab="exhibitWork.add" @update-tab="exhibitWork.update" @close-tabs="exhibitWork.closeTabs"
-                @show-change="exhibitWork.showChange"
-                @open="exhibitWork.open"
-                @back="exhibitWork.back"
-                @forward="exhibitWork.forward"
-                @close="exhibitWork.reset"
-              />
+              <GalleryWorkPanel class="w-full" :work="exhibitWork" @close="exhibitWork.reset" />
             </div>
           </GallerySpecimen>
           <GallerySpecimen variant="tabs · the conversation browser's tabs and a page an expose opened · live" wide>
             <div class="gallery-frame flex h-[24rem] overflow-hidden">
-              <WorkPanel
-                class="w-full"
-                :views="browserWork.views.value" :panel="browserWork.panel.value" :kinds="browserWork.kinds"
-                :workspace="workspace"
-                @select="browserWork.select"
-                @add-tab="browserWork.add" @update-tab="browserWork.update" @close-tabs="browserWork.closeTabs"
-                @show-change="browserWork.showChange"
-                @open="browserWork.open"
-                @back="browserWork.back"
-                @forward="browserWork.forward"
-                @close="productWould('The work panel closes')"
-              />
+              <GalleryWorkPanel class="w-full" :work="browserWork" @close="productWould('The work panel closes')" />
             </div>
             <!-- What the agent's close, or a conversation browser that ended, does to the tab being shown. -->
             <div class="mt-2 flex items-center gap-2 text-[12px] text-fg-muted">
@@ -1822,18 +1729,7 @@ onBeforeUnmount(() => {
           </GallerySpecimen>
           <GallerySpecimen variant="tabs · a viewer's browser that cannot decode H.264 · live" wide>
             <div class="gallery-frame flex h-[24rem] overflow-hidden">
-              <WorkPanel
-                class="w-full"
-                :views="undecodedWork.views.value" :panel="undecodedWork.panel.value" :kinds="undecodedWork.kinds"
-                :workspace="workspace"
-                @select="undecodedWork.select"
-                @add-tab="undecodedWork.add" @update-tab="undecodedWork.update" @close-tabs="undecodedWork.closeTabs"
-                @show-change="undecodedWork.showChange"
-                @open="undecodedWork.open"
-                @back="undecodedWork.back"
-                @forward="undecodedWork.forward"
-                @close="productWould('The work panel closes')"
-              />
+              <GalleryWorkPanel class="w-full" :work="undecodedWork" @close="productWould('The work panel closes')" />
             </div>
           </GallerySpecimen>
         </div>
@@ -1878,7 +1774,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Change view"
-        note="Diffs from one of two sources, the switch in the header picks. A changed image, video, audio file or PDF shows its committed version beside the working tree's instead, each with its sizes, a new file only the second; a binary file with no preview shows a card per side with Download, and a committed version over 8 MiB says it is too large, with no Download. Markdown and SVG switch between the text diff and Preview, which renders both sides, labeled Committed and Working tree, or Before and After in Conversation. Uncommitted is the working tree against the last commit: the diff of the selected file beside the tree of the files git status lists, each ending its row with its line counts and the letter VS Code's Git marks it with, by VS Code's own rules from git's two status letters: U untracked, A added, M modified, D deleted (its name struck through), R renamed, T type changed, ! in conflict, in VS Code's colors and with VS Code's words as the tooltip; where git has a letter for both the index and the working tree, the working tree's shows, so a staged new file edited again is M. The fixtures hold every mark. The files and lines are summed up in the tree's caption. Conversation shows only the file picked under a shell call, without a file tree or a list source. It shows that file’s retained edits, with a segment control when other calls wrote between them. Missing contents leave the diff blank. Back and Forward walk what the view has shown, across modes. The header also opens the selected file itself. Only Uncommitted offers a tree toggle, and in a narrow view its tree hides and shows over the diff the way the File view's does; its tree's caption lists the changes again, its control turning while the list is on its way. Picking a file opens Conversation; selecting the fixed Change section returns to Uncommitted; with nothing picked, Conversation says how to fill it. Under Uncommitted, a workspace outside a Git repository shows “Not a git repository.” without the file tree or its toggle. It keeps the last list when a listing failed, and says under the rows when the list was cut short. A host can name the workspace in place of its directory's name, as the product does for the Cloud's own session directory."
+        note="Diffs from one of two sources, the switch in the header picks. A changed image, video, audio file or PDF shows its committed version beside the working tree's instead, each with its sizes, a new file only the second; a binary file with no preview shows a card per side with Download, and a committed version over 8 MiB says it is too large, with no Download. Markdown and SVG switch between the text diff and Preview, which renders both sides, labeled Committed and Working tree, or Before and After in Conversation. Uncommitted is the working tree against the last commit: the diff of the selected file beside the tree of the files git status lists, each ending its row with its line counts and the letter VS Code's Git marks it with, by VS Code's own rules from git's two status letters: U untracked, A added, M modified, D deleted (its name struck through), R renamed, T type changed, ! in conflict, in VS Code's colors and with VS Code's words as the tooltip; where git has a letter for both the index and the working tree, the working tree's shows, so a staged new file edited again is M. The fixtures hold every mark. The files and lines are summed up in the tree's caption. Conversation shows only the file picked under a shell call, without a file tree or a list source. It shows that file’s retained edits, with a segment control when other calls wrote between them. Missing contents leave the diff blank. Back and Forward walk what the view has shown, across modes. The header also opens the selected file itself. Only Uncommitted offers a tree toggle, and in a narrow view its tree hides and shows over the diff the way the File view's does; its tree's caption lists the changes again, its control turning while the list is on its way. Picking a file pill opens Conversation; picking the pinned Change tab returns to Uncommitted; with nothing picked, Conversation says how to fill it. Under Uncommitted, a workspace outside a Git repository shows “Not a git repository.” without the file tree or its toggle. It keeps the last list when a listing failed, and says under the rows when the list was cut short. A host can name the workspace in place of its directory's name, as the product does for the Cloud's own session directory."
       >
         <GallerySpecimen
           v-for="specimen in [
