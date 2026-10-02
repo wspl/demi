@@ -250,7 +250,11 @@ func generateBatch(ctx context.Context, patterns []string, ts bool, tsDir string
 	if err := g.check(collected[0]); err != nil {
 		return err
 	}
-	jsonSchemas, err := g.jsonSchemas()
+	jsonSchemas, err := g.jsonSchemas(false)
+	if err != nil {
+		return err
+	}
+	pluginSchemas, err := g.jsonSchemas(true)
 	if err != nil {
 		return err
 	}
@@ -272,6 +276,7 @@ func generateBatch(ctx context.Context, patterns []string, ts bool, tsDir string
 				if value, ok := jsonSchemas[d.key]; ok {
 					g.imports["encoding/json"] = "json"
 					g.line("func %sJSONSchema() json.RawMessage { return json.RawMessage(%s) }", d.name, q(string(value)))
+					g.line("func %sPluginJSONSchema() json.RawMessage { return json.RawMessage(%s) }", d.name, q(string(pluginSchemas[d.key])))
 				}
 			}
 		}

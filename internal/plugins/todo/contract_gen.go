@@ -446,3 +446,39 @@ func UpdateArgsJSONSchema() json.RawMessage {
 func UpdateArgsPluginJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"$defs\":{\"TodoStatus\":{\"type\":\"string\",\"enum\":[\"pending\",\"in_progress\",\"done\"]}},\"additionalProperties\":false,\"description\":\"The input of `demi todo update`.\",\"properties\":{\"id\":{\"type\":\"string\",\"description\":\"Todo id\"},\"text\":{\"type\":\"string\",\"description\":\"Replacement text\"},\"status\":{\"$ref\":\"#/$defs/TodoStatus\",\"description\":\"Replacement status\"}},\"required\":[\"id\"],\"title\":\"UpdateArgs\",\"type\":\"object\"}")
 }
+func decodeStoredTodos(data []byte) (storedTodos, error) { return contract.Decode[storedTodos](data) }
+func (v storedTodos) Validate() error                    { return contractValidateStoredTodos(v, 0) }
+func contractValidateStoredTodos(v storedTodos, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if v == nil {
+		return contract.At("", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v {
+		_ = i
+		_ = item
+		if err := contractValidateTodoItem(item, depth+1); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "", i), err)
+		}
+	}
+	return nil
+}
+func (v *storedTodos) UnmarshalJSON(data []byte) error {
+	value, err := func(b []byte) ([]TodoItem, error) { return contract.List(b, contract.Decode[TodoItem]) }(data)
+	if err != nil {
+		return err
+	}
+	next := storedTodos(value)
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v storedTodos) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	return contract.EncodeJSON([]TodoItem(v))
+}
