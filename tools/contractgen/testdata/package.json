@@ -1,0 +1,16 @@
+{
+  "name": "contractgen-fixtures",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  },
+  "scripts": {
+    "generate": "CGO_ENABLED=0 GOFLAGS=-mod=readonly GOEXPERIMENT=none go run .. -ts -ts-dir generated ./blocks ./features",
+    "compare": "node compare.mjs",
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}
