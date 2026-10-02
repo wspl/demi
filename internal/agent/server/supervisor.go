@@ -155,26 +155,29 @@ func (t *Tree[H]) startChild(ctx context.Context, owner *Node[H], record store.N
 		return errors.Join(err, node.session.Dispose(context.WithoutCancel(ctx)))
 	}
 	c := &child[H]{node: node, done: make(chan struct{}), telemetry: telemetry{lastEvent: now}}
-	c.events = node.session.Subscribe(func(event session.Event) {
+	_, c.events = node.session.Observe(func(event session.Event) {
 		switch e := event.(type) {
 		case *session.TranscriptChanged:
 			t.observe(c, e)
-			t.emit(&framewire.SubagentTranscriptPatchFrame{SubagentID: node.ID(), Patches: e.Patches, Revision: e.Revision})
 		case *session.ActionFailed:
 			t.server.mu.Lock()
 			c.failure = new(e.Report.Message)
 			t.server.mu.Unlock()
 			t.bump()
-		case *session.PhaseChanged, *session.QueueChanged, *session.PendingSteersChanged, *session.RetryScheduled, *session.ErrorEvent:
+		case *session.EditCommitted, *session.PhaseChanged, *session.QueueChanged, *session.PendingSteersChanged, *session.RetryScheduled, *session.ErrorEvent:
 		}
 	})
+	t.frames.Lock()
 	t.server.mu.Lock()
 	t.children[node.ID()] = c
 	t.server.mu.Unlock()
 	t.bump()
-	for _, frame := range childFrames(c) {
-		t.emit(frame)
+	for _, connection := range t.connections() {
+		for _, frame := range t.childFrames(connection, c) {
+			connection.send(frame)
+		}
 	}
+	t.frames.Unlock()
 	if continuation != nil {
 		if err := node.continueFrom(ctx, *continuation); err != nil {
 			t.report(fmt.Errorf("subagent %s did not save its start: %w", node.ID(), err))
@@ -363,12 +366,25 @@ func (t *Tree[H]) closeChild(ctx context.Context, c *child[H], phase store.Close
 	delete(t.children, record.ID)
 	t.server.mu.Unlock()
 	t.bump()
+	t.frames.Lock()
+	for _, connection := range t.connections() {
+		t.server.mu.Lock()
+		subscription := connection.observations[record.ID]
+		delete(connection.observations, record.ID)
+		t.server.mu.Unlock()
+		if subscription != nil {
+			subscription.Release()
+		}
+	}
+	if err == nil {
+		record.Closed = &ended
+		t.publish(&framewire.SubagentFrame{Event: framewire.SubagentEventClosed, Job: *record.Job()})
+	}
+	t.frames.Unlock()
 	if err != nil {
 		t.report(fmt.Errorf("subagent %s did not close: %w", record.ID, err))
 		return
 	}
-	record.Closed = &ended
-	t.emit(&framewire.SubagentFrame{Event: framewire.SubagentEventClosed, Job: *record.Job()})
 	if owner != nil {
 		t.deliver(ctx, owner, record, ended)
 	}
@@ -461,14 +477,14 @@ func (t *Tree[H]) sendMessage(ctx context.Context, caller core.NodeID, target, c
 	return recipient.record.Number, nil
 }
 
-func childFrames[H host.Host](c *child[H]) []framewire.ServerFrame {
-	snapshot := c.node.session.Transcript()
+func (t *Tree[H]) childFrames(connection *Connection[H], c *child[H]) []framewire.ServerFrame {
+	snapshot := t.observeConnection(connection, c.node).Transcript
 	return []framewire.ServerFrame{&framewire.SubagentFrame{Event: framewire.SubagentEventStarted, Job: *c.node.record.Job()}, &framewire.SubagentTranscriptResetFrame{SubagentID: c.node.ID(), Blocks: snapshot.Blocks, Revision: snapshot.Version.Revision}}
 }
-func (t *Tree[H]) replay() []framewire.ServerFrame {
+func (t *Tree[H]) replay(connection *Connection[H]) []framewire.ServerFrame {
 	frames := []framewire.ServerFrame{}
 	for _, c := range t.descendants(t.id) {
-		frames = append(frames, childFrames(c)...)
+		frames = append(frames, t.childFrames(connection, c)...)
 	}
 	return frames
 }

@@ -148,6 +148,9 @@ func (c *Connection[H]) dispatch(ctx context.Context, tree *Tree[H], frame frame
 		agent.ClearMessageQueue()
 	case *framewire.AbortFrame:
 		result, err := agent.Abort(ctx)
+		if err == nil {
+			err = c.waitPublished(ctx, tree, agent.Transcript().Version.Revision)
+		}
 		if err != nil {
 			c.report(err)
 		} else {
@@ -155,7 +158,7 @@ func (c *Connection[H]) dispatch(ctx context.Context, tree *Tree[H], frame frame
 		}
 	case *framewire.SyncTranscriptFrame:
 		tree.frames.Lock()
-		for _, frame := range tree.freshTranscripts() {
+		for _, frame := range tree.freshTranscripts(c) {
 			c.send(frame)
 		}
 		tree.frames.Unlock()
@@ -188,12 +191,7 @@ func (c *Connection[H]) dispatch(ctx context.Context, tree *Tree[H], frame frame
 			c.reject(frame.Kind(), err.Error())
 		}
 	case *framewire.EditAndSendFrame:
-		turn, err := c.edit(ctx, agent, f.Request)
-		var outcome framewire.EditOutcome = &framewire.AcceptedEdit{TurnID: turn}
-		if err != nil {
-			outcome = &framewire.RejectedEdit{Reason: err.Error()}
-		}
-		c.send(&framewire.EditResultFrame{OperationID: f.Request.OperationID, Outcome: outcome})
+		c.edit(ctx, tree, f.Request)
 	case *framewire.ShellWriteFrame:
 		_, err := tree.shellsOf(f.CommandID).runtime.access.Write(ctx, f.CommandID, f.Stdin)
 		if err != nil {
@@ -210,30 +208,52 @@ func (c *Connection[H]) dispatch(ctx context.Context, tree *Tree[H], frame frame
 	}
 }
 
-func (c *Connection[H]) edit(ctx context.Context, agent *session.Session, request framewire.EditRequest) (core.TurnID, error) {
+// edit registers the reply before admission so acceptance is sent by the node event.
+func (c *Connection[H]) edit(ctx context.Context, tree *Tree[H], request framewire.EditRequest) {
+	agent := tree.root.session
 	digest, err := session.EditDigest(request)
 	if err != nil {
-		return "", err
+		c.send(&framewire.EditResultFrame{OperationID: request.OperationID, Outcome: &framewire.RejectedEdit{Reason: err.Error()}})
+		return
 	}
+	reply := &editReply{operation: request.OperationID, digest: digest}
+	tree.frames.Lock()
+	c.editReply = reply
+	tree.frames.Unlock()
 	check, err := agent.CheckEdit(request.OperationID, digest, request.Version)
-	if err != nil {
-		return "", err
-	}
-	var receipt store.EditReceipt
-	switch v := check.(type) {
-	case *session.EditAccepted:
-		receipt = v.Receipt
-	case *session.EditInFlight:
-		receipt, err = v.Acceptance.Wait(ctx)
-	case *session.EditProceed:
-		content, media, failure := resolveEdit(ctx, c.resolver, request.Content)
-		if failure != nil {
-			return "", failure
+	var accepted *store.EditReceipt
+	if err == nil {
+		switch v := check.(type) {
+		case *session.EditAccepted:
+			accepted = &v.Receipt
+		case *session.EditInFlight:
+			_, err = v.Acceptance.Wait(ctx)
+		case *session.EditProceed:
+			var content []session.EditContent
+			var media store.HeldMedia
+			content, media, err = resolveEdit(ctx, c.resolver, request.Content)
+			if err == nil {
+				agent.HoldMedia(&media)
+				_, err = agent.EditAndSend(ctx, session.EditSubmission{OperationID: request.OperationID, Target: request.TargetBlockID, Version: request.Version, Content: content, Digest: digest})
+			}
 		}
-		agent.HoldMedia(&media)
-		receipt, err = agent.EditAndSend(ctx, session.EditSubmission{OperationID: request.OperationID, Target: request.TargetBlockID, Version: request.Version, Content: content, Digest: digest})
 	}
-	return receipt.TurnID, err
+	tree.frames.Lock()
+	defer tree.frames.Unlock()
+	if c.editReply != reply {
+		return
+	}
+	c.editReply = nil
+	if err != nil {
+		c.send(&framewire.EditResultFrame{OperationID: request.OperationID, Outcome: &framewire.RejectedEdit{Reason: err.Error()}})
+	} else if accepted != nil {
+		c.send(&framewire.EditResultFrame{OperationID: request.OperationID, Outcome: &framewire.AcceptedEdit{TurnID: accepted.TurnID}})
+	}
+}
+
+type editReply struct {
+	operation core.OperationID
+	digest    string
 }
 
 func (t *Tree[H]) shellsOf(command core.CommandID) *Node[H] {

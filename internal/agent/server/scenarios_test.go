@@ -496,41 +496,141 @@ func TestConnectionsUseOneEditAndQueueAdmission(t *testing.T) {
 // Pause publication, as a goroutine descheduled between state mutation and its
 // callback could be, while a second connection takes the open snapshot.
 func TestOpenSnapshotDoesNotReplayEarlierRevisions(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		f := newFixture(t, said("answer"))
-		first := f.opened()
-		agent := f.server.Tree(rootID()).Root().Session()
-		paused, release := make(chan struct{}), make(chan struct{})
-		var once sync.Once
-		subscription := agent.Subscribe(func(event session.Event) {
-			if _, ok := event.(*session.TranscriptChanged); ok {
-				once.Do(func() {
-					close(paused)
-					<-release
+	for _, syncTranscript := range []bool{false, true} {
+		t.Run(fmt.Sprintf("sync=%t", syncTranscript), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				f := newFixture(t, said("answer"), said("second"))
+				first := f.opened()
+				second := f.client()
+				if syncTranscript {
+					second.Send(t.Context(), &framewire.OpenFrame{})
+					second.Received()
+				}
+				agent := f.server.Tree(rootID()).Root().Session()
+				paused, release := make(chan struct{}), make(chan struct{})
+				var once sync.Once
+				subscription := agent.Subscribe(func(event session.Event) {
+					if _, ok := event.(*session.TranscriptChanged); ok {
+						once.Do(func() {
+							close(paused)
+							<-release
+						})
+					}
 				})
-			}
+				defer subscription.Release()
+				sent := make(chan struct{})
+				go func() {
+					defer close(sent)
+					first.Send(t.Context(), send("m1", "question"))
+				}()
+				<-paused
+				agent.RecordInterruption()
+				if syncTranscript {
+					second.Send(t.Context(), send("m2", "queued"))
+				}
+				synctest.Wait()
+				if syncTranscript {
+					second.Send(t.Context(), &framewire.SyncTranscriptFrame{})
+				} else {
+					second.Send(t.Context(), &framewire.OpenFrame{})
+				}
+				var revision uint64
+				for _, frame := range second.Received() {
+					if reset, ok := frame.(*framewire.TranscriptResetFrame); ok {
+						revision = reset.Version.Revision
+					}
+				}
+				close(release)
+				<-sent
+				synctest.Wait()
+				patches := 0
+				queued := false
+				for _, frame := range second.Received() {
+					if queue, ok := frame.(*framewire.QueueFrame); ok {
+						for _, message := range queue.Queue {
+							if message.ID == turnID("m2") {
+								queued = true
+							}
+						}
+					}
+					if patch, ok := frame.(*framewire.TranscriptPatchFrame); ok {
+						equal(t, revision+1, patch.Revision)
+						revision = patch.Revision
+						patches++
+					}
+				}
+				if syncTranscript && !queued {
+					t.Fatal("sync discarded pending queue event")
+				}
+				if patches == 0 {
+					t.Fatal("no events after the snapshot")
+				}
+			})
 		})
-		defer subscription.Release()
-		sent := make(chan struct{})
-		go func() {
-			defer close(sent)
-			first.Send(t.Context(), send("m1", "question"))
-		}()
-		<-paused
-		agent.RecordInterruption()
-		synctest.Wait()
-		second := f.client()
-		second.Send(t.Context(), &framewire.OpenFrame{})
-		handshake := second.Received()
-		revision := handshake[1].(*framewire.TranscriptResetFrame).Version.Revision
-		close(release)
-		<-sent
-		synctest.Wait()
-		for _, frame := range second.Received() {
-			if patch, ok := frame.(*framewire.TranscriptPatchFrame); ok {
-				equal(t, revision+1, patch.Revision)
-				revision = patch.Revision
-			}
-		}
-	})
+	}
+}
+
+// A child's pending patches use the same snapshot boundary on open and sync.
+func TestChildSnapshotDoesNotReplayEarlierRevisions(t *testing.T) {
+	for _, syncTranscript := range []bool{false, true} {
+		t.Run(fmt.Sprintf("sync=%t", syncTranscript), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				start := make(chan struct{})
+				script := providertest.NewScriptedRuntime(t, held(start, providertest.Text("answer"), providertest.Response(1, 1)))
+				f := modelFixture(t, []providertest.Turn{said("received")}, childScriptEntry("child", script))
+				f.opened()
+				id := spawn(t, f, rootID(), `{"prompt":"child"}`)
+				synctest.Wait()
+				second := f.client()
+				if syncTranscript {
+					second.Send(t.Context(), &framewire.OpenFrame{})
+					second.Received()
+				}
+				agent := f.server.Node(rootID(), id).Session()
+				paused, release := make(chan struct{}), make(chan struct{})
+				var once sync.Once
+				subscription := agent.Subscribe(func(event session.Event) {
+					if _, ok := event.(*session.TranscriptChanged); ok {
+						once.Do(func() {
+							close(paused)
+							<-release
+						})
+					}
+				})
+				defer subscription.Release()
+				close(start)
+				<-paused
+				agent.RecordInterruption()
+				if syncTranscript {
+					second.Send(t.Context(), &framewire.SyncTranscriptFrame{})
+				} else {
+					second.Send(t.Context(), &framewire.OpenFrame{})
+				}
+				var revision uint64
+				found := false
+				for _, frame := range second.Received() {
+					if reset, ok := frame.(*framewire.SubagentTranscriptResetFrame); ok && reset.SubagentID == id {
+						revision = reset.Revision
+						found = true
+					}
+				}
+				close(release)
+				synctest.Wait()
+				if !found {
+					t.Fatal("child snapshot missing")
+				}
+				patches := 0
+				for _, frame := range second.Received() {
+					if patch, ok := frame.(*framewire.SubagentTranscriptPatchFrame); ok && patch.SubagentID == id {
+						equal(t, revision+1, patch.Revision)
+						revision = patch.Revision
+						patches++
+					}
+				}
+				if patches == 0 {
+					t.Fatal("no child events after snapshot")
+				}
+			})
+		})
+	}
 }

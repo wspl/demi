@@ -7,6 +7,7 @@ import (
 
 	"github.com/wspl/demi/internal/agent/server/servertest"
 	"github.com/wspl/demi/internal/agent/store/storetest"
+	"github.com/wspl/demi/internal/agent/tools/toolstest"
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/framewire"
 	"github.com/wspl/demi/internal/host"
@@ -106,9 +107,10 @@ func TestEditReplacesOnceOnFreshRuntime(t *testing.T) {
 func TestEditVisibleOnlyAfterCommit(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newFixture(t, said("answer A"), said("answer A2"))
-		c := f.opened()
+		c, other := f.opened(), f.opened()
 		c.Send(t.Context(), send("m1", "A"))
 		untilIdle(t, c)
+		untilIdle(t, other)
 		r := edit("op1", userBlock(t, f, "m1"), f.server.Tree(rootID()).Root().Session().Transcript().Version, "A2")
 		gate := f.store.HoldSaves()
 		defer gate.Release()
@@ -128,11 +130,37 @@ func TestEditVisibleOnlyAfterCommit(t *testing.T) {
 				t.Fatal("edit patch before commit")
 			}
 		}
+		joined := make(chan struct{})
+		go func() {
+			defer close(joined)
+			other.Send(t.Context(), r)
+		}()
+		synctest.Wait()
 		gate.Release()
+		<-joined
 		<-done
-		frames := untilIdle(t, c)
-		if _, ok := editOutcome(t, frames).(*framewire.AcceptedEdit); !ok {
-			t.Fatal(frames)
+		for _, client := range []*servertest.TestClient[*toolstest.NoHost]{c, other} {
+			frames := untilIdle(t, client)
+			results := 0
+			for i, frame := range frames {
+				if _, ok := frame.(*framewire.EditResultFrame); ok {
+					results++
+					if i == 0 {
+						t.Fatal("acceptance before rewrite")
+					}
+					patch, ok := frames[i-1].(*framewire.TranscriptPatchFrame)
+					if !ok {
+						t.Fatalf("acceptance follows %T", frames[i-1])
+					}
+					if _, ok := patch.Patches[0].(*framewire.ReplacePatch); !ok {
+						t.Fatal("acceptance did not follow rewrite")
+					}
+				}
+			}
+			equal(t, 1, results)
+			if _, ok := editOutcome(t, frames).(*framewire.AcceptedEdit); !ok {
+				t.Fatal(frames)
+			}
 		}
 	})
 }

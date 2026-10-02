@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/wspl/demi/internal/agent/server"
+	"github.com/wspl/demi/internal/agent/session"
 	"github.com/wspl/demi/internal/agent/store/storetest"
 	"github.com/wspl/demi/internal/agent/tools/toolstest"
 	"github.com/wspl/demi/internal/contract"
@@ -113,11 +114,40 @@ func TestProviderFailureIsPublishedOnceAndQueueContinues(t *testing.T) {
 func TestStopPublishesMarkerBeforeReplyAndRunsQueue(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newFixture(t, providertest.Pending(), said("second answer"))
+		f.opened()
+		paused, release := make(chan struct{}), make(chan struct{})
+		observer := f.server.Tree(rootID()).Root().Session().Subscribe(func(event session.Event) {
+			if change, ok := event.(*session.TranscriptChanged); ok {
+				for _, patch := range change.Patches {
+					if added, ok := patch.(*framewire.AddPatch); ok {
+						if _, stopped := added.Value.(*core.AbortBlock); stopped {
+							close(paused)
+							<-release
+						}
+					}
+				}
+			}
+		})
+		defer observer.Release()
 		c := f.opened()
 		c.Send(t.Context(), send("m1", "first"))
 		c.Send(t.Context(), send("m2", "second"))
 		synctest.Wait()
-		c.Send(t.Context(), &framewire.AbortFrame{})
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			c.Send(t.Context(), &framewire.AbortFrame{})
+		}()
+		<-paused
+		synctest.Wait()
+		early := c.Received()
+		close(release)
+		<-done
+		for _, frame := range early {
+			if _, ok := frame.(*framewire.AbortResultFrame); ok {
+				t.Fatal("abort reply preceded marker publication")
+			}
+		}
 		frames, err := c.NextUntil(t.Context(), func(f framewire.ServerFrame) bool {
 			_, ok := f.(*framewire.AbortResultFrame)
 			return ok

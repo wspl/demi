@@ -153,10 +153,7 @@ func (s *Server[H]) openTree(ctx context.Context, root core.NodeID, cwd string) 
 			return nil, nil, errors.Join(err, node.session.Dispose(context.WithoutCancel(ctx)))
 		}
 	}
-	t.subscription = node.session.Subscribe(func(event session.Event) {
-		if frame := frameOf(event); frame != nil {
-			t.emit(frame)
-		}
+	_, t.subscription = node.session.Observe(func(event session.Event) {
 		if _, phase := event.(*session.PhaseChanged); phase {
 			s.deps.StatusChanged(root)
 		}
@@ -198,12 +195,7 @@ func (t *Tree[H]) emit(frame framewire.ServerFrame) {
 }
 
 func (t *Tree[H]) publish(frame framewire.ServerFrame) {
-	t.server.mu.Lock()
-	connections := make([]*Connection[H], 0, len(t.attachments))
-	for c := range t.attachments {
-		connections = append(connections, c)
-	}
-	t.server.mu.Unlock()
+	connections := t.connections()
 	for _, c := range connections {
 		if !c.outbox.push(frame) {
 			t.detach(c)
@@ -215,10 +207,22 @@ func (t *Tree[H]) detach(c *Connection[H]) {
 	t.server.mu.Lock()
 	_, attached := t.attachments[c]
 	delete(t.attachments, c)
+	observations := c.observations
+	state := c.stateObservation
+	c.stateObservation = nil
+	c.observations = nil
 	if len(t.attachments) == 0 {
 		t.waiting = nil
 	}
 	t.server.mu.Unlock()
+	for _, subscription := range observations {
+		if subscription != state {
+			subscription.Release()
+		}
+	}
+	if state != nil {
+		state.Release()
+	}
 	if attached {
 		t.bump()
 	}
@@ -236,9 +240,9 @@ func (t *Tree[H]) attach(c *Connection[H]) {
 	t.attachments[c] = struct{}{}
 	t.attachmentEpoch++
 	t.server.mu.Unlock()
-	snapshot := t.root.session.Transcript()
-	frames := []framewire.ServerFrame{&framewire.OpenedFrame{}, &framewire.TranscriptResetFrame{Blocks: snapshot.Blocks, Version: snapshot.Version}, &framewire.PhaseFrame{Phase: t.root.session.Phase()}, &framewire.QueueFrame{Queue: t.root.session.QueuedMessages()}, &framewire.PendingSteersFrame{PendingSteers: t.root.session.PendingSteers()}}
-	frames = append(frames, t.replay()...)
+	snapshot := t.observeConnection(c, t.root)
+	frames := []framewire.ServerFrame{&framewire.OpenedFrame{}, &framewire.TranscriptResetFrame{Blocks: snapshot.Transcript.Blocks, Version: snapshot.Transcript.Version}, &framewire.PhaseFrame{Phase: snapshot.Phase}, &framewire.QueueFrame{Queue: snapshot.Queue}, &framewire.PendingSteersFrame{PendingSteers: snapshot.PendingSteers}}
+	frames = append(frames, t.replay(c)...)
 	frames = append(frames, t.liveCommands()...)
 	for _, frame := range frames {
 		if !c.outbox.push(frame) {
@@ -249,10 +253,10 @@ func (t *Tree[H]) attach(c *Connection[H]) {
 	t.bump()
 }
 
-func (t *Tree[H]) freshTranscripts() []framewire.ServerFrame {
-	snapshot := t.root.session.Transcript()
+func (t *Tree[H]) freshTranscripts(c *Connection[H]) []framewire.ServerFrame {
+	snapshot := t.observeConnection(c, t.root).Transcript
 	frames := []framewire.ServerFrame{&framewire.TranscriptResetFrame{Blocks: snapshot.Blocks, Version: snapshot.Version}}
-	frames = append(frames, t.replay()...)
+	frames = append(frames, t.replay(c)...)
 	return append(frames, t.liveCommands()...)
 }
 
@@ -295,9 +299,16 @@ func (t *Tree[H]) dispose(ctx context.Context) error {
 	}
 	t.emit(&framewire.ClosedFrame{})
 	t.server.mu.Lock()
+	connections := make([]*Connection[H], 0, len(t.attachments))
+	for c := range t.attachments {
+		connections = append(connections, c)
+	}
 	clear(t.attachments)
 	clear(t.children)
 	t.server.mu.Unlock()
+	for _, c := range connections {
+		t.detach(c)
+	}
 	t.bump()
 	return err
 }
@@ -368,7 +379,7 @@ func frameOf(event session.Event) framewire.ServerFrame {
 		return &framewire.RetryScheduledFrame{Attempt: e.Attempt, DelayMs: e.DelayMS, Code: e.Code, Diagnostics: e.Diagnostics}
 	case *session.ErrorEvent:
 		return &framewire.ErrorFrame{Message: e.Report.Message, Code: e.Report.Code, Diagnostics: e.Report.Diagnostics}
-	case *session.ActionFailed:
+	case *session.ActionFailed, *session.EditCommitted:
 		return nil
 	}
 	return nil

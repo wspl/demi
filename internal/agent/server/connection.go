@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/wspl/demi/internal/agent/session"
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/framewire"
 	"github.com/wspl/demi/internal/host"
@@ -64,6 +65,11 @@ type Connection[H host.Host] struct {
 	resolver ContentResolver
 	outbox   *outbox
 	detached atomic.Bool
+	// Observations are protected by server.mu; edit replies by the tree frame lock.
+	observations      map[core.NodeID]*session.Subscription
+	stateObservation  *session.Subscription
+	editReply         *editReply
+	publishedRevision uint64 // Protected by the tree frame lock.
 }
 
 // Handle handles a decoded frame to its end. The socket owner calls it in

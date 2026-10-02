@@ -59,7 +59,10 @@ func (v abortArgs) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func abortArgsJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi agent abort`.\",\"properties\":{\"id\":{\"description\":\"subagentId from spawn stdout\",\"format\":\"uint64\",\"minimum\":0,\"type\":\"integer\"}},\"required\":[\"id\"],\"title\":\"abortArgs\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi agent abort`.\",\"properties\":{\"id\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0,\"description\":\"subagentId from spawn stdout\"}},\"required\":[\"id\"],\"title\":\"abortArgs\",\"type\":\"object\"}")
+}
+func abortArgsPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi agent abort`.\",\"properties\":{\"id\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0,\"description\":\"subagentId from spawn stdout\"}},\"required\":[\"id\"],\"title\":\"abortArgs\",\"type\":\"object\"}")
 }
 func decodeAborted(data []byte) (aborted, error) { return contract.Decode[aborted](data) }
 func (v aborted) Validate() error                { return contractValidateAborted(v, 0) }
@@ -124,7 +127,10 @@ func (v aborted) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func abortedJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`demi agent abort --json`.\",\"properties\":{\"aborted\":{\"type\":\"boolean\"},\"id\":{\"format\":\"uint64\",\"minimum\":0,\"type\":\"integer\"}},\"required\":[\"id\",\"aborted\"],\"title\":\"aborted\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`demi agent abort --json`.\",\"properties\":{\"id\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"aborted\":{\"type\":\"boolean\"}},\"required\":[\"id\",\"aborted\"],\"title\":\"aborted\",\"type\":\"object\"}")
+}
+func abortedPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`demi agent abort --json`.\",\"properties\":{\"id\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"aborted\":{\"type\":\"boolean\"}},\"required\":[\"id\",\"aborted\"],\"title\":\"aborted\",\"type\":\"object\"}")
 }
 func decodeAgentSnapshot(data []byte) (agentSnapshot, error) {
 	return contract.Decode[agentSnapshot](data)
@@ -456,6 +462,9 @@ func (v listArgs) MarshalJSON() ([]byte, error) {
 func listArgsJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi agent list`, which takes none.\",\"title\":\"listArgs\",\"type\":\"object\"}")
 }
+func listArgsPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi agent list`, which takes none.\",\"title\":\"listArgs\",\"type\":\"object\"}")
+}
 func decodeListing(data []byte) (listing, error) { return contract.Decode[listing](data) }
 func (v listing) Validate() error                { return contractValidateListing(v, 0) }
 func contractValidateListing(v listing, depth int) error {
@@ -515,7 +524,10 @@ func (v listing) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func listingJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`demi agent list --json`.\",\"properties\":{\"tree\":{\"items\":{\"additionalProperties\":false,\"description\":\"One node of `demi agent list --json`.\",\"properties\":{\"closedAgoMs\":{\"format\":\"uint64\",\"minimum\":0,\"type\":[\"integer\",\"null\"]},\"description\":{\"type\":\"string\"},\"kind\":{\"enum\":[\"root\",\"live\",\"archived\"],\"type\":\"string\"},\"parentSessionId\":{\"format\":\"uint64\",\"minimum\":0,\"type\":[\"integer\",\"null\"]},\"phase\":{\"description\":\"Where a child is.\",\"enum\":[\"running\",\"completed\",\"aborted\",\"error\"],\"type\":\"string\"},\"profile\":{\"type\":[\"string\",\"null\"]},\"self\":{\"type\":\"boolean\"},\"subagentId\":{\"format\":\"uint64\",\"minimum\":0,\"type\":\"integer\"}},\"required\":[\"subagentId\",\"parentSessionId\",\"kind\",\"description\",\"profile\",\"phase\",\"closedAgoMs\",\"self\"],\"type\":\"object\"},\"type\":\"array\"}},\"required\":[\"tree\"],\"title\":\"listing\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`demi agent list --json`.\",\"properties\":{\"tree\":{\"type\":\"array\",\"items\":{\"description\":\"One node of `demi agent list --json`.\",\"type\":\"object\",\"properties\":{\"subagentId\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"parentSessionId\":{\"type\":[\"integer\",\"null\"],\"format\":\"uint64\",\"minimum\":0},\"kind\":{\"type\":\"string\",\"enum\":[\"root\",\"live\",\"archived\"]},\"description\":{\"type\":\"string\"},\"profile\":{\"type\":[\"string\",\"null\"]},\"phase\":{\"description\":\"Where a child is.\",\"type\":\"string\",\"enum\":[\"running\",\"completed\",\"aborted\",\"error\"]},\"closedAgoMs\":{\"type\":[\"integer\",\"null\"],\"format\":\"uint64\",\"minimum\":0},\"self\":{\"type\":\"boolean\"}},\"additionalProperties\":false,\"required\":[\"subagentId\",\"parentSessionId\",\"kind\",\"description\",\"profile\",\"phase\",\"closedAgoMs\",\"self\"]}}},\"required\":[\"tree\"],\"title\":\"listing\",\"type\":\"object\"}")
+}
+func listingPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"TreeEntry\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"subagentId\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"parentSessionId\":{\"type\":[\"integer\",\"null\"],\"format\":\"uint64\",\"minimum\":0},\"kind\":{\"$ref\":\"#/$defs/EntryKind\"},\"description\":{\"type\":\"string\"},\"profile\":{\"type\":[\"string\",\"null\"]},\"phase\":{\"$ref\":\"#/$defs/JobPhase\"},\"closedAgoMs\":{\"type\":[\"integer\",\"null\"],\"format\":\"uint64\",\"minimum\":0},\"self\":{\"type\":\"boolean\"}},\"required\":[\"subagentId\",\"parentSessionId\",\"kind\",\"description\",\"profile\",\"phase\",\"closedAgoMs\",\"self\"],\"description\":\"One node of `demi agent list --json`.\"},\"EntryKind\":{\"type\":\"string\",\"enum\":[\"root\",\"live\",\"archived\"]},\"JobPhase\":{\"type\":\"string\",\"enum\":[\"running\",\"completed\",\"aborted\",\"error\"],\"description\":\"Where a child is.\"}},\"additionalProperties\":false,\"description\":\"`demi agent list --json`.\",\"properties\":{\"tree\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/TreeEntry\"}}},\"required\":[\"tree\"],\"title\":\"listing\",\"type\":\"object\"}")
 }
 func decodeOutputArgs(data []byte) (outputArgs, error) { return contract.Decode[outputArgs](data) }
 func (v outputArgs) Validate() error                   { return contractValidateOutputArgs(v, 0) }
@@ -650,7 +662,10 @@ func (v outputArgs) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func outputArgsJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi shell output`.\",\"properties\":{\"id\":{\"description\":\"The command's commandId, as its result names it\",\"type\":\"string\"},\"lines\":{\"description\":\"The lines to print, as <from>-<to>\",\"pattern\":\"^[0-9]+-[0-9]+$\",\"type\":\"string\"},\"raw\":{\"description\":\"The bytes as they are: unnumbered and unpaged\",\"type\":\"boolean\"},\"stderr\":{\"description\":\"Only stderr\",\"type\":\"boolean\"},\"stdout\":{\"description\":\"Only stdout\",\"type\":\"boolean\"},\"tail\":{\"description\":\"Print the last n lines\",\"format\":\"uint64\",\"minimum\":1,\"type\":\"integer\"}},\"required\":[\"id\"],\"title\":\"outputArgs\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi shell output`.\",\"properties\":{\"id\":{\"type\":\"string\",\"description\":\"The command's commandId, as its result names it\"},\"lines\":{\"type\":\"string\",\"description\":\"The lines to print, as <from>-<to>\",\"pattern\":\"^[0-9]+-[0-9]+$\"},\"tail\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Print the last n lines\"},\"stdout\":{\"type\":\"boolean\",\"description\":\"Only stdout\"},\"stderr\":{\"type\":\"boolean\",\"description\":\"Only stderr\"},\"raw\":{\"type\":\"boolean\",\"description\":\"The bytes as they are: unnumbered and unpaged\"}},\"required\":[\"id\"],\"title\":\"outputArgs\",\"type\":\"object\"}")
+}
+func outputArgsPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi shell output`.\",\"properties\":{\"id\":{\"type\":\"string\",\"description\":\"The command's commandId, as its result names it\"},\"lines\":{\"type\":\"string\",\"description\":\"The lines to print, as <from>-<to>\",\"pattern\":\"^[0-9]+-[0-9]+$\"},\"tail\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Print the last n lines\"},\"stdout\":{\"type\":\"boolean\",\"description\":\"Only stdout\"},\"stderr\":{\"type\":\"boolean\",\"description\":\"Only stderr\"},\"raw\":{\"type\":\"boolean\",\"description\":\"The bytes as they are: unnumbered and unpaged\"}},\"required\":[\"id\"],\"title\":\"outputArgs\",\"type\":\"object\"}")
 }
 func decodeResumeArgs(data []byte) (resumeArgs, error) { return contract.Decode[resumeArgs](data) }
 func (v resumeArgs) Validate() error                   { return contractValidateResumeArgs(v, 0) }
@@ -736,7 +751,10 @@ func (v resumeArgs) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func resumeArgsJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi agent resume`.\",\"properties\":{\"id\":{\"description\":\"subagentId of an archived child\",\"format\":\"uint64\",\"minimum\":0,\"type\":\"integer\"},\"message\":{\"description\":\"The reviving user message.\",\"type\":\"string\"},\"request-id\":{\"description\":\"Stable id for this creation or resume request. Supply the same id and\\narguments to retry safely after an uncertain response; otherwise a new\\nid is generated.\",\"maxLength\":128,\"minLength\":1,\"type\":\"string\"}},\"required\":[\"id\",\"message\"],\"title\":\"resumeArgs\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi agent resume`.\",\"properties\":{\"id\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0,\"description\":\"subagentId of an archived child\"},\"request-id\":{\"type\":\"string\",\"description\":\"Stable id for this creation or resume request. Supply the same id and\\narguments to retry safely after an uncertain response; otherwise a new\\nid is generated.\",\"minLength\":1,\"maxLength\":128},\"message\":{\"type\":\"string\",\"description\":\"The reviving user message.\"}},\"required\":[\"id\",\"message\"],\"title\":\"resumeArgs\",\"type\":\"object\"}")
+}
+func resumeArgsPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi agent resume`.\",\"properties\":{\"id\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0,\"description\":\"subagentId of an archived child\"},\"request-id\":{\"type\":\"string\",\"description\":\"Stable id for this creation or resume request. Supply the same id and\\narguments to retry safely after an uncertain response; otherwise a new\\nid is generated.\",\"minLength\":1,\"maxLength\":128},\"message\":{\"type\":\"string\",\"description\":\"The reviving user message.\"}},\"required\":[\"id\",\"message\"],\"title\":\"resumeArgs\",\"type\":\"object\"}")
 }
 func decodeResumeInput(data []byte) (resumeInput, error) { return contract.Decode[resumeInput](data) }
 func (v resumeInput) Validate() error                    { return contractValidateResumeInput(v, 0) }
@@ -887,7 +905,10 @@ func (v sendArgs) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func sendArgsJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi agent send`.\",\"properties\":{\"id\":{\"description\":\"Target agent number from the tree, or \\\"parent\\\" for the session that\\nspawned this one\",\"type\":\"string\"},\"message\":{\"description\":\"Message body.\",\"type\":\"string\"}},\"required\":[\"id\",\"message\"],\"title\":\"sendArgs\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi agent send`.\",\"properties\":{\"id\":{\"type\":\"string\",\"description\":\"Target agent number from the tree, or \\\"parent\\\" for the session that\\nspawned this one\"},\"message\":{\"type\":\"string\",\"description\":\"Message body.\"}},\"required\":[\"id\",\"message\"],\"title\":\"sendArgs\",\"type\":\"object\"}")
+}
+func sendArgsPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi agent send`.\",\"properties\":{\"id\":{\"type\":\"string\",\"description\":\"Target agent number from the tree, or \\\"parent\\\" for the session that\\nspawned this one\"},\"message\":{\"type\":\"string\",\"description\":\"Message body.\"}},\"required\":[\"id\",\"message\"],\"title\":\"sendArgs\",\"type\":\"object\"}")
 }
 func decodeSent(data []byte) (sent, error) { return contract.Decode[sent](data) }
 func (v sent) Validate() error             { return contractValidateSent(v, 0) }
@@ -952,7 +973,10 @@ func (v sent) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func sentJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`demi agent send --json`.\",\"properties\":{\"accepted\":{\"type\":\"boolean\"},\"id\":{\"format\":\"uint64\",\"minimum\":0,\"type\":\"integer\"}},\"required\":[\"id\",\"accepted\"],\"title\":\"sent\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`demi agent send --json`.\",\"properties\":{\"id\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"accepted\":{\"type\":\"boolean\"}},\"required\":[\"id\",\"accepted\"],\"title\":\"sent\",\"type\":\"object\"}")
+}
+func sentPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`demi agent send --json`.\",\"properties\":{\"id\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"accepted\":{\"type\":\"boolean\"}},\"required\":[\"id\",\"accepted\"],\"title\":\"sent\",\"type\":\"object\"}")
 }
 func decodeShowArgs(data []byte) (showArgs, error) { return contract.Decode[showArgs](data) }
 func (v showArgs) Validate() error                 { return contractValidateShowArgs(v, 0) }
@@ -1003,7 +1027,10 @@ func (v showArgs) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func showArgsJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi agent show`.\",\"properties\":{\"id\":{\"description\":\"Agent number from the tree\",\"format\":\"uint64\",\"minimum\":0,\"type\":\"integer\"}},\"required\":[\"id\"],\"title\":\"showArgs\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi agent show`.\",\"properties\":{\"id\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0,\"description\":\"Agent number from the tree\"}},\"required\":[\"id\"],\"title\":\"showArgs\",\"type\":\"object\"}")
+}
+func showArgsPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi agent show`.\",\"properties\":{\"id\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0,\"description\":\"Agent number from the tree\"}},\"required\":[\"id\"],\"title\":\"showArgs\",\"type\":\"object\"}")
 }
 func decodeShown(data []byte) (shown, error) { return contract.Decode[shown](data) }
 func (v shown) Validate() error              { return contractValidateShown(v, 0) }
@@ -1057,7 +1084,10 @@ func (v shown) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func shownJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`demi agent show --json`.\",\"properties\":{\"agent\":{\"additionalProperties\":false,\"description\":\"`demi agent show --json`'s agent: every duration in milliseconds before\\nthe query.\",\"properties\":{\"activity\":{\"type\":\"string\"},\"description\":{\"type\":\"string\"},\"elapsedMs\":{\"format\":\"uint64\",\"minimum\":0,\"type\":\"integer\"},\"execution\":{\"description\":\"What a session is doing, as a supervisor observes it (`subagents.md`\\n§ `demi agent show`); not the phase that `phase` frames carry.\",\"enum\":[\"idle\",\"provider_streaming\",\"tool_executing\",\"compacting\",\"finalizing\",\"pending_yield\"],\"type\":\"string\"},\"executionForMs\":{\"description\":\"How long the current execution state has lasted.\",\"format\":\"uint64\",\"minimum\":0,\"type\":\"integer\"},\"lastAssistantText\":{\"type\":\"string\"},\"lastAssistantTextAgoMs\":{\"format\":\"uint64\",\"minimum\":0,\"type\":[\"integer\",\"null\"]},\"lastEventMs\":{\"format\":\"uint64\",\"minimum\":0,\"type\":\"integer\"},\"parentSessionId\":{\"format\":\"uint64\",\"minimum\":0,\"type\":\"integer\"},\"phase\":{\"description\":\"Where a child is.\",\"enum\":[\"running\",\"completed\",\"aborted\",\"error\"],\"type\":\"string\"},\"profile\":{\"type\":[\"string\",\"null\"]},\"subagentId\":{\"format\":\"uint64\",\"minimum\":0,\"type\":\"integer\"},\"tools\":{\"items\":{\"additionalProperties\":false,\"properties\":{\"durationMs\":{\"format\":\"uint64\",\"minimum\":0,\"type\":\"integer\"},\"endedAgoMs\":{\"format\":\"uint64\",\"minimum\":0,\"type\":[\"integer\",\"null\"]},\"status\":{\"enum\":[\"executing\",\"completed\",\"error\"],\"type\":\"string\"},\"title\":{\"type\":\"string\"}},\"required\":[\"title\",\"status\",\"durationMs\",\"endedAgoMs\"],\"type\":\"object\"},\"type\":\"array\"}},\"required\":[\"subagentId\",\"parentSessionId\",\"description\",\"profile\",\"phase\",\"elapsedMs\",\"lastEventMs\",\"execution\",\"activity\",\"executionForMs\",\"tools\",\"lastAssistantText\",\"lastAssistantTextAgoMs\"],\"type\":\"object\"}},\"required\":[\"agent\"],\"title\":\"shown\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`demi agent show --json`.\",\"properties\":{\"agent\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"subagentId\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"parentSessionId\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"description\":{\"type\":\"string\"},\"profile\":{\"type\":[\"string\",\"null\"]},\"phase\":{\"type\":\"string\",\"enum\":[\"running\",\"completed\",\"aborted\",\"error\"],\"description\":\"Where a child is.\"},\"elapsedMs\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"lastEventMs\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"execution\":{\"type\":\"string\",\"enum\":[\"idle\",\"provider_streaming\",\"tool_executing\",\"compacting\",\"finalizing\",\"pending_yield\"],\"description\":\"What a session is doing, as a supervisor observes it (`subagents.md`\\n§ `demi agent show`); not the phase that `phase` frames carry.\"},\"activity\":{\"type\":\"string\"},\"executionForMs\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0,\"description\":\"How long the current execution state has lasted.\"},\"tools\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"title\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":[\"executing\",\"completed\",\"error\"]},\"durationMs\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"endedAgoMs\":{\"type\":[\"integer\",\"null\"],\"format\":\"uint64\",\"minimum\":0}},\"additionalProperties\":false,\"required\":[\"title\",\"status\",\"durationMs\",\"endedAgoMs\"]}},\"lastAssistantText\":{\"type\":\"string\"},\"lastAssistantTextAgoMs\":{\"type\":[\"integer\",\"null\"],\"format\":\"uint64\",\"minimum\":0}},\"required\":[\"subagentId\",\"parentSessionId\",\"description\",\"profile\",\"phase\",\"elapsedMs\",\"lastEventMs\",\"execution\",\"activity\",\"executionForMs\",\"tools\",\"lastAssistantText\",\"lastAssistantTextAgoMs\"],\"description\":\"`demi agent show --json`'s agent: every duration in milliseconds before\\nthe query.\"}},\"required\":[\"agent\"],\"title\":\"shown\",\"type\":\"object\"}")
+}
+func shownPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"AgentSnapshot\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"subagentId\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"parentSessionId\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"description\":{\"type\":\"string\"},\"profile\":{\"type\":[\"string\",\"null\"]},\"phase\":{\"$ref\":\"#/$defs/JobPhase\"},\"elapsedMs\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"lastEventMs\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"execution\":{\"$ref\":\"#/$defs/Execution\"},\"activity\":{\"type\":\"string\"},\"executionForMs\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0,\"description\":\"How long the current execution state has lasted.\"},\"tools\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/ToolSnapshot\"}},\"lastAssistantText\":{\"type\":\"string\"},\"lastAssistantTextAgoMs\":{\"type\":[\"integer\",\"null\"],\"format\":\"uint64\",\"minimum\":0}},\"required\":[\"subagentId\",\"parentSessionId\",\"description\",\"profile\",\"phase\",\"elapsedMs\",\"lastEventMs\",\"execution\",\"activity\",\"executionForMs\",\"tools\",\"lastAssistantText\",\"lastAssistantTextAgoMs\"],\"description\":\"`demi agent show --json`'s agent: every duration in milliseconds before\\nthe query.\"},\"JobPhase\":{\"type\":\"string\",\"enum\":[\"running\",\"completed\",\"aborted\",\"error\"],\"description\":\"Where a child is.\"},\"Execution\":{\"type\":\"string\",\"enum\":[\"idle\",\"provider_streaming\",\"tool_executing\",\"compacting\",\"finalizing\",\"pending_yield\"],\"description\":\"What a session is doing, as a supervisor observes it (`subagents.md`\\n§ `demi agent show`); not the phase that `phase` frames carry.\"},\"ToolSnapshot\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"title\":{\"type\":\"string\"},\"status\":{\"$ref\":\"#/$defs/ToolStatus\"},\"durationMs\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"endedAgoMs\":{\"type\":[\"integer\",\"null\"],\"format\":\"uint64\",\"minimum\":0}},\"required\":[\"title\",\"status\",\"durationMs\",\"endedAgoMs\"]},\"ToolStatus\":{\"type\":\"string\",\"enum\":[\"executing\",\"completed\",\"error\"]}},\"additionalProperties\":false,\"description\":\"`demi agent show --json`.\",\"properties\":{\"agent\":{\"$ref\":\"#/$defs/AgentSnapshot\"}},\"required\":[\"agent\"],\"title\":\"shown\",\"type\":\"object\"}")
 }
 func decodeSpawnArgs(data []byte) (spawnArgs, error) { return contract.Decode[spawnArgs](data) }
 func (v spawnArgs) Validate() error                  { return contractValidateSpawnArgs(v, 0) }
@@ -1180,7 +1210,10 @@ func (v spawnArgs) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func spawnArgsJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi agent spawn`.\",\"properties\":{\"description\":{\"description\":\"Short UI title distinguishing concurrent children.\",\"type\":\"string\"},\"no-subagents\":{\"description\":\"Forbid this child from spawning subagents of its own; it can still\\nsend, list, and show.\",\"type\":\"boolean\"},\"profile\":{\"type\":\"string\"},\"prompt\":{\"type\":\"string\"},\"request-id\":{\"description\":\"Stable id for this creation or resume request. Supply the same id and\\narguments to retry safely after an uncertain response; otherwise a new\\nid is generated.\",\"maxLength\":128,\"minLength\":1,\"type\":\"string\"}},\"required\":[\"prompt\"],\"title\":\"spawnArgs\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi agent spawn`.\",\"properties\":{\"prompt\":{\"type\":\"string\"},\"request-id\":{\"type\":\"string\",\"description\":\"Stable id for this creation or resume request. Supply the same id and\\narguments to retry safely after an uncertain response; otherwise a new\\nid is generated.\",\"minLength\":1,\"maxLength\":128},\"profile\":{\"type\":\"string\"},\"description\":{\"type\":\"string\",\"description\":\"Short UI title distinguishing concurrent children.\"},\"no-subagents\":{\"type\":\"boolean\",\"description\":\"Forbid this child from spawning subagents of its own; it can still\\nsend, list, and show.\"}},\"required\":[\"prompt\"],\"title\":\"spawnArgs\",\"type\":\"object\"}")
+}
+func spawnArgsPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi agent spawn`.\",\"properties\":{\"prompt\":{\"type\":\"string\"},\"request-id\":{\"type\":\"string\",\"description\":\"Stable id for this creation or resume request. Supply the same id and\\narguments to retry safely after an uncertain response; otherwise a new\\nid is generated.\",\"minLength\":1,\"maxLength\":128},\"profile\":{\"type\":\"string\"},\"description\":{\"type\":\"string\",\"description\":\"Short UI title distinguishing concurrent children.\"},\"no-subagents\":{\"type\":\"boolean\",\"description\":\"Forbid this child from spawning subagents of its own; it can still\\nsend, list, and show.\"}},\"required\":[\"prompt\"],\"title\":\"spawnArgs\",\"type\":\"object\"}")
 }
 func decodeSpawnInput(data []byte) (spawnInput, error) { return contract.Decode[spawnInput](data) }
 func (v spawnInput) Validate() error                   { return contractValidateSpawnInput(v, 0) }
@@ -1491,7 +1524,10 @@ func (v started) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func startedJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`demi agent spawn --json` and `resume --json`.\",\"properties\":{\"subagentId\":{\"format\":\"uint64\",\"minimum\":0,\"type\":\"integer\"}},\"required\":[\"subagentId\"],\"title\":\"started\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`demi agent spawn --json` and `resume --json`.\",\"properties\":{\"subagentId\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0}},\"required\":[\"subagentId\"],\"title\":\"started\",\"type\":\"object\"}")
+}
+func startedPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`demi agent spawn --json` and `resume --json`.\",\"properties\":{\"subagentId\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0}},\"required\":[\"subagentId\"],\"title\":\"started\",\"type\":\"object\"}")
 }
 func decodeTitledCall(data []byte) (titledCall, error) { return contract.Decode[titledCall](data) }
 func (v titledCall) Validate() error                   { return contractValidateTitledCall(v, 0) }
