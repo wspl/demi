@@ -115,6 +115,7 @@ func (e *schemaEmitter) schema(t types.Type, marks map[string]string) (any, erro
 			}
 			properties := map[string]any{}
 			required := []string{}
+			constraints := []any{}
 			if name, tag, kind := g.variantWire(d); name != "" {
 				var value any = tag
 				typ := "string"
@@ -125,8 +126,56 @@ func (e *schemaEmitter) schema(t types.Type, marks map[string]string) (any, erro
 				properties[name] = map[string]any{"type": typ, "const": value}
 				required = append(required, name)
 			}
+			if u := g.adjacentUnion(d); u != nil && st.NumFields() == 0 {
+				content := bounds(u.marks["union"])["content"]
+				properties[content] = map[string]any{"type": "null"}
+				required = append(required, content)
+			}
 			for i := 0; i < st.NumFields(); i++ {
 				f := st.Field(i)
+				if nested := g.optionalObject(f); nested != nil {
+					child, err := e.schema(nested.typ, nil)
+					if err != nil {
+						return nil, err
+					}
+					object, ok := child.(map[string]any)
+					if !ok || object["type"] != "object" {
+						return nil, fmt.Errorf("recursive optional flattened object is unsupported")
+					}
+					if props, ok := object["properties"].(map[string]any); ok {
+						maps.Copy(properties, props)
+					}
+					continue
+				}
+				if u := g.flattenedUnion(d, f); u != nil {
+					union, err := e.schema(f.Type(), nil)
+					if err != nil {
+						return nil, err
+					}
+					// The parent owns strictness; each branch constrains only its
+					// contributed keys so sibling fields remain legal.
+					object, ok := union.(map[string]any)
+					if !ok {
+						return nil, fmt.Errorf("expected adjacent union schema")
+					}
+					branches, ok := object["oneOf"].([]any)
+					if !ok {
+						return nil, fmt.Errorf("recursive flattened union schema is unsupported")
+					}
+					for _, branch := range branches {
+						variant, ok := branch.(map[string]any)
+						if !ok {
+							return nil, fmt.Errorf("expected adjacent variant schema")
+						}
+						delete(variant, "additionalProperties")
+					}
+					constraints = append(constraints, object)
+					for _, key := range []string{bounds(u.marks["union"])["tag"], bounds(u.marks["union"])["content"]} {
+						properties[key] = true
+						required = append(required, key)
+					}
+					continue
+				}
 				opts := strings.Split(reflect.StructTag(st.Tag(i)).Get("json"), ",")
 				m := d.fields[f.Name()]
 				child, err := e.schema(f.Type(), m)
@@ -134,7 +183,7 @@ func (e *schemaEmitter) schema(t types.Type, marks map[string]string) (any, erro
 					return nil, fmt.Errorf("%s.%s: %w", d.name, f.Name(), err)
 				}
 				if has(m, "nullable") {
-					child = map[string]any{"anyOf": []any{child, map[string]any{"type": "null"}}}
+					child = nullableSchema(child)
 				}
 				if description := d.fieldDescriptions[f.Name()]; description != "" {
 					if object, ok := child.(map[string]any); ok {
@@ -143,12 +192,18 @@ func (e *schemaEmitter) schema(t types.Type, marks map[string]string) (any, erro
 						child = map[string]any{"description": description}
 					}
 				}
+				if u := g.adjacentUnion(d); u != nil {
+					opts[0] = bounds(u.marks["union"])["content"]
+				}
 				properties[opts[0]] = child
 				if len(opts) == 1 {
 					required = append(required, opts[0])
 				}
 			}
 			s = map[string]any{"type": "object"}
+			if len(constraints) > 0 {
+				s["allOf"] = constraints
+			}
 			if len(properties) > 0 {
 				s["properties"] = properties
 			}
@@ -225,7 +280,7 @@ func (e *schemaEmitter) schema(t types.Type, marks map[string]string) (any, erro
 			return nil, err
 		}
 		if isPointer(t.Elem()) {
-			child = map[string]any{"anyOf": []any{child, map[string]any{"type": "null"}}}
+			child = nullableSchema(child)
 		}
 		s = map[string]any{"type": "object", "additionalProperties": child}
 	default:
@@ -242,7 +297,7 @@ func schemaRules(s map[string]any, marks map[string]string) error {
 	if has(marks, "base64") {
 		return fmt.Errorf("base64 cannot be expressed faithfully in JSON Schema")
 	}
-	if has(marks, "timestamp") {
+	if has(marks, "timestamp") && s["type"] == "string" {
 		s["format"] = "date-time"
 	}
 	if values := marks["enum"]; values != "" {
@@ -291,4 +346,35 @@ func schemaRules(s map[string]any, marks map[string]string) error {
 		}
 	}
 	return nil
+}
+
+// nullableSchema follows schemars' allow_null: ordinary typed schemas retain
+// their keywords; references and applicators need an alternative null branch.
+func nullableSchema(value any) any {
+	s, ok := value.(map[string]any)
+	if !ok {
+		if value == false {
+			return map[string]any{"type": "null"}
+		}
+		return value
+	}
+	for _, key := range []string{"if", "allOf", "anyOf", "oneOf", "$ref"} {
+		if _, ok := s[key]; ok {
+			return map[string]any{"anyOf": []any{s, map[string]any{"type": "null"}}}
+		}
+	}
+	if typ, ok := s["type"].(string); ok && typ != "null" {
+		s["type"] = []string{typ, "null"}
+	}
+	if v, ok := s["const"]; ok {
+		delete(s, "const")
+		s["enum"] = []any{v, nil}
+	} else if values, ok := s["enum"].([]string); ok {
+		nullable := make([]any, 0, len(values)+1)
+		for _, v := range values {
+			nullable = append(nullable, v)
+		}
+		s["enum"] = append(nullable, nil)
+	}
+	return s
 }

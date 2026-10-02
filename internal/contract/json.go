@@ -16,6 +16,10 @@ import (
 	"unicode/utf8"
 )
 
+// ErrSyntax identifies malformed JSON text, including invalid Unicode, trailing
+// data and excessive nesting. Shape and value validation errors do not wrap it.
+var ErrSyntax = errors.New("invalid JSON syntax")
+
 // Error identifies the path at which a contract was refused.
 type Error struct {
 	Path string
@@ -52,10 +56,10 @@ func IsNull(data []byte) bool { return bytes.Equal(bytes.TrimSpace(data), []byte
 // CheckJSON rejects ambiguous objects and malformed Unicode before decoding.
 func CheckJSON(data []byte) error {
 	if !utf8.Valid(data) {
-		return errors.New("invalid UTF-8")
+		return fmt.Errorf("%w: invalid UTF-8", ErrSyntax)
 	}
 	if err := checkSurrogates(data); err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrSyntax, err)
 	}
 	d := json.NewDecoder(bytes.NewReader(data))
 	d.UseNumber()
@@ -64,16 +68,16 @@ func CheckJSON(data []byte) error {
 	}
 	if _, err := d.Token(); !errors.Is(err, io.EOF) {
 		if err != nil {
-			return err
+			return fmt.Errorf("%w: %w", ErrSyntax, err)
 		}
-		return errors.New("trailing JSON data")
+		return fmt.Errorf("%w: trailing JSON data", ErrSyntax)
 	}
 	return nil
 }
 func scanJSON(d *json.Decoder, depth int) error {
 	token, err := d.Token()
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrSyntax, err)
 	}
 	delim, ok := token.(json.Delim)
 	if !ok {
@@ -83,7 +87,7 @@ func scanJSON(d *json.Decoder, depth int) error {
 	// check_recursion! decrements before entering an array/object and rejects
 	// zero. Thus 127 open containers are accepted, and the 128th is refused.
 	if depth >= 127 {
-		return errors.New("JSON recursion limit exceeded (128)")
+		return fmt.Errorf("%w: JSON recursion limit exceeded (128)", ErrSyntax)
 	}
 	switch delim {
 	case '{':
@@ -91,11 +95,11 @@ func scanJSON(d *json.Decoder, depth int) error {
 		for d.More() {
 			token, err := d.Token()
 			if err != nil {
-				return err
+				return fmt.Errorf("%w: %w", ErrSyntax, err)
 			}
 			key, ok := token.(string)
 			if !ok {
-				return errors.New("expected object key")
+				return fmt.Errorf("%w: expected object key", ErrSyntax)
 			}
 			if seen[key] {
 				return At(key, errors.New("duplicate key"))
@@ -112,10 +116,13 @@ func scanJSON(d *json.Decoder, depth int) error {
 			}
 		}
 	default:
-		return errors.New("unexpected delimiter")
+		return fmt.Errorf("%w: unexpected delimiter", ErrSyntax)
 	}
 	_, err = d.Token()
-	return err
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrSyntax, err)
+	}
+	return nil
 }
 
 // Decode reads a non-null JSON value after checking the entire input.
@@ -163,11 +170,16 @@ func Pointer[T any](data []byte, decode func([]byte) (T, error)) (*T, error) {
 
 // Record decodes a string-keyed record, retaining nullable pointer values.
 func Record[T any](data []byte, decode func([]byte) (T, error), nullable bool) (map[string]T, error) {
+	return KeyedRecord[string](data, decode, nullable)
+}
+
+// KeyedRecord retains named string keys; generated validation checks each key.
+func KeyedRecord[K ~string, T any](data []byte, decode func([]byte) (T, error), nullable bool) (map[K]T, error) {
 	raw, err := Object(data)
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string]T, len(raw))
+	out := make(map[K]T, len(raw))
 	for key, item := range raw {
 		var value T
 		if !nullable || !IsNull(item) {
@@ -176,7 +188,7 @@ func Record[T any](data []byte, decode func([]byte) (T, error), nullable bool) (
 				return nil, At(key, err)
 			}
 		}
-		out[key] = value
+		out[K(key)] = value
 	}
 	return out, nil
 }

@@ -18,7 +18,7 @@ func (g *generator) object(d *definition) (*types.Struct, bool) {
 	var tags []string
 	for i := 0; i < st.NumFields(); i++ {
 		field := st.Field(i)
-		if !field.Embedded() {
+		if !field.Embedded() || g.optionalObject(field) != nil {
 			fields = append(fields, field)
 			tags = append(tags, st.Tag(i))
 			continue
@@ -41,7 +41,7 @@ func (g *generator) object(d *definition) (*types.Struct, bool) {
 		for j := 0; j < nested.NumFields(); j++ {
 			f := nested.Field(j)
 			selector := field.Name() + "." + f.Name()
-			fields = append(fields, types.NewVar(f.Pos(), f.Pkg(), selector, f.Type()))
+			fields = append(fields, types.NewField(f.Pos(), f.Pkg(), selector, f.Type(), f.Embedded()))
 			tags = append(tags, nested.Tag(j))
 			d.fields[selector] = child.fields[f.Name()]
 			d.fieldDescriptions[selector] = child.fieldDescriptions[f.Name()]
@@ -59,6 +59,16 @@ func (g *generator) emitJSONFields(d *definition, st *types.Struct, tag, variant
 	}
 	for i := 0; i < st.NumFields(); i++ {
 		f := st.Field(i)
+		if g.optionalObject(f) != nil {
+			g.line("if v.%s!=nil{", f.Name())
+			g.emitFlattenEncode(f, false)
+			g.line("}")
+			continue
+		}
+		if g.flattenedUnion(d, f) != nil {
+			g.emitFlattenEncode(f, false)
+			continue
+		}
 		opts := strings.Split(reflect.StructTag(st.Tag(i)).Get("json"), ",")
 		if len(opts) > 1 {
 			if isPointer(f.Type()) {

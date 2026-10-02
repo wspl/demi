@@ -64,3 +64,23 @@ func TestSerdeJSONRecursionLimit(t *testing.T) {
 		}
 	}
 }
+
+// serde_json's f32 formatter has a different fixed-notation interval from f64.
+// Local scalar encodes only; budget below one second, no IO or waits.
+func TestSerdeJSONFloat32(t *testing.T) {
+	for _, test := range []struct {
+		value float32
+		want  string
+	}{
+		{1, "1.0"},
+		{0.000001, "0.000001"},
+		{0.0000001, "1e-7"},
+		{1e12, "1000000000000.0"},
+		{1e13, "1e+13"},
+	} {
+		got, err := contract.EncodeJSON(test.value)
+		if err != nil || string(got) != test.want {
+			t.Fatalf("%v: got %s %v, want %s", test.value, got, err, test.want)
+		}
+	}
+}

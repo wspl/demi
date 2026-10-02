@@ -328,9 +328,9 @@ Service                        Runner                          Backend
 
 - Once it has checked a new service's catalog, and before it admits a call,
   the runner opens one `POST /v1/artifacts` request with the metadata `{}`.
-  It stays open for the service's life. The SDK gives a handler its artifacts
-  source with each invocation, bound to that invocation, and a request made
-  before the stream opens waits for it.
+  It stays open for the service's life. The SDK gives the service one
+  artifacts source for its life; each install request names the invocation it
+  serves, and a request made before the stream opens waits for it.
 - The service writes each request as one standard output record, JSON with
   `id`, its own number for the request, unique among its requests in flight,
   and one of:

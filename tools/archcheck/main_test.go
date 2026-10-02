@@ -35,6 +35,8 @@ func TestArchitecture(t *testing.T) {
 		{name: "test imports a testdata fixture", file: "internal/core/testdata/fixture/fixture.go", source: "package fixture"},
 		{name: "test imports its fixture package", file: "internal/framewire/fixture_test.go", source: "package framewire_test\nimport _ \"archcheck.test/fixture/internal/framewire/testdata/specimen\""},
 		{name: "production imports a testdata package", file: "internal/framewire/fixture.go", source: "package framewire\nimport _ \"archcheck.test/fixture/internal/framewire/testdata/specimen\"", want: "forbidden import: internal/framewire -> internal/framewire/testdata/specimen"},
+		{name: "test imports programtest", graph: programGraph, file: "internal/framewire/programs_test.go", source: "package framewire_test\nimport _ \"archcheck.test/fixture/internal/programtest\""},
+		{name: "production imports programtest", graph: programGraph, file: "internal/framewire/programs.go", source: "package framewire\nimport _ \"archcheck.test/fixture/internal/programtest\"", want: "forbidden import: internal/framewire -> internal/programtest"},
 		{name: "platform package exists", graph: "internal/core -> none\ninternal/framewire -> internal/core\ninternal/platform -> none", file: "internal/platform/platform_linux.go", source: "package platform"},
 	}
 	for _, tc := range cases {
@@ -60,6 +62,15 @@ func TestArchitecture(t *testing.T) {
 					t.Fatal(err)
 				}
 				if err := os.WriteFile(file, []byte("package coretest\nimport _ \"archcheck.test/fixture/internal/core\""), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.graph == programGraph {
+				programs := filepath.Join(dir, "internal/programtest/programtest.go")
+				if err := os.MkdirAll(filepath.Dir(programs), 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(programs, []byte("package programtest"), 0600); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -93,6 +104,9 @@ func TestArchitecture(t *testing.T) {
 
 // supportGraph declares core's test support; framewire depends on core, and
 // internal/independent on nothing.
+// programGraph lists programtest, which no package names as a dependency.
+const programGraph = "internal/core -> none\ninternal/framewire -> internal/core\ninternal/programtest -> none"
+
 const supportGraph = "internal/core -> none\ninternal/core/coretest -> internal/core\ninternal/framewire -> internal/core"
 
 func TestGraphRefusals(t *testing.T) {

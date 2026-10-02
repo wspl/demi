@@ -19,6 +19,9 @@ import (
 
 var errMissingGraph = errors.New("missing ### Go packages text block")
 
+// programTest builds or finds the repository's programs for any test.
+const programTest = "internal/programtest"
+
 type graph map[string]map[string]bool
 
 func main() {
@@ -208,6 +211,11 @@ func checkTarget(ctx context.Context, dir string, rules graph, seen map[string]b
 			// A test may import the support package of its own package or of
 			// a listed dependency (crates-and-packages.md § Go packages).
 			if owner, ok := supportOwner(target); ok && pkg.ForTest != "" && (owner == name || allowed[owner]) {
+				continue
+			}
+			// Any test may get the repository's programs from programtest
+			// (testing.md); production code may not.
+			if target == programTest && pkg.ForTest != "" {
 				continue
 			}
 			if !allowed[target] {

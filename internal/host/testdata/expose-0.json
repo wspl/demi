@@ -1,0 +1,237 @@
+{
+  "name": "expose",
+  "summary": "Give a service on a host a public URL for one hour: add, list, renew, remove.",
+  "subcommands": [
+    {
+      "name": "add",
+      "summary": "Expose a service on a host under a fresh public URL for one hour: `demi expose add <host:port|port> [--host <name|id>]`.",
+      "successOutput": "the URL, the device, and the expiry, or JSON matching { expose } when --json is passed",
+      "failureOutput": "exposes that are not available on this instance, an unreachable --host, an address that is not host:port or a port, or a device that is not connected; writes the reason to stderr and exits non-zero",
+      "input": {
+        "additionalProperties": false,
+        "description": "The input of `demi expose add`.",
+        "properties": {
+          "address": {
+            "type": "string",
+            "description": "host:port, or a bare port meaning 127.0.0.1"
+          },
+          "host": {
+            "type": "string",
+            "description": "Host name or device id from demi host list; the main host by default"
+          }
+        },
+        "required": [
+          "address"
+        ],
+        "title": "AddArgs",
+        "type": "object"
+      },
+      "positionals": [
+        "address"
+      ],
+      "output": {
+        "json": {
+          "description": "`{ expose }`: what `add` and `renew` print with `--json`.",
+          "properties": {
+            "expose": {
+              "type": "object",
+              "properties": {
+                "number": {
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0
+                },
+                "device": {
+                  "type": "string",
+                  "description": "The device's name."
+                },
+                "address": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "expiresAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": [
+                "number",
+                "device",
+                "address",
+                "url",
+                "expiresAt"
+              ],
+              "description": "An expose as the commands print it: by its number, never by its id,\nwhich is the URL's credential."
+            }
+          },
+          "required": [
+            "expose"
+          ],
+          "title": "ExposeAnswer",
+          "type": "object"
+        }
+      },
+      "kind": "rpc"
+    },
+    {
+      "name": "list",
+      "summary": "Every expose of this user across devices, soonest expiry first.",
+      "successOutput": "one line per expose under a header, or JSON matching { exposes } when --json is passed",
+      "failureOutput": "never fails on live data",
+      "input": {
+        "additionalProperties": false,
+        "description": "The input of `demi expose list`.",
+        "title": "ListArgs",
+        "type": "object"
+      },
+      "output": {
+        "json": {
+          "description": "`{ exposes }`: what `list` prints with `--json`.",
+          "properties": {
+            "exposes": {
+              "type": "array",
+              "items": {
+                "description": "An expose as the commands print it: by its number, never by its id,\nwhich is the URL's credential.",
+                "type": "object",
+                "properties": {
+                  "number": {
+                    "type": "integer",
+                    "format": "uint64",
+                    "minimum": 0
+                  },
+                  "device": {
+                    "description": "The device's name.",
+                    "type": "string"
+                  },
+                  "address": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "expiresAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": [
+                  "number",
+                  "device",
+                  "address",
+                  "url",
+                  "expiresAt"
+                ]
+              }
+            }
+          },
+          "required": [
+            "exposes"
+          ],
+          "title": "ExposeLines",
+          "type": "object"
+        }
+      },
+      "kind": "rpc"
+    },
+    {
+      "name": "renew",
+      "summary": "Set an expose's expiry to one hour from now.",
+      "successOutput": "the new expiry, or JSON matching { expose } when --json is passed",
+      "failureOutput": "\"no expose <number>\" when the number names none of this user's live exposes; writes the reason to stderr and exits non-zero",
+      "input": {
+        "additionalProperties": false,
+        "description": "The input of `demi expose renew` and `remove`.",
+        "properties": {
+          "number": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0,
+            "description": "Expose number, as add and list print it"
+          }
+        },
+        "required": [
+          "number"
+        ],
+        "title": "NumberArgs",
+        "type": "object"
+      },
+      "positionals": [
+        "number"
+      ],
+      "output": {
+        "json": {
+          "description": "`{ expose }`: what `add` and `renew` print with `--json`.",
+          "properties": {
+            "expose": {
+              "type": "object",
+              "properties": {
+                "number": {
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0
+                },
+                "device": {
+                  "type": "string",
+                  "description": "The device's name."
+                },
+                "address": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "expiresAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": [
+                "number",
+                "device",
+                "address",
+                "url",
+                "expiresAt"
+              ],
+              "description": "An expose as the commands print it: by its number, never by its id,\nwhich is the URL's credential."
+            }
+          },
+          "required": [
+            "expose"
+          ],
+          "title": "ExposeAnswer",
+          "type": "object"
+        }
+      },
+      "kind": "rpc"
+    },
+    {
+      "name": "remove",
+      "summary": "Destroy an expose at once; its URL no longer works.",
+      "successOutput": "confirms the removal",
+      "failureOutput": "\"no expose <number>\" when the number names none of this user's live exposes; writes the reason to stderr and exits non-zero",
+      "input": {
+        "additionalProperties": false,
+        "description": "The input of `demi expose renew` and `remove`.",
+        "properties": {
+          "number": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0,
+            "description": "Expose number, as add and list print it"
+          }
+        },
+        "required": [
+          "number"
+        ],
+        "title": "NumberArgs",
+        "type": "object"
+      },
+      "positionals": [
+        "number"
+      ],
+      "kind": "rpc"
+    }
+  ]
+}
