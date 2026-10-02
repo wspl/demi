@@ -326,8 +326,7 @@ once per test binary from the module with `go build -o <temporary dir>`.
 Go's build cache makes repeat builds take seconds. The package owns the
 shared temporary directory until the test binary's users have finished, then
 removes it; individual tests still stop and wait for the processes they start.
-Builds use `CGO_ENABLED=0` even when the calling test uses Linux's race runtime,
-and `GOFLAGS=-mod=readonly` during the migration.
+Builds use `CGO_ENABLED=0` even when the calling test uses Linux's race runtime.
 
 When `DEMI_TEST_PROGRAMS` is set, `internal/programtest` uses that directory
 instead of building. It resolves program names with `.exe` on Windows and
