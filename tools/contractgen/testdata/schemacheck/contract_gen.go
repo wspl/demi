@@ -5,8 +5,122 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/wspl/demi/internal/contract"
+	math "math"
 )
 
+func DecodeCheckedInput(data []byte) (CheckedInput, error) {
+	return contract.Decode[CheckedInput](data)
+}
+func (v CheckedInput) Validate() error { return contractValidateCheckedInput(v, 0) }
+func contractValidateCheckedInput(v CheckedInput, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contractValidateCheckedNumber(v.Number, depth+1); err != nil {
+		return contract.At("number", err)
+	}
+	if math.IsNaN(float64(v.Number)) || math.IsInf(float64(v.Number), 0) {
+		return contract.At("number", fmt.Errorf("number must be finite"))
+	}
+	if err := contractValidateStdin(v.Stdin, depth+1); err != nil {
+		return contract.At("stdin", err)
+	}
+	if err := contract.Text(string(v.Stdin), 0, -1, ""); err != nil {
+		return contract.At("stdin", err)
+	}
+	return nil
+}
+func (v *CheckedInput) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next CheckedInput
+	for key := range obj {
+		switch key {
+		case "number", "stdin":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["number"]
+		if !ok {
+			return contract.At("number", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[CheckedNumber](raw)
+			if err != nil {
+				return contract.At("number", err)
+			}
+			next.Number = value
+		}
+	}
+	{
+		raw, ok := obj["stdin"]
+		if !ok {
+			return contract.At("stdin", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[Stdin](raw)
+			if err != nil {
+				return contract.At("stdin", err)
+			}
+			next.Stdin = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v CheckedInput) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "number", Value: v.Number})
+	fields = append(fields, contract.Field{Name: "stdin", Value: v.Stdin})
+	return contract.EncodeObject(fields)
+}
+func CheckedInputJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"number\":{\"format\":\"double\",\"maximum\":10,\"minimum\":1,\"type\":\"number\"},\"stdin\":{\"type\":\"string\"}},\"required\":[\"number\",\"stdin\"],\"title\":\"CheckedInput\",\"type\":\"object\"}")
+}
+func DecodeCheckedNumber(data []byte) (CheckedNumber, error) {
+	return contract.Decode[CheckedNumber](data)
+}
+func (v CheckedNumber) Validate() error { return contractValidateCheckedNumber(v, 0) }
+func contractValidateCheckedNumber(v CheckedNumber, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
+		return contract.At("", fmt.Errorf("number must be finite"))
+	}
+	if err := validateNumber(v); err != nil {
+		return err
+	}
+	return nil
+}
+func (v *CheckedNumber) UnmarshalJSON(data []byte) error {
+	value, err := contract.Decode[float64](data)
+	if err != nil {
+		return err
+	}
+	next := CheckedNumber(value)
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v CheckedNumber) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	return contract.EncodeJSON(float64(v))
+}
 func DecodeCheckedObject(data []byte) (CheckedObject, error) {
 	return contract.Decode[CheckedObject](data)
 }
@@ -151,4 +265,150 @@ func (v Envelope) MarshalJSON() ([]byte, error) {
 }
 func EnvelopeJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"value\":{\"type\":\"string\"}},\"required\":[\"value\"],\"title\":\"Envelope\",\"type\":\"object\"}")
+}
+func DecodePlainRange(data []byte) (PlainRange, error) { return contract.Decode[PlainRange](data) }
+func (v PlainRange) Validate() error                   { return contractValidatePlainRange(v, 0) }
+func contractValidatePlainRange(v PlainRange, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if math.IsNaN(float64(v.Value)) || math.IsInf(float64(v.Value), 0) {
+		return contract.At("value", fmt.Errorf("number must be finite"))
+	}
+	if v.Value < 1 {
+		return contract.At("value", fmt.Errorf("outside numeric bounds"))
+	}
+	if v.Value > 10 {
+		return contract.At("value", fmt.Errorf("outside numeric bounds"))
+	}
+	return nil
+}
+func (v *PlainRange) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next PlainRange
+	for key := range obj {
+		switch key {
+		case "value":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["value"]
+		if !ok {
+			return contract.At("value", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[float64](raw)
+			if err != nil {
+				return contract.At("value", err)
+			}
+			next.Value = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v PlainRange) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "value", Value: v.Value})
+	return contract.EncodeObject(fields)
+}
+func PlainRangeJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"value\":{\"format\":\"double\",\"maximum\":10,\"minimum\":1,\"type\":\"number\"}},\"required\":[\"value\"],\"title\":\"PlainRange\",\"type\":\"object\"}")
+}
+func DecodeSchemaRange(data []byte) (SchemaRange, error) { return contract.Decode[SchemaRange](data) }
+func (v SchemaRange) Validate() error                    { return contractValidateSchemaRange(v, 0) }
+func contractValidateSchemaRange(v SchemaRange, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if math.IsNaN(float64(v.Value)) || math.IsInf(float64(v.Value), 0) {
+		return contract.At("value", fmt.Errorf("number must be finite"))
+	}
+	return nil
+}
+func (v *SchemaRange) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next SchemaRange
+	for key := range obj {
+		switch key {
+		case "value":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["value"]
+		if !ok {
+			return contract.At("value", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[float64](raw)
+			if err != nil {
+				return contract.At("value", err)
+			}
+			next.Value = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v SchemaRange) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "value", Value: v.Value})
+	return contract.EncodeObject(fields)
+}
+func SchemaRangeJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"value\":{\"format\":\"double\",\"maximum\":10,\"minimum\":1,\"type\":\"number\"}},\"required\":[\"value\"],\"title\":\"SchemaRange\",\"type\":\"object\"}")
+}
+func DecodeStdin(data []byte) (Stdin, error) { return contract.Decode[Stdin](data) }
+func (v Stdin) Validate() error              { return contractValidateStdin(v, 0) }
+func contractValidateStdin(v Stdin, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v), 0, -1, ""); err != nil {
+		return contract.At("", err)
+	}
+	if err := validateStdin(v); err != nil {
+		return err
+	}
+	return nil
+}
+func (v *Stdin) UnmarshalJSON(data []byte) error {
+	value, err := contract.Decode[string](data)
+	if err != nil {
+		return err
+	}
+	next := Stdin(value)
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v Stdin) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	return contract.EncodeJSON(string(v))
 }
