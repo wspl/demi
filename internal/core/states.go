@@ -3,6 +3,7 @@ package core
 // A message edit, which the web app chooses so that a repeated request
 // is recognized.
 // +demi:id
+// +demi:schema-primitive
 // +demi:length chars min=1
 // +demi:root
 type OperationID string
