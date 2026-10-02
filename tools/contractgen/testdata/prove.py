@@ -38,7 +38,7 @@ cases = [
     ("field presence", BLOCKS, replace("if !ok {", "if false && !ok {"), "TestRustCorpus/a_nullable_field_that_is_absent"),
     ("strict fields", BLOCKS, bypass_error("unknown field"), "TestRustCorpus/an_unknown_field"),
     ("unknown tag", BLOCKS, replace('return nil, fmt.Errorf("unknown Block tag %q", tag)', "return nil, nil"), "TestRustCorpus/a_block_kind"),
-    ("Unicode length", JSON, replace("if n < min || max >= 0 && n > max {", "if false && (n < min || max >= 0 && n > max) {"), "TestBoundaryEdges/65_astral"),
+    ("Unicode length", JSON, replace("if n < minimum || maximum >= 0 && n > maximum {", "if false && (n < minimum || maximum >= 0 && n > maximum) {"), "TestBoundaryEdges/65_astral"),
     ("pattern", JSON, replace("if !matched {", "if false && !matched {"), "TestRustCorpus/a_blob_reference_that_is_not_a_SHA"),
     ("numeric bounds", BLOCKS, bypass_error("outside numeric bounds"), "TestRustCorpus/a_size_beyond"),
     ("enum", BLOCKS, bypass_error("unknown value"), "TestRustCorpus/a_tool_call_status"),
@@ -60,7 +60,7 @@ cases = [
     ("unknown marker", MAIN, replace('out["!error"] = "unsupported marker: " + key', 'out["!error"] = ""'), "TestGenerationRefusals/unknown$"),
     ("unsupported shape", CHECK, replace('return fmt.Errorf("unsupported shape %s", t)', 'return nil'), "TestGenerationRefusals/unknown_shape"),
     ("pattern subset", RULES, replace('if refused {', 'if false && refused {'), "TestGenerationRefusals/bad_pattern"),
-    ("safe web integer", TS, replace('if err != nil || max > 9007199254740991 {', 'if false && (err != nil || max > 9007199254740991) {'), "TestGenerationRefusals/unsafe_integer"),
+    ("safe web integer", TS, replace('if err != nil || maximum > 9007199254740991 {', 'if false && (err != nil || maximum > 9007199254740991) {'), "TestGenerationRefusals/unsafe_integer"),
     ("send strictness", TS, replace('g.err = fmt.Errorf("%s: send-only object must refuse unknown fields", name)', '_ = fmt.Errorf("%s: send-only object must refuse unknown fields", name)'), "TestGenerationRefusals/open_send"),
 
 ]

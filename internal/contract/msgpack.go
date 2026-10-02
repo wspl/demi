@@ -85,7 +85,7 @@ func DecodeMsgpack[T any](data []byte) (T, error) {
 				return value, errors.New("expected boolean")
 			}
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			if !msgpcode.IsFixedNum(code) && !(code >= msgpcode.Uint8 && code <= msgpcode.Int64) {
+			if !msgpcode.IsFixedNum(code) && (code < msgpcode.Uint8 || code > msgpcode.Int64) {
 				return value, errors.New("expected integer")
 			}
 			v, err := msgpack.NewDecoder(bytes.NewReader(data)).DecodeInterface()
@@ -194,7 +194,7 @@ func MsgpackRecord[T any](data []byte, decode func([]byte) (T, error), nullable 
 	out := make(map[string]T, len(raw))
 	for key, item := range raw {
 		var value T
-		if !(nullable && MsgpackNull(item)) {
+		if !nullable || !MsgpackNull(item) {
 			value, err = decode(item)
 			if err != nil {
 				return nil, At(key, err)
@@ -248,9 +248,10 @@ func MsgpackTimestamp(data []byte) (string, error) {
 	}
 	payload := data[len(data)-n:]
 	var nanos uint32
-	if n == 8 {
+	switch n {
+	case 8:
 		nanos = uint32(binary.BigEndian.Uint64(payload) >> 34)
-	} else if n == 12 {
+	case 12:
 		nanos = binary.BigEndian.Uint32(payload)
 	}
 	if nanos >= 1e9 || nanos%1e6 != 0 {
@@ -367,6 +368,7 @@ func scanMsgpack(d *msgpack.Decoder, r *bytes.Reader, depth int) error {
 // It is an encoding adapter, not a domain timestamp type.
 type MsgpackTimestampValue string
 
+// MarshalMsgpack encodes the field as a timestamp extension.
 func (v MsgpackTimestampValue) MarshalMsgpack() ([]byte, error) {
 	return EncodeMsgpackTimestamp(string(v))
 }
@@ -423,4 +425,36 @@ func encodeMsgpackValue(e *msgpack.Encoder, v reflect.Value) error {
 	default:
 		return e.Encode(v.Interface())
 	}
+}
+
+// MsgpackTuple checks an external union tag and its exact positional arity.
+func MsgpackTuple(data []byte, tag string, count int) ([][]byte, error) {
+	obj, err := MsgpackObject(data)
+	if err != nil {
+		return nil, err
+	}
+	raw, ok := obj[tag]
+	if len(obj) != 1 || !ok {
+		return nil, errors.New("invalid external union tag")
+	}
+	if count == 1 {
+		return [][]byte{raw}, nil
+	}
+	fields, err := MsgpackList(raw, func(b []byte) ([]byte, error) { return b, nil })
+	if err != nil {
+		return nil, At(tag, err)
+	}
+	if len(fields) != count {
+		return nil, At(tag, errors.New("invalid tuple length"))
+	}
+	return fields, nil
+}
+
+// EncodeMsgpackTuple writes one external tag, with a scalar for a single field.
+func EncodeMsgpackTuple(tag string, fields []any) ([]byte, error) {
+	var value any = fields
+	if len(fields) == 1 {
+		value = fields[0]
+	}
+	return EncodeMsgpackObject([]Field{{Name: tag, Value: value}})
 }

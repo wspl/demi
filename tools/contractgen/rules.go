@@ -10,6 +10,12 @@ import (
 
 // checkRuleType rejects markers that would be silently ignored on this shape.
 func checkRuleType(t types.Type, m map[string]string, field bool) error {
+	if has(m, "table") {
+		return fmt.Errorf("table requires a package-level slice variable")
+	}
+	if m["msgpack"] == "tuple" && !has(m, "union") {
+		return fmt.Errorf("msgpack tuple requires a union")
+	}
 	original := t
 	for {
 		p, ok := t.(*types.Pointer)
@@ -22,18 +28,18 @@ func checkRuleType(t types.Type, m map[string]string, field bool) error {
 		return fmt.Errorf("arbitrary JSON does not support field rules")
 	}
 	formats := 0
-	for _, key := range []string{"timestamp", "base64", "enum"} {
+	for _, key := range []string{"timestamp", "base64", "enum", "format"} {
 		if has(m, key) {
 			formats++
 		}
 	}
 	if formats > 1 {
-		return fmt.Errorf("timestamp, base64 and enum cannot be combined")
+		return fmt.Errorf("timestamp, base64, enum and format cannot be combined")
 	}
 	basic, isBasic := t.Underlying().(*types.Basic)
 	stringType := isBasic && basic.Info()&types.IsString != 0
 	numeric := isBasic && basic.Info()&(types.IsInteger|types.IsFloat) != 0
-	for _, key := range []string{"pattern", "enum", "timestamp", "base64", "id"} {
+	for _, key := range []string{"pattern", "enum", "timestamp", "base64", "id", "format"} {
 		if has(m, key) && !stringType {
 			return fmt.Errorf("%s requires a string", key)
 		}
@@ -55,9 +61,9 @@ func checkRuleType(t types.Type, m map[string]string, field bool) error {
 	}
 	for _, rule := range []string{"length", "range"} {
 		b := bounds(m[rule])
-		min, minOK := new(big.Rat).SetString(b["min"])
-		max, maxOK := new(big.Rat).SetString(b["max"])
-		if minOK && maxOK && min.Cmp(max) > 0 {
+		minimum, minOK := new(big.Rat).SetString(b["min"])
+		maximum, maxOK := new(big.Rat).SetString(b["max"])
+		if minOK && maxOK && minimum.Cmp(maximum) > 0 {
 			return fmt.Errorf("%s minimum exceeds maximum", rule)
 		}
 		if rule == "range" && isBasic && basic.Info()&types.IsInteger != 0 {
@@ -118,7 +124,7 @@ func checkRuleType(t types.Type, m map[string]string, field bool) error {
 		}
 	}
 	if field {
-		for _, key := range []string{"union", "variant", "strict", "tolerant", "id", "root", "msgpack", "check"} {
+		for _, key := range []string{"union", "variant", "strict", "tolerant", "id", "root", "msgpack", "check", "format"} {
 			if has(m, key) {
 				return fmt.Errorf("%s is a type marker", key)
 			}

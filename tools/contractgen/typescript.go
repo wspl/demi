@@ -164,16 +164,16 @@ func (g *generator) tsType(t types.Type, m map[string]string) (string, bool) {
 			code = "z.int().min(0).max(4294967295)"
 		case types.Int, types.Int64, types.Uint, types.Uint64:
 			b := bounds(m["range"])
-			max, err := strconv.ParseFloat(b["max"], 64)
-			if err != nil || max > 9007199254740991 {
+			maximum, err := strconv.ParseFloat(b["max"], 64)
+			if err != nil || maximum > 9007199254740991 {
 				g.err = fmt.Errorf("%s: integer read by JavaScript requires a safe maximum", t)
 			}
 			code = "z.int()"
 			if t.Info()&types.IsUnsigned != 0 {
 				code += ".min(0)"
 			} else {
-				min, err := strconv.ParseFloat(b["min"], 64)
-				if err != nil || min < -9007199254740991 {
+				minimum, err := strconv.ParseFloat(b["min"], 64)
+				if err != nil || minimum < -9007199254740991 {
 					g.err = fmt.Errorf("%s: integer read by JavaScript requires a safe minimum", t)
 				}
 			}
@@ -182,6 +182,12 @@ func (g *generator) tsType(t types.Type, m map[string]string) (string, bool) {
 		}
 	default:
 		g.err = fmt.Errorf("unsupported TypeScript shape %s", t)
+	}
+	switch m["format"] {
+	case "trimmed":
+		code += ".trim()"
+	case "email":
+		code = "z.email().max(254)"
 	}
 	if has(m, "timestamp") {
 		code = "z.iso.datetime({ precision: 3 })"
