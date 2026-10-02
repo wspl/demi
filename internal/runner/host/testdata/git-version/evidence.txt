@@ -1,0 +1,56 @@
+Version queries (CGO_ENABLED=0 GOFLAGS=-mod=readonly go list -m -json <module>@latest):
+  github.com/go-git/go-git/v5 v5.19.2
+  github.com/go-git/go-git/v6 v6.0.0-alpha.5
+  github.com/fsnotify/fsnotify v1.10.1
+  github.com/ebitengine/purego v0.11.1
+
+Adapted sp07, v5.19.2, CGO_ENABLED=0 GOFLAGS=-mod=readonly go test -v ./...:
+  TestGitChangesTextAndMetadata/native PASS
+  TestGitChangesTextAndMetadata/fast PASS
+  TestFastStatusRestoredMtime PASS
+  Native status with restored mtime: []
+  ok demi.spike/r-host-gogit-v5 0.029s
+
+python3 verify.py check <sp07>/tmp/demi demi:
+  native/fast: 31 paths each, no status mismatches
+  staged: 19 nonzero paths, no count mismatches
+  unstaged: 13 nonzero paths, no count mismatches
+  strategies_equal=true; no kind/from or HEAD-to-disk count mismatches
+python3 verify.py check <sp07>/tmp/kubernetes kubernetes:
+  same results (full comparison JSON retained beside this file)
+
+PATH=/nonexistent ./sp07 clone https://github.com/vercel-labs/agent-skills.git tmp/skills refs/heads/main:
+  PASS, head 063bee94c3f4df8453406c830b0a7df0f2860278
+  447 tracked files, shallow boundary matches head
+  wall_ms=2780.753958, cpu_ms=200.958, alloc_bytes=48793592
+PATH=/nonexistent ./sp07 fetch tmp/skills refs/heads/main:
+  PASS, depth=1 explicit ref
+  wall_ms=1278.411958, cpu_ms=7.008, alloc_bytes=857664
+
+v5 local transport:
+  Installed plumbing/transport/file/client.go calls git-upload-pack/git-receive-pack
+  (and git --exec-path); it cannot satisfy the no-Git-executable probe.
+  Selected library's in-process server via client.InstallProtocol("file", server.DefaultServer).
+  Clone from non-bare source path failed: couldn't find remote ref "refs/heads/main".
+  Loader inspection showed it opens storage at the endpoint, so the next probe
+  supplied the source's .git directory.
+PATH=/nonexistent ./sp07 clone <sp07>/tmp/skills/.git tmp/local-skills-bare refs/heads/main:
+  FAIL: unsupported capability: shallow
+  wall_ms=3.860959, cpu_ms=1.569, alloc_bytes=159104
+
+Unchanged sp07, v6.0.0-alpha.5, CGO_ENABLED=0 GOFLAGS=-mod=readonly go test -v ./...:
+  TestGitChangesTextAndMetadata/native PASS
+  TestGitChangesTextAndMetadata/fast PASS
+  TestFastStatusRestoredMtime PASS
+  Native status with restored mtime: []
+  ok demi.spike/sp07-git 0.027s
+PATH=/nonexistent ./sp07 clone <v5-probe>/tmp/skills tmp/local-skills refs/heads/main:
+  PASS, using sp07's existing file-transport protocol-v1 adapter
+  head 063bee94c3f4df8453406c830b0a7df0f2860278
+  447 tracked files, shallow boundary matches head
+  wall_ms=313.264125, cpu_ms=390.328, alloc_bytes=48741752
+
+Decision: v6.0.0-alpha.5. v5 passes status and HTTPS probes but does not pass
+sp07's in-process, no-executable shallow local clone. No status algorithm or
+line counter from the spike is copied into production; process.LineCounts
+remains the only production line counter.
