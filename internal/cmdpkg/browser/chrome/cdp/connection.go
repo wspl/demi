@@ -9,6 +9,9 @@ import (
 
 	"github.com/chromedp/cdproto"
 	protocol "github.com/chromedp/cdproto/cdp"
+	"github.com/chromedp/cdproto/network"
+	"github.com/chromedp/cdproto/page"
+	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/cdproto/target"
 	"github.com/coder/websocket"
 	jsonv2 "github.com/go-json-experiment/json"
@@ -204,12 +207,35 @@ func (c *Connection) route(event Event) error {
 		s := c.sessions[attached.SessionID]
 		if s == nil {
 			s = &Session{connection: c, id: attached.SessionID, target: attached.TargetInfo.TargetID, parent: event.SessionID}
-			c.sessions[s.id] = s
 		}
 		c.mu.Unlock()
 		if event.SessionID != "" {
-			return c.submit(c.ctx, s.id, "Target.setAutoAttach", descendantParams(), nil)
+			// Ordinary renderer children need the same observation domains as
+			// their parent. Raw debugging connections leave domains to callers.
+			// Queue setup before publishing the attachment; the reader must
+			// remain available to receive these commands' acknowledgements.
+			if !c.validate && attached.TargetInfo.Type == "iframe" {
+				for _, command := range []struct {
+					method string
+					params any
+				}{
+					{"Page.enable", page.Enable()},
+					{"Runtime.enable", runtime.Enable()},
+					{"Network.enable", network.Enable()},
+					{"Page.setLifecycleEventsEnabled", page.SetLifecycleEventsEnabled(true)},
+				} {
+					if err := c.submit(c.ctx, s.id, command.method, command.params, nil); err != nil {
+						return err
+					}
+				}
+			}
+			if err := c.submit(c.ctx, s.id, "Target.setAutoAttach", descendantParams(), nil); err != nil {
+				return err
+			}
 		}
+		c.mu.Lock()
+		c.sessions[s.id] = s
+		c.mu.Unlock()
 	case "Target.detachedFromTarget":
 		if !c.validate {
 			if err := validateTyped(event.Method, "event", event.Params); err != nil {
