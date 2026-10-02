@@ -548,13 +548,9 @@ web (product)                        web-gallery
   something to show. A slot's components receive what the page around them
   offers, such as opening a work panel tab of a kind with its `data`. `web`
   and `web-gallery` import the packages they show from a static list and
-  register their slots; a computed import does not exist. A package names
-  the page methods and user streams its slots use, and fills no slot while
-  the user has its plugin off or while one of them is missing from the
-  plugin list ([A user's plugins](../product/web-api.md#a-users-plugins)):
-  its settings section leaves the rail, and its work panel kinds and header
-  tool go. For example, a backend whose catalog serves no `demi.browser`
-  offers no `browser` tab, rather than one whose every call fails.
+  register their slots; a computed import does not exist. A plugin the user
+  has off fills no slot: its settings section leaves the rail, and its work
+  panel kinds and header tool go.
 - **The client.** A plugin's components reach their plugin only through the
   `PluginClient` they receive with `usePlugin()`: its state, which follows
   the sync channel; `call(method, params)`, for the user, or for the

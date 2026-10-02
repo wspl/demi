@@ -172,35 +172,20 @@ async fn the_snapshot_is_the_users_product_state() {
             .into(),
         }
     );
-    // Every plugin of the backend is listed in its order, each on, with
-    // the page methods and user streams it serves: without the browser's
-    // package in the catalog, the browser has none.
+    // Every plugin of the backend is listed in its order, each on.
     let plugins: Vec<_> = state
         .plugins
         .iter()
-        .map(|plugin| {
-            (
-                plugin.id.as_str(),
-                plugin.enabled,
-                plugin.methods.join(" "),
-                plugin.streams.join(" "),
-            )
-        })
+        .map(|plugin| (plugin.id.as_str(), plugin.enabled))
         .collect();
-    let entry =
-        |id, methods: &str, streams: &str| (id, true, methods.to_owned(), streams.to_owned());
     assert_eq!(
         plugins,
         [
-            entry("file", "", ""),
-            entry("todo", "", ""),
-            entry("browser", "", ""),
-            entry("expose", "renew remove", ""),
-            entry(
-                "skills",
-                "add_source update_source remove_source set_enabled set_source_enabled",
-                ""
-            ),
+            ("file", true),
+            ("todo", true),
+            ("browser", true),
+            ("expose", true),
+            ("skills", true)
         ]
     );
     // The page's install command fetches the installer at that URL's origin,
