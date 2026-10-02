@@ -45,6 +45,7 @@ mod real_cloud;
 mod retention;
 mod runners;
 mod settings;
+mod skills;
 mod startup;
 mod streams;
 mod subagents;

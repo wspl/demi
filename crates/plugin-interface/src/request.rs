@@ -3,6 +3,7 @@
 //! plugin process would serve every user.
 
 use demi_host_interface::{PortError, RpcError, RpcInvocation};
+use demi_shared_types::{NodeId, TurnId};
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -23,6 +24,18 @@ pub enum Request {
     Command {
         user: UserId,
         invocation: Box<RpcInvocation>,
+    },
+    /// A node is about to send a provider request, and the plugin, a
+    /// context source, may add a context block (`plugins.md` § Prompt text
+    /// and context): `seen` holds the text of its own blocks the model
+    /// receives, oldest first, and `cwd` is the node's working directory.
+    Context {
+        user: UserId,
+        conversation: ConversationId,
+        node: NodeId,
+        cwd: String,
+        turn: TurnId,
+        seen: Vec<String>,
     },
     /// The plugin's state for the user's pages.
     PageState { user: UserId },
@@ -48,6 +61,11 @@ pub enum Request {
 pub enum Reply {
     /// A command's exit status.
     Exit { code: u8 },
+    /// A context request's new block; none to add nothing.
+    Context {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        text: Option<String>,
+    },
     /// The page state, valid against the declared schema.
     State { state: Value },
     /// A page call's result, valid against the method's result schema.
@@ -95,6 +113,13 @@ impl PluginError {
         Self::Failed {
             message: message.to_string(),
         }
+    }
+
+    /// The answer to a request for something the plugin's manifest does
+    /// not declare, such as `"a page state"`, which the plugin host never
+    /// sends.
+    pub fn undeclared(what: &str) -> Self {
+        Self::failed(format!("the plugin declares no {what}"))
     }
 }
 

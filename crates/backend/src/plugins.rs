@@ -6,6 +6,7 @@ use demi_plugin_browser::Browser;
 use demi_plugin_expose::Expose;
 use demi_plugin_file::File;
 use demi_plugin_interface::PluginFactory;
+use demi_plugin_skills::Skills;
 use demi_plugin_todo::Todo;
 
 /// The plugins built into the backend.
@@ -15,5 +16,6 @@ pub fn builtin() -> Vec<Box<dyn PluginFactory>> {
         Box::new(Todo::new()),
         Box::new(Browser::new()),
         Box::new(Expose::new()),
+        Box::new(Skills::new()),
     ]
 }

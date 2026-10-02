@@ -14,7 +14,7 @@ bench = false
 [features]
 # The JSON loopback transport and a port over an rpc transport, which every
 # plugin's tests run through.
-testing = []
+testing = ["dep:tokio"]
 
 [dependencies]
 demi-command-declarations = { path = "../command-declarations" }
@@ -25,8 +25,11 @@ futures-util.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2 = "0.10"
 thiserror.workspace = true
 tokio-util.workspace = true
+# `TestDemi::until`, which wakes at each port message.
+tokio = { workspace = true, optional = true }
 
 [dev-dependencies]
 demi-plugin-interface = { path = ".", features = ["testing"] }

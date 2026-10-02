@@ -160,11 +160,15 @@ async fn the_snapshot_is_the_users_product_state() {
             },
             // Checked below by what the page needs of them.
             plugins: state.plugins.clone(),
-            // Without an expose domain the expose plugin has none to show.
-            plugin_states: [(
-                "expose".to_owned(),
-                json!({ "available": false, "exposes": [] }),
-            )]
+            // Without an expose domain the expose plugin has none to show,
+            // and a new user has no skill source.
+            plugin_states: [
+                (
+                    "expose".to_owned(),
+                    json!({ "available": false, "exposes": [] }),
+                ),
+                ("skills".to_owned(), json!({ "sources": [] })),
+            ]
             .into(),
         }
     );
@@ -180,7 +184,8 @@ async fn the_snapshot_is_the_users_product_state() {
             ("file", true),
             ("todo", true),
             ("browser", true),
-            ("expose", true)
+            ("expose", true),
+            ("skills", true)
         ]
     );
     // The page's install command fetches the installer at that URL's origin,

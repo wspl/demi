@@ -13,6 +13,7 @@ pub mod access;
 pub mod blobs;
 pub mod host_commands;
 pub mod lease;
+pub mod plugin_files;
 pub mod remote_files;
 pub mod shells;
 pub mod stream;
@@ -37,7 +38,10 @@ use demi_shared_types::{Clock, NodeId};
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 use tokio_util::task::TaskTracker;
 
+use futures_util::future::LocalBoxFuture;
+
 use self::access::Conversations;
+use self::plugin_files::{DirectorySets, PluginInstalls};
 
 /// What host access needs of its user's shard: the handles its operations
 /// use, and the conversation's idle watch, which every Host admission starts.
@@ -72,6 +76,11 @@ pub trait HostShard {
     /// Starts the conversation's idle watch unless one runs, as each Host
     /// admission does (`resource-lifecycle.md` § Idle window).
     fn track_idle(&self, conversation: &ConversationId);
+    /// The Host directories of the user's plugins, which each job installs
+    /// before it starts (`plugins.md` § Host directories).
+    fn directory_sets(&self) -> LocalBoxFuture<'_, Result<DirectorySets, String>>;
+    /// What the shard remembers of its Hosts' directories.
+    fn plugin_installs(&self) -> &PluginInstalls;
 }
 
 /// The root node of a conversation's tree, whose id is the conversation's in
