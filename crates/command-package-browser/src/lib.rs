@@ -14,19 +14,36 @@ use std::{future::Future, pin::Pin, sync::Arc};
 use demi_command_package_browser_chrome::driver::installation::Chrome;
 use demi_command_package_browser_protocol::{Operation, OperationError, browser as protocol};
 use demi_command_protocol::{Completion, Invocation};
-use demi_command_sdk::{ConversationContext, Handler, InvocationContext, Numbers, ServiceError};
+use demi_command_sdk::{
+    Artifacts, ConversationContext, Handler, InvocationContext, Numbers, ServiceError,
+};
 
 /// The service.
 pub struct DemiBrowser {
     browsers: Arc<conversations::Conversations>,
+    chrome: Chrome,
+}
+
+impl Default for DemiBrowser {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DemiBrowser {
-    /// The service, whose browsers start `chrome`.
-    pub fn new(chrome: Chrome) -> Self {
+    /// The service, whose browsers start the pinned Chrome, which the
+    /// runner installs (`browser.md` § Browser distribution).
+    pub fn new() -> Self {
+        let chrome = Chrome::default();
         Self {
-            browsers: Arc::new(conversations::Conversations::new(chrome)),
+            browsers: Arc::new(conversations::Conversations::new(chrome.clone())),
+            chrome,
         }
+    }
+
+    /// The Chrome the browsers start, for finding what its processes left.
+    pub fn chrome(&self) -> &Chrome {
+        &self.chrome
     }
 }
 
@@ -50,6 +67,10 @@ impl Handler for DemiBrowser {
     /// sequences (`browser.md` § One tab registry).
     fn numbers(&self, numbers: Numbers) {
         self.browsers.attach_numbers(numbers);
+    }
+
+    fn artifacts(&self, artifacts: Artifacts) {
+        self.chrome.attach(artifacts);
     }
 
     fn operations(&self) -> Vec<String> {

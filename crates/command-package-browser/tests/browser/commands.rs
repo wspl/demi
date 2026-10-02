@@ -70,11 +70,15 @@ async fn conversation_browser_commands_share_state_and_retire() {
         let (client_io, server_io) = tokio::io::duplex(128 * 1024);
         let server = AbortOnDropHandle::new(tokio::spawn(serve(
             server_io,
-            Arc::new(demi_browser::DemiBrowser::new(crate::families::test_chrome())),
+            Arc::new(demi_browser::DemiBrowser::new()),
         )));
         let (client, connection) = Client::connect(client_io).await.unwrap();
         let driver = AbortOnDropHandle::new(tokio::spawn(connection));
         let _numbers = demi_command_sdk::testing::answer_numbers(&client).await.unwrap();
+        let _artifacts =
+            demi_command_sdk::testing::answer_artifacts(&client, crate::families::answer_chrome)
+                .await
+                .unwrap();
         let conversation = uuid::Uuid::new_v4().to_string();
         let request = |operation: &str, args: Value| Invocation {
             operation: operation.into(),

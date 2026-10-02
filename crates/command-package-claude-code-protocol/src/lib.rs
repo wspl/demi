@@ -120,8 +120,8 @@ pub struct Installed {
     pub path: PathBuf,
 }
 
-/// What `claude-code.status` answers: this machine's platform key and its
-/// installations, newest version first.
+/// What `claude-code.status` answers: this machine's platform key and the
+/// versions the runner has, the newest install first.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Status {
@@ -135,8 +135,6 @@ pub struct Status {
 pub enum ErrorCode {
     InvalidRelease,
     UnsupportedPlatform,
-    DownloadFailed,
-    VerificationFailed,
     InstallFailed,
 }
 

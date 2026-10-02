@@ -219,6 +219,21 @@ impl ScriptedManager {
             .to_owned()
     }
 
+    /// The device's runner's artifact cache (`native-runtime.md` § The
+    /// cache): in its state, unless the script names one.
+    pub fn artifacts(&self, device: &str) -> std::path::PathBuf {
+        let state = self.shared.lock();
+        match &state.script.artifacts {
+            Some(cache) => cache.into(),
+            None => state.guests[device]
+                .runner
+                .as_ref()
+                .expect("the device booted")
+                .state_dir()
+                .join("artifacts"),
+        }
+    }
+
     /// Kills the device's runner as a crash would, and reports its death.
     pub async fn kill(&self, device: &str) {
         let worker = self.shared.worker(device);

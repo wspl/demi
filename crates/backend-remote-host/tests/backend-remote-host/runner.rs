@@ -1642,6 +1642,7 @@ fn service(
         args,
         cwd: fixture.home().into(),
         resolver: native.resolver(),
+        attached: Vec::new(),
     }
 }
 

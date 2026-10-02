@@ -542,19 +542,17 @@ async fn the_next_service_sweeps_a_killed_services_browser_and_downloads() {
     .unwrap();
 }
 
-/// The service program as the runner starts it, given the pinned Chrome
-/// that `DEMI_TEST_CHROME` names as its `chrome` resource, with `home` as
-/// its home and `temporary` as its `TMPDIR`; its numbers stream is answered
-/// as a runner answers it.
+/// The service program as the runner starts it, with `home` as its home and
+/// `temporary` as its `TMPDIR`; its numbers stream is answered as a runner
+/// answers it, and its request for Chrome with the pinned Chrome that
+/// `DEMI_TEST_CHROME` names.
 async fn service_program(
     home: &std::path::Path,
     temporary: &str,
 ) -> demi_command_sdk::testing::ServiceProcess {
-    let chrome = std::env::var("DEMI_TEST_CHROME").expect("DEMI_TEST_CHROME");
-    let resource = format!("chrome={chrome}");
     let service = demi_command_sdk::testing::ServiceProcess::start(
         env!("CARGO_BIN_EXE_demi-browser"),
-        &["--command-service", "--resource", &resource],
+        &["--command-service"],
         &[("HOME", home.to_str().unwrap()), ("TMPDIR", temporary)],
     )
     .await
@@ -563,6 +561,12 @@ async fn service_program(
     let _answering = demi_command_sdk::testing::answer_numbers(service.client())
         .await
         .unwrap();
+    let _artifacts = demi_command_sdk::testing::answer_artifacts(
+        service.client(),
+        crate::families::answer_chrome,
+    )
+    .await
+    .unwrap();
     service
 }
 

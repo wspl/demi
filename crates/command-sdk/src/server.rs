@@ -2,9 +2,9 @@ use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use bytes::Bytes;
 use demi_command_protocol::{
-    CONVERSATION_PATH, CommandError, Completion, ConversationRequest, INFO_PATH, INVOKE_PATH,
-    Invocation, MAX_METADATA_BYTES, MAX_RECORD_BYTES, Metadata, NUMBERS_PATH, NumbersOpen,
-    ProtocolError, Record, SHUTDOWN_PATH, ServiceInfo, VERSION,
+    ARTIFACTS_PATH, CONVERSATION_PATH, CommandError, Completion, ConversationRequest, INFO_PATH,
+    INVOKE_PATH, Invocation, MAX_METADATA_BYTES, MAX_RECORD_BYTES, Metadata, NUMBERS_PATH,
+    ProtocolError, Record, SHUTDOWN_PATH, ServiceInfo, StreamOpen, VERSION,
 };
 use futures_util::future::poll_fn;
 use h2::{Reason, server::SendResponse};
@@ -19,7 +19,9 @@ use tokio_util::task::AbortOnDropHandle;
 
 use crate::{
     Input, ServiceError,
-    numbers::{self, Draw, Numbers},
+    artifacts::{Artifacts, ArtifactsAsk},
+    asking::{self, Asked, Pending},
+    numbers::{Numbers, NumbersAsk},
     stream::{CONNECTION_WINDOW, HttpInput, send_bytes},
 };
 
@@ -84,6 +86,29 @@ pub trait Handler: Send + Sync + 'static {
         // A service that names nothing with conversation numbers draws none.
         drop(numbers);
     }
+
+    /// Takes the connection's artifacts source before the first call
+    /// (`native-runtime.md` § The artifacts stream); the runner's artifacts
+    /// stream answers its requests.
+    fn artifacts(&self, artifacts: Artifacts) {
+        // A service that needs nothing beside its executable asks for none.
+        drop(artifacts);
+    }
+}
+
+/// What serves one of the streams the runner answers, once it opens.
+type Relay = Box<
+    dyn FnOnce(
+            Input,
+            Output,
+            CancellationToken,
+        ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>>
+        + Send,
+>;
+
+/// The relay of a stream of kind `A`, whose requests arrive at `asks`.
+fn relay_of<A: Asked>(asks: mpsc::Receiver<Pending<A>>) -> Relay {
+    Box::new(move |input, output, finish| Box::pin(asking::relay(asks, input, output, finish)))
 }
 
 #[derive(Clone)]
@@ -187,10 +212,13 @@ where
     let cancellation = owner.child_token();
     let (numbers, draws) = Numbers::channel();
     handler.numbers(numbers);
-    // The runner opens the numbers stream once. Shutdown finishes it, since
-    // it would otherwise hold the draining connection open.
-    let mut draws = Some(draws);
-    let finish_numbers = CancellationToken::new();
+    let (artifacts, requests) = Artifacts::channel();
+    handler.artifacts(artifacts);
+    // The runner opens each stream once. Shutdown finishes them, since they
+    // would otherwise hold the draining connection open.
+    let mut numbers_relay = Some(relay_of::<NumbersAsk>(draws));
+    let mut artifacts_relay = Some(relay_of::<ArtifactsAsk>(requests));
+    let finish_streams = CancellationToken::new();
     let mut tasks = JoinSet::new();
     let mut draining = false;
     let _cancel_on_drop = cancellation.drop_guard_ref();
@@ -224,7 +252,7 @@ where
                         }
                         (&Method::POST, SHUTDOWN_PATH) => {
                             draining = true;
-                            finish_numbers.cancel();
+                            finish_streams.cancel();
                             response.send_response(Response::new(()), true)?;
                             connection.graceful_shutdown();
                         }
@@ -239,13 +267,18 @@ where
                                 cancellation.child_token(), kind,
                             ));
                         }
-                        (&Method::POST, NUMBERS_PATH) if !draining => {
+                        (&Method::POST, path @ (NUMBERS_PATH | ARTIFACTS_PATH)) if !draining => {
                             // Only the first opens the stream; a later one is
                             // refused once its metadata is read.
+                            let relay = if path == NUMBERS_PATH {
+                                numbers_relay.take()
+                            } else {
+                                artifacts_relay.take()
+                            };
                             tasks.spawn(invoke(
                                 request, response, handler.clone(), operations.clone(),
                                 cancellation.child_token(),
-                                Kind::Numbers { draws: draws.take(), finish: finish_numbers.clone() },
+                                Kind::Stream { relay, finish: finish_streams.clone() },
                             ));
                         }
                         _ => {
@@ -298,10 +331,10 @@ fn reject(response: &mut SendResponse<Bytes>, status: StatusCode) -> Result<(), 
 enum Kind {
     Invocation,
     Conversation,
-    /// The numbers stream, which answers these draws until `finish`; none
+    /// A stream the runner answers, served by `relay` until `finish`; none
     /// when the stream is open already.
-    Numbers {
-        draws: Option<mpsc::Receiver<Draw>>,
+    Stream {
+        relay: Option<Relay>,
         finish: CancellationToken,
     },
 }
@@ -319,7 +352,7 @@ async fn invoke<H: Handler + ?Sized>(
     enum Call<M> {
         Invocation(Box<M>),
         Conversation(ConversationRequest),
-        Numbers(mpsc::Receiver<Draw>, CancellationToken),
+        Stream(Relay, CancellationToken),
     }
     let metadata = async {
         match kind {
@@ -333,11 +366,11 @@ async fn invoke<H: Handler + ?Sized>(
                 request.validate()?;
                 Ok(Call::Invocation(Box::new(request)))
             }
-            Kind::Numbers { draws, finish } => {
-                let open: NumbersOpen = body.metadata().await?;
+            Kind::Stream { relay, finish } => {
+                let open: StreamOpen = body.metadata().await?;
                 open.validate()?;
-                let draws = draws.ok_or(ServiceError::Rejected(StatusCode::CONFLICT.as_u16()))?;
-                Ok(Call::Numbers(draws, finish))
+                let relay = relay.ok_or(ServiceError::Rejected(StatusCode::CONFLICT.as_u16()))?;
+                Ok(Call::Stream(relay, finish))
             }
         }
     };
@@ -381,9 +414,9 @@ async fn invoke<H: Handler + ?Sized>(
                 cancellation: cancellation.clone(),
             })
         }
-        Call::Numbers(draws, finish) => {
+        Call::Stream(relay, finish) => {
             body.set_output(output.clone());
-            Box::pin(numbers::relay(draws, Input::http(body), output, finish))
+            relay(Input::http(body), output, finish)
         }
     };
     let mut task = AbortOnDropHandle::new(tokio::spawn(work));

@@ -1,26 +1,28 @@
-//! The verified artifact cache (`native-runtime.md` § Install
-//! artifacts): an executable as one file per digest, published only once its
-//! size and SHA-256 match what the descriptor declares, and a resource as
-//! its archive unpacked into a directory per digest with a receipt; both
-//! reused unread from then on. Before it downloads an artifact, it takes the
-//! copy the Host's image preinstalled (§ Preinstalled artifacts), which it
-//! checks the same way the first time the process needs it. The service
-//! registry starts one install per service at a time, so concurrent callers
-//! share it; runners that share the cache publish one copy of each artifact.
+//! The verified artifact cache (`native-runtime.md` § Install artifacts,
+//! § The cache): a `file` as one file per digest, published only once its
+//! size and SHA-256 match what the runner was given, and an `archive`
+//! unpacked into a directory per digest with a receipt; both reused unread
+//! from then on. Beside each entry a record names its line and version, so
+//! the cache answers which artifacts of a line it has and removes a line's
+//! older ones once a newer one is installed, except those a running service
+//! holds. Before it downloads an artifact, it takes the copy the Host's image
+//! preinstalled (§ Preinstalled artifacts), which it checks the same way the
+//! first time the process needs it. Runners that share the cache publish one
+//! copy of each artifact.
 
 use std::{
     collections::HashMap,
     io,
     path::{Path, PathBuf},
-    sync::{Mutex, MutexGuard},
+    sync::{Arc, Mutex, MutexGuard},
     time::SystemTime,
 };
 
-use demi_command_protocol::{PackageArtifact, ResourceArtifact};
-use demi_runner_protocol::wire::InstallArtifact;
+use demi_command_protocol::{ArtifactForm, InstalledArtifact, PackageArtifact};
 use demi_shared_artifacts::{
     Archive, ArchiveInstall, Digest, Mode, Permissions, Publication, Staged,
 };
+use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWrite;
 use tokio_util::sync::CancellationToken;
 
@@ -30,9 +32,11 @@ use crate::installs::{Installing, Installs};
 use crate::{ArtifactResolver, ArtifactSource, RuntimeError};
 
 /// What this process found when it checked the image's copy of each digest:
-/// the executable or the resource's entry, or none when the copy failed its
-/// check.
+/// the file or the archive's entry, or none when the copy failed its check.
 type Checked = HashMap<String, Option<PathBuf>>;
+
+/// The suffix of an entry's line record, beside the entry.
+const LINE: &str = ".line.json";
 
 pub struct ArtifactCache {
     root: PathBuf,
@@ -42,14 +46,71 @@ pub struct ArtifactCache {
     checked: Mutex<Checked>,
     http: reqwest::Client,
     installs: Installs,
+    holds: Holds,
 }
 
-/// Whose artifact an install obtains, for the installs it reports.
-#[derive(Clone, Copy)]
-pub struct ForPackage<'a> {
-    /// The package, such as `demi.browser`.
-    pub id: &'a str,
-    pub resolver: &'a dyn ArtifactResolver,
+/// An artifact to install: its line (its package and name) and version, its
+/// bytes' size and SHA-256, and its form.
+pub struct Wanted<'a> {
+    pub package: &'a str,
+    pub name: &'a str,
+    pub version: &'a str,
+    pub artifact: PackageArtifact,
+    pub form: &'a ArtifactForm,
+}
+
+/// What the cache records of an entry, beside it: its line, its version,
+/// the path of its file or entry, and when this cache installed it.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LineRecord {
+    package: String,
+    name: String,
+    version: String,
+    path: PathBuf,
+    installed_at: u64,
+}
+
+/// The digests running services hold, which no line's removal takes.
+/// Cloning shares the counts.
+#[derive(Clone, Default)]
+pub struct Holds(Arc<Mutex<HashMap<String, usize>>>);
+
+/// One hold of a digest, released when dropped.
+pub struct Hold {
+    holds: Holds,
+    sha256: String,
+}
+
+impl Holds {
+    /// Holds `sha256` until the returned hold is dropped.
+    pub fn hold(&self, sha256: &str) -> Hold {
+        *self.counts().entry(sha256.to_owned()).or_default() += 1;
+        Hold {
+            holds: self.clone(),
+            sha256: sha256.to_owned(),
+        }
+    }
+
+    fn held(&self, sha256: &str) -> bool {
+        self.counts().contains_key(sha256)
+    }
+
+    fn counts(&self) -> MutexGuard<'_, HashMap<String, usize>> {
+        self.0.lock().expect("the holds are intact")
+    }
+}
+
+impl Drop for Hold {
+    fn drop(&mut self) {
+        let mut counts = self.holds.counts();
+        if let Some(count) = counts.get_mut(&self.sha256) {
+            *count -= 1;
+            if *count == 0 {
+                counts.remove(&self.sha256);
+            }
+        }
+    }
 }
 
 impl ArtifactCache {
@@ -67,65 +128,112 @@ impl ArtifactCache {
             root,
             image,
             checked: Mutex::default(),
-            // The pinned descriptor decides what is installed, so a backend
-            // on plain HTTP may serve its artifacts itself.
+            // The runner was given each artifact's digest over its
+            // authenticated connection, so a backend on plain HTTP may serve
+            // its artifacts itself.
             http: demi_shared_artifacts::client_allowing_http()?,
             installs,
+            holds: Holds::default(),
         })
     }
 
-    /// The executable for `artifact`: the cached one, else the image's copy
-    /// that matches it, else one downloaded into the cache. A cached entry
-    /// that is not a regular file of the declared size fails the install.
+    /// The digests running services hold.
+    pub fn holds(&self) -> &Holds {
+        &self.holds
+    }
+
+    /// The path of `wanted`'s file or of its archive's entry: the cached
+    /// one, else the image's copy that matches it, else one downloaded into
+    /// the cache. Once it is there, the cache records it in its line and
+    /// removes the line's other artifacts that no running service holds. A
+    /// cached entry whose metadata shows damage fails the install.
     pub async fn install(
         &self,
-        artifact: &PackageArtifact,
-        package: ForPackage<'_>,
+        wanted: &Wanted<'_>,
+        resolver: &dyn ArtifactResolver,
         cancel: &CancellationToken,
     ) -> Result<PathBuf, RuntimeError> {
-        let destination = self.root.join(&artifact.sha256);
-        if let Some(cached) = cached(&destination, artifact).await? {
+        let path = match wanted.form {
+            ArtifactForm::File => self.install_file(wanted, resolver, cancel).await?,
+            ArtifactForm::Archive { entry } => {
+                self.install_archive(wanted, entry, resolver, cancel)
+                    .await?
+            }
+        };
+        self.record(wanted, &path).await?;
+        self.remove_older(wanted).await;
+        Ok(path)
+    }
+
+    /// The artifacts of the line `name` of `package` this cache installed,
+    /// from a download or the image, the newest install first.
+    pub async fn installed(
+        &self,
+        package: &str,
+        name: &str,
+    ) -> Result<Vec<InstalledArtifact>, RuntimeError> {
+        let mut found: Vec<(u64, InstalledArtifact)> = self
+            .records()
+            .await?
+            .into_iter()
+            .filter(|(_, record)| record.package == package && record.name == name)
+            .map(|(sha256, record)| {
+                let installed = InstalledArtifact {
+                    version: record.version,
+                    sha256,
+                    path: record.path.to_string_lossy().into_owned(),
+                };
+                (record.installed_at, installed)
+            })
+            .collect();
+        found.sort_by(|(left, _), (right, _)| right.cmp(left));
+        Ok(found.into_iter().map(|(_, installed)| installed).collect())
+    }
+
+    async fn install_file(
+        &self,
+        wanted: &Wanted<'_>,
+        resolver: &dyn ArtifactResolver,
+        cancel: &CancellationToken,
+    ) -> Result<PathBuf, RuntimeError> {
+        let destination = self.root.join(&wanted.artifact.sha256);
+        if let Some(cached) = cached(&destination, &wanted.artifact).await? {
             return Ok(cached);
         }
-        let expected = digest_of(artifact);
+        let expected = digest_of(&wanted.artifact);
         attempts(cancel, || async {
-            if let Some(executable) = self
-                .preinstalled(ImageCopy::Executable(&expected), cancel)
+            if let Some(file) = self
+                .preinstalled(ImageCopy::File(&expected), cancel)
                 .await?
             {
-                return Ok(executable);
+                return Ok(file);
             }
-            let installing =
-                self.installs
-                    .start(package.id, InstallArtifact::Program, artifact.size);
-            self.download(artifact, &destination, package, &installing, cancel)
+            let installing = self.start(wanted);
+            self.download(wanted, &destination, resolver, &installing, cancel)
                 .await?;
             Ok(destination.clone())
         })
         .await
     }
 
-    /// The entry of `resource`, titled `title`: the cached installation,
-    /// else the image's that matches it, else its archive downloaded and
-    /// unpacked into the cache.
-    pub async fn install_resource(
+    async fn install_archive(
         &self,
-        title: &str,
-        resource: &ResourceArtifact,
-        package: ForPackage<'_>,
+        wanted: &Wanted<'_>,
+        entry: &str,
+        resolver: &dyn ArtifactResolver,
         cancel: &CancellationToken,
     ) -> Result<PathBuf, RuntimeError> {
         let archive = Archive {
-            digest: digest_of(&resource.archive()),
-            entry: resource.entry.clone(),
+            digest: digest_of(&wanted.artifact),
+            entry: entry.to_owned(),
         };
-        let directory = self.root.join(&resource.sha256);
+        let directory = self.root.join(&wanted.artifact.sha256);
         if let Some(entry) = demi_shared_artifacts::recorded(&directory, &archive).await? {
             return Ok(entry);
         }
         attempts(cancel, || async {
             if let Some(entry) = self
-                .preinstalled(ImageCopy::Resource(&archive), cancel)
+                .preinstalled(ImageCopy::Archive(&archive), cancel)
                 .await?
             {
                 return Ok(entry);
@@ -136,27 +244,118 @@ impl ArtifactCache {
                     ArchiveInstall::Installed(entry) => return Ok(entry),
                     ArchiveInstall::Unpack(unpacking) => unpacking,
                 };
-            let installing = self.installs.start(
-                package.id,
-                InstallArtifact::Resource {
-                    title: title.to_owned(),
-                },
-                resource.size,
-            );
+            let installing = self.start(wanted);
             let mut output = tokio::fs::File::create(unpacking.archive()).await?;
-            self.fetch(
-                &resource.archive(),
-                &mut output,
-                package,
-                &installing,
-                cancel,
-            )
-            .await?;
+            self.fetch(&wanted.artifact, &mut output, resolver, &installing, cancel)
+                .await?;
             drop(output);
             installing.unpacking();
             Ok(unpacking.finish(cancel).await?)
         })
         .await
+    }
+
+    /// Reports the download of `wanted` until the returned install drops.
+    fn start(&self, wanted: &Wanted<'_>) -> Installing {
+        self.installs.start(
+            wanted.package,
+            wanted.name,
+            wanted.version,
+            wanted.artifact.size,
+        )
+    }
+
+    /// Records `wanted`, installed at `path`, in its line, unless the cache
+    /// records it already.
+    async fn record(&self, wanted: &Wanted<'_>, path: &Path) -> Result<(), RuntimeError> {
+        let file = self.line_record(&wanted.artifact.sha256);
+        if tokio::fs::try_exists(&file).await? {
+            return Ok(());
+        }
+        let installed_at = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map_or(0, |since| {
+                u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
+            });
+        let record = LineRecord {
+            package: wanted.package.to_owned(),
+            name: wanted.name.to_owned(),
+            version: wanted.version.to_owned(),
+            path: path.to_owned(),
+            installed_at,
+        };
+        let bytes = serde_json::to_vec(&record).map_err(io::Error::other)?;
+        let publication = Publication {
+            mode: Mode::Replace,
+            permissions: Permissions::Private,
+            durable: true,
+        };
+        demi_shared_artifacts::publish_bytes(&file, &bytes, publication).await?;
+        Ok(())
+    }
+
+    /// Removes the other artifacts of `wanted`'s line that no running
+    /// service holds. A removal that fails, as of a file in use on Windows,
+    /// is left for a later install; an image's copy is only forgotten.
+    async fn remove_older(&self, wanted: &Wanted<'_>) {
+        let records = match self.records().await {
+            Ok(records) => records,
+            Err(error) => {
+                tracing::warn!("the artifact cache could not be listed: {error}");
+                return;
+            }
+        };
+        for (sha256, record) in records {
+            let older = record.package == wanted.package
+                && record.name == wanted.name
+                && sha256 != wanted.artifact.sha256;
+            if !older || self.holds.held(&sha256) {
+                continue;
+            }
+            let entry = self.root.join(&sha256);
+            let removed = match tokio::fs::symlink_metadata(&entry).await {
+                Ok(metadata) if metadata.is_dir() => tokio::fs::remove_dir_all(&entry).await,
+                Ok(_) => tokio::fs::remove_file(&entry).await,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+                Err(error) => Err(error),
+            };
+            let removed = match removed {
+                Ok(()) => tokio::fs::remove_file(self.line_record(&sha256)).await,
+                Err(error) => Err(error),
+            };
+            if let Err(error) = removed {
+                tracing::info!(
+                    "{} {} stays in the artifact cache for now: {error}",
+                    record.name,
+                    record.version
+                );
+            }
+        }
+    }
+
+    /// Every line record of the cache, by digest. A record that cannot be
+    /// read is skipped: its entry is still a verified artifact, which a
+    /// later install of it records again.
+    async fn records(&self) -> Result<Vec<(String, LineRecord)>, RuntimeError> {
+        let mut records = Vec::new();
+        let mut entries = tokio::fs::read_dir(&self.root).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let name = entry.file_name();
+            let Some(sha256) = name.to_str().and_then(|name| name.strip_suffix(LINE)) else {
+                continue;
+            };
+            let read = tokio::fs::read(entry.path()).await;
+            match read.map(|bytes| serde_json::from_slice::<LineRecord>(&bytes)) {
+                Ok(Ok(record)) => records.push((sha256.to_owned(), record)),
+                Ok(Err(error)) => tracing::warn!("{}: {error}", entry.path().display()),
+                Err(error) => tracing::warn!("{}: {error}", entry.path().display()),
+            }
+        }
+        Ok(records)
+    }
+
+    fn line_record(&self, sha256: &str) -> PathBuf {
+        self.root.join(format!("{sha256}{LINE}"))
     }
 
     /// The image's `copy`, when it matches. The process checks each copy
@@ -173,16 +372,16 @@ impl ArtifactCache {
             return Ok(None);
         };
         let sha256 = match copy {
-            ImageCopy::Executable(expected) => &expected.sha256,
-            ImageCopy::Resource(archive) => &archive.digest.sha256,
+            ImageCopy::File(expected) => &expected.sha256,
+            ImageCopy::Archive(archive) => &archive.digest.sha256,
         };
         if let Some(checked) = self.checked().get(sha256) {
             return Ok(checked.clone());
         }
         let directory = image.join(sha256);
         let found = match copy {
-            ImageCopy::Executable(expected) => check(&directory, expected, cancel).await,
-            ImageCopy::Resource(archive) => image_resource(&directory, archive, cancel).await,
+            ImageCopy::File(expected) => check(&directory, expected, cancel).await,
+            ImageCopy::Archive(archive) => image_archive(&directory, archive, cancel).await,
         };
         let checked = match found {
             Ok(found) => Some(found),
@@ -208,15 +407,15 @@ impl ArtifactCache {
         self.checked.lock().expect("the checked copies are intact")
     }
 
-    /// Fetches the executable into a staged file beside `destination` and
+    /// Fetches a `file` into a staged file beside `destination` and
     /// publishes it there once verified; any failure removes the staged
     /// file. One that another runner sharing the cache published first is
     /// the one installed.
     async fn download(
         &self,
-        artifact: &PackageArtifact,
+        wanted: &Wanted<'_>,
         destination: &Path,
-        package: ForPackage<'_>,
+        resolver: &dyn ArtifactResolver,
         installing: &Installing,
         cancel: &CancellationToken,
     ) -> Result<(), RuntimeError> {
@@ -229,13 +428,19 @@ impl ArtifactCache {
             },
         )
         .await?;
-        self.fetch(artifact, staged.file(), package, installing, cancel)
-            .await?;
+        self.fetch(
+            &wanted.artifact,
+            staged.file(),
+            resolver,
+            installing,
+            cancel,
+        )
+        .await?;
         match staged.publish().await {
             Err(demi_shared_artifacts::Error::Io(error))
                 if error.kind() == io::ErrorKind::AlreadyExists =>
             {
-                cached(destination, artifact).await?;
+                cached(destination, &wanted.artifact).await?;
                 Ok(())
             }
             published => Ok(published?),
@@ -248,7 +453,7 @@ impl ArtifactCache {
         &self,
         artifact: &PackageArtifact,
         output: &mut (impl AsyncWrite + Unpin),
-        package: ForPackage<'_>,
+        resolver: &dyn ArtifactResolver,
         installing: &Installing,
         cancel: &CancellationToken,
     ) -> Result<(), RuntimeError> {
@@ -261,7 +466,7 @@ impl ArtifactCache {
                 written += bytes.len() as u64;
                 installing.downloaded(written);
             });
-            match package.resolver.resolve(artifact, cancel).await? {
+            match resolver.resolve(artifact, cancel).await? {
                 ArtifactSource::Local(path) => {
                     let mut input = tokio::fs::File::open(path).await?;
                     demi_shared_artifacts::copy(&mut input, &expected, &mut output, cancel).await?;
@@ -301,12 +506,12 @@ impl ArtifactCache {
     }
 }
 
-/// An artifact the image may hold: an executable of a size and SHA-256, or
-/// a resource's archive unpacked.
+/// An artifact the image may hold: a file of a size and SHA-256, or an
+/// archive unpacked.
 #[derive(Clone, Copy)]
 enum ImageCopy<'a> {
-    Executable(&'a Digest),
-    Resource(&'a Archive),
+    File(&'a Digest),
+    Archive(&'a Archive),
 }
 
 /// The size and SHA-256 `artifact` must have.
@@ -317,7 +522,7 @@ fn digest_of(artifact: &PackageArtifact) -> Digest {
     }
 }
 
-/// The cached executable at `destination`, when there is one. The entry was
+/// The cached file at `destination`, when there is one. The entry was
 /// verified as it was published, and only publication writes the cache, so
 /// a hit is not read again: every service start would otherwise hash the
 /// whole executable. Damage its metadata shows fails the install; it is not
@@ -371,9 +576,9 @@ where
     }
 }
 
-/// The image's installation of a resource's `archive` in `directory`,
-/// checked whole: the receipt and the entry's SHA-256.
-async fn image_resource(
+/// The image's installation of `archive` in `directory`, checked whole: the
+/// receipt and the entry's SHA-256.
+async fn image_archive(
     directory: &Path,
     archive: &Archive,
     cancel: &CancellationToken,
@@ -384,8 +589,8 @@ async fn image_resource(
 }
 
 /// The image's copy in `directory`: the directory's one entry, a regular
-/// file whose size and SHA-256 are the `expected` ones. A descriptor names
-/// no file, so the copy is whatever the directory holds.
+/// file whose size and SHA-256 are the `expected` ones. A request names no
+/// file, so the copy is whatever the directory holds.
 async fn check(
     directory: &Path,
     expected: &Digest,

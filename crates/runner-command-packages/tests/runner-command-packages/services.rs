@@ -560,7 +560,7 @@ async fn preinstall(image: &Path, descriptor: &PackageDescriptor, bytes: &[u8]) 
 
 /// A Cloud's first command after a wake or a reset: its image holds the
 /// service's executable, so the service starts from that copy, the backend
-/// is not asked for it, and nothing lands in the cache.
+/// is not asked for it, and the cache gains no copy of it.
 #[tokio::test]
 async fn a_service_starts_from_the_image_copy_without_a_download() {
     tokio::time::timeout(Duration::from_secs(60), async {
@@ -580,8 +580,7 @@ async fn a_service_starts_from_the_image_copy_without_a_download() {
         let resolver = local(path);
         let _resident = acquire(&registry.handle(), &descriptor, resolver.clone()).await;
         assert_eq!(resolver.calls.load(Ordering::SeqCst), 0);
-        let mut cached = tokio::fs::read_dir(cache).await.unwrap();
-        assert!(cached.next_entry().await.unwrap().is_none());
+        assert!(!cache.join(digest(&descriptor)).exists());
         registry.close().await;
     })
     .await

@@ -104,12 +104,20 @@ test("a conversation's installs are its main Host's installs of the plugin's pac
   const laptop = 'b5c6d7e8-0000-4000-8000-000000000001'
   const chrome = {
     package: 'demi.browser',
-    artifact: { kind: 'resource' as const, title: 'Chrome for Testing 153.0.8010.36' },
+    name: 'Chrome for Testing',
+    version: '153.0.8010.36',
     phase: 'download' as const,
     done: 120,
     total: 196,
   }
-  const file = { package: 'demi.file', artifact: { kind: 'program' as const }, phase: 'download' as const, done: 1, total: 2 }
+  const file = {
+    package: 'demi.file',
+    name: 'program',
+    version: '0.1.0',
+    phase: 'download' as const,
+    done: 1,
+    total: 2,
+  }
   const base = productState()
   channels.last().connect(productState({
     devices: [{

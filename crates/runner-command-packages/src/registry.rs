@@ -19,7 +19,7 @@ use std::{
 };
 
 use demi_command_protocol::{
-    ConversationRequest, ConversationStatus, PackageDescriptor, Record, ServiceInfo,
+    ArtifactForm, ConversationRequest, ConversationStatus, PackageDescriptor, Record, ServiceInfo,
 };
 use demi_command_sdk::{Client, ServiceError};
 use tokio::{
@@ -30,10 +30,15 @@ use tokio_util::sync::CancellationToken;
 
 use demi_command_protocol::host_target;
 
+/// The line name of a package's executable (`native-runtime.md` § Install
+/// artifacts).
+const PROGRAM: &str = "program";
+
 use crate::{
     ArtifactResolver, NumberSource, RuntimeError,
-    cache::{ArtifactCache, ForPackage},
+    cache::{ArtifactCache, Wanted},
     installs::{Installs, InstallsReceiver},
+    invocations::{Invocations, Invoking, ServiceArtifacts},
     process::ResidentService,
 };
 
@@ -89,11 +94,13 @@ impl ServiceRegistry {
     ) -> Result<Self, RuntimeError> {
         let installs = Installs::default();
         let cache = Arc::new(ArtifactCache::new(cache, image, installs.clone()).await?);
+        let invocations = Invocations::default();
         let (requests, receiver) = mpsc::channel(REQUESTS);
         #[cfg(feature = "testing")]
         let (decisions, _) = tokio::sync::broadcast::channel(DECISIONS);
         let owner = Owner {
             cache,
+            invocations: invocations.clone(),
             cwd,
             env,
             entries: HashMap::new(),
@@ -107,7 +114,10 @@ impl ServiceRegistry {
             decisions: decisions.clone(),
         };
         Ok(Self {
-            handle: ServiceHandle { requests },
+            handle: ServiceHandle {
+                requests,
+                invocations,
+            },
             installs,
             owner: tokio::spawn(owner.run(receiver)),
             #[cfg(feature = "testing")]
@@ -186,9 +196,24 @@ struct Acquired {
 #[derive(Clone)]
 pub struct ServiceHandle {
     requests: mpsc::Sender<Request>,
+    invocations: Invocations,
 }
 
 impl ServiceHandle {
+    /// Registers `invocation`, which the caller starts in a service of
+    /// `package` for the work `resolver` locates artifacts for, until the
+    /// returned guard drops: the artifacts the program asks for during it
+    /// are located for that work (`native-runtime.md` § The artifacts
+    /// stream).
+    pub fn invoking(
+        &self,
+        invocation: &str,
+        package: &str,
+        resolver: Arc<dyn ArtifactResolver>,
+    ) -> Invoking {
+        self.invocations.register(invocation, package, resolver)
+    }
+
     /// A lease that keeps the service of `digest` resident until it drops,
     /// whether or not that service runs yet.
     pub async fn lease(&self, digest: String) -> ServiceLease {
@@ -324,6 +349,7 @@ impl Resident {
 
 struct Owner {
     cache: Arc<ArtifactCache>,
+    invocations: Invocations,
     cwd: PathBuf,
     env: BTreeMap<String, String>,
     entries: HashMap<String, Entry>,
@@ -481,23 +507,7 @@ impl Owner {
             .get(host_target())
             .ok_or(RuntimeError::CatalogMismatch)?
             .clone();
-        let mut resources = Vec::new();
-        for (name, resource) in &descriptor.resources {
-            let archive = resource.targets.get(host_target()).ok_or_else(|| {
-                RuntimeError::Unavailable(format!(
-                    "{} is unavailable on {}",
-                    resource.title,
-                    host_target()
-                ))
-            })?;
-            resources.push((name.clone(), resource.title.clone(), archive.clone()));
-        }
-        // Services share a process only when they start the same artifacts.
-        let mut digest = artifact.sha256.clone();
-        for (_, _, archive) in &resources {
-            digest.push('+');
-            digest.push_str(&archive.sha256);
-        }
+        let digest = artifact.sha256.clone();
         // The waiting caller's lease counts at once, so a start never begins
         // with nothing holding it.
         let (waiting, alive) = ServiceLease::new();
@@ -530,19 +540,19 @@ impl Owner {
         let cache = self.cache.clone();
         let cwd = self.cwd.clone();
         let env = self.env.clone();
-        let key = digest.clone();
+        let invocations = self.invocations.clone();
         self.lifecycles.spawn(async move {
             let started = Start {
                 artifact: &artifact,
-                resources: &resources,
                 descriptor: &descriptor,
+                invocations,
                 resolver: resolver.as_ref(),
                 numbers,
                 cwd: &cwd,
                 env: &env,
             };
             live(&cache, started, stop, state).await;
-            (key, generation)
+            (artifact.sha256, generation)
         });
         Ok(Acquired {
             _waiting: waiting,
@@ -790,49 +800,53 @@ impl Owner {
     }
 }
 
-/// What a service starts from: its executable, its resources (each by name
-/// and title) and its descriptor, where the artifacts come from, where its
-/// conversation numbers come from, and its working directory and
-/// environment.
+/// What a service starts from: its executable and descriptor, where the
+/// executable comes from, the invocations its program's artifacts are
+/// located for, where its conversation numbers come from, and its working
+/// directory and environment.
 struct Start<'a> {
     artifact: &'a demi_command_protocol::PackageArtifact,
-    resources: &'a [(String, String, demi_command_protocol::ResourceArtifact)],
     descriptor: &'a PackageDescriptor,
+    invocations: Invocations,
     resolver: &'a dyn ArtifactResolver,
     numbers: Arc<dyn NumberSource>,
     cwd: &'a std::path::Path,
     env: &'a BTreeMap<String, String>,
 }
 
-/// One service's life: install its executable and resources, start it,
-/// publish it ready, and publish how it ended.
+/// One service's life: install its executable, start it, publish it ready,
+/// and publish how it ended. The executable is held while the service
+/// lives, so no newer version of the package removes it.
 async fn live(
-    cache: &ArtifactCache,
+    cache: &Arc<ArtifactCache>,
     start: Start<'_>,
     stop: CancellationToken,
     state: watch::Sender<State>,
 ) {
     let descriptor = start.descriptor;
+    let _held = cache.holds().hold(&start.artifact.sha256);
     let started = async {
-        let package = ForPackage {
-            id: &descriptor.id,
-            resolver: start.resolver,
+        let wanted = Wanted {
+            package: &descriptor.id,
+            name: PROGRAM,
+            version: &descriptor.version,
+            artifact: start.artifact.clone(),
+            form: &ArtifactForm::File,
         };
-        let executable = cache.install(start.artifact, package, &stop).await?;
-        let mut resources = BTreeMap::new();
-        for (name, title, archive) in start.resources {
-            let entry = cache
-                .install_resource(title, archive, package, &stop)
-                .await?;
-            resources.insert(name.clone(), entry);
-        }
+        let executable = cache.install(&wanted, start.resolver, &stop).await?;
+        let artifacts = Arc::new(ServiceArtifacts {
+            cache: cache.clone(),
+            package: descriptor.id.clone(),
+            invocations: start.invocations,
+            held: std::sync::Mutex::default(),
+        });
         ResidentService::start(
             &executable,
-            &resources,
             descriptor,
             start.cwd,
             start.env,
             start.numbers,
+            artifacts,
             stop.clone(),
         )
         .await

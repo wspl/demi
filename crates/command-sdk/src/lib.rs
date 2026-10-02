@@ -8,6 +8,8 @@ pub mod paths;
 #[cfg(feature = "testing")]
 pub mod testing;
 
+mod artifacts;
+mod asking;
 mod client;
 mod exchange;
 mod launch;
@@ -17,10 +19,12 @@ mod stdio;
 mod stream;
 pub use stdio::serve_stdio;
 
+pub use artifacts::{ArtifactPending, Artifacts, ArtifactsAsk};
+pub use asking::{Asked, Pending, RequestStream};
 pub use client::{Client, CommandInput, CommandOutput};
 pub use exchange::{Exchange, ExchangeError, InputSource, OutputSink};
-pub use launch::{Launch, launch_arguments};
-pub use numbers::{Draw, Numbers, NumbersStream};
+pub use launch::{COMMAND_SERVICE, Launch};
+pub use numbers::{Draw, Numbers, NumbersAsk};
 pub use server::{
     ConversationContext, Handler, InvocationContext, Output, serve, serve_cancellable,
 };

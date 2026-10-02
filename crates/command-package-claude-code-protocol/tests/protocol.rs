@@ -73,13 +73,13 @@ fn replies_carry_ok_beside_the_answer() {
         status
     );
     let failed: Reply<Status> = Reply::Failed(Failure {
-        code: ErrorCode::VerificationFailed,
+        code: ErrorCode::InstallFailed,
         message: "digest differs".into(),
     });
     let printed = serde_json::to_value(&failed).unwrap();
     assert_eq!(
         printed,
-        json!({"ok": false, "code": "verification_failed", "message": "digest differs"})
+        json!({"ok": false, "code": "install_failed", "message": "digest differs"})
     );
     assert_eq!(
         serde_json::from_value::<Reply<Status>>(printed).unwrap(),

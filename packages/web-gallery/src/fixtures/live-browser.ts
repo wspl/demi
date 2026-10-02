@@ -81,10 +81,11 @@ const INSTALL_STEP_MS = 250
  * device downloads it (`native-runtime.md` § Installation progress).
  */
 const FIRST_INSTALLS: readonly PackageInstall[] = [
-  { package: 'demi.browser', artifact: { kind: 'program' }, phase: 'download', done: 0, total: 41_943_040 },
+  { package: 'demi.browser', name: 'program', version: '0.1.3', phase: 'download', done: 0, total: 41_943_040 },
   {
     package: 'demi.browser',
-    artifact: { kind: 'resource', title: 'Chrome for Testing 153.0.8010.36' },
+    name: 'Chrome for Testing',
+    version: '153.0.8010.36',
     phase: 'download',
     done: 0,
     total: 195_711_476,
@@ -400,13 +401,15 @@ export function galleryBrowserTabs(
           resolve()
           return
         }
-        const unpacking = artifact.artifact.kind === 'resource' && tenth > 10
+        // The executable is a plain file; only Chrome's archive unpacks.
+        const archive = artifact.name !== 'program'
+        const unpacking = archive && tenth > 10
         installs.value = [{
           ...artifact,
           phase: unpacking ? 'unpack' : 'download',
           done: Math.min(artifact.total, Math.round((artifact.total * tenth) / 10)),
         }]
-        if (tenth >= (artifact.artifact.kind === 'resource' ? 14 : 10)) {
+        if (tenth >= (archive ? 14 : 10)) {
           index += 1
           tenth = 0
         } else {

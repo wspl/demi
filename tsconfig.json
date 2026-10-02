@@ -19,5 +19,12 @@
     }
   },
   "include": ["packages/*/src", "scripts", "crates/command-package-browser-chrome/src/driver/capture"],
-  "exclude": ["packages/web-ui", "packages/web-gallery", "packages/web"]
+  "exclude": [
+    "packages/web-ui",
+    "packages/plugin-browser",
+    "packages/plugin-expose",
+    "packages/plugin-skills",
+    "packages/web-gallery",
+    "packages/web"
+  ]
 }

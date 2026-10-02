@@ -118,4 +118,7 @@ tokio-tungstenite = { version = "0.29", default-features = false, features = ["c
 # installs in a paired device's artifact cache.
 demi-command-package-browser-chrome = { path = "../command-package-browser-chrome", features = ["testing"] }
 demi-shared-artifacts = { path = "../shared-artifacts", features = ["testing"] }
+# The Claude Code scenarios install a scripted CLI in a Cloud runner's
+# artifact cache, as the runner installs a download.
+demi-runner-command-packages = { path = "../runner-command-packages" }
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }

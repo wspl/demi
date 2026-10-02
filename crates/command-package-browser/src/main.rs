@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 #[tokio::main]
 async fn main() {
-    let launch = demi_command_sdk::Launch::from_process();
+    demi_command_sdk::Launch::from_process();
     // Diagnostics go to standard error, which the runner drains into the
     // Host's log line by line.
     tracing_subscriber::fmt()
@@ -16,19 +16,18 @@ async fn main() {
         .without_time()
         .with_target(false)
         .init();
-    let chrome = demi_command_package_browser_chrome::driver::installation::Chrome::new(
-        launch
-            .resource(demi_command_package_browser_protocol::release::RESOURCE)
-            .map(ToOwned::to_owned),
-    );
-    let service =
-        demi_command_sdk::serve_stdio(Arc::new(demi_browser::DemiBrowser::new(chrome.clone())));
+    let browser = Arc::new(demi_browser::DemiBrowser::new());
+    let chrome = browser.chrome().clone();
+    let service = demi_command_sdk::serve_stdio(browser);
     // Profiles a service that ended without retiring its browsers left are
-    // removed beside serving (`browser.md` § Native driver).
-    let (result, ()) = tokio::join!(
-        service,
-        demi_command_package_browser_chrome::tabs::environment::sweep_orphans(&chrome)
-    );
+    // removed beside serving (`browser.md` § Native driver); a sweep still
+    // under way when serving ends is given up.
+    let sweep = demi_command_package_browser_chrome::tabs::environment::sweep_orphans(&chrome);
+    tokio::pin!(service, sweep);
+    let result = tokio::select! {
+        result = &mut service => result,
+        () = &mut sweep => service.await,
+    };
     if let Err(error) = result {
         eprintln!("demi-browser: {error}");
         std::process::exit(1);

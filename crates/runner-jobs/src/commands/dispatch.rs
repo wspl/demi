@@ -131,6 +131,13 @@ impl Dispatcher {
                     .get(&binding.descriptor_hash)
                     .ok_or_else(|| ServiceError::failed(DispatchError::MissingDescriptor))?;
                 let resolver = Arc::new(JobArtifacts::new(self.contexts.clone()));
+                // What the program asks for during the call is located for
+                // this job (`native-runtime.md` § The artifacts stream).
+                let _invoking = self.services.invoking(
+                    &invocation.request.invocation_id,
+                    &descriptor.id,
+                    resolver.clone(),
+                );
                 let mut resident = self
                     .services
                     .acquire(

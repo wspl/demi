@@ -90,12 +90,10 @@ impl ExecutionContext {
 
     /// Whether the context's manifest carries `digest` for this host.
     pub fn carries(&self, digest: &str) -> bool {
-        self.manifest.packages.values().any(|package| {
-            package
-                .targets
-                .get(host_target())
-                .is_some_and(|artifact| artifact.sha256 == digest)
-        })
+        self.manifest
+            .packages
+            .values()
+            .any(|package| package.carries(host_target(), digest).is_some())
     }
 }
 
