@@ -71,11 +71,12 @@ const anatomy: [string, string][] = [
 const account = { name: 'Zan' }
 const full = createSettingsState()
 // The plugins' sections reach the fixture's skills plugin, and show while the
-// fixture's Plugins page has their plugin on, as the product's do.
+// fixture's Plugins page has their plugin on, as the product's do; the
+// fixture's plugins serve every method and stream.
 providePluginHost(galleryPluginHost({ skills: skillsPlugin(full.skills) }))
 const sections = computed(() =>
-  withPluginSections(SETTINGS_SECTIONS, GALLERY_PLUGIN_PAGES, (plugin) =>
-    full.plugins.some((entry) => entry.id === plugin && entry.enabled),
+  withPluginSections(SETTINGS_SECTIONS, GALLERY_PLUGIN_PAGES, (page) =>
+    full.plugins.some((plugin) => plugin.id === page.plugin && plugin.enabled),
   ),
 )
 const fullTab = ref<SettingsTab>('models')

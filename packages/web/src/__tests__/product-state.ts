@@ -31,7 +31,9 @@ export function productState(parts: Partial<z.input<typeof productStateSchema>> 
       volumes: null,
       limits: { systemBytes: 16 * 1024 ** 3, homeBytes: 32 * 1024 ** 3 },
     },
-    plugins: [{ id: 'expose', name: 'Expose', description: 'Exposes a Host port.', enabled: true }],
+    plugins: [
+      { id: 'expose', name: 'Expose', description: 'Exposes a Host port.', enabled: true, methods: ['renew', 'remove'], streams: [] },
+    ],
     pluginStates: { expose: { available: false, exposes: [] } },
     ...parts,
   })
