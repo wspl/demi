@@ -177,6 +177,9 @@ schema file keeps imported types, integer widths, pointer presence and
 custom rules in the one definition the Go compiler checks. Declaration
 loading must work without existing generated files: source types and rule
 signatures cannot depend on generated method bodies.
+Generation hides only the current packages’ own generated files, loading
+selected dependencies first into an in-memory overlay and other dependencies
+from their committed generated files.
 
 Each contract package commits one generated file, `contract_gen.go`, beside
 its declarations. It contains `Decode<Type>([]byte) (<Type>, error)` for

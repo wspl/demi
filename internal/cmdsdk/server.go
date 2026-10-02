@@ -2,7 +2,6 @@ package cmdsdk
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -94,7 +93,7 @@ func serve[M commandwire.Metadata](ctx context.Context, conn net.Conn, h Handler
 	if err := info.Validate(); err != nil {
 		return errors.Join(err, conn.Close())
 	}
-	catalog, err := json.Marshal(info)
+	catalog, err := info.MarshalJSON()
 	if err != nil {
 		return errors.Join(err, conn.Close())
 	}

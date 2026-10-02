@@ -1,0 +1,393 @@
+//nolint:staticcheck // Command error messages are copied verbatim from the Rust service.
+package file
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"slices"
+	"strconv"
+	"strings"
+	"unicode/utf8"
+
+	"github.com/wspl/demi/internal/cmdsdk"
+)
+
+type filePatch struct {
+	old, new *string
+	hunks    []hunk
+}
+type hunk struct {
+	start, oldCount, newCount uint64
+	lines                     []patchLine
+}
+type patchLine struct {
+	kind    byte
+	text    string
+	newline bool
+}
+type change struct {
+	path          string
+	before, after []byte
+	permissions   os.FileMode
+}
+
+// applyPatch plans all file changes before publishing any of them.
+func applyPatch(ctx context.Context, cwd, diff string, recording *cmdsdk.Recording) (string, error) {
+	patches, err := parsePatch(ctx, diff)
+	if err != nil {
+		return "", err
+	}
+	var changes []change
+	for _, patch := range patches {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		var oldPath, newPath string
+		if patch.old != nil {
+			oldPath, err = cmdsdk.Resolve(cwd, *patch.old)
+			if err != nil {
+				return "", err
+			}
+		}
+		if patch.new != nil {
+			newPath, err = cmdsdk.Resolve(cwd, *patch.new)
+			if err != nil {
+				return "", err
+			}
+		}
+		var before []byte
+		if oldPath != "" {
+			before, err = os.ReadFile(oldPath)
+			if err != nil {
+				return "", err
+			}
+		}
+		if err := patchText(before); err != nil {
+			return "", err
+		}
+		updated, err := applyHunks(ctx, string(before), patch.hunks)
+		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return "", err
+			}
+			label := patch.old
+			if label == nil {
+				label = patch.new
+			}
+			return "", fmt.Errorf("Patch does not apply to %s: %w", *label, err)
+		}
+		if newPath == "" && updated != "" {
+			return "", errors.New("Delete patch leaves file content")
+		}
+		samePath := patchPathKey(newPath) == patchPathKey(oldPath)
+		if !samePath && newPath != "" {
+			if _, err := os.Lstat(newPath); err == nil {
+				return "", errors.New("Patch destination already exists")
+			}
+		}
+		if newPath != "" {
+			c := change{path: newPath, after: []byte(updated)}
+			if samePath {
+				c.before = before
+				info, err := os.Stat(newPath)
+				if err != nil {
+					return "", err
+				}
+				c.permissions = info.Mode()
+			}
+			changes = append(changes, c)
+		}
+		if !samePath && oldPath != "" {
+			info, err := os.Stat(oldPath)
+			if err != nil {
+				return "", err
+			}
+			changes = append(changes, change{path: oldPath, before: before, permissions: info.Mode()})
+		}
+	}
+	touched := make(map[string]bool)
+	for _, c := range changes {
+		key := patchPathKey(c.path)
+		if touched[key] {
+			return "", errors.New("Patch changes the same path more than once")
+		}
+		touched[key] = true
+	}
+	changes = slices.DeleteFunc(changes, func(c change) bool { return (c.before == nil) == (c.after == nil) && bytes.Equal(c.before, c.after) })
+	if recording != nil {
+		for _, c := range changes {
+			recording.Track(ctx, c.path)
+		}
+	}
+	if err := commitChanges(ctx, changes, recording); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("Patched %d file(s)\n", len(patches)), nil
+}
+
+// commitChanges restores earlier file publications if any later mutation fails.
+func commitChanges(ctx context.Context, changes []change, recording *cmdsdk.Recording) error {
+	for index, c := range changes {
+		err := ctx.Err()
+		if err == nil {
+			if c.after == nil {
+				err = os.Remove(c.path)
+			} else {
+				err = atomicWrite(ctx, c.path, c.after, c.before == nil)
+			}
+		}
+		if err == nil {
+			continue
+		}
+		var rollbacks []error
+		for i := index - 1; i >= 0; i-- {
+			prior := changes[i]
+			var rollback error
+			if prior.before == nil {
+				rollback = os.Remove(prior.path)
+			} else {
+				rollback = atomicWrite(context.WithoutCancel(ctx), prior.path, prior.before, prior.after == nil)
+				if rollback == nil {
+					rollback = os.Chmod(prior.path, prior.permissions)
+				}
+			}
+			if rollback != nil {
+				rollbacks = append(rollbacks, rollback)
+			} else if recording != nil {
+				recording.Restored(prior.path)
+			}
+		}
+		if len(rollbacks) != 0 {
+			return &rollbackError{cause: err, failures: rollbacks}
+		}
+		return err
+	}
+	return nil
+}
+
+type rollbackError struct {
+	cause    error
+	failures []error
+}
+
+func (e *rollbackError) Error() string {
+	message := e.cause.Error()
+	for _, err := range e.failures {
+		message += "\nRollback failed: " + err.Error()
+	}
+	return message
+}
+
+// A failed rollback is a command failure even if cancellation triggered it.
+func (e *rollbackError) Unwrap() []error { return e.failures }
+
+func applyHunks(ctx context.Context, original string, hunks []hunk) (string, error) {
+	lines := strings.SplitAfter(original, "\n")
+	if lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	offset := int64(0)
+	for _, h := range hunks {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		originalStart := h.start
+		if h.oldCount != 0 && originalStart != 0 {
+			originalStart--
+		}
+		if originalStart > uint64(^uint64(0)>>1) {
+			return "", errors.New("Patch hunk position is out of range")
+		}
+		start := int64(originalStart) + offset
+		if offset > 0 && start < 0 {
+			return "", errors.New("Patch hunk position is out of range")
+		}
+		if start < 0 {
+			return "", errors.New("Patch hunk starts before file")
+		}
+		var old, updated []string
+		for _, line := range h.lines {
+			text := line.text
+			if line.newline {
+				text += "\n"
+			}
+			if line.kind != '+' {
+				old = append(old, text)
+			}
+			if line.kind != '-' {
+				updated = append(updated, text)
+			}
+		}
+		if uint64(len(old)) != h.oldCount || uint64(len(updated)) != h.newCount {
+			return "", errors.New("Patch hunk line counts do not match header")
+		}
+		if start > int64(len(lines)) || int64(len(old)) > int64(len(lines))-start || !slices.Equal(lines[int(start):int(start)+len(old)], old) {
+			return "", fmt.Errorf("Patch does not apply at line %d", h.start)
+		}
+		lines = slices.Replace(lines, int(start), int(start)+len(old), updated...)
+		offset += int64(len(updated)) - int64(len(old))
+	}
+	return strings.Join(lines, ""), nil
+}
+
+var hunkHeader = regexp.MustCompile(`^@@ -(\p{Nd}+)(?:,(\p{Nd}+))? \+\p{Nd}+(?:,(\p{Nd}+))? @@`)
+var dateSuffix = regexp.MustCompile(`[\p{Z}\t\n\v\f\r\x{0085}]+\p{Nd}{4}-\p{Nd}{2}-\p{Nd}{2}(?:[ T]\p{Nd}{2}:\p{Nd}{2}:\p{Nd}{2}(?:\.\p{Nd}+)?(?:[\p{Z}\t\n\v\f\r\x{0085}]+[+-]\p{Nd}{4})?)?$`)
+
+func parsePatch(ctx context.Context, diff string) ([]filePatch, error) {
+	var patches []filePatch
+	var pending *filePatch
+	for _, line := range strings.Split(diff, "\n") {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		var current *hunk
+		if len(patches) != 0 {
+			hunks := patches[len(patches)-1].hunks
+			if len(hunks) != 0 {
+				current = &hunks[len(hunks)-1]
+			}
+		}
+		if pending == nil && current != nil && (strings.HasPrefix(line, "--- ") || strings.HasPrefix(line, "+++ ")) {
+			var old, newCount uint64
+			for _, l := range current.lines {
+				if l.kind != '+' {
+					old++
+				}
+				if l.kind != '-' {
+					newCount++
+				}
+			}
+			if old < current.oldCount || newCount < current.newCount {
+				current.lines = append(current.lines, patchLine{line[0], line[1:], true})
+				continue
+			}
+		}
+		switch {
+		case strings.HasPrefix(line, "--- "):
+			pending = &filePatch{old: parsePath(line[4:])}
+		case strings.HasPrefix(line, "+++ "):
+			if pending == nil {
+				return nil, errors.New("New header precedes old header")
+			}
+			pending.new = parsePath(line[4:])
+			patches = append(patches, *pending)
+			pending = nil
+		case strings.HasPrefix(line, "@@ "):
+			header := hunkHeader.FindStringSubmatch(line)
+			if header == nil {
+				return nil, errors.New("Invalid patch hunk header")
+			}
+			if len(patches) == 0 {
+				return nil, errors.New("Hunk before file header")
+			}
+			start, err := strconv.ParseUint(header[1], 10, 64)
+			if err != nil {
+				return nil, errors.New("Invalid hunk start")
+			}
+			counts := [2]uint64{1, 1}
+			for i := range counts {
+				if header[i+2] != "" {
+					counts[i], err = strconv.ParseUint(header[i+2], 10, 64)
+					if err != nil {
+						return nil, errors.New("Invalid hunk count")
+					}
+				}
+			}
+			p := &patches[len(patches)-1]
+			p.hunks = append(p.hunks, hunk{start: start, oldCount: counts[0], newCount: counts[1]})
+		case current != nil:
+			switch {
+			case len(line) > 0 && strings.ContainsRune(" -+", rune(line[0])):
+				current.lines = append(current.lines, patchLine{line[0], line[1:], true})
+			case line == `\ No newline at end of file`:
+				if len(current.lines) == 0 {
+					return nil, errors.New("Newline marker without patch line")
+				}
+				current.lines[len(current.lines)-1].newline = false
+			case line == "" || strings.HasPrefix(line, "diff ") || strings.HasPrefix(line, "index "):
+			default:
+				return nil, fmt.Errorf("Invalid patch line: %s", line)
+			}
+		}
+	}
+	if len(patches) == 0 || pending != nil {
+		return nil, errors.New("Invalid patch: missing file headers or hunks")
+	}
+	for _, p := range patches {
+		if len(p.hunks) == 0 || (p.old == nil && p.new == nil) {
+			return nil, errors.New("Invalid patch: missing file headers or hunks")
+		}
+	}
+	return patches, nil
+}
+
+// parsePath removes unified-diff prefixes and timestamps from a file header.
+func parsePath(value string) *string {
+	value = strings.TrimSpace(value)
+	value, _, _ = strings.Cut(value, "\t")
+	value = dateSuffix.ReplaceAllString(value, "")
+	if value == "/dev/null" {
+		return nil
+	}
+	if strings.HasPrefix(value, "a/") || strings.HasPrefix(value, "b/") {
+		value = value[2:]
+	}
+	return &value
+}
+
+// patchText validates a patch source and preserves Rust's UTF-8 diagnostic.
+func patchText(data []byte) error {
+	for index := 0; index < len(data); {
+		r, size := utf8.DecodeRune(data[index:])
+		if r != utf8.RuneError || size != 1 {
+			index += size
+			continue
+		}
+		if !utf8.FullRune(data[index:]) {
+			return fmt.Errorf("incomplete utf-8 byte sequence from index %d", index)
+		}
+		invalid := 1
+		first := data[index]
+		if first >= 0xc2 && first <= 0xf4 && index+1 < len(data) {
+			second := data[index+1]
+			validSecond := second >= 0x80 && second <= 0xbf
+			switch first {
+			case 0xe0:
+				validSecond = second >= 0xa0 && second <= 0xbf
+			case 0xed:
+				validSecond = second >= 0x80 && second <= 0x9f
+			case 0xf0:
+				validSecond = second >= 0x90 && second <= 0xbf
+			case 0xf4:
+				validSecond = second >= 0x80 && second <= 0x8f
+			}
+			if validSecond {
+				invalid = 2
+				if first >= 0xf0 && index+2 < len(data) && data[index+2] >= 0x80 && data[index+2] <= 0xbf {
+					invalid = 3
+				}
+			}
+		}
+		return fmt.Errorf("invalid utf-8 sequence of %d bytes from index %d", invalid, index)
+	}
+	return nil
+}
+
+// patchPathKey compares patch destinations by components, retaining symlink-sensitive '..'.
+// filepath.Clean cannot do this because it collapses parent components.
+func patchPathKey(path string) string {
+	volume := filepath.VolumeName(path)
+	rest := path[len(volume):]
+	prefix := volume
+	if len(rest) > 0 && os.IsPathSeparator(rest[0]) {
+		prefix += "/"
+	}
+	components := strings.FieldsFunc(rest, func(r rune) bool { return r < 128 && os.IsPathSeparator(uint8(r)) })
+	components = slices.DeleteFunc(components, func(component string) bool { return component == "." })
+	return prefix + strings.Join(components, "/")
+}

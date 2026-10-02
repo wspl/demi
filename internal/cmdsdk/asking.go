@@ -148,7 +148,7 @@ func (a *Artifacts) Installed(ctx context.Context, name string) ([]commandwire.I
 	return *r.Installed, nil
 }
 
-type askCodec[Q, R, A any] struct {
+type askCodec[Q json.Marshaler, R any, A json.Marshaler] struct {
 	name             string
 	rejectDuplicates bool
 	request          func([]byte) (Q, error)
@@ -218,7 +218,7 @@ func relayArtifacts(ctx, finish context.Context, i *Input, o *Output, a *Artifac
 }
 
 // relay correlates requests on one service side stream with their answers.
-func relay[Q, R, A any](ctx, finish context.Context, i *Input, o *Output, source *asker[Q, R], requests <-chan Pending[Q, R], codec askCodec[Q, R, A]) (commandwire.Completion, error) {
+func relay[Q json.Marshaler, R any, A json.Marshaler](ctx, finish context.Context, i *Input, o *Output, source *asker[Q, R], requests <-chan Pending[Q, R], codec askCodec[Q, R, A]) (commandwire.Completion, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	defer source.close()
@@ -243,7 +243,7 @@ func relay[Q, R, A any](ctx, finish context.Context, i *Input, o *Output, source
 				mu.Lock()
 				waiting[id] = p
 				mu.Unlock()
-				b, err := json.Marshal(codec.identify(p.Request, id))
+				b, err := codec.identify(p.Request, id).MarshalJSON()
 				if err == nil {
 					err = o.Stdout(ctx, b)
 				}
@@ -322,7 +322,7 @@ func (s *RequestStream) AnswerNumbers(ctx context.Context, f func(context.Contex
 func (s *RequestStream) AnswerArtifacts(ctx context.Context, f func(context.Context, commandwire.ArtifactRequest) (commandwire.ArtifactAnswer, error)) error {
 	return answerStream(ctx, s, artifactCodec, f)
 }
-func answerStream[Q, R, A any](ctx context.Context, s *RequestStream, codec askCodec[Q, R, A], f func(context.Context, Q) (R, error)) error {
+func answerStream[Q json.Marshaler, R any, A json.Marshaler](ctx context.Context, s *RequestStream, codec askCodec[Q, R, A], f func(context.Context, Q) (R, error)) error {
 	ctx, cancel := context.WithCancel(ctx)
 	var workers sync.WaitGroup
 	defer func() {
@@ -362,7 +362,7 @@ func answerStream[Q, R, A any](ctx context.Context, s *RequestStream, codec askC
 	var queued []response
 	for {
 		for pulls > 0 && len(queued) > 0 {
-			b, err := json.Marshal(queued[0].value)
+			b, err := queued[0].value.MarshalJSON()
 			if err != nil {
 				return err
 			}
