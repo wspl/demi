@@ -12,7 +12,7 @@ import type { ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePassw
 import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
 import { pluginSettingsPage, withPluginSections } from '@demicodes/web-ui/plugins/slots'
 import { PLUGIN_PAGES } from '../plugins/pages'
-import { pageShown } from '../plugins/host'
+import { pluginEnabled } from '../plugins/host'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
@@ -42,8 +42,8 @@ const conversations = useConversations()
 const router = useRouter()
 const lifetime = new AbortController()
 const sections = computed(() =>
-  withPluginSections(SETTINGS_SECTIONS, PLUGIN_PAGES, (page) =>
-    pageShown(product.snapshot, page),
+  withPluginSections(SETTINGS_SECTIONS, PLUGIN_PAGES, (plugin) =>
+    pluginEnabled(product.snapshot, plugin),
   ).map((group) => ({
     ...group,
     items: group.items.filter(

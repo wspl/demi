@@ -8,6 +8,5 @@ export * from './generated/plugin'
 
 export const exposePage: PluginPage = {
   plugin: 'expose',
-  uses: { methods: ['renew', 'remove'] },
   headerTool: ExposeTool,
 }

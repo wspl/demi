@@ -15,10 +15,6 @@ pub struct PluginEntry {
     pub description: String,
     /// Whether the user has it on.
     pub enabled: bool,
-    /// The names of its page methods the backend serves.
-    pub methods: Vec<String>,
-    /// The names of its user streams the backend serves.
-    pub streams: Vec<String>,
 }
 
 /// `PUT /plugins/:plugin { enabled }`.
