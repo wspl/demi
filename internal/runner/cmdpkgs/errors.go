@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"runtime"
 	"strings"
 	"unicode"
 
@@ -110,7 +109,7 @@ const (
 func (r ExitReason) String() string {
 	switch r.Kind {
 	case ProcessExited:
-		return "exited with " + serviceExitStatus(r.State, runtime.GOOS)
+		return "exited with " + serviceExitStatus(r.State)
 	case ProtocolBroken:
 		return fmt.Sprintf("broke the protocol (%s) and was stopped", r.Detail)
 	case StartupDeadline:
