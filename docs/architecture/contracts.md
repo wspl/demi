@@ -88,11 +88,15 @@ never relax them.
 | `format email`, `format http-url`, `format trimmed` | Named string type; email, HTTP(S) URL or trimmed-text behavior in the supported subset below. |
 | `table` | Package-level variable of a slice of structs or scalars; a constant table emitted with its generated lookups into `tables.ts`, such as the file-type table. Its TypeScript name is SCREAMING_SNAKE case (`PreviewTypes` becomes `PREVIEW_TYPES`). |
 
-A contract type is a type reached from a `root` marker, including the root
-itself. Unreached types are left alone, even in a package that also holds
-runtime types. `schema` and `msgpack` select generated capabilities; they do
-not make an unreached type a boundary. Roots are markers on types, never a
-second registry in the generator.
+A contract type is reached from a `root` or `msgpack` marker, including the
+marked type itself. A standalone `msgpack` marker is a MessagePack root.
+JSON and MessagePack reachability are tracked independently: types reached
+from a `root` get JSON codecs, types reached from a `msgpack` root get
+MessagePack codecs, and types reached from both get both. MessagePack-only
+types still receive validation and union seals, but no JSON codecs or JSON
+union holders. Unreached types are left alone. `schema` selects schema output
+for a retained type; it does not make an unreached type a boundary. Roots are
+markers on types, never a second registry in the generator.
 
 Maps may use `string` or a defined string type such as `core.BlockID` as keys.
 Generated JSON and MessagePack validation runs the key type's own rules on

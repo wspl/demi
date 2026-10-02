@@ -83,8 +83,10 @@
 // Decoders additionally check JSON tokens, Unicode, Go widths and canonical
 // timestamps; a schema's format annotation does not carry those checks.
 //
-// +demi:msgpack enables generated MessagePack codecs throughout the reachable
-// shape. They use JSON field names and declaration order, compact integers,
+// +demi:msgpack is a root enabling generated MessagePack codecs throughout the reachable
+// shape. JSON reachability starts only at +demi:root; MessagePack-only types
+// get validation and seals but no JSON codecs. Types reached by both get both.
+// MessagePack codecs use JSON field names and declaration order, compact integers,
 // binary byte slices, sorted string records and timestamp extensions. JSON and
 // MessagePack share presence, nullability and validation rules. MessagePack's
 // full 64-bit integer domain remains available to non-web roots. On a union,
