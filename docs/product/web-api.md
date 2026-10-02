@@ -43,7 +43,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Conversation files | `GET/POST /conversations/:id/fs`, `DELETE /conversations/:id/fs?path=...`, `GET /conversations/:id/fs/file?path=...`, `GET /conversations/:id/fs/raw?path=...&version=...&download=true\|false`, `PUT /conversations/:id/fs/raw?path=...&replace=true\|false` with raw bytes, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
 | Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...`, `GET /conversations/:id/changes/raw?path=...&download=true\|false` |
 | User streams | `WS /conversations/:id/streams/:name` opens a declared [user stream](#user-streams) |
-| Work panel | `GET/PUT /conversations/:id/panel` reads and saves the [work panel's state](#work-panel-state) |
+| Work panel | `GET /conversations/:id/panel` reads the [work panel's tabs](#work-panel-state); `POST /conversations/:id/panel/tabs`, `PATCH` and `DELETE /conversations/:id/panel/tabs/:tab` and `POST /conversations/:id/panel/tabs/:tab/move` change them |
 | Conversation draft | `GET/PUT /conversations/:id/draft` reads and saves the [draft](#conversation-drafts); `POST /conversations/:id/draft/replaced { action, revision }` restores or dismisses the version a save replaced |
 | Device log | `GET /devices/:id/log?since=<cursor>&limit=<n>&source=<source>` reads the [Host's log](../execution/runner.md#host-log) |
 | Sidebar | `POST /sidebar/reorder { kind, id, beforeId }` |
@@ -304,25 +304,54 @@ bytes. It closes the socket when the stream ends, with a code and a reason:
 
 ## Work panel state
 
-The [work panel](web-application.md#work-panel) saves one document per
-conversation: `{ selection, tabs: [{ id, kind, data }] }`. `selection` is a
-tab's id, a pinned kind's id such as `"change"`, or null; `tabs` is in the
-user's order. The backend
-stores the document and does not interpret it: `kind` and `data` mean
-something only to the page, which validates each tab's `data` against its
-kind's schema when it reads the document. The backend checks the shape above,
-at most 64 tabs, and at most 64 KiB in all.
+The backend keeps the [work panel](web-application.md#work-panel)'s tabs of
+each conversation: `{ revision, tabs: [{ id, kind, data }] }`, in order.
+`revision` counts the changes, 0 before the first. The backend does not
+interpret `kind` and `data`: they mean something to the page, which validates
+each tab's `data` against its kind's schema when it reads the panel, and to
+the plugin that owns the kind ([Panel kinds](../architecture/plugins.md#panel-kinds)).
+The selection is not part of it: each page keeps its own.
 
-`GET /api/conversations/:id/panel` returns the document, or the empty one,
-`{ selection: null, tabs: [] }`, for a conversation that never saved.
-`PUT` replaces it and answers 204. The page applies every change to itself
-first and then saves the whole document, one save at a time so that the
-latest is the one that stays. A page reads a conversation's document once:
-from then on its own state is the newest there is, and reading again could
-only bring back something older. Two pages open on one conversation each keep
-their own view of it, and the last to save decides what the next page reads.
-Archived conversations allow the read and refuse the save with 409
-`conversation_archived`.
+For example, a page creates a browser tab, and the browser plugin binds it:
+
+```text
+POST  .../panel/tabs        { id: "a1", kind: "browser", data: { url: "about:blank" } }  -> { revision: 4 }
+      (the plugin)          update a1 with { tab: "t3" }                                  -> revision 5
+GET   .../panel             -> { revision: 5, tabs: [{ id: "a1", kind: "browser",
+                                                       data: { url: "about:blank", tab: "t3" } }] }
+```
+
+| Route | Body | Does |
+| --- | --- | --- |
+| `GET /api/conversations/:id/panel` | None | Returns the panel; `{ revision: 0, tabs: [] }` for a conversation never changed |
+| `POST /api/conversations/:id/panel/tabs` | `{ id, kind, data, index? }` | Creates the tab at `index`, after the others without one |
+| `PATCH /api/conversations/:id/panel/tabs/:tab` | `{ data }`, an object | Sets each of its fields in the tab's `data`, removing those that are null, and leaves the other fields |
+| `DELETE /api/conversations/:id/panel/tabs/:tab` | None | Removes the tab |
+| `POST /api/conversations/:id/panel/tabs/:tab/move` | `{ index }` | Moves the tab to `index` among the others |
+
+Each change answers `{ revision }`: the panel's revision once the change is
+in it. A change that has nothing to do answers the current revision and
+changes nothing: an update, move or removal of a tab the panel no longer has,
+and a create of an id the panel has, or had. **A tab's id is used once per
+conversation.** The page makes a new one for each tab it creates, so sending a
+create again after a lost answer creates nothing more, and a create that
+arrives after the tab's removal brings nothing back. A plugin derives the ids
+of its tabs from what they show, such as `browser-t7` for the browser's tab
+`t7`, so it can add a tab for each such thing and none again once its user
+removed it. An id is 1 to 64 characters.
+
+Every change marks the conversation's summary, whose `panelRevision` is the
+panel's revision, so every page that shows the conversation reads the panel
+when the revision is higher than its own
+([Page synchronization](web-application.md#page-synchronization)). The backend
+applies the changes of a conversation one at a time, the page's and the
+plugin's alike, so `revision` orders them all.
+
+A panel holds at most 64 tabs and 64 KiB of `data` in all: a create past
+either answers 409 `panel_full`, and an update past the size 413
+`too_large`. A create of a `kind` no plugin the user has on declares answers
+400 `unknown_panel_kind`. Archived conversations allow the read and refuse
+every change with 409 `conversation_archived`.
 
 ## Conversation drafts
 
@@ -750,7 +779,9 @@ a reload would change them ([Reload](#a-users-plugins)). `draftRevision` is
 the revision of the conversation's
 [draft](#conversation-drafts), 0 before its first save: the page reads the
 draft itself only when this number is higher than the revision it holds, so a
-summary carries no draft's text. `pluginRevisions` does the same for each
+summary carries no draft's text. `panelRevision` is the revision of the
+conversation's [work panel](#work-panel-state), 0 before its first change,
+read the same way. `pluginRevisions` does the same for each
 plugin's [conversation state](#conversation-state-of-plugins), as
 `{ plugin, revision }` for every plugin that declares one, in registration
 order, so turning a plugin on or off changes no summary. `workingTreeRevision`
