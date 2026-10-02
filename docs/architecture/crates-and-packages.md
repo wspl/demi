@@ -1968,7 +1968,7 @@ internal/cmdpkg/file/fileop -> internal/core, internal/contract
 internal/cmdpkg/browser/browserop -> internal/core, internal/contract
 internal/cmdpkg/claudecode/claudecodeop -> internal/contract
 internal/cmdsdk -> internal/artifacts, internal/commandwire
-internal/cmdpkg/file -> internal/artifacts, internal/commandwire, internal/cmdsdk, internal/core, internal/cmdpkg/file/fileop, internal/gates
+internal/cmdpkg/file -> internal/artifacts, internal/commandwire, internal/cmdsdk, internal/core, internal/cmdpkg/file/fileop, internal/gates, internal/contract
 internal/cmdpkg/browser -> internal/cmdpkg/browser/chrome/cdp, internal/cmdpkg/browser/chrome/tabs, internal/cmdpkg/browser/chrome/page, internal/cmdpkg/browser/chrome/live, internal/cmdpkg/browser/browserop, internal/commandwire, internal/cmdsdk
 internal/cmdpkg/browser/chrome/cdp -> internal/cmdpkg/browser/browserop, internal/commandwire, internal/cmdsdk, internal/artifacts, internal/core
 internal/cmdpkg/browser/chrome/tabs -> internal/cmdpkg/browser/browserop, internal/commandwire, internal/cmdsdk, internal/artifacts, internal/core, internal/cmdpkg/browser/chrome/cdp
