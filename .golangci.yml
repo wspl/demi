@@ -1,0 +1,17 @@
+version: "2"
+linters:
+  default: none
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - ineffassign
+    - unused
+    - revive
+  settings:
+    revive:
+      enable-default-rules: true
+formatters:
+  enable:
+    - gofmt
+    - goimports

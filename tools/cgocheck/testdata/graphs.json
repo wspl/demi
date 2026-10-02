@@ -1,0 +1,10 @@
+[
+ {"name":"pure", "graph":"{\"ImportPath\":\"example/program\"}", "want":""},
+ {"name":"cgo", "graph":"{\"ImportPath\":\"example/native\",\"CgoFiles\":[\"native.go\"]}", "want":"cgo files"},
+ {"name":"load error", "graph":"{\"ImportPath\":\"example/broken\",\"Error\":{\"Err\":\"fixture load failure\"}}", "want":"fixture load failure"},
+ {"name":"dependency error", "graph":"{\"ImportPath\":\"example/broken\",\"DepsErrors\":[{\"Err\":\"fixture dependency failure\"}]}", "want":"fixture dependency failure"},
+ {"name":"incomplete", "graph":"{\"ImportPath\":\"example/broken\",\"Incomplete\":true}", "want":"incomplete"},
+ {"name":"empty", "graph":"", "want":"empty"},
+ {"name":"missing path", "graph":"{}", "want":"no import path"},
+ {"name":"malformed", "graph":"{", "want":"decode"}
+]
