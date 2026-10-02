@@ -15,8 +15,10 @@ const props = withDefaults(
   defineProps<{
     files: ChangeFile[]
     maxRows?: number
+    /** A pill opens its file's edit; otherwise the pills only name the files. */
+    selectable?: boolean
   }>(),
-  { maxRows: 3 },
+  { maxRows: 3, selectable: true },
 )
 
 const emit = defineEmits<{ select: [path: string] }>()
@@ -88,14 +90,16 @@ watch([() => props.files, expanded], () => { void measure() })
     ref="container"
     class="flex min-w-0 flex-wrap items-center gap-1"
   >
-    <button
-      type="button"
+    <component
+      :is="selectable ? 'button' : 'span'"
+      :type="selectable ? 'button' : undefined"
       v-for="(file, index) in files"
       v-show="index < visibleCount"
       :key="file.path"
       ref="pillEls"
-      class="btn inline-flex h-[22px] max-w-64 select-none items-center gap-1.5 rounded-full bg-[var(--btn-bg)] pl-1.5 pr-2 text-xs leading-4 text-fg-body shadow-[var(--shadow-btn)]"
-      @click="emit('select', file.path)"
+      class="inline-flex h-[22px] max-w-64 select-none items-center gap-1.5 rounded-full bg-[var(--btn-bg)] pl-1.5 pr-2 text-xs leading-4 text-fg-body shadow-[var(--shadow-btn)]"
+      :class="selectable ? 'btn' : ''"
+      @click="selectable && emit('select', file.path)"
       :title="file.from ? `${file.from} → ${file.path}` : file.path"
     >
       <span class="relative inline-flex shrink-0">
@@ -113,7 +117,7 @@ watch([() => props.files, expanded], () => { void measure() })
           <span v-if="file.removed > 0" class="text-on-danger">−{{ file.removed }}</span>
         </span>
       </span>
-    </button>
+    </component>
     <button
       v-if="hidden > 0 || expanded"
       ref="moreEl"

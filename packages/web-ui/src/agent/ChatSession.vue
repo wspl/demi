@@ -77,7 +77,7 @@ const emit = defineEmits<{
   'update:messageEdit': [state: MessageEditState | null]
   saveScroll: [id: string, state: PersistedScrollState | null]
 }>()
-provideEditSelection((selection) => props.selectEdit?.(selection))
+provideEditSelection(() => props.selectEdit)
 // A running call shows its command's output under it; once the call
 // returned, a command that still runs is the dock's (`runtime.md`
 // § Rendering boundary).

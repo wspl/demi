@@ -18,7 +18,7 @@ pub use manifest::{
     Commands, DEMI_ROOT, DEMI_SUMMARY, EXECUTION_SOURCE, Follows, Manifest, Method, Page,
     Placement, PluginId, PluginIdError, Scope, Stream,
 };
-pub use plugin::{CommandPlugin, Plugin, PluginFactory, PortHandled};
+pub use plugin::{CommandPlugin, NoRequests, Plugin, PluginFactory, PortHandled};
 pub use port::{
     CallKind, ConversationHost, DirectoryFile, DirectoryPath, EntryKind, ExposeList, ExposeRecord,
     ExposeRefusal, HostDirectory, HostEntry, HostFile, HostRead, HostRole, PluginPort,

@@ -41,8 +41,37 @@
         "typescript": "^6.0.3",
       },
     },
+    "packages/plugin-changes": {
+      "name": "@demicodes/plugin-changes",
+      "version": "0.0.0",
+      "dependencies": {
+        "@demicodes/plugin-sdk": "workspace:^",
+        "@lucide/vue": "^1.40.0",
+        "@vueuse/core": "^14.3.0",
+        "vue": "^3.5.38",
+        "zod": "^4.0.0",
+      },
+      "devDependencies": {
+        "@vue/tsconfig": "^0.9.1",
+        "typescript": "^6.0.3",
+      },
+    },
     "packages/plugin-expose": {
       "name": "@demicodes/plugin-expose",
+      "version": "0.0.0",
+      "dependencies": {
+        "@demicodes/plugin-sdk": "workspace:^",
+        "@lucide/vue": "^1.40.0",
+        "vue": "^3.5.38",
+        "zod": "^4.0.0",
+      },
+      "devDependencies": {
+        "@vue/tsconfig": "^0.9.1",
+        "typescript": "^6.0.3",
+      },
+    },
+    "packages/plugin-file-browser": {
+      "name": "@demicodes/plugin-file-browser",
       "version": "0.0.0",
       "dependencies": {
         "@demicodes/plugin-sdk": "workspace:^",
@@ -97,7 +126,9 @@
       "version": "0.24.0",
       "dependencies": {
         "@demicodes/plugin-browser": "workspace:^",
+        "@demicodes/plugin-changes": "workspace:^",
         "@demicodes/plugin-expose": "workspace:^",
+        "@demicodes/plugin-file-browser": "workspace:^",
         "@demicodes/plugin-sdk": "workspace:^",
         "@demicodes/plugin-skills": "workspace:^",
         "@demicodes/protocol": "workspace:^",
@@ -123,7 +154,9 @@
       "version": "0.24.0",
       "dependencies": {
         "@demicodes/plugin-browser": "workspace:^",
+        "@demicodes/plugin-changes": "workspace:^",
         "@demicodes/plugin-expose": "workspace:^",
+        "@demicodes/plugin-file-browser": "workspace:^",
         "@demicodes/plugin-sdk": "workspace:^",
         "@demicodes/plugin-skills": "workspace:^",
         "@demicodes/protocol": "workspace:^",
@@ -338,7 +371,11 @@
 
     "@demicodes/plugin-browser": ["@demicodes/plugin-browser@workspace:packages/plugin-browser"],
 
+    "@demicodes/plugin-changes": ["@demicodes/plugin-changes@workspace:packages/plugin-changes"],
+
     "@demicodes/plugin-expose": ["@demicodes/plugin-expose@workspace:packages/plugin-expose"],
+
+    "@demicodes/plugin-file-browser": ["@demicodes/plugin-file-browser@workspace:packages/plugin-file-browser"],
 
     "@demicodes/plugin-sdk": ["@demicodes/plugin-sdk@workspace:packages/plugin-sdk"],
 
