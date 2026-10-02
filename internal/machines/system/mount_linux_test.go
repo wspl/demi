@@ -8,9 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/machines/system"
 	"github.com/wspl/demi/internal/machines/system/systemtest"
@@ -107,41 +105,6 @@ func TestOverlayPreservesRootMode(t *testing.T) {
 	})
 }
 
-// loopAttached observes the kernel's backing-file reference, not our Go handle.
-func loopAttached(t *testing.T, image string) bool {
-	t.Helper()
-	entries, err := os.ReadDir("/sys/block")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, entry := range entries {
-		content, err := os.ReadFile(filepath.Join("/sys/block", entry.Name(), "loop/backing_file"))
-		// Auto-clear can remove the association between readdir and read.
-		if errors.Is(err, os.ErrNotExist) || errors.Is(err, unix.ENODEV) {
-			continue
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		if string(content) == image+"\n" {
-			return true
-		}
-	}
-	return false
-}
-
-// awaitLoopDetach waits for kernel auto-clear, with a hang deadline rather than a sleep.
-func awaitLoopDetach(t *testing.T, image string) {
-	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for loopAttached(t, image) {
-		if time.Now().After(deadline) {
-			t.Fatalf("loop device still attached to %s", image)
-		}
-		runtime.Gosched()
-	}
-}
-
 func TestLoopDetachesAfterUnmountAndFailedMount(t *testing.T) {
 	isolated(t, func(ctx context.Context) {
 		dir := t.TempDir()
@@ -153,15 +116,21 @@ func TestLoopDetachesAfterUnmountAndFailedMount(t *testing.T) {
 		func() {
 			mountImage(ctx, t, image, target)
 			defer unmount(ctx, t, target)
-			if !loopAttached(t, image) {
-				t.Fatal("mounted image lost its loop device")
+			link := filepath.Join(dir, "image-link")
+			if err := os.Symlink(image, link); err != nil {
+				t.Fatal(err)
+			}
+			if attached, err := systemtest.LoopAttached(ctx, link); err != nil || !attached {
+				t.Fatalf("mounted image attached = %v, %v", attached, err)
 			}
 			mounted, exists, err := system.MountRoot(ctx, target)
 			if err != nil || !mounted || !exists {
 				t.Fatalf("mount root = %v, %v, %v", mounted, exists, err)
 			}
 		}()
-		awaitLoopDetach(t, image)
+		if err := systemtest.WaitLoopDetach(ctx, image); err != nil {
+			t.Fatal(err)
+		}
 		mounted, exists, err := system.MountRoot(ctx, target)
 		if err != nil || mounted || !exists {
 			t.Fatalf("unmounted root = %v, %v, %v", mounted, exists, err)
@@ -190,7 +159,14 @@ func TestLoopDetachesAfterUnmountAndFailedMount(t *testing.T) {
 				t.Fatal("mounted non-ext4 image")
 			}
 		}()
-		awaitLoopDetach(t, garbage)
+		if err := systemtest.WaitLoopDetach(ctx, garbage); err != nil {
+			t.Fatal(err)
+		}
+		canceled, cancel := context.WithCancel(ctx)
+		cancel()
+		if err := systemtest.WaitLoopDetach(canceled, image); !errors.Is(err, context.Canceled) {
+			t.Fatalf("canceled detach wait = %v", err)
+		}
 		mounted, exists, err = system.MountRoot(ctx, filepath.Join(dir, "absent"))
 		if err != nil || mounted || exists {
 			t.Fatalf("absent root = %v, %v, %v", mounted, exists, err)

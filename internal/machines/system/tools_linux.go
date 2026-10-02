@@ -19,6 +19,8 @@ import (
 	"syscall"
 	"time"
 	"unicode/utf8"
+
+	"github.com/wspl/demi/internal/contract"
 )
 
 // Tool identifies a program the manager runs.
@@ -35,8 +37,6 @@ const (
 	Resize2fs
 	// Bsdtar extracts base archives.
 	Bsdtar
-	// Nft applies firewall transactions.
-	Nft
 )
 
 // Name returns the program name.
@@ -52,8 +52,6 @@ func (t Tool) Name() string {
 		return "resize2fs"
 	case Bsdtar:
 		return "bsdtar"
-	case Nft:
-		return "nft"
 	default:
 		return fmt.Sprintf("Tool(%d)", uint8(t))
 	}
@@ -162,7 +160,7 @@ func Resolve(ctx context.Context, runsc string) (*Tools, error) {
 	}
 	paths := make(map[Tool]string)
 	var missing []string
-	for _, tool := range []Tool{Mke2fs, E2fsck, Resize2fs, Bsdtar, Nft} {
+	for _, tool := range []Tool{Mke2fs, E2fsck, Resize2fs, Bsdtar} {
 		path, err := exec.LookPath(tool.Name())
 		// Rust's which accepts a program found through a relative PATH entry.
 		// Make that explicit instead of carrying exec.ErrDot into Command.
@@ -290,7 +288,7 @@ func (t *Tools) Output(ctx context.Context, tool Tool, args []string, deadline *
 	if !ok {
 		return Output{}, &SpawnError{Tool: tool, Source: errors.New("tool returned no Linux wait status")}
 	}
-	return Output{Status: status, Stdout: toolText(streams[0].data.Bytes()), Stderr: toolText(streams[1].data.Bytes())}, nil
+	return Output{Status: status, Stdout: contract.LossyUTF8(streams[0].data.Bytes()), Stderr: contract.LossyUTF8(streams[1].data.Bytes())}, nil
 }
 
 // Run runs tool and requires it to exit 0.
@@ -311,42 +309,3 @@ func Accept(tool Tool, output Output, codes []int) (Output, error) {
 }
 
 var errToolDeadline = errors.New("infrastructure tool deadline")
-
-// toolText decodes infrastructure output with Rust's replacement for each
-// malformed UTF-8 subsequence. strings.ToValidUTF8 merges adjacent malformed
-// subsequences; rune conversion instead splits a truncated valid prefix.
-func toolText(data []byte) string {
-	var text strings.Builder
-	for len(data) > 0 {
-		r, size := utf8.DecodeRune(data)
-		if r != utf8.RuneError || size != 1 {
-			text.Write(data[:size])
-			data = data[size:]
-			continue
-		}
-		size = 1
-		first := data[0]
-		expected := 0
-		switch {
-		case first >= 0xc2 && first <= 0xdf:
-			expected = 2
-		case first >= 0xe0 && first <= 0xef:
-			expected = 3
-		case first >= 0xf0 && first <= 0xf4:
-			expected = 4
-		}
-		for size < expected && size < len(data) {
-			next := data[size]
-			if next < 0x80 || next > 0xbf {
-				break
-			}
-			if size == 1 && (first == 0xe0 && next < 0xa0 || first == 0xed && next >= 0xa0 || first == 0xf0 && next < 0x90 || first == 0xf4 && next >= 0x90) {
-				break
-			}
-			size++
-		}
-		text.WriteRune(utf8.RuneError)
-		data = data[size:]
-	}
-	return text.String()
-}

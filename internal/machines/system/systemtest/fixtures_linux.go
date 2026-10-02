@@ -4,8 +4,11 @@ package systemtest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 
 	"github.com/wspl/demi/internal/machines/system"
 	"golang.org/x/sys/unix"
@@ -49,8 +52,24 @@ func OnPath(ctx context.Context) (*system.Tools, error) {
 		return nil, err
 	}
 	paths := map[system.Tool]string{system.Runsc: "runsc"}
-	for _, tool := range []system.Tool{system.Mke2fs, system.E2fsck, system.Resize2fs, system.Bsdtar, system.Nft} {
+	for _, tool := range []system.Tool{system.Mke2fs, system.E2fsck, system.Resize2fs, system.Bsdtar} {
 		paths[tool] = resolved.Path(tool)
 	}
 	return system.NewTools(paths), nil
+}
+
+// NftPath resolves nft for tests that read back installed firewall tables.
+// Production firewall changes use the nftables API, never this program.
+func NftPath(ctx context.Context) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	path, err := exec.LookPath("nft")
+	if errors.Is(err, exec.ErrDot) {
+		path, err = filepath.Abs(path)
+	}
+	if err != nil {
+		return "", fmt.Errorf("nft is not installed: %w", err)
+	}
+	return path, nil
 }

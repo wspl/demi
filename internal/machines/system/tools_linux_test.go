@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -233,10 +234,10 @@ func TestResolveAndTestTools(t *testing.T) {
 	}
 	_, err := system.Resolve(t.Context(), runsc)
 	var missing *system.MissingTools
-	if !errors.As(err, &missing) || err.Error() != "Cloud manager needs: mke2fs, e2fsck, resize2fs, bsdtar, nft" {
+	if !errors.As(err, &missing) || err.Error() != "Cloud manager needs: mke2fs, e2fsck, resize2fs, bsdtar" {
 		t.Fatalf("missing tools = %v", err)
 	}
-	for _, name := range []string{"mke2fs", "e2fsck", "resize2fs", "bsdtar", "nft"} {
+	for _, name := range []string{"mke2fs", "e2fsck", "resize2fs", "bsdtar"} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
 			t.Fatal(err)
 		}
@@ -254,6 +255,18 @@ func TestResolveAndTestTools(t *testing.T) {
 	fixture, err := systemtest.OnPath(t.Context())
 	if err != nil {
 		t.Fatal(err)
+	}
+	// No nft executable was installed: production and filesystem fixtures
+	// resolve successfully, while firewall readback explicitly requires it.
+	if _, err := systemtest.NftPath(t.Context()); !errors.Is(err, exec.ErrNotFound) {
+		t.Fatalf("missing test nft = %v", err)
+	}
+	nft := filepath.Join(dir, "nft")
+	if err := os.WriteFile(nft, []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if path, err := systemtest.NftPath(t.Context()); err != nil || path != nft {
+		t.Fatalf("test nft path = %q, %v", path, err)
 	}
 	if fixture.Path(system.Runsc) != "runsc" {
 		t.Fatalf("fixture runsc = %s", fixture.Path(system.Runsc))

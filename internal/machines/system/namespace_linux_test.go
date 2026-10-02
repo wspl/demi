@@ -171,3 +171,46 @@ func TestIsolationFixtureKeepsRunPrivate(t *testing.T) {
 		t.Fatalf("fixture changed host /run: %v", err)
 	}
 }
+
+func TestSavedMountNamespaceUsesBorrowedDescriptor(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("needs explicit root invocation")
+	}
+	var saved *os.File
+	defer func() {
+		if saved != nil {
+			if err := saved.Close(); err != nil {
+				t.Error(err)
+			}
+		}
+	}()
+	const marker = "/run/demi-system-descriptor-marker"
+	if err := systemtest.Isolate(t.Context(), func(context.Context) error {
+		if err := os.WriteFile(marker, []byte("saved namespace"), 0600); err != nil {
+			return err
+		}
+		const path = "/run/demi-system-saved-mount"
+		// A temporary link gives the descriptor a name that can be removed.
+		// Binding a mount namespace inside itself would create a kernel-rejected cycle.
+		if err := os.Symlink("/proc/thread-self/ns/mnt", path); err != nil {
+			return err
+		}
+		var err error
+		saved, err = os.Open(path)
+		removeErr := os.Remove(path)
+		return errors.Join(err, removeErr)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		data, err := system.RunNamespace(t.Context(), system.Mount(saved), func(context.Context) ([]byte, error) {
+			return os.ReadFile(marker)
+		})
+		if err != nil || string(data) != "saved namespace" {
+			t.Fatalf("saved mount read = %q, %v", data, err)
+		}
+		if _, err := saved.Stat(); err != nil {
+			t.Fatalf("RunNamespace closed borrowed descriptor: %v", err)
+		}
+	}
+}

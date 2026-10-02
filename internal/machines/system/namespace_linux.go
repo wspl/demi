@@ -11,10 +11,11 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// Namespace selects the namespace a job runs in. Use HostMount, Network or NewNetwork.
+// Namespace selects the namespace a job runs in. Use HostMount, Mount, Network or NewNetwork.
 type Namespace struct {
 	kind namespaceKind
 	path string
+	file *os.File
 }
 
 type namespaceKind uint8
@@ -23,10 +24,16 @@ const (
 	hostMountKind namespaceKind = iota + 1
 	networkKind
 	newNetworkKind
+	savedMountKind
 )
 
 // HostMount selects PID 1's mount namespace, where namespace handles live.
 func HostMount() Namespace { return Namespace{kind: hostMountKind, path: "/proc/1/ns/mnt"} }
+
+// Mount selects an already opened saved mount namespace. RunNamespace borrows
+// the descriptor without reopening its path or closing it. The caller must
+// keep file open until RunNamespace returns.
+func Mount(file *os.File) Namespace { return Namespace{kind: savedMountKind, file: file} }
 
 // Network selects the network namespace bound at path, such as /run/netns/demi-3.
 func Network(path string) Namespace { return Namespace{kind: networkKind, path: path} }
@@ -63,9 +70,13 @@ func RunNamespace[T any](ctx context.Context, namespace Namespace, job func(cont
 		if err = unix.Unshare(unix.CLONE_FS); err != nil {
 			return
 		}
-		if namespace.kind == newNetworkKind {
+		switch namespace.kind {
+		case savedMountKind:
+			err = unix.Setns(int(namespace.file.Fd()), unix.CLONE_NEWNS)
+			runtime.KeepAlive(namespace.file)
+		case newNetworkKind:
 			err = unix.Unshare(unix.CLONE_NEWNET)
-		} else {
+		default:
 			var file *os.File
 			file, err = os.Open(namespace.path)
 			if err != nil {
