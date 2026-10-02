@@ -126,26 +126,7 @@ func MsgpackJSON(data []byte) (json.RawMessage, error) {
 			if math.IsNaN(number) || math.IsInf(number, 0) {
 				return []byte("null"), nil
 			}
-			// serde_json's formatter uses fixed notation for exponents -5..15.
-			text := strconv.FormatFloat(number, 'e', -1, 64)
-			mantissa, exponent, _ := strings.Cut(text, "e")
-			power, err := strconv.Atoi(exponent)
-			if err != nil {
-				return nil, err
-			}
-			if power >= -5 && power <= 15 {
-				text = strconv.FormatFloat(number, 'f', -1, 64)
-				if !strings.Contains(text, ".") {
-					text += ".0"
-				}
-			} else {
-				sign := ""
-				if power >= 0 {
-					sign = "+"
-				}
-				text = mantissa + "e" + sign + strconv.Itoa(power)
-			}
-			return EncodeJSON(json.Number(text))
+			return EncodeJSON(number)
 		}
 		return EncodeJSON(value)
 	default:

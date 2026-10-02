@@ -477,7 +477,10 @@ func (g *generator) emitGo(d *definition) {
 			if u := g.adjacentUnion(d); u != nil {
 				key = bounds(u.marks["union"])["content"]
 			}
-			m := d.fields[f.Name()]
+			m := maps.Clone(d.fields[f.Name()])
+			if g.optionalObject(f) != nil {
+				m["optional"] = ""
+			}
 			if len(strings.Split(reflect.StructTag(validationStruct.Tag(i)).Get("json"), ",")) > 1 {
 				m["optional"] = ""
 			}
@@ -522,6 +525,10 @@ func (g *generator) emitGo(d *definition) {
 	}
 	for i := 0; i < st.NumFields(); i++ {
 		f := st.Field(i)
+		if child := g.optionalObject(f); child != nil {
+			g.emitOptionalObjectDecode(f, child, false)
+			continue
+		}
 		if g.flattenedUnion(d, f) != nil {
 			g.emitFlattenDecode(d, f, false)
 			continue
@@ -673,7 +680,7 @@ func (g *generator) rules(t types.Type, expr, path string, m map[string]string) 
 			if key == "max" {
 				op = ">"
 			}
-			g.line("if %s%s%s{return contract.At(%s,fmt.Errorf(\"outside numeric bounds\"))}", expr, op, bound, path)
+			g.line("if %s %s %s{return contract.At(%s,fmt.Errorf(\"outside numeric bounds\"))}", expr, op, bound, path)
 		}
 	}
 }

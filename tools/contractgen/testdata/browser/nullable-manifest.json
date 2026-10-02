@@ -1,0 +1,89 @@
+{
+  "/4/page/user/schema/$defs/SourceState/properties/commit": {
+    "type": [
+      "string",
+      "null"
+    ]
+  },
+  "/4/page/user/schema/$defs/SourceState/properties/fetchedAt": {
+    "type": [
+      "string",
+      "null"
+    ],
+    "format": "date-time"
+  },
+  "/4/page/user/schema/$defs/SourceState/properties/failure": {
+    "anyOf": [
+      {
+        "$ref": "#/$defs/Failure"
+      },
+      {
+        "type": "null"
+      }
+    ]
+  },
+  "/5/commands/0/tree/subcommands/31/subcommands/0/output/json/properties/dialog": {
+    "type": [
+      "object",
+      "null"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "type": {
+        "type": "string",
+        "enum": [
+          "alert",
+          "confirm",
+          "prompt",
+          "beforeunload"
+        ]
+      },
+      "message": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "type",
+      "message"
+    ],
+    "description": "A JavaScript dialog a tab shows."
+  },
+  "/5/streams/0/receives/oneOf/0/properties/watched": {
+    "anyOf": [
+      {
+        "$ref": "#/$defs/TabId"
+      },
+      {
+        "type": "null"
+      }
+    ]
+  },
+  "/5/streams/0/receives/oneOf/6/properties/dialog": {
+    "anyOf": [
+      {
+        "$ref": "#/$defs/LiveDialog"
+      },
+      {
+        "type": "null"
+      }
+    ]
+  },
+  "/5/streams/0/sends/oneOf/2/properties/tab": {
+    "anyOf": [
+      {
+        "$ref": "#/$defs/TabId"
+      },
+      {
+        "type": "null"
+      }
+    ]
+  },
+  "/5/page/methods/0/params/properties/url": {
+    "type": [
+      "string",
+      "null"
+    ],
+    "minLength": 1,
+    "maxLength": 4096
+  }
+}

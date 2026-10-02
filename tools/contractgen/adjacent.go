@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"go/types"
 	"reflect"
 	"strings"
@@ -104,14 +105,28 @@ func (g *generator) emitFlattenEncode(f *types.Var, msg bool) {
 // propertyNames gives the keys contributed by ordinary and flattened fields.
 func (g *generator) propertyNames(d *definition, st *types.Struct) []string {
 	keys := []string{}
-	for i := 0; i < st.NumFields(); i++ {
-		f := st.Field(i)
-		if u := g.flattenedUnion(d, f); u != nil {
-			args := bounds(u.marks["union"])
-			keys = append(keys, args["tag"], args["content"])
-		} else {
-			keys = append(keys, strings.Split(reflect.StructTag(st.Tag(i)).Get("json"), ",")[0])
+	active := map[string]bool{}
+	var visit func(*definition, *types.Struct)
+	visit = func(d *definition, st *types.Struct) {
+		if active[d.key] {
+			g.err = fmt.Errorf("%s: %s: recursive flattened object is unsupported", d.position, d.name)
+			return
+		}
+		active[d.key] = true
+		defer delete(active, d.key)
+		for i := 0; i < st.NumFields(); i++ {
+			f := st.Field(i)
+			if child := g.optionalObject(f); child != nil {
+				nested, _ := g.object(child)
+				visit(child, nested)
+			} else if u := g.flattenedUnion(d, f); u != nil {
+				args := bounds(u.marks["union"])
+				keys = append(keys, args["tag"], args["content"])
+			} else {
+				keys = append(keys, strings.Split(reflect.StructTag(st.Tag(i)).Get("json"), ",")[0])
+			}
 		}
 	}
+	visit(d, st)
 	return keys
 }

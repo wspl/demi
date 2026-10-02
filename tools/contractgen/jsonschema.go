@@ -133,6 +133,20 @@ func (e *schemaEmitter) schema(t types.Type, marks map[string]string) (any, erro
 			}
 			for i := 0; i < st.NumFields(); i++ {
 				f := st.Field(i)
+				if nested := g.optionalObject(f); nested != nil {
+					child, err := e.schema(nested.typ, nil)
+					if err != nil {
+						return nil, err
+					}
+					object, ok := child.(map[string]any)
+					if !ok || object["type"] != "object" {
+						return nil, fmt.Errorf("recursive optional flattened object is unsupported")
+					}
+					if props, ok := object["properties"].(map[string]any); ok {
+						maps.Copy(properties, props)
+					}
+					continue
+				}
 				if u := g.flattenedUnion(d, f); u != nil {
 					union, err := e.schema(f.Type(), nil)
 					if err != nil {
@@ -169,7 +183,7 @@ func (e *schemaEmitter) schema(t types.Type, marks map[string]string) (any, erro
 					return nil, fmt.Errorf("%s.%s: %w", d.name, f.Name(), err)
 				}
 				if has(m, "nullable") {
-					child = map[string]any{"anyOf": []any{child, map[string]any{"type": "null"}}}
+					child = nullableSchema(child)
 				}
 				if description := d.fieldDescriptions[f.Name()]; description != "" {
 					if object, ok := child.(map[string]any); ok {
@@ -266,7 +280,7 @@ func (e *schemaEmitter) schema(t types.Type, marks map[string]string) (any, erro
 			return nil, err
 		}
 		if isPointer(t.Elem()) {
-			child = map[string]any{"anyOf": []any{child, map[string]any{"type": "null"}}}
+			child = nullableSchema(child)
 		}
 		s = map[string]any{"type": "object", "additionalProperties": child}
 	default:
@@ -332,4 +346,35 @@ func schemaRules(s map[string]any, marks map[string]string) error {
 		}
 	}
 	return nil
+}
+
+// nullableSchema follows schemars' allow_null: ordinary typed schemas retain
+// their keywords; references and applicators need an alternative null branch.
+func nullableSchema(value any) any {
+	s, ok := value.(map[string]any)
+	if !ok {
+		if value == false {
+			return map[string]any{"type": "null"}
+		}
+		return value
+	}
+	for _, key := range []string{"if", "allOf", "anyOf", "oneOf", "$ref"} {
+		if _, ok := s[key]; ok {
+			return map[string]any{"anyOf": []any{s, map[string]any{"type": "null"}}}
+		}
+	}
+	if typ, ok := s["type"].(string); ok && typ != "null" {
+		s["type"] = []string{typ, "null"}
+	}
+	if v, ok := s["const"]; ok {
+		delete(s, "const")
+		s["enum"] = []any{v, nil}
+	} else if values, ok := s["enum"].([]string); ok {
+		nullable := make([]any, 0, len(values)+1)
+		for _, v := range values {
+			nullable = append(nullable, v)
+		}
+		s["enum"] = append(nullable, nil)
+	}
+	return s
 }

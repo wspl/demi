@@ -99,6 +99,10 @@ func (g *generator) emitMsgpack(d *definition) {
 	}
 	for i := 0; i < st.NumFields(); i++ {
 		f := st.Field(i)
+		if child := g.optionalObject(f); child != nil {
+			g.emitOptionalObjectDecode(f, child, true)
+			continue
+		}
 		if g.flattenedUnion(d, f) != nil {
 			g.emitFlattenDecode(d, f, true)
 			continue
@@ -133,6 +137,12 @@ func (g *generator) emitMsgpack(d *definition) {
 	}
 	for i := 0; i < st.NumFields(); i++ {
 		f := st.Field(i)
+		if g.optionalObject(f) != nil {
+			g.line("if v.%s!=nil{", f.Name())
+			g.emitFlattenEncode(f, true)
+			g.line("}")
+			continue
+		}
 		if g.flattenedUnion(d, f) != nil {
 			g.emitFlattenEncode(f, true)
 			continue
