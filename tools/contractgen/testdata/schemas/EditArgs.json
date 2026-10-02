@@ -1,0 +1,31 @@
+{
+  "type": "object",
+  "properties": {
+    "path": {
+      "type": "string"
+    },
+    "old": {
+      "type": "string",
+      "minLength": 1
+    },
+    "new": {
+      "type": "string"
+    },
+    "occurrence": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 18446744073709551615
+    },
+    "context": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 18446744073709551615
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "path",
+    "old",
+    "new"
+  ]
+}

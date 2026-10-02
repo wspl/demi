@@ -225,6 +225,10 @@ func generate(ctx context.Context, patterns []string, ts bool, tsDir string, ver
 	if err := g.check(collected[0]); err != nil {
 		return err
 	}
+	jsonSchemas, err := g.jsonSchemas()
+	if err != nil {
+		return err
+	}
 	g.received = map[string]bool{}
 	for _, key := range g.order {
 		if has(g.defs[key].marks, "msgpack") {
@@ -255,6 +259,9 @@ func generate(ctx context.Context, patterns []string, ts bool, tsDir string, ver
 			d := g.defs[name]
 			if d.typ.Obj().Pkg() == p.Types {
 				g.emitGo(d)
+				if value, ok := jsonSchemas[d.key]; ok {
+					g.line("func %sJSONSchema() json.RawMessage { return json.RawMessage(%s) }", d.name, q(string(value)))
+				}
 			}
 		}
 		for _, name := range g.order {
@@ -346,7 +353,7 @@ func markers(doc *ast.CommentGroup) map[string]string {
 		}
 		key, value, _ := strings.Cut(strings.TrimPrefix(text, "+demi:"), " ")
 		switch key {
-		case "union", "variant", "nullable", "length", "range", "enum", "pattern", "timestamp", "check", "id", "base64", "msgpack", "strict", "tolerant", "root", "format", "table":
+		case "union", "variant", "nullable", "length", "range", "enum", "pattern", "timestamp", "check", "id", "base64", "msgpack", "strict", "tolerant", "root", "format", "table", "schema":
 		default:
 			out["!error"] = "unsupported marker: " + key
 		}

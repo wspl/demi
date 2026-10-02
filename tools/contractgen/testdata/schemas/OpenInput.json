@@ -1,0 +1,27 @@
+{
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "load": {
+      "type": "string",
+      "enum": [
+        "commit",
+        "domcontentloaded",
+        "load"
+      ]
+    },
+    "timeout": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 300000
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "url"
+  ]
+}

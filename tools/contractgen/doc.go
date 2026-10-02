@@ -57,6 +57,15 @@
 // showsInPlace(mediaType), with ASCII extension case folding and either path
 // separator. It must have mediaType, extensions and inPlace fields.
 //
+// +demi:schema emits <Type>JSONSchema() json.RawMessage in contract_gen.go.
+// Each call returns fresh bytes: draft 2020-12, no $schema, inline subschemas,
+// and optional properties that never allow null. Objects, tagged unions,
+// records, arrays, enums, patterns, lengths and numeric bounds use the same
+// checked model as codecs and Zod. Recursive shapes, custom checks, normalized
+// formats, timestamps, base64 rules and bytes fail schema generation rather
+// than silently weakening validation. JSON Schema checks parsed values;
+// decoders additionally enforce JSON token and Unicode validity.
+//
 // +demi:msgpack enables generated MessagePack codecs throughout the reachable
 // shape. They use JSON field names and declaration order, compact integers,
 // binary byte slices, sorted string records and timestamp extensions. JSON and

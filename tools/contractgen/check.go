@@ -148,7 +148,7 @@ func checkMarks(m map[string]string) error {
 	if problem := m["!error"]; problem != "" {
 		return fmt.Errorf("%s", problem)
 	}
-	for _, key := range []string{"nullable", "strict", "tolerant", "timestamp", "base64", "table"} {
+	for _, key := range []string{"nullable", "strict", "tolerant", "timestamp", "base64", "table", "schema"} {
 		if m[key] != "" {
 			return fmt.Errorf("%s takes no arguments", key)
 		}

@@ -67,6 +67,7 @@ never relax them.
 | Marker after `// +demi:` | Placement and meaning |
 |---|---|
 | `root direction=receive output=protocol` | Type; a TypeScript root. `direction` is `receive` or `send`, from the web app's perspective; `output` is `protocol`, `web` or `plugin-<name>`. Every root and every type a boundary decodes gets `Decode<Type>`. |
+| `schema` | Type; generate `<Type>JSONSchema() json.RawMessage` for a command input or result from the same checked contract model. |
 | `union tag=type` | Interface with one unexported sealing method; internally tagged union. The tag may instead be `op`, `status` or `kind`, as the wire requires. |
 | `variant text` or `variant Block text` | Struct; pointer variant with the given wire tag value, naming its union when the package has several. The encoder adds the tag; no tag field is declared. |
 | `enum value1 value2` | Named string type; closed set of wire strings, including singleton literals. |
@@ -186,6 +187,38 @@ lossless integers. Manifest hashing covers `roots` and `packages`, excluding
 `hash`; package keys hash canonical descriptors. Golden corpora with every
 message kind pin runner and machine-manager bytes at both ends, kept
 records, and manifest/package digests.
+
+### Generated JSON Schema
+
+A command declaration calls `<Type>JSONSchema()` on a type marked
+`+demi:schema`. The function returns fresh JSON bytes from `contract_gen.go`;
+callers cannot mutate another caller's schema. Generation uses draft 2020-12
+keywords without a `$schema` meta-schema declaration, and inlines all
+subschemas without `$ref` or `$defs`, matching the command schema settings.
+The declaration's input-subset check still decides whether a schema has a
+command-line form; schema generation also supports richer result objects.
+
+JSON tags become `properties` and required fields become `required`.
+Optional properties omit `required` and never add null. `nullable` adds a
+null alternative with `anyOf`. Objects use `additionalProperties: false`
+unless `tolerant`; string-keyed maps use their value schema there. Arrays
+use `items`. `union` produces `oneOf` with each `variant`'s tag as `const`.
+`enum` produces `enum`, `pattern` (including an `id` pattern) produces
+`pattern`, `length` produces `minLength`/`maxLength` for strings and
+`minItems`/`maxItems` for arrays, and `range` produces inclusive
+`minimum`/`maximum`. Integer types also contribute their width and signedness
+bounds. Named-type and field constraints both apply. Opaque JSON has an
+unconstrained schema. Root direction and MessagePack markers do not change
+the JSON representation. No defaults, titles or descriptions are inferred.
+
+Generation fails with the declaration and field path for recursive shapes
+that cannot be inlined, or reachable `check`, `format`, `timestamp`,
+`base64` and byte-slice rules: their custom validation, normalization or
+canonical spelling cannot be faithfully enforced by standard JSON Schema.
+It also rejects the unsupported shapes and invalid markers described above.
+`schema` takes no arguments and is only a type marker. JSON Schema validates
+parsed values; the generated decoder additionally rejects duplicate keys,
+invalid Unicode and invalid numeric token spellings at the JSON boundary.
 
 ## Validation at entry
 

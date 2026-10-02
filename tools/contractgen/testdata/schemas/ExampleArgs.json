@@ -1,0 +1,40 @@
+{
+  "type": "object",
+  "properties": {
+    "path": {
+      "type": "string"
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "fast",
+        "slow"
+      ]
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "labels": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "no-cache": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "path",
+    "tags"
+  ]
+}

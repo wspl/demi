@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "patch": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "patch"
+  ]
+}
