@@ -100,11 +100,13 @@ work panel tab state        browser kind                         backend / Host
 - **Closing.** The user's close removes the panel tab at once and then asks
   the backend to close the browser's tab; closing the last one ends the
   environment, as the agent's `close` does.
-- **The agent's tabs.** The kind reads the browser's
-  [tab list](#the-tab-methods) when the panel opens, when
-  the page becomes visible, when a tool call of the conversation finishes, and
-  from every `state` message of an open view. A browser tab that no panel tab
-  is bound to is added as a panel tab, after the others and without taking the
+- **The agent's tabs.** The page's panel session follows the plugin's
+  conversation state, the browser's [tab list](#the-tab-methods), which the
+  page reads when the panel opens and whenever its revision rises: after each
+  job of the conversation ends, since the agent's commands open and close
+  tabs, and after each of the user's own calls. It also takes the list from
+  every `state` message of an open view. A browser tab that no panel tab is
+  bound to is added as a panel tab, after the others and without taking the
   selection.
 - **A tab gone from the Host.** The agent closed it, the browser ended, the
   Cloud stopped, or the Host restarted. The panel tab stays: the kind never
@@ -527,11 +529,12 @@ been checked either.
 
 ## The tab methods
 
-The `browser` kind lists, opens, closes and navigates the conversation
-browser's tabs through `plugin-browser`'s page methods, called for the
-conversation the panel shows
-([Plugin calls](../product/web-api.md#plugin-calls)). Each runs the operation
-the agent's command runs, `browser.tabs`, `browser.open`, `browser.close`,
+The `browser` kind reads the conversation browser's tabs as
+`plugin-browser`'s conversation state, and opens, closes and navigates them
+through its page methods, called for the conversation the panel shows
+([Conversation state of plugins](../product/web-api.md#conversation-state-of-plugins),
+[Plugin calls](../product/web-api.md#plugin-calls)). The state and each method
+run the operation the agent's command runs, `browser.tabs`, `browser.open`, `browser.close`,
 `browser.goto`, `browser.back`, `browser.forward` or `browser.reload`, with a
 `user` caller, as a [package call](../architecture/plugins.md#calling-its-command-package).
 What happens inside a tab travels on the plugin's `browser` user stream. A
@@ -539,9 +542,9 @@ user waits in the panel, not in a script: for a `user` caller `open`, `goto`,
 `back`, `forward` and `reload` start their work and answer at once, without
 waiting for the page to load, and the tab's content shows the loading.
 
-| Method | Parameters | Does | A stopped Cloud |
+| State or method | Parameters | Does | A stopped Cloud |
 | --- | --- | --- | --- |
-| `tabs` | None | Returns `{ tabs: [{ id, title, url, createdBy }] }`; a browser that does not run has none | Is not woken: returns `{ tabs: [] }` |
+| Conversation state | None | `{ tabs: [{ id, title, url, createdBy }] }`; a browser that does not run has none | Is not woken: `{ tabs: [] }` |
 | `open` | `url`, optional, `about:blank` by default | Opens a tab, starting the environment when needed, and returns `{ tab }` | Is woken: opening a tab is ordinary demand |
 | `close` | `tab` | Closes the tab, also when the browser no longer has it | Is not woken: returns nothing |
 | `navigate` | `tab`, `url` | Starts loading the URL in the tab | Is not woken: refused with `host_stopped` |
@@ -571,10 +574,10 @@ crate and package; for the live view:
 | `command-package-browser-chrome`'s `tabs` | Each tab's viewport, dialog and the upload directory the viewers' files go to. |
 | `demi-browser` | Starting the live hub of each browser it runs, and the conversation browser that the viewer trait reaches. |
 | `command-protocol`, `command-sdk`, the runner's crates, `runner-protocol`, `backend-remote-host` | [User streams](../execution/native-runtime.md#user-streams) and [service streams](../execution/runner.md#service-streams), with no browser knowledge. |
-| `plugin-browser` | Declaring `viewport set --scale` with the other `demi browser` commands; declaring the `browser` user stream; the [tab methods](#the-tab-methods), which call the browser's own operations and hold no browser logic. |
-| `backend` | The user stream route, where the user's shard admits and ends the stream and the edge relays its bytes with backpressure; the plugin call routes. Neither names the browser. |
-| `@demicodes/plugin-browser` | The `browser` tab kind: its tab source, which lists, opens and closes tabs through the plugin's tab methods, and its content, the live view over the plugin's `browser` user stream: video, input, native control overlays, clipboard, dialogs, the viewport menu, and what it shows while a tab is opening, gone, or out of reach, or in a user's browser that cannot decode the pictures. The live protocol's schemas are generated into the package. It is built from the plugin SDK's primitives ([Plugin pages](../architecture/plugin-pages.md)). |
-| `web`, `web-gallery` | The product's plugin client over the plugin call route and the user stream route; a gallery client that encodes its own picture, keeps its own tab list and speaks the protocol, so the kind shows without a Host. |
+| `plugin-browser` | Declaring `viewport set --scale` with the other `demi browser` commands; declaring the `browser` user stream; its conversation state, the tab list, following the `jobs` topic, and the [tab methods](#the-tab-methods), which call the browser's own operations and hold no browser logic. |
+| `backend` | The user stream route, where the user's shard admits and ends the stream and the edge relays its bytes with backpressure; the plugin call routes and the conversation state route. None names the browser. |
+| `@demicodes/plugin-browser` | The `browser` tab kind: its panel session, which follows the plugin's conversation state and adds the agent's tabs; opening and closing tabs through the plugin's tab methods; and its content, the live view over the plugin's `browser` user stream: video, input, native control overlays, clipboard, dialogs, the viewport menu, and what it shows while a tab is opening, gone, or out of reach, or in a user's browser that cannot decode the pictures. The live protocol's schemas are generated into the package. It is built from the plugin SDK's primitives ([Plugin pages](../architecture/plugin-pages.md)). |
+| `web`, `web-gallery` | The product's page context over the plugin call routes, the conversation state route and the user stream route; a gallery client that encodes its own picture, keeps its own tab list and speaks the protocol, so the kind shows without a Host. |
 | `cloud-guest-image` | Fonts for Chinese, Japanese and Korean text in the Cloud guest image. |
 
 ## Rationale

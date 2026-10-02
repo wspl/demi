@@ -47,7 +47,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Conversation draft | `GET/PUT /conversations/:id/draft` reads and saves the [draft](#conversation-drafts); `POST /conversations/:id/draft/replaced { action, revision }` restores or dismisses the version a save replaced |
 | Device log | `GET /devices/:id/log?since=<cursor>&limit=<n>&source=<source>` reads the [Host's log](../execution/runner.md#host-log) |
 | Sidebar | `POST /sidebar/reorder { kind, id, beforeId }` |
-| Plugins | `PUT /plugins/:plugin { enabled }` turns a plugin on or off for the caller, and `PUT /plugins/:plugin/settings` saves its settings ([A user's plugins](#a-users-plugins)); `POST /plugins/:plugin/calls/:method` and `POST /conversations/:id/plugins/:plugin/calls/:method` with the method's parameters call a [plugin's page method](#plugin-calls), for the user or for one conversation; `POST /conversations/:id/reload` reopens the conversation's tree with the user's current plugins |
+| Plugins | `PUT /plugins/:plugin { enabled }` turns a plugin on or off for the caller ([A user's plugins](#a-users-plugins)); `GET /conversations/:id/plugins/:plugin/state` reads a plugin's [state for one conversation](#conversation-state-of-plugins); `POST /plugins/:plugin/calls/:method` and `POST /conversations/:id/plugins/:plugin/calls/:method` with the method's parameters call a [plugin's page method](#plugin-calls), for the user or for one conversation; `POST /conversations/:id/reload` reopens the conversation's tree with the user's current plugins |
 | Models | `GET /models?refresh=true\|false` returns the account-wide catalog |
 | Providers | `GET /providers/catalog`, `GET/POST /providers`, `PATCH/DELETE /providers/:id`, `GET /providers/:id/status`, `POST /providers/:id/test`, `POST /providers/:id/quota`; account routes below |
 | Usage | `GET /usage` for the caller; `GET /usage/instance` for admins in shared mode |
@@ -750,7 +750,13 @@ a reload would change them ([Reload](#a-users-plugins)). `draftRevision` is
 the revision of the conversation's
 [draft](#conversation-drafts), 0 before its first save: the page reads the
 draft itself only when this number is higher than the revision it holds, so a
-summary carries no draft's text.
+summary carries no draft's text. `pluginRevisions` does the same for each
+plugin's [conversation state](#conversation-state-of-plugins), by plugin id,
+for the plugins the user has on that declare one. `workingTreeRevision`
+rises each time a job of the conversation ends, since any job may change the
+working tree; it is counted in memory from the backend's start, as
+`pluginRevisions` is, and the page lists the working tree again when it rises
+([File text and working tree changes](#file-text-and-working-tree-changes)).
 
 `POST /api/conversations/:id/title`, without a body, asks the conversation's
 model selection for a new title from every message the user sent and answers
@@ -812,8 +818,8 @@ later one is the current value of one part of it that changed:
 | `devices` | `devices`, the paired ones and the Cloud's | A device is paired or revoked, its runner connects or disconnects, its runner's installs change, or the Cloud's device is made |
 | `providers` | `providers`, each with its details | An entry the user infers with, or an account of it, is created, changed or removed, a sign-in completes, an account's credential is renewed, or its quota snapshot is stored |
 | `cloud` | `cloud` | The Cloud's lifecycle or its reset moves |
-| `plugins` | `plugins`, the plugin list below | The user turns a plugin on or off, or saves its settings |
-| `plugin` | `plugin`, the plugin's id, and `state`, its state for the user's pages | The plugin marks its part as changed ([The page](../architecture/plugins.md#the-page)) |
+| `plugins` | `plugins`, the plugin list below | The user turns a plugin on or off |
+| `plugin` | `plugin`, the plugin's id, and `state`, its user state | The plugin marks its user state changed ([The page](../architecture/plugins.md#the-page)) |
 | `heartbeat` | Nothing | 30 seconds pass without another message |
 
 The product state holds the current user, the instance mode, preferences, the
@@ -827,8 +833,8 @@ and `done` and `total` count bytes
 ([Installation progress](../execution/native-runtime.md#installation-progress))),
 the summaries of the active and then the
 archived conversations, the Cloud's state, `plugins`, the plugin list, and
-`pluginStates`, the state of each plugin the user has on that declares one,
-by plugin id, and `publicUrl`,
+`pluginStates`, the user state of each plugin the user has on that declares
+one, by plugin id, and `publicUrl`,
 the URL runners connect to (`DEMI_BACKEND_PUBLIC_URL`). Each provider entry carries its
 `details`: `{ type: "read", ... }` with what `GET /api/providers/:id/status`
 answers, or `{ type: "failed", message }` for an entry whose provider could
@@ -837,10 +843,12 @@ the Cloud or runs inference. It is not one atomic read across the control and
 conversation databases, and it need not be: a change made while it is read is
 sent after it.
 
-Drafts are not sent: a draft can be large, and only the pages that show its
-conversation need it. The summary carries the draft's revision, and a page
-that shows the conversation reads the draft when the revision is higher than
-the one it holds ([Conversation drafts](#conversation-drafts)).
+Drafts and the plugins' conversation states are not sent: they can be
+large, and only the pages that show their conversation need them. The summary
+carries their revisions, and a page that shows the conversation reads each
+when its revision is higher than the one it holds
+([Conversation drafts](#conversation-drafts),
+[Conversation state of plugins](#conversation-state-of-plugins)).
 
 **Order.** The backend reads a part when it sends it, after the change that
 caused the message, and reads it again for a change made meanwhile. So a
@@ -849,8 +857,9 @@ older than an earlier one.
 
 **Changes no write makes.** Each message follows a change the backend
 commits, except one: an expose expires when its time comes, so the channel
-also sends the `plugin` message of each plugin whose state follows the user's
-exposes, the `expose` plugin, when the earliest expiry passes. No other part
+also sends the `plugin` message of each plugin whose user state follows the
+`exposes` topic, the `expose` plugin, when the earliest expiry passes
+([Topics](../architecture/plugins.md#topics)). No other part
 changes with time alone. A provider entry's `details`
 report each account's sign-in as it is stored, whether or not the vendor
 would still take it: an API key the vendor revoked, a Codex or Grok Build
@@ -892,15 +901,10 @@ The channel never renews its session; only requests do
 The plugin list is every plugin of the backend, in its order of
 registration, each with `id`, `name`, `description`, `enabled`, `packages`,
 the ids of the command packages its commands, user streams and page methods
-bind that the backend's catalog serves, and, for a
-plugin that declares a settings schema, `settingsSchema` and the user's
-`settings`. `PUT /api/plugins/:plugin { enabled }` turns a plugin on or off
+bind that the backend's catalog serves. `PUT /api/plugins/:plugin { enabled }` turns a plugin on or off
 for the caller and answers 204; the new list and the states of the plugins
 that changed reach every page of the user on the synchronization channel. An
-unknown plugin answers 404 `unknown_plugin`. `PUT /api/plugins/:plugin/settings`
-takes the settings as its body and answers 204; a body the plugin's schema
-refuses answers 400 `invalid_body`, and a plugin without a settings schema
-404 `unknown_plugin`. What each change does, and when, is
+unknown plugin answers 404 `unknown_plugin`. What each change does, and when, is
 [A user's plugins](../architecture/plugins.md#a-users-plugins)'s.
 
 `POST /api/conversations/:id/reload`, without a body, closes the
@@ -911,6 +915,38 @@ answers 204. A conversation socket that was attached to the tree receives
 conversation whose tree is not open answers 204 and changes nothing: it opens
 with the current plugins anyway. A tree that works answers 409
 `turn_in_flight`, and an archived conversation 409 `conversation_archived`.
+
+## Conversation state of plugins
+
+A plugin's state for one conversation reaches a page by revision, as a draft
+does. For example, the agent runs `demi browser open https://example.com/` in
+conversation `c_81`. When that job ends, the `browser` plugin's conversation
+state, the tab list, follows the `jobs` topic, so its revision rises from 6 to
+7, and every page of the user receives the conversation's summary with
+`pluginRevisions: { "browser": 7 }`. A page that shows `c_81` and holds
+revision 6 reads the state:
+
+```text
+GET /api/conversations/c_81/plugins/browser/state
+
+200 { "revision": 7, "state": { "tabs": [ { "id": "t3", "title": "Example Domain", ... } ] } }
+```
+
+The state matches the conversation state schema of the plugin's manifest. A
+page takes an answer only when its revision is higher than the one it holds,
+since a call's answer and a read can reach it in either order. The revision
+counts the changes the plugin marked since the backend started, in the
+plugin host's memory; a backend that restarts starts again at 0, and every
+page then receives a new `snapshot`, which replaces what it held, so it reads
+the state again ([Page synchronization](#page-synchronization)). An unknown plugin answers 404
+`unknown_plugin`, one without a conversation state 404 `unknown_plugin`, and a
+plugin the user has off 409 `plugin_disabled`; the route needs a conversation
+the user owns, as every conversation route does. A read is admitted as a
+user stream is, so it never wakes a stopped Cloud: the plugin answers what it
+can without it, as the browser's tab list of a stopped Cloud is empty
+([The tab methods](../browser/live-view.md#the-tab-methods)). A refusal of the
+conversation's host access, or a plugin that fails, answers as a plugin call
+does ([Plugin calls](#plugin-calls)).
 
 ## Plugin calls
 
@@ -950,10 +986,11 @@ also needs a conversation the user owns, as every conversation route does:
 | The plugin fails, such as a value that does not read or a package call whose operation failed | 500 `plugin_failed`, with the plugin's message |
 
 A call changes only the calling user's state. What it changed reaches every
-page of the user as the plugin's new state on the synchronization channel
-([Page synchronization](#page-synchronization)), including the page that
-called, so a page shows what it called for from the channel, as it does for
-every other part.
+page of the user as the plugin's new user state on the synchronization
+channel ([Page synchronization](#page-synchronization)), or as a higher
+revision of its [conversation state](#conversation-state-of-plugins),
+including the page that called, so a page shows what it called for the way
+it shows every other change.
 
 ## Device files and remote references
 
@@ -1079,10 +1116,11 @@ not have answers 404, and a file over 8 MiB answers 413 `file_too_large`,
 since git's copy is decoded whole before it is sent
 ([Runner](../execution/runner.md#working-tree)).
 
-The page lists the working tree again when its change view is shown, after each
-of the conversation's tool calls finishes while it shows (a call that finishes
-while the view is away marks the list stale for its next showing), when the page
-becomes visible again, and on its Refresh control. It never polls while idle.
+The page lists the working tree again when the conversation's
+`workingTreeRevision` rises while a view of the working tree shows (a rise
+while no view shows marks the list stale for its next showing), when the page
+becomes visible again, since the user may have changed files outside Demi
+meanwhile, and on its Refresh control. It never polls while idle.
 
 ## Serving the web app build
 
