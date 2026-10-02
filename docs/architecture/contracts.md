@@ -82,6 +82,7 @@ never relax them.
 | `length chars min=1 max=64` | String type or field; Unicode scalar count. Arrays omit `chars` and count elements. Either bound may be omitted. |
 | `pattern ^[0-9a-f]{64}$` | String type or field; shared regex subset below. The remainder of the line is the pattern. |
 | `range min=0 max=9007199254740991` | Numeric type or field; either bound may be omitted. Integer kind comes from the Go type; web integers must fit the safe range. |
+| `range ... schema-only` | The bounds appear in JSON Schema and Zod only; Go checks nothing for them. A `check` beside it supplies the rule and its words, as Rust's `schemars(range)` beside a `TryFrom` that refuses with its own message (`0 is not a whole number of milliseconds from 1 to 600000`). |
 | `check validateName` | Type; call the named `func(Type) error` after structural checks, in Go only, without IO or mutation. |
 | `id` or `id pattern=<regexp>` | Named string type; emit `Parse<Type>(string) (<Type>, error)` with its length, pattern and checks. |
 | `timestamp` | Named string type for canonical JSON time, or named `int64` for runner milliseconds since the Unix epoch (an integer in JSON and a timestamp extension in MessagePack). |

@@ -2014,7 +2014,7 @@ internal/cmdpkg/browser -> internal/cmdpkg/browser/chrome/cdp, internal/cmdpkg/b
 internal/cmdpkg/browser/chrome/cdp -> internal/cmdpkg/browser/browserop, internal/commandwire, internal/cmdsdk, internal/artifacts, internal/core, internal/contract
 internal/cmdpkg/browser/chrome/tabs -> internal/cmdpkg/browser/browserop, internal/commandwire, internal/cmdsdk, internal/artifacts, internal/core, internal/cmdpkg/browser/chrome/cdp, internal/contract
 internal/cmdpkg/browser/chrome/page -> internal/cmdpkg/browser/browserop, internal/commandwire, internal/cmdsdk, internal/artifacts, internal/core, internal/cmdpkg/browser/chrome/cdp, internal/cmdpkg/browser/chrome/tabs, internal/contract
-internal/cmdpkg/browser/chrome/live -> internal/cmdpkg/browser/browserop, internal/commandwire, internal/cmdsdk, internal/artifacts, internal/core, internal/cmdpkg/browser/chrome/cdp, internal/cmdpkg/browser/chrome/tabs, internal/cmdpkg/browser/chrome/page
+internal/cmdpkg/browser/chrome/live -> internal/cmdpkg/browser/browserop, internal/commandwire, internal/cmdsdk, internal/artifacts, internal/core, internal/cmdpkg/browser/chrome/cdp, internal/cmdpkg/browser/chrome/tabs, internal/cmdpkg/browser/chrome/page, internal/contract
 internal/cmdpkg/claudecode -> internal/cmdpkg/claudecode/claudecodeop, internal/commandwire, internal/cmdsdk
 internal/gates -> none
 internal/artifacts -> internal/contract
@@ -2039,7 +2039,7 @@ internal/providers/claudecode -> internal/core, internal/provider, internal/host
 internal/agent/store -> internal/framewire, internal/core, internal/provider, internal/host, internal/contract
 internal/agent/transcript -> internal/framewire, internal/agent/store, internal/core, internal/provider
 internal/agent/session -> internal/framewire, internal/agent/store, internal/agent/transcript, internal/commandwire, internal/core, internal/gates, internal/provider, internal/host, internal/contract
-internal/agent/tools -> internal/framewire, internal/agent/session, internal/agent/store, internal/agent/transcript, internal/core, internal/provider, internal/host
+internal/agent/tools -> internal/framewire, internal/agent/session, internal/agent/store, internal/agent/transcript, internal/core, internal/provider, internal/host, internal/contract
 internal/agent/server -> internal/framewire, internal/agent/session, internal/agent/store, internal/agent/tools, internal/agent/transcript, internal/core, internal/gates, internal/provider, internal/host
 internal/runner -> internal/commandwire, internal/cmdsdk, internal/runner/host, internal/runner/jobs, internal/runner/process, internal/runnerwire, internal/runner/cmdpkgs, internal/runner/shell
 internal/runner/process -> internal/artifacts, internal/commandwire, internal/cmdsdk, internal/runnerwire, internal/contract

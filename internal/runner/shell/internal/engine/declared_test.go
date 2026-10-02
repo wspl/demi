@@ -1,0 +1,78 @@
+package engine
+
+import (
+	"context"
+	"errors"
+	"io"
+	"os"
+	"strings"
+	"sync"
+	"testing"
+
+	"github.com/wspl/demi/internal/cmdsdk"
+	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/runner/process"
+	"github.com/wspl/demi/internal/runnerwire"
+)
+
+type recordingHandler struct {
+	mu       sync.Mutex
+	requests []process.RawCommand
+}
+
+func (*recordingHandler) Operations() []string { return []string{process.Raw} }
+func (h *recordingHandler) Invoke(ctx context.Context, invocation cmdsdk.InvocationContext[commandwire.LocalInvocation]) (commandwire.Completion, error) {
+	raw, err := process.DecodeRawCommand(invocation.Request.Args)
+	if err != nil {
+		return commandwire.Completion{}, err
+	}
+	h.mu.Lock()
+	h.requests = append(h.requests, raw)
+	h.mu.Unlock()
+	for {
+		b, err := invocation.Input.Next(ctx)
+		if len(b) > 0 {
+			if err := invocation.Output.Stdout(ctx, b); err != nil {
+				return commandwire.Completion{}, err
+			}
+		}
+		if errors.Is(err, io.EOF) {
+			return commandwire.Completion{ExitCode: 7}, nil
+		}
+		if err != nil {
+			return commandwire.Completion{}, err
+		}
+	}
+}
+func TestADeclaredCommandReachesTheJobsHandler(t *testing.T) {
+	root := t.TempDir()
+	handler := &recordingHandler{}
+	contextID := "0123456789abcdef0123456789abcdef"
+	job, err := StartJob(t.Context(), process.JobStart{Script: `/usr/bin/env; printf body | fixture --flag; echo " $?"`, Cwd: root, Env: map[string]string{"HOME": root, "PATH": os.Getenv("PATH")}, Commands: &process.JobCommands{Context: contextID, Roots: []string{"fixture"}, Handler: handler}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		job.Cancel()
+		job.Wait(context.Background())
+	}()
+	var output strings.Builder
+	for chunk := range job.Output() {
+		if chunk.Stream == runnerwire.Stdout {
+			output.Write(chunk.Bytes)
+		}
+	}
+	status, _ := job.Wait(t.Context())
+	if status.Code == nil || *status.Code != 0 || !strings.Contains(output.String(), "DEMI_CONTEXT_ID="+contextID+"\n") || !strings.HasSuffix(output.String(), "body 7\n") {
+		t.Fatalf("exit %+v output %q", status, output.String())
+	}
+	handler.mu.Lock()
+	defer handler.mu.Unlock()
+	if len(handler.requests) != 1 {
+		t.Fatalf("requests: %v", handler.requests)
+	}
+	asked := handler.requests[0]
+	if asked.Context != contextID || asked.Root != "fixture" || asked.Live || len(asked.Argv) != 1 || asked.Argv[0] != "--flag" {
+		t.Fatalf("request: %+v", asked)
+	}
+}

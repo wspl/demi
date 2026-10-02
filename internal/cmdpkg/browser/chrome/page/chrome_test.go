@@ -73,9 +73,15 @@ func TestChromePage(t *testing.T) {
 	if strings.Contains(string(encoded), "secret") || !strings.Contains(string(encoded), "protected") {
 		t.Fatalf("password observation: %s", encoded)
 	}
-	for _, fill := range []struct{ selector, text string }{{"#email", "agent@example.test"}, {"#date", "2026-10-03"}} {
+	for _, fill := range []struct{ selector, text string }{{"#email", "discard"}, {"#email", ""}, {"#email", "agent@example.test"}, {"#date", "2026-10-03"}} {
 		if _, err = page.Fill(ctx, tab, browserop.FillInput{Tab: tab.ID(), BrowserTarget: target(fill.selector), Text: fill.text}, deadline); err != nil {
 			t.Fatal(err)
+		}
+		if fill.text == "" {
+			value, err := page.Evaluate(ctx, tab, `document.querySelector('#email').value`, time.Second)
+			if err != nil || string(value) != `""` {
+				t.Fatalf("cleared value=%s err=%v", value, err)
+			}
 		}
 	}
 	if _, err = page.Check(ctx, tab, browserop.CheckInput{Tab: tab.ID(), BrowserTarget: target("#confirm"), Value: true}, deadline); err != nil {

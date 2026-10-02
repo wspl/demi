@@ -24,7 +24,7 @@ web app fetches them when a file is opened.
 
 | Recorded | Not recorded |
 | --- | --- |
-| Files opened for writing by redirections (`>`, `>>`, `<>`, `exec 3>f`) through the fork's open handler in every in-process scope: top level, subshells, functions, background and nested background tasks, command substitutions and (on Unix) process substitutions. | Files external programs open themselves, including git, python, node, user-installed tools and system utilities such as `sed -i`, `tee`, `sort -o` and `uniq` with an output file. |
+| Files opened for writing by redirections (`>`, `>>`, `<>`, `exec 3>f`) through the fork's open handler in every in-process scope: top level, subshells, functions, background and nested background tasks, command substitutions and (on Unix) process substitutions. | Files external programs open themselves, including git, python, node, user-installed tools and system utilities such as `sed -i`, `tee`, `sort -o` and `uniq` with an output file; and what an external program writes through a read-write descriptor it inherits (`3<>f`), which stays the native file so the program can read and seek it, while the shell's own writes through it are recorded. |
 | Writes from external stdout and stderr redirected by the shell, forwarded through the recorder. | Copies and hard links (`cp`), deletions, renames as moves, directories, permissions, ownership, times, reads, and the empty file `mktemp` creates. |
 | Files created or modified by `demi file create`, `demi file edit`, and `demi file patch`, including when one patch edits several files. | Edits prepared by a native command but never written, or successfully rolled back. |
 
