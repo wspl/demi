@@ -34,7 +34,7 @@ defines; do not change it".>
 ## Tests
 
 <The Rust tests to port, the scenarios to write, the fixtures to use, the
-build tags (`hostonly` for Chrome, FSEvents or process listing).>
+build tags as `docs/delivery/testing.md` defines them.>
 
 ## Done when
 

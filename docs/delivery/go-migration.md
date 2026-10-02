@@ -526,6 +526,14 @@ These follow from the spikes and are the input to the Phase 0 documents.
   pills; a histogram diff is not available in pure Go.
 - **go-git's major version is chosen in `r-host`'s API checkpoint:** the
   stable v5 line if it passes the spike's tests, otherwise v6.
+- **One library per job, chosen once:** `github.com/coder/websocket` for
+  every WebSocket (Codex, Chrome's CDP, the runner link, the web app);
+  `github.com/sergi/go-diff` with interned lines and no timeout for line
+  counts, in `internal/runner/process`; the standard library with
+  `golang.org/x/image` (WebP decoding, scaling) for images.
+- **Phase 2 does not wait for gate G1.** A Phase 2 work package starts when
+  every package its graph line names is merged; G1 still closes Phase 1, and
+  a G1 finding goes back to the contract package that owns it.
 - **Tests use the standard library**, `github.com/google/go-cmp`,
   `go.uber.org/goleak` and `testing/synctest`; no assertion library.
 

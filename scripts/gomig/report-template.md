@@ -28,7 +28,7 @@ design gaps found. "None" if none.>
 ## Checks
 
 <The commands you ran and the last lines of their output. Name any test that
-needs `hostonly` and was not run.>
+needs an opt-in resource (`docs/delivery/testing.md`) and was not run.>
 
 ## Open issues
 
