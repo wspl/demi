@@ -81,6 +81,7 @@ authoritative package contract.
 | Rust crate | Go package | Notes |
 |---|---|---|
 | `shared-types` | `internal/core` | The data the web app, the agent and the backend share |
+| (none) | `internal/programtest` | Test support: builds the repository's programs once per test binary, or takes them from `DEMI_TEST_PROGRAMS` |
 | (none) | `internal/contract` | The generic runtime the generated contract code calls: strict object reading, presence and duplicate checks, field-path errors |
 | `conversation-socket-protocol` | `internal/framewire` | |
 | `command-protocol` | `internal/commandwire` | |
