@@ -32,6 +32,9 @@ func TestArchitecture(t *testing.T) {
 		{name: "test imports a dependency's support", graph: supportGraph, support: true, file: "internal/framewire/support_test.go", source: "package framewire_test\nimport _ \"archcheck.test/fixture/internal/core/coretest\""},
 		{name: "production imports support", graph: supportGraph, support: true, file: "internal/framewire/support.go", source: "package framewire\nimport _ \"archcheck.test/fixture/internal/core/coretest\"", want: "forbidden import: internal/framewire -> internal/core/coretest"},
 		{name: "test imports support of no dependency", graph: supportGraph, support: true, file: "internal/independent/support_test.go", source: "package independent_test\nimport _ \"archcheck.test/fixture/internal/core/coretest\"", want: "forbidden import: internal/independent -> internal/core/coretest"},
+		{name: "test imports a testdata fixture", file: "internal/core/testdata/fixture/fixture.go", source: "package fixture"},
+		{name: "test imports its fixture package", file: "internal/framewire/fixture_test.go", source: "package framewire_test\nimport _ \"archcheck.test/fixture/internal/framewire/testdata/specimen\""},
+		{name: "production imports a testdata package", file: "internal/framewire/fixture.go", source: "package framewire\nimport _ \"archcheck.test/fixture/internal/framewire/testdata/specimen\"", want: "forbidden import: internal/framewire -> internal/framewire/testdata/specimen"},
 		{name: "platform package exists", graph: "internal/core -> none\ninternal/framewire -> internal/core\ninternal/platform -> none", file: "internal/platform/platform_linux.go", source: "package platform"},
 	}
 	for _, tc := range cases {
@@ -59,6 +62,13 @@ func TestArchitecture(t *testing.T) {
 				if err := os.WriteFile(file, []byte("package coretest\nimport _ \"archcheck.test/fixture/internal/core\""), 0600); err != nil {
 					t.Fatal(err)
 				}
+			}
+			specimen := filepath.Join(dir, "internal/framewire/testdata/specimen/specimen.go")
+			if err := os.MkdirAll(filepath.Dir(specimen), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(specimen, []byte("package specimen"), 0600); err != nil {
+				t.Fatal(err)
 			}
 			if tc.file != "" {
 				file := filepath.Join(dir, tc.file)
