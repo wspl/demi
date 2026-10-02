@@ -63,6 +63,9 @@ func (e *schemaEmitter) schema(t types.Type, marks map[string]string) (any, erro
 	case *types.Named:
 		key := typeKey(t)
 		d := g.defs[key]
+		if has(d.marks, "codec") {
+			return nil, fmt.Errorf("%s: codec has no explicit JSON Schema mapping", d.name)
+		}
 		if e.active[key] {
 			if key == e.root {
 				return map[string]any{"$ref": "#"}, nil

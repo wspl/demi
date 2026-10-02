@@ -66,7 +66,8 @@ never relax them.
 
 | Marker after `// +demi:` | Placement and meaning |
 |---|---|
-| `root direction=receive output=protocol` | Type; a contract root. Without `output`, this is a Go-only boundary and `direction` may be omitted. `direction` is `receive` or `send`, from the web app's perspective; `output` is `protocol`, `web` or `plugin-<name>`. Every root and every type a boundary decodes gets `Decode<Type>`. |
+| `root direction=receive output=protocol` | Type; a contract root. Without `output`, this is a Go-only boundary and `direction` may be omitted. `direction` is `receive` or `send`, from the web app's perspective; `output` is `protocol`, `web` or `plugin-<name>`. Every root and every type a boundary decodes gets `Decode<Type>`, except types that own their `codec`. |
+| `codec` | Concrete named type `T`; `T` implements `MarshalJSON() ([]byte, error)` and `*T` implements `UnmarshalJSON([]byte) error`, plus the corresponding `MarshalMsgpack` and `UnmarshalMsgpack` methods when reached from a MessagePack root. Generation calls these codecs, emits no methods for the type, and neither traverses nor validates its contents. Only `root`, `msgpack`, and `schema` may accompany it; field nullability and presence still belong to the containing contract, but other field rules, flattening, and use as a record key are refused. Reaching it from JSON Schema or TypeScript output fails: the current vocabulary has no explicit mapping for an opaque codec. |
 | `schema` | Type; generate `<Type>JSONSchema() json.RawMessage` for a command input or result from the same checked contract model. |
 | `union tag=type` | Interface with exactly one unexported method, a parameterless and resultless seal selected independently of method order; exported methods are allowed and implemented by every variant. Internally tagged union. The tag may instead be `op`, `status`, `kind` or `ok`, as the wire requires. `variant true` and `variant false` use JSON boolean tags, never strings. |
 | `union tag=op content=result` | Go-only adjacent union. A zero-field variant has nil content; a single required field is the content itself (including a named object or array). More than one field is refused; compose a named content object instead. The tag must precede content on decode. |
@@ -97,6 +98,12 @@ types still receive validation and union seals, but no JSON codecs or JSON
 union holders. Unreached types are left alone. `schema` selects schema output
 for a retained type; it does not make an unreached type a boundary. Roots are
 markers on types, never a second registry in the generator.
+
+`runnerwire.BackendURL` and `ManagedBoot` own their JSON codecs; they have no
+schema or TypeScript roots. `BackendURL` would need a new explicit mapping for
+its normalized, credential-free HTTP(S)/WS(S) URL string before one could expose
+it in a schema; `format http-url` describes a named string with different URL
+semantics and is not that mapping.
 
 Maps may use `string` or a defined string type such as `core.BlockID` as keys.
 Generated JSON and MessagePack validation runs the key type's own rules on

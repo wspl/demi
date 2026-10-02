@@ -325,7 +325,7 @@ func markers(doc *ast.CommentGroup) map[string]string {
 		}
 		key, value, _ := strings.Cut(strings.TrimPrefix(text, "+demi:"), " ")
 		switch key {
-		case "flatten", "union", "variant", "nullable", "length", "range", "enum", "pattern", "timestamp", "check", "id", "base64", "msgpack", "strict", "tolerant", "root", "format", "table", "schema":
+		case "codec", "flatten", "union", "variant", "nullable", "length", "range", "enum", "pattern", "timestamp", "check", "id", "base64", "msgpack", "strict", "tolerant", "root", "format", "table", "schema":
 		default:
 			out["!error"] = "unsupported marker: " + key
 		}
@@ -418,6 +418,9 @@ func (g *generator) decoder(t types.Type) string {
 }
 
 func (g *generator) emitGo(d *definition) {
+	if has(d.marks, "codec") {
+		return
+	}
 	name := d.name
 	if has(d.marks, "union") {
 		if g.jsonReach[d.key] {
@@ -520,7 +523,11 @@ func (g *generator) emitGo(d *definition) {
 		g.line("func(v %s) MarshalJSON()([]byte,error){if err:=v.Validate();err!=nil{return nil,err};return contract.EncodeJSON(%s(v))}", name, g.typeName(d.typ.Underlying()))
 		return
 	}
-	g.line("obj,err:=contract.Decode[map[string]json.RawMessage](data); if err!=nil{return err}; var next %s", name)
+	object := "obj"
+	if st.NumFields() == 0 && tag == "" && has(d.marks, "tolerant") {
+		object = "_"
+	}
+	g.line("%s,err:=contract.Decode[map[string]json.RawMessage](data); if err!=nil{return err}; var next %s", object, name)
 	if !has(d.marks, "tolerant") {
 		g.line("for key:=range obj{switch key{")
 		keys := []string{}
@@ -590,6 +597,9 @@ func (g *generator) validation(t types.Type, expr, path string, m map[string]str
 		return
 	}
 	if named, ok := t.(*types.Named); ok {
+		if d := g.defs[typeKey(named)]; d != nil && has(d.marks, "codec") {
+			return
+		}
 		if has(m, "optional") && emptyCollection(t) {
 			g.line("{collection:=%s;if collection==nil{collection=make(%s,0)}", expr, g.typeName(t))
 			required := maps.Clone(m)
