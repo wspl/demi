@@ -63,7 +63,7 @@ invoking `file.read`, and the native service decodes the same value into
 results of every `demi.file` operation are types of one contract crate,
 `command-package-file-protocol`, that the declarations and the native program both link, so a
 declaration and its handler cannot describe different arguments
-([Contract crates](../architecture/contracts.md#contract-crates)).
+([Contract packages](../architecture/contracts.md#contract-packages)).
 
 An `rpc` leaf runs a handler in the backend instead.
 `demi todo add "Write tests"` declares its arguments the same way:

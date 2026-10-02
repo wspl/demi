@@ -108,7 +108,7 @@ was. It has two operations:
 | `claude-code.status` | — | `{ platform, installed }`: this machine's platform key and the versions it has, newest first, each with its path |
 
 The backend and the package decode these records with the same Rust types
-([Contract crates](../architecture/contracts.md#contract-crates)). The backend
+([Contract packages](../architecture/contracts.md#contract-packages)). The backend
 reaches the operations through a
 [service stream](../execution/runner.md#service-streams), which carries no
 arguments: the record is the stream's input, read to its end, and the answer is
