@@ -923,7 +923,7 @@ impl Link {
 
     /// Answers the runner's request for an executable's location, for the
     /// live work that runs it and only while it does
-    /// (`native-runtime.md` § Install the selected package).
+    /// (`native-runtime.md` § Install artifacts).
     fn resolve_artifact(&self, id: String, owner: ArtifactOwner, sha256: String, target: String) {
         let grant = self.grant(&owner);
         let refusal = match &grant {

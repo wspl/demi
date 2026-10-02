@@ -27,7 +27,7 @@ pub fn client() -> Result<reqwest::Client, Error> {
 /// [`client`], but plain HTTP too: for a caller that received the declared
 /// size and SHA-256 over a connection it trusts, so the transport cannot
 /// change what it keeps, such as a runner installing a command executable
-/// (`native-runtime.md` § Install the selected package). A download whose
+/// (`native-runtime.md` § Install artifacts). A download whose
 /// digest comes from the same server keeps [`client`].
 pub fn client_allowing_http() -> Result<reqwest::Client, Error> {
     builder()

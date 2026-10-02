@@ -566,10 +566,11 @@ web (product)                        web-gallery
   `src/generated/`, and the client validates every state and result it
   receives with them.
 - **Installs.** The first use of a plugin's package on a Host can wait for
-  the runner to install it, minutes for the browser's Chrome
+  the runner to install its artifacts, minutes for the browser's Chrome
   ([Installation progress](../execution/native-runtime.md#installation-progress)).
   A component that waits for such a call shows the client's installs with
-  `web-ui`'s one installs component, the artifact, its phase and its bytes,
+  `web-ui`'s one installs component, each artifact's name and version, its
+  phase and its bytes,
   instead of a bare spinner: the browser tab shows `Installing demi.browser:
   Chrome for Testing 153.0.8010.36, 120 of 196 MB` while its first tab opens.
   No plugin declares or starts an install: it follows from the call.
