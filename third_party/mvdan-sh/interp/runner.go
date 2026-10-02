@@ -111,12 +111,16 @@ func (r *Runner) fillExpandConfig(ctx context.Context) {
 			stdout := r.origStdout
 			// TODO: note that `man bash` mentions that `wait` only waits for the last
 			// process substitution as long as it is $!; the logic here would mean we wait for all of them.
+			bgCtx, cancel := context.WithCancel(ctx)
 			bg := bgProc{
-				done: make(chan struct{}),
-				exit: new(exitStatus),
+				state:  r2.scopeState,
+				cancel: cancel,
+				done:   make(chan struct{}),
+				exit:   new(exitStatus),
 			}
 			r.bgProcs = append(r.bgProcs, bg)
 			r.tasks.Go(func() {
+				defer cancel()
 				defer func() {
 					*bg.exit = r2.exit
 					close(bg.done)
@@ -131,7 +135,7 @@ func (r *Runner) fillExpandConfig(ctx context.Context) {
 				if ps.Op == syntax.CmdOut {
 					flag = os.O_RDONLY
 				}
-				f, err := openFIFO(ctx, path, flag)
+				f, err := openFIFO(bgCtx, path, flag)
 				if err != nil {
 					r2.exit.fatal(err)
 					return
@@ -152,7 +156,7 @@ func (r *Runner) fillExpandConfig(ctx context.Context) {
 				default:
 					panic(fmt.Sprintf("unexpected process substitution operator: %q", ps.Op))
 				}
-				r2.stmts(ctx, ps.Stmts)
+				r2.stmts(bgCtx, ps.Stmts)
 				r2.tasks.Wait()
 				r2.exit.exiting = false // subshells don't exit the parent shell
 			})
@@ -295,6 +299,9 @@ func (r *Runner) errf(format string, a ...any) {
 }
 
 func (r *Runner) stop(ctx context.Context) bool {
+	if r.scopeState != nil {
+		r.scopeState.Check()
+	}
 	// Some traps trigger on exit, so we do want those to run.
 	if !r.handlingTrap && (r.exit.returning || r.exit.exiting) {
 		return true
@@ -319,13 +326,18 @@ func (r *Runner) stmt(ctx context.Context, st *syntax.Stmt) {
 		st2 := *st
 		st2.Background = false
 		st2.Disown = false
+		bgCtx, cancel := context.WithCancel(ctx)
 		bg := bgProc{
-			done: make(chan struct{}),
-			exit: new(exitStatus),
+			state:  r2.scopeState,
+			cancel: cancel,
+			done:   make(chan struct{}),
+			exit:   new(exitStatus),
 		}
 		r.bgProcs = append(r.bgProcs, bg)
 		r.tasks.Go(func() {
-			r2.Run(ctx, &st2)
+			defer cancel()
+			r2.Run(bgCtx, &st2)
+			r2.Wait()
 			r2.exit.exiting = false // subshells don't exit the parent shell
 			*bg.exit = r2.exit
 			close(bg.done)
@@ -1225,7 +1237,7 @@ func (r *Runner) call(ctx context.Context, pos syntax.Pos, args []string) {
 		r.exit.returning = false
 		return
 	}
-	if IsBuiltin(name) {
+	if r.isBuiltin(name) {
 		r.exit = r.builtin(ctx, pos, name, args[1:])
 		return
 	}

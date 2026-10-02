@@ -77,7 +77,9 @@ type Runner struct {
 
 	// callHandler is a function allowing to replace a simple command's
 	// arguments. It may be nil.
-	callHandler CallHandlerFunc
+	customBuiltins map[string]ExecHandlerFunc
+	scopeState     ScopeState
+	callHandler    CallHandlerFunc
 
 	// execHandler is responsible for executing programs. It must not be nil.
 	execHandler ExecHandlerFunc
@@ -257,6 +259,9 @@ func (e *exitStatus) fromHandlerError(err error) {
 }
 
 type bgProc struct {
+	state  ScopeState
+	cancel context.CancelFunc
+	waited bool
 	// closed when the background process finishes,
 	// after which point the result fields below are set.
 	done chan struct{}
@@ -890,6 +895,8 @@ func (r *Runner) Reset() {
 		Env:            r.Env,
 		tasks:          r.tasks,
 		tempDir:        r.tempDir,
+		customBuiltins: r.customBuiltins,
+		scopeState:     r.scopeState,
 		callHandler:    r.callHandler,
 		execHandler:    r.execHandler,
 		openHandler:    r.openHandler,
@@ -1095,6 +1102,8 @@ func (r *Runner) subshell(background bool) *Runner {
 		tasks:          &taskGroup{parent: r.tasks},
 		tempDir:        r.tempDir,
 		Params:         r.Params,
+		customBuiltins: r.customBuiltins,
+		scopeState:     r.scopeState,
 		callHandler:    r.callHandler,
 		execHandler:    r.execHandler,
 		openHandler:    r.openHandler,
@@ -1111,6 +1120,9 @@ func (r *Runner) subshell(background bool) *Runner {
 		lastExit:       r.lastExit,
 
 		origStdout: r.origStdout, // used for process substitutions
+	}
+	if r.scopeState != nil {
+		r2.scopeState = r.scopeState.Clone()
 	}
 	r2.writeEnv = newOverlayEnviron(r.writeEnv, background)
 	// Funcs are copied, since they might be modified.
