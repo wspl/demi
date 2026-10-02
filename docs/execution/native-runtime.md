@@ -4,8 +4,8 @@ This document defines native command execution: binding a command to a release,
 installing its executable, and running it in a shared service. The execution
 contract comes first; protocol, publication, and build requirements follow.
 
-The runner is a Rust process with an embedded brush shell. Native command
-algorithms run in separate executables that stay running to serve multiple calls.
+The runner is a Go process with the patched `mvdan.cc/sh` interpreter. Native
+command algorithms run in separate executables that stay running to serve multiple calls.
 These *resident services* can be released independently of the runner. The runner
 embeds no JavaScript engine.
 
@@ -74,8 +74,8 @@ The responsibility boundaries are:
 | Shared command-sdk | Handle framing, HTTP/2, byte IO, and cancellation over a supplied transport. |
 | Command package | Implement operations, validate their arguments, and release operation resources. |
 
-The shared SDK owns no artifact or process management. Brush builtins and external
-command clients use the same dispatcher, which supplies validated operation
+The shared SDK owns no artifact or process management. The interpreter's exec
+handler and external command clients use the same dispatcher, which supplies validated operation
 metadata to the native service. `rpc` calls go to the backend instead. The
 native service never receives raw CLI requests.
 
@@ -83,7 +83,7 @@ Related contracts define the surrounding behavior:
 
 - [Command declarations](commands.md): CLI parsing and manifest semantics.
 - [Local forwarding](commands.md#external-command-clients): external clients and endpoint access.
-- [Runner jobs](runner.md#shell-jobs): brush, profiles, and whole-job cleanup.
+- [Runner jobs](runner.md#shell-jobs): the interpreter, profiles, and whole-job cleanup.
 - [Crates and packages](../architecture/crates-and-packages.md#module-layout): source module layout and ownership.
 
 ## Bind an exact package
@@ -875,7 +875,9 @@ The SDK returns input receive capacity while assembling one requested, bounded
 chunk. It reserves output capacity before sending DATA. Connection processing
 continues while output is blocked so that resets and disconnects can be received.
 
-`RST_STREAM(CANCEL)` triggers the invocation's cancellation token. The
+A stream reset triggers the invocation's cancellation. A service-side abort
+resets its HTTP/2 stream; neither end depends on the reset's error code.
+A reset before completion is failure, not a successful command result. The
 [service lifetime rules](#invoke-and-retire-a-service) determine whether cleanup
 succeeds or the process is faulty.
 

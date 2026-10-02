@@ -3,9 +3,10 @@
 A shell job reports the files it created or modified, so the conversation can
 show what one tool call edited: the list under the call, and each file's diff
 on request. The runner learns this from the commands themselves as they run,
-not from the filesystem afterwards: every in-process file write passes through
-a layer the runner owns, and that layer takes notes. This is why the shell runs
-in process and why the utilities are forked to open files through one context.
+not from the filesystem afterwards: shell redirections pass through the
+interpreter's open handler into a layer the runner owns, and that layer takes notes. This is why the shell runs in
+process: it gives the runner a writable-open hook in every nested shell scope,
+so redirections can use the shared recorder.
 Native Demi file commands also participate in recording, as described below.
 
 Edit tracking has one consumer: the file pills under a shell call in the
@@ -23,10 +24,10 @@ web app fetches them when a file is opened.
 
 | Recorded | Not recorded |
 | --- | --- |
-| A file a brush redirection opens for writing (`>`, `>>`, `<>`, `exec 3>f`). | Writes by external programs that do not participate in recording: git, python, node, user-installed tools. |
-| A file an embedded utility opens for writing, writes whole, or renames over (`sed -i`, `tee`, `sort -o`, `uniq` with an output file). | Copies and hard links (`cp`), deletions, renames as moves, directories, permissions, ownership, times. |
+| A file a redirection opens for writing through the patched `mvdan.cc/sh` open handler (`>`, `>>`, `<>`, `exec 3>f`). | Writes by external programs that do not participate in recording: git, python, node, user-installed tools. |
+| Redirections in every in-process scope: top level, subshells, functions, background and nested background tasks, command substitutions and (on Unix) process substitutions. | Files system utilities open themselves, including `sed -i`, `tee`, `sort -o` and `uniq` with an output file. |
 | Files created or modified by `demi file create`, `demi file edit`, and `demi file patch`, including when one patch edits several files. | Edits prepared by a native command but never written, or successfully rolled back. |
-| Every in-process part of the job: subshells, functions, background tasks, process substitutions. | Reads, and the empty file `mktemp` creates. |
+| | Copies and hard links (`cp`), deletions, renames as moves, directories, permissions, ownership, times, reads, and the empty file `mktemp` creates. |
 
 A file is `added` when it did not exist before this job first changed it,
 `modified` otherwise. A path absent when the job finishes is omitted, whether
@@ -79,8 +80,9 @@ the installation's lock file as an `EditContext`. The journal and the context ar
 wire; they are not another message stream and never appear on command stdout or
 stderr.
 
-Brush and `context::fs` enter this recorder for their write operations. Opened
-regular files are registered with their identity so cloned descriptors, utility
+The fork's open handler supplies recorded files for shell redirections, and
+native Demi file commands enter the same recorder for their write operations.
+Opened regular files are registered with their identity so cloned descriptors, builtin
 stdout and shell descriptor duplication retain their association with the path.
 Writes to an old descriptor after its path was replaced do not edit the file now
 at that path and are not attributed to it. Shell redirects of external stdout
@@ -190,7 +192,7 @@ Only Uncommitted mode lists files and offers a changed-file tree.
 
 | Where | Responsibility |
 | --- | --- |
-| `vendor/brush/brush-core`, `vendor/uutils-coreutils/uucore`, `vendor/uutils-sed/sed` | Route writable opens, file writes and temporary-file publication through the execution owner's hooks. |
+| `third_party/mvdan-sh` | Route writable redirections in every in-process scope through the job's open handler, preserving it in nested interpreters and executable fallback. |
 | `crates/command-protocol` | Define the recording context, the journal and the test of whether bytes are text. |
 | `crates/command-sdk` | Implement the shared bounded recorder with OS locking. |
 | `crates/command-package-file` | Record create, edit, patch publication and rollback using the invocation's recorder. |
@@ -226,3 +228,10 @@ Binary contents are never retained, whatever their size: copies of images and
 media would fill the blob store for little use, since the change view's
 history is about text. The work panel shows a binary file only as it exists
 on the Host ([File previews](../product/file-previews.md)).
+
+## Open items
+
+- **Pending:** Restore edit tracking for files that system utilities such as
+  `sed -i`, `tee` and `sort -o` open and write themselves. These writes are
+  outside the recorder in this migration. A shell redirection such as
+  `sort input > output` is still recorded; `sort -o output input` is not.

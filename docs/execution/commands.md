@@ -250,7 +250,7 @@ The arrows below show calls, not process containment. Both entry paths converge
 before the dispatcher selects the execution destination.
 
 ```text
-Brush builtin -------- direct call ------> Dispatcher (runner)
+Interpreter exec handler -- direct call --> Dispatcher (runner)
 External client ------ local forwarding -> Dispatcher (runner)
 
 Dispatcher -------- native operation ----> Command service on the same Host
@@ -361,8 +361,8 @@ reported.
 An external program such as `xargs` calls a declared root through an alias to
 `demi-runner`. The alias basename selects the root. The client forwards raw argv,
 cwd, environment, and its live execution context, then streams command IO. It
-contains no native command algorithms. Brush builtins call the dispatcher directly
-and do not need this extra process or connection.
+contains no native command algorithms. The interpreter's exec handler calls
+the dispatcher directly for declared commands and does not need this extra process or connection.
 
 The runner injects the endpoint and the job's opaque context handle into its
 jobs. The handle leads the runner to the job's live execution context, and with

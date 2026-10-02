@@ -378,11 +378,10 @@ cancelled. Running out is never an answer either: a working-tree request does
 not report a directory as outside a repository because it could not open the
 repository's files.
 
-A standard utility waits too when it opens a file or starts a program. Its
-other file work, such as `ls` reading a directory or `sort` spilling to a
-temporary file, fails as it would on any system out of open files: making
-every utility wait would change most of them, and the raised limit makes
-running out rare.
+System utilities manage their own files and child processes. Their opens,
+directory reads and temporary-file writes fail as they normally would when
+the system runs out of open files; the runner cannot make those operations
+wait.
 
 A process start also waits, for about a second, while its program is busy.
 Linux refuses to run a file that any process holds open for writing, and the
@@ -395,8 +394,8 @@ has closed the file, and a job that writes a script and runs it can meet the
 same. Every copy the runner makes runs its program at once, so the wait is
 short; a program still busy after a second is open for writing elsewhere, and
 its start fails. Every process the runner starts waits this way: services, raw
-processes, a job's commands and the programs its utilities start, such as
-`env` and `xargs`.
+processes and a job's commands. Programs that utilities such as `env` and
+`xargs` start follow those utilities' own process-start behavior.
 
 Two refusals remain. A conversation browser command that conflicts with
 another command on the same tab answers `tab_busy`; that is about the tab, not
@@ -410,20 +409,25 @@ A shell job owns its working directory, environment, IO, and asynchronous work.
 It also carries the [command context](native-runtime.md#command-context) the
 backend built for it; the runner never derives that context from the job's
 environment.
-Brush runs inside the runner process, on a shell runtime separate from the
-control thread. Declared roots call the shared command dispatcher; external
-tools such as Git, Python, and Node run as child processes. Every in-process
-file write passes through the job's scope, which reports the files the job
-created or modified when it exits ([Edit tracking](edit-tracking.md)).
+One patched `mvdan.cc/sh` interpreter runs inside the runner for each job.
+The fork lives in `third_party/mvdan-sh`, selected by a module `replace`
+directive, with its patch kept beside it; `internal/runner/shell` owns both.
+The interpreter's exec handler sends declared commands to the shared
+command dispatcher. Other commands, including standard utilities such as
+`ls`, `sed` and `grep`, are system programs found on the job's `PATH` and
+started in its Unix process group or Windows Job Object. Shell builtins
+such as `echo`, `printf` and `read` stay in the interpreter.
+Writable redirections pass through the interpreter's open handler into the
+job's recorder ([Edit tracking](edit-tracking.md)); files a system utility
+opens itself do not.
 
-Each interpreter unit, meaning the job's script and every pipeline stage,
-subshell, background list, and process substitution, runs on a thread of its
-own, and so does each embedded utility, from a large pool that serves only
-shell work. On Unix the runner reads and writes its end of each job pipe
-asynchronously, so a job's input and output take no threads; on Windows each
-end takes one thread from the shell pool.
-[Concurrency](../architecture/concurrency.md#runner) says why shell work has a
-pool of its own.
+The job owns every nested interpreter task, including pipeline stages,
+subshells, background lists, command and process substitutions, and IO
+adapters. The fork registers each task with its ancestor scopes before
+starting it and removes it only after cleanup. Nested scopes retain the
+job's handlers and ownership, including the interpreter fallback for an
+executable without a shebang. Shell work uses goroutines; utilities run as
+processes.
 
 The diagram shows ownership, not execution order. Cancelling job A releases its
 work while preserving the runner and job B.
@@ -433,15 +437,19 @@ Runner process
 +--------------------------------------------------+
 | Job A                    Job B                   |
 | +--------------------+   +--------------------+  |
-| | Brush execution    |   | Brush execution    |  |
+| | Shell interpreter  |   | Shell interpreter  |  |
 | | Background tasks   |   | Background tasks   |  |
 | | IO and child work  |   | IO and child work  |  |
 | +--------------------+   +--------------------+  |
 +--------------------------------------------------+
 ```
 
-Each job starts a fresh login shell. Brush loads the system profile and first
-readable user login profile. The runner then restores its execution context,
+Each job starts a fresh interpreter. The runner explicitly sources the system
+profile and first readable user login profile (`.bash_profile`, `.bash_login`,
+then `.profile`), rather than relying on an interpreter login-shell mode.
+The interpreter does not support the `login_shell` option; profiles that
+depend on it or unsupported Bash features are not fully compatible.
+The runner then restores its execution context,
 places command aliases first in PATH, and restores the requested cwd. Shell
 variables and functions do not carry over to the next job; persisted profile
 changes do. The backend receives the final cwd and foreground exit status.
@@ -454,8 +462,8 @@ the runner reports for the device
 has one. For example, a runner that a service manager starts without `HOME`
 gives its jobs its account's home: they read `~/.profile` there, and a line in
 it such as `. "$HOME/.local/bin/env"` finds its file. Without that default,
-brush would read the same profile with `$HOME` unset, and the line would look
-for `/.local/bin/env`.
+the interpreter would read the same profile with `$HOME` unset, and the line
+would look for `/.local/bin/env`.
 
 Tests that start jobs give each job a home of its own, so no test reads the
 login profile of the machine's user. The system profile belongs to the
@@ -475,7 +483,8 @@ completion. For example:
 The caller sees `started`, then a running job, then `done` and completion.
 A tool timeout returns the running job's handle. `shell_status` observes that job,
 and `shell_abort` cancels it. Background tasks remain job-owned rather than
-becoming detached services. Brush's internal tasks do not expose OS PIDs in `$!`.
+becoming detached services. The interpreter exposes synthetic identifiers
+such as `g1` in `$!`, not OS PIDs; they must never be passed to an OS signal API.
 
 ### Builtins that act on a process
 
@@ -501,23 +510,54 @@ it is made in.
 
 | Builtin | In a job |
 | --- | --- |
-| `exec CMD` | Runs CMD as `command CMD` would, a standard utility in the runner or a program through the job's process start, then ends the shell with CMD's status. In a subshell it ends the subshell. With only redirections, they stay with the shell, as in bash. |
+| `exec CMD` | Runs CMD as `command CMD` would, a declared command through the dispatcher or a system program through the job's process start, then ends the shell with CMD's status. In a subshell it ends the subshell. With only redirections, they stay with the shell, as in bash. |
 | `ulimit` | Sets and shows the limits of the processes the shell starts from then on; a subshell keeps its own. Without `-S` or `-H` it sets both limits, as in bash. A hard limit raised above the job's own without privilege fails at once, as in bash. The system checks every other new limit when it is set: the shell starts `/bin/sh -c :` with it, and a limit the system refuses, such as open files above macOS's cap, fails there and changes nothing, as it would in bash. |
-| `umask` | Sets and shows the mask of the processes the shell starts and of the files its redirections and standard utilities create. The runner's own mask still applies beneath it inside the runner, so there a job's mask can only take permissions away. For example, under a runner mask of `022`, a job's `umask 002` gives its programs group-writable files, but its redirections still create files with mode `644`. |
+| `umask` | Sets and shows the mask of the processes the shell starts and of the files its redirections create. System utilities inherit the child process mask. The runner's own mask still applies beneath it inside the runner, so there a job's mask can only take permissions away. For example, under a runner mask of `022`, a job's `umask 002` gives its programs group-writable files, but its redirections still create files with mode `644`. |
 | `kill` | Signals any process but the runner. `$$` is the runner's process ID and 0 its process group, so `kill $$` and `kill 0` fail with a message. |
 | `suspend`, `fg` | Fail: a job has no job control, as a bash script has none, and `suspend` would stop the runner. |
 
-A job's limits apply to its processes only: its builtins and standard
-utilities run in the runner, with the runner's limits. The other builtins act
-on the shell alone already: `cd` and the directory stack, `trap`, which
-installs no signal handler in the runner, `set` and `shopt`, `exit`, `wait`,
-`jobs` and `bg`. `times` shows the runner's processor time, not the job's.
+The table's `umask`, `ulimit` and guarded `kill` behavior requires Demi's
+custom builtin implementation: the interpreter recognizes those names but
+provides no implementation. Their state belongs to the interpreter scope
+and is cloned for subshells, never stored in script-mutable variables or
+implemented with bypassable shell functions. On Unix, a child launcher
+applies the mask and limits before executing the program; the runner's own
+process state stays unchanged. Windows has no Unix mask or resource limits.
+Full option parsing and consistent `builtin`/`command` dispatch belong to
+`internal/runner/shell`, alongside the numeric mask, resource limits and
+PID guards.
+
+The interpreter implements basic `exec CMD` and retained redirections, but
+routes `exec` through its exec handler even for shell builtins and does not
+parse `-a`, `-c` or `-l`. Demi's builtin dispatch must supply those forms and
+builtin-aware execution to meet the table's contract. Retained descriptors
+are closed after joining the job. `suspend` and `fg` are refused with no job
+control; they never stop the runner.
+
+A job's limits apply to its system programs, including utilities; in-process
+builtins retain the runner's limits. The remaining process-related builtins
+have these interpreter behaviors:
+
+| Builtin | In the interpreter |
+| --- | --- |
+| `wait` | Joins the current scope's background list, accepting synthetic `$!` identifiers; `-n` and `-p` are unsupported. Whole-job completion uses the fork's recursive join separately. |
+| `jobs`, `bg`, `times` | Recognized but unsupported; `times` does not report runner CPU time. |
+| `trap` | Supports EXIT and ERR only; signal traps such as TERM are rejected and install no runner signal handler. |
+
+`cd`, the directory stack, `set`, `shopt` and `exit` act on interpreter
+state. The same shell dialect runs on every platform, but it is not full
+Bash compatibility. Process substitution uses Unix FIFOs and is unsupported
+on Windows.
 
 ### Cancellation and completion
 
 Completion means the job has released its local work and IO, not merely that its
-foreground script returned. The shell scope tracks interpreter tasks, utility
-workers, and external children until they finish.
+foreground script returned. The shell scope tracks interpreter tasks, command
+handlers, IO adapters and
+external children until they finish. After foreground execution returns, the
+runner calls the fork's recursive `Wait` before closing retained redirections,
+finishing output and finalizing edits. A scope keeps its output resources
+until its descendants finish, so joining preserves their output too.
 
 | Outcome | Cleanup |
 | --- | --- |
@@ -525,12 +565,17 @@ workers, and external children until they finish.
 | Failure | Cancel remaining work, join it, and report the failure. |
 | Cancellation | Stop shell work, command invocations, and external descendants; release IO and reap children. |
 
-Embedded execution cooperates with cancellation. Blocking IO must be
+Interpreter execution and in-process command handlers cooperate with
+cancellation. Blocking IO must be
 interruptible: on Unix, a unit blocked on a read or write waits on the file and
 on its job's cancellation together, so cancelling the job wakes it at once; on
 Windows, the runner cancels the blocked call. External children belong to a Unix
 process group or Windows Job Object. The runner continues handling control
-requests while a job blocks on input or output.
+requests while a job blocks on input or output. Process-substitution FIFO
+opens are cancellable even when no peer ever opens them; after opening,
+reads and writes wait on both IO readiness and cancellation. On macOS the
+fork rechecks FIFO IO at most 10 ms later to detect EOF reliably; cancellation
+wakes the wait immediately.
 
 A cancelled job reports the signal that requested its cancellation, or `SIGKILL`
 when cancellation had no signal request and forcibly terminates external descendants.
@@ -690,8 +735,25 @@ Acceptance on a paired device and on a Cloud observes these outcomes:
 
 - A burst of file requests from the web app during a slow manifest install or
   disk sync keeps the connection and every running job.
-- Many concurrent jobs running pipelines of embedded utilities all complete;
-  none waits for a thread another job's unit holds.
+- Many concurrent jobs running pipelines of system utilities all complete;
+  blocked IO in one job does not prevent another from making progress.
 - A connection that never sends its `hello` is closed after 30 seconds.
 - A resident service that exits reports its exit status and standard-error
   tail both in the Host log and in the calls it failed.
+
+## Open items
+
+The following utility and capability decisions are pending, outside this
+migration:
+
+- **Pending:** Account for the BSD utilities and their flags on a paired Mac.
+- **Pending:** Define the experience on a Windows device without Unix utilities.
+- **Pending:** Supply GNU coreutils, findutils, diffutils, sed and grep in the
+  Cloud image.
+- **Pending:** Supply ripgrep and jq in the Cloud image and define their
+  availability on paired devices.
+- **Pending:** Tell the model which shell, platform and utilities a job has,
+  using its actual environment after profiles have loaded.
+
+Tracking files that system utilities write is separately
+[pending in edit tracking](edit-tracking.md#open-items).
