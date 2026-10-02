@@ -257,6 +257,10 @@ func checkMarks(m map[string]string) error {
 	for _, key := range []string{"length", "range"} {
 		seen := map[string]bool{}
 		for _, arg := range strings.Fields(m[key]) {
+			if arg == "schema-only" && key == "range" && !seen[arg] {
+				seen[arg] = true
+				continue
+			}
 			if arg == "chars" && key == "length" {
 				continue
 			}
