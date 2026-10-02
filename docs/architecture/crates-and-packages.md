@@ -2038,7 +2038,7 @@ internal/runner/jobs -> internal/commandwire, internal/cmdsdk, internal/declare,
 internal/runner/shell -> internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire
 internal/runner/cmdpkgs -> internal/artifacts, internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire
 internal/machines -> internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire, internal/machines/sandbox, internal/machines/storage, internal/machines/network, internal/machines/system
-internal/machines/sandbox -> internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire, internal/machines/system
+internal/machines/sandbox -> internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire, internal/machines/system, internal/contract
 internal/machines/storage -> internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire, internal/machines/system
 internal/machines/network -> internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire, internal/machines/system
 internal/machines/system -> internal/artifacts, internal/cli
