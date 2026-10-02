@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -153,4 +154,70 @@ func TestTypedReplyValidationRequiresFieldsButToleratesChromeAdditions(t *testin
 		t.Fatal("absent required result accepted")
 	}
 	requireCode(t, err, "driver_error")
+}
+
+// A command reply is a wire barrier: all preceding events have reached the
+// unread subscription. Local WebSocket only; budget below one second.
+func TestSubscriptionCapacityPerEventType(t *testing.T) {
+	for _, capacity := range []int{16, 256} {
+		for _, overflow := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%d/overflow=%v", capacity, overflow), func(t *testing.T) {
+				server := cdptest.NewServer(t, cdptest.Exchange{Method: "Runtime.getIsolateId", Params: struct{}{}, Result: jsontext.Value(`{"id":"barrier"}`)})
+				connection := ownedConnection(t, server.Address())
+				methods := []string{"Page.frameStartedLoading", "Page.frameStoppedLoading"}
+				var sub *cdp.Subscription
+				var err error
+				if capacity == 16 {
+					sub, err = connection.Subscribe(methods...)
+				} else {
+					sub, err = connection.SubscribeWithCapacity(capacity, methods...)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer sub.Close()
+				count := capacity
+				if overflow {
+					count++
+				}
+				for i := range count {
+					for _, method := range methods {
+						if err := server.Emit(t.Context(), cdp.Event{Method: method, Params: json.RawMessage(fmt.Sprintf(`{"frameId":"%d"}`, i))}); err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
+				if err := connection.Execute(t.Context(), "Runtime.getIsolateId", struct{}{}, nil); err != nil {
+					t.Fatal(err)
+				}
+				start := 0
+				if overflow {
+					_, err := sub.Next(t.Context())
+					var loss *cdp.EventLoss
+					if !errors.As(err, &loss) || loss.Count != 2 {
+						t.Fatalf("loss = %v; want two overwritten events", err)
+					}
+					start = 1
+				}
+				for i := start; i < count; i++ {
+					for _, method := range methods {
+						event, err := sub.Next(t.Context())
+						if err != nil || event.Method != method || string(event.Params) != fmt.Sprintf(`{"frameId":"%d"}`, i) {
+							t.Fatalf("event = %+v, err = %v; want %s frame %d", event, err, method, i)
+						}
+					}
+				}
+			})
+		}
+	}
+}
+
+// Ports chromiumoxide's capacity_is_bounded; no transport or waiting.
+func TestSubscriptionCapacityBounds(t *testing.T) {
+	var connection cdp.Connection
+	for _, capacity := range []int{0, 257} {
+		if _, err := connection.SubscribeWithCapacity(capacity, "Page.frameStartedLoading"); err == nil {
+			t.Fatalf("accepted capacity %d", capacity)
+		}
+	}
 }

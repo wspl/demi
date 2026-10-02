@@ -35,3 +35,45 @@ func validateObject(value CheckedObject) error {
 	}
 	return nil
 }
+
+// +demi:root direction=receive output=plugin-schemacheck
+// +demi:schema
+type PlainRange struct {
+	// +demi:range min=1 max=10
+	Value float64 `json:"value"`
+}
+
+// +demi:root direction=receive output=plugin-schemacheck
+// +demi:schema
+type SchemaRange struct {
+	// +demi:range min=1 max=10 schema-only
+	Value float64 `json:"value"`
+}
+
+// +demi:range min=1 max=10 schema-only
+// +demi:check validateNumber
+type CheckedNumber float64
+
+func validateNumber(value CheckedNumber) error {
+	if value != 5 {
+		return ErrReserved
+	}
+	return nil
+}
+
+// +demi:check validateStdin
+type Stdin string
+
+func validateStdin(value Stdin) error {
+	if value == "" {
+		return errors.New("must not be empty; use shell_status to poll")
+	}
+	return nil
+}
+
+// +demi:root direction=receive output=plugin-schemacheck
+// +demi:schema
+type CheckedInput struct {
+	Number CheckedNumber `json:"number"`
+	Stdin  Stdin         `json:"stdin"`
+}
