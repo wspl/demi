@@ -14,7 +14,7 @@ import (
 // name or address the device can resolve, an IPv6 address in brackets; the
 // port is 1 to 65535.
 //
-// +demi:codec
+// +demi:codec string
 type ExposeAddress string
 
 // ErrExposeAddress explains why a text is not an expose's address.

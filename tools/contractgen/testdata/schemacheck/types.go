@@ -1,7 +1,12 @@
 // Package schemacheck exercises rules enforced only by Go on schema roots.
 package schemacheck
 
-import "errors"
+import (
+	"errors"
+	"strings"
+
+	"github.com/wspl/demi/internal/contract"
+)
 
 //go:generate go run ../.. .
 
@@ -76,4 +81,34 @@ func validateStdin(value Stdin) error {
 type CheckedInput struct {
 	Number CheckedNumber `json:"number"`
 	Stdin  Stdin         `json:"stdin"`
+}
+
+// +demi:root direction=receive output=plugin-schemacheck
+// +demi:schema
+// +demi:codec string
+// +demi:format email
+// +demi:length chars min=3 max=30
+// +demi:pattern ^[a-z@.]+$
+type CodecText string
+
+func (value CodecText) MarshalJSON() ([]byte, error) {
+	return contract.EncodeJSON(strings.ToLower(string(value)))
+}
+
+func (value *CodecText) UnmarshalJSON(data []byte) error {
+	text, err := contract.Decode[string](data)
+	if err != nil {
+		return err
+	}
+	if text == "reserved" {
+		return ErrReserved
+	}
+	*value = CodecText(strings.ToLower(text))
+	return nil
+}
+
+// +demi:root direction=receive output=plugin-schemacheck
+// +demi:schema
+type CodecEnvelope struct {
+	Value CodecText `json:"value"`
 }

@@ -86,7 +86,8 @@
 // shapes use # for the root or $defs references for recursive subschemas.
 // Custom checks are Go-only and omitted from JSON Schema and Zod. Normalized
 // string formats, base64 rules and bytes remain unsupported for schema roots
-// (none occurs in the built-in command schemas).
+// (none occurs in the built-in command schemas). Explicit codec string types
+// emit their string markers in Schema and Zod; their codecs own Go validation.
 // Decoders additionally check JSON tokens, Unicode, Go widths and canonical
 // timestamps; a schema's format annotation does not carry those checks.
 //

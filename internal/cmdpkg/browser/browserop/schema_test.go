@@ -1,9 +1,10 @@
 package browserop_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
-	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
@@ -112,15 +113,16 @@ func TestSchemasMatchRustSnapshot(t *testing.T) {
 	}
 	for name, schema := range schemas {
 		t.Run(name, func(t *testing.T) {
-			want := jsonValue(t, reference[name]).(map[string]any)
-			got := jsonValue(t, schema()).(map[string]any)
-			// The command declaration builder owns only this timeout help override.
-			if props, ok := want["properties"].(map[string]any); ok {
-				if timeout, ok := props["timeout"].(map[string]any); ok {
-					timeout["description"] = "Whole operation deadline in milliseconds"
-				}
+			// Only the declaration builder's timeout help differs from the type.
+			want := string(reference[name])
+			for _, deadline := range []string{"30000", "300000"} {
+				want = strings.ReplaceAll(want, "Whole operation deadline in milliseconds; default "+deadline+", maximum 300000.", "Whole operation deadline in milliseconds")
 			}
-			if !reflect.DeepEqual(want, got) {
+			var compact bytes.Buffer
+			if err := json.Compact(&compact, []byte(want)); err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(compact.Bytes(), schema()) {
 				t.Errorf("schema differs from Rust snapshot\nwant %s\ngot %s", reference[name], schema())
 			}
 		})
