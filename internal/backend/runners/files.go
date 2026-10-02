@@ -1,11 +1,11 @@
 package runners
 
-//revive:disable:unused-parameter
-// API checkpoint: parameters are consumed by the implementation checkpoint.
-
 import (
 	"context"
+	"errors"
+	"strings"
 
+	"github.com/wspl/demi/internal/commandwire"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/webapi"
 )
@@ -21,19 +21,56 @@ const (
 )
 
 // Error returns the refusal shown to the user.
-func (r TextRefusal) Error() string { panic("not written: b-runners") }
+func (r TextRefusal) Error() string {
+	return string(r)
+}
 
 // TextOf interprets bytes as UTF-8 without NUL bytes, within the edit snapshot limit.
-func TextOf(bytes []byte) (string, error) { panic("not written: b-runners") }
+func TextOf(bytes []byte) (string, error) {
+	if len(bytes) > commandwire.EditFileBytes {
+		return "", TextTooLarge
+	}
+	if !commandwire.IsText(bytes) {
+		return "", TextNotText
+	}
+	return string(bytes), nil
+}
 
 // ReadTextFile reads one Host file as text; an oversized file is refused before
 // reading its bytes. Errors retain the host.Error or TextRefusal cause.
 func ReadTextFile(ctx context.Context, fs host.FS, path string) (string, error) {
-	panic("not written: b-runners")
+	stat, err := fs.Stat(ctx, path)
+	if err != nil {
+		return "", err
+	}
+	if stat.Size > commandwire.EditFileBytes {
+		return "", TextTooLarge
+	}
+	bytes, err := fs.ReadFile(ctx, path)
+	if err != nil {
+		return "", err
+	}
+	return TextOf(bytes)
 }
 
 // BrowseDirectory reads entries and metadata sequentially so one listing cannot
 // flood the runner queue. Entries that disappear meanwhile are omitted.
 func BrowseDirectory(ctx context.Context, fs host.FS, path string) ([]webapi.DirectoryEntry, error) {
-	panic("not written: b-runners")
+	names, err := fs.ReadDir(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]webapi.DirectoryEntry, 0, len(names))
+	for _, entry := range names {
+		stat, err := fs.Lstat(ctx, strings.TrimRight(path, "/")+"/"+entry.Name)
+		if err != nil {
+			var failure *host.Error
+			if errors.As(err, &failure) && failure.Code == "ENOENT" {
+				continue
+			}
+			return nil, err
+		}
+		entries = append(entries, webapi.DirectoryEntry{Name: entry.Name, IsDirectory: entry.Kind == host.Directory, IsSymbolicLink: stat.Kind == host.Symlink, Size: stat.Size, ModifiedAt: stat.Modified})
+	}
+	return entries, nil
 }
