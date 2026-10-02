@@ -7,38 +7,45 @@ package contracts
 // of the blocks they become.
 // +demi:length min=1
 // +demi:id
+// +demi:schema-primitive
 type BlockId string
 
 // A turn: every block a turn writes carries it. A message's id, which the
 // web app chooses, is the id of the turn the message starts.
 // +demi:length min=1
 // +demi:id
+// +demi:schema-primitive
 type TurnId string
 
 // An agent node: the root of a conversation or one of its subagents.
 // +demi:length min=1
 // +demi:id
+// +demi:schema-primitive
 type NodeId string
 
 // A scheduled yield wakeup.
 // +demi:length min=1
 // +demi:id
+// +demi:schema-primitive
 type WakeupId string
 
 // A shell of a node's shell environment.
 // +demi:length min=1
 // +demi:id
+// +demi:schema-primitive
 type ShellId string
 
 // A command a shell runs; its handle for shell_status, shell_write and shell_abort.
 // +demi:length min=1
 // +demi:id
+// +demi:schema-primitive
 type CommandId string
 
 // A blob's name: the SHA-256 of its bytes in lowercase hexadecimal
 // (`storage.md` § Encodings and digests). A blob belongs to its owner's
 // namespace, so a name grants no access across users.
 // +demi:pattern ^[0-9a-f]{64}$
+// +demi:schema-primitive
 type BlobRef string
 
 // A moment in whole milliseconds, which JSON writes as

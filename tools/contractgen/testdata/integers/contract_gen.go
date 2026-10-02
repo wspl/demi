@@ -100,7 +100,10 @@ func (v Input) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func InputJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"commandId\":{\"format\":\"uint64\",\"minimum\":0,\"type\":\"integer\"},\"shellId\":{\"default\":null,\"format\":\"uint64\",\"minimum\":0,\"type\":\"integer\"}},\"required\":[\"commandId\"],\"title\":\"Input\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"commandId\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"shellId\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0,\"default\":null}},\"required\":[\"commandId\"],\"title\":\"Input\",\"type\":\"object\"}")
+}
+func InputPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"Id\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0}},\"additionalProperties\":false,\"properties\":{\"commandId\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"shellId\":{\"$ref\":\"#/$defs/Id\",\"default\":null}},\"required\":[\"commandId\"],\"title\":\"Input\",\"type\":\"object\"}")
 }
 func DecodeSmall(data []byte) (Small, error) { return contract.Decode[Small](data) }
 func (v Small) Validate() error              { return contractValidateSmall(v, 0) }

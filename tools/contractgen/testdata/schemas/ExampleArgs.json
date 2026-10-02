@@ -1,5 +1,6 @@
 {
-  "type": "object",
+  "additionalProperties": false,
+  "description": "The input of `demi example`.",
   "properties": {
     "path": {
       "type": "string",
@@ -7,10 +8,10 @@
     },
     "count": {
       "type": "integer",
-      "minimum": 1,
-      "maximum": 9,
       "format": "uint32",
-      "description": "How many times"
+      "minimum": 1,
+      "description": "How many times",
+      "maximum": 9
     },
     "mode": {
       "type": "string",
@@ -35,11 +36,10 @@
       "type": "boolean"
     }
   },
-  "additionalProperties": false,
   "required": [
     "path",
     "tags"
   ],
   "title": "ExampleArgs",
-  "description": "The input of `demi example`."
+  "type": "object"
 }

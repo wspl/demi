@@ -76,3 +76,29 @@ func TestADeclaredCommandReachesTheJobsHandler(t *testing.T) {
 		t.Fatalf("request: %+v", asked)
 	}
 }
+
+// A closed consumer must become a shell status, leaving the next statement runnable.
+func TestDeclaredBrokenPipeExits141(t *testing.T) {
+	root := t.TempDir()
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reader.Close(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = writer.Close() }() // Execute may close cancelled job streams.
+	result, output, diagnostic := shellFiles(t, root, `fixture; printf '%s' "$?" >&2`, func(o *Options) {
+		o.Stdout = writer
+		o.Commands = &process.JobCommands{Context: "0123456789abcdef0123456789abcdef", Roots: []string{"fixture"}, Handler: &recordingHandler{}}
+		if _, err := o.Stdin.WriteString("body"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := o.Stdin.Seek(0, 0); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if result.Code != 0 || output != "" || diagnostic != "141" {
+		t.Fatalf("result %+v output %q diagnostic %q", result, output, diagnostic)
+	}
+}

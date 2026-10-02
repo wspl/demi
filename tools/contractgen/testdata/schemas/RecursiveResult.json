@@ -1,34 +1,34 @@
 {
-  "title": "RecursiveResult",
-  "type": "object",
-  "properties": {
-    "tree": {
+  "$defs": {
+    "Recursive": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "next": {
           "$ref": "#/$defs/Recursive",
           "description": "The next child, when present."
         }
       },
+      "description": "A recursive result with a documented child.\n\nParagraphs and line breaks remain product text."
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "tree": {
+      "type": "object",
       "additionalProperties": false,
+      "properties": {
+        "next": {
+          "$ref": "#/$defs/Recursive",
+          "description": "The next child, when present."
+        }
+      },
       "description": "A recursive result with a documented child.\n\nParagraphs and line breaks remain product text."
     }
   },
   "required": [
     "tree"
   ],
-  "additionalProperties": false,
-  "$defs": {
-    "Recursive": {
-      "type": "object",
-      "properties": {
-        "next": {
-          "$ref": "#/$defs/Recursive",
-          "description": "The next child, when present."
-        }
-      },
-      "additionalProperties": false,
-      "description": "A recursive result with a documented child.\n\nParagraphs and line breaks remain product text."
-    }
-  }
+  "title": "RecursiveResult",
+  "type": "object"
 }

@@ -1,11 +1,11 @@
 {
-  "type": "object",
+  "additionalProperties": false,
   "properties": {
     "number": {
       "type": "integer",
+      "format": "uint8",
       "minimum": 2,
-      "maximum": 7,
-      "format": "uint8"
+      "maximum": 7
     },
     "choice": {
       "type": "string",
@@ -32,6 +32,6 @@
     "choice",
     "text"
   ],
-  "additionalProperties": false,
-  "title": "Constraints"
+  "title": "Constraints",
+  "type": "object"
 }

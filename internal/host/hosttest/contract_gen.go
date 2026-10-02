@@ -74,7 +74,10 @@ func (v AddArgs) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func AddArgsJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi todo add`.\",\"properties\":{\"count\":{\"description\":\"How many copies\",\"format\":\"uint32\",\"minimum\":0,\"type\":\"integer\"},\"text\":{\"description\":\"Todo text\",\"maxLength\":1,\"type\":\"string\"}},\"required\":[\"text\"],\"title\":\"AddArgs\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi todo add`.\",\"properties\":{\"text\":{\"type\":\"string\",\"description\":\"Todo text\",\"maxLength\":1},\"count\":{\"type\":\"integer\",\"format\":\"uint32\",\"minimum\":0,\"description\":\"How many copies\"}},\"required\":[\"text\"],\"title\":\"AddArgs\",\"type\":\"object\"}")
+}
+func AddArgsPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi todo add`.\",\"properties\":{\"text\":{\"type\":\"string\",\"description\":\"Todo text\",\"maxLength\":1},\"count\":{\"type\":\"integer\",\"format\":\"uint32\",\"minimum\":0,\"description\":\"How many copies\"}},\"required\":[\"text\"],\"title\":\"AddArgs\",\"type\":\"object\"}")
 }
 func DecodeItems(data []byte) (Items, error) { return contract.Decode[Items](data) }
 func (v Items) Validate() error              { return contractValidateItems(v, 0) }
@@ -164,5 +167,8 @@ func (v Reply) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func ReplyJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"description\":\"Reply is the structured result of adding todos.\",\"properties\":{\"added\":{\"items\":{\"type\":\"string\"},\"type\":\"array\"}},\"required\":[\"added\"],\"title\":\"Reply\",\"type\":\"object\"}")
+	return json.RawMessage("{\"description\":\"Reply is the structured result of adding todos.\",\"properties\":{\"added\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}},\"required\":[\"added\"],\"title\":\"Reply\",\"type\":\"object\"}")
+}
+func ReplyPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"description\":\"Reply is the structured result of adding todos.\",\"properties\":{\"added\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}},\"required\":[\"added\"],\"title\":\"Reply\",\"type\":\"object\"}")
 }

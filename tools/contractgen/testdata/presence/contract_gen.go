@@ -131,7 +131,10 @@ func (v Defaults) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func DefaultsJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"count\":{\"default\":0,\"format\":\"uint32\",\"maximum\":10,\"minimum\":0,\"type\":\"integer\"},\"enabled\":{\"default\":false,\"type\":\"boolean\"},\"items\":{\"default\":[],\"items\":{\"type\":\"string\"},\"maxItems\":2,\"type\":\"array\"},\"labels\":{\"additionalProperties\":{\"type\":\"string\"},\"default\":{},\"type\":\"object\"},\"text\":{\"default\":\"\",\"maxLength\":4,\"type\":\"string\"}},\"title\":\"Defaults\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"maxItems\":2,\"default\":[]},\"labels\":{\"type\":\"object\",\"additionalProperties\":{\"type\":\"string\"},\"default\":{}},\"enabled\":{\"type\":\"boolean\",\"default\":false},\"count\":{\"type\":\"integer\",\"format\":\"uint32\",\"minimum\":0,\"maximum\":10,\"default\":0},\"text\":{\"type\":\"string\",\"maxLength\":4,\"default\":\"\"}},\"title\":\"Defaults\",\"type\":\"object\"}")
+}
+func DefaultsPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"Labels\":{\"type\":\"object\",\"additionalProperties\":{\"type\":\"string\"}}},\"additionalProperties\":false,\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"maxItems\":2,\"default\":[]},\"labels\":{\"$ref\":\"#/$defs/Labels\",\"default\":{}},\"enabled\":{\"type\":\"boolean\",\"default\":false},\"count\":{\"type\":\"integer\",\"format\":\"uint32\",\"minimum\":0,\"maximum\":10,\"default\":0},\"text\":{\"type\":\"string\",\"maxLength\":4,\"default\":\"\"}},\"title\":\"Defaults\",\"type\":\"object\"}")
 }
 func DecodeInstallEnvelope(data []byte) (InstallEnvelope, error) {
 	return contract.Decode[InstallEnvelope](data)
@@ -187,7 +190,10 @@ func (v InstallEnvelope) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func InstallEnvelopeJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"install\":{\"additionalProperties\":false,\"description\":\"One artifact being installed for a command package: its line's name and\\nits version, such as `Chrome for Testing` and `153.0.8010.36`, and how\\nfar it is, in bytes of its size.\",\"properties\":{\"done\":{\"format\":\"uint64\",\"maximum\":9007199254740991,\"minimum\":0,\"type\":\"integer\"},\"name\":{\"maxLength\":100,\"minLength\":1,\"type\":\"string\"},\"package\":{\"description\":\"The package, such as `demi.browser`.\",\"maxLength\":200,\"minLength\":1,\"type\":\"string\"},\"phase\":{\"description\":\"Where an install is: downloading the artifact, or unpacking a\\nresource's archive.\",\"enum\":[\"download\",\"unpack\"],\"type\":\"string\"},\"total\":{\"format\":\"uint64\",\"maximum\":9007199254740991,\"minimum\":1,\"type\":\"integer\"},\"version\":{\"maxLength\":100,\"minLength\":1,\"type\":\"string\"}},\"required\":[\"package\",\"name\",\"version\",\"phase\",\"done\",\"total\"],\"type\":\"object\"}},\"required\":[\"install\"],\"title\":\"InstallEnvelope\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"install\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"package\":{\"type\":\"string\",\"description\":\"The package, such as `demi.browser`.\",\"minLength\":1,\"maxLength\":200},\"name\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":100},\"version\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":100},\"phase\":{\"type\":\"string\",\"enum\":[\"download\",\"unpack\"],\"description\":\"Where an install is: downloading the artifact, or unpacking a\\nresource's archive.\"},\"done\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0,\"maximum\":9007199254740991},\"total\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"maximum\":9007199254740991}},\"required\":[\"package\",\"name\",\"version\",\"phase\",\"done\",\"total\"],\"description\":\"One artifact being installed for a command package: its line's name and\\nits version, such as `Chrome for Testing` and `153.0.8010.36`, and how\\nfar it is, in bytes of its size.\"}},\"required\":[\"install\"],\"title\":\"InstallEnvelope\",\"type\":\"object\"}")
+}
+func InstallEnvelopePluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"Install\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"package\":{\"type\":\"string\",\"description\":\"The package, such as `demi.browser`.\",\"minLength\":1,\"maxLength\":200},\"name\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":100},\"version\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":100},\"phase\":{\"$ref\":\"#/$defs/InstallPhase\"},\"done\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0,\"maximum\":9007199254740991},\"total\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"maximum\":9007199254740991}},\"required\":[\"package\",\"name\",\"version\",\"phase\",\"done\",\"total\"],\"description\":\"One artifact being installed for a command package: its line's name and\\nits version, such as `Chrome for Testing` and `153.0.8010.36`, and how\\nfar it is, in bytes of its size.\"},\"InstallPhase\":{\"type\":\"string\",\"enum\":[\"download\",\"unpack\"],\"description\":\"Where an install is: downloading the artifact, or unpacking a\\nresource's archive.\"}},\"additionalProperties\":false,\"properties\":{\"install\":{\"$ref\":\"#/$defs/Install\"}},\"required\":[\"install\"],\"title\":\"InstallEnvelope\",\"type\":\"object\"}")
 }
 func DecodeLabels(data []byte) (Labels, error) { return contract.Decode[Labels](data) }
 func (v Labels) Validate() error               { return contractValidateLabels(v, 0) }
@@ -343,7 +349,10 @@ func (v Patch) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func PatchJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"double\":{\"maxLength\":4,\"type\":[\"string\",\"null\"]},\"items\":{\"items\":{\"type\":\"string\"},\"type\":[\"array\",\"null\"]},\"option\":{\"maxLength\":4,\"type\":[\"string\",\"null\"]}},\"title\":\"Patch\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"option\":{\"type\":[\"string\",\"null\"],\"maxLength\":4},\"double\":{\"type\":[\"string\",\"null\"],\"maxLength\":4},\"items\":{\"type\":[\"array\",\"null\"],\"items\":{\"type\":\"string\"}}},\"title\":\"Patch\",\"type\":\"object\"}")
+}
+func PatchPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"option\":{\"type\":[\"string\",\"null\"],\"maxLength\":4},\"double\":{\"type\":[\"string\",\"null\"],\"maxLength\":4},\"items\":{\"type\":[\"array\",\"null\"],\"items\":{\"type\":\"string\"}}},\"title\":\"Patch\",\"type\":\"object\"}")
 }
 func DecodeTimestampPatch(data []byte) (TimestampPatch, error) {
 	return contract.Decode[TimestampPatch](data)

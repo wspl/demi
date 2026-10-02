@@ -1,5 +1,7 @@
 package blobs
 
+import "fmt"
+
 // Error reports why an operation on the object store failed.
 // Err retains the driver's error for errors.Is, errors.As and gcerrors.Code.
 type Error struct {
@@ -8,12 +10,12 @@ type Error struct {
 
 // Error describes the object-store failure.
 func (e *Error) Error() string {
-	panic("not written: b-blobs")
+	return fmt.Sprintf("the object store failed: %v", e.Err)
 }
 
 // Unwrap returns the underlying failure.
 func (e *Error) Unwrap() error {
-	panic("not written: b-blobs")
+	return e.Err
 }
 
 // CorruptError reports an object's metadata outside its type, such as a write
@@ -26,7 +28,7 @@ type CorruptError struct {
 
 // Error identifies the object and its invalid metadata.
 func (e *CorruptError) Error() string {
-	panic("not written: b-blobs")
+	return fmt.Sprintf("the object %s holds an invalid %s: %s", e.Location, e.Field, e.Reason)
 }
 
 // ConfigError reports why the S3 configuration cannot be read or used.
@@ -37,10 +39,10 @@ type ConfigError struct {
 
 // Error describes the configuration failure.
 func (e *ConfigError) Error() string {
-	panic("not written: b-blobs")
+	return e.Err.Error()
 }
 
 // Unwrap returns the underlying filesystem or validation failure.
 func (e *ConfigError) Unwrap() error {
-	panic("not written: b-blobs")
+	return e.Err
 }

@@ -67,8 +67,9 @@ never relax them.
 | Marker after `// +demi:` | Placement and meaning |
 |---|---|
 | `root direction=receive output=protocol` | Type; a contract root. Without `output`, this is a Go-only boundary and `direction` may be omitted. `direction` is `receive` or `send`, from the web app's perspective; `output` is `protocol`, `web` or `plugin-<name>`. Every root and every type a boundary decodes gets `Decode<Type>`, except types that own their `codec`. |
-| `codec` | Concrete named type `T`; `T` implements `MarshalJSON() ([]byte, error)` and `*T` implements `UnmarshalJSON([]byte) error`, plus the corresponding `MarshalMsgpack` and `UnmarshalMsgpack` methods when reached from a MessagePack root. Generation calls these codecs, emits no methods for the type, and neither traverses nor validates its contents. Only `root`, `msgpack`, and `schema` may accompany it; field nullability and presence still belong to the containing contract, but other field rules, flattening, and use as a record key are refused. Reaching it from JSON Schema or TypeScript output fails: the current vocabulary has no explicit mapping for an opaque codec. |
-| `schema` | Type; generate `<Type>JSONSchema() json.RawMessage` for a command input or result from the same checked contract model. |
+| `codec` | Concrete named type `T`; `T` implements `MarshalJSON() ([]byte, error)` and `*T` implements `UnmarshalJSON([]byte) error`, plus the corresponding `MarshalMsgpack` and `UnmarshalMsgpack` methods when reached from a MessagePack root. Generation calls these codecs, emits no methods for the type, and neither traverses nor validates its contents. `codec string` on a type with a string underlying type explicitly maps it to a string in JSON Schema and Zod; `pattern`, `length`, and `format` may accompany this form and are emitted there but never checked by generated Go code, since the codec owns validation. Otherwise only `root`, `msgpack`, and `schema` may accompany it; field nullability and presence still belong to the containing contract, but other field rules, flattening, and use as a record key are refused. Reaching an opaque codec without `codec string` from JSON Schema or TypeScript output fails. |
+| `schema` | Type; generate `<Type>JSONSchema() json.RawMessage` for command declarations and `<Type>PluginJSONSchema() json.RawMessage` for plugin page and stream declarations from the same checked contract model. The caller selects the form for its use; it is not a type-wide mode. |
+| `schema-primitive` | Named scalar type; its Rust custom `JsonSchema` implementation returns a primitive schema without derived type metadata and sets `inline_schema()` to true. Emit the scalar and its declared constraints inline in both schema modes, without the type doc description; explicit field comments still apply. This does not change codecs or Zod validation. String `timestamp` already carries this schema behavior. |
 | `union tag=type` | Interface with exactly one unexported method, a parameterless and resultless seal selected independently of method order; exported methods are allowed and implemented by every variant. Internally tagged union. The tag may instead be `op`, `status`, `kind` or `ok`, as the wire requires. `variant true` and `variant false` use JSON boolean tags, never strings. |
 | `union tag=op content=result` | Go-only adjacent union. A zero-field variant has nil content; a single required field is the content itself (including a named object or array). More than one field is refused; compose a named content object instead. The tag must precede content on decode. |
 | `flatten` | Field of an adjacent union, without a JSON tag or other field markers; contributes the tag and content at that field's position in its parent object. An adjacent variant's content field cannot itself be flattened. Keys must not collide with sibling or parent tag keys. |
@@ -275,13 +276,32 @@ records, and manifest/package digests.
 
 A command declaration calls `<Type>JSONSchema()` on a type marked
 `+demi:schema`. The function returns fresh JSON bytes from `contract_gen.go`;
-callers cannot mutate another caller's schema. Generation uses draft 2020-12
-keywords without a `$schema` meta-schema declaration. Subschemas are inline
+callers cannot mutate another caller's schema. Both forms use draft 2020-12
+keywords without a `$schema` meta-schema declaration. Command subschemas are inline
 except cycles: a reference back to the root uses `$ref: "#"`, and other
 recursive types use `$defs` and `$ref`, as schemars does even with inlining
 enabled.
 The declaration's input-subset check still decides whether a schema has a
 command-line form; schema generation also supports richer result objects.
+
+A plugin page's state, method params and results, and a stream's messages
+instead call `<Type>PluginJSONSchema()`. Like `plugin-interface::schema_of`,
+this retains named types in `$defs`, in first-use order, and refers to them
+with `$ref`. For example, `BrowserTabsPluginJSONSchema()` has
+`properties.tabs.items: {"$ref":"#/$defs/BrowserTab"}`. Named variants that
+are only Go's representation of an inline Rust enum branch stay inline;
+Rust's timestamp wrapper also explicitly inlines its primitive schema.
+A nullable named reference becomes `anyOf: [{"$ref": ...}, {"type":"null"}]`.
+Root recursion uses `#`; repeated named types share one definition. Definition
+names follow Rust's initialism spelling (`TabID` becomes `TabId`). The command
+and plugin forms coexist even when the same type is used by both boundaries.
+
+
+Root keywords use the declaration's sorted order. Nested schema objects retain
+schemars 1.2.2's insertion order, including declaration-order properties.
+Array items also follow schemars' serialization ordering: metadata, type,
+format and properties first, definitions last. This order is part of the
+model request bytes.
 
 JSON tags become `properties` and required fields become `required`.
 Optional properties omit `required` and never add null. `nullable` follows
@@ -312,8 +332,26 @@ Root direction and MessagePack markers do not change the JSON representation.
 A root's `title` is its type name. A contract type's and field's Go doc
 comment is copied verbatim from its Rust doc comment and supplies its
 `description`, including paragraph and line breaks. Generator directives
-are excluded. An explicit field comment replaces the named type's description
-at that property; named subschemas retain descriptions but acquire no title.
+are excluded. As in schemars 1.2.2's derive, a documented newtype retains its
+description both when inlined for commands and when stored under plugin `$defs`.
+A `$ref` property does not copy its target's description; an explicit field
+comment adds a description beside the reference. For inline schemas, a field
+comment replaces the type description. Named subschemas acquire no title.
+
+This metadata comes from Rust's `JsonSchema` implementation, not from being a
+scalar or from the inline setting itself. A fully transparent derive delegates
+to the inner type only when neither the container nor its field has schema
+metadata; doc comments are metadata, so a documented transparent newtype uses
+the normal derive path and keeps its description. Custom implementations do not
+automatically import doc comments. Shared `id!` identities and `Timestamp`
+explicitly return primitive schemas without descriptions and set
+`inline_schema()` to true. `schema-primitive` represents that custom scalar
+contract; string `timestamp` implies it. `id` does not: it also marks ordinary
+derived browser identifiers, enums, and types without a Rust schema. Their type comments remain documentation but
+supply no schema description, even at the root. Their field comments still
+supply property descriptions. Ordinary derived scalars, including browser
+`TabId`, and the derived `ExposeAddress` keep their type descriptions.
+
 The lint requirement that an exported comment start with its name is waived
 for contract packages. Declaration builders may override a property description
 (for example, a browser leaf adds its default deadline to `timeout`);
@@ -323,7 +361,10 @@ No defaults are inferred.
 A `check` function is a rule only Go enforces: schemas omit it, as Rust's
 schemas omit garde's custom rules, so a schema-reachable type may carry one.
 Generation fails with the declaration and field path for reachable normalized
-string `format`, `base64` and byte-slice rules. The built-in command schemas
+string `format`, `base64` and byte-slice rules, except the explicit
+`codec string` mapping. Its `format` is a JSON Schema format annotation with
+the marker's name; Zod uses the existing format behavior. The codec owns
+Go validation and normalization. The built-in command schemas
 use none of those; new uses need an explicit schema mapping rather than
 silently dropping their behavior.
 It also rejects the unsupported shapes and invalid markers described above.

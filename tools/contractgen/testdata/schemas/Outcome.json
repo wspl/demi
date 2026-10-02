@@ -2,19 +2,19 @@
   "oneOf": [
     {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
-        "kind": {
-          "type": "string",
-          "const": "ok"
-        },
         "value": {
           "type": [
             "string",
             "null"
           ]
+        },
+        "kind": {
+          "type": "string",
+          "const": "ok"
         }
       },
-      "additionalProperties": false,
       "required": [
         "kind",
         "value"
@@ -22,16 +22,16 @@
     },
     {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
+        "message": {
+          "type": "string"
+        },
         "kind": {
           "type": "string",
           "const": "error"
-        },
-        "message": {
-          "type": "string"
         }
       },
-      "additionalProperties": false,
       "required": [
         "kind",
         "message"

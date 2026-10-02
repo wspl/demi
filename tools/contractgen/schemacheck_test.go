@@ -5,10 +5,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/tools/contractgen/testdata/presence"
 	"github.com/wspl/demi/tools/contractgen/testdata/schemacheck"
 )
@@ -23,18 +23,11 @@ func TestSchemaGoOnlyChecks(t *testing.T) {
 		decode         func([]byte) error
 		good, rejected string
 	}{
-		{"scalar", schemacheck.CheckedTextJSONSchema(), `{"title":"CheckedText","type":"string","minLength":1}`, decodeSchemaValue(schemacheck.DecodeCheckedText), `"allowed"`, `"reserved"`},
-		{"embedded", schemacheck.EnvelopeJSONSchema(), `{"title":"Envelope","type":"object","properties":{"value":{"type":"string"}},"required":["value"],"additionalProperties":false}`, decodeSchemaValue(schemacheck.DecodeEnvelope), `{"value":"allowed"}`, `{"value":"reserved"}`},
+		{"scalar", schemacheck.CheckedTextJSONSchema(), `{"minLength":1,"title":"CheckedText","type":"string"}`, decodeSchemaValue(schemacheck.DecodeCheckedText), `"allowed"`, `"reserved"`},
+		{"embedded", schemacheck.EnvelopeJSONSchema(), `{"additionalProperties":false,"properties":{"value":{"type":"string"}},"required":["value"],"title":"Envelope","type":"object"}`, decodeSchemaValue(schemacheck.DecodeEnvelope), `{"value":"allowed"}`, `{"value":"reserved"}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			var got, want any
-			if err := json.Unmarshal(tc.schema, &got); err != nil {
-				t.Fatal(err)
-			}
-			if err := json.Unmarshal([]byte(tc.want), &want); err != nil {
-				t.Fatal(err)
-			}
-			if !reflect.DeepEqual(got, want) {
+			if string(tc.schema) != tc.want {
 				t.Fatalf("schema includes more than structural rules: %s", tc.schema)
 			}
 			if err := tc.decode([]byte(tc.good)); err != nil {
@@ -53,15 +46,8 @@ func TestSchemaGoOnlyChecks(t *testing.T) {
 // Schemars omits a skipped None default, makes Option fields optional, and adds
 // null to their type. Exact schema comparison; local CPU budget <1 second.
 func TestNullableOptionalSchema(t *testing.T) {
-	want := `{"title":"Patch","type":"object","additionalProperties":false,"properties":{"option":{"type":["string","null"],"maxLength":4},"double":{"type":["string","null"],"maxLength":4},"items":{"type":["array","null"],"items":{"type":"string"}}}}`
-	var actual, expected any
-	if err := json.Unmarshal(presence.PatchJSONSchema(), &actual); err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal([]byte(want), &expected); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(actual, expected) {
+	want := `{"additionalProperties":false,"properties":{"option":{"type":["string","null"],"maxLength":4},"double":{"type":["string","null"],"maxLength":4},"items":{"type":["array","null"],"items":{"type":"string"}}},"title":"Patch","type":"object"}`
+	if string(presence.PatchJSONSchema()) != want {
 		t.Fatalf("optional-null schema: %s; want %s", presence.PatchJSONSchema(), want)
 	}
 }
@@ -137,5 +123,28 @@ func TestSchemaOnlyRangeZod(t *testing.T) {
 		if !strings.Contains(string(data), want) {
 			t.Fatalf("missing %s in %s", want, data)
 		}
+	}
+}
+
+// Codec annotations describe the external schema; the owning decoder decides
+// Go acceptance and normalization. Local boundaries only; budget <1 second.
+func TestStringCodecSchema(t *testing.T) {
+	want := `{"format":"email","maxLength":30,"minLength":3,"pattern":"^[a-z@.]+$","title":"CodecText","type":"string"}`
+	if got := string(schemacheck.CodecTextJSONSchema()); got != want {
+		t.Fatalf("schema %s; want %s", got, want)
+	}
+	value, err := schemacheck.DecodeCodecEnvelope([]byte(`{"value":"X"}`))
+	if err != nil || value.Value != "x" {
+		t.Fatalf("codec result: %+v, %v", value, err)
+	}
+	if err := value.Validate(); err != nil {
+		t.Fatalf("generated validation checked codec annotations: %v", err)
+	}
+	data, err := contract.EncodeJSON(schemacheck.CodecEnvelope{Value: "X"})
+	if err != nil || string(data) != `{"value":"x"}` {
+		t.Fatalf("codec encoding: %s, %v", data, err)
+	}
+	if _, err := schemacheck.DecodeCodecEnvelope([]byte(`{"value":"reserved"}`)); !errors.Is(err, schemacheck.ErrReserved) {
+		t.Fatalf("lost codec error: %v", err)
 	}
 }

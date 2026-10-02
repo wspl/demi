@@ -47,6 +47,9 @@ func checkRuleType(t types.Type, m map[string]string, field bool) error {
 	}
 	basic, isBasic := t.Underlying().(*types.Basic)
 	stringType := isBasic && basic.Info()&types.IsString != 0
+	if has(m, "schema-primitive") && (field || !isBasic) {
+		return fmt.Errorf("schema-primitive requires a named scalar type")
+	}
 	if has(m, "integer") {
 		if m["integer"] != "string" || !isBasic || basic.Info()&types.IsInteger == 0 {
 			return fmt.Errorf("integer string requires an integer type")

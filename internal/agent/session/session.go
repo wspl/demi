@@ -387,12 +387,35 @@ func (s *Session) Dispose(ctx context.Context) error {
 // may call back into the session; resulting events follow the current event's
 // delivery to every listener. Callbacks must not wait for session progress.
 func (s *Session) Subscribe(listener func(Event)) *Subscription {
-	var id uint64
-	s.mutate(func(c *coreState) {
-		id = c.nextListener
-		c.nextListener++
-		c.listeners[id] = listener
-	})
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.subscribeLocked(listener)
+}
+
+// Observe captures a snapshot and subscribes to the events after it. Use it
+// instead of separate Transcript, Phase, QueuedMessages, PendingSteers and
+// Subscribe calls when opening a root or child session or syncing a transcript.
+// The owner defers Release and serializes its snapshot frames before callback
+// frames: callbacks may begin before Observe returns, but run outside the
+// session lock. Like Subscribe callbacks, they must not wait for session progress.
+func (s *Session) Observe(listener func(Event)) (Snapshot, *Subscription) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c := &s.core
+	snapshot := Snapshot{
+		Transcript:    TranscriptSnapshot{Blocks: c.log.Blocks(), Version: c.log.Version()},
+		Phase:         c.phase(),
+		Queue:         c.queued(),
+		PendingSteers: c.steers(),
+	}
+	return snapshot, s.subscribeLocked(listener)
+}
+
+// subscribeLocked registers a listener at the current session decision.
+func (s *Session) subscribeLocked(listener func(Event)) *Subscription {
+	id := s.core.nextListener
+	s.core.nextListener++
+	s.core.listeners[id] = listener
 	return &Subscription{session: s, id: id}
 }
 
