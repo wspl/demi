@@ -34,7 +34,7 @@ names each crate's items.
 | Managed boot record | `runner-protocol` | Backend and machine manager; the runner in a Cloud sandbox reads it |
 | Command invocations between a runner and a command program | `command-protocol` | Runner; `demi-file`, `demi-browser`, `demi-claude-code` |
 | `demi.file` operations | `command-package-file-protocol` | `plugin-file` declarations; `demi-file` |
-| `demi.browser` operations, live view messages, capture extension events | `command-package-browser-protocol` | `plugin-browser` declarations, the backend and the conversation browser's crates; the page reads live view messages through `@demicodes/protocol` |
+| `demi.browser` operations, live view messages, capture extension events | `command-package-browser-protocol` | `plugin-browser` declarations, the backend and the conversation browser's crates; the page reads live view messages through `@demicodes/plugin-browser` |
 | `demi.claude-code` operations and the Claude Code release record | `command-package-claude-code-protocol` | Backend; `demi-claude-code` |
 | Plugin manifests, requests, replies and port messages | `plugin-interface` | The plugin host; every plugin, in process today and over a process's stdio with the TypeScript SDK ([Plugins](plugins.md#the-contract)) |
 | A plugin's page state, page call parameters and results | The plugin's crate, such as `plugin-skills` | The plugin; its page package, through generated TypeScript |

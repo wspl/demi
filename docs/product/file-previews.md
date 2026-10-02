@@ -1,7 +1,9 @@
 # File previews
 
 The work panel's File view shows one file of the conversation's Host, and its
-Change view shows one changed file. Code and other text open in the code
+Change view shows one changed file; they are the pinned `file` and `change`
+kinds of the `file-browser` and `changes` plugins
+([Work panel](web-application.md#work-panel)). Code and other text open in the code
 editor. This document owns what the two views show for everything else: which
 kinds of file they preview, how a view picks one, how the bytes reach the
 page, when a transfer ends, and what file content may do in the page. It also
@@ -141,7 +143,9 @@ width. A click shows the image whole: a Host image in the File
 view, a web image in a new tab of the user's browser. An image inside a link
 follows the link.
 
-A `:line` suffix on a path is dropped, since the File view opens a whole file.
+A link to a file opens the `file` intent, and so does a click on a Host image;
+while no plugin the user has on opens it, a file link is shown as text and a
+Host image only shows. A `:line` suffix on a path is dropped, since the File view opens a whole file.
 Only a Markdown link or image names a file: a path in code or plain text stays
 text, because the page cannot tell which paths exist without asking the Host
 for each. Paths name files on the conversation's Host; a file on another Host
@@ -332,7 +336,8 @@ in the product's origin:
 | The Host contract and the backend's remote Host | Streamed reads, whole or by range, and writes, over pipes. |
 | The backend | The raw routes, their headers and ranges, and ending transfers. |
 | The `shared-types` contract crate | The file-type table and its lookup, generated for the web app into `@demicodes/protocol`. |
-| `web-ui` | Choosing and showing previews, Markdown rendering and sanitizing, the side-by-side comparison, releasing transfers, resolving the files a message names, showing the media a tool returned and opening an image large. |
+| `web-ui` | The previews as primitives: choosing and showing them, Markdown rendering and sanitizing, the side-by-side comparison, releasing transfers; resolving the files a message names and opening them through the `file` intent ([Intents](../architecture/plugin-pages.md#intents)), showing the media a tool returned and opening an image large. |
+| `plugin-file-browser`, `plugin-changes` | The File view and the Change view, composed from the previews over the conversation files service. |
 | `web`, `web-gallery` | Raw and blob URLs from the product's routes and the working directory messages resolve against; a fixture file for every kind, and fixture blobs for a tool's media. |
 
 [Crates and packages](../architecture/crates-and-packages.md) names the crate

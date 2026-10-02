@@ -233,7 +233,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
 - **Public boundary:** the types above. `plugin-browser` declares the commands
   from these types, the browser's crates decode invocations with them, the
   plugin uses them for its tab methods too, and the page
-  reads the live view's messages through `@demicodes/protocol`. Native
+  reads the live view's messages through `@demicodes/plugin-browser`. Native
   commands, the plugin, the backend and the page need one contract without
   importing each other's implementations.
 - **Must not:** implement operations, transport, components, Host access,
@@ -700,6 +700,21 @@ or on another plugin.
   types, every leaf bound to a `demi.file` operation.
 - **Public boundary:** its factory.
 - **Must not:** implement a file operation; `demi-file` does.
+
+#### `plugin-changes`
+
+- **Owns:** the `changes` plugin's identity: a manifest with its id, name and
+  description and no contribution, so the user's switch decides whether the
+  page shows the Change view ([Registration](plugin-pages.md#registration)).
+- **Public boundary:** its factory.
+- **Must not:** hold or serve a change; edit tracking and the file routes do.
+
+#### `plugin-file-browser`
+
+- **Owns:** the `file-browser` plugin's identity, as `plugin-changes` owns
+  its own, for the File view.
+- **Public boundary:** its factory.
+- **Must not:** read a Host file; the file routes do.
 
 #### `plugin-browser`
 
@@ -1307,7 +1322,7 @@ under `packages/`.
 - **Published** to npm.
 - **Owns:** the TypeScript form of the Rust contracts the web app reads: Zod
   schemas and `z.infer` types for agent frames, transcript blocks and patches,
-  content, tool views, models, failure facts and the live view's messages, and
+  content, tool views, models and failure facts, and
   the file-type table with its lookups. `xtask contracts` generates all of it
   into `src/generated/`, which the package's entry re-exports; nothing else is
   written, and nothing generated is committed.
@@ -1343,8 +1358,8 @@ under `packages/`.
   editor and its draft and submission lifecycle (`agent/message-editor/`, the
   tiptap editor a user message is written and shown in); the user Markdown
   dialect; sidebar layout and list interaction; workspace and remote-file
-  selection; the live browser view over an injected stream source; file
-  previews; the settings surface as presentation over host-mapped models; the
+  selection; file previews and the file tree as primitives; the work panel
+  frame; the settings surface as presentation over host-mapped models; the
   device pairing dialog over a host-provided claim adapter; the sign-in page;
   shared UI primitives, Markdown rendering and theme; the summary text of
   queued messages, derived from their content; and the liveness of a page's
@@ -1353,14 +1368,26 @@ under `packages/`.
   sockets and the live views share, and the check of every socket when the
   page comes back (`transport/liveness.ts`,
   [Liveness and reconnection](../product/web-application.md#liveness-and-reconnection)).
-  It also owns the page side of [plugins](plugins.md#the-page): the
-  `PluginClient` interface a plugin's components receive through
-  `usePlugin()`, and the slots a plugin package fills (a settings section, work
-  panel kinds). It consumes an injected `ConversationClient` and injected
-  plugin clients, and ships no control-plane transport of its own.
+  It consumes an injected `ConversationClient` and injected plugin
+  services, and ships no control-plane transport of its own.
 - **Public boundary:** source-path exports (`./*`) consumed by `web`,
-  `web-gallery` and the plugin packages.
-- **Must not:** import Node, `web` or `web-gallery`.
+  `web-gallery` and `plugin-sdk`.
+- **Must not:** import Node, `web`, `web-gallery`, `plugin-sdk` or a plugin
+  package, or know a plugin, a plugin's kind or a plugin's types.
+
+#### `@demicodes/plugin-sdk`
+
+- **Private** until pages from outside the repository load
+  ([Pages from outside the repository](plugin-pages.md#pages-from-outside-the-repository)).
+- **Owns:** the page API ([Plugin pages](plugin-pages.md)): the `PluginPage`
+  and slot types, the `PluginClient` with `usePlugin()`, the intents with
+  their payload schemas, the service interfaces, the registry's checks of
+  kinds, and the public components, re-exported from `web-ui`. Its major
+  version is the page API's version.
+- **Public boundary:** its entry and subpath exports, which plugin packages,
+  `web` and `web-gallery` import.
+- **Must not:** know a plugin, or export a `web-ui` module that is not part of
+  the page API.
 
 #### `@demicodes/web`
 
@@ -1376,10 +1403,11 @@ under `packages/`.
   containers; `api/` validated HTTP and agent wire adapters and upload
   requests; `state/` the product state its synchronization channel keeps,
   preferences and per-user local state;
-  `devices/` pairing and filesystem adapters; `plugins/` the plugin packages
-  the product shows, registered from a static list, and the `PluginClient`
-  over the page call route and the synchronization channel. Reusable UI
-  belongs to `web-ui`.
+  `devices/` pairing and filesystem adapters; `plugins/` the plugin services
+  over the page call route, the synchronization channel and the file routes,
+  and the registry `xtask contracts` generates into `plugins/generated/` from
+  the plugin packages it depends on. Reusable UI belongs to `web-ui`, a
+  plugin's feature UI to its package.
 - **Integration boundary:** authentication calls the backend over same-origin
   HTTP; the product state follows the synchronization channel, a WebSocket;
   chat uses the agent client over WebSocket; operations on resources and
@@ -1401,41 +1429,28 @@ under `packages/`.
   full-pane message route. It is not a product surface and ships no themes into
   the product.
 - **Public boundary:** `bun run web:gallery`. It shows each plugin package's
-  slots over a fixture `PluginClient`.
+  slots over fixture services, from the registry `xtask contracts` generates
+  into `src/generated/`.
 - **Must not:** import Node or `web`, or be imported by another package.
 
-#### `@demicodes/plugin-skills`
+#### `@demicodes/plugin-<name>`
 
-- **Private.**
-- **Owns:** the page of [skills](../agent/skills.md#the-page): the settings
-  section that composes `web-ui`'s Skills page over its `PluginClient`, with
-  the plugin's page types that `xtask contracts` generates into
-  `src/generated/`, against which the client validates every state and result
-  it receives.
-- **Public boundary:** its slots, which `web` and `web-gallery` register.
-- **Must not:** import `web` or `web-gallery`, know a route, or hold a
-  reusable component; those belong to `web-ui`.
+Each plugin page package is **private** and has the same boundary:
 
-#### `@demicodes/plugin-browser`
+- **Public boundary:** its `PluginPage`, the default export of its entry, and
+  `"demi": { "plugin": "<id>" }` in its `package.json`, from which the
+  registry is generated ([Registration](plugin-pages.md#registration)).
+- **Must not:** import a workspace package other than `plugin-sdk` and
+  `utils`, know a route, or hold a primitive another page could use; that
+  belongs to `web-ui`, exposed through the SDK.
 
-- **Private.**
-- **Owns:** the page of the conversation browser: the `browser` work panel
-  kind, whose tab source and stream source are its `PluginClient`, over
-  `web-ui`'s live view ([Live view](../browser/live-view.md#responsibilities)),
-  with the plugin's page types generated into `src/generated/`.
-- **Public boundary:** its slots, which `web` and `web-gallery` register.
-- **Must not:** import `web` or `web-gallery`, know a route, or hold a
-  reusable component; those belong to `web-ui`.
-
-#### `@demicodes/plugin-expose`
-
-- **Private.**
-- **Owns:** the conversation header tool of [Host expose](../execution/expose.md#product-surface),
-  composed from `web-ui`'s expose menu over its `PluginClient`, with the
-  plugin's page types generated into `src/generated/`.
-- **Public boundary:** its slots, which `web` and `web-gallery` register.
-- **Must not:** import `web` or `web-gallery`, know a route, or hold a
-  reusable component; those belong to `web-ui`.
+| Package | Owns |
+| --- | --- |
+| `@demicodes/plugin-browser` | The `browser` work panel kind and the live view ([Live view](../browser/live-view.md#responsibilities)): frames, input, clipboard and pictures over its `PluginClient`, with the plugin's page types and the live view's messages generated into `src/generated/` |
+| `@demicodes/plugin-expose` | The conversation header's expose menu and the `page` work panel kind ([Host expose](../execution/expose.md#product-surface)), with the plugin's page types generated into `src/generated/` |
+| `@demicodes/plugin-skills` | The Skills settings section with its dialogs ([Skills](../agent/skills.md#the-page)), with the plugin's page types generated into `src/generated/` |
+| `@demicodes/plugin-changes` | The pinned `change` kind, the Change view, over the conversation files service ([Changes](../product/file-previews.md#changes)) |
+| `@demicodes/plugin-file-browser` | The pinned `file` kind, the File view, over the conversation files service ([File previews](../product/file-previews.md)) |
 
 #### `cloud-guest-image` (not a workspace package)
 
@@ -1498,6 +1513,8 @@ plugin-file -> plugin-interface, command-declarations, command-package-file-prot
 plugin-browser -> plugin-interface, command-declarations, command-package-browser-protocol, host-interface, web-api-protocol
 plugin-expose -> plugin-interface, host-interface, shared-types, web-api-protocol
 plugin-skills -> plugin-interface, shared-types
+plugin-changes -> plugin-interface
+plugin-file-browser -> plugin-interface
 backend-remote-host -> command-protocol, command-declarations, shared-types, shared-gates, runner-protocol, host-interface
 runner-process -> shared-artifacts, command-protocol, command-sdk, runner-protocol
 runner-host -> shared-artifacts, command-sdk, runner-process, runner-protocol
@@ -1518,13 +1535,13 @@ backend-plugins -> plugin-interface, command-declarations, shared-types, host-in
 backend-host-access -> agent-store, agent-tools, backend-cloud, backend-blobs, backend-runners, backend-database, command-protocol, command-declarations, shared-types, shared-gates, backend-remote-host, runner-protocol, host-interface, web-api-protocol, plugin-interface
 backend-user-shard -> agent-server, conversation-socket-protocol, agent-session, agent-store, agent-tools, agent-transcript, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-idle-watch, backend-blobs, backend-plugins, backend-providers, backend-runners, backend-database, backend-page-sync, command-package-claude-code-protocol, command-protocol, command-declarations, shared-types, shared-gates, plugin-interface, backend-remote-host, machine-manager-protocol, provider-common, provider-claude-code, runner-protocol, host-interface, web-api-protocol
 backend-http -> conversation-socket-protocol, agent-store, shared-artifacts, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-blobs, backend-providers, backend-runners, backend-user-shard, backend-database, backend-page-sync, command-protocol, shared-types, backend-remote-host, provider-common, runner-protocol, host-interface, web-api-protocol, backend-plugins, plugin-interface
-backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-expose, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-file, plugin-interface, plugin-todo, provider-anthropic-api, provider-claude-code, provider-codex, provider-common, provider-google, provider-grok-build, provider-openai-api, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-expose, plugin-skills
+backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-expose, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-changes, plugin-file, plugin-file-browser, plugin-interface, plugin-todo, provider-anthropic-api, provider-claude-code, provider-codex, provider-common, provider-google, provider-grok-build, provider-openai-api, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-expose, plugin-skills
 machine-manager -> shared-artifacts, shared-cli, machine-manager-protocol, runner-protocol
 runner -> command-protocol, command-sdk, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell
 command-package-file -> shared-artifacts, command-protocol, command-sdk, shared-types, command-package-file-protocol, shared-gates
 command-package-browser -> command-package-browser-chrome, command-package-browser-protocol, command-protocol, command-sdk
 command-package-claude-code -> command-package-claude-code-protocol, command-protocol, command-sdk
-xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, plugin-browser, plugin-expose, plugin-skills
+xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, backend, plugin-browser, plugin-expose, plugin-skills
 ```
 
 ### TypeScript packages
@@ -1536,11 +1553,14 @@ protocol -> none
 utils -> none
 conversation-client -> protocol, utils
 web-ui -> conversation-client, protocol, utils
-plugin-browser -> protocol, web-ui
-plugin-expose -> web-ui
-plugin-skills -> web-ui
-web -> plugin-browser, plugin-expose, plugin-skills, protocol, utils, web-ui
-web-gallery -> plugin-browser, plugin-expose, plugin-skills, protocol, utils, web-ui
+plugin-sdk -> web-ui
+plugin-browser -> plugin-sdk, utils
+plugin-changes -> plugin-sdk, utils
+plugin-expose -> plugin-sdk, utils
+plugin-file-browser -> plugin-sdk, utils
+plugin-skills -> plugin-sdk, utils
+web -> plugin-browser, plugin-changes, plugin-expose, plugin-file-browser, plugin-sdk, plugin-skills, protocol, utils, web-ui
+web-gallery -> plugin-browser, plugin-changes, plugin-expose, plugin-file-browser, plugin-sdk, plugin-skills, protocol, utils, web-ui
 ```
 
 ## Module layout

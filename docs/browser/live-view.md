@@ -42,10 +42,10 @@ For example, the agent starts the user's application at
 ```text
 User's browser (Demi web)   Backend                        Host (Cloud or paired device)
 +--------------------+ WSS  +-----------------------+      +---------------------------------+
-| web-ui live view   |<====>| edge: user stream     |pipes | runner --/v1/invoke--> demi-    |
-| video, input,      |      | route; checks cookie, |<====>|                        browser  |
-| native controls,   |      | owner and Origin;     |      |   conversation browser          |
-| viewport menu      |      | relays the bytes      |      |     tab registry                |
+| plugin-browser     |<====>| edge: user stream     |pipes | runner --/v1/invoke--> demi-    |
+| live view: video,  |      | route; checks cookie, |<====>|                        browser  |
+| input, native      |      | owner and Origin;     |      |   conversation browser          |
+| controls, viewport |      | relays the bytes      |      |     tab registry                |
 +--------------------+      | - - - - - - - - - - - |      |     live view module:           |
                             | user's shard: admits  |      |       live hub, capture channel |
                             | the stream, opens     |      |     Chrome: capture extension,  |
@@ -69,8 +69,8 @@ User's browser (Demi web)   Backend                        Host (Cloud or paired
   admits the stream and opens its pipes, and the edge relays the bytes between
   the page's WebSocket and those pipes. Neither the runner nor the backend
   knows that a browser is involved.
-- `web-ui` shows the video, sends input, and places the page's native form
-  controls over the video.
+- `@demicodes/plugin-browser`, the plugin's page, shows the video, sends
+  input, and places the page's native form controls over the video.
 
 ## A browser tab in the panel
 
@@ -204,7 +204,7 @@ frame or for a paste's text and HTML.
 Control messages are JSON. Their types are defined once, in the
 `command-package-browser-protocol` crate: the module decodes each message into
 them, and the page checks each one against the schema generated from them into
-`@demicodes/protocol`
+`@demicodes/plugin-browser`
 ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
 Video frames are binary: a header naming the tab, the stream generation, a
 sequence number, whether the frame is a key frame, its timestamp and its size,
@@ -573,8 +573,7 @@ crate and package; for the live view:
 | `command-protocol`, `command-sdk`, the runner's crates, `runner-protocol`, `backend-remote-host` | [User streams](../execution/native-runtime.md#user-streams) and [service streams](../execution/runner.md#service-streams), with no browser knowledge. |
 | `plugin-browser` | Declaring `viewport set --scale` with the other `demi browser` commands; declaring the `browser` user stream; the [tab methods](#the-tab-methods), which call the browser's own operations and hold no browser logic. |
 | `backend` | The user stream route, where the user's shard admits and ends the stream and the edge relays its bytes with backpressure; the plugin call routes. Neither names the browser. |
-| `web-ui` | The `browser` tab kind: its tab source, which lists, opens and closes tabs through an interface the consumer supplies, and its content, the live view: video, input, native control overlays, clipboard, dialogs, the viewport menu, and what it shows while a tab is opening, gone, or out of reach, or in a user's browser that cannot decode the pictures. It depends on `@demicodes/protocol` for the live protocol, as it depends on `@demicodes/conversation-client` for agent frames. |
-| `@demicodes/plugin-browser` | Registering the `browser` kind, whose tab source and stream source are the plugin's client: its tab methods and its `browser` user stream. |
+| `@demicodes/plugin-browser` | The `browser` tab kind: its tab source, which lists, opens and closes tabs through the plugin's tab methods, and its content, the live view over the plugin's `browser` user stream: video, input, native control overlays, clipboard, dialogs, the viewport menu, and what it shows while a tab is opening, gone, or out of reach, or in a user's browser that cannot decode the pictures. The live protocol's schemas are generated into the package. It is built from the plugin SDK's primitives ([Plugin pages](../architecture/plugin-pages.md)). |
 | `web`, `web-gallery` | The product's plugin client over the plugin call route and the user stream route; a gallery client that encodes its own picture, keeps its own tab list and speaks the protocol, so the kind shows without a Host. |
 | `cloud-guest-image` | Fonts for Chinese, Japanese and Korean text in the Cloud guest image. |
 

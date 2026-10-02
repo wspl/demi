@@ -7,9 +7,12 @@ of its own command package, and a part of the web app with the calls behind
 it. Every capability that is not the agent runtime itself or the product's
 core is a plugin: the todo list (`plugin-todo`), the file commands
 (`plugin-file`), the conversation browser with its live view
-(`plugin-browser`), [Host expose](../execution/expose.md) (`plugin-expose`)
-and [skills](../agent/skills.md) (`plugin-skills`). The agent runtime, the
-runner and the backend's conversation lifecycle know none of them.
+(`plugin-browser`), [Host expose](../execution/expose.md) (`plugin-expose`),
+[skills](../agent/skills.md) (`plugin-skills`), and the work panel's Change
+view (`plugin-changes`) and File view (`plugin-file-browser`). The agent
+runtime, the runner, the backend's conversation lifecycle and the web app's
+shell know none of them; a plugin's part of the web app is written against
+the plugin SDK ([Plugin pages](plugin-pages.md)).
 
 Each user turns plugins on and off in settings, while the backend runs. A
 change never restarts the backend: what the plugin offers a page changes at
@@ -507,9 +510,11 @@ not use.
 | --- | --- | --- | --- | --- |
 | `file` | `plugin-file` | The `demi file` group, bound to `demi.file` | None | [File commands](../execution/commands.md#file-commands) |
 | `todo` | `plugin-todo` | The `demi todo` group, its `rpc` handlers over the node's command storage | None | [Command state history](../agent/command-state-history.md) |
-| `browser` | `plugin-browser` | The `demi browser` group, bound to `demi.browser`; the `browser` user stream; package calls; page methods for the conversation browser's tabs | `@demicodes/plugin-browser`: the `browser` work panel kind | [Conversation browser](../browser/browser.md#command-contract), [Live view](../browser/live-view.md) |
-| `expose` | `plugin-expose` | The `demi expose` group with its numbers; the conversation hosts and exposes port operations; page state that follows the user's exposes; page methods to renew and remove | `@demicodes/plugin-expose`: the conversation header tool | [Host expose](../execution/expose.md) |
+| `browser` | `plugin-browser` | The `demi browser` group, bound to `demi.browser`; the `browser` user stream; package calls; page methods for the conversation browser's tabs | `@demicodes/plugin-browser`: the `browser` work panel kind with the live view | [Conversation browser](../browser/browser.md#command-contract), [Live view](../browser/live-view.md) |
+| `expose` | `plugin-expose` | The `demi expose` group with its numbers; the conversation hosts and exposes port operations; page state that follows the user's exposes; page methods to renew and remove | `@demicodes/plugin-expose`: the conversation header tool and the `page` work panel kind | [Host expose](../execution/expose.md) |
 | `skills` | `plugin-skills` | A context source; values and blobs; Host directories; Host file reads; page state and five page methods | `@demicodes/plugin-skills`: a settings section | [Skills](../agent/skills.md) |
+| `changes` | `plugin-changes` | Nothing but its page | `@demicodes/plugin-changes`: the pinned `change` kind, the Change view | [Changes](../product/file-previews.md#changes), [Edit tracking](../execution/edit-tracking.md) |
+| `file-browser` | `plugin-file-browser` | Nothing but its page | `@demicodes/plugin-file-browser`: the pinned `file` kind, the File view | [File previews](../product/file-previews.md) |
 
 Besides the plugins, the components that carry them are:
 
@@ -519,64 +524,27 @@ Besides the plugins, the components that carry them are:
 | `backend-plugins` | The plugin host: registration and its checks, the command set, profiles and context sources for the agent server, instances, the port's operations, page state and page calls |
 | `backend-user-shard`, `backend-host-access`, `backend-expose`, `backend-http`, `backend` | The product's side: the agent server's dependencies, the execution context source and the product's instructions; the installation of Host directories, the reads of Host files and the package calls; the exposes the `expose` plugin manages, with their relay; the page call routes, the plugin switch route and the user stream route; the plugins linked into the backend |
 | `agent-tools`, `agent-server`, `agent-session` | The runtime's side: the rules for its tools in the system prompt, the Host resolver, context sources with their sources and turns, profiles as data |
-| `web-ui`, `web`, `web-gallery` | `PluginClient`, `usePlugin()` and the slots, with the live view, the expose menu and the Skills page as components; the client over HTTP, the sync channel and the user stream route; a fixture client for each plugin package's specimens |
+| `plugin-sdk`, `web-ui`, `web`, `web-gallery` | The page API: slots, `PluginClient`, intents, services and public components ([Plugin pages](plugin-pages.md)); the shell and the primitives; the services over HTTP, the sync channel and the user stream route, and the generated registry; fixture services for each plugin page's specimens |
 
 ## The page
 
-A plugin can give the web app a part of its own: a settings section, a
-[work panel](../product/web-application.md#work-panel) kind, or a tool in the
-conversation header. That part is a
-TypeScript package, `@demicodes/plugin-<name>` in `packages/plugin-<name>`,
-named like the plugin's crate:
+A plugin can give the web app a part of its own, a TypeScript package that
+fills the shell's slots: a settings section, a conversation header tool or
+work panel kinds. [Plugin pages](plugin-pages.md) owns that side: the slots,
+the plugin SDK, intents, services, registration and versions. This section
+owns what the backend gives a page.
 
-```text
-web (product)                        web-gallery
-  real PluginClient over HTTP          fixture PluginClient
-  and the sync channel                 over the specimen's state
-          \                               /
-           +--> @demicodes/plugin-skills <+
-                  settings section: composes web-ui's Skills page,
-                  calls its plugin through usePlugin()
-                       |
-                       v
-                    web-ui: PluginClient, the slots, the settings surface
-```
-
-- **Slots.** A plugin package exports what it fills: a settings section (its
-  navigation entry and its page), work panel kinds, or a conversation header
-  tool, which the header shows only while the plugin's state says it has
-  something to show. A slot's components receive what the page around them
-  offers, such as opening a work panel tab of a kind with its `data`. `web`
-  and `web-gallery` import the packages they show from a static list and
-  register their slots; a computed import does not exist. A plugin the user
-  has off fills no slot: its settings section leaves the rail, and its work
-  panel kinds and header tool go.
-- **The client.** A plugin's components reach their plugin only through the
-  `PluginClient` they receive with `usePlugin()`: its state, which follows
-  the sync channel; `call(method, params)`, for the user, or for the
-  conversation the component shows; the plugin's user streams of that
-  conversation; and, for that conversation, the installs of the plugin's
-  packages on the conversation's main Host, from that device's `installs`
-  in the product state. They know no route. `web`
-  supplies the client over HTTP; the gallery supplies one over the
-  specimen's fixture state, so every control of a specimen acts on that state
-  ([Web architecture](../product/web-application.md#package-responsibilities)).
-- **Types.** A plugin's state, parameters and results are Rust types in its
-  crate. `xtask contracts` generates their schemas into the plugin package's
-  `src/generated/`, and the client validates every state and result it
-  receives with them.
-- **Installs.** The first use of a plugin's package on a Host can wait for
-  the runner to install its artifacts, minutes for the browser's Chrome
-  ([Installation progress](../execution/native-runtime.md#installation-progress)).
-  A component that waits for such a call shows the client's installs with
-  `web-ui`'s one installs component, each artifact's name and version, its
-  phase and its bytes,
-  instead of a bare spinner: the browser tab shows `Installing demi.browser:
-  Chrome for Testing 153.0.8010.36, 120 of 196 MB` while its first tab opens.
-  No plugin declares or starts an install: it follows from the call.
-- **Where behavior lives.** A plugin package holds what `web` holds for the
-  product: composition, data and handlers. A reusable component or behavior
-  belongs to `web-ui`, as the rest of the web app's does.
+A page reaches its plugin only through its `PluginClient`: the plugin's state,
+which follows the sync channel; its page calls, for the user or for the
+conversation the component shows; the plugin's user streams of that
+conversation; and, for that conversation, the installs of the plugin's
+packages on the conversation's main Host, from that device's `installs` in the
+product state, which a component that waits for a call shows with the SDK's
+installs component
+([Installation progress](../execution/native-runtime.md#installation-progress)).
+No plugin declares or starts an install: it follows from the call. A page
+knows no route; `web` supplies the client over HTTP, the gallery over the
+specimen's fixture state.
 
 A page call is `POST /api/plugins/:plugin/calls/:method` for a method of the
 user scope, or `POST /api/conversations/:id/plugins/:plugin/calls/:method`
@@ -589,7 +557,9 @@ handles the call on the user's shard. A plugin's state reaches the pages as
 part of the product state, on the synchronization channel
 ([Page synchronization](../product/web-api.md#page-synchronization)): the
 snapshot holds every plugin's state, and a plugin that marks its part as
-changed sends the new state to each of its user's pages.
+changed sends the new state to each of its user's pages. The types of the
+state, the calls and the streams are the plugin's Rust types, generated into
+its page package ([Types](plugin-pages.md#types)).
 
 ## Decisions for the TypeScript SDK
 
@@ -607,7 +577,9 @@ contract above.
   confined to its port, and to its own user's data, is decided with the SDK;
   a linked plugin is trusted.
 - **Its page package.** How a page package from outside the repository is
-  built and served to the web app without a computed import in `web`.
+  built, served and loaded, within what [Pages from outside the
+  repository](plugin-pages.md#pages-from-outside-the-repository) keeps
+  possible.
 - **A port after the reply.** A linked plugin's task may keep a page call's
   port after the call answered ([Rules for a plugin in
   process](#rules-for-a-plugin-in-process)). Over a wire, that is a message

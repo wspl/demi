@@ -305,15 +305,16 @@ bytes. It closes the socket when the stream ends, with a code and a reason:
 ## Work panel state
 
 The [work panel](web-application.md#work-panel) saves one document per
-conversation: `{ selection, tabs: [{ id, kind, data }] }`. `selection` is
-`"change"`, `"file"` or a tab's id; `tabs` is in the user's order. The backend
+conversation: `{ selection, tabs: [{ id, kind, data }] }`. `selection` is a
+tab's id, a pinned kind's id such as `"change"`, or null; `tabs` is in the
+user's order. The backend
 stores the document and does not interpret it: `kind` and `data` mean
 something only to the page, which validates each tab's `data` against its
 kind's schema when it reads the document. The backend checks the shape above,
 at most 64 tabs, and at most 64 KiB in all.
 
 `GET /api/conversations/:id/panel` returns the document, or the empty one,
-`{ selection: "change", tabs: [] }`, for a conversation that never saved.
+`{ selection: null, tabs: [] }`, for a conversation that never saved.
 `PUT` replaces it and answers 204. The page applies every change to itself
 first and then saves the whole document, one save at a time so that the
 latest is the one that stays. A page reads a conversation's document once:

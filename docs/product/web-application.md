@@ -16,9 +16,11 @@ would read.
 web                                 web-gallery
 account state, routing,             fixture data and
 backend adapters, the               preview handlers, the
-plugins' HTTP clients               plugins' fixture clients
+plugins' services over HTTP         plugins' fixture services
         |          \              /       |
-        |           plugin-<name>         |    a plugin's page: its slots
+        |           plugin-<name>         |    a plugin's page: its feature UI
+        |                 |               |
+        |            plugin-sdk           |    the page API
         |                 |               |
         +------------> web-ui <-----------+
                          |
@@ -29,7 +31,8 @@ plugins' HTTP clients               plugins' fixture clients
                       protocol       generated schemas and types
 ```
 
-- `web-ui` owns reusable components and UI interaction.
+- `web-ui` owns the shell's components, the reusable primitives and UI
+  interaction. It knows no plugin.
 - `web` supplies product data, state, routing, and API handlers.
 - `web-gallery` supplies fixtures and handlers to demonstrate the same components.
 - `@demicodes/conversation-client` is the client side of a conversation stream:
@@ -37,17 +40,16 @@ plugins' HTTP clients               plugins' fixture clients
   that applies transcript patches.
 - `@demicodes/protocol` is generated. It holds the schemas and types of the
   Rust contracts the page reads, such as agent frames, transcript blocks,
-  message content, tool views and the live view's messages, and the file-type
-  table with its lookup.
+  message content and tool views, and the file-type table with its lookup.
 - `@demicodes/utils` holds small helpers the web app's packages share.
-- `@demicodes/plugin-<name>` is a [plugin's page](../architecture/plugins.md#the-page):
-  the slots it fills, such as a settings section or work panel kinds,
-  composed from `web-ui` components. Its components reach their plugin only
-  through the `PluginClient` they receive with `usePlugin()`: the plugin's
-  state, which follows the synchronization channel, and its page calls. `web`
-  registers each plugin package from a static list and supplies a client over
-  the [page call route](web-api.md#plugin-calls); the gallery registers the
-  same packages and supplies a client over each specimen's fixture state.
+- `@demicodes/plugin-sdk` is the page API ([Plugin pages](../architecture/plugin-pages.md)):
+  the slots, the `PluginClient`, intents, services and the public components.
+- `@demicodes/plugin-<name>` is a [plugin's page](../architecture/plugin-pages.md):
+  the plugin's feature UI and the slots it fills, written only against
+  `plugin-sdk`. `web` and the gallery show the packages of the generated
+  registry; `web` supplies the services over the
+  [page call route](web-api.md#plugin-calls) and the backend's other routes,
+  the gallery over each specimen's fixture state.
 
 The product and gallery do not import each other. The web app knows the HTTP
 API and the streams only through types generated from the Rust types that
@@ -70,28 +72,34 @@ covers only the web app's technology and architectural boundaries.
 
 ## Work panel
 
-The work panel shows one thing at a time: a fixed view, or a tab.
+The work panel shows one tab at a time. Its frame belongs to the shell; every
+tab it shows is of a kind a plugin registers ([Work panel kinds](../architecture/plugin-pages.md#work-panel-kinds)).
 
 ```text
-selection   'change' | 'file' | <tab id>
-tabs        [{ id, kind, data }], in the user's order
+pinned      one tab of each pinned kind, in the page's memory: change, file
+tabs        [{ id, kind, data }], in the user's order, saved
+selection   a tab's id or a pinned kind's id, saved
 ```
 
-- **Fixed views.** Change and File belong to the panel itself. They are not
-  tabs: they are never created, closed, listed or saved. They only compete
-  with the tabs for the selection.
+- **Pinned tabs.** A pinned kind, such as the Change view's `change` and the
+  File view's `file`, has one tab in every conversation's panel, ahead of the
+  user's tabs. It is never created, closed, listed or saved; its `data`, such
+  as the file it shows and what Back returns to, stays in memory for the
+  page's lifetime. Its id is its kind's id.
 - **Tabs.** A tab is a saved fact: a tab of this kind stands here, with this
   `data`. It has no status, no error and no stored title. Whether its content
   is loading, disconnected or refused is the content's own runtime state, shown
   inside the tab's content and never written to the tab.
-- **Kinds.** A kind registers with `web-ui` what the panel needs to show its
-  tabs: the mark, the title derived from `data`, the content component, a
-  schema for `data`, and whether the user can create one from the strip. The
-  panel and the tab state know nothing else about a kind. What protocol,
-  stream or route a tab's content uses is the kind's own business, behind its
-  content component. A new kind, such as a streamed window of the Host, is a
-  new registration and changes neither the panel nor the tab state; a plugin
-  package registers its kinds the same way.
+- **Kinds.** A kind registers what the panel needs to show its tabs: the
+  mark, the title derived from `data`, the content component, a schema for
+  `data`, whether the user can create one from the strip, whether it is
+  pinned, and the intents it opens. The panel and the tab state know nothing
+  else about a kind. What protocol, stream or route a tab's content uses is
+  the kind's own business, behind its content component. A new kind is a new
+  registration and changes neither the panel nor the tab state.
+- **Selection.** The saved selection names a tab or a pinned kind. When it
+  names nothing the page shows, as for a conversation that never saved or a
+  plugin turned off, the panel selects its first tab.
 
 The tab state is ordinary state with `add`, `update`, `remove`, `move` and
 `select`. Every change applies to the page first and is then saved
@@ -112,13 +120,15 @@ content says that it cannot be shown; the page never repairs or drops it.
 
 The kinds:
 
-| Kind | Shows | Created by |
-| --- | --- | --- |
-| `browser` | One tab of the [conversation browser](../browser/browser.md), live; [Live browser view](../browser/live-view.md) owns its content | The strip's new-tab control; the agent's `open`, which the kind adds as a tab |
-| `page` | A page in the user's own browser, in a sandboxed iframe | Only an [expose](../execution/expose.md#product-surface), on its URL |
+| Kind | Plugin | Shows | Created by |
+| --- | --- | --- | --- |
+| `change` | `changes` | Pinned: the conversation's changes, in Uncommitted and Conversation mode ([Changes](file-previews.md#changes)) | The `edit` intent |
+| `file` | `file-browser` | Pinned: one file of the conversation's Host, with its tree ([File previews](file-previews.md)) | The `file` intent |
+| `browser` | `browser` | One tab of the [conversation browser](../browser/browser.md), live; [Live browser view](../browser/live-view.md) owns its content | The strip's new-tab control; the agent's `open`, which the kind adds as a tab |
+| `page` | `expose` | A page in the user's own browser, in a sandboxed iframe | Only an [expose](../execution/expose.md#product-surface), on its URL |
 
 A `page` tab loads the `http` or `https` address the user submits in its
-address bar, which it shares with the `browser` kind.
+address bar, the same primitive the `browser` kind's address bar is.
 The frame may run scripts, submit forms and open popups, which land in
 ordinary tabs of the user's browser; it cannot navigate the product page. The
 parent sees nothing of a cross-origin page, so Back and Forward stay
@@ -341,8 +351,8 @@ Preferences kept in the user's browser
 hold presentation-only choices. Work-panel width and per-conversation open/closed state use the same account-scoped
 local preferences. Refreshing restores whether the panel was open; a conversation
 without a saved choice starts closed. The panel's tabs and selection are saved
-with the conversation ([Work panel](#work-panel)); the File and Change views'
-own selections and address drafts remain in memory for the page lifetime. Switching accounts uses that account's
+with the conversation ([Work panel](#work-panel)); the pinned tabs' data and
+the address drafts remain in memory for the page lifetime. Switching accounts uses that account's
 saved choices. These stores do not replace backend ownership or authorization.
 
 New conversations begin with a local UUID. The first send creates the backend
