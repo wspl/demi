@@ -117,7 +117,7 @@ func (p *Provider) stored(ctx context.Context) (secret, error) {
 	if err != nil {
 		return secret{}, err
 	}
-	stored, err := provider.ReadSecret(ctx, doc, Decodesecret)
+	stored, err := provider.ReadSecret(ctx, doc, decodeSecret)
 	if err != nil {
 		return secret{}, provider.AccountAuthFailure("Codex", err)
 	}
@@ -128,7 +128,7 @@ func (p *Provider) credentials(ctx context.Context, client *http.Client, refused
 	if err != nil {
 		return secret{}, err
 	}
-	value, err := provider.Renew(ctx, doc, Decodesecret, func(s secret) bool { return refused != nil && s.AccessToken == *refused || s.due(p.clock.Now()) }, func(ctx context.Context, s secret) (secret, error) { return p.refresh(ctx, client, s) })
+	value, err := provider.Renew(ctx, doc, decodeSecret, func(s secret) bool { return refused != nil && s.AccessToken == *refused || s.due(p.clock.Now()) }, func(ctx context.Context, s secret) (secret, error) { return p.refresh(ctx, client, s) })
 	if err != nil {
 		return secret{}, provider.AccountAuthFailure("Codex", err)
 	}

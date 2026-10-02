@@ -10,11 +10,16 @@
 // -ts-dir redirects those destinations for fixture comparisons. Generation
 // requires GOFLAGS=-mod=readonly while the Rust vendor directory remains.
 //
+// Entry points for private types are private camel-case names (decodeSecret,
+// parseIssuer, validateRawBinding); exported types retain exported entry points.
+//
 // Structs use explicit JSON field names and are strict unless marked tolerant.
 // Optional fields are pointers with omitzero or omitempty; default-false bools
 // and non-pointer maps and slices with omitempty may also be optional.
 // Absent collections decode empty; encoding omits empty collections. A nullable pointer or union instead has +demi:nullable
-// and must be present. Nil required arrays and records are invalid; construct
+// and must be present unless a pointer also has omitempty. With nullable and
+// omitempty, *T collapses absent/null to nil, while **T retains explicit null
+// as a non-nil pointer to nil. Nil required arrays and records are invalid; construct
 // empty values explicitly. Untagged embedded value structs flatten their
 // properties, including validation. Embedded object pointers represent serde's
 // flattened Option: failed child decoding leaves nil; non-nil encoding validates
@@ -57,7 +62,8 @@
 //
 // +demi:table on a package-level slice variable emits its literal struct rows
 // or scalar values into protocol/tables.ts, using a SCREAMING_SNAKE variable
-// name and preserving JSON field names.
+// name and preserving JSON field names. A scalar constant with +demi:table
+// emits a scalar export using the same name conversion.
 // Rows must specify every field; values are scalar constants or slice literals,
 // with JavaScript-safe integers. Calls, mutable variable references, optional
 // fields and maps are refused rather than executed during generation. Each
@@ -70,7 +76,7 @@
 //
 // +demi:schema emits <Type>JSONSchema() json.RawMessage in contract_gen.go.
 // Each call returns fresh bytes: draft 2020-12, no $schema, inline subschemas,
-// and optional properties that never allow null. Objects, tagged unions,
+// and optional properties that allow null only with +demi:nullable. Objects, tagged unions,
 // records, arrays, enums, patterns, lengths and numeric bounds use the same
 // checked model as codecs and Zod. Root titles use type names; type and field
 // doc comments supply descriptions, with field comments overriding type text.

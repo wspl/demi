@@ -2,10 +2,15 @@ package main
 
 import (
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/wspl/demi/tools/contractgen/testdata/private"
 )
 
 // Each package load costs about 0.1 s. Testing actual declarations catches
@@ -32,7 +37,7 @@ func TestGenerationRefusals(t *testing.T) {
 // This verifies bootstrap and determinism through the CLI's loader.
 // Local package loads cost roughly one second; no network or services are used.
 func TestRegeneration(t *testing.T) {
-	if err := generate(t.Context(), []string{"./testdata/codecs", "./testdata/blocks", "./testdata/runner", "./testdata/features", "./testdata/text", "./testdata/tables", "./testdata/kept", "./testdata/schemas", "./testdata/generics", "./testdata/remaining", "./testdata/keyed", "./testdata/browser", "./testdata/reachability", "./testdata/packedonly", "./testdata/schemacheck"}, false, "", true); err != nil {
+	if err := generate(t.Context(), []string{"./testdata/private", "./testdata/presence", "./testdata/codecs", "./testdata/blocks", "./testdata/runner", "./testdata/features", "./testdata/text", "./testdata/tables", "./testdata/kept", "./testdata/schemas", "./testdata/generics", "./testdata/remaining", "./testdata/keyed", "./testdata/browser", "./testdata/reachability", "./testdata/packedonly", "./testdata/schemacheck"}, false, "", true); err != nil {
 		t.Fatal(err)
 	}
 	dest := t.TempDir()
@@ -151,5 +156,54 @@ func TestGenerationDependencies(t *testing.T) {
 	}
 	if err := generate(t.Context(), []string{"./consumer"}, false, "", false); err == nil || !strings.Contains(err.Error(), "broken.go:") {
 		t.Fatalf("declaration error was lost: %v", err)
+	}
+}
+
+// Ordinary fixture code names every private generated entry point, so a naming
+// regression also fails compilation. Local boundary call; budget <1 second.
+func TestPrivateContractNames(t *testing.T) {
+	input := []byte(`{"kind":"leaf","issuer":"local"}`)
+	data, err := private.RoundTrip(input)
+	if err != nil || string(data) != string(input) {
+		t.Fatalf("private contract round trip: %s: %v", data, err)
+	}
+	file, err := parser.ParseFile(token.NewFileSet(), "testdata/private/contract_gen.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, decl := range file.Decls {
+		if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv == nil && fn.Name.IsExported() {
+			t.Errorf("private contract exposed %s", fn.Name.Name)
+		}
+		if general, ok := decl.(*ast.GenDecl); ok && general.Tok == token.TYPE {
+			for _, spec := range general.Specs {
+				if typ := spec.(*ast.TypeSpec); typ.Name.IsExported() {
+					t.Errorf("private holder exposed %s", typ.Name.Name)
+				}
+			}
+		}
+	}
+}
+
+// Scalar tables must retain the established TypeScript export spelling and
+// literal form. Local generation and source read; budget one second.
+func TestScalarTables(t *testing.T) {
+	dest := t.TempDir()
+	if err := generate(t.Context(), []string{"./testdata/tables"}, true, dest, false); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dest, "protocol", "tables.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range []string{
+		"export const MAX_PAGE_MESSAGE_BYTES = 1048576\n",
+		"export const TABLE_LABEL = \"limits\"\n",
+		"export const TABLE_ENABLED = true\n",
+		"export const TABLE_RATIO = 0.5\n",
+	} {
+		if !strings.Contains(string(data), line) {
+			t.Errorf("missing scalar table export: %s", line)
+		}
 	}
 }

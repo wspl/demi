@@ -648,11 +648,11 @@ type Installs struct {
 // +demi:check validateInstall
 type Install struct {
 	// The package, such as `demi.browser`.
-	// +demi:length chars min=1
+	// +demi:length chars min=1 max=200
 	Package string `json:"package"`
-	// +demi:length chars min=1
+	// +demi:length chars min=1 max=100
 	Name string `json:"name"`
-	// +demi:length chars min=1
+	// +demi:length chars min=1 max=100
 	Version string       `json:"version"`
 	Phase   InstallPhase `json:"phase"`
 	// +demi:range max=9007199254740991

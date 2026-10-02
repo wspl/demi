@@ -1540,13 +1540,13 @@ func contractValidateInstall(v Install, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
-	if err := contract.Text(string(v.Package), 1, -1, ""); err != nil {
+	if err := contract.Text(string(v.Package), 1, 200, ""); err != nil {
 		return contract.At("package", err)
 	}
-	if err := contract.Text(string(v.Name), 1, -1, ""); err != nil {
+	if err := contract.Text(string(v.Name), 1, 100, ""); err != nil {
 		return contract.At("name", err)
 	}
-	if err := contract.Text(string(v.Version), 1, -1, ""); err != nil {
+	if err := contract.Text(string(v.Version), 1, 100, ""); err != nil {
 		return contract.At("version", err)
 	}
 	if err := contractValidateInstallPhase(v.Phase, depth+1); err != nil {
@@ -3404,11 +3404,11 @@ func contractValidateWireBytes(v WireBytes, depth int) error {
 	}
 	return nil
 }
-func DecoderawBackendURL(data []byte) (rawBackendURL, error) {
+func decodeRawBackendURL(data []byte) (rawBackendURL, error) {
 	return contract.Decode[rawBackendURL](data)
 }
-func (v rawBackendURL) Validate() error { return contractValidaterawBackendURL(v, 0) }
-func contractValidaterawBackendURL(v rawBackendURL, depth int) error {
+func (v rawBackendURL) Validate() error { return contractValidateRawBackendURL(v, 0) }
+func contractValidateRawBackendURL(v rawBackendURL, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -3435,11 +3435,11 @@ func (v rawBackendURL) MarshalJSON() ([]byte, error) {
 	}
 	return contract.EncodeJSON(string(v))
 }
-func DecoderawManagedBoot(data []byte) (rawManagedBoot, error) {
+func decodeRawManagedBoot(data []byte) (rawManagedBoot, error) {
 	return contract.Decode[rawManagedBoot](data)
 }
-func (v rawManagedBoot) Validate() error { return contractValidaterawManagedBoot(v, 0) }
-func contractValidaterawManagedBoot(v rawManagedBoot, depth int) error {
+func (v rawManagedBoot) Validate() error { return contractValidateRawManagedBoot(v, 0) }
+func contractValidateRawManagedBoot(v rawManagedBoot, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}

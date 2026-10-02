@@ -9,9 +9,9 @@ import (
 	provider "github.com/wspl/demi/internal/provider"
 )
 
-func DecodeaccountID(data []byte) (accountID, error) { return contract.Decode[accountID](data) }
-func (v accountID) Validate() error                  { return contractValidateaccountID(v, 0) }
-func contractValidateaccountID(v accountID, depth int) error {
+func decodeAccountID(data []byte) (accountID, error) { return contract.Decode[accountID](data) }
+func (v accountID) Validate() error                  { return contractValidateAccountID(v, 0) }
+func contractValidateAccountID(v accountID, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -41,9 +41,9 @@ func (v accountID) MarshalJSON() ([]byte, error) {
 	}
 	return contract.EncodeJSON(string(v))
 }
-func Decodesecret(data []byte) (secret, error) { return contract.Decode[secret](data) }
-func (v secret) Validate() error               { return contractValidatesecret(v, 0) }
-func contractValidatesecret(v secret, depth int) error {
+func decodeSecret(data []byte) (secret, error) { return contract.Decode[secret](data) }
+func (v secret) Validate() error               { return contractValidateSecret(v, 0) }
+func contractValidateSecret(v secret, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -65,7 +65,7 @@ func contractValidatesecret(v secret, depth int) error {
 	if err := contract.Text(string(v.IDToken), 0, -1, ""); err != nil {
 		return contract.At("idToken", err)
 	}
-	if err := contractValidateaccountID(v.AccountID, depth+1); err != nil {
+	if err := contractValidateAccountID(v.AccountID, depth+1); err != nil {
 		return contract.At("accountId", err)
 	}
 	if err := contract.Text(string(v.AccountID), 0, -1, ""); err != nil {
