@@ -199,7 +199,7 @@ async fn a_page_socket_message_over_the_limit_fails_the_socket() {
     // A frame the backend would read, were it within the limit.
     let frame = crate::conversations::send("m1", &"x".repeat(JSON_BODY_LIMIT));
     socket
-        .send_text(serde_json::to_string(&frame).unwrap())
+        .send_refused_text(serde_json::to_string(&frame).unwrap())
         .await;
     assert_eq!(socket.closed().await, None);
     backend.close().await;
