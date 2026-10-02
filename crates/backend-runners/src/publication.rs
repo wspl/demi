@@ -158,6 +158,9 @@ pub async fn publish_native(
                 verified
                     .iter()
                     .flat_map(|release| release.executables.iter().cloned()),
+                verified
+                    .iter()
+                    .flat_map(|release| release.archives.iter().cloned()),
             );
             let packages: Vec<PackageDescriptor> = verified
                 .into_iter()
@@ -165,7 +168,7 @@ pub async fn publish_native(
                 .collect();
             tracing::info!(
                 packages = packages.len(),
-                "the development store serves the native releases' executables itself"
+                "the development store serves the native releases' artifacts itself"
             );
             NativeCatalog::new(packages, Store::Local(Arc::new(artifacts)))
         }
@@ -230,10 +233,12 @@ impl NativeConfig {
     }
 }
 
-/// A verified release: its descriptor, and its executables by target.
+/// A verified release: its descriptor, its executables by target, and its
+/// resources' archives.
 struct Verified {
     descriptor: PackageDescriptor,
     executables: Vec<(PathBuf, PackageArtifact)>,
+    archives: Vec<(PathBuf, PackageArtifact)>,
 }
 
 /// The published catalog: the releases' descriptors, and the executables
@@ -255,21 +260,24 @@ where
     S: ObjectStore + Signer,
 {
     let verified = verify_all(releases, Targets::All, cancel).await?;
-    // Each executable once, however many releases carry it.
-    let mut uploads: HashMap<String, (PathBuf, PackageArtifact)> = HashMap::new();
+    // Each artifact once, however many releases carry it; an executable is
+    // stored in the content coding, an archive as it is.
+    let mut uploads: HashMap<String, (PathBuf, PackageArtifact, bool)> = HashMap::new();
     for release in &verified {
-        for (path, artifact) in &release.executables {
+        let executables = release.executables.iter().map(|file| (file, true));
+        let archives = release.archives.iter().map(|file| (file, false));
+        for ((path, artifact), encoded) in executables.chain(archives) {
             uploads
                 .entry(artifact.sha256.clone())
-                .or_insert_with(|| (path.clone(), artifact.clone()));
+                .or_insert_with(|| (path.clone(), artifact.clone(), encoded));
         }
     }
     let published: HashMap<String, u64> = uploads
         .iter()
-        .map(|(sha256, (_, artifact))| (sha256.clone(), artifact.size))
+        .map(|(sha256, (_, artifact, _))| (sha256.clone(), artifact.size))
         .collect();
     futures_util::stream::iter(uploads.into_values().map(Ok))
-        .try_for_each_concurrent(UPLOADS, |(path, artifact)| {
+        .try_for_each_concurrent(UPLOADS, |(path, artifact, encoded)| {
             let store = &*store;
             async move {
                 let key = blob(prefix, &artifact.sha256)?;
@@ -296,6 +304,9 @@ where
                     .update(&bytes)
                     .and_then(|()| verifier.finish())
                     .map_err(|error| refused(error.to_string()))?;
+                if !encoded {
+                    return put_immutable(store, &key, bytes, &artifact, None, cancel).await;
+                }
                 let encoded = tokio::task::spawn_blocking(move || {
                     demi_shared_artifacts::encode_blocking(
                         &bytes,
@@ -421,9 +432,31 @@ async fn verify(
         }
         executables.push((path, expected.clone()));
     }
+    // A resource may lack targets the release carries: its archive of each
+    // one it has is checked.
+    let mut archives = Vec::new();
+    for (name, resource) in &descriptor.resources {
+        for (target, archive) in &resource.targets {
+            let path = release.directory.join("resources").join(&archive.sha256);
+            let expected = archive.archive();
+            let found = demi_shared_artifacts::digest(&path, expected.size, cancel)
+                .await
+                .map_err(|error| match error {
+                    demi_shared_artifacts::Error::Cancelled => PublicationError::Cancelled,
+                    error => refused(format!("{name} for {target}: {error}")),
+                })?;
+            if found.size != expected.size || found.sha256 != expected.sha256 {
+                return Err(refused(format!(
+                    "{name} for {target}: the archive does not match the descriptor"
+                )));
+            }
+            archives.push((path, expected));
+        }
+    }
     Ok(Verified {
         descriptor,
         executables,
+        archives,
     })
 }
 

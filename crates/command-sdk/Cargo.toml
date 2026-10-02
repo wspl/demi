@@ -19,6 +19,7 @@ testing = ["demi-command-protocol/testing"]
 
 [dependencies]
 bytes.workspace = true
+clap = { version = "4", default-features = false, features = ["derive", "error-context", "std", "usage"] }
 demi-shared-artifacts = { path = "../shared-artifacts" }
 demi-command-protocol = { path = "../command-protocol" }
 futures-util.workspace = true

@@ -76,6 +76,7 @@ async fn fixture(root: &Path, variant: usize) -> (PackageDescriptor, PathBuf) {
                 size: bytes.len() as u64,
             },
         )]),
+        resources: Default::default(),
     };
     (descriptor, path)
 }

@@ -1,8 +1,9 @@
 //! Archive installation: a verified zip archive unpacked into a directory
 //! named by its SHA-256, beside a receipt that lets a later process trust
-//! the files without downloading them again. A paired device installs into
-//! its user's home and the Cloud image build into the image, with the same
-//! steps (`images.md` § Root filesystem contents).
+//! the files without downloading them again. A runner installs a command
+//! package's resources into its artifact cache and the Cloud image build
+//! into the image, with the same steps (`native-runtime.md` § Install the
+//! selected package, `images.md` § Root filesystem contents).
 
 use std::{
     fs::File,
@@ -15,39 +16,30 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{Digest, Error, InstallLock};
 
-/// The most bytes an installed executable may have: the digest of a larger
-/// file stops early.
-const EXECUTABLE_BYTES: u64 = 1024 * 1024 * 1024;
+/// The most bytes an installed entry may have: the digest of a larger file
+/// stops early.
+const ENTRY_BYTES: u64 = 1024 * 1024 * 1024;
 
-/// An archive to install: the HTTPS URL it is downloaded from, the size and
-/// SHA-256 it must have, and its executable's path inside it, with `/`
-/// between the components.
+/// An archive to install: the size and SHA-256 it must have, and its entry,
+/// the file its user starts, as a path inside it with `/` between the
+/// components.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Archive {
-    pub url: String,
     pub digest: Digest,
-    pub executable: String,
+    pub entry: String,
 }
 
 /// What an installation records beside its files: the SHA-256 of the archive
-/// it came from and of its executable.
+/// it came from and of its entry.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Receipt {
     archive_hash: String,
-    executable_hash: String,
+    entry_hash: String,
 }
 
-/// The installation of `archive` at `directory`: its executable, once the
-/// receipt there names the archive and the executable's current SHA-256, or
-/// none when nothing is at `directory`. An installation that fails the check
-/// is an error rather than a reason to install again or elsewhere: its files
-/// changed after it was installed.
-pub async fn installed(
-    directory: &Path,
-    archive: &Archive,
-    cancel: &CancellationToken,
-) -> Result<Option<PathBuf>, Error> {
+/// The receipt at `directory`, or none when nothing is there.
+async fn receipt(directory: &Path) -> Result<Option<Receipt>, Error> {
     if !tokio::fs::try_exists(directory).await? {
         return Ok(None);
     }
@@ -58,10 +50,49 @@ pub async fn installed(
     let Some(bytes) = crate::receipt::read(directory).await? else {
         return Err(invalid("has no receipt"));
     };
-    let receipt: Receipt = serde_json::from_slice(&bytes)
+    let receipt = serde_json::from_slice(&bytes)
         .map_err(|error| invalid(&format!("has an invalid receipt: {error}")))?;
-    let executable = directory.join(&archive.executable);
-    let found = match crate::digest(&executable, EXECUTABLE_BYTES, cancel).await {
+    Ok(Some(receipt))
+}
+
+/// The entry of the installation of `archive` at `directory` that the
+/// installer published, trusted unread: the receipt there names the
+/// archive. None when nothing is at `directory`; another receipt is an
+/// error. For a directory only its installer writes, such as a runner's
+/// private cache, where reading the whole entry at each use would cost
+/// every start.
+pub async fn recorded(directory: &Path, archive: &Archive) -> Result<Option<PathBuf>, Error> {
+    let Some(receipt) = receipt(directory).await? else {
+        return Ok(None);
+    };
+    if receipt.archive_hash != archive.digest.sha256 {
+        return Err(Error::Installation {
+            directory: directory.to_owned(),
+            reason: "holds another archive".to_owned(),
+        });
+    }
+    Ok(Some(directory.join(&archive.entry)))
+}
+
+/// The installation of `archive` at `directory`: its entry, once the
+/// receipt there names the archive and the entry's current SHA-256, or
+/// none when nothing is at `directory`. An installation that fails the check
+/// is an error rather than a reason to install again or elsewhere: its files
+/// changed after it was installed.
+pub async fn installed(
+    directory: &Path,
+    archive: &Archive,
+    cancel: &CancellationToken,
+) -> Result<Option<PathBuf>, Error> {
+    let Some(receipt) = receipt(directory).await? else {
+        return Ok(None);
+    };
+    let invalid = |reason: &str| Error::Installation {
+        directory: directory.to_owned(),
+        reason: reason.to_owned(),
+    };
+    let entry = directory.join(&archive.entry);
+    let found = match crate::digest(&entry, ENTRY_BYTES, cancel).await {
         Ok(found) => found,
         Err(Error::TooLarge { .. }) => return Err(invalid("fails its integrity check")),
         Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -69,99 +100,118 @@ pub async fn installed(
         }
         Err(error) => return Err(error),
     };
-    if receipt.archive_hash != archive.digest.sha256 || receipt.executable_hash != found.sha256 {
+    if receipt.archive_hash != archive.digest.sha256 || receipt.entry_hash != found.sha256 {
         return Err(invalid("fails its integrity check"));
     }
-    Ok(Some(executable))
+    Ok(Some(entry))
 }
 
-/// Installs `archive` into the directory of `root` its SHA-256 names and
-/// returns the executable; an installation already there is checked, not
-/// replaced. Installers of one archive share the lock `<SHA-256>.lock` in
-/// `root`, so one downloads and the others find its installation.
+/// What [`install_archive`] finds in its root.
+pub enum ArchiveInstall {
+    /// The installation was there already: its entry.
+    Installed(PathBuf),
+    /// Nothing was there: the caller writes the archive's verified bytes to
+    /// [`Unpacking::archive`], then [`Unpacking::finish`]es.
+    Unpack(Unpacking),
+}
+
+/// An installation of one archive under way. It holds the archive's install
+/// lock, and its temporary directory goes with it, whatever happens.
+pub struct Unpacking {
+    _lock: InstallLock,
+    temporary: tempfile::TempDir,
+    destination: PathBuf,
+    archive: Archive,
+}
+
+/// Starts installing `archive` into the directory of `root` its SHA-256
+/// names; an installation already there is checked, not replaced.
+/// Installers of one archive share the lock `<SHA-256>.lock` in `root`,
+/// so one fetches the archive and the others find its installation.
 pub async fn install_archive(
-    client: &reqwest::Client,
     root: &Path,
     archive: &Archive,
     cancel: &CancellationToken,
-) -> Result<PathBuf, Error> {
+) -> Result<ArchiveInstall, Error> {
     let sha256 = &archive.digest.sha256;
     tokio::fs::create_dir_all(root).await?;
-    let _lock = InstallLock::acquire(&root.join(format!("{sha256}.lock")), cancel).await?;
+    let lock = InstallLock::acquire(&root.join(format!("{sha256}.lock")), cancel).await?;
     let destination = root.join(sha256);
-    if let Some(executable) = installed(&destination, archive, cancel).await? {
-        return Ok(executable);
+    if let Some(entry) = installed(&destination, archive, cancel).await? {
+        return Ok(ArchiveInstall::Installed(entry));
     }
-    // Everything is staged here and gone with it, whatever happens.
     let temporary = tempfile::Builder::new()
         .prefix(".install-")
         .tempdir_in(root)?;
-    let downloaded = temporary.path().join("archive.zip");
-    let mut output = tokio::fs::File::create(&downloaded).await?;
-    crate::download(client, &archive.url, &archive.digest, &mut output, cancel).await?;
-    drop(output);
-    let extracted = temporary.path().join("extracted");
-    extract_zip(&downloaded, &extracted, cancel).await?;
-    publish_installation(&extracted, &destination, archive, cancel).await
+    Ok(ArchiveInstall::Unpack(Unpacking {
+        _lock: lock,
+        temporary,
+        destination,
+        archive: archive.clone(),
+    }))
+}
+
+impl Unpacking {
+    /// Where the caller writes the archive, checked against its declared
+    /// size and SHA-256 as it is written, such as by [`crate::download`].
+    pub fn archive(&self) -> PathBuf {
+        self.temporary.path().join("archive.zip")
+    }
+
+    /// Unpacks the archive the caller wrote, writes the receipt and
+    /// publishes the installation; returns its entry.
+    pub async fn finish(self, cancel: &CancellationToken) -> Result<PathBuf, Error> {
+        let extracted = self.temporary.path().join("extracted");
+        extract_zip(&self.archive(), &extracted, cancel).await?;
+        publish_installation(&extracted, &self.destination, &self.archive, cancel).await
+    }
 }
 
 /// Writes the receipt of `archive`'s files, unpacked at `extracted`, and
-/// publishes them as `destination`; returns the executable there.
+/// publishes them as `destination`; returns the entry there.
 async fn publish_installation(
     extracted: &Path,
     destination: &Path,
     archive: &Archive,
     cancel: &CancellationToken,
 ) -> Result<PathBuf, Error> {
-    let executable = match crate::digest(
-        &extracted.join(&archive.executable),
-        EXECUTABLE_BYTES,
-        cancel,
-    )
-    .await
-    {
-        Ok(executable) => executable,
+    let entry = match crate::digest(&extracted.join(&archive.entry), ENTRY_BYTES, cancel).await {
+        Ok(entry) => entry,
         Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Err(Error::Archive(format!("holds no {}", archive.executable)));
+            return Err(Error::Archive(format!("holds no {}", archive.entry)));
         }
         Err(error) => return Err(error),
     };
     let receipt = Receipt {
         archive_hash: archive.digest.sha256.clone(),
-        executable_hash: executable.sha256,
+        entry_hash: entry.sha256,
     };
     crate::receipt::write(extracted, &receipt).await?;
     if cancel.is_cancelled() {
         return Err(Error::Cancelled);
     }
     crate::publish_directory(extracted, destination).await?;
-    Ok(destination.join(&archive.executable))
+    Ok(destination.join(&archive.entry))
 }
 
-/// Installs into `root`, as [`install_archive`] does after its download, the
-/// files of `archive` that a copy unpacked elsewhere holds, named by that
-/// copy's `executable`, so that [`installed`] accepts them. For a test given
-/// an installed release's executable, such as the Chrome suite's
+/// Installs into `root`, as [`install_archive`] does once the archive is
+/// written, the files of `archive` that a copy unpacked elsewhere holds,
+/// named by that copy's `entry`, so that [`installed`] accepts them. For a
+/// test given an installed release's entry, such as the Chrome suite's
 /// `DEMI_TEST_CHROME`: nothing is downloaded, and the files are hard links
 /// where the system allows them, copies otherwise.
 #[cfg(feature = "testing")]
 pub async fn install_unpacked(
     root: &Path,
     archive: &Archive,
-    executable: &Path,
+    entry: &Path,
     cancel: &CancellationToken,
 ) -> Result<PathBuf, Error> {
-    let unpacked = Path::new(&archive.executable)
+    let unpacked = Path::new(&archive.entry)
         .components()
-        .try_fold(executable, |path, _| path.parent())
-        .filter(|unpacked| unpacked.join(&archive.executable) == executable)
-        .ok_or_else(|| {
-            Error::Archive(format!(
-                "{} is not its {}",
-                executable.display(),
-                archive.executable
-            ))
-        })?
+        .try_fold(entry, |path, _| path.parent())
+        .filter(|unpacked| unpacked.join(&archive.entry) == entry)
+        .ok_or_else(|| Error::Archive(format!("{} is not its {}", entry.display(), archive.entry)))?
         .to_owned();
     tokio::fs::create_dir_all(root).await?;
     let temporary = tempfile::Builder::new()
@@ -218,7 +268,7 @@ fn at(path: &Path, error: std::io::Error) -> std::io::Error {
 }
 
 /// Whether the zip archive at `archive` holds a file at `path`, such as the
-/// executable a release record names; only the archive's directory is read.
+/// entry a release record names; only the archive's directory is read.
 pub async fn zip_holds(archive: &Path, path: &str) -> Result<bool, Error> {
     let archive = archive.to_owned();
     let path = path.to_owned();

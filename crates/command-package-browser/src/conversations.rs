@@ -18,7 +18,7 @@ use tokio_util::{
 };
 
 use demi_command_package_browser_chrome::driver::{
-    installation::{BrowserDirectories, Installation},
+    installation::Chrome,
     numbers::TabNumbers,
     operation::{BrowserError, Result},
     output,
@@ -100,17 +100,13 @@ enum Request {
 impl ConversationBrowser {
     /// The browser of a conversation whose tabs take their numbers from
     /// `numbers`, across every browser it starts.
-    fn start(
-        tasks: &TaskTracker,
-        installation: Arc<Installation>,
-        numbers: TabNumbers,
-    ) -> Arc<Self> {
+    fn start(tasks: &TaskTracker, chrome: Chrome, numbers: TabNumbers) -> Arc<Self> {
         let (requests, receiver) = mpsc::channel(REQUESTS);
         let (published, lifecycle) = watch::channel(Lifecycle::Absent);
         let cancellation = CancellationToken::new();
         let owner = Owner {
             state: State::Absent,
-            installation,
+            chrome,
             numbers,
             published,
             released: cancellation.clone(),
@@ -235,7 +231,7 @@ impl ConversationBrowser {
 /// What a conversation browser's owner keeps.
 struct Owner {
     state: State,
-    installation: Arc<Installation>,
+    chrome: Chrome,
     /// The conversation's tab numbers, which outlast each browser.
     numbers: TabNumbers,
     published: watch::Sender<Lifecycle>,
@@ -437,14 +433,14 @@ impl Owner {
     fn start(&mut self, locale: CommandLocale) -> watch::Receiver<Readiness> {
         let stop = CancellationToken::new();
         let (publish, ready) = watch::channel(None);
-        let installation = self.installation.clone();
+        let chrome = self.chrome.clone();
         let numbers = self.numbers.clone();
         let owner_stop = stop.clone();
         let task = self.tasks.spawn(async move {
             let publisher = publish.clone();
             let retire = owner_stop.clone();
             let result = async {
-                let executable = installation.executable(&owner_stop).await?;
+                let executable = chrome.executable()?.to_owned();
                 with_browser(
                     LaunchOptions::pinned(executable, locale)?,
                     numbers,
@@ -648,7 +644,7 @@ pub(crate) struct Conversations {
 async fn serve(
     mut requests: mpsc::Receiver<Find>,
     tasks: TaskTracker,
-    installation: Arc<Installation>,
+    chrome: Chrome,
     numbers: watch::Receiver<Option<Numbers>>,
 ) {
     let mut browsers: HashMap<String, Arc<ConversationBrowser>> = HashMap::new();
@@ -663,7 +659,7 @@ async fn serve(
                     .entry(conversation.clone())
                     .or_insert_with(|| {
                         let tabs = TabNumbers::from_source(numbers.borrow().clone(), conversation);
-                        ConversationBrowser::start(&tasks, installation.clone(), tabs)
+                        ConversationBrowser::start(&tasks, chrome.clone(), tabs)
                     })
                     .clone();
                 let _gone = reply.send(browser);
@@ -703,18 +699,13 @@ async fn serve(
 }
 
 impl Conversations {
-    /// Starts the owner on the current Tokio runtime; the browsers find or
-    /// install Chrome in `directories`.
-    pub(crate) fn new(directories: BrowserDirectories) -> Self {
+    /// Starts the owner on the current Tokio runtime; the browsers start
+    /// `chrome`.
+    pub(crate) fn new(chrome: Chrome) -> Self {
         let (requests, receiver) = mpsc::channel(REQUESTS);
         let tasks = TaskTracker::new();
         let (numbers, source) = watch::channel(None);
-        tasks.spawn(serve(
-            receiver,
-            tasks.clone(),
-            Arc::new(Installation::new(directories)),
-            source,
-        ));
+        tasks.spawn(serve(receiver, tasks.clone(), chrome, source));
         Self {
             requests,
             tasks,

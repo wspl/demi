@@ -30,6 +30,9 @@ use tokio_util::sync::CancellationToken;
 pub struct Options {
     pub backend: BackendUrl,
     pub directory: PathBuf,
+    /// The artifact cache (`native-runtime.md` § Install the selected
+    /// package).
+    pub artifacts: PathBuf,
     /// The Host's log, which `main` opened (`runner.md` § Host log).
     pub log: HostLogReader,
     /// The job root, where each shell job keeps its output under its
@@ -73,12 +76,12 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
     // Every pipe request reads the token; only a claim changes it.
     let token = watch::Sender::new(token);
     tracing::info!("runner {} started", options.runner.version);
-    // A Cloud image preinstalls the command executables there. The runner
+    // A Cloud image preinstalls the command artifacts there. The runner
     // looks on every Host, and a paired device has nothing there; Cloud
     // images are Linux only, so a Windows runner does not look.
     let image = cfg!(unix).then(|| PathBuf::from(ARTIFACTS_PATH));
     let registry = ServiceRegistry::new(
-        state.root.join("artifacts"),
+        options.artifacts.clone(),
         image,
         options.cwd.clone(),
         options.env.clone(),
@@ -121,6 +124,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
         token,
         management,
         services: registry.handle(),
+        installs: registry.installs(),
         dispatcher,
         index,
         paths,

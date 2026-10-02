@@ -310,6 +310,7 @@ impl UserPlugins {
                     name: manifest.name.clone(),
                     description: manifest.description.clone(),
                     enabled,
+                    packages: registered.packages.iter().cloned().collect(),
                 }
             })
             .collect())

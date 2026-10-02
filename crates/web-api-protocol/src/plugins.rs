@@ -15,6 +15,9 @@ pub struct PluginEntry {
     pub description: String,
     /// Whether the user has it on.
     pub enabled: bool,
+    /// The command packages its commands, user streams and page methods
+    /// bind that the backend's catalog serves, such as `demi.browser`.
+    pub packages: Vec<String>,
 }
 
 /// `PUT /plugins/:plugin { enabled }`.

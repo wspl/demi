@@ -1,6 +1,6 @@
 import { BrowserTabsError, NEW_TAB_URL, type BrowserTabsApi } from '@demicodes/web-ui/browser/tabs'
 import type { OpenLiveStream } from '@demicodes/web-ui/browser/session'
-import { PluginCallError, type PluginHost } from '@demicodes/web-ui/plugins/client'
+import { PluginCallError, type PackageInstall, type PluginHost } from '@demicodes/web-ui/plugins/client'
 import { closeTabSchema, navigateTabSchema, openTabSchema, tabHistorySchema } from '@demicodes/plugin-browser'
 import { exposeCallSchema, type ExposeState } from '@demicodes/plugin-expose'
 import {
@@ -24,6 +24,8 @@ export interface GalleryPlugin {
   call(method: string, params: object, conversation: string | null): Promise<unknown>
   /** Its user streams, by name. */
   streams?: Record<string, OpenLiveStream>
+  /** What the specimen's Host installs of its packages, read reactively. */
+  installs?(): readonly PackageInstall[]
 }
 
 /** A host over `plugins`; a plugin it lacks refuses as the backend would. */
@@ -46,6 +48,7 @@ export function galleryPluginHost(plugins: Record<string, GalleryPlugin>): Plugi
       }
       throw new PluginCallError('unknown_stream', `No user stream "${name}"`)
     },
+    installs: (plugin) => plugins[plugin]?.installs?.() ?? [],
   }
 }
 
@@ -97,6 +100,7 @@ export function browserPlugin(api: BrowserTabsApi): GalleryPlugin {
       }
     },
     streams: { browser: api.stream },
+    installs: () => api.installs(),
   }
 }
 
