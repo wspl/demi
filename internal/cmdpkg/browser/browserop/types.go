@@ -1636,6 +1636,7 @@ type LiveDialog struct {
 }
 
 // What the module sends.
+// +demi:schema
 // +demi:root direction=receive output=plugin-browser
 // +demi:union tag=type
 //
