@@ -63,26 +63,29 @@ declared.
 
 ## What a plugin contributes
 
-A plugin declares its contributions once, in its **manifest**, when it is
-registered. What a manifest declares is fixed while the plugin is
-registered; for a plugin linked into the backend, that is the life of the
-process. What varies by user, conversation or time arrives through requests.
+A plugin declares itself once, in its **manifest**: a plain value its crate
+builds in code, which the plugin host reads when the plugin is registered.
+Code, not a file beside the crate, because the manifest refers to what only
+code holds: its schemas are derived from the Rust types the plugin uses. What
+a manifest declares is fixed while the plugin is registered; for a plugin
+linked into the backend, that is the life of the process. What varies by
+user, conversation or time arrives through requests.
 
 | Contribution | Declared | When Demi asks |
 | --- | --- | --- |
+| Identity | Its id, its name and a one-sentence description, which settings show | Never |
+| Packages | The [command packages](../execution/native-runtime.md) it uses, by name; its commands, streams and methods bind operations of these only | Never: the page shows their installs ([Installation progress](../execution/native-runtime.md#installation-progress)) |
 | [Commands](#commands) | Their declarations, as data | Each time the model runs an `rpc` leaf of them |
 | [Context](#prompt-text-and-context) | That the plugin is a context source | Before each provider request of every node |
 | [Profiles](#profiles) | The profiles, as data | Never: they are fixed |
 | [Host directories](#host-directories) | Nothing | The plugin sets them through its port when its user's needs change |
 | [Host files](#reading-a-conversations-files) | Nothing | The plugin reads them through its port when it needs them |
-| [Package calls and user streams](#calling-its-command-package) | Each user stream's name and the operation it binds | A call: when the plugin makes it. A stream: when a page opens it |
-| [Page state and what it follows](#the-page) | The product changes the plugin's state is read from, such as the user's exposes | When one of them changes, the plugin's part of the product state is marked changed |
-| [Page state and page calls](#the-page) | The state's schema, and each method with its scope, its parameter and result schemas and the package operations it calls | When a page reads the product state; when a page calls a method |
-| [Settings](#settings) | The schema of the user's settings for it | When the user saves them: the settings page writes them, and the plugin reads them through its port |
-| [Themes](#themes) | Each theme's name and design tokens, as data | Never: the web app applies a theme the user selects |
+| [Package calls and user streams](#calling-its-command-package) | Each user stream's name, the operation it binds, the schemas of its messages both ways and the constants its two ends share | A call: when the plugin makes it. A stream: when a page opens it |
+| [Its page](#the-page) | Its page package; the schema of its state for each scope, user and conversation; the [topics](#topics) each scope follows; each method with its scope, its parameter and result schemas and the operations it calls | When a page reads a state; when a topic fires; when a page calls a method |
 
-A plugin declares only what it uses: `plugin-file` declares commands and
-nothing else, and `plugin-skills` declares no command.
+A plugin declares only what it uses: `plugin-file` declares its package and
+its commands and nothing else, `plugin-skills` declares no command, and
+`plugin-changes` declares only its identity and its page.
 
 ### Commands
 
@@ -270,9 +273,9 @@ already offers ([User streams](../execution/native-runtime.md#user-streams)):
   `browser.live`. The page opens it through the backend's one user stream
   route, and the bytes never pass through the plugin.
 
-A plugin calls only the packages its own commands, streams and page methods
-bind, and a stream's name is taken once among all plugins, or the plugins are
-refused when they are registered. A stream, or a page method one of whose
+A plugin calls only the packages its manifest names, and a stream's name is
+taken once among all plugins, or the plugins are refused when they are
+registered. A stream, or a page method one of whose
 operations the startup catalog does not serve, does not exist, as such a
 command group does not. A package call says what it does on the Host, which
 decides whether it wakes a stopped Cloud and whether it is activity
@@ -285,6 +288,25 @@ Together with [Host directories](#host-directories) and
 [reading a conversation's files](#reading-a-conversations-files), these are
 every way a plugin reaches a Host. All of them go through the conversation's
 host access. A plugin never writes a Host's files and never starts a job.
+
+### Topics
+
+A topic is a product change a plugin's page state can follow. Its manifest
+names the topics each scope of its state follows, and when one fires, the
+plugin host marks that scope changed, so every page that shows it reads the
+state again ([Data a page shows](plugin-pages.md#data-a-page-shows)):
+
+| Topic | Scope | Fires when |
+| --- | --- | --- |
+| `exposes` | User | One of the user's exposes is created, renewed or destroyed, or the earliest one expires |
+| `jobs` | Conversation | A job of the conversation ends |
+
+For example, `plugin-browser`'s conversation state, the conversation
+browser's tab list, follows `jobs`: the agent's `demi browser open` is a job,
+and when it ends every page that shows the conversation reads the list again.
+A topic belongs to the product service whose change it is: `exposes` to the
+expose relay, `jobs` to host access. A topic joins when a plugin's state needs
+it, as a slot of the page does.
 
 ## The contract
 
@@ -311,25 +333,33 @@ Each request names its user, since a plugin process would serve every user:
 | --- | --- | --- |
 | `command` | The [rpc invocation](../execution/commands.md#handle-an-rpc-call) | The exit status |
 | `context` | The conversation, the node, its working directory, the id of its current input turn, and the text of the source's blocks the model receives | New text, or none |
-| `page_state` | Nothing more | The plugin's state for the user's pages, valid against its declared schema |
+| `page_state` | The scope: the user, or one of the user's conversations | The plugin's state of that scope, valid against the scope's declared schema |
 | `page_call` | The method, its parameters, already valid against the method's schema, and the conversation when the page called for one | The result, valid against the method's result schema |
 
 The port is the plugin's side of a request, and every operation is one
 request and one reply, as for an rpc handler
-([Handle an rpc call](../execution/commands.md#handle-an-rpc-call)):
+([Handle an rpc call](../execution/commands.md#handle-an-rpc-call)). Its
+operations are grouped by the service that answers them. A
+conversation's operations need a request about a conversation: a `command`, a
+`context`, or a `page_state` or `page_call` of the conversation scope.
 
-| Operation | Requests | Meaning |
-| --- | --- | --- |
-| Stdout, stderr, stdin, live stdin, command storage, cancellation | `command` | The rpc port of the call: its IO, the invoking node's [command storage](../agent/command-state-history.md), and whether the call was cancelled |
-| Values | Every request | Read, list, conditional write and conditional removal of the plugin's own values for the user, each a JSON document with a revision ([Storage](../backend/storage.md#control-records)) |
-| Blobs | Every request | Put and get bytes in the user's blob namespace, by SHA-256 |
-| Host directories | Every request | Replace the user's set of [Host directories](#host-directories); the reply is each directory's path on a Host |
-| Host files | `command`, `context`, a conversation's `page_call` | Read several paths on the conversation's main Host, if it is running ([Reading a conversation's files](#reading-a-conversations-files)) |
-| Package calls | `command`, `context`, a conversation's `page_call` | Run one operation of a package the plugin's commands bind, waking the Host or not ([Calling its command package](#calling-its-command-package)) |
-| Conversation hosts | `command`, `context`, a conversation's `page_call` | The conversation's main and attached Hosts: each one's name, device, role and whether it is online ([Attached hosts](../execution/sessions-and-targets.md#attached-hosts)) |
-| Exposes | Every request | Create, renew, remove and list the user's [exposes](../execution/expose.md#the-expose-record), the backend's public relays to a device's address |
-| Changed | Every request | Mark the plugin's part of the user's product state as changed, so every page of the user receives the new state ([The page](#the-page)) |
-| Cancellation | Every request | Whether, and when, the request was cancelled |
+| Service | Operations | Requests | Meaning |
+| --- | --- | --- | --- |
+| Command | Stdout, stderr, stdin, live stdin, command storage | `command` | The rpc port of the call: its IO and the invoking node's [command storage](../agent/command-state-history.md) |
+| Storage | Values: read, list, conditional write, conditional removal | Every request | The plugin's own values for the user, each a JSON document with a revision ([Storage](../backend/storage.md#control-records)) |
+| | Blobs: put, get | Every request | Bytes in the user's blob namespace, by SHA-256 |
+| Hosts | Set directories | Every request | Replace the user's set of [Host directories](#host-directories); the reply is each directory's path on a Host |
+| | List the conversation's Hosts | A conversation's | Its main and attached Hosts: each one's name, device, role and whether it is online ([Attached hosts](../execution/sessions-and-targets.md#attached-hosts)) |
+| | Read files | A conversation's | Several paths on the conversation's main Host, if it is running ([Reading a conversation's files](#reading-a-conversations-files)) |
+| | Call a package | A conversation's | One operation of a package the manifest names, waking the Host or not ([Calling its command package](#calling-its-command-package)) |
+| Exposes | List, create, renew, remove | Every request | The user's [exposes](../execution/expose.md#the-expose-record), the backend's public relays to a device's address |
+| Pages | Changed | Every request | Mark one scope of the plugin's page state, the user's or one conversation's, as changed, so the pages that show it read it again ([The page](#the-page)) |
+| Request | Cancellation | Every request | Whether, and when, the request was cancelled |
+
+A product service a plugin may use is one service of the port: its
+operations, and the [topics](#topics) its changes fire. Exposes is such a
+service; one joins when a plugin needs it, and never as an operation shaped
+for one plugin among the others.
 
 Values and directories name the blobs they use, which keeps the blobs from
 [collection](../backend/storage.md#collecting-blobs) for as long as they are
@@ -418,10 +448,9 @@ The plugin host, in `backend-plugins`, runs every plugin of the backend:
   opens, and the context sources, which are asked while their plugin is on.
 - **User streams.** The host holds every plugin's stream declarations, which
   the user stream route opens by name while the plugin is on.
-- **What a page state follows.** When a product change a plugin's manifest
-  names happens for a user, such as one of the user's exposes being created,
-  renewed, destroyed or expiring, the host marks that plugin's part of the
-  user's product state as changed.
+- **Topics.** When a [topic](#topics) fires, for a user or for one of the
+  user's conversations, the host marks the state scope of each plugin whose
+  manifest follows it as changed.
 - **The port.** The host answers every port operation against the user's
   storage, blobs, channels and exposes. The conversation's host access
   installs the directories the host records, reads the Host files a plugin
@@ -455,7 +484,7 @@ moment that does not change something the model already relies on:
 
 | Contribution | A change takes effect |
 | --- | --- |
-| Page state, page methods, settings, themes | At once: every page of the user receives the new plugin list |
+| Page state and page methods | At once: every page of the user receives the new plugin list |
 | Context | Before the next request of every node |
 | Host directories | Before the next job of each conversation: a plugin turned off has its directories removed then |
 | User streams | When a page opens one; an open stream of a plugin turned off ends |
@@ -486,19 +515,9 @@ anyone opens it, so a reload is never needed for a conversation nobody
 looks at.
 
 **Settings.** The settings page lists every plugin with its name, its
-description and a switch. A plugin that declares a settings schema shows a
-form beneath its switch, which the web app renders from the schema; the
-plugin host validates what the page saves against it, stores it as the
-plugin's settings for the user, and the plugin reads them through its port. A
-plugin that needs more than a form, such as `plugin-skills`, gives the web
-app a settings section of its own ([The page](#the-page)).
-
-**Themes.** A plugin may declare themes: a name, and a value for each design
-token the theme sets, in the light and the dark scheme. A theme is data,
-never code. The web app validates its tokens against those `web-ui` defines,
-lists every theme of the plugins the user has on, and applies the one the
-user selects; one whose plugin is turned off falls back to the default. No
-plugin of this repository declares a theme or a settings schema yet.
+description and a switch. A plugin that needs settings of its own, such as
+`plugin-skills`, gives the web app a settings section
+([The page](#the-page)).
 
 ## Built-in plugins
 
@@ -510,56 +529,63 @@ not use.
 | --- | --- | --- | --- | --- |
 | `file` | `plugin-file` | The `demi file` group, bound to `demi.file` | None | [File commands](../execution/commands.md#file-commands) |
 | `todo` | `plugin-todo` | The `demi todo` group, its `rpc` handlers over the node's command storage | None | [Command state history](../agent/command-state-history.md) |
-| `browser` | `plugin-browser` | The `demi browser` group, bound to `demi.browser`; the `browser` user stream; package calls; page methods for the conversation browser's tabs | `@demicodes/plugin-browser`: the `browser` work panel kind with the live view | [Conversation browser](../browser/browser.md#command-contract), [Live view](../browser/live-view.md) |
-| `expose` | `plugin-expose` | The `demi expose` group with its numbers; the conversation hosts and exposes port operations; page state that follows the user's exposes; page methods to renew and remove | `@demicodes/plugin-expose`: the conversation header tool and the `page` work panel kind | [Host expose](../execution/expose.md) |
-| `skills` | `plugin-skills` | A context source; values and blobs; Host directories; Host file reads; page state and five page methods | `@demicodes/plugin-skills`: a settings section | [Skills](../agent/skills.md) |
-| `changes` | `plugin-changes` | Nothing but its page | `@demicodes/plugin-changes`: the pinned `change` kind, the Change view | [Changes](../product/file-previews.md#changes), [Edit tracking](../execution/edit-tracking.md) |
-| `file-browser` | `plugin-file-browser` | Nothing but its page | `@demicodes/plugin-file-browser`: the pinned `file` kind, the File view | [File previews](../product/file-previews.md) |
+| `browser` | `plugin-browser` | The `demi browser` group, bound to `demi.browser`; the `browser` user stream; package calls; conversation state, the conversation browser's tabs, following `jobs`, with methods to open, close, navigate and go back | `@demicodes/plugin-browser`: the `browser` work panel kind with the live view | [Conversation browser](../browser/browser.md#command-contract), [Live view](../browser/live-view.md) |
+| `expose` | `plugin-expose` | The `demi expose` group with its numbers; the port's Hosts and Exposes services; user state following `exposes`; methods to renew and remove | `@demicodes/plugin-expose`: the conversation header tool and the `page` work panel kind | [Host expose](../execution/expose.md) |
+| `skills` | `plugin-skills` | A context source; values and blobs; Host directories; Host file reads; user state and five methods | `@demicodes/plugin-skills`: a settings section | [Skills](../agent/skills.md) |
+| `changes` | `plugin-changes` | Its identity and its page package | `@demicodes/plugin-changes`: the pinned `change` kind, the Change view | [Changes](../product/file-previews.md#changes), [Edit tracking](../execution/edit-tracking.md) |
+| `file-browser` | `plugin-file-browser` | Its identity and its page package | `@demicodes/plugin-file-browser`: the pinned `file` kind, the File view | [File previews](../product/file-previews.md) |
 
 Besides the plugins, the components that carry them are:
 
 | Component | Holds |
 | --- | --- |
 | `plugin-interface` | The contract: factory and instance traits, manifest, requests and replies, the port, the JSON loopback transport for tests |
-| `backend-plugins` | The plugin host: registration and its checks, the command set, profiles and context sources for the agent server, instances, the port's operations, page state and page calls |
-| `backend-user-shard`, `backend-host-access`, `backend-expose`, `backend-http`, `backend` | The product's side: the agent server's dependencies, the execution context source and the product's instructions; the installation of Host directories, the reads of Host files and the package calls; the exposes the `expose` plugin manages, with their relay; the page call routes, the plugin switch route and the user stream route; the plugins linked into the backend |
+| `backend-plugins` | The plugin host: registration and its checks, the command set, profiles and context sources for the agent server, instances, the port's services, topics, page state of both scopes with the conversation revisions, and page calls |
+| `backend-user-shard`, `backend-host-access`, `backend-expose`, `backend-http`, `backend` | The product's side: the agent server's dependencies, the execution context source and the product's instructions; the installation of Host directories, the reads of Host files and the package calls; the exposes the `expose` plugin manages, with their relay; the page call routes, the conversation state route, the plugin switch route and the user stream route; the plugins linked into the backend |
 | `agent-tools`, `agent-server`, `agent-session` | The runtime's side: the rules for its tools in the system prompt, the Host resolver, context sources with their sources and turns, profiles as data |
-| `plugin-sdk`, `web-ui`, `web`, `web-gallery` | The page API: slots, `PluginClient`, intents, services and public components ([Plugin pages](plugin-pages.md)); the shell and the primitives; the services over HTTP, the sync channel and the user stream route, and the generated registry; fixture services for each plugin page's specimens |
+| `plugin-sdk`, `web-ui`, `web`, `web-gallery` | The page API: `definePage`, `usePage`, intents, the conversation files service and the plugin kit ([Plugin pages](plugin-pages.md)); the shell and the primitives; the page context over HTTP, the sync channel and the user stream route, and the generated registry; the page context over each specimen's fixtures |
 
 ## The page
 
-A plugin can give the web app a part of its own, a TypeScript package that
-fills the shell's slots: a settings section, a conversation header tool or
-work panel kinds. [Plugin pages](plugin-pages.md) owns that side: the slots,
-the plugin SDK, intents, services, registration and versions. This section
-owns what the backend gives a page.
+A plugin can give the web app a part of its own: the page package its
+manifest names, which fills the shell's slots with a settings section, a
+conversation header tool or work panel kinds. [Plugin pages](plugin-pages.md)
+owns that side: the page object, the page context, intents, the plugin kit,
+registration and versions. This section owns what the backend gives a page.
 
-A page reaches its plugin only through its `PluginClient`: the plugin's state,
-which follows the sync channel; its page calls, for the user or for the
-conversation the component shows; the plugin's user streams of that
-conversation; and, for that conversation, the installs of the plugin's
-packages on the conversation's main Host, from that device's `installs` in the
-product state, which a component that waits for a call shows with the SDK's
-installs component
-([Installation progress](../execution/native-runtime.md#installation-progress)).
-No plugin declares or starts an install: it follows from the call. A page
-knows no route; `web` supplies the client over HTTP, the gallery over the
-specimen's fixture state.
+A plugin's page state has two scopes, each declared with its schema in the
+manifest, and each marked changed on its own, through the port or by a
+[topic](#topics) it follows:
 
-A page call is `POST /api/plugins/:plugin/calls/:method` for a method of the
-user scope, or `POST /api/conversations/:id/plugins/:plugin/calls/:method`
-for one of the conversation scope, with the parameters as its JSON body
-([Web API](../product/web-api.md#plugin-calls)). The edge
-authenticates the session, the plugin host validates the parameters against
-the method's declared schema, as a command's arguments are validated
+| Scope | Holds, for example | Reaches the pages |
+| --- | --- | --- |
+| User | The user's skill sources, the user's exposes | In the product state, on the synchronization channel: the snapshot holds it, and each change sends the new state to every page of the user ([Page synchronization](../product/web-api.md#page-synchronization)) |
+| Conversation | The conversation browser's tab list | By revision, as a draft does: the conversation's summary carries the revision of each plugin's conversation state, and a page that shows the conversation reads the state when the revision is higher than the one it holds ([Conversation state of plugins](../product/web-api.md#conversation-state-of-plugins)) |
+
+The plugin host answers a read of either scope with a `page_state` request
+for that scope, and counts the revision of each conversation's state in
+memory. A page
+call is `POST /api/plugins/:plugin/calls/:method` for a method of the user
+scope, or `POST /api/conversations/:id/plugins/:plugin/calls/:method` for one
+of the conversation scope, with the parameters as its JSON body
+([Web API](../product/web-api.md#plugin-calls)). The edge authenticates the
+session, the plugin host validates the parameters against the method's
+declared schema, as a command's arguments are validated
 ([Contracts](contracts.md#validation-at-entry)), and the user's instance
-handles the call on the user's shard. A plugin's state reaches the pages as
-part of the product state, on the synchronization channel
-([Page synchronization](../product/web-api.md#page-synchronization)): the
-snapshot holds every plugin's state, and a plugin that marks its part as
-changed sends the new state to each of its user's pages. The types of the
-state, the calls and the streams are the plugin's Rust types, generated into
-its page package ([Types](plugin-pages.md#types)).
+handles the call on the user's shard. A page also reaches the plugin's user
+streams of a conversation, and the installs of the plugin's packages on the
+conversation's main Host, from that device's `installs` in the product state,
+which a component that waits for a call shows with the kit's installs
+component ([Installation progress](../execution/native-runtime.md#installation-progress)).
+No plugin declares or starts an install: it follows from the call.
+
+A page reaches all of this only through its page context
+([The page context](plugin-pages.md#the-page-context)) and knows no route;
+`web` supplies it over HTTP, the gallery over each specimen's fixture state.
+The types of both states, the calls and the streams are generated from the
+manifest into the page package, and the web app's registry from the
+manifests of the registered plugins ([Types](plugin-pages.md#types),
+[Registration](plugin-pages.md#registration)).
 
 ## Decisions for the TypeScript SDK
 

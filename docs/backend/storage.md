@@ -165,9 +165,8 @@ input, which the multi-worker control service also relies on
   names. A write names the revision it read and commits only if the row still
   has it, in one transaction, so two writes never build on the same revision;
   a value's first write expects none. `user_plugins` stores each choice a
-  user made about a plugin: user, plugin id, whether it is on, and its
-  settings as a JSON document, absent until the user saves them. A plugin
-  with no row is on and has no settings. `plugin_directories` stores each
+  user made about a plugin: user, plugin id and whether it is on. A plugin
+  with no row is on. `plugin_directories` stores each
   plugin's [Host directories](../architecture/plugins.md#host-directories) for
   a user: user, plugin id, the directory's name, its digest and its listing,
   each file's path, whether it is executable, and its SHA-256. A plugin's set for a user is replaced

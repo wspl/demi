@@ -1381,11 +1381,11 @@ under `packages/`.
 
 - **Private** until pages from outside the repository load
   ([Pages from outside the repository](plugin-pages.md#pages-from-outside-the-repository)).
-- **Owns:** the page API ([Plugin pages](plugin-pages.md)): the `PluginPage`
-  and slot types, the `PluginClient` with `usePlugin()`, the intents with
-  their payloads, the service interfaces, and the public components,
-  re-exported from `web-ui`. Its major
-  version is the page API's version.
+- **Owns:** the page API ([Plugin pages](plugin-pages.md)): `definePage` with
+  the page object's types, the page context `usePage()`, the intents with
+  their payloads, the conversation files service's interface, and the plugin
+  kit, re-exported from `web-ui`. Its major version is the page API's
+  version.
 - **Public boundary:** its entry and subpath exports, which plugin packages,
   `web` and `web-gallery` import.
 - **Must not:** know a plugin, or export a `web-ui` module that is not part of
@@ -1405,10 +1405,11 @@ under `packages/`.
   containers; `api/` validated HTTP and agent wire adapters and upload
   requests; `state/` the product state its synchronization channel keeps,
   preferences and per-user local state;
-  `devices/` pairing and filesystem adapters; `plugins/` the plugin services
-  over the page call route, the synchronization channel and the file routes,
-  and the registry `xtask contracts` generates into `plugins/generated/` from
-  the plugin packages it depends on. Reusable UI belongs to `web-ui`, a
+  `devices/` pairing and filesystem adapters; `plugins/` the page context
+  over the page call routes, the conversation state route, the
+  synchronization channel and the file routes, and the registry `xtask
+  contracts` generates into `plugins/generated/` from the backend's plugins
+  whose page package it depends on. Reusable UI belongs to `web-ui`, a
   plugin's feature UI to its package.
 - **Integration boundary:** authentication calls the backend over same-origin
   HTTP; the product state follows the synchronization channel, a WebSocket;
@@ -1431,25 +1432,27 @@ under `packages/`.
   full-pane message route. It is not a product surface and ships no themes into
   the product.
 - **Public boundary:** `bun run web:gallery`. It shows each plugin package's
-  slots over fixture services, from the registry `xtask contracts` generates
-  into `src/generated/`.
+  page over a fixture page context, from the registry `xtask contracts`
+  generates into `src/generated/`.
 - **Must not:** import Node or `web`, or be imported by another package.
 
 #### `@demicodes/plugin-<name>`
 
 Each plugin page package is **private** and has the same boundary:
 
-- **Public boundary:** its `PluginPage`, the default export of its entry, and
-  `"demi": { "plugin": "<id>" }` in its `package.json`, from which the
-  registry is generated ([Registration](plugin-pages.md#registration)); and
-  source-path exports (`./*`), which only the gallery's specimens import.
+- **Public boundary:** its page object, the default export of its entry,
+  which the generated registry imports because its plugin's manifest names
+  the package ([Registration](plugin-pages.md#registration)); and
+  source-path exports (`./*`), which only the gallery's specimens import. Its
+  plugin's id and types are generated from that manifest into
+  `src/generated/`.
 - **Must not:** import a workspace package other than `plugin-sdk` and
   `utils`, know a route, or hold a primitive another page could use; that
   belongs to `web-ui`, exposed through the SDK.
 
 | Package | Owns |
 | --- | --- |
-| `@demicodes/plugin-browser` | The `browser` work panel kind and the live view ([Live view](../browser/live-view.md#responsibilities)): frames, input, clipboard and pictures over its `PluginClient`, with the plugin's page types and the live view's messages generated into `src/generated/` |
+| `@demicodes/plugin-browser` | The `browser` work panel kind and the live view ([Live view](../browser/live-view.md#responsibilities)): frames, input, clipboard and pictures over its page context, with the plugin's page types and the live view's messages generated into `src/generated/` |
 | `@demicodes/plugin-expose` | The conversation header's expose menu and the `page` work panel kind ([Host expose](../execution/expose.md#product-surface)), with the plugin's page types generated into `src/generated/` |
 | `@demicodes/plugin-skills` | The Skills settings section with its dialogs ([Skills](../agent/skills.md#the-page)), with the plugin's page types generated into `src/generated/` |
 | `@demicodes/plugin-changes` | The pinned `change` kind, the Change view, over the conversation files service ([Changes](../product/file-previews.md#changes)) |
