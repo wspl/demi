@@ -5,6 +5,8 @@
 mod build;
 mod package;
 
+pub use package::development_package;
+
 use std::path::{Path, PathBuf};
 
 use demi_command_protocol::TARGETS;
@@ -90,6 +92,8 @@ impl Executable {
     /// The executables a build makes unless named: the runner and the
     /// command programs.
     const DEFAULT: [Self; 4] = [Self::Runner, Self::File, Self::Browser, Self::Claude];
+    /// The command programs, each the program of a command package.
+    pub const COMMANDS: [Self; 3] = [Self::File, Self::Browser, Self::Claude];
 
     /// The Cargo package, which is also the executable's name.
     pub fn name(self) -> &'static str {
