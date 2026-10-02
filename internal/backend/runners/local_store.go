@@ -1,12 +1,14 @@
 package runners
 
-//revive:disable:unused-parameter
-// API checkpoint: parameters are consumed by the implementation checkpoint.
-
 import (
 	"context"
+	"errors"
+	"fmt"
+	"os"
 
+	"github.com/wspl/demi/internal/artifacts"
 	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/gates"
 )
 
 // NativeArtifactsRoute is the development downloads' route at the public URL's root.
@@ -22,18 +24,59 @@ type ArtifactFile struct {
 
 // LocalArtifacts holds loaded development artifacts by SHA-256. Construct it with
 // NewLocalArtifacts; concurrent requests share each executable's first encoding.
-type LocalArtifacts struct{}
+type LocalArtifacts struct{ files map[string]*localFile }
+type localFile struct {
+	path    string
+	size    uint64
+	encode  bool
+	gate    gates.Serial
+	encoded []byte
+}
 
 // NewLocalArtifacts records executable and resource archive files, keeping an
 // artifact shared by several releases once. Archives are served without encoding.
 func NewLocalArtifacts(executables, archives []ArtifactFile) *LocalArtifacts {
-	panic("not written: b-runners")
+	files := make(map[string]*localFile)
+	for _, executable := range executables {
+		if _, exists := files[executable.Artifact.SHA256]; !exists {
+			files[executable.Artifact.SHA256] = &localFile{path: executable.Path, size: executable.Artifact.Size, encode: true}
+		}
+	}
+	for _, archive := range archives {
+		if _, exists := files[archive.Artifact.SHA256]; !exists {
+			files[archive.Artifact.SHA256] = &localFile{path: archive.Path, size: archive.Artifact.Size}
+		}
+	}
+	return &LocalArtifacts{files: files}
 }
 
 // Artifact returns a loaded artifact, or nil when no release carries sha256.
 // Executables are encoded lazily; files are verified when releases are loaded.
 func (a *LocalArtifacts) Artifact(ctx context.Context, sha256 string) (LocalArtifact, error) {
-	panic("not written: b-runners")
+	file := a.files[sha256]
+	if file == nil {
+		return nil, nil
+	}
+	if !file.encode {
+		return &PlainArtifact{Path: file.path}, nil
+	}
+	permit, err := file.gate.Acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer permit.Release()
+	if file.encoded == nil {
+		bytes, err := os.ReadFile(file.path)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", file.path, err)
+		}
+		encoded, err := artifacts.Encode(ctx, bytes, artifacts.Development)
+		if err != nil {
+			return nil, err
+		}
+		file.encoded = encoded
+	}
+	return &EncodedArtifact{Bytes: file.encoded}, nil
 }
 
 // LocalArtifact is how the development store serves an artifact.
@@ -53,8 +96,8 @@ type PlainArtifact struct {
 	Path string
 }
 
-func (*EncodedArtifact) localArtifact() { panic("not written: b-runners") }
-func (*PlainArtifact) localArtifact()   { panic("not written: b-runners") }
+func (*EncodedArtifact) localArtifact() {}
+func (*PlainArtifact) localArtifact()   {}
 
 // ServedArtifacts resolves loaded development artifacts on the backend's public URL.
 type ServedArtifacts struct {
@@ -65,6 +108,18 @@ type ServedArtifacts struct {
 }
 
 // Resolve locates artifact on the development backend without an expiry.
-func (a *ServedArtifacts) Resolve(ctx context.Context, artifact commandwire.PackageArtifact, target string) (commandwire.ArtifactLocation, error) {
-	panic("not written: b-runners")
+func (a *ServedArtifacts) Resolve(_ context.Context, artifact commandwire.PackageArtifact, _ string) (commandwire.ArtifactLocation, error) {
+	file := a.Artifacts.files[artifact.SHA256]
+	if file == nil || file.size != artifact.Size {
+		return nil, errors.New("the artifact is not in a loaded development release")
+	}
+	backend, ok := a.Backend.URL()
+	if !ok {
+		return nil, errors.New("the backend does not listen yet")
+	}
+	parsed, err := backend.URL()
+	if err != nil {
+		return nil, err
+	}
+	return &commandwire.ArtifactURL{URL: parsed.Scheme() + "://" + parsed.Host() + NativeArtifactsRoute + "/" + artifact.SHA256}, nil
 }

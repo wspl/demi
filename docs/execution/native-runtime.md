@@ -985,7 +985,8 @@ none.
 `"provider": "s3"`, the backend publishes every release to that bucket before
 it accepts requests, and each release must carry all six targets. `prefix`, the
 key prefix of the published objects, defaults to `native` and is one or more
-`/`-separated segments of letters, digits, `_` and `-`.
+`/`-separated segments of letters, digits, `_` and `-`, starting with a letter
+or digit.
 
 ```json
 {

@@ -1,80 +1,202 @@
-//revive:disable:unused-parameter // API checkpoint keeps parameter names for callers; bodies follow after merge.
 package providers
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
+	"sort"
 
-	"github.com/wspl/demi/internal/backend/database"
+	"github.com/gowebpki/jcs"
+	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/providers/anthropicapi"
+	"github.com/wspl/demi/internal/providers/openaiapi"
 	"github.com/wspl/demi/internal/webapi"
+	"golang.org/x/text/collate"
+	"golang.org/x/text/language"
 )
 
-// CatalogFetch reads a catalog source when a refresh starts.
+// CatalogFetch reads a catalog source when a refresh starts. It must honor context
+// cancellation and release its IO before returning; the cache joins the call.
 type CatalogFetch func(context.Context) (core.ProviderModelList, error)
 
-// ModelCatalogCache holds validated catalogs in memory and the control store.
-// Close cancels and joins refreshes independently owned from their readers.
-type ModelCatalogCache struct{}
-
 // VendorCatalog supplies supported models.dev vendors and their policies.
-type VendorCatalog struct{}
-
-// NewModelCatalogCache creates a cache whose refreshes are owned until Close.
-func NewModelCatalogCache(control *database.ControlService, clock core.Clock) *ModelCatalogCache {
-	panic("not written: b-providers")
-}
-
-// Read returns a fresh record, a stale record while refreshing, or waits when cold or forced.
-func (c *ModelCatalogCache) Read(ctx context.Context, id webapi.ProviderID, key string, fetch CatalogFetch, force bool) (core.ProviderModelList, error) {
-	panic("not written: b-providers")
-}
-
-// Invalidate cancels the entry refresh and removes its cached record.
-func (c *ModelCatalogCache) Invalidate(ctx context.Context, id webapi.ProviderID) error {
-	panic("not written: b-providers")
-}
-
-// Close cancels and joins all refreshes.
-func (c *ModelCatalogCache) Close(ctx context.Context) error { panic("not written: b-providers") }
+type VendorCatalog struct{ models *provider.ModelsDevClient }
 
 // NewVendorCatalog creates a catalog over the shared models.dev client.
 func NewVendorCatalog(models *provider.ModelsDevClient) *VendorCatalog {
-	panic("not written: b-providers")
+	return &VendorCatalog{models: models}
 }
 
 // ModelsDev returns the shared models.dev client.
-func (v *VendorCatalog) ModelsDev() *provider.ModelsDevClient { panic("not written: b-providers") }
+func (v *VendorCatalog) ModelsDev() *provider.ModelsDevClient {
+	return v.models
+}
 
 // Policy returns the typed vendor request requirements.
-func (v *VendorCatalog) Policy(id *string) provider.VendorPolicy { panic("not written: b-providers") }
+func (v *VendorCatalog) Policy(id *string) provider.VendorPolicy {
+	if id == nil {
+		return provider.VendorPolicy{}
+	}
+	return provider.VendorPolicy{PassBackReasoningContent: *id == "deepseek", EffortAsBudget: *id != "anthropic"}
+}
 
 // Vendors lists supported vendors.
 func (v *VendorCatalog) Vendors(ctx context.Context) ([]webapi.Vendor, error) {
-	panic("not written: b-providers")
+	snapshot, err := v.models.Current(ctx)
+	if err != nil {
+		return nil, err
+	}
+	vendors := []webapi.Vendor{}
+	for _, vendor := range snapshot.Vendors() {
+		if offered := offeredVendor(vendor); offered != nil {
+			vendors = append(vendors, *offered)
+		}
+	}
+	collator := collate.New(language.Und)
+	sort.SliceStable(vendors, func(i, j int) bool { return collator.CompareString(vendors[i].Name, vendors[j].Name) < 0 })
+	return vendors, nil
 }
 
 // Vendor finds a supported vendor, or nil.
 func (v *VendorCatalog) Vendor(ctx context.Context, id string) (*webapi.Vendor, error) {
-	panic("not written: b-providers")
+	snapshot, err := v.models.Current(ctx)
+	if err != nil {
+		return nil, err
+	}
+	vendor := snapshot.Vendor(id)
+	if vendor == nil {
+		return nil, nil
+	}
+	return offeredVendor(*vendor), nil
 }
 
 // Models reads a vendor catalog.
 func (v *VendorCatalog) Models(ctx context.Context, id string) (core.ProviderModelList, error) {
-	panic("not written: b-providers")
+	snapshot, err := v.models.Refreshed(ctx)
+	if err != nil {
+		return core.ProviderModelList{}, err
+	}
+	if vendor := snapshot.Vendor(id); vendor != nil && offeredVendor(*vendor) != nil {
+		if list := snapshot.VendorModels(id); list != nil {
+			return *list, nil
+		}
+	}
+	return core.ProviderModelList{Models: []core.ProviderModel{}, Warnings: snapshot.Warnings, SourceFetchedAt: core.UnixEpoch, Stale: snapshot.Stale}, nil
 }
 
 // ConfiguredModel converts configured facts to a catalog model.
 func ConfiguredModel(model webapi.ConfiguredModel) core.ProviderModel {
-	panic("not written: b-providers")
+	efforts := make([]string, 0, len(model.ThinkingEfforts))
+	for _, effort := range model.ThinkingEfforts {
+		efforts = append(efforts, string(effort))
+	}
+	var first *string
+	if len(efforts) > 0 {
+		first = &efforts[0]
+	}
+	tools := true
+	reasoning := len(efforts) > 0
+	var attachments *bool
+	if model.AcceptedExtensions != nil {
+		v := len(*model.AcceptedExtensions) > 0
+		attachments = &v
+	}
+	tiers := []core.ServiceTier{}
+	if model.FastTier != nil {
+		tiers = append(tiers, core.ServiceTier{ID: *model.FastTier, Label: "Fast", Fast: true})
+	}
+	return core.ProviderModel{ID: string(model.ID), DisplayName: string(model.DisplayName), ContextWindow: &model.ContextWindow, OutputLimit: model.OutputLimit, SupportsTools: &tools, SupportsAttachments: attachments, AcceptedExtensions: model.AcceptedExtensions, SupportsReasoning: &reasoning, SupportedThinkingEfforts: &efforts, DefaultThinkingEffort: first, ServiceTiers: tiers}
 }
 
 // ConfiguredSelection reapplies configured facts while keeping user thinking and tier choices.
 func ConfiguredSelection(entry ProviderEntry, selection core.ModelSelection) (core.ModelSelection, error) {
-	panic("not written: b-providers")
+	config, ok := entry.Credential.(*APIKeyConfig)
+	if !ok || config.Models == nil {
+		return selection, nil
+	}
+	for _, m := range *config.Models {
+		if string(m.ID) == selection.Model.ID {
+			return ConfiguredModel(m).Selection(string(entry.ID), selection.Thinking, selection.ServiceTierID), nil
+		}
+	}
+	return core.ModelSelection{}, &NotConfigured{Model: selection.Model.ID}
 }
 
 // Availability determines whether models can be used from provider health.
 func Availability(auth core.AuthState, runtime core.RuntimeState) webapi.Availability {
-	panic("not written: b-providers")
+	switch auth.(type) {
+	case *core.Unauthenticated, *core.AuthError:
+		return &webapi.AvailabilityUnavailable{Reason: webapi.UnavailableReasonAuthentication, Message: "Provider login is unavailable"}
+	case *core.AuthUnknown, *core.Authenticated:
+	}
+	switch r := runtime.(type) {
+	case *core.RuntimeUnavailable:
+		return &webapi.AvailabilityUnavailable{Reason: webapi.UnavailableReasonRuntime, Message: r.Message}
+	case *core.RuntimeError:
+		return &webapi.AvailabilityUnavailable{Reason: webapi.UnavailableReasonRuntime, Message: r.Message}
+	case *core.RuntimeUnknown, *core.RuntimeReady:
+	}
+	return &webapi.AvailabilityAvailable{}
+}
+
+func offeredVendor(v provider.ModelsDevVendor) *webapi.Vendor {
+	if v.ID == "github-copilot" || v.NPM == nil {
+		return nil
+	}
+	var family string
+	var wire *core.WireAPI
+	switch *v.NPM {
+	case "@ai-sdk/openai-compatible":
+		family = "openai"
+		value := core.WireAPIChatCompletions
+		wire = &value
+	case "@ai-sdk/openai":
+		family = "openai"
+		value := core.WireAPIResponses
+		wire = &value
+	case "@ai-sdk/anthropic":
+		family = "anthropic"
+	case "@ai-sdk/google":
+		family = "google"
+	default:
+		return nil
+	}
+	base := v.API
+	if base == nil {
+		var value string
+		switch v.ID {
+		case "anthropic":
+			value = anthropicapi.DefaultBaseURL
+		case "openai":
+			value = openaiapi.DefaultBaseURL
+		}
+		if value != "" {
+			base = &value
+		}
+	}
+	return &webapi.Vendor{ID: v.ID, Name: v.Name, ProviderType: family, WireAPI: wire, BaseURL: base, Doc: v.Doc}
+}
+
+// catalogKey hashes the RFC 8785 identity Rust uses for persisted catalogs.
+func catalogKey(entry ProviderEntry) (string, error) {
+	var config *APIKeyConfig
+	if c, ok := entry.Credential.(*APIKeyConfig); ok {
+		config = c
+	}
+	identity := struct {
+		Family  string               `json:"family"`
+		Config  *APIKeyConfig        `json:"config"`
+		Account *webapi.CredentialID `json:"account"`
+	}{entry.Family, config, entry.Active()}
+	data, err := contract.EncodeJSON(identity)
+	if err != nil {
+		return "", err
+	}
+	canonical, err := jcs.Transform(data)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", sha256.Sum256(canonical)), nil
 }

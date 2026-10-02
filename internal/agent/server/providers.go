@@ -1,7 +1,5 @@
 package server
 
-// revive:disable:unused-parameter API checkpoint stubs retain parameter names for callers.
-
 import (
 	"context"
 
