@@ -2028,7 +2028,7 @@ internal/providers/grokbuild -> internal/core, internal/provider, internal/contr
 internal/providers/claudecode -> internal/core, internal/provider, internal/host, internal/contract, internal/version
 internal/agent/store -> internal/framewire, internal/core, internal/provider, internal/host, internal/contract
 internal/agent/transcript -> internal/framewire, internal/agent/store, internal/core, internal/provider
-internal/agent/session -> internal/framewire, internal/agent/store, internal/agent/transcript, internal/commandwire, internal/core, internal/gates, internal/provider, internal/host
+internal/agent/session -> internal/framewire, internal/agent/store, internal/agent/transcript, internal/commandwire, internal/core, internal/gates, internal/provider, internal/host, internal/contract
 internal/agent/tools -> internal/framewire, internal/agent/session, internal/agent/store, internal/agent/transcript, internal/core, internal/provider, internal/host
 internal/agent/server -> internal/framewire, internal/agent/session, internal/agent/store, internal/agent/tools, internal/agent/transcript, internal/core, internal/gates, internal/provider, internal/host
 internal/runner -> internal/commandwire, internal/cmdsdk, internal/runner/host, internal/runner/jobs, internal/runner/process, internal/runnerwire, internal/runner/cmdpkgs, internal/runner/shell
@@ -2041,7 +2041,7 @@ internal/machines -> internal/artifacts, internal/cli, internal/machinewire, int
 internal/machines/sandbox -> internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire, internal/machines/system, internal/contract
 internal/machines/storage -> internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire, internal/machines/system
 internal/machines/network -> internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire, internal/machines/system
-internal/machines/system -> internal/artifacts, internal/cli
+internal/machines/system -> internal/artifacts, internal/cli, internal/contract
 internal/backend -> internal/backend/accounts, internal/backend/blobs, internal/backend/cloud, internal/backend/database, internal/backend/expose, internal/backend/hostaccess, internal/backend/edge, internal/backend/providers, internal/backend/runners, internal/backend/usershard, internal/declare, internal/cmdpkg/browser/browserop, internal/plugins/browser, internal/plugins/changes, internal/plugins/file, internal/plugins/filebrowser, internal/plugin, internal/plugins/todo, internal/providers/anthropicapi, internal/providers/claudecode, internal/providers/codex, internal/provider, internal/providers/google, internal/providers/grokbuild, internal/providers/openaiapi, internal/artifacts, internal/cli, internal/gates, internal/core, internal/webapi, internal/plugins/expose, internal/plugins/skills
 internal/backend/accounts -> internal/backend/database, internal/commandwire, internal/core, internal/webapi
 internal/backend/blobs -> internal/agent/store, internal/core, internal/webapi
