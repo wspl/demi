@@ -24,10 +24,9 @@ web app fetches them when a file is opened.
 
 | Recorded | Not recorded |
 | --- | --- |
-| A file a redirection opens for writing through the patched `mvdan.cc/sh` open handler (`>`, `>>`, `<>`, `exec 3>f`). | Writes by external programs that do not participate in recording: git, python, node, user-installed tools. |
-| Redirections in every in-process scope: top level, subshells, functions, background and nested background tasks, command substitutions and (on Unix) process substitutions. | Files system utilities open themselves, including `sed -i`, `tee`, `sort -o` and `uniq` with an output file. |
+| Files opened for writing by redirections (`>`, `>>`, `<>`, `exec 3>f`) through the fork's open handler in every in-process scope: top level, subshells, functions, background and nested background tasks, command substitutions and (on Unix) process substitutions. | Files external programs open themselves, including git, python, node, user-installed tools and system utilities such as `sed -i`, `tee`, `sort -o` and `uniq` with an output file. |
+| Writes from external stdout and stderr redirected by the shell, forwarded through the recorder. | Copies and hard links (`cp`), deletions, renames as moves, directories, permissions, ownership, times, reads, and the empty file `mktemp` creates. |
 | Files created or modified by `demi file create`, `demi file edit`, and `demi file patch`, including when one patch edits several files. | Edits prepared by a native command but never written, or successfully rolled back. |
-| | Copies and hard links (`cp`), deletions, renames as moves, directories, permissions, ownership, times, reads, and the empty file `mktemp` creates. |
 
 A file is `added` when it did not exist before this job first changed it,
 `modified` otherwise. A path absent when the job finishes is omitted, whether

@@ -410,8 +410,8 @@ It also carries the [command context](native-runtime.md#command-context) the
 backend built for it; the runner never derives that context from the job's
 environment.
 One patched `mvdan.cc/sh` interpreter runs inside the runner for each job.
-The fork lives in `third_party/mvdan-sh`, selected by a module `replace`
-directive, with its patch kept beside it; `internal/runner/shell` owns both.
+The [module layout](../architecture/crates-and-packages.md#module-layout)
+defines ownership of the shell and its fork.
 The interpreter's exec handler sends declared commands to the shared
 command dispatcher. Other commands, including standard utilities such as
 `ls`, `sed` and `grep`, are system programs found on the job's `PATH` and
@@ -446,9 +446,9 @@ Runner process
 
 Each job starts a fresh interpreter. The runner explicitly sources the system
 profile and first readable user login profile (`.bash_profile`, `.bash_login`,
-then `.profile`), rather than relying on an interpreter login-shell mode.
-The interpreter does not support the `login_shell` option; profiles that
-depend on it or unsupported Bash features are not fully compatible.
+then `.profile`). If a profile uses syntax the interpreter cannot parse or
+run, the error goes to the job's standard error, as bash reports a profile
+error, and the job continues.
 The runner then restores its execution context,
 places command aliases first in PATH, and restores the requested cwd. Shell
 variables and functions do not carry over to the next job; persisted profile
@@ -483,8 +483,9 @@ completion. For example:
 The caller sees `started`, then a running job, then `done` and completion.
 A tool timeout returns the running job's handle. `shell_status` observes that job,
 and `shell_abort` cancels it. Background tasks remain job-owned rather than
-becoming detached services. The interpreter exposes synthetic identifiers
-such as `g1` in `$!`, not OS PIDs; they must never be passed to an OS signal API.
+becoming detached services. `$!` names a background task of the job, not an
+OS PID. Demi's `kill` accepts that name and signals the task's processes;
+`wait` accepts it too, including `wait -n`.
 
 ### Builtins that act on a process
 
@@ -510,39 +511,25 @@ it is made in.
 
 | Builtin | In a job |
 | --- | --- |
-| `exec CMD` | Runs CMD as `command CMD` would, a declared command through the dispatcher or a system program through the job's process start, then ends the shell with CMD's status. In a subshell it ends the subshell. With only redirections, they stay with the shell, as in bash. |
+| `exec CMD` | Runs CMD as `command CMD` would, a declared command through the dispatcher or a system program through the job's process start, then ends the shell with CMD's status. In a subshell it ends the subshell. Supports `-a`, `-c` and `-l` as in bash. With only redirections, they stay with the shell, as in bash. |
 | `ulimit` | Sets and shows the limits of the processes the shell starts from then on; a subshell keeps its own. Without `-S` or `-H` it sets both limits, as in bash. A hard limit raised above the job's own without privilege fails at once, as in bash. The system checks every other new limit when it is set: the shell starts `/bin/sh -c :` with it, and a limit the system refuses, such as open files above macOS's cap, fails there and changes nothing, as it would in bash. |
 | `umask` | Sets and shows the mask of the processes the shell starts and of the files its redirections create. System utilities inherit the child process mask. The runner's own mask still applies beneath it inside the runner, so there a job's mask can only take permissions away. For example, under a runner mask of `022`, a job's `umask 002` gives its programs group-writable files, but its redirections still create files with mode `644`. |
-| `kill` | Signals any process but the runner. `$$` is the runner's process ID and 0 its process group, so `kill $$` and `kill 0` fail with a message. |
-| `suspend`, `fg` | Fail: a job has no job control, as a bash script has none, and `suspend` would stop the runner. |
+| `kill` | Accepts a background task name from `$!` and signals that task's processes, or signals an OS process other than the runner. `$$` is the runner's process ID and 0 its process group, so `kill $$` and `kill 0` fail with a message. |
+| `suspend`, `bg`, `fg` | Fail: a job has no job control, as a bash script has none, and `suspend` would stop the runner. |
 
-The table's `umask`, `ulimit` and guarded `kill` behavior requires Demi's
-custom builtin implementation: the interpreter recognizes those names but
-provides no implementation. Their state belongs to the interpreter scope
-and is cloned for subshells, never stored in script-mutable variables or
-implemented with bypassable shell functions. On Unix, a child launcher
-applies the mask and limits before executing the program; the runner's own
-process state stays unchanged. Windows has no Unix mask or resource limits.
-Full option parsing and consistent `builtin`/`command` dispatch belong to
-`internal/runner/shell`, alongside the numeric mask, resource limits and
-PID guards.
-
-The interpreter implements basic `exec CMD` and retained redirections, but
-routes `exec` through its exec handler even for shell builtins and does not
-parse `-a`, `-c` or `-l`. Demi's builtin dispatch must supply those forms and
-builtin-aware execution to meet the table's contract. Retained descriptors
-are closed after joining the job. `suspend` and `fg` are refused with no job
-control; they never stop the runner.
+Demi implements `exec`, `ulimit`, `umask` and `kill` as its own builtins in
+`internal/runner/shell`, with state per interpreter scope, cloned for subshells.
 
 A job's limits apply to its system programs, including utilities; in-process
 builtins retain the runner's limits. The remaining process-related builtins
-have these interpreter behaviors:
+behave as follows:
 
-| Builtin | In the interpreter |
+| Builtin | In a job |
 | --- | --- |
-| `wait` | Joins the current scope's background list, accepting synthetic `$!` identifiers; `-n` and `-p` are unsupported. Whole-job completion uses the fork's recursive join separately. |
-| `jobs`, `bg`, `times` | Recognized but unsupported; `times` does not report runner CPU time. |
-| `trap` | Supports EXIT and ERR only; signal traps such as TERM are rejected and install no runner signal handler. |
+| `wait` | Waits for background tasks and accepts their `$!` names; `wait -n` waits for the next task to finish. Whole-job completion joins all nested work separately. |
+| `jobs` | Lists the job's background tasks as non-interactive bash does. |
+| `times` | Shows the job's processor time where the OS reports it for its children, otherwise the runner's processor time; the output identifies which it reports. |
+| `trap` | Accepts every signal name bash accepts and records the handler. Signal handlers never fire because the runner installs none for a job. EXIT and ERR handlers run as in bash; `trap cleanup INT TERM EXIT` is accepted and runs cleanup on EXIT. |
 
 `cd`, the directory stack, `set`, `shopt` and `exit` act on interpreter
 state. The same shell dialect runs on every platform, but it is not full
@@ -553,9 +540,8 @@ on Windows.
 
 Completion means the job has released its local work and IO, not merely that its
 foreground script returned. The shell scope tracks interpreter tasks, command
-handlers, IO adapters and
-external children until they finish. After foreground execution returns, the
-runner calls the fork's recursive `Wait` before closing retained redirections,
+handlers, IO adapters and external children until they finish. After foreground
+execution returns, the runner calls the fork's recursive `Wait` before closing retained redirections,
 finishing output and finalizing edits. A scope keeps its output resources
 until its descendants finish, so joining preserves their output too.
 
@@ -566,16 +552,13 @@ until its descendants finish, so joining preserves their output too.
 | Cancellation | Stop shell work, command invocations, and external descendants; release IO and reap children. |
 
 Interpreter execution and in-process command handlers cooperate with
-cancellation. Blocking IO must be
-interruptible: on Unix, a unit blocked on a read or write waits on the file and
-on its job's cancellation together, so cancelling the job wakes it at once; on
+cancellation. Blocking IO must be interruptible: on Unix, a unit blocked on a
+read or write waits on the file and on its job's cancellation together, so cancelling the job wakes it at once; on
 Windows, the runner cancels the blocked call. External children belong to a Unix
 process group or Windows Job Object. The runner continues handling control
 requests while a job blocks on input or output. Process-substitution FIFO
 opens are cancellable even when no peer ever opens them; after opening,
-reads and writes wait on both IO readiness and cancellation. On macOS the
-fork rechecks FIFO IO at most 10 ms later to detect EOF reliably; cancellation
-wakes the wait immediately.
+reads and writes wait on both IO readiness and cancellation.
 
 A cancelled job reports the signal that requested its cancellation, or `SIGKILL`
 when cancellation had no signal request and forcibly terminates external descendants.
