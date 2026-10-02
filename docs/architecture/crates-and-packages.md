@@ -1732,6 +1732,14 @@ not a tab registry, so the split introduces no dependency cycle.
   consumers. Every worker and resource has test cleanup.
 - **Must not:** implement product behavior or import a consumer of its owner.
 
+#### `internal/machines/storage/storagetest`
+
+- **Owns:** the Cloud image fixtures storage's tests and the manager's tests
+  build images from (`CloudImage`).
+- **Public boundary:** these fixtures, for the tests of `storage` and
+  `internal/machines`.
+- **Must not:** implement product behavior or import a consumer of its owner.
+
 #### `internal/machines/system/systemtest`
 
 - **Owns:** running a test job as root in private mount and network
@@ -2040,7 +2048,7 @@ internal/runner/jobs -> internal/commandwire, internal/cmdsdk, internal/declare,
 internal/runner/shell -> internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire, internal/runner/shell/internal/engine
 internal/runner/shell/internal/engine -> internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire
 internal/runner/cmdpkgs -> internal/artifacts, internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire, internal/contract
-internal/machines -> internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire, internal/machines/sandbox, internal/machines/storage, internal/machines/network, internal/machines/system
+internal/machines -> internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire, internal/machines/sandbox, internal/machines/storage, internal/machines/network, internal/machines/system, internal/version
 internal/machines/sandbox -> internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire, internal/machines/system, internal/contract
 internal/machines/storage -> internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire, internal/machines/system, internal/contract
 internal/machines/network -> internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire, internal/machines/system
@@ -2092,7 +2100,8 @@ internal/runner/jobs/jobstest -> internal/runner/jobs, internal/commandwire, int
 internal/runner/shell/shelltest -> internal/runner/shell, internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire, internal/runner/shell/internal/engine
 internal/runner/cmdpkgs/cmdpkgstest -> internal/runner/cmdpkgs, internal/artifacts, internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire, internal/commandwire/commandwiretest, internal/contract
 internal/machines/system/systemtest -> internal/machines/system
-internal/machines/machinestest -> internal/machines, internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire, internal/machines/sandbox, internal/machines/storage, internal/machines/network, internal/machines/system
+internal/machines/storage/storagetest -> internal/machines/storage, internal/machinewire, internal/runnerwire, internal/contract
+internal/machines/machinestest -> internal/machines, internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire, internal/machines/sandbox, internal/machines/storage, internal/machines/network, internal/machines/system, internal/machines/storage/storagetest
 internal/backend/backendtest -> internal/backend, internal/backend/accounts, internal/backend/blobs, internal/backend/cloud, internal/backend/database, internal/backend/expose, internal/backend/hostaccess, internal/backend/edge, internal/backend/providers, internal/backend/runners, internal/backend/usershard, internal/declare, internal/cmdpkg/browser/browserop, internal/plugins/browser, internal/plugins/changes, internal/plugins/file, internal/plugins/filebrowser, internal/plugin, internal/plugins/todo, internal/providers/anthropicapi, internal/providers/claudecode, internal/providers/codex, internal/provider, internal/providers/google, internal/providers/grokbuild, internal/providers/openaiapi, internal/artifacts, internal/cli, internal/gates, internal/core, internal/webapi, internal/plugins/expose, internal/plugins/skills, internal/backend/edge/edgetest, internal/backend/blobs/blobstest, internal/backend/usershard/usershardtest, internal/backend/database/databasetest, internal/gates/gatestest
 internal/backend/blobs/blobstest -> internal/backend/blobs, internal/agent/store, internal/core, internal/webapi
 internal/backend/database/databasetest -> internal/backend/database, internal/agent/store, internal/agent/transcript, internal/core, internal/gates, internal/backend/remotehost, internal/machinewire, internal/runnerwire, internal/host, internal/webapi, internal/plugin
