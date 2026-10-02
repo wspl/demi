@@ -1,3 +1,6 @@
+//revive:disable:exported
+// Contract names preserve the Rust schema titles and generated TypeScript exports.
+
 package browser
 
 import "github.com/wspl/demi/internal/cmdpkg/browser/browserop"
@@ -12,7 +15,7 @@ const URLMax = 4096
 // +demi:root direction=receive output=plugin-browser
 // +demi:schema
 // +demi:tolerant
-type browserTabs struct {
+type BrowserTabs struct {
 	Tabs []browserop.BrowserTab `json:"tabs"`
 }
 

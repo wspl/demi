@@ -16,7 +16,7 @@ import (
 func tabs(ctx context.Context, port plugin.Port) (json.RawMessage, error) {
 	result, err := run(ctx, port, &browserop.TabsInput{}, plugin.CallKindLooks)
 	if stopped(err) {
-		return contract.EncodeJSON(browserTabs{Tabs: []browserop.BrowserTab{}})
+		return contract.EncodeJSON(BrowserTabs{Tabs: []browserop.BrowserTab{}})
 	}
 	if err != nil {
 		return nil, refused(err)
@@ -25,7 +25,7 @@ func tabs(ctx context.Context, port plugin.Port) (json.RawMessage, error) {
 	if err != nil {
 		return nil, unreadable(err)
 	}
-	return contract.EncodeJSON(browserTabs{Tabs: listed.Tabs})
+	return contract.EncodeJSON(BrowserTabs{Tabs: listed.Tabs})
 }
 
 func call(ctx context.Context, method string, params json.RawMessage, port plugin.Port) (json.RawMessage, error) {

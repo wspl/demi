@@ -1,8 +1,10 @@
 package browser
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"slices"
 
 	"github.com/wspl/demi/internal/declare"
 	"github.com/wspl/demi/internal/plugin"
@@ -12,6 +14,7 @@ import (
 type Browser struct {
 	commands *plugin.CommandPlugin
 	page     plugin.Page
+	stream   plugin.Stream
 }
 
 // New constructs the browser command and page declarations.
@@ -24,12 +27,20 @@ func New() (*Browser, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Browser{commands: commands, page: page}, nil
+	stream, err := LiveStream()
+	if err != nil {
+		return nil, err
+	}
+	return &Browser{commands: commands, page: page, stream: stream}, nil
 }
 
 // Manifest returns independently owned plugin declarations.
-// The live stream awaits browserop's generated live message schema API.
 func (b *Browser) Manifest() plugin.Manifest {
+	stream := b.stream
+	stream.Constants = slices.Clone(stream.Constants)
+	for i := range stream.Constants {
+		stream.Constants[i].Value = bytes.Clone(stream.Constants[i].Value)
+	}
 	page := b.page
 	state := *page.Conversation
 	state.Topics = append([]plugin.Topic{}, state.Topics...)
@@ -39,7 +50,7 @@ func (b *Browser) Manifest() plugin.Manifest {
 	for i := range page.Methods {
 		page.Methods[i].Operations = append([]declare.NativeOperation{}, page.Methods[i].Operations...)
 	}
-	return plugin.Manifest{ID: "browser", Name: "Conversation browser", Description: "A browser on the conversation's Host that the agent drives with `demi browser` and the user watches in the work panel.", Commands: b.commands.ManifestCommands(), Page: &page}
+	return plugin.Manifest{ID: "browser", Name: "Conversation browser", Description: "A browser on the conversation's Host that the agent drives with `demi browser` and the user watches in the work panel.", Commands: b.commands.ManifestCommands(), Streams: []plugin.Stream{stream}, Page: &page}
 }
 
 // Instance creates one user's browser plugin.
@@ -73,20 +84,21 @@ func (p *instance) Call(ctx context.Context, request plugin.Request, port plugin
 }
 
 func page() (plugin.Page, error) {
-	tabs, err := declare.NewSchema(browserTabsJSONSchema())
+	tabs, err := declare.NewSchema(BrowserTabsJSONSchema())
 	if err != nil {
 		return plugin.Page{}, err
 	}
 	page := plugin.Page{Package: "@demicodes/plugin-browser", Conversation: &plugin.State{Schema: plugin.Schema{Schema: tabs}, Topics: []plugin.Topic{plugin.TopicJobs}, Operations: []declare.NativeOperation{operation("tabs")}}}
+	nullResult := json.RawMessage(`{"title":"null","type":"null"}`)
 	for _, spec := range []struct {
 		name           string
 		params, result json.RawMessage
 		operations     []string
 	}{
 		{"open", OpenTabJSONSchema(), OpenedTabJSONSchema(), []string{"open"}},
-		{"close", CloseTabJSONSchema(), json.RawMessage(`{"type":"null"}`), []string{"close"}},
-		{"navigate", NavigateTabJSONSchema(), json.RawMessage(`{"type":"null"}`), []string{"goto"}},
-		{"history", TabHistoryJSONSchema(), json.RawMessage(`{"type":"null"}`), []string{"back", "forward", "reload"}},
+		{"close", CloseTabJSONSchema(), nullResult, []string{"close"}},
+		{"navigate", NavigateTabJSONSchema(), nullResult, []string{"goto"}},
+		{"history", TabHistoryJSONSchema(), nullResult, []string{"back", "forward", "reload"}},
 	} {
 		params, err := declare.NewSchema(spec.params)
 		if err != nil {

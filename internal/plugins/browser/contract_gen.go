@@ -8,6 +8,62 @@ import (
 	"github.com/wspl/demi/internal/contract"
 )
 
+func DecodeBrowserTabs(data []byte) (BrowserTabs, error) { return contract.Decode[BrowserTabs](data) }
+func (v BrowserTabs) Validate() error                    { return contractValidateBrowserTabs(v, 0) }
+func contractValidateBrowserTabs(v BrowserTabs, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if v.Tabs == nil {
+		return contract.At("tabs", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.Tabs {
+		_ = i
+		_ = item
+		if err := item.Validate(); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "tabs", i), err)
+		}
+	}
+	return nil
+}
+func (v *BrowserTabs) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next BrowserTabs
+	{
+		raw, ok := obj["tabs"]
+		if !ok {
+			return contract.At("tabs", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]browserop.BrowserTab, error) {
+				return contract.List(b, contract.Decode[browserop.BrowserTab])
+			}(raw)
+			if err != nil {
+				return contract.At("tabs", err)
+			}
+			next.Tabs = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v BrowserTabs) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "tabs", Value: v.Tabs})
+	return contract.EncodeObject(fields)
+}
+func BrowserTabsJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"description\":\"The conversation state: the conversation browser's tabs, none while it\\ndoes not run.\",\"properties\":{\"tabs\":{\"items\":{\"additionalProperties\":false,\"description\":\"A tab as `tabs` lists it and the conversation browser's tab methods return it.\",\"properties\":{\"createdBy\":{\"description\":\"Who opened a tab: an agent, a page's `window.open`, a temporary command\\nsuch as `content.fetch`, or the user.\",\"oneOf\":[{\"additionalProperties\":false,\"description\":\"An agent, by its number in the conversation.\",\"properties\":{\"kind\":{\"const\":\"agent\",\"type\":\"string\"},\"number\":{\"format\":\"uint64\",\"maximum\":9007199254740991,\"minimum\":0,\"type\":\"integer\"}},\"required\":[\"kind\",\"number\"],\"type\":\"object\"},{\"additionalProperties\":false,\"properties\":{\"kind\":{\"const\":\"page\",\"type\":\"string\"},\"opener\":{\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"}},\"required\":[\"kind\",\"opener\"],\"type\":\"object\"},{\"additionalProperties\":false,\"description\":\"A temporary command of the agent with this number.\",\"properties\":{\"kind\":{\"const\":\"temporary\",\"type\":\"string\"},\"number\":{\"format\":\"uint64\",\"maximum\":9007199254740991,\"minimum\":0,\"type\":\"integer\"}},\"required\":[\"kind\",\"number\"],\"type\":\"object\"},{\"additionalProperties\":false,\"properties\":{\"kind\":{\"const\":\"user\",\"type\":\"string\"}},\"required\":[\"kind\"],\"type\":\"object\"}]},\"id\":{\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"}},\"required\":[\"id\",\"title\",\"url\",\"createdBy\"],\"type\":\"object\"},\"type\":\"array\"}},\"required\":[\"tabs\"],\"title\":\"BrowserTabs\",\"type\":\"object\"}")
+}
 func DecodeCloseTab(data []byte) (CloseTab, error) { return contract.Decode[CloseTab](data) }
 func (v CloseTab) Validate() error                 { return contractValidateCloseTab(v, 0) }
 func contractValidateCloseTab(v CloseTab, depth int) error {
@@ -346,60 +402,4 @@ func (v TabHistory) MarshalJSON() ([]byte, error) {
 }
 func TabHistoryJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`history { tab, action }`.\",\"properties\":{\"action\":{\"description\":\"Where `history` moves a tab.\",\"enum\":[\"back\",\"forward\",\"reload\"],\"type\":\"string\"},\"tab\":{\"type\":\"string\"}},\"required\":[\"tab\",\"action\"],\"title\":\"TabHistory\",\"type\":\"object\"}")
-}
-func decodeBrowserTabs(data []byte) (browserTabs, error) { return contract.Decode[browserTabs](data) }
-func (v browserTabs) Validate() error                    { return contractValidateBrowserTabs(v, 0) }
-func contractValidateBrowserTabs(v browserTabs, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	if v.Tabs == nil {
-		return contract.At("tabs", fmt.Errorf("required array is nil"))
-	}
-	for i, item := range v.Tabs {
-		_ = i
-		_ = item
-		if err := item.Validate(); err != nil {
-			return contract.At(fmt.Sprintf("%s[%d]", "tabs", i), err)
-		}
-	}
-	return nil
-}
-func (v *browserTabs) UnmarshalJSON(data []byte) error {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
-	if err != nil {
-		return err
-	}
-	var next browserTabs
-	{
-		raw, ok := obj["tabs"]
-		if !ok {
-			return contract.At("tabs", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := func(b []byte) ([]browserop.BrowserTab, error) {
-				return contract.List(b, contract.Decode[browserop.BrowserTab])
-			}(raw)
-			if err != nil {
-				return contract.At("tabs", err)
-			}
-			next.Tabs = value
-		}
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v browserTabs) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "tabs", Value: v.Tabs})
-	return contract.EncodeObject(fields)
-}
-func browserTabsJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"description\":\"The conversation state: the conversation browser's tabs, none while it\\ndoes not run.\",\"properties\":{\"tabs\":{\"items\":{\"additionalProperties\":false,\"description\":\"A tab as `tabs` lists it and the conversation browser's tab methods return it.\",\"properties\":{\"createdBy\":{\"description\":\"Who opened a tab: an agent, a page's `window.open`, a temporary command\\nsuch as `content.fetch`, or the user.\",\"oneOf\":[{\"additionalProperties\":false,\"description\":\"An agent, by its number in the conversation.\",\"properties\":{\"kind\":{\"const\":\"agent\",\"type\":\"string\"},\"number\":{\"format\":\"uint64\",\"maximum\":9007199254740991,\"minimum\":0,\"type\":\"integer\"}},\"required\":[\"kind\",\"number\"],\"type\":\"object\"},{\"additionalProperties\":false,\"properties\":{\"kind\":{\"const\":\"page\",\"type\":\"string\"},\"opener\":{\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"}},\"required\":[\"kind\",\"opener\"],\"type\":\"object\"},{\"additionalProperties\":false,\"description\":\"A temporary command of the agent with this number.\",\"properties\":{\"kind\":{\"const\":\"temporary\",\"type\":\"string\"},\"number\":{\"format\":\"uint64\",\"maximum\":9007199254740991,\"minimum\":0,\"type\":\"integer\"}},\"required\":[\"kind\",\"number\"],\"type\":\"object\"},{\"additionalProperties\":false,\"properties\":{\"kind\":{\"const\":\"user\",\"type\":\"string\"}},\"required\":[\"kind\"],\"type\":\"object\"}]},\"id\":{\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\",\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"}},\"required\":[\"id\",\"title\",\"url\",\"createdBy\"],\"type\":\"object\"},\"type\":\"array\"}},\"required\":[\"tabs\"],\"title\":\"browserTabs\",\"type\":\"object\"}")
 }

@@ -1,6 +1,9 @@
 package browser_test
 
 import (
+	"bytes"
+	"encoding/json"
+	"os"
 	"testing"
 
 	"github.com/wspl/demi/internal/declare"
@@ -47,24 +50,47 @@ func TestPageDeclarationsAndManifestOwnership(t *testing.T) {
 			t.Fatalf("missing %s", test.method)
 		}
 	}
+	manifest.Streams[0].Constants[0].Value[0] = '9'
+	manifest.Streams[0].Constants[0].Name = "changed"
 	manifest.Page.Methods[0].Operations[0].Operation = "changed"
 	state.Topics[0] = plugin.TopicExposes
 	state.Operations[0].Operation = "changed"
 	manifest.Commands[0].Tree.Node.(*declare.Group[declare.NativeOperation]).Name = "changed"
 	other := factory.Manifest()
+	if string(other.Streams[0].Constants[0].Value) != "1" || other.Streams[0].Constants[0].Name != "LIVE_CONTROL_FRAME" {
+		t.Fatal("caller changed factory stream constants")
+	}
 	if other.Page.Methods[0].Operations[0].Operation != "browser.open" || other.Page.Conversation.Topics[0] != plugin.TopicJobs || other.Page.Conversation.Operations[0].Operation != "browser.tabs" || declare.Name(other.Commands[0].Tree.Node) != "browser" {
 		t.Fatal("caller changed factory manifest")
 	}
 }
 
 func TestLiveStreamBindingAndFrameConstants(t *testing.T) {
-	// Message schemas must come from browserop; this tests only the plugin-owned binding and constants.
-	stream, err := browser.LiveStream(nil, nil)
+	factory, err := browser.New()
 	if err != nil {
 		t.Fatal(err)
 	}
+	streams := factory.Manifest().Streams
+	if len(streams) != 1 {
+		t.Fatalf("streams: %d", len(streams))
+	}
+	stream := streams[0]
 	if stream.Name != "browser" || stream.Operation.Package != "demi.browser" || stream.Operation.Operation != "browser.live" {
 		t.Fatalf("binding: %+v", stream)
+	}
+	for _, test := range []struct {
+		schema         plugin.Schema
+		valid, invalid string
+	}{
+		{stream.Receives, `{"type":"heartbeat"}`, `{"type":"hello","platform":"mac"}`},
+		{stream.Sends, `{"type":"hello","platform":"mac"}`, `{"type":"hello","platform":"unknown"}`},
+	} {
+		if err := test.schema.Check([]byte(test.valid)); err != nil {
+			t.Fatal(err)
+		}
+		if err := test.schema.Check([]byte(test.invalid)); err == nil {
+			t.Fatalf("stream schema accepted %s", test.invalid)
+		}
 	}
 	expected := map[string]string{
 		"LIVE_CONTROL_FRAME": "1", "LIVE_VIDEO_FRAME": "2", "LIVE_FILE_FRAME": "3", "LIVE_MAX_FRAME_BYTES": "16777216", "LIVE_FILE_CHUNK_BYTES": "65536", "LIVE_VIDEO_HEADER_BYTES": "40", "LIVE_VIDEO_TAB_BYTES": "16", "LIVE_FILE_HEADER_BYTES": "8", "LIVE_HEARTBEAT_MS": "250", "LIVE_STALL_MS": "1000", "LIVE_VIDEO_CODEC": `"avc1.640033"`, "LIVE_CAPTURE_UNAVAILABLE": `"capture_unavailable"`, "LIVE_CAPTURE_FAILED": `"capture_failed"`,
@@ -76,5 +102,34 @@ func TestLiveStreamBindingAndFrameConstants(t *testing.T) {
 		if string(constant.Value) != expected[constant.Name] || constant.Description == "" {
 			t.Fatalf("constant: %+v", constant)
 		}
+	}
+}
+
+// TestRustManifest compares the factory's complete wire declaration with the
+// Rust registration fixture, including schema member order. It uses only memory
+// and one local fixture read.
+func TestRustManifest(t *testing.T) {
+	factory, err := browser.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := factory.Manifest().MarshalJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := os.ReadFile("testdata/manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want bytes.Buffer
+	if err := json.Compact(&want, source); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want.Bytes()) {
+		offset := 0
+		for offset < min(len(got), want.Len()) && got[offset] == want.Bytes()[offset] {
+			offset++
+		}
+		t.Fatalf("manifest differs from Rust (%d bytes, want %d); first difference at %d", len(got), want.Len(), offset)
 	}
 }

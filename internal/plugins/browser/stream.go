@@ -10,9 +10,16 @@ import (
 // The name of the live view's user stream.
 const Stream = "browser"
 
-// LiveStream declares the live view with schemas supplied by the protocol owner.
-// browserop must expose its generated live message schemas before New can bind it.
-func LiveStream(receives, sends *declare.Schema) (plugin.Stream, error) {
+// LiveStream declares the live view from the protocol owner's message schemas.
+func LiveStream() (plugin.Stream, error) {
+	receives, err := declare.NewSchema(browserop.LiveModuleMessageJSONSchema())
+	if err != nil {
+		return plugin.Stream{}, err
+	}
+	sends, err := declare.NewSchema(browserop.LiveViewerMessageJSONSchema())
+	if err != nil {
+		return plugin.Stream{}, err
+	}
 	stream := plugin.Stream{Name: Stream, Operation: operation("live"), Receives: plugin.Schema{Schema: receives}, Sends: plugin.Schema{Schema: sends}}
 	for _, constant := range []struct {
 		name, description string
