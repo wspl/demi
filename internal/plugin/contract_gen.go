@@ -1099,7 +1099,7 @@ func (v *ExposeRecord) UnmarshalJSON(data []byte) error {
 			return contract.At("address", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[ExposeAddress](raw)
+			value, err := contract.Decode[webapi.ExposeAddress](raw)
 			if err != nil {
 				return contract.At("address", err)
 			}
@@ -1896,9 +1896,6 @@ func contractValidateManifest(v Manifest, depth int) error {
 	if err := contract.Text(string(v.Description), 0, -1, ""); err != nil {
 		return contract.At("description", err)
 	}
-	if v.Commands == nil {
-		return contract.At("commands", fmt.Errorf("required array is nil"))
-	}
 	for i, item := range v.Commands {
 		_ = i
 		_ = item
@@ -1906,18 +1903,12 @@ func contractValidateManifest(v Manifest, depth int) error {
 			return contract.At(fmt.Sprintf("%s[%d]", "commands", i), err)
 		}
 	}
-	if v.Profiles == nil {
-		return contract.At("profiles", fmt.Errorf("required array is nil"))
-	}
 	for i, item := range v.Profiles {
 		_ = i
 		_ = item
 		if err := item.Validate(); err != nil {
 			return contract.At(fmt.Sprintf("%s[%d]", "profiles", i), err)
 		}
-	}
-	if v.Streams == nil {
-		return contract.At("streams", fmt.Errorf("required array is nil"))
 	}
 	for i, item := range v.Streams {
 		_ = i
@@ -1985,11 +1976,9 @@ func (v *Manifest) UnmarshalJSON(data []byte) error {
 			next.Description = value
 		}
 	}
+	next.Commands = make([]Commands, 0)
 	{
 		raw, ok := obj["commands"]
-		if !ok {
-			return contract.At("commands", fmt.Errorf("required field is absent"))
-		}
 		if ok {
 			value, err := func(b []byte) ([]Commands, error) { return contract.List(b, contract.Decode[Commands]) }(raw)
 			if err != nil {
@@ -1998,11 +1987,9 @@ func (v *Manifest) UnmarshalJSON(data []byte) error {
 			next.Commands = value
 		}
 	}
+	next.Profiles = make([]core.Profile, 0)
 	{
 		raw, ok := obj["profiles"]
-		if !ok {
-			return contract.At("profiles", fmt.Errorf("required field is absent"))
-		}
 		if ok {
 			value, err := func(b []byte) ([]core.Profile, error) { return contract.List(b, contract.Decode[core.Profile]) }(raw)
 			if err != nil {
@@ -2013,9 +2000,6 @@ func (v *Manifest) UnmarshalJSON(data []byte) error {
 	}
 	{
 		raw, ok := obj["context"]
-		if !ok {
-			return contract.At("context", fmt.Errorf("required field is absent"))
-		}
 		if ok {
 			value, err := contract.Decode[bool](raw)
 			if err != nil {
@@ -2024,11 +2008,9 @@ func (v *Manifest) UnmarshalJSON(data []byte) error {
 			next.Context = value
 		}
 	}
+	next.Streams = make([]Stream, 0)
 	{
 		raw, ok := obj["streams"]
-		if !ok {
-			return contract.At("streams", fmt.Errorf("required field is absent"))
-		}
 		if ok {
 			value, err := func(b []byte) ([]Stream, error) { return contract.List(b, contract.Decode[Stream]) }(raw)
 			if err != nil {
@@ -2056,6 +2038,15 @@ func (v *Manifest) UnmarshalJSON(data []byte) error {
 	return nil
 }
 func (v Manifest) MarshalJSON() ([]byte, error) {
+	if v.Commands == nil {
+		v.Commands = make([]Commands, 0)
+	}
+	if v.Profiles == nil {
+		v.Profiles = make([]core.Profile, 0)
+	}
+	if v.Streams == nil {
+		v.Streams = make([]Stream, 0)
+	}
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
@@ -2086,9 +2077,6 @@ func contractValidateMethod(v Method, depth int) error {
 	}
 	if err := contract.Text(string(v.Scope), 0, -1, ""); err != nil {
 		return contract.At("scope", err)
-	}
-	if v.Operations == nil {
-		return contract.At("operations", fmt.Errorf("required array is nil"))
 	}
 	for i, item := range v.Operations {
 		_ = i
@@ -2164,11 +2152,9 @@ func (v *Method) UnmarshalJSON(data []byte) error {
 			next.Result = value
 		}
 	}
+	next.Operations = make([]declare.NativeOperation, 0)
 	{
 		raw, ok := obj["operations"]
-		if !ok {
-			return contract.At("operations", fmt.Errorf("required field is absent"))
-		}
 		if ok {
 			value, err := func(b []byte) ([]declare.NativeOperation, error) {
 				return contract.List(b, contract.Decode[declare.NativeOperation])
@@ -2186,6 +2172,9 @@ func (v *Method) UnmarshalJSON(data []byte) error {
 	return nil
 }
 func (v Method) MarshalJSON() ([]byte, error) {
+	if v.Operations == nil {
+		v.Operations = make([]declare.NativeOperation, 0)
+	}
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
@@ -2215,9 +2204,6 @@ func contractValidatePage(v Page, depth int) error {
 		if err := contractValidateState((*v.Conversation), depth+1); err != nil {
 			return contract.At("conversation", err)
 		}
-	}
-	if v.Methods == nil {
-		return contract.At("methods", fmt.Errorf("required array is nil"))
 	}
 	for i, item := range v.Methods {
 		_ = i
@@ -2278,11 +2264,9 @@ func (v *Page) UnmarshalJSON(data []byte) error {
 			}
 		}
 	}
+	next.Methods = make([]Method, 0)
 	{
 		raw, ok := obj["methods"]
-		if !ok {
-			return contract.At("methods", fmt.Errorf("required field is absent"))
-		}
 		if ok {
 			value, err := func(b []byte) ([]Method, error) { return contract.List(b, contract.Decode[Method]) }(raw)
 			if err != nil {
@@ -2298,6 +2282,9 @@ func (v *Page) UnmarshalJSON(data []byte) error {
 	return nil
 }
 func (v Page) MarshalJSON() ([]byte, error) {
+	if v.Methods == nil {
+		v.Methods = make([]Method, 0)
+	}
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
@@ -6175,9 +6162,6 @@ func contractValidateState(v State, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
-	if v.Topics == nil {
-		return contract.At("topics", fmt.Errorf("required array is nil"))
-	}
 	for i, item := range v.Topics {
 		_ = i
 		_ = item
@@ -6187,9 +6171,6 @@ func contractValidateState(v State, depth int) error {
 		if err := contract.Text(string(item), 0, -1, ""); err != nil {
 			return contract.At(fmt.Sprintf("%s[%d]", "topics", i), err)
 		}
-	}
-	if v.Operations == nil {
-		return contract.At("operations", fmt.Errorf("required array is nil"))
 	}
 	for i, item := range v.Operations {
 		_ = i
@@ -6226,11 +6207,9 @@ func (v *State) UnmarshalJSON(data []byte) error {
 			next.Schema = value
 		}
 	}
+	next.Topics = make([]Topic, 0)
 	{
 		raw, ok := obj["topics"]
-		if !ok {
-			return contract.At("topics", fmt.Errorf("required field is absent"))
-		}
 		if ok {
 			value, err := func(b []byte) ([]Topic, error) { return contract.List(b, contract.Decode[Topic]) }(raw)
 			if err != nil {
@@ -6239,11 +6218,9 @@ func (v *State) UnmarshalJSON(data []byte) error {
 			next.Topics = value
 		}
 	}
+	next.Operations = make([]declare.NativeOperation, 0)
 	{
 		raw, ok := obj["operations"]
-		if !ok {
-			return contract.At("operations", fmt.Errorf("required field is absent"))
-		}
 		if ok {
 			value, err := func(b []byte) ([]declare.NativeOperation, error) {
 				return contract.List(b, contract.Decode[declare.NativeOperation])
@@ -6261,6 +6238,12 @@ func (v *State) UnmarshalJSON(data []byte) error {
 	return nil
 }
 func (v State) MarshalJSON() ([]byte, error) {
+	if v.Topics == nil {
+		v.Topics = make([]Topic, 0)
+	}
+	if v.Operations == nil {
+		v.Operations = make([]declare.NativeOperation, 0)
+	}
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
@@ -6347,9 +6330,6 @@ func contractValidateStream(v Stream, depth int) error {
 	if err := v.Operation.Validate(); err != nil {
 		return contract.At("operation", err)
 	}
-	if v.Constants == nil {
-		return contract.At("constants", fmt.Errorf("required array is nil"))
-	}
 	for i, item := range v.Constants {
 		_ = i
 		_ = item
@@ -6424,11 +6404,9 @@ func (v *Stream) UnmarshalJSON(data []byte) error {
 			next.Sends = value
 		}
 	}
+	next.Constants = make([]Constant, 0)
 	{
 		raw, ok := obj["constants"]
-		if !ok {
-			return contract.At("constants", fmt.Errorf("required field is absent"))
-		}
 		if ok {
 			value, err := func(b []byte) ([]Constant, error) { return contract.List(b, contract.Decode[Constant]) }(raw)
 			if err != nil {
@@ -6444,6 +6422,9 @@ func (v *Stream) UnmarshalJSON(data []byte) error {
 	return nil
 }
 func (v Stream) MarshalJSON() ([]byte, error) {
+	if v.Constants == nil {
+		v.Constants = make([]Constant, 0)
+	}
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}

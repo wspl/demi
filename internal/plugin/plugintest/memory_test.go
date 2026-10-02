@@ -158,7 +158,7 @@ func TestExposes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(first.Address.ExposeAddress) != "127.0.0.1:8080" || first.ID != "aaaaaaaaaaaaaaaaaaaaaaaaab" {
+	if string(first.Address) != "127.0.0.1:8080" || first.ID != "aaaaaaaaaaaaaaaaaaaaaaaaab" {
 		t.Fatalf("expose = %#v", first)
 	}
 	second, err := p.CreateExpose(t.Context(), device, "localhost:9000", 5)

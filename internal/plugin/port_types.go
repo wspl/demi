@@ -436,11 +436,11 @@ type ExposeRecord struct {
 	ID     webapi.ExposeID `json:"id"`
 	Device webapi.DeviceID `json:"device"`
 	// The device's name, the Cloud's as `Cloud`.
-	DeviceName string         `json:"deviceName"`
-	Address    ExposeAddress  `json:"address"`
-	URL        string         `json:"url"`
-	CreatedAt  core.Timestamp `json:"createdAt"`
-	ExpiresAt  core.Timestamp `json:"expiresAt"`
+	DeviceName string               `json:"deviceName"`
+	Address    webapi.ExposeAddress `json:"address"`
+	URL        string               `json:"url"`
+	CreatedAt  core.Timestamp       `json:"createdAt"`
+	ExpiresAt  core.Timestamp       `json:"expiresAt"`
 }
 
 // Why Demi refused a port operation.

@@ -59,7 +59,7 @@ func (d *TestDemi) createExpose(m *plugin.PortMessageCreateExpose) (plugin.PortA
 		return nil, err
 	}
 	record := plugin.ExposeRecord{
-		ID: id, Device: m.Device, DeviceName: h.Name, Address: plugin.ExposeAddress{ExposeAddress: address},
+		ID: id, Device: m.Device, DeviceName: h.Name, Address: address,
 		URL: "http://" + string(id) + ".expose.localhost:3271/", CreatedAt: d.Now, ExpiresAt: expiry,
 	}
 	d.exposes = append(d.exposes, record)

@@ -19,14 +19,18 @@ type Manifest struct {
 	// What it does, in one sentence, which settings show.
 	Description string `json:"description"`
 	// Its command groups and roots (`plugins.md` § Commands).
+	// +demi:default
 	Commands []Commands `json:"commands"`
 	// Its subagent profiles (`plugins.md` § Profiles).
+	// +demi:default
 	Profiles []core.Profile `json:"profiles"`
 	// Whether it is a context source, asked before each provider request
 	// of a node while its user has it on (`plugins.md` § Prompt text and
 	// context).
+	// +demi:default
 	Context bool `json:"context"`
 	// Its user streams (`plugins.md` § Calling its command package).
+	// +demi:default
 	Streams []Stream `json:"streams"`
 	// Its part of the web app's data and calls (`plugins.md` § The page).
 	// +demi:nullable
@@ -47,6 +51,7 @@ type Stream struct {
 	// The messages the page sends.
 	Sends Schema `json:"sends"`
 	// The constants the stream's two ends share, such as its frame kinds.
+	// +demi:default
 	Constants []Constant `json:"constants"`
 }
 
@@ -71,8 +76,9 @@ type Page struct {
 	User *State `json:"user,omitempty"`
 	// Its state for one conversation, which a page reads by revision.
 	// +demi:nullable
-	Conversation *State   `json:"conversation,omitempty"`
-	Methods      []Method `json:"methods"`
+	Conversation *State `json:"conversation,omitempty"`
+	// +demi:default
+	Methods []Method `json:"methods"`
 }
 
 // One scope of a page's state.
@@ -80,10 +86,12 @@ type Page struct {
 type State struct {
 	Schema Schema `json:"schema"`
 	// The product changes that mark it changed, each of the state's scope.
+	// +demi:default
 	Topics []Topic `json:"topics"`
 	// The operations of a command package a read of it calls. A state one
 	// of whose operations the startup catalog does not serve is left out,
 	// as a method is.
+	// +demi:default
 	Operations []declare.NativeOperation `json:"operations"`
 }
 
@@ -112,6 +120,7 @@ type Method struct {
 	// The operations of a command package the method calls. A method one
 	// of whose operations the startup catalog does not serve is left out,
 	// as a command group is.
+	// +demi:default
 	Operations []declare.NativeOperation `json:"operations"`
 }
 
