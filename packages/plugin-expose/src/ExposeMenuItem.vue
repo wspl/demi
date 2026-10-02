@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Globe, RefreshCw, X } from '@lucide/vue'
-import IconButton from '../ui/IconButton.vue'
-import MenuItem from '../ui/MenuItem.vue'
-import { formatTimeRemaining, useTimeRemaining } from '../composables/useRelativeTime'
+import { IconButton } from '@demicodes/plugin-sdk'
+import { MenuItem } from '@demicodes/plugin-sdk'
+import { formatTimeRemaining, useTimeRemaining } from '@demicodes/plugin-sdk'
 import type { ExposeMenuEntry } from './types'
 
 /**

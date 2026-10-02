@@ -1439,7 +1439,8 @@ Each plugin page package is **private** and has the same boundary:
 
 - **Public boundary:** its `PluginPage`, the default export of its entry, and
   `"demi": { "plugin": "<id>" }` in its `package.json`, from which the
-  registry is generated ([Registration](plugin-pages.md#registration)).
+  registry is generated ([Registration](plugin-pages.md#registration)); and
+  source-path exports (`./*`), which only the gallery's specimens import.
 - **Must not:** import a workspace package other than `plugin-sdk` and
   `utils`, know a route, or hold a primitive another page could use; that
   belongs to `web-ui`, exposed through the SDK.
@@ -1513,8 +1514,6 @@ plugin-file -> plugin-interface, command-declarations, command-package-file-prot
 plugin-browser -> plugin-interface, command-declarations, command-package-browser-protocol, host-interface, web-api-protocol
 plugin-expose -> plugin-interface, host-interface, shared-types, web-api-protocol
 plugin-skills -> plugin-interface, shared-types
-plugin-changes -> plugin-interface
-plugin-file-browser -> plugin-interface
 backend-remote-host -> command-protocol, command-declarations, shared-types, shared-gates, runner-protocol, host-interface
 runner-process -> shared-artifacts, command-protocol, command-sdk, runner-protocol
 runner-host -> shared-artifacts, command-sdk, runner-process, runner-protocol
@@ -1535,13 +1534,13 @@ backend-plugins -> plugin-interface, command-declarations, shared-types, host-in
 backend-host-access -> agent-store, agent-tools, backend-cloud, backend-blobs, backend-runners, backend-database, command-protocol, command-declarations, shared-types, shared-gates, backend-remote-host, runner-protocol, host-interface, web-api-protocol, plugin-interface
 backend-user-shard -> agent-server, conversation-socket-protocol, agent-session, agent-store, agent-tools, agent-transcript, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-idle-watch, backend-blobs, backend-plugins, backend-providers, backend-runners, backend-database, backend-page-sync, command-package-claude-code-protocol, command-protocol, command-declarations, shared-types, shared-gates, plugin-interface, backend-remote-host, machine-manager-protocol, provider-common, provider-claude-code, runner-protocol, host-interface, web-api-protocol
 backend-http -> conversation-socket-protocol, agent-store, shared-artifacts, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-blobs, backend-providers, backend-runners, backend-user-shard, backend-database, backend-page-sync, command-protocol, shared-types, backend-remote-host, provider-common, runner-protocol, host-interface, web-api-protocol, backend-plugins, plugin-interface
-backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-expose, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-changes, plugin-file, plugin-file-browser, plugin-interface, plugin-todo, provider-anthropic-api, provider-claude-code, provider-codex, provider-common, provider-google, provider-grok-build, provider-openai-api, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-expose, plugin-skills
+backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-expose, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-file, plugin-interface, plugin-todo, provider-anthropic-api, provider-claude-code, provider-codex, provider-common, provider-google, provider-grok-build, provider-openai-api, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-expose, plugin-skills
 machine-manager -> shared-artifacts, shared-cli, machine-manager-protocol, runner-protocol
 runner -> command-protocol, command-sdk, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell
 command-package-file -> shared-artifacts, command-protocol, command-sdk, shared-types, command-package-file-protocol, shared-gates
 command-package-browser -> command-package-browser-chrome, command-package-browser-protocol, command-protocol, command-sdk
 command-package-claude-code -> command-package-claude-code-protocol, command-protocol, command-sdk
-xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, backend, plugin-browser, plugin-expose, plugin-skills
+xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, plugin-browser, plugin-expose, plugin-skills
 ```
 
 ### TypeScript packages
@@ -1555,12 +1554,10 @@ conversation-client -> protocol, utils
 web-ui -> conversation-client, protocol, utils
 plugin-sdk -> web-ui
 plugin-browser -> plugin-sdk, utils
-plugin-changes -> plugin-sdk, utils
-plugin-expose -> plugin-sdk, utils
-plugin-file-browser -> plugin-sdk, utils
-plugin-skills -> plugin-sdk, utils
-web -> plugin-browser, plugin-changes, plugin-expose, plugin-file-browser, plugin-sdk, plugin-skills, protocol, utils, web-ui
-web-gallery -> plugin-browser, plugin-changes, plugin-expose, plugin-file-browser, plugin-sdk, plugin-skills, protocol, utils, web-ui
+plugin-expose -> plugin-sdk
+plugin-skills -> plugin-sdk
+web -> plugin-browser, plugin-expose, plugin-sdk, plugin-skills, protocol, utils, web-ui
+web-gallery -> plugin-browser, plugin-expose, plugin-sdk, plugin-skills, protocol, utils, web-ui
 ```
 
 ## Module layout

@@ -5,12 +5,15 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./*.vue": "./src/*.vue",
+    "./*": "./src/*.ts"
   },
   "dependencies": {
-    "@demicodes/protocol": "workspace:^",
-    "@demicodes/web-ui": "workspace:^",
+    "@demicodes/plugin-sdk": "workspace:^",
+    "@demicodes/utils": "workspace:^",
     "@lucide/vue": "^1.40.0",
+    "@vueuse/core": "^14.3.0",
     "vue": "^3.5.38",
     "zod": "^4.0.0"
   },

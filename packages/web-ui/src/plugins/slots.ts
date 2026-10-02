@@ -4,7 +4,7 @@ import type { SettingsNavGroup, SettingsNavItem } from '../settings/types'
 import { conversationClient, type ConversationPluginClient, type PluginHost } from './client'
 
 /**
- * What a plugin package fills of the web app (`plugins.md` § The page):
+ * What a plugin package fills of the web app (`plugin-pages.md` § Slots):
  * `web` and `web-gallery` register each package's `PluginPage` from a static
  * list, and the slots below show what the pages fill.
  */

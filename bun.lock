@@ -29,9 +29,10 @@
       "name": "@demicodes/plugin-browser",
       "version": "0.0.0",
       "dependencies": {
-        "@demicodes/protocol": "workspace:^",
-        "@demicodes/web-ui": "workspace:^",
+        "@demicodes/plugin-sdk": "workspace:^",
+        "@demicodes/utils": "workspace:^",
         "@lucide/vue": "^1.40.0",
+        "@vueuse/core": "^14.3.0",
         "vue": "^3.5.38",
         "zod": "^4.0.0",
       },
@@ -44,10 +45,22 @@
       "name": "@demicodes/plugin-expose",
       "version": "0.0.0",
       "dependencies": {
-        "@demicodes/web-ui": "workspace:^",
+        "@demicodes/plugin-sdk": "workspace:^",
         "@lucide/vue": "^1.40.0",
         "vue": "^3.5.38",
         "zod": "^4.0.0",
+      },
+      "devDependencies": {
+        "@vue/tsconfig": "^0.9.1",
+        "typescript": "^6.0.3",
+      },
+    },
+    "packages/plugin-sdk": {
+      "name": "@demicodes/plugin-sdk",
+      "version": "1.0.0",
+      "dependencies": {
+        "@demicodes/web-ui": "workspace:^",
+        "vue": "^3.5.38",
       },
       "devDependencies": {
         "@vue/tsconfig": "^0.9.1",
@@ -58,7 +71,7 @@
       "name": "@demicodes/plugin-skills",
       "version": "0.0.0",
       "dependencies": {
-        "@demicodes/web-ui": "workspace:^",
+        "@demicodes/plugin-sdk": "workspace:^",
         "@lucide/vue": "^1.40.0",
         "vue": "^3.5.38",
         "zod": "^4.0.0",
@@ -85,6 +98,7 @@
       "dependencies": {
         "@demicodes/plugin-browser": "workspace:^",
         "@demicodes/plugin-expose": "workspace:^",
+        "@demicodes/plugin-sdk": "workspace:^",
         "@demicodes/plugin-skills": "workspace:^",
         "@demicodes/protocol": "workspace:^",
         "@demicodes/utils": "workspace:^",
@@ -110,6 +124,7 @@
       "dependencies": {
         "@demicodes/plugin-browser": "workspace:^",
         "@demicodes/plugin-expose": "workspace:^",
+        "@demicodes/plugin-sdk": "workspace:^",
         "@demicodes/plugin-skills": "workspace:^",
         "@demicodes/protocol": "workspace:^",
         "@demicodes/utils": "workspace:^",
@@ -324,6 +339,8 @@
     "@demicodes/plugin-browser": ["@demicodes/plugin-browser@workspace:packages/plugin-browser"],
 
     "@demicodes/plugin-expose": ["@demicodes/plugin-expose@workspace:packages/plugin-expose"],
+
+    "@demicodes/plugin-sdk": ["@demicodes/plugin-sdk@workspace:packages/plugin-sdk"],
 
     "@demicodes/plugin-skills": ["@demicodes/plugin-skills@workspace:packages/plugin-skills"],
 

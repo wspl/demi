@@ -1,15 +1,15 @@
-// The `browser` plugin's page (`plugins.md` § The page, `live-view.md`
-// § A browser tab in the panel): its `browser` work panel kind, and the
-// types of its state, parameters and results, generated from the plugin's
-// Rust types.
-import { browserTabKind } from '@demicodes/web-ui/browser/kind'
+// The `browser` plugin's page (`plugin-pages.md`, `live-view.md` § A
+// browser tab in the panel): its `browser` work panel kind with the live
+// view, and the types of its state, parameters, results and stream,
+// generated from the plugin's Rust types.
+import { browserTabKind } from './live/kind'
 import {
   BrowserTabsController,
   browserTabDataSchema,
   type BrowserTabData,
   type BrowserTabsOptions,
-} from '@demicodes/web-ui/browser/tabs'
-import type { PluginPage } from '@demicodes/web-ui/plugins/slots'
+} from './live/tabs'
+import type { PluginPage } from '@demicodes/plugin-sdk'
 import { browserTabsApi } from './tabs'
 
 export * from './generated/plugin'

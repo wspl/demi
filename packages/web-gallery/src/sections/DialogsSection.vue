@@ -7,7 +7,7 @@ import ProviderLoginDialog, { type ProviderLoginPhase } from '@demicodes/web-ui/
 import AddProviderDialog from '@demicodes/web-ui/settings/AddProviderDialog.vue'
 import ModelDialog from '@demicodes/web-ui/settings/ModelDialog.vue'
 import AddMcpServerDialog from '@demicodes/web-ui/settings/AddMcpServerDialog.vue'
-import AddSkillSourceDialog from '@demicodes/web-ui/settings/AddSkillSourceDialog.vue'
+import AddSkillSourceDialog from '@demicodes/plugin-skills/AddSkillSourceDialog.vue'
 import { WIRE_API_LABELS, type SettingsModelDraft, type SettingsVendor } from '@demicodes/web-ui/settings/types'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
 import type { PairingPhase } from '@demicodes/web-ui/devices/pairing'

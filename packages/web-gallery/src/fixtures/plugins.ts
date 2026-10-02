@@ -1,5 +1,5 @@
-import { BrowserTabsError, NEW_TAB_URL, type BrowserTabsApi } from '@demicodes/web-ui/browser/tabs'
-import type { OpenLiveStream } from '@demicodes/web-ui/browser/session'
+import { BrowserTabsError, NEW_TAB_URL, type BrowserTabsApi } from '@demicodes/plugin-browser/live/tabs'
+import type { OpenUserStream } from '@demicodes/web-ui/plugins/streams'
 import type { HostInstall } from '@demicodes/web-ui/devices/installs'
 import { PluginCallError, type PluginHost } from '@demicodes/web-ui/plugins/client'
 import { closeTabSchema, navigateTabSchema, openTabSchema, tabHistorySchema } from '@demicodes/plugin-browser'
@@ -24,7 +24,7 @@ export interface GalleryPlugin {
   state?(): unknown
   call(method: string, params: object, conversation: string | null): Promise<unknown>
   /** Its user streams, by name. */
-  streams?: Record<string, OpenLiveStream>
+  streams?: Record<string, OpenUserStream>
   /** What the specimen's Host installs of its packages, read reactively. */
   installs?(): readonly HostInstall[]
 }

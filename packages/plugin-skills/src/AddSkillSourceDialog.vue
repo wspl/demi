@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { OverlayStore } from '../overlay/overlayStore'
-import Button from '@demicodes/web-ui/ui/Button.vue'
-import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
-import ExternalLink from '@demicodes/web-ui/ui/ExternalLink.vue'
-import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
-import SettingsRow from './SettingsRow.vue'
+import type { OverlayStore } from '@demicodes/plugin-sdk'
+import { Button } from '@demicodes/plugin-sdk'
+import { Dialog } from '@demicodes/plugin-sdk'
+import { ExternalLink } from '@demicodes/plugin-sdk'
+import { TextInput } from '@demicodes/plugin-sdk'
+import { SettingsRow } from '@demicodes/plugin-sdk'
 import type { SettingsSkillDraft } from './types'
 
 /**

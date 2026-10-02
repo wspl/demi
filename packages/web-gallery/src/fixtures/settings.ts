@@ -1,6 +1,6 @@
 import { reactive } from 'vue'
 import { createQuotaRefreshCache } from '@demicodes/web-ui/settings/quota-refresh'
-import type { ExposeMenuEntry } from '@demicodes/web-ui/hosts/types'
+import type { ExposeMenuEntry } from '@demicodes/plugin-expose/types'
 import type {
   SettingsDevice,
   SettingsMcpServer,

@@ -1,9 +1,9 @@
 //! The constant tables the page shares with the Rust side, with their
 //! lookups (`contracts.md` § Logic the web app and backend share): the
 //! file-type table the page chooses a viewer by, the file types a model
-//! reads, and the live view's frame constants. The values come from the Rust
-//! constants; the lookups do what core's lookups do, and the page's tests
-//! check them with core's cases.
+//! reads, and, for `plugin-browser`, the live view's frame constants. The
+//! values come from the Rust constants; the lookups do what core's lookups
+//! do, and the page's tests check them with core's cases.
 
 use std::fmt::Write as _;
 
@@ -72,7 +72,13 @@ pub fn module(header: &str) -> String {
     )
     .expect("writing to a string");
 
-    source.push_str("\n// The live view's stream (`live-view.md` § The stream).\n");
+    source
+}
+
+/// `plugin-browser`'s `live.ts`: the live view's frame constants
+/// (`live-view.md` § The stream).
+pub fn live_module(header: &str) -> String {
+    let mut source = String::from(header);
     let numbers = [
         (
             "LIVE_CONTROL_FRAME",

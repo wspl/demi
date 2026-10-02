@@ -1,9 +1,10 @@
 import { expect, jest, spyOn, test } from 'bun:test'
-import type { LiveControl, LiveModuleMessage, LiveTab, LiveViewerMessage } from '@demicodes/protocol'
+import type { LiveControl, LiveModuleMessage, LiveTab, LiveViewerMessage } from '../../generated/plugin'
 import { LiveFrameReader, encodeFile, encodeMessage, encodeVideo, type LiveFrame } from '../frames'
 import { keyMessage, localKey, modifiers, pointerMessage, viewerPlatform, wheelMessage } from '../input'
-import { pageReturned } from '../../transport/liveness'
-import { LiveSession, REFUSED_FRAME, SILENT_STREAM, type LiveSessionOptions, type LiveStreamHandlers, type PictureSink } from '../session'
+import { pageReturned } from '@demicodes/plugin-sdk'
+import type { UserStreamHandlers } from '@demicodes/plugin-sdk'
+import { LiveSession, REFUSED_FRAME, SILENT_STREAM, type LiveSessionOptions, type PictureSink } from '../session'
 import { deviceSnap, panelSize, placePicture, panelRect, tabPoint, viewportChoices } from '../view'
 
 const WEB = { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' } as const
@@ -180,7 +181,7 @@ function session(options: Partial<LiveSessionOptions> = {}) {
   const sent: LiveViewerMessage[] = []
   const pictures: Array<[string, number, number]> = []
   const decoder = new TextDecoder()
-  let handlers: LiveStreamHandlers | null = null
+  let handlers: UserStreamHandlers | null = null
   let now = 0
   const sink: PictureSink = {
     start: (generation, width, height) => pictures.push(['start', generation, width] as never) as never,
@@ -188,7 +189,7 @@ function session(options: Partial<LiveSessionOptions> = {}) {
     stop: () => pictures.push(['stop', 0, 0] as never) as never,
   }
   const live = new LiveSession({
-    open: (given: LiveStreamHandlers) => {
+    open: (given: UserStreamHandlers) => {
       handlers = given
       return {
         send: (bytes) => {

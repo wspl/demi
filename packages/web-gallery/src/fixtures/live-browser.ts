@@ -3,20 +3,19 @@
  * draws a page, encodes it as the Host's capture would, and speaks the live
  * protocol, so the view's pictures, input, controls and dialogs show here.
  */
-import {
-  LIVE_CONTROL_FRAME,
-  LIVE_VIDEO_CODEC,
-  type LiveControl,
-  type LiveModuleMessage,
-  type LiveTab,
-  type LiveViewerMessage,
-  type BrowserViewport,
-} from '@demicodes/protocol'
+import { LIVE_CONTROL_FRAME, LIVE_VIDEO_CODEC } from '@demicodes/plugin-browser/generated/live'
+import type {
+  BrowserViewport,
+  LiveControl,
+  LiveModuleMessage,
+  LiveTab,
+  LiveViewerMessage,
+} from '@demicodes/plugin-browser/generated/plugin'
 import { shallowRef } from 'vue'
-import { encodeVideo } from '@demicodes/web-ui/browser/frames'
-import type { OpenLiveStream, LiveStreamHandlers } from '@demicodes/web-ui/browser/session'
-import { CONTROL, META } from '@demicodes/web-ui/browser/input'
-import { BrowserTabsError, type BrowserTabInfo, type BrowserTabsApi } from '@demicodes/web-ui/browser/tabs'
+import { encodeVideo } from '@demicodes/plugin-browser/live/frames'
+import type { OpenUserStream, UserStreamHandlers } from '@demicodes/web-ui/plugins/streams'
+import { CONTROL, META } from '@demicodes/plugin-browser/live/input'
+import { BrowserTabsError, type BrowserTabInfo, type BrowserTabsApi } from '@demicodes/plugin-browser/live/tabs'
 import type { HostInstall } from '@demicodes/web-ui/devices/installs'
 import { BROWSER_ARTIFACTS, playInstalls } from './installs'
 
@@ -110,7 +109,7 @@ class GalleryBrowser {
   private status = 'open'
 
   constructor(
-    private readonly handlers: LiveStreamHandlers,
+    private readonly handlers: UserStreamHandlers,
     /** The browser's tabs, shared with its tab requests. */
     private readonly tabs: LiveTab[],
   ) {
@@ -408,7 +407,7 @@ export function galleryBrowserTabs(
     return tab
   }
 
-  const stream: OpenLiveStream = (handlers) => {
+  const stream: OpenUserStream = (handlers) => {
     const browser = new GalleryBrowser(handlers, tabs)
     views.add(browser)
     return {

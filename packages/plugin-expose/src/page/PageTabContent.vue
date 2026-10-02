@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { ExternalLink } from '@lucide/vue'
-import AddressBar from '../AddressBar.vue'
-import IconButton from '../../ui/IconButton.vue'
-import Tooltip from '../../ui/Tooltip.vue'
+import { AddressBar } from '@demicodes/plugin-sdk'
+import { IconButton } from '@demicodes/plugin-sdk'
+import { Tooltip } from '@demicodes/plugin-sdk'
 import { loadPageAddress, pageTabTitle, type PageTabData } from './page-data'
 
 /**

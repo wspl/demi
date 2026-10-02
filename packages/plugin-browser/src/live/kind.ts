@@ -1,8 +1,8 @@
 import { defineComponent, h, type PropType } from 'vue'
 import { MonitorDot } from '@lucide/vue'
-import type { PanelTabKind } from '../agent/panel-kinds/kind'
-import { GlobePlus } from '../ui/GlobePlus'
-import { ICON_PX } from '../ui/icon-metrics'
+import type { PanelTabKind } from '@demicodes/plugin-sdk'
+import { GlobePlus } from '@demicodes/plugin-sdk'
+import { ICON_PX } from '@demicodes/plugin-sdk'
 import BrowserTabContent from './BrowserTabContent.vue'
 import {
   NEW_TAB_URL,

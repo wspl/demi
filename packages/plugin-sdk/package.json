@@ -1,0 +1,22 @@
+{
+  "name": "@demicodes/plugin-sdk",
+  "description": "The plugin page API: slots, the plugin client, services and the public components a plugin page is built from.",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@demicodes/web-ui": "workspace:^",
+    "vue": "^3.5.38"
+  },
+  "license": "Apache-2.0",
+  "scripts": {
+    "typecheck": "bun ../../scripts/typecheck-vue.ts tsconfig.json"
+  },
+  "devDependencies": {
+    "@vue/tsconfig": "^0.9.1",
+    "typescript": "^6.0.3"
+  }
+}
