@@ -46,6 +46,7 @@ func NewSchema(document json.RawMessage) (_ *Schema, err error) {
 	compiler := jsonschema.NewCompiler()
 	compiler.DefaultDraft(jsonschema.Draft2020)
 	compiler.AssertContent()
+	compiler.UseRegexpEngine(compilePattern)
 	// An empty loader refuses filesystem and network access, including remote refs.
 	compiler.UseLoader(jsonschema.SchemeURLLoader{})
 	const location = "urn:demi:command-schema"

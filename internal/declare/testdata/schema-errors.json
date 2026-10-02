@@ -1521,5 +1521,113 @@
       "x": 1
     },
     "error": "\"y\" is a required property; \"a\" is a required property; \"b\" is a required property"
+  },
+  {
+    "name": "regex-lookahead-reproduction",
+    "schema": {
+      "type": "string",
+      "pattern": "^(?=a)a$"
+    },
+    "instance": "a",
+    "error": ""
+  },
+  {
+    "name": "regex-plain-strict-end",
+    "schema": {
+      "type": "string",
+      "pattern": "^a$"
+    },
+    "instance": "a\n",
+    "error": "value does not match \"^a$\""
+  },
+  {
+    "name": "regex-plain-match",
+    "schema": {
+      "type": "string",
+      "pattern": "^a$"
+    },
+    "instance": "a",
+    "error": ""
+  },
+  {
+    "name": "regex-lookahead-refusal",
+    "schema": {
+      "type": "string",
+      "pattern": "^(?=a)a$"
+    },
+    "instance": "b",
+    "error": "value does not match \"^(?=a)a$\""
+  },
+  {
+    "name": "regex-lookahead-strict-end",
+    "schema": {
+      "type": "string",
+      "pattern": "^(?=a)a$"
+    },
+    "instance": "a\n",
+    "error": "value does not match \"^(?=a)a$\""
+  },
+  {
+    "name": "regex-lookbehind-match",
+    "schema": {
+      "type": "string",
+      "pattern": "(?<=a)b"
+    },
+    "instance": "ab",
+    "error": ""
+  },
+  {
+    "name": "regex-lookbehind-refusal",
+    "schema": {
+      "type": "string",
+      "pattern": "(?<!a)b"
+    },
+    "instance": "ab",
+    "error": "value does not match \"(?<!a)b\""
+  },
+  {
+    "name": "regex-backreference-match",
+    "schema": {
+      "type": "string",
+      "pattern": "^(a)\\1$"
+    },
+    "instance": "aa",
+    "error": ""
+  },
+  {
+    "name": "regex-backreference-refusal",
+    "schema": {
+      "type": "string",
+      "pattern": "^(a)\\1$"
+    },
+    "instance": "ab",
+    "error": "value does not match \"^(a)\\1$\""
+  },
+  {
+    "name": "regex-plain-ungreedy-flag",
+    "schema": {
+      "type": "string",
+      "pattern": "(?U)^a+$"
+    },
+    "instance": "aa",
+    "error": ""
+  },
+  {
+    "name": "regex-plain-unicode-script",
+    "schema": {
+      "type": "string",
+      "pattern": "^\\p{Greek}+$"
+    },
+    "instance": "α",
+    "error": ""
+  },
+  {
+    "name": "regex-plain-ascii-digit",
+    "schema": {
+      "type": "string",
+      "pattern": "^\\d+$"
+    },
+    "instance": "١",
+    "error": "value does not match \"^\\d+$\""
   }
 ]

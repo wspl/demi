@@ -5,6 +5,7 @@ go 1.27
 toolchain go1.27.1
 
 require (
+	github.com/dlclark/regexp2 v1.12.0
 	github.com/nlnwa/whatwg-url v0.6.2
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/vmihailenco/msgpack/v5 v5.4.1

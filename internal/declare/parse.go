@@ -3,7 +3,6 @@ package declare
 import (
 	"encoding/json"
 	"fmt"
-	"maps"
 	"math"
 	"slices"
 	"strconv"
@@ -27,11 +26,10 @@ type Selected[B any] struct {
 
 // Parsed holds argv input before or after validation.
 type Parsed struct {
-	Path       []string       `json:"path"`
-	Values     map[string]any `json:"values"`
-	JSON       bool           `json:"json"`
-	Help       bool           `json:"help"`
-	valueOrder []string
+	Path   []string  `json:"path"`
+	Values Arguments `json:"values"`
+	JSON   bool      `json:"json"`
+	Help   bool      `json:"help"`
 }
 
 // Select finds the command named by argv, excluding the root executable name.
@@ -68,7 +66,7 @@ func selectNode[B any](node Node[B], argv []string) (*Selected[B], error) {
 
 // Parse reads argv without reading stdin; help never consumes a body.
 func (s *Selected[B]) Parse(argv []string) (*Parsed, error) {
-	result := &Parsed{Path: slices.Clone(s.Path), Values: map[string]any{}}
+	result := &Parsed{Path: slices.Clone(s.Path)}
 	leaf := AsLeaf(s.Node)
 	if leaf == nil {
 		result.Help = true
@@ -87,8 +85,7 @@ func (s *Selected[B]) Parse(argv []string) (*Parsed, error) {
 				for i, token := range argv[index:] {
 					rest[i] = token
 				}
-				result.Values[*leaf.RestField] = rest
-				result.valueOrder = append(result.valueOrder, *leaf.RestField)
+				result.Values.Set(*leaf.RestField, rest)
 				break
 			}
 			optionsEnded = true
@@ -166,33 +163,16 @@ func validateParsed[B any](parsed *Parsed, leaf *Leaf[B], stdin *string) (*Parse
 		if stdin == nil {
 			return nil, usageError("stdin field was not supplied by dispatcher")
 		}
-		if _, exists := parsed.Values[*leaf.StdinField]; !exists {
-			parsed.valueOrder = append(parsed.valueOrder, *leaf.StdinField)
-		}
-		parsed.Values[*leaf.StdinField] = *stdin
+		parsed.Values.Set(*leaf.StdinField, *stdin)
 	} else if stdin != nil {
 		return nil, usageError("stdin body supplied to a leaf without stdinField")
 	}
-	for field, value := range parsed.Values {
-		if schema, exists := leaf.properties()[field]; exists {
-			parsed.Values[field] = argvValue(value, schema)
+	for i, field := range parsed.Values.fields {
+		if schema, exists := leaf.properties()[field.Name]; exists {
+			parsed.Values.fields[i].Value = argvValue(field.Value, schema)
 		}
 	}
-	// Preserve argv order. Values added through the public map have no insertion
-	// order in Go, so their diagnostic order is lexical.
-	order := slices.Clone(parsed.valueOrder)
-	for _, field := range slices.Sorted(maps.Keys(parsed.Values)) {
-		if !slices.Contains(order, field) {
-			order = append(order, field)
-		}
-	}
-	fields := make([]contract.Field, 0, len(parsed.Values))
-	for _, field := range order {
-		if value, exists := parsed.Values[field]; exists {
-			fields = append(fields, contract.Field{Name: field, Value: value})
-		}
-	}
-	document, err := contract.EncodeObject(fields)
+	document, err := parsed.Values.MarshalJSON()
 	if err != nil {
 		return nil, usageError("Invalid command arguments: %w", err)
 	}
@@ -229,20 +209,18 @@ func schemaType(schema any) string {
 
 // setValue accumulates repeated array options and rejects duplicate scalars.
 func (p *Parsed) setValue(field string, value, schema any) error {
-	values := p.Values
-	previous, exists := values[field]
+	previous, exists := p.Values.Lookup(field)
 	if !exists {
-		p.valueOrder = append(p.valueOrder, field)
-		values[field] = value
+		p.Values.Set(field, value)
 		return nil
 	}
 	if schemaType(schema) != "array" {
 		return usageError("Duplicate value for \"%s\"", field)
 	}
 	if items, ok := previous.([]any); ok {
-		values[field] = append(items, value)
+		p.Values.Set(field, append(items, value))
 	} else {
-		values[field] = []any{previous, value}
+		p.Values.Set(field, []any{previous, value})
 	}
 	return nil
 }

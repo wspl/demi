@@ -455,3 +455,30 @@ func TestArgvDiagnosticOrderAndNumericGrammar(t *testing.T) {
 		assertCommand(t, leaf, []string{"--a=" + test.value}, nil, test.want, "")
 	}
 }
+
+func TestManuallyInsertedArgumentsRetainOrder(t *testing.T) {
+	leaf := commandLeaf(t, "number", `{"type":"object","properties":{"a":{"type":"number"},"b":{"type":"boolean"}}}`, nil, "", "")
+	parsed := &declare.Parsed{}
+	parsed.Values.Set("b", "bad")
+	parsed.Values.Set("a", "bad")
+	parsed.Values.Set("b", "still bad")
+	_, err := parsed.Validate(leaf, nil)
+	want := `Invalid command arguments: "b" is not of type "boolean"; "a" is not of type "number"`
+	if err == nil || err.Error() != want {
+		t.Fatalf("got %v, want %s", err, want)
+	}
+	document, err := json.Marshal(parsed.Values)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(document) != `{"b":"still bad","a":"bad"}` {
+		t.Fatalf("argument order or replacement changed: %s", document)
+	}
+	var names []string
+	for name := range parsed.Values.All() {
+		names = append(names, name)
+	}
+	if strings.Join(names, ",") != "b,a" {
+		t.Fatalf("iteration order changed: %v", names)
+	}
+}
