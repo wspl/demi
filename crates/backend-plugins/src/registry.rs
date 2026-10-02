@@ -32,6 +32,8 @@ pub enum RegistryError {
     Stream { plugin: PluginId, name: String },
     #[error("plugin \"{plugin}\"'s page package \"{package}\" is another plugin's")]
     PagePackage { plugin: PluginId, package: String },
+    #[error("plugin \"{plugin}\" declares the panel kind \"{kind}\", which is taken")]
+    PanelKind { plugin: PluginId, kind: String },
     #[error("plugin \"{plugin}\"'s {scope:?} state follows {topic:?}, a topic of another scope")]
     Topic {
         plugin: PluginId,
@@ -65,6 +67,13 @@ impl Registered {
     pub(crate) fn state(&self, scope: Scope) -> Option<&State> {
         self.page.as_ref().and_then(|page| page.state(scope))
     }
+
+    /// Whether it declares the panel kind `kind`.
+    pub(crate) fn owns_kind(&self, kind: &str) -> bool {
+        self.page
+            .as_ref()
+            .is_some_and(|page| page.panel_kinds.iter().any(|owned| owned == kind))
+    }
 }
 
 /// The backend's plugins, shared by every shard thread.
@@ -95,6 +104,7 @@ impl Registry {
         let mut profile_names = BTreeSet::new();
         let mut stream_names = BTreeSet::new();
         let mut page_packages = BTreeSet::new();
+        let mut panel_kinds = BTreeSet::new();
         let mut plugins = Vec::new();
         let mut profiles = Vec::new();
         for factory in factories {
@@ -133,6 +143,14 @@ impl Registry {
                         plugin: manifest.id.clone(),
                         package: page.package.clone(),
                     });
+                }
+                for kind in &page.panel_kinds {
+                    if !panel_kinds.insert(kind.clone()) {
+                        return Err(RegistryError::PanelKind {
+                            plugin: manifest.id.clone(),
+                            kind: kind.clone(),
+                        });
+                    }
                 }
                 for scope in [Scope::User, Scope::Conversation] {
                     let topics = page.state(scope).map(|state| &state.topics[..]);
@@ -211,6 +229,27 @@ impl Registry {
                     .state(topic.scope())
                     .is_some_and(|state| state.topics.contains(&topic))
             })
+    }
+
+    /// The plugin that declares the panel kind `kind`, by its index.
+    pub(crate) fn kind_owner(&self, kind: &str) -> Option<usize> {
+        self.plugins
+            .iter()
+            .position(|registered| registered.owns_kind(kind))
+    }
+
+    /// The plugins told about `topic`, by their indices.
+    pub(crate) fn told(&self, topic: Topic) -> impl Iterator<Item = usize> + '_ {
+        self.plugins
+            .iter()
+            .enumerate()
+            .filter(move |(_, registered)| {
+                registered
+                    .page
+                    .as_ref()
+                    .is_some_and(|page| page.told.contains(&topic))
+            })
+            .map(|(index, _)| index)
     }
 
     pub(crate) fn plugin(&self, id: &str) -> Option<(usize, &Registered)> {

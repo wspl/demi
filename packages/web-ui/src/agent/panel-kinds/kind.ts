@@ -21,8 +21,6 @@ export interface PanelTabKind<Data = unknown> {
    * `close` to have the panel close the tab as its user would.
    */
   content: Component
-  /** The user closed a tab of this kind; the panel has already removed it. */
-  removed?(data: Data): void
   /**
    * The kind has one tab in every conversation's panel, ahead of the user's
    * tabs, which is never created, closed or saved; its data starts here and

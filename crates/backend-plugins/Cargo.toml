@@ -22,6 +22,7 @@ demi-web-api-protocol = { path = "../web-api-protocol" }
 futures-util.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tokio = { workspace = true, features = ["rt"] }
 tokio-util.workspace = true
 tracing.workspace = true
 

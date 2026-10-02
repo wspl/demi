@@ -1,16 +1,7 @@
-import { onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { browserPage } from '@demicodes/plugin-browser'
-import type { BrowserTabsApi } from '@demicodes/plugin-browser/live/tabs'
-import {
-  addTab,
-  emptyPanelState,
-  openIntent,
-  removeTabs,
-  selectInPanel,
-  updateTab,
-  type PanelState,
-  type PinnedTabs,
-} from '@demicodes/web-ui/agent/panel-tabs'
+import { PanelTabs, dataChanges } from '@demicodes/web-ui/agent/panel-changes'
+import { openIntent, removeTabs, type PanelState, type PinnedTabs } from '@demicodes/web-ui/agent/panel-tabs'
 import type { CallEditSelection } from '@demicodes/web-ui/files/changes'
 import type { IntentRequest } from '@demicodes/web-ui/plugins/intents'
 import {
@@ -20,8 +11,10 @@ import {
   type ConversationFileService,
 } from '@demicodes/web-ui/plugins/page'
 import { PLUGIN_PAGES } from '../generated/pages'
+import { productWould } from '../product-would'
 import { readGalleryEdit } from './blobs'
-import { galleryBrowserTabs } from './live-browser'
+import { galleryBrowser, type GalleryBrowser } from './live-browser'
+import { GalleryPanel, galleryBrowserPlugin } from './panel'
 import type { createGalleryWorkspace } from './workspace'
 import { browserPlugin, galleryPageHost } from './plugins'
 
@@ -40,92 +33,133 @@ export function galleryFiles(workspace: ReturnType<typeof createGalleryWorkspace
 /** The conversation every gallery panel shows. */
 const CONVERSATION = 'gallery'
 
+function isData(data: unknown): data is Record<string, unknown> {
+  return data !== null && typeof data === 'object' && !Array.isArray(data)
+}
+
 /**
- * One work panel's state the way the product's work store holds it
- * (`web-application.md` § Work panel): the selection and the user's tabs,
- * the pinned tabs' data, and the plugin pages' kinds bound to it over the
- * specimen's files and its own conversation browser. Intents open in it as
- * they open in the product.
+ * One work panel the way the product's work store holds it
+ * (`web-application.md` § Work panel): its selection, the pinned tabs' data,
+ * and the tabs of a panel kept as the backend keeps them, with the
+ * specimen's changes shown at once over them; the plugin pages' kinds are
+ * bound to it over the specimen's files and its own conversation browser,
+ * whose plugin opens and closes browser tabs for the panel's tabs as the
+ * backend's does. Intents open in it as they open in the product.
  */
 export function useGalleryWork(
   selection: string | null,
-  { files, tabs = galleryBrowserTabs(), pictures, pages }: {
+  { files, browser = galleryBrowser(), pictures, pages }: {
     files: ConversationFileService
-    tabs?: BrowserTabsApi
+    browser?: GalleryBrowser
     /** Whether the web browser decodes the pictures; by default it asks the web browser, as the product does. */
     pictures?: () => Promise<boolean>
     /** The plugin pages whose kinds the panel shows; every one the product shows by default. */
     pages?: readonly AnyPluginPage[]
   },
 ) {
-  const panel = ref<PanelState>({ ...emptyPanelState(), selection })
-  const pinned = ref<PinnedTabs>({})
   // The gallery's pages, with the browser's own made for a specimen that says how the pictures decode.
   const shown = pages ?? PLUGIN_PAGES.map((page) => (page.plugin === 'browser' && pictures ? browserPage({ pictures }) : page))
   const enabled = () => true
-
-  function openIn(request: IntentRequest) {
-    const opened = openIntent({ state: panel.value, pinned: pinned.value }, shown, enabled, request)
-    if (opened) {
-      panel.value = opened.state
-      pinned.value = opened.pinned
+  const backend = new GalleryPanel()
+  const plugin = galleryBrowserPlugin(browser, backend)
+  // The browser's tabs stand in the panel in its order, as the product's would: the user's with the tab the
+  // user made for each, the agent's with the id the plugin gives them. A panel without the browser's page has none.
+  if (shown.some((page) => page.plugin === 'browser')) {
+    for (const tab of browser.listed.value.tabs) {
+      const id = tab.createdBy.kind === 'user' ? `user-${tab.id}` : `browser-${tab.id}`
+      backend.apply({ type: 'create', tab: { id, kind: 'browser', data: { url: tab.url, tab: tab.id } } })
     }
   }
+  const tabs = new PanelTabs(backend, (error) => {
+    productWould(`Report that the work panel refused a change: ${error instanceof Error ? error.message : String(error)}`)
+  })
+  backend.told = ({ change, tab }) => {
+    if (tab.kind !== 'browser') {
+      return
+    }
+    void (change === 'created' ? plugin.bind(tab.id) : plugin.removed(tab))
+  }
+  backend.changed = () => void tabs.refresh()
+  tabs.start()
 
-  const host = galleryPageHost({ browser: browserPlugin(tabs) }, {
+  const chosen = ref(selection)
+  const pinned = ref<PinnedTabs>({})
+  const panel = computed<PanelState>(() => ({ selection: chosen.value, tabs: tabs.tabs.value }))
+
+  function select(next: string | null) {
+    chosen.value = next
+  }
+  /** A new tab after the others, selected unless `options` says not; returns its id. */
+  function add(kind: string, data: unknown, options = { select: true }): string {
+    const id = crypto.randomUUID()
+    tabs.change({ type: 'create', tab: { id, kind, data } })
+    if (options.select) {
+      chosen.value = id
+    }
+    return id
+  }
+  function update(id: string, data: unknown) {
+    const current = tabs.tabs.value.find((tab) => tab.id === id)
+    if (!current || !isData(data)) {
+      return
+    }
+    const fields = dataChanges(current.data, data)
+    if (Object.keys(fields).length > 0) {
+      tabs.change({ type: 'update', id, data: fields })
+    }
+  }
+  function updatePinned(kind: string, data: unknown) {
+    pinned.value = { ...pinned.value, [kind]: data }
+  }
+  /** Closed tabs go at once; a closed selection passes to its nearest neighbour. */
+  function closeTabs(ids: string[]) {
+    chosen.value = removeTabs(panel.value, ids).selection
+    for (const id of ids) {
+      tabs.change({ type: 'remove', id })
+    }
+  }
+  function openIn(request: IntentRequest) {
+    const opened = openIntent(pinned.value, shown, enabled, request)
+    if (!opened) {
+      return
+    }
+    pinned.value = opened.pinned
+    if (opened.created) {
+      tabs.change({ type: 'create', tab: opened.created })
+    }
+    chosen.value = opened.selection
+  }
+
+  const host = galleryPageHost({ browser: browserPlugin(browser, plugin) }, {
     files,
     intents: {
       open: (_conversation, request) => openIn(request),
       canOpen: (intent) => intentKind(shown, enabled, intent) !== null,
     },
     panel: {
-      tabs: (_conversation, kind) => panel.value.tabs.filter((tab) => tab.kind === kind).map((tab) => tab.data),
-      add: (_conversation, kind, data, options = { select: false }) => {
-        panel.value = addTab(panel.value, { kind, data }, options).state
-      },
+      tabs: (_conversation, kind) => tabs.tabs.value.filter((tab) => tab.kind === kind).map((tab) => tab.data),
+      add: (_conversation, kind, data, options = { select: false }) => void add(kind, data, options),
     },
   })
   const bound = bindPages(shown, host, CONVERSATION)
   onBeforeUnmount(() => bound.dispose())
   const kinds = bound.kinds
 
-  function select(next: string | null) {
-    panel.value = selectInPanel(panel.value, next)
-  }
-  function add(kind: string, data: unknown) {
-    panel.value = addTab(panel.value, { kind, data }, { select: true }).state
-  }
-  function update(id: string, data: unknown) {
-    panel.value = updateTab(panel.value, id, data)
-  }
-  function updatePinned(kind: string, data: unknown) {
-    pinned.value = { ...pinned.value, [kind]: data }
-  }
-  /** A closed tab goes at once; its kind then does what a closed tab of it needs. */
-  function closeTabs(ids: string[]) {
-    const closing = panel.value.tabs.filter((tab) => ids.includes(tab.id))
-    panel.value = removeTabs(panel.value, ids)
-    for (const tab of closing) {
-      const kind = kinds.find((candidate) => candidate.kind === tab.kind)
-      const parsed = kind?.schema.safeParse(tab.data)
-      if (kind?.removed && parsed?.success) {
-        kind.removed(parsed.data)
-      }
-    }
-  }
   /** A tool call's file pill, through the `edit` intent. */
   function selectEdit(edit: CallEditSelection) {
     openIn({ intent: 'edit', payload: edit })
   }
+  /** The panel as it started: every tab closed, the first selection again. */
   function reset() {
-    panel.value = { ...emptyPanelState(), selection }
+    closeTabs(tabs.tabs.value.map((tab) => tab.id))
+    chosen.value = selection
     pinned.value = {}
   }
   return {
     panel,
     pinned,
     kinds,
-    tabs,
+    browser,
     host,
     select,
     add,

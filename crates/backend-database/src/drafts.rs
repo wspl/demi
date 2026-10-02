@@ -229,7 +229,10 @@ impl ControlService {
 }
 
 /// Whether the conversation is archived.
-fn archived(connection: &Connection, conversation: &ConversationId) -> Result<bool, StorageError> {
+pub(crate) fn archived(
+    connection: &Connection,
+    conversation: &ConversationId,
+) -> Result<bool, StorageError> {
     Ok(connection.query_row(
         "SELECT archived FROM conversations WHERE id = ?1",
         [conversation.as_str()],

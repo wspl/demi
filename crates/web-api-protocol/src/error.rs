@@ -121,6 +121,11 @@ pub enum ErrorCode {
     ConversationNotFound,
     /// The conversation is archived: restore it first.
     ConversationArchived,
+    /// The work panel holds as many tabs, or as much of their data, as it
+    /// can (`web-api.md` § Work panel state).
+    PanelFull,
+    /// No plugin the user has on declares the work panel kind.
+    UnknownPanelKind,
     /// An archive, a target change or a detach is ending the conversation's
     /// file transfers and user streams; a new one waits for nothing and is
     /// refused.

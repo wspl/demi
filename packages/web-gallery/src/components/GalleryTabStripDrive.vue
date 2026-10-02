@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
-import { addTab, emptyPanelState, removeTabs, selectInPanel } from '@demicodes/web-ui/agent/panel-tabs'
 import { changesPage } from '@demicodes/plugin-changes'
 import { exposePage } from '@demicodes/plugin-expose'
 import { fileBrowserPage } from '@demicodes/plugin-file-browser'
@@ -27,26 +26,27 @@ const TITLES = [
 
 const workspace = createGalleryWorkspace()
 // Change and File pinned before the pages, as the product's panel has them.
-const { panel, pinned, kinds } = useGalleryWork(null, {
+const work = useGalleryWork(null, {
   files: galleryFiles(workspace),
   pages: [changesPage, fileBrowserPage, exposePage],
 })
+const { panel, pinned, kinds } = work
 let opened = 0
 
 function openPage(): void {
   const address = TITLES[opened % TITLES.length]!
   opened += 1
   // The body never shows here, so the page is never loaded; the address names the tab.
-  panel.value = addTab(panel.value, { kind: pageTabKind.kind, data: exposePageTab({ url: 'https://example.test/', address }) }, { select: true }).state
+  work.add(pageTabKind.kind, exposePageTab({ url: 'https://example.test/', address }))
 }
 
 function closeTabs(ids: string[]): void {
-  panel.value = removeTabs(panel.value, ids)
+  work.closeTabs(ids)
 }
 
 /** Six pages beside Change and File, the first selected. */
 function reset(): void {
-  panel.value = emptyPanelState()
+  work.reset()
   opened = 0
   for (let i = 0; i < 6; i++)
     openPage()
@@ -67,7 +67,7 @@ function ids(): string[] {
 function selectAt(index: number): void {
   const id = ids().at(index)
   if (id)
-    panel.value = selectInPanel(panel.value, id)
+    work.select(id)
 }
 
 function selectMiddle(): void {
@@ -162,7 +162,7 @@ const count = computed(() => ids().length)
         :panel="panel"
         :pinned="pinned"
         :kinds="kinds"
-        @select="panel = selectInPanel(panel, $event)"
+        @select="work.select($event)"
         @close-tabs="closeTabs"
         @close="reset"
       >
