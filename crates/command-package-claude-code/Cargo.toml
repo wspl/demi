@@ -23,22 +23,19 @@ test = false
 testing = []
 
 [dependencies]
-demi-shared-artifacts = { path = "../shared-artifacts" }
 bytes.workspace = true
 demi-command-package-claude-code-protocol = { path = "../command-package-claude-code-protocol" }
 demi-command-protocol = { path = "../command-protocol" }
 demi-command-sdk = { path = "../command-sdk" }
-reqwest = { workspace = true, features = ["rustls", "stream"] }
 serde.workspace = true
 serde_json.workspace = true
-tempfile = "3"
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
+url = "2"
 
 [dev-dependencies]
 demi-claude-code = { path = ".", features = ["testing"] }
-demi-shared-artifacts = { path = "../shared-artifacts", features = ["testing"] }
 # The program started and driven as a service (`testing::ServiceProcess`).
 demi-command-sdk = { path = "../command-sdk", features = ["testing"] }
 futures-util.workspace = true

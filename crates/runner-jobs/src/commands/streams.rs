@@ -130,6 +130,9 @@ impl ServiceStreams {
                 Some(digest) => Some(services.lease(digest).await),
                 None => None,
             };
+            // What the program asks for during the invocation is located for
+            // this stream (`native-runtime.md` § The artifacts stream).
+            let _invoking = services.invoking(&stream_id, &package.id, resolver.clone());
             let opened = async {
                 let mut resident = services
                     .acquire(&package, resolver, numbers, &stream)

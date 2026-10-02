@@ -80,11 +80,18 @@ struct ConversationBrowser {
     commands: TaskTracker,
 }
 
+/// What starts a conversation's browser: the starting caller's locale, and
+/// the invocation the runner installs Chrome for when it has none.
+#[derive(Clone)]
+pub(crate) struct Starting {
+    pub(crate) locale: CommandLocale,
+    pub(crate) invocation: String,
+}
+
 enum Request {
-    /// The browser, started first when `start` names the starting caller's
-    /// locale.
+    /// The browser, started first when `start` says who starts it.
     Environment {
-        start: Option<CommandLocale>,
+        start: Option<Starting>,
         reply: oneshot::Sender<Result<Option<watch::Receiver<Readiness>>>>,
     },
     /// Retires `environment` if it still runs; answered once it is gone.
@@ -152,7 +159,7 @@ impl ConversationBrowser {
     /// caller's locale, and concurrent opens join that start.
     pub async fn environment(
         &self,
-        start: Option<&CommandLocale>,
+        start: Option<&Starting>,
         cancel: &CancellationToken,
     ) -> Result<Option<BrowserEnvironment>> {
         let started = self.started(start, cancel).await?;
@@ -163,7 +170,7 @@ impl ConversationBrowser {
     /// [`Self::environment`] starts it.
     async fn started(
         &self,
-        start: Option<&CommandLocale>,
+        start: Option<&Starting>,
         cancel: &CancellationToken,
     ) -> Result<Option<Started>> {
         let start = start.cloned();
@@ -390,7 +397,7 @@ impl Owner {
 
     async fn environment(
         &mut self,
-        start: Option<CommandLocale>,
+        start: Option<Starting>,
     ) -> Result<Option<watch::Receiver<Readiness>>> {
         if let State::Running(running) = &self.state
             && (running.task.is_finished() || (start.is_some() && running.leaving()))
@@ -420,8 +427,8 @@ impl Owner {
             State::Absent => match start {
                 // A command admitted before the release began still asks.
                 Some(_) if self.released.is_cancelled() => Err(BrowserError::Cancelled),
-                Some(locale) => {
-                    let ready = self.start(locale);
+                Some(starting) => {
+                    let ready = self.start(starting);
                     Ok(Some(ready))
                 }
                 None => Ok(None),
@@ -429,8 +436,9 @@ impl Owner {
         }
     }
 
-    /// Starts the conversation's Chrome in the starting caller's locale.
-    fn start(&mut self, locale: CommandLocale) -> watch::Receiver<Readiness> {
+    /// Starts the conversation's Chrome in the starting caller's locale,
+    /// installed for the starting invocation when the Host has none.
+    fn start(&mut self, starting: Starting) -> watch::Receiver<Readiness> {
         let stop = CancellationToken::new();
         let (publish, ready) = watch::channel(None);
         let chrome = self.chrome.clone();
@@ -440,9 +448,9 @@ impl Owner {
             let publisher = publish.clone();
             let retire = owner_stop.clone();
             let result = async {
-                let executable = chrome.executable()?.to_owned();
+                let executable = chrome.executable(&starting.invocation).await?;
                 with_browser(
-                    LaunchOptions::pinned(executable, locale)?,
+                    LaunchOptions::pinned(executable, starting.locale)?,
                     numbers,
                     owner_stop.clone(),
                     move |environment| async move {
@@ -888,12 +896,11 @@ impl Conversations {
             command,
             BrowserOperation::Open(_) | BrowserOperation::ContentFetch(_)
         );
-        let environment = browser
-            .environment(
-                starts.then_some(&context.request.context.locale),
-                cancellation,
-            )
-            .await?;
+        let starting = starts.then(|| Starting {
+            locale: context.request.context.locale.clone(),
+            invocation: context.request.invocation_id.clone(),
+        });
+        let environment = browser.environment(starting.as_ref(), cancellation).await?;
         let Some(environment) = environment else {
             if matches!(command, BrowserOperation::Tabs(_)) {
                 return Ok(CommandOutput::Json(output::value(TabsResult {

@@ -825,16 +825,19 @@ pub enum Outbound {
 /// The most installs one list carries: one per service starting at once.
 pub const MAX_INSTALLS: usize = 64;
 
-/// One command package's artifact being installed: what it is, how far it
-/// is, in bytes of the artifact's size.
+/// One artifact being installed for a command package: its line's name and
+/// its version, such as `Chrome for Testing` and `153.0.8010.36`, and how
+/// far it is, in bytes of its size.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Install {
     /// The package, such as `demi.browser`.
     #[garde(length(min = 1, max = 200))]
     pub package: String,
-    #[garde(dive)]
-    pub artifact: InstallArtifact,
+    #[garde(length(min = 1, max = 100))]
+    pub name: String,
+    #[garde(length(min = 1, max = 100))]
+    pub version: String,
     #[garde(skip)]
     pub phase: InstallPhase,
     #[garde(
@@ -853,18 +856,6 @@ fn not_past_total(total: &u64) -> impl FnOnce(&u64, &()) -> garde::Result + '_ {
         }
         Ok(())
     }
-}
-
-/// The artifact an install is obtaining: the package's program, or one of
-/// its resources by its title.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, JsonSchema)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum InstallArtifact {
-    Program,
-    Resource {
-        #[garde(length(min = 1, max = 200))]
-        title: String,
-    },
 }
 
 /// Where an install is: downloading the artifact, or unpacking a

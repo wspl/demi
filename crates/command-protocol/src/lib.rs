@@ -5,6 +5,7 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use thiserror::Error;
 
+mod artifacts;
 mod conversation;
 mod edits;
 mod invocation;
@@ -13,6 +14,10 @@ mod package;
 #[cfg(feature = "testing")]
 pub mod testing;
 
+pub use artifacts::{
+    ArtifactAnswer, ArtifactAsk, ArtifactForm, ArtifactInstall, ArtifactReply, ArtifactRequest,
+    ArtifactsInstalled, InstalledArtifact,
+};
 pub use conversation::{ConversationRequest, ConversationStatus};
 pub use edits::{
     EDIT_FILE_BYTES, EDIT_JOB_BYTES, EDIT_JOB_FILES, EDIT_JOB_SEGMENTS, EditContext, EditCopies,
@@ -22,7 +27,7 @@ pub use invocation::{
     COMMAND_LOCALE_LANGUAGES, CONVERSATION_NAME_CHARS, CommandCaller, CommandContext, CommandError,
     CommandLocale, Completion, Invocation, LocalInvocation, conversation_name, without_nul,
 };
-pub use numbers::{MAX_NUMBERS, NumbersAnswer, NumbersOpen, NumbersRequest, ServiceSequence};
+pub use numbers::{MAX_NUMBERS, NumbersAnswer, NumbersRequest, ServiceSequence, StreamOpen};
 pub use package::{
     ArtifactLocation, ArtifactPath, ArtifactUrl, PackageArtifact, PackageDescriptor,
     PackageResource, ResourceArtifact, ServiceInfo, TARGETS, VERSION, canonical_digest, digest,
@@ -37,6 +42,7 @@ pub const INFO_PATH: &str = "/v1/info";
 pub const INVOKE_PATH: &str = "/v1/invoke";
 pub const CONVERSATION_PATH: &str = "/v1/conversation";
 pub const NUMBERS_PATH: &str = "/v1/numbers";
+pub const ARTIFACTS_PATH: &str = "/v1/artifacts";
 pub const SHUTDOWN_PATH: &str = "/v1/shutdown";
 
 /// The metadata that opens an invocation stream: the native protocol's
@@ -83,7 +89,7 @@ impl ConversationRequest {
     }
 }
 
-impl NumbersOpen {
+impl StreamOpen {
     pub fn validate(&self) -> Result<(), ProtocolError> {
         garde::Validate::validate(self).map_err(ProtocolError::from)
     }

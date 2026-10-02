@@ -1,7 +1,7 @@
 //! Test support (`crates-and-packages.md` § command-sdk): a command
 //! service's binary started and driven with a client, a numbers source that
-//! counts, and the count of the process's pauses before trying an operation
-//! again.
+//! counts, an artifacts source that answers as a test says, and the count of
+//! the process's pauses before trying an operation again.
 
 use std::{
     collections::HashMap,
@@ -10,13 +10,13 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use demi_command_protocol::ServiceSequence;
+use demi_command_protocol::{ArtifactAsk, ArtifactReply, ServiceSequence};
 use tokio::{
     process::{Child, ChildStdin, ChildStdout, Command},
     task::JoinHandle,
 };
 
-use crate::{Client, Numbers, ServiceError};
+use crate::{Artifacts, ArtifactsAsk, Client, Numbers, NumbersAsk, ServiceError};
 
 /// Every pause a [`crate::descriptors::Backoff`] of this process has taken.
 static PAUSES: AtomicU64 = AtomicU64::new(0);
@@ -57,7 +57,8 @@ pub fn counting_numbers() -> Numbers {
     tokio::spawn(async move {
         let mut counters = Counters::default();
         while let Some(draw) = draws.recv().await {
-            let first = counters.take(draw.conversation, draw.sequence, draw.count);
+            let request = draw.request;
+            let first = counters.take(request.conversation, request.sequence, request.count);
             // A caller that stopped waiting needs no answer.
             let _left = draw.answer.send(Ok(first));
         }
@@ -75,12 +76,54 @@ pub async fn answer_numbers(
     Ok(tokio::spawn(async move {
         let counters = std::sync::Mutex::new(Counters::default());
         stream
-            .answer(|request| {
+            .answer::<NumbersAsk, _>(|request| {
                 let first = counters
                     .lock()
                     .expect("the counters are never poisoned")
                     .take(request.conversation, request.sequence, request.count);
                 std::future::ready(Ok(first))
+            })
+            .await
+    }))
+}
+
+/// An artifacts source that answers every request with `answer`, for a test
+/// that calls a handler without an artifacts stream, as the runner would
+/// answer it: with the path it installed, or the Host's artifacts of a line.
+/// Its task ends with the last clone.
+pub fn artifacts_from(
+    answer: impl Fn(ArtifactAsk) -> Result<ArtifactReply, String> + Send + 'static,
+) -> Artifacts {
+    let (artifacts, mut requests) = Artifacts::channel();
+    tokio::spawn(async move {
+        while let Some(pending) = requests.recv().await {
+            let reply = pending
+                .request
+                .ask()
+                .map_err(|error| error.to_string())
+                .and_then(&answer);
+            // A caller that stopped waiting needs no answer.
+            let _left = pending.answer.send(reply);
+        }
+    });
+    artifacts
+}
+
+/// Opens the artifacts stream of the service `client` drives and answers it
+/// with `answer`, as a runner answers it, until the service ends it.
+pub async fn answer_artifacts(
+    client: &Client,
+    answer: impl Fn(ArtifactAsk) -> Result<ArtifactReply, String> + Send + Sync + 'static,
+) -> Result<JoinHandle<Result<(), ServiceError>>, ServiceError> {
+    let stream = client.artifacts().await?;
+    Ok(tokio::spawn(async move {
+        stream
+            .answer::<ArtifactsAsk, _>(|request| {
+                let reply = request
+                    .ask()
+                    .map_err(|error| error.to_string())
+                    .and_then(&answer);
+                std::future::ready(reply)
             })
             .await
     }))

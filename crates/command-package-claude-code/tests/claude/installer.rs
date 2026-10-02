@@ -1,405 +1,135 @@
-//! The installer's rules (`claude-code.md` § The package), downloading from
-//! a fixture server: which release it installs, where, how it checks and
-//! shares an installation, and why it refuses.
+//! The package's rules (`claude-code.md` § The package): the executable it
+//! asks the runner for, from which release record, and why it refuses. The
+//! runner's artifacts stream is answered by a test source, as the runner
+//! would answer it.
 
-use std::{
-    path::{Path, PathBuf},
-    time::Duration,
-};
+use std::sync::{Arc, Mutex};
 
-use demi_command_package_claude_code_protocol::Installed;
-use demi_shared_artifacts::{
-    InstallLock,
-    testing::{Answer, Server, lock_waits},
-};
-use serde_json::{Value, json};
+use demi_command_protocol::{ArtifactAsk, ArtifactForm, ArtifactReply, InstalledArtifact};
+use demi_command_sdk::testing::artifacts_from;
+use serde_json::json;
 use sha2::{Digest, Sha256};
-use tokio_util::sync::CancellationToken;
 
 use demi_claude_code::{
-    install::{EnsureError, Installer, Roots},
+    install::{self, EnsureError},
     platform::{self, Loaders, platform_key},
 };
-
-const BINARY: &str = if cfg!(windows) {
-    "claude.exe"
-} else {
-    "claude"
-};
-
-/// The versions whose executable the download server serves.
-const VERSIONS: [&str; 3] = ["2.1.277", "2.1.278", "2.1.279"];
-
-/// A download server for `BODY` as each of `VERSIONS`, answering each request
-/// after `delay`.
-async fn downloads(delay: Duration) -> Server {
-    Server::start(VERSIONS.map(|version| {
-        let answer = Answer {
-            delay,
-            ..Answer::ok(BODY)
-        };
-        (format!("/{version}/claude"), answer)
-    }))
-    .await
-}
-
-/// A release record whose entry for this machine points at `server`'s
-/// download of `version`.
-fn served(server: &Server, version: &str, size: usize, sha256: &str) -> Vec<u8> {
-    record(
-        version,
-        platform::current().unwrap(),
-        &server.url(&format!("/{version}/claude")),
-        size,
-        sha256,
-    )
-}
-
-fn record(version: &str, platform: &str, url: &str, size: usize, sha256: &str) -> Vec<u8> {
-    json!({ "version": version, "platforms": { platform: { "url": url, "size": size, "sha256": sha256 } } })
-        .to_string()
-        .into_bytes()
-}
 
 fn sha256(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
-struct Machine {
-    _directory: tempfile::TempDir,
-    home: PathBuf,
-    image: PathBuf,
-}
-
-impl Machine {
-    fn new() -> Self {
-        let directory = tempfile::tempdir().unwrap();
-        let home = directory.path().join("home/.demi/claude");
-        let image = directory.path().join("opt/demi/claude");
-        Self {
-            _directory: directory,
-            home,
-            image,
-        }
-    }
-
-    fn installer(&self) -> Installer {
-        Installer::with_loopback_http(Roots {
-            home: Some(self.home.clone()),
-            image: Some(self.image.clone()),
-        })
-    }
-
-    /// The version directories and staging directories left under the user's root.
-    fn home_directories(&self) -> Vec<String> {
-        let Ok(entries) = std::fs::read_dir(&self.home) else {
-            return Vec::new();
-        };
-        let mut names: Vec<String> = entries
-            .map(|entry| entry.unwrap())
-            .filter(|entry| entry.file_type().unwrap().is_dir())
-            .map(|entry| entry.file_name().into_string().unwrap())
-            .collect();
-        names.sort();
-        names
-    }
-}
-
-fn preinstall(root: &Path, version: &str, body: &[u8]) {
-    let directory = root.join(version);
-    std::fs::create_dir_all(&directory).unwrap();
-    std::fs::write(directory.join(BINARY), body).unwrap();
-    let receipt = json!({
+/// A release record of `version` with an entry for `platform`.
+fn record(version: &str, platform: &str) -> Vec<u8> {
+    json!({
         "version": version,
-        "platform": platform::current().unwrap(),
-        "sha256": sha256(body),
-        "size": body.len(),
-    });
-    std::fs::write(directory.join("receipt.json"), receipt.to_string()).unwrap();
-}
-
-async fn ensure(installer: &Installer, record: &[u8]) -> Result<Installed, EnsureError> {
-    let release = installer.release(record)?;
-    installer.ensure(&release, &CancellationToken::new()).await
-}
-
-/// Waits until `done` holds, polling; the deadline only guards against a hang.
-async fn until(what: &str, done: impl Fn() -> bool) {
-    tokio::time::timeout(Duration::from_secs(30), async {
-        while !done() {
-            tokio::time::sleep(Duration::from_millis(1)).await;
-        }
+        "platforms": { platform: { "url": "https://downloads.claude.ai/claude", "size": 6, "sha256": sha256(b"claude") } },
     })
-    .await
-    .unwrap_or_else(|_| panic!("{what} never happened"));
+    .to_string()
+    .into_bytes()
 }
 
-const BODY: &[u8] = b"#!/bin/sh\necho fixture claude\n";
-
+/// `ensure` asks the runner, for its invocation, to install this machine's
+/// executable of the release as the file `Claude Code` at the release's
+/// version, and answers the path the runner gives.
 #[tokio::test]
-async fn ensure_installs_the_executable_and_its_receipt() {
-    let machine = Machine::new();
-    let server = downloads(Duration::ZERO).await;
-    let installer = machine.installer();
-    let installed = ensure(
-        &installer,
-        &served(&server, "2.1.278", BODY.len(), &sha256(BODY)),
-    )
-    .await
-    .unwrap();
-    assert_eq!(installed.version, "2.1.278");
-    assert_eq!(installed.path, machine.home.join("2.1.278").join(BINARY));
-    assert!(installed.path.is_absolute());
-    assert_eq!(std::fs::read(&installed.path).unwrap(), BODY);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mode = std::fs::metadata(&installed.path)
-            .unwrap()
-            .permissions()
-            .mode();
-        assert_eq!(mode & 0o111, 0o111);
-    }
-    let receipt: Value =
-        serde_json::from_slice(&std::fs::read(machine.home.join("2.1.278/receipt.json")).unwrap())
-            .unwrap();
-    assert_eq!(
-        receipt,
-        json!({
-            "version": "2.1.278",
-            "platform": platform::current().unwrap(),
-            "sha256": sha256(BODY),
-            "size": BODY.len(),
-        })
-    );
-    assert_eq!(machine.home_directories(), ["2.1.278"]);
-}
-
-#[tokio::test]
-async fn a_second_ensure_does_not_download() {
-    let machine = Machine::new();
-    let server = downloads(Duration::ZERO).await;
-    let record = served(&server, "2.1.278", BODY.len(), &sha256(BODY));
-    let installer = machine.installer();
-    let first = ensure(&installer, &record).await.unwrap();
-    let second = ensure(&installer, &record).await.unwrap();
-    // Another service process verifies the installation rather than trusting memory.
-    let third = ensure(&machine.installer(), &record).await.unwrap();
-    assert_eq!(first, second);
-    assert_eq!(first, third);
-    assert_eq!(server.requests(), 1);
-}
-
-#[tokio::test]
-async fn a_changed_installation_is_replaced() {
-    let machine = Machine::new();
-    let server = downloads(Duration::ZERO).await;
-    let record = served(&server, "2.1.278", BODY.len(), &sha256(BODY));
-    let installed = ensure(&machine.installer(), &record).await.unwrap();
-    let mut changed = BODY.to_vec();
-    changed[0] ^= 1;
-    std::fs::write(&installed.path, changed).unwrap();
-    ensure(&machine.installer(), &record).await.unwrap();
-    assert_eq!(std::fs::read(&installed.path).unwrap(), BODY);
-    assert_eq!(server.requests(), 2);
-}
-
-#[tokio::test]
-async fn a_wrong_digest_installs_nothing() {
-    let machine = Machine::new();
-    let server = downloads(Duration::ZERO).await;
-    let record = served(
-        &server,
-        "2.1.278",
-        BODY.len(),
-        &sha256(b"another executable"),
-    );
-    let error = ensure(&machine.installer(), &record).await.unwrap_err();
-    assert_eq!(
-        error.code().map(|code| code.to_string()).as_deref(),
-        Some("verification_failed")
-    );
-    assert!(error.to_string().contains("2.1.278"), "{error}");
-    assert!(error.to_string().contains("127.0.0.1"), "{error}");
-    assert!(machine.home_directories().is_empty());
-}
-
-#[tokio::test]
-async fn a_body_longer_than_its_size_installs_nothing() {
-    let machine = Machine::new();
-    let server = downloads(Duration::ZERO).await;
-    let declared = &BODY[..BODY.len() - 1];
-    let record = served(&server, "2.1.278", declared.len(), &sha256(declared));
-    let error = ensure(&machine.installer(), &record).await.unwrap_err();
-    assert_eq!(
-        error.code().map(|code| code.to_string()).as_deref(),
-        Some("verification_failed")
-    );
-    assert!(machine.home_directories().is_empty());
-}
-
-#[tokio::test]
-async fn a_body_shorter_than_its_size_installs_nothing() {
-    let machine = Machine::new();
-    let server = downloads(Duration::ZERO).await;
-    let record = served(&server, "2.1.278", BODY.len() + 1, &sha256(BODY));
-    let error = ensure(&machine.installer(), &record).await.unwrap_err();
-    assert_eq!(
-        error.code().map(|code| code.to_string()).as_deref(),
-        Some("verification_failed")
-    );
-    assert!(machine.home_directories().is_empty());
-}
-
-#[tokio::test]
-async fn a_record_without_this_platform_is_unsupported() {
-    let machine = Machine::new();
-    let server = downloads(Duration::ZERO).await;
-    let record = record(
-        "2.1.278",
-        "plan9-mips",
-        &server.url("/claude"),
-        BODY.len(),
-        &sha256(BODY),
-    );
-    let error = ensure(&machine.installer(), &record).await.unwrap_err();
-    assert_eq!(
-        error.code().map(|code| code.to_string()).as_deref(),
-        Some("unsupported_platform")
-    );
-    assert!(
-        error.to_string().contains(platform::current().unwrap()),
-        "{error}"
-    );
-    assert_eq!(server.requests(), 0);
-}
-
-#[tokio::test]
-async fn a_new_version_removes_the_old_one() {
-    let machine = Machine::new();
-    let server = downloads(Duration::ZERO).await;
-    let installer = machine.installer();
-    ensure(
-        &installer,
-        &served(&server, "2.1.277", BODY.len(), &sha256(BODY)),
-    )
-    .await
-    .unwrap();
-    ensure(
-        &installer,
-        &served(&server, "2.1.278", BODY.len(), &sha256(BODY)),
-    )
-    .await
-    .unwrap();
-    assert_eq!(machine.home_directories(), ["2.1.278"]);
-}
-
-#[tokio::test]
-async fn a_preinstalled_version_is_used_without_downloading() {
-    let machine = Machine::new();
-    let server = downloads(Duration::ZERO).await;
-    preinstall(&machine.image, "2.1.278", BODY);
-    let installed = ensure(
-        &machine.installer(),
-        &served(&server, "2.1.278", BODY.len(), &sha256(BODY)),
-    )
-    .await
-    .unwrap();
-    assert_eq!(installed.path, machine.image.join("2.1.278").join(BINARY));
-    assert_eq!(server.requests(), 0);
-    assert!(machine.home_directories().is_empty());
-}
-
-#[tokio::test]
-async fn a_mismatching_preinstalled_version_is_ignored_and_kept() {
-    let machine = Machine::new();
-    let server = downloads(Duration::ZERO).await;
-    preinstall(
-        &machine.image,
-        "2.1.278",
-        b"an older build of the same version",
-    );
-    let installed = ensure(
-        &machine.installer(),
-        &served(&server, "2.1.278", BODY.len(), &sha256(BODY)),
-    )
-    .await
-    .unwrap();
-    assert_eq!(installed.path, machine.home.join("2.1.278").join(BINARY));
-    assert_eq!(
-        std::fs::read(machine.image.join("2.1.278").join(BINARY)).unwrap(),
-        b"an older build of the same version"
-    );
-}
-
-/// Three ensures of one version at once, two in one installer as two
-/// invocations of a service and one in another as another process, wait for
-/// an installer that holds the version's lock; once it lets go, one of them
-/// downloads and the others find its installation.
-#[tokio::test(flavor = "multi_thread")]
-async fn concurrent_ensures_download_once() {
-    let machine = Machine::new();
-    let server = downloads(Duration::ZERO).await;
-    let record = served(&server, "2.1.278", BODY.len(), &sha256(BODY));
-    std::fs::create_dir_all(&machine.home).unwrap();
-    let held = InstallLock::acquire(
-        &machine.home.join("2.1.278.lock"),
-        &CancellationToken::new(),
-    )
-    .await
-    .unwrap();
-    let waits = lock_waits();
-    let (service, process) = (machine.installer(), machine.installer());
-    let ((first, second, third), ()) = tokio::join!(
-        async {
-            tokio::join!(
-                ensure(&service, &record),
-                ensure(&service, &record),
-                ensure(&process, &record),
-            )
-        },
-        async {
-            until("the ensures wait for the lock", || {
-                lock_waits() >= waits + 3
-            })
-            .await;
-            drop(held);
-        },
-    );
-    assert_eq!(first.unwrap(), second.unwrap());
-    assert_eq!(third.unwrap().version, "2.1.278");
-    assert_eq!(server.requests(), 1);
-    assert_eq!(machine.home_directories(), ["2.1.278"]);
-}
-
-/// The server holds its answer: the download is under way when the test
-/// cancels it.
-#[tokio::test]
-async fn cancellation_stops_a_download_and_installs_nothing() {
-    let machine = Machine::new();
-    let server = downloads(Duration::from_secs(30)).await;
-    let installer = machine.installer();
-    let release = installer
-        .release(&served(&server, "2.1.278", BODY.len(), &sha256(BODY)))
-        .unwrap();
-    let cancel = CancellationToken::new();
-    let canceller = cancel.clone();
-    let requested = until("the download starts", || server.requests() == 1);
-    let stopped = tokio::time::timeout(Duration::from_secs(10), async {
-        tokio::join!(installer.ensure(&release, &cancel), async {
-            requested.await;
-            canceller.cancel();
-        })
+async fn ensure_asks_the_runner_for_this_machine_s_executable() {
+    let asked = Arc::new(Mutex::new(Vec::new()));
+    let seen = asked.clone();
+    let artifacts = artifacts_from(move |ask| {
+        seen.lock().unwrap().push(ask);
+        Ok(ArtifactReply::Path("/cache/claude".into()))
     });
-    let (ensured, ()) = stopped.await.expect("cancellation stops the download");
-    assert!(matches!(ensured.unwrap_err(), EnsureError::Cancelled));
-    assert!(machine.home_directories().is_empty());
+    let platform = platform::current().unwrap();
+    let release = install::release(&record("2.1.278", platform)).unwrap();
+    let installed = install::ensure(&artifacts, "invocation", &release)
+        .await
+        .unwrap();
+    assert_eq!(
+        (installed.version.as_str(), installed.path.to_str().unwrap()),
+        ("2.1.278", "/cache/claude")
+    );
+    let asked = asked.lock().unwrap();
+    let [ArtifactAsk::Install(install)] = asked.as_slice() else {
+        panic!("one install asked: {asked:?}");
+    };
+    assert_eq!(
+        (
+            install.invocation.as_str(),
+            install.name.as_str(),
+            install.version.as_str(),
+            install.sha256.as_str(),
+            install.size,
+            &install.form,
+        ),
+        (
+            "invocation",
+            install::NAME,
+            "2.1.278",
+            sha256(b"claude").as_str(),
+            6,
+            &ArtifactForm::File,
+        )
+    );
+}
+
+/// A release without this machine's platform is unsupported and asks the
+/// runner nothing; an install the runner could not make fails with its
+/// reason.
+#[tokio::test]
+async fn an_unsupported_platform_asks_nothing_and_a_runner_failure_is_an_install_failure() {
+    let asked = Arc::new(Mutex::new(0));
+    let counted = asked.clone();
+    let artifacts = artifacts_from(move |_| {
+        *counted.lock().unwrap() += 1;
+        Err("the download failed".into())
+    });
+    let elsewhere = install::release(&record("2.1.278", "other-platform")).unwrap();
+    let refused = install::ensure(&artifacts, "invocation", &elsewhere).await;
+    assert!(
+        matches!(refused, Err(EnsureError::UnsupportedPlatform(_))),
+        "{refused:?}"
+    );
+    assert_eq!(*asked.lock().unwrap(), 0);
+    let release = install::release(&record("2.1.278", platform::current().unwrap())).unwrap();
+    let failed = install::ensure(&artifacts, "invocation", &release).await;
+    let Err(error @ EnsureError::InstallFailed(_)) = failed else {
+        panic!("{failed:?}");
+    };
+    assert!(error.to_string().contains("the download failed"), "{error}");
+}
+
+/// `status` answers the versions the runner has of the line, in its order.
+#[tokio::test]
+async fn status_answers_the_runner_s_versions() {
+    let artifacts = artifacts_from(|ask| {
+        let ArtifactAsk::Installed(question) = ask else {
+            return Err("only a question".into());
+        };
+        assert_eq!(question.name, install::NAME);
+        let installed = |version: &str| InstalledArtifact {
+            version: version.into(),
+            sha256: sha256(version.as_bytes()),
+            path: format!("/cache/{version}"),
+        };
+        Ok(ArtifactReply::Installed(vec![
+            installed("2.1.278"),
+            installed("2.1.10"),
+        ]))
+    });
+    let status = install::status(&artifacts).await.unwrap();
+    assert_eq!(status.platform, platform::current().unwrap());
+    let versions: Vec<&str> = status
+        .installed
+        .iter()
+        .map(|installed| installed.version.as_str())
+        .collect();
+    assert_eq!(versions, ["2.1.278", "2.1.10"]);
 }
 
 #[test]
 fn malformed_records_are_invalid() {
-    let installer = Installer::default();
-    let digest = sha256(BODY);
+    let digest = sha256(b"claude");
     let artifact =
         json!({ "url": "https://downloads.claude.ai/claude", "size": 1, "sha256": digest });
     let invalid = [
@@ -414,9 +144,7 @@ fn malformed_records_are_invalid() {
         json!({ "version": "2.1.278", "platforms": { "linux-x64": { "url": "https://downloads.claude.ai/claude", "size": 1, "sha256": digest.to_uppercase() } } }),
     ];
     for record in invalid {
-        let error = installer
-            .release(record.to_string().as_bytes())
-            .unwrap_err();
+        let error = install::release(record.to_string().as_bytes()).unwrap_err();
         assert_eq!(
             error.code().map(|code| code.to_string()).as_deref(),
             Some("invalid_release"),
@@ -437,20 +165,18 @@ fn malformed_records_are_invalid() {
         " 2.1.278",
     ] {
         let record = json!({ "version": version, "platforms": { "linux-x64": artifact } });
-        let error = installer
-            .release(record.to_string().as_bytes())
-            .unwrap_err();
+        let error = install::release(record.to_string().as_bytes()).unwrap_err();
         assert_eq!(
             error.code().map(|code| code.to_string()).as_deref(),
             Some("invalid_release"),
             "{version:?}"
         );
     }
-    assert!(installer.release(b"{").is_err());
+    assert!(install::release(b"{").is_err());
     for version in ["2.1.278", "0.0.0", "10.20.30-beta.1", "1.0.0-rc-1"] {
         let record = json!({ "version": version, "platforms": { "linux-x64": artifact } });
         assert!(
-            installer.release(record.to_string().as_bytes()).is_ok(),
+            install::release(record.to_string().as_bytes()).is_ok(),
             "{version}"
         );
     }
@@ -495,42 +221,4 @@ fn the_platform_key_follows_the_machine() {
     assert_eq!(platform_key("macos", "arm", musl), None);
     assert_eq!(platform_key("linux", "riscv64", glibc), None);
     assert_eq!(platform_key("freebsd", "x86_64", none), None);
-}
-
-#[tokio::test]
-async fn status_lists_installations_newest_first() {
-    let machine = Machine::new();
-    preinstall(&machine.home, "2.1.9", BODY);
-    preinstall(&machine.home, "2.1.278", BODY);
-    preinstall(&machine.home, "2.1.278-beta.1", BODY);
-    preinstall(&machine.image, "2.1.10", BODY);
-    // Not installations: no receipt, no executable, a receipt of another version, a stray name.
-    std::fs::create_dir_all(machine.home.join("3.0.0")).unwrap();
-    std::fs::write(machine.home.join("3.0.0").join(BINARY), BODY).unwrap();
-    preinstall(&machine.home, "3.0.1", BODY);
-    std::fs::remove_file(machine.home.join("3.0.1").join(BINARY)).unwrap();
-    preinstall(&machine.home, "3.0.2", BODY);
-    std::fs::rename(machine.home.join("3.0.2"), machine.home.join("3.0.3")).unwrap();
-    preinstall(&machine.home, "install-abc", BODY);
-    std::fs::write(machine.home.join("2.1.278.lock"), b"").unwrap();
-
-    let status = machine.installer().status().await.unwrap();
-    assert_eq!(status.platform, platform::current().unwrap());
-    let installed: Vec<(&str, PathBuf)> = status
-        .installed
-        .iter()
-        .map(|installed| (installed.version.as_str(), installed.path.clone()))
-        .collect();
-    assert_eq!(
-        installed,
-        [
-            ("2.1.278", machine.home.join("2.1.278").join(BINARY)),
-            (
-                "2.1.278-beta.1",
-                machine.home.join("2.1.278-beta.1").join(BINARY)
-            ),
-            ("2.1.10", machine.image.join("2.1.10").join(BINARY)),
-            ("2.1.9", machine.home.join("2.1.9").join(BINARY)),
-        ]
-    );
 }

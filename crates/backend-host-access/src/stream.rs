@@ -273,6 +273,7 @@ impl dyn HostShard + '_ {
             json: args.map(|_| true),
             cwd: host.root.clone(),
             resolver: self.native().resolver(self.public_url()),
+            attached: Vec::new(),
         })
     }
 

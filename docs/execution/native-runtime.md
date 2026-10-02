@@ -289,7 +289,9 @@ receipt naming the archive's SHA-256, and a mismatch fails the install
 rather than being repaired. Hashing the entry again would make every service
 start read the whole executable or archive.
 
-Beside each entry the cache records its line and version. Once an artifact is
+Beside each entry the cache records its line and version, and it records an
+[image copy](#preinstalled-artifacts) it used the same way, without copying
+it, so `installed` can name both. Once an artifact is
 installed, the runner removes the other artifacts of its line, except those a
 running service of this runner holds: the service's own executable and what
 it was given through its artifacts stream. Those go at a later install of the

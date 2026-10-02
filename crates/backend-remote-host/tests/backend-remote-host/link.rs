@@ -26,7 +26,7 @@ use demi_host_interface::{
     testing::{CountingNumbers, TestPages, test_command_context},
 };
 use demi_runner_protocol::wire::{
-    ArtifactOwner, FsOk, FsResult, Inbound, Install, InstallArtifact, InstallPhase, JOB_VIEW_BYTES,
+    ArtifactOwner, FsOk, FsResult, Inbound, Install, InstallPhase, JOB_VIEW_BYTES,
     JobArtifactOwner, JobFileChange, KeptRecord, Outbound, OutputLengths, OutputStream,
     STDIN_CHUNK_BYTES, Signal, VolumeName, WireBytes, encode_record,
 };
@@ -668,9 +668,8 @@ async fn a_runner_s_installs_are_its_connection_s_last_list() {
     let mut watched = link.link().watch_installs();
     let install = Install {
         package: "demi.browser".into(),
-        artifact: InstallArtifact::Resource {
-            title: "Chrome for Testing 153.0.8010.36".into(),
-        },
+        name: "Chrome for Testing".into(),
+        version: "153.0.8010.36".into(),
         phase: InstallPhase::Download,
         done: 40,
         total: 196,
