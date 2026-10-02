@@ -145,14 +145,19 @@ func startChrome(ctx context.Context, command *exec.Cmd, directories *environmen
 	}
 	command.Stderr = writer
 	endpoint := make(chan string, 1)
+	refused := make(chan struct{})
 	drained := make(chan struct{})
 	go func() {
 		defer close(drained)
 		scan := bufio.NewReader(reader)
 		for {
 			line, readErr := scan.ReadString('\n')
-			if readErr != nil {
-				return
+			if strings.Contains(line, "Running as root without --no-sandbox is not supported") {
+				select {
+				case <-refused:
+				default:
+					close(refused)
+				}
 			}
 			line = strings.TrimSpace(line)
 			if address, ok := strings.CutPrefix(line, "DevTools listening on "); ok {
@@ -160,6 +165,9 @@ func startChrome(ctx context.Context, command *exec.Cmd, directories *environmen
 				case endpoint <- address:
 				default:
 				}
+			}
+			if readErr != nil {
+				return
 			}
 		}
 	}()
@@ -179,8 +187,24 @@ func startChrome(ctx context.Context, command *exec.Cmd, directories *environmen
 	select {
 	case address := <-endpoint:
 		return process, address, stopLogs, nil
+	case <-refused:
+		err = &cdp.BrowserError{Kind: cdp.KindRoot}
 	case <-process.done:
-		err = &cdp.BrowserError{Kind: cdp.KindUnavailable, Message: "Chrome exited before its debugging endpoint was ready", Cause: process.waitErr}
+		// Exit may become ready before the stderr reader runs. Preserve the
+		// refusal already in the pipe, using the existing startup deadline.
+		select {
+		case <-refused:
+			return process, "", stopLogs, &cdp.BrowserError{Kind: cdp.KindRoot}
+		case <-drained:
+		case <-bounded.Done():
+			return process, "", stopLogs, bounded.Err()
+		}
+		select {
+		case <-refused:
+			err = &cdp.BrowserError{Kind: cdp.KindRoot}
+		default:
+			err = &cdp.BrowserError{Kind: cdp.KindUnavailable, Message: "Chrome exited before its debugging endpoint was ready", Cause: process.waitErr}
+		}
 	case <-bounded.Done():
 		err = bounded.Err()
 	}
