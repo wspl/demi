@@ -59,6 +59,9 @@ func (v ASecond) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func DecodeArtifactLocation(data []byte) (ArtifactLocation, error) {
+	if err := contract.CheckJSON(data); err != nil {
+		return nil, err
+	}
 	if value, err := contract.Decode[ArtifactURL](data); err == nil {
 		return &value, nil
 	}
@@ -106,6 +109,9 @@ func contractValidateArtifactLocation(value ArtifactLocation, depth int) error {
 	}
 }
 func DecodeArtifactOwner(data []byte) (ArtifactOwner, error) {
+	if err := contract.CheckJSON(data); err != nil {
+		return nil, err
+	}
 	if value, err := contract.Decode[JobArtifactOwner](data); err == nil {
 		return &value, nil
 	}
@@ -1712,6 +1718,9 @@ func (v LocationFrame) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func DecodeNode(data []byte) (Node, error) {
+	if err := contract.CheckJSON(data); err != nil {
+		return nil, err
+	}
 	if value, err := contract.Decode[Group](data); err == nil {
 		return &value, nil
 	}
@@ -1757,6 +1766,9 @@ func contractValidateNode(value Node, depth int) error {
 	}
 }
 func DecodeOrdered(data []byte) (Ordered, error) {
+	if err := contract.CheckJSON(data); err != nil {
+		return nil, err
+	}
 	if value, err := contract.Decode[ZFirst](data); err == nil {
 		return &value, nil
 	}

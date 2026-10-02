@@ -24,6 +24,9 @@ func (g *generator) msgDecoder(t types.Type) string {
 		if isPointer(t.Elem()) {
 			nullable = "true"
 		}
+		if !types.Identical(t.Key(), types.Typ[types.String]) {
+			return "func(b []byte)(" + g.typeName(t) + ",error){return contract.MsgpackKeyedRecord[" + g.typeName(t.Key()) + "](b," + g.msgDecoder(t.Elem()) + "," + nullable + ")}"
+		}
 		return "func(b []byte)(" + g.typeName(t) + ",error){return contract.MsgpackRecord(b," + g.msgDecoder(t.Elem()) + "," + nullable + ")}"
 	case *types.Named:
 		if _, ok := t.Underlying().(*types.Interface); ok {

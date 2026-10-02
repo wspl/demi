@@ -159,11 +159,16 @@ func MsgpackList[T any](data []byte, decode func([]byte) (T, error)) ([]T, error
 
 // MsgpackRecord checks every string key and nullable record value.
 func MsgpackRecord[T any](data []byte, decode func([]byte) (T, error), nullable bool) (map[string]T, error) {
+	return MsgpackKeyedRecord[string](data, decode, nullable)
+}
+
+// MsgpackKeyedRecord retains named string keys for generated key validation.
+func MsgpackKeyedRecord[K ~string, T any](data []byte, decode func([]byte) (T, error), nullable bool) (map[K]T, error) {
 	raw, err := MsgpackObject(data)
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string]T, len(raw))
+	out := make(map[K]T, len(raw))
 	for key, item := range raw {
 		var value T
 		if !nullable || !MsgpackNull(item) {
@@ -172,7 +177,7 @@ func MsgpackRecord[T any](data []byte, decode func([]byte) (T, error), nullable 
 				return nil, At(key, err)
 			}
 		}
-		out[key] = value
+		out[K(key)] = value
 	}
 	return out, nil
 }

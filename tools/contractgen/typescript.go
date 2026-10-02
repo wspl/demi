@@ -8,8 +8,9 @@ import (
 	"strings"
 )
 
-// markReceived propagates tolerant web input through every reachable definition.
-func (g *generator) markReceived(name string) {
+// markReceived follows reachable contracts. MessagePack excludes keys because
+// map keys use string encoding rather than the named type's value codec.
+func (g *generator) markReceived(name string, includeKeys bool) {
 	if g.received[name] {
 		return
 	}
@@ -21,7 +22,7 @@ func (g *generator) markReceived(name string) {
 	}
 	if has(d.marks, "union") {
 		for _, v := range g.variants(name) {
-			g.markReceived(v.key)
+			g.markReceived(v.key, includeKeys)
 		}
 	}
 	var visit func(types.Type)
@@ -31,12 +32,15 @@ func (g *generator) markReceived(name string) {
 		}
 		switch t := t.(type) {
 		case *types.Named:
-			g.markReceived(typeKey(t))
+			g.markReceived(typeKey(t), includeKeys)
 		case *types.Pointer:
 			visit(t.Elem())
 		case *types.Slice:
 			visit(t.Elem())
 		case *types.Map:
+			if includeKeys {
+				visit(t.Key())
+			}
 			visit(t.Elem())
 		case *types.Struct:
 			for i := 0; i < t.NumFields(); i++ {
