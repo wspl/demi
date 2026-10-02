@@ -1994,7 +1994,7 @@ internal/providers/google -> internal/core, internal/provider, internal/contract
 internal/providers/codex -> internal/core, internal/provider, internal/contract
 internal/providers/grokbuild -> internal/core, internal/provider, internal/contract
 internal/providers/claudecode -> internal/core, internal/provider, internal/host, internal/contract
-internal/agent/store -> internal/framewire, internal/core, internal/provider, internal/host
+internal/agent/store -> internal/framewire, internal/core, internal/provider, internal/host, internal/contract
 internal/agent/transcript -> internal/framewire, internal/agent/store, internal/core, internal/provider
 internal/agent/session -> internal/framewire, internal/agent/store, internal/agent/transcript, internal/commandwire, internal/core, internal/gates, internal/provider, internal/host
 internal/agent/tools -> internal/framewire, internal/agent/session, internal/agent/store, internal/agent/transcript, internal/core, internal/provider, internal/host
