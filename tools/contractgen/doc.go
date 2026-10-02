@@ -78,8 +78,9 @@
 // Numeric format and representation keywords match schemars, without extra
 // limits on wide integers or floats. Timestamps emit date-time. Recursive
 // shapes use # for the root or $defs references for recursive subschemas.
-// Custom checks, normalized string formats, base64 rules and bytes remain
-// unsupported for schema roots (none occurs in the built-in command schemas).
+// Custom checks are Go-only and omitted from JSON Schema and Zod. Normalized
+// string formats, base64 rules and bytes remain unsupported for schema roots
+// (none occurs in the built-in command schemas).
 // Decoders additionally check JSON tokens, Unicode, Go widths and canonical
 // timestamps; a schema's format annotation does not carry those checks.
 //
