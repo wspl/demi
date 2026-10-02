@@ -23,6 +23,9 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	if os.Getenv("DEMI_STARTUP_PEER") != "" {
+		startupPeerMain()
+	}
 	code := programtest.Run(m)
 	if err := goleak.Find(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

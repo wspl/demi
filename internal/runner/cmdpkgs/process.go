@@ -175,8 +175,25 @@ func (r *ServiceRegistry) runService(life *serviceLife, descriptor commandwire.P
 		err = startErr
 	}
 	if err != nil {
+		// A connected startup has the same shutdown obligations as a ready
+		// service: it may already hold resources despite a bad catalog or
+		// an unanswered startup request. Keep its connection and stderr alive
+		// through the shutdown deadline; the finalizer kills only afterward.
+		exitedBeforeStop := false
+		select {
+		case <-exited:
+			reaped = true
+			exitedBeforeStop = true
+		default:
+		}
+		if client != nil && !reaped {
+			reaped = shutdownService(context.Background(), client, exited)
+		}
 		if life.stop.Err() != nil {
 			return &RuntimeError{Kind: Cancelled, Cause: life.stop.Err()}
+		}
+		if exitedBeforeStop {
+			return &ServiceExit{Service: descriptor.ID, Reason: ExitReason{Kind: ProcessExited}}
 		}
 		var runtimeErr *RuntimeError
 		if errors.As(err, &runtimeErr) {
@@ -185,12 +202,6 @@ func (r *ServiceRegistry) runService(life *serviceLife, descriptor commandwire.P
 		reason := ExitReason{Kind: ProtocolBroken, Detail: err.Error()}
 		if errors.Is(startErr, context.DeadlineExceeded) {
 			reason = ExitReason{Kind: StartupDeadline, Detail: "start"}
-		}
-		select {
-		case <-exited:
-			reaped = true
-			reason = ExitReason{Kind: ProcessExited}
-		default:
 		}
 		return &ServiceExit{Service: descriptor.ID, Reason: reason}
 	}
@@ -217,20 +228,7 @@ func (r *ServiceRegistry) runService(life *serviceLife, descriptor commandwire.P
 	r.mu.Unlock()
 	select {
 	case <-life.stop.Done():
-		shutdownctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
-		defer cancel()
-		requested := make(chan struct{})
-		go func() {
-			_ = client.Shutdown(shutdownctx)
-			close(requested)
-		}() // Exit, not the final HTTP frames, decides shutdown success.
-		select {
-		case <-exited:
-			reaped = true
-		case <-shutdownctx.Done():
-		}
-		cancel()
-		<-requested
+		reaped = shutdownService(context.Background(), client, exited)
 		return &RuntimeError{Kind: Stopped}
 	case <-exited:
 		reaped = true
@@ -302,4 +300,29 @@ func connectionLost(err error) bool {
 	var op *net.OpError
 	var path *os.PathError
 	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, net.ErrClosed) || errors.Is(err, os.ErrClosed) || errors.As(err, &op) || errors.As(err, &path)
+}
+
+// shutdownService asks a connected service to release its resources, giving the
+// request and process exit one shared six-second deadline, as the Rust owner does.
+// The caller keeps draining stderr, then kills and reaps if this returns false.
+func shutdownService(ctx context.Context, client *cmdsdk.Client, exited <-chan process.Exit) bool {
+	ctx, cancel := context.WithTimeout(ctx, 6*time.Second)
+	defer cancel()
+	requested := make(chan struct{})
+	go func() {
+		// A failed or answered request does not establish that the process exited.
+		// Keep the connection alive and wait for exit or the shared deadline.
+		_ = client.Shutdown(ctx)
+		close(requested)
+	}()
+	defer func() {
+		cancel()
+		<-requested
+	}()
+	select {
+	case <-exited:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
