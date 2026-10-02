@@ -1,0 +1,41 @@
+[package]
+name = "demi-plugin-skills"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+# One test binary, the integration tests' (`crates-and-packages.md`
+# § Module layout); no doc examples.
+test = false
+doctest = false
+bench = false
+
+[features]
+# Git repositories a test makes and a factory that fetches them.
+testing = []
+
+[dependencies]
+demi-plugin-interface = { path = "../plugin-interface" }
+demi-shared-types = { path = "../shared-types" }
+futures-util.workspace = true
+# The sources' shallow fetch over HTTPS, through the workspace's reqwest.
+gix = { version = "0.87", default-features = false, features = ["blocking-http-transport-reqwest-rust-tls", "sha1"] }
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# A SKILL.md's front matter.
+serde-saphyr = { version = "1", default-features = false, features = ["deserialize"] }
+sha2 = "0.10"
+tempfile = "3"
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+# The plugin runs through the JSON loopback over an in-memory Demi, and
+# fetches repositories the tests make.
+demi-plugin-interface = { path = "../plugin-interface", features = ["testing"] }
+demi-plugin-skills = { path = ".", features = ["testing"] }
+demi-web-api-protocol = { path = "../web-api-protocol" }
+tokio = { workspace = true, features = ["test-util"] }

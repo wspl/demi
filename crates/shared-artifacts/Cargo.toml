@@ -21,7 +21,7 @@ bytes.workspace = true
 futures-util.workspace = true
 # `zstd`: a command executable arrives in zstd content coding
 # (`native-runtime.md` § Publish artifacts before enabling commands).
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "zstd"] }
+reqwest = { workspace = true, features = ["rustls", "stream", "zstd"] }
 serde.workspace = true
 serde_json.workspace = true
 sha2 = "0.10"

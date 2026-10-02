@@ -42,7 +42,7 @@ use demi_web_api_protocol::ids::UserId;
 pub use self::failure_facts::failure_facts;
 pub use self::fork::{ForkRefusal, recover_forks};
 pub(crate) use self::product::ShardHosts;
-use self::product::{ExecutionContext, INSTRUCTIONS, ShardToolsets};
+use self::product::{ExecutionContext, INSTRUCTIONS, PluginContext, ShardToolsets};
 use self::providers::ConversationProviders;
 use self::titles::Titles;
 use self::wakeups::IndexedWakeup;
@@ -124,9 +124,7 @@ pub(crate) fn conversation_parts(
         hosts: Rc::new(ShardHosts {
             shard: shard.clone(),
         }),
-        context: Rc::new([Rc::new(ExecutionContext {
-            shard: shard.clone(),
-        }) as Rc<dyn ContextSource>]),
+        context: context_sources(&shard, &services),
         providers,
         shells: Rc::new(ShardShellEnvironments::new(
             hosts,
@@ -150,4 +148,24 @@ pub(crate) fn conversation_parts(
         }),
     });
     ConversationParts { agent, titles }
+}
+
+/// The context sources a node asks before each provider request, in order:
+/// the product's execution context, then each plugin that is one, in
+/// registration order.
+fn context_sources(shard: &Weak<Shard>, services: &Services) -> Rc<[Rc<dyn ContextSource>]> {
+    let execution = Rc::new(ExecutionContext {
+        shard: shard.clone(),
+    }) as Rc<dyn ContextSource>;
+    let plugins = services
+        .plugins
+        .context_sources()
+        .into_iter()
+        .map(|plugin| {
+            Rc::new(PluginContext {
+                shard: shard.clone(),
+                plugin,
+            }) as Rc<dyn ContextSource>
+        });
+    std::iter::once(execution).chain(plugins).collect()
 }

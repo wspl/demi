@@ -53,7 +53,7 @@ tokio = { workspace = true, features = ["test-util"] }
 # library never links one.
 demi-provider-openai-api = { path = "../provider-openai-api" }
 flate2 = "1"
-reqwest = { version = "0.12", default-features = false }
+reqwest.workspace = true
 
 [[example]]
 name = "compaction-fixture"

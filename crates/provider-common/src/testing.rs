@@ -481,13 +481,13 @@ impl MockVendor {
     pub async fn start_tls(certificate: &[u8], key: &[u8]) -> Self {
         use tokio_rustls::rustls::pki_types::pem::PemObject as _;
         use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
-        use tokio_rustls::rustls::{ServerConfig, crypto::ring};
+        use tokio_rustls::rustls::{ServerConfig, crypto::aws_lc_rs};
 
         let chain = CertificateDer::pem_slice_iter(certificate)
             .collect::<Result<Vec<_>, _>>()
             .expect("the vendor's certificate is PEM");
         let key = PrivateKeyDer::from_pem_slice(key).expect("the vendor's key is PEM");
-        let config = ServerConfig::builder_with_provider(Arc::new(ring::default_provider()))
+        let config = ServerConfig::builder_with_provider(Arc::new(aws_lc_rs::default_provider()))
             .with_safe_default_protocol_versions()
             .expect("ring offers the default protocol versions")
             .with_no_client_auth()

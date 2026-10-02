@@ -2,10 +2,12 @@
 //! host, § A user's plugins): an instance of every plugin, made when the
 //! shard starts; which of them the user has on, which decides the toolset a
 //! conversation's tree opens with and which page states, page calls and
-//! user streams exist; and the answers to their port operations. The plugin
-//! host answers values and changes itself; what reaches a conversation's
-//! Hosts or the user's exposes goes to the product, which owns the
-//! conversation's host access.
+//! user streams exist; the context sources among them; the Host directories
+//! of the plugins on; and the answers to their port operations. The plugin
+//! host answers values, directories and changes itself; what reaches the
+//! user's blobs, a conversation's Hosts or the user's exposes goes to the
+//! product, which owns the blob namespace and the conversation's host
+//! access.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -13,16 +15,18 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use demi_backend_database::StorageError;
+use demi_backend_database::blob_refs::OwnerBlobs;
 use demi_backend_database::control::ControlService;
+use demi_backend_database::plugin_values::{ValueWrite, Written};
 use demi_backend_page_sync::{Part, UserMarks};
 use demi_command_declarations::NativeOperation;
 use demi_host_interface::{CommandSet, GroupBuilder, PortError, RpcPort};
 use demi_plugin_interface::{
-    CallKind, ConversationHost, ExposeList, ExposeRecord, Plugin, PluginError, PluginPort,
-    PluginTransport, PortAnswer, PortFailure, PortMessage, PortRefusal, Reply, Request, Scope,
-    StoredValue,
+    CallKind, ConversationHost, DirectoryPath, ExposeList, ExposeRecord, HostDirectory, HostFile,
+    HostRead, Plugin, PluginError, PluginId, PluginPort, PluginTransport, PortAnswer, PortFailure,
+    PortMessage, PortRefusal, Reply, Request, Scope, StoredValue,
 };
-use demi_shared_types::Profile;
+use demi_shared_types::{B64Bytes, BlobRef, NodeId, Profile, TurnId};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, ExposeId, UserId};
 use demi_web_api_protocol::plugins::PluginEntry;
 use futures_util::future::LocalBoxFuture;
@@ -51,6 +55,24 @@ pub trait ProductPort {
         &'a self,
         conversation: &'a ConversationId,
     ) -> LocalBoxFuture<'a, Result<Vec<ConversationHost>, PortFailure>>;
+
+    /// Reads `reads` on the conversation's main Host in the form that never
+    /// wakes it; [`PortRefusal::NotRunning`] when it is not running.
+    fn read_host_files<'a>(
+        &'a self,
+        conversation: &'a ConversationId,
+        reads: Vec<HostRead>,
+        cancel: &'a CancellationToken,
+    ) -> LocalBoxFuture<'a, Result<Vec<HostFile>, PortFailure>>;
+
+    /// Stores `bytes` in the user's blob namespace.
+    fn put_blob(&self, bytes: B64Bytes) -> LocalBoxFuture<'_, Result<BlobRef, PortFailure>>;
+
+    fn get_blob(&self, blob: BlobRef) -> LocalBoxFuture<'_, Result<Option<B64Bytes>, PortFailure>>;
+
+    /// The record of the user's blob uses, which each write of a plugin
+    /// value or of a plugin's Host directories updates before it commits.
+    fn blob_uses(&self) -> Arc<dyn OwnerBlobs>;
 
     fn exposes(&self) -> LocalBoxFuture<'_, Result<ExposeList, PortFailure>>;
 
@@ -131,6 +153,9 @@ pub(crate) struct Shared {
     /// Cancelled when the user turns the plugin of its index off, which
     /// ends the plugin's open user streams.
     stream_ends: RefCell<Vec<CancellationToken>>,
+    /// Each plugin's Host directories for the user, by its index, once
+    /// read: every change goes through this shard.
+    directories: RefCell<Option<Vec<Vec<HostDirectory>>>>,
 }
 
 impl Shared {
@@ -157,6 +182,54 @@ impl Shared {
 
     fn plugin_id(&self, plugin: usize) -> String {
         self.registry.plugins[plugin].id().as_str().to_owned()
+    }
+
+    /// Each plugin's Host directories, by its index.
+    async fn directories(&self) -> Result<Vec<Vec<HostDirectory>>, StorageError> {
+        if let Some(directories) = &*self.directories.borrow() {
+            return Ok(directories.clone());
+        }
+        let mut stored = self.control.plugin_directories(self.user.clone()).await?;
+        let directories: Vec<Vec<HostDirectory>> = self
+            .registry
+            .plugins
+            .iter()
+            .map(|registered| stored.remove(registered.id().as_str()).unwrap_or_default())
+            .collect();
+        self.directories.replace(Some(directories.clone()));
+        Ok(directories)
+    }
+
+    /// Replaces plugin `plugin`'s Host directories and answers each one's
+    /// path on every Host.
+    async fn set_directories(
+        &self,
+        plugin: usize,
+        directories: Vec<HostDirectory>,
+    ) -> Result<Vec<DirectoryPath>, PortFailure> {
+        HostDirectory::check_set(&directories).map_err(PortError::Failed)?;
+        let mut current = self.directories().await.map_err(storage)?;
+        self.control
+            .set_plugin_directories(
+                self.user.clone(),
+                self.plugin_id(plugin),
+                directories.clone(),
+                self.product.blob_uses(),
+            )
+            .await
+            .map_err(storage)?
+            .map_err(|refused| PortError::Failed(refused.to_string()))?;
+        let id = self.registry.plugins[plugin].id();
+        let paths = directories
+            .iter()
+            .map(|directory| DirectoryPath {
+                name: directory.name.clone(),
+                path: directory.path(id),
+            })
+            .collect();
+        current[plugin] = directories;
+        self.directories.replace(Some(current));
+        Ok(paths)
     }
 }
 
@@ -194,6 +267,7 @@ impl UserPlugins {
             marks,
             enabled: RefCell::new(None),
             stream_ends: RefCell::new(stream_ends),
+            directories: RefCell::new(None),
         }))
     }
 
@@ -313,6 +387,61 @@ impl UserPlugins {
             .map(|(registered, _)| registered.id().as_str())
             .collect();
         ids.join(",")
+    }
+
+    /// Asks the context source `plugin` for a node's new context block;
+    /// nothing while the user has it off.
+    pub async fn context(
+        &self,
+        plugin: &PluginId,
+        asked: ContextAsk,
+        cancel: CancellationToken,
+    ) -> Result<Option<String>, PluginError> {
+        let Some((index, _)) = self.0.registry.plugin(plugin.as_str()) else {
+            return Ok(None);
+        };
+        let enabled = self.enabled().await.map_err(PluginError::failed)?;
+        if !enabled[index] {
+            return Ok(None);
+        }
+        let request = Request::Context {
+            user: self.0.user.clone(),
+            conversation: asked.conversation.clone(),
+            node: asked.node,
+            cwd: asked.cwd,
+            turn: asked.turn,
+            seen: asked.seen,
+        };
+        let reply = self
+            .0
+            .request(index, request, Some(asked.conversation), None, cancel)
+            .await?;
+        match reply {
+            Reply::Context { text } => Ok(text),
+            reply => Err(PluginError::failed(format!(
+                "the plugin answered a context request with {reply:?}"
+            ))),
+        }
+    }
+
+    /// Every plugin's Host directories for the user, which host access
+    /// installs before a job: a plugin the user has off has none, so a Host
+    /// loses its directories at its next installation.
+    pub async fn directories(&self) -> Result<Vec<(PluginId, Vec<HostDirectory>)>, StorageError> {
+        let enabled = self.enabled().await?;
+        let directories = self.0.directories().await?;
+        Ok(self
+            .0
+            .registry
+            .plugins
+            .iter()
+            .zip(directories)
+            .zip(enabled)
+            .map(|((registered, directories), enabled)| {
+                let set = if enabled { directories } else { Vec::new() };
+                (registered.id().clone(), set)
+            })
+            .collect())
     }
 
     /// What ends the user stream `name` once its plugin is turned off; none
@@ -435,6 +564,19 @@ fn has_state(registered: &crate::registry::Registered) -> bool {
         .is_some_and(|page| page.state.is_some())
 }
 
+/// What a node gives a context source before a provider request.
+pub struct ContextAsk {
+    pub conversation: ConversationId,
+    pub node: NodeId,
+    /// The node's working directory.
+    pub cwd: String,
+    /// The node's current input turn.
+    pub turn: TurnId,
+    /// The text of the source's own blocks the model receives, oldest
+    /// first.
+    pub seen: Vec<String>,
+}
+
 /// One request's port: the call's rpc port for a command, the user's
 /// values and pages, and the product's operations for the request's
 /// conversation.
@@ -490,21 +632,63 @@ impl RequestPort {
                 key,
                 value,
                 revision,
+                blobs,
             } => {
+                let write = ValueWrite {
+                    user: shared.user.clone(),
+                    plugin: shared.plugin_id(self.plugin),
+                    key,
+                    document: value,
+                    revision,
+                    blobs,
+                };
                 let written = shared
                     .control
-                    .write_plugin_value(
+                    .write_plugin_value(write, product.blob_uses())
+                    .await
+                    .map_err(storage)?;
+                match written {
+                    Written::Revision(revision) => PortAnswer::Written { revision },
+                    Written::Conflict => return Err(PortFailure::Refused(PortRefusal::Conflict)),
+                    Written::Refused(refused) => {
+                        return Err(PortError::Failed(refused.to_string()).into());
+                    }
+                }
+            }
+            PortMessage::RemoveValue { key, revision } => {
+                let removed = shared
+                    .control
+                    .remove_plugin_value(
                         shared.user.clone(),
                         shared.plugin_id(self.plugin),
                         key,
-                        value,
                         revision,
+                        product.blob_uses(),
                     )
                     .await
                     .map_err(storage)?;
-                let revision = written.ok_or(PortFailure::Refused(PortRefusal::Conflict))?;
-                PortAnswer::Written { revision }
+                match removed {
+                    Written::Revision(_) => PortAnswer::Done,
+                    Written::Conflict => return Err(PortFailure::Refused(PortRefusal::Conflict)),
+                    Written::Refused(refused) => {
+                        return Err(PortError::Failed(refused.to_string()).into());
+                    }
+                }
             }
+            PortMessage::PutBlob { bytes } => PortAnswer::Blob {
+                blob: product.put_blob(bytes).await?,
+            },
+            PortMessage::GetBlob { blob } => PortAnswer::Bytes {
+                bytes: product.get_blob(blob).await?,
+            },
+            PortMessage::SetDirectories { directories } => PortAnswer::Directories {
+                paths: shared.set_directories(self.plugin, directories).await?,
+            },
+            PortMessage::ReadHostFiles { reads } => PortAnswer::HostFiles {
+                files: product
+                    .read_host_files(self.conversation()?, reads, &self.cancel)
+                    .await?,
+            },
             PortMessage::Changed => {
                 shared
                     .marks

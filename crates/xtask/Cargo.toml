@@ -28,7 +28,7 @@ garde.workspace = true
 process-wrap.workspace = true
 # Plain HTTP to the backend `xtask dev` starts; the one Cargo selection
 # builds it with the features the backend gives it.
-reqwest = { version = "0.12", default-features = false }
+reqwest.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true

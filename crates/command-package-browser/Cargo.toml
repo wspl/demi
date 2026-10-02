@@ -39,7 +39,7 @@ demi-command-package-browser-chrome = { path = "../command-package-browser-chrom
 demi-command-sdk = { path = "../command-sdk", features = ["testing"] }
 regex = "1"
 # The repair tests fetch from their fixture site.
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+reqwest = { workspace = true, features = ["rustls", "stream"] }
 tempfile = "3"
 url = "2"
 uuid = { version = "1", features = ["v4"] }

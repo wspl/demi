@@ -64,6 +64,16 @@ impl Registry {
     /// The registry of `factories`, in their order. What binds an operation
     /// `serves` refuses is left out, and logged; a manifest that breaks a
     /// rule stops the start.
+    /// The plugins that are context sources, in registration order, which
+    /// a node asks before each provider request while its user has them on.
+    pub fn context_sources(&self) -> Vec<PluginId> {
+        self.plugins
+            .iter()
+            .filter(|registered| registered.factory.manifest().context)
+            .map(|registered| registered.id().clone())
+            .collect()
+    }
+
     pub fn new(
         factories: Vec<Box<dyn PluginFactory>>,
         serves: impl Fn(&NativeOperation) -> bool,

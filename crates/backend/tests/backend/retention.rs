@@ -11,16 +11,19 @@
 //! is an Anthropic endpoint the test scripts.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use demi_agent_tools::testing::field;
 use demi_backend_blobs::counting::ObjectCounts;
 use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
+use demi_plugin_skills::testing::{Repos, skill_md};
 use demi_provider_common::testing::MockVendor;
 use demi_shared_types::{
     Block, GoneCause, ModelMediaKind, Timestamp, ToolMediaSource, ToolResultContentBlock,
     UserContentBlock,
 };
+use demi_web_api_protocol::state::SyncEvent;
 use jiff::SignedDuration;
 use reqwest::StatusCode;
 use serde_json::json;
@@ -159,10 +162,31 @@ async fn a_collection_deletes_an_unreferenced_blob_past_the_grace_and_nothing_wh
  {
     let counts = ObjectCounts::default();
     let vendor = MockVendor::start().await;
-    let harness = Harness::new().with_object_counts(&counts);
+    let repos = Arc::new(Repos::new());
+    let skill = skill_md("name: review\ndescription: Review a change.");
+    repos.commit("acme/tools", &[("review/SKILL.md", &skill, false)]);
+    let harness = Harness::new()
+        .with_object_counts(&counts)
+        .with_skill_repos(&repos);
     harness.clock.follow_system();
     let (backend, master) = harness.start_set_up().await;
     let (mut socket, root, _device) = open_on_device(&harness, &backend, &master, &vendor).await;
+    // A skill source, whose value names its files' blobs.
+    let mut page = backend.sync(&master).await;
+    page.snapshot().await;
+    let added = backend
+        .post(
+            "/api/plugins/skills/calls/add_source",
+            Some(&master),
+            json!({ "origin": "acme/tools" }),
+        )
+        .await;
+    assert_eq!(added.status, StatusCode::OK);
+    page.until(|event| {
+        matches!(event, SyncEvent::Plugin { plugin, state }
+            if plugin == "skills" && state["sources"][0]["commit"].is_string())
+    })
+    .await;
     // A block references a tool's screenshot, and another the copies of a
     // file its command created: the empty file before and the note after.
     std::fs::write(format!("{root}/shot.png"), png(1)).unwrap();
@@ -195,11 +219,18 @@ async fn a_collection_deletes_an_unreferenced_blob_past_the_grace_and_nothing_wh
         DAY + SignedDuration::from_hours(1),
     );
     let recent = orphan(&harness, &master, &png(5), SignedDuration::from_hours(1));
-    let kept: Vec<PathBuf> = [png(1), png(2), png(3), Vec::new(), b"noted\n".to_vec()]
-        .iter()
-        .map(|bytes| blob_path(&harness, &master, bytes))
-        .chain([recent])
-        .collect();
+    let kept: Vec<PathBuf> = [
+        png(1),
+        png(2),
+        png(3),
+        Vec::new(),
+        b"noted\n".to_vec(),
+        skill.as_bytes().to_vec(),
+    ]
+    .iter()
+    .map(|bytes| blob_path(&harness, &master, bytes))
+    .chain([recent])
+    .collect();
 
     // The other conversation's database cannot be read, so the collection
     // deletes nothing.

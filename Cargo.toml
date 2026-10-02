@@ -28,6 +28,7 @@ members = [
   "crates/plugin-interface",
   "crates/plugin-todo",
   "crates/plugin-file",
+  "crates/plugin-skills",
   "crates/plugin-browser",
   "crates/plugin-expose",
   "crates/backend-plugins",
@@ -83,6 +84,10 @@ serde_json = { version = "1", features = ["preserve_order"] }
 serde_plain = "1"
 serde_with = { version = "3", default-features = false }
 thiserror = "2"
+# One reqwest for the workspace and gix's HTTP transport; its `rustls` TLS
+# uses aws-lc-rs, the one rustls provider the workspace builds.
+reqwest = { version = "0.13", default-features = false }
+object_store = { version = "0.14", default-features = false }
 process-wrap = { version = "10", default-features = false, features = ["tokio1", "process-group", "job-object", "kill-on-drop"] }
 tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["io", "rt"] }

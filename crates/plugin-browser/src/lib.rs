@@ -89,9 +89,8 @@ impl Plugin for Instance {
                     let result = page::call(&method, params, &port).await?;
                     Ok(Reply::Result { result })
                 }
-                Request::PageState { .. } => {
-                    Err(PluginError::failed("the browser has no page state"))
-                }
+                Request::PageState { .. } => Err(PluginError::undeclared("page state")),
+                Request::Context { .. } => Err(PluginError::undeclared("context source")),
             }
         })
     }

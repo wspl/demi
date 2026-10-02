@@ -153,9 +153,13 @@ impl Build<'_> {
             ("MACOSX_DEPLOYMENT_TARGET", MACOS_MINIMUM),
         ];
         if windows(target) {
-            // ring selects clang for Windows arm64: keep cargo-xwin's MSVC
-            // driver dialect, with its SDK include flags, and optimization.
+            // aws-lc-sys, rustls's provider, compiles C with cargo-xwin's
+            // clang: keep its MSVC driver dialect, with its SDK include
+            // flags, and optimization.
             pins.push(("CFLAGS", "--driver-mode=cl /O2"));
+            // Its x86-64 assembly needs NASM, which the cross tools lack;
+            // the crate's prebuilt NASM objects take its place.
+            pins.push(("AWS_LC_SYS_PREBUILT_NASM", "1"));
         }
         pins
     }

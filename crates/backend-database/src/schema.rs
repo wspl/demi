@@ -144,14 +144,28 @@ CREATE TABLE user_plugins (
 ) STRICT, WITHOUT ROWID;
 
 -- Each plugin's values for a user (`plugins.md` § The contract): a JSON
--- document its plugin decodes, and the revision a conditional write names.
+-- document its plugin decodes, the revision a conditional write names, and
+-- the blobs the value names, a JSON array of their SHA-256s.
 CREATE TABLE plugin_values (
   user_id  TEXT NOT NULL REFERENCES users (id),
   plugin   TEXT NOT NULL,
   key      TEXT NOT NULL,
   document TEXT NOT NULL,
   revision INTEGER NOT NULL CHECK (revision >= 1),
+  blobs    TEXT NOT NULL,
   PRIMARY KEY (user_id, plugin, key)
+) STRICT, WITHOUT ROWID;
+
+-- Each plugin's Host directories for a user (`plugins.md` § Host
+-- directories): the directory's name, its digest and its files, a JSON
+-- array of each file's path, whether it is executable and its SHA-256.
+CREATE TABLE plugin_directories (
+  user_id TEXT NOT NULL REFERENCES users (id),
+  plugin  TEXT NOT NULL,
+  name    TEXT NOT NULL,
+  digest  TEXT NOT NULL,
+  files   TEXT NOT NULL,
+  PRIMARY KEY (user_id, plugin, name)
 ) STRICT, WITHOUT ROWID;
 
 -- The conversation index. The web app chooses a conversation's id and its

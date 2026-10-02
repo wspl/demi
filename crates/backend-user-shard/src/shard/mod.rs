@@ -49,6 +49,7 @@ use crate::conversation::{self, ConversationParts, ShardHosts};
 use crate::lifecycle::conversations::ConversationWatches;
 use crate::services::Services;
 use demi_backend_host_access::access::Conversations;
+use demi_backend_host_access::plugin_files::PluginInstalls;
 
 /// Where the shards run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -110,6 +111,8 @@ pub struct Shard {
     exposes: Exposes,
     /// An instance of every plugin for the user.
     plugins: UserPlugins,
+    /// What the shard remembers of its Hosts' plugin directories.
+    plugin_installs: PluginInstalls,
 }
 
 impl Shard {
@@ -161,6 +164,7 @@ impl Shard {
             claude_cli: ClaudeCli::default(),
             exposes: Exposes::default(),
             plugins,
+            plugin_installs: PluginInstalls::default(),
         }
     }
 

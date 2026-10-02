@@ -145,8 +145,9 @@ impl Plugin for CommandPlugin {
             match request {
                 Request::Command { invocation, .. } => self.command(*invocation, &port).await,
                 Request::PageState { .. } | Request::PageCall { .. } => {
-                    Err(PluginError::failed("the plugin has no page"))
+                    Err(PluginError::undeclared("page"))
                 }
+                Request::Context { .. } => Err(PluginError::undeclared("context source")),
             }
         })
     }

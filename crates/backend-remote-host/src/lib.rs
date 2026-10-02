@@ -27,7 +27,7 @@ pub mod testing;
 
 pub use link::{
     JobEnd, JobOrigin, JobOutput, Link, LinkDriver, LinkEnd, LinkOptions, LinkPolicy,
-    OUTBOUND_FRAMES, PING_INTERVAL,
+    OUTBOUND_FRAMES, PING_INTERVAL, WeakLink,
 };
 pub use manifest::{ArtifactResolver, CommandCatalog, CommandSelection};
 pub use output_records::{decode_output, encode_output};

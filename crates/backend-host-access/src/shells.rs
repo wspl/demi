@@ -73,13 +73,15 @@ impl dyn HostShard + '_ {
                     "the job's Host is no conversation's",
                 )
             })?;
-        self.with_host(id, Some(&device), cancel, async move |admitted| {
+        let device = &device;
+        self.with_host(id, Some(device), cancel, async move |admitted| {
             if admitted.host.key() != *host {
                 return Err(HostError::new(
                     HostErrorKind::Unavailable,
                     "the conversation's Host changed; the command did not run",
                 ));
             }
+            self.install_directories(device, admitted).await?;
             job.await;
             Ok(())
         })

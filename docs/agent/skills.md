@@ -101,14 +101,18 @@ stays on only under the name it was on with, and a new skill starts off.
 ### What the plugin keeps
 
 The plugin keeps one [value](../architecture/plugins.md#the-contract) per
-source, keyed by the source's id:
+source, keyed by the source's id, the first 12 hexadecimal digits of the
+SHA-256 of its repository's URL (`owner/repo` stands for
+`https://github.com/owner/repo`; a trailing `.git` or `/` and the host's case
+do not count), so two origins of one repository are one source:
 
 | Field | Holds |
 | --- | --- |
 | `origin` | The repository, as the user wrote it |
+| `added` | Its place in the order the user added sources |
 | `commit` | The pinned commit; absent until the first fetch succeeds |
 | `fetchedAt` | When the pinned commit was fetched |
-| `skills` | Each skill's name, description, directory in the repository, files (path, mode and the SHA-256 of its bytes), warnings, whether it sets `disable-model-invocation`, and whether it is on |
+| `skills` | Each skill's name, description, directory in the repository, files (path, whether it is executable, and the SHA-256 of its bytes), warnings, whether it sets `disable-model-invocation`, and whether it is on |
 | `skipped` | Each `SKILL.md` that is not a skill, with its path and reason |
 | `failure` | The last fetch's failure, with its time and message; absent once a fetch succeeds |
 
@@ -119,7 +123,10 @@ stored: the plugin's instance holds it in memory.
 Whenever the user skills that are on change, the plugin sets its user's
 [Host directories](../architecture/plugins.md#host-directories) to one
 directory per skill that is on, named after the skill, and marks its part of
-the product state as changed. Such a skill's path in the catalog is its
+the product state as changed. A name that breaks the name rule gives its
+directory its lowercase letters and digits, joined by single hyphens; two
+skills whose directories would have the same name count as two of the same
+name, so only one of them is on. Such a skill's path in the catalog is its
 directory on a Host, `~/.demi/plugins/skills/<name>-<short digest>/SKILL.md`,
 the same on every Host, so a target switch changes no path: the new Host
 receives the directory when its first job needs it.

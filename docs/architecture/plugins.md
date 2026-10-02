@@ -200,12 +200,13 @@ When a job of one of the user's conversations is admitted on a Host, host
 access installs each directory of the user's set that the Host does not hold
 yet, before the job starts:
 
-- A directory is installed once per runner connection. Host access asks the
-  Host whether the digest's directory exists the first time a job of that
-  connection needs it, and remembers the answer until the connection ends. A
+- A directory is installed once per runner connection. The first job of a
+  connection, and the first after the user's set changed, lists each
+  plugin's directory on the Host (`~/.demi/plugins/<plugin>/`), and host
+  access remembers that the Host holds the set until the connection ends. A
   Cloud's new boot is a new connection, so it is checked again; a directory
   the user deletes by hand while the connection lasts comes back at the next
-  connection.
+  connection. Installations on one shard take turns.
 - An installation writes the files into a temporary directory beside the
   final one, makes every file and directory read-only, keeping a file's
   executable bit, and then renames it into place. A directory that exists is
@@ -230,8 +231,10 @@ example, `plugin-skills` looks for the skills a repository holds in its
 `.agents/skills` directory ([Project skills](../agent/skills.md#project-skills)).
 
 One request of the port names several paths, and the reply answers each:
-whether it exists, its kind, a directory's entries, or a file's bytes up to a
-bound the request gives. The paths are absolute, as the Host names them. The
+whether it exists, its kind, a directory's entries, a file's bytes up to a
+bound the request gives with its size, or that the Host could not read it,
+such as for want of permission. A symbolic link at a path is followed; a
+directory's entries name a link as a link. The paths are absolute, as the Host names them. The
 plugin host makes the request through the conversation's host access in the
 form that never wakes a Host, the one a one-shot user call that only looks
 uses ([Every way to a Host](../execution/sessions-and-targets.md#every-way-to-a-host)):
@@ -315,7 +318,7 @@ request and one reply, as for an rpc handler
 | Operation | Requests | Meaning |
 | --- | --- | --- |
 | Stdout, stderr, stdin, live stdin, command storage, cancellation | `command` | The rpc port of the call: its IO, the invoking node's [command storage](../agent/command-state-history.md), and whether the call was cancelled |
-| Values | Every request | Read, list and conditional write of the plugin's own values for the user, each a JSON document with a revision ([Storage](../backend/storage.md#control-records)) |
+| Values | Every request | Read, list, conditional write and conditional removal of the plugin's own values for the user, each a JSON document with a revision ([Storage](../backend/storage.md#control-records)) |
 | Blobs | Every request | Put and get bytes in the user's blob namespace, by SHA-256 |
 | Host directories | Every request | Replace the user's set of [Host directories](#host-directories); the reply is each directory's path on a Host |
 | Host files | `command`, `context`, a conversation's `page_call` | Read several paths on the conversation's main Host, if it is running ([Reading a conversation's files](#reading-a-conversations-files)) |
@@ -381,6 +384,10 @@ An instance runs on its user's shard thread, so it follows the shard's rules
   saves nothing from a task that was cut off. For example, a fetch that
   `plugin-skills` was running when the backend stopped leaves the source as
   it was before the fetch.
+- A task may keep the port of the page call that started it: the port
+  answers after the call's reply, until the task ends. For example,
+  `add_source` answers once the source is recorded, and its fetch writes the
+  source's value through the same port when it ends.
 
 ## The plugin host
 
@@ -588,3 +595,8 @@ contract above.
   a linked plugin is trusted.
 - **Its page package.** How a page package from outside the repository is
   built and served to the web app without a computed import in `web`.
+- **A port after the reply.** A linked plugin's task may keep a page call's
+  port after the call answered ([Rules for a plugin in
+  process](#rules-for-a-plugin-in-process)). Over a wire, that is a message
+  of a request that already has its reply, which the encoding must
+  allow.

@@ -21,7 +21,7 @@ futures-util.workspace = true
 # The line counts of a change, the diff gix's blob diff is.
 gix-imara-diff = "0.2.5"
 process-wrap.workspace = true
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+reqwest = { workspace = true, features = ["rustls", "stream"] }
 serde.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true

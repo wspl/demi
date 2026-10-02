@@ -28,6 +28,7 @@ demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
 demi-runner-protocol = { path = "../runner-protocol" }
 demi-host-interface = { path = "../host-interface" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
+demi-plugin-interface = { path = "../plugin-interface" }
 futures-util.workspace = true
 garde.workspace = true
 hashlink = "0.12"

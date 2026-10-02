@@ -1,20 +1,22 @@
 //! What the backend's conversations are assembled from (`runtime.md`
 //! § Sessions and turns): the product's instructions, the toolset of the
 //! plugins the user has on with the product's `demi host` group, the Host each
-//! node reaches, the conversation's current main Host, and the execution
+//! node reaches, the conversation's current main Host, the execution
 //! context source, which tells a node that the conversation's execution
-//! context changed.
+//! context changed, and the plugins that are context sources.
 
 use std::rc::{Rc, Weak};
 
 use demi_agent_tools::{ContextSource, HostResolver, NodeContext, Toolset, ToolsetSource};
 use demi_backend_host_access::host_commands::host_group;
 use demi_backend_host_access::{HostShard, conversation_of};
+use demi_backend_plugins::ContextAsk;
 use demi_backend_remote_host::RemoteHost;
 use demi_host_interface::HostError;
-use demi_plugin_interface::EXECUTION_SOURCE;
+use demi_plugin_interface::{EXECUTION_SOURCE, PluginId};
 use demi_shared_types::TurnId;
 use futures_util::future::LocalBoxFuture;
+use tokio_util::sync::CancellationToken;
 
 use crate::shard::Shard;
 
@@ -96,6 +98,46 @@ impl ContextSource for ExecutionContext {
                 .execution_context(&conversation_of(node.root), seen)
                 .await
                 .map_err(|error| format!("the execution context cannot be read: {error}"))
+        })
+    }
+}
+
+/// A plugin that is a context source, asked while its user has it on
+/// (`plugins.md` § Prompt text and context).
+pub(crate) struct PluginContext {
+    pub(crate) shard: Weak<Shard>,
+    pub(crate) plugin: PluginId,
+}
+
+impl ContextSource for PluginContext {
+    fn name(&self) -> &str {
+        self.plugin.as_str()
+    }
+
+    fn context<'a>(
+        &'a self,
+        node: NodeContext<'a>,
+        turn: &'a TurnId,
+        seen: &'a [&'a str],
+    ) -> LocalBoxFuture<'a, Result<Option<String>, String>> {
+        Box::pin(async move {
+            let Some(shard) = self.shard.upgrade() else {
+                return Ok(None);
+            };
+            let asked = ContextAsk {
+                conversation: conversation_of(node.root),
+                node: node.node.clone(),
+                cwd: node.cwd.to_owned(),
+                turn: turn.clone(),
+                seen: seen.iter().map(|text| (*text).to_owned()).collect(),
+            };
+            // The request ends with the provider request it serves, which
+            // drops this future.
+            shard
+                .plugins()
+                .context(&self.plugin, asked, CancellationToken::new())
+                .await
+                .map_err(|error| format!("the plugin {} gave no context: {error}", self.plugin))
         })
     }
 }

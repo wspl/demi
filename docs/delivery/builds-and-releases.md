@@ -121,9 +121,10 @@ without that copy, as `bun run contracts` does.
 and C runtime versions that cargo-xwin downloads, and the minimum macOS
 version. The Apple targets need an Apple SDK directory, passed with `--sdk` or
 `SDKROOT`; `cargo xtask` checks its SDK metadata against the pin before
-building. `ring` chooses `clang` on Windows arm64, so the build explicitly
-selects the MSVC driver dialect and release optimization to match cargo-xwin's
-SDK flags.
+building. `aws-lc-sys`, the C library of rustls's provider, compiles with cargo-xwin's
+`clang` on Windows, so the build explicitly selects the MSVC driver dialect and
+release optimization to match cargo-xwin's SDK flags, and uses the crate's
+prebuilt NASM objects for its x86-64 assembly instead of a NASM install.
 
 ## Build profiles
 
