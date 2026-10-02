@@ -61,3 +61,6 @@ export const fileBrowserPage: PluginPage = {
     file: { kind: 'file', open: (payload, data) => showFile(current(data), payload.path) },
   },
 }
+
+/** The page the registry imports (`plugin-pages.md` § Registration). */
+export default fileBrowserPage

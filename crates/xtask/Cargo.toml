@@ -17,6 +17,8 @@ demi-command-protocol = { path = "../command-protocol", features = ["testing"] }
 demi-shared-types = { path = "../shared-types" }
 demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
 demi-runner-protocol = { path = "../runner-protocol" }
+# The plugins the backend registers, which the plugin page registry follows.
+demi-backend = { path = "../backend" }
 demi-plugin-browser = { path = "../plugin-browser" }
 demi-plugin-expose = { path = "../plugin-expose" }
 demi-plugin-skills = { path = "../plugin-skills" }

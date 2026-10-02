@@ -10,6 +10,8 @@ target/
 packages/protocol/src/generated/
 packages/web/src/api/generated/
 packages/plugin-*/src/generated/
+packages/web/src/plugins/generated/
+packages/web-gallery/src/generated/
 
 # Internal-only docs (design history, research, QA acceptance, the readiness plan).
 # Kept locally for the team, excluded from the published/open-source repo.

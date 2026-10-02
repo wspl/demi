@@ -76,3 +76,6 @@ export const changesPage: PluginPage = {
     edit: { kind: 'change', open: (payload, data) => showCallEdit(current(data), payload) },
   },
 }
+
+/** The page the registry imports (`plugin-pages.md` § Registration). */
+export default changesPage

@@ -1,9 +1,6 @@
 import { onBeforeUnmount, ref } from 'vue'
 import { browserPage } from '@demicodes/plugin-browser'
 import type { BrowserTabsApi } from '@demicodes/plugin-browser/live/tabs'
-import { changesPage } from '@demicodes/plugin-changes'
-import { exposePage } from '@demicodes/plugin-expose'
-import { fileBrowserPage } from '@demicodes/plugin-file-browser'
 import {
   addTab,
   emptyPanelState,
@@ -22,6 +19,7 @@ import {
   type ConversationFileService,
   type PluginPage,
 } from '@demicodes/web-ui/plugins/slots'
+import { PLUGIN_PAGES } from '../generated/pages'
 import { galleryBrowserTabs } from './live-browser'
 import { browserPlugin, galleryPluginHost } from './plugins'
 
@@ -45,7 +43,8 @@ export function useGalleryWork(
 ) {
   const panel = ref<PanelState>({ ...emptyPanelState(), selection })
   const pinned = ref<PinnedTabs>({})
-  const shown = pages ?? [changesPage, fileBrowserPage, browserPage({ pictures }), exposePage]
+  // The gallery's pages, with the browser's own made for a specimen that says how the pictures decode.
+  const shown = pages ?? PLUGIN_PAGES.map((page) => (page.plugin === 'browser' && pictures ? browserPage({ pictures }) : page))
   const enabled = () => true
 
   function openIn<Name extends IntentName>(intent: Name, payload: IntentPayloads[Name]) {

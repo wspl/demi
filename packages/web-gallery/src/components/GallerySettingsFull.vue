@@ -21,7 +21,7 @@ import SettingsMcp from '@demicodes/web-ui/settings/SettingsMcp.vue'
 import SettingsNotifications from '@demicodes/web-ui/settings/SettingsNotifications.vue'
 import SettingsPlugins from '@demicodes/web-ui/settings/SettingsPlugins.vue'
 import { pluginSettingsPage } from '@demicodes/web-ui/plugins/slots'
-import { GALLERY_PLUGIN_PAGES } from '../plugin-pages'
+import { PLUGIN_PAGES } from '../generated/pages'
 import type { SettingsMcpDraft } from '@demicodes/web-ui/settings/types'
 import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
 import type { ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
@@ -94,7 +94,7 @@ async function resetCloud(operationId: string) {
 
 const s = computed(() => props.state)
 /** The page of the plugin section `tab` names, which reaches the section's plugin host. */
-const pluginPage = computed(() => pluginSettingsPage(GALLERY_PLUGIN_PAGES, props.tab))
+const pluginPage = computed(() => pluginSettingsPage(PLUGIN_PAGES, props.tab))
 
 // Text size resizes the transcript here as it does in the product.
 watch(() => s.value.general.fontSize, applyTranscriptTextSize, { immediate: true })

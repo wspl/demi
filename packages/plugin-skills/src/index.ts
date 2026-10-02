@@ -20,3 +20,6 @@ export const skillsPage: PluginPage = {
     component: SkillsSettings,
   },
 }
+
+/** The page the registry imports (`plugin-pages.md` § Registration). */
+export default skillsPage

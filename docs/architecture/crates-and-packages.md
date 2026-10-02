@@ -1296,8 +1296,10 @@ demi-backend (executable: configuration, composition)
 
 - **Owns:** the repository's development commands: `xtask contracts` (the
   TypeScript emitter, with the page types of each plugin that has a page
-  package, which `bun run contracts` runs after it builds the
-  workspace; [Contracts](contracts.md#generated-typescript)), native build and
+  package and the plugin page registry of `web` and `web-gallery`, which
+  `bun run contracts` runs after it builds the workspace;
+  [Contracts](contracts.md#generated-typescript),
+  [Registration](plugin-pages.md#registration)), native build and
   release packaging for every executable, the pinned Chrome for Testing
   release record, Cloud image packaging, and the comparison of the vendored
   crates with their upstream releases (`xtask vendor diff`), the one-command
@@ -1381,8 +1383,8 @@ under `packages/`.
   ([Pages from outside the repository](plugin-pages.md#pages-from-outside-the-repository)).
 - **Owns:** the page API ([Plugin pages](plugin-pages.md)): the `PluginPage`
   and slot types, the `PluginClient` with `usePlugin()`, the intents with
-  their payload schemas, the service interfaces, the registry's checks of
-  kinds, and the public components, re-exported from `web-ui`. Its major
+  their payloads, the service interfaces, and the public components,
+  re-exported from `web-ui`. Its major
   version is the page API's version.
 - **Public boundary:** its entry and subpath exports, which plugin packages,
   `web` and `web-gallery` import.
@@ -1542,7 +1544,7 @@ runner -> command-protocol, command-sdk, runner-host, runner-jobs, runner-proces
 command-package-file -> shared-artifacts, command-protocol, command-sdk, shared-types, command-package-file-protocol, shared-gates
 command-package-browser -> command-package-browser-chrome, command-package-browser-protocol, command-protocol, command-sdk
 command-package-claude-code -> command-package-claude-code-protocol, command-protocol, command-sdk
-xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, plugin-browser, plugin-expose, plugin-skills
+xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, backend, plugin-browser, plugin-expose, plugin-skills
 ```
 
 ### TypeScript packages

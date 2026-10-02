@@ -16,7 +16,7 @@ import { loadPanel, savePanel } from '../api/panel'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
-import { PLUGIN_PAGES } from '../plugins/pages'
+import { PLUGIN_PAGES } from '../plugins/generated/pages'
 import { pluginEnabled } from '../plugins/host'
 import { createWorkingTreeSource, type WorkingTreeSource } from './changes'
 

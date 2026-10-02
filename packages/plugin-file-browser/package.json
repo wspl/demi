@@ -3,6 +3,9 @@
   "description": "The file browser plugin's page: the File view, a pinned work panel kind.",
   "version": "0.0.0",
   "private": true,
+  "demi": {
+    "plugin": "file-browser"
+  },
   "type": "module",
   "exports": {
     ".": "./src/index.ts",

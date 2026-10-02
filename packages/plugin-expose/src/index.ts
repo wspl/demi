@@ -13,3 +13,6 @@ export const exposePage: PluginPage = {
   headerTool: ExposeTool,
   panelKinds: () => ({ kinds: [pageTabKind] }),
 }
+
+/** The page the registry imports (`plugin-pages.md` § Registration). */
+export default exposePage

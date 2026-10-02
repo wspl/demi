@@ -3,6 +3,9 @@
   "description": "The skills plugin's page: its settings section.",
   "version": "0.0.0",
   "private": true,
+  "demi": {
+    "plugin": "skills"
+  },
   "type": "module",
   "exports": {
     ".": "./src/index.ts",

@@ -18,7 +18,7 @@ import GalleryComposer from './GalleryComposer.vue'
 import { productWould } from '../product-would'
 import { demoExposeState } from '../fixtures/settings'
 import { exposePlugin, galleryPluginHost } from '../fixtures/plugins'
-import { GALLERY_PLUGIN_PAGES } from '../plugin-pages'
+import { PLUGIN_PAGES } from '../generated/pages'
 import { useLiveGalleryCommand } from '../live-command'
 import { useTurnFlow } from '../turn-flow'
 
@@ -174,7 +174,7 @@ function detach(id: string): void {
         </template>
         <template #tools>
           <PluginHeaderTools
-            :pages="GALLERY_PLUGIN_PAGES"
+            :pages="PLUGIN_PAGES"
             :enabled="() => true"
             conversation-id="shared-product-session"
             :host-name="hostName"
