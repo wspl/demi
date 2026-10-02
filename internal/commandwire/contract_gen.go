@@ -495,6 +495,9 @@ func (v ArtifactInstall) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func DecodeArtifactLocation(data []byte) (ArtifactLocation, error) {
+	if err := contract.CheckJSON(data); err != nil {
+		return nil, err
+	}
 	if value, err := contract.Decode[ArtifactURL](data); err == nil {
 		return &value, nil
 	}
