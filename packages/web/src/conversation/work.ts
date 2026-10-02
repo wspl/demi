@@ -7,6 +7,7 @@ import {
   type PinnedTabs,
 } from '@demicodes/web-ui/agent/panel-tabs'
 import { PanelTabs, dataChanges } from '@demicodes/web-ui/agent/panel-changes'
+import { selectTab } from '@demicodes/web-ui/agent/tab-close'
 import { intentKind } from '@demicodes/web-ui/plugins/page'
 import type { IntentName, IntentRequest } from '@demicodes/web-ui/plugins/intents'
 import { panelBackend } from '../api/panel'
@@ -25,11 +26,11 @@ import { useConversations } from './store'
  */
 export interface WorkState {
   open: boolean
-  /** A tab's id or a pinned kind's id; null names nothing. */
-  selection: string | null
+  /** The tabs' and pinned kinds' ids this page selected, the newest last. */
+  history: readonly string[]
   /** The pinned tabs' data, by kind, for the page's lifetime. */
   pinned: PinnedTabs
-  /** The selection and the tabs, as the panel shows them. */
+  /** The history and the tabs, as the panel shows them. */
   readonly panel: PanelState
   changes: WorkingTreeSource
 }
@@ -79,20 +80,20 @@ export const useWorkPanel = defineStore('work-panel', () => {
           resources.local.workPanelOpen ??= {}
           resources.local.workPanelOpen[conversationId] = open
         },
-        get selection(): string | null {
-          return resources.local.workPanelSelection?.[conversationId] ?? null
+        get history(): readonly string[] {
+          return resources.local.workPanelHistory?.[conversationId] ?? []
         },
-        set selection(selection: string | null) {
-          resources.local.workPanelSelection ??= {}
-          if (selection === null) {
-            delete resources.local.workPanelSelection[conversationId]
+        set history(history: readonly string[]) {
+          resources.local.workPanelHistory ??= {}
+          if (history.length === 0) {
+            delete resources.local.workPanelHistory[conversationId]
           } else {
-            resources.local.workPanelSelection[conversationId] = selection
+            resources.local.workPanelHistory[conversationId] = [...history]
           }
         },
         pinned: {},
         get panel(): PanelState {
-          return { selection: this.selection, tabs: tabs.tabs.value }
+          return { history: this.history, tabs: tabs.tabs.value }
         },
         changes: createWorkingTreeSource(conversationId),
       })
@@ -134,8 +135,9 @@ export const useWorkPanel = defineStore('work-panel', () => {
     state.open = open
   }
 
-  function select(conversationId: string, selection: string | null): void {
-    stateFor(conversationId).selection = selection
+  function select(conversationId: string, id: string): void {
+    const state = stateFor(conversationId)
+    state.history = selectTab(state.history, id)
   }
 
   /** A new tab, selected unless `options` says not, with the panel opened for it; returns its id. */
@@ -144,7 +146,7 @@ export const useWorkPanel = defineStore('work-panel', () => {
     const id = crypto.randomUUID()
     tabsOf(conversationId).change({ type: 'create', tab: { id, kind, data } })
     if (options.select) {
-      state.selection = id
+      state.history = selectTab(state.history, id)
       state.open = true
     }
     return id
@@ -163,10 +165,10 @@ export const useWorkPanel = defineStore('work-panel', () => {
     }
   }
 
-  /** Closes the tabs `ids`; a closed selection passes to its nearest neighbour. */
+  /** Closes the tabs `ids`; the panel shows what was selected before a closed one. */
   function closeTabs(conversationId: string, ids: string[]): void {
     const state = stateFor(conversationId)
-    state.selection = removeTabs(state.panel, ids).selection
+    state.history = removeTabs(state.panel, ids).history
     for (const id of ids) {
       tabsOf(conversationId).change({ type: 'remove', id })
     }
@@ -193,7 +195,7 @@ export const useWorkPanel = defineStore('work-panel', () => {
     if (opened.created) {
       tabsOf(conversationId).change({ type: 'create', tab: opened.created })
     }
-    state.selection = opened.selection
+    state.history = selectTab(state.history, opened.selection)
     state.open = true
   }
 
