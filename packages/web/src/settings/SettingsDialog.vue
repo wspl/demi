@@ -6,6 +6,7 @@ import SettingsAccount from '@demicodes/web-ui/settings/SettingsAccount.vue'
 import SettingsArchived from '@demicodes/web-ui/settings/SettingsArchived.vue'
 import SettingsGeneral from '@demicodes/web-ui/settings/SettingsGeneral.vue'
 import SettingsKeyboard from '@demicodes/web-ui/settings/SettingsKeyboard.vue'
+import SettingsPlugins from '@demicodes/web-ui/settings/SettingsPlugins.vue'
 import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
 import type { ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
 import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
@@ -19,6 +20,7 @@ import {
   type EmailChangeStart,
   type NicknamePatch,
   type PasswordChange,
+  type PluginSwitch,
 } from '../api/generated/web-api'
 import { useSession } from '../auth/session'
 import { useResources } from '../state/resources'
@@ -305,6 +307,41 @@ onUnmounted(() => {
   passwordRequest?.abort()
 })
 
+/** The switches asked for and not yet in the product state, by plugin. */
+const wantedPlugins = ref(new Map<string, boolean>())
+const plugins = computed(() =>
+  (product.snapshot?.plugins ?? []).map((plugin) => ({
+    ...plugin,
+    enabled: wantedPlugins.value.get(plugin.id) ?? plugin.enabled,
+  })),
+)
+
+/**
+ * Turns a plugin on or off; the switch shows the choice until the channel
+ * brings the plugin list that holds it, or falls back with a toast.
+ */
+async function switchPlugin(id: string, enabled: boolean): Promise<void> {
+  if (wantedPlugins.value.has(id)) {
+    return
+  }
+  wantedPlugins.value.set(id, enabled)
+  try {
+    await apiRequest(`/plugins/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      signal: lifetime.signal,
+      ...jsonBody({ enabled } satisfies PluginSwitch),
+    })
+    await product.until(
+      (state) => state.plugins.some((plugin) => plugin.id === id && plugin.enabled === enabled),
+      lifetime.signal,
+    )
+  } catch (error) {
+    report(enabled ? 'Could not turn the plugin on' : 'Could not turn the plugin off', error)
+  } finally {
+    wantedPlugins.value.delete(id)
+  }
+}
+
 const archived = computed(() =>
   conversations.items
     .filter((conversation) => conversation.archived)
@@ -398,6 +435,12 @@ function resetShortcuts(): void {
     />
     <ProvidersPanel v-else-if="tab === 'models' && resources.canConfigure" />
     <DevicesPanel v-else-if="tab === 'devices'" />
+    <SettingsPlugins
+      v-else-if="tab === 'plugins'"
+      :plugins="plugins"
+      :pending="[...wantedPlugins.keys()]"
+      @switch="switchPlugin"
+    />
     <SettingsArchived
       v-else-if="tab === 'archived'"
       :conversations="archived"

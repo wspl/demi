@@ -69,7 +69,7 @@ pub fn protocol() -> Vec<Root> {
 pub fn web() -> Vec<Root> {
     use api::{
         attachments, auth, cloud, conversations, devices, drafts, error, files, hosts, panel,
-        providers, settings, sidebar, state, usage, users, workspaces,
+        plugins, providers, settings, sidebar, state, usage, users, workspaces,
     };
     vec![
         receives::<error::ErrorBody>(),
@@ -87,6 +87,7 @@ pub fn web() -> Vec<Root> {
         receives::<settings::Settings>(),
         receives::<settings::UserPreferences>(),
         sends::<settings::PreferencesPatch>(),
+        sends::<plugins::PluginSwitch>(),
         sends::<providers::CreateProvider>(),
         sends::<providers::ProviderPatch>(),
         receives::<providers::ProviderAnswer>(),

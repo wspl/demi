@@ -277,3 +277,50 @@ fn call_failure(error: UserCallError) -> PortFailure {
         UserCallError::Call(error) => failed(error),
     }
 }
+
+/// Why a conversation's tree was not reloaded.
+#[derive(Debug, thiserror::Error)]
+pub enum ReloadRefusal {
+    #[error(transparent)]
+    Access(#[from] HostAccessError),
+    #[error("The conversation is archived")]
+    Archived,
+    #[error("The conversation's agents are working; reload once they are done")]
+    Working,
+}
+
+impl Shard {
+    /// Turns `plugin` on or off for the user (`plugins.md` § A user's
+    /// plugins); every live tree's summary is marked, since whether a
+    /// reload would change it may have changed.
+    pub async fn switch_plugin(
+        &self,
+        plugin: &str,
+        enabled: bool,
+    ) -> Result<(), demi_backend_plugins::SwitchError> {
+        if !self.plugins().switch(plugin, enabled).await? {
+            return Ok(());
+        }
+        let marks = self.services().sync.of(self.user());
+        for root in self.agent().live_roots() {
+            marks.mark(Part::Conversation(
+                demi_backend_host_access::conversation_of(&root),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Closes the conversation's live tree so that it opens again with the
+    /// user's current plugins; a tree that works or an archived
+    /// conversation is refused, and one with no live tree has nothing to do.
+    pub async fn reload_conversation(&self, id: &ConversationId) -> Result<(), ReloadRefusal> {
+        let record = self.host_shard().owned_conversation(id).await?;
+        if record.archived {
+            return Err(ReloadRefusal::Archived);
+        }
+        self.agent()
+            .reload(&demi_backend_host_access::root_of(&record.id))
+            .await
+            .map_err(|_| ReloadRefusal::Working)
+    }
+}

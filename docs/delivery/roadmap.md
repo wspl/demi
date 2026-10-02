@@ -69,11 +69,13 @@ on the browser protocol and `backend-host-access`'s on `backend-expose`.
 3. **A user's plugins.** Each user's plugin choices with the plugin switch
    route and the plugin list in the product state; the agent server's trees
    taking their commands and profiles when they open, with their revision;
-   context sources, page calls, page states and user streams following the
-   choices at once; `pluginsChanged` and the reload route; and the settings
-   page's plugin list with its switches and the reload offer, in `web-ui`,
-   `web` and `web-gallery`.
-4. **Skills on the backend.** `plugin-skills` with its sources, its values and
+   page calls, page states and user streams following the choices at once;
+   `pluginsChanged` and the reload route; and the settings page's plugin list
+   with its switches and the reload offer, in `web-ui`, `web` and
+   `web-gallery`. A plugin's settings form and its themes arrive with the
+   first plugin that declares a settings schema or a theme. Done.
+4. **Skills on the backend.** Plugins as context sources, asked only while
+   their user has them on; `plugin-skills` with its sources, its values and
    blobs, the Host directories with their installation before a job, the Host
    file reads that never wake a Host, project skills, the catalog, and the
    page call route with the `plugin` sync message.

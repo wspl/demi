@@ -1,10 +1,13 @@
 //! One user's plugins on the user's shard (`plugins.md` § The plugin
-//! host): an instance of every plugin, made when the shard starts, the
-//! command set they serve, their page states and page calls, and the
-//! answers to their port operations. The plugin host answers values and
-//! changes itself; what reaches a conversation's Hosts or the user's
-//! exposes goes to the product, which owns the conversation's host access.
+//! host, § A user's plugins): an instance of every plugin, made when the
+//! shard starts; which of them the user has on, which decides the toolset a
+//! conversation's tree opens with and which page states, page calls and
+//! user streams exist; and the answers to their port operations. The plugin
+//! host answers values and changes itself; what reaches a conversation's
+//! Hosts or the user's exposes goes to the product, which owns the
+//! conversation's host access.
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -19,13 +22,15 @@ use demi_plugin_interface::{
     PluginTransport, PortAnswer, PortFailure, PortMessage, PortRefusal, Reply, Request, Scope,
     StoredValue,
 };
+use demi_shared_types::Profile;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, ExposeId, UserId};
+use demi_web_api_protocol::plugins::PluginEntry;
 use futures_util::future::LocalBoxFuture;
 use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
 
+use crate::Registry;
 use crate::commands::compose;
-use crate::{Registry, RegistryError};
 
 /// What the product does for the plugins' port: the operations that reach
 /// a conversation's Hosts through its host access, and the user's exposes.
@@ -82,12 +87,34 @@ pub struct PageCall {
 pub enum PageCallError {
     #[error("No plugin \"{0}\"")]
     UnknownPlugin(String),
+    #[error("The plugin \"{0}\" is off")]
+    Disabled(String),
     #[error("The plugin \"{plugin}\" has no method \"{method}\" here")]
     UnknownMethod { plugin: String, method: String },
     #[error("{0}")]
     InvalidParams(String),
     #[error(transparent)]
     Plugin(#[from] PluginError),
+}
+
+/// Why a plugin could not be turned on or off.
+#[derive(Debug, thiserror::Error)]
+pub enum SwitchError {
+    #[error("No plugin \"{0}\"")]
+    UnknownPlugin(String),
+    #[error(transparent)]
+    Storage(#[from] StorageError),
+}
+
+/// The commands, profiles and revision of the plugins a user has on, which
+/// a conversation's tree opens with.
+pub struct PluginToolset {
+    pub commands: CommandSet,
+    pub profiles: Vec<Profile>,
+    /// The ids of the plugins on that declare commands or profiles, in
+    /// registration order: two sets of the same commands and profiles have
+    /// the same revision.
+    pub revision: String,
 }
 
 /// What every request of the user's plugins shares.
@@ -98,6 +125,12 @@ pub(crate) struct Shared {
     product: Rc<dyn ProductPort>,
     control: ControlService,
     marks: UserMarks,
+    /// Whether the user has each plugin on, by its index, once read: every
+    /// switch goes through this shard, so the copy stays current.
+    enabled: RefCell<Option<Vec<bool>>>,
+    /// Cancelled when the user turns the plugin of its index off, which
+    /// ends the plugin's open user streams.
+    stream_ends: RefCell<Vec<CancellationToken>>,
 }
 
 impl Shared {
@@ -147,6 +180,11 @@ impl UserPlugins {
             .iter()
             .map(|registered| registered.factory.instance())
             .collect();
+        let stream_ends = registry
+            .plugins
+            .iter()
+            .map(|_| CancellationToken::new())
+            .collect();
         Self(Rc::new(Shared {
             registry,
             user,
@@ -154,25 +192,148 @@ impl UserPlugins {
             product,
             control,
             marks,
+            enabled: RefCell::new(None),
+            stream_ends: RefCell::new(stream_ends),
         }))
     }
 
-    /// The command set every node of the user's conversations starts from:
-    /// the plugins' groups under `demi` beside the product's `product`
-    /// groups, and the plugins' roots.
-    pub fn commands(&self, product: Vec<GroupBuilder>) -> Result<CommandSet, RegistryError> {
-        compose(&self.0.registry, Some(&self.0), product)
+    /// Whether the user has each plugin on, by its index.
+    async fn enabled(&self) -> Result<Vec<bool>, StorageError> {
+        if let Some(enabled) = &*self.0.enabled.borrow() {
+            return Ok(enabled.clone());
+        }
+        let choices = self.0.control.user_plugins(self.0.user.clone()).await?;
+        let enabled: Vec<bool> = self
+            .0
+            .registry
+            .plugins
+            .iter()
+            .map(|registered| {
+                choices
+                    .get(registered.id().as_str())
+                    .copied()
+                    .unwrap_or(true)
+            })
+            .collect();
+        self.0.enabled.replace(Some(enabled.clone()));
+        Ok(enabled)
     }
 
-    /// The state of each plugin with a page, by id, for the product state.
+    /// The backend's plugins with whether the user has each on, for the
+    /// settings page.
+    pub async fn entries(&self) -> Result<Vec<PluginEntry>, StorageError> {
+        let enabled = self.enabled().await?;
+        Ok(self
+            .0
+            .registry
+            .plugins
+            .iter()
+            .zip(enabled)
+            .map(|(registered, enabled)| {
+                let manifest = registered.factory.manifest();
+                PluginEntry {
+                    id: manifest.id.to_string(),
+                    name: manifest.name.clone(),
+                    description: manifest.description.clone(),
+                    enabled,
+                }
+            })
+            .collect())
+    }
+
+    /// Turns `plugin` on or off for the user, and marks the plugin list and
+    /// the plugin's state as changed. A plugin turned off ends its open user
+    /// streams. Answers whether the choice changed.
+    pub async fn switch(&self, plugin: &str, enabled: bool) -> Result<bool, SwitchError> {
+        let Some((index, registered)) = self.0.registry.plugin(plugin) else {
+            return Err(SwitchError::UnknownPlugin(plugin.to_owned()));
+        };
+        let mut current = self.enabled().await?;
+        if current[index] == enabled {
+            return Ok(false);
+        }
+        self.0
+            .control
+            .set_user_plugin(self.0.user.clone(), plugin.to_owned(), enabled)
+            .await?;
+        current[index] = enabled;
+        self.0.enabled.replace(Some(current));
+        if !enabled {
+            let ended = std::mem::take(&mut self.0.stream_ends.borrow_mut()[index]);
+            ended.cancel();
+        }
+        self.0.marks.mark(Part::Plugins);
+        self.0
+            .marks
+            .mark(Part::Plugin(registered.id().as_str().to_owned()));
+        Ok(true)
+    }
+
+    /// The toolset of the plugins the user has on: their commands, with the
+    /// product's `product` groups under `demi`, and their profiles.
+    pub async fn toolset(&self, product: Vec<GroupBuilder>) -> Result<PluginToolset, StorageError> {
+        let enabled = self.enabled().await?;
+        let commands = compose(&self.0.registry, Some(&self.0), product, |index| {
+            enabled[index]
+        })
+        .expect("the plugins' commands were checked at startup");
+        let profiles = self
+            .0
+            .registry
+            .plugins
+            .iter()
+            .zip(&enabled)
+            .filter(|(_, enabled)| **enabled)
+            .flat_map(|(registered, _)| registered.factory.manifest().profiles.clone())
+            .collect();
+        Ok(PluginToolset {
+            commands,
+            profiles,
+            revision: self.revision_of(&enabled),
+        })
+    }
+
+    /// The revision of the toolset the user's plugins give now.
+    pub async fn revision(&self) -> Result<String, StorageError> {
+        let enabled = self.enabled().await?;
+        Ok(self.revision_of(&enabled))
+    }
+
+    fn revision_of(&self, enabled: &[bool]) -> String {
+        let ids: Vec<&str> = self
+            .0
+            .registry
+            .plugins
+            .iter()
+            .zip(enabled)
+            .filter(|(registered, enabled)| {
+                let profiles = &registered.factory.manifest().profiles;
+                **enabled && (!registered.commands.is_empty() || !profiles.is_empty())
+            })
+            .map(|(registered, _)| registered.id().as_str())
+            .collect();
+        ids.join(",")
+    }
+
+    /// What ends the user stream `name` once its plugin is turned off; none
+    /// while the user has its plugin off, when the stream does not exist.
+    pub async fn stream_end(&self, name: &str) -> Result<Option<CancellationToken>, StorageError> {
+        let Some(index) = self.0.registry.stream_owner(name) else {
+            return Ok(None);
+        };
+        if !self.enabled().await?[index] {
+            return Ok(None);
+        }
+        Ok(Some(self.0.stream_ends.borrow()[index].clone()))
+    }
+
+    /// The state of each plugin the user has on that gives one, by id, for
+    /// the product state.
     pub async fn page_states(&self) -> Result<BTreeMap<String, Value>, PluginError> {
+        let enabled = self.enabled().await.map_err(PluginError::failed)?;
         let mut states = BTreeMap::new();
         for (index, registered) in self.0.registry.plugins.iter().enumerate() {
-            if registered
-                .page
-                .as_ref()
-                .is_some_and(|page| page.state.is_some())
-            {
+            if enabled[index] && has_state(registered) {
                 let state = self.state_of(index).await?;
                 states.insert(registered.id().as_str().to_owned(), state);
             }
@@ -180,19 +341,17 @@ impl UserPlugins {
         Ok(states)
     }
 
-    /// The page state of `plugin`; none for a plugin whose page has none.
+    /// The page state of `plugin`; none for a plugin the user has off or
+    /// whose page has none.
     pub async fn page_state(&self, plugin: &str) -> Result<Option<Value>, PluginError> {
-        match self.0.registry.plugin(plugin) {
-            Some((index, registered))
-                if registered
-                    .page
-                    .as_ref()
-                    .is_some_and(|page| page.state.is_some()) =>
-            {
-                self.state_of(index).await.map(Some)
-            }
-            _ => Ok(None),
+        let Some((index, registered)) = self.0.registry.plugin(plugin) else {
+            return Ok(None);
+        };
+        let enabled = self.enabled().await.map_err(PluginError::failed)?;
+        if !enabled[index] || !has_state(registered) {
+            return Ok(None);
         }
+        self.state_of(index).await.map(Some)
     }
 
     async fn state_of(&self, plugin: usize) -> Result<Value, PluginError> {
@@ -221,6 +380,10 @@ impl UserPlugins {
         let Some((index, registered)) = self.0.registry.plugin(&call.plugin) else {
             return Err(PageCallError::UnknownPlugin(call.plugin));
         };
+        let enabled = self.enabled().await.map_err(PluginError::failed)?;
+        if !enabled[index] {
+            return Err(PageCallError::Disabled(call.plugin));
+        }
         let scope = match call.conversation {
             Some(_) => Scope::Conversation,
             None => Scope::User,
@@ -263,6 +426,13 @@ impl UserPlugins {
             .into()),
         }
     }
+}
+
+fn has_state(registered: &crate::registry::Registered) -> bool {
+    registered
+        .page
+        .as_ref()
+        .is_some_and(|page| page.state.is_some())
 }
 
 /// One request's port: the call's rpc port for a command, the user's

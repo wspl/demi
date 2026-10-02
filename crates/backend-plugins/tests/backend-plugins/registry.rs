@@ -157,7 +157,11 @@ async fn groups_join_the_products_under_demi_roots_stand_alone_and_each_call_get
     .unwrap();
 
     let (plugins, _data) = user_plugins(registry).await;
-    let commands = plugins.commands(vec![rpc_group("agent")]).unwrap();
+    let commands = plugins
+        .toolset(vec![rpc_group("agent")])
+        .await
+        .unwrap()
+        .commands;
 
     let roots: Vec<_> = commands.declarations().map(|root| root.name()).collect();
     assert_eq!(roots, ["demi", "lint"]);
@@ -238,7 +242,7 @@ async fn a_tree_bound_to_a_package_the_catalog_does_not_serve_is_left_out_whole(
         .collect();
     assert_eq!(profiles, ["explorer"]);
     let (plugins, _data) = user_plugins(registry).await;
-    let commands = plugins.commands(Vec::new()).unwrap();
+    let commands = plugins.toolset(Vec::new()).await.unwrap().commands;
 
     let help = commands.render_help();
     assert!(help.contains("served: A native group."), "{help}");

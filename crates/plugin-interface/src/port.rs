@@ -283,10 +283,13 @@ impl PluginPort {
         )
     }
 
+    /// The loopback's JSON round trip wraps the port's own transport.
+    #[cfg(feature = "testing")]
     pub(crate) fn transport(&self) -> &Rc<dyn PluginTransport> {
         &self.transport
     }
 
+    #[cfg(feature = "testing")]
     pub(crate) fn cancellation(&self) -> &CancellationToken {
         &self.cancel
     }

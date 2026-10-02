@@ -25,7 +25,7 @@ use demi_agent_store::{
     testing::MemoryTreeStore,
 };
 use demi_agent_tools::{
-    HostResolver,
+    HostResolver, Toolset,
     testing::{NoHost, NoShells},
 };
 use demi_agent_transcript::{RandomIds, RequestView, estimate::context_tokens};
@@ -234,9 +234,12 @@ impl Conversation {
             ..ServerConfig::default()
         };
         let server = AgentServer::new(ServerDeps {
-            commands: Rc::new(CommandSet::new()),
+            toolsets: Rc::new(Toolset {
+                commands: Rc::new(CommandSet::new()),
+                profiles: Rc::new([]),
+                revision: Rc::from("none"),
+            }),
             instructions: Rc::from(SYSTEM_PROMPT),
-            profiles: Rc::new([]),
             hosts: Rc::new(NoHosts),
             context: Rc::new([]),
             providers: deepseek,

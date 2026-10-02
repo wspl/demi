@@ -134,6 +134,15 @@ CREATE TABLE exposes (
 CREATE INDEX exposes_expiry ON exposes (expires_at);
 CREATE INDEX exposes_owner ON exposes (user_id, expires_at);
 
+-- Each choice a user made about a plugin (`plugins.md` § A user's plugins):
+-- a plugin with no row is on.
+CREATE TABLE user_plugins (
+  user_id TEXT NOT NULL REFERENCES users (id),
+  plugin  TEXT NOT NULL,
+  enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+  PRIMARY KEY (user_id, plugin)
+) STRICT, WITHOUT ROWID;
+
 -- Each plugin's values for a user (`plugins.md` § The contract): a JSON
 -- document its plugin decodes, and the revision a conditional write names.
 CREATE TABLE plugin_values (

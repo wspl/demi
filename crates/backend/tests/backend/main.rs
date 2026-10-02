@@ -38,6 +38,7 @@ mod machines;
 mod native;
 mod outputs;
 mod panel;
+mod plugins;
 mod providers;
 mod real_browser;
 mod real_cloud;

@@ -66,10 +66,15 @@ impl Shard {
             .path()
             .to_owned();
         let model = record.model.as_ref().map(settings).transpose()?;
+        let plugins_changed = match self.agent().tree(&root_of(&record.id)) {
+            Some(tree) => tree.toolset() != self.plugins().revision().await?,
+            None => false,
+        };
         Ok(ConversationSummary {
             unread: facts.revision > record.read_revision,
             title_current: record.user_messages <= record.titled_messages,
             title_generating: self.titles().generating(&record.id),
+            plugins_changed,
             id: record.id,
             title: record.title,
             archived: record.archived,
