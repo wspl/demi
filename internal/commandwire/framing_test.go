@@ -187,3 +187,39 @@ func TestLifecycleMetadataFraming(t *testing.T) {
 		t.Fatal("invalid conversation release was framed")
 	}
 }
+
+func TestFramedJSONMatchesSerdeEscaping(t *testing.T) {
+	text := "<&>\u2028\u2029"
+	for _, tc := range []struct {
+		name   string
+		encode func() ([]byte, error)
+		prefix int
+		want   string
+	}{
+		{"completion", func() ([]byte, error) {
+			return commandwire.EncodeRecord(commandwire.Completed{Completion: commandwire.Completion{ExitCode: 1, Error: &commandwire.CommandError{Code: "failed", Message: text}}})
+		}, 5, `{"exitCode":1,"error":{"code":"failed","message":"` + text + `"}}`},
+		{"metadata", func() ([]byte, error) {
+			return commandwire.EncodeMetadata(commandwire.LocalInvocation{Operation: text, InvocationID: "i", Args: []byte(`{}`), Cwd: "/tmp", Env: map[string]string{}})
+		}, 4, `{"operation":"` + text + `","invocationId":"i","args":{},"cwd":"/tmp","env":{}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			frame, err := tc.encode()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(frame) < tc.prefix {
+				t.Fatalf("short frame: %x", frame)
+			}
+			if tc.prefix == 5 && frame[0] != 3 {
+				t.Fatalf("record kind = %d; want completion", frame[0])
+			}
+			if got := binary.BigEndian.Uint32(frame[tc.prefix-4 : tc.prefix]); int(got) != len(tc.want) {
+				t.Fatalf("payload length = %d; want %d", got, len(tc.want))
+			}
+			if got := string(frame[tc.prefix:]); got != tc.want {
+				t.Fatalf("payload = %q; want serde_json bytes %q", got, tc.want)
+			}
+		})
+	}
+}

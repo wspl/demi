@@ -1,11 +1,11 @@
 package commandwire_test
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/contract"
 )
 
 func TestCommandInputValidation(t *testing.T) {
@@ -77,7 +77,7 @@ func TestPackageValidation(t *testing.T) {
 		{"file:///tmp/a", false}, {"https://user:pass@example.com/a", false}, {"https://user@example.com", false},
 	} {
 		value := commandwire.ArtifactURL{URL: tc.url}
-		_, err := json.Marshal(&value)
+		_, err := contract.EncodeJSON(&value)
 		if (err == nil) != tc.valid {
 			t.Fatalf("%s: %v", tc.url, err)
 		}

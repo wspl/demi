@@ -2,9 +2,10 @@ package commandwire
 
 import (
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"fmt"
+
+	"github.com/wspl/demi/internal/contract"
 )
 
 // Wire limits and paths are shared by the command client and service.
@@ -71,7 +72,7 @@ func EncodeRecord(record Record) ([]byte, error) {
 	case Completed:
 		kind = 3
 		var err error
-		payload, err = json.Marshal(r.Completion)
+		payload, err = contract.EncodeJSON(r.Completion)
 		if err != nil {
 			return nil, fmt.Errorf("encode completion: %w", err)
 		}
@@ -127,7 +128,7 @@ func (value StreamOpen) Encode() ([]byte, error) {
 
 // encodeMetadata applies the shared command metadata length prefix and limit.
 func encodeMetadata(value any) ([]byte, error) {
-	data, err := json.Marshal(value)
+	data, err := contract.EncodeJSON(value)
 	if err != nil {
 		return nil, fmt.Errorf("encode metadata: %w", err)
 	}

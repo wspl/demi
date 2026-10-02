@@ -1,6 +1,7 @@
 package commandwire
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -163,14 +164,18 @@ type ServiceInfo struct {
 
 // CanonicalDigest hashes a JSON value using RFC 8785, including its binary64 number model.
 func CanonicalDigest(value any) (string, error) {
-	data, err := json.Marshal(value)
-	if err != nil {
+	// This is an intermediate validation representation, never wire output.
+	// EncodeJSON normalizes raw unpaired surrogates before they can be checked;
+	// preserve their spelling here so malformed opaque JSON is still refused.
+	// JCS below owns all final escaping, ordering and number formatting.
+	var data bytes.Buffer
+	if err := json.NewEncoder(&data).Encode(value); err != nil {
 		return "", fmt.Errorf("encode canonical value: %w", err)
 	}
-	if err := contract.CheckJSON(data); err != nil {
+	if err := contract.CheckJSON(data.Bytes()); err != nil {
 		return "", fmt.Errorf("canonical value: %w", err)
 	}
-	canonical, err := jcs.Transform(data)
+	canonical, err := jcs.Transform(data.Bytes())
 	if err != nil {
 		return "", fmt.Errorf("canonicalize value: %w", err)
 	}
