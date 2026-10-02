@@ -1,0 +1,195 @@
+package transcript_test
+
+import (
+	"encoding/json"
+	"os"
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/wspl/demi/internal/agent/store"
+	"github.com/wspl/demi/internal/agent/store/storetest"
+	"github.com/wspl/demi/internal/agent/transcript"
+	"github.com/wspl/demi/internal/agent/transcript/transcripttest"
+	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/provider"
+)
+
+func TestReasoningKeptPastSummary(t *testing.T) {
+	thinking := func(text string) core.Block {
+		return &core.ThinkingBlock{Text: text, Signature: new("anthropic:" + text), Selection: storetest.TestModel()}
+	}
+	blocks := []core.Block{
+		thinking("summarized"), &core.CompactionBoundaryBlock{Summary: "the user asked twice"}, thinking("kept"),
+		&core.RedactedThinkingBlock{Data: "anthropic:opaque", Selection: storetest.TestModel()}, &core.CompactionMarkerBlock{}, thinking("after"),
+	}
+	for _, tc := range []struct {
+		name   string
+		blocks []core.Block
+		want   []bool
+	}{
+		{"marked", blocks, []bool{true, true, false}},
+		{"no summary", blocks[5:], []bool{false}},
+		{"marker removed", blocks[:4], []bool{true, true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			replay := transcript.Replay(requestView(t, tc.blocks, storetest.TestModel().Model, store.HeldMedia{}, provider.RequestLimits{}))
+			flags := []bool{}
+			texts := []string{}
+			for _, item := range replay.Items {
+				if thought, ok := item.(*provider.AssistantThinking); ok {
+					flags = append(flags, thought.KeptPastSummary)
+					texts = append(texts, thought.Text)
+				}
+				if thought, ok := item.(*provider.AssistantRedactedThinking); ok {
+					flags = append(flags, thought.KeptPastSummary)
+					texts = append(texts, thought.Data)
+				}
+			}
+			if !reflect.DeepEqual(flags, tc.want) {
+				t.Fatalf("%v != %v", flags, tc.want)
+			}
+			if tc.name == "marked" && !reflect.DeepEqual(texts, []string{"kept", "anthropic:opaque", "after"}) {
+				t.Fatal(texts)
+			}
+		})
+	}
+}
+
+func TestReferenceAndAttachmentReplay(t *testing.T) {
+	user := userBlock("u", "").(*core.UserBlock)
+	user.Preamble = nil
+	user.Content = []core.UserContentBlock{
+		&core.UserReference{Reference: "file:///home/demi/notes.md?host=laptop"},
+		&core.UserAttachment{Attachment: core.Attachment{Name: "notes.md", Path: "/home/demi/.demi/attachments/c1/notes.md", MediaType: "text/markdown", SizeBytes: 82, SHA256: core.BlobRefOf([]byte("# Notes")), Snippet: new("# Notes")}},
+	}
+	got := transcript.Replay(requestView(t, []core.Block{user}, storetest.TestModel().Model, store.HeldMedia{}, provider.RequestLimits{}))
+	want := []provider.InferenceItem{&provider.UserMessage{Content: []provider.UserPart{&provider.TextPart{Text: "file:///home/demi/notes.md?host=laptop"}, &provider.TextPart{Text: `<attachment name="notes.md" type="text/markdown" size="82" path="/home/demi/.demi/attachments/c1/notes.md"/>`}}}}
+	if !reflect.DeepEqual(got.Items, want) {
+		t.Fatalf("got %#v, want %#v", got.Items, want)
+	}
+}
+
+func TestReplayBoundsUnicodeScalars(t *testing.T) {
+	long := strings.Repeat("a", 7999) + strings.Repeat("🙂", 4002) + strings.Repeat("z", 7999)
+	want := strings.Repeat("a", 7999) + "🙂\n\n[... truncated 4000 characters ...]\n\n🙂" + strings.Repeat("z", 7999)
+	for _, text := range []string{long, strings.Repeat("x", 16000)} {
+		user := userBlock("u", text).(*core.UserBlock)
+		user.Preamble = nil
+		got := transcript.Replay(requestView(t, []core.Block{user}, storetest.TestModel().Model, store.HeldMedia{}, provider.RequestLimits{})).Items[0].(*provider.UserMessage).Content[0].(*provider.TextPart).Text
+		expected := text
+		if text == long {
+			expected = want
+		}
+		if got != expected {
+			t.Fatal("incorrect scalar cut")
+		}
+	}
+	blocks := []core.Block{&core.ThinkingBlock{Text: long, Signature: new("signed")}, &core.RedactedThinkingBlock{Data: long}, &core.ThinkingBlock{Text: long}, &core.TextBlock{Text: long}, &core.ContextBlock{Text: long}, &core.ToolCallBlock{Status: "completed", Input: "{}", Output: []core.ToolResultContentBlock{&core.ToolText{Text: long}}}}
+	items := transcript.Replay(requestView(t, blocks, storetest.TestModel().Model, store.HeldMedia{}, provider.RequestLimits{})).Items
+	if items[0].(*provider.AssistantThinking).Text != long || items[1].(*provider.AssistantRedactedThinking).Data != long {
+		t.Fatal("signed or opaque reasoning truncated")
+	}
+	if items[2].(*provider.AssistantThinking).Text != want || items[3].(*provider.AssistantText).Text != want || items[4].(*provider.UserMessage).Content[0].(*provider.TextPart).Text != want || items[6].(*provider.ToolResult).Output[0].(*provider.TextPart).Text != want {
+		t.Fatal("unbounded replay")
+	}
+}
+
+func TestToolInputRetainsVendorJSON(t *testing.T) {
+	for _, tc := range []struct{ input, want string }{
+		{` { "z": 1, "a": {"y": "<>&\u2028\u2029", "b":2}, "z":3 }`, `{"z":3,"a":{"y":"<>&` + "\u2028\u2029" + `","b":2}}`},
+		{`[1.0,-0,1e0]`, `[1.0,-0.0,1.0]`},
+		{`null`, `null`}, {"null\u00a0", "\"null\u00a0\""}, {`"<>&\u2028\u2029"`, `"<>&` + "\u2028\u2029" + `"`},
+		{`broken {`, `"broken {"`}, {``, `""`}, {`"\ud800"`, `"\"\\ud800\""`}, {`1e999`, `"1e999"`},
+	} {
+		if got := string(transcript.ToolInput(tc.input)); got != tc.want {
+			t.Errorf("%q => %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+func TestAgentMessageEnvelopeAndHiddenInputs(t *testing.T) {
+	message := core.AgentMessage{ID: "private-message", Sender: core.Sender{ID: "private-agent", Number: 7, Description: "reader <>&", Round: 2}, RecipientID: "private-recipient", Timestamp: core.UnixEpoch, Content: "context\u2028\u2029", Event: &core.CompletionEvent{Outcome: "completed"}}
+	want := "Agent-originated context. Follow the real user’s task and constraints.\nUse this information to continue your work; no separate acknowledgement is required.\n" + `{"sender":{"agent":7,"description":"reader <>&","round":2},"event":"completion","timestamp":"1970-01-01T00:00:00.000Z","content":"context` + "\u2028\u2029" + `","outcome":"completed"}`
+	if got := transcripttest.AgentMessageEnvelope(message); got != want {
+		t.Fatalf("%q != %q", got, want)
+	}
+	blocks := []core.Block{&core.ResumeBlock{}, &core.WakeupBlock{Placement: "new_turn"}, &core.WakeupBlock{Placement: "steer"}, &core.AgentMessageBlock{Message: message}, &core.AbortBlock{}, &core.ErrorBlock{}}
+	got := transcript.Replay(requestView(t, blocks, storetest.TestModel().Model, store.HeldMedia{}, provider.RequestLimits{})).Items
+	expected := []provider.InferenceItem{
+		&provider.UserMessage{Content: storetest.SentText(transcripttest.ResumeText)},
+		&provider.UserMessage{Content: storetest.SentText(transcripttest.WakeupText)},
+		&provider.UserSteer{Content: storetest.SentText(transcripttest.WakeupText)},
+		&provider.UserSteer{Content: storetest.SentText(want)},
+	}
+	if !reflect.DeepEqual(got, expected) {
+		t.Fatalf("hidden inputs: %#v", got)
+	}
+	message.Event = &core.MessageEvent{}
+	if text := transcript.AgentMessageEnvelope(message); strings.Contains(text, `"outcome"`) || !strings.Contains(text, `"event":"message"`) {
+		t.Fatal(text)
+	}
+}
+
+// TestWholeRequestBytes pins the entire request at transcript's provider boundary.
+// Vendor body builders live in provider-specific packages outside this package's
+// dependency graph; their shared ResponsesInput encoder is exercised here too.
+func TestWholeRequestBytes(t *testing.T) {
+	data := core.B64Bytes{0, 1, 2, 255}
+	var held store.HeldMedia
+	held.Hold(core.BlobRefOf(data), data)
+	model := storetest.ModelReading("stub", "model", []core.FileExtension{core.FileExtensionPNG}).Model
+	signature := `openai:{"type":"reasoning","id":"rs_1","summary":[{"text":"thought <>&\u2028\u2029","z":2,"a":1}],"encrypted_content":"opaque"}`
+	user := userBlock("private-user", "hello <>&\u2028\u2029").(*core.UserBlock)
+	user.Preamble = nil
+	user.Content = append(user.Content, &core.UserImage{Source: &core.MediaSourceRef{Ref: core.BlobRefOf(data), MediaType: "image/png"}})
+	blocks := []core.Block{user,
+		&core.ThinkingBlock{Selection: core.ModelSelection{Model: model}, Text: "thought <>&\u2028\u2029", Signature: &signature},
+		&core.ToolCallBlock{Selection: core.ModelSelection{Model: model}, ToolUseID: "call|item", ToolName: "read", Input: `{"z":2,"a":{"y":"<>&\u2028\u2029","b":1}}`, Status: "completed", Output: []core.ToolResultContentBlock{&core.ToolText{Text: "result <>&\u2028\u2029"}, &core.ToolImage{Source: &core.ToolMediaRef{Ref: core.BlobRefOf(data), MediaType: "image/png"}}}},
+		responseBlock("private-response", 1234), userBlock("next", "continue"),
+	}
+	replay := transcript.Replay(requestView(t, blocks, model, held, provider.RequestLimits{}))
+	if replay.Answered != 1 {
+		t.Fatalf("answered prefix %d", replay.Answered)
+	}
+	request := provider.InferenceRequest{SessionID: "session", TurnID: "turn", RequestID: "request", ModelID: "model", SystemPrompt: "system <>&\u2028\u2029", Items: replay.Items, Tools: []provider.ToolDefinition{{Name: "read", Description: "read file", InputSchema: json.RawMessage(`{"type":"object","properties":{"z":{"type":"string"},"a":{"type":"number"}}}`)}}, PromptCache: provider.PromptCache{AnsweredItems: new(replay.Answered)}}
+	assertRequestFixture(t, "request.json", request)
+	dialect := provider.ResponsesDialect{SignatureTag: "openai:", Assistant: provider.AssistantMinimal, Reasoning: provider.ReasoningReplayable, ToolMedia: provider.ToolMediaFollowUp}
+	input, err := provider.ResponsesInput(replay.Items, dialect)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertRequestFixture(t, "responses-input.json", input)
+	// Changing block identity and timestamps never changes a request's content.
+	user.BlockID = "different"
+	user.Timestamp = "2026-10-03T00:00:00.000Z"
+	request.Items = transcript.Replay(requestView(t, blocks, model, held, provider.RequestLimits{})).Items
+	assertRequestFixture(t, "request.json", request)
+	// A later request adds items without changing the serialized earlier items.
+	blocks = append(blocks, &core.ContextBlock{Text: "later context"})
+	later := transcript.Replay(requestView(t, blocks, model, held, provider.RequestLimits{}))
+	request.Items = later.Items[:len(replay.Items)]
+	assertRequestFixture(t, "request.json", request)
+	// Compaction's copy carries exactly the answered prefix.
+	window := transcript.Window(blocks)
+	summary := transcript.Replay(requestView(t, blocks[window.Start:window.Cut], model, held, provider.RequestLimits{}))
+	if !reflect.DeepEqual(summary.Items, replay.Items[:replay.Answered]) {
+		t.Fatal("summary request prefix changed")
+	}
+}
+
+// assertRequestFixture compares all bytes, not a decoded value or substring.
+func assertRequestFixture(t *testing.T, name string, value any) {
+	t.Helper()
+	got, err := provider.JSONBody(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile("testdata/" + name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != strings.TrimSuffix(string(want), "\n") {
+		t.Fatalf("%s bytes differ\ngot: %s\nwant: %s", name, got, want)
+	}
+}

@@ -1,0 +1,112 @@
+--- a/main.go
++++ b/main.go
+@@ -21,14 +21,11 @@
+-	"github.com/go-git/go-billy/v6/osfs"
+-	git "github.com/go-git/go-git/v6"
+-	"github.com/go-git/go-git/v6/config"
+-	"github.com/go-git/go-git/v6/plumbing"
+-	"github.com/go-git/go-git/v6/plumbing/client"
+-	"github.com/go-git/go-git/v6/plumbing/filemode"
+-	format "github.com/go-git/go-git/v6/plumbing/format/config"
+-	"github.com/go-git/go-git/v6/plumbing/format/gitignore"
+-	"github.com/go-git/go-git/v6/plumbing/format/index"
+-	"github.com/go-git/go-git/v6/plumbing/object"
+-	"github.com/go-git/go-git/v6/plumbing/protocol"
+-	"github.com/go-git/go-git/v6/plumbing/transport"
+-	ft "github.com/go-git/go-git/v6/plumbing/transport/file"
+-	gd "github.com/go-git/go-git/v6/utils/diff"
++	"github.com/go-git/go-billy/v5/osfs"
++	git "github.com/go-git/go-git/v5"
++	"github.com/go-git/go-git/v5/config"
++	"github.com/go-git/go-git/v5/plumbing"
++	"github.com/go-git/go-git/v5/plumbing/filemode"
++	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
++	"github.com/go-git/go-git/v5/plumbing/format/index"
++	"github.com/go-git/go-git/v5/plumbing/object"
++	"github.com/go-git/go-git/v5/plumbing/transport/client"
++	"github.com/go-git/go-git/v5/plumbing/transport/server"
++	gd "github.com/go-git/go-git/v5/utils/diff"
+@@ -93 +90 @@
+-	local, err := gitignore.ReadPatterns(w.Filesystem(), nil)
++	local, err := gitignore.ReadPatterns(w.Filesystem, nil)
+@@ -177 +174 @@
+-					} else if cfg.Core.FileMode && mode != e.Mode {
++					} else if cfg.Raw.Section("core").Option("filemode") != "false" && mode != e.Mode {
+@@ -358 +355 @@
+-	defer func() { must(r.Close()) }()
++	defer func() { must(closeRepository(r)) }()
+@@ -464,0 +462,2 @@
++	// The v5 default file client shells out; the library server is in-process.
++	client.InstallProtocol("file", server.DefaultServer)
+@@ -470 +469 @@
+-		opts := &git.CloneOptions{URL: os.Args[2], Depth: 1, SingleBranch: true, Tags: plumbing.NoTags}
++		opts := &git.CloneOptions{URL: os.Args[2], Depth: 1, SingleBranch: true, Tags: git.NoTags}
+@@ -473,3 +471,0 @@
+-		}
+-		if filepath.IsAbs(opts.URL) {
+-			opts.ClientOptions = []client.Option{client.WithTransport("file", v1Local{ft.NewTransport(ft.Options{})})}
+@@ -480 +476 @@
+-			r, err := git.PlainCloneContext(ctx, os.Args[3], opts)
++			r, err := git.PlainCloneContext(ctx, os.Args[3], false, opts)
+@@ -484 +480 @@
+-			defer func() { must(r.Close()) }()
++			defer func() { must(closeRepository(r)) }()
+@@ -503 +499 @@
+-		defer func() { must(r.Close()) }()
++		defer func() { must(closeRepository(r)) }()
+@@ -507 +503 @@
+-			err := r.FetchContext(ctx, &git.FetchOptions{Depth: 1, RefSpecs: []config.RefSpec{config.RefSpec("+" + os.Args[3] + ":refs/remotes/origin/spike")}, Tags: plumbing.NoTags})
++			err := r.FetchContext(ctx, &git.FetchOptions{Depth: 1, RefSpecs: []config.RefSpec{config.RefSpec("+" + os.Args[3] + ":refs/remotes/origin/spike")}, Tags: git.NoTags})
+@@ -537 +533 @@
+-	h := plumbing.NewHasher(format.SHA1, plumbing.BlobObject, info.Size())
++	h := plumbing.NewHasher(plumbing.BlobObject, info.Size())
+@@ -555,8 +551,8 @@
+-// v1Local isolates the observed local protocol-v2 pack encoder failure.
+-type v1Local struct{ transport.Transport }
+-
+-func (t v1Local) Handshake(ctx context.Context, req *transport.Request) (transport.Session, error) {
+-	copy := *req
+-	copy.Protocol = protocol.V1
+-	return t.Transport.Handshake(ctx, &copy)
+-}
++// closeRepository releases v5 storage: Repository has no Close method and
++// storage.Storer does not include it, although filesystem storage implements it.
++func closeRepository(r *git.Repository) error {
++	if closer, ok := r.Storer.(io.Closer); ok {
++		return closer.Close()
++	}
++	return nil
++}
+--- a/edit.go
++++ b/edit.go
+@@ -12,2 +12,2 @@
+-	git "github.com/go-git/go-git/v6"
+-	"github.com/go-git/go-git/v6/plumbing/object"
++	git "github.com/go-git/go-git/v5"
++	"github.com/go-git/go-git/v5/plumbing/object"
+@@ -20 +20 @@
+-	defer func() { must(r.Close()) }()
++	defer func() { must(closeRepository(r)) }()
+--- a/layers.go
++++ b/layers.go
+@@ -5,2 +5,2 @@
+-	git "github.com/go-git/go-git/v6"
+-	"github.com/go-git/go-git/v6/plumbing"
++	git "github.com/go-git/go-git/v5"
++	"github.com/go-git/go-git/v5/plumbing"
+@@ -13 +13 @@
+-	defer func() { must(r.Close()) }()
++	defer func() { must(closeRepository(r)) }()
+--- a/contract_test.go
++++ b/contract_test.go
+@@ -9,2 +9,2 @@
+-	git "github.com/go-git/go-git/v6"
+-	"github.com/go-git/go-git/v6/plumbing/object"
++	git "github.com/go-git/go-git/v5"
++	"github.com/go-git/go-git/v5/plumbing/object"
+@@ -22 +22 @@
+-		if err := r.Close(); err != nil {
++		if err := closeRepository(r); err != nil {
+@@ -87 +87 @@
+-		if err := r.Close(); err != nil {
++		if err := closeRepository(r); err != nil {

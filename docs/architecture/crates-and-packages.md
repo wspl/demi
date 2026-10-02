@@ -1024,7 +1024,9 @@ not a tab registry, so the split introduces no dependency cycle.
   output streams are `internal/runnerwire`'s.
 - **Public boundary:** the `JobShell` implementation and the names the shell
   reserves (`BuiltinNames`), which the composition gives the command
-  dispatcher.
+  dispatcher. The interpreter work lives in
+  `internal/runner/shell/internal/engine`, which only the shell and its
+  `shelltest` import, so the test support runs the real implementation.
 - **Must not:** know jobs, their execution contexts, services or the
   connection: a declared command reaches the dispatcher only through the
   `cmdsdk.Handler` the job gives it.
@@ -2001,7 +2003,7 @@ internal/cmdpkg/claudecode/claudecodeop -> internal/contract
 internal/cmdsdk -> internal/artifacts, internal/commandwire
 internal/cmdpkg/file -> internal/artifacts, internal/commandwire, internal/cmdsdk, internal/core, internal/cmdpkg/file/fileop, internal/gates, internal/contract
 internal/cmdpkg/browser -> internal/cmdpkg/browser/chrome/cdp, internal/cmdpkg/browser/chrome/tabs, internal/cmdpkg/browser/chrome/page, internal/cmdpkg/browser/chrome/live, internal/cmdpkg/browser/browserop, internal/commandwire, internal/cmdsdk
-internal/cmdpkg/browser/chrome/cdp -> internal/cmdpkg/browser/browserop, internal/commandwire, internal/cmdsdk, internal/artifacts, internal/core
+internal/cmdpkg/browser/chrome/cdp -> internal/cmdpkg/browser/browserop, internal/commandwire, internal/cmdsdk, internal/artifacts, internal/core, internal/contract
 internal/cmdpkg/browser/chrome/tabs -> internal/cmdpkg/browser/browserop, internal/commandwire, internal/cmdsdk, internal/artifacts, internal/core, internal/cmdpkg/browser/chrome/cdp
 internal/cmdpkg/browser/chrome/page -> internal/cmdpkg/browser/browserop, internal/commandwire, internal/cmdsdk, internal/artifacts, internal/core, internal/cmdpkg/browser/chrome/cdp, internal/cmdpkg/browser/chrome/tabs
 internal/cmdpkg/browser/chrome/live -> internal/cmdpkg/browser/browserop, internal/commandwire, internal/cmdsdk, internal/artifacts, internal/core, internal/cmdpkg/browser/chrome/cdp, internal/cmdpkg/browser/chrome/tabs, internal/cmdpkg/browser/chrome/page
@@ -2011,7 +2013,7 @@ internal/artifacts -> internal/contract
 internal/cli -> none
 internal/version -> none
 internal/host -> internal/commandwire, internal/declare, internal/core, internal/contract
-internal/plugin -> internal/declare, internal/core, internal/host, internal/webapi
+internal/plugin -> internal/declare, internal/core, internal/host, internal/webapi, internal/contract
 internal/plugins/browser -> internal/plugin, internal/declare, internal/cmdpkg/browser/browserop, internal/host, internal/webapi
 internal/plugins/changes -> internal/plugin
 internal/plugins/expose -> internal/plugin, internal/host, internal/core, internal/webapi
@@ -2028,20 +2030,21 @@ internal/providers/grokbuild -> internal/core, internal/provider, internal/contr
 internal/providers/claudecode -> internal/core, internal/provider, internal/host, internal/contract, internal/version
 internal/agent/store -> internal/framewire, internal/core, internal/provider, internal/host, internal/contract
 internal/agent/transcript -> internal/framewire, internal/agent/store, internal/core, internal/provider
-internal/agent/session -> internal/framewire, internal/agent/store, internal/agent/transcript, internal/commandwire, internal/core, internal/gates, internal/provider, internal/host
+internal/agent/session -> internal/framewire, internal/agent/store, internal/agent/transcript, internal/commandwire, internal/core, internal/gates, internal/provider, internal/host, internal/contract
 internal/agent/tools -> internal/framewire, internal/agent/session, internal/agent/store, internal/agent/transcript, internal/core, internal/provider, internal/host
 internal/agent/server -> internal/framewire, internal/agent/session, internal/agent/store, internal/agent/tools, internal/agent/transcript, internal/core, internal/gates, internal/provider, internal/host
 internal/runner -> internal/commandwire, internal/cmdsdk, internal/runner/host, internal/runner/jobs, internal/runner/process, internal/runnerwire, internal/runner/cmdpkgs, internal/runner/shell
 internal/runner/process -> internal/artifacts, internal/commandwire, internal/cmdsdk, internal/runnerwire, internal/contract
 internal/runner/host -> internal/artifacts, internal/cmdsdk, internal/runner/process, internal/runnerwire
 internal/runner/jobs -> internal/commandwire, internal/cmdsdk, internal/declare, internal/runner/process, internal/runnerwire, internal/runner/cmdpkgs
-internal/runner/shell -> internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire
-internal/runner/cmdpkgs -> internal/artifacts, internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire
+internal/runner/shell -> internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire, internal/runner/shell/internal/engine
+internal/runner/shell/internal/engine -> internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire
+internal/runner/cmdpkgs -> internal/artifacts, internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire, internal/contract
 internal/machines -> internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire, internal/machines/sandbox, internal/machines/storage, internal/machines/network, internal/machines/system
 internal/machines/sandbox -> internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire, internal/machines/system, internal/contract
 internal/machines/storage -> internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire, internal/machines/system
 internal/machines/network -> internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire, internal/machines/system
-internal/machines/system -> internal/artifacts, internal/cli
+internal/machines/system -> internal/artifacts, internal/cli, internal/contract
 internal/backend -> internal/backend/accounts, internal/backend/blobs, internal/backend/cloud, internal/backend/database, internal/backend/expose, internal/backend/hostaccess, internal/backend/edge, internal/backend/providers, internal/backend/runners, internal/backend/usershard, internal/declare, internal/cmdpkg/browser/browserop, internal/plugins/browser, internal/plugins/changes, internal/plugins/file, internal/plugins/filebrowser, internal/plugin, internal/plugins/todo, internal/providers/anthropicapi, internal/providers/claudecode, internal/providers/codex, internal/provider, internal/providers/google, internal/providers/grokbuild, internal/providers/openaiapi, internal/artifacts, internal/cli, internal/gates, internal/core, internal/webapi, internal/plugins/expose, internal/plugins/skills
 internal/backend/accounts -> internal/backend/database, internal/commandwire, internal/core, internal/webapi
 internal/backend/blobs -> internal/agent/store, internal/core, internal/webapi
@@ -2086,8 +2089,8 @@ internal/agent/session/sessiontest -> internal/agent/session, internal/framewire
 internal/agent/tools/toolstest -> internal/agent/tools, internal/framewire, internal/agent/session, internal/agent/store, internal/agent/transcript, internal/core, internal/provider, internal/host, internal/agent/session/sessiontest
 internal/agent/server/servertest -> internal/agent/server, internal/framewire, internal/agent/session, internal/agent/store, internal/agent/tools, internal/agent/transcript, internal/core, internal/gates, internal/provider, internal/host, internal/agent/tools/toolstest, internal/gates/gatestest, internal/provider/providertest
 internal/runner/jobs/jobstest -> internal/runner/jobs, internal/commandwire, internal/cmdsdk, internal/declare, internal/runner/process, internal/runnerwire, internal/runner/cmdpkgs
-internal/runner/shell/shelltest -> internal/runner/shell, internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire
-internal/runner/cmdpkgs/cmdpkgstest -> internal/runner/cmdpkgs, internal/artifacts, internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire, internal/commandwire/commandwiretest
+internal/runner/shell/shelltest -> internal/runner/shell, internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire, internal/runner/shell/internal/engine
+internal/runner/cmdpkgs/cmdpkgstest -> internal/runner/cmdpkgs, internal/artifacts, internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire, internal/commandwire/commandwiretest, internal/contract
 internal/machines/system/systemtest -> internal/machines/system
 internal/machines/machinestest -> internal/machines, internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire, internal/machines/sandbox, internal/machines/storage, internal/machines/network, internal/machines/system
 internal/backend/backendtest -> internal/backend, internal/backend/accounts, internal/backend/blobs, internal/backend/cloud, internal/backend/database, internal/backend/expose, internal/backend/hostaccess, internal/backend/edge, internal/backend/providers, internal/backend/runners, internal/backend/usershard, internal/declare, internal/cmdpkg/browser/browserop, internal/plugins/browser, internal/plugins/changes, internal/plugins/file, internal/plugins/filebrowser, internal/plugin, internal/plugins/todo, internal/providers/anthropicapi, internal/providers/claudecode, internal/providers/codex, internal/provider, internal/providers/google, internal/providers/grokbuild, internal/providers/openaiapi, internal/artifacts, internal/cli, internal/gates, internal/core, internal/webapi, internal/plugins/expose, internal/plugins/skills, internal/backend/edge/edgetest, internal/backend/blobs/blobstest, internal/backend/usershard/usershardtest, internal/backend/database/databasetest, internal/gates/gatestest
