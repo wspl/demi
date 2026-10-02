@@ -285,7 +285,7 @@ Demi manages this browser installation and its isolated conversation profiles.
 It does not discover an arbitrary Chrome executable on PATH, attach to a user's
 personal browser, or silently substitute a system Chromium installation. Browser
 selection is product configuration, not an agent command option. Chrome for
-Testing supplies the executable; the native driver uses chromiumoxide over CDP.
+Testing supplies the executable; the native driver speaks CDP itself.
 ChromeDriver is not required.
 
 A browser release pins a complete version and a per-platform artifact record:
@@ -373,16 +373,15 @@ the user test how real sites and applications behave for real visitors:
 What cannot change without a GPU remains: on Cloud, WebGL reports its software
 renderer.
 
-The browser crates of `demi.browser` use chromiumoxide for Chrome process
-integration, typed CDP calls, page handles, and event decoding. Demi owns semantic
+The browser packages of `demi.browser` use cdproto's generated types for typed
+CDP calls and event decoding, over Demi's own CDP transport and session router
+(`internal/cmdpkg/browser/chrome/cdp`). Demi owns semantic
 targeting, actionability checks, input ownership, and resource retirement. A
 library helper is used only when its behavior matches the command contract;
 a successful low-level input dispatch is not proof that the requested control
 was enabled or unobstructed.
 
-The dependency is maintained under `vendor/chromiumoxide` following the
-vendoring rules of [Crates and packages](../architecture/crates-and-packages.md#module-layout).
-Its event subscriptions use bounded buffers and explicitly report
+The transport's event subscriptions use bounded buffers and explicitly report
 lost events. A slow listener must not stop control requests from progressing.
 Loss of registry events invalidates the affected observation and must be
 reconciled before further operations; log consumers report truncation. CDP
