@@ -385,6 +385,7 @@ the agent stops reading a run at its failure.
 | `message_stop` after tool uses | The batch is yielded and the run ends | Kept |
 | The CLI's output ends | The run fails if stored results were never asked for, or if the process exited with a nonzero status and the run was not cancelled; the message is the tail of standard error, or "Claude Code exited with code N" | Gone |
 | A malformed line or tool use, or a tool call the request offered no tools for | The run fails with the line as its record | Closed |
+| A line longer than 64 MiB, or output that is not UTF-8 | The run fails with "Claude Code's output cannot be read" and the reason, without a record: there is no whole line to keep | Closed |
 | An `error` line | The run fails with the CLI's words | Closed |
 | The run is cancelled | The run ends without an event | Closed |
 | The turn drops the run's stream | — | Killed by the Host |

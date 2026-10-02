@@ -12,6 +12,7 @@ import (
 
 // A backend's URL (`runner.md` § Connection and identity): `http`, `https`,
 // `ws` or `wss`, naming a host, without credentials or a fragment.
+// +demi:codec
 type BackendURL struct{ value string }
 
 // ParseBackendURL checks and normalizes an installation's address.
@@ -83,6 +84,7 @@ func validateDeviceToken(token DeviceToken) error {
 
 // ManagedBoot holds the installation URL and credential read from a boot file.
 // The URL is normalized at the generated raw record's conversion boundary.
+// +demi:codec
 type ManagedBoot struct {
 	BackendURL  BackendURL
 	DeviceToken DeviceToken
@@ -96,7 +98,7 @@ type rawManagedBoot struct {
 
 // DecodeManagedBoot decodes a boot file's JSON; its values are checked as they are read.
 func DecodeManagedBoot(data []byte) (ManagedBoot, error) {
-	raw, err := DecoderawManagedBoot(data)
+	raw, err := decodeRawManagedBoot(data)
 	if err != nil {
 		return ManagedBoot{}, fmt.Errorf("invalid managed boot file: %w", err)
 	}
@@ -138,7 +140,7 @@ func (u BackendURL) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON parses the URL after its generated string decoder.
 func (u *BackendURL) UnmarshalJSON(data []byte) error {
-	raw, err := DecoderawBackendURL(data)
+	raw, err := decodeRawBackendURL(data)
 	if err != nil {
 		return err
 	}

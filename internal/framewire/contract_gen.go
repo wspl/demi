@@ -5607,7 +5607,7 @@ func (v UploadContent) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "fileName", Value: v.FileName})
 	return contract.EncodeObject(fields)
 }
-func DecodeclientFrame(data []byte) (clientFrame, error) {
+func decodeClientFrame(data []byte) (clientFrame, error) {
 	obj, err := contract.Decode[map[string]json.RawMessage](data)
 	if err != nil {
 		return nil, err
@@ -5738,20 +5738,20 @@ func DecodeclientFrame(data []byte) (clientFrame, error) {
 type clientFrameJSON struct{ Value clientFrame }
 
 func (v *clientFrameJSON) UnmarshalJSON(data []byte) error {
-	value, err := DecodeclientFrame(data)
+	value, err := decodeClientFrame(data)
 	if err == nil {
 		v.Value = value
 	}
 	return err
 }
 func (v clientFrameJSON) MarshalJSON() ([]byte, error) {
-	if err := ValidateclientFrame(v.Value); err != nil {
+	if err := validateClientFrame(v.Value); err != nil {
 		return nil, err
 	}
 	return contract.EncodeJSON(v.Value)
 }
-func ValidateclientFrame(value clientFrame) error { return contractValidateclientFrame(value, 0) }
-func contractValidateclientFrame(value clientFrame, depth int) error {
+func validateClientFrame(value clientFrame) error { return contractValidateClientFrame(value, 0) }
+func contractValidateClientFrame(value clientFrame, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}

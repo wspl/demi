@@ -1,9 +1,12 @@
 package main
 
 import (
+	"go/token"
 	"go/types"
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 var nameWords = regexp.MustCompile(`[A-Z]+[a-z]*|[a-z]+|[0-9]+`)
@@ -41,4 +44,15 @@ func tsName(name string) string {
 func isPrivateScalar(d *definition) bool {
 	_, basic := d.typ.Underlying().(*types.Basic)
 	return (basic || has(d.marks, "base64")) && !has(d.marks, "enum")
+}
+
+// goName keeps generated entry points as private as their contract type while
+// preserving the type's existing initialisms and word boundaries.
+func goName(prefix, name string) string {
+	if token.IsExported(name) {
+		return prefix + name
+	}
+	first, size := utf8.DecodeRuneInString(name)
+	start, width := utf8.DecodeRuneInString(prefix)
+	return string(unicode.ToLower(start)) + prefix[width:] + string(unicode.ToUpper(first)) + name[size:]
 }

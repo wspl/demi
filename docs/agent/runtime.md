@@ -1058,8 +1058,9 @@ The original stays where it came from: a tool's stdout in the command's
 whole output, which `demi shell output <commandId> --raw --stdout` prints
 ([The whole output](#the-whole-output)), and an upload in its attachment file
 on the Host and in its upload blob, whose attachment record keeps the
-original's size and hash. Fitting decodes and encodes on the
-blocking pool ([Blocking work](../architecture/concurrency.md#blocking-work)).
+original's size and hash. Fitting decodes and encodes in the
+owning operation's goroutine, outside state locks ([Blocking
+work](../architecture/concurrency.md#blocking-work)).
 Videos and documents are not fitted; they count toward the request's size
 ([Request size](compaction.md#request-size)).
 

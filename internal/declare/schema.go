@@ -9,7 +9,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/santhosh-tekuri/jsonschema/v6/kind"
@@ -228,8 +227,8 @@ func (s *Schema) schemaFailures(failure *jsonschema.ValidationError, order map[s
 	case *kind.ContentEncoding:
 		message = fmt.Sprintf("%s is not compliant with %q content encoding", name, reason.Want)
 	case *kind.ContentMediaType:
-		if !utf8.Valid(reason.Got) {
-			return []string{contentUTF8Error(reason.Got)}
+		if err := contract.CheckUTF8(reason.Got); err != nil {
+			return []string{err.Error()}
 		}
 		message = fmt.Sprintf("%s is not compliant with %q media type", name, reason.Want)
 	case *kind.ContentSchema:
@@ -288,38 +287,6 @@ func flattenChildren(failure *jsonschema.ValidationError) []*jsonschema.Validati
 		children = append(children, flattenFailures(child)...)
 	}
 	return children
-}
-
-// contentUTF8Error preserves Rust's decoded-content UTF-8 diagnostic.
-func contentUTF8Error(data []byte) string {
-	for index := 0; index < len(data); {
-		r, size := utf8.DecodeRune(data[index:])
-		if r != utf8.RuneError || size != 1 {
-			index += size
-			continue
-		}
-		first := data[index]
-		width := 1
-		switch {
-		case first >= 0xc2 && first <= 0xdf:
-			width = 2
-		case first >= 0xe0 && first <= 0xef:
-			width = 3
-		case first >= 0xf0 && first <= 0xf4:
-			width = 4
-		}
-		for offset := 1; offset < width; offset++ {
-			if index+offset >= len(data) {
-				return fmt.Sprintf("incomplete utf-8 byte sequence from index %d", index)
-			}
-			next := data[index+offset]
-			if next < 0x80 || next > 0xbf || offset == 1 && (first == 0xe0 && next < 0xa0 || first == 0xed && next >= 0xa0 || first == 0xf0 && next < 0x90 || first == 0xf4 && next >= 0x90) {
-				return fmt.Sprintf("invalid utf-8 sequence of %d bytes from index %d", offset, index)
-			}
-		}
-		return fmt.Sprintf("invalid utf-8 sequence of 1 bytes from index %d", index)
-	}
-	return ""
 }
 
 // orderedFailures applies Rust's aggregation and diagnostic traversal order.

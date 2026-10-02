@@ -36,7 +36,7 @@ func DecodeClientFrame(data []byte) (ClientFrame, error) {
 		}
 		return nil, fmt.Errorf("%w: %w", ErrInvalidFrame, err)
 	}
-	frame, err := DecodeclientFrame(data)
+	frame, err := decodeClientFrame(data)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidFrame, err)
 	}
@@ -44,7 +44,7 @@ func DecodeClientFrame(data []byte) (ClientFrame, error) {
 }
 
 // ValidateClientFrame checks a frame constructed inside the process.
-func ValidateClientFrame(frame ClientFrame) error { return ValidateclientFrame(frame) }
+func ValidateClientFrame(frame ClientFrame) error { return validateClientFrame(frame) }
 
 // validateSend restricts kept file references to edit frames.
 func validateSend(v SendFrame) error { return validateNewContent(v.Content) }

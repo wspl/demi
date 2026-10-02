@@ -1,0 +1,46 @@
+//go:build darwin || linux
+
+package process
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net"
+	"os"
+	"path/filepath"
+
+	"github.com/wspl/demi/internal/cmdsdk"
+	"golang.org/x/sys/unix"
+)
+
+func connectLocal(ctx context.Context, endpoint string) (net.Conn, error) {
+	if !filepath.IsAbs(endpoint) {
+		return nil, fmt.Errorf("local socket path must be absolute")
+	}
+	var backoff cmdsdk.Backoff
+	for {
+		connection, err := (&net.Dialer{}).DialContext(ctx, "unix", endpoint)
+		if err == nil {
+			return connection, nil
+		}
+		retry := errors.Is(err, unix.ECONNREFUSED) || errors.Is(err, unix.EAGAIN) || cmdsdk.Exhausted(err)
+		if !retry || !runnerMayLive(endpoint) {
+			return nil, err
+		}
+		if err := backoff.Wait(ctx); err != nil {
+			return nil, err
+		}
+	}
+}
+
+// runnerMayLive distinguishes a busy runner from an abandoned socket. An
+// exhausted descriptor table cannot prove death and therefore waits as well.
+func runnerMayLive(endpoint string) bool {
+	file, err := os.Open(filepath.Join(filepath.Dir(endpoint), Alive))
+	if err != nil {
+		return cmdsdk.Exhausted(err)
+	}
+	defer func() { _ = file.Close() }() // Cleanup follows the operation result; cancellation may already have closed it.
+	return errors.Is(unix.Flock(int(file.Fd()), unix.LOCK_SH|unix.LOCK_NB), unix.EWOULDBLOCK)
+}
