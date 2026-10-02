@@ -101,6 +101,13 @@ selection   a tab's id or a pinned kind's id, saved
 - **Selection.** The saved selection names a tab or a pinned kind. When it
   names nothing the page shows, as for a conversation that never saved or a
   plugin turned off, the panel selects its first tab.
+- **Before the first send.** A new conversation has no backend record yet,
+  and so no working directory on a Host
+  ([Persistence and adapters](#persistence-and-adapters)). Its panel binds no
+  plugin page and neither reads nor saves the panel: it shows its frame,
+  which says that files and changes appear once the first message is sent.
+  When the first send creates the record, the pinned tabs appear and the
+  saved panel is read, as for any conversation.
 
 The tab state is ordinary state with `add`, `update`, `remove`, `move` and
 `select`. Every change applies to the page first and is then saved

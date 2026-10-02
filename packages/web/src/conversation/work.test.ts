@@ -9,6 +9,7 @@ import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
 import { productState } from '../__tests__/product-state'
 import type { PanelState } from '@demicodes/web-ui/agent/panel-tabs'
+import { useConversations } from './store'
 import { useWorkPanel } from './work'
 
 const storageDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
@@ -102,55 +103,94 @@ test('a retained edit opens in the Change view with the panel, only while the ch
   expect(state.open).toBe(true)
 })
 
-test('the saved panel is read once, keeps what the user did before it arrived, and saves leave in order', async () => {
-  signIn('one')
-  const fetchDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'fetch')
-  let stored: PanelState = { selection: 'change', tabs: [{ id: 'tab-1', kind: 'browser', data: { url: 'about:blank' } }] }
-  let reads = 0
-  const puts: unknown[] = []
-  let heldRead: ReturnType<typeof deferred<void>> | null = null
+/**
+ * Answers the work panel's route from `stored`, counting its reads and
+ * keeping each save; a read waits for `hold` while one is set.
+ */
+function stubPanelRoute(stored: PanelState) {
+  const route = {
+    stored,
+    reads: 0,
+    puts: [] as unknown[],
+    hold: null as ReturnType<typeof deferred<void>> | null,
+  }
   globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     if (init?.method === 'PUT') {
       const body = JSON.parse(String(init.body))
-      puts.push(body)
-      stored = body
+      route.puts.push(body)
+      route.stored = body
       return new Response(null, { status: 204 })
     }
-    reads += 1
-    const answer = JSON.stringify(stored)
-    await heldRead?.promise
+    route.reads += 1
+    const answer = JSON.stringify(route.stored)
+    await route.hold?.promise
     return new Response(answer, { status: 200, headers: { 'content-type': 'application/json' } })
   }) as typeof fetch
-  try {
-    const work = useWorkPanel()
-    // The read is on its way while the user already acts: what they did stays.
-    heldRead = deferred<void>()
-    const reading = work.load('a')
-    work.add('a', 'page', { url: 'https://example.test/', expose: null }, { select: true })
-    heldRead.resolve()
-    await reading
-    expect(work.stateFor('a').panel.tabs.map((tab) => tab.kind)).toEqual(['browser', 'page'])
+  return route
+}
 
-    // The panel is not read again: the page's state is the newest there is.
-    work.update('a', 'tab-1', { url: 'about:blank', tab: 't_bound' })
-    await work.load('a')
-    expect(reads).toBe(1)
-    expect(work.stateFor('a').panel.tabs[0]!.data).toEqual({ url: 'about:blank', tab: 't_bound' })
+const fetchDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'fetch')
 
-    // Changes made while a save is out leave afterwards, the latest last.
-    work.update('a', 'tab-1', { url: 'https://example.test/', tab: 't_bound' })
-    work.select('a', 'tab-1')
-    for (let turn = 0; turn < 10; turn++) {
-      await Promise.resolve()
-    }
-    expect(puts.at(-1)).toMatchObject({
-      selection: 'tab-1',
-      tabs: [{ id: 'tab-1', kind: 'browser', data: { url: 'https://example.test/', tab: 't_bound' } }, { kind: 'page' }],
-    })
-    expect(stored).toEqual(work.stateFor('a').panel)
-  } finally {
-    if (fetchDescriptor) {
-      Object.defineProperty(globalThis, 'fetch', fetchDescriptor)
-    }
+afterEach(() => {
+  if (fetchDescriptor) {
+    Object.defineProperty(globalThis, 'fetch', fetchDescriptor)
   }
+})
+
+test('the saved panel is read once, keeps what the user did before it arrived, and saves leave in order', async () => {
+  signIn('one')
+  const route = stubPanelRoute({ selection: 'change', tabs: [{ id: 'tab-1', kind: 'browser', data: { url: 'about:blank' } }] })
+  const conversations = useConversations()
+  const id = conversations.create()
+  conversations.items.find((item) => item.id === id)!.persistence = 'synced'
+  const work = useWorkPanel()
+  // The read is on its way while the user already acts: what they did stays.
+  route.hold = deferred<void>()
+  const reading = work.load(id)
+  work.add(id, 'page', { url: 'https://example.test/', expose: null }, { select: true })
+  route.hold.resolve()
+  await reading
+  expect(work.stateFor(id).panel.tabs.map((tab) => tab.kind)).toEqual(['browser', 'page'])
+
+  // The panel is not read again: the page's state is the newest there is.
+  work.update(id, 'tab-1', { url: 'about:blank', tab: 't_bound' })
+  await work.load(id)
+  expect(route.reads).toBe(1)
+  expect(work.stateFor(id).panel.tabs[0]!.data).toEqual({ url: 'about:blank', tab: 't_bound' })
+
+  // Changes made while a save is out leave afterwards, the latest last.
+  work.update(id, 'tab-1', { url: 'https://example.test/', tab: 't_bound' })
+  work.select(id, 'tab-1')
+  for (let turn = 0; turn < 10; turn++) {
+    await Promise.resolve()
+  }
+  expect(route.puts.at(-1)).toMatchObject({
+    selection: 'tab-1',
+    tabs: [{ id: 'tab-1', kind: 'browser', data: { url: 'https://example.test/', tab: 't_bound' } }, { kind: 'page' }],
+  })
+  expect(route.stored).toEqual(work.stateFor(id).panel)
+})
+
+test('a new conversation\'s panel reads and saves nothing until its first send creates the record', async () => {
+  signIn('one')
+  const route = stubPanelRoute({ selection: null, tabs: [] })
+  const conversations = useConversations()
+  const id = conversations.create()
+  const work = useWorkPanel()
+  await work.load(id)
+  work.add(id, 'page', { url: 'https://example.test/', expose: null }, { select: true })
+  await Promise.resolve()
+  expect(work.recorded(id)).toBe(false)
+  expect(route.reads).toBe(0)
+  expect(route.puts).toEqual([])
+
+  // What the first send's record does: the panel is read, and what the user opened before stays and is saved.
+  conversations.items.find((item) => item.id === id)!.persistence = 'synced'
+  expect(work.recorded(id)).toBe(true)
+  await work.load(id)
+  for (let turn = 0; turn < 10; turn++) {
+    await Promise.resolve()
+  }
+  expect(route.reads).toBe(1)
+  expect(route.puts.at(-1)).toMatchObject({ tabs: [{ kind: 'page' }] })
 })

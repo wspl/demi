@@ -19,6 +19,7 @@ import { useProduct } from '../state/product'
 import { PLUGIN_PAGES } from '../plugins/generated/pages'
 import { pluginEnabled } from '../plugins/enabled'
 import { createWorkingTreeSource, type WorkingTreeSource } from './changes'
+import { useConversations } from './store'
 
 /** One conversation's work panel: whether it is open, its pinned tabs, its saved selection and tabs, and its working tree. */
 export interface WorkState {
@@ -49,6 +50,7 @@ export interface WorkState {
 export const useWorkPanel = defineStore('work-panel', () => {
   const resources = useResources()
   const product = useProduct()
+  const conversations = useConversations()
   const enabled = (plugin: string) => pluginEnabled(product.snapshot, plugin)
   const states = reactive(new Map<string, WorkState>())
 
@@ -77,6 +79,15 @@ export const useWorkPanel = defineStore('work-panel', () => {
   }
 
   /**
+   * Whether the conversation has its backend record, which its first send
+   * creates. Before it, the panel binds no page and reads or saves nothing
+   * (`web-application.md` § Work panel).
+   */
+  function recorded(conversationId: string): boolean {
+    return conversations.items.find((item) => item.id === conversationId)?.persistence === 'synced'
+  }
+
+  /**
    * Reads the saved panel, once per conversation in a page's life. From then
    * on the page's own state is the newest there is: everything it changes it
    * saves, so reading again could only bring back something older. What the
@@ -84,11 +95,10 @@ export const useWorkPanel = defineStore('work-panel', () => {
    */
   async function load(conversationId: string): Promise<void> {
     const state = stateFor(conversationId)
-    if (state.loading) {
+    if (state.loading || !recorded(conversationId)) {
       return
     }
     state.loading = true
-    const revision = state.revision
     let saved: PanelState
     try {
       saved = await loadPanel(conversationId)
@@ -99,7 +109,7 @@ export const useWorkPanel = defineStore('work-panel', () => {
       return
     }
     state.loaded = true
-    if (state.revision === revision) {
+    if (state.revision === 0) {
       state.panel = saved
       return
     }
@@ -196,5 +206,5 @@ export const useWorkPanel = defineStore('work-panel', () => {
     return intentKind(PLUGIN_PAGES, enabled, intent) !== null
   }
 
-  return { stateFor, setOpen, load, select, add, update, closeTabs, updatePinned, openIn, canOpen }
+  return { stateFor, recorded, setOpen, load, select, add, update, closeTabs, updatePinned, openIn, canOpen }
 })
