@@ -74,9 +74,12 @@
 // showsInPlace(mediaType), with ASCII extension case folding and either path
 // separator. It must have mediaType, extensions and inPlace fields.
 //
-// +demi:schema emits <Type>JSONSchema() json.RawMessage in contract_gen.go.
-// Each call returns fresh bytes: draft 2020-12, no $schema, inline subschemas,
-// and optional properties that allow null only with +demi:nullable. Objects, tagged unions,
+// +demi:schema emits <Type>JSONSchema() for command declarations and
+// <Type>PluginJSONSchema() for plugin page/stream declarations in contract_gen.go.
+// Both return json.RawMessage; callers select the form for that use. Plugin
+// schemas retain named $defs/$ref, including anyOf for nullable references.
+// Each call returns fresh draft 2020-12 bytes without $schema. The command
+// form inlines subschemas; optional properties allow null only with +demi:nullable. Objects, tagged unions,
 // records, arrays, enums, patterns, lengths and numeric bounds use the same
 // checked model as codecs and Zod. Root titles use type names; type and field
 // doc comments supply descriptions, with field comments overriding type text.
