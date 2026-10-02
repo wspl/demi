@@ -1,0 +1,154 @@
+package cdp_test
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"strings"
+	"testing"
+
+	protocol "github.com/chromedp/cdproto/cdp"
+	"github.com/chromedp/cdproto/runtime"
+	"github.com/chromedp/cdproto/target"
+	"github.com/go-json-experiment/json/jsontext"
+	"github.com/wspl/demi/internal/cmdpkg/browser/chrome/cdp"
+	"github.com/wspl/demi/internal/cmdpkg/browser/chrome/cdp/cdptest"
+)
+
+func ownedConnection(t *testing.T, address string) *cdp.Connection {
+	t.Helper()
+	connection, err := cdp.Dial(t.Context(), address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := connection.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
+	return connection
+}
+
+func TestTypedCDPAndLossDoNotBlockControlReplies(t *testing.T) {
+	expression := "'<>&\u2028\u2029'"
+	params := runtime.Evaluate(expression).WithContextID(42).WithReturnByValue(true)
+	server := cdptest.NewServer(t,
+		cdptest.Exchange{Method: "Runtime.evaluate", Params: params, Result: jsontext.Value(`{"result":{"type":"string","value":"<>&\u2028\u2029"}}`)},
+		cdptest.Exchange{Method: "Runtime.getIsolateId", Params: struct{}{}, Result: jsontext.Value(`{"id":"barrier"}`)},
+	)
+	connection := ownedConnection(t, server.Address())
+	subscription, err := connection.Subscribe("Runtime.consoleAPICalled")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer subscription.Close()
+	result, exception, err := params.Do(protocol.WithExecutor(t.Context(), connection))
+	if err != nil || exception != nil || string(result.Value) != `"<>&
+
+"` {
+		t.Fatalf("result=%v exception=%v err=%v", result, exception, err)
+	}
+	for range 19 {
+		if err := server.Emit(t.Context(), cdp.Event{Method: "Runtime.consoleAPICalled", Params: json.RawMessage(`{"type":"log","args":[],"executionContextId":1,"timestamp":0}`)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := connection.Execute(t.Context(), "Runtime.getIsolateId", struct{}{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	_, err = subscription.Next(t.Context())
+	var loss *cdp.EventLoss
+	if !errors.As(err, &loss) || loss.Count != 3 {
+		t.Fatalf("loss=%v", err)
+	}
+	for range 16 {
+		event, err := subscription.Next(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := cdp.DecodeEvent(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestRendererChildrenRouteAndDetachBeforeTheirParent(t *testing.T) {
+	auto := target.SetAutoAttach(true, false).WithFlatten(true).WithFilter(target.Filter{{Type: "iframe"}, {Type: "worker"}, {Type: "shared_worker"}, {Type: "service_worker"}, {Exclude: true}})
+	server := cdptest.NewServer(t,
+		cdptest.Exchange{Method: "Target.attachToTarget", Params: target.AttachToTarget("tab").WithFlatten(true), Result: jsontext.Value(`{"sessionId":"parent"}`)},
+		cdptest.Exchange{Method: "Target.setAutoAttach", SessionID: "parent", Params: auto, Result: struct{}{}},
+		cdptest.Exchange{Method: "Target.setAutoAttach", SessionID: "child", Params: auto, Result: struct{}{}},
+		cdptest.Exchange{Method: "Runtime.evaluate", SessionID: "child", Params: runtime.Evaluate("42").WithReturnByValue(true), Result: jsontext.Value(`{"result":{"type":"number","value":42}}`)},
+		cdptest.Exchange{Method: "Target.detachFromTarget", SessionID: "parent", Params: target.DetachFromTarget().WithSessionID("child"), Result: struct{}{}},
+		cdptest.Exchange{Method: "Target.detachFromTarget", Params: target.DetachFromTarget().WithSessionID("parent"), Result: struct{}{}},
+	)
+	connection := ownedConnection(t, server.Address())
+	session, err := connection.Attach(t.Context(), "tab")
+	if err != nil {
+		t.Fatal(err)
+	}
+	subscription, err := session.Subscribe("Target.attachedToTarget", "Runtime.consoleAPICalled")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer subscription.Close()
+	event := cdp.Event{Method: "Target.attachedToTarget", SessionID: "parent", Params: json.RawMessage(`{"sessionId":"child","targetInfo":{"targetId":"frame","type":"iframe","title":"","url":"about:blank","attached":true,"canAccessOpener":false},"waitingForDebugger":false}`)}
+	if err := server.Emit(t.Context(), event); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := subscription.Next(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	child, err := session.Related(t.Context(), "frame")
+	if err != nil || child == nil {
+		t.Fatal(child, err)
+	}
+	result, _, err := runtime.Evaluate("42").WithReturnByValue(true).Do(protocol.WithExecutor(t.Context(), child))
+	if err != nil || string(result.Value) != "42" {
+		t.Fatal(result, err)
+	}
+	if err := server.Emit(t.Context(), cdp.Event{Method: "Runtime.consoleAPICalled", SessionID: "child", Params: json.RawMessage(`{"type":"log","args":[],"executionContextId":1,"timestamp":0}`)}); err != nil {
+		t.Fatal(err)
+	}
+	received, err := subscription.Next(t.Context())
+	if err != nil || received.SessionID != "child" {
+		t.Fatal(received, err)
+	}
+	if err := session.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := child.Execute(t.Context(), "Runtime.getIsolateId", struct{}{}, nil); cdp.ErrorCode(err) != "tab_not_found" {
+		t.Fatal(err)
+	}
+}
+
+func TestOversizedChromeMessageLosesConnectionAndCleanupJoins(t *testing.T) {
+	server := cdptest.NewServer(t, cdptest.Exchange{Method: "Runtime.evaluate", Params: struct{}{}, Result: map[string]any{"payload": strings.Repeat("x", int(cdp.MessageLimit))}})
+	connection := ownedConnection(t, server.Address())
+	err := connection.Execute(t.Context(), "Runtime.evaluate", struct{}{}, nil)
+	requireCode(t, err, "browser_lost")
+	if err := connection.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if connection.Err() == nil {
+		t.Fatal("lost cause discarded")
+	}
+}
+
+func TestTypedReplyValidationRequiresFieldsButToleratesChromeAdditions(t *testing.T) {
+	params := runtime.Evaluate("1")
+	server := cdptest.NewServer(t,
+		cdptest.Exchange{Method: "Runtime.evaluate", Params: params, Result: jsontext.Value(`{"result":{"type":"number","value":1,"futureField":true},"futureEnvelopeField":true}`)},
+		cdptest.Exchange{Method: "Runtime.evaluate", Params: params, Result: struct{}{}},
+	)
+	connection := ownedConnection(t, server.Address())
+	result, _, err := params.Do(protocol.WithExecutor(t.Context(), connection))
+	if err != nil || result == nil || string(result.Value) != "1" {
+		t.Fatal(result, err)
+	}
+	_, _, err = params.Do(protocol.WithExecutor(t.Context(), connection))
+	if err == nil {
+		t.Fatal("absent required result accepted")
+	}
+	requireCode(t, err, "driver_error")
+}
