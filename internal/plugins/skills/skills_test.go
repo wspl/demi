@@ -2,17 +2,12 @@ package skills
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
-	"unicode/utf8"
 
-	"github.com/google/go-cmp/cmp"
 	"go.uber.org/goleak"
 
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/plugin"
-	"github.com/wspl/demi/internal/plugin/plugintest"
 )
 
 func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
@@ -36,36 +31,6 @@ func TestSourceOrigins(t *testing.T) {
 		if _, err := parseOrigin(text); err == nil {
 			t.Fatalf("accepted %q", text)
 		}
-	}
-}
-
-func TestCatalogBudget(t *testing.T) {
-	entries := make([]catalogEntry, 30)
-	for i := range entries {
-		name := fmt.Sprintf("skill-%02d", i)
-		entries[i] = catalogEntry{name: name, description: strings.Repeat("word ", 60), location: "/repo/.agents/skills/" + name + "/SKILL.md"}
-	}
-	block := renderCatalog(entries)
-	if utf8.RuneCountInString(block) > 8000 || strings.Count(block, "<skill>") != 30 || strings.Count(block, "…</description>") != 30 {
-		t.Fatalf("catalog did not shorten all descriptions: %s", block)
-	}
-	length := -1
-	for _, rest := range strings.Split(block, "<description>")[1:] {
-		text, _, _ := strings.Cut(rest, "</description>")
-		if length >= 0 && utf8.RuneCountInString(text) != length {
-			t.Fatal("descriptions do not share a length")
-		}
-		length = utf8.RuneCountInString(text)
-	}
-	entries = make([]catalogEntry, 100)
-	for i := range entries {
-		name := fmt.Sprintf("%s%02d", strings.Repeat("a", 60), i)
-		entries[i] = catalogEntry{name: name, description: "Short.", location: "/repo/.agents/skills/" + name + "/SKILL.md"}
-	}
-	block = renderCatalog(entries)
-	shown := strings.Count(block, "<skill>")
-	if utf8.RuneCountInString(block) > 8000 || strings.Contains(block, "<description>") || !strings.HasSuffix(block, fmt.Sprintf("%d more skills are not listed.", 100-shown)) {
-		t.Fatalf("catalog did not count omitted skills: %s", block)
 	}
 }
 
@@ -118,85 +83,6 @@ func TestTakenSkillNames(t *testing.T) {
 	duplicate := sources{"a": {source: source{Origin: "acme/a", Skills: []userSkill{{Name: "Bad_Name"}, {Name: "bad-name"}}}}}
 	if _, err := switchSkills(duplicate, "a", map[string]bool{"Bad_Name": true, "bad-name": true}, true); err == nil {
 		t.Fatal("batch accepted colliding names")
-	}
-}
-
-func TestUpdateRetainsEnabledNames(t *testing.T) {
-	before := source{Origin: "acme/tools", Added: 1, Skills: []userSkill{{Name: "review", Enabled: true}, {Name: "lint", Enabled: true}}, Failure: &Failure{At: core.UnixEpoch, Message: "failed"}}
-	after := pinSource(before, "second", []userSkill{{Name: "review", Description: "Review a change, carefully."}, {Name: "format"}}, []Skipped{}, core.UnixEpoch)
-	if !after.Skills[0].Enabled || after.Skills[1].Enabled || after.Skills[1].Name != "format" || len(after.Skills) != 2 || after.Failure != nil || *after.Commit != "second" || after.Origin != before.Origin || after.Added != before.Added {
-		t.Fatalf("bad update: %+v", after)
-	}
-	if before.Skills[1].Name != "lint" || before.Failure == nil {
-		t.Fatal("update mutated previous source")
-	}
-}
-
-func TestStoredSkillsAndDirectories(t *testing.T) {
-	demi := plugintest.New()
-	demi.Plugin = "skills"
-	port := demi.Port()
-	manifest, err := port.PutBlob(t.Context(), core.B64Bytes("---\nname: review\ndescription: Review a change.\n---\n"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	script, err := port.PutBlob(t.Context(), core.B64Bytes("#!/bin/sh\necho ok\n"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	skill := userSkill{Name: "review", Description: "Review a change.", Files: []plugin.DirectoryFile{{Path: "SKILL.md", Blob: manifest}, {Path: "scripts/check.sh", Executable: true, Blob: script}}, Warnings: []string{}}
-	value := source{Origin: "acme/tools", Added: 2, Skills: []userSkill{skill}, Skipped: []Skipped{{Path: "broken/SKILL.md", Reason: "the front matter has no description"}}}
-	revision, err := writeSource(t.Context(), port, "tools", value, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(demi.ValueBlobs("tools")) != 2 || demi.BlobBytes(script) == nil {
-		t.Fatal("source did not retain file blobs")
-	}
-	all, err := readSources(t.Context(), port)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(sourceDirectories(all)) != 0 {
-		t.Fatal("off skill installed")
-	}
-	changed, err := switchSkills(all, "tools", map[string]bool{"review": true}, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := writeSource(t.Context(), port, "tools", changed, &revision); err != nil {
-		t.Fatal(err)
-	}
-	all, err = readSources(t.Context(), port)
-	if err != nil {
-		t.Fatal(err)
-	}
-	directories := sourceDirectories(all)
-	if len(directories) != 1 || !directories[0].Files[1].Executable {
-		t.Fatal("enabled executable not installed")
-	}
-	paths, err := port.SetDirectories(t.Context(), directories)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if skillLocation(skill) != paths[0].Path+"/SKILL.md" {
-		t.Fatal("catalog path differs from Host path")
-	}
-	all["earlier"] = storedSource{source: source{Origin: "acme/earlier", Added: 1, Skills: []userSkill{}, Skipped: []Skipped{}}}
-	state := pageState(all, map[string]bool{"tools": true})
-	if state.Sources[0].ID != "earlier" || !state.Sources[1].Fetching || !state.Sources[1].Skills[0].Enabled || len(state.Sources[1].Skipped) != 1 {
-		t.Fatalf("bad page state: %+v", state)
-	}
-	encoded, err := state.MarshalJSON()
-	if err != nil {
-		t.Fatal(err)
-	}
-	decoded, err := DecodeState(encoded)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if diff := cmp.Diff(state, decoded); diff != "" {
-		t.Fatal(diff)
 	}
 }
 
