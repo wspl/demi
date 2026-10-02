@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/core"
 )
 
@@ -35,7 +36,7 @@ func TestRustCorpus(t *testing.T) {
 		if err := core.ValidateBlock(block); err != nil {
 			t.Fatal(err)
 		}
-		encoded, err := json.Marshal(holder)
+		encoded, err := contract.EncodeJSON(holder)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -96,7 +97,7 @@ func TestRustCorpus(t *testing.T) {
 			for pointer, replacement := range tc.Set {
 				mutate(t, value, pointer, replacement, false)
 			}
-			encoded, err := json.Marshal(value)
+			encoded, err := contract.EncodeJSON(value)
 			if err != nil {
 				t.Fatal(err)
 			}

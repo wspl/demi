@@ -11,19 +11,38 @@ func (m ProviderModel) Selection(providerID string, thinking ThinkingConfig, tie
 	if m.ContextWindow != nil {
 		window = *m.ContextWindow
 	}
-	return ModelSelection{
+	selection := ModelSelection{
 		ProviderID: providerID,
 		Model: Model{
 			ID:                 m.ID,
 			Name:               m.DisplayName,
 			ContextWindow:      window,
-			OutputLimit:        m.OutputLimit,
 			Thinking:           m.ThinkingCapabilities(),
 			AcceptedExtensions: m.AcceptedFileExtensions(),
 		},
-		Thinking:      thinking,
-		ServiceTierID: tier,
 	}
+	if m.OutputLimit != nil {
+		selection.Model.OutputLimit = new(*m.OutputLimit)
+	}
+	if tier != nil {
+		selection.ServiceTierID = new(*tier)
+	}
+	switch config := thinking.(type) {
+	case *AdaptiveConfig:
+		selection.Thinking = new(*config)
+	case *BudgetConfig:
+		selection.Thinking = new(*config)
+	case *EffortConfig:
+		setting := *config
+		if config.Summary != nil {
+			setting.Summary = new(*config.Summary)
+		}
+		selection.Thinking = &setting
+	case *DisabledConfig:
+		selection.Thinking = new(*config)
+	case nil:
+	}
+	return selection
 }
 
 // UnavailableSetting identifies an effort or tier the catalog does not offer.
@@ -68,10 +87,10 @@ func (m ProviderModel) UnnamedEffort() *string {
 	}
 	efforts := m.thinkingEfforts()
 	if m.DefaultThinkingEffort != nil && slices.Contains(efforts, *m.DefaultThinkingEffort) {
-		return m.DefaultThinkingEffort
+		return new(*m.DefaultThinkingEffort)
 	}
 	if len(efforts) > 0 {
-		return &efforts[0]
+		return new(efforts[0])
 	}
 	return nil
 }
@@ -94,7 +113,7 @@ func (m ProviderModel) TierFor(tier *string) (*string, error) {
 	}
 	for _, listed := range m.ServiceTiers {
 		if listed.ID == *tier {
-			return tier, nil
+			return new(*tier), nil
 		}
 	}
 	return nil, &UnavailableSetting{Kind: "service tier", Value: *tier}
@@ -129,24 +148,27 @@ func (m ProviderModel) ThinkingCapabilities() []ThinkingCapability {
 	if len(efforts) == 0 {
 		return []ThinkingCapability{}
 	}
+	var defaultEffort *string
+	if m.DefaultThinkingEffort != nil {
+		defaultEffort = new(*m.DefaultThinkingEffort)
+	}
 	return []ThinkingCapability{&EffortCapability{
-		Efforts: slices.Clone(efforts), DefaultEffort: m.DefaultThinkingEffort,
+		Efforts: slices.Clone(efforts), DefaultEffort: defaultEffort,
 		Summaries: []ThinkingSummary{ThinkingSummaryAuto, ThinkingSummaryConcise, ThinkingSummaryDetailed, ThinkingSummaryOff, ThinkingSummaryOn},
 	}}
 }
 
 // ThinkingEffort gives the effort displayed by the conversation's settings.
-func (m ModelSelection) ThinkingEffort() *string {
+func (m ModelSelection) ThinkingEffort() (string, bool) {
 	switch c := m.Thinking.(type) {
 	case *AdaptiveConfig:
-		return &c.Effort
+		return c.Effort, true
 	case *EffortConfig:
-		return &c.Effort
+		return c.Effort, true
 	case *DisabledConfig:
-		off := ThinkingOff
-		return &off
+		return ThinkingOff, true
 	case *BudgetConfig, nil:
-		return nil
+		return "", false
 	}
-	return nil
+	return "", false
 }

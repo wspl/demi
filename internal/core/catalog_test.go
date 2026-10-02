@@ -105,8 +105,102 @@ func TestModelSettings(t *testing.T) {
 		{nil, nil}, {&core.AdaptiveConfig{Effort: "high"}, new("high")}, {&core.EffortConfig{Effort: "low"}, new("low")},
 		{&core.DisabledConfig{}, new(core.ThinkingOff)}, {&core.BudgetConfig{BudgetTokens: 1000}, nil},
 	} {
-		if got := (core.ModelSelection{Thinking: tc.config}).ThinkingEffort(); !reflect.DeepEqual(got, tc.want) {
-			t.Errorf("effort: %v", got)
+		if got, ok := (core.ModelSelection{Thinking: tc.config}).ThinkingEffort(); ok != (tc.want != nil) || (ok && got != *tc.want) {
+			t.Errorf("effort: %q, present: %v", got, ok)
 		}
 	}
+}
+
+// Results belong to the caller: changing settings must not edit a catalog or
+// another selection. These pure mutation scenarios cost under one second.
+func TestCatalogResultsDoNotAlias(t *testing.T) {
+	t.Run("selection limits and tier", func(t *testing.T) {
+		catalog := core.ProviderModel{OutputLimit: new(uint32(8000))}
+		tier := "priority"
+		result := catalog.Selection("p", nil, &tier)
+		*result.Model.OutputLimit = 1
+		*result.ServiceTierID = "changed"
+		if *catalog.OutputLimit != 8000 || tier != "priority" {
+			t.Fatal("selection changed the source limit or tier")
+		}
+	})
+	t.Run("selection thinking", func(t *testing.T) {
+		for _, config := range []core.ThinkingConfig{
+			&core.AdaptiveConfig{Effort: "high"},
+			&core.BudgetConfig{BudgetTokens: 1000},
+			&core.EffortConfig{Effort: "high", Summary: new(core.ThinkingSummaryAuto)},
+			&core.DisabledConfig{},
+		} {
+			result := (core.ProviderModel{}).Selection("p", config, nil)
+			if !reflect.DeepEqual(result.Thinking, config) {
+				t.Fatalf("selection changed thinking: %#v", config)
+			}
+			switch changed := result.Thinking.(type) {
+			case *core.AdaptiveConfig:
+				changed.Effort = "low"
+				if config.(*core.AdaptiveConfig).Effort != "high" {
+					t.Fatal("adaptive setting was shared")
+				}
+			case *core.BudgetConfig:
+				changed.BudgetTokens = 1
+				if config.(*core.BudgetConfig).BudgetTokens != 1000 {
+					t.Fatal("budget setting was shared")
+				}
+			case *core.EffortConfig:
+				changed.Effort = "low"
+				*changed.Summary = core.ThinkingSummaryOff
+				source := config.(*core.EffortConfig)
+				if source.Effort != "high" || *source.Summary != core.ThinkingSummaryAuto {
+					t.Fatal("effort setting or summary was shared")
+				}
+			case *core.DisabledConfig:
+				// This variant has no mutable fields.
+			}
+		}
+	})
+	t.Run("capabilities", func(t *testing.T) {
+		catalog := core.ProviderModel{SupportedThinkingEfforts: new([]string{"high"}), DefaultThinkingEffort: new("high")}
+		result := catalog.ThinkingCapabilities()[0].(*core.EffortCapability)
+		*result.DefaultEffort = "low"
+		result.Efforts[0] = "low"
+		if *catalog.DefaultThinkingEffort != "high" || (*catalog.SupportedThinkingEfforts)[0] != "high" {
+			t.Fatal("capabilities changed the catalog")
+		}
+	})
+	t.Run("unnamed effort", func(t *testing.T) {
+		for _, fallback := range []*string{nil, new("high")} {
+			catalog := core.ProviderModel{CanDisableThinking: new(false), SupportedThinkingEfforts: new([]string{"high"}), DefaultThinkingEffort: fallback}
+			result := catalog.UnnamedEffort()
+			*result = "low"
+			if (*catalog.SupportedThinkingEfforts)[0] != "high" || (fallback != nil && *fallback != "high") {
+				t.Fatal("default effort changed the catalog")
+			}
+		}
+	})
+	t.Run("tier", func(t *testing.T) {
+		catalog := core.ProviderModel{ServiceTiers: []core.ServiceTier{{ID: "priority"}}}
+		result, err := catalog.TierFor(&catalog.ServiceTiers[0].ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		*result = "changed"
+		if catalog.ServiceTiers[0].ID != "priority" {
+			t.Fatal("tier changed the source")
+		}
+	})
+	t.Run("displayed thinking effort", func(t *testing.T) {
+		for _, config := range []core.ThinkingConfig{&core.AdaptiveConfig{Effort: "high"}, &core.EffortConfig{Effort: "high"}} {
+			selection := core.ModelSelection{Thinking: config}
+			result, ok := selection.ThinkingEffort()
+			if !ok || result != "high" {
+				t.Fatal("missing thinking effort")
+			}
+			// A caller can mutate its returned value without changing settings.
+			local := &result
+			*local = "low"
+			if source, _ := selection.ThinkingEffort(); source != "high" {
+				t.Fatal("displayed effort changed the selection")
+			}
+		}
+	})
 }

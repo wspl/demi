@@ -1,20 +1,20 @@
 package core_test
 
 import (
-	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
 
+	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/core"
 )
 
 // Encoding tests protect persisted and cross-process values; each costs under one second.
 func TestBytes(t *testing.T) {
 	value := core.B64Bytes{0, 1, 2, 255}
-	encoded, err := json.Marshal(value)
+	encoded, err := contract.EncodeJSON(value)
 	if err != nil || string(encoded) != `"AAEC/w=="` {
 		t.Fatalf("%s: %v", encoded, err)
 	}

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/core"
 )
 
@@ -45,7 +46,7 @@ func TestStoredProviderData(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			encoded, err := json.Marshal(decoded)
+			encoded, err := contract.EncodeJSON(decoded)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -65,7 +66,7 @@ func TestStoredProviderData(t *testing.T) {
 					t.Fatal(err)
 				}
 				mutate(t, value, mutation.pointer, mutation.value, mutation.remove)
-				raw, err := json.Marshal(value)
+				raw, err := contract.EncodeJSON(value)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -96,7 +97,7 @@ func TestRuleErrorsNameFields(t *testing.T) {
 	} {
 		value := fixtureByID(t, fixtures, tc.id)
 		mutate(t, value, tc.path, tc.value, false)
-		raw, err := json.Marshal(value)
+		raw, err := contract.EncodeJSON(value)
 		if err != nil {
 			t.Fatal(err)
 		}
