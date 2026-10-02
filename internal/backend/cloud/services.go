@@ -1,8 +1,5 @@
 package cloud
 
-//revive:disable:unused-parameter
-// API checkpoint: bodies follow after the public boundary is merged.
-
 // Services is what every shard's Cloud shares: the machine manager's client,
 // the capacity across users, and the Cloud's settings. Fields are immutable
 // after publication; their pointed-to services synchronize their own state.
@@ -18,5 +15,5 @@ type Services struct {
 // NewServices creates shared services with tuning.Capacity permits. The caller
 // owns machines and closes it after every shard has closed its Cloud.
 func NewServices(machines *Client, tuning CloudTuning) *Services {
-	panic("not written: b-cloud")
+	return &Services{Machines: machines, Capacity: NewCapacity(tuning.Capacity), Tuning: tuning}
 }
