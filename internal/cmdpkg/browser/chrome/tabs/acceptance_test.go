@@ -217,10 +217,6 @@ func TestChromeEnvironmentLifecycle(t *testing.T) {
 				t.Error(err)
 			}
 		}()
-		// Repainting is explicit; a native idle page need not emit a frame.
-		if err := tabs.Paint(ctx, first.Page()); err != nil {
-			t.Fatal(err)
-		}
 		for {
 			event, err := capture.Next(ctx)
 			if err != nil {
@@ -236,7 +232,12 @@ func TestChromeEnvironmentLifecycle(t *testing.T) {
 				t.Logf("captured %dx%d frame, %d bytes", event.Frame.Width, event.Frame.Height, len(event.Frame.Data))
 				return
 			case *tabs.CaptureStalled:
-				t.Fatal("capture stalled")
+				// Like the live view owner, repaint when the extension reports
+				// an idle source. Started does not guarantee Chrome's native
+				// capture pipeline will receive an earlier forced redraw.
+				if err := tabs.Paint(ctx, first.Page()); err != nil {
+					t.Fatal(err)
+				}
 			case *tabs.CaptureFailed:
 				t.Fatal(event.Reason)
 			}
