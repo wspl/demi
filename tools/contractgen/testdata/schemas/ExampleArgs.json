@@ -1,0 +1,45 @@
+{
+  "type": "object",
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "The file to read"
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9,
+      "format": "uint32",
+      "description": "How many times"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "fast",
+        "slow"
+      ]
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "labels": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "no-cache": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "path",
+    "tags"
+  ],
+  "title": "ExampleArgs",
+  "description": "The input of `demi example`."
+}

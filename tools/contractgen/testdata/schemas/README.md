@@ -1,0 +1,88 @@
+# Rust command schema parity
+
+`manifests.json` is copied without changes from
+`gomig-ref/plugin-manifests/manifests.json`, the captured manifests produced
+by every built-in Rust plugin. The test reads that committed fixture; it does
+not require a Rust build, another worktree or a network connection.
+
+`TestRustManifestSchemas` compares complete schemas as canonical JSON (sorted
+object keys and normalized JSON numbers, preserving array order). It covers
+both input and output wherever present:
+
+- Every file leaf: `read`, `create`, `edit`, `patch` (four input schemas;
+  these commands have no JSON output declaration).
+- Ten browser leaves: `open`, `goto`, `back`, `forward`, `reload`, `close`,
+  `viewport.set`, `viewport.reset`, `cdp.detach`, `webmcp.call` (ten inputs and
+  ten outputs, including reused result types).
+- The timestamp-bearing outputs of `expose.add`, `expose.list`, `expose.renew`.
+
+Go contract doc comments are copied from
+`command-package-file-protocol/src/lib.rs`,
+`command-package-browser-protocol/src/browser/{mod,operations}.rs`, and
+`plugin-expose/src/commands.rs`. Input macro fields copy the macro's own
+comments. Derived Go declarations reuse identical fields without duplicating
+those comments. Type titles appear only at schema roots. A field comment
+replaces a named type's description: the browser input `tab` field is a
+concrete example; browser result `tab` retains the TabId type description.
+
+The only declaration-builder difference in the selected schemas is
+`plugin-browser/src/browser.rs::leaf`: `LeafBuilder::describe` changes every
+input `timeout` description from `Whole operation deadline in milliseconds`
+to `Whole operation deadline in milliseconds; default N, maximum 300000.`
+Here N is 300000 for open and 30000 for the other nine leaves. The test first
+asserts the original type description, then applies exactly this override to
+the comparison value. No annotation is stripped or ignored. Production
+builder behavior belongs to `internal/declare` and `internal/host`.
+
+## Numeric and validation fidelity
+
+Numeric primitives follow schemars 1.2.2's
+`src/json_schema_impls/primitives.rs`: formats int/uint for machine integers,
+fixed-width formats for fixed-width types, float/double for floating point;
+minimum zero for unsigned integers; explicit width bounds only for 8/16-bit
+integers. Wider representation maxima are not added. Rust's garde bounds
+are carried by Go range/length markers. The captured manifests confirm those
+bounds are emitted by schemars; no speculative strengthening remains.
+
+`Numeric.json` pins the primitive mapping. `ExampleArgs.json` ports
+`command-declarations/tests/commands.rs::declared_argument_types_generate_schemas_inside_the_subset`.
+The remaining small expected JSON files exercise generator-only shapes:
+unions, nullability, maps, intersected constraints and recursive references.
+`Recursive` exercises a reference to the root; `RecursiveResult` exercises
+an inline recursive subschema plus `$defs`, following schemars's
+`SchemaGenerator::subschema_for` behavior. They are not captured command types.
+
+`TestCommandSchemas` compiles each tested schema as draft 2020-12 and checks
+valid and invalid fixture values against both schema and generated decoder.
+It includes all cases from
+`file_arguments_refuse_empty_old_text_and_zero_positions`. JSON Schema works
+on parsed values: duplicate keys, Go integer overflow, integer token spelling,
+and canonical timestamp spelling remain decoder checks. Rust's schemas also
+do not enforce these through numeric/date-time format annotations.
+
+## Schema-root refusal audit
+
+Inspected every input and output of all 59 command leaves in the captured
+manifests: todo (4), file (4), browser (47), expose (4). Plugins without
+commands have no command schema roots. Inspected their owning Rust command
+and protocol declarations as well, since custom checks need not appear as a
+JSON Schema keyword.
+
+- Recursion **is used**: `browser.inspect` output's `BrowserTreeNode.children`
+  references `#/$defs/BrowserTreeNode`. The recursive-shape refusal is removed.
+- Timestamps **are used**: `ExposeLine.expiresAt` in expose add/list/renew
+  output. The timestamp refusal is removed; `timestamp` emits the same
+  string/date-time schema as `shared-types/src/time.rs::Timestamp::json_schema`.
+- No command shape uses a normalized email/HTTP-URL/trimmed string contract,
+  base64/byte-slice contract, or a cross-field custom validation hook requiring
+  `+demi:check`. These schema-root refusals remain. Browser identifiers use
+  their explicit shared regex patterns, not an opaque check. Opaque cursor
+  and handle strings are ordinary strings; their runtime creation uses base64
+  but their schema is not a base64-validated byte contract.
+- Skills page state and methods are not command leaves. Their schemas, and
+  plugin transport payloads carrying B64Bytes, are outside this audit.
+
+The current generator's pre-existing tagged-union-only contract model cannot
+express Rust's untagged result families (for example NodeValue in inspect).
+Removing the recursion refusal supports recursive Go contracts; this work
+package does not add an untagged contract model or claim a full inspect port.

@@ -57,6 +57,21 @@
 // showsInPlace(mediaType), with ASCII extension case folding and either path
 // separator. It must have mediaType, extensions and inPlace fields.
 //
+// +demi:schema emits <Type>JSONSchema() json.RawMessage in contract_gen.go.
+// Each call returns fresh bytes: draft 2020-12, no $schema, inline subschemas,
+// and optional properties that never allow null. Objects, tagged unions,
+// records, arrays, enums, patterns, lengths and numeric bounds use the same
+// checked model as codecs and Zod. Root titles use type names; type and field
+// doc comments supply descriptions, with field comments overriding type text.
+// Contract comments are copied verbatim from Rust; directives are excluded.
+// Numeric format and representation keywords match schemars, without extra
+// limits on wide integers or floats. Timestamps emit date-time. Recursive
+// shapes use # for the root or $defs references for recursive subschemas.
+// Custom checks, normalized string formats, base64 rules and bytes remain
+// unsupported for schema roots (none occurs in the built-in command schemas).
+// Decoders additionally check JSON tokens, Unicode, Go widths and canonical
+// timestamps; a schema's format annotation does not carry those checks.
+//
 // +demi:msgpack enables generated MessagePack codecs throughout the reachable
 // shape. They use JSON field names and declaration order, compact integers,
 // binary byte slices, sorted string records and timestamp extensions. JSON and
