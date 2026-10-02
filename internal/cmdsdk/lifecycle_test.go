@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -355,6 +356,128 @@ func TestInfoUsesCallerDeadline(t *testing.T) {
 					t.Fatalf("caller info deadline: elapsed %s", time.Since(start))
 				}
 				<-handled
+			})
+		})
+	}
+}
+
+// A custom peer can repeat IDs that the SDK's own Numbers source never repeats.
+// Exercise AnswerNumbers through records, including an answer queued for a pull.
+type numberPeer struct {
+	duplicate <-chan struct{}
+	replies   chan<- commandwire.NumbersAnswer
+}
+
+func (*numberPeer) Operations() []string { return []string{"numbers-peer"} }
+func (p *numberPeer) Invoke(ctx context.Context, c InvocationContext[commandwire.Invocation]) (commandwire.Completion, error) {
+	request := []byte(`{"id":7,"conversation":"one","sequence":"tab","count":1}`)
+	if err := c.Output.Stdout(ctx, request); err != nil {
+		return commandwire.Completion{}, err
+	}
+	select {
+	case <-p.duplicate:
+	case <-ctx.Done():
+		return commandwire.Completion{}, ctx.Err()
+	}
+	if err := c.Output.Stdout(ctx, request); err != nil {
+		return commandwire.Completion{}, err
+	}
+	for index := 0; index < 3; index++ {
+		if index == 2 {
+			// The original request has now been answered; its ID may be reused.
+			if err := c.Output.Stdout(ctx, request); err != nil {
+				return commandwire.Completion{}, err
+			}
+		}
+		b, err := c.Input.Next(ctx)
+		if err != nil {
+			return commandwire.Completion{}, err
+		}
+		answer, err := commandwire.DecodeNumbersAnswer(b)
+		if err != nil {
+			return commandwire.Completion{}, err
+		}
+		select {
+		case p.replies <- answer:
+		case <-ctx.Done():
+			return commandwire.Completion{}, ctx.Err()
+		}
+	}
+	return commandwire.Completion{}, nil
+}
+
+func TestNumbersRejectDuplicateInFlightIDAndAllowReuse(t *testing.T) {
+	for _, queued := range []bool{false, true} {
+		t.Run(fmt.Sprint("queued=", queued), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				duplicate := make(chan struct{})
+				replies := make(chan commandwire.NumbersAnswer)
+				c, _ := connected(t, &numberPeer{duplicate: duplicate, replies: replies})
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				input, output, err := c.Invoke(ctx, invocation("numbers-peer"))
+				must(t, err)
+				stream := &RequestStream{input: input, output: output}
+				started := make(chan struct{})
+				release := make(chan struct{})
+				var calls atomic.Int32
+				done := make(chan error, 1)
+				go func() {
+					done <- stream.AnswerNumbers(ctx, func(ctx context.Context, _ commandwire.NumbersRequest) (uint64, error) {
+						call := calls.Add(1)
+						if call == 1 {
+							close(started)
+							select {
+							case <-release:
+							case <-ctx.Done():
+								return 0, ctx.Err()
+							}
+						}
+						return uint64(call), nil
+					})
+					close(done)
+				}()
+				defer func() {
+					cancel()
+					<-done
+				}()
+				<-started
+				if queued {
+					close(release)
+					synctest.Wait()
+				}
+				close(duplicate)
+				for index := 0; index < 2; index++ {
+					answer := <-replies
+					refusal := index == 0
+					if queued {
+						refusal = index == 1
+					}
+					if answer.ID != 7 {
+						t.Fatalf("reply ID %d", answer.ID)
+					}
+					if refusal {
+						if answer.Error == nil || !strings.Contains(*answer.Error, "duplicate numbers request id") {
+							t.Fatalf("duplicate was not refused: %+v", answer)
+						}
+						if calls.Load() != 1 {
+							t.Fatalf("duplicate reached callback: %d calls", calls.Load())
+						}
+						if !queued {
+							close(release)
+						}
+					} else if answer.First == nil || *answer.First != 1 {
+						t.Fatalf("original answer lost: %+v", answer)
+					}
+				}
+				answer := <-replies
+				if answer.First == nil || *answer.First != 2 || answer.ID != 7 {
+					t.Fatalf("ID reuse failed: %+v", answer)
+				}
+				must(t, <-done)
+				if calls.Load() != 2 {
+					t.Fatalf("callback count %d, want 2", calls.Load())
+				}
 			})
 		})
 	}

@@ -132,6 +132,11 @@ func TestHeldCallsBeyondAnyCountAllStartAndFinish(t *testing.T) {
 		must(t, err)
 	}
 	for k := range inputs {
+		record, err := outputs[k].Next(t.Context())
+		must(t, err)
+		if _, ok := record.(commandwire.InputPull); !ok {
+			t.Fatalf("expected input pull, got %T", record)
+		}
 		must(t, inputs[k].End())
 		completed(t, outputs[k])
 	}
@@ -253,14 +258,11 @@ func (c *capture) Stderr(_ context.Context, b []byte) error {
 
 func TestMetadataAndBinaryInputInOneBody(t *testing.T) {
 	c, _ := connected(t, fixture{})
-	b, err := commandwire.EncodeMetadata(invocation("echo"))
+	input, o, err := c.Invoke(t.Context(), invocation("echo"))
 	must(t, err)
+	defer input.Cancel()
 	binary := []byte{0, 255, 13, 10, 128}
-	input, err := commandwire.EncodeInput(binary)
-	must(t, err)
-	b = append(b, input...)
-	_, o, err := c.invokeAt(t.Context(), commandwire.InvokePath, b, true)
-	must(t, err)
+	pulls := 0
 	var output, diagnostic []byte
 	var code uint8
 	for {
@@ -277,7 +279,19 @@ func TestMetadataAndBinaryInputInOneBody(t *testing.T) {
 		case commandwire.Completed:
 			code = r.Completion.ExitCode
 		case commandwire.InputPull:
+			pulls++
+			switch pulls {
+			case 1:
+				must(t, input.Write(t.Context(), binary))
+			case 2:
+				must(t, input.End())
+			default:
+				t.Fatalf("pull after input ended: %d", pulls)
+			}
 		}
+	}
+	if pulls != 2 {
+		t.Fatalf("got %d pulls, want one chunk pull and one EOF pull", pulls)
 	}
 	if !bytes.Equal(output, binary) || string(diagnostic) != "done" || code != 7 {
 		t.Fatalf("output %v stderr %q code %d", output, diagnostic, code)

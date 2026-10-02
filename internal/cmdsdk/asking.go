@@ -149,17 +149,20 @@ func (a *Artifacts) Installed(ctx context.Context, name string) ([]commandwire.I
 }
 
 type askCodec[Q, R, A any] struct {
-	name     string
-	request  func([]byte) (Q, error)
-	identify func(Q, uint64) Q
-	id       func(Q) uint64
-	answer   func(uint64, R, error) A
-	decode   func([]byte) (A, error)
-	outcome  func(A) (uint64, R, error)
+	name             string
+	rejectDuplicates bool
+	request          func([]byte) (Q, error)
+	identify         func(Q, uint64) Q
+	id               func(Q) uint64
+	answer           func(uint64, R, error) A
+	decode           func([]byte) (A, error)
+	outcome          func(A) (uint64, R, error)
 }
 
 var numberCodec = askCodec[commandwire.NumbersRequest, uint64, commandwire.NumbersAnswer]{
-	name: "numbers", request: commandwire.DecodeNumbersRequest,
+	rejectDuplicates: true,
+	name:             "numbers",
+	request:          commandwire.DecodeNumbersRequest,
 	identify: func(q commandwire.NumbersRequest, id uint64) commandwire.NumbersRequest {
 		q.ID = id
 		return q
@@ -345,18 +348,29 @@ func answerStream[Q, R, A any](ctx context.Context, s *RequestStream, codec askC
 			}
 		}
 	}()
-	answers := make(chan A, 32)
+	type response struct {
+		id         uint64
+		value      A
+		releasesID bool
+	}
+	answers := make(chan response, 32)
+	// IDs remain in flight until their original answer is sent, even after
+	// its callback finishes. A duplicate refusal does not release that ID.
+	inFlight := make(map[uint64]struct{})
 	active := 0
 	pulls := 0
-	var queued []A
+	var queued []response
 	for {
 		for pulls > 0 && len(queued) > 0 {
-			b, err := json.Marshal(queued[0])
+			b, err := json.Marshal(queued[0].value)
 			if err != nil {
 				return err
 			}
 			if err = s.input.Write(ctx, b); err != nil {
 				return err
+			}
+			if queued[0].releasesID {
+				delete(inFlight, queued[0].id)
 			}
 			queued = queued[1:]
 			pulls--
@@ -380,10 +394,18 @@ func answerStream[Q, R, A any](ctx context.Context, s *RequestStream, codec askC
 					return err
 				}
 				id := codec.id(q)
+				if _, exists := inFlight[id]; codec.rejectDuplicates && exists {
+					var zero R
+					queued = append(queued, response{value: codec.answer(id, zero, fmt.Errorf("duplicate %s request id %d", codec.name, id))})
+					continue
+				}
 				if active == 32 {
 					var zero R
-					queued = append(queued, codec.answer(id, zero, fmt.Errorf("too many %s requests in flight", codec.name)))
+					queued = append(queued, response{value: codec.answer(id, zero, fmt.Errorf("too many %s requests in flight", codec.name))})
 					continue
+				}
+				if codec.rejectDuplicates {
+					inFlight[id] = struct{}{}
 				}
 				active++
 				workers.Add(1)
@@ -391,7 +413,7 @@ func answerStream[Q, R, A any](ctx context.Context, s *RequestStream, codec askC
 					defer workers.Done()
 					value, err := f(ctx, q)
 					select {
-					case answers <- codec.answer(id, value, err):
+					case answers <- response{id: id, value: codec.answer(id, value, err), releasesID: codec.rejectDuplicates}:
 					case <-ctx.Done():
 					}
 				}()

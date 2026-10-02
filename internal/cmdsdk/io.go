@@ -85,6 +85,10 @@ func (i *httpInput) Next(ctx context.Context) ([]byte, error) {
 	if i.ended {
 		return nil, io.EOF
 	}
+	// Demi clients send a chunk or END_STREAM only in answer to this pull.
+	// Reading that answer observes EOF and prevents any later pull. net/http
+	// has no nonblocking EOF query: a client that sends a finished body
+	// unasked can receive an extra pull before Read reports its end.
 	if err := i.output.send(ctx, commandwire.InputPull{}); err != nil {
 		return nil, err
 	}
