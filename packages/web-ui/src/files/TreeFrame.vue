@@ -90,9 +90,9 @@ defineExpose({ show, dismiss })
       <div class="relative isolate min-w-0 flex-1">
         <slot />
       </div>
-      <template v-if="$slots.tree && shown">
+      <template v-if="$slots.tree">
         <ResizeHandle
-          v-if="docks"
+          v-if="shown && docks"
           v-model="width"
           side="end"
           :min="TREE_WIDTH.min"
@@ -100,12 +100,15 @@ defineExpose({ show, dismiss })
           :default-value="TREE_WIDTH.default"
           :label="name"
         />
-        <!-- Behind a tree shown over the view: a click beside the tree puts it away. -->
-        <div v-else class="absolute inset-0 z-10 bg-black/50" @click="dismiss" />
-        <!-- The tree's width is the divider's; flex must not grow or shrink it. -->
+        <!-- Behind a tree shown over the view: a click beside the tree puts it away. The view stays as it is,
+             as beside an open menu; the tree's shadow sets it above. -->
+        <div v-else-if="shown" class="absolute inset-0 z-10" @click="dismiss" />
+        <!-- The tree's width is the divider's; flex must not grow or shrink it. A hidden tree stays mounted, so
+             it shows again as it was left, with no reading. -->
         <div
+          v-show="shown"
           class="border-l border-line"
-          :class="docks ? '' : 'absolute inset-y-0 right-0 z-10 max-w-full'"
+          :class="docks ? '' : 'absolute inset-y-0 right-0 z-10 max-w-full shadow-lg'"
           :style="{ flex: `0 0 ${width}px`, width: `${width}px` }"
         >
           <slot name="tree" />
