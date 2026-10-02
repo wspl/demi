@@ -36,6 +36,12 @@ const cursor = computed(() => {
   return /^[a-z-]+$/.test(name) && name !== 'auto' ? name : 'default'
 })
 
+/**
+ * Whether the canvas painted a picture: until then the view shows the blank
+ * page the tab showed before it, so the page's first picture replaces it
+ * with nothing between them (`live-view.md` § A browser tab in the panel).
+ */
+const painted = ref(false)
 let pictures: CanvasPictures | null = null
 let ticking: ReturnType<typeof setInterval> | null = null
 let observer: ResizeObserver | null = null
@@ -208,7 +214,10 @@ function release(): void {
 onMounted(() => {
   if (canvas.value) {
     pictures = new CanvasPictures(canvas.value, {
-      shown: (generation, sequence, queue) => props.session.showed(generation, sequence, queue),
+      shown: (generation, sequence, queue) => {
+        painted.value = true
+        props.session.showed(generation, sequence, queue)
+      },
       lost: () => props.session.resync(),
     })
     props.session.attach(pictures)
@@ -266,6 +275,7 @@ watch(() => props.tab.id, (id) => {
       @wheel.prevent="wheel"
       @contextmenu.prevent
     />
+    <div v-if="!painted" class="pointer-events-none absolute inset-0 bg-white" />
     <input
       ref="bridge"
       class="absolute h-[2px] w-[2px] border-0 bg-transparent p-0 text-transparent caret-transparent outline-none"
