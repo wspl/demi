@@ -17,7 +17,9 @@ func TestArchitecture(t *testing.T) {
 		graph  string
 		file   string
 		source string
-		want   string
+		// support adds internal/core/coretest, the test support of core.
+		support bool
+		want    string
 	}{
 		{name: "declared imports and external self import"},
 		{name: "production import", graph: "internal/core -> none\ninternal/framewire -> none", want: "forbidden import"},
@@ -27,6 +29,9 @@ func TestArchitecture(t *testing.T) {
 		{name: "nonexistent package", graph: "internal/core -> none\ninternal/framewire -> internal/core\ninternal/missing -> none", want: "does not exist"},
 		{name: "load failure", file: "internal/core/core.go", source: "package core\nimport _ \"missing.test/package\"", want: "import lookup disabled by -mod=readonly"},
 		{name: "platform test import", file: "internal/core/core_windows_arm64_test.go", source: "package core_test\nimport _ \"archcheck.test/fixture/internal/independent\"", want: "forbidden import"},
+		{name: "test imports a dependency's support", graph: supportGraph, support: true, file: "internal/framewire/support_test.go", source: "package framewire_test\nimport _ \"archcheck.test/fixture/internal/core/coretest\""},
+		{name: "production imports support", graph: supportGraph, support: true, file: "internal/framewire/support.go", source: "package framewire\nimport _ \"archcheck.test/fixture/internal/core/coretest\"", want: "forbidden import: internal/framewire -> internal/core/coretest"},
+		{name: "test imports support of no dependency", graph: supportGraph, support: true, file: "internal/independent/support_test.go", source: "package independent_test\nimport _ \"archcheck.test/fixture/internal/core/coretest\"", want: "forbidden import: internal/independent -> internal/core/coretest"},
 		{name: "platform package exists", graph: "internal/core -> none\ninternal/framewire -> internal/core\ninternal/platform -> none", file: "internal/platform/platform_linux.go", source: "package platform"},
 	}
 	for _, tc := range cases {
@@ -45,6 +50,15 @@ func TestArchitecture(t *testing.T) {
 			document := filepath.Join(dir, "graph.md")
 			if err := os.WriteFile(document, data, 0600); err != nil {
 				t.Fatal(err)
+			}
+			if tc.support {
+				file := filepath.Join(dir, "internal/core/coretest/coretest.go")
+				if err := os.MkdirAll(filepath.Dir(file), 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(file, []byte("package coretest\nimport _ \"archcheck.test/fixture/internal/core\""), 0600); err != nil {
+					t.Fatal(err)
+				}
 			}
 			if tc.file != "" {
 				file := filepath.Join(dir, tc.file)
@@ -66,6 +80,10 @@ func TestArchitecture(t *testing.T) {
 		})
 	}
 }
+
+// supportGraph declares core's test support; framewire depends on core, and
+// internal/independent on nothing.
+const supportGraph = "internal/core -> none\ninternal/core/coretest -> internal/core\ninternal/framewire -> internal/core"
 
 func TestGraphRefusals(t *testing.T) {
 	for _, tc := range []struct{ name, body string }{

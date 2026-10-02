@@ -103,6 +103,16 @@ func readGraph(document []byte) (graph, error) {
 	return result, nil
 }
 
+// supportOwner returns the package a test-support package supports: the
+// support package of a/b is a/b/btest.
+func supportOwner(name string) (string, bool) {
+	owner := path.Dir(name)
+	if owner == "." || path.Base(name) != path.Base(owner)+"test" {
+		return "", false
+	}
+	return owner, true
+}
+
 // validPath checks the relative package names in Demi's graph.
 func validPath(name string) bool {
 	return name != "" && name != "." && name != "none" && !strings.HasPrefix(name, "/") &&
@@ -180,6 +190,11 @@ func checkTarget(ctx context.Context, dir string, rules graph, seen map[string]b
 			}
 			// External tests may import their own package without an architectural edge.
 			if target == name && pkg.ForTest == imported.PkgPath {
+				continue
+			}
+			// A test may import the support package of its own package or of
+			// a listed dependency (crates-and-packages.md § Go packages).
+			if owner, ok := supportOwner(target); ok && pkg.ForTest != "" && (owner == name || allowed[owner]) {
 				continue
 			}
 			if !allowed[target] {

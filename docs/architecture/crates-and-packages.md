@@ -1240,7 +1240,7 @@ not a tab registry, so the split introduces no dependency cycle.
 
 <a id="backend-http"></a>
 
-#### `internal/backend/http`
+#### `internal/backend/edge`
 
 - **Owns:** the HTTP edge: the listener and router, the session gate, request
   extractors and body limits, the mapping of errors to `ErrorCode`, the
@@ -1249,7 +1249,7 @@ not a tab registry, so the split introduces no dependency cycle.
   streams and the expose relay ([Web API](../product/web-api.md)).
 - **Public boundary:** the edge the executable starts (`Edge`), with the state
   its routes reach (`AppState`, `Site`). Test support is in
-  `internal/backend/http/httptest`.
+  `internal/backend/edge/edgetest`.
 - **Must not:** hold business logic beyond routing and validation.
 
 <a id="backend-idle-watch"></a>
@@ -1699,7 +1699,7 @@ not a tab registry, so the split introduces no dependency cycle.
   consumers. Every worker and resource has test cleanup.
 - **Must not:** implement product behavior or import a consumer of its owner.
 
-#### `internal/backend/http/httptest`
+#### `internal/backend/edge/edgetest`
 
 - **Owns:** a hold of runner hellos at token lookup, used by
   `backendtest.HoldHellos`.
@@ -2007,14 +2007,14 @@ internal/machines -> internal/artifacts, internal/cli, internal/machinewire, int
 internal/machines/sandbox -> internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire
 internal/machines/storage -> internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire
 internal/machines/network -> internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire
-internal/backend -> internal/backend/accounts, internal/backend/blobs, internal/backend/cloud, internal/backend/database, internal/backend/expose, internal/backend/hostaccess, internal/backend/http, internal/backend/providers, internal/backend/runners, internal/backend/usershard, internal/declare, internal/cmdpkg/browser/browserop, internal/plugins/browser, internal/plugins/changes, internal/plugins/file, internal/plugins/filebrowser, internal/plugin, internal/plugins/todo, internal/providers/anthropicapi, internal/providers/claudecode, internal/providers/codex, internal/provider, internal/providers/google, internal/providers/grokbuild, internal/providers/openaiapi, internal/artifacts, internal/cli, internal/gates, internal/core, internal/webapi, internal/plugins/expose, internal/plugins/skills
+internal/backend -> internal/backend/accounts, internal/backend/blobs, internal/backend/cloud, internal/backend/database, internal/backend/expose, internal/backend/hostaccess, internal/backend/edge, internal/backend/providers, internal/backend/runners, internal/backend/usershard, internal/declare, internal/cmdpkg/browser/browserop, internal/plugins/browser, internal/plugins/changes, internal/plugins/file, internal/plugins/filebrowser, internal/plugin, internal/plugins/todo, internal/providers/anthropicapi, internal/providers/claudecode, internal/providers/codex, internal/provider, internal/providers/google, internal/providers/grokbuild, internal/providers/openaiapi, internal/artifacts, internal/cli, internal/gates, internal/core, internal/webapi, internal/plugins/expose, internal/plugins/skills
 internal/backend/accounts -> internal/backend/database, internal/commandwire, internal/core, internal/webapi
 internal/backend/blobs -> internal/agent/store, internal/core, internal/webapi
 internal/backend/cloud -> internal/backend/idlewatch, internal/backend/providers, internal/backend/runners, internal/backend/database, internal/backend/pagesync, internal/gates, internal/backend/remotehost, internal/machinewire, internal/runnerwire, internal/host, internal/webapi
 internal/backend/database -> internal/agent/store, internal/agent/transcript, internal/core, internal/gates, internal/backend/remotehost, internal/machinewire, internal/runnerwire, internal/host, internal/webapi, internal/plugin
 internal/backend/expose -> internal/backend/database, internal/core, internal/webapi
 internal/backend/hostaccess -> internal/agent/store, internal/agent/tools, internal/backend/cloud, internal/backend/blobs, internal/backend/runners, internal/backend/database, internal/commandwire, internal/declare, internal/core, internal/gates, internal/backend/remotehost, internal/runnerwire, internal/host, internal/webapi, internal/plugin
-internal/backend/http -> internal/framewire, internal/agent/store, internal/artifacts, internal/backend/accounts, internal/backend/cloud, internal/backend/expose, internal/backend/hostaccess, internal/backend/blobs, internal/backend/providers, internal/backend/runners, internal/backend/usershard, internal/backend/database, internal/backend/pagesync, internal/commandwire, internal/core, internal/backend/remotehost, internal/provider, internal/runnerwire, internal/host, internal/webapi, internal/backend/plugins, internal/plugin
+internal/backend/edge -> internal/framewire, internal/agent/store, internal/artifacts, internal/backend/accounts, internal/backend/cloud, internal/backend/expose, internal/backend/hostaccess, internal/backend/blobs, internal/backend/providers, internal/backend/runners, internal/backend/usershard, internal/backend/database, internal/backend/pagesync, internal/commandwire, internal/core, internal/backend/remotehost, internal/provider, internal/runnerwire, internal/host, internal/webapi, internal/backend/plugins, internal/plugin
 internal/backend/idlewatch -> internal/gates
 internal/backend/pagesync -> internal/backend/database, internal/webapi
 internal/backend/plugins -> internal/plugin, internal/declare, internal/core, internal/host, internal/backend/database, internal/backend/pagesync, internal/webapi
@@ -2054,10 +2054,10 @@ internal/runner/jobs/jobstest -> internal/runner/jobs, internal/commandwire, int
 internal/runner/shell/shelltest -> internal/runner/shell, internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire
 internal/runner/cmdpkgs/cmdpkgstest -> internal/runner/cmdpkgs, internal/artifacts, internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire, internal/commandwire/commandwiretest
 internal/machines/machinestest -> internal/machines, internal/artifacts, internal/cli, internal/machinewire, internal/runnerwire, internal/machines/sandbox, internal/machines/storage, internal/machines/network
-internal/backend/backendtest -> internal/backend, internal/backend/accounts, internal/backend/blobs, internal/backend/cloud, internal/backend/database, internal/backend/expose, internal/backend/hostaccess, internal/backend/http, internal/backend/providers, internal/backend/runners, internal/backend/usershard, internal/declare, internal/cmdpkg/browser/browserop, internal/plugins/browser, internal/plugins/changes, internal/plugins/file, internal/plugins/filebrowser, internal/plugin, internal/plugins/todo, internal/providers/anthropicapi, internal/providers/claudecode, internal/providers/codex, internal/provider, internal/providers/google, internal/providers/grokbuild, internal/providers/openaiapi, internal/artifacts, internal/cli, internal/gates, internal/core, internal/webapi, internal/plugins/expose, internal/plugins/skills, internal/backend/http/httptest, internal/backend/blobs/blobstest, internal/backend/usershard/usershardtest, internal/backend/database/databasetest, internal/gates/gatestest
+internal/backend/backendtest -> internal/backend, internal/backend/accounts, internal/backend/blobs, internal/backend/cloud, internal/backend/database, internal/backend/expose, internal/backend/hostaccess, internal/backend/edge, internal/backend/providers, internal/backend/runners, internal/backend/usershard, internal/declare, internal/cmdpkg/browser/browserop, internal/plugins/browser, internal/plugins/changes, internal/plugins/file, internal/plugins/filebrowser, internal/plugin, internal/plugins/todo, internal/providers/anthropicapi, internal/providers/claudecode, internal/providers/codex, internal/provider, internal/providers/google, internal/providers/grokbuild, internal/providers/openaiapi, internal/artifacts, internal/cli, internal/gates, internal/core, internal/webapi, internal/plugins/expose, internal/plugins/skills, internal/backend/edge/edgetest, internal/backend/blobs/blobstest, internal/backend/usershard/usershardtest, internal/backend/database/databasetest, internal/gates/gatestest
 internal/backend/blobs/blobstest -> internal/backend/blobs, internal/agent/store, internal/core, internal/webapi
 internal/backend/database/databasetest -> internal/backend/database, internal/agent/store, internal/agent/transcript, internal/core, internal/gates, internal/backend/remotehost, internal/machinewire, internal/runnerwire, internal/host, internal/webapi, internal/plugin
-internal/backend/http/httptest -> internal/backend/http, internal/framewire, internal/agent/store, internal/artifacts, internal/backend/accounts, internal/backend/cloud, internal/backend/expose, internal/backend/hostaccess, internal/backend/blobs, internal/backend/providers, internal/backend/runners, internal/backend/usershard, internal/backend/database, internal/backend/pagesync, internal/commandwire, internal/core, internal/backend/remotehost, internal/provider, internal/runnerwire, internal/host, internal/webapi, internal/backend/plugins, internal/plugin, internal/backend/usershard/usershardtest
+internal/backend/edge/edgetest -> internal/backend/edge, internal/framewire, internal/agent/store, internal/artifacts, internal/backend/accounts, internal/backend/cloud, internal/backend/expose, internal/backend/hostaccess, internal/backend/blobs, internal/backend/providers, internal/backend/runners, internal/backend/usershard, internal/backend/database, internal/backend/pagesync, internal/commandwire, internal/core, internal/backend/remotehost, internal/provider, internal/runnerwire, internal/host, internal/webapi, internal/backend/plugins, internal/plugin, internal/backend/usershard/usershardtest
 internal/backend/remotehost/remotehosttest -> internal/backend/remotehost, internal/commandwire, internal/declare, internal/core, internal/gates, internal/runnerwire, internal/host, internal/commandwire/commandwiretest, internal/host/hosttest
 internal/backend/runners/runnerstest -> internal/backend/runners, internal/artifacts, internal/backend/blobs, internal/backend/database, internal/backend/pagesync, internal/commandwire, internal/gates, internal/backend/remotehost, internal/runnerwire, internal/host, internal/webapi
 internal/backend/usershard/usershardtest -> internal/backend/usershard, internal/agent/server, internal/framewire, internal/agent/session, internal/agent/store, internal/agent/tools, internal/agent/transcript, internal/backend/accounts, internal/backend/cloud, internal/backend/expose, internal/backend/hostaccess, internal/backend/idlewatch, internal/backend/blobs, internal/backend/plugins, internal/backend/providers, internal/backend/runners, internal/backend/database, internal/backend/pagesync, internal/cmdpkg/claudecode/claudecodeop, internal/commandwire, internal/declare, internal/core, internal/gates, internal/plugin, internal/backend/remotehost, internal/machinewire, internal/provider, internal/providers/claudecode, internal/runnerwire, internal/host, internal/webapi

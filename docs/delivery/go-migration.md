@@ -107,7 +107,7 @@ authoritative package contract.
 | `agent-*` | `internal/agent/{store,transcript,session,tools,server}` | |
 | `runner`, `runner-*` | `internal/runner`, `internal/runner/{process,host,jobs,shell,cmdpkgs}` | |
 | `machine-manager` | `internal/machines`, subpackages `sandbox`, `storage`, `network` | Linux only |
-| `backend`, `backend-*` | `internal/backend`, `internal/backend/{accounts,blobs,cloud,database,expose,hostaccess,http,idlewatch,pagesync,plugins,providers,remotehost,runners,usershard}` | |
+| `backend`, `backend-*` | `internal/backend`, `internal/backend/{accounts,blobs,cloud,database,edge,expose,hostaccess,idlewatch,pagesync,plugins,providers,remotehost,runners,usershard}` | |
 | `xtask` | `tools/release`, `tools/contractgen`, `tools/archcheck`, `tools/cgocheck` | |
 | `vendor/brush` | `third_party/mvdan-sh` | The patched `mvdan.cc/sh` fork ([decision 3](#owner-decisions)); the other vendored crates have no successor |
 | binaries | `cmd/{demi-backend,demi-runner,demi-file,demi-browser,demi-claude-code,demi-machine-manager,demi-native-fixture}` | |
@@ -350,7 +350,7 @@ byte; `go test -race ./internal/...` passes.
 | Providers | `p-anthropic`, `p-openai`, `p-google`, `p-codex`, `p-grok`, `p-claudecode` |
 | Agent | `a-store`, `a-transcript`, `a-session`, `a-tools`, `a-server` |
 | Plugins | `g-browser`, `g-expose`, `g-skills`, `g-small` (changes, file, file browser, todo) |
-| Backend | `b-database`, `b-remotehost`, `b-blobs`, `b-accounts`, `b-pagesync`, `b-expose`, `b-runners`, `b-cloud`, `b-providers`, `b-plugins`, `b-hostaccess`, `b-usershard`, `b-http`, `b-backend` |
+| Backend | `b-database`, `b-remotehost`, `b-blobs`, `b-accounts`, `b-pagesync`, `b-expose`, `b-runners`, `b-cloud`, `b-providers`, `b-plugins`, `b-hostaccess`, `b-usershard`, `b-edge`, `b-backend` |
 | Tools | `t-release` (packaging, Cloud image, development store, Chrome pin), `t-pages` (the plugin page registry that `bun run contracts` writes for `web` and `web-gallery`, in `tools/contractgen`, after the plugins' API checkpoints) |
 | Documents | `d-hostaccess` (`docs/execution/sessions-and-targets.md` § Host operations for the Go shard and leases, before `b-hostaccess`) |
 
