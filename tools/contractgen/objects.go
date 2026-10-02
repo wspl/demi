@@ -10,6 +10,9 @@ import (
 // object flattens embedded value structs into their wire properties. Synthetic
 // field names retain the Go selector used to read and assign the original field.
 func (g *generator) object(d *definition) (*types.Struct, bool) {
+	if has(d.marks, "codec") {
+		return nil, false
+	}
 	st, ok := d.typ.Underlying().(*types.Struct)
 	if !ok {
 		return nil, false

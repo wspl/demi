@@ -14,7 +14,7 @@ func checkRuleType(t types.Type, m map[string]string, field bool) error {
 		return fmt.Errorf("flatten is a field marker")
 	}
 	if has(m, "table") {
-		return fmt.Errorf("table requires a package-level slice variable")
+		return fmt.Errorf("table requires a package-level slice variable or scalar constant")
 	}
 	if m["msgpack"] == "tuple" && !has(m, "union") {
 		return fmt.Errorf("msgpack tuple requires a union")
@@ -135,7 +135,7 @@ func checkRuleType(t types.Type, m map[string]string, field bool) error {
 		}
 	}
 	if field {
-		for _, key := range []string{"union", "variant", "strict", "tolerant", "id", "root", "msgpack", "check", "format", "schema"} {
+		for _, key := range []string{"union", "variant", "strict", "tolerant", "id", "root", "msgpack", "check", "format", "schema", "codec"} {
 			if has(m, key) {
 				return fmt.Errorf("%s is a type marker", key)
 			}

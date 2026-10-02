@@ -189,7 +189,7 @@ Each executable has its own kind of release:
   `internal/cmdpkg/claudecode/claudecodeop` for `demi-claude-code`), the operation
   list the program routes by, so a release
   cannot advertise an operation the program does not serve; its version is
-  the workspace version. A package that needs resources gets them from the
+  the release version (`version.Release`). A package that needs resources gets them from the
   record its contract package keeps: `demi-browser`'s release carries the
   pinned Chrome for Testing archive of each packaged target that has one,
   as `resources/<sha256>`, and its descriptor names it as the resource
@@ -204,7 +204,7 @@ Each executable has its own kind of release:
   atomically, so it names the release packaged last; earlier releases stay for
   the runners installed from them.
 - **Backend and machine manager.** Each is released as one executable per
-  target that carries the workspace version
+  target that carries the release version
   ([Package versioning](package-versioning.md)). Its release
   directory holds `release.json` and one subdirectory per target with the
   executable. `release.json` names the executable, the version, and each
@@ -241,7 +241,7 @@ on the developer's own machine; publication to object storage refuses it, and
 the backend's development store loads it
 ([Publish a complete release](../execution/native-runtime.md#publish-a-complete-release)).
 A published version is immutable: publishing different artifacts needs a new
-workspace version, or, for a development release, removing its directory
+release version, or, for a development release, removing its directory
 before packaging it again.
 
 The backend loads the deployed command package releases and supplies the

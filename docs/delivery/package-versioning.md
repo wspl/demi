@@ -44,19 +44,21 @@ contract TypeScript from the Rust crates, builds the packages, validates packed
 dependency ranges and export targets, publishes the tarballs, and creates one
 package tag per artifact.
 
-## Rust executables
+## Executables
 
-The root `Cargo.toml` sets the workspace version under `[workspace.package]`,
-and every crate inherits it. The runner, the command programs, the backend, and
-the machine manager carry that version, and the backend and machine-manager
+One constant, `version.Release` in `internal/version`, is the release version,
+and nothing else states it. The runner, the command programs, the backend, and
+the machine manager carry that version, and so does every text that names
+Demi's version to another party, such as a provider's user agent or the MCP
+server identity Claude Code sees, and the backend and machine-manager
 releases carry it too ([Packaging](builds-and-releases.md#packaging)). The
 other two kinds of release use it differently:
 
 - A command package's descriptor records it as the package version. A published
   version is immutable, so a release with different artifacts needs a new
-  workspace version.
+  release version.
 - A runner release is named by the hash of its contents rather than by the
   version.
 
-The workspace version and the npm group version change independently: a
+The release version and the npm group version change independently: a
 release of one does not bump the other.
