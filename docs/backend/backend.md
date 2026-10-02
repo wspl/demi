@@ -636,9 +636,11 @@ uses:
   starts on this machine, with a temporary home.
 - `target/debug/demi-backend` in isolated mode on port 3271 (`--port`
   changes it), with the public URL `http://127.0.0.1:<port>`, the manager's
-  socket, and a native configuration with the development store and no
-  command release. The command passes on none of its own `DEMI_*`
-  variables.
+  socket, and a native configuration with the development store that names
+  a development release of each command program the build made, `demi-file`,
+  `demi-browser` and `demi-claude-code`, under the data directory and for
+  this machine's target only. The command passes on none of its own
+  `DEMI_*` variables.
 - An Anthropic-compatible Messages endpoint inside `xtask`, on a free port of
   the loopback interface, that answers each request with
   `Echo: <the last user message's text>` as a stream.
@@ -667,11 +669,18 @@ itself leaves the backend running.
 
 It does not cover what needs the real services: the Cloud isolates nothing
 and has no image, so a Cloud reset or a guest's network rules do not behave
-as on a real machine; no command package is released, so the operations of
-`demi.file`, `demi.browser` and `demi.claude-code`, and with them the
-conversation browser and Claude Code entries, are unavailable; and no
-model runs, so a turn never calls a tool. The steps above give the full
-development backend for those.
+as on a real machine; a paired device of another target finds no program
+for it; and no model runs, so a turn never calls a tool. The steps above
+give the full development backend for those.
+
+The command releases make the operations of `demi.file`, `demi.browser` and
+`demi.claude-code` available on the Cloud and on a paired device of this
+machine's target, the conversation browser included: the first tab a
+conversation opens has the browser's program install its pinned Chrome on
+the Host, as on any Host
+([Browser distribution](../browser/browser.md#browser-distribution)). On the
+Cloud it lands in the runner's temporary home, so each run of the command
+downloads it again.
 
 ## Deployment and user ownership
 
