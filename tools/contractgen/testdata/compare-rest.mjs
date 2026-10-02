@@ -18,8 +18,8 @@ function load(path) {
 const tables = load(`${directory}/protocol/tables.ts`);
 const expected = JSON.parse(readFileSync(expectedPath, 'utf8'));
 assert.deepEqual(JSON.parse(JSON.stringify(tables.PREVIEW_TYPES)), expected.preview);
-assert.deepEqual(JSON.parse(JSON.stringify(tables.ModelFileTypes)), expected.models);
-assert.deepEqual(JSON.parse(JSON.stringify(tables.LiveViewFrameConstants)), expected.frames);
+assert.deepEqual(JSON.parse(JSON.stringify(tables.MODEL_FILE_TYPES)), expected.models);
+assert.deepEqual(JSON.parse(JSON.stringify(tables.LIVE_VIEW_FRAME_CONSTANTS)), expected.frames);
 const reference = referencePath ? load(referencePath) : undefined;
 let paths = 0;
 for (const entry of expected.preview) {
@@ -30,7 +30,6 @@ for (const entry of expected.preview) {
       if (reference) assert.equal(tables.previewMediaType(path), reference.previewMediaType(path), path);
       paths++;
     }
-    assert.equal(tables.PREVIEW_TYPESByExtensions(extension)?.mediaType, entry.mediaType);
   }
   assert.equal(tables.showsInPlace(entry.mediaType), entry.inPlace);
   if (reference) assert.equal(tables.showsInPlace(entry.mediaType), reference.showsInPlace(entry.mediaType));
@@ -43,15 +42,10 @@ for (const extension of ['txt', 'json', 'ts', 'html', 'csv', 'zip', 'gz', 'exe',
 }
 assert.equal(tables.showsInPlace('IMAGE/PNG'), false);
 assert.equal(tables.showsInPlace('application/unknown'), false);
-for (const entry of expected.models) {
-  assert.equal(tables.ModelFileTypesByExtension(entry.extension)?.kind, entry.kind);
-}
-for (const entry of expected.frames) {
-  assert.equal(tables.LiveViewFrameConstantsByName(entry.name)?.value, entry.value);
-}
 if (reference) {
   for (const [kind, name] of [['attachment', 'ATTACHMENT_FILE_EXTENSIONS'], ['video', 'VIDEO_FILE_EXTENSIONS']]) {
-    assert.equal(JSON.stringify(tables.ModelFileTypes.filter(entry => entry.kind === kind).map(entry => entry.extension)), JSON.stringify(reference[name]));
+    assert.equal(JSON.stringify(tables[name]), JSON.stringify(reference[name]));
+    assert.equal(JSON.stringify(tables[name]), JSON.stringify(expected.models.filter(entry => entry.kind === kind).map(entry => entry.extension)));
   }
 }
 
@@ -74,9 +68,24 @@ for (const invalid of ['', ' \ufeff\t\u2003', '😀'.repeat(9)]) {
 // Keep the Rust emitter's z.url form: validation preserves URL input text;
 // the Go boundary stores the canonical serialization.
 for (const input of ['https://api.kimi.com/coding/v1', 'http://127.0.0.1:8080', 'https://example.com:443/v1', 'https://bücher.example/v1']) {
-  assert.equal(schemas.endpointURLSchema.parse(input), input);
+  assert.equal(schemas.endpointUrlSchema.parse(input), input);
 }
 for (const input of ['http:example.com', '', 'api.openai.com/v1', 'ftp://example.test/', 'file:///etc', 'https://', 'https://example.com:65536/']) {
-  assert.equal(schemas.endpointURLSchema.safeParse(input).success, false, input);
+  assert.equal(schemas.endpointUrlSchema.safeParse(input).success, false, input);
 }
 console.log(`Tables: ${paths} paths, model-readable extensions and live frame constants passed; email/trimmed/http-url Zod passed${reference ? '; Rust lookups agree' : ''}`);
+
+const replies = load(`${directory}/plugin-unions/plugin.ts`);
+for (const schema of [replies.ensureReplySchema, replies.statusReplySchema]) {
+  assert.equal(schema.safeParse({ok: false, code: 'install_failed', message: 'digest differs'}).success, true);
+  assert.equal(schema.safeParse({ok: 'false', code: 'install_failed', message: 'digest differs'}).success, false);
+  assert.equal(schema.safeParse({code: 'install_failed', message: 'digest differs'}).success, false);
+}
+assert.equal(replies.statusReplySchema.safeParse({ok: true, platform: 'darwin-arm64', installed: []}).success, true);
+assert.equal(replies.ensureReplySchema.safeParse({ok: true, version: '2.1.3', path: '/opt/claude'}).success, true);
+assert.equal('failureSchema' in replies, false);
+assert.equal('bytesSchema' in replies, false);
+assert.equal(replies.emptySchema.safeParse({}).success, true);
+assert.equal(replies.emptySchema.safeParse({bytes: '/wA='}).success, true);
+assert.equal(replies.emptySchema.safeParse({bytes: '/wA'}).success, false);
+console.log('Boolean reply unions, private schemas, and byte-slice base64 passed');

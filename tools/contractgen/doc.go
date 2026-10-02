@@ -12,7 +12,8 @@
 //
 // Structs use explicit JSON field names and are strict unless marked tolerant.
 // Optional fields are pointers with omitzero or omitempty; default-false bools
-// may also be optional. A nullable pointer or union instead has +demi:nullable
+// and non-pointer maps and slices with omitempty may also be optional.
+// Absent collections decode empty; encoding omits empty collections. A nullable pointer or union instead has +demi:nullable
 // and must be present. Nil required arrays and records are invalid; construct
 // empty values explicitly. Untagged embedded value structs flatten their
 // properties, including validation. A concrete declaration such as
@@ -22,7 +23,10 @@
 // sealing method. Its pointer variants have +demi:variant <tag>; when a package
 // has multiple unions, supply the sealing method or use
 // +demi:variant <Union> <tag>. The generator supplies absent sealing methods.
-// Variant JSON includes the tag even when encoded outside its union.
+// Variant JSON includes the tag even when encoded outside its union. Boolean
+// variants true and false use boolean tags. A variant can implement multiple
+// unions sharing its wire representation. Go-only +demi:union untagged tries
+// strict variants in declaration order; their +demi:variant has no tag.
 //
 // Scalar and field rules are +demi:length chars min=1 max=64 (array lengths omit
 // chars), +demi:pattern <regexp>, +demi:range min=1 max=9007199254740991,
@@ -46,16 +50,32 @@
 // emitter does; its accepted input is canonicalized when decoded by Go.
 //
 // +demi:table on a package-level slice variable emits its literal struct rows
-// into protocol/tables.ts, preserving the variable name and JSON field names.
+// or scalar values into protocol/tables.ts, using a SCREAMING_SNAKE variable
+// name and preserving JSON field names.
 // Rows must specify every field; values are scalar constants or slice literals,
 // with JavaScript-safe integers. Calls, mutable variable references, optional
 // fields and maps are refused rather than executed during generation. Each
 // scalar or scalar-slice field gets <Table>By<Field>(value), returning the first
-// matching row or undefined (slice fields use membership). This supports model
+// matching row or undefined (slice fields use membership); these are private. This supports model
 // extension rows and named live-view constant rows without hardcoded values.
 // PREVIEW_TYPES additionally emits previewMediaType(path) and
 // showsInPlace(mediaType), with ASCII extension case folding and either path
 // separator. It must have mediaType, extensions and inPlace fields.
+//
+// +demi:schema emits <Type>JSONSchema() json.RawMessage in contract_gen.go.
+// Each call returns fresh bytes: draft 2020-12, no $schema, inline subschemas,
+// and optional properties that never allow null. Objects, tagged unions,
+// records, arrays, enums, patterns, lengths and numeric bounds use the same
+// checked model as codecs and Zod. Root titles use type names; type and field
+// doc comments supply descriptions, with field comments overriding type text.
+// Contract comments are copied verbatim from Rust; directives are excluded.
+// Numeric format and representation keywords match schemars, without extra
+// limits on wide integers or floats. Timestamps emit date-time. Recursive
+// shapes use # for the root or $defs references for recursive subschemas.
+// Custom checks, normalized string formats, base64 rules and bytes remain
+// unsupported for schema roots (none occurs in the built-in command schemas).
+// Decoders additionally check JSON tokens, Unicode, Go widths and canonical
+// timestamps; a schema's format annotation does not carry those checks.
 //
 // +demi:msgpack enables generated MessagePack codecs throughout the reachable
 // shape. They use JSON field names and declaration order, compact integers,
@@ -70,7 +90,10 @@
 // each decoder requires exactly one record and refuses trailing bytes.
 //
 // +demi:root direction=receive|send output=protocol|web|plugin-<name> selects a
-// TypeScript root. Output is optional for roots only decoded by Go. Receive
+// contract root. Only roots and their reachable types receive generated code.
+// Output and direction are optional for Go-only roots. Go initialisms become
+// capitalized TypeScript words. Factored scalar and variant schemas are private
+// unless explicitly rooted. Receive
 // propagates through reachable types, producing tolerant Zod objects. Send-only
 // objects must be strict. Shared protocol schemas are imported by web and plugin
 // outputs. Unknown markers, incompatible rules, ambiguous names and unsupported

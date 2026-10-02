@@ -1974,7 +1974,7 @@ internal/cmdpkg/browser/chrome/page -> internal/cmdpkg/browser/browserop, intern
 internal/cmdpkg/browser/chrome/live -> internal/cmdpkg/browser/browserop, internal/commandwire, internal/cmdsdk, internal/artifacts, internal/core, internal/cmdpkg/browser/chrome/cdp, internal/cmdpkg/browser/chrome/tabs, internal/cmdpkg/browser/chrome/page
 internal/cmdpkg/claudecode -> internal/cmdpkg/claudecode/claudecodeop, internal/commandwire, internal/cmdsdk
 internal/gates -> none
-internal/artifacts -> none
+internal/artifacts -> internal/contract
 internal/cli -> none
 internal/host -> internal/commandwire, internal/declare, internal/core
 internal/plugin -> internal/declare, internal/core, internal/host, internal/webapi

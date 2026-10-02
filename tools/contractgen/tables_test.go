@@ -19,10 +19,10 @@ import (
 // the pinned Zod dependency. The test never installs packages or uses the network.
 func TestTableAndTextTypeScript(t *testing.T) {
 	dest := t.TempDir()
-	if err := generate(t.Context(), []string{"./testdata/tables", "./testdata/text"}, true, dest, false); err != nil {
+	if err := generate(t.Context(), []string{"./testdata/tables", "./testdata/text", "./testdata/unions"}, true, dest, false); err != nil {
 		t.Fatal(err)
 	}
-	expected, err := json.Marshal(map[string]any{"preview": tables.PREVIEW_TYPES, "models": tables.ModelFileTypes, "frames": tables.LiveViewFrameConstants})
+	expected, err := json.Marshal(map[string]any{"preview": tables.PreviewTypes, "models": tables.ModelFileTypes, "frames": tables.LiveViewFrameConstants})
 	if err != nil {
 		t.Fatal(err)
 	}

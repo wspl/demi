@@ -1,4 +1,4 @@
 package invalid
 
 // +demi:table
-var Broken = []string{"x"}
+var Broken = []complex128{1i}
