@@ -2076,7 +2076,7 @@ tools/cgocheck -> none
 scripts/gomig/accept -> none
 internal/programtest -> none
 cmd/demi-backend -> internal/backend
-cmd/demi-runner -> internal/runner
+cmd/demi-runner -> internal/runner, internal/version
 cmd/demi-file -> internal/cmdpkg/file
 cmd/demi-browser -> internal/cmdpkg/browser
 cmd/demi-claude-code -> internal/cmdpkg/claudecode

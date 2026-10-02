@@ -268,7 +268,7 @@ func (e *schemaEmitter) schema(t types.Type) (any, error) {
 		if values := d.marks["enum"]; values != "" {
 			s.set("enum", strings.Fields(values))
 		}
-		if d.description != "" {
+		if d.description != "" && !primitiveSchema(d) {
 			s.set("description", d.description)
 		}
 		if err := schemaRules(s, d.marks); err != nil {

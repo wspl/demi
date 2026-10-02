@@ -21,8 +21,8 @@ func (e *schemaEmitter) subschema(t types.Type) (any, error) {
 	}
 	key := typeKey(named)
 	d := e.g.defs[key]
-	// Rust's timestamp implements inline_schema explicitly.
-	if has(d.marks, "timestamp") {
+	// Custom primitive schemas opt out of named definitions in Rust.
+	if primitiveSchema(d) || has(d.marks, "timestamp") {
 		return e.schema(t)
 	}
 	if key == e.root {
@@ -55,4 +55,10 @@ func (e *schemaEmitter) definitionName(d *definition) string {
 	e.names[d.key] = name
 	e.definitions.set(name, nil)
 	return name
+}
+
+// primitiveSchema identifies contracts whose Rust JsonSchema implementation
+// returns a primitive schema directly, without derived type metadata.
+func primitiveSchema(d *definition) bool {
+	return has(d.marks, "schema-primitive") || has(d.marks, "timestamp") && !integerTimestamp(d.typ)
 }
