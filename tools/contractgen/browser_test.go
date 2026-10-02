@@ -26,14 +26,11 @@ func TestBrowserSchemas(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var got, want any
-			if err := json.Unmarshal(schema(), &got); err != nil {
+			var want bytes.Buffer
+			if err := json.Compact(&want, raw); err != nil {
 				t.Fatal(err)
 			}
-			if err := json.Unmarshal(raw, &want); err != nil {
-				t.Fatal(err)
-			}
-			if !reflect.DeepEqual(got, want) {
+			if !bytes.Equal(schema(), want.Bytes()) {
 				t.Fatalf("schema differs:\ngot %s\nwant %s", schema(), raw)
 			}
 		})
@@ -197,32 +194,44 @@ func TestManifestNullableShapes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var examples map[string]map[string]any
+	var examples map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &examples); err != nil {
 		t.Fatal(err)
 	}
 	for path, expected := range examples {
 		t.Run(path, func(t *testing.T) {
-			var child map[string]any
-			if branches, ok := expected["anyOf"].([]any); ok {
-				child = branches[0].(map[string]any)
-			} else {
-				child = make(map[string]any)
-				for key, value := range expected {
-					child[key] = value
+			fields, err := contract.ObjectFields(expected)
+			if err != nil {
+				t.Fatal(err)
+			}
+			child := &schemaObject{fields: fields}
+			if branches := child.get("anyOf"); branches != nil {
+				var values []json.RawMessage
+				if err := json.Unmarshal(branches.(json.RawMessage), &values); err != nil {
+					t.Fatal(err)
 				}
-				child["type"] = expected["type"].([]any)[0]
+				fields, err = contract.ObjectFields(values[0])
+				if err != nil {
+					t.Fatal(err)
+				}
+				child = &schemaObject{fields: fields}
+			} else {
+				var types []string
+				if err := json.Unmarshal(child.get("type").(json.RawMessage), &types); err != nil {
+					t.Fatal(err)
+				}
+				child.set("type", types[0])
 			}
 			got, err := contract.EncodeJSON(nullableSchema(child))
 			if err != nil {
 				t.Fatal(err)
 			}
-			var decoded any
-			if err := json.Unmarshal(got, &decoded); err != nil {
+			var want bytes.Buffer
+			if err := json.Compact(&want, expected); err != nil {
 				t.Fatal(err)
 			}
-			if !reflect.DeepEqual(decoded, expected) {
-				t.Fatalf("got %s, want %v", got, expected)
+			if !bytes.Equal(got, want.Bytes()) {
+				t.Fatalf("got %s, want %s", got, want.Bytes())
 			}
 		})
 	}

@@ -6,13 +6,13 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/wspl/demi/tools/contractgen/testdata/schemas"
+	"github.com/wspl/demi/tools/contractgen/testdata/todo"
 )
 
 // Each scenario compiles a draft 2020-12 schema and checks the same inputs at
@@ -72,11 +72,11 @@ func TestCommandSchemas(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				want, err := jsonschema.UnmarshalJSON(bytes.NewReader(expected))
-				if err != nil {
+				var want bytes.Buffer
+				if err := json.Compact(&want, expected); err != nil {
 					t.Fatal(err)
 				}
-				if !reflect.DeepEqual(doc, want) {
+				if !bytes.Equal(raw, want.Bytes()) {
 					t.Fatalf("schema differs:\ngot %s\nwant %s", raw, expected)
 				}
 			}
@@ -119,10 +119,11 @@ func decodeSchemaValue[T any](decode func([]byte) (T, error)) func([]byte) error
 }
 
 // TestRustManifestSchemas pins product annotations as well as validation. It
-// compares whole canonical JSON values, retaining array order (including required).
+// compares compact JSON bytes, retaining every keyword and property position.
 // Local fixture processing costs less than one second and uses no network.
 func TestRustManifestSchemas(t *testing.T) {
 	generated := map[string]func() json.RawMessage{
+		"AddArgs": todo.AddArgsJSONSchema, "UpdateArgs": todo.UpdateArgsJSONSchema, "DoneArgs": todo.DoneArgsJSONSchema, "TodoList": todo.TodoListJSONSchema, "OneTodo": todo.OneTodoJSONSchema,
 		"ReadArgs": schemas.ReadArgsJSONSchema, "CreateArgs": schemas.CreateArgsJSONSchema,
 		"EditArgs": schemas.EditArgsJSONSchema, "PatchArgs": schemas.PatchArgsJSONSchema,
 		"OpenInput": schemas.OpenInputJSONSchema, "OpenResult": schemas.OpenResultJSONSchema,
@@ -139,84 +140,95 @@ func TestRustManifestSchemas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var manifests []map[string]any
+	var manifests []struct {
+		ID       string `json:"id"`
+		Commands []struct {
+			Tree json.RawMessage `json:"tree"`
+		} `json:"commands"`
+	}
 	if err := json.Unmarshal(raw, &manifests); err != nil {
 		t.Fatal(err)
 	}
 	counts := map[string]int{}
-	var visit func(string, map[string]any)
-	visit = func(plugin string, node map[string]any) {
-		if children, ok := node["subcommands"].([]any); ok {
-			for _, child := range children {
-				visit(plugin, child.(map[string]any))
+	var visit func(string, json.RawMessage)
+	visit = func(plugin string, raw json.RawMessage) {
+		var node struct {
+			Name        string            `json:"name"`
+			Subcommands []json.RawMessage `json:"subcommands"`
+			Input       json.RawMessage   `json:"input"`
+			Output      struct {
+				JSON json.RawMessage `json:"json"`
+			} `json:"output"`
+		}
+		if err := json.Unmarshal(raw, &node); err != nil {
+			t.Fatal(err)
+		}
+		for _, child := range node.Subcommands {
+			visit(plugin, child)
+		}
+		if len(node.Subcommands) > 0 {
+			return
+		}
+		var input struct {
+			Title string `json:"title"`
+		}
+		if len(node.Input) > 0 {
+			if err := json.Unmarshal(node.Input, &input); err != nil {
+				t.Fatal(err)
 			}
+		}
+		if plugin == "browser" && generated[input.Title] == nil {
 			return
 		}
-		input, _ := node["input"].(map[string]any)
-		output, _ := node["output"].(map[string]any)
-		result, _ := output["json"].(map[string]any)
-		inputTitle, _ := input["title"].(string)
-		if plugin == "browser" && generated[inputTitle] == nil {
+		if plugin != "browser" && plugin != "file" && plugin != "expose" && plugin != "todo" {
 			return
 		}
-		if plugin != "browser" && plugin != "file" && plugin != "expose" {
-			return
-		}
-		if plugin == "expose" && result == nil {
+		if plugin == "expose" && len(node.Output.JSON) == 0 {
 			return
 		}
 		counts[plugin]++
 		for _, side := range []struct {
 			name  string
-			value map[string]any
-		}{{"input", input}, {"output", result}} {
-			if side.value == nil || plugin == "expose" && side.name == "input" {
+			value json.RawMessage
+		}{{"input", node.Input}, {"output", node.Output.JSON}} {
+			if len(side.value) == 0 || plugin == "expose" && side.name == "input" {
 				continue
 			}
-			title := side.value["title"].(string)
-			emit := generated[title]
-			if emit == nil {
-				t.Fatalf("missing Go schema for %s/%s", plugin, title)
+			var header struct {
+				Title string `json:"title"`
 			}
-			t.Run(plugin+"/"+node["name"].(string)+"/"+side.name, func(t *testing.T) {
-				var got map[string]any
-				if err := json.Unmarshal(emit(), &got); err != nil {
-					t.Fatal(err)
-				}
+			if err := json.Unmarshal(side.value, &header); err != nil {
+				t.Fatal(err)
+			}
+			emit := generated[header.Title]
+			if emit == nil {
+				t.Fatalf("missing Go schema for %s/%s", plugin, header.Title)
+			}
+			t.Run(plugin+"/"+node.Name+"/"+side.name, func(t *testing.T) {
+				actual := emit()
 				if plugin == "browser" && side.name == "input" {
-					// plugin-browser::leaf, through LeafBuilder::describe, replaces only
-					// this description. The original type doc must remain in generated output.
-					properties := got["properties"].(map[string]any)
-					timeout := properties["timeout"].(map[string]any)
-					if timeout["description"] != "Whole operation deadline in milliseconds" {
-						t.Fatalf("lost timeout type documentation: %v", timeout)
-					}
 					deadline := "30000"
-					if title == "OpenInput" {
+					if header.Title == "OpenInput" {
 						deadline = "300000"
 					}
-					timeout["description"] = "Whole operation deadline in milliseconds; default " + deadline + ", maximum 300000."
+					actual = bytes.ReplaceAll(actual, []byte(`"Whole operation deadline in milliseconds"`), []byte(`"Whole operation deadline in milliseconds; default `+deadline+`, maximum 300000."`))
 				}
-				actual, err := json.Marshal(got)
-				if err != nil {
+				var expected bytes.Buffer
+				if err := json.Compact(&expected, side.value); err != nil {
 					t.Fatal(err)
 				}
-				expected, err := json.Marshal(side.value)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if !bytes.Equal(actual, expected) {
-					t.Fatalf("Rust manifest differs:\nGo:   %s\nRust: %s", actual, expected)
+				if !bytes.Equal(actual, expected.Bytes()) {
+					t.Fatalf("Rust manifest differs:\nGo:   %s\nRust: %s", actual, expected.Bytes())
 				}
 			})
 		}
 	}
 	for _, plugin := range manifests {
-		for _, command := range plugin["commands"].([]any) {
-			visit(plugin["id"].(string), command.(map[string]any)["tree"].(map[string]any))
+		for _, command := range plugin.Commands {
+			visit(plugin.ID, command.Tree)
 		}
 	}
-	if counts["file"] != 4 || counts["browser"] != 10 || counts["expose"] != 3 {
+	if counts["todo"] != 4 || counts["file"] != 4 || counts["browser"] != 10 || counts["expose"] != 3 {
 		t.Fatalf("leaf coverage changed: %v", counts)
 	}
 }

@@ -1,6 +1,10 @@
 package session
 
-import "github.com/wspl/demi/internal/core"
+import (
+	"fmt"
+
+	"github.com/wspl/demi/internal/core"
+)
 
 // AdmissionError explains why a session refused an action or a change.
 // Compare it with errors.Is.
@@ -14,7 +18,7 @@ const (
 )
 
 // Error returns the admission refusal's user-facing text.
-func (e AdmissionError) Error() string { panic("not written: a-session") }
+func (e AdmissionError) Error() string { return string(e) }
 
 // SteerError explains why a steer was refused. Compare it with errors.Is.
 type SteerError string
@@ -31,7 +35,7 @@ const (
 )
 
 // Error returns the steer's user-facing refusal.
-func (e SteerError) Error() string { panic("not written: a-session") }
+func (e SteerError) Error() string { return string(e) }
 
 // AgentMessageError explains why an agent message was refused. Use errors.As
 // to inspect Kind and errors.Is to inspect an underlying validation or store error.
@@ -63,10 +67,31 @@ const (
 )
 
 // Error returns the user-facing agent-message refusal.
-func (e *AgentMessageError) Error() string { panic("not written: a-session") }
+func (e *AgentMessageError) Error() string {
+	switch e.Kind {
+	case AgentMessageRecipient:
+		return "Agent message recipient does not match this session"
+	case AgentMessageDifferentContent:
+		return "Agent message id already belongs to different content"
+	case AgentMessageConflict:
+		return "Agent message id conflicts with another input"
+	case AgentMessageInvalid:
+		return "The agent message is invalid: " + e.Detail
+	case AgentMessageClosed:
+		return "The agent session is closed"
+	case AgentMessageEditing:
+		return "A message edit is being prepared"
+	case AgentMessageStore:
+		if e.Cause != nil {
+			return e.Cause.Error()
+		}
+		return e.Detail
+	}
+	return e.Detail
+}
 
 // Unwrap returns the validation or store error, when present.
-func (e *AgentMessageError) Unwrap() error { panic("not written: a-session") }
+func (e *AgentMessageError) Unwrap() error { return e.Cause }
 
 // RestoreError explains why a checkpoint could not be restored.
 type RestoreError struct {
@@ -89,10 +114,23 @@ const (
 )
 
 // Error returns the user-facing restoration failure.
-func (e *RestoreError) Error() string { panic("not written: a-session") }
+func (e *RestoreError) Error() string {
+	switch e.Kind {
+	case RestoreCommandState:
+		if e.Cause != nil {
+			return e.Cause.Error()
+		}
+		return e.Detail
+	case RestoreInput:
+		return "The checkpoint's waiting input is invalid: " + e.Detail
+	case RestoreEdits:
+		return "The checkpoint's edit receipts repeat operation " + e.Detail
+	}
+	return e.Detail
+}
 
 // Unwrap returns the underlying command-state or input error.
-func (e *RestoreError) Unwrap() error { panic("not written: a-session") }
+func (e *RestoreError) Unwrap() error { return e.Cause }
 
 // ErrorReport is a failure as clients see it: the frame an error event becomes.
 type ErrorReport struct {
@@ -102,7 +140,7 @@ type ErrorReport struct {
 }
 
 // Error returns the message of an action failure.
-func (e *ErrorReport) Error() string { panic("not written: a-session") }
+func (e *ErrorReport) Error() string { return e.Message }
 
 // EditError explains why an edit was rejected. Nothing of the history changed.
 // Use errors.As to inspect Kind and errors.Is for the underlying cause.
@@ -141,10 +179,35 @@ const (
 )
 
 // Error returns the user-facing edit refusal.
-func (e *EditError) Error() string { panic("not written: a-session") }
+func (e *EditError) Error() string {
+	switch e.Kind {
+	case EditConflict:
+		return "The edit operation ID was used for a different request"
+	case EditBusy:
+		return "Message editing requires a settled session with no pending work"
+	case EditStale:
+		return "The conversation changed; reopen the message to edit it"
+	case EditTarget:
+		if e.Cause != nil {
+			return e.Cause.Error()
+		}
+		return e.Detail
+	case EditUnknownAttachment:
+		return "The edited message holds no attachment at " + e.Detail
+	case EditUnknownMedia:
+		return fmt.Sprintf("The edited message holds no %s %s", e.MediaKind, e.Blob)
+	case EditStopped:
+		return "The edit was stopped before it was accepted"
+	case EditClosed:
+		return "The agent session is closed"
+	case EditFailed:
+		return e.Detail
+	}
+	return e.Detail
+}
 
 // Unwrap returns the target, preparation or persistence failure, when present.
-func (e *EditError) Unwrap() error { panic("not written: a-session") }
+func (e *EditError) Unwrap() error { return e.Cause }
 
 // ForkError explains why a Fork cannot start where it was asked.
 type ForkError struct {
@@ -173,7 +236,26 @@ const (
 )
 
 // Error returns the user-facing Fork refusal.
-func (e *ForkError) Error() string { panic("not written: a-session") }
+func (e *ForkError) Error() string {
+	switch e.Kind {
+	case ForkTarget:
+		if e.Cause != nil {
+			return e.Cause.Error()
+		}
+		return e.Detail
+	case ForkNoBoundary:
+		return "No command-state boundary after the Fork target"
+	case ForkNotRoot:
+		return "The Fork source must be a root session"
+	case ForkNoCheckpoint:
+		return "No matching Fork source checkpoint"
+	case ForkInvalidSeed:
+		return "A Fork must start idle, without queued actions or edit receipts"
+	case ForkStore:
+		return e.Detail
+	}
+	return e.Detail
+}
 
 // Unwrap returns the target or store failure, when present.
-func (e *ForkError) Unwrap() error { panic("not written: a-session") }
+func (e *ForkError) Unwrap() error { return e.Cause }
