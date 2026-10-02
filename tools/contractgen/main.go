@@ -15,6 +15,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -121,6 +123,9 @@ func generateBatch(ctx context.Context, patterns []string, ts bool, tsDir string
 	g := generator{defs: map[string]*definition{}, tsDir: tsDir}
 	var collected []*packages.Package
 	var loadErr error
+	// go/packages exposes only TypeError, not go/types' private unused-import
+	// code. Stripping bodies can produce either spelling for a valid import.
+	unusedImport := regexp.MustCompile(`^"[^"]+" imported (as [^ ]+ )?and not used$`)
 	packages.Visit(pkgs, nil, func(p *packages.Package) {
 		if loadErr != nil {
 			return
@@ -208,7 +213,7 @@ func generateBatch(ctx context.Context, patterns []string, ts bool, tsDir string
 			return
 		}
 		for _, problem := range p.Errors {
-			if problem.Kind != packages.TypeError || !strings.Contains(problem.Msg, "imported and not used") {
+			if problem.Kind != packages.TypeError || !unusedImport.MatchString(problem.Msg) {
 				loadErr = fmt.Errorf("%s", problem)
 				return
 			}
@@ -698,6 +703,9 @@ func (g *generator) rules(t types.Type, expr, path string, m map[string]string) 
 		if maximum := b["max"]; maximum != "" {
 			g.line("if len(%s)>%s{return contract.At(%s,fmt.Errorf(\"too many items\"))}", expr, maximum, path)
 		}
+	}
+	if slices.Contains(strings.Fields(m["range"]), "schema-only") {
+		return
 	}
 	for _, key := range []string{"min", "max"} {
 		if bound := bounds(m["range"])[key]; bound != "" {

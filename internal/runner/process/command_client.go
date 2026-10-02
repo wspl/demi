@@ -55,15 +55,15 @@ func Forward(ctx context.Context, endpoint string, request commandwire.LocalInvo
 	if err != nil {
 		return completion, err
 	}
-	client, err := cmdsdk.Connect(ctx, connection)
+	invocation, cancel := context.WithCancel(ctx)
+	defer cancel()
+	client, err := cmdsdk.Connect(invocation, &commandConnection{Conn: connection, cancel: cancel})
 	if err != nil {
 		return completion, err
 	}
 	defer func() { err = errors.Join(err, client.Close()) }()
 	// Only invocation opening has the Rust client's ten-second deadline. Its
 	// stream retains the parent context after headers arrive.
-	invocation, cancel := context.WithCancel(ctx)
-	defer cancel()
 	timeoutDone := make(chan struct{})
 	timer := time.AfterFunc(10*time.Second, func() { cancel(); close(timeoutDone) })
 	input, output, err := client.Invoke(invocation, request)
@@ -85,6 +85,30 @@ func Forward(ctx context.Context, endpoint string, request commandwire.LocalInvo
 		}
 	}
 	return completion, nil
+}
+
+// commandConnection cancels local forwarding when the HTTP/2 transport fails.
+// The HTTP/2 reader continues while Exchange is blocked writing caller output;
+// cancelling its context interrupts that write without another IO worker.
+type commandConnection struct {
+	net.Conn
+	cancel context.CancelFunc
+}
+
+func (c *commandConnection) Read(b []byte) (int, error) {
+	n, err := c.Conn.Read(b)
+	if err != nil {
+		c.cancel()
+	}
+	return n, err
+}
+
+func (c *commandConnection) Write(b []byte) (int, error) {
+	n, err := c.Conn.Write(b)
+	if err != nil {
+		c.cancel()
+	}
+	return n, err
 }
 
 // commandStream gives each owned invocation stream exactly one close, including

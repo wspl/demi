@@ -21,6 +21,14 @@ type Plugin interface {
 	Call(context.Context, Request, Port) (Reply, error)
 }
 
+// Closer is implemented by an instance that owns work beyond its calls, such
+// as a fetch that outlives the page call that started it. The host calls Close
+// when it drops the instance; Close cancels that work and returns once it has
+// ended.
+type Closer interface {
+	Close()
+}
+
 // CommandPlugin serves its declared rpc commands through the command port.
 type CommandPlugin struct {
 	commands  host.CommandSet
