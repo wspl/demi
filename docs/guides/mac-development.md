@@ -65,11 +65,25 @@ cargo xtask native package --package demi-machine-manager \
   --target aarch64-unknown-linux-musl --output .cache/releases/demi-machine-manager-<build>
 bash crates/machine-manager/scripts/lima-machines.sh \
   --manager .cache/releases/demi-machine-manager-<build>/aarch64-unknown-linux-musl/demi-machine-manager \
-  --image /opt/demi-cloud/releases/build-id --dns 1.1.1.1
+  --image /opt/demi-cloud/releases/build-id \
+  --backend-url http://<the Mac's address>:3271 --dns 1.1.1.1
 ```
 
-The script prints the Mac's address that the Cloud guest reaches. Do not
-assume a particular Lima gateway address works on every installation.
+`--backend-url` is the backend's public URL. The Cloud guests connect to it
+through Lima's network, and the Mac's own runner connects to it directly, so
+it names the Mac's address on its network, such as Wi-Fi's
+`192.168.75.36`. Lima's gateway address, `host.lima.internal` or
+`192.168.5.2`, exists only inside the VM: the Mac cannot reach it. For
+Wi-Fi, this prints the address:
+
+```sh
+ipconfig getifaddr en0
+```
+
+The script prints the backend's two settings: the forwarded socket and the
+public URL. When the Mac joins another network, its address changes: run the
+script again with the new URL and restart the backend with it.
+
 `--root <directory>` passes on to the installer, which then only writes the
 unit and settings beneath that directory inside the VM. The script prepares
 its default state directory on the Lima data disk; `--data` names another
@@ -83,17 +97,18 @@ state directory to make a start succeed.
 ## Backend on the Mac
 
 Follow the [Development backend](../backend/backend.md#development-backend)
-steps with the two targets above, and start the backend with the forwarded
-socket and the address the script printed:
+steps with the two targets above, and start the backend with the two
+settings the script printed:
 
 ```sh
-DEMI_BACKEND_PUBLIC_URL=http://<address the guest reaches>:3271 \
+DEMI_BACKEND_PUBLIC_URL=http://<the Mac's address>:3271 \
 DEMI_MACHINE_MANAGER_SOCKET=~/.lima/demi-machine-manager/sock/demi-machine-manager.sock \
 ...
 ```
 
-Pair the Mac with the installer at the same address. Verify the connection by
-starting a Cloud through the backend.
+Pair the Mac with the installer at the same URL,
+`curl -fsSL http://<the Mac's address>:3271/install.sh | sh`. Verify the
+connection by starting a Cloud through the backend.
 
 ## Machine manager tests
 
