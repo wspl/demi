@@ -77,6 +77,7 @@ type Runner struct {
 
 	// callHandler is a function allowing to replace a simple command's
 	// arguments. It may be nil.
+	pipeHandler    func(context.Context) (io.ReadCloser, io.WriteCloser, error)
 	customBuiltins map[string]ExecHandlerFunc
 	scopeState     ScopeState
 	callHandler    CallHandlerFunc
@@ -180,7 +181,8 @@ type Runner struct {
 
 	// extraFiles holds redirections of descriptors above stderr. The open handler
 	// retains responsibility for releasing exec's persistent files after Wait.
-	extraFiles map[string]io.ReadWriteCloser
+	extraFiles     map[string]io.ReadWriteCloser
+	pipelineStatus []string
 
 	// Fake signal callbacks
 	callbackErr  string
@@ -897,6 +899,7 @@ func (r *Runner) Reset() {
 		tasks:          r.tasks,
 		tempDir:        r.tempDir,
 		customBuiltins: r.customBuiltins,
+		pipeHandler:    r.pipeHandler,
 		scopeState:     r.scopeState,
 		callHandler:    r.callHandler,
 		execHandler:    r.execHandler,
@@ -1104,6 +1107,7 @@ func (r *Runner) subshell(background bool) *Runner {
 		tempDir:        r.tempDir,
 		Params:         r.Params,
 		customBuiltins: r.customBuiltins,
+		pipeHandler:    r.pipeHandler,
 		scopeState:     r.scopeState,
 		callHandler:    r.callHandler,
 		execHandler:    r.execHandler,
@@ -1136,4 +1140,30 @@ func (r *Runner) subshell(background bool) *Runner {
 	r2.fillExpandConfig(r.ectx)
 	r2.didReset = true
 	return r2
+}
+
+// PipeHandler replaces shell pipe allocation. The caller supplies an inheritable
+// reader and owns its descriptor retry policy; the interpreter closes both ends.
+func PipeHandler(handler func(context.Context) (io.ReadCloser, io.WriteCloser, error)) RunnerOption {
+	return func(r *Runner) error {
+		r.pipeHandler = handler
+		return nil
+	}
+}
+
+func (r *Runner) pipe(ctx context.Context) (stdinFile, io.WriteCloser, error) {
+	if r.pipeHandler == nil {
+		return newPipe()
+	}
+	reader, writer, err := r.pipeHandler(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	input, err := newStdinFile(reader, r.tasks)
+	if err != nil {
+		reader.Close()
+		writer.Close()
+		return nil, nil, err
+	}
+	return input, writer, nil
 }

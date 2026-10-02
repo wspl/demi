@@ -159,12 +159,18 @@ func (f *RunnerFixture) adopt(socket *websocket.Conn) {
 }
 
 // pipeHTTPBody adapts request cancellation and explicit body closure to a pipe source.
-type pipeHTTPBody struct{ body io.ReadCloser }
+type pipeHTTPBody struct {
+	body     io.ReadCloser
+	response *http.ResponseController
+}
 
 func (b pipeHTTPBody) Read(ctx context.Context, data []byte) (int, error) {
 	done := make(chan struct{})
 	stop := context.AfterFunc(ctx, func() {
 		defer close(done)
+		if err := b.response.SetReadDeadline(time.Now()); err != nil {
+			slog.Debug("fixture upload deadline failed: " + err.Error())
+		}
 		if err := b.body.Close(); err != nil {
 			slog.Debug("fixture upload close failed: " + err.Error())
 		}
@@ -197,7 +203,7 @@ func (f *RunnerFixture) pipeSource(response http.ResponseWriter, request *http.R
 		pipeRefused(response, err)
 		return
 	}
-	if err := source.Pump(request.Context(), pipeHTTPBody{request.Body}); err != nil {
+	if err := source.Pump(request.Context(), pipeHTTPBody{request.Body, http.NewResponseController(response)}); err != nil {
 		pipeResponse(response, http.StatusConflict, err.Error())
 		return
 	}

@@ -117,3 +117,31 @@ func TestFgRefusesWithoutJobControl(t *testing.T) {
 		t.Fatalf("result %+v output %q stderr %q", result, output, stderr)
 	}
 }
+
+// These regression scripts run real child utilities, normally in under a second.
+func TestRunnerShellRegressionStatusesAndRetainedInput(t *testing.T) {
+	for _, scenario := range []struct {
+		name, script, output string
+		code                 uint8
+	}{
+		{"syntax", "cd sub; do", "", 2},
+		{"pipeline", `false | true | false; printf '%s\n' "${PIPESTATUS[*]}"`, "1 0 1\n", 0},
+		{"single", `false; printf '%s\n' "${PIPESTATUS[*]}"`, "1\n", 0},
+		{"retained", `exec 9<&0; sh -c 'cat <&9; printf forwarded' <&9 & wait; printf done`, "inputforwardeddone", 0},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			root := t.TempDir()
+			result, output, diagnostic := shellFiles(t, root, scenario.script, func(o *Options) {
+				if _, err := o.Stdin.WriteString("input"); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := o.Stdin.Seek(0, 0); err != nil {
+					t.Fatal(err)
+				}
+			})
+			if result.Code != scenario.code || result.Cwd != root || output != scenario.output {
+				t.Fatalf("result %+v output %q diagnostic %q", result, output, diagnostic)
+			}
+		})
+	}
+}
