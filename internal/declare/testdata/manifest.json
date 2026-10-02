@@ -1,0 +1,123 @@
+{
+  "hash": "0cf18d78aae679a7d2e1af76e21e2f1d4c27a7e3a56ad6394a87b5b6229b0235",
+  "roots": {
+    "fixture": {
+      "tree": {
+        "name": "fixture",
+        "summary": "CLI fixture.",
+        "subcommands": [
+          {
+            "name": "read",
+            "summary": "Read a native file.",
+            "input": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "File path"
+                },
+                "count": {
+                  "default": 2,
+                  "description": "Count",
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "upper": {
+                  "description": "Uppercase",
+                  "type": "boolean"
+                },
+                "tag": {
+                  "description": "Tags",
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "body": {
+                  "type": "string",
+                  "description": "Text body"
+                },
+                "args": {
+                  "description": "Forwarded arguments",
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "path",
+                "body"
+              ]
+            },
+            "positionals": [
+              "path"
+            ],
+            "stdinField": "body",
+            "restField": "args",
+            "output": {
+              "json": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "ok"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "kind": "native",
+            "binding": {
+              "package": "demicodes.fixture",
+              "operation": "file.read",
+              "descriptorHash": "7d320ed041df0a3277ce2946c2893522cac021e30c3876dc2cb58ac29bfbe636"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "packages": {
+    "7d320ed041df0a3277ce2946c2893522cac021e30c3876dc2cb58ac29bfbe636": {
+      "id": "demicodes.fixture",
+      "version": "test-α-😀",
+      "protocolVersion": 1,
+      "operations": [
+        "file.read",
+        "fixture.echo"
+      ],
+      "targets": {
+        "aarch64-apple-darwin": {
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "size": 12345
+        },
+        "x86_64-apple-darwin": {
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "size": 12346
+        },
+        "aarch64-unknown-linux-musl": {
+          "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "size": 12347
+        },
+        "x86_64-unknown-linux-musl": {
+          "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+          "size": 12348
+        },
+        "aarch64-pc-windows-msvc": {
+          "sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "size": 12349
+        },
+        "x86_64-pc-windows-msvc": {
+          "sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "size": 12350
+        }
+      }
+    }
+  }
+}
