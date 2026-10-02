@@ -44,3 +44,7 @@ require (
 	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/net v0.59.0 // indirect
 )
+
+require mvdan.cc/sh/v3 v3.14.1
+
+replace mvdan.cc/sh/v3 => ./third_party/mvdan-sh

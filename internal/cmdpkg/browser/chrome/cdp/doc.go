@@ -3,5 +3,4 @@
 //
 // Connections and subscriptions have explicit owners. Close cancels and joins
 // their work. Callers own tab admission, tab state and conversation lifetimes.
-// This is the k-chrome-cdp API checkpoint; function bodies follow after review.
 package cdp
