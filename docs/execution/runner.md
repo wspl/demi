@@ -363,10 +363,10 @@ because some programs
 misbehave with a very high one: a program that uses `select()` cannot watch a
 descriptor numbered 1024 or above, and some programs close every descriptor up
 to their limit before they start. The runner learns that limit, which its
-`ulimit` reports, once as it starts: it starts its own executable in a probe
-mode, as it starts a job's program with a mask or limits of its own
-([Builtins that act on a process](#builtins-that-act-on-a-process)), and that
-copy, which got the limit back, reports it. Windows has no such limit.
+`ulimit` reports, once as it starts: it starts `/bin/sh`, which gets the limit
+back and, unlike a Go program, does not raise it again, and reads the soft and
+hard limits it reports, as `ulimit` checks a new limit with `/bin/sh -c :`
+([Builtins that act on a process](#builtins-that-act-on-a-process)). Windows has no such limit.
 
 Every pipe, local command connection and open file holds one while it lasts,
 and a network stream holds three: its socket and two pipes. When none is left,
