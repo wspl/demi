@@ -31,7 +31,10 @@ use tokio_util::sync::CancellationToken;
 use demi_command_protocol::host_target;
 
 use crate::{
-    ArtifactResolver, NumberSource, RuntimeError, cache::ArtifactCache, process::ResidentService,
+    ArtifactResolver, NumberSource, RuntimeError,
+    cache::{ArtifactCache, ForPackage},
+    installs::{Installs, InstallsReceiver},
+    process::ResidentService,
 };
 
 /// How long a service has to say which conversations it holds.
@@ -68,13 +71,14 @@ pub enum Decision {
 /// The registry's owner task and the handle to it.
 pub struct ServiceRegistry {
     handle: ServiceHandle,
+    installs: Installs,
     owner: tokio::task::JoinHandle<()>,
     #[cfg(feature = "testing")]
     decisions: tokio::sync::broadcast::Sender<(String, Decision)>,
 }
 
 impl ServiceRegistry {
-    /// Services start in `cwd` with exactly `env`; their executables are
+    /// Services start in `cwd` with exactly `env`; their artifacts are
     /// cached in `cache`, or taken from the copies the Host's image
     /// preinstalled in `image`, when given.
     pub async fn new(
@@ -83,7 +87,8 @@ impl ServiceRegistry {
         cwd: PathBuf,
         env: BTreeMap<String, String>,
     ) -> Result<Self, RuntimeError> {
-        let cache = Arc::new(ArtifactCache::new(cache, image).await?);
+        let installs = Installs::default();
+        let cache = Arc::new(ArtifactCache::new(cache, image, installs.clone()).await?);
         let (requests, receiver) = mpsc::channel(REQUESTS);
         #[cfg(feature = "testing")]
         let (decisions, _) = tokio::sync::broadcast::channel(DECISIONS);
@@ -103,6 +108,7 @@ impl ServiceRegistry {
         };
         Ok(Self {
             handle: ServiceHandle { requests },
+            installs,
             owner: tokio::spawn(owner.run(receiver)),
             #[cfg(feature = "testing")]
             decisions,
@@ -111,6 +117,12 @@ impl ServiceRegistry {
 
     pub fn handle(&self) -> ServiceHandle {
         self.handle.clone()
+    }
+
+    /// The installs the services' starts make (`native-runtime.md`
+    /// § Installation progress).
+    pub fn installs(&self) -> InstallsReceiver {
+        self.installs.subscribe()
     }
 
     /// What the registry decides from now on, with each service's digest,
@@ -469,7 +481,23 @@ impl Owner {
             .get(host_target())
             .ok_or(RuntimeError::CatalogMismatch)?
             .clone();
-        let digest = artifact.sha256.clone();
+        let mut resources = Vec::new();
+        for (name, resource) in &descriptor.resources {
+            let archive = resource.targets.get(host_target()).ok_or_else(|| {
+                RuntimeError::Unavailable(format!(
+                    "{} is unavailable on {}",
+                    resource.title,
+                    host_target()
+                ))
+            })?;
+            resources.push((name.clone(), resource.title.clone(), archive.clone()));
+        }
+        // Services share a process only when they start the same artifacts.
+        let mut digest = artifact.sha256.clone();
+        for (_, _, archive) in &resources {
+            digest.push('+');
+            digest.push_str(&archive.sha256);
+        }
         // The waiting caller's lease counts at once, so a start never begins
         // with nothing holding it.
         let (waiting, alive) = ServiceLease::new();
@@ -502,9 +530,11 @@ impl Owner {
         let cache = self.cache.clone();
         let cwd = self.cwd.clone();
         let env = self.env.clone();
+        let key = digest.clone();
         self.lifecycles.spawn(async move {
             let started = Start {
                 artifact: &artifact,
+                resources: &resources,
                 descriptor: &descriptor,
                 resolver: resolver.as_ref(),
                 numbers,
@@ -512,7 +542,7 @@ impl Owner {
                 env: &env,
             };
             live(&cache, started, stop, state).await;
-            (artifact.sha256, generation)
+            (key, generation)
         });
         Ok(Acquired {
             _waiting: waiting,
@@ -760,11 +790,13 @@ impl Owner {
     }
 }
 
-/// What a service starts from: its artifact and descriptor, where the
-/// artifact comes from, where its conversation numbers come from, and its
-/// working directory and environment.
+/// What a service starts from: its executable, its resources (each by name
+/// and title) and its descriptor, where the artifacts come from, where its
+/// conversation numbers come from, and its working directory and
+/// environment.
 struct Start<'a> {
     artifact: &'a demi_command_protocol::PackageArtifact,
+    resources: &'a [(String, String, demi_command_protocol::ResourceArtifact)],
     descriptor: &'a PackageDescriptor,
     resolver: &'a dyn ArtifactResolver,
     numbers: Arc<dyn NumberSource>,
@@ -772,8 +804,8 @@ struct Start<'a> {
     env: &'a BTreeMap<String, String>,
 }
 
-/// One service's life: install its executable, start it, publish it ready,
-/// and publish how it ended.
+/// One service's life: install its executable and resources, start it,
+/// publish it ready, and publish how it ended.
 async fn live(
     cache: &ArtifactCache,
     start: Start<'_>,
@@ -782,9 +814,21 @@ async fn live(
 ) {
     let descriptor = start.descriptor;
     let started = async {
-        let executable = cache.install(start.artifact, start.resolver, &stop).await?;
+        let package = ForPackage {
+            id: &descriptor.id,
+            resolver: start.resolver,
+        };
+        let executable = cache.install(start.artifact, package, &stop).await?;
+        let mut resources = BTreeMap::new();
+        for (name, title, archive) in start.resources {
+            let entry = cache
+                .install_resource(title, archive, package, &stop)
+                .await?;
+            resources.insert(name.clone(), entry);
+        }
         ResidentService::start(
             &executable,
+            &resources,
             descriptor,
             start.cwd,
             start.env,

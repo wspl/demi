@@ -11,7 +11,7 @@ mod conversations;
 
 use std::{future::Future, pin::Pin, sync::Arc};
 
-use demi_command_package_browser_chrome::driver::installation::BrowserDirectories;
+use demi_command_package_browser_chrome::driver::installation::Chrome;
 use demi_command_package_browser_protocol::{Operation, OperationError, browser as protocol};
 use demi_command_protocol::{Completion, Invocation};
 use demi_command_sdk::{ConversationContext, Handler, InvocationContext, Numbers, ServiceError};
@@ -22,11 +22,10 @@ pub struct DemiBrowser {
 }
 
 impl DemiBrowser {
-    /// The service, whose browsers find or install the pinned Chrome in
-    /// `directories`: a Host's are [`BrowserDirectories::host`].
-    pub fn new(directories: BrowserDirectories) -> Self {
+    /// The service, whose browsers start `chrome`.
+    pub fn new(chrome: Chrome) -> Self {
         Self {
-            browsers: Arc::new(conversations::Conversations::new(directories)),
+            browsers: Arc::new(conversations::Conversations::new(chrome)),
         }
     }
 }

@@ -4,6 +4,8 @@
 //! manager before it serves. The program prints the manager's socket path as
 //! its first line and serves until its standard input closes or it is
 //! terminated. It then ends, and every runner it started ends with it.
+//! `--artifacts <directory>` gives its Cloud runners that artifact cache,
+//! which outlives them (`backend.md` § One-command development backend).
 
 // The scenarios' own module; the program uses only part of it.
 #[allow(dead_code)]
@@ -17,6 +19,21 @@ use tokio::signal::unix::{SignalKind, signal};
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let manager = machines::ScriptedManager::start();
+    let mut arguments = std::env::args().skip(1);
+    match (
+        arguments.next().as_deref(),
+        arguments.next(),
+        arguments.next(),
+    ) {
+        (None, ..) => {}
+        (Some("--artifacts"), Some(cache), None) => {
+            manager.script(|script| script.artifacts = Some(cache));
+        }
+        _ => {
+            eprintln!("Usage: scripted_machines [--artifacts <directory>]");
+            std::process::exit(2);
+        }
+    }
     println!("{}", manager.socket().display());
     // The input closes when the process that started this one ends, however
     // it ends. A plain thread reads it: the runtime would wait for a blocking

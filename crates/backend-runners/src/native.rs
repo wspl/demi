@@ -80,11 +80,14 @@ impl NativeCatalog {
         }
     }
 
-    /// The executable whose SHA-256 is `sha256` in the content coding runners
-    /// download it in, when a development store serves it.
-    pub async fn local_encoded(&self, sha256: &str) -> Option<std::io::Result<bytes::Bytes>> {
+    /// The artifact whose SHA-256 is `sha256` as runners download it, when
+    /// a development store serves it.
+    pub async fn local_artifact(
+        &self,
+        sha256: &str,
+    ) -> Option<std::io::Result<crate::local_store::LocalArtifact>> {
         match &self.store {
-            Store::Local(artifacts) => artifacts.encoded(sha256).await,
+            Store::Local(artifacts) => artifacts.artifact(sha256).await,
             Store::Unpublished | Store::Signed(_) => None,
         }
     }

@@ -35,6 +35,7 @@ tracing.workspace = true
 
 [dev-dependencies]
 demi-runner-command-packages = { path = ".", features = ["testing"] }
+demi-shared-artifacts = { path = "../shared-artifacts", features = ["testing"] }
 sha2 = "0.10"
 tempfile = "3"
 tracing-subscriber.workspace = true

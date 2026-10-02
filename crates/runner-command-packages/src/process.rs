@@ -6,7 +6,12 @@
 //! standard error.
 
 use std::{
-    collections::BTreeMap, future::Future, path::Path, process::Stdio, sync::Arc, time::Duration,
+    collections::BTreeMap,
+    future::Future,
+    path::{Path, PathBuf},
+    process::Stdio,
+    sync::Arc,
+    time::Duration,
 };
 
 use demi_command_protocol::{PackageDescriptor, ServiceInfo};
@@ -59,11 +64,13 @@ pub struct Ended {
 }
 
 impl ResidentService {
-    /// Starts `executable`, checks that it serves `descriptor`, and opens its
-    /// numbers stream, whose requests go to `numbers`. Cancelling `stop` asks
-    /// the service to shut down, also while it starts.
+    /// Starts `executable`, given the entry of each of its resources by
+    /// name, checks that it serves `descriptor`, and opens its numbers
+    /// stream, whose requests go to `numbers`. Cancelling `stop` asks the
+    /// service to shut down, also while it starts.
     pub async fn start(
         executable: &Path,
+        resources: &BTreeMap<String, PathBuf>,
         descriptor: &PackageDescriptor,
         cwd: &Path,
         env: &BTreeMap<String, String>,
@@ -72,7 +79,7 @@ impl ResidentService {
     ) -> Result<Self, RuntimeError> {
         let mut command = Command::new(executable);
         command
-            .arg("--command-service")
+            .args(demi_command_sdk::launch_arguments(resources))
             .current_dir(cwd)
             .env_clear()
             .envs(env)

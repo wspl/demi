@@ -21,7 +21,7 @@ use tokio_util::task::AbortOnDropHandle;
 
 use crate::conversations::{anthropic_at, create};
 use crate::streams::{self, Socket};
-use crate::support::{Harness, eventually};
+use crate::support::{Harness, chrome_resource, eventually};
 use crate::work::{Driven, say, shell, switch};
 
 const CONVERSATION: &str = "7b6a5c4d-8f3a-4c1e-9d2b-7a1c2e3f4a01";
@@ -204,12 +204,27 @@ async fn an_agent_drives_chrome_on_a_paired_device_which_the_user_watches_until_
     let harness = Harness::new().with_browser_package();
     let (backend, master) = harness.start_set_up().await;
     let laptop = backend.pair(&master, "laptop").await;
-    // The device's browser service finds the pinned release where it
-    // installs it, in the device user's home.
-    let browsers = laptop.runner.home_dir().join(".demi/browsers");
-    demi_command_package_browser_chrome::driver::testing::install_pinned(&browsers, &chrome)
-        .await
-        .expect("DEMI_TEST_CHROME names an unpacked copy of the pinned release");
+    // The device's runner finds the package's Chrome installed in its
+    // artifact cache, where it would unpack the archive.
+    let resource = chrome_resource();
+    let artifacts = laptop.runner.state_dir().join("artifacts");
+    // Where the device's Chrome runs from.
+    let browsers = artifacts.join(&resource.sha256);
+    let archive = demi_shared_artifacts::Archive {
+        digest: demi_shared_artifacts::Digest {
+            size: resource.size,
+            sha256: resource.sha256,
+        },
+        entry: resource.entry,
+    };
+    demi_shared_artifacts::testing::install_unpacked(
+        &artifacts,
+        &archive,
+        &chrome,
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+    .expect("DEMI_TEST_CHROME names an unpacked copy of the pinned release");
     let provider = anthropic_at(&backend, &master, &vendor, "/laptop").await;
     create(&backend, &master, CONVERSATION).await;
     let home = laptop.runner.home_dir().to_owned();

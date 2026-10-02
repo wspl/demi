@@ -2,7 +2,7 @@ import type { Conversation } from '../state/types'
 import { useProduct } from '../state/product'
 
 /** Resolve display metadata from the canonical target and account snapshot. */
-export function executionFor(conversation: Conversation) {
+export function executionFor(conversation: Pick<Conversation, 'target' | 'cwd'>) {
   const snapshot = useProduct().snapshot
   const target = conversation.target
   const workspace =

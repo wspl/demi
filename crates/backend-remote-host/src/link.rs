@@ -24,7 +24,7 @@ use demi_host_interface::{
     StorageReply,
 };
 use demi_runner_protocol::wire::{
-    self, ArtifactOwner, FsResult, GitResult, Inbound, LogLine, Outbound, VolumeName,
+    self, ArtifactOwner, FsResult, GitResult, Inbound, Install, LogLine, Outbound, VolumeName,
 };
 use demi_shared_gates::{GateLease, SerialGate};
 use demi_shared_types::StreamKind;
@@ -176,6 +176,8 @@ pub(crate) struct Inner {
     /// Why the backend ends it; the driver returns with this.
     disconnect: RefCell<Option<String>>,
     liveness: Cell<Liveness>,
+    /// The installs the runner last reported.
+    installs: watch::Sender<Vec<Install>>,
 }
 
 #[derive(Default)]
@@ -421,6 +423,7 @@ impl Link {
             end: RefCell::new(None),
             disconnect: RefCell::new(None),
             liveness: Cell::new(Liveness::Idle),
+            installs: watch::Sender::new(Vec::new()),
         }));
         let driver = LinkDriver {
             link: link.clone(),
@@ -445,6 +448,17 @@ impl Link {
 
     /// Whether the connection is closing or closed: nothing new starts on
     /// it.
+    /// The command package installs the runner last reported
+    /// (`native-runtime.md` § Installation progress).
+    pub fn installs(&self) -> Vec<Install> {
+        self.0.installs.borrow().clone()
+    }
+
+    /// Each list of installs the runner reports from now on.
+    pub fn watch_installs(&self) -> watch::Receiver<Vec<Install>> {
+        self.0.installs.subscribe()
+    }
+
     pub fn is_closed(&self) -> bool {
         self.0.closed.is_cancelled()
     }
@@ -635,6 +649,9 @@ impl Link {
             },
             // A repeated hello on a bound connection says nothing new.
             Outbound::Hello { .. } => {}
+            Outbound::Installs { installs } => {
+                self.0.installs.send_replace(installs);
+            }
             Outbound::Pong { jobs } => {
                 self.0.state.borrow_mut().pong_jobs = jobs;
                 if self.0.liveness.get() == Liveness::Waiting {
@@ -934,9 +951,7 @@ impl Link {
             let artifact = grant
                 .packages
                 .iter()
-                .filter_map(|package| package.targets.get(&target))
-                .find(|artifact| artifact.sha256 == sha256)
-                .cloned();
+                .find_map(|package| package.carries(&target, &sha256));
             let location = match artifact {
                 None => Err("Artifact does not belong to the live work's packages".to_owned()),
                 Some(artifact) => tokio::select! {

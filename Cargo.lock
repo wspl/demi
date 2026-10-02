@@ -2089,6 +2089,7 @@ name = "demi-command-sdk"
 version = "0.1.3"
 dependencies = [
  "bytes",
+ "clap",
  "demi-command-protocol",
  "demi-command-sdk",
  "demi-shared-artifacts",

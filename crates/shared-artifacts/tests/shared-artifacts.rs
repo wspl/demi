@@ -1,13 +1,16 @@
 //! Verified and measured downloads, copies, digests, publication, release
 //! publication, the install lock, receipts and archive installation.
 
-use std::{path::Path, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use demi_shared_artifacts::{
-    Archive, CONTENT_CODING, Digest, Effort, Error, InstallLock, Mode, Permissions, Publication,
-    ReleaseFile, ReleaseRecord, Staged, Verifier, client_allowing_http, copy, digest, download,
-    download_measured, encode_blocking, install_archive, installed, publish, publish_bytes,
-    publish_directory, publish_release, receipt,
+    Archive, ArchiveInstall, CONTENT_CODING, Client, Digest, Effort, Error, InstallLock, Mode,
+    Permissions, Publication, ReleaseFile, ReleaseRecord, Staged, Verifier, client_allowing_http,
+    copy, digest, download, download_measured, encode_blocking, install_archive, installed,
+    publish, publish_bytes, publish_directory, publish_release, receipt, recorded,
     testing::{Answer, Server, zip},
     zip_holds,
 };
@@ -552,16 +555,35 @@ fn names(directory: &Path) -> Vec<String> {
     names
 }
 
+/// Installs `archive` from `url` into `root`, as a runner installs a
+/// resource: the archive downloaded into the installation, then unpacked.
+async fn install(
+    client: &Client,
+    root: &Path,
+    url: &str,
+    archive: &Archive,
+    cancel: &CancellationToken,
+) -> Result<PathBuf, Error> {
+    let unpacking = match install_archive(root, archive, cancel).await? {
+        ArchiveInstall::Installed(entry) => return Ok(entry),
+        ArchiveInstall::Unpack(unpacking) => unpacking,
+    };
+    let mut output = tokio::fs::File::create(unpacking.archive()).await?;
+    download(client, url, &archive.digest, &mut output, cancel).await?;
+    drop(output);
+    unpacking.finish(cancel).await
+}
+
 #[tokio::test]
 async fn an_archive_is_installed_once_and_checked_before_each_use() {
     let client = client_allowing_http().unwrap();
     let cancel = CancellationToken::new();
     let bytes = zip(&[("app/bin/tool", b"tool"), ("app/data", b"data")]);
     let server = Server::start([("/app.zip".to_owned(), Answer::ok(bytes.clone()))]).await;
+    let url = server.url("/app.zip");
     let archive = Archive {
-        url: server.url("/app.zip"),
         digest: declared(&bytes),
-        executable: "app/bin/tool".to_owned(),
+        entry: "app/bin/tool".to_owned(),
     };
     let root = tempfile::tempdir().unwrap();
     let directory = root.path().join(&archive.digest.sha256);
@@ -571,8 +593,8 @@ async fn an_archive_is_installed_once_and_checked_before_each_use() {
     );
     // Two installers at once: one downloads, the other finds its result.
     let (first, second) = tokio::join!(
-        install_archive(&client, root.path(), &archive, &cancel),
-        install_archive(&client, root.path(), &archive, &cancel),
+        install(&client, root.path(), &url, &archive, &cancel),
+        install(&client, root.path(), &url, &archive, &cancel),
     );
     let executable = first.unwrap();
     assert_eq!(second.unwrap(), executable);
@@ -582,6 +604,11 @@ async fn an_archive_is_installed_once_and_checked_before_each_use() {
     assert_eq!(server.requests(), 1);
     assert_eq!(
         installed(&directory, &archive, &cancel).await.unwrap(),
+        Some(executable.clone())
+    );
+    // Its installer's own cache trusts the receipt without reading the files.
+    assert_eq!(
+        recorded(&directory, &archive).await.unwrap(),
         Some(executable.clone())
     );
     // Nothing but the installation and its lock stays in the root.
@@ -598,12 +625,16 @@ async fn an_archive_is_installed_once_and_checked_before_each_use() {
         matches!(result, Err(Error::Installation { .. })),
         "{result:?}"
     );
-    let result = install_archive(&client, root.path(), &archive, &cancel).await;
+    let result = install(&client, root.path(), &url, &archive, &cancel).await;
     assert!(
         matches!(result, Err(Error::Installation { .. })),
         "{result:?}"
     );
     assert_eq!(server.requests(), 1);
+    assert_eq!(
+        recorded(&directory, &archive).await.unwrap(),
+        Some(executable.clone())
+    );
     std::fs::remove_file(directory.join(receipt::FILE)).unwrap();
     let result = installed(&directory, &archive, &cancel).await;
     assert!(
@@ -620,13 +651,13 @@ async fn an_archive_is_installed_once_and_checked_before_each_use() {
         },
         ..archive.clone()
     };
-    let result = install_archive(&client, other.path(), &wrong, &cancel).await;
+    let result = install(&client, other.path(), &url, &wrong, &cancel).await;
     assert!(matches!(result, Err(Error::Digest)), "{result:?}");
     let lacking = Archive {
-        executable: "app/bin/other".to_owned(),
+        entry: "app/bin/other".to_owned(),
         ..archive.clone()
     };
-    let result = install_archive(&client, other.path(), &lacking, &cancel).await;
+    let result = install(&client, other.path(), &url, &lacking, &cancel).await;
     assert!(matches!(result, Err(Error::Archive(_))), "{result:?}");
     let locks = [format!("{}.lock", "0".repeat(64)), lock];
     assert_eq!(names(other.path()), locks);
@@ -639,13 +670,13 @@ async fn an_archive_extracts_inside_its_installation_only_and_names_its_files() 
     let escaping = zip(&[("app/bin/tool", b"tool"), ("../escaped", b"no")]);
     let server = Server::start([("/escaping.zip".to_owned(), Answer::ok(escaping.clone()))]).await;
     let archive = Archive {
-        url: server.url("/escaping.zip"),
         digest: declared(&escaping),
-        executable: "app/bin/tool".to_owned(),
+        entry: "app/bin/tool".to_owned(),
     };
     let root = tempfile::tempdir().unwrap();
     let installs = root.path().join("installs");
-    let result = install_archive(&client, &installs, &archive, &cancel).await;
+    let url = server.url("/escaping.zip");
+    let result = install(&client, &installs, &url, &archive, &cancel).await;
     assert!(matches!(result, Err(Error::Archive(_))), "{result:?}");
     assert!(!root.path().join("escaped").exists());
     assert_eq!(

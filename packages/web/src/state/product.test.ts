@@ -3,8 +3,7 @@ import { waitFor } from '@demicodes/utils'
 import { pageReturned } from '@demicodes/web-ui/transport/liveness'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { onSessionExpired } from '../api/client'
-import type { ConversationSummary } from '../api/generated/web-api'
-import { productState } from '../__tests__/product-state'
+import { conversationSummary as summary, productState } from '../__tests__/product-state'
 import { playChannels } from '../__tests__/sync-channel'
 import { useProduct } from './product'
 
@@ -17,15 +16,6 @@ let modelResponse: () => Promise<Response>
 let vendorResponse: () => Promise<Response>
 let vendorReads: number
 let sessionReads: number
-
-function summary(id: string, title: string, parts: Partial<ConversationSummary> = {}): ConversationSummary {
-  return {
-    id, title, pinned: false, archived: false, readRevision: 0, revision: 0, unread: false,
-    titleCurrent: true, titleGenerating: false, pluginsChanged: false, draftRevision: 0, cwd: '/home/demi', target: { kind: 'cloud' },
-    contextVersion: 0, model: null, createdAt: '2026-09-09T00:00:00.000Z', updatedAt: '2026-09-09T00:00:00.000Z',
-    status: 'idle', ...parts,
-  }
-}
 
 beforeEach(() => {
   pinia = createPinia()

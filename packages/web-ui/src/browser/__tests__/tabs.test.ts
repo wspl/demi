@@ -32,6 +32,7 @@ function harness(api: Partial<BrowserTabsApi>, options: BrowserTabsOptions = {})
       navigate: async () => {},
       history: async () => {},
       stream: () => ({ send: () => {}, close: () => {} }),
+      installs: () => [],
       ...api,
     },
     { bound: () => panel, add: (data) => void panel.push(data) },

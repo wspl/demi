@@ -240,12 +240,18 @@ fn program(name: &str) -> CommandWrap {
 }
 
 /// Starts the scripted manager, the backend crate's example program
-/// `scripted_machines`. Its input stays open while this program runs, and it
-/// ends when the input closes, however this program ends.
+/// `scripted_machines`, whose Cloud runners keep their artifacts in
+/// `.cache/dev-artifacts` in the repository. Its input stays open while
+/// this program runs, and it ends when the input closes, however this
+/// program ends.
 fn spawn_manager() -> Result<Manager, Error> {
     let mut command = program("examples/scripted_machines");
+    // The Cloud's runners share one cache that outlives every run.
+    let artifacts = crate::repository().join(".cache/dev-artifacts");
     command
         .command_mut()
+        .arg("--artifacts")
+        .arg(artifacts)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped());
     let mut process = command.spawn()?;

@@ -2,10 +2,7 @@ use std::sync::Arc;
 
 #[tokio::main]
 async fn main() {
-    if std::env::args().nth(1).as_deref() != Some("--command-service") {
-        eprintln!("Usage: demi-file --command-service");
-        std::process::exit(2);
-    }
+    demi_command_sdk::Launch::from_process();
     // Diagnostics go to standard error, which the runner drains into the
     // Host's log line by line.
     tracing_subscriber::fmt()

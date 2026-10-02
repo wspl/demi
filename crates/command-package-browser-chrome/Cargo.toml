@@ -14,11 +14,10 @@ bench = false
 
 [features]
 # The layers' test support, for the Chrome tests: the capture extension's id
-# and the pinned Chrome installed from an unpacked copy (`driver::testing`),
-# Chrome's own view of its targets
-# (`tabs`), driving a page by CSS selector (`page::testing`) and evaluation in a
-# target no command addresses (`cdp::testing`).
-testing = ["demi-shared-artifacts/testing"]
+# (`driver::testing`), Chrome's own view of its targets (`tabs`), driving a
+# page by CSS selector (`page::testing`) and evaluation in a target no
+# command addresses (`cdp::testing`).
+testing = []
 
 [dependencies]
 base64 = "0.22"

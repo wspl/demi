@@ -216,6 +216,10 @@ impl Devices {
         DeviceDto {
             online: self.online(&device.id),
             home: self.home(&device.id),
+            installs: self
+                .link(&device.id)
+                .map(|link| link.installs())
+                .unwrap_or_default(),
             id: device.id,
             kind: device.kind,
             name: device.name,
@@ -305,14 +309,25 @@ impl Serving {
                 Err(error) => Some(Err(error.to_string())),
             })
         });
-        let end = driver
-            .serve(
-                incoming,
-                (&mut outgoing).with(|frame: Vec<u8>| {
-                    ready(Ok::<_, axum::Error>(Message::Binary(frame.into())))
-                }),
-            )
-            .await;
+        let served = driver.serve(
+            incoming,
+            (&mut outgoing)
+                .with(|frame: Vec<u8>| ready(Ok::<_, axum::Error>(Message::Binary(frame.into())))),
+        );
+        // The owner's pages show the runner's installs as it reports them;
+        // the watch ends with the connection.
+        let mut installs = link.watch_installs();
+        let marks = seen.marks.clone();
+        let reported = async move {
+            while installs.changed().await.is_ok() {
+                marks.mark(Part::Devices);
+            }
+            std::future::pending::<()>().await
+        };
+        let end = tokio::select! {
+            end = served => end,
+            () = reported => unreachable!("the installs are watched until the connection ends"),
+        };
         match &end {
             LinkEnd::Refused(reason) => {
                 tracing::warn!(device = %device, "runner connection closed: {reason}")

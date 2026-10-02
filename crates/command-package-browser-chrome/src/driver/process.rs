@@ -49,15 +49,10 @@ pub struct ChromeProcess {
 impl ChromeProcess {
     /// The Chrome of the environment whose runtime directory is `runtime`.
     pub fn new(runtime: &Path, executable: &Path) -> Self {
-        // macOS helpers live in the app's Frameworks directory; Linux helpers
-        // live beside the main Chrome executable.
-        let installation = executable
-            .ancestors()
-            .find(|path| path.extension().is_some_and(|extension| extension == "app"))
-            .or_else(|| executable.parent())
-            .expect("absolute Chrome executable has a parent")
-            .to_owned();
-        Self::marked(runtime, vec![installation])
+        Self::marked(
+            runtime,
+            vec![crate::driver::installation::installation_of(executable)],
+        )
     }
 
     /// The processes marked with the environment whose runtime directory is

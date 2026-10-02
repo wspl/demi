@@ -50,7 +50,6 @@ async fn conversation_browser_commands_share_state_and_retire() {
     use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
     tokio::time::timeout(Duration::from_secs(180), async {
-        let (_chrome, directories) = crate::families::installed_chrome().await;
         let root = tempfile::tempdir().unwrap();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
@@ -71,7 +70,7 @@ async fn conversation_browser_commands_share_state_and_retire() {
         let (client_io, server_io) = tokio::io::duplex(128 * 1024);
         let server = AbortOnDropHandle::new(tokio::spawn(serve(
             server_io,
-            Arc::new(demi_browser::DemiBrowser::new(directories)),
+            Arc::new(demi_browser::DemiBrowser::new(crate::families::test_chrome())),
         )));
         let (client, connection) = Client::connect(client_io).await.unwrap();
         let driver = AbortOnDropHandle::new(tokio::spawn(connection));

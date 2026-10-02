@@ -286,8 +286,9 @@ function fileViewGoForward() {
   fileViewBack.value = [...fileViewBack.value, fileViewPath.value]
   fileViewPath.value = next
 }
-// The frame's conversation has opened no browser tab yet: its strip starts empty.
-const panelWork = useWorkTabs('change', { tabs: galleryBrowserTabs([]) })
+// The frame's conversation has opened no browser tab yet: its strip starts
+// empty, and its Host installs the browser before the first tab opens.
+const panelWork = useWorkTabs('change', { tabs: galleryBrowserTabs([], { install: true }) })
 /** The session's messages reach the gallery workspace: images from its fixtures, files opened in the frame's panel. */
 const sessionFiles: ConversationFiles = {
   imageUrl: (path) => workspace.source.contents.url(path),

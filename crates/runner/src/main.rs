@@ -168,6 +168,10 @@ enum Action {
         /// Marks a runner the backend manages, when set and not empty.
         #[arg(long, env = "DEMI_RUNNER_MANAGED", hide = true)]
         managed: Option<String>,
+        /// The artifact cache, which runners of one user may share;
+        /// `artifacts` in the installation's directory by default.
+        #[arg(long, env = "DEMI_ARTIFACTS", hide = true)]
+        artifacts: Option<PathBuf>,
     },
     /// Reports whether the installation's runner is active; exits with 3
     /// when it runs another release.
@@ -199,13 +203,14 @@ struct Installation {
 }
 
 async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
-    let (installation, boot_path, name, managed) = match cli.action {
+    let (installation, boot_path, name, managed, artifacts) = match cli.action {
         Action::Run {
             installation,
             managed_boot,
             name,
             managed,
-        } => (installation, managed_boot, name, managed),
+            artifacts,
+        } => (installation, managed_boot, name, managed, artifacts),
         Action::Status { installation } => {
             let state = RunnerState::open(directory(&installation, None)?).await?;
             let release = installation.release.as_deref();
@@ -296,6 +301,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
     let options = Options {
         backend,
         log: log.reader(),
+        artifacts: artifacts.unwrap_or_else(|| directory.join("artifacts")),
         directory,
         jobs,
         executable: std::env::current_exe()?,

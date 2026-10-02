@@ -48,6 +48,9 @@ pub struct Script {
     /// The whole environment of each Cloud runner that starts from now on,
     /// as a guest image gives it; none inherits the test process's.
     pub cloud_env: Option<BTreeMap<String, String>>,
+    /// The artifact cache each Cloud runner that starts from now on uses,
+    /// as `DEMI_ARTIFACTS`; none keeps its own in its state.
+    pub artifacts: Option<String>,
 }
 
 /// A device's storage and its sandbox.
@@ -360,9 +363,19 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
             let (silent, env, taken) = {
                 let mut state = shared.lock();
                 let silent = state.script.silent_wake;
-                let env = match &state.script.cloud_env {
-                    Some(variables) => SpawnEnv::Exactly(variables.clone()),
-                    None => SpawnEnv::Inherit,
+                let artifacts = state
+                    .script
+                    .artifacts
+                    .clone()
+                    .map(|cache| ("DEMI_ARTIFACTS".to_owned(), cache));
+                let env = match (&state.script.cloud_env, artifacts) {
+                    (Some(variables), artifacts) => {
+                        SpawnEnv::Exactly(variables.clone().into_iter().chain(artifacts).collect())
+                    }
+                    (None, Some((name, cache))) => {
+                        SpawnEnv::Overlay(BTreeMap::from([(name, Some(cache))]))
+                    }
+                    (None, None) => SpawnEnv::Inherit,
                 };
                 let guest = state.guests.entry(device.clone()).or_insert_with(|| Guest {
                     runner: None,

@@ -1,11 +1,12 @@
 //! The development store (`native-runtime.md` § Backend deployment
 //! configuration): a backend on a developer's own machine serves the
-//! executables of the development releases it loaded itself, each at
+//! artifacts of the development releases it loaded itself, each at
 //! `/native-artifacts/<sha256>` on its public URL, and answers a runner's
 //! location request with that URL. A paired device's runner and the Cloud's
-//! then download and verify an executable as they would from object storage,
+//! then download and verify an artifact as they would from object storage,
 //! in the same content coding: the store encodes each executable once, when
-//! a runner first asks for it, so a backend's start waits for no encoding.
+//! a runner first asks for it, so a backend's start waits for no encoding,
+//! and serves a resource's archive as it is.
 
 use std::collections::HashMap;
 use std::io;
@@ -24,44 +25,65 @@ use crate::public_url::PublicUrl;
 /// the backend's public URL.
 pub const ROUTE: &str = "/native-artifacts";
 
-/// The executables of the loaded development releases, by SHA-256.
+/// The artifacts of the loaded development releases, by SHA-256.
 pub struct LocalArtifacts {
     files: HashMap<String, LocalFile>,
 }
 
-/// One executable: its file in its release directory, its size, and its
-/// bytes in the content coding once a runner asked for them.
+/// One artifact: its file in its release directory, its size, and for an
+/// executable its bytes in the content coding once a runner asked for them.
 struct LocalFile {
     path: PathBuf,
     size: u64,
-    encoded: tokio::sync::OnceCell<Bytes>,
+    /// None for a resource's archive, which is served as it is.
+    encoded: Option<tokio::sync::OnceCell<Bytes>>,
+}
+
+/// How the store serves an artifact.
+pub enum LocalArtifact {
+    /// An executable's bytes in the content coding
+    /// ([`demi_shared_artifacts::CONTENT_CODING`]).
+    Encoded(Bytes),
+    /// A resource's archive, the file as it is.
+    Plain(PathBuf),
 }
 
 impl LocalArtifacts {
-    /// The store of `executables`, each a release's file and the artifact
-    /// its descriptor declares; one that several releases carry is kept
-    /// once.
-    pub fn new(executables: impl IntoIterator<Item = (PathBuf, PackageArtifact)>) -> Self {
+    /// The store of `executables` and resource `archives`, each a release's
+    /// file and the artifact its descriptor declares; one that several
+    /// releases carry is kept once.
+    pub fn new(
+        executables: impl IntoIterator<Item = (PathBuf, PackageArtifact)>,
+        archives: impl IntoIterator<Item = (PathBuf, PackageArtifact)>,
+    ) -> Self {
         let mut files = HashMap::new();
         for (path, artifact) in executables {
             files.entry(artifact.sha256).or_insert(LocalFile {
                 path,
                 size: artifact.size,
-                encoded: tokio::sync::OnceCell::new(),
+                encoded: Some(tokio::sync::OnceCell::new()),
+            });
+        }
+        for (path, artifact) in archives {
+            files.entry(artifact.sha256).or_insert(LocalFile {
+                path,
+                size: artifact.size,
+                encoded: None,
             });
         }
         Self { files }
     }
 
-    /// The executable whose SHA-256 is `sha256` in the content coding
-    /// ([`demi_shared_artifacts::CONTENT_CODING`]), when a loaded release carries it.
-    /// Concurrent first requests share one encoding. The backend verified the
-    /// file when it loaded the release: a file that is gone since is the
-    /// deployment's fault.
-    pub async fn encoded(&self, sha256: &str) -> Option<io::Result<Bytes>> {
+    /// The artifact whose SHA-256 is `sha256`, when a loaded release
+    /// carries it. Concurrent first requests for an executable share one
+    /// encoding. The backend verified the file when it loaded the release:
+    /// a file that is gone since is the deployment's fault.
+    pub async fn artifact(&self, sha256: &str) -> Option<io::Result<LocalArtifact>> {
         let file = self.files.get(sha256)?;
-        let encoded = file
-            .encoded
+        let Some(encoded) = &file.encoded else {
+            return Some(Ok(LocalArtifact::Plain(file.path.clone())));
+        };
+        let encoded = encoded
             .get_or_try_init(|| {
                 let path = file.path.clone();
                 async move {
@@ -81,7 +103,7 @@ impl LocalArtifacts {
                 }
             })
             .await;
-        Some(encoded.cloned())
+        Some(encoded.cloned().map(LocalArtifact::Encoded))
     }
 
     /// Where a runner downloads `artifact`: from `backend`, which serves it.

@@ -3,6 +3,7 @@
 //! registry that keeps each one resident while something holds a lease on it.
 
 pub mod cache;
+mod installs;
 mod process;
 mod registry;
 #[cfg(feature = "testing")]
@@ -15,6 +16,7 @@ use futures_util::future::BoxFuture;
 use tokio_util::sync::CancellationToken;
 
 #[cfg(feature = "testing")]
+pub use installs::{Installs, InstallsReceiver};
 pub use registry::Decision;
 pub use registry::{Resident, ServiceHandle, ServiceLease, ServiceRegistry};
 
@@ -35,6 +37,9 @@ pub enum RuntimeError {
     Service(#[from] demi_command_sdk::ServiceError),
     #[error("native service does not match its package descriptor")]
     CatalogMismatch,
+    /// A resource of the package has no archive for this Host's target.
+    #[error("{0}")]
+    Unavailable(String),
     #[error("native service did not answer within its {0} deadline")]
     Deadline(&'static str),
     /// The registry shut the service down: nothing held it any longer, or
