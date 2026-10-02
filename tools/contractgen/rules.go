@@ -19,6 +19,12 @@ func checkRuleType(t types.Type, m map[string]string, field bool) error {
 	if m["msgpack"] == "tuple" && !has(m, "union") {
 		return fmt.Errorf("msgpack tuple requires a union")
 	}
+	if has(m, "default") {
+		_, basic := t.Underlying().(*types.Basic)
+		if !field || isPointer(t) || !basic && !emptyCollection(t) {
+			return fmt.Errorf("default requires a non-pointer scalar, slice or map field")
+		}
+	}
 	original := t
 	for {
 		p, ok := t.(*types.Pointer)
@@ -41,6 +47,14 @@ func checkRuleType(t types.Type, m map[string]string, field bool) error {
 	}
 	basic, isBasic := t.Underlying().(*types.Basic)
 	stringType := isBasic && basic.Info()&types.IsString != 0
+	if has(m, "integer") {
+		if m["integer"] != "string" || !isBasic || basic.Info()&types.IsInteger == 0 {
+			return fmt.Errorf("integer string requires an integer type")
+		}
+		if has(m, "nullable") || has(m, "timestamp") {
+			return fmt.Errorf("integer string cannot be nullable or a timestamp")
+		}
+	}
 	numeric := isBasic && basic.Info()&(types.IsInteger|types.IsFloat) != 0
 	for _, key := range []string{"pattern", "enum", "timestamp", "base64", "id", "format"} {
 		if key == "timestamp" && !field && integerTimestamp(t) {

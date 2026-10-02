@@ -56,7 +56,9 @@ func (g *generator) object(d *definition) (*types.Struct, bool) {
 // emitJSONFields serializes object properties explicitly, avoiding promotion of
 // an embedded contract's MarshalJSON method over its parent's sibling fields.
 func (g *generator) emitJSONFields(d *definition, st *types.Struct, tag, variant string) {
-	g.line("func(v %s)MarshalJSON()([]byte,error){if err:=v.Validate();err!=nil{return nil,err};fields:=[]contract.Field{}", d.name)
+	g.line("func(v %s)MarshalJSON()([]byte,error){", d.name)
+	g.emitDefaultCollections(d, st)
+	g.line("if err:=v.Validate();err!=nil{return nil,err};fields:=[]contract.Field{}")
 	if tag != "" {
 		g.line("fields=append(fields,contract.Field{Name:%s,Value:%s})", q(tag), tagLiteral(variant))
 	}
@@ -88,4 +90,15 @@ func (g *generator) emitJSONFields(d *definition, st *types.Struct, tag, variant
 		}
 	}
 	g.line("return contract.EncodeObject(fields)}")
+}
+
+// emitDefaultCollections gives defaulted nil collections their non-null wire value.
+// The receiver is a copy, so encoding never changes the caller's contract.
+func (g *generator) emitDefaultCollections(d *definition, st *types.Struct) {
+	for i := 0; i < st.NumFields(); i++ {
+		f := st.Field(i)
+		if has(d.fields[f.Name()], "default") && emptyCollection(f.Type()) {
+			g.line("if v.%s==nil{v.%s=make(%s,0)}", f.Name(), f.Name(), g.typeName(f.Type()))
+		}
+	}
 }

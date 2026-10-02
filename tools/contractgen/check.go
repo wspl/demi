@@ -135,6 +135,11 @@ func (g *generator) check(p *packages.Package) error {
 					fieldType = pointer.Elem()
 				}
 				if named, ok := fieldType.(*types.Named); ok {
+					if child := g.defs[typeKey(named)]; child != nil {
+						if has(child.marks, "integer") && (has(m, "nullable") || has(m, "timestamp")) || has(m, "integer") && has(child.marks, "timestamp") {
+							return fail(f.Name() + ": integer string cannot be nullable or a timestamp")
+						}
+					}
 					if child := g.defs[typeKey(named)]; child != nil && has(child.marks, "codec") {
 						for marker := range m {
 							if marker != "nullable" {
@@ -183,10 +188,13 @@ func (g *generator) check(p *packages.Package) error {
 						return fail(f.Name() + ": unsupported JSON option " + opt)
 					}
 				}
-				if len(parts) > 1 && g.adjacentUnion(d) != nil {
+				if has(m, "default") && len(parts) > 1 {
+					return fail(f.Name() + ": default fields must always be written")
+				}
+				if (len(parts) > 1 || has(m, "default")) && g.adjacentUnion(d) != nil {
 					return fail(f.Name() + ": adjacent content cannot be optional")
 				}
-				if len(parts) > 1 && g.tupleUnion(d) {
+				if (len(parts) > 1 || has(m, "default")) && g.tupleUnion(d) {
 					return fail(f.Name() + ": tuple fields cannot be optional")
 				}
 				if len(parts) > 2 {
@@ -224,7 +232,7 @@ func checkMarks(m map[string]string) error {
 	if problem := m["!error"]; problem != "" {
 		return fmt.Errorf("%s", problem)
 	}
-	for _, key := range []string{"nullable", "strict", "tolerant", "timestamp", "base64", "table", "schema", "flatten", "codec"} {
+	for _, key := range []string{"default", "nullable", "strict", "tolerant", "timestamp", "base64", "table", "schema", "flatten", "codec"} {
 		if m[key] != "" {
 			return fmt.Errorf("%s takes no arguments", key)
 		}

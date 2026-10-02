@@ -118,7 +118,7 @@ func (g *generator) emitTS(name string) {
 			if has(d.fields[f.Name()], "nullable") {
 				value += ".nullable()"
 			}
-			if len(opts) > 1 {
+			if len(opts) > 1 || has(d.fields[f.Name()], "default") {
 				value += ".optional()"
 			}
 			if forward {
