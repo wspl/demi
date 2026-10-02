@@ -1,0 +1,27 @@
+package database
+
+import (
+	"github.com/wspl/demi/internal/machinewire"
+	"github.com/wspl/demi/internal/webapi"
+)
+
+// ManagedOperation is a reset of a Cloud, as its intent is kept: the base it selected when it
+// was admitted, the phase it reached, and why it failed. A retry resumes
+// the same operation on the same base.
+type ManagedOperation struct {
+	ID          webapi.OperationID
+	BaseVersion machinewire.BaseVersion
+	Phase       webapi.ResetPhase
+	Error       *string
+}
+
+// CloudUseRecord describes one of the user's conversations as the Cloud's lifecycle weighs it
+// (`sessions-and-targets.md` § How a conversation uses a device): whether
+// its files and commands are on the Cloud, the provider entry it infers
+// with, and whether the Cloud is attached to it.
+type CloudUseRecord struct {
+	ID       webapi.ConversationID
+	OnCloud  bool
+	Provider *webapi.ProviderID
+	Attached bool
+}
