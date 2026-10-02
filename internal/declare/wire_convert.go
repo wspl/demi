@@ -1,13 +1,12 @@
 package declare
 
 import (
-	"encoding/json"
 	"fmt"
 )
 
 // DecodeDeclaration reads a command tree with unpinned native operations.
 func DecodeDeclaration(document []byte) (Node[NativeOperation], error) {
-	wire, err := DecoderawNode(document)
+	wire, err := decodeRawNode(document)
 	if err != nil {
 		return nil, err
 	}
@@ -16,7 +15,7 @@ func DecodeDeclaration(document []byte) (Node[NativeOperation], error) {
 
 // DecodeManifestNode reads a command tree with pinned native operations.
 func DecodeManifestNode(document []byte) (Node[Binding], error) {
-	wire, err := DecoderawNode(document)
+	wire, err := decodeRawNode(document)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +116,7 @@ func (l *Leaf[B]) MarshalJSON() ([]byte, error) {
 
 // marshalNode keeps the generated codec call outside generic function bodies.
 func marshalNode(wire rawNode) ([]byte, error) {
-	return json.Marshal(rawNodeJSON{Value: wire})
+	return (rawNodeJSON{Value: wire}).MarshalJSON()
 }
 
 // nodeToWire separates command runtime state from the manifest's raw data.

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/wspl/demi/internal/commandwire"
@@ -152,5 +154,22 @@ func TestEditContinuityAndRestoration(t *testing.T) {
 	must(t, r.Record(t.Context(), path, func() error { return os.Remove(path) }))
 	if len(report(t, r).Files) != 0 {
 		t.Fatal("deleted path retained")
+	}
+}
+
+// Cost: one local recording and journal read; no subprocesses or timed waits.
+func TestJournalPreservesSerdeStringBytes(t *testing.T) {
+	root := t.TempDir()
+	r := recorder(t, root)
+	name := "file&\u2028\u2029"
+	if runtime.GOOS != "windows" {
+		name += "<>"
+	}
+	path := filepath.Join(root, name)
+	must(t, r.Record(t.Context(), path, func() error { return os.WriteFile(path, []byte("one"), 0600) }))
+	data, err := os.ReadFile(filepath.Join(r.Context().Directory, "journal.json"))
+	must(t, err)
+	if !strings.Contains(string(data), name) {
+		t.Fatalf("journal escaped path: %s", data)
 	}
 }

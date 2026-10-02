@@ -80,7 +80,6 @@ It runs a program only where no library does the job:
 | `runsc` | The sandbox runtime; the manager drives the pinned distribution through its OCI commands. |
 | `mke2fs`, `e2fsck`, `resize2fs` | Create, check, and grow the ext4 images; no Rust library creates or repairs ext4 filesystems. `resize2fs` both grows a mounted filesystem and completes an interrupted growth offline. |
 | `bsdtar` | Extract a base archive with numeric ownership, modes including setuid bits, ACLs, and extended attributes intact, refusing paths that leave the target directory. |
-| `nft` | Apply the firewall table as one transaction ([Networking](#networking)). |
 
 Filesystem checks and resizes run without a deadline: a repair lasts as long as
 the damage it finds, and killing one midway does more harm than waiting.
@@ -689,9 +688,11 @@ address. Starting a sandbox adds its pair before the sandbox runs, and stopping
 it removes the pair. A packet from a Cloud interface whose (interface, source
 address) pair is not in the set is dropped, so a workload can neither replace
 the rules nor send as another sandbox. The manager builds the table as typed
-data with the `nftables` crate and applies it with `nft` in one transaction:
-the netlink libraries for nftables are thinly maintained, and a text script
-would be assembled from strings.
+data with `github.com/google/nftables` and applies it as one netlink batch,
+which the kernel commits as one transaction, in the host's network namespace
+named by an explicit namespace descriptor; no `nft` program runs. A text
+script would be assembled from strings. Tests read the installed table back
+with `nft list` to compare it with the expected ruleset.
 
 Allow outbound public traffic, replies to established connections, the exact
 configured backend address/port, and the configured DNS resolver on TCP/UDP 53.

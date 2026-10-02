@@ -7,9 +7,9 @@ import (
 	"github.com/wspl/demi/internal/contract"
 )
 
-func Decodereceipt(data []byte) (receipt, error) { return contract.Decode[receipt](data) }
-func (v receipt) Validate() error                { return contractValidatereceipt(v, 0) }
-func contractValidatereceipt(v receipt, depth int) error {
+func decodeReceipt(data []byte) (receipt, error) { return contract.Decode[receipt](data) }
+func (v receipt) Validate() error                { return contractValidateReceipt(v, 0) }
+func contractValidateReceipt(v receipt, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}

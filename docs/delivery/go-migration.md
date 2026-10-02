@@ -106,7 +106,7 @@ authoritative package contract.
 | vendor providers | `internal/providers/{anthropicapi,openaiapi,google,codex,grokbuild,claudecode}` | |
 | `agent-*` | `internal/agent/{store,transcript,session,tools,server}` | |
 | `runner`, `runner-*` | `internal/runner`, `internal/runner/{process,host,jobs,shell,cmdpkgs}` | |
-| `machine-manager` | `internal/machines`, subpackages `sandbox`, `storage`, `network` | Linux only |
+| `machine-manager` | `internal/machines`, subpackages `sandbox`, `storage`, `network`, `system` | Linux only |
 | `backend`, `backend-*` | `internal/backend`, `internal/backend/{accounts,blobs,cloud,database,edge,expose,hostaccess,idlewatch,pagesync,plugins,providers,remotehost,runners,usershard}` | |
 | `xtask` | `tools/release`, `tools/contractgen`, `tools/archcheck`, `tools/cgocheck` | |
 | `vendor/brush` | `third_party/mvdan-sh` | The patched `mvdan.cc/sh` fork ([decision 3](#owner-decisions)); the other vendored crates have no successor |
@@ -352,7 +352,7 @@ byte; `go test -race ./internal/...` passes.
 |---|---|
 | Runner | `r-process`, `r-host`, `r-shell`, `r-cmdpkgs`, `r-jobs`, `r-runner` |
 | Command programs | `k-file`, `k-claudecode`, `k-chrome-cdp`, `k-chrome-tabs`, `k-chrome-page`, `k-chrome-live`, `k-browser` |
-| Machine manager | `m-core` (config, server, manager), `m-sandbox`, `m-storage`, `m-network` |
+| Machine manager | `m-core` (config, server, manager), `m-sandbox`, `m-storage`, `m-network`, `m-system` (the Linux interfaces and tool runs they share) |
 | Providers | `p-anthropic`, `p-openai`, `p-google`, `p-codex`, `p-grok`, `p-claudecode` |
 | Agent | `a-store`, `a-transcript`, `a-session`, `a-tools`, `a-server` |
 | Plugins | `g-browser`, `g-expose`, `g-skills`, `g-small` (changes, file, file browser, todo) |

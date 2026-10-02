@@ -1,13 +1,19 @@
-// Command demi-file is awaiting migration to Go.
+// Command demi-file serves native file operations.
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+
+	"github.com/wspl/demi/internal/cmdpkg/file"
 )
 
 func main() {
-	// A failed diagnostic write cannot change the required failure exit status.
-	_, _ = fmt.Fprintln(os.Stderr, "demi-file: not migrated yet")
-	os.Exit(1)
+	if err := file.Serve(context.Background(), os.Args[1:]); err != nil {
+		// A failed diagnostic write cannot change the required exit status.
+		_, _ = fmt.Fprintf(os.Stderr, "demi-file: %v\n", err)
+		os.Exit(1)
+	}
+	os.Exit(0)
 }

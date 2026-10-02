@@ -100,6 +100,12 @@ func (g *generator) check(p *packages.Package) error {
 				return fail("invalid root output")
 			}
 		}
+		if has(d.marks, "codec") {
+			if err := checkCodec(d, g.msgReach[d.key]); err != nil {
+				return fail(err.Error())
+			}
+			continue
+		}
 		if st, ok := g.object(d); ok {
 			if g.err != nil {
 				return g.err
@@ -119,6 +125,23 @@ func (g *generator) check(p *packages.Package) error {
 				}
 				if err := checkRuleType(f.Type(), m, true); err != nil {
 					return fail(f.Name() + ": " + err.Error())
+				}
+				fieldType := f.Type()
+				for {
+					pointer, ok := fieldType.(*types.Pointer)
+					if !ok {
+						break
+					}
+					fieldType = pointer.Elem()
+				}
+				if named, ok := fieldType.(*types.Named); ok {
+					if child := g.defs[typeKey(named)]; child != nil && has(child.marks, "codec") {
+						for marker := range m {
+							if marker != "nullable" {
+								return fail(f.Name() + ": codec fields cannot have " + marker + " rules")
+							}
+						}
+					}
 				}
 				tag := reflect.StructTag(st.Tag(i)).Get("json")
 				if child := g.optionalObject(f); child != nil {
@@ -175,8 +198,8 @@ func (g *generator) check(p *packages.Package) error {
 						return fail(f.Name() + ": optional values use pointers, default-false booleans, or omitempty collections")
 					}
 				}
-				if has(m, "nullable") && len(parts) > 1 {
-					return fail(f.Name() + ": nullable must be required")
+				if has(m, "nullable") && len(parts) > 1 && (parts[1] != "omitempty" || !isPointer(f.Type())) {
+					return fail(f.Name() + ": optional nullable fields require a pointer with omitempty")
 				}
 				if err := g.checkType(f.Type()); err != nil {
 					return fail(f.Name() + ": " + err.Error())
@@ -201,7 +224,7 @@ func checkMarks(m map[string]string) error {
 	if problem := m["!error"]; problem != "" {
 		return fmt.Errorf("%s", problem)
 	}
-	for _, key := range []string{"nullable", "strict", "tolerant", "timestamp", "base64", "table", "schema", "flatten"} {
+	for _, key := range []string{"nullable", "strict", "tolerant", "timestamp", "base64", "table", "schema", "flatten", "codec"} {
 		if m[key] != "" {
 			return fmt.Errorf("%s takes no arguments", key)
 		}
@@ -282,6 +305,11 @@ func (g *generator) checkType(t types.Type) error {
 	case *types.Map:
 		if b, ok := t.Key().Underlying().(*types.Basic); !ok || b.Kind() != types.String {
 			return fmt.Errorf("record keys must be strings")
+		}
+		if named, ok := t.Key().(*types.Named); ok {
+			if d := g.defs[typeKey(named)]; d != nil && has(d.marks, "codec") {
+				return fmt.Errorf("codec cannot be a record key: record keys use string encoding")
+			}
 		}
 		if err := g.checkType(t.Key()); err != nil {
 			return err
