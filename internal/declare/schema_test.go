@@ -2,7 +2,9 @@ package declare_test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -154,5 +156,47 @@ func TestInputSubset(t *testing.T) {
 		if err := declare.CheckInputSubset(schema); err == nil || !strings.Contains(err.Error(), test.reason) {
 			t.Errorf("got %v, want %s", err, test.reason)
 		}
+	}
+}
+
+// TestRustSchemaDiagnostics pins output-schema wording and traversal to Rust 0.56.
+// The fixture was recorded from Schema.Check's Rust implementation, not Go output.
+func TestRustSchemaDiagnostics(t *testing.T) {
+	data, err := os.ReadFile("testdata/schema-errors.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases []struct {
+		Name     string
+		Schema   json.RawMessage
+		Instance json.RawMessage
+		Error    string
+	}
+	if err := json.Unmarshal(data, &cases); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range cases {
+		t.Run(test.Name, func(t *testing.T) {
+			schema, err := declare.NewSchema(test.Schema)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := ""
+			if err := schema.Check(test.Instance); err != nil {
+				got = err.Error()
+			}
+			if got != test.Error {
+				t.Errorf("got  %s\nwant %s", got, test.Error)
+			}
+		})
+	}
+}
+
+func TestInputSubsetReportsTheFirstDeclaredFieldAndKeyword(t *testing.T) {
+	schema := commandSchema(t, `{"type":"object","additionalProperties":false,"properties":{"z":{"type":"string","z-extra":true,"a-extra":true},"a":{"type":"integer","default":2}}}`)
+	err := declare.CheckInputSubset(schema)
+	var declaration *declare.DeclarationError
+	if !errors.As(err, &declaration) || err.Error() != `input "z": uses "z-extra", outside the command input subset` {
+		t.Fatalf("got %v", err)
 	}
 }

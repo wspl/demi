@@ -1,0 +1,1525 @@
+[
+  {
+    "name": "type0",
+    "schema": {
+      "type": "integer"
+    },
+    "instance": "private",
+    "error": "value is not of type \"integer\""
+  },
+  {
+    "name": "type1",
+    "schema": {
+      "type": [
+        "string",
+        "number"
+      ]
+    },
+    "instance": false,
+    "error": "value is not of types \"number\", \"string\""
+  },
+  {
+    "name": "enum2",
+    "schema": {
+      "enum": [
+        "a",
+        "b",
+        "c"
+      ]
+    },
+    "instance": "private",
+    "error": "value is not one of \"a\", \"b\" or \"c\""
+  },
+  {
+    "name": "enum3",
+    "schema": {
+      "enum": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ]
+    },
+    "instance": "private",
+    "error": "value is not one of \"a\", \"b\" or 2 other candidates"
+  },
+  {
+    "name": "const4",
+    "schema": {
+      "const": {
+        "ok": true
+      }
+    },
+    "instance": {},
+    "error": "{\"ok\":true} was expected"
+  },
+  {
+    "name": "minLength5",
+    "schema": {
+      "minLength": 2
+    },
+    "instance": "a",
+    "error": "value is shorter than 2 characters"
+  },
+  {
+    "name": "maxLength6",
+    "schema": {
+      "maxLength": 1
+    },
+    "instance": "ab",
+    "error": "value is longer than 1 character"
+  },
+  {
+    "name": "minimum7",
+    "schema": {
+      "minimum": 1.5
+    },
+    "instance": 1,
+    "error": "value is less than the minimum of 1.5"
+  },
+  {
+    "name": "maximum8",
+    "schema": {
+      "maximum": 1.5
+    },
+    "instance": 2,
+    "error": "value is greater than the maximum of 1.5"
+  },
+  {
+    "name": "exclusiveMinimum9",
+    "schema": {
+      "exclusiveMinimum": 1
+    },
+    "instance": 1,
+    "error": "value is less than or equal to the minimum of 1"
+  },
+  {
+    "name": "exclusiveMaximum10",
+    "schema": {
+      "exclusiveMaximum": 2
+    },
+    "instance": 2,
+    "error": "value is greater than or equal to the maximum of 2"
+  },
+  {
+    "name": "multipleOf11",
+    "schema": {
+      "multipleOf": 0.5
+    },
+    "instance": 0.7,
+    "error": "value is not a multiple of 0.5"
+  },
+  {
+    "name": "minItems12",
+    "schema": {
+      "minItems": 2
+    },
+    "instance": [],
+    "error": "value has less than 2 items"
+  },
+  {
+    "name": "maxItems13",
+    "schema": {
+      "maxItems": 1
+    },
+    "instance": [
+      1,
+      2
+    ],
+    "error": "value has more than 1 item"
+  },
+  {
+    "name": "minProperties14",
+    "schema": {
+      "minProperties": 2
+    },
+    "instance": {},
+    "error": "value has less than 2 properties"
+  },
+  {
+    "name": "maxProperties15",
+    "schema": {
+      "maxProperties": 1
+    },
+    "instance": {
+      "b": 1,
+      "a": 2
+    },
+    "error": "value has more than 1 property"
+  },
+  {
+    "name": "uniqueItems16",
+    "schema": {
+      "uniqueItems": true
+    },
+    "instance": [
+      1,
+      1
+    ],
+    "error": "value has non-unique elements"
+  },
+  {
+    "name": "pattern17",
+    "schema": {
+      "pattern": "^[a-z]+$"
+    },
+    "instance": "PRIVATE",
+    "error": "value does not match \"^[a-z]+$\""
+  },
+  {
+    "name": "not18",
+    "schema": {
+      "not": {
+        "type": "number"
+      }
+    },
+    "instance": 5,
+    "error": "{\"type\":\"number\"} is not allowed for value"
+  },
+  {
+    "name": "contains19",
+    "schema": {
+      "contains": {
+        "type": "string"
+      }
+    },
+    "instance": [
+      1,
+      2
+    ],
+    "error": "None of value are valid under the given schema"
+  },
+  {
+    "name": "additionalProperties20",
+    "schema": {
+      "additionalProperties": false
+    },
+    "instance": {
+      "a": 1,
+      "b": 2
+    },
+    "error": "False schema does not allow value"
+  },
+  {
+    "name": "propertyNames21",
+    "schema": {
+      "propertyNames": {
+        "pattern": "^[a-z]+$"
+      }
+    },
+    "instance": {
+      "PRIVATE": 1
+    },
+    "error": "\"PRIVATE\" does not match \"^[a-z]+$\""
+  },
+  {
+    "name": "allOf22",
+    "schema": {
+      "allOf": [
+        {
+          "minimum": 5
+        },
+        {
+          "maximum": 2
+        }
+      ]
+    },
+    "instance": 3,
+    "error": "value is less than the minimum of 5; value is greater than the maximum of 2"
+  },
+  {
+    "name": "anyOf23",
+    "schema": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        }
+      ]
+    },
+    "instance": 3,
+    "error": "value is not valid under any of the schemas listed in the 'anyOf' keyword"
+  },
+  {
+    "name": "oneOf24",
+    "schema": {
+      "oneOf": [
+        {
+          "minimum": 1
+        },
+        {
+          "maximum": 9
+        }
+      ]
+    },
+    "instance": 3,
+    "error": "value is valid under more than one of the schemas listed in the 'oneOf' keyword"
+  },
+  {
+    "name": "oneOf25",
+    "schema": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        }
+      ]
+    },
+    "instance": 3,
+    "error": "value is not valid under any of the schemas listed in the 'oneOf' keyword"
+  },
+  {
+    "name": "unevaluatedProperties26",
+    "schema": {
+      "unevaluatedProperties": false
+    },
+    "instance": {
+      "b": 1,
+      "a": 2
+    },
+    "error": "Unevaluated properties are not allowed ('b', 'a' were unexpected)"
+  },
+  {
+    "name": "unevaluatedItems27",
+    "schema": {
+      "unevaluatedItems": false
+    },
+    "instance": [
+      1,
+      2
+    ],
+    "error": "Unevaluated items are not allowed (2 items)"
+  },
+  {
+    "name": "minContains",
+    "schema": {
+      "contains": {
+        "type": "number"
+      },
+      "minContains": 3
+    },
+    "instance": [
+      1,
+      "a"
+    ],
+    "error": "None of value are valid under the given schema"
+  },
+  {
+    "name": "maxContains",
+    "schema": {
+      "contains": {
+        "type": "number"
+      },
+      "maxContains": 1
+    },
+    "instance": [
+      1,
+      2
+    ],
+    "error": "None of value are valid under the given schema"
+  },
+  {
+    "name": "bothContains",
+    "schema": {
+      "contains": {
+        "type": "number"
+      },
+      "minContains": 2,
+      "maxContains": 3
+    },
+    "instance": [
+      1
+    ],
+    "error": "None of value are valid under the given schema"
+  },
+  {
+    "name": "tuple",
+    "schema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "items": [
+        {
+          "type": "integer"
+        }
+      ],
+      "additionalItems": false
+    },
+    "instance": [
+      1,
+      2,
+      3
+    ],
+    "error": "Additional items are not allowed (1 items)"
+  },
+  {
+    "name": "itemsFalse",
+    "schema": {
+      "prefixItems": [
+        {
+          "type": "string"
+        }
+      ],
+      "items": false
+    },
+    "instance": [
+      "a",
+      2,
+      3
+    ],
+    "error": "False schema does not allow \"1\"; False schema does not allow \"2\""
+  },
+  {
+    "name": "dependentRequired",
+    "schema": {
+      "dependentRequired": {
+        "a": [
+          "b",
+          "c"
+        ]
+      }
+    },
+    "instance": {
+      "a": 1
+    },
+    "error": "\"b\" is a required property; \"c\" is a required property"
+  },
+  {
+    "name": "dependencies",
+    "schema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "dependencies": {
+        "a": [
+          "b",
+          "c"
+        ]
+      }
+    },
+    "instance": {
+      "a": 1
+    },
+    "error": "\"b\" is a required property; \"c\" is a required property"
+  },
+  {
+    "name": "dependentSchema",
+    "schema": {
+      "dependentSchemas": {
+        "a": {
+          "required": [
+            "b"
+          ]
+        }
+      }
+    },
+    "instance": {
+      "a": 1
+    },
+    "error": "\"b\" is a required property"
+  },
+  {
+    "name": "ifThen",
+    "schema": {
+      "if": {
+        "type": "integer"
+      },
+      "then": {
+        "minimum": 5
+      },
+      "else": {
+        "type": "boolean"
+      }
+    },
+    "instance": 2,
+    "error": "value is less than the minimum of 5"
+  },
+  {
+    "name": "ifElse",
+    "schema": {
+      "if": {
+        "type": "integer"
+      },
+      "then": {
+        "minimum": 5
+      },
+      "else": {
+        "type": "boolean"
+      }
+    },
+    "instance": "secret",
+    "error": "value is not of type \"boolean\""
+  },
+  {
+    "name": "manyScalar",
+    "schema": {
+      "type": "integer",
+      "enum": [
+        1,
+        2
+      ],
+      "minLength": 5,
+      "pattern": "^b"
+    },
+    "instance": "a",
+    "error": "value is not of type \"integer\"; value is not one of 1 or 2; value is shorter than 5 characters; value does not match \"^b\""
+  },
+  {
+    "name": "ranges",
+    "schema": {
+      "minimum": 5,
+      "maximum": 2,
+      "exclusiveMinimum": 6,
+      "exclusiveMaximum": 1,
+      "multipleOf": 2
+    },
+    "instance": 3,
+    "error": "value is less than the minimum of 5; value is greater than the maximum of 2; value is less than or equal to the minimum of 6; value is greater than or equal to the maximum of 1; value is not a multiple of 2"
+  },
+  {
+    "name": "object40",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "z": {
+          "type": "integer"
+        },
+        "a": {
+          "type": "boolean"
+        },
+        "b": {
+          "type": "boolean"
+        },
+        "c": {
+          "type": "boolean"
+        }
+      },
+      "required": []
+    },
+    "instance": {
+      "z": "secret",
+      "d": "secret",
+      "e": "secret"
+    },
+    "error": "\"z\" is not of type \"integer\""
+  },
+  {
+    "name": "object41",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "z": {
+          "type": "integer"
+        },
+        "a": {
+          "type": "boolean"
+        },
+        "b": {
+          "type": "boolean"
+        },
+        "c": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "a"
+      ]
+    },
+    "instance": {
+      "z": "secret",
+      "d": "secret",
+      "e": "secret"
+    },
+    "error": "\"a\" is a required property; \"z\" is not of type \"integer\""
+  },
+  {
+    "name": "object42",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "z": {
+          "type": "integer"
+        },
+        "a": {
+          "type": "boolean"
+        },
+        "b": {
+          "type": "boolean"
+        },
+        "c": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "a",
+        "b"
+      ]
+    },
+    "instance": {
+      "z": "secret",
+      "d": "secret",
+      "e": "secret"
+    },
+    "error": "\"a\" is a required property; \"b\" is a required property; \"z\" is not of type \"integer\""
+  },
+  {
+    "name": "object43",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "z": {
+          "type": "integer"
+        },
+        "a": {
+          "type": "boolean"
+        },
+        "b": {
+          "type": "boolean"
+        },
+        "c": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "a",
+        "b",
+        "c"
+      ]
+    },
+    "instance": {
+      "z": "secret",
+      "d": "secret",
+      "e": "secret"
+    },
+    "error": "\"a\" is a required property; \"b\" is a required property; \"c\" is a required property; \"z\" is not of type \"integer\""
+  },
+  {
+    "name": "object44",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "z": {
+          "type": "integer"
+        },
+        "a": {
+          "type": "boolean"
+        },
+        "b": {
+          "type": "boolean"
+        },
+        "c": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "instance": {
+      "z": "secret",
+      "d": "secret",
+      "e": "secret"
+    },
+    "error": "\"z\" is not of type \"integer\"; Additional properties are not allowed ('d', 'e' were unexpected)"
+  },
+  {
+    "name": "object45",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "z": {
+          "type": "integer"
+        },
+        "a": {
+          "type": "boolean"
+        },
+        "b": {
+          "type": "boolean"
+        },
+        "c": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "a"
+      ],
+      "additionalProperties": false
+    },
+    "instance": {
+      "z": "secret",
+      "d": "secret",
+      "e": "secret"
+    },
+    "error": "\"z\" is not of type \"integer\"; Additional properties are not allowed ('d', 'e' were unexpected); \"a\" is a required property"
+  },
+  {
+    "name": "object46",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "z": {
+          "type": "integer"
+        },
+        "a": {
+          "type": "boolean"
+        },
+        "b": {
+          "type": "boolean"
+        },
+        "c": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "a",
+        "b"
+      ],
+      "additionalProperties": false
+    },
+    "instance": {
+      "z": "secret",
+      "d": "secret",
+      "e": "secret"
+    },
+    "error": "\"a\" is a required property; \"b\" is a required property; \"z\" is not of type \"integer\"; Additional properties are not allowed ('d', 'e' were unexpected)"
+  },
+  {
+    "name": "object47",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "z": {
+          "type": "integer"
+        },
+        "a": {
+          "type": "boolean"
+        },
+        "b": {
+          "type": "boolean"
+        },
+        "c": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "a",
+        "b",
+        "c"
+      ],
+      "additionalProperties": false
+    },
+    "instance": {
+      "z": "secret",
+      "d": "secret",
+      "e": "secret"
+    },
+    "error": "\"a\" is a required property; \"b\" is a required property; \"c\" is a required property; \"z\" is not of type \"integer\"; Additional properties are not allowed ('d', 'e' were unexpected)"
+  },
+  {
+    "name": "object48",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "z": {
+          "type": "integer"
+        },
+        "a": {
+          "type": "boolean"
+        },
+        "b": {
+          "type": "boolean"
+        },
+        "c": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    },
+    "instance": {
+      "z": "secret",
+      "d": "secret",
+      "e": "secret"
+    },
+    "error": "\"z\" is not of type \"integer\"; \"d\" is not of type \"boolean\"; \"e\" is not of type \"boolean\""
+  },
+  {
+    "name": "object49",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "z": {
+          "type": "integer"
+        },
+        "a": {
+          "type": "boolean"
+        },
+        "b": {
+          "type": "boolean"
+        },
+        "c": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "a"
+      ],
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    },
+    "instance": {
+      "z": "secret",
+      "d": "secret",
+      "e": "secret"
+    },
+    "error": "\"a\" is a required property; \"z\" is not of type \"integer\"; \"d\" is not of type \"boolean\"; \"e\" is not of type \"boolean\""
+  },
+  {
+    "name": "object50",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "z": {
+          "type": "integer"
+        },
+        "a": {
+          "type": "boolean"
+        },
+        "b": {
+          "type": "boolean"
+        },
+        "c": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "a",
+        "b"
+      ],
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    },
+    "instance": {
+      "z": "secret",
+      "d": "secret",
+      "e": "secret"
+    },
+    "error": "\"a\" is a required property; \"b\" is a required property; \"z\" is not of type \"integer\"; \"d\" is not of type \"boolean\"; \"e\" is not of type \"boolean\""
+  },
+  {
+    "name": "object51",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "z": {
+          "type": "integer"
+        },
+        "a": {
+          "type": "boolean"
+        },
+        "b": {
+          "type": "boolean"
+        },
+        "c": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "a",
+        "b",
+        "c"
+      ],
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    },
+    "instance": {
+      "z": "secret",
+      "d": "secret",
+      "e": "secret"
+    },
+    "error": "\"a\" is a required property; \"b\" is a required property; \"c\" is a required property; \"z\" is not of type \"integer\"; \"d\" is not of type \"boolean\"; \"e\" is not of type \"boolean\""
+  },
+  {
+    "name": "propertyOrder",
+    "schema": {
+      "properties": {
+        "a": {
+          "type": "integer"
+        },
+        "z": {
+          "type": "integer"
+        }
+      }
+    },
+    "instance": {
+      "z": false,
+      "a": false
+    },
+    "error": "\"z\" is not of type \"integer\"; \"a\" is not of type \"integer\""
+  },
+  {
+    "name": "nestedOrder",
+    "schema": {
+      "properties": {
+        "n": {
+          "type": "object",
+          "properties": {
+            "a": {
+              "type": "integer"
+            },
+            "z": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "missing"
+          ]
+        }
+      },
+      "required": [
+        "root"
+      ]
+    },
+    "instance": {
+      "n": {
+        "z": false,
+        "a": false
+      }
+    },
+    "error": "\"root\" is a required property; \"missing\" is a required property; \"n.z\" is not of type \"integer\"; \"n.a\" is not of type \"integer\""
+  },
+  {
+    "name": "arrayOrder",
+    "schema": {
+      "items": {
+        "type": "string",
+        "minLength": 3
+      }
+    },
+    "instance": [
+      "a",
+      false,
+      "b"
+    ],
+    "error": "\"0\" is shorter than 3 characters; \"1\" is not of type \"string\"; \"2\" is shorter than 3 characters"
+  },
+  {
+    "name": "refs",
+    "schema": {
+      "$defs": {
+        "x": {
+          "type": "integer",
+          "minimum": 5
+        }
+      },
+      "properties": {
+        "a": {
+          "$ref": "#/$defs/x"
+        },
+        "b": {
+          "$ref": "#/$defs/x"
+        }
+      }
+    },
+    "instance": {
+      "b": 1,
+      "a": 2
+    },
+    "error": "\"b\" is less than the minimum of 5; \"a\" is less than the minimum of 5"
+  },
+  {
+    "name": "propertyNamesMany",
+    "schema": {
+      "propertyNames": {
+        "type": "string",
+        "minLength": 4,
+        "pattern": "^[a-z]+$"
+      }
+    },
+    "instance": {
+      "A": 1,
+      "B": 2
+    },
+    "error": "\"A\" is shorter than 4 characters; \"A\" does not match \"^[a-z]+$\"; \"B\" is shorter than 4 characters; \"B\" does not match \"^[a-z]+$\""
+  },
+  {
+    "name": "content7",
+    "schema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "contentEncoding": "base64"
+    },
+    "instance": "???",
+    "error": "value is not compliant with \"base64\" content encoding"
+  },
+  {
+    "name": "format7",
+    "schema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "format": "email"
+    },
+    "instance": "???",
+    "error": "value is not a \"email\""
+  },
+  {
+    "name": "format2020",
+    "schema": {
+      "format": "email"
+    },
+    "instance": "???",
+    "error": ""
+  },
+  {
+    "name": "content2020",
+    "schema": {
+      "contentEncoding": "base64"
+    },
+    "instance": "???",
+    "error": ""
+  },
+  {
+    "name": "allTypes",
+    "schema": {
+      "type": [
+        "array",
+        "boolean",
+        "integer",
+        "null",
+        "number",
+        "object"
+      ]
+    },
+    "instance": "bad",
+    "error": "value is not of types \"null\", \"boolean\", \"integer\", \"number\", \"array\", \"object\""
+  },
+  {
+    "name": "nestedPropertyNames",
+    "schema": {
+      "properties": {
+        "x": {
+          "propertyNames": {
+            "pattern": "^a"
+          }
+        }
+      }
+    },
+    "instance": {
+      "x": {
+        "BAD": 1
+      }
+    },
+    "error": "\"BAD\" does not match \"^a\""
+  },
+  {
+    "name": "notOrder",
+    "schema": {
+      "not": {
+        "properties": {
+          "z": {
+            "type": "number"
+          },
+          "a": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "instance": {},
+    "error": "{\"properties\":{\"z\":{\"type\":\"number\"},\"a\":{\"type\":\"number\"}}} is not allowed for value"
+  },
+  {
+    "name": "constText",
+    "schema": {
+      "const": "<tag>&"
+    },
+    "instance": "x",
+    "error": "\"<tag>&\" was expected"
+  },
+  {
+    "name": "enumText",
+    "schema": {
+      "enum": [
+        "<tag>&",
+        "𝄞",
+        "line\nend"
+      ]
+    },
+    "instance": "x",
+    "error": "value is not one of \"<tag>&\", \"𝄞\" or \"line\\nend\""
+  },
+  {
+    "name": "constObjectOrder",
+    "schema": {
+      "const": {
+        "z": 1,
+        "a": 2
+      }
+    },
+    "instance": null,
+    "error": "{\"z\":1,\"a\":2} was expected"
+  },
+  {
+    "name": "typeConstEnum",
+    "schema": {
+      "type": "integer",
+      "const": 5,
+      "enum": [
+        1,
+        2
+      ]
+    },
+    "instance": "bad",
+    "error": "value is not of type \"integer\"; 5 was expected; value is not one of 1 or 2"
+  },
+  {
+    "name": "zeroSize",
+    "schema": {
+      "minItems": 1
+    },
+    "instance": [],
+    "error": "value has less than 1 item"
+  },
+  {
+    "name": "nullableTypeOrder",
+    "schema": {
+      "type": [
+        "string",
+        "boolean",
+        "array",
+        "object",
+        "null"
+      ]
+    },
+    "instance": 1,
+    "error": "value is not of types \"null\", \"boolean\", \"string\", \"array\", \"object\""
+  },
+  {
+    "name": "fusedPattern",
+    "schema": {
+      "properties": {
+        "a": {
+          "type": "integer"
+        }
+      },
+      "patternProperties": {
+        "^a": {
+          "minimum": 3
+        },
+        ".": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
+    },
+    "instance": {
+      "az": false,
+      "a": false,
+      "z": false
+    },
+    "error": "\"az\" is not of type \"integer\"; \"a\" is not of type \"integer\"; \"a\" is not of type \"integer\"; \"z\" is not of type \"integer\""
+  },
+  {
+    "name": "patternOrder",
+    "schema": {
+      "patternProperties": {
+        "^a": {
+          "type": "integer"
+        },
+        ".": {
+          "type": "boolean"
+        }
+      }
+    },
+    "instance": {
+      "az": "x",
+      "a": false,
+      "z": "x"
+    },
+    "error": "\"az\" is not of type \"integer\"; \"a\" is not of type \"integer\"; \"az\" is not of type \"boolean\"; \"z\" is not of type \"boolean\""
+  },
+  {
+    "name": "requiredPattern",
+    "schema": {
+      "properties": {
+        "a": {
+          "type": "integer"
+        }
+      },
+      "patternProperties": {
+        ".": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "a"
+      ]
+    },
+    "instance": {
+      "z": "x"
+    },
+    "error": "\"a\" is a required property; \"z\" is not of type \"boolean\""
+  },
+  {
+    "name": "noPropertiesFalse",
+    "schema": {
+      "type": "object",
+      "additionalProperties": false
+    },
+    "instance": {
+      "b": 1,
+      "a": 2
+    },
+    "error": "False schema does not allow value"
+  },
+  {
+    "name": "emptyPropertiesFalse",
+    "schema": {
+      "properties": {},
+      "additionalProperties": false
+    },
+    "instance": {
+      "b": 1,
+      "a": 2
+    },
+    "error": "Additional properties are not allowed ('b', 'a' were unexpected)"
+  },
+  {
+    "name": "nestedUnevaluated",
+    "schema": {
+      "properties": {
+        "outer": {
+          "unevaluatedProperties": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "instance": {
+      "outer": {
+        "a": {
+          "x": 1
+        },
+        "b": {
+          "x": false
+        }
+      }
+    },
+    "error": "Unevaluated properties are not allowed ('a', 'b' were unexpected)"
+  },
+  {
+    "name": "unevaluatedItemSchema",
+    "schema": {
+      "unevaluatedItems": {
+        "properties": {
+          "x": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "instance": [
+      {
+        "x": 1
+      },
+      {
+        "x": false
+      }
+    ],
+    "error": "Unevaluated items are not allowed (2 items)"
+  },
+  {
+    "name": "prefixAndItemsOrder",
+    "schema": {
+      "prefixItems": [
+        {
+          "type": "string"
+        }
+      ],
+      "items": {
+        "type": "boolean"
+      }
+    },
+    "instance": [
+      1,
+      2,
+      3
+    ],
+    "error": "\"1\" is not of type \"boolean\"; \"2\" is not of type \"boolean\"; \"0\" is not of type \"string\""
+  },
+  {
+    "name": "contentJSON7",
+    "schema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "contentMediaType": "application/json"
+    },
+    "instance": "{",
+    "error": "value is not compliant with \"application/json\" media type"
+  },
+  {
+    "name": "contentJSONBoth7",
+    "schema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "contentMediaType": "application/json",
+      "contentEncoding": "base64"
+    },
+    "instance": "bm90LWpzb24=",
+    "error": "value is not compliant with \"application/json\" media type"
+  },
+  {
+    "name": "recursiveRoot",
+    "schema": {
+      "$ref": "#"
+    },
+    "instance": 5,
+    "error": ""
+  },
+  {
+    "name": "selfAndType",
+    "schema": {
+      "$ref": "#",
+      "type": "string"
+    },
+    "instance": 5,
+    "error": "value is not of type \"string\""
+  },
+  {
+    "name": "nestedFieldEscapes",
+    "schema": {
+      "properties": {
+        "a\"b.c": {
+          "type": "integer"
+        }
+      }
+    },
+    "instance": {
+      "a\"b.c": false
+    },
+    "error": "\"a\"b.c\" is not of type \"integer\""
+  },
+  {
+    "name": "requiredEscapes",
+    "schema": {
+      "required": [
+        "a\"b\n"
+      ]
+    },
+    "instance": {},
+    "error": "\"a\\\"b\\n\" is a required property"
+  },
+  {
+    "name": "itemsObjectOrder",
+    "schema": {
+      "items": {
+        "properties": {
+          "a": {
+            "type": "integer"
+          },
+          "b": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "instance": [
+      {
+        "b": false,
+        "a": false
+      },
+      {
+        "a": false,
+        "b": false
+      }
+    ],
+    "error": "\"0.b\" is not of type \"integer\"; \"0.a\" is not of type \"integer\"; \"1.a\" is not of type \"integer\"; \"1.b\" is not of type \"integer\""
+  },
+  {
+    "name": "maximumU64",
+    "schema": {
+      "maximum": 18446744073709551614
+    },
+    "instance": 18446744073709551615,
+    "error": "value is greater than the maximum of 18446744073709551614"
+  },
+  {
+    "name": "minimumU64",
+    "schema": {
+      "minimum": 18446744073709551614
+    },
+    "instance": 1,
+    "error": "value is less than the minimum of 18446744073709551614"
+  },
+  {
+    "name": "maximumFloat",
+    "schema": {
+      "maximum": 2.0
+    },
+    "instance": 3,
+    "error": "value is greater than the maximum of 2.0"
+  },
+  {
+    "name": "minimumExponent",
+    "schema": {
+      "minimum": 1e-08
+    },
+    "instance": 0,
+    "error": "value is less than the minimum of 1e-8"
+  },
+  {
+    "name": "constExponent",
+    "schema": {
+      "const": 1e+20
+    },
+    "instance": 0,
+    "error": "1e+20 was expected"
+  },
+  {
+    "name": "enumNumeric",
+    "schema": {
+      "enum": [
+        2.0,
+        1e-08,
+        1e+20
+      ]
+    },
+    "instance": 0,
+    "error": "value is not one of 2.0, 1e-8 or 1e+20"
+  },
+  {
+    "name": "exclusiveDraft4",
+    "schema": {
+      "$schema": "http://json-schema.org/draft-04/schema#",
+      "minimum": 2,
+      "exclusiveMinimum": true
+    },
+    "instance": 2,
+    "error": "value is less than or equal to the minimum of 2"
+  },
+  {
+    "name": "containsContradiction",
+    "schema": {
+      "contains": {
+        "type": "number"
+      },
+      "minContains": 3,
+      "maxContains": 1
+    },
+    "instance": [
+      1,
+      2
+    ],
+    "error": "None of value are valid under the given schema"
+  },
+  {
+    "name": "emptyRequiredFused",
+    "schema": {
+      "properties": {},
+      "additionalProperties": false,
+      "required": [
+        "a"
+      ]
+    },
+    "instance": {
+      "x": 1
+    },
+    "error": "Additional properties are not allowed ('x' was unexpected); \"a\" is a required property"
+  },
+  {
+    "name": "notNestedEscapes",
+    "schema": {
+      "properties": {
+        "field": {
+          "not": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "instance": {
+      "field": 2
+    },
+    "error": "{\"type\":\"number\"} is not allowed for \"field\""
+  },
+  {
+    "name": "propertyNamesNestedErrors",
+    "schema": {
+      "properties": {
+        "outer": {
+          "propertyNames": {
+            "minLength": 3
+          }
+        }
+      }
+    },
+    "instance": {
+      "outer": {
+        "x": 1,
+        "y": 2
+      }
+    },
+    "error": "\"x\" is shorter than 3 characters; \"y\" is shorter than 3 characters"
+  },
+  {
+    "name": "contentBadDecoded7",
+    "schema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "contentEncoding": "base64",
+      "contentMediaType": "application/json"
+    },
+    "instance": "//8=",
+    "error": "invalid utf-8 sequence of 1 bytes from index 0"
+  },
+  {
+    "name": "additionalSchemaPattern",
+    "schema": {
+      "patternProperties": {
+        "^a": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    },
+    "instance": {
+      "b": "x",
+      "a": false,
+      "c": "x"
+    },
+    "error": "\"b\" is not of type \"boolean\"; \"a\" is not of type \"number\"; \"c\" is not of type \"boolean\""
+  },
+  {
+    "name": "fusedRequiredDependencyOrder",
+    "schema": {
+      "properties": {
+        "a": {
+          "type": "string"
+        },
+        "b": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "a",
+        "b"
+      ],
+      "dependentRequired": {
+        "x": [
+          "y"
+        ]
+      }
+    },
+    "instance": {
+      "x": 1
+    },
+    "error": "\"y\" is a required property; \"a\" is a required property; \"b\" is a required property"
+  }
+]

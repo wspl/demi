@@ -9,7 +9,12 @@ import (
 
 // CheckInputSubset checks the schema forms registration permits as command input.
 // It does not apply to output schemas, which may use the full JSON Schema language.
-func CheckInputSubset(schema *Schema) error {
+func CheckInputSubset(schema *Schema) (err error) {
+	defer func() {
+		if err != nil {
+			err = &DeclarationError{err: err}
+		}
+	}()
 	if schema == nil || schema.validator == nil {
 		return errors.New("uninitialized schema")
 	}
@@ -42,8 +47,8 @@ func CheckInputSubset(schema *Schema) error {
 			}
 		}
 	}
-	for _, name := range slices.Sorted(maps.Keys(properties)) {
-		if err := checkField(properties[name]); err != nil {
+	for _, name := range schema.keys("properties") {
+		if err := schema.checkField(properties[name], "/properties/"+pointerEscape(name)); err != nil {
 			return fmt.Errorf("input %q: %w", name, err)
 		}
 	}
@@ -51,7 +56,7 @@ func CheckInputSubset(schema *Schema) error {
 }
 
 // checkField checks whether an input field has an unambiguous argv form.
-func checkField(value any) error {
+func (s *Schema) checkField(value any, path string) error {
 	schema, ok := value.(map[string]any)
 	if !ok {
 		return errors.New("must be a schema object")
@@ -71,7 +76,7 @@ func checkField(value any) error {
 		return errors.New("is a nested object, which has no command-line form")
 	}
 	allowed := []string{"type", "enum", "items", "description", "format", "minLength", "maxLength", "pattern", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "minItems", "maxItems"}
-	for _, keyword := range slices.Sorted(maps.Keys(schema)) {
+	for _, keyword := range s.order[path] {
 		if !slices.Contains(allowed, keyword) {
 			return fmt.Errorf("uses %q, outside the command input subset", keyword)
 		}
@@ -127,7 +132,7 @@ func checkField(value any) error {
 		if object, ok := items.(map[string]any); ok && object["type"] == "array" {
 			return errors.New("is an array of arrays, which has no command-line form")
 		}
-		if err := checkField(items); err != nil {
+		if err := s.checkField(items, path+"/items"); err != nil {
 			return fmt.Errorf("its items: %w", err)
 		}
 		return nil
