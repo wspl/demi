@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-	"unicode/utf8"
 
 	protocol "github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/runtime"
@@ -20,6 +19,7 @@ import (
 	"github.com/wspl/demi/internal/cmdpkg/browser/chrome/tabs"
 	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/contract"
 )
 
 // ClipboardWrite replaces the isolated browser clipboard with bounded invocation input.
@@ -240,8 +240,8 @@ func validateClipboard(mime browserop.ClipboardMime, data []byte) error {
 		return &cdp.BrowserError{Kind: cdp.KindResultTooLarge}
 	}
 	if mime != "image/png" {
-		if !utf8.Valid(data) {
-			return &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "clipboard text is not UTF-8"}
+		if err := contract.CheckUTF8(data); err != nil {
+			return &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "clipboard text is not UTF-8: " + err.Error(), Cause: err}
 		}
 		return nil
 	}
