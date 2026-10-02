@@ -1,7 +1,5 @@
 package process
 
-//revive:disable:unused-parameter // API checkpoint: stub parameter names document the boundary.
-
 import (
 	"context"
 
