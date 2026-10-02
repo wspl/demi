@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import type { LiveDialog } from '@demicodes/protocol'
-import Button from '../ui/Button.vue'
-import TextInput from '../ui/TextInput.vue'
+import type { LiveDialog } from '../generated/plugin'
+import { Button } from '@demicodes/plugin-sdk'
+import { TextInput } from '@demicodes/plugin-sdk'
 
 /**
  * A dialog the watched page opened (`live-view.md` § Input). It shows

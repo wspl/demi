@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { z } from 'zod'
-import SessionToolsMenu from '@demicodes/web-ui/hosts/SessionToolsMenu.vue'
-import type { ExposeMenuEntry } from '@demicodes/web-ui/hosts/types'
-import { pageTabKind } from '@demicodes/web-ui/agent/panel-kinds/page'
-import { exposePageTab } from '@demicodes/web-ui/agent/panel-kinds/page-data'
-import { usePlugin } from '@demicodes/web-ui/plugins/client'
-import { reportError } from '@demicodes/web-ui/infra/errors'
+import SessionToolsMenu from './SessionToolsMenu.vue'
+import type { ExposeMenuEntry } from './types'
+import { pageTabKind } from './page/page'
+import { exposePageTab } from './page/page-data'
+import { usePlugin } from '@demicodes/plugin-sdk'
+import { reportError } from '@demicodes/plugin-sdk'
 import { exposeStateSchema, type ExposeCall } from './generated/plugin'
 import { menuEntries } from './entries'
 

@@ -1,6 +1,6 @@
 import { computed, inject, provide, type ComputedRef, type InjectionKey } from 'vue'
 import type { z } from 'zod'
-import type { OpenLiveStream } from '../browser/session'
+import type { OpenUserStream } from './streams'
 import type { HostInstall } from '../devices/installs'
 
 /**
@@ -44,7 +44,7 @@ export interface PluginHost {
     options?: PluginCallOptions,
   ): Promise<unknown>
   /** The user stream `name` of `conversation`'s main Host. */
-  stream(name: string, conversation: string): OpenLiveStream
+  stream(name: string, conversation: string): OpenUserStream
   /** The installs of `plugin`'s packages on `conversation`'s main Host, read reactively. */
   installs(plugin: string, conversation: string): readonly HostInstall[]
 }
@@ -52,7 +52,7 @@ export interface PluginHost {
 /** A plugin's calls for one conversation. */
 export interface ConversationPluginClient {
   call<T>(method: string, params: object, result: z.ZodType<T>, options?: PluginCallOptions): Promise<T>
-  stream(name: string): OpenLiveStream
+  stream(name: string): OpenUserStream
   /** The installs of the plugin's packages on the conversation's main Host, which a first call may wait for. */
   readonly installs: ComputedRef<readonly HostInstall[]>
 }

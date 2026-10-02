@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { z } from 'zod'
-import SettingsSkills from '@demicodes/web-ui/settings/SettingsSkills.vue'
-import type { SettingsSkillDraft, SettingsSkillSource } from '@demicodes/web-ui/settings/types'
-import type { OverlayStore } from '@demicodes/web-ui/overlay/overlayStore'
-import { usePlugin } from '@demicodes/web-ui/plugins/client'
-import { reportError } from '@demicodes/web-ui/infra/errors'
+import SettingsSkills from './SettingsSkills.vue'
+import type { SettingsSkillDraft, SettingsSkillSource } from './types'
+import type { OverlayStore } from '@demicodes/plugin-sdk'
+import { usePlugin } from '@demicodes/plugin-sdk'
+import { reportError } from '@demicodes/plugin-sdk'
 import {
   addedSourceSchema,
   skillsStateSchema,
@@ -16,7 +16,7 @@ import {
 } from './generated/plugin'
 
 /**
- * The skills plugin's settings section (`skills.md` § The page): web-ui's
+ * The skills plugin's settings section (`skills.md` § The page): its
  * Skills page over the plugin's state and methods. Every change comes back
  * with the state the plugin sends to each of the user's pages.
  */

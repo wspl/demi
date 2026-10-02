@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import { BrowserTabsError, type BrowserTabsApi } from '@demicodes/web-ui/browser/tabs'
-import { PluginCallError, type ConversationPluginClient } from '@demicodes/web-ui/plugins/client'
+import { BrowserTabsError, type BrowserTabsApi } from './live/tabs'
+import { PluginCallError, type ConversationPluginClient } from '@demicodes/plugin-sdk'
 import {
   browserTabsSchema,
   openedTabSchema,

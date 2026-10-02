@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
-import { LIVE_VIDEO_CODEC, type LiveViewerMessage } from '@demicodes/protocol'
+import { type LiveViewerMessage } from '../../generated/plugin'
+import { LIVE_VIDEO_CODEC } from '../../generated/live'
 import { deferred } from '@demicodes/utils'
 import { until } from '@vueuse/core'
 import { ref } from 'vue'

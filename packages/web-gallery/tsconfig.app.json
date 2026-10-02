@@ -8,6 +8,9 @@
     "paths": {
       "@/*": ["./src/*"],
       "@demicodes/web-ui/*": ["../web-ui/src/*"],
+      "@demicodes/plugin-browser/*": ["../plugin-browser/src/*"],
+      "@demicodes/plugin-expose/*": ["../plugin-expose/src/*"],
+      "@demicodes/plugin-skills/*": ["../plugin-skills/src/*"],
       "@demicodes/*": ["../*/src/index.ts"]
     }
   },

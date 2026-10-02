@@ -1,4 +1,4 @@
-import type { ExposeMenuEntry } from '@demicodes/web-ui/hosts/types'
+import type { ExposeMenuEntry } from './types'
 import type { ExposeEntry } from './generated/plugin'
 
 /** The plugin's exposes as the menu lists them, in the state's order, each naming its host as the page does. */

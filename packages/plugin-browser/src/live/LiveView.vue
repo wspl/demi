@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { LiveTab } from '@demicodes/protocol'
+import type { LiveTab } from '../generated/plugin'
 import LiveControls from './LiveControls.vue'
 import LiveDialog from './LiveDialog.vue'
 import { CanvasPictures } from './pictures'

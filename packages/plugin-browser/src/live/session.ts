@@ -7,36 +7,14 @@
  * opens again after the page's reconnect waits (`web-application.md`
  * § Liveness and reconnection).
  */
-import {
-  LIVE_CAPTURE_FAILED,
-  LIVE_FILE_CHUNK_BYTES,
-  LIVE_STALL_MS,
-  liveViewerMessageSchema,
-  type BrowserViewport,
-  type LiveControl,
-  type LiveDialog,
-  type LiveTab,
-  type LiveViewerMessage,
-} from '@demicodes/protocol'
+import { liveViewerMessageSchema, type BrowserViewport, type LiveControl, type LiveDialog, type LiveTab, type LiveViewerMessage } from '../generated/plugin'
+import { LIVE_CAPTURE_FAILED, LIVE_FILE_CHUNK_BYTES, LIVE_STALL_MS } from '../generated/live'
 import { reactive } from 'vue'
-import { reportError } from '../infra/errors'
-import { waitToReconnect, watchSilence, type ReconnectWait, type SilenceWatch } from '../transport/liveness'
-import { LiveFrameReader, encodeFile, encodeMessage, type LiveBytes, type LiveFrame, type LiveVideoFrame } from './frames'
+import { reportError } from '@demicodes/plugin-sdk'
+import { waitToReconnect, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/plugin-sdk'
+import type { OpenUserStream, StreamBytes, UserStream } from '@demicodes/plugin-sdk'
+import { LiveFrameReader, encodeFile, encodeMessage, type LiveFrame, type LiveVideoFrame } from './frames'
 import type { PanelSize } from './view'
-
-/** The bytes of one view, as the product or the gallery carries them. */
-export interface LiveStream {
-  send(bytes: LiveBytes): void
-  close(): void
-}
-
-export interface LiveStreamHandlers {
-  data(bytes: Uint8Array): void
-  /** The stream ended; `reason` is the close reason the backend gave. */
-  closed(reason: string): void
-}
-
-export type OpenLiveStream = (handlers: LiveStreamHandlers) => LiveStream
 
 /** What shows the pictures: a decoder in the page, or the gallery's canvas. */
 export interface PictureSink {
@@ -71,7 +49,7 @@ export interface LiveState {
 }
 
 export interface LiveSessionOptions {
-  open: OpenLiveStream
+  open: OpenUserStream
   platform: 'mac' | 'windows' | 'linux' | 'other'
   /** Text the watched tab copied, for the viewer's own clipboard. */
   onClipboard?: (text: string) => void
@@ -106,7 +84,7 @@ export class LiveSession {
     ended: null,
   })
 
-  private stream: LiveStream | null = null
+  private stream: UserStream | null = null
   /** The watch over the stream's silence, while there is a stream. */
   private silence: SilenceWatch | null = null
   private pictures: PictureSink | null = null
