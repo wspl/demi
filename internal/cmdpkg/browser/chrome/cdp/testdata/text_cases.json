@@ -1,0 +1,954 @@
+[
+  {
+    "operation": "open",
+    "args": {
+      "url": "http://localhost:3000/login"
+    },
+    "result": {
+      "tab": "t1",
+      "url": "http://localhost:3000/login",
+      "title": "Sign in"
+    },
+    "lines": [
+      "Tab: t1\n",
+      "URL: http://localhost:3000/login\n",
+      "Title: Sign in\n"
+    ]
+  },
+  {
+    "operation": "tabs",
+    "args": {},
+    "result": {
+      "tabs": [
+        {
+          "id": "t1",
+          "title": "Sign in",
+          "url": "http://localhost:3000/login",
+          "createdBy": {
+            "kind": "agent",
+            "number": 0
+          }
+        },
+        {
+          "id": "t2",
+          "title": "Admin",
+          "url": "http://localhost:3000/admin",
+          "createdBy": {
+            "kind": "page",
+            "opener": "t1"
+          }
+        }
+      ],
+      "truncated": false
+    },
+    "lines": [
+      "Tab  Title    Created by  URL\n",
+      "t1  Sign in  agent 0  http://localhost:3000/login\n",
+      "t2  Admin    page t1    http://localhost:3000/admin\n"
+    ]
+  },
+  {
+    "operation": "info",
+    "args": {
+      "tab": "t1"
+    },
+    "result": {
+      "tab": "t1",
+      "url": "http://localhost:3000/login",
+      "title": "Sign in",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "devicePixelRatio": 1,
+        "mode": "custom"
+      }
+    },
+    "lines": [
+      "Tab: t1 · Sign in\n",
+      "Viewport: 390 × 844 CSS px, device pixel ratio 1, custom\n",
+      "Dialog: none\n"
+    ]
+  },
+  {
+    "operation": "goto",
+    "args": {
+      "tab": "t1",
+      "url": "http://localhost:3000/products"
+    },
+    "result": {
+      "tab": "t1",
+      "url": "http://localhost:3000/products",
+      "title": "Products"
+    },
+    "lines": [
+      "Navigated to http://localhost:3000/products.\n",
+      "Title: Products\n"
+    ]
+  },
+  {
+    "operation": "reload",
+    "args": {
+      "tab": "t1"
+    },
+    "result": {
+      "tab": "t1",
+      "url": "http://localhost:3000/products"
+    },
+    "lines": [
+      "Reloaded http://localhost:3000/products.\n"
+    ]
+  },
+  {
+    "operation": "history",
+    "args": {
+      "tab": "t1"
+    },
+    "result": {
+      "entries": [
+        {
+          "index": 0,
+          "url": "http://localhost:3000/login",
+          "title": "Sign in",
+          "current": false
+        },
+        {
+          "index": 1,
+          "url": "http://localhost:3000/products",
+          "title": "Products",
+          "current": true
+        }
+      ],
+      "truncated": false
+    },
+    "lines": [
+      "  0  Sign in   http://localhost:3000/login\n",
+      "* 1  Products  http://localhost:3000/products\n"
+    ]
+  },
+  {
+    "operation": "close",
+    "args": {
+      "tab": "t1"
+    },
+    "result": {
+      "closed": "t1"
+    },
+    "lines": [
+      "Closed t1.\n"
+    ]
+  },
+  {
+    "operation": "inspect",
+    "args": {
+      "tab": "t1"
+    },
+    "result": {
+      "tab": "t1",
+      "url": "http://localhost:3000/login",
+      "title": "Sign in",
+      "view": "accessibility",
+      "truncated": false,
+      "tree": [
+        {
+          "role": "main",
+          "children": [
+            {
+              "ref": "e2",
+              "role": "textbox",
+              "name": "Password",
+              "states": [
+                "protected"
+              ],
+              "value": "x"
+            }
+          ]
+        }
+      ]
+    },
+    "lines": [
+      "Tab: t1 · Sign in\nURL: http://localhost:3000/login\n\n",
+      "- main:\n",
+      "  - textbox \"Password\" [ref=e2] [protected] [value=\"x\"]\n"
+    ]
+  },
+  {
+    "operation": "find",
+    "args": {
+      "tab": "t1",
+      "role": "button"
+    },
+    "result": {
+      "matches": [
+        {
+          "ref": "e1",
+          "role": "button",
+          "name": "Sign in",
+          "depth": 0,
+          "states": [
+            "focused"
+          ]
+        }
+      ],
+      "count": 1,
+      "truncated": false
+    },
+    "lines": [
+      "1 match:\n  [ref=e1] button \"Sign in\" [focused]\n"
+    ]
+  },
+  {
+    "operation": "find",
+    "args": {
+      "tab": "t1",
+      "role": "link"
+    },
+    "result": {
+      "matches": [],
+      "count": 0,
+      "truncated": false
+    },
+    "lines": [
+      "No matches.\n"
+    ]
+  },
+  {
+    "operation": "read",
+    "args": {
+      "tab": "t1",
+      "ref": "e3",
+      "property": "text"
+    },
+    "result": {
+      "value": "Phone A"
+    },
+    "lines": [
+      "Phone A\n"
+    ]
+  },
+  {
+    "operation": "read",
+    "args": {
+      "tab": "t1",
+      "css": ".product",
+      "property": "text",
+      "all": true
+    },
+    "result": {
+      "values": [
+        "Phone A",
+        "Phone B"
+      ],
+      "truncated": false
+    },
+    "lines": [
+      "[0] Phone A\n[1] Phone B\n"
+    ]
+  },
+  {
+    "operation": "screenshot",
+    "args": {
+      "tab": "t1",
+      "output": "/tmp/login.png"
+    },
+    "result": {
+      "path": "/tmp/login.png",
+      "mimeType": "image/png",
+      "width": 390,
+      "height": 844,
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "devicePixelRatio": 1,
+        "mode": "custom"
+      }
+    },
+    "lines": [
+      "Screenshot saved: /tmp/login.png\n",
+      "Image: 390 × 844 px, one pixel per CSS pixel\n"
+    ]
+  },
+  {
+    "operation": "probe",
+    "args": {
+      "tab": "t1",
+      "xy": "420,300"
+    },
+    "result": {
+      "matches": [
+        {
+          "ref": "e1",
+          "role": "button",
+          "name": "Sign in",
+          "depth": 0,
+          "states": [],
+          "bounds": {
+            "x": 360,
+            "y": 280,
+            "width": 120,
+            "height": 40
+          }
+        }
+      ],
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "devicePixelRatio": 1,
+        "mode": "custom"
+      },
+      "truncated": false
+    },
+    "lines": [
+      "[ref=e1] button \"Sign in\"\n",
+      "Bounds: x=360 y=280 width=120 height=40 CSS px\n"
+    ]
+  },
+  {
+    "operation": "click",
+    "args": {
+      "tab": "t1",
+      "ref": "e1"
+    },
+    "result": {
+      "operation": "click",
+      "target": {
+        "ref": "e1",
+        "role": "button",
+        "name": "Sign in"
+      },
+      "result": "completed",
+      "url": "http://localhost:3000/dashboard",
+      "openedTabs": [
+        "t2"
+      ]
+    },
+    "lines": [
+      "Clicked button \"Sign in\" [ref=e1].\n",
+      "URL: http://localhost:3000/dashboard\n",
+      "Opened tab: t2\n"
+    ]
+  },
+  {
+    "operation": "click",
+    "args": {
+      "tab": "t1",
+      "xy": "420,300",
+      "count": 2
+    },
+    "result": {
+      "operation": "click",
+      "result": "completed"
+    },
+    "lines": [
+      "Double-clicked at 420,300.\n"
+    ]
+  },
+  {
+    "operation": "click",
+    "args": {
+      "tab": "t1",
+      "css": ".product"
+    },
+    "result": {
+      "operation": "click",
+      "target": {
+        "ref": "e3",
+        "role": "",
+        "name": ""
+      },
+      "result": "completed"
+    },
+    "lines": [
+      "Clicked [ref=e3].\n"
+    ]
+  },
+  {
+    "operation": "drag",
+    "args": {
+      "tab": "t1",
+      "point": [
+        "100,200",
+        "300,250"
+      ]
+    },
+    "result": {
+      "operation": "drag",
+      "result": true
+    },
+    "lines": [
+      "Dragged from 100,200 to 300,250.\n"
+    ]
+  },
+  {
+    "operation": "scroll",
+    "args": {
+      "tab": "t1",
+      "dy": 600.0
+    },
+    "result": {
+      "operation": "scroll",
+      "result": "completed"
+    },
+    "lines": [
+      "Scroll input delivered: dy=600.\n"
+    ]
+  },
+  {
+    "operation": "fill",
+    "args": {
+      "tab": "t1",
+      "ref": "e4",
+      "text": "test@example.com"
+    },
+    "result": {
+      "operation": "fill",
+      "target": {
+        "ref": "e4",
+        "role": "textbox",
+        "name": "Email"
+      },
+      "result": "completed"
+    },
+    "lines": [
+      "Filled textbox \"Email\" [ref=e4].\n"
+    ]
+  },
+  {
+    "operation": "type",
+    "args": {
+      "tab": "t1",
+      "text": "hello"
+    },
+    "result": {
+      "operation": "type",
+      "target": {
+        "ref": "e4",
+        "role": "textbox",
+        "name": "Email"
+      },
+      "result": "completed"
+    },
+    "lines": [
+      "Typed into textbox \"Email\" [ref=e4].\n"
+    ]
+  },
+  {
+    "operation": "key",
+    "args": {
+      "tab": "t1",
+      "key": "Escape"
+    },
+    "result": {
+      "operation": "key",
+      "result": "completed"
+    },
+    "lines": [
+      "Pressed Escape in the document.\n"
+    ]
+  },
+  {
+    "operation": "check",
+    "args": {
+      "tab": "t1",
+      "ref": "e5",
+      "value": false
+    },
+    "result": {
+      "operation": "check",
+      "target": {
+        "ref": "e5",
+        "role": "checkbox",
+        "name": "Remember me"
+      },
+      "result": "completed"
+    },
+    "lines": [
+      "Unchecked checkbox \"Remember me\" [ref=e5].\n"
+    ]
+  },
+  {
+    "operation": "select",
+    "args": {
+      "tab": "t1",
+      "ref": "e6",
+      "value": [
+        "SG",
+        "JP"
+      ]
+    },
+    "result": {
+      "operation": "select",
+      "target": {
+        "ref": "e6",
+        "role": "combobox",
+        "name": "Country"
+      },
+      "result": [
+        {
+          "value": "SG",
+          "label": "Singapore"
+        },
+        {
+          "value": "JP",
+          "label": "JP"
+        }
+      ]
+    },
+    "lines": [
+      "Selected: Singapore (SG), JP.\n"
+    ]
+  },
+  {
+    "operation": "select-text",
+    "args": {
+      "tab": "t1",
+      "ref": "e7",
+      "text": "Replace",
+      "cursor": "before"
+    },
+    "result": {
+      "operation": "select-text",
+      "target": {
+        "ref": "e7",
+        "role": "textbox",
+        "name": ""
+      },
+      "result": "before"
+    },
+    "lines": [
+      "Cursor placed before the matching text in textbox [ref=e7].\n"
+    ]
+  },
+  {
+    "operation": "wait",
+    "args": {
+      "tab": "t1",
+      "url": "**/dashboard"
+    },
+    "result": {
+      "condition": "**/dashboard",
+      "matched": true,
+      "url": "http://localhost:3000/dashboard"
+    },
+    "lines": [
+      "URL matched: http://localhost:3000/dashboard.\n"
+    ]
+  },
+  {
+    "operation": "wait",
+    "args": {
+      "tab": "t1",
+      "role": "heading",
+      "name": "Welcome back",
+      "state": "visible"
+    },
+    "result": {
+      "condition": "visible",
+      "matched": true,
+      "target": {
+        "ref": "e50",
+        "role": "heading",
+        "name": "Welcome back"
+      }
+    },
+    "lines": [
+      "Matched heading \"Welcome back\" [ref=e50]. State: visible.\n"
+    ]
+  },
+  {
+    "operation": "wait",
+    "args": {
+      "tab": "t1",
+      "css": ".spinner",
+      "state": "detached"
+    },
+    "result": {
+      "condition": "detached",
+      "matched": true
+    },
+    "lines": [
+      "No element matches. State: detached.\n"
+    ]
+  },
+  {
+    "operation": "wait",
+    "args": {
+      "tab": "t1",
+      "load": "domcontentloaded"
+    },
+    "result": {
+      "condition": "domcontentloaded",
+      "matched": true
+    },
+    "lines": [
+      "Load state reached: domcontentloaded.\n"
+    ]
+  },
+  {
+    "operation": "upload",
+    "args": {
+      "tab": "t1",
+      "ref": "e9",
+      "file": [
+        "/tmp/avatar.png"
+      ]
+    },
+    "result": {
+      "files": [
+        "/tmp/avatar.png"
+      ],
+      "attached": 1
+    },
+    "lines": [
+      "Attached 1 file through [ref=e9].\n  /tmp/avatar.png\n"
+    ]
+  },
+  {
+    "operation": "download",
+    "args": {
+      "tab": "t1",
+      "ref": "e10",
+      "output": "/tmp/report.pdf"
+    },
+    "result": {
+      "path": "/tmp/report.pdf",
+      "suggestedFilename": "report.pdf",
+      "bytes": 48320,
+      "mimeType": "application/pdf"
+    },
+    "lines": [
+      "Downloaded: /tmp/report.pdf\n",
+      "Suggested filename: report.pdf\n",
+      "Bytes: 48320\n"
+    ]
+  },
+  {
+    "operation": "clipboard.write",
+    "args": {
+      "tab": "t1"
+    },
+    "result": {
+      "mimeType": "text/plain",
+      "bytes": 6
+    },
+    "lines": [
+      "Clipboard written: text/plain, 6 bytes.\n"
+    ]
+  },
+  {
+    "operation": "clipboard.read",
+    "args": {
+      "tab": "t1"
+    },
+    "result": {
+      "text": "Hello"
+    },
+    "lines": [
+      "Hello\n"
+    ]
+  },
+  {
+    "operation": "eval",
+    "args": {
+      "tab": "t1",
+      "expression": "1"
+    },
+    "result": {
+      "value": 12
+    },
+    "lines": [
+      "12\n"
+    ]
+  },
+  {
+    "operation": "logs",
+    "args": {
+      "tab": "t1"
+    },
+    "result": {
+      "entries": [
+        {
+          "sequence": 4,
+          "level": "error",
+          "text": "Failed to load orders",
+          "url": "http://localhost:3000/orders",
+          "timestamp": 0.0
+        }
+      ],
+      "cursor": "logs_1:4",
+      "hasMore": false,
+      "truncated": false
+    },
+    "lines": [
+      "[error] Failed to load orders\n  http://localhost:3000/orders\n",
+      "Cursor: logs_1:4\n"
+    ]
+  },
+  {
+    "operation": "viewport.set",
+    "args": {
+      "tab": "t1",
+      "width": 390,
+      "height": 844
+    },
+    "result": {
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "devicePixelRatio": 1,
+        "mode": "custom"
+      }
+    },
+    "lines": [
+      "Viewport: 390 × 844 CSS px, device pixel ratio 1, custom.\n"
+    ]
+  },
+  {
+    "operation": "dialog.inspect",
+    "args": {
+      "tab": "t1"
+    },
+    "result": {
+      "dialog": {
+        "type": "confirm",
+        "message": "Delete this record?"
+      }
+    },
+    "lines": [
+      "Dialog: confirm\nMessage: \"Delete this record?\"\n"
+    ]
+  },
+  {
+    "operation": "dialog.inspect",
+    "args": {
+      "tab": "t1"
+    },
+    "result": {
+      "dialog": null
+    },
+    "lines": [
+      "No dialog.\n"
+    ]
+  },
+  {
+    "operation": "dialog.accept",
+    "args": {
+      "tab": "t1"
+    },
+    "result": {
+      "type": "confirm",
+      "outcome": "accepted"
+    },
+    "lines": [
+      "Accepted confirm dialog.\n"
+    ]
+  },
+  {
+    "operation": "cdp.targets",
+    "args": {
+      "tab": "t1"
+    },
+    "result": {
+      "targets": [
+        {
+          "id": "main",
+          "kind": "page",
+          "url": "http://localhost:3000/orders"
+        }
+      ],
+      "truncated": false
+    },
+    "lines": [
+      "Target  Kind  URL\n",
+      "main    page  http://localhost:3000/orders\n"
+    ]
+  },
+  {
+    "operation": "cdp.detach",
+    "args": {
+      "tab": "t1"
+    },
+    "result": {
+      "detached": "t1"
+    },
+    "lines": [
+      "Detached debugging from t1.\n"
+    ]
+  },
+  {
+    "operation": "cdp.send",
+    "args": {
+      "tab": "t1",
+      "method": "Network.enable",
+      "params": "{}"
+    },
+    "result": {
+      "method": "Network.enable",
+      "result": {}
+    },
+    "lines": [
+      "CDP Network.enable completed.\nResult: {}\n"
+    ]
+  },
+  {
+    "operation": "cdp.events",
+    "args": {
+      "tab": "t1"
+    },
+    "result": {
+      "events": [],
+      "cursor": "cdp_1:120",
+      "hasMore": false,
+      "truncated": false
+    },
+    "lines": [
+      "Cursor: cdp_1:120\nNo events. Use --after cdp_1:120 to read subsequent events.\n"
+    ]
+  },
+  {
+    "operation": "content.read",
+    "args": {
+      "tab": "t1"
+    },
+    "result": {
+      "url": "http://localhost:3000/products",
+      "title": "Products",
+      "format": "text",
+      "content": "Welcome.\nAll items.",
+      "truncated": false
+    },
+    "lines": [
+      "Title: Products\nURL: http://localhost:3000/products\n\nWelcome.\nAll items.\n"
+    ]
+  },
+  {
+    "operation": "content.fetch",
+    "args": {
+      "url": [
+        "https://example.com/a"
+      ]
+    },
+    "result": {
+      "pages": [
+        {
+          "requestedUrl": "https://example.com/a",
+          "url": "https://example.com/a",
+          "title": "Page A",
+          "content": "Page A content."
+        }
+      ],
+      "truncated": false
+    },
+    "lines": [
+      "URL: https://example.com/a\nTitle: Page A\nPage A content.\n"
+    ]
+  },
+  {
+    "operation": "assets.list",
+    "args": {
+      "tab": "t1"
+    },
+    "result": {
+      "inventory": "assets_1",
+      "assets": [
+        {
+          "id": "a1",
+          "kind": "image",
+          "url": "http://localhost:3000/logo.png"
+        }
+      ],
+      "inlineSvgs": [],
+      "truncated": false
+    },
+    "lines": [
+      "Inventory: assets_1\n",
+      " a1  image  http://localhost:3000/logo.png\n"
+    ]
+  },
+  {
+    "operation": "assets.export",
+    "args": {
+      "tab": "t1",
+      "inventory": "assets_1",
+      "output-dir": "/tmp/assets"
+    },
+    "result": {
+      "directory": "/tmp/assets",
+      "manifest": "/tmp/assets/manifest.json",
+      "files": [
+        {
+          "id": "a1",
+          "path": "/tmp/assets/logo.png",
+          "bytes": 10,
+          "mimeType": "image/png"
+        }
+      ]
+    },
+    "lines": [
+      "Exported 1 asset to /tmp/assets.\nManifest: /tmp/assets/manifest.json\n"
+    ]
+  },
+  {
+    "operation": "capabilities",
+    "args": {
+      "tab": "t1"
+    },
+    "result": {
+      "capabilities": [
+        {
+          "id": "dom",
+          "available": true
+        },
+        {
+          "id": "clipboard",
+          "available": false,
+          "reason": "shared with the Host user"
+        }
+      ]
+    },
+    "lines": [
+      "Available:\n  dom\n",
+      "Unavailable:\n  clipboard — shared with the Host user\n"
+    ]
+  },
+  {
+    "operation": "webmcp.list",
+    "args": {
+      "tab": "t1"
+    },
+    "result": {
+      "tools": "tools_1",
+      "entries": [
+        {
+          "name": "search",
+          "description": "Search the store",
+          "inputSchema": {
+            "type": "object"
+          }
+        }
+      ],
+      "truncated": false
+    },
+    "lines": [
+      "Tools: tools_1\n",
+      "  search — Search the store\n"
+    ]
+  },
+  {
+    "operation": "webmcp.call",
+    "args": {
+      "tab": "t1",
+      "tool": "search",
+      "tools": "tools_1",
+      "arguments": "{}"
+    },
+    "result": {
+      "name": "search",
+      "result": {
+        "count": 2
+      }
+    },
+    "lines": [
+      "Called search.\nResult: {\"count\":2}\n"
+    ]
+  }
+]
