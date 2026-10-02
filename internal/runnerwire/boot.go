@@ -12,6 +12,7 @@ import (
 
 // A backend's URL (`runner.md` § Connection and identity): `http`, `https`,
 // `ws` or `wss`, naming a host, without credentials or a fragment.
+// +demi:codec
 type BackendURL struct{ value string }
 
 // ParseBackendURL checks and normalizes an installation's address.
@@ -83,6 +84,7 @@ func validateDeviceToken(token DeviceToken) error {
 
 // ManagedBoot holds the installation URL and credential read from a boot file.
 // The URL is normalized at the generated raw record's conversion boundary.
+// +demi:codec
 type ManagedBoot struct {
 	BackendURL  BackendURL
 	DeviceToken DeviceToken

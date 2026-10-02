@@ -77,19 +77,22 @@ func run() error {
 	return generate(context.Background(), patterns, *ts, *tsDir, *verify)
 }
 
-// generate strips ordinary function bodies so generation also works before
+// generateBatch strips ordinary function bodies so generation also works before
 // generated methods exist. Generic declarations retain the bodies Go requires.
 // Type errors in declarations remain fatal.
-func generate(ctx context.Context, patterns []string, ts bool, tsDir string, verify bool) error {
-	config := &packages.Config{Context: ctx, Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports | packages.NeedDeps,
+func generateBatch(ctx context.Context, patterns []string, ts bool, tsDir string, verify bool, stripped map[string]bool, overlay map[string][]byte, emit func(string, []byte) error) error {
+	config := &packages.Config{Context: ctx, Overlay: overlay, Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports | packages.NeedDeps,
 		ParseFile: func(fset *token.FileSet, filename string, src []byte) (*ast.File, error) {
 			file, err := parser.ParseFile(fset, filename, src, parser.ParseComments)
 			if err != nil {
 				return nil, err
 			}
-			if filepath.Base(filename) == "contract_gen.go" {
+			if stripped[filename] {
 				file.Decls = nil
 				file.Imports = nil
+				return file, nil
+			}
+			if filepath.Base(filename) == "contract_gen.go" {
 				return file, nil
 			}
 			for _, decl := range file.Decls {
@@ -302,7 +305,7 @@ func generate(ctx context.Context, patterns []string, ts bool, tsDir string, ver
 		if err != nil {
 			return fmt.Errorf("format generated code: %w", err)
 		}
-		if err := writeGenerated(filepath.Join(filepath.Dir(p.GoFiles[0]), "contract_gen.go"), code, verify); err != nil {
+		if err := emit(filepath.Join(filepath.Dir(p.GoFiles[0]), "contract_gen.go"), code); err != nil {
 			return err
 		}
 	}
@@ -322,7 +325,7 @@ func markers(doc *ast.CommentGroup) map[string]string {
 		}
 		key, value, _ := strings.Cut(strings.TrimPrefix(text, "+demi:"), " ")
 		switch key {
-		case "flatten", "union", "variant", "nullable", "length", "range", "enum", "pattern", "timestamp", "check", "id", "base64", "msgpack", "strict", "tolerant", "root", "format", "table", "schema":
+		case "codec", "flatten", "union", "variant", "nullable", "length", "range", "enum", "pattern", "timestamp", "check", "id", "base64", "msgpack", "strict", "tolerant", "root", "format", "table", "schema":
 		default:
 			out["!error"] = "unsupported marker: " + key
 		}
@@ -415,6 +418,9 @@ func (g *generator) decoder(t types.Type) string {
 }
 
 func (g *generator) emitGo(d *definition) {
+	if has(d.marks, "codec") {
+		return
+	}
 	name := d.name
 	if has(d.marks, "union") {
 		if g.jsonReach[d.key] {
@@ -517,7 +523,11 @@ func (g *generator) emitGo(d *definition) {
 		g.line("func(v %s) MarshalJSON()([]byte,error){if err:=v.Validate();err!=nil{return nil,err};return contract.EncodeJSON(%s(v))}", name, g.typeName(d.typ.Underlying()))
 		return
 	}
-	g.line("obj,err:=contract.Decode[map[string]json.RawMessage](data); if err!=nil{return err}; var next %s", name)
+	object := "obj"
+	if st.NumFields() == 0 && tag == "" && has(d.marks, "tolerant") {
+		object = "_"
+	}
+	g.line("%s,err:=contract.Decode[map[string]json.RawMessage](data); if err!=nil{return err}; var next %s", object, name)
 	if !has(d.marks, "tolerant") {
 		g.line("for key:=range obj{switch key{")
 		keys := []string{}
@@ -587,6 +597,9 @@ func (g *generator) validation(t types.Type, expr, path string, m map[string]str
 		return
 	}
 	if named, ok := t.(*types.Named); ok {
+		if d := g.defs[typeKey(named)]; d != nil && has(d.marks, "codec") {
+			return
+		}
 		if has(m, "optional") && emptyCollection(t) {
 			g.line("{collection:=%s;if collection==nil{collection=make(%s,0)}", expr, g.typeName(t))
 			required := maps.Clone(m)

@@ -135,7 +135,7 @@ func checkRuleType(t types.Type, m map[string]string, field bool) error {
 		}
 	}
 	if field {
-		for _, key := range []string{"union", "variant", "strict", "tolerant", "id", "root", "msgpack", "check", "format", "schema"} {
+		for _, key := range []string{"union", "variant", "strict", "tolerant", "id", "root", "msgpack", "check", "format", "schema", "codec"} {
 			if has(m, key) {
 				return fmt.Errorf("%s is a type marker", key)
 			}

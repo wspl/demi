@@ -38,6 +38,9 @@ func (g *generator) msgDecoder(t types.Type) string {
 
 // emitMsgpack derives the runner codec from the same declarations as JSON.
 func (g *generator) emitMsgpack(d *definition) {
+	if has(d.marks, "codec") {
+		return
+	}
 	name := d.name
 	if has(d.marks, "union") {
 		tag := bounds(d.marks["union"])["tag"]
@@ -93,7 +96,11 @@ func (g *generator) emitMsgpack(d *definition) {
 		return
 	}
 	tag, variant, kind := g.variantWire(d)
-	g.line("obj,err:=contract.MsgpackObject(data);if err!=nil{return err};var next %s", name)
+	object := "obj"
+	if st.NumFields() == 0 && tag == "" && has(d.marks, "tolerant") {
+		object = "_"
+	}
+	g.line("%s,err:=contract.MsgpackObject(data);if err!=nil{return err};var next %s", object, name)
 	if tag != "" {
 		g.line("tag,err:=contract.DecodeMsgpack[%s](obj[%s]);if err!=nil{return contract.At(%s,err)};if tag!=%s{return fmt.Errorf(\"invalid union tag\")};delete(obj,%s)", kind, q(tag), q(tag), tagLiteral(variant), q(tag))
 	}

@@ -29,6 +29,10 @@ for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 wi
   fi
 done
 
+step='generated'
+echo "gomig: ${step}"
+go run ./tools/contractgen -check "$@"
+
 step='file names'
 # The module layout forbids catch-all files (crates-and-packages.md § Module
 # layout): a file is named for its one responsibility.

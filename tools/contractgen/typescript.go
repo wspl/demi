@@ -20,6 +20,9 @@ func (g *generator) markReceived(name string, includeKeys bool) {
 		g.err = fmt.Errorf("external contract %s is not loaded", name)
 		return
 	}
+	if has(d.marks, "codec") {
+		return
+	}
 	if has(d.marks, "union") {
 		for _, v := range g.variants(name) {
 			g.markReceived(v.key, includeKeys)
@@ -73,6 +76,10 @@ func (g *generator) emitTS(name string) {
 	g.active[name] = true
 	if g.adjacentUnion(d) != nil {
 		g.err = fmt.Errorf("adjacent union variant is not supported in TypeScript")
+		return
+	}
+	if has(d.marks, "codec") {
+		g.err = fmt.Errorf("codec has no explicit TypeScript mapping")
 		return
 	}
 	var code string
