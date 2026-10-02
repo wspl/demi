@@ -15,9 +15,9 @@ import (
 	"github.com/wspl/demi/internal/provider/providertest"
 )
 
-// The session boundary of requests.rs. The vendor-wire matrix additionally
-// requires test graph edges to providers/{anthropicapi,openaiapi,google,codex,grokbuild};
-// see the work package report. This test does not substitute for that matrix.
+// The session boundary of requests.rs. The seven-family vendor-wire matrix
+// belongs to b-providers (internal/backend/providers), as directed in review.
+// This test checks session requests and does not substitute for that matrix.
 func TestRequestPrefixesWithThinkingAndSummary(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		entered, release := make(chan struct{}), make(chan struct{})

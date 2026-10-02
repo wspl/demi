@@ -126,6 +126,7 @@ func TestAgentMessagesDuringToolAreDurableAndOrdered(t *testing.T) {
 		a := f.send("go", "t1")
 		<-entered
 		one, two := message("one"), message("two")
+		two.ID = "subagent:child:1"
 		two.Event = &core.CompletionEvent{Outcome: "completed"}
 		must(t, f.s.AcceptAgentMessage(t.Context(), one))
 		must(t, f.s.AcceptAgentMessage(t.Context(), two))

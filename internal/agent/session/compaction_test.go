@@ -511,7 +511,7 @@ func TestEditAroundBoundariesKeepsOnlyPrefixSummaries(t *testing.T) {
 				}
 			}
 			s, _, p := f.restore(cp, unmeasured("replacement"))
-			_, err := s.EditAndSend(t.Context(), edit(s, index, "op1"))
+			_, err := s.EditAndSend(t.Context(), edit(t, s, index, "op1"))
 			must(t, err)
 			must(t, s.Settled(t.Context()))
 			equal(t, s.Transcript().Blocks[:index], cp.Transcript[:index])
@@ -538,7 +538,7 @@ func TestEditCutMarkerDoesNotReuseOldUsageEstimate(t *testing.T) {
 		cp := f.checkpoint()
 		f.config.Compaction = session.DefaultCompactionConfig()
 		s, _, p := f.restore(cp, unmeasured("replacement"))
-		_, err := s.EditAndSend(t.Context(), edit(s, 7, "op1"))
+		_, err := s.EditAndSend(t.Context(), edit(t, s, 7, "op1"))
 		must(t, err)
 		must(t, s.Settled(t.Context()))
 		equal(t, len(p.Requests()), 1)
@@ -554,7 +554,7 @@ func TestPostEditCompactionSummarizesOnlyKeptHistory(t *testing.T) {
 		f.done(f.send("C", "C"))
 		f.config.Compaction = session.DefaultCompactionConfig()
 		s, _, p := f.restore(f.checkpoint(), unmeasured("summary A"), unmeasured("replacement"))
-		_, err := s.EditAndSend(t.Context(), edit(s, 3, "op1"))
+		_, err := s.EditAndSend(t.Context(), edit(t, s, 3, "op1"))
 		must(t, err)
 		must(t, s.Settled(t.Context()))
 		equal(t, p.Requests()[0].Items, []provider.InferenceItem{userItem(first), userItem(sessiontest.CompactionSummaryInstruction)})

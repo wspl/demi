@@ -15,6 +15,7 @@ import (
 	"github.com/wspl/demi/internal/agent/store/storetest"
 	"github.com/wspl/demi/internal/agent/transcript/transcripttest"
 	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/framewire"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
 	"go.uber.org/goleak"
@@ -197,9 +198,12 @@ func steers(r provider.InferenceRequest) []string {
 	}
 	return out
 }
-func edit(s *session.Session, target int, id string) session.EditSubmission {
+func edit(t *testing.T, s *session.Session, target int, id string) session.EditSubmission {
+	t.Helper()
 	snap := s.Transcript()
-	return session.EditSubmission{OperationID: core.OperationID(id), Target: snap.Blocks[target].ID(), Version: snap.Version, Digest: id, Content: []session.EditContent{&session.Content{Block: &core.UserText{Text: "replacement"}}}}
+	digest, err := session.EditDigest(framewire.EditRequest{OperationID: core.OperationID(id), TargetBlockID: snap.Blocks[target].ID(), Version: snap.Version, Content: []framewire.ClientContent{&framewire.TextContent{Text: "replacement"}}})
+	must(t, err)
+	return session.EditSubmission{OperationID: core.OperationID(id), Target: snap.Blocks[target].ID(), Version: snap.Version, Digest: digest, Content: []session.EditContent{&session.Content{Block: &core.UserText{Text: "replacement"}}}}
 }
 func TestRepeatedMessageID(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
