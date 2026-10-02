@@ -18,7 +18,6 @@ type AddArgs struct {
 	// host:port, or a bare port meaning 127.0.0.1
 	Address string `json:"address"`
 	// Host name or device id from demi host list; the main host by default
-	// +demi:nullable
 	Host *string `json:"host,omitempty"`
 }
 
@@ -41,6 +40,7 @@ type NumberArgs struct {
 // which is the URL's credential.
 // +demi:root
 // +demi:schema
+// +demi:tolerant
 type ExposeLine struct {
 	Number uint64 `json:"number"`
 	// The device's name.
@@ -53,6 +53,7 @@ type ExposeLine struct {
 // `{ expose }`: what `add` and `renew` print with `--json`.
 // +demi:root
 // +demi:schema
+// +demi:tolerant
 type ExposeAnswer struct {
 	Expose ExposeLine `json:"expose"`
 }
@@ -60,12 +61,15 @@ type ExposeAnswer struct {
 // `{ exposes }`: what `list` prints with `--json`.
 // +demi:root
 // +demi:schema
+// +demi:tolerant
 type ExposeLines struct {
 	Exposes []ExposeLine `json:"exposes"`
 }
 
 // The plugin's state for the user's pages.
-// +demi:root
+// +demi:root direction=receive output=plugin-expose
+// +demi:schema
+// +demi:tolerant
 type ExposeState struct {
 	// Whether the instance has an expose domain; without one the product
 	// shows no expose controls.
@@ -75,9 +79,10 @@ type ExposeState struct {
 }
 
 // An expose as the menu shows it, with the name of the device it is on.
+// +demi:tolerant
 type ExposeEntry struct {
 	ID webapi.ExposeID `json:"id"`
-	// +demi:range min=1 max=9007199254740991
+	// +demi:range min=1 max=9007199254740991 schema-only
 	Number   uint64          `json:"number"`
 	DeviceID webapi.DeviceID `json:"deviceId"`
 	// The device's name, the Cloud's as `Cloud`.
@@ -88,7 +93,7 @@ type ExposeEntry struct {
 }
 
 // `renew { expose }` and `remove { expose }`.
-// +demi:root
+// +demi:root direction=send output=plugin-expose
 // +demi:schema
 // +demi:strict
 type ExposeCall struct {
