@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"go/types"
-	"maps"
 	"math/big"
 	"reflect"
 	"slices"
@@ -14,15 +13,15 @@ import (
 	"github.com/wspl/demi/internal/contract"
 )
 
-// jsonSchemas derives command schemas before either output is written.
-func (g *generator) jsonSchemas() (map[string][]byte, error) {
+// jsonSchemas derives the selected schema use before either output is written.
+func (g *generator) jsonSchemas(references bool) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	for _, key := range g.order {
 		d := g.defs[key]
 		if !has(d.marks, "schema") {
 			continue
 		}
-		emitter := schemaEmitter{g: g, root: key, active: map[string]bool{}, definitions: &schemaObject{}, names: map[string]string{}}
+		emitter := schemaEmitter{g: g, root: key, references: references, active: map[string]bool{}, definitions: &schemaObject{}, names: map[string]string{}}
 		value, err := emitter.schema(d.typ)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %s: %w", d.position, d.name, err)
@@ -49,6 +48,7 @@ type schemaEmitter struct {
 	root        string
 	active      map[string]bool
 	definitions *schemaObject
+	references  bool
 	names       map[string]string
 }
 
@@ -73,15 +73,7 @@ func (e *schemaEmitter) schema(t types.Type) (any, error) {
 			if key == e.root {
 				return schemaKeywords(contract.Field{Name: "$ref", Value: "#"}), nil
 			}
-			name := e.names[key]
-			if name == "" {
-				name = d.name
-				for i := 2; slices.Contains(slices.Collect(maps.Values(e.names)), name); i++ {
-					name = fmt.Sprintf("%s%d", d.name, i)
-				}
-				e.names[key] = name
-				e.definitions.set(name, nil)
-			}
+			name := e.definitionName(d)
 			return schemaKeywords(contract.Field{Name: "$ref", Value: "#/$defs/" + name}), nil
 		}
 		e.active[key] = true
@@ -186,7 +178,7 @@ func (e *schemaEmitter) schema(t types.Type) (any, error) {
 				}
 				opts := strings.Split(reflect.StructTag(st.Tag(i)).Get("json"), ",")
 				m := d.fields[f.Name()]
-				child, err := e.schema(f.Type())
+				child, err := e.subschema(f.Type())
 				if err != nil {
 					return nil, fmt.Errorf("%s.%s: %w", d.name, f.Name(), err)
 				}
@@ -276,7 +268,7 @@ func (e *schemaEmitter) schema(t types.Type) (any, error) {
 		if values := d.marks["enum"]; values != "" {
 			s.set("enum", strings.Fields(values))
 		}
-		if d.description != "" {
+		if d.description != "" && !primitiveSchema(d) {
 			s.set("description", d.description)
 		}
 		if err := schemaRules(s, d.marks); err != nil {
@@ -324,13 +316,13 @@ func (e *schemaEmitter) schema(t types.Type) (any, error) {
 		if types.Identical(t.Elem(), types.Typ[types.Uint8]) {
 			return nil, fmt.Errorf("byte encoding cannot be expressed faithfully in JSON Schema")
 		}
-		child, err := e.schema(t.Elem())
+		child, err := e.subschema(t.Elem())
 		if err != nil {
 			return nil, err
 		}
 		s = schemaKeywords(contract.Field{Name: "type", Value: "array"}, contract.Field{Name: "items", Value: serializedSchema(child, false)})
 	case *types.Map:
-		child, err := e.schema(t.Elem())
+		child, err := e.subschema(t.Elem())
 		if err != nil {
 			return nil, err
 		}

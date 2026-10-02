@@ -250,7 +250,11 @@ func generateBatch(ctx context.Context, patterns []string, ts bool, tsDir string
 	if err := g.check(collected[0]); err != nil {
 		return err
 	}
-	jsonSchemas, err := g.jsonSchemas()
+	jsonSchemas, err := g.jsonSchemas(false)
+	if err != nil {
+		return err
+	}
+	pluginSchemas, err := g.jsonSchemas(true)
 	if err != nil {
 		return err
 	}
@@ -272,6 +276,7 @@ func generateBatch(ctx context.Context, patterns []string, ts bool, tsDir string
 				if value, ok := jsonSchemas[d.key]; ok {
 					g.imports["encoding/json"] = "json"
 					g.line("func %sJSONSchema() json.RawMessage { return json.RawMessage(%s) }", d.name, q(string(value)))
+					g.line("func %sPluginJSONSchema() json.RawMessage { return json.RawMessage(%s) }", d.name, q(string(pluginSchemas[d.key])))
 				}
 			}
 		}
@@ -326,7 +331,7 @@ func markers(doc *ast.CommentGroup) map[string]string {
 		}
 		key, value, _ := strings.Cut(strings.TrimPrefix(text, "+demi:"), " ")
 		switch key {
-		case "integer", "default", "codec", "flatten", "union", "variant", "nullable", "length", "range", "enum", "pattern", "timestamp", "check", "id", "base64", "msgpack", "strict", "tolerant", "root", "format", "table", "schema":
+		case "integer", "default", "codec", "flatten", "union", "variant", "nullable", "length", "range", "enum", "pattern", "timestamp", "check", "id", "base64", "msgpack", "strict", "tolerant", "root", "format", "table", "schema", "schema-primitive":
 		default:
 			out["!error"] = "unsupported marker: " + key
 		}

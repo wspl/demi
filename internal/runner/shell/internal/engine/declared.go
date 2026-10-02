@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"syscall"
 
 	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/commandwire"
@@ -89,6 +90,9 @@ func (e *execution) declared(ctx context.Context, args []string) error {
 			return errors.New("unexpected local output record")
 		}
 		_, err := writer.Write(bytes)
+		if errors.Is(err, syscall.EPIPE) {
+			return interp.ExitStatus(141)
+		}
 		return err
 	}
 	for {

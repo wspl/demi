@@ -35,13 +35,19 @@ func TestMain(m *testing.M) {
 }
 
 type localResolver struct {
-	path    string
-	calls   atomic.Int32
-	entered chan struct{}
-	gate    <-chan struct{}
+	path      string
+	calls     atomic.Int32
+	entered   chan struct{}
+	cancelled chan struct{}
+	gate      <-chan struct{}
 }
 
 func (r *localResolver) Resolve(ctx context.Context, _ commandwire.PackageArtifact) (cmdpkgs.ArtifactSource, error) {
+	defer func() {
+		if ctx.Err() != nil && r.cancelled != nil {
+			r.cancelled <- struct{}{}
+		}
+	}()
 	r.calls.Add(1)
 	if r.entered != nil {
 		select {

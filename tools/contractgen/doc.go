@@ -74,9 +74,12 @@
 // showsInPlace(mediaType), with ASCII extension case folding and either path
 // separator. It must have mediaType, extensions and inPlace fields.
 //
-// +demi:schema emits <Type>JSONSchema() json.RawMessage in contract_gen.go.
-// Each call returns fresh bytes: draft 2020-12, no $schema, inline subschemas,
-// and optional properties that allow null only with +demi:nullable. Objects, tagged unions,
+// +demi:schema emits <Type>JSONSchema() for command declarations and
+// <Type>PluginJSONSchema() for plugin page/stream declarations in contract_gen.go.
+// Both return json.RawMessage; callers select the form for that use. Plugin
+// schemas retain named $defs/$ref, including anyOf for nullable references.
+// Each call returns fresh draft 2020-12 bytes without $schema. The command
+// form inlines subschemas; optional properties allow null only with +demi:nullable. Objects, tagged unions,
 // records, arrays, enums, patterns, lengths and numeric bounds use the same
 // checked model as codecs and Zod. Root titles use type names; type and field
 // doc comments supply descriptions, with field comments overriding type text.
@@ -84,6 +87,12 @@
 // Numeric format and representation keywords match schemars, without extra
 // limits on wide integers or floats. Timestamps emit date-time. Recursive
 // shapes use # for the root or $defs references for recursive subschemas.
+// +demi:schema-primitive marks a named scalar whose Rust custom JsonSchema
+// returns an inline primitive without derived type metadata. Its constraints
+// remain, and field comments still apply, but its type description is omitted.
+// String timestamp schemas have this behavior intrinsically. Ordinary derived scalar
+// descriptions survive both command inlining and plugin definitions.
+//
 // Custom checks are Go-only and omitted from JSON Schema and Zod. Normalized
 // string formats, base64 rules and bytes remain unsupported for schema roots
 // (none occurs in the built-in command schemas). Explicit codec string types

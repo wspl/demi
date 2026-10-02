@@ -252,6 +252,7 @@ func TestStartNobodyWaitsForStops(t *testing.T) {
 	gate := make(chan struct{})
 	resolver.gate = gate
 	resolver.entered = make(chan struct{}, 2)
+	resolver.cancelled = make(chan struct{}, 2)
 	events := r.Decisions(t.Context())
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -266,6 +267,7 @@ func TestStartNobodyWaitsForStops(t *testing.T) {
 		t.Fatalf("cancel: %v", err)
 	}
 	decided(t, events, d, cmdpkgs.Stops)
+	<-resolver.cancelled
 	second := make(chan error, 1)
 	l := lease(t, r, d)
 	go func() {
@@ -436,4 +438,32 @@ func TestNativeCallsAreNeverTurnedAway(t *testing.T) {
 	}
 	_, err := resident.Client().Info(t.Context())
 	must(t, err)
+}
+
+// Lifecycle logs are consumed by the Host log and real-runner scenarios. This
+// uses the existing native fixture and waits for the service's end, without polling.
+func TestServiceLifecycleMessages(t *testing.T) {
+	logs := &logCapture{}
+	previous := slog.Default()
+	slog.SetDefault(slog.New(logs))
+	defer slog.SetDefault(previous)
+	root := t.TempDir()
+	r := registry(t, root, "")
+	d, resolver := fixture(t, root, 0)
+	held := lease(t, r, d)
+	resident := acquire(t, r, d, resolver)
+	held.Release()
+	_ = resident.Failure(t.Context(), io.EOF)
+	must(t, r.Close(t.Context()))
+	logs.mu.Lock()
+	defer logs.mu.Unlock()
+	var lifecycle []string
+	for _, line := range logs.lines {
+		if strings.HasPrefix(line, "service "+d.ID+" ") {
+			lifecycle = append(lifecycle, line)
+		}
+	}
+	if len(lifecycle) != 3 || !strings.HasPrefix(lifecycle[0], "service "+d.ID+" started (pid ") || !strings.HasSuffix(lifecycle[0], ")") || lifecycle[1] != "service "+d.ID+" holds no lease or conversation and stops" || lifecycle[2] != "service "+d.ID+" stopped" {
+		t.Fatalf("lifecycle: %q", lifecycle)
+	}
 }

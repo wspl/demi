@@ -44,3 +44,6 @@ func (v Execution) MarshalJSON() ([]byte, error) {
 func ExecutionJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"description\":\"What a session is doing, as a supervisor observes it (`subagents.md`\\n§ `demi agent show`); not the phase that `phase` frames carry.\",\"enum\":[\"idle\",\"provider_streaming\",\"tool_executing\",\"compacting\",\"finalizing\",\"pending_yield\"],\"title\":\"Execution\",\"type\":\"string\"}")
 }
+func ExecutionPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"description\":\"What a session is doing, as a supervisor observes it (`subagents.md`\\n§ `demi agent show`); not the phase that `phase` frames carry.\",\"enum\":[\"idle\",\"provider_streaming\",\"tool_executing\",\"compacting\",\"finalizing\",\"pending_yield\"],\"title\":\"Execution\",\"type\":\"string\"}")
+}

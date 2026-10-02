@@ -111,9 +111,12 @@ type Table struct {
 	once     sync.Once
 	done     chan struct{}
 }
+
+var errTaskKilled = errors.New("task killed")
+
 type taskEntry struct {
 	lifetime  context.Context
-	cancel    context.CancelFunc
+	cancel    context.CancelCauseFunc
 	input     chan process.Input
 	signals   chan runnerwire.Signal
 	following chan struct{}
@@ -172,7 +175,7 @@ func (t *Table) Start(spec TaskSpec) error {
 		t.mu.Unlock()
 		return errors.New("duplicate live task id")
 	}
-	lifetime, cancel := context.WithCancel(t.lifetime)
+	lifetime, cancel := context.WithCancelCause(t.lifetime)
 	entry := &taskEntry{lifetime: lifetime, cancel: cancel, input: make(chan process.Input, 64), signals: make(chan runnerwire.Signal, 16), following: make(chan struct{}, 1)}
 	t.entries[id] = entry
 	t.workers.Add(1)
@@ -220,7 +223,7 @@ func (t *Table) Signal(id WorkID, signal runnerwire.Signal) error {
 		return nil
 	}
 	if signal == runnerwire.SignalKill {
-		entry.cancel()
+		entry.cancel(errTaskKilled)
 		return nil
 	}
 	select {
@@ -314,7 +317,7 @@ func (t *Table) queueInput(id WorkID, input process.Input) error {
 	case entry.input <- input:
 		return nil
 	default:
-		entry.cancel()
+		entry.cancel(nil)
 		return errors.New("live stdin buffer is full")
 	}
 }
@@ -322,7 +325,7 @@ func (t *Table) queueInput(id WorkID, input process.Input) error {
 // own contains one task's failure and publishes completion only after its result.
 func (t *Table) own(id WorkID, spec TaskSpec, entry *taskEntry) {
 	defer t.workers.Done()
-	defer entry.cancel()
+	defer entry.cancel(nil)
 	result, err := func() (frame []byte, err error) {
 		defer func() {
 			if recovered := recover(); recovered != nil {

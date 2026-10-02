@@ -61,6 +61,9 @@ func (v AddArgs) MarshalJSON() ([]byte, error) {
 func AddArgsJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi todo add`.\",\"properties\":{\"text\":{\"type\":\"string\",\"description\":\"Todo text\"}},\"required\":[\"text\"],\"title\":\"AddArgs\",\"type\":\"object\"}")
 }
+func AddArgsPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi todo add`.\",\"properties\":{\"text\":{\"type\":\"string\",\"description\":\"Todo text\"}},\"required\":[\"text\"],\"title\":\"AddArgs\",\"type\":\"object\"}")
+}
 func DecodeDoneArgs(data []byte) (DoneArgs, error) { return contract.Decode[DoneArgs](data) }
 func (v DoneArgs) Validate() error                 { return contractValidateDoneArgs(v, 0) }
 func contractValidateDoneArgs(v DoneArgs, depth int) error {
@@ -115,6 +118,9 @@ func (v DoneArgs) MarshalJSON() ([]byte, error) {
 func DoneArgsJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi todo done`.\",\"properties\":{\"id\":{\"type\":\"string\",\"description\":\"Todo id\"}},\"required\":[\"id\"],\"title\":\"DoneArgs\",\"type\":\"object\"}")
 }
+func DoneArgsPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi todo done`.\",\"properties\":{\"id\":{\"type\":\"string\",\"description\":\"Todo id\"}},\"required\":[\"id\"],\"title\":\"DoneArgs\",\"type\":\"object\"}")
+}
 func DecodeOneTodo(data []byte) (OneTodo, error) { return contract.Decode[OneTodo](data) }
 func (v OneTodo) Validate() error                { return contractValidateOneTodo(v, 0) }
 func contractValidateOneTodo(v OneTodo, depth int) error {
@@ -161,6 +167,9 @@ func (v OneTodo) MarshalJSON() ([]byte, error) {
 }
 func OneTodoJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"description\":\"What the other commands print with `--json`: the todo they changed.\",\"properties\":{\"todo\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"id\":{\"type\":\"string\"},\"text\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":[\"pending\",\"in_progress\",\"done\"]}},\"required\":[\"id\",\"text\",\"status\"]}},\"required\":[\"todo\"],\"title\":\"OneTodo\",\"type\":\"object\"}")
+}
+func OneTodoPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"TodoItem\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"id\":{\"type\":\"string\"},\"text\":{\"type\":\"string\"},\"status\":{\"$ref\":\"#/$defs/TodoStatus\"}},\"required\":[\"id\",\"text\",\"status\"]},\"TodoStatus\":{\"type\":\"string\",\"enum\":[\"pending\",\"in_progress\",\"done\"]}},\"description\":\"What the other commands print with `--json`: the todo they changed.\",\"properties\":{\"todo\":{\"$ref\":\"#/$defs/TodoItem\"}},\"required\":[\"todo\"],\"title\":\"OneTodo\",\"type\":\"object\"}")
 }
 func DecodeTodoItem(data []byte) (TodoItem, error) { return contract.Decode[TodoItem](data) }
 func (v TodoItem) Validate() error                 { return contractValidateTodoItem(v, 0) }
@@ -304,6 +313,9 @@ func (v TodoList) MarshalJSON() ([]byte, error) {
 func TodoListJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"description\":\"What `demi todo list --json` prints.\",\"properties\":{\"todos\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"text\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":[\"pending\",\"in_progress\",\"done\"]}},\"additionalProperties\":false,\"required\":[\"id\",\"text\",\"status\"]}}},\"required\":[\"todos\"],\"title\":\"TodoList\",\"type\":\"object\"}")
 }
+func TodoListPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"TodoItem\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"id\":{\"type\":\"string\"},\"text\":{\"type\":\"string\"},\"status\":{\"$ref\":\"#/$defs/TodoStatus\"}},\"required\":[\"id\",\"text\",\"status\"]},\"TodoStatus\":{\"type\":\"string\",\"enum\":[\"pending\",\"in_progress\",\"done\"]}},\"description\":\"What `demi todo list --json` prints.\",\"properties\":{\"todos\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/TodoItem\"}}},\"required\":[\"todos\"],\"title\":\"TodoList\",\"type\":\"object\"}")
+}
 func DecodeTodoStatus(data []byte) (TodoStatus, error) { return contract.Decode[TodoStatus](data) }
 func (v TodoStatus) Validate() error                   { return contractValidateTodoStatus(v, 0) }
 func contractValidateTodoStatus(v TodoStatus, depth int) error {
@@ -430,4 +442,7 @@ func (v UpdateArgs) MarshalJSON() ([]byte, error) {
 }
 func UpdateArgsJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi todo update`.\",\"properties\":{\"id\":{\"type\":\"string\",\"description\":\"Todo id\"},\"text\":{\"type\":\"string\",\"description\":\"Replacement text\"},\"status\":{\"type\":\"string\",\"enum\":[\"pending\",\"in_progress\",\"done\"],\"description\":\"Replacement status\"}},\"required\":[\"id\"],\"title\":\"UpdateArgs\",\"type\":\"object\"}")
+}
+func UpdateArgsPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"TodoStatus\":{\"type\":\"string\",\"enum\":[\"pending\",\"in_progress\",\"done\"]}},\"additionalProperties\":false,\"description\":\"The input of `demi todo update`.\",\"properties\":{\"id\":{\"type\":\"string\",\"description\":\"Todo id\"},\"text\":{\"type\":\"string\",\"description\":\"Replacement text\"},\"status\":{\"$ref\":\"#/$defs/TodoStatus\",\"description\":\"Replacement status\"}},\"required\":[\"id\"],\"title\":\"UpdateArgs\",\"type\":\"object\"}")
 }

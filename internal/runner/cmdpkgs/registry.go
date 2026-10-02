@@ -3,6 +3,7 @@ package cmdpkgs
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"maps"
 	"sync"
 
@@ -34,6 +35,7 @@ type serviceEntry struct {
 }
 
 type serviceLife struct {
+	service         string
 	stop            context.Context
 	cancel          context.CancelFunc
 	ready           chan struct{}
@@ -145,7 +147,7 @@ func (h *ServiceHandle) Acquire(ctx context.Context, descriptor commandwire.Pack
 	life := entry.current
 	if life == nil {
 		stop, cancel := context.WithCancel(r.stop)
-		life = &serviceLife{stop: stop, cancel: cancel, ready: make(chan struct{}), done: make(chan struct{})}
+		life = &serviceLife{service: descriptor.ID, stop: stop, cancel: cancel, ready: make(chan struct{}), done: make(chan struct{})}
 		entry.current = life
 		r.work.Add(1)
 		go r.live(life, descriptor, artifact, resolver, numbers)
@@ -220,12 +222,18 @@ func (h *ServiceHandle) ReleaseConversation(ctx context.Context, conversation st
 			life.cancel()
 			<-life.done
 		}
+		var reports []func()
 		r.mu.Lock()
 		for digest, entry := range r.entries {
 			entry.changes++
-			r.consider(digest, entry)
+			if report := r.consider(digest, entry); report != nil {
+				reports = append(reports, report)
+			}
 		}
 		r.mu.Unlock()
+		for _, report := range reports {
+			report()
+		}
 		answer <- releaseFailures(failures)
 	}()
 	select {
@@ -333,17 +341,23 @@ func (r *ServiceRegistry) lease(digest string) *ServiceLease {
 	entry.changes++
 	return &ServiceLease{release: sync.OnceFunc(func() {
 		r.mu.Lock()
-		defer r.mu.Unlock()
+		var report func()
+		defer func() {
+			r.mu.Unlock()
+			if report != nil {
+				report()
+			}
+		}()
 		current := r.entries[digest]
 		if current == nil {
 			return
 		}
 		current.leases--
 		current.changes++
-		r.consider(digest, current)
+		report = r.consider(digest, current)
 	})}
 }
-func (r *ServiceRegistry) consider(digest string, entry *serviceEntry) {
+func (r *ServiceRegistry) consider(digest string, entry *serviceEntry) (report func()) {
 	if r.closed {
 		return
 	}
@@ -357,10 +371,12 @@ func (r *ServiceRegistry) consider(digest string, entry *serviceEntry) {
 		return
 	}
 	if life.client == nil {
-		life.cancel()
 		delete(r.entries, digest)
 		r.decisions.add(digest, Stops)
-		return
+		return func() {
+			slog.Info("service " + life.service + " is no longer needed and its start stops")
+			life.cancel()
+		}
 	}
 	if life.checking {
 		return
@@ -373,7 +389,13 @@ func (r *ServiceRegistry) consider(digest string, entry *serviceEntry) {
 		defer r.work.Done()
 		holds, err := serviceStatus(life.stop, life.client)
 		r.mu.Lock()
-		defer r.mu.Unlock()
+		var report func()
+		defer func() {
+			r.mu.Unlock()
+			if report != nil {
+				report()
+			}
+		}()
 		current := r.entries[digest]
 		if r.closed || current != entry || current.current != life {
 			return
@@ -383,15 +405,22 @@ func (r *ServiceRegistry) consider(digest string, entry *serviceEntry) {
 		case entry.leases > 0:
 			r.decisions.add(digest, Leased)
 		case changes != entry.changes:
-			r.consider(digest, entry)
+			report = r.consider(digest, entry)
 		case err != nil:
+			report = func() {
+				slog.Warn("service " + life.service + " did not say which conversations it holds (" + err.Error() + "); it stays")
+			}
 			r.decisions.add(digest, Unanswered)
 		case holds:
 			r.decisions.add(digest, HoldsConversations)
 		default:
-			life.cancel()
+			report = func() {
+				slog.Info("service " + life.service + " holds no lease or conversation and stops")
+				life.cancel()
+			}
 			delete(r.entries, digest)
 			r.decisions.add(digest, Stops)
 		}
 	}()
+	return nil
 }

@@ -6,6 +6,7 @@ package text
 // +demi:format email
 // +demi:msgpack
 // +demi:id
+// +demi:schema-primitive
 type Email string
 
 // +demi:root direction=send output=web
@@ -27,4 +28,5 @@ type Received struct {
 // +demi:format http-url
 // +demi:msgpack
 // +demi:id
+// +demi:schema-primitive
 type EndpointURL string

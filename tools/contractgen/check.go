@@ -236,7 +236,7 @@ func checkMarks(m map[string]string) error {
 		return fmt.Errorf("codec accepts only string")
 	}
 
-	for _, key := range []string{"default", "nullable", "strict", "tolerant", "timestamp", "base64", "table", "schema", "flatten"} {
+	for _, key := range []string{"default", "nullable", "strict", "tolerant", "timestamp", "base64", "table", "schema", "schema-primitive", "flatten"} {
 		if m[key] != "" {
 			return fmt.Errorf("%s takes no arguments", key)
 		}

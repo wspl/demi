@@ -3,8 +3,9 @@
 # Checks that a work package changed nothing outside its write boundary
 # (docs/delivery/go-migration.md § Isolation rules): every path changed on
 # its branch since gomig/main, committed or not, must lie under one of the
-# entries of gomig-ref/briefs/<wp>.boundary and under none of its exclusions,
-# the entries that start with "!". A change to go.mod or go.sum is listed
+# entries of gomig-ref/briefs/<wp>.boundary, the most specific matching entry
+# deciding between an inclusion and an exclusion (an entry starting with
+# "!"). A change to go.mod or go.sum is listed
 # for the review, which checks it against the modules the brief allows.
 #
 # Usage: boundary.sh <work-package>
@@ -43,18 +44,24 @@ main() {
       echo "review: ${path}"
       continue
     fi
-    inside=0
+    # The most specific entry decides: an inclusion inside an exclusion,
+    # such as one file of an excluded directory, admits that path.
+    local included_length=-1 excluded_length=-1
     for entry in "${boundary[@]}"; do
-      if under "${path}" "${entry}"; then
-        inside=1
+      if under "${path}" "${entry}" && ((${#entry} > included_length)); then
+        included_length=${#entry}
       fi
     done
     # bash 3.2 treats an empty array as unset under set -u.
     for entry in ${excluded[@]+"${excluded[@]}"}; do
-      if under "${path}" "${entry}"; then
-        inside=0
+      if under "${path}" "${entry}" && ((${#entry} > excluded_length)); then
+        excluded_length=${#entry}
       fi
     done
+    inside=0
+    if ((included_length > excluded_length)); then
+      inside=1
+    fi
     if ((inside == 0)); then
       echo "outside: ${path}"
       outside=1

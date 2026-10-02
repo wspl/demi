@@ -1,13 +1,11 @@
-// Command demi-runner is awaiting migration to Go.
+// Command demi-runner runs this device as a Demi execution target.
 package main
 
 import (
-	"fmt"
 	"os"
+
+	"github.com/wspl/demi/internal/runner"
+	"github.com/wspl/demi/internal/version"
 )
 
-func main() {
-	// A failed diagnostic write cannot change the required failure exit status.
-	_, _ = fmt.Fprintln(os.Stderr, "demi-runner: not migrated yet")
-	os.Exit(1)
-}
+func main() { os.Exit(runner.Main(version.Release)) }

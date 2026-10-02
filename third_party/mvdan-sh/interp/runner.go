@@ -355,6 +355,10 @@ func (r *Runner) stmt(ctx context.Context, st *syntax.Stmt) {
 	} else {
 		r.stmtSync(ctx, st)
 	}
+	if b, ok := st.Cmd.(*syntax.BinaryCmd); !ok || (b.Op != syntax.Pipe && b.Op != syntax.PipeAll) {
+		r.pipelineStatus = []string{strconv.Itoa(int(r.exit.code))}
+	}
+	r.setVar("PIPESTATUS", expand.Variable{Kind: expand.Indexed, List: r.pipelineStatus})
 	r.lastExit = r.exit
 }
 
@@ -528,7 +532,7 @@ func (r *Runner) cmd(ctx context.Context, cm syntax.Command) {
 				r.stmt(ctx, cm.Y)
 			}
 		case syntax.Pipe, syntax.PipeAll:
-			pr, pw, err := newPipe()
+			pr, pw, err := r.pipe(ctx)
 			if err != nil {
 				r.exit.fatal(err) // not being able to create a pipe is rare but critical
 				return
@@ -553,6 +557,7 @@ func (r *Runner) cmd(ctx context.Context, cm syntax.Command) {
 			pr.Close()
 			wg.Wait()
 			r.stdin = oldIn
+			r.pipelineStatus = append(append([]string{}, r2.pipelineStatus...), r.pipelineStatus...)
 			if r.opts[optPipeFail] && !r2.exit.ok() && r.exit.ok() {
 				r.exit = r2.exit
 			}
@@ -976,8 +981,8 @@ func (r *Runner) stmts(ctx context.Context, stmts []*syntax.Stmt) {
 	}
 }
 
-func (r *Runner) hdocReader(rd *syntax.Redirect) (stdinFile, error) {
-	pr, pw, err := newPipe()
+func (r *Runner) hdocReader(ctx context.Context, rd *syntax.Redirect) (stdinFile, error) {
+	pr, pw, err := r.pipe(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1065,7 +1070,7 @@ func (r *Runner) hdocString(rd *syntax.Redirect) string {
 func (r *Runner) redir(ctx context.Context, rd *syntax.Redirect) (io.Closer, error) {
 	// Note that Hdoc is nil for an empty here-document.
 	if rd.Op == syntax.Hdoc || rd.Op == syntax.DashHdoc {
-		pr, err := r.hdocReader(rd)
+		pr, err := r.hdocReader(ctx, rd)
 		if err != nil {
 			return nil, err
 		}
@@ -1078,15 +1083,14 @@ func (r *Runner) redir(ctx context.Context, rd *syntax.Redirect) (io.Closer, err
 	if rd.N != nil {
 		switch rd.N.Value {
 		case "0":
-			// Note that the input redirects below always use stdin (0)
-			// because we don't support anything else right now.
+			// Explicit standard input.
 		case "1":
 			// The default for the output redirects below.
 		case "2":
 			orig = &r.stderr
 		default:
 			switch rd.Op {
-			case syntax.RdrOut, syntax.AppOut, syntax.RdrInOut, syntax.DplOut:
+			case syntax.RdrOut, syntax.AppOut, syntax.RdrInOut, syntax.DplOut, syntax.RdrIn, syntax.DplIn:
 				extraFD = rd.N.Value
 			default:
 				return nil, fmt.Errorf("unsupported redirect fd: %v", rd.N.Value)
@@ -1096,7 +1100,7 @@ func (r *Runner) redir(ctx context.Context, rd *syntax.Redirect) (io.Closer, err
 	arg := r.literal(rd.Word)
 	switch rd.Op {
 	case syntax.WordHdoc:
-		pr, pw, err := newPipe()
+		pr, pw, err := r.pipe(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -1143,11 +1147,37 @@ func (r *Runner) redir(ctx context.Context, rd *syntax.Redirect) (io.Closer, err
 		syntax.RdrAll, syntax.AppAll:
 		// done further below
 	case syntax.DplIn:
+		var input stdinFile
 		switch arg {
 		case "-":
-			r.stdin = nil // closing the input file
+			if extraFD != "" {
+				delete(r.extraFiles, extraFD)
+				return nil, nil
+			}
+		case "0":
+			input = r.stdin
 		default:
-			return nil, fmt.Errorf("unhandled %v arg: %q", rd.Op, arg)
+			file := r.extraFiles[arg]
+			if file == nil {
+				return nil, fmt.Errorf("unhandled %v arg: %q", rd.Op, arg)
+			}
+			var err error
+			input, err = newStdinFile(file, r.tasks)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if extraFD != "" {
+			if r.extraFiles == nil {
+				r.extraFiles = make(map[string]io.ReadWriteCloser)
+			}
+			file, ok := any(input).(io.ReadWriteCloser)
+			if !ok {
+				file = retainedInput{input}
+			}
+			r.extraFiles[extraFD] = file
+		} else {
+			r.stdin = input
 		}
 		return nil, nil
 	default:
@@ -1317,3 +1347,10 @@ func (r *Runner) access(ctx context.Context, name string, mode AccessMode) error
 	path := absPath(r.Dir, name)
 	return r.accessHandler(r.handlerCtx(ctx, handlerKindAccess, todoPos), path, mode)
 }
+
+// retainedInput preserves read-only shell descriptors on js/wasm, where stdin
+// is not an os.File and therefore has no Write method. Native files stay intact
+// so external programs can inherit their descriptors.
+type retainedInput struct{ stdinFile }
+
+func (retainedInput) Write([]byte) (int, error) { return 0, os.ErrInvalid }
