@@ -74,6 +74,15 @@ func run(ctx context.Context, args []string, output io.Writer) (err error) {
 	if err := linkPrograms(*ref, directory, false); err != nil {
 		return err
 	}
+	// Suites also start Cargo examples, such as the web suite's scripted
+	// machine manager, by their path below the profile directory.
+	examples, err := filepath.Abs(filepath.Join(*ref, "examples"))
+	if err != nil {
+		return err
+	}
+	if err := os.Symlink(examples, filepath.Join(directory, "examples")); err != nil {
+		return fmt.Errorf("link examples: %w", err)
+	}
 	if *programs != "" {
 		if err := linkPrograms(*programs, directory, true); err != nil {
 			return err
