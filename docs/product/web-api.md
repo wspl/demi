@@ -879,9 +879,12 @@ The channel never renews its session; only requests do
 ## A user's plugins
 
 The plugin list is every plugin of the backend, in its order of
-registration, each with `id`, `name`, `description`, `enabled`, and, for a
-plugin that declares a settings schema, `settingsSchema` and the user's
-`settings`. `PUT /api/plugins/:plugin { enabled }` turns a plugin on or off
+registration, each with `id`, `name`, `description`, `enabled`, `methods`,
+the names of its page methods, and `streams`, the names of its user
+streams, and, for a plugin that declares a settings schema,
+`settingsSchema` and the user's `settings`. A method or a stream bound to an
+operation the startup catalog does not serve is not listed, since it does
+not exist ([Calling its command package](../architecture/plugins.md#calling-its-command-package)). `PUT /api/plugins/:plugin { enabled }` turns a plugin on or off
 for the caller and answers 204; the new list and the states of the plugins
 that changed reach every page of the user on the synchronization channel. An
 unknown plugin answers 404 `unknown_plugin`. `PUT /api/plugins/:plugin/settings`

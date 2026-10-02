@@ -6,7 +6,7 @@ import { pageTabKind } from '@demicodes/web-ui/agent/panel-kinds/page'
 import { usePluginHost } from '@demicodes/web-ui/plugins/client'
 import { pluginPanelKinds, type PanelKinds } from '@demicodes/web-ui/plugins/slots'
 import { PLUGIN_PAGES } from '../plugins/pages'
-import { pluginEnabled } from '../plugins/host'
+import { pageShown } from '../plugins/host'
 import { useProduct } from '../state/product'
 import { conversationFileRoutes, fileSource } from '../api/files'
 import { useResources } from '../state/resources'
@@ -56,8 +56,8 @@ const workspace = computed(() => {
 
 /**
  * The plugins' tab kinds for this conversation (`plugins.md` § The page),
- * for as long as the panel is open beside it and the user has each plugin
- * on. A closed panel reads no tab list and holds no view.
+ * for as long as the panel is open beside it and each page is shown. A
+ * closed panel reads no tab list and holds no view.
  */
 const plugins = shallowRef<Required<PanelKinds> | null>(null)
 watch(
@@ -65,7 +65,7 @@ watch(
     [
       props.conversationId,
       state.value.open,
-      PLUGIN_PAGES.map((page) => pluginEnabled(product.snapshot, page.plugin)).join(),
+      PLUGIN_PAGES.map((page) => pageShown(product.snapshot, page)).join(),
     ] as const,
   ([conversationId, open]) => {
     plugins.value?.dispose()
@@ -77,7 +77,7 @@ watch(
     plugins.value = pluginPanelKinds(
       PLUGIN_PAGES,
       host,
-      (plugin) => pluginEnabled(product.snapshot, plugin),
+      (page) => pageShown(product.snapshot, page),
       {
         conversation: conversationId,
         tabs: {
