@@ -28,6 +28,8 @@ pub enum Part {
     Devices,
     Providers,
     Cloud,
+    /// The plugin list: whether the user has each plugin on.
+    Plugins,
     /// A plugin's state, by the plugin's id.
     Plugin(String),
 }

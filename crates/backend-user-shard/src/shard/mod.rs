@@ -13,6 +13,8 @@ mod host;
 mod host_tests;
 mod page_socket;
 mod plugins;
+
+pub use self::plugins::ReloadRefusal;
 mod policy;
 
 pub(crate) use self::page_socket::{PageGone, PageSocket};
@@ -137,7 +139,6 @@ impl Shard {
             services.clone(),
             http.clone(),
             rate_limit,
-            &plugins,
         );
         Self {
             user,

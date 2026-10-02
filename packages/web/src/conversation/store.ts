@@ -145,6 +145,7 @@ export const useConversations = defineStore('conversations', () => {
       | 'cwd'
       | 'titleCurrent'
       | 'titleGenerating'
+      | 'pluginsChanged'
       | 'createdAt'
       | 'updatedAt'
     >,
@@ -164,6 +165,7 @@ export const useConversations = defineStore('conversations', () => {
       unread: record.unread,
       titleCurrent: record.titleCurrent,
       titleGenerating: record.titleGenerating,
+      pluginsChanged: record.pluginsChanged,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     }
@@ -474,6 +476,7 @@ export const useConversations = defineStore('conversations', () => {
           // A conversation the backend has not seen has no message to title.
           titleCurrent: true,
           titleGenerating: false,
+          pluginsChanged: false,
           draftRevision: 0,
           status: 'idle',
           contextVersion: 0,
@@ -963,6 +966,7 @@ export const useConversations = defineStore('conversations', () => {
       unread: false,
       titleCurrent: true,
       titleGenerating: false,
+      pluginsChanged: false,
       draftRevision: 0,
       createdAt: now,
       updatedAt: now,
@@ -1202,6 +1206,22 @@ export const useConversations = defineStore('conversations', () => {
       await loadHosts(conversation)
     } catch (error) {
       report('Could not attach the device', error)
+    }
+  }
+
+  /**
+   * Opens the conversation's tree again with the plugins the user has on
+   * (`web-api.md` § A user's plugins); its socket is closed and reconnects,
+   * and the summary stops offering the reload.
+   */
+  async function reloadPlugins(conversation: Conversation): Promise<void> {
+    try {
+      await apiRequest(
+        `/conversations/${encodeURIComponent(conversation.id)}/reload`,
+        { method: 'POST', signal: lifetime.signal },
+      )
+    } catch (error) {
+      report('Could not reload the conversation', error)
     }
   }
 
@@ -1477,6 +1497,12 @@ export const useConversations = defineStore('conversations', () => {
       changeConversations(
         [conversation.id],
         () => detachHost(conversation, deviceId),
+        undefined,
+      ),
+    reloadPlugins: (conversation: Conversation) =>
+      changeConversations(
+        [conversation.id],
+        () => reloadPlugins(conversation),
         undefined,
       ),
     renameHost: (conversation: Conversation, deviceId: string, name: string) =>

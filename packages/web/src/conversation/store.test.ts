@@ -132,6 +132,7 @@ function record(id: string, title = id): ConversationSummary {
     unread: false,
     titleCurrent: true,
     titleGenerating: false,
+    pluginsChanged: false,
     draftRevision: 0,
     cwd: `/home/demi/sessions/${id}`,
     target: { kind: 'cloud' },

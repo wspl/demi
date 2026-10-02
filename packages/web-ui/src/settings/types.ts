@@ -35,6 +35,14 @@ export interface SettingsDevice {
   seen?: string
 }
 
+/** A plugin as the Plugins page lists it. */
+export interface SettingsPlugin {
+  id: string
+  name: string
+  description: string
+  enabled: boolean
+}
+
 /** An archived conversation as the Archived page lists it. */
 export interface SettingsArchivedConversation {
   id: string

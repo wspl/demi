@@ -12,6 +12,7 @@ use crate::cloud::CloudStatus;
 use crate::conversations::ConversationSummary;
 use crate::devices::DeviceDto;
 use crate::ids::ConversationId;
+use crate::plugins::PluginEntry;
 use crate::providers::ProviderState;
 use crate::settings::{InstanceMode, Preferences};
 use crate::workspaces::WorkspaceDto;
@@ -21,7 +22,8 @@ use crate::workspaces::WorkspaceDto;
 /// workspaces in their order, the user's devices, the paired ones and the
 /// Cloud, the backend's public URL, the summaries of the user's
 /// conversations, the active ones first, then the archived, the Cloud's
-/// status, and the state of each plugin with a page, by its id. The backend
+/// status, the backend's plugins with whether the user has each on, and the
+/// state of each plugin the user has on that gives one, by its id. The backend
 /// reads it for each channel, without waking a Cloud or running inference.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -38,8 +40,10 @@ pub struct ProductState {
     pub public_url: String,
     pub conversations: Vec<ConversationSummary>,
     pub cloud: CloudStatus,
-    /// Each plugin's state for the user's pages, valid against the schema
-    /// its page package's types are generated from.
+    /// The backend's plugins, in their order of registration.
+    pub plugins: Vec<PluginEntry>,
+    /// The state of each plugin the user has on that gives one, valid
+    /// against the schema its page package's types are generated from.
     pub plugin_states: BTreeMap<String, Value>,
 }
 
@@ -75,6 +79,10 @@ pub enum SyncEvent {
     /// The paired devices and the Cloud's.
     Devices {
         devices: Vec<DeviceDto>,
+    },
+    /// The user turned a plugin on or off.
+    Plugins {
+        plugins: Vec<PluginEntry>,
     },
     /// A plugin's state for the user's pages changed.
     Plugin {

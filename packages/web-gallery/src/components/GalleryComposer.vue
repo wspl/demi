@@ -61,6 +61,8 @@ const props = withDefaults(
     upload?: UploadFile
     /** A version of the draft that a later save replaced, which the composer offers to restore. */
     replaced?: string
+    /** Plugins changed since the conversation opened: the composer offers a reload. */
+    pluginsChanged?: boolean
   }>(),
   {
     draft: '',
@@ -94,6 +96,18 @@ interface DraftVersion {
 const replacedVersion = ref<DraftVersion | null>(
   props.replaced ? { text: props.replaced, files: [] } : null,
 )
+/** Whether the reload is offered, and whether one is under way, as the product's summary and store hold them. */
+const pluginsChanged = ref(props.pluginsChanged === true)
+const reloading = ref(false)
+let reloadTimer = 0
+/** Reloads after a beat, as the product's tree closes and reopens; the offer goes. */
+function reloadPlugins() {
+  reloading.value = true
+  reloadTimer = window.setTimeout(() => {
+    reloading.value = false
+    pluginsChanged.value = false
+  }, 600)
+}
 /** Counts the drafts shown from outside, here the restored ones. */
 const shown = ref(0)
 const composer = ref<InstanceType<typeof SessionComposer>>()
@@ -283,6 +297,7 @@ function changeModel(change: ModelSettingsChange) {
   settings.value = applyModelChange(settings.value, change)
 }
 onBeforeUnmount(() => {
+  window.clearTimeout(reloadTimer)
   uploads.cancelAll()
   host.release()
   while (attached.value.length) {
@@ -312,7 +327,10 @@ onBeforeUnmount(() => {
     :usage="props.usage ?? demoUsage"
     :replaced="replacedVersion && { markdown: replacedVersion.text, fileNames: replacedVersion.files.map((file) => file.name) }"
     :draft-shown="shown"
+    :plugins-changed="pluginsChanged"
+    :reloading="reloading"
     remote-files
+    @reload-plugins="reloadPlugins"
     @restore-replaced="restoreReplaced"
     @dismiss-replaced="replacedVersion = null"
     @submit="submit"

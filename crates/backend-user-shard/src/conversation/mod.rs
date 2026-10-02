@@ -42,14 +42,13 @@ use demi_web_api_protocol::ids::UserId;
 pub use self::failure_facts::failure_facts;
 pub use self::fork::{ForkRefusal, recover_forks};
 pub(crate) use self::product::ShardHosts;
-use self::product::{ExecutionContext, INSTRUCTIONS, conversation_commands};
+use self::product::{ExecutionContext, INSTRUCTIONS, ShardToolsets};
 use self::providers::ConversationProviders;
 use self::titles::Titles;
 use self::wakeups::IndexedWakeup;
 pub use self::wakeups::rearm_wakeups;
 use crate::services::Services;
 use crate::shard::Shard;
-use demi_backend_plugins::UserPlugins;
 
 /// What a shard's conversations run on: the agent server and the title
 /// requests, which infer with the same providers.
@@ -69,10 +68,8 @@ pub(crate) fn conversation_parts(
     services: Arc<Services>,
     http: reqwest::Client,
     rate_limit: Rc<RefCell<RequestRateLimit>>,
-    plugins: &UserPlugins,
 ) -> ConversationParts {
     let marks = services.sync.of(&user);
-    let commands = conversation_commands(plugins, shard.clone());
     let stores: TreeStores = {
         let services = services.clone();
         let marks = marks.clone();
@@ -120,9 +117,10 @@ pub(crate) fn conversation_parts(
     let disposals = shard.clone();
     let hosts: Weak<dyn HostShard> = shard.clone();
     let agent = AgentServer::new(ServerDeps {
-        commands: Rc::new(commands),
+        toolsets: Rc::new(ShardToolsets {
+            shard: shard.clone(),
+        }),
         instructions: Rc::from(INSTRUCTIONS),
-        profiles: services.plugins.profiles().into(),
         hosts: Rc::new(ShardHosts {
             shard: shard.clone(),
         }),

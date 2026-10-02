@@ -23,12 +23,12 @@ use demi_agent_session::{Continuation, ForkError, ModelSwitch, SessionConfig, fo
 use demi_agent_store::{
     AgentTreeStore, Checkpoint, CheckpointUpdate, CommandStateHistory, NodeRecord, StoreError,
 };
-use demi_agent_tools::{ContextSource, HostResolver, ShellEnvironmentFactory};
+use demi_agent_tools::{ContextSource, HostResolver, ShellEnvironmentFactory, ToolsetSource};
 use demi_agent_transcript::IdSource;
-use demi_host_interface::{CommandSet, JobCaller, PortError, StorageOp, StorageReply};
+use demi_host_interface::{JobCaller, PortError, StorageOp, StorageReply};
 use demi_provider_common::ProviderRuntime;
 use demi_shared_gates::KeyedSerialGate;
-use demi_shared_types::{BlockId, Clock, ModelSelection, NodeId, Profile, SessionPhase};
+use demi_shared_types::{BlockId, Clock, ModelSelection, NodeId, SessionPhase};
 use futures_util::future::{LocalBoxFuture, join_all};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
@@ -115,14 +115,13 @@ impl Default for ServerConfig {
 /// turns): what every node is assembled from, and the answers it asks for
 /// while a node runs.
 pub struct ServerDeps<H: HostResolver> {
-    /// The commands every node starts from; the server grafts its own
-    /// groups per node.
-    pub commands: Rc<CommandSet>,
+    /// What a tree opens with: the commands every node starts from, on
+    /// which the server grafts its own groups per node, and the named
+    /// subagent profiles.
+    pub toolsets: Rc<dyn ToolsetSource>,
     /// The instructions of every node's system prompt, which a profile's
     /// replace.
     pub instructions: Rc<str>,
-    /// The named subagent profiles.
-    pub profiles: Rc<[Profile]>,
     /// Where a node's shell tools run.
     pub hosts: Rc<H>,
     /// What the model must learn before each request, in this order.
@@ -140,6 +139,11 @@ pub struct ServerDeps<H: HostResolver> {
     /// the live tree).
     pub status_changed: Rc<dyn Fn(&NodeId)>,
 }
+
+/// The conversation's tree works, which a reload does not interrupt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("the conversation's agents are working")]
+pub struct Working;
 
 /// The agent server of one user shard.
 pub struct AgentServer<H: HostResolver> {
@@ -344,6 +348,27 @@ impl<H: HostResolver> AgentServer<H> {
             .create_node(record, initial)
             .await
             .map_err(fork_store)
+    }
+
+    /// The roots of the live trees.
+    pub fn live_roots(&self) -> Vec<NodeId> {
+        self.trees.borrow().keys().cloned().collect()
+    }
+
+    /// Closes the conversation `root`'s live tree, so that it opens again
+    /// with the product's current toolset: its attached connections receive
+    /// `closed` and connect again. A tree that works is not closed; with no
+    /// live tree there is nothing to do.
+    pub async fn reload(&self, root: &NodeId) -> Result<(), Working> {
+        let _turn = self.opening.acquire(root.clone()).await;
+        let Some(tree) = self.tree(root) else {
+            return Ok(());
+        };
+        if !tree.is_quiescent() {
+            return Err(Working);
+        }
+        self.dispose_tree(root, &tree).await;
+        Ok(())
     }
 
     /// Disposes every live tree, then waits for evictions under way.
