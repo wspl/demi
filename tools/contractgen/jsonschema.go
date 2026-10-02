@@ -80,7 +80,7 @@ func (e *schemaEmitter) schema(t types.Type, marks map[string]string) (any, erro
 		}
 		e.active[key] = true
 		defer delete(e.active, key)
-		for _, marker := range []string{"check", "format", "base64"} {
+		for _, marker := range []string{"format", "base64"} {
 			if has(d.marks, marker) {
 				return nil, fmt.Errorf("%s: %s cannot be expressed faithfully in JSON Schema", d.name, marker)
 			}
@@ -102,8 +102,8 @@ func (e *schemaEmitter) schema(t types.Type, marks map[string]string) (any, erro
 				s["oneOf"] = branches
 			}
 		} else if st, ok := g.object(d); ok {
-			// Flattening changes properties, but embedded custom checks still run
-			// in the decoder and must not disappear from schema eligibility.
+			// Flattening changes properties, but embedded declarations must still
+			// be checked for unsupported schema rules.
 			original := d.typ.Underlying().(*types.Struct)
 			for i := 0; i < original.NumFields(); i++ {
 				f := original.Field(i)

@@ -88,11 +88,15 @@ never relax them.
 | `format email`, `format http-url`, `format trimmed` | Named string type; email, HTTP(S) URL or trimmed-text behavior in the supported subset below. |
 | `table` | Package-level variable of a slice of structs or scalars; a constant table emitted with its generated lookups into `tables.ts`, such as the file-type table. Its TypeScript name is SCREAMING_SNAKE case (`PreviewTypes` becomes `PREVIEW_TYPES`). |
 
-A contract type is a type reached from a `root` marker, including the root
-itself. Unreached types are left alone, even in a package that also holds
-runtime types. `schema` and `msgpack` select generated capabilities; they do
-not make an unreached type a boundary. Roots are markers on types, never a
-second registry in the generator.
+A contract type is reached from a `root` or `msgpack` marker, including the
+marked type itself. A standalone `msgpack` marker is a MessagePack root.
+JSON and MessagePack reachability are tracked independently: types reached
+from a `root` get JSON codecs, types reached from a `msgpack` root get
+MessagePack codecs, and types reached from both get both. MessagePack-only
+types still receive validation and union seals, but no JSON codecs or JSON
+union holders. Unreached types are left alone. `schema` selects schema output
+for a retained type; it does not make an unreached type a boundary. Roots are
+markers on types, never a second registry in the generator.
 
 Maps may use `string` or a defined string type such as `core.BlockID` as keys.
 Generated JSON and MessagePack validation runs the key type's own rules on
@@ -285,10 +289,12 @@ for contract packages. Declaration builders may override a property description
 `internal/declare` and `internal/host` own that text, not the type generator.
 No defaults are inferred.
 
-Generation fails with the declaration and field path for reachable `check`,
-normalized string `format`, `base64` and byte-slice rules. The built-in command
-schemas use none of those rules; new uses need an explicit schema mapping
-rather than silently dropping their behavior.
+A `check` function is a rule only Go enforces: schemas omit it, as Rust's
+schemas omit garde's custom rules, so a schema-reachable type may carry one.
+Generation fails with the declaration and field path for reachable normalized
+string `format`, `base64` and byte-slice rules. The built-in command schemas
+use none of those; new uses need an explicit schema mapping rather than
+silently dropping their behavior.
 It also rejects the unsupported shapes and invalid markers described above.
 `schema` takes no arguments and is only a type marker. JSON Schema validates
 parsed values; the generated decoder additionally rejects duplicate keys,
