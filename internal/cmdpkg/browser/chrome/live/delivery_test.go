@@ -98,3 +98,31 @@ func TestDeliveryStallReleasesCaptureWithoutLoweringBudget(t *testing.T) {
 		}
 	})
 }
+
+func TestDeliveryAdaptsImmediatelyAndAfterOneSecond(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		w, stream := deliveryFixture()
+		d := newDelivery()
+		started := time.Now()
+		ticks := d.startTicks(stream, w)
+		defer ticks.Stop()
+		if stream.pace.encoding == nil || stream.pace.encoding.bitrate != 33_177_600 || time.Since(started) != 0 {
+			t.Fatalf("initial adaptation = %+v at %v", stream.pace.encoding, time.Since(started))
+		}
+
+		// Sustained encoder demand must raise quality on the very next tick.
+		d.frames = 60
+		d.bytes = 4_147_200
+		time.Sleep(time.Second - time.Nanosecond)
+		select {
+		case <-ticks.C:
+			t.Fatal("periodic adaptation arrived before one second")
+		default:
+		}
+		<-ticks.C
+		d.tick(stream, w)
+		if stream.pace.encoding.bitrate != 49_766_400 || time.Since(started) != time.Second {
+			t.Fatalf("next adaptation = %+v at %v", stream.pace.encoding, time.Since(started))
+		}
+	})
+}

@@ -289,7 +289,7 @@ func (v *viewer) runView(ctx context.Context, environment *tabs.Environment, hub
 	defer refresh.Stop()
 	refresh.Stop()
 	var refreshAt <-chan time.Time
-	ticks := time.NewTicker(time.Second)
+	ticks := session.delivery.startTicks(session.stream, v.writer)
 	defer ticks.Stop()
 	for {
 		var pictures <-chan picture
