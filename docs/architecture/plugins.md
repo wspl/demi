@@ -11,6 +11,11 @@ core is a plugin: the todo list (`plugin-todo`), the file commands
 and [skills](../agent/skills.md) (`plugin-skills`). The agent runtime, the
 runner and the backend's conversation lifecycle know none of them.
 
+Each user turns plugins on and off in settings, while the backend runs. A
+change never restarts the backend: what the plugin offers a page changes at
+once, and what it gives the agent reaches a conversation when its tree opens
+again ([A user's plugins](#a-users-plugins)).
+
 Every plugin, built in or not, talks to Demi through one contract, and every
 message of that contract is data. Demi's plugins are Rust crates the backend
 links and calls directly. A plugin written with a TypeScript SDK runs as a
@@ -55,8 +60,9 @@ declared.
 
 ## What a plugin contributes
 
-A plugin declares its contributions once, in its **manifest**, when the
-backend starts. What a manifest declares is fixed for the life of the
+A plugin declares its contributions once, in its **manifest**, when it is
+registered. What a manifest declares is fixed while the plugin is
+registered; for a plugin linked into the backend, that is the life of the
 process. What varies by user, conversation or time arrives through requests.
 
 | Contribution | Declared | When Demi asks |
@@ -68,7 +74,9 @@ process. What varies by user, conversation or time arrives through requests.
 | [Host files](#reading-a-conversations-files) | Nothing | The plugin reads them through its port when it needs them |
 | [Package calls and user streams](#calling-its-command-package) | Each user stream's name and the operation it binds | A call: when the plugin makes it. A stream: when a page opens it |
 | [Page state and what it follows](#the-page) | The product changes the plugin's state is read from, such as the user's exposes | When one of them changes, the plugin's part of the product state is marked changed |
-| [Page state and page calls](#the-page) | The state's schema, and each method with its parameter and result schemas | When a page reads the product state; when a page calls a method |
+| [Page state and page calls](#the-page) | The state's schema, and each method with its scope, its parameter and result schemas and the package operations it calls | When a page reads the product state; when a page calls a method |
+| [Settings](#settings) | The schema of the user's settings for it | When the user saves them: the settings page writes them, and the plugin reads them through its port |
+| [Themes](#themes) | Each theme's name and design tokens, as data | Never: the web app applies a theme the user selects |
 
 A plugin declares only what it uses: `plugin-file` declares commands and
 nothing else, and `plugin-skills` declares no command.
@@ -99,17 +107,22 @@ demi                     the plugin host's root
 - `demi agent`, `demi shell` and `demi host` are taken: the agent runtime and
   the product own them.
 - A name taken twice, among the plugins' groups and roots or with a taken
-  name, stops the backend at startup, and so does a declaration the command
-  set refuses. A conflict is never found while a conversation runs.
+  name, refuses the plugins when they are registered, and so does a
+  declaration the command set refuses: for the plugins linked into the
+  backend, it stops the backend at startup. Every registered plugin is
+  checked against every other, so any set of them a user turns on is free of
+  conflicts, and a conflict is never found while a conversation runs.
 - A group with a `native` leaf whose package or operation the startup catalog
   does not serve is left out whole, and the backend logs which. A deployment
   without a browser release therefore offers no `demi browser`, and the
   plugin needs no check of its own.
 
-The set is the same for every user and conversation. A node's set differs from
-it only by the agent runtime's `demi agent` group, which depends on the node
-([Subagents](../agent/subagents.md#model-facing-surface)), and by a profile's
-narrowing ([Profiles](#profiles)).
+The set is the commands of the plugins the user has on, the same for every
+conversation tree that opened with that set ([A user's
+plugins](#a-users-plugins)). A node's set differs from it only by the agent
+runtime's `demi agent` group, which depends on the node
+([Subagents](../agent/subagents.md#model-facing-surface)), and by a
+profile's narrowing ([Profiles](#profiles)).
 
 ### Prompt text and context
 
@@ -123,8 +136,9 @@ the help of the node's commands
 ```
 
 A plugin adds nothing to it but its commands' help, which is fixed in its
-manifest and the same for every user and node, so it changes only with a Demi
-release, which the prompt cache rule allows once per conversation. What a
+manifest. It changes only when the tree opens again with another set of
+plugins, or with a Demi release, which the prompt cache rule allows once per
+conversation. What a
 plugin needs the model to know beyond its commands' help reaches the model as
 a `context` block, and so does anything that differs by user or
 conversation, or changes while a conversation lives
@@ -138,6 +152,11 @@ the id of its current input turn, and answers new text or nothing. Each
 answer becomes one block, tagged with its source. The blocks are appended
 before the request and saved at once, so a request never carries a context
 the transcript does not hold.
+
+A context source is asked only while its user has its plugin on: a plugin
+turned off adds nothing from the next request on, and one turned on is
+asked before the next request of every node, so its text reaches a running
+conversation without a reload.
 
 For example, `plugin-skills` writes the full catalog of the skills that are
 on, and answers again only when the catalog it would write differs from the
@@ -156,8 +175,9 @@ data: a name, a description, optional instructions that replace the
 product's in a child's system prompt, an optional list
 of the command paths a child keeps of its parent's commands, whether its
 children may spawn, and an optional model. Two plugins that declare the same
-profile name stop the backend at startup. No plugin of this repository
-declares a profile.
+profile name are refused when they are registered, as a name taken twice
+among their commands is. A tree offers the profiles of the plugins its user
+had on when it opened. No plugin of this repository declares a profile.
 
 ### Host directories
 
@@ -234,21 +254,26 @@ already offers ([User streams](../execution/native-runtime.md#user-streams)):
   operation's arguments, and answers its JSON result. For example,
   `plugin-browser`'s page method `open` calls `browser.open`, so a tab the
   user opens in the work panel is the tab the agent's `demi browser open`
-  would have made. The plugin says whether the call may wake the Host: one
-  that starts work, such as opening a tab, is ordinary demand through the
-  conversation's host access and wakes a stopped Cloud; one that only looks
-  or ends something, such as listing or closing tabs, uses the form that never
-  wakes a Host, and a stopped Host answers that it is stopped.
+  would have made. A call that starts work is ordinary demand through the
+  conversation's host access and wakes a stopped Cloud; any other uses the
+  form that never wakes a Host, and a stopped Host answers that it is
+  stopped.
 - **A user stream** connects a page to an operation for as long as the page
   keeps it open. The plugin declares it in its manifest, by name, with the
   operation it binds: `plugin-browser` declares `browser`, bound to
   `browser.live`. The page opens it through the backend's one user stream
   route, and the bytes never pass through the plugin.
 
-A plugin calls only the packages its own commands bind, and a stream's name is
-taken once among all plugins, or the backend stops at startup. A stream or a
-call whose package the startup catalog does not serve does not exist, as its
-commands do not.
+A plugin calls only the packages its own commands, streams and page methods
+bind, and a stream's name is taken once among all plugins, or the plugins are
+refused when they are registered. A stream, or a page method one of whose
+operations the startup catalog does not serve, does not exist, as such a
+command group does not. A package call says what it does on the Host, which
+decides whether it wakes a stopped Cloud and whether it is activity
+([Activity](../execution/resource-lifecycle.md#activity)): it **starts** work,
+such as opening a tab, and wakes the Host; it **operates** on what runs
+there, such as closing a tab, which is activity but never wakes; or it
+**looks**, such as listing the tabs, which neither wakes nor is activity.
 
 Together with [Host directories](#host-directories) and
 [reading a conversation's files](#reading-a-conversations-files), these are
@@ -361,23 +386,28 @@ An instance runs on its user's shard thread, so it follows the shard's rules
 
 The plugin host, in `backend-plugins`, runs every plugin of the backend:
 
-- **Registration.** The backend's composition root registers a fixed list of
-  plugins, as it registers the provider families. There is no configuration
-  that turns a plugin on or off, no management and no loading while the
-  backend runs: a plugin is removed from a deployment by removing its line
-  from the composition root. Each plugin has a unique id (`file`, `todo`,
+- **Registration.** The backend's composition root registers the plugins
+  linked into it, as it registers the provider families: these are the
+  plugins the backend offers, and a user turns each on or off ([A user's
+  plugins](#a-users-plugins)). Each plugin has a unique id (`file`, `todo`,
   `browser`, `skills`), which names its values, its part of the product state,
   its directories on a Host and its page route; `execution` is the product's
-  context source and is taken.
-- **Startup.** The host reads every manifest, checks the commands and the
-  profiles ([Commands](#commands), [Profiles](#profiles)), and gives the agent
-  server the command set, the profiles and the context sources. A manifest that breaks a rule stops the backend; its
-  error names the plugin.
+  context source and is taken. Its manifest also carries a name and a
+  one-sentence description, which settings show.
+- **Startup.** The host reads every manifest and checks the commands, the
+  profiles and the streams ([Commands](#commands), [Profiles](#profiles)). A
+  manifest that breaks a rule stops the backend; its error names the plugin.
 - **Shards.** When a user's shard starts, the host asks each factory for that
   user's instance, and wraps each `rpc` leaf of the plugin's commands in a
-  handler that forwards the call to the instance.
+  handler that forwards the call to the instance. While the user has a
+  plugin off, the instance receives no page call and no context request,
+  and is asked for no page state; only the commands of a tree that opened
+  with it on still reach it, until that tree opens again.
+- **The user's plugin set.** The host gives the agent server the commands and
+  the profiles of the plugins the user has on, which a tree takes when it
+  opens, and the context sources, which are asked while their plugin is on.
 - **User streams.** The host holds every plugin's stream declarations, which
-  the user stream route opens by name.
+  the user stream route opens by name while the plugin is on.
 - **What a page state follows.** When a product change a plugin's manifest
   names happens for a user, such as one of the user's exposes being created,
   renewed, destroyed or expiring, the host marks that plugin's part of the
@@ -391,6 +421,74 @@ Plugins are trusted with every user's data. A plugin serves every user of
 the backend, and a shared instance's users trust the deployment with what its
 plugins do. Choosing the plugins is the deployment's decision, made when it is
 built.
+
+## A user's plugins
+
+Each user has each plugin on or off, and every plugin starts on. For
+example, a user who has no use for the conversation browser turns
+`browser` off in settings:
+
+```text
+settings page      PUT /api/plugins/browser { enabled: false }
+  -> plugin host   stores the user's choice; the user's plugin set changes
+  -> sync channel  every page of the user receives the new plugin list: the
+                   browser kind leaves the work panel at once
+open conversation  its tree opened with demi browser; the page shows that
+                   the user's plugins changed and offers a reload
+reload             the tree closes and opens again with the new set: demi
+                   browser is gone from its commands and its system prompt
+```
+
+**When a change takes effect.** A plugin's contributions reach a user's
+conversations at different moments, and each takes effect at the first
+moment that does not change something the model already relies on:
+
+| Contribution | A change takes effect |
+| --- | --- |
+| Page state, page methods, settings, themes | At once: every page of the user receives the new plugin list |
+| Context | Before the next request of every node |
+| Host directories | Before the next job of each conversation: a plugin turned off has its directories removed then |
+| User streams | When a page opens one; an open stream of a plugin turned off ends |
+| Commands and profiles | When a conversation's tree opens: a new conversation, a tree restored after it was disposed, or a reload |
+
+Commands and profiles wait for a tree to open because a tree takes them once:
+a node's command help is part of its system prompt, which is rendered once
+([Prompt text and context](#prompt-text-and-context)), and a child's profile
+is chosen when it is spawned. A change in the middle of a conversation
+would change what the model was told it may run.
+
+**The plugin set.** The plugins a user has on, at one moment, are the user's
+**plugin set**, with a revision that changes whenever the set's commands or
+profiles change. Turning on a plugin that declares neither, such as one
+that contributes only a context source and a settings section, changes the
+set without changing its revision. A tree records the revision it opened
+with.
+
+**Reload.** While a conversation's tree is open with a revision that is not
+the user's current one, the conversation's summary says so, and the page
+offers to reload it. A reload closes the tree and opens it again, as a
+backend restart would; it waits for nothing and is refused while the tree
+works, as an archive is. The conversation's history, queue and children
+are kept; the model's next request is the first with the new commands, and
+the new help reaches it as a changed system prompt, once. A tree that is
+disposed after it has been idle opens with the current set the next time
+anyone opens it, so a reload is never needed for a conversation nobody
+looks at.
+
+**Settings.** The settings page lists every plugin with its name, its
+description and a switch. A plugin that declares a settings schema shows a
+form beneath its switch, which the web app renders from the schema; the
+plugin host validates what the page saves against it, stores it as the
+plugin's settings for the user, and the plugin reads them through its port. A
+plugin that needs more than a form, such as `plugin-skills`, gives the web
+app a settings section of its own ([The page](#the-page)).
+
+**Themes.** A plugin may declare themes: a name, and a value for each design
+token the theme sets, in the light and the dark scheme. A theme is data,
+never code. The web app validates its tokens against those `web-ui` defines,
+lists every theme of the plugins the user has on, and applies the one the
+user selects; one whose plugin is turned off falls back to the default. No
+plugin of this repository declares a theme or a settings schema yet.
 
 ## Built-in plugins
 
@@ -412,7 +510,7 @@ Besides the plugins, the components that carry them are:
 | --- | --- |
 | `plugin-interface` | The contract: factory and instance traits, manifest, requests and replies, the port, the JSON loopback transport for tests |
 | `backend-plugins` | The plugin host: registration and its checks, the command set, profiles and context sources for the agent server, instances, the port's operations, page state and page calls |
-| `backend-user-shard`, `backend-host-access`, `backend-expose`, `backend-http`, `backend` | The product's side: the agent server's dependencies, the execution context source and the product's instructions; the installation of Host directories, the reads of Host files and the package calls; the exposes the `expose` plugin manages, with their relay; the page call routes and the user stream route; the fixed list of plugins |
+| `backend-user-shard`, `backend-host-access`, `backend-expose`, `backend-http`, `backend` | The product's side: the agent server's dependencies, the execution context source and the product's instructions; the installation of Host directories, the reads of Host files and the package calls; the exposes the `expose` plugin manages, with their relay; the page call routes, the plugin switch route and the user stream route; the plugins linked into the backend |
 | `agent-tools`, `agent-server`, `agent-session` | The runtime's side: the rules for its tools in the system prompt, the Host resolver, context sources with their sources and turns, profiles as data |
 | `web-ui`, `web`, `web-gallery` | `PluginClient`, `usePlugin()` and the slots, with the live view, the expose menu and the Skills page as components; the client over HTTP, the sync channel and the user stream route; a fixture client for each plugin package's specimens |
 
@@ -460,9 +558,9 @@ web (product)                        web-gallery
   product: composition, data and handlers. A reusable component or behavior
   belongs to `web-ui`, as the rest of the web app's does.
 
-A page call is `POST /api/plugins/:plugin/calls/:method`, or
-`POST /api/conversations/:id/plugins/:plugin/calls/:method` for a
-conversation, with the parameters as its JSON body
+A page call is `POST /api/plugins/:plugin/calls/:method` for a method of the
+user scope, or `POST /api/conversations/:id/plugins/:plugin/calls/:method`
+for one of the conversation scope, with the parameters as its JSON body
 ([Web API](../product/web-api.md#plugin-calls)). The edge
 authenticates the session, the plugin host validates the parameters against
 the method's declared schema, as a command's arguments are validated
@@ -479,9 +577,14 @@ These are open and are decided with the SDK. None of them changes the
 contract above.
 
 - **Encoding.** How the messages are framed on the process's stdio.
-- **Distribution and configuration.** How a deployment installs an SDK
-  plugin, where its process runs relative to the backend, and how the
-  composition root learns of it; the fixed list of plugins is for linked
-  crates.
+- **Installation.** How an SDK plugin is installed while the backend runs,
+  for the instance or for one user, and where its process runs. Its manifest
+  is checked against every registered plugin when it is installed, and a
+  conflict refuses the installation; the linked plugins are checked at
+  startup.
+- **Isolation.** A plugin that the agent writes for its user, or that comes
+  from outside the repository, runs code nobody reviewed. How its process is
+  confined to its port, and to its own user's data, is decided with the SDK;
+  a linked plugin is trusted.
 - **Its page package.** How a page package from outside the repository is
   built and served to the web app without a computed import in `web`.
