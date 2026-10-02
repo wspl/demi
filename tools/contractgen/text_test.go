@@ -94,3 +94,90 @@ func TestFormatTrimmed(t *testing.T) {
 		t.Fatal("encoded untrimmed name")
 	}
 }
+
+// Ports Rust EndpointUrl's accepted/refused inputs and checks WHATWG storage
+// spelling through both generated codecs and the constructor. CPU budget <1 s.
+func TestFormatHTTPURL(t *testing.T) {
+	if _, err := text.ParseEndpointURL("https://example.test/\xff"); err == nil {
+		t.Fatal("constructed endpoint from invalid UTF-8")
+	}
+	for _, tc := range []struct{ input, want string }{
+		{"https://api.kimi.com/coding/v1", "https://api.kimi.com/coding/v1"},
+		{"http://127.0.0.1:8080", "http://127.0.0.1:8080/"},
+		{"https://example.com:443/v1", "https://example.com/v1"},
+		{"https://bücher.example/v1", "https://xn--bcher-kva.example/v1"},
+		{"http:example.com", "http://example.com/"},
+		{"HTTPS://EXAMPLE.COM:443/a/../v1?query=yes#fragment", "https://example.com/v1?query=yes#fragment"},
+	} {
+		t.Run(tc.input, func(t *testing.T) {
+			wire, err := json.Marshal(tc.input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			value, err := text.DecodeEndpointURL(wire)
+			if err != nil || string(value) != tc.want {
+				t.Fatalf("decode: %q, %v; want %q", value, err, tc.want)
+			}
+			encoded, err := json.Marshal(value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantJSON, err := json.Marshal(tc.want)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(encoded) != string(wantJSON) {
+				t.Fatalf("stored JSON: %s; want %s", encoded, wantJSON)
+			}
+			parsed, err := text.ParseEndpointURL(tc.input)
+			if err != nil || parsed != value {
+				t.Fatalf("constructor: %q, %v", parsed, err)
+			}
+			raw, err := contract.EncodeMsgpack(tc.input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			msg, err := text.DecodeEndpointURLMsgpack(raw)
+			if err != nil || msg != value {
+				t.Fatalf("MessagePack: %q, %v", msg, err)
+			}
+			encoded, err = msg.MarshalMsgpack()
+			if err != nil {
+				t.Fatal(err)
+			}
+			stored, err := contract.DecodeMsgpack[string](encoded)
+			if err != nil || stored != tc.want {
+				t.Fatalf("stored MessagePack: %q, %v", stored, err)
+			}
+		})
+	}
+	for _, input := range []string{"", "api.openai.com/v1", "ftp://example.test/", "file:///etc", "https://", "https://example.com:65536/"} {
+		t.Run("refuse "+input, func(t *testing.T) {
+			wire, err := json.Marshal(input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := text.DecodeEndpointURL(wire); err == nil {
+				t.Fatal("accepted invalid endpoint")
+			}
+			if _, err := text.ParseEndpointURL(input); err == nil {
+				t.Fatal("constructed invalid endpoint")
+			}
+			raw, err := contract.EncodeMsgpack(input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := text.DecodeEndpointURLMsgpack(raw); err == nil {
+				t.Fatal("accepted invalid MessagePack endpoint")
+			}
+		})
+	}
+	for _, input := range []text.EndpointURL{"http://127.0.0.1:8080", "ftp://example.test/"} {
+		if _, err := json.Marshal(input); err == nil {
+			t.Fatalf("encoded noncanonical or invalid endpoint %q", input)
+		}
+		if _, err := input.MarshalMsgpack(); err == nil {
+			t.Fatalf("encoded noncanonical or invalid MessagePack endpoint %q", input)
+		}
+	}
+}

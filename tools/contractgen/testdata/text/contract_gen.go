@@ -62,6 +62,61 @@ func (v Email) MarshalJSON() ([]byte, error) {
 	}
 	return json.Marshal(string(v))
 }
+func ParseEndpointURL(value string) (EndpointURL, error) {
+	{
+		normalized, err := contract.HTTPURL(value)
+		if err != nil {
+			return "", err
+		}
+		value = normalized
+	}
+	v := EndpointURL(value)
+	if err := v.Validate(); err != nil {
+		return "", err
+	}
+	return v, nil
+}
+func DecodeEndpointURL(data []byte) (EndpointURL, error) { return contract.Decode[EndpointURL](data) }
+func (v EndpointURL) Validate() error                    { return contractValidateEndpointURL(v, 0) }
+func contractValidateEndpointURL(v EndpointURL, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if value, err := contract.HTTPURL(string(v)); err != nil {
+		return contract.At("", err)
+	} else if value != string(v) {
+		return contract.At("", fmt.Errorf("text is not canonical"))
+	}
+	if err := contract.Text(string(v), 0, -1, ""); err != nil {
+		return contract.At("", err)
+	}
+	return nil
+}
+func (v *EndpointURL) UnmarshalJSON(data []byte) error {
+	value, err := contract.Decode[string](data)
+	if err != nil {
+		return err
+	}
+	{
+		normalized, err := contract.HTTPURL(value)
+		if err != nil {
+			return err
+		}
+		value = normalized
+	}
+	next := EndpointURL(value)
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v EndpointURL) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	return json.Marshal(string(v))
+}
 func DecodeName(data []byte) (Name, error) { return contract.Decode[Name](data) }
 func (v Name) Validate() error             { return contractValidateName(v, 0) }
 func contractValidateName(v Name, depth int) error {
@@ -213,6 +268,34 @@ func (v *Email) UnmarshalMsgpack(data []byte) error {
 	return nil
 }
 func (v Email) MarshalMsgpack() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	return contract.EncodeMsgpack(string(v))
+}
+func DecodeEndpointURLMsgpack(data []byte) (EndpointURL, error) {
+	return contract.DecodeMsgpack[EndpointURL](data)
+}
+func (v *EndpointURL) UnmarshalMsgpack(data []byte) error {
+	value, err := contract.DecodeMsgpack[string](data)
+	if err != nil {
+		return err
+	}
+	{
+		normalized, err := contract.HTTPURL(value)
+		if err != nil {
+			return err
+		}
+		value = normalized
+	}
+	next := EndpointURL(value)
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v EndpointURL) MarshalMsgpack() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}

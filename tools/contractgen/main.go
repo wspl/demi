@@ -606,7 +606,11 @@ func (g *generator) rules(t types.Type, expr, path string, m map[string]string) 
 		if format == "trimmed" {
 			g.line("if contract.Trim(string(%s))!=string(%s){return contract.At(%s,fmt.Errorf(\"text is not trimmed\"))}", expr, expr, path)
 		} else {
-			g.line("if value,err:=contract.Email(string(%s));err!=nil{return contract.At(%s,err)}else if value!=string(%s){return contract.At(%s,fmt.Errorf(\"text is not canonical\"))}", expr, path, expr, path)
+			helper := "Email"
+			if format == "http-url" {
+				helper = "HTTPURL"
+			}
+			g.line("if value,err:=contract.%s(string(%s));err!=nil{return contract.At(%s,err)}else if value!=string(%s){return contract.At(%s,fmt.Errorf(\"text is not canonical\"))}", helper, expr, path, expr, path)
 		}
 	}
 	if has(m, "base64") {

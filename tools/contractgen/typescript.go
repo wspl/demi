@@ -188,6 +188,8 @@ func (g *generator) tsType(t types.Type, m map[string]string) (string, bool) {
 		code += ".trim()"
 	case "email":
 		code = "z.email().max(254)"
+	case "http-url":
+		code = "z.url({ protocol: z.regexes.httpProtocol })"
 	}
 	if has(m, "timestamp") {
 		code = "z.iso.datetime({ precision: 3 })"

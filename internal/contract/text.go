@@ -2,9 +2,12 @@ package contract
 
 import (
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 	"unicode"
+
+	"github.com/nlnwa/whatwg-url/url"
 )
 
 // Trim removes the whitespace JavaScript and the contract's text types trim.
@@ -30,4 +33,19 @@ func Email(value string) (string, error) {
 		return "", errors.New("must be an email address")
 	}
 	return value, nil
+}
+
+// HTTPURL parses an HTTP(S) endpoint and returns its WHATWG serialization.
+func HTTPURL(value string) (string, error) {
+	if err := Text(value, 0, -1, ""); err != nil {
+		return "", err
+	}
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return "", fmt.Errorf("must be an http or https URL: %w", err)
+	}
+	if (parsed.Scheme() != "http" && parsed.Scheme() != "https") || parsed.Hostname() == "" {
+		return "", errors.New("must be an http or https URL")
+	}
+	return parsed.Href(false), nil
 }

@@ -38,9 +38,12 @@
 // Validation and encoding reject directly constructed noncanonical values.
 // Zod trims trimmed text before bounds, but preserves email case and refuses
 // surrounding whitespace. These sending constraints also apply when a type is
-// received; receive schemas still tolerate unknown object fields. The declared
-// http-url format is currently refused pending a WHATWG URL parser dependency;
-// net/url does not implement the Rust type's parsing and canonicalization.
+// received; receive schemas still tolerate unknown object fields.
+// +demi:format http-url parses HTTP(S) endpoints using WHATWG rules and stores
+// their canonical serialization, including host punycode, default-port removal
+// and a slash for an empty path. Validation and encoding require that canonical
+// spelling. Zod uses z.url({ protocol: z.regexes.httpProtocol }), as the Rust
+// emitter does; its accepted input is canonicalized when decoded by Go.
 //
 // +demi:table on a package-level slice variable emits its literal struct rows
 // into protocol/tables.ts, preserving the variable name and JSON field names.

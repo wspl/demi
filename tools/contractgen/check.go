@@ -138,9 +138,6 @@ func (g *generator) check(p *packages.Package) error {
 	return nil
 }
 func checkMarks(m map[string]string) error {
-	if m["format"] == "http-url" {
-		return fmt.Errorf("http-url requires WHATWG URL parsing; a parser dependency is not yet approved")
-	}
 	if has(m, "format") && m["format"] != "email" && m["format"] != "http-url" && m["format"] != "trimmed" {
 		return fmt.Errorf("format requires email, http-url or trimmed")
 	}

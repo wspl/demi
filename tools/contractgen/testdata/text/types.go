@@ -20,3 +20,9 @@ type ReceivedEmail string
 type Received struct {
 	Email Email `json:"email"`
 }
+
+// +demi:root direction=send output=web
+// +demi:format http-url
+// +demi:msgpack
+// +demi:id
+type EndpointURL string

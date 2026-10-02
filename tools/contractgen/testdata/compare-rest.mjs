@@ -71,4 +71,12 @@ assert.equal(schemas.nameSchema.parse(` ${'😀'.repeat(8)} `), '😀'.repeat(8)
 for (const invalid of ['', ' \ufeff\t\u2003', '😀'.repeat(9)]) {
   assert.equal(schemas.nameSchema.safeParse(invalid).success, false);
 }
-console.log(`Tables: ${paths} paths, model-readable extensions and live frame constants passed; email/trimmed Zod passed${reference ? '; Rust lookups agree' : ''}`);
+// Keep the Rust emitter's z.url form: validation preserves URL input text;
+// the Go boundary stores the canonical serialization.
+for (const input of ['https://api.kimi.com/coding/v1', 'http://127.0.0.1:8080', 'https://example.com:443/v1', 'https://bücher.example/v1']) {
+  assert.equal(schemas.endpointURLSchema.parse(input), input);
+}
+for (const input of ['http:example.com', '', 'api.openai.com/v1', 'ftp://example.test/', 'file:///etc', 'https://', 'https://example.com:65536/']) {
+  assert.equal(schemas.endpointURLSchema.safeParse(input).success, false, input);
+}
+console.log(`Tables: ${paths} paths, model-readable extensions and live frame constants passed; email/trimmed/http-url Zod passed${reference ? '; Rust lookups agree' : ''}`);
