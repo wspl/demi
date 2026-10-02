@@ -318,16 +318,16 @@ Each Demi release pins one Chrome for Testing version. Its release record
 contains official archive URLs, exact sizes and SHA-256 digests for supported
 platforms. Chrome is a resource of the `demi.browser` command package
 ([Bind an exact package](../execution/native-runtime.md#bind-an-exact-package)):
-packaging puts the pinned archive of each target into the package's release,
-and the runner installs it with the program, before the program's first
-start on a Host, and shows its progress to the user like any artifact's
-([Install the selected package](../execution/native-runtime.md#install-the-selected-package)).
+packaging puts the pinned archive of each target into the package's release.
+When a conversation's browser first starts on a Host, the program asks the
+runner for that archive, named by the record it compiles in, and the runner
+installs it like any artifact and shows its progress to the user
+([Install artifacts](../execution/native-runtime.md#install-artifacts)).
 The installation is shared by every conversation and every service of the
 runner. A Cloud image preinstalls the same verified archive at its
-content-addressed path, with its Linux system libraries. The program
-receives the path of the `chrome` executable when it starts and only uses
-it; it never downloads or looks for Chrome, and a program started without
-it fails each operation that needs Chrome. An unsupported platform fails
+content-addressed path, with its Linux system libraries. The program starts
+Chrome only from the path the runner answers; it never downloads or looks for
+Chrome. An unsupported platform fails
 the installation explicitly rather than using a different browser.
 
 ### Native driver

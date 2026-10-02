@@ -371,11 +371,11 @@ The TypeScript tests take the programs from `DEMI_TEST_PROGRAMS`, which
 release acceptance runs the Chrome tests. `DEMI_TEST_CHROME` names the
 executable of an installation of the pinned release that the user running the
 tests can read in full, such as the one a runner installs in its artifact
-cache. A test that starts the browser program names it as the program's
-`chrome` resource; the scenario through the backend installs that release
-into its runner's artifact cache, as the runner installs a download, with
-hard links where the system allows them
-([Install the selected package](../execution/native-runtime.md#install-the-selected-package)):
+cache. A test that drives the browser program answers its request for Chrome
+with that executable, as the runner would; the scenario through the backend
+installs that release into its runner's artifact cache, as the runner
+installs a download, with hard links where the system allows them
+([Install artifacts](../execution/native-runtime.md#install-artifacts)):
 no test downloads Chrome or needs the home. The live view tests decode the H.264
 pictures the view streams with WebCodecs in the Chrome under test, as the page
 does. On Linux the Chrome tests need an ordinary user: Chrome for Testing
