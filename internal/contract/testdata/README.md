@@ -12,3 +12,8 @@ while 128 and 129 do not. In `src/de.rs`, `remaining_depth` starts at 128;
 `check_recursion!` decrements before entering an object or array and refuses
 zero. Scalars consume no recursion budget. This differs from the brief's
 example that 128 containers decode; the runtime follows the Rust source.
+
+`numbers.jsonl` comes from the same command with `-- --numbers`. It pins
+serde_json's integer limits, overflow-to-float behavior, negative zero, float
+notation thresholds, subnormal values and the largest finite double. Go tests
+convert these JSON values to MessagePack and back without running Rust.

@@ -45,6 +45,7 @@ type LanguageTag string
 
 // What a declared command knows beyond its arguments. The backend is its
 // only source; nothing reads it from the environment.
+// +demi:msgpack
 type CommandContext struct {
 	// +demi:pattern ^[A-Za-z0-9_-]{1,64}$
 	Conversation string        `json:"conversation"`
@@ -132,6 +133,7 @@ type ConversationStatus struct {
 
 // A sequence of the conversation that a native service draws numbers from.
 // +demi:enum tab
+// +demi:msgpack
 type ServiceSequence string
 
 // TabSequence assigns conversation browser tab numbers.

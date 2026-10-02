@@ -67,8 +67,16 @@ func (g *generator) emitTS(name string) {
 		return
 	}
 	g.active[name] = true
+	if g.adjacentUnion(d) != nil {
+		g.err = fmt.Errorf("adjacent union variant is not supported in TypeScript")
+		return
+	}
 	var code string
 	if has(d.marks, "union") {
+		if bounds(d.marks["union"])["content"] != "" {
+			g.err = fmt.Errorf("adjacent union is not supported in TypeScript")
+			return
+		}
 		if d.marks["union"] == "untagged" {
 			g.err = fmt.Errorf("untagged union is not supported in TypeScript")
 			return
@@ -203,7 +211,7 @@ func (g *generator) tsType(t types.Type, m map[string]string) (string, bool) {
 	case "http-url":
 		code = "z.url({ protocol: z.regexes.httpProtocol })"
 	}
-	if has(m, "timestamp") {
+	if has(m, "timestamp") && !integerTimestamp(t) {
 		code = "z.iso.datetime({ precision: 3 })"
 	}
 	if has(m, "base64") {
