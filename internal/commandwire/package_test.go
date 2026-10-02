@@ -153,7 +153,7 @@ func TestArtifactLocationRustWire(t *testing.T) {
 				t.Fatalf("location = %#v; want %#v", got, tc.value)
 			}
 			for _, value := range []any{got, commandwire.ArtifactLocationJSON{Value: got}} {
-				encoded, err := json.Marshal(value)
+				encoded, err := contract.EncodeJSON(value)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -201,7 +201,7 @@ func TestRustDescriptorEmptyResources(t *testing.T) {
 				case "null":
 					object["resources"] = json.RawMessage(`null`)
 				}
-				wire, err := json.Marshal(object)
+				wire, err := contract.EncodeJSON(object)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -219,7 +219,7 @@ func TestRustDescriptorEmptyResources(t *testing.T) {
 				if err != nil || got != want {
 					t.Fatalf("descriptor digest = %s, %v; want Rust hash %s", got, err, want)
 				}
-				encoded, err := json.Marshal(p)
+				encoded, err := contract.EncodeJSON(p)
 				if err != nil {
 					t.Fatal(err)
 				}
