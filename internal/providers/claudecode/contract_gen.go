@@ -8,11 +8,11 @@ import (
 	provider "github.com/wspl/demi/internal/provider"
 )
 
-func DecodesecretDocument(data []byte) (secretDocument, error) {
+func decodeSecretDocument(data []byte) (secretDocument, error) {
 	return contract.Decode[secretDocument](data)
 }
-func (v secretDocument) Validate() error { return contractValidatesecretDocument(v, 0) }
-func contractValidatesecretDocument(v secretDocument, depth int) error {
+func (v secretDocument) Validate() error { return contractValidateSecretDocument(v, 0) }
+func contractValidateSecretDocument(v secretDocument, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}

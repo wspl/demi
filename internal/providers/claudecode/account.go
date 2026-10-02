@@ -47,7 +47,7 @@ func (p *Provider) stored(ctx context.Context) (secretDocument, *provider.AuthFa
 	if p.config.Account == nil {
 		return secretDocument{}, &provider.AuthFailure{Family: family, Reason: provider.AuthReasonMissing}
 	}
-	stored, err := provider.ReadSecret(ctx, p.pool.Document(*p.config.Account), DecodesecretDocument)
+	stored, err := provider.ReadSecret(ctx, p.pool.Document(*p.config.Account), decodeSecretDocument)
 	if err != nil {
 		failure := provider.AccountAuthFailure(family, err)
 		return secretDocument{}, &failure
