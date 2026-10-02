@@ -36,6 +36,7 @@ impl Shard {
         let mut conversations = self.conversation_summaries(false).await?;
         conversations.extend(self.conversation_summaries(true).await?);
         let cloud = self.cloud_shard().cloud_status().await?;
+        let plugins = self.plugins().entries().await?;
         let plugin_states = self.plugins().page_states().await?;
         Ok(ProductState {
             user,
@@ -55,6 +56,7 @@ impl Shard {
                 .to_owned(),
             conversations,
             cloud,
+            plugins,
             plugin_states,
         })
     }
@@ -99,6 +101,9 @@ impl Shard {
             },
             Part::Devices => SyncEvent::Devices {
                 devices: self.device_list().await?,
+            },
+            Part::Plugins => SyncEvent::Plugins {
+                plugins: self.plugins().entries().await?,
             },
             Part::Plugin(plugin) => {
                 let Some(state) = self.plugins().page_state(plugin).await? else {

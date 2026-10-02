@@ -280,7 +280,7 @@ The route answers before the upgrade:
 | Answer | When |
 | --- | --- |
 | 403 `forbidden_origin` | The upgrade comes from a page that is not the product's |
-| 404 `unknown_stream` | No stream has that name |
+| 404 `unknown_stream` | No stream has that name, or the user has its plugin off |
 | 426 `upgrade_required` | The request is not a WebSocket upgrade |
 | 409 `conversation_archived` | The conversation is archived |
 | 409 `device_offline` | A paired device has no live runner |
@@ -300,6 +300,7 @@ bytes. It closes the socket when the stream ends, with a code and a reason:
 | 1003 `binary_only` | The page sent a text message |
 | 1011 `host_unreachable` | The Host became unreachable, or a pipe to it failed |
 | 4000 `conversation_changed` | An archive, a target or directory change, or a detach ended the stream |
+| 4001 `plugin_disabled` | The user turned off the plugin that declares the stream |
 
 ## Work panel state
 
@@ -891,8 +892,9 @@ refuses answers 400 `invalid_body`, and a plugin without a settings schema
 
 `POST /api/conversations/:id/reload`, without a body, closes the
 conversation's tree and opens it again with the user's current plugins, and
-answers 204. A conversation socket that was attached to the tree closes with
-1012 `reloaded` and connects again, as after a backend restart. A
+answers 204. A conversation socket that was attached to the tree receives
+`closed` and connects again, as when another page's socket disposed the tree
+([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)). A
 conversation whose tree is not open answers 204 and changes nothing: it opens
 with the current plugins anyway. A tree that works answers 409
 `turn_in_flight`, and an archived conversation 409 `conversation_archived`.

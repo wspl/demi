@@ -32,6 +32,8 @@ export interface Conversation extends SidebarConversation {
   /** No message is newer than the last generated title, and whether a title request is running. */
   titleCurrent: boolean
   titleGenerating: boolean
+  /** The open tree runs with commands of plugins since turned on or off; a reload would change it. */
+  pluginsChanged: boolean
   createdAt: string
   cwd: string
   blocks: Block[]

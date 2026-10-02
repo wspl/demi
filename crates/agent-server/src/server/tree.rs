@@ -58,6 +58,8 @@ pub struct Tree<H: HostResolver> {
     /// creation; a target switch or an archive reserves it.
     admission: ActivityGate,
     profiles: Rc<[Profile]>,
+    /// The revision of the toolset the tree opened with.
+    toolset: Rc<str>,
     store: Rc<dyn AgentTreeStore>,
     clock: Arc<dyn Clock>,
     ids: Rc<dyn IdSource>,
@@ -192,9 +194,18 @@ pub(crate) enum OpenError {
     /// The product's commands cannot take the `demi agent` group.
     #[error("the demi agent commands cannot be added: {0}")]
     Commands(#[from] RegisterError),
+    /// The product could not say what the tree opens with.
+    #[error("the commands the conversation opens with cannot be read: {0}")]
+    Toolset(String),
 }
 
 impl<H: HostResolver> Tree<H> {
+    /// The revision of the toolset the tree opened with, which the product
+    /// compares with its current one.
+    pub fn toolset(&self) -> &str {
+        &self.toolset
+    }
+
     /// Opens the conversation's tree from its store, or creates it, with the
     /// model selection its record holds and a runtime for it; a restored root
     /// switches to that selection at its next provider request. The caller
@@ -206,14 +217,15 @@ impl<H: HostResolver> Tree<H> {
         cwd: &str,
     ) -> Result<(Rc<Self>, Option<Continuation>), OpenError> {
         let deps = &server.deps;
-        let profiles = deps.profiles.clone();
+        let toolset = deps.toolsets.current().await.map_err(OpenError::Toolset)?;
+        let profiles = toolset.profiles.clone();
         if profiles
             .iter()
             .any(|profile| profile.name == Profile::INHERIT)
         {
             return Err(OpenError::ReservedProfile);
         }
-        let inherited = deps.commands.clone();
+        let inherited = toolset.commands.clone();
         let commands = Rc::new(commands::with_runtime_groups(
             &inherited, server, true, &profiles,
         )?);
@@ -297,6 +309,7 @@ impl<H: HostResolver> Tree<H> {
                 lifecycle: TaskTracker::new(),
                 admission,
                 profiles,
+                toolset: toolset.revision,
                 store,
                 clock: deps.clock.clone(),
                 ids: deps.ids.clone(),

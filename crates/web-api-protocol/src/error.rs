@@ -211,6 +211,8 @@ pub enum ErrorCode {
     UnknownPlugin,
     /// The plugin has no page method of that name for the route's scope.
     UnknownPluginMethod,
+    /// The user has the plugin off.
+    PluginDisabled,
     /// The plugin refused the call; `reason` is its own word for why.
     PluginRefused,
     /// The plugin failed, such as a value that does not read or a package

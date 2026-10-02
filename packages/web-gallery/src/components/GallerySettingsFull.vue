@@ -18,6 +18,7 @@ import SettingsGeneral from '@demicodes/web-ui/settings/SettingsGeneral.vue'
 import SettingsKeyboard from '@demicodes/web-ui/settings/SettingsKeyboard.vue'
 import SettingsMcp from '@demicodes/web-ui/settings/SettingsMcp.vue'
 import SettingsNotifications from '@demicodes/web-ui/settings/SettingsNotifications.vue'
+import SettingsPlugins from '@demicodes/web-ui/settings/SettingsPlugins.vue'
 import SettingsSkills from '@demicodes/web-ui/settings/SettingsSkills.vue'
 import type { SettingsMcpDraft, SettingsSkillDraft, SettingsSkillSource } from '@demicodes/web-ui/settings/types'
 import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
@@ -170,6 +171,27 @@ function submitPassword(current: string) {
     passwordPhase.value = { kind: 'done' }
   }, 600)
 }
+
+// A switch waits a beat while it is saved, as the product's does.
+const pluginsPending = ref<string[]>([])
+const pluginTimers = new Set<number>()
+function switchPlugin(id: string, enabled: boolean) {
+  pluginsPending.value.push(id)
+  const timer = window.setTimeout(() => {
+    pluginTimers.delete(timer)
+    pluginsPending.value = pluginsPending.value.filter((pending) => pending !== id)
+    const plugin = s.value.plugins.find((item) => item.id === id)
+    if (plugin) {
+      plugin.enabled = enabled
+    }
+  }, 400)
+  pluginTimers.add(timer)
+}
+onBeforeUnmount(() => {
+  for (const timer of pluginTimers) {
+    window.clearTimeout(timer)
+  }
+})
 
 function addServer(draft: SettingsMcpDraft) {
   s.value.servers.push(
@@ -329,6 +351,13 @@ function resetShortcuts() {
   />
 
   <GallerySettingsProviders v-else-if="tab === 'models'" :state="state" />
+
+  <SettingsPlugins
+    v-else-if="tab === 'plugins'"
+    :plugins="s.plugins"
+    :pending="pluginsPending"
+    @switch="switchPlugin"
+  />
 
   <SettingsMcp
     v-else-if="tab === 'mcp'"
