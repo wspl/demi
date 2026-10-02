@@ -3,9 +3,6 @@
   "description": "The conversation browser plugin's page: its work panel kind.",
   "version": "0.0.0",
   "private": true,
-  "demi": {
-    "plugin": "browser"
-  },
   "type": "module",
   "exports": {
     ".": "./src/index.ts",

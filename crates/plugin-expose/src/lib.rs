@@ -11,8 +11,8 @@ pub mod page;
 use std::rc::Rc;
 
 use demi_plugin_interface::{
-    CommandPlugin, Follows, Manifest, Plugin, PluginError, PluginFactory, PluginId, PluginPort,
-    Reply, Request,
+    CommandPlugin, Manifest, Plugin, PluginError, PluginFactory, PluginId, PluginPort, Reply,
+    Request,
 };
 use futures_util::future::LocalBoxFuture;
 
@@ -33,7 +33,7 @@ impl Expose {
             "Gives a service on one of your hosts a public URL for an hour, with `demi expose`.",
         );
         manifest.commands = commands::commands().manifest_commands();
-        manifest.page = Some(page::page().follows(Follows::Exposes));
+        manifest.page = Some(page::page());
         Self { manifest }
     }
 }

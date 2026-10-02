@@ -280,7 +280,7 @@ impl TestDemi {
                     files: reads.iter().map(|read| host_file(files, read)).collect(),
                 }
             }
-            PortMessage::Changed => {
+            PortMessage::Changed { .. } => {
                 self.changed.set(self.changed.get() + 1);
                 PortAnswer::Done
             }

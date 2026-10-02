@@ -3,7 +3,8 @@
 //! and the menu's two methods.
 
 use demi_plugin_interface::{
-    ExposeRefusal, Method, Page, PluginError, PluginPort, PortFailure, PortRefusal, Scope,
+    ExposeRefusal, Method, Page, PluginError, PluginPort, PortFailure, PortRefusal, Scope, State,
+    Topic,
 };
 use demi_shared_types::{MAX_SAFE_INTEGER, Timestamp};
 use demi_web_api_protocol::exposes::ExposeAddress;
@@ -26,8 +27,7 @@ pub struct ExposeState {
     pub exposes: Vec<ExposeEntry>,
 }
 
-/// An expose as the menu shows it; the host's name is the page's, from the
-/// device it is on.
+/// An expose as the menu shows it, with the name of the device it is on.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ExposeEntry {
@@ -35,6 +35,8 @@ pub struct ExposeEntry {
     #[schemars(range(min = 1, max = MAX_SAFE_INTEGER))]
     pub number: u64,
     pub device_id: DeviceId,
+    /// The device's name, the Cloud's as `Cloud`.
+    pub device_name: String,
     pub address: ExposeAddress,
     pub url: String,
     pub expires_at: Timestamp,
@@ -49,8 +51,8 @@ pub struct ExposeCall {
 }
 
 pub(crate) fn page() -> Page {
-    Page::new()
-        .state::<ExposeState>()
+    Page::new("@demicodes/plugin-expose")
+        .user_state(State::new::<ExposeState>().follows(Topic::Exposes))
         .method(Method::new::<ExposeCall, ()>("renew", Scope::User))
         .method(Method::new::<ExposeCall, ()>("remove", Scope::User))
 }
@@ -64,6 +66,7 @@ pub(crate) async fn state(port: &PluginPort) -> Result<Value, PluginError> {
             id: entry.expose.id,
             number: entry.number,
             device_id: entry.expose.device,
+            device_name: entry.expose.device_name,
             address: entry.expose.address,
             url: entry.expose.url,
             expires_at: entry.expose.expires_at,

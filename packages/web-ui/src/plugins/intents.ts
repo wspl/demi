@@ -14,15 +14,5 @@ export interface IntentPayloads {
 
 export type IntentName = keyof IntentPayloads
 
-/**
- * How a page opens an intent: the pinned kind whose tab shows it, and the
- * data that tab shows next, from the payload and the data it shows now, or
- * null while it has shown nothing yet in this page.
- */
-export interface IntentTarget<Name extends IntentName> {
-  kind: string
-  open(payload: IntentPayloads[Name], current: unknown): unknown
-}
-
-/** The intents one page opens. */
-export type PageIntents = { [Name in IntentName]?: IntentTarget<Name> }
+/** One intent with its payload, as the shell and pages open it. */
+export type IntentRequest = { [Name in IntentName]: { intent: Name; payload: IntentPayloads[Name] } }[IntentName]

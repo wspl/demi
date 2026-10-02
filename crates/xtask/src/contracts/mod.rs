@@ -4,8 +4,11 @@
 //! `z.infer` types into `@demicodes/protocol`,
 //! `packages/web/src/api/generated` and each plugin page package's
 //! `src/generated`, and the plugin page registry of `web` and `web-gallery`.
-//! A schema outside the emitter's subset fails generation and names the type.
+//! A page package's types come from its plugin's manifest, whose schemas
+//! schemars wrote too. A schema outside the emitter's subset fails
+//! generation and names the type.
 
+mod pages;
 mod registry;
 mod roots;
 mod shape;
@@ -61,18 +64,18 @@ pub fn run() -> Result<Vec<PathBuf>, Error> {
     let generated = generate()?;
     let mut written = Vec::new();
     let directories = [
-        (PROTOCOL_DIRECTORY, generated.protocol),
-        (WEB_DIRECTORY, generated.web),
+        (PROTOCOL_DIRECTORY.to_owned(), generated.protocol),
+        (WEB_DIRECTORY.to_owned(), generated.web),
     ]
     .into_iter()
     .chain(generated.plugins)
     .chain(registry::modules(&repository, HEADER)?);
     for (directory, files) in directories {
-        replace_directory(&repository.join(directory), &files)?;
+        replace_directory(&repository.join(&directory), &files)?;
         written.extend(
             files
                 .iter()
-                .map(|(name, _)| Path::new(directory).join(name)),
+                .map(|(name, _)| Path::new(&directory).join(name)),
         );
     }
     Ok(written)
@@ -82,7 +85,7 @@ pub fn run() -> Result<Vec<PathBuf>, Error> {
 type Files = Vec<(&'static str, String)>;
 
 /// A directory, relative to the repository, and the modules it holds.
-type Directory = (&'static str, Files);
+type Directory = (String, Files);
 
 /// The generated files, by name, of each directory.
 struct Generated {
@@ -122,16 +125,7 @@ fn generate() -> Result<Generated, Error> {
     let mut contracts = String::from(HEADER);
     contracts.push_str("import { z } from \"zod\"\n");
     contracts.push_str(&protocol);
-    let plugins = roots::plugins()
-        .into_iter()
-        .map(|output| {
-            let mut files = vec![("plugin.ts", plugin_module(output.roots)?)];
-            for (name, table) in output.tables {
-                files.push((name, table(HEADER)));
-            }
-            Ok((output.directory, files))
-        })
-        .collect::<Result<_, Error>>()?;
+    let plugins = pages::modules()?;
     Ok(Generated {
         protocol: vec![
             ("contracts.ts", contracts),
@@ -140,31 +134,6 @@ fn generate() -> Result<Generated, Error> {
         web: vec![("web-api.ts", source(&web, &web_imports))],
         plugins,
     })
-}
-
-/// A plugin page package's module: the definitions its plugin's `roots`
-/// bring, beside those `@demicodes/protocol` declares, which it imports.
-/// Each plugin's types are generated apart from the web app's, so a package
-/// never imports from `web`.
-fn plugin_module(roots: Vec<Root>) -> Result<String, Error> {
-    let mut generator = SchemaGenerator::default();
-    register(&mut generator, roots::protocol())?;
-    let protocol_names: BTreeSet<String> = generator.definitions().keys().cloned().collect();
-    let plugin_roots = register(&mut generator, roots)?;
-    let definitions = read_definitions(generator.take_definitions(true))?;
-    let received = received(
-        &definitions,
-        plugin_roots
-            .iter()
-            .filter(|(_, direction)| *direction == Direction::Receives),
-    );
-    let names: BTreeSet<String> = definitions
-        .keys()
-        .filter(|name| !protocol_names.contains(*name))
-        .cloned()
-        .collect();
-    let (declarations, imports) = module(&definitions, &received, &names)?;
-    Ok(source(&declarations, &imports))
 }
 
 /// A generated module's text: the header, its imports and `declarations`.

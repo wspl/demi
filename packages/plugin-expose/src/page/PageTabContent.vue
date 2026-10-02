@@ -12,7 +12,7 @@ import { loadPageAddress, pageTabTitle, type PageTabData } from './page-data'
  * a cross-origin page, so history stays unavailable and Refresh reloads the
  * tab's URL.
  */
-const props = defineProps<{ tabId: string; data: PageTabData; shown: boolean }>()
+const props = defineProps<{ conversation: string; tabId: string; data: PageTabData; shown: boolean }>()
 const emit = defineEmits<{ update: [data: PageTabData] }>()
 
 // Scripts, forms and popups work; popups land in ordinary tabs of the user's

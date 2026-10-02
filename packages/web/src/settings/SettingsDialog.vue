@@ -10,9 +10,9 @@ import SettingsPlugins from '@demicodes/web-ui/settings/SettingsPlugins.vue'
 import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
 import type { ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
 import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
-import { pluginSettingsPage, withPluginSections } from '@demicodes/web-ui/plugins/slots'
+import { PageScope, settingsPage, withPluginSections } from '@demicodes/web-ui/plugins/page'
 import { PLUGIN_PAGES } from '../plugins/generated/pages'
-import { pluginEnabled } from '../plugins/host'
+import { pluginEnabled } from '../plugins/enabled'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
@@ -57,8 +57,8 @@ const tab = computed({
     resources.settingsTab = value
   },
 })
-/** The page of the plugin section `tab` names, if one does. */
-const pluginPage = computed(() => pluginSettingsPage(PLUGIN_PAGES, tab.value))
+/** The page whose section `tab` names, if a plugin fills it. */
+const pluginPage = computed(() => settingsPage(PLUGIN_PAGES, tab.value))
 watch(
   [tab, sections],
   () => {
@@ -448,10 +448,10 @@ function resetShortcuts(): void {
       :pending="[...wantedPlugins.keys()]"
       @switch="switchPlugin"
     />
-    <component
-      :is="pluginPage"
-      v-else-if="pluginPage"
-      :overlay-store="appOverlayStore"
+    <PageScope
+      v-else-if="pluginPage?.settings"
+      :page="pluginPage"
+      :component="pluginPage.settings.component"
     />
     <SettingsArchived
       v-else-if="tab === 'archived'"

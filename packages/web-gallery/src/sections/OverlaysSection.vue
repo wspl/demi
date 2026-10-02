@@ -419,6 +419,7 @@ function itemLabel(id: string, list: {
         </GallerySpecimen>
         <GallerySpecimen variant="session tools · live exposes with a countdown; gone with the last one">
           <SessionToolsMenu
+            :overlay-store="appOverlayStore"
             :exposes="sessionExposes"
             :pending-ids="sessionExposePending"
             @open="productWould(`Open ${$event.address} in a work panel browser tab`)"

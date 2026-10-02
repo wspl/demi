@@ -1,8 +1,7 @@
 import { closeTabs } from './tab-close'
 import type { PanelTabKind } from './panel-kinds/kind'
-import type { PluginPage } from '../plugins/slots'
-import { intentTarget } from '../plugins/slots'
-import type { IntentName, IntentPayloads } from '../plugins/intents'
+import { intentKind, type AnyPluginPage, type PanelKind, type PanelSession } from '../plugins/page'
+import type { IntentRequest } from '../plugins/intents'
 
 /**
  * A tab of the work panel: a fact, `{ id, kind, data }`. What its content is
@@ -57,25 +56,39 @@ export function shownSelection(state: PanelState, kinds: readonly PanelTabKind[]
 }
 
 /**
- * The panel after `intent` opened: the target's pinned tab takes the data the
- * page's target gives it and the selection; null when no page the user has on
- * opens the intent.
+ * The panel after `intent` opened (`plugin-pages.md` § Intents): the first
+ * kind of a page the user has on that opens it shows the data it returns, in
+ * its pinned tab or in a new tab, which takes the selection; null when no
+ * such kind opens the intent.
  */
-export function openIntent<Name extends IntentName>(
+export function openIntent(
   panel: { state: PanelState; pinned: PinnedTabs },
-  pages: readonly PluginPage[],
+  pages: readonly AnyPluginPage[],
   enabled: (plugin: string) => boolean,
-  intent: Name,
-  payload: IntentPayloads[Name],
+  request: IntentRequest,
 ): { state: PanelState; pinned: PinnedTabs } | null {
-  const target = intentTarget(pages, enabled, intent)
-  if (!target) {
+  const kind = intentKind(pages, enabled, request.intent)
+  if (!kind) {
     return null
   }
-  const current = Object.hasOwn(panel.pinned, target.kind) ? panel.pinned[target.kind] : null
+  if (!kind.pinned) {
+    const added = addTab(panel.state, { kind: kind.kind, data: opened(kind, request, null) }, { select: true })
+    return { state: added.state, pinned: panel.pinned }
+  }
+  const current = Object.hasOwn(panel.pinned, kind.kind) ? kind.schema.safeParse(panel.pinned[kind.kind]) : null
   return {
-    state: { ...panel.state, selection: target.kind },
-    pinned: { ...panel.pinned, [target.kind]: target.open(payload, current) },
+    state: { ...panel.state, selection: kind.kind },
+    pinned: { ...panel.pinned, [kind.kind]: opened(kind, request, current?.success ? current.data : null) },
+  }
+}
+
+/** The data `kind`'s tab shows for `request`, from what it shows now. */
+function opened(kind: PanelKind<unknown, PanelSession | undefined>, request: IntentRequest, current: unknown): unknown {
+  switch (request.intent) {
+    case 'file':
+      return kind.intents?.file?.(request.payload, current)
+    case 'edit':
+      return kind.intents?.edit?.(request.payload, current)
   }
 }
 

@@ -1,7 +1,14 @@
 import { BrowserTabsError, NEW_TAB_URL, type BrowserTabsApi } from '@demicodes/plugin-browser/live/tabs'
 import type { OpenUserStream } from '@demicodes/web-ui/plugins/streams'
 import type { HostInstall } from '@demicodes/web-ui/devices/installs'
-import { PluginCallError, type PluginHost } from '@demicodes/web-ui/plugins/client'
+import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
+import {
+  PluginCallError,
+  type ConversationFileService,
+  type IntentService,
+  type PageHost,
+  type StateFeed,
+} from '@demicodes/web-ui/plugins/page'
 import { closeTabSchema, navigateTabSchema, openTabSchema, tabHistorySchema } from '@demicodes/plugin-browser'
 import { exposeCallSchema, type ExposeState } from '@demicodes/plugin-expose'
 import {
@@ -12,16 +19,19 @@ import {
   type SkillsState,
   type SourceState,
 } from '@demicodes/plugin-skills'
+import { productWould } from '../product-would'
 
 /**
  * The plugins as the gallery's specimens answer them (`plugins.md` § The
  * page): each over the specimen's own state, so every control of a plugin's
- * slot acts on it the way the backend's plugin would, after a beat where the
+ * page acts on it the way the backend's plugin would, after a beat where the
  * plugin would reach a Host or git.
  */
 export interface GalleryPlugin {
-  /** The state the plugin gives the user's pages, read reactively. */
+  /** The plugin's user state, read reactively. */
   state?(): unknown
+  /** Follows the plugin's state of a conversation, as the product follows it by revision. */
+  followState?(conversation: string): StateFeed
   call(method: string, params: object, conversation: string | null): Promise<unknown>
   /** Its user streams, by name. */
   streams?: Record<string, OpenUserStream>
@@ -29,17 +39,36 @@ export interface GalleryPlugin {
   installs?(): readonly HostInstall[]
 }
 
-/** A host over `plugins`; a plugin it lacks refuses as the backend would. */
-export function galleryPluginHost(plugins: Record<string, GalleryPlugin>): PluginHost {
+/**
+ * The shell's side of a specimen: its conversation's files, its panel and
+ * its intents. A specimen without a panel gives none, and a control that
+ * reaches one says what the product would do.
+ */
+export interface GalleryShell {
+  files?: ConversationFileService
+  panel?: PageHost['panel']
+  intents?: IntentService
+}
+
+/** A page host over `plugins` and the specimen's `shell`; a plugin it lacks refuses as the backend would. */
+export function galleryPageHost(plugins: Record<string, GalleryPlugin>, shell: GalleryShell = {}): PageHost {
+  const fixture = (plugin: string): GalleryPlugin => {
+    const found = plugins[plugin]
+    if (!found) {
+      throw new PluginCallError('unknown_plugin', `No plugin "${plugin}"`)
+    }
+    return found
+  }
   return {
-    state: (plugin) => plugins[plugin]?.state?.(),
-    call: async (plugin, method, params, conversation) => {
-      const fixture = plugins[plugin]
-      if (!fixture) {
-        throw new PluginCallError('unknown_plugin', `No plugin "${plugin}"`)
+    userState: (plugin) => plugins[plugin]?.state?.(),
+    followState: (plugin, conversation) => {
+      const follow = fixture(plugin).followState
+      if (!follow) {
+        throw new PluginCallError('unknown_plugin', `The plugin "${plugin}" has no conversation state`)
       }
-      return fixture.call(method, params, conversation)
+      return follow(conversation)
     },
+    call: async (plugin, method, params, conversation) => fixture(plugin).call(method, params, conversation),
     stream: (name) => {
       for (const plugin of Object.values(plugins)) {
         const stream = plugin.streams?.[name]
@@ -50,6 +79,22 @@ export function galleryPluginHost(plugins: Record<string, GalleryPlugin>): Plugi
       throw new PluginCallError('unknown_stream', `No user stream "${name}"`)
     },
     installs: (plugin) => plugins[plugin]?.installs?.() ?? [],
+    files: () => {
+      if (!shell.files) {
+        throw new Error('The specimen shows no conversation files')
+      }
+      return shell.files
+    },
+    intents: shell.intents ?? {
+      open: (_conversation, request) => productWould(`Open the ${request.intent} in the work panel`),
+      canOpen: () => true,
+    },
+    panel: shell.panel ?? {
+      tabs: () => [],
+      add: (_conversation, kind) => productWould(`Open a ${kind} tab in the work panel`),
+    },
+    openSettings: (section) => productWould(`Open ${section} settings`),
+    overlays: appOverlayStore,
   }
 }
 
@@ -69,8 +114,6 @@ function beat(ms: number): Promise<void> {
 export function browserPlugin(api: BrowserTabsApi): GalleryPlugin {
   async function call(method: string, params: object): Promise<unknown> {
     switch (method) {
-      case 'tabs':
-        return api.list()
       case 'open':
         return { tab: await api.open(openTabSchema.parse(params).url ?? NEW_TAB_URL) }
       case 'close':
@@ -90,6 +133,12 @@ export function browserPlugin(api: BrowserTabsApi): GalleryPlugin {
     return unknownMethod(method)
   }
   return {
+    followState: () => ({
+      value: () => api.tabs.value.value,
+      error: () => null,
+      read: api.tabs.read,
+      stop: () => {},
+    }),
     call: async (method, params) => {
       try {
         return await call(method, params)

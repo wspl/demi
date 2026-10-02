@@ -20,7 +20,7 @@ import SettingsKeyboard from '@demicodes/web-ui/settings/SettingsKeyboard.vue'
 import SettingsMcp from '@demicodes/web-ui/settings/SettingsMcp.vue'
 import SettingsNotifications from '@demicodes/web-ui/settings/SettingsNotifications.vue'
 import SettingsPlugins from '@demicodes/web-ui/settings/SettingsPlugins.vue'
-import { pluginSettingsPage } from '@demicodes/web-ui/plugins/slots'
+import { PageScope, settingsPage } from '@demicodes/web-ui/plugins/page'
 import { PLUGIN_PAGES } from '../generated/pages'
 import type { SettingsMcpDraft } from '@demicodes/web-ui/settings/types'
 import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
@@ -93,8 +93,8 @@ async function resetCloud(operationId: string) {
 }
 
 const s = computed(() => props.state)
-/** The page of the plugin section `tab` names, which reaches the section's plugin host. */
-const pluginPage = computed(() => pluginSettingsPage(PLUGIN_PAGES, props.tab))
+/** The page whose section `tab` names, which reaches the section's page host. */
+const pluginPage = computed(() => settingsPage(PLUGIN_PAGES, props.tab))
 
 // Text size resizes the transcript here as it does in the product.
 watch(() => s.value.general.fontSize, applyTranscriptTextSize, { immediate: true })
@@ -357,10 +357,10 @@ function resetShortcuts() {
     @restart="restartServer"
   />
 
-  <component
-    :is="pluginPage"
-    v-else-if="pluginPage"
-    :overlay-store="appOverlayStore"
+  <PageScope
+    v-else-if="pluginPage?.settings"
+    :page="pluginPage"
+    :component="pluginPage.settings.component"
   />
 
   <SettingsArchived

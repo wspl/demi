@@ -10,7 +10,7 @@
 //! access.
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -24,11 +24,12 @@ use demi_host_interface::{CommandSet, GroupBuilder, PortError, RpcPort};
 use demi_plugin_interface::{
     CallKind, ConversationHost, DirectoryPath, ExposeList, ExposeRecord, HostDirectory, HostFile,
     HostRead, Plugin, PluginError, PluginId, PluginPort, PluginTransport, PortAnswer, PortFailure,
-    PortMessage, PortRefusal, Reply, Request, Scope, StoredValue,
+    PortMessage, PortRefusal, Reply, Request, Scope, StoredValue, Topic,
 };
 use demi_shared_types::{B64Bytes, BlobRef, NodeId, Profile, TurnId};
+use demi_web_api_protocol::conversations::PluginRevision;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, ExposeId, UserId};
-use demi_web_api_protocol::plugins::PluginEntry;
+use demi_web_api_protocol::plugins::{PluginEntry, PluginStateAnswer};
 use futures_util::future::LocalBoxFuture;
 use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
@@ -156,6 +157,11 @@ pub(crate) struct Shared {
     /// Each plugin's Host directories for the user, by its index, once
     /// read: every change goes through this shard.
     directories: RefCell<Option<Vec<Vec<HostDirectory>>>>,
+    /// How many times each plugin's conversation state changed since the
+    /// shard started, by the plugin's index and the conversation; a pair
+    /// without an entry has changed none (`web-api.md` § Conversation state
+    /// of plugins).
+    revisions: RefCell<HashMap<(usize, ConversationId), u64>>,
 }
 
 impl Shared {
@@ -182,6 +188,25 @@ impl Shared {
 
     fn plugin_id(&self, plugin: usize) -> String {
         self.registry.plugins[plugin].id().as_str().to_owned()
+    }
+
+    fn revision(&self, plugin: usize, conversation: &ConversationId) -> u64 {
+        let key = (plugin, conversation.clone());
+        self.revisions.borrow().get(&key).copied().unwrap_or(0)
+    }
+
+    /// Marks plugin `plugin`'s page state of `scope` changed: the user's
+    /// goes to every page of the user; a conversation's raises its revision,
+    /// which the conversation's summary carries.
+    fn changed(&self, plugin: usize, conversation: Option<&ConversationId>) {
+        match conversation {
+            None => self.marks.mark(Part::Plugin(self.plugin_id(plugin))),
+            Some(conversation) => {
+                let key = (plugin, conversation.clone());
+                *self.revisions.borrow_mut().entry(key).or_default() += 1;
+                self.marks.mark(Part::Conversation(conversation.clone()));
+            }
+        }
     }
 
     /// Each plugin's Host directories, by its index.
@@ -268,6 +293,7 @@ impl UserPlugins {
             enabled: RefCell::new(None),
             stream_ends: RefCell::new(stream_ends),
             directories: RefCell::new(None),
+            revisions: RefCell::new(HashMap::new()),
         }))
     }
 
@@ -457,40 +483,104 @@ impl UserPlugins {
         Ok(Some(self.0.stream_ends.borrow()[index].clone()))
     }
 
-    /// The state of each plugin the user has on that gives one, by id, for
-    /// the product state.
+    /// The user state of each plugin the user has on that declares one, by
+    /// id, for the product state.
     pub async fn page_states(&self) -> Result<BTreeMap<String, Value>, PluginError> {
         let enabled = self.enabled().await.map_err(PluginError::failed)?;
         let mut states = BTreeMap::new();
         for (index, registered) in self.0.registry.plugins.iter().enumerate() {
-            if enabled[index] && has_state(registered) {
-                let state = self.state_of(index).await?;
+            if enabled[index] && registered.state(Scope::User).is_some() {
+                let state = self.state_of(index, None, CancellationToken::new()).await?;
                 states.insert(registered.id().as_str().to_owned(), state);
             }
         }
         Ok(states)
     }
 
-    /// The page state of `plugin`; none for a plugin the user has off or
-    /// whose page has none.
+    /// The user state of `plugin`; none for a plugin the user has off or
+    /// whose page declares none.
     pub async fn page_state(&self, plugin: &str) -> Result<Option<Value>, PluginError> {
         let Some((index, registered)) = self.0.registry.plugin(plugin) else {
             return Ok(None);
         };
         let enabled = self.enabled().await.map_err(PluginError::failed)?;
-        if !enabled[index] || !has_state(registered) {
+        if !enabled[index] || registered.state(Scope::User).is_none() {
             return Ok(None);
         }
-        self.state_of(index).await.map(Some)
+        self.state_of(index, None, CancellationToken::new())
+            .await
+            .map(Some)
     }
 
-    async fn state_of(&self, plugin: usize) -> Result<Value, PluginError> {
+    /// The conversation state of `plugin` for `conversation`, with the
+    /// revision it was read at: read after the revision, so a change made
+    /// while it is read raises the revision past it.
+    pub async fn conversation_state(
+        &self,
+        plugin: &str,
+        conversation: ConversationId,
+        cancel: CancellationToken,
+    ) -> Result<PluginStateAnswer, PageCallError> {
+        let Some((index, registered)) = self.0.registry.plugin(plugin) else {
+            return Err(PageCallError::UnknownPlugin(plugin.to_owned()));
+        };
+        if registered.state(Scope::Conversation).is_none() {
+            return Err(PageCallError::UnknownPlugin(plugin.to_owned()));
+        }
+        let enabled = self.enabled().await.map_err(PluginError::failed)?;
+        if !enabled[index] {
+            return Err(PageCallError::Disabled(plugin.to_owned()));
+        }
+        let revision = self.0.revision(index, &conversation);
+        let state = self.state_of(index, Some(conversation), cancel).await?;
+        Ok(PluginStateAnswer { revision, state })
+    }
+
+    /// The revision of each plugin's conversation state for `conversation`,
+    /// for the conversation's summary: every plugin that declares one, so
+    /// turning a plugin on changes no summary.
+    pub fn plugin_revisions(&self, conversation: &ConversationId) -> Vec<PluginRevision> {
+        self.0
+            .registry
+            .plugins
+            .iter()
+            .enumerate()
+            .filter(|(_, registered)| registered.state(Scope::Conversation).is_some())
+            .map(|(index, registered)| PluginRevision {
+                plugin: registered.id().as_str().to_owned(),
+                revision: self.0.revision(index, conversation),
+            })
+            .collect()
+    }
+
+    /// `topic` fired, for the user or for `conversation`: the state of
+    /// each plugin that follows it is marked changed (`plugins.md`
+    /// § Topics).
+    pub fn fire(&self, topic: Topic, conversation: Option<&ConversationId>) {
+        let followers: Vec<usize> = self
+            .0
+            .registry
+            .following(topic)
+            .map(|(index, _)| index)
+            .collect();
+        for plugin in followers {
+            self.0.changed(plugin, conversation);
+        }
+    }
+
+    async fn state_of(
+        &self,
+        plugin: usize,
+        conversation: Option<ConversationId>,
+        cancel: CancellationToken,
+    ) -> Result<Value, PluginError> {
         let request = Request::PageState {
             user: self.0.user.clone(),
+            conversation: conversation.clone(),
         };
         let reply = self
             .0
-            .request(plugin, request, None, None, CancellationToken::new())
+            .request(plugin, request, conversation, None, cancel)
             .await?;
         match reply {
             Reply::State { state } => Ok(state),
@@ -556,13 +646,6 @@ impl UserPlugins {
             .into()),
         }
     }
-}
-
-fn has_state(registered: &crate::registry::Registered) -> bool {
-    registered
-        .page
-        .as_ref()
-        .is_some_and(|page| page.state.is_some())
 }
 
 /// What a node gives a context source before a provider request.
@@ -690,10 +773,12 @@ impl RequestPort {
                     .read_host_files(self.conversation()?, reads, &self.cancel)
                     .await?,
             },
-            PortMessage::Changed => {
-                shared
-                    .marks
-                    .mark(Part::Plugin(shared.plugin_id(self.plugin)));
+            PortMessage::Changed { scope } => {
+                let conversation = match scope {
+                    Scope::User => None,
+                    Scope::Conversation => Some(self.conversation()?),
+                };
+                shared.changed(self.plugin, conversation);
                 PortAnswer::Done
             }
             PortMessage::PackageCall {

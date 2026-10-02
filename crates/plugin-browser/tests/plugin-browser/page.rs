@@ -1,6 +1,7 @@
-//! The tab methods (`live-view.md` § The tab methods): each runs the
-//! browser's own operation as a package call that wakes the Host only to
-//! open a tab, and answers as the page expects.
+//! The tab list and the tab methods (`live-view.md` § The tab methods):
+//! each runs the browser's own operation as a package call that wakes the
+//! Host only to open a tab, answers as the page expects, and each method
+//! marks the tab list changed.
 
 use std::rc::Rc;
 
@@ -28,6 +29,22 @@ fn world(answer: Answer) -> (Rc<dyn Plugin>, Rc<TestDemi>) {
     (loopback(Browser::new().instance()), demi)
 }
 
+fn conversation() -> ConversationId {
+    ConversationId::try_from("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b").unwrap()
+}
+
+/// The plugin's conversation state, the tab list.
+async fn tabs(plugin: &Rc<dyn Plugin>, demi: &Rc<TestDemi>) -> Result<Value, PluginError> {
+    let request = Request::PageState {
+        user: UserId::try_from("u1").unwrap(),
+        conversation: Some(conversation()),
+    };
+    match plugin.call(request, demi.port()).await? {
+        Reply::State { state } => Ok(state),
+        reply => panic!("{reply:?}"),
+    }
+}
+
 async fn call(
     plugin: &Rc<dyn Plugin>,
     demi: &Rc<TestDemi>,
@@ -41,9 +58,7 @@ async fn call(
         user: UserId::try_from("u1").unwrap(),
         method: method.into(),
         params,
-        conversation: Some(
-            ConversationId::try_from("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b").unwrap(),
-        ),
+        conversation: Some(conversation()),
     };
     match plugin.call(request, demi.port()).await? {
         Reply::Result { result } => Ok(result),
@@ -86,7 +101,7 @@ async fn each_method_runs_its_operation_as_a_package_call_that_wakes_the_host_on
         opened,
         json!({ "tab": { "id": "t1", "title": "", "url": "about:blank", "createdBy": { "kind": "user" } } })
     );
-    let listed = call(&plugin, &demi, "tabs", json!({})).await.unwrap();
+    let listed = tabs(&plugin, &demi).await.unwrap();
     assert_eq!(listed["tabs"][0]["id"], json!("t1"));
     for (method, params) in [
         (
@@ -99,6 +114,8 @@ async fn each_method_runs_its_operation_as_a_package_call_that_wakes_the_host_on
     ] {
         assert_eq!(call(&plugin, &demi, method, params).await, Ok(Value::Null));
     }
+    // Every method changed the tab list the pages show: open and the four after it.
+    assert_eq!(demi.changes(), 5);
 
     let calls: Vec<(String, CallKind)> = demi
         .called
@@ -128,10 +145,7 @@ async fn a_stopped_host_lists_no_tabs_and_a_tab_the_browser_lacks_is_closed_alre
         _ => Err(tab_not_found()),
     }));
 
-    assert_eq!(
-        call(&plugin, &demi, "tabs", json!({})).await,
-        Ok(json!({ "tabs": [] }))
-    );
+    assert_eq!(tabs(&plugin, &demi).await, Ok(json!({ "tabs": [] })));
     for tab in ["t9", "not-a-tab"] {
         assert_eq!(
             call(&plugin, &demi, "close", json!({ "tab": tab })).await,
@@ -171,4 +185,7 @@ async fn a_stopped_host_lists_no_tabs_and_a_tab_the_browser_lacks_is_closed_alre
     )
     .await;
     assert_eq!(navigated, Err(PluginError::Port { refusal: stopped() }));
+    // Only the two closes did their work: a refused method changed no tab, so the
+    // pages read nothing again.
+    assert_eq!(demi.changes(), 2);
 }

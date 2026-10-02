@@ -21,8 +21,8 @@ use demi_backend_remote_host::ServiceCallError;
 use demi_command_declarations::NativeOperation;
 use demi_host_interface::PortError;
 use demi_plugin_interface::{
-    CallKind, ConversationHost, ExposeList, ExposeRecord, ExposeRefusal, Follows, HostFile,
-    HostRead, HostRole, PortFailure, PortRefusal,
+    CallKind, ConversationHost, ExposeList, ExposeRecord, ExposeRefusal, HostFile, HostRead,
+    HostRole, PortFailure, PortRefusal,
 };
 use demi_shared_types::{B64Bytes, BlobRef};
 use demi_web_api_protocol::exposes::ExposeAddress;
@@ -233,17 +233,6 @@ impl ProductPort for ShardPort {
                 .await
                 .map_err(expose_failure)
         })
-    }
-}
-
-impl Shard {
-    /// Marks the page state of every plugin that follows the user's exposes
-    /// as changed.
-    pub(crate) fn mark_expose_followers(&self) {
-        let marks = self.services().sync.of(self.user());
-        for plugin in self.services().plugins.followers(Follows::Exposes) {
-            marks.mark(Part::Plugin(plugin.as_str().to_owned()));
-        }
     }
 }
 

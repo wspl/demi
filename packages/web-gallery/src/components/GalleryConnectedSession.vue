@@ -5,7 +5,7 @@ import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import SidebarAccount from '@demicodes/web-ui/sidebar/SidebarAccount.vue'
 import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
 import PluginHeaderTools from '@demicodes/web-ui/plugins/PluginHeaderTools.vue'
-import { providePluginHost } from '@demicodes/web-ui/plugins/client'
+import { providePageHost } from '@demicodes/web-ui/plugins/page'
 import WorkspaceDirectoryMenu from '@demicodes/web-ui/hosts/WorkspaceDirectoryMenu.vue'
 import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -17,7 +17,7 @@ import { WORKSPACE_ROOT } from '../fixtures/workspace'
 import GalleryComposer from './GalleryComposer.vue'
 import { productWould } from '../product-would'
 import { demoExposeState } from '../fixtures/settings'
-import { exposePlugin, galleryPluginHost } from '../fixtures/plugins'
+import { exposePlugin, galleryPageHost } from '../fixtures/plugins'
 import { PLUGIN_PAGES } from '../generated/pages'
 import { useLiveGalleryCommand } from '../live-command'
 import { useTurnFlow } from '../turn-flow'
@@ -79,15 +79,9 @@ const mainHost = computed<HostMenuHost>(() => {
 })
 const attachedHosts = ref<HostMenuHost[]>([])
 // The conversation header's tools come from the plugin packages, over the
-// gallery's expose plugin; its renew waits a beat so the pending state shows.
-providePluginHost(galleryPluginHost({ expose: exposePlugin(reactive(demoExposeState())) }))
-/** A host by its name, the Cloud by the product's, as the product names them. */
-function hostName(id: string): string {
-  if (id === 'managed-device') {
-    return 'Cloud'
-  }
-  return hosts.find((host) => host.id === id)?.label ?? id
-}
+// gallery's expose plugin; its renew waits a beat so the pending state shows,
+// and opening an expose says what the product's panel would do.
+providePageHost(galleryPageHost({ expose: exposePlugin(reactive(demoExposeState())) }))
 const locked = computed(() => session.phase !== 'idle' || session.archived)
 async function selectFolder(deviceId: string, path: string): Promise<boolean> {
   folder.value = {
@@ -176,10 +170,7 @@ function detach(id: string): void {
           <PluginHeaderTools
             :pages="PLUGIN_PAGES"
             :enabled="() => true"
-            conversation-id="shared-product-session"
-            :host-name="hostName"
-            @open-tab="productWould('Open the expose in a work panel page tab')"
-            @manage-devices="productWould('Open devices settings')"
+            conversation="shared-product-session"
           />
         </template>
         <template #composer

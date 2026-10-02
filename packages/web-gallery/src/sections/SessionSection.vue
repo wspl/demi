@@ -15,17 +15,13 @@ import { provideEditSelection } from '@demicodes/web-ui/agent/edit-selection'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import type { ConversationFiles } from '@demicodes/web-ui/markdown/types'
 import GalleryWorkPanel from '../components/GalleryWorkPanel.vue'
-import { useGalleryWork } from '../fixtures/work-panel'
-import type { ConversationFileService } from '@demicodes/web-ui/plugins/slots'
+import { galleryFiles, useGalleryWork } from '../fixtures/work-panel'
 import { changePath, firstChangeData, goBack as changeBack, goForward as changeForward, showChange } from '@demicodes/plugin-changes/data'
 import { addTab, emptyPanelState, removeTabs, selectInPanel, selectedTab, updateTab, type PanelState } from '@demicodes/web-ui/agent/panel-tabs'
 import type { PanelTabKind } from '@demicodes/web-ui/agent/panel-kinds/kind'
 import { pageTabKind } from '@demicodes/plugin-expose/page/page'
 import { exposePageTab } from '@demicodes/plugin-expose/page/page-data'
 import { browserTabDataSchema, type BrowserTabsApi } from '@demicodes/plugin-browser/live/tabs'
-import { pluginPanelKinds } from '@demicodes/web-ui/plugins/slots'
-import { browserPage } from '@demicodes/plugin-browser'
-import { browserPlugin, galleryPluginHost } from '../fixtures/plugins'
 import { callChangeSource, type CallEditSelection, type ChangeMode, type ChangeSources } from '@demicodes/web-ui/files/changes'
 import ChangeView from '@demicodes/web-ui/files/ChangeView.vue'
 import FileView from '@demicodes/web-ui/files/FileView.vue'
@@ -162,21 +158,15 @@ function useWorkTabs(
     pictures?: () => Promise<boolean>
   } = {},
 ) {
-  const work = useGalleryWork(selection, { files: galleryFiles, tabs, pictures })
+  const work = useGalleryWork(selection, { files, tabs, pictures })
   if (path) {
-    work.openIn('file', { path: `${workspace.root}/${path}` })
+    work.openIn({ intent: 'file', payload: { path: `${workspace.root}/${path}` } })
     work.select(selection)
   }
   return work
 }
 const workspace = createGalleryWorkspace()
-/** The gallery workspace as the work panel's kinds read a conversation's files. */
-const galleryFiles: ConversationFileService = {
-  workspace: { source: workspace.source, root: workspace.root },
-  root: workspace.root,
-  changes: workspace.changes,
-  readCallChange: readGalleryEdit,
-}
+const files = galleryFiles(workspace)
 const fileViewTree = ref(true)
 const changeViewTree = ref(true)
 const fileViewMode = ref<'preview' | 'source'>('preview')
@@ -238,7 +228,7 @@ const panelWork = useWorkTabs('change', { tabs: galleryBrowserTabs([], { install
 const sessionFiles: ConversationFiles = {
   imageUrl: (path) => workspace.source.contents.url(path),
   open: (path) => {
-    panelWork.openIn('file', { path })
+    panelWork.openIn({ intent: 'file', payload: { path } })
     panelAsideOpen.value = true
     view.value = 'panel'
   },
@@ -285,14 +275,13 @@ const shownBrowserTab = computed(() => {
   const parsed = tab?.kind === 'browser' ? browserTabDataSchema.safeParse(tab.data) : null
   return parsed?.success ? (parsed.data.tab ?? null) : null
 })
-/** Closes the page behind the panel's back, as the agent's `close` would, and reads the list the way a finished tool call does. */
+/** Closes the page behind the panel's back, as the agent's `close` would; the tab list follows as the plugin's state. */
 async function closeOnDevice() {
   const tab = shownBrowserTab.value
   if (tab === null) {
     return
   }
   await browserWork.tabs.close(tab)
-  browserWork.refresh()
 }
 // The same conversation browser, viewed in a web browser that cannot decode H.264, such as a Chromium without
 // proprietary codecs.

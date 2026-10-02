@@ -3,7 +3,6 @@
 //! (`contracts.md` § Generated TypeScript). Every type they refer to is
 //! emitted with them.
 
-use demi_command_package_browser_protocol::live;
 use demi_conversation_socket_protocol as frames;
 use demi_shared_types as core;
 use demi_web_api_protocol as api;
@@ -86,6 +85,7 @@ pub fn web() -> Vec<Root> {
         receives::<settings::UserPreferences>(),
         sends::<settings::PreferencesPatch>(),
         sends::<plugins::PluginSwitch>(),
+        receives::<plugins::PluginStateAnswer>(),
         sends::<providers::CreateProvider>(),
         sends::<providers::ProviderPatch>(),
         receives::<providers::ProviderAnswer>(),
@@ -152,59 +152,5 @@ pub fn web() -> Vec<Root> {
         sends::<drafts::DraftSave>(),
         sends::<drafts::ReplacedDraftAction>(),
         receives::<drafts::DraftAnswer>(),
-    ]
-}
-
-/// A plugin page package's generated directory: the types of its plugin's
-/// state, parameters, results and streams (`plugin-pages.md` § Types), and
-/// the constant tables it shares with its Rust side, each a file of its own.
-pub struct PluginOutput {
-    pub directory: &'static str,
-    pub roots: Vec<Root>,
-    pub tables: Vec<Table>,
-}
-
-/// A constant table's file name, and its module's source from the header.
-pub type Table = (&'static str, fn(&str) -> String);
-
-pub fn plugins() -> Vec<PluginOutput> {
-    use demi_plugin_browser::page as browser;
-    use demi_plugin_expose::page as expose;
-    use demi_plugin_skills as skills;
-    vec![
-        PluginOutput {
-            directory: "packages/plugin-browser/src/generated",
-            roots: vec![
-                receives::<browser::BrowserTabs>(),
-                sends::<browser::OpenTab>(),
-                receives::<browser::OpenedTab>(),
-                sends::<browser::CloseTab>(),
-                sends::<browser::NavigateTab>(),
-                sends::<browser::TabHistory>(),
-                receives::<live::LiveModuleMessage>(),
-                sends::<live::LiveViewerMessage>(),
-            ],
-            tables: vec![("live.ts", super::tables::live_module)],
-        },
-        PluginOutput {
-            directory: "packages/plugin-expose/src/generated",
-            roots: vec![
-                receives::<expose::ExposeState>(),
-                sends::<expose::ExposeCall>(),
-            ],
-            tables: Vec::new(),
-        },
-        PluginOutput {
-            directory: "packages/plugin-skills/src/generated",
-            roots: vec![
-                receives::<skills::SkillsState>(),
-                sends::<skills::AddSource>(),
-                receives::<skills::AddedSource>(),
-                sends::<skills::SourceCall>(),
-                sends::<skills::SetEnabled>(),
-                sends::<skills::SetSourceEnabled>(),
-            ],
-            tables: Vec::new(),
-        },
     ]
 }

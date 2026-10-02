@@ -751,8 +751,9 @@ the revision of the conversation's
 [draft](#conversation-drafts), 0 before its first save: the page reads the
 draft itself only when this number is higher than the revision it holds, so a
 summary carries no draft's text. `pluginRevisions` does the same for each
-plugin's [conversation state](#conversation-state-of-plugins), by plugin id,
-for the plugins the user has on that declare one. `workingTreeRevision`
+plugin's [conversation state](#conversation-state-of-plugins), as
+`{ plugin, revision }` for every plugin that declares one, in registration
+order, so turning a plugin on or off changes no summary. `workingTreeRevision`
 rises each time a job of the conversation ends, since any job may change the
 working tree; it is counted in memory from the backend's start, as
 `pluginRevisions` is, and the page lists the working tree again when it rises
@@ -923,7 +924,7 @@ does. For example, the agent runs `demi browser open https://example.com/` in
 conversation `c_81`. When that job ends, the `browser` plugin's conversation
 state, the tab list, follows the `jobs` topic, so its revision rises from 6 to
 7, and every page of the user receives the conversation's summary with
-`pluginRevisions: { "browser": 7 }`. A page that shows `c_81` and holds
+`pluginRevisions: [{ "plugin": "browser", "revision": 7 }]`. A page that shows `c_81` and holds
 revision 6 reads the state:
 
 ```text

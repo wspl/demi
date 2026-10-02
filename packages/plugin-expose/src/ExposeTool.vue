@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { z } from 'zod'
+import { usePage } from '@demicodes/plugin-sdk'
 import SessionToolsMenu from './SessionToolsMenu.vue'
 import type { ExposeMenuEntry } from './types'
 import { pageTabKind } from './page/page'
 import { exposePageTab } from './page/page-data'
-import { usePlugin } from '@demicodes/plugin-sdk'
-import { reportError } from '@demicodes/plugin-sdk'
 import { exposeStateSchema, type ExposeCall } from './generated/plugin'
 import { menuEntries } from './entries'
 
@@ -16,18 +15,11 @@ import { menuEntries } from './entries'
  * tab of the work panel, and renew and remove, whose outcome comes back with
  * the state. With no expose it shows nothing.
  */
-const props = defineProps<{
-  conversationId: string
-  hostName: (id: string) => string
-}>()
+const props = defineProps<{ conversation: string }>()
 
-const emit = defineEmits<{
-  openTab: [kind: string, data: unknown]
-  manageDevices: []
-}>()
-
-const plugin = usePlugin('expose', exposeStateSchema)
-const entries = computed(() => menuEntries(plugin.state.value?.exposes ?? [], props.hostName))
+const page = usePage()
+const state = page.plugin.state(exposeStateSchema)
+const entries = computed(() => menuEntries(state.value?.exposes ?? []))
 
 /** The exposes with a call in flight. */
 const pending = ref<string[]>([])
@@ -40,10 +32,10 @@ async function call(method: 'renew' | 'remove', id: string, couldNot: string): P
   }
   pending.value = [...pending.value, id]
   try {
-    await plugin.call(method, { expose: id } satisfies ExposeCall, z.null(), { signal: lifetime.signal })
+    await page.plugin.call(method, { expose: id } satisfies ExposeCall, z.null(), { signal: lifetime.signal })
   } catch (error) {
     if (!lifetime.signal.aborted) {
-      reportError(couldNot, error, { userVisible: true })
+      page.errors.report(couldNot, error)
     }
   } finally {
     pending.value = pending.value.filter((value) => value !== id)
@@ -51,17 +43,18 @@ async function call(method: 'renew' | 'remove', id: string, couldNot: string): P
 }
 
 function open(expose: ExposeMenuEntry): void {
-  emit('openTab', pageTabKind.kind, exposePageTab(expose))
+  page.panel.add(props.conversation, pageTabKind.kind, exposePageTab(expose), { select: true })
 }
 </script>
 
 <template>
   <SessionToolsMenu
+    :overlay-store="page.overlays"
     :exposes="entries"
     :pending-ids="pending"
     @open="open"
     @renew="(id) => call('renew', id, 'Could not renew expose')"
     @remove="(id) => call('remove', id, 'Could not remove expose')"
-    @manage-devices="emit('manageDevices')"
+    @manage-devices="page.settings.open('devices')"
   />
 </template>

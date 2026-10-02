@@ -9,10 +9,9 @@ import GallerySection from '../components/GallerySection.vue'
 import GallerySettingsFull from '../components/GallerySettingsFull.vue'
 import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
 import { createSettingsState } from '../fixtures/settings'
-import { galleryPluginHost, skillsPlugin } from '../fixtures/plugins'
+import { galleryPageHost, skillsPlugin } from '../fixtures/plugins'
 import { PLUGIN_PAGES } from '../generated/pages'
-import { providePluginHost } from '@demicodes/web-ui/plugins/client'
-import { withPluginSections } from '@demicodes/web-ui/plugins/slots'
+import { providePageHost, withPluginSections } from '@demicodes/web-ui/plugins/page'
 import { useGalleryView } from '../gallery-views'
 
 const { view } = useGalleryView()
@@ -72,7 +71,7 @@ const account = { name: 'Zan' }
 const full = createSettingsState()
 // The plugins' sections reach the fixture's skills plugin, and show while the
 // fixture's Plugins page has their plugin on, as the product's do.
-providePluginHost(galleryPluginHost({ skills: skillsPlugin(full.skills) }))
+providePageHost(galleryPageHost({ skills: skillsPlugin(full.skills) }))
 const sections = computed(() =>
   withPluginSections(SETTINGS_SECTIONS, PLUGIN_PAGES, (plugin) =>
     full.plugins.some((entry) => entry.id === plugin && entry.enabled),

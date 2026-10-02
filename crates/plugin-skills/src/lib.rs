@@ -134,8 +134,8 @@ pub struct SetSourceEnabled {
 }
 
 fn page() -> Page {
-    Page::new()
-        .state::<SkillsState>()
+    Page::new("@demicodes/plugin-skills")
+        .user_state(demi_plugin_interface::State::new::<SkillsState>())
         .method(Method::new::<AddSource, AddedSource>(
             "add_source",
             Scope::User,
@@ -318,7 +318,7 @@ impl State {
             Err(failure) if sources::conflict(&failure) => return Err(taken()),
             Err(failure) => return Err(failure.into()),
         }
-        port.changed().await?;
+        port.changed(Scope::User).await?;
         Ok(id)
     }
 
@@ -361,7 +361,7 @@ impl State {
     async fn directories_changed(&self, port: &PluginPort) -> Result<(), PluginError> {
         let all = sources::read(port).await?;
         port.set_directories(sources::directories(&all)).await?;
-        port.changed().await?;
+        port.changed(Scope::User).await?;
         Ok(())
     }
 
@@ -380,7 +380,7 @@ impl State {
             state.fetching.borrow_mut().remove(&id);
             // A page that misses this change reads the state again when it
             // reconnects.
-            if let Err(error) = port.changed().await {
+            if let Err(error) = port.changed(Scope::User).await {
                 tracing::warn!(source = %id, %error, "the pages did not learn of a fetch's end");
             }
         });
@@ -395,7 +395,7 @@ impl State {
         id: &str,
         stop: Arc<AtomicBool>,
     ) -> Result<(), PluginError> {
-        port.changed().await?;
+        port.changed(Scope::User).await?;
         let (source, _) = sources::read_one(port, id).await?;
         let origin = Origin::parse(&source.origin)
             .map_err(|message| PluginError::failed(format!("a stored origin: {message}")))?;

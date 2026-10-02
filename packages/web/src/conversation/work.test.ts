@@ -83,12 +83,12 @@ test('a retained edit opens in the Change view with the panel, only while the ch
   }
   // Off, nothing opens the edit: the transcript's pills are no controls.
   expect(work.canOpen('edit')).toBe(false)
-  work.openIn('a', 'edit', edit)
+  work.openIn('a', { intent: 'edit', payload: edit })
   expect(state.open).toBe(false)
 
   product.snapshot = productState({ plugins: [{ ...changes, enabled: true }] })
   expect(work.canOpen('edit')).toBe(true)
-  work.openIn('a', 'edit', edit)
+  work.openIn('a', { intent: 'edit', payload: edit })
   await nextTick()
   expect(readLocalState('one').workPanelOpen?.a).toBe(true)
   // The edit takes the selection in the Change view's pinned tab; nothing is saved over a panel that was never read.

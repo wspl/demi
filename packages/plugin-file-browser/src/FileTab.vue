@@ -8,7 +8,7 @@ const mode = ref<'preview' | 'source'>('preview')
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { FileView, joinPath, relativePath, treeLayout, type ConversationFileService } from '@demicodes/plugin-sdk'
+import { FileView, joinPath, relativePath, treeLayout, usePage } from '@demicodes/plugin-sdk'
 import { goBack, goForward, showFile, type FileData } from './data'
 
 /**
@@ -18,12 +18,15 @@ import { goBack, goForward, showFile, type FileData } from './data'
  * Back returns to it.
  */
 const props = defineProps<{
+  conversation: string
+  tabId: string
   data: FileData
-  files: ConversationFileService
+  shown: boolean
 }>()
 const emit = defineEmits<{ update: [data: FileData] }>()
 
-const workspace = computed(() => props.files.workspace)
+const files = usePage().files(props.conversation)
+const workspace = computed(() => files.workspace)
 
 function absolute(root: string, path: string): string {
   return path.startsWith('/') ? path : joinPath(root, path)

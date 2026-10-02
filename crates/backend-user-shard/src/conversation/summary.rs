@@ -70,6 +70,8 @@ impl Shard {
             Some(tree) => tree.toolset() != self.plugins().revision().await?,
             None => false,
         };
+        let plugin_revisions = self.plugins().plugin_revisions(&record.id);
+        let working_tree_revision = self.working_tree_revision(&record.id);
         Ok(ConversationSummary {
             unread: facts.revision > record.read_revision,
             title_current: record.user_messages <= record.titled_messages,
@@ -89,6 +91,8 @@ impl Shard {
             status,
             revision: facts.revision,
             draft_revision: record.draft_revision,
+            plugin_revisions,
+            working_tree_revision,
         })
     }
 }

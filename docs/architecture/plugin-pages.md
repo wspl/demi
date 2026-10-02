@@ -118,7 +118,8 @@ its plugins. These are the slots there are; a slot joins the SDK when a
 feature needs it, not before.
 
 A slot's component receives as props only what that slot is about: a header
-tool its `conversation`, a kind's content its `tabId`, `data` and `shown`, a
+tool its `conversation`; a kind's content its `conversation`, its page's
+panel `session` of that conversation, its `tabId`, `data` and `shown`; a
 settings section nothing. Everything else it reaches through
 [`usePage()`](#the-page-context).
 
@@ -131,11 +132,11 @@ calls.
 
 | Part | Gives | Supplied by `web` over |
 | --- | --- | --- |
-| `plugin` | The plugin's user state and its user calls; `plugin.conversation(id)` its conversation state, its conversation calls, its user streams and the installs of its packages on the conversation's main Host ([Data a page shows](#data-a-page-shows)) | The sync channel, the plugin call routes, the user stream route |
-| `intents` | Opening an [intent](#intents), and whether any page the user has on opens it | The shell |
-| `panel` | Adding a tab of one of the page's own kinds to a conversation's panel | The shell |
+| `plugin` | The plugin's user state and its user calls; `plugin.conversation(id)` its conversation state, its conversation calls, its user streams and the installs of its packages on the conversation's main Host ([Data a page shows](#data-a-page-shows)) | The sync channel, the conversation state route, the plugin call routes, the user stream route |
+| `intents` | Opening an [intent](#intents) for a conversation, as `{ intent, payload }`, and whether any page the user has on opens it | The shell |
+| `panel` | The tabs of the page's own kinds in a conversation's panel, and adding one, selected with the panel opened or not | The shell |
 | `settings` | Opening a section of the settings dialog, such as Devices | The shell |
-| `errors` | Reporting an error the user sees | The shell |
+| `errors` | Reporting an error the user sees, or a defect of the page, which only the console shows | The shell |
 | `overlays` | The overlay store a dialog or menu opens in | The shell |
 | `files(conversation)` | The conversation's [files service](#the-conversation-files-service) | The file routes |
 
@@ -151,14 +152,14 @@ its tabs.
 | --- | --- |
 | `kind` | Its id, unique across plugins; the panel refuses a duplicate |
 | `schema` | The schema of a tab's `data`, checked where saved state enters the page |
-| `title(data)`, `mark` | The tab's title and its strip mark (props: `data`) |
-| `content` | The tab's content (props: `tabId`, `data`, `shown`; emits `update` with the next `data`, and `close`) |
+| `title(data, tab)`, `mark` | The tab's title, from its data and its conversation and panel session, and its strip mark (props: `data`) |
+| `content` | The tab's content (props: `conversation`, `session`, `tabId`, `data`, `shown`; emits `update` with the next `data`, and `close`) |
 | `create` | Whether the strip's new-tab control offers it, with its label, icon and a new tab's `data` |
 | `pinned` | The kind has one tab in every conversation's panel, ahead of the user's tabs, never created, closed or saved; its data starts from the data this gives and lives in the page's memory; its id is the kind's id |
 | `picked(data)` | What a tab shows next when its user picks it in the strip, even while it is selected: the Change view returns to Uncommitted ([Delivery to the conversation](../execution/edit-tracking.md#delivery-to-the-conversation)) |
-| `badge` | What the strip shows after a pinned tab's title, such as the Change view's counts (props: `data`) |
+| `badge` | What the strip shows after a pinned tab's title, such as the Change view's counts (props: `conversation`, `data`) |
 | `intents` | The [intents](#intents) it opens: for each, the data its tab shows next, from the payload and the data the tab shows now, or none |
-| `removed(data, conversation)` | What the kind does when its user closes a tab of it, such as closing the browser's tab |
+| `removed(data, tab)` | What the kind does when its user closes a tab of it, such as closing the browser's tab through the panel session |
 
 Because a kind is data on the page, the panel knows every kind of every page
 the user has on before it opens, and an intent can open a kind while the panel
@@ -169,11 +170,14 @@ is closed.
 Some kinds need something running for a conversation while its panel is open:
 the `browser` page keeps the conversation's one live view, and adds a panel
 tab for each tab the agent opened. A page's `panel` makes that for a
-conversation, with that conversation's context, when the conversation's panel
-opens with the plugin on, and ends it when the panel closes, shows another
-conversation or the plugin turns off. The page's kind contents of that
-conversation reach it through `usePage()`. A session reads the tabs of the
-page's own kinds and adds tabs of them; it holds nothing the panel saves.
+conversation, with the page's context, when the conversation's panel opens
+with the plugin on, and ends it when the panel closes, shows another
+conversation or the plugin turns off. It runs in an effect scope of its own,
+so what it follows stops with it, and its `dispose`, if it has one, is called
+then. The page's kinds of that conversation receive it: their functions as
+`tab.session`, their contents as the `session` prop. A session reads the tabs
+of the page's own kinds and adds tabs of them; it holds nothing the panel
+saves.
 
 ## Intents
 
@@ -217,12 +221,12 @@ it changed; no page polls, and no page guesses when to read again.
   topic it follows fires: the user's exposes for the expose menu, a
   conversation's jobs ending for the browser's tabs, which the agent's
   commands open and close ([Topics](plugins.md#topics)).
-- **Product services keep themselves fresh.** The conversation's files
-  service lists the working tree again when the conversation's working-tree
-  revision rises, after a job that changed files, and when the page is shown
-  again, since the user may have changed files outside Demi meanwhile. A page
-  that shows the files reads the service, and never decides when to read
-  again.
+- **Product services keep themselves fresh.** While a component that shows
+  the working tree says so with `showChanges()`, the conversation's files
+  service lists it again when the conversation's working-tree revision
+  changes, after any job ended, and when the page is shown again, since the
+  user may have changed files outside Demi meanwhile. A page that shows the
+  files reads the service, and never decides when to read again.
 
 ## The conversation files service
 
@@ -236,13 +240,14 @@ for whichever page shows them. `usePage().files(conversation)` gives:
 | `root` | Where the conversation's work runs, which a retained edit's paths are relative to |
 | `changes` | The working tree's uncommitted changes: the list, each file's two sides and the committed contents, with whether a listing is on its way or failed |
 | `edit(copies)` | The two sides of one call's retained edit |
+| `showChanges()` | The calling component shows the working tree: the service keeps `changes` fresh until the component's scope ends ([Data a page shows](#data-a-page-shows)) |
 
 `changes` and `file-browser` show these; any other page may read them.
 
 ## The plugin kit
 
 The SDK's components are a kit, chosen as a set rather than by what one page
-happened to use, and the gallery shows each under the kit's own heading:
+happened to use, and the SDK's entry exports them by these groups:
 
 | Group | Components |
 | --- | --- |
@@ -250,7 +255,7 @@ happened to use, and the gallery shows each under the kit's own heading:
 | Controls | `Button`, `IconButton`, `Switch`, `TextInput`, `Dropdown`, `Menu`, `MenuItem`, `MenuGroup`, `MenuDivider`, `Popover`, `Tooltip`, `Dialog`, `Fold`, `FoldChevron`, `ExternalLink` |
 | Progress | `IndeterminateSpinner`, `HostInstalls` |
 | Navigation | `AddressBar` |
-| Files | `FileIcon`, `FileView`, `ChangeView` |
+| Files | `FileIcon`, `FileView`, `ChangeView`, and the shapes and paths the conversation files service gives |
 | Icons | `ICON_PX`, the icon sizes, and Demi's own icons, such as `GlobePlus` |
 | Composables | `useTimeRemaining` and its formatter |
 | Streams | The liveness helpers a stream's protocol uses to tell a silent stream, and the waits before opening one again |

@@ -113,6 +113,26 @@ pub struct ConversationSummary {
     /// this is higher than the revision it holds.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub draft_revision: u64,
+    /// The revision of each plugin's conversation state, in registration
+    /// order (`web-api.md` § Conversation state of plugins): a page reads a
+    /// state only when its revision is higher than the one it holds.
+    #[garde(dive)]
+    pub plugin_revisions: Vec<PluginRevision>,
+    /// How many of the conversation's jobs ended since the backend started:
+    /// a page lists the working tree again when it changes (`web-api.md`
+    /// § File text and working tree changes).
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub working_tree_revision: u64,
+}
+
+/// The revision of one plugin's state for a conversation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PluginRevision {
+    #[garde(skip)]
+    pub plugin: String,
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub revision: u64,
 }
 
 /// A conversation's model settings (`models.md` § A conversation's model

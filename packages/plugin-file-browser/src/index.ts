@@ -3,14 +3,8 @@
 // the files messages name.
 import { defineComponent, h, type PropType } from 'vue'
 import { File } from '@lucide/vue'
-import {
-  FileIcon,
-  ICON_PX,
-  baseName,
-  type PanelKindsContext,
-  type PanelTabKind,
-  type PluginPage,
-} from '@demicodes/plugin-sdk'
+import { FileIcon, ICON_PX, baseName, definePage, type PanelKind } from '@demicodes/plugin-sdk'
+import { PLUGIN } from './generated/plugin'
 import FileTab from './FileTab.vue'
 import { fileDataSchema, firstFileData, showFile, type FileData } from './data'
 
@@ -22,45 +16,20 @@ const FileMark = defineComponent({
     : h(File, { size: ICON_PX.markIn28 }),
 })
 
-/** The `file` kind of one conversation's panel, over its files service. */
-function fileKind(context: PanelKindsContext): PanelTabKind<FileData> {
-  const content = defineComponent({
-    props: {
-      tabId: { type: String, required: true },
-      data: { type: Object as PropType<FileData>, required: true },
-      shown: { type: Boolean, required: true },
-    },
-    emits: { update: (_data: FileData) => true },
-    setup: (props, { emit }) => () =>
-      h(FileTab, {
-        data: props.data,
-        files: context.files,
-        onUpdate: (data: FileData) => emit('update', data),
-      }),
-  })
-  return {
-    kind: 'file',
-    schema: fileDataSchema,
-    title: (data) => data.path ? `File: ${baseName(data.path)}` : 'File',
-    mark: FileMark,
-    content,
-    pinned: { data: firstFileData },
-  }
-}
-
-/** What the tab shows now, or its first data while it has shown nothing. */
-function current(data: unknown): FileData {
-  const parsed = fileDataSchema.safeParse(data)
-  return parsed.success ? parsed.data : firstFileData()
-}
-
-export const fileBrowserPage: PluginPage = {
-  plugin: 'file-browser',
-  panelKinds: (context) => ({ kinds: [fileKind(context)] }),
+/** The `file` kind: the File view over the conversation's files service. */
+export const fileKind: PanelKind<FileData> = {
+  kind: 'file',
+  schema: fileDataSchema,
+  title: (data) => data.path ? `File: ${baseName(data.path)}` : 'File',
+  mark: FileMark,
+  content: FileTab,
+  pinned: { data: firstFileData },
   intents: {
-    file: { kind: 'file', open: (payload, data) => showFile(current(data), payload.path) },
+    file: (payload, current) => showFile(current ?? firstFileData(), payload.path),
   },
 }
+
+export const fileBrowserPage = definePage({ plugin: PLUGIN, kinds: [fileKind] })
 
 /** The page the registry imports (`plugin-pages.md` § Registration). */
 export default fileBrowserPage

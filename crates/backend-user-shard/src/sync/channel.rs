@@ -12,7 +12,7 @@ use std::rc::Rc;
 use axum::extract::ws::{CloseFrame, Message, Utf8Bytes, WebSocket, close_code};
 use demi_backend_database::accounts::TokenHash;
 use demi_backend_page_sync::{Part, Registration};
-use demi_plugin_interface::Follows;
+use demi_plugin_interface::Topic;
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::state::SyncEvent;
@@ -241,7 +241,7 @@ impl Channel<'_> {
         self.shard
             .services()
             .plugins
-            .followers(Follows::Exposes)
+            .followers(Topic::Exposes)
             .map(|plugin| Part::Plugin(plugin.as_str().to_owned()))
             .collect()
     }

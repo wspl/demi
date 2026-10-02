@@ -3,8 +3,7 @@
  * Delivery): WebCodecs decodes the Host's H.264, the page shows the newest
  * frame it has, and tells the module what it showed.
  */
-import { LIVE_VIDEO_CODEC } from '../generated/live'
-import { reportError } from '@demicodes/plugin-sdk'
+import { LIVE_VIDEO_CODEC } from '../generated/plugin'
 import type { LiveVideoFrame } from './frames'
 import type { PictureSink } from './session'
 
@@ -25,7 +24,7 @@ export interface PictureHandlers {
  * the Host's H.264 (`live-view.md` § A browser tab in the panel). A Chromium
  * built without proprietary codecs has a `VideoDecoder`, but not for H.264.
  */
-export async function picturesSupported(): Promise<boolean> {
+export async function picturesSupported(defect: (message: string, error: unknown) => void): Promise<boolean> {
   if (typeof VideoDecoder !== 'function') {
     return false
   }
@@ -34,7 +33,7 @@ export async function picturesSupported(): Promise<boolean> {
     return supported === true
   } catch (error) {
     // A web browser refuses to consider only a config it takes for malformed: this page's defect, and no view either way.
-    reportError('The live view asked about a decoder config the browser refuses', error)
+    defect('The live view asked about a decoder config the browser refuses', error)
     return false
   }
 }

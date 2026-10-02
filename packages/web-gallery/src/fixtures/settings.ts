@@ -56,6 +56,7 @@ export function demoExposeState(): ExposeState {
       id: expose.id,
       number: index + 1,
       deviceId: devices[expose.hostName]!,
+      deviceName: expose.hostName,
       address: expose.address,
       url: expose.url,
       expiresAt: expose.expiresAt,

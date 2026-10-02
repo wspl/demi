@@ -8,7 +8,7 @@ import { MenuDivider } from '@demicodes/plugin-sdk'
 import { MenuGroup } from '@demicodes/plugin-sdk'
 import { MenuItem } from '@demicodes/plugin-sdk'
 import { Tooltip } from '@demicodes/plugin-sdk'
-import { appOverlayStore } from '@demicodes/plugin-sdk'
+import type { OverlayStore } from '@demicodes/plugin-sdk'
 import ExposeMenuItem from './ExposeMenuItem.vue'
 import { EXPOSE_ICON } from './types'
 import type { ExposeMenuEntry } from './types'
@@ -21,6 +21,7 @@ import type { ExposeMenuEntry } from './types'
  * its icon carries a green dot, so a forgotten URL is visible in the header.
  */
 const props = defineProps<{
+  overlayStore: OverlayStore
   /** Soonest expiry first, as the snapshot orders them. */
   exposes: ExposeMenuEntry[]
   /** Expose ids with a renew or remove request in flight. */
@@ -54,7 +55,7 @@ function manageDevices() {
   <Dropdown
     v-if="exposes.length"
     v-model:open="open"
-    :overlay-store="appOverlayStore"
+    :overlay-store="overlayStore"
     placement="bottom-end"
   >
     <template #trigger>
