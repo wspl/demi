@@ -1,6 +1,7 @@
 package commandwire
 
-// ArtifactForm describes how downloaded bytes are installed.
+// How an artifact is installed: one executable file, or a zip archive
+// unpacked, whose entry is the file its user starts.
 // +demi:union tag=kind
 //
 //sumtype:decl
@@ -21,7 +22,8 @@ type ArtifactArchive struct {
 
 func (*ArtifactArchive) artifactForm() {}
 
-// ArtifactInstall requests installation for an invocation.
+// An artifact to install for `invocation`: its line's name and its version
+// for the user, its bytes' SHA-256 and size, and its form.
 type ArtifactInstall struct {
 	// +demi:length chars min=1 max=200
 	Invocation string `json:"invocation"`
@@ -36,21 +38,24 @@ type ArtifactInstall struct {
 	Form ArtifactForm `json:"form"`
 }
 
-// ArtifactsInstalled asks for the installed artifacts of a release line.
+// Which artifacts of the line `name` the Host has.
 type ArtifactsInstalled struct {
 	// +demi:length chars min=1 max=100
 	Name string `json:"name"`
 }
 
-// ArtifactRequest carries exactly one installation or inventory request.
+// One request a service writes as a standard output record: `id`, its own,
+// unique among its requests in flight, and either an install or a question.
 // +demi:check validateArtifactRequest
+// +demi:root
 type ArtifactRequest struct {
 	ID        uint64              `json:"id"`
 	Install   *ArtifactInstall    `json:"install,omitempty"`
 	Installed *ArtifactsInstalled `json:"installed,omitempty"`
 }
 
-// InstalledArtifact identifies installed bytes and their entry path.
+// One artifact of a line the Host has: its version and SHA-256, and the
+// absolute path of the file or of the archive's entry.
 type InstalledArtifact struct {
 	// +demi:length chars min=1
 	Version string `json:"version"`
@@ -60,8 +65,10 @@ type InstalledArtifact struct {
 	Path string `json:"path"`
 }
 
-// ArtifactAnswer carries exactly one path, inventory, or failure.
+// The answer to request `id`, one input chunk: a path, the line's
+// artifacts, or why there is neither.
 // +demi:check validateArtifactAnswer
+// +demi:root
 type ArtifactAnswer struct {
 	ID uint64 `json:"id"`
 	// +demi:length chars min=1

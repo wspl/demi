@@ -2,10 +2,13 @@ package commandwire
 
 import "encoding/json"
 
-// Select contract files explicitly: framing.go contains behavior-only types.
-//go:generate go run ../../tools/contractgen -- invocation.go edits.go package.go artifacts.go validation.go
+//go:generate go run ../../tools/contractgen
 
-// CommandCaller identifies who started the command.
+// Who started the work: an agent, by its number in the conversation as the
+// model knows it (`runtime.md` § Identifiers the model sees), or the
+// conversation's user through a user stream. `User` is a struct variant so
+// that unknown fields are refused: serde ignores them for a unit variant of
+// an internally tagged enum.
 // +demi:union tag=kind
 //
 //sumtype:decl
@@ -25,7 +28,9 @@ type UserCaller struct{}
 
 func (*UserCaller) commandCaller() {}
 
-// CommandLocale carries the user's time zone and ordered language preferences.
+// An IANA time zone and BCP 47 language tags in preference order. The
+// web app reports it as a user preference (web-api), so its schema is part
+// of the web app's contract too.
 // +demi:root direction=send output=web
 type CommandLocale struct {
 	// +demi:length chars min=1 max=64
@@ -38,7 +43,8 @@ type CommandLocale struct {
 // +demi:length chars min=1 max=64
 type LanguageTag string
 
-// CommandContext is supplied by the backend, never the environment.
+// What a declared command knows beyond its arguments. The backend is its
+// only source; nothing reads it from the environment.
 type CommandContext struct {
 	// +demi:pattern ^[A-Za-z0-9_-]{1,64}$
 	Conversation string        `json:"conversation"`
@@ -46,15 +52,17 @@ type CommandContext struct {
 	Locale       CommandLocale `json:"locale"`
 }
 
-// Invocation opens a native command invocation.
+// The metadata that opens a native command invocation.
 // +demi:check validateInvocation
+// +demi:root
 type Invocation struct {
 	// +demi:length chars min=1
 	Operation string `json:"operation"`
 	// +demi:length chars min=1
-	InvocationID string          `json:"invocationId"`
-	Context      CommandContext  `json:"context"`
-	Args         json.RawMessage `json:"args"`
+	InvocationID string         `json:"invocationId"`
+	Context      CommandContext `json:"context"`
+	// The operation's arguments, a JSON object.
+	Args json.RawMessage `json:"args"`
 	// +demi:length chars min=1
 	Cwd   string            `json:"cwd"`
 	Env   map[string]string `json:"env"`
@@ -62,8 +70,11 @@ type Invocation struct {
 	JSON  *bool             `json:"json,omitempty"`
 }
 
-// LocalInvocation carries raw CLI metadata from the local command client.
+// Raw CLI metadata from the local command client (`commands.md` § External
+// command clients). The client names only its opaque execution context, in
+// `args`; the runner finds the command context through it.
 // +demi:check validateLocalInvocation
+// +demi:root
 type LocalInvocation struct {
 	// +demi:length chars min=1
 	Operation string `json:"operation"`
@@ -75,20 +86,24 @@ type LocalInvocation struct {
 	Env map[string]string `json:"env"`
 }
 
-// CommandError explains a command failure.
+// Why a command failed, in the command's own words.
 type CommandError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
 
-// Completion is the final status of an invocation.
+// How an invocation ended: its exit code, and the error when it failed.
+// +demi:root
 type Completion struct {
 	ExitCode uint8         `json:"exitCode"`
 	Error    *CommandError `json:"error,omitempty"`
 }
 
-// ConversationRequest releases or queries service-held conversation resources.
+// Release a conversation's resources, or report which conversations hold
+// any. `Status` is a struct variant so that unknown fields are refused: serde
+// ignores them for a unit variant of an internally tagged enum.
 // +demi:union tag=operation
+// +demi:root
 //
 //sumtype:decl
 type ConversationRequest interface{ conversationRequest() }
@@ -108,23 +123,29 @@ type ConversationQuery struct{}
 
 func (*ConversationQuery) conversationRequest() {}
 
-// ConversationStatus lists conversations holding resources.
+// The conversations that hold resources in a service.
 // +demi:check validateConversationStatus
+// +demi:root
 type ConversationStatus struct {
 	Conversations []string `json:"conversations"`
 }
 
-// ServiceSequence identifies a conversation number sequence.
+// A sequence of the conversation that a native service draws numbers from.
 // +demi:enum tab
 type ServiceSequence string
 
 // TabSequence assigns conversation browser tab numbers.
 const TabSequence ServiceSequence = "tab"
 
-// StreamOpen opens the numbers or artifacts stream.
+// The metadata that opens a stream the runner answers a service's requests
+// on, the numbers stream or the artifacts stream, which carries nothing.
+// +demi:root
 type StreamOpen struct{}
 
-// NumbersRequest reserves consecutive conversation numbers.
+// One request for `count` numbers of the conversation's `sequence`; the
+// service writes each as one standard output record. `id` is the service's
+// own, unique among its requests in flight.
+// +demi:root
 type NumbersRequest struct {
 	ID uint64 `json:"id"`
 	// +demi:pattern ^[A-Za-z0-9_-]{1,64}$
@@ -134,8 +155,10 @@ type NumbersRequest struct {
 	Count uint32 `json:"count"`
 }
 
-// NumbersAnswer carries exactly one of First or Error.
+// The answer to request `id`, one input chunk: the first of its `count`
+// consecutive numbers, or why there are none.
 // +demi:check validateNumbersAnswer
+// +demi:root
 type NumbersAnswer struct {
 	ID uint64 `json:"id"`
 	// +demi:range min=1

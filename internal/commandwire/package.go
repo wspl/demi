@@ -15,10 +15,22 @@ import (
 const Version = 1
 
 // TargetTriple identifies a supported native executable platform.
-// +demi:enum aarch64-apple-darwin x86_64-apple-darwin aarch64-unknown-linux-musl x86_64-unknown-linux-musl aarch64-pc-windows-msvc x86_64-pc-windows-msvc
+// +demi:check validateTargetTriple
+// +demi:root
 type TargetTriple string
 
-// PackageArtifact identifies executable bytes.
+// Targets lists the targets a published release carries, in publication order.
+// Callers must treat this shared catalog as read-only.
+var Targets = []string{
+	"aarch64-apple-darwin",
+	"x86_64-apple-darwin",
+	"aarch64-unknown-linux-musl",
+	"x86_64-unknown-linux-musl",
+	"aarch64-pc-windows-msvc",
+	"x86_64-pc-windows-msvc",
+}
+
+// One target's executable: its SHA-256 and size.
 type PackageArtifact struct {
 	// +demi:pattern ^[0-9a-f]{64}$
 	SHA256 string `json:"sha256"`
@@ -26,7 +38,9 @@ type PackageArtifact struct {
 	Size uint64 `json:"size"`
 }
 
-// ResourceArtifact identifies an archive and the entry its consumer starts.
+// One target's archive of a resource: its SHA-256 and size, and its
+// entry, the file the program uses, as a relative path inside the
+// archive with `/` between its components.
 // +demi:check validateResourceArtifact
 type ResourceArtifact struct {
 	// +demi:pattern ^[0-9a-f]{64}$
@@ -41,7 +55,9 @@ func (r ResourceArtifact) Archive() PackageArtifact {
 	return PackageArtifact{SHA256: r.SHA256, Size: r.Size}
 }
 
-// PackageResource describes a program's runtime dependency.
+// What a command program needs on the Host beside its executable, such as
+// `demi.browser`'s Chrome (`native-runtime.md` § Bind an exact package):
+// its title for the user and the archive of each target that has one.
 // +demi:check validatePackageResource
 type PackageResource struct {
 	// +demi:length chars min=1 max=200
@@ -49,8 +65,12 @@ type PackageResource struct {
 	Targets map[string]ResourceArtifact `json:"targets"`
 }
 
-// PackageDescriptor pins one immutable command release.
+// A command package release: its identity, the operations it serves,
+// the artifact of each target it carries and the resources its program
+// needs. Publication requires every target; a development release may
+// carry fewer.
 // +demi:check validatePackageDescriptor
+// +demi:root
 type PackageDescriptor struct {
 	// +demi:pattern ^[a-z0-9]+([.-][a-z0-9]+)+$
 	ID string `json:"id"`
@@ -59,9 +79,9 @@ type PackageDescriptor struct {
 	// +demi:range min=1 max=1
 	ProtocolVersion uint64 `json:"protocolVersion"`
 	// +demi:length min=1
-	Operations []string                    `json:"operations"`
-	Targets    map[string]PackageArtifact  `json:"targets"`
-	Resources  *map[string]PackageResource `json:"resources,omitempty"`
+	Operations []string                   `json:"operations"`
+	Targets    map[string]PackageArtifact `json:"targets"`
+	Resources  map[string]PackageResource `json:"resources,omitempty"`
 }
 
 // Digest returns the descriptor's RFC 8785 identity.
@@ -72,11 +92,9 @@ func (p PackageDescriptor) Carries(target TargetTriple, digest string) (PackageA
 	if a, ok := p.Targets[string(target)]; ok && a.SHA256 == digest {
 		return a, true
 	}
-	if p.Resources != nil {
-		for _, r := range *p.Resources {
-			if a, ok := r.Targets[string(target)]; ok && a.SHA256 == digest {
-				return a.Archive(), true
-			}
+	for _, r := range p.Resources {
+		if a, ok := r.Targets[string(target)]; ok && a.SHA256 == digest {
+			return a.Archive(), true
 		}
 	}
 	return PackageArtifact{}, false
@@ -100,14 +118,21 @@ func (p PackageDescriptor) Serves(info ServiceInfo) bool {
 	return true
 }
 
-// ArtifactLocation tells the runner where to fetch artifact bytes.
-// +demi:union tag=kind
+// Where a runner fetches an artifact.
+// +demi:union untagged
+// +demi:root
 //
 //sumtype:decl
 type ArtifactLocation interface{ artifactLocation() }
 
-// ArtifactURL is an HTTP(S) download without credentials.
-// +demi:variant ArtifactLocation url
+// A URL the runner downloads an artifact from, valid until `expires_at`
+// (milliseconds since the Unix epoch) when set. It is an HTTP or HTTPS URL
+// without credentials: object storage answers with a signed HTTPS URL, and a
+// development store with a URL on the backend itself. The scheme cannot
+// change what runs, because the runner checks the download against the size
+// and SHA-256 its pinned descriptor declares (`native-runtime.md` § Install
+// the selected package).
+// +demi:variant
 // +demi:check validateArtifactURL
 type ArtifactURL struct {
 	URL       string `json:"url"`
@@ -116,8 +141,8 @@ type ArtifactURL struct {
 
 func (*ArtifactURL) artifactLocation() {}
 
-// ArtifactPath is a path on the runner's machine.
-// +demi:variant ArtifactLocation path
+// A path on the runner's machine that holds an artifact.
+// +demi:variant
 type ArtifactPath struct {
 	// +demi:length chars min=1
 	Path string `json:"path"`
@@ -125,8 +150,10 @@ type ArtifactPath struct {
 
 func (*ArtifactPath) artifactLocation() {}
 
-// ServiceInfo advertises a resident service's protocol and operations.
+// What a resident service answers on its info path: the protocol it speaks
+// and the operations it serves, each once.
 // +demi:check validateServiceInfo
+// +demi:root
 type ServiceInfo struct {
 	// +demi:range min=1 max=1
 	ProtocolVersion uint64 `json:"protocolVersion"`

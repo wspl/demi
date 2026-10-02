@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/wspl/demi/internal/contract"
@@ -133,11 +135,9 @@ func validatePackageDescriptor(v PackageDescriptor) error {
 			return contract.At("targets."+target, err)
 		}
 	}
-	if v.Resources != nil {
-		for name := range *v.Resources {
-			if !resourceName.MatchString(name) {
-				return fmt.Errorf("invalid resource name %q", name)
-			}
+	for name := range v.Resources {
+		if !resourceName.MatchString(name) {
+			return fmt.Errorf("invalid resource name %q", name)
 		}
 	}
 	return nil
@@ -166,6 +166,46 @@ func validateArtifactURL(v ArtifactURL) error {
 	}
 	if parsed.User != nil && (parsed.User.Username() != "" || strings.Contains(parsed.User.String(), ":")) {
 		return errors.New("artifact URL must not contain credentials")
+	}
+	return nil
+}
+
+// IsDigest reports whether value is a SHA-256 digest in lowercase hexadecimal.
+func IsDigest(value string) bool {
+	return len(value) == 64 && strings.Trim(value, "0123456789abcdef") == ""
+}
+
+// Digest validates an artifact or descriptor's SHA-256 identity.
+func Digest(value string) error {
+	if !IsDigest(value) {
+		return errors.New("is not a SHA-256 digest")
+	}
+	return nil
+}
+
+// IsTarget reports whether target is one of the published Targets.
+func IsTarget(target string) bool {
+	return slices.Contains(Targets, target)
+}
+
+// validateTargetTriple checks the command package's supported platform catalog.
+func validateTargetTriple(target TargetTriple) error {
+	if !IsTarget(string(target)) {
+		return fmt.Errorf("unknown target %s", target)
+	}
+	return nil
+}
+
+// TargetArtifacts validates the targets and executable artifacts of a release.
+// An empty map is valid for a development release with no artifacts.
+func TargetArtifacts(targets map[string]PackageArtifact) error {
+	for _, target := range slices.Sorted(maps.Keys(targets)) {
+		if err := validateTargetTriple(TargetTriple(target)); err != nil {
+			return contract.At(target, err)
+		}
+		if err := targets[target].Validate(); err != nil {
+			return contract.At(target, err)
+		}
 	}
 	return nil
 }

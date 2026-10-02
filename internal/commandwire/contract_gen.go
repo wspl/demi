@@ -495,29 +495,13 @@ func (v ArtifactInstall) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func DecodeArtifactLocation(data []byte) (ArtifactLocation, error) {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
-	if err != nil {
-		return nil, err
-	}
-	tag, err := contract.Decode[string](obj["kind"])
-	if err != nil {
-		return nil, fmt.Errorf("kind: %w", err)
-	}
-	switch tag {
-	case "path":
-		value, err := contract.Decode[ArtifactPath](data)
-		if err != nil {
-			return nil, err
-		}
-		return &value, nil
-	case "url":
-		value, err := contract.Decode[ArtifactURL](data)
-		if err != nil {
-			return nil, err
-		}
+	if value, err := contract.Decode[ArtifactURL](data); err == nil {
 		return &value, nil
 	}
-	return nil, fmt.Errorf("unknown ArtifactLocation tag %q", tag)
+	if value, err := contract.Decode[ArtifactPath](data); err == nil {
+		return &value, nil
+	}
+	return nil, fmt.Errorf("no matching ArtifactLocation variant")
 }
 
 type ArtifactLocationJSON struct{ Value ArtifactLocation }
@@ -543,16 +527,16 @@ func contractValidateArtifactLocation(value ArtifactLocation, depth int) error {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
 	switch v := value.(type) {
-	case *ArtifactPath:
-		if v == nil {
-			return fmt.Errorf("nil variant")
-		}
-		return contractValidateArtifactPath(*v, depth+1)
 	case *ArtifactURL:
 		if v == nil {
 			return fmt.Errorf("nil variant")
 		}
 		return contractValidateArtifactURL(*v, depth+1)
+	case *ArtifactPath:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateArtifactPath(*v, depth+1)
 	default:
 		return fmt.Errorf("nil or unsupported ArtifactLocation")
 	}
@@ -578,17 +562,9 @@ func (v *ArtifactPath) UnmarshalJSON(data []byte) error {
 	var next ArtifactPath
 	for key := range obj {
 		switch key {
-		case "path", "kind":
+		case "path":
 		default:
 			return contract.At(key, fmt.Errorf("unknown field"))
-		}
-	}
-	if raw, ok := obj["kind"]; !ok {
-		return fmt.Errorf("missing union tag")
-	} else {
-		value, err := contract.Decode[string](raw)
-		if err != nil || value != "path" {
-			return fmt.Errorf("invalid union tag")
 		}
 	}
 	{
@@ -615,7 +591,6 @@ func (v ArtifactPath) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "kind", Value: "path"})
 	fields = append(fields, contract.Field{Name: "path", Value: v.Path})
 	return contract.EncodeObject(fields)
 }
@@ -734,17 +709,9 @@ func (v *ArtifactURL) UnmarshalJSON(data []byte) error {
 	var next ArtifactURL
 	for key := range obj {
 		switch key {
-		case "url", "expiresAt", "kind":
+		case "url", "expiresAt":
 		default:
 			return contract.At(key, fmt.Errorf("unknown field"))
-		}
-	}
-	if raw, ok := obj["kind"]; !ok {
-		return fmt.Errorf("missing union tag")
-	} else {
-		value, err := contract.Decode[string](raw)
-		if err != nil || value != "url" {
-			return fmt.Errorf("invalid union tag")
 		}
 	}
 	{
@@ -781,7 +748,6 @@ func (v ArtifactURL) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "kind", Value: "url"})
 	fields = append(fields, contract.Field{Name: "url", Value: v.URL})
 	if v.ExpiresAt != nil {
 		fields = append(fields, contract.Field{Name: "expiresAt", Value: v.ExpiresAt})
@@ -2576,18 +2542,13 @@ func contractValidatePackageDescriptor(v PackageDescriptor, depth int) error {
 			return contract.At(fmt.Sprintf("%s[%q]", "targets", key), err)
 		}
 	}
-	if v.Resources != nil {
-		if (*v.Resources) == nil {
-			return contract.At("resources", fmt.Errorf("required record is nil"))
+	for key, item := range v.Resources {
+		_ = item
+		if err := contract.Text(key, 0, -1, ""); err != nil {
+			return contract.At("resources", err)
 		}
-		for key, item := range *v.Resources {
-			_ = item
-			if err := contract.Text(key, 0, -1, ""); err != nil {
-				return contract.At("resources", err)
-			}
-			if err := contractValidatePackageResource(item, depth+1); err != nil {
-				return contract.At(fmt.Sprintf("%s[%q]", "resources", key), err)
-			}
+		if err := contractValidatePackageResource(item, depth+1); err != nil {
+			return contract.At(fmt.Sprintf("%s[%q]", "resources", key), err)
 		}
 	}
 	if err := validatePackageDescriptor(v); err != nil {
@@ -2675,13 +2636,12 @@ func (v *PackageDescriptor) UnmarshalJSON(data []byte) error {
 			next.Targets = value
 		}
 	}
+	next.Resources = make(map[string]PackageResource, 0)
 	{
 		raw, ok := obj["resources"]
 		if ok {
-			value, err := func(b []byte) (*map[string]PackageResource, error) {
-				return contract.Pointer(b, func(b []byte) (map[string]PackageResource, error) {
-					return contract.Record(b, contract.Decode[PackageResource], false)
-				})
+			value, err := func(b []byte) (map[string]PackageResource, error) {
+				return contract.Record(b, contract.Decode[PackageResource], false)
 			}(raw)
 			if err != nil {
 				return contract.At("resources", err)
@@ -2705,7 +2665,7 @@ func (v PackageDescriptor) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "protocolVersion", Value: v.ProtocolVersion})
 	fields = append(fields, contract.Field{Name: "operations", Value: v.Operations})
 	fields = append(fields, contract.Field{Name: "targets", Value: v.Targets})
-	if v.Resources != nil {
+	if len(v.Resources) > 0 {
 		fields = append(fields, contract.Field{Name: "resources", Value: v.Resources})
 	}
 	return contract.EncodeObject(fields)
@@ -3048,13 +3008,11 @@ func contractValidateTargetTriple(v TargetTriple, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
-	switch string(v) {
-	case "aarch64-apple-darwin", "x86_64-apple-darwin", "aarch64-unknown-linux-musl", "x86_64-unknown-linux-musl", "aarch64-pc-windows-msvc", "x86_64-pc-windows-msvc":
-	default:
-		return contract.At("", fmt.Errorf("unknown value"))
-	}
 	if err := contract.Text(string(v), 0, -1, ""); err != nil {
 		return contract.At("", err)
+	}
+	if err := validateTargetTriple(v); err != nil {
+		return err
 	}
 	return nil
 }

@@ -3,8 +3,11 @@ package commandwire_test
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/wspl/demi/internal/commandwire"
@@ -42,6 +45,15 @@ func TestRustManifestDigests(t *testing.T) {
 		got, err := p.Digest()
 		if err != nil || got != want {
 			t.Fatalf("descriptor digest = %s, %v; want %s", got, err, want)
+		}
+		if len(commandwire.Targets) != len(p.Targets) {
+			t.Fatal("publication catalog does not cover the Rust release fixture")
+		}
+		for i, target := range commandwire.Targets {
+			artifact, err := p.TargetArtifact(commandwire.TargetTriple(target))
+			if err != nil || artifact.Size != uint64(12345+i) {
+				t.Fatalf("publication slot %d (%s): artifact = %+v, %v", i, target, artifact, err)
+			}
 		}
 		artifact, err := p.TargetArtifact("aarch64-apple-darwin")
 		if err != nil || artifact.Size != 12345 {
@@ -88,7 +100,7 @@ func TestResourceSelectionAndDescriptorValidation(t *testing.T) {
 			"aarch64-apple-darwin": {SHA256: resourceHash, Size: 456, Entry: "bin/chrome"},
 		}},
 	}
-	p := commandwire.PackageDescriptor{ID: "demi.browser", Version: "1", ProtocolVersion: 1, Operations: []string{"open"}, Targets: map[string]commandwire.PackageArtifact{"aarch64-apple-darwin": {SHA256: hash, Size: 123}}, Resources: &resources}
+	p := commandwire.PackageDescriptor{ID: "demi.browser", Version: "1", ProtocolVersion: 1, Operations: []string{"open"}, Targets: map[string]commandwire.PackageArtifact{"aarch64-apple-darwin": {SHA256: hash, Size: 123}}, Resources: resources}
 	if err := p.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -108,10 +120,10 @@ func TestResourceSelectionAndDescriptorValidation(t *testing.T) {
 			p.Targets = map[string]commandwire.PackageArtifact{"wrong": {SHA256: hash, Size: 1}}
 		},
 		func(p *commandwire.PackageDescriptor) {
-			p.Resources = &map[string]commandwire.PackageResource{"Bad Name": resources["chrome"]}
+			p.Resources = map[string]commandwire.PackageResource{"Bad Name": resources["chrome"]}
 		},
 		func(p *commandwire.PackageDescriptor) {
-			p.Resources = &map[string]commandwire.PackageResource{"chrome": {Title: "Chrome", Targets: map[string]commandwire.ResourceArtifact{}}}
+			p.Resources = map[string]commandwire.PackageResource{"chrome": {Title: "Chrome", Targets: map[string]commandwire.ResourceArtifact{}}}
 		},
 	} {
 		bad := p
@@ -119,5 +131,180 @@ func TestResourceSelectionAndDescriptorValidation(t *testing.T) {
 		if err := bad.Validate(); err == nil {
 			t.Fatal("accepted invalid descriptor")
 		}
+	}
+}
+
+func TestArtifactLocationRustWire(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		wire  string
+		value commandwire.ArtifactLocation
+	}{
+		{"path", `{"path":"/tmp/program"}`, &commandwire.ArtifactPath{Path: "/tmp/program"}},
+		{"url", `{"url":"https://example.com/program"}`, &commandwire.ArtifactURL{URL: "https://example.com/program"}},
+		{"expiring URL", `{"url":"https://example.com/program","expiresAt":123}`, &commandwire.ArtifactURL{URL: "https://example.com/program", ExpiresAt: new(int64(123))}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := commandwire.DecodeArtifactLocation([]byte(tc.wire))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, tc.value) {
+				t.Fatalf("location = %#v; want %#v", got, tc.value)
+			}
+			for _, value := range []any{got, commandwire.ArtifactLocationJSON{Value: got}} {
+				encoded, err := json.Marshal(value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if string(encoded) != tc.wire {
+					t.Fatalf("encoded location = %s; want %s", encoded, tc.wire)
+				}
+			}
+		})
+	}
+	for _, wire := range []string{`{}`, `{"path":"/tmp/program","url":"https://example.com/program"}`, `{"kind":"path","path":"/tmp/program"}`, `{"url":"https://example.com/program","expiresAt":null}`, `{"path":""}`, `{"url":"file:///tmp/program"}`} {
+		if _, err := commandwire.DecodeArtifactLocation([]byte(wire)); err == nil {
+			t.Fatalf("accepted invalid location %s", wire)
+		}
+	}
+}
+
+func TestRustDescriptorEmptyResources(t *testing.T) {
+	data, err := os.ReadFile("testdata/manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := contract.Object(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packages, err := contract.Object(manifest["packages"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for want, data := range packages {
+		object, err := contract.Object(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := object["resources"]; ok {
+			t.Fatal("fixture must have no resources")
+		}
+		for _, form := range []string{"absent", "empty", "null"} {
+			t.Run(form, func(t *testing.T) {
+				switch form {
+				case "absent":
+					delete(object, "resources")
+				case "empty":
+					object["resources"] = json.RawMessage(`{}`)
+				case "null":
+					object["resources"] = json.RawMessage(`null`)
+				}
+				wire, err := json.Marshal(object)
+				if err != nil {
+					t.Fatal(err)
+				}
+				p, err := commandwire.DecodePackageDescriptor(wire)
+				if form == "null" {
+					if err == nil {
+						t.Fatal("accepted null resources")
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				got, err := p.Digest()
+				if err != nil || got != want {
+					t.Fatalf("descriptor digest = %s, %v; want Rust hash %s", got, err, want)
+				}
+				encoded, err := json.Marshal(p)
+				if err != nil {
+					t.Fatal(err)
+				}
+				fields, err := contract.Object(encoded)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, ok := fields["resources"]; ok {
+					t.Fatal("empty resources written to descriptor")
+				}
+			})
+		}
+	}
+}
+
+// These APIs are the checks the backend install route and release manifests share.
+func TestArtifactIdentityChecks(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		value string
+		valid bool
+	}{
+		{"valid", strings.Repeat("0123456789abcdef", 4), true},
+		{"empty", "", false},
+		{"short", strings.Repeat("0", 63), false},
+		{"long", strings.Repeat("0", 65), false},
+		{"uppercase", strings.Repeat("A", 64), false},
+		{"nonhex", strings.Repeat("g", 64), false},
+		{"unicode", strings.Repeat("é", 32), false},
+		{"newline", strings.Repeat("0", 63) + "\n", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if commandwire.IsDigest(tc.value) != tc.valid {
+				t.Fatal("incorrect digest predicate")
+			}
+			if err := commandwire.Digest(tc.value); (err == nil) != tc.valid {
+				t.Fatalf("Digest(%q): %v", tc.value, err)
+			}
+		})
+	}
+	for _, target := range commandwire.Targets {
+		if !commandwire.IsTarget(target) {
+			t.Fatalf("published target %s rejected", target)
+		}
+		if err := commandwire.TargetTriple(target).Validate(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, target := range []string{"", "amd64", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin\n", "AARCH64-APPLE-DARWIN"} {
+		if commandwire.IsTarget(target) {
+			t.Fatalf("invalid target %q accepted", target)
+		}
+		if err := commandwire.TargetTriple(target).Validate(); err == nil {
+			t.Fatalf("invalid target triple %q accepted", target)
+		}
+	}
+}
+
+func TestReleaseTargetArtifacts(t *testing.T) {
+	valid := commandwire.PackageArtifact{SHA256: strings.Repeat("a", 64), Size: 1}
+	for _, tc := range []struct {
+		name    string
+		targets map[string]commandwire.PackageArtifact
+		valid   bool
+	}{
+		{"nil development release", nil, true},
+		{"empty development release", map[string]commandwire.PackageArtifact{}, true},
+		{"known target", map[string]commandwire.PackageArtifact{"aarch64-apple-darwin": valid}, true},
+		{"unknown target", map[string]commandwire.PackageArtifact{"unknown": valid}, false},
+		{"invalid digest", map[string]commandwire.PackageArtifact{"aarch64-apple-darwin": {SHA256: "invalid", Size: 1}}, false},
+		{"zero size", map[string]commandwire.PackageArtifact{"aarch64-apple-darwin": {SHA256: valid.SHA256, Size: 0}}, false},
+		{"maximum size", map[string]commandwire.PackageArtifact{"aarch64-apple-darwin": {SHA256: valid.SHA256, Size: 9007199254740991}}, true},
+		{"oversized artifact", map[string]commandwire.PackageArtifact{"aarch64-apple-darwin": {SHA256: valid.SHA256, Size: 9007199254740992}}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := commandwire.TargetArtifacts(tc.targets)
+			if (err == nil) != tc.valid {
+				t.Fatalf("target artifacts: %v; want valid=%v", err, tc.valid)
+			}
+			if !tc.valid {
+				var field *contract.Error
+				if !errors.As(err, &field) || field.Path == "" {
+					t.Fatalf("missing artifact error path: %v", err)
+				}
+			}
+		})
 	}
 }

@@ -13,14 +13,15 @@ const (
 	EditJobSegments = 1000
 )
 
-// EditContext names the absolute paths of the edit directory and writer lock.
+// Where an invoked command records its edits: the job's edit directory and
+// the lock that serializes writers to it. Both paths are absolute.
 // +demi:check validateEditContext
 type EditContext struct {
 	Directory string `json:"directory"`
 	Lock      string `json:"lock"`
 }
 
-// EditCopies names the before and after copies of one edit segment.
+// The copies of one edit segment: the file before and after it.
 // +demi:check validateEditCopies
 type EditCopies struct {
 	// +demi:length chars min=1
@@ -29,7 +30,7 @@ type EditCopies struct {
 	Modified *string `json:"modified,omitempty"`
 }
 
-// EditKind records whether the edited file previously existed.
+// Whether an edited file existed before the job.
 // +demi:enum added modified
 type EditKind string
 
@@ -40,7 +41,7 @@ const (
 	EditModified EditKind = "modified"
 )
 
-// EditFile holds one file's edit segments.
+// One edited file and its segments.
 // +demi:check validateEditFile
 type EditFile struct {
 	// +demi:length chars min=1
@@ -50,7 +51,8 @@ type EditFile struct {
 	Edits []EditCopies `json:"edits"`
 }
 
-// EditJournal is the bounded edit record left by a job.
+// A job's edit record as the command left it.
+// +demi:root
 type EditJournal struct {
 	// +demi:length max=500
 	Files []EditFile `json:"files"`
