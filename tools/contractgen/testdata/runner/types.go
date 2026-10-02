@@ -4,6 +4,7 @@ package runner
 
 // +demi:union tag=type
 // +demi:msgpack
+// +demi:root
 type Message interface{ isMessage() }
 
 // +demi:timestamp
@@ -11,6 +12,7 @@ type Message interface{ isMessage() }
 type Timestamp string
 
 // +demi:msgpack
+// +demi:root
 type Environment map[string]*string
 
 // +demi:msgpack

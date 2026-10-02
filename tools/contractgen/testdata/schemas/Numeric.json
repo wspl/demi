@@ -1,0 +1,92 @@
+{
+  "title": "Numeric",
+  "type": "object",
+  "properties": {
+    "i8": {
+      "type": "integer",
+      "format": "int8",
+      "minimum": -128,
+      "maximum": 127
+    },
+    "i16": {
+      "type": "integer",
+      "format": "int16",
+      "minimum": -32768,
+      "maximum": 32767
+    },
+    "i32": {
+      "type": "integer",
+      "format": "int32"
+    },
+    "i64": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "int": {
+      "type": "integer",
+      "format": "int"
+    },
+    "u8": {
+      "type": "integer",
+      "format": "uint8",
+      "minimum": 0,
+      "maximum": 255
+    },
+    "u16": {
+      "type": "integer",
+      "format": "uint16",
+      "minimum": 0,
+      "maximum": 65535
+    },
+    "u32": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "u64": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "uint": {
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0
+    },
+    "f32": {
+      "type": "number",
+      "format": "float"
+    },
+    "f64": {
+      "type": "number",
+      "format": "double"
+    },
+    "rune": {
+      "type": "integer",
+      "format": "int32"
+    },
+    "byte": {
+      "type": "integer",
+      "format": "uint8",
+      "minimum": 0,
+      "maximum": 255
+    }
+  },
+  "required": [
+    "rune",
+    "byte",
+    "i8",
+    "i16",
+    "i32",
+    "i64",
+    "int",
+    "u8",
+    "u16",
+    "u32",
+    "u64",
+    "uint",
+    "f32",
+    "f64"
+  ],
+  "additionalProperties": false
+}

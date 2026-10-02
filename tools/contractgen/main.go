@@ -11,6 +11,7 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -22,13 +23,16 @@ import (
 )
 
 type definition struct {
-	base     string
-	position string
-	name     string
-	key      string
-	typ      *types.Named
-	marks    map[string]string
-	fields   map[string]map[string]string
+	unions            []string
+	description       string
+	fieldDescriptions map[string]string
+	base              string
+	position          string
+	name              string
+	key               string
+	typ               *types.Named
+	marks             map[string]string
+	fields            map[string]map[string]string
 }
 
 type generator struct {
@@ -152,22 +156,23 @@ func generate(ctx context.Context, patterns []string, ts bool, tsDir string, ver
 					}
 					named, ok := obj.Type().(*types.Named)
 					if !ok {
-						if len(marks) > 0 {
+						if has(marks, "root") {
 							loadErr = fmt.Errorf("%s: %s: aliases unsupported", p.Fset.Position(spec.Pos()), spec.Name.Name)
 						}
 						continue
 					}
-					d := &definition{position: p.Fset.Position(spec.Pos()).String(), name: spec.Name.Name, key: typeKey(named), typ: named, marks: marks, fields: map[string]map[string]string{}}
+					d := &definition{description: contractDescription(doc), fieldDescriptions: map[string]string{}, position: p.Fset.Position(spec.Pos()).String(), name: spec.Name.Name, key: typeKey(named), typ: named, marks: marks, fields: map[string]map[string]string{}}
 					if source, ok := p.TypesInfo.TypeOf(spec.Type).(*types.Named); ok {
 						d.base = typeKey(source.Origin())
 					}
 					if st, ok := spec.Type.(*ast.StructType); ok {
 						for _, field := range st.Fields.List {
 							if len(field.Names) == 0 && len(markers(field.Doc)) > 0 {
-								loadErr = fmt.Errorf("%s: %s: markers on embedded fields are unsupported", p.Fset.Position(field.Pos()), d.name)
+								d.marks["!error"] = "markers on embedded fields are unsupported"
 							}
 							for _, name := range field.Names {
 								d.fields[name.Name] = markers(field.Doc)
+								d.fieldDescriptions[name.Name] = contractDescription(field.Doc)
 								if len(d.fields[name.Name]) > 0 {
 									marked = true
 								}
@@ -219,10 +224,15 @@ func generate(ctx context.Context, patterns []string, ts bool, tsDir string, ver
 		concrete = append(concrete, key)
 	}
 	g.order = concrete
-	if err := g.normalizeVariants(); err != nil {
+	g.normalizeVariants()
+	if err := g.retainContracts(); err != nil {
 		return err
 	}
 	if err := g.check(collected[0]); err != nil {
+		return err
+	}
+	jsonSchemas, err := g.jsonSchemas()
+	if err != nil {
 		return err
 	}
 	g.received = map[string]bool{}
@@ -255,6 +265,9 @@ func generate(ctx context.Context, patterns []string, ts bool, tsDir string, ver
 			d := g.defs[name]
 			if d.typ.Obj().Pkg() == p.Types {
 				g.emitGo(d)
+				if value, ok := jsonSchemas[d.key]; ok {
+					g.line("func %sJSONSchema() json.RawMessage { return json.RawMessage(%s) }", d.name, q(string(value)))
+				}
 			}
 		}
 		for _, name := range g.order {
@@ -288,51 +301,6 @@ func generate(ctx context.Context, patterns []string, ts bool, tsDir string, ver
 	return nil
 }
 
-// normalizeVariants resolves a tag-only marker against its sealing interface.
-func (g *generator) normalizeVariants() error {
-	for _, name := range g.order {
-		d := g.defs[name]
-		parts := strings.Fields(d.marks["variant"])
-		if has(d.marks, "variant") && len(parts) != 1 && len(parts) != 2 {
-			return fmt.Errorf("%s: %s: variant requires a tag", d.position, d.name)
-		}
-		if len(parts) == 2 {
-			d.marks["variant"] = d.typ.Obj().Pkg().Path() + "." + parts[0] + " " + parts[1]
-			continue
-		}
-		if len(parts) != 1 {
-			continue
-		}
-		var unions []string
-		for _, other := range g.order {
-			u := g.defs[other]
-			if !has(u.marks, "union") || u.typ.Obj().Pkg() != d.typ.Obj().Pkg() {
-				continue
-			}
-			iface, ok := u.typ.Underlying().(*types.Interface)
-			if !ok {
-				continue
-			}
-			if types.Implements(types.NewPointer(d.typ), iface) {
-				unions = append(unions, other)
-			}
-		}
-		if len(unions) == 0 {
-			for _, other := range g.order {
-				u := g.defs[other]
-				if has(u.marks, "union") && u.typ.Obj().Pkg() == d.typ.Obj().Pkg() {
-					unions = append(unions, other)
-				}
-			}
-		}
-		if len(unions) != 1 {
-			return fmt.Errorf("%s: variant %s requires one sealing interface or explicit <Union> <tag>", d.position, d.name)
-		}
-		d.marks["variant"] = unions[0] + " " + parts[0]
-	}
-	return nil
-}
-
 // markers reads the contract annotation attached to a Go declaration.
 func markers(doc *ast.CommentGroup) map[string]string {
 	out := map[string]string{}
@@ -346,7 +314,7 @@ func markers(doc *ast.CommentGroup) map[string]string {
 		}
 		key, value, _ := strings.Cut(strings.TrimPrefix(text, "+demi:"), " ")
 		switch key {
-		case "union", "variant", "nullable", "length", "range", "enum", "pattern", "timestamp", "check", "id", "base64", "msgpack", "strict", "tolerant", "root", "format", "table":
+		case "union", "variant", "nullable", "length", "range", "enum", "pattern", "timestamp", "check", "id", "base64", "msgpack", "strict", "tolerant", "root", "format", "table", "schema":
 		default:
 			out["!error"] = "unsupported marker: " + key
 		}
@@ -394,7 +362,10 @@ func (g *generator) prefix(t *types.Named) string {
 	return ""
 }
 func (g *generator) line(s string, args ...any) { fmt.Fprintf(&g.goCode, s+"\n", args...) }
-func schema(name string) string                 { return strings.ToLower(name[:1]) + name[1:] + "Schema" }
+func schema(name string) string {
+	name = tsName(name)
+	return strings.ToLower(name[:1]) + name[1:] + "Schema"
+}
 func bounds(s string) map[string]string {
 	out := map[string]string{}
 	for _, field := range strings.Fields(s) {
@@ -406,16 +377,6 @@ func bounds(s string) map[string]string {
 			continue
 		}
 		out[k] = v
-	}
-	return out
-}
-func (g *generator) variants(name string) []*definition {
-	var out []*definition
-	for _, n := range g.order {
-		d := g.defs[n]
-		if strings.HasPrefix(d.marks["variant"], name+" ") {
-			out = append(out, d)
-		}
 	}
 	return out
 }
@@ -444,14 +405,25 @@ func (g *generator) decoder(t types.Type) string {
 func (g *generator) emitGo(d *definition) {
 	name := d.name
 	if has(d.marks, "union") {
-		tag := strings.TrimPrefix(d.marks["union"], "tag=")
+		tag := bounds(d.marks["union"])["tag"]
 		g.line("func Decode%s(data []byte)(%s,error) {", name, name)
-		g.line("obj,err:=contract.Decode[map[string]json.RawMessage](data); if err!=nil{return nil,err}; tag,err:=contract.Decode[string](obj[%s]); if err!=nil{return nil,fmt.Errorf(%s,err)}; switch tag {", q(tag), q(tag+": %w"))
-		for _, v := range g.variants(d.key) {
-			_, value, _ := strings.Cut(v.marks["variant"], " ")
-			g.line("case %s: value,err:=contract.Decode[%s](data); if err!=nil{return nil,err}; return &value,nil", q(value), v.name)
+		if d.marks["union"] == "untagged" {
+			for _, v := range g.variants(d.key) {
+				g.line("if value,err:=contract.Decode[%s](data);err==nil{return &value,nil}", v.name)
+			}
+			g.line("return nil,fmt.Errorf(\"no matching %s variant\")}", name)
+		} else {
+			g.line("obj,err:=contract.Decode[map[string]json.RawMessage](data); if err!=nil{return nil,err}; tag,err:=contract.Decode[%s](obj[%s]); if err!=nil{return nil,fmt.Errorf(%s,err)}; switch tag {", g.unionKind(d), q(tag), q(tag+": %w"))
+			for _, v := range g.variants(d.key) {
+				_, value, _ := g.variantWire(v)
+				g.line("case %s: value,err:=contract.Decode[%s](data); if err!=nil{return nil,err}; return &value,nil", tagLiteral(value), v.name)
+			}
+			verb := "%q"
+			if g.unionKind(d) == "bool" {
+				verb = "%v"
+			}
+			g.line("}; return nil,fmt.Errorf(\"unknown %s tag %s\",tag) }", name, verb)
 		}
-		g.line("}; return nil,fmt.Errorf(\"unknown %s tag %%q\",tag) }", name)
 		// An interface cannot own UnmarshalJSON; the transport holder does.
 		g.line("type %sJSON struct { Value %s }; func(v *%sJSON) UnmarshalJSON(data []byte) error { value,err:=Decode%s(data); if err==nil {v.Value=value}; return err }; func(v %sJSON) MarshalJSON()([]byte,error){ if err:=Validate%s(v.Value);err!=nil{return nil,err}; return json.Marshal(v.Value) }", name, name, name, name, name, name)
 		g.line("func Validate%s(value %s)error{return contractValidate%s(value,0)}", name, name, name)
@@ -468,15 +440,14 @@ func (g *generator) emitGo(d *definition) {
 		g.line("v:=%s(value);if err:=v.Validate();err!=nil{return \"\",err};return v,nil}", name)
 	}
 	st, isStruct := g.object(d)
-	union, variant, _ := strings.Cut(d.marks["variant"], " ")
-	tag := ""
-	if union != "" {
-		tag = strings.TrimPrefix(g.defs[union].marks["union"], "tag=")
+	tag, variant, kind := g.variantWire(d)
+	for _, union := range d.unions {
 		method := g.defs[union].typ.Underlying().(*types.Interface).Method(0).Name()
 		if obj, _, _ := types.LookupFieldOrMethod(types.NewPointer(d.typ), true, d.typ.Obj().Pkg(), method); obj == nil {
 			g.line("func (*%s) %s() {}", name, method)
 		}
 	}
+
 	g.line("func Decode%s(data []byte)(%s,error){return contract.Decode[%s](data)}", name, name, name)
 	g.line("func(v %s)Validate()error{return contractValidate%s(v,0)}", name, name)
 	g.line("func contractValidate%s(v %s,depth int)error{if depth>1000{return fmt.Errorf(\"validation nesting exceeds 1000\")}", name, name)
@@ -522,7 +493,7 @@ func (g *generator) emitGo(d *definition) {
 		g.line("default:return contract.At(key,fmt.Errorf(\"unknown field\"))}}")
 	}
 	if tag != "" {
-		g.line("if raw,ok:=obj[%s];!ok { return fmt.Errorf(\"missing union tag\") } else { value,err:=contract.Decode[string](raw);if err!=nil||value!=%s{return fmt.Errorf(\"invalid union tag\")} }", q(tag), q(variant))
+		g.line("if raw,ok:=obj[%s];!ok { return fmt.Errorf(\"missing union tag\") } else { value,err:=contract.Decode[%s](raw);if err!=nil||value!=%s{return fmt.Errorf(\"invalid union tag\")} }", q(tag), kind, tagLiteral(variant))
 	}
 	for i := 0; i < st.NumFields(); i++ {
 		f := st.Field(i)
@@ -530,6 +501,9 @@ func (g *generator) emitGo(d *definition) {
 		key := opts[0]
 		optional := len(opts) > 1
 		nullable := has(d.fields[f.Name()], "nullable")
+		if optional && emptyCollection(f.Type()) {
+			g.line("next.%s=make(%s,0)", f.Name(), g.typeName(f.Type()))
+		}
 		g.line("{raw,ok:=obj[%s];", q(key))
 		if !optional {
 			g.line("if !ok{return contract.At(%s,fmt.Errorf(\"required field is absent\"))}", q(key))
@@ -558,11 +532,21 @@ func (g *generator) validation(t types.Type, expr, path string, m map[string]str
 			g.line("if %s==nil{return contract.At(%s,fmt.Errorf(\"required pointer is nil\"))}", expr, path)
 		}
 		g.line("if %s!=nil{", expr)
-		g.validation(ptr.Elem(), "(*"+expr+")", path, m)
+		elementMarks := maps.Clone(m)
+		delete(elementMarks, "optional")
+		g.validation(ptr.Elem(), "(*"+expr+")", path, elementMarks)
 		g.line("}")
 		return
 	}
 	if named, ok := t.(*types.Named); ok {
+		if has(m, "optional") && emptyCollection(t) {
+			g.line("{collection:=%s;if collection==nil{collection=make(%s,0)}", expr, g.typeName(t))
+			required := maps.Clone(m)
+			delete(required, "optional")
+			g.validation(t, "collection", path, required)
+			g.line("}")
+			return
+		}
 		if _, ok := named.Underlying().(*types.Interface); ok {
 			if has(m, "nullable") {
 				g.line("if %s!=nil{", expr)
@@ -584,13 +568,17 @@ func (g *generator) validation(t types.Type, expr, path string, m map[string]str
 		}
 	}
 	if record, ok := t.(*types.Map); ok {
-		g.line("if %s==nil{return contract.At(%s,fmt.Errorf(\"required record is nil\"))}", expr, path)
+		if !has(m, "optional") {
+			g.line("if %s==nil{return contract.At(%s,fmt.Errorf(\"required record is nil\"))}", expr, path)
+		}
 		g.line("for key,item:=range %s{_=item;if err:=contract.Text(key,0,-1,\"\");err!=nil{return contract.At(%s,err)}", expr, path)
 		g.validation(record.Elem(), "item", "fmt.Sprintf(\"%s[%q]\","+path+",key)", map[string]string{"nullable": ""})
 		g.line("}")
 	}
 	if slice, ok := t.(*types.Slice); ok {
-		g.line("if %s==nil{return contract.At(%s,fmt.Errorf(\"required array is nil\"))}", expr, path)
+		if !has(m, "optional") {
+			g.line("if %s==nil{return contract.At(%s,fmt.Errorf(\"required array is nil\"))}", expr, path)
+		}
 		g.line("for i,item:=range %s { _=i;_=item", expr)
 		g.validation(slice.Elem(), "item", "fmt.Sprintf(\"%s[%d]\","+path+",i)", map[string]string{})
 		g.line("}")
@@ -613,7 +601,7 @@ func (g *generator) rules(t types.Type, expr, path string, m map[string]string) 
 			g.line("if value,err:=contract.%s(string(%s));err!=nil{return contract.At(%s,err)}else if value!=string(%s){return contract.At(%s,fmt.Errorf(\"text is not canonical\"))}", helper, expr, path, expr, path)
 		}
 	}
-	if has(m, "base64") {
+	if has(m, "base64") && !emptyCollection(t) {
 		g.line("if err:=contract.Base64(string(%s));err!=nil{return contract.At(%s,err)}", expr, path)
 	}
 	if has(m, "timestamp") {
@@ -685,6 +673,32 @@ func (g *generator) inheritFields(d *definition) {
 		g.inheritFields(base)
 		for name, marks := range base.fields {
 			d.fields[name] = marks
+			d.fieldDescriptions[name] = base.fieldDescriptions[name]
 		}
 	}
+}
+
+// contractDescription keeps contract documentation as schema product text,
+// excluding generator and Go tooling directives rather than rewriting prose.
+func contractDescription(doc *ast.CommentGroup) string {
+	if doc == nil {
+		return ""
+	}
+	var lines []string
+	for _, comment := range doc.List {
+		text := strings.TrimPrefix(comment.Text, "//")
+		text = strings.TrimPrefix(text, " ")
+		directive := strings.TrimSpace(text)
+		if strings.HasPrefix(directive, "+demi:") || strings.HasPrefix(directive, "sumtype:") || strings.HasPrefix(directive, "go:") {
+			continue
+		}
+		if strings.HasPrefix(text, "/*") {
+			text = strings.TrimSuffix(strings.TrimPrefix(text, "/*"), "*/")
+		}
+		lines = append(lines, text)
+	}
+	// Schemars strips the comment delimiter and one leading space per line,
+	// then trims the outer ASCII whitespace. CommentGroup.Text also collapses
+	// blank lines and indentation, which would change the help/model text.
+	return strings.Trim(strings.Join(lines, "\n"), " \t\n\r\v\f")
 }
