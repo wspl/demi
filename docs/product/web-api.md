@@ -47,7 +47,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Conversation draft | `GET/PUT /conversations/:id/draft` reads and saves the [draft](#conversation-drafts); `POST /conversations/:id/draft/replaced { action, revision }` restores or dismisses the version a save replaced |
 | Device log | `GET /devices/:id/log?since=<cursor>&limit=<n>&source=<source>` reads the [Host's log](../execution/runner.md#host-log) |
 | Sidebar | `POST /sidebar/reorder { kind, id, beforeId }` |
-| Plugins | `POST /plugins/:plugin/calls/:method` and `POST /conversations/:id/plugins/:plugin/calls/:method` with the method's parameters call a [plugin's page method](#plugin-calls), for the user or for one conversation |
+| Plugins | `PUT /plugins/:plugin { enabled }` turns a plugin on or off for the caller, and `PUT /plugins/:plugin/settings` saves its settings ([A user's plugins](#a-users-plugins)); `POST /plugins/:plugin/calls/:method` and `POST /conversations/:id/plugins/:plugin/calls/:method` with the method's parameters call a [plugin's page method](#plugin-calls), for the user or for one conversation; `POST /conversations/:id/reload` reopens the conversation's tree with the user's current plugins |
 | Models | `GET /models?refresh=true\|false` returns the account-wide catalog |
 | Providers | `GET /providers/catalog`, `GET/POST /providers`, `PATCH/DELETE /providers/:id`, `GET /providers/:id/status`, `POST /providers/:id/test`, `POST /providers/:id/quota`; account routes below |
 | Usage | `GET /usage` for the caller; `GET /usage/instance` for admins in shared mode |
@@ -738,7 +738,10 @@ tree, otherwise completed/error/stopped from its latest terminal block, or idle.
 An unfinished checkpoint without a live session is interrupted. `titleCurrent`
 says whether the title has read every message the user sent, when asking for a
 new one could say nothing new, and `titleGenerating` whether a title request is
-in flight. `draftRevision` is the revision of the conversation's
+in flight. `pluginsChanged` says whether the conversation's tree is open
+with commands or profiles of plugins the user has since turned on or off, so
+a reload would change them ([Reload](#a-users-plugins)). `draftRevision` is
+the revision of the conversation's
 [draft](#conversation-drafts), 0 before its first save: the page reads the
 draft itself only when this number is higher than the revision it holds, so a
 summary carries no draft's text.
@@ -803,6 +806,7 @@ later one is the current value of one part of it that changed:
 | `devices` | `devices`, the paired ones and the Cloud's | A device is paired or revoked, its runner connects or disconnects, or the Cloud's device is made |
 | `providers` | `providers`, each with its details | An entry the user infers with, or an account of it, is created, changed or removed, a sign-in completes, an account's credential is renewed, or its quota snapshot is stored |
 | `cloud` | `cloud` | The Cloud's lifecycle or its reset moves |
+| `plugins` | `plugins`, the plugin list below | The user turns a plugin on or off, or saves its settings |
 | `plugin` | `plugin`, the plugin's id, and `state`, its state for the user's pages | The plugin marks its part as changed ([The page](../architecture/plugins.md#the-page)) |
 | `heartbeat` | Nothing | 30 seconds pass without another message |
 
@@ -810,8 +814,9 @@ The product state holds the current user, the instance mode, preferences, the
 provider entries of the user's scope, workspaces, devices (the paired ones and
 the user's Cloud device, which the file and working-tree routes address
 alike), the summaries of the active and then the
-archived conversations, the Cloud's state, `plugins`, the state of each
-plugin that declares one for the user's pages, by plugin id, and `publicUrl`,
+archived conversations, the Cloud's state, `plugins`, the plugin list, and
+`pluginStates`, the state of each plugin the user has on that declares one,
+by plugin id, and `publicUrl`,
 the URL runners connect to (`DEMI_BACKEND_PUBLIC_URL`). Each provider entry carries its
 `details`: `{ type: "read", ... }` with what `GET /api/providers/:id/status`
 answers, or `{ type: "failed", message }` for an entry whose provider could
@@ -870,6 +875,28 @@ The backend closes the channel with a code and a reason:
 The channel never renews its session; only requests do
 ([Authentication and ownership](../backend/backend.md#authentication-and-ownership)).
 
+## A user's plugins
+
+The plugin list is every plugin of the backend, in its order of
+registration, each with `id`, `name`, `description`, `enabled`, and, for a
+plugin that declares a settings schema, `settingsSchema` and the user's
+`settings`. `PUT /api/plugins/:plugin { enabled }` turns a plugin on or off
+for the caller and answers 204; the new list and the states of the plugins
+that changed reach every page of the user on the synchronization channel. An
+unknown plugin answers 404 `unknown_plugin`. `PUT /api/plugins/:plugin/settings`
+takes the settings as its body and answers 204; a body the plugin's schema
+refuses answers 400 `invalid_body`, and a plugin without a settings schema
+404 `unknown_plugin`. What each change does, and when, is
+[A user's plugins](../architecture/plugins.md#a-users-plugins)'s.
+
+`POST /api/conversations/:id/reload`, without a body, closes the
+conversation's tree and opens it again with the user's current plugins, and
+answers 204. A conversation socket that was attached to the tree closes with
+1012 `reloaded` and connects again, as after a backend restart. A
+conversation whose tree is not open answers 204 and changes nothing: it opens
+with the current plugins anyway. A tree that works answers 409
+`turn_in_flight`, and an archived conversation 409 `conversation_archived`.
+
 ## Plugin calls
 
 A plugin's page calls its plugin through one route, or, for a call about one
@@ -900,7 +927,8 @@ also needs a conversation the user owns, as every conversation route does:
 | Situation | Answer |
 | --- | --- |
 | The backend has no plugin of that id | 404 `unknown_plugin` |
-| The plugin has no method of that name | 404 `unknown_plugin_method` |
+| The plugin has no method of that name for the route: a method of the user scope called for a conversation, or the other way round, has none | 404 `unknown_plugin_method` |
+| The user has the plugin off | 409 `plugin_disabled` |
 | The body is not JSON, or does not match the method's parameter schema | 400 `invalid_body`, naming the field and the reason |
 | The plugin refuses the call, such as a source already added or a tab the browser does not have | 409 `plugin_refused`, with the plugin's own `reason`, a snake_case word such as `tab_not_found`, and its message |
 | A port operation the plugin made was refused by the conversation's host access, and the plugin passes the refusal on | That refusal's own answer: 409 `conversation_archived`, `device_offline`, `host_stopped` or `conversation_busy` |

@@ -63,12 +63,21 @@ on the browser protocol and `backend-host-access`'s on `backend-expose`.
 2. **The page-facing plugins.** `plugin-browser`'s `browser` user stream and
    its tab methods over package calls; and `plugin-expose` with `demi expose`, its numbers, the conversation hosts and
    exposes operations and a page state that follows the user's exposes. The
-   plugin call routes replace the browser tab routes and `/api/exposes`.
-3. **Skills on the backend.** `plugin-skills` with its sources, its values and
+   plugin call routes replace the browser tab routes and `/api/exposes`, and
+   `web` calls them, with the plugins' types generated into their page
+   packages' `src/generated`.
+3. **A user's plugins.** Each user's plugin choices with the plugin switch
+   route and the plugin list in the product state; the agent server's trees
+   taking their commands and profiles when they open, with their revision;
+   context sources, page calls, page states and user streams following the
+   choices at once; `pluginsChanged` and the reload route; and the settings
+   page's plugin list with its switches and the reload offer, in `web-ui`,
+   `web` and `web-gallery`.
+4. **Skills on the backend.** `plugin-skills` with its sources, its values and
    blobs, the Host directories with their installation before a job, the Host
    file reads that never wake a Host, project skills, the catalog, and the
    page call route with the `plugin` sync message.
-4. **The plugins' pages.** `PluginClient`, `usePlugin()` and the slots in
+5. **The plugins' pages.** `PluginClient`, `usePlugin()` and the slots in
    `web-ui`; `@demicodes/plugin-browser` (the `browser` work panel kind),
    `@demicodes/plugin-expose` (the conversation header tool) and
    `@demicodes/plugin-skills` (the settings section); their registration in

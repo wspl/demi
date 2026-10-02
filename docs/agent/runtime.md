@@ -59,15 +59,18 @@ session changes its state.
 
 The agent runtime knows no product and no plugin. The product gives the
 agent server what every node is assembled from, and answers two questions
-while a node runs:
+while a node runs. The command set and the profiles may change while the
+server runs: a tree takes them when it opens, records their revision, and
+keeps them until it closes, so a change reaches a conversation when its tree
+opens again ([A user's plugins](../architecture/plugins.md#a-users-plugins)).
 
 | The product supplies | What it is | Where it comes from in Demi |
 | --- | --- | --- |
-| The command set | The commands every node starts from; the runtime adds its own groups per node ([Tools](#tools)) | The plugins' commands and the `demi host` group ([Plugins](../architecture/plugins.md#commands)) |
+| The command set | The commands every node starts from; the runtime adds its own groups per node ([Tools](#tools)) | The commands of the plugins the user has on, and the `demi host` group ([Plugins](../architecture/plugins.md#commands)) |
 | Instructions | The text that opens the system prompt, before the runtime's rules for its tools | The product's instructions; a plugin adds only its commands' help ([Prompt text and context](../architecture/plugins.md#prompt-text-and-context)) |
-| Profiles | The named [subagent profiles](subagents.md#profiles), as data | The plugins' profiles |
+| Profiles | The named [subagent profiles](subagents.md#profiles), as data | The profiles of the plugins the user has on |
 | The Host of a node | Where its shell tools run now, asked at each shell tool call | The conversation's host access ([Host operations](../execution/sessions-and-targets.md#host-operations)) |
-| Context sources | What the model must learn before a request, asked before each one ([Context](#context)) | The conversation's execution context, then each plugin that is a context source |
+| Context sources | What the model must learn before a request, asked before each one ([Context](#context)) | The conversation's execution context, then each plugin that is a context source, while the user has it on |
 
 A node's system prompt is therefore the instructions (or a profile's, which
 replace them), the runtime's rules for its five tools, and the rendered help
