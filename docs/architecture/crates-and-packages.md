@@ -2011,7 +2011,7 @@ internal/artifacts -> internal/contract
 internal/cli -> none
 internal/version -> none
 internal/host -> internal/commandwire, internal/declare, internal/core, internal/contract
-internal/plugin -> internal/declare, internal/core, internal/host, internal/webapi
+internal/plugin -> internal/declare, internal/core, internal/host, internal/webapi, internal/contract
 internal/plugins/browser -> internal/plugin, internal/declare, internal/cmdpkg/browser/browserop, internal/host, internal/webapi
 internal/plugins/changes -> internal/plugin
 internal/plugins/expose -> internal/plugin, internal/host, internal/core, internal/webapi
