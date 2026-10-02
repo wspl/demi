@@ -136,6 +136,22 @@ func (g *generator) retainContracts() error {
 			g.markReceived(key, true)
 		}
 	}
+	g.jsonReach = g.received
+	g.received = map[string]bool{}
+	for _, key := range g.order {
+		if has(g.defs[key].marks, "msgpack") {
+			g.markReceived(key, false)
+		}
+	}
+	g.msgReach = g.received
+	// Map keys need validation even though their MessagePack representation
+	// uses the string-key codec rather than their value codec.
+	g.received = map[string]bool{}
+	for _, key := range g.order {
+		if has(g.defs[key].marks, "root") || has(g.defs[key].marks, "msgpack") {
+			g.markReceived(key, true)
+		}
+	}
 	if g.err != nil {
 		return g.err
 	}
