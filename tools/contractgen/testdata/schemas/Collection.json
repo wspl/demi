@@ -8,7 +8,8 @@
       "items": {
         "type": "integer",
         "minimum": 1,
-        "maximum": 8
+        "maximum": 8,
+        "format": "uint8"
       }
     },
     "labels": {
@@ -28,5 +29,6 @@
   "required": [
     "values",
     "labels"
-  ]
+  ],
+  "title": "Collection"
 }

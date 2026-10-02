@@ -4,7 +4,8 @@
     "number": {
       "type": "integer",
       "minimum": 2,
-      "maximum": 7
+      "maximum": 7,
+      "format": "uint8"
     },
     "choice": {
       "type": "string",
@@ -31,5 +32,6 @@
     "choice",
     "text"
   ],
-  "additionalProperties": false
+  "additionalProperties": false,
+  "title": "Constraints"
 }

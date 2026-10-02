@@ -1,46 +1,88 @@
-# Command schema expectations
+# Rust command schema parity
 
-Neither `crates/runner-protocol/tests/fixtures/manifest.json` nor
-`crates/command-declarations/tests/fixtures/cli.json` carries schemas for the
-real file or browser types. Both contain a synthetic `fixture read` command
-(with a count default and other fields absent from real `ReadArgs`). The
-expectations here are therefore hand-derived from the Rust declarations,
-as the work-package brief permits, not claimed to be captured Rust output.
+`manifests.json` is copied without changes from
+`gomig-ref/plugin-manifests/manifests.json`, the captured manifests produced
+by every built-in Rust plugin. The test reads that committed fixture; it does
+not require a Rust build, another worktree or a network connection.
 
-The comparison pins validation keywords. Rust's schemars also emits titles,
-doc-comment descriptions and numeric format annotations; the Go marker
-vocabulary has no such annotations, and this generator omits them.
+`TestRustManifestSchemas` compares complete schemas as canonical JSON (sorted
+object keys and normalized JSON numbers, preserving array order). It covers
+both input and output wherever present:
 
-| Expectation | Rust source and derivation |
-|---|---|
-| `ReadArgs` | `command-package-file-protocol/src/lib.rs`: required string `path`, `deny_unknown_fields`. |
-| `CreateArgs` | Same source: required strings `path` and `content`, strict object. Empty content is valid. |
-| `EditArgs` | Same source: required `path`, `old`, `new`; `old` has length minimum 1; optional `usize` occurrence and context have minimum 1. The target platforms are 64-bit, so their representation maximum is 18446744073709551615. Optional properties never accept null. |
-| `PatchArgs` | Same source: required string `patch`, strict object, no length bound. |
-| `OpenInput` | `command-package-browser-protocol/src/browser/operations.rs`: required URL string length 1–4096, optional Load enum, optional timeout 1–300000 contributed by `input!`. `browser/mod.rs` defines the constants and the three Load strings. |
-| `NavigationResult` | `browser/operations.rs`: required TabId and URL, optional non-null title. `browser/mod.rs` defines TabId's exact `^t[1-9][0-9]{0,14}$` pattern. |
-| `CloseResult` | Same sources: required `closed` TabId, strict object. |
+- Every file leaf: `read`, `create`, `edit`, `patch` (four input schemas;
+  these commands have no JSON output declaration).
+- Ten browser leaves: `open`, `goto`, `back`, `forward`, `reload`, `close`,
+  `viewport.set`, `viewport.reset`, `cdp.detach`, `webmcp.call` (ten inputs and
+  ten outputs, including reused result types).
+- The timestamp-bearing outputs of `expose.add`, `expose.list`, `expose.renew`.
 
-The Go `range` and `length` markers deliberately carry Rust's garde rules as
-well as its representation: the schema must agree with the decoder. These
-hand-derived expectations include those rules even where a Rust derive may
-not translate a garde annotation into a schemars keyword. Numeric width
-maxima are explicit in Go schemas; Rust may leave a width in a non-asserting
-`format` annotation instead. These are validation-strengthening differences,
-not byte-for-byte Rust schema claims.
+Go contract doc comments are copied from
+`command-package-file-protocol/src/lib.rs`,
+`command-package-browser-protocol/src/browser/{mod,operations}.rs`, and
+`plugin-expose/src/commands.rs`. Input macro fields copy the macro's own
+comments. Derived Go declarations reuse identical fields without duplicating
+those comments. Type titles appear only at schema roots. A field comment
+replaces a named type's description: the browser input `tab` field is a
+concrete example; browser result `tab` retains the TabId type description.
 
-`ExampleArgs` ports
-`command-declarations/tests/commands.rs::declared_argument_types_generate_schemas_inside_the_subset`:
-required path and tags, count maximum 9, fast/slow enum, no meta-schema and
-no null alternatives. `Outcome`, `Collection` and `Constraints` are additional generator
-fixtures for tagged unions, nullable fields, tolerant objects, arrays and
-nullable map values, and intersected type/field constraints; they do not claim to represent Rust commands.
+The only declaration-builder difference in the selected schemas is
+`plugin-browser/src/browser.rs::leaf`: `LeafBuilder::describe` changes every
+input `timeout` description from `Whole operation deadline in milliseconds`
+to `Whole operation deadline in milliseconds; default N, maximum 300000.`
+Here N is 300000 for open and 30000 for the other nine leaves. The test first
+asserts the original type description, then applies exactly this override to
+the comparison value. No annotation is stripped or ignored. Production
+builder behavior belongs to `internal/declare` and `internal/host`.
 
-`TestCommandSchemas` compiles every expectation using draft 2020-12 and runs
-valid and invalid values through both the generated schema and decoder. Its
-EditArgs scenarios port
-`command-package-file-protocol/tests/protocol.rs::file_arguments_refuse_empty_old_text_and_zero_positions`.
-The file operation-dispatch test is outside this generator's responsibility.
-Other command-declaration tests concern argv parsing, help and registration,
-not schema generation. Browser operation dispatch, runtime deadlines, capture,
-live-view and release tests likewise belong to their protocol work packages.
+## Numeric and validation fidelity
+
+Numeric primitives follow schemars 1.2.2's
+`src/json_schema_impls/primitives.rs`: formats int/uint for machine integers,
+fixed-width formats for fixed-width types, float/double for floating point;
+minimum zero for unsigned integers; explicit width bounds only for 8/16-bit
+integers. Wider representation maxima are not added. Rust's garde bounds
+are carried by Go range/length markers. The captured manifests confirm those
+bounds are emitted by schemars; no speculative strengthening remains.
+
+`Numeric.json` pins the primitive mapping. `ExampleArgs.json` ports
+`command-declarations/tests/commands.rs::declared_argument_types_generate_schemas_inside_the_subset`.
+The remaining small expected JSON files exercise generator-only shapes:
+unions, nullability, maps, intersected constraints and recursive references.
+`Recursive` exercises a reference to the root; `RecursiveResult` exercises
+an inline recursive subschema plus `$defs`, following schemars's
+`SchemaGenerator::subschema_for` behavior. They are not captured command types.
+
+`TestCommandSchemas` compiles each tested schema as draft 2020-12 and checks
+valid and invalid fixture values against both schema and generated decoder.
+It includes all cases from
+`file_arguments_refuse_empty_old_text_and_zero_positions`. JSON Schema works
+on parsed values: duplicate keys, Go integer overflow, integer token spelling,
+and canonical timestamp spelling remain decoder checks. Rust's schemas also
+do not enforce these through numeric/date-time format annotations.
+
+## Schema-root refusal audit
+
+Inspected every input and output of all 59 command leaves in the captured
+manifests: todo (4), file (4), browser (47), expose (4). Plugins without
+commands have no command schema roots. Inspected their owning Rust command
+and protocol declarations as well, since custom checks need not appear as a
+JSON Schema keyword.
+
+- Recursion **is used**: `browser.inspect` output's `BrowserTreeNode.children`
+  references `#/$defs/BrowserTreeNode`. The recursive-shape refusal is removed.
+- Timestamps **are used**: `ExposeLine.expiresAt` in expose add/list/renew
+  output. The timestamp refusal is removed; `timestamp` emits the same
+  string/date-time schema as `shared-types/src/time.rs::Timestamp::json_schema`.
+- No command shape uses a normalized email/HTTP-URL/trimmed string contract,
+  base64/byte-slice contract, or a cross-field custom validation hook requiring
+  `+demi:check`. These schema-root refusals remain. Browser identifiers use
+  their explicit shared regex patterns, not an opaque check. Opaque cursor
+  and handle strings are ordinary strings; their runtime creation uses base64
+  but their schema is not a base64-validated byte contract.
+- Skills page state and methods are not command leaves. Their schemas, and
+  plugin transport payloads carrying B64Bytes, are outside this audit.
+
+The current generator's pre-existing tagged-union-only contract model cannot
+express Rust's untagged result families (for example NodeValue in inspect).
+Removing the recursion refusal supports recursive Go contracts; this work
+package does not add an untagged contract model or claim a full inspect port.

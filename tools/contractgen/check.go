@@ -178,7 +178,7 @@ func checkMarks(m map[string]string) error {
 				return fmt.Errorf("duplicate %s bound %s", key, name)
 			}
 			seen[name] = true
-			if !ok || (name != "min" && name != "max") || !regexp.MustCompile(`^-?[0-9]+(?:\.[0-9]+)?$`).MatchString(value) {
+			if !ok || (name != "min" && name != "max") || !regexp.MustCompile(`^-?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$`).MatchString(value) {
 				return fmt.Errorf("invalid %s argument %q", key, arg)
 			}
 		}

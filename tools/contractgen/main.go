@@ -22,13 +22,15 @@ import (
 )
 
 type definition struct {
-	base     string
-	position string
-	name     string
-	key      string
-	typ      *types.Named
-	marks    map[string]string
-	fields   map[string]map[string]string
+	description       string
+	fieldDescriptions map[string]string
+	base              string
+	position          string
+	name              string
+	key               string
+	typ               *types.Named
+	marks             map[string]string
+	fields            map[string]map[string]string
 }
 
 type generator struct {
@@ -157,7 +159,7 @@ func generate(ctx context.Context, patterns []string, ts bool, tsDir string, ver
 						}
 						continue
 					}
-					d := &definition{position: p.Fset.Position(spec.Pos()).String(), name: spec.Name.Name, key: typeKey(named), typ: named, marks: marks, fields: map[string]map[string]string{}}
+					d := &definition{description: contractDescription(doc), fieldDescriptions: map[string]string{}, position: p.Fset.Position(spec.Pos()).String(), name: spec.Name.Name, key: typeKey(named), typ: named, marks: marks, fields: map[string]map[string]string{}}
 					if source, ok := p.TypesInfo.TypeOf(spec.Type).(*types.Named); ok {
 						d.base = typeKey(source.Origin())
 					}
@@ -168,6 +170,7 @@ func generate(ctx context.Context, patterns []string, ts bool, tsDir string, ver
 							}
 							for _, name := range field.Names {
 								d.fields[name.Name] = markers(field.Doc)
+								d.fieldDescriptions[name.Name] = contractDescription(field.Doc)
 								if len(d.fields[name.Name]) > 0 {
 									marked = true
 								}
@@ -692,6 +695,32 @@ func (g *generator) inheritFields(d *definition) {
 		g.inheritFields(base)
 		for name, marks := range base.fields {
 			d.fields[name] = marks
+			d.fieldDescriptions[name] = base.fieldDescriptions[name]
 		}
 	}
+}
+
+// contractDescription keeps contract documentation as schema product text,
+// excluding generator and Go tooling directives rather than rewriting prose.
+func contractDescription(doc *ast.CommentGroup) string {
+	if doc == nil {
+		return ""
+	}
+	var lines []string
+	for _, comment := range doc.List {
+		text := strings.TrimPrefix(comment.Text, "//")
+		text = strings.TrimPrefix(text, " ")
+		directive := strings.TrimSpace(text)
+		if strings.HasPrefix(directive, "+demi:") || strings.HasPrefix(directive, "sumtype:") || strings.HasPrefix(directive, "go:") {
+			continue
+		}
+		if strings.HasPrefix(text, "/*") {
+			text = strings.TrimSuffix(strings.TrimPrefix(text, "/*"), "*/")
+		}
+		lines = append(lines, text)
+	}
+	// Schemars strips the comment delimiter and one leading space per line,
+	// then trims the outer ASCII whitespace. CommentGroup.Text also collapses
+	// blank lines and indentation, which would change the help/model text.
+	return strings.Trim(strings.Join(lines, "\n"), " \t\n\r\v\f")
 }

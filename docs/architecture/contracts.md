@@ -193,8 +193,10 @@ records, and manifest/package digests.
 A command declaration calls `<Type>JSONSchema()` on a type marked
 `+demi:schema`. The function returns fresh JSON bytes from `contract_gen.go`;
 callers cannot mutate another caller's schema. Generation uses draft 2020-12
-keywords without a `$schema` meta-schema declaration, and inlines all
-subschemas without `$ref` or `$defs`, matching the command schema settings.
+keywords without a `$schema` meta-schema declaration. Subschemas are inline
+except cycles: a reference back to the root uses `$ref: "#"`, and other
+recursive types use `$defs` and `$ref`, as schemars does even with inlining
+enabled.
 The declaration's input-subset check still decides whether a schema has a
 command-line form; schema generation also supports richer result objects.
 
@@ -206,19 +208,37 @@ use `items`. `union` produces `oneOf` with each `variant`'s tag as `const`.
 `enum` produces `enum`, `pattern` (including an `id` pattern) produces
 `pattern`, `length` produces `minLength`/`maxLength` for strings and
 `minItems`/`maxItems` for arrays, and `range` produces inclusive
-`minimum`/`maximum`. Integer types also contribute their width and signedness
-bounds. Named-type and field constraints both apply. Opaque JSON has an
-unconstrained schema. Root direction and MessagePack markers do not change
-the JSON representation. No defaults, titles or descriptions are inferred.
+`minimum`/`maximum`. Numeric keywords match schemars: `int`/`uint` map
+Go's machine-sized integers to Rust's `isize`/`usize`, fixed widths use
+`int8` through `uint64`, and floats use `float`/`double`. Unsigned integers
+have minimum zero; 8- and 16-bit integers also carry their representation
+bounds. Wider integers and floats acquire no extra limits from the generator.
+Named-type and field constraints both apply. `timestamp` emits
+`type: "string", format: "date-time"`. Opaque JSON emits `true`.
+Root direction and MessagePack markers do not change the JSON representation.
 
-Generation fails with the declaration and field path for recursive shapes
-that cannot be inlined, or reachable `check`, `format`, `timestamp`,
-`base64` and byte-slice rules: their custom validation, normalization or
-canonical spelling cannot be faithfully enforced by standard JSON Schema.
+A root's `title` is its type name. A contract type's and field's Go doc
+comment is copied verbatim from its Rust doc comment and supplies its
+`description`, including paragraph and line breaks. Generator directives
+are excluded. An explicit field comment replaces the named type's description
+at that property; named subschemas retain descriptions but acquire no title.
+The lint requirement that an exported comment start with its name is waived
+for contract packages. Declaration builders may override a property description
+(for example, a browser leaf adds its default deadline to `timeout`);
+`internal/declare` and `internal/host` own that text, not the type generator.
+No defaults are inferred.
+
+Generation fails with the declaration and field path for reachable `check`,
+normalized string `format`, `base64` and byte-slice rules. The built-in command
+schemas use none of those rules; new uses need an explicit schema mapping
+rather than silently dropping their behavior.
 It also rejects the unsupported shapes and invalid markers described above.
 `schema` takes no arguments and is only a type marker. JSON Schema validates
 parsed values; the generated decoder additionally rejects duplicate keys,
 invalid Unicode and invalid numeric token spellings at the JSON boundary.
+Numeric `format` annotations do not enforce a Go width, and `date-time` does
+not enforce canonical UTC milliseconds: decoders retain those checks, just
+as the Rust value types have checks beyond their schemas.
 
 ## Validation at entry
 

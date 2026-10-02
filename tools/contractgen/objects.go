@@ -44,6 +44,7 @@ func (g *generator) object(d *definition) (*types.Struct, bool) {
 			fields = append(fields, types.NewVar(f.Pos(), f.Pkg(), selector, f.Type()))
 			tags = append(tags, nested.Tag(j))
 			d.fields[selector] = child.fields[f.Name()]
+			d.fieldDescriptions[selector] = child.fieldDescriptions[f.Name()]
 		}
 	}
 	return types.NewStruct(fields, tags), true

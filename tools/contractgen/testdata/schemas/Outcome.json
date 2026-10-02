@@ -5,23 +5,6 @@
       "properties": {
         "kind": {
           "type": "string",
-          "const": "error"
-        },
-        "message": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": false,
-      "required": [
-        "kind",
-        "message"
-      ]
-    },
-    {
-      "type": "object",
-      "properties": {
-        "kind": {
-          "type": "string",
           "const": "ok"
         },
         "value": {
@@ -40,6 +23,24 @@
         "kind",
         "value"
       ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "error"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "message"
+      ]
     }
-  ]
+  ],
+  "title": "Outcome"
 }
