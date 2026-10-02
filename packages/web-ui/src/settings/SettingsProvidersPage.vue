@@ -42,6 +42,7 @@ import SettingsListItem from './SettingsListItem.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
 import SettingsSplit from './SettingsSplit.vue'
+import HostInstalls from '../devices/HostInstalls.vue'
 import {
   WIRE_API_LABELS,
   type SettingsModelDraft,
@@ -724,8 +725,19 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                       : 'Not installed'
                 }}</span>
               </SettingsRow>
+              <!-- The download itself, once the Cloud's runner reports it; before that, while the Cloud wakes
+                 and the release is read, the row below says Installing on Cloud. -->
               <SettingsRow
-                v-if="selected.cli.install && selected.cli.install.state !== 'installed'"
+                v-if="selected.cli.installs.length"
+                compact
+                label="Installing on Cloud"
+              >
+                <template #detail>
+                  <HostInstalls :installs="selected.cli.installs" />
+                </template>
+              </SettingsRow>
+              <SettingsRow
+                v-else-if="selected.cli.install && selected.cli.install.state !== 'installed'"
                 compact
                 :label="selected.cli.install.state === 'installing' ? 'Installing on Cloud' : 'Could not install on Cloud'"
                 :description="selected.cli.install.state === 'failed' ? selected.cli.install.message : undefined"

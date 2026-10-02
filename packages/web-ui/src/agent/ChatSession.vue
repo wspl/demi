@@ -33,6 +33,7 @@ import { provideLabelRoom } from '../ui/label-room'
 import { sessionFailureNotice, turnRecovery } from './session-status'
 import { getVisibleBlocks } from './visible-blocks'
 import type { PersistedScrollState } from '../composables/useBlockVirtualizer'
+import type { HostInstall } from '../devices/installs'
 
 const props = withDefaults(defineProps<{
   conversation: ChatSessionState
@@ -52,6 +53,8 @@ const props = withDefaults(defineProps<{
   asideOpen?: boolean
   /** The conversation's Host files its messages name; absent, their paths stay text. */
   files?: ConversationFiles
+  /** What the conversation's Hosts install now (`native-runtime.md` § Installation progress). */
+  installs?: readonly HostInstall[]
 }>(), {
   // Vue reads an absent boolean prop as false, which would offer Open panel
   // where there is no panel; absent stays undefined.
@@ -287,6 +290,7 @@ watch(() => props.conversation.id, close)
             :load-error="conversation.lastError"
             :failure="failureNotice"
             :pending-submission="pendingSubmission"
+            :installs="installs"
             :read-only="!canEdit"
             :fork="fork"
             :edit-target-id="messageEdit?.request.targetBlockId"

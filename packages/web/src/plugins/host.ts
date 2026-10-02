@@ -4,6 +4,7 @@ import { liveStreamAt } from '@demicodes/web-ui/transport/live-stream'
 import { ApiError, apiRequest, apiUrl, jsonBody, readResponse } from '../api/client'
 import type { ProductState } from '../api/generated/web-api'
 import { executionFor } from '../targets/execution'
+import { packageInstalls } from '../state/installs'
 
 /**
  * The plugins' host in the product (`plugins.md` § The page): each plugin's
@@ -46,9 +47,7 @@ export function productPluginHost(snapshot: () => ProductState | null): PluginHo
         return []
       }
       const packages = state.plugins.find((entry) => entry.id === plugin)?.packages ?? []
-      const { deviceId } = executionFor(summary)
-      const device = state.devices.find((entry) => entry.id === deviceId)
-      return device?.installs.filter((install) => packages.includes(install.package)) ?? []
+      return packageInstalls(state, executionFor(summary).deviceId, packages)
     },
   }
 }

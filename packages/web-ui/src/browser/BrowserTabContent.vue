@@ -11,7 +11,7 @@ import Popover from '../ui/Popover.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import LiveView from './LiveView.vue'
-import PackageInstalls from '../plugins/PackageInstalls.vue'
+import HostInstalls from '../devices/HostInstalls.vue'
 import { NEW_TAB_URL, asTabsError, type BrowserTabData, type BrowserTabsController, type BrowserTabsError } from './tabs'
 import { viewportChoices, type ViewportChoice } from './view'
 
@@ -192,7 +192,9 @@ function history(action: 'back' | 'forward' | 'reload'): void {
       class="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 border-t border-line px-6 text-center text-[13px] text-fg-faint"
     >
       <!-- A first use waits for the Host to install the browser: what it installs shows instead of a bare wait. -->
-      <PackageInstalls v-if="installs.length > 0 && !failure" :installs="installs" />
+      <div v-if="installs.length > 0 && !failure" class="w-full max-w-80">
+        <HostInstalls :installs="installs" />
+      </div>
       <template v-else-if="opening">
         <IndeterminateSpinner :size="16" class="text-fg-subtle" />
         <span>Starting the conversation's browser…</span>

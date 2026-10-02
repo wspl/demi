@@ -2,6 +2,7 @@ import { reactive } from 'vue'
 import { createQuotaRefreshCache } from '@demicodes/web-ui/settings/quota-refresh'
 import type { ExposeMenuEntry } from '@demicodes/web-ui/hosts/types'
 import type {
+  SettingsDevice,
   SettingsMcpServer,
   SettingsPlugin,
   SettingsProviderEntry,
@@ -212,8 +213,6 @@ export function mockProviders(): MockProvider[] {
   return [
     provider({
       id: 'claude-code', name: 'Claude Code', kind: 'subscription', family: 'claude-code', logo: '/logos/claude.svg',
-      // The CLI runs on a conversation's Host: the backend cannot try it by itself.
-      runsOnHost: true,
       // Two machines answered; the Cloud install after the last account failed, which is the one
       // state here that asks the user for anything.
       cli: {
@@ -223,6 +222,7 @@ export function mockProviders(): MockProvider[] {
           { id: 'cloud', name: 'Cloud', versions: ['2.1.267'] },
           { id: 'laptop', name: 'MacBook Pro', versions: [] },
         ],
+        installs: [],
       },
       accounts: [
         {
@@ -563,6 +563,21 @@ export function mockProviders(): MockProvider[] {
   ]
 }
 
+/** The paired devices the devices page lists; each installs nothing until a specimen plays an install. */
+function galleryDevices(): SettingsDevice[] {
+  return [
+    { id: 'mac', name: 'zan-mbp', online: true, seen: 'Now', installs: [] },
+    { id: 'build', name: 'build-01', online: false, seen: '3 days ago', installs: [] },
+    {
+      id: 'lab',
+      name: 'lab-workstation-with-a-long-hostname',
+      online: true,
+      seen: '2 minutes ago',
+      installs: [],
+    },
+  ]
+}
+
 export function createSettingsState() {
   return reactive({
     quotaRefreshCache: createQuotaRefreshCache(),
@@ -711,16 +726,7 @@ export function createSettingsState() {
         detail: 'Archived Jul 3'
       },
     ],
-    devices: [
-      { id: 'mac', name: 'zan-mbp', online: true, seen: 'Now' },
-      { id: 'build', name: 'build-01', online: false, seen: '3 days ago' },
-      {
-        id: 'lab',
-        name: 'lab-workstation-with-a-long-hostname',
-        online: true,
-        seen: '2 minutes ago'
-      },
-    ],
+    devices: galleryDevices(),
     keys: [
       { id: 'new', action: 'New conversation', keys: '⌘⇧O' },
       { id: 'send', action: 'Send message', keys: '⏎' },

@@ -4,6 +4,7 @@ import type { CloudState } from './types'
 import { formatBytes } from '../files/format'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
+import HostInstalls from '../devices/HostInstalls.vue'
 import SettingsGroup from '../settings/SettingsGroup.vue'
 import SettingsRow from '../settings/SettingsRow.vue'
 import CloudResetDialog from './CloudResetDialog.vue'
@@ -68,6 +69,9 @@ function reset() {
       label="Your Cloud environment"
       description="All your Cloud projects share this environment. Starts automatically when needed."
     >
+      <template v-if="cloud.installs.length" #detail>
+        <HostInstalls :installs="cloud.installs" />
+      </template>
       <Button
         size="sm"
         :disabled="cloud.state === 'resetting'"

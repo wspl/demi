@@ -1,6 +1,7 @@
 import { computed, inject, provide, type ComputedRef, type InjectionKey } from 'vue'
 import type { z } from 'zod'
 import type { OpenLiveStream } from '../browser/session'
+import type { HostInstall } from '../devices/installs'
 
 /**
  * How a plugin's page reaches its plugin (`plugins.md` § The page): the
@@ -19,21 +20,6 @@ export class PluginCallError extends Error {
   ) {
     super(message)
   }
-}
-
-/**
- * A command package install under way on a Host (`native-runtime.md`
- * § Installation progress): the package, the artifact's name and version,
- * the phase, and the bytes downloaded of the artifact's size.
- */
-export interface PackageInstall {
-  package: string
-  /** The artifact's line, such as `program` or `Chrome for Testing`. */
-  name: string
-  version: string
-  phase: 'download' | 'unpack'
-  done: number
-  total: number
 }
 
 export interface PluginCallOptions {
@@ -60,7 +46,7 @@ export interface PluginHost {
   /** The user stream `name` of `conversation`'s main Host. */
   stream(name: string, conversation: string): OpenLiveStream
   /** The installs of `plugin`'s packages on `conversation`'s main Host, read reactively. */
-  installs(plugin: string, conversation: string): readonly PackageInstall[]
+  installs(plugin: string, conversation: string): readonly HostInstall[]
 }
 
 /** A plugin's calls for one conversation. */
@@ -68,7 +54,7 @@ export interface ConversationPluginClient {
   call<T>(method: string, params: object, result: z.ZodType<T>, options?: PluginCallOptions): Promise<T>
   stream(name: string): OpenLiveStream
   /** The installs of the plugin's packages on the conversation's main Host, which a first call may wait for. */
-  readonly installs: ComputedRef<readonly PackageInstall[]>
+  readonly installs: ComputedRef<readonly HostInstall[]>
 }
 
 /** One plugin, as its page's components reach it. */

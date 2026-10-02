@@ -37,7 +37,7 @@ function stubCatalog() {
   return { providers: [{
     providerId: 'stub', displayName: 'Stub', sourceFetchedAt: '1970-01-01T00:00:00.000Z', stale: false,
     warnings: [], auth: { status: 'unknown' }, runtime: { status: 'ready' },
-    requiresProcessCapableHost: false,
+    cliPackage: null,
     availability: { type: 'available' },
     models: [{
       id: 'stub', displayName: 'Stub', description: null, contextWindow: 1000, outputLimit: null,

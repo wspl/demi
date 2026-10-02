@@ -92,7 +92,7 @@ impl ProviderAssembly {
             active,
             quota,
             quota_capability,
-            requires_process_capable_host: provider.capabilities().process_host,
+            cli_package: super::claude_releases::cli_package(provider.as_ref()),
         };
         Ok(if disclose {
             details

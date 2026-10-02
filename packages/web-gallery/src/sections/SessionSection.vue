@@ -1411,7 +1411,7 @@ onBeforeUnmount(() => {
     <template v-if="view === 'turns'">
       <GallerySection
         title="Turn"
-        note="Requesting, then each block rolls into the tail row; Resume, Retry and Connect wait for the server first."
+        note="Requesting, then each block rolls into the tail row; Resume, Retry and Connect wait for the server first. First request waits while the Cloud installs the provider's CLI: its progress shows below Requesting, not in it."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button
@@ -1434,6 +1434,11 @@ onBeforeUnmount(() => {
             size="sm"
             @click="playTurn('connect')"
           >Connect</Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            @click="playTurn('install')"
+          >First request</Button>
         </div>
         <div class="gallery-frame h-[20rem] bg-surface">
           <SessionSurface ref="turnSurface">
@@ -1448,6 +1453,7 @@ onBeforeUnmount(() => {
                 :phase="turnFlow.state.phase"
                 :load="turnFlow.state.load"
                 :pending-action="turnFlow.state.pendingAction"
+                :installs="turnFlow.installs.value"
                 :bottom-offset="turnSurface?.dockHeight ?? 0"
                 :persisted-scroll-state="undefined"
                 read-only

@@ -177,9 +177,10 @@ impl ProviderAssembly {
         CatalogProvider {
             provider_id: entry.id.clone(),
             display_name: entry.label.clone(),
-            requires_process_capable_host: provider
+            cli_package: provider
                 .as_ref()
-                .is_ok_and(|provider| provider.capabilities().process_host),
+                .ok()
+                .and_then(|provider| super::claude_releases::cli_package(provider.as_ref())),
             models,
             source_fetched_at: catalog.source_fetched_at,
             stale: catalog.stale,
