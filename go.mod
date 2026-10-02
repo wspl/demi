@@ -15,6 +15,7 @@ require (
 	github.com/tmaxmax/go-sse v0.11.0
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	go.uber.org/goleak v1.3.0
+	golang.org/x/image v0.46.0
 	golang.org/x/mod v0.41.0
 	golang.org/x/sync v0.23.0
 	golang.org/x/sys v0.48.0
@@ -29,3 +30,7 @@ require (
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	golang.org/x/net v0.59.0 // indirect
 )
+
+require mvdan.cc/sh/v3 v3.14.1
+
+replace mvdan.cc/sh/v3 => ./third_party/mvdan-sh

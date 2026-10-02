@@ -30,7 +30,7 @@ func (g *generator) msgDecoder(t types.Type) string {
 		return "func(b []byte)(" + g.typeName(t) + ",error){return contract.MsgpackRecord(b," + g.msgDecoder(t.Elem()) + "," + nullable + ")}"
 	case *types.Named:
 		if _, ok := t.Underlying().(*types.Interface); ok {
-			return g.prefix(t) + "Decode" + t.Obj().Name() + "Msgpack"
+			return g.prefix(t) + goName("Decode", t.Obj().Name()) + "Msgpack"
 		}
 	}
 	return "contract.DecodeMsgpack[" + g.typeName(t) + "]"
@@ -45,24 +45,24 @@ func (g *generator) emitMsgpack(d *definition) {
 	if has(d.marks, "union") {
 		tag := bounds(d.marks["union"])["tag"]
 		if d.marks["msgpack"] == "tuple" {
-			g.line("func Decode%sMsgpack(data []byte)(%s,error){obj,err:=contract.MsgpackObject(data);if err!=nil{return nil,err};if len(obj)!=1{return nil,fmt.Errorf(\"expected one external union tag\")};var tag string;for key:=range obj{tag=key};switch tag{", name, name)
+			g.line("func %sMsgpack(data []byte)(%s,error){obj,err:=contract.MsgpackObject(data);if err!=nil{return nil,err};if len(obj)!=1{return nil,fmt.Errorf(\"expected one external union tag\")};var tag string;for key:=range obj{tag=key};switch tag{", goName("Decode", name), name)
 		} else if d.marks["union"] == "untagged" {
-			g.line("func Decode%sMsgpack(data []byte)(%s,error){", name, name)
+			g.line("func %sMsgpack(data []byte)(%s,error){", goName("Decode", name), name)
 			for _, v := range g.variants(d.key) {
 				g.line("if value,err:=contract.DecodeMsgpack[%s](data);err==nil{return &value,nil}", v.name)
 			}
 			g.line("return nil,fmt.Errorf(\"no matching union variant\")} ")
-			g.line("func Encode%sMsgpack(v %s)([]byte,error){if err:=Validate%s(v);err!=nil{return nil,err};return contract.EncodeMsgpack(v)}", name, name, name)
+			g.line("func %sMsgpack(v %s)([]byte,error){if err:=%s(v);err!=nil{return nil,err};return contract.EncodeMsgpack(v)}", goName("Encode", name), name, goName("Validate", name))
 			return
 		} else {
-			g.line("func Decode%sMsgpack(data []byte)(%s,error){ obj,err:=contract.MsgpackObject(data);if err!=nil{return nil,err};tag,err:=contract.DecodeMsgpack[%s](obj[%s]);if err!=nil{return nil,contract.At(%s,err)};switch tag{", name, name, g.unionKind(d), q(tag), q(tag))
+			g.line("func %sMsgpack(data []byte)(%s,error){ obj,err:=contract.MsgpackObject(data);if err!=nil{return nil,err};tag,err:=contract.DecodeMsgpack[%s](obj[%s]);if err!=nil{return nil,contract.At(%s,err)};switch tag{", goName("Decode", name), name, g.unionKind(d), q(tag), q(tag))
 		}
 		for _, v := range g.variants(d.key) {
 			_, value, _ := strings.Cut(v.marks["variant"], " ")
 			g.line("case %s: value,err:=contract.DecodeMsgpack[%s](data);return &value,err", tagLiteral(value), v.name)
 		}
 		g.line("};return nil,fmt.Errorf(\"unknown union tag\")}")
-		g.line("func Encode%sMsgpack(v %s)([]byte,error){if err:=Validate%s(v);err!=nil{return nil,err};return contract.EncodeMsgpack(v)}", name, name, name)
+		g.line("func %sMsgpack(v %s)([]byte,error){if err:=%s(v);err!=nil{return nil,err};return contract.EncodeMsgpack(v)}", goName("Encode", name), name, goName("Validate", name))
 		return
 	}
 	if g.tupleUnion(d) {
@@ -70,7 +70,7 @@ func (g *generator) emitMsgpack(d *definition) {
 		g.emitTupleVariant(d, st)
 		return
 	}
-	g.line("func Decode%sMsgpack(data []byte)(%s,error){return contract.DecodeMsgpack[%s](data)}", name, name, name)
+	g.line("func %sMsgpack(data []byte)(%s,error){return contract.DecodeMsgpack[%s](data)}", goName("Decode", name), name, name)
 	if g.adjacentUnion(d) != nil {
 		st, _ := g.object(d)
 		g.emitAdjacentVariant(d, st, true)
@@ -126,7 +126,11 @@ func (g *generator) emitMsgpack(d *definition) {
 		}
 		g.line("if present{")
 		if has(m, "nullable") {
-			g.line("if !contract.MsgpackNull(raw){")
+			if pointer, ok := f.Type().(*types.Pointer); len(opts) > 1 && ok && isPointer(pointer.Elem()) {
+				g.line("if contract.MsgpackNull(raw){next.%s=new(%s)}else{", f.Name(), g.typeName(pointer.Elem()))
+			} else {
+				g.line("if !contract.MsgpackNull(raw){")
+			}
 		}
 		g.line("value,err:=%s(raw);if err!=nil{return contract.At(%s,err)};next.%s=value", g.msgFieldDecoder(f.Type(), m), q(key), f.Name())
 		if has(m, "nullable") {

@@ -1,8 +1,5 @@
 package store
 
-// API checkpoint: named parameters document the interface until bodies are ported.
-//revive:disable:unused-parameter
-
 import (
 	"context"
 
@@ -74,10 +71,19 @@ func (*OutputRemoved) storedOutput()   {}
 // CommitGuard checks that no invocation served by a save has become stale.
 // Its zero value serves no invocation. The caller owns the lifetimes and
 // serializes invalidation with committing; the guard starts no goroutines.
-type CommitGuard struct{}
+type CommitGuard struct{ lifetimes []context.Context }
 
 // NewCommitGuard guards the cancellation contexts of the served invocations.
-func NewCommitGuard(lifetimes ...context.Context) CommitGuard { panic("not written: a-store") }
+func NewCommitGuard(lifetimes ...context.Context) CommitGuard {
+	return CommitGuard{lifetimes: append([]context.Context(nil), lifetimes...)}
+}
 
 // Check returns ErrInvalidated when any served invocation has been canceled.
-func (g CommitGuard) Check() error { panic("not written: a-store") }
+func (g CommitGuard) Check() error {
+	for _, lifetime := range g.lifetimes {
+		if lifetime.Err() != nil {
+			return ErrInvalidated
+		}
+	}
+	return nil
+}

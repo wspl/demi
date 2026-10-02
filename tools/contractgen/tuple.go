@@ -15,7 +15,7 @@ func (g *generator) tupleUnion(d *definition) bool {
 // emitTupleVariant reads and writes a kept-record variant in declaration order.
 func (g *generator) emitTupleVariant(d *definition, st *types.Struct) {
 	_, tag, _ := strings.Cut(d.marks["variant"], " ")
-	g.line("func Decode%sMsgpack(data []byte)(%s,error){return contract.DecodeMsgpack[%s](data)}", d.name, d.name, d.name)
+	g.line("func %sMsgpack(data []byte)(%s,error){return contract.DecodeMsgpack[%s](data)}", goName("Decode", d.name), d.name, d.name)
 	g.line("func(v *%s) UnmarshalMsgpack(data []byte)error{fields,err:=contract.MsgpackTuple(data,%s,%d);if err!=nil{return err};var next %s", d.name, q(tag), st.NumFields(), d.name)
 	for i := 0; i < st.NumFields(); i++ {
 		f := st.Field(i)
@@ -45,12 +45,24 @@ func (g *generator) emitTupleVariant(d *definition, st *types.Struct) {
 func (g *generator) msgValue(f *types.Var, m map[string]string) string {
 	value := "v." + f.Name()
 	if has(m, "timestamp") {
-		if isPointer(f.Type()) {
-			g.line("var timestamp%s any;if v.%s!=nil{timestamp%s=contract.MsgpackTimestampValue(*v.%s)}", f.Name(), f.Name(), f.Name(), f.Name())
-			value = "timestamp" + f.Name()
-		} else {
-			value = "contract.MsgpackTimestampValue(" + value + ")"
+		g.line("var timestamp%s any", f.Name())
+		depth := 0
+		typ := f.Type()
+		for {
+			pointer, ok := typ.(*types.Pointer)
+			if !ok {
+				break
+			}
+			g.line("if %s!=nil{", value)
+			value = "(*" + value + ")"
+			typ = pointer.Elem()
+			depth++
 		}
+		g.line("timestamp%s=contract.MsgpackTimestampValue(%s)", f.Name(), value)
+		for range depth {
+			g.line("}")
+		}
+		value = "timestamp" + f.Name()
 	}
 	return value
 }
