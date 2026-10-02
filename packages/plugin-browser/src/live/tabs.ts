@@ -1,12 +1,12 @@
 /**
- * The `browser` tab kind's own side of the work panel
- * (`live-view.md` § A browser tab in the panel): what a tab saves, the
- * requests that list, open, close and navigate the conversation browser's
- * tabs, and the one view a page keeps while a `browser` tab is shown and the
- * page is visible.
+ * The `browser` page's panel session (`live-view.md` § A browser tab in the
+ * panel): what a tab saves, the conversation browser's tab list, which the
+ * plugin's conversation state brings, the requests that open, close and
+ * navigate its tabs, and the one view a page keeps while a `browser` tab is
+ * shown and the page is visible.
  */
 import { useDocumentVisibility } from '@vueuse/core'
-import { nextTick, shallowRef, watch, type Ref, type ShallowRef, type WatchHandle } from 'vue'
+import { computed, nextTick, shallowRef, watch, type ComputedRef, type Ref, type ShallowRef } from 'vue'
 import { z } from 'zod'
 import type { BrowserCreatedBy } from '../generated/plugin'
 import { viewerClipboard } from './clipboard'
@@ -27,7 +27,7 @@ export const browserTabDataSchema = z.object({
 })
 export type BrowserTabData = z.infer<typeof browserTabDataSchema>
 
-/** A tab of the conversation's browser, as its tab methods list it. */
+/** A tab of the conversation's browser, as its tab list names it. */
 export interface BrowserTabInfo {
   id: string
   title: string
@@ -51,12 +51,20 @@ export class BrowserTabsError extends Error {
 }
 
 /**
- * The conversation browser's tab methods (`live-view.md` § The tab methods)
- * and its user stream, as the product or the gallery supplies them. Every
- * request rejects with a `BrowserTabsError`.
+ * The conversation browser's tab list and tab methods (`live-view.md` § The
+ * tab methods) and its user stream, as the plugin's page context supplies
+ * them. Every request rejects with a `BrowserTabsError`.
  */
 export interface BrowserTabsApi {
-  list(): Promise<BrowserTabList>
+  /** The tab list, as the plugin's conversation state follows it. */
+  tabs: {
+    /** The list last read; null before the first. */
+    value: Readonly<Ref<BrowserTabList | null>>
+    /** Why the last read failed, until one succeeds. */
+    error: Readonly<Ref<BrowserTabsError | null>>
+    /** Reads the list again now. */
+    read(): void
+  }
   open(url: string): Promise<BrowserTabInfo>
   close(tab: string): Promise<void>
   navigate(tab: string, url: string): Promise<void>
@@ -87,19 +95,23 @@ export interface BrowserTabsOptions {
   pictures?: () => Promise<boolean>
 }
 
+/** Reports a defect of the page itself, as the page context's `errors.defect` does. */
+export type ReportDefect = (message: string, error: unknown) => void
+
 /** Whether the page is visible: one listener, for the page's lifetime, that every controller shares. */
 const pageVisibility = useDocumentVisibility()
 
 /**
- * One conversation's browser, for one page: the last tab list it read, and
- * the view, open only while a `browser` tab's content is shown and the page
- * is visible (`live-view.md` § Ending a view).
+ * One conversation's browser, for one page, made by the page's panel
+ * session in its effect scope: the tab list it last learned, and the view,
+ * open only while a `browser` tab's content is shown and the page is
+ * visible (`live-view.md` § Ending a view).
  */
 export class BrowserTabsController {
-  /** The last list read; null before the first answer. */
+  /** The last list the plugin's state or the view gave; null before the first. */
   readonly list: ShallowRef<BrowserTabList | null> = shallowRef(null)
   /** Why the last list could not be read, until one is. */
-  readonly listError: ShallowRef<BrowserTabsError | null> = shallowRef(null)
+  readonly listError: ComputedRef<BrowserTabsError | null>
   readonly session: ShallowRef<LiveSession | null> = shallowRef(null)
   /**
    * Whether this web browser can show the pictures, asked once. One that
@@ -121,17 +133,34 @@ export class BrowserTabsController {
   private shown: string | null = null
   private closing: ReturnType<typeof setTimeout> | null = null
   private readonly visibility: Readonly<Ref<DocumentVisibilityState>>
-  private readonly stopVisibility: WatchHandle
   private disposed = false
 
   constructor(
     readonly api: BrowserTabsApi,
     private readonly panel: BrowserPanelTabs,
+    private readonly defect: ReportDefect,
     options: BrowserTabsOptions = {},
   ) {
     this.visibility = options.visibility ?? pageVisibility
-    this.stopVisibility = watch(this.visibility, (state) => this.visibilityChanged(state), { flush: 'sync' })
-    void (options.pictures ?? picturesSupported)().then((supported) => {
+    this.listError = computed(() => api.tabs.error.value)
+    // The watchers stop with the panel session's effect scope.
+    watch(this.visibility, (state) => this.visibilityChanged(state), { flush: 'sync' })
+    watch(
+      api.tabs.value,
+      (list) => {
+        if (list) {
+          this.adopt(list)
+        }
+      },
+      { immediate: true, flush: 'sync' },
+    )
+    watch(this.listError, (error) => {
+      if (error?.code && FINAL_CODES.has(error.code)) {
+        this.closeView()
+      }
+    })
+    const pictures = options.pictures ?? (() => picturesSupported(defect))
+    void pictures().then((supported) => {
       if (this.disposed) {
         return
       }
@@ -140,36 +169,17 @@ export class BrowserTabsController {
     })
   }
 
-  /**
-   * Reads the browser's tabs and adds those no panel tab is bound to. Nothing
-   * is ever removed here: a tab the Host lost stays the user's to close.
-   */
-  async refresh(): Promise<void> {
-    let list: BrowserTabList
-    try {
-      list = await this.api.list()
-    } catch (error) {
-      if (this.disposed) {
-        return
-      }
-      this.listError.value = asTabsError(error)
-      const code = this.listError.value.code
-      if (code !== null && FINAL_CODES.has(code)) {
-        this.closeView()
-      }
-      return
-    }
-    if (this.disposed) {
-      return
-    }
-    this.listError.value = null
-    this.adopt(list)
+  /** Reads the tab list again, as the content's Retry does. */
+  refresh(): void {
+    this.api.tabs.read()
   }
 
   /**
-   * A list from a request or from the view's `state`. While a tab is being
-   * opened the list may already name it, before its panel tab is bound: it
-   * would be taken for the agent's. Adding waits for the open to settle.
+   * A list from the plugin's state or from the view's `state`, whose panel
+   * tabs it adds; nothing is ever removed here: a tab the Host lost stays the
+   * user's to close. While a tab is being opened the list may already name
+   * it, before its panel tab is bound: it would be taken for the agent's.
+   * Adding waits for the open to settle.
    */
   adopt(list: BrowserTabList): void {
     this.list.value = list
@@ -285,9 +295,8 @@ export class BrowserTabsController {
   /**
    * Nobody can watch a hidden page, and an open view keeps its conversation
    * active, so the view closes while the page is hidden. Shown again, the
-   * page opens a new view on the shown tab and reads the tab list, since the
-   * agent may have opened or closed tabs meanwhile (`live-view.md` § A browser
-   * tab in the panel).
+   * page opens a new view on the shown tab; the tab list reached it
+   * meanwhile with the plugin's state.
    */
   private visibilityChanged(state: DocumentVisibilityState): void {
     if (state !== 'visible') {
@@ -295,8 +304,6 @@ export class BrowserTabsController {
       return
     }
     this.watchShown()
-    // A list that cannot be read is kept in `listError`; refresh never rejects.
-    void this.refresh()
   }
 
   /** The shown tab on the page's one view, while someone can see its pictures. */
@@ -318,7 +325,9 @@ export class BrowserTabsController {
       platform: viewerPlatform(navigator),
       onClipboard: (text) => viewerClipboard.receive(text),
       onTabs: (tabs) => this.adopt({ tabs }),
-      onEnded: () => void this.refresh(),
+      // The browser may have ended with the view, which no job told the plugin.
+      onEnded: () => this.refresh(),
+      defect: this.defect,
     })
     this.session.value = session
     session.start()
@@ -332,7 +341,6 @@ export class BrowserTabsController {
 
   dispose(): void {
     this.disposed = true
-    this.stopVisibility()
     if (this.closing !== null) {
       clearTimeout(this.closing)
       this.closing = null

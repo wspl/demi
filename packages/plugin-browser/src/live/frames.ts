@@ -4,7 +4,7 @@
  * length, a kind and a payload.
  */
 import { liveModuleMessageSchema, type LiveModuleMessage, type LiveViewerMessage } from '../generated/plugin'
-import { LIVE_CONTROL_FRAME, LIVE_FILE_FRAME, LIVE_FILE_HEADER_BYTES, LIVE_MAX_FRAME_BYTES, LIVE_VIDEO_FRAME, LIVE_VIDEO_HEADER_BYTES, LIVE_VIDEO_TAB_BYTES } from '../generated/live'
+import { LIVE_CONTROL_FRAME, LIVE_FILE_FRAME, LIVE_FILE_HEADER_BYTES, LIVE_MAX_FRAME_BYTES, LIVE_VIDEO_FRAME, LIVE_VIDEO_HEADER_BYTES, LIVE_VIDEO_TAB_BYTES } from '../generated/plugin'
 import { z } from 'zod'
 import type { StreamBytes } from '@demicodes/plugin-sdk'
 

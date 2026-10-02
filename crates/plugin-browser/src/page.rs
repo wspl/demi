@@ -1,10 +1,14 @@
-//! The conversation browser's tab methods (`live-view.md` § The tab
-//! methods): each runs the operation the agent's `demi browser` command
+//! The conversation browser's tab list and tab methods (`live-view.md` § The
+//! tab methods): each runs the operation the agent's `demi browser` command
 //! runs, as a package call for the conversation's user, and holds no
-//! browser logic. Listing never wakes a stopped Cloud and is no activity;
-//! closing and moving a tab operate the browser without waking it; opening
-//! a tab is work the user starts. For a `user` caller the operations answer
-//! once their work started, without waiting for the page to load.
+//! browser logic. The tab list is the plugin's conversation state, which
+//! follows the conversation's jobs, since the agent's commands open and
+//! close tabs; listing never wakes a stopped Cloud and is no activity.
+//! Closing and moving a tab operate the browser without waking it; opening
+//! a tab is work the user starts. Each method that did its work marks the
+//! tab list changed.
+//! For a `user` caller the operations answer once their work started,
+//! without waiting for the page to load.
 
 use demi_command_declarations::NativeOperation;
 use demi_command_package_browser_protocol::PACKAGE;
@@ -14,7 +18,7 @@ use demi_command_package_browser_protocol::browser::{
     TabsInput, TabsResult,
 };
 use demi_plugin_interface::{
-    CallKind, Method, Page, PluginError, PluginPort, PortFailure, PortRefusal, Scope,
+    CallKind, Method, Page, PluginError, PluginPort, PortFailure, PortRefusal, Scope, State, Topic,
 };
 use demi_web_api_protocol::error::ErrorCode;
 use schemars::JsonSchema;
@@ -25,7 +29,8 @@ use serde_json::{Map, Value};
 /// The most characters of a URL a method takes.
 pub const URL_MAX: usize = 4096;
 
-/// `tabs`: the conversation browser's tabs, none while it does not run.
+/// The conversation state: the conversation browser's tabs, none while it
+/// does not run.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct BrowserTabs {
     pub tabs: Vec<BrowserTab>,
@@ -87,11 +92,14 @@ fn operation(name: &str) -> NativeOperation {
     }
 }
 
-/// The page's methods, each declared with the operations it calls.
+/// The page: its tab list, and its methods, each declared with the
+/// operations it calls.
 pub(crate) fn page() -> Page {
-    Page::new()
-        .method(
-            Method::new::<Empty, BrowserTabs>("tabs", Scope::Conversation).calls(operation("tabs")),
+    Page::new("@demicodes/plugin-browser")
+        .conversation_state(
+            State::new::<BrowserTabs>()
+                .follows(Topic::Jobs)
+                .calls(operation("tabs")),
         )
         .method(
             Method::new::<OpenTab, OpenedTab>("open", Scope::Conversation).calls(operation("open")),
@@ -109,35 +117,42 @@ pub(crate) fn page() -> Page {
         )
 }
 
-/// A method without parameters.
-#[derive(Debug, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct Empty {}
+/// The conversation state: the browser's tabs.
+pub(crate) async fn tabs(port: &PluginPort) -> Result<Value, PluginError> {
+    let input = TabsInput {
+        offset: None,
+        limit: None,
+        timeout: None,
+    };
+    let tabs =
+        match run::<TabsResult, _>(port, BrowserOperation::Tabs, input, CallKind::Looks).await {
+            Ok(listed) => listed.tabs,
+            // A stopped Cloud runs no browser.
+            Err(failure) if stopped(&failure) => Vec::new(),
+            Err(failure) => return Err(refused(failure)),
+        };
+    to_value(BrowserTabs { tabs })
+}
 
-/// Answers the page call `method` with `params`, which its schema checked.
+/// Answers the page call `method` with `params`, which its schema checked,
+/// and marks the tab list changed once the method did its work: every method
+/// opens, closes or moves a tab, and one the browser refused changed none.
 pub(crate) async fn call(
     method: &str,
     params: Map<String, Value>,
     port: &PluginPort,
 ) -> Result<Value, PluginError> {
+    let result = run_method(method, params, port).await?;
+    port.changed(Scope::Conversation).await?;
+    Ok(result)
+}
+
+async fn run_method(
+    method: &str,
+    params: Map<String, Value>,
+    port: &PluginPort,
+) -> Result<Value, PluginError> {
     match method {
-        "tabs" => {
-            let input = TabsInput {
-                offset: None,
-                limit: None,
-                timeout: None,
-            };
-            let tabs =
-                match run::<TabsResult, _>(port, BrowserOperation::Tabs, input, CallKind::Looks)
-                    .await
-                {
-                    Ok(listed) => listed.tabs,
-                    // A stopped Cloud runs no browser.
-                    Err(failure) if stopped(&failure) => Vec::new(),
-                    Err(failure) => return Err(refused(failure)),
-                };
-            to_value(BrowserTabs { tabs })
-        }
         "open" => {
             let OpenTab { url } = decode(params)?;
             let input = OpenInput {

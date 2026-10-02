@@ -373,10 +373,7 @@ impl Harness {
                 "stall_release",
                 "stalled",
             ]
-            .map(|name| Stream {
-                name: name.to_owned(),
-                operation: stream(name),
-            })
+            .map(|name| Stream::new::<Value, Value>(name, stream(name)))
             .into(),
         );
         self.release = Some(&*FIXTURE);

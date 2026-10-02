@@ -6,29 +6,27 @@
  * incompatibly raises it.
  */
 
-// The slots a page fills.
-export type {
-  PanelKinds,
-  PanelKindsContext,
-  PluginHeaderToolProps,
-  PluginPage,
-  PluginSettingsSection,
-} from '@demicodes/web-ui/plugins/slots'
-export type { PanelTabKind } from '@demicodes/web-ui/agent/panel-kinds/kind'
-export type {
-  ConversationFileService,
-  IntentService,
-} from '@demicodes/web-ui/plugins/slots'
-export type { IntentName, IntentPayloads, IntentTarget, PageIntents } from '@demicodes/web-ui/plugins/intents'
-
-// The plugin client.
+// The page object and its context (`plugin-pages.md` § The page object,
+// § The page context).
 export {
   PluginCallError,
-  usePlugin,
-  type ConversationPluginClient,
+  definePage,
+  type AnyPluginPage,
+  usePage,
+  type ConversationFileService,
+  type ConversationPlugin,
+  type IntentService,
+  type KindTab,
+  type PageContext,
+  type PagePlugin,
+  type PanelKind,
+  type PanelSession,
   type PluginCallOptions,
-  type PluginClient,
-} from '@demicodes/web-ui/plugins/client'
+  type PluginPage,
+  type PluginSettingsSection,
+  type PluginState,
+} from '@demicodes/web-ui/plugins/page'
+export type { IntentName, IntentPayloads, IntentRequest } from '@demicodes/web-ui/plugins/intents'
 export type {
   OpenUserStream,
   StreamBytes,
@@ -36,11 +34,10 @@ export type {
   UserStreamHandlers,
 } from '@demicodes/web-ui/plugins/streams'
 export type { HostInstall } from '@demicodes/web-ui/devices/installs'
-
-// Services.
-export { reportError } from '@demicodes/web-ui/infra/errors'
-export { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 export type { OverlayStore } from '@demicodes/web-ui/overlay/overlayStore'
+
+// The plugin kit (`plugin-pages.md` § The plugin kit).
+// Streams: the liveness a stream's protocol uses.
 export {
   pageReturned,
   waitToReconnect,
@@ -48,9 +45,10 @@ export {
   type ReconnectWait,
   type SilenceWatch,
 } from '@demicodes/web-ui/transport/liveness'
+// Composables.
 export { formatTimeRemaining, useTimeRemaining } from '@demicodes/web-ui/composables/useRelativeTime'
 
-// The conversation's files, as the file previews show them.
+// Files: the shapes the conversation files service gives, and their paths.
 export {
   callChangeSource,
   callEditSelectionSchema,
@@ -66,7 +64,7 @@ export type { FileBrowserSource } from '@demicodes/web-ui/files/types'
 export { baseName, joinPath, relativePath } from '@demicodes/web-ui/files/paths'
 export { treeLayout } from '@demicodes/web-ui/files/tree-layout'
 
-// The public components.
+// Components: settings, controls, progress, navigation, files and icons.
 export { default as AddressBar } from '@demicodes/web-ui/agent/AddressBar.vue'
 export { default as Button } from '@demicodes/web-ui/ui/Button.vue'
 export { default as ChangeView } from '@demicodes/web-ui/files/ChangeView.vue'

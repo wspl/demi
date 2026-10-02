@@ -74,14 +74,14 @@ user, conversation or time arrives through requests.
 | Contribution | Declared | When Demi asks |
 | --- | --- | --- |
 | Identity | Its id, its name and a one-sentence description, which settings show | Never |
-| Packages | The [command packages](../execution/native-runtime.md) it uses, by name; its commands, streams and methods bind operations of these only | Never: the page shows their installs ([Installation progress](../execution/native-runtime.md#installation-progress)) |
+| Packages | Nothing: they are the [command packages](../execution/native-runtime.md) whose operations its commands, streams, page states and methods bind | Never: the page shows their installs ([Installation progress](../execution/native-runtime.md#installation-progress)) |
 | [Commands](#commands) | Their declarations, as data | Each time the model runs an `rpc` leaf of them |
 | [Context](#prompt-text-and-context) | That the plugin is a context source | Before each provider request of every node |
 | [Profiles](#profiles) | The profiles, as data | Never: they are fixed |
 | [Host directories](#host-directories) | Nothing | The plugin sets them through its port when its user's needs change |
 | [Host files](#reading-a-conversations-files) | Nothing | The plugin reads them through its port when it needs them |
 | [Package calls and user streams](#calling-its-command-package) | Each user stream's name, the operation it binds, the schemas of its messages both ways and the constants its two ends share | A call: when the plugin makes it. A stream: when a page opens it |
-| [Its page](#the-page) | Its page package; the schema of its state for each scope, user and conversation; the [topics](#topics) each scope follows; each method with its scope, its parameter and result schemas and the operations it calls | When a page reads a state; when a topic fires; when a page calls a method |
+| [Its page](#the-page) | Its page package; for each scope, user and conversation, the schema of its state, the [topics](#topics) it follows and the operations a read of it calls; each method with its scope, its parameter and result schemas and the operations it calls | When a page reads a state; when a topic fires; when a page calls a method |
 
 A plugin declares only what it uses: `plugin-file` declares its package and
 its commands and nothing else, `plugin-skills` declares no command, and
@@ -273,10 +273,10 @@ already offers ([User streams](../execution/native-runtime.md#user-streams)):
   `browser.live`. The page opens it through the backend's one user stream
   route, and the bytes never pass through the plugin.
 
-A plugin calls only the packages its manifest names, and a stream's name is
+A plugin calls only the packages its manifest binds, and a stream's name is
 taken once among all plugins, or the plugins are refused when they are
-registered. A stream, or a page method one of whose
-operations the startup catalog does not serve, does not exist, as such a
+registered. A stream, a page state or a page method one of whose
+operations the startup catalog does not serve does not exist, as such a
 command group does not. A package call says what it does on the Host, which
 decides whether it wakes a stopped Cloud and whether it is activity
 ([Activity](../execution/resource-lifecycle.md#activity)): it **starts** work,

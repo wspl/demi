@@ -122,49 +122,101 @@ impl Manifest {
 }
 
 /// A user stream: a page connects to `operation` on the conversation's main
-/// Host for as long as it keeps the stream open.
+/// Host for as long as it keeps the stream open. Its messages and constants
+/// are declared for the page's generated types (`plugin-pages.md` § Types);
+/// the backend relays the stream's bytes without reading them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Stream {
     /// The name the page opens it by, taken once among all plugins.
     pub name: String,
     pub operation: NativeOperation,
+    /// The messages the page receives.
+    pub receives: Schema,
+    /// The messages the page sends.
+    pub sends: Schema,
+    /// The constants the stream's two ends share, such as its frame kinds.
+    #[serde(default)]
+    pub constants: Vec<Constant>,
 }
 
-/// What a plugin's page reads and calls.
+impl Stream {
+    /// The stream `name` to `operation`, whose page receives `R` and sends
+    /// `S`.
+    pub fn new<R: JsonSchema, S: JsonSchema>(
+        name: impl Into<String>,
+        operation: NativeOperation,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            operation,
+            receives: schema_of::<R>(Direction::Serializes),
+            sends: schema_of::<S>(Direction::Deserializes),
+            constants: Vec::new(),
+        }
+    }
+
+    pub fn constant(
+        mut self,
+        name: impl Into<String>,
+        description: impl Into<String>,
+        value: impl Into<Value>,
+    ) -> Self {
+        self.constants.push(Constant {
+            name: name.into(),
+            description: description.into(),
+            value: value.into(),
+        });
+        self
+    }
+}
+
+/// A value both ends of a stream use, such as `LIVE_VIDEO_FRAME = 2`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Constant {
+    /// An upper-case TypeScript name.
+    pub name: String,
+    pub description: String,
+    pub value: Value,
+}
+
+/// A plugin's page (`plugins.md` § The page): its package, and what it
+/// reads and calls.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Page {
-    /// The schema of the plugin's state for the user's pages; none for a
-    /// page that only calls.
+    /// The page package, such as `@demicodes/plugin-browser`, which the web
+    /// app's registry lists and the plugin's types are generated into.
+    pub package: String,
+    /// Its state for the user, which reaches every page on the sync channel.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub state: Option<Schema>,
-    /// The product changes the state is read from: each marks the plugin's
-    /// part of the user's product state as changed.
-    #[serde(default)]
-    pub follows: Vec<Follows>,
+    pub user: Option<State>,
+    /// Its state for one conversation, which a page reads by revision.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conversation: Option<State>,
     #[serde(default)]
     pub methods: Vec<Method>,
 }
 
 impl Page {
-    /// A page with no state and no methods yet.
-    pub fn new() -> Self {
+    /// The page package `package`, with no state and no methods yet.
+    pub fn new(package: impl Into<String>) -> Self {
         Self {
-            state: None,
-            follows: Vec::new(),
+            package: package.into(),
+            user: None,
+            conversation: None,
             methods: Vec::new(),
         }
     }
 
-    /// The page's state is `S`.
-    pub fn state<S: JsonSchema>(mut self) -> Self {
-        self.state = Some(schema_of::<S>(Direction::Serializes));
+    pub fn user_state(mut self, state: State) -> Self {
+        self.user = Some(state);
         self
     }
 
-    pub fn follows(mut self, follows: Follows) -> Self {
-        self.follows.push(follows);
+    pub fn conversation_state(mut self, state: State) -> Self {
+        self.conversation = Some(state);
         self
     }
 
@@ -172,21 +224,72 @@ impl Page {
         self.methods.push(method);
         self
     }
-}
 
-impl Default for Page {
-    fn default() -> Self {
-        Self::new()
+    /// The state of `scope`, if the page declares one.
+    pub fn state(&self, scope: Scope) -> Option<&State> {
+        match scope {
+            Scope::User => self.user.as_ref(),
+            Scope::Conversation => self.conversation.as_ref(),
+        }
     }
 }
 
-/// A product change a plugin's page state follows.
+/// One scope of a page's state.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct State {
+    pub schema: Schema,
+    /// The product changes that mark it changed, each of the state's scope.
+    #[serde(default)]
+    pub topics: Vec<Topic>,
+    /// The operations of a command package a read of it calls. A state one
+    /// of whose operations the startup catalog does not serve is left out,
+    /// as a method is.
+    #[serde(default)]
+    pub operations: Vec<NativeOperation>,
+}
+
+impl State {
+    /// A state that is `S`.
+    pub fn new<S: JsonSchema>() -> Self {
+        Self {
+            schema: schema_of::<S>(Direction::Serializes),
+            topics: Vec::new(),
+            operations: Vec::new(),
+        }
+    }
+
+    /// It is read again when `topic` fires.
+    pub fn follows(mut self, topic: Topic) -> Self {
+        self.topics.push(topic);
+        self
+    }
+
+    pub fn calls(mut self, operation: NativeOperation) -> Self {
+        self.operations.push(operation);
+        self
+    }
+}
+
+/// A product change a page state can follow (`plugins.md` § Topics).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum Follows {
+pub enum Topic {
     /// The user's exposes: one is created, renewed or destroyed, or the
     /// earliest one expires.
     Exposes,
+    /// A job of the conversation ends.
+    Jobs,
+}
+
+impl Topic {
+    /// The scope of the state it marks.
+    pub fn scope(self) -> Scope {
+        match self {
+            Self::Exposes => Scope::User,
+            Self::Jobs => Scope::Conversation,
+        }
+    }
 }
 
 /// A page method: what its parameters and result look like, whom it is
@@ -226,7 +329,7 @@ impl Method {
 }
 
 /// Whom a page method is called for, which decides its route
-/// (`web-api.md` § Plugin calls).
+/// (`web-api.md` § Plugin calls), and whom a page state is of.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Scope {

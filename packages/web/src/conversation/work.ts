@@ -10,14 +10,14 @@ import {
   type PanelState,
   type PinnedTabs,
 } from '@demicodes/web-ui/agent/panel-tabs'
-import { intentTarget } from '@demicodes/web-ui/plugins/slots'
-import type { IntentName, IntentPayloads } from '@demicodes/web-ui/plugins/intents'
+import { intentKind } from '@demicodes/web-ui/plugins/page'
+import type { IntentName, IntentRequest } from '@demicodes/web-ui/plugins/intents'
 import { loadPanel, savePanel } from '../api/panel'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
 import { PLUGIN_PAGES } from '../plugins/generated/pages'
-import { pluginEnabled } from '../plugins/host'
+import { pluginEnabled } from '../plugins/enabled'
 import { createWorkingTreeSource, type WorkingTreeSource } from './changes'
 
 /** One conversation's work panel: whether it is open, its pinned tabs, its saved selection and tabs, and its working tree. */
@@ -176,13 +176,13 @@ export const useWorkPanel = defineStore('work-panel', () => {
   }
 
   /**
-   * Opens `intent` in the conversation's panel (`plugin-pages.md`
-   * § Intents): the page that declares it shows it in its pinned tab, which
-   * takes the selection, with the panel opened for it.
+   * Opens an intent in the conversation's panel (`plugin-pages.md`
+   * § Intents): the kind that opens it shows it, in its pinned tab or a new
+   * one, which takes the selection, with the panel opened for it.
    */
-  function openIn<Name extends IntentName>(conversationId: string, intent: Name, payload: IntentPayloads[Name]): void {
+  function openIn(conversationId: string, request: IntentRequest): void {
     const state = stateFor(conversationId)
-    const opened = openIntent({ state: state.panel, pinned: state.pinned }, PLUGIN_PAGES, enabled, intent, payload)
+    const opened = openIntent({ state: state.panel, pinned: state.pinned }, PLUGIN_PAGES, enabled, request)
     if (!opened) {
       return
     }
@@ -193,7 +193,7 @@ export const useWorkPanel = defineStore('work-panel', () => {
 
   /** Whether any page the user has on opens `intent`. */
   function canOpen(intent: IntentName): boolean {
-    return intentTarget(PLUGIN_PAGES, enabled, intent) !== null
+    return intentKind(PLUGIN_PAGES, enabled, intent) !== null
   }
 
   return { stateFor, setOpen, load, select, add, update, closeTabs, updatePinned, openIn, canOpen }

@@ -9,7 +9,7 @@ import { Menu } from '@demicodes/plugin-sdk'
 import { MenuItem } from '@demicodes/plugin-sdk'
 import { Popover } from '@demicodes/plugin-sdk'
 import { Tooltip } from '@demicodes/plugin-sdk'
-import { appOverlayStore } from '@demicodes/plugin-sdk'
+import { usePage } from '@demicodes/plugin-sdk'
 import LiveView from './LiveView.vue'
 import { HostInstalls } from '@demicodes/plugin-sdk'
 import { NEW_TAB_URL, asTabsError, type BrowserTabData, type BrowserTabsController, type BrowserTabsError } from './tabs'
@@ -22,10 +22,12 @@ import { viewportChoices, type ViewportChoice } from './view'
  * written to the tab.
  */
 const props = defineProps<{
+  conversation: string
+  /** The page's panel session of the conversation: its browser. */
+  session: BrowserTabsController
   tabId: string
   data: BrowserTabData
   shown: boolean
-  controller: BrowserTabsController
 }>()
 const emit = defineEmits<{ update: [data: BrowserTabData]; close: [] }>()
 
@@ -39,17 +41,18 @@ const editing = ref(false)
 const menu = ref(false)
 const anchor = ref<HTMLElement | null>(null)
 
-const session = computed(() => props.controller.session.value)
+const { overlays } = usePage()
+const session = computed(() => props.session.session.value)
 /** The bound tab as the view reports it now; null while the view has not listed it. */
 const live = computed(() => session.value?.state.tabs.find((tab) => tab.id === props.data.tab) ?? null)
 /** The conversation browser answered and does not have the bound tab. */
 const gone = computed(() => {
-  const list = props.controller.list.value
+  const list = props.session.list.value
   return props.data.tab !== undefined && list !== null && !list.tabs.some((tab) => tab.id === props.data.tab)
 })
 const viewport = computed(() => live.value?.viewport ?? null)
 /** What the Host installs while this content waits for the browser. */
-const installs = computed(() => props.controller.api.installs())
+const installs = computed(() => props.session.api.installs())
 const choices = computed(() => (viewport.value ? viewportChoices(viewport.value) : []))
 /** A computer, a phone, or a size the agent set. */
 const MODE_ICONS: Record<ViewportChoice['mode'], Component> = { web: Monitor, mobile: Smartphone, custom: Ruler }
@@ -58,7 +61,7 @@ async function open(): Promise<void> {
   failure.value = null
   opening.value = true
   try {
-    await props.controller.open(props.tabId, props.data.url, (tab) => {
+    await props.session.open(props.tabId, props.data.url, (tab) => {
       emit('update', { url: tab.url, tab: tab.id })
     })
   } catch (error) {
@@ -74,13 +77,14 @@ function reopen(): void {
 }
 
 // A shown panel tab not yet bound to a tab of the conversation browser asks for
-// one; a bound one is watched on the page's view.
+// one; a bound one is watched on the page's view. Each source is compared on
+// its own, so a new tab list that leaves all three as they were asks nothing.
 watch(
-  () => [props.shown, props.data.tab, gone.value] as const,
+  [() => props.shown, () => props.data.tab, gone],
   ([shown, tab, lost], previous) => {
     const before = previous?.[1]
     if (before !== undefined && (before !== tab || !shown || lost)) {
-      props.controller.hide(before)
+      props.session.hide(before)
     }
     if (!shown) {
       return
@@ -88,7 +92,7 @@ watch(
     if (tab === undefined) {
       void open()
     } else if (!lost) {
-      props.controller.show(tab)
+      props.session.show(tab)
     }
   },
   { immediate: true },
@@ -96,7 +100,7 @@ watch(
 
 onBeforeUnmount(() => {
   if (props.data.tab !== undefined) {
-    props.controller.hide(props.data.tab)
+    props.session.hide(props.data.tab)
   }
 })
 
@@ -136,11 +140,11 @@ function submit(): void {
     return
   }
   editing.value = false
-  void request((tab) => props.controller.api.navigate(tab, new URL(candidate).href))
+  void request((tab) => props.session.api.navigate(tab, new URL(candidate).href))
 }
 
 function history(action: 'back' | 'forward' | 'reload'): void {
-  void request((tab) => props.controller.api.history(tab, action))
+  void request((tab) => props.session.api.history(tab, action))
 }
 </script>
 
@@ -210,11 +214,11 @@ function history(action: 'back' | 'forward' | 'reload'): void {
           <Button variant="default" size="sm" @click="reopen">Reload</Button>
         </span>
       </template>
-      <template v-else-if="controller.listError.value && !session">
-        <span class="text-on-danger" role="alert">{{ controller.listError.value.message }}</span>
-        <Button variant="default" size="sm" @click="controller.refresh()">Retry</Button>
+      <template v-else-if="props.session.listError.value && !session">
+        <span class="text-on-danger" role="alert">{{ props.session.listError.value.message }}</span>
+        <Button variant="default" size="sm" @click="props.session.refresh()">Retry</Button>
       </template>
-      <template v-else-if="controller.pictures.value === 'unsupported'">
+      <template v-else-if="props.session.pictures.value === 'unsupported'">
         <span>This browser cannot show the live view: it cannot decode H.264 video.</span>
       </template>
       <!-- Waiting says only that it waits: why the last view ended is no news while the next one opens. -->
@@ -224,7 +228,7 @@ function history(action: 'back' | 'forward' | 'reload'): void {
       </template>
     </div>
     <Popover
-      :overlay-store="appOverlayStore"
+      :overlay-store="overlays"
       :is-open="menu"
       :anchor-el="anchor"
       @close="menu = false"

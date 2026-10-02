@@ -1,16 +1,16 @@
 import { expect, test } from 'bun:test'
-import { type LiveViewerMessage } from '../../generated/plugin'
-import { LIVE_VIDEO_CODEC } from '../../generated/live'
+import { LIVE_VIDEO_CODEC, type LiveViewerMessage } from '../../generated/plugin'
+import type { UserStreamHandlers } from '@demicodes/plugin-sdk'
 import { deferred } from '@demicodes/utils'
 import { until } from '@vueuse/core'
-import { ref } from 'vue'
+import { effectScope, ref, shallowRef } from 'vue'
 import {
   BrowserTabsController,
-  BrowserTabsError,
   type BrowserTabData,
   type BrowserTabInfo,
   type BrowserTabList,
   type BrowserTabsApi,
+  type BrowserTabsError,
   type BrowserTabsOptions,
   type PictureSupport,
 } from '../tabs'
@@ -23,11 +23,19 @@ const AGENT_TAB: BrowserTabInfo = {
 }
 const USER_TAB: BrowserTabInfo = { id: 't2', title: '', url: 'about:blank', createdBy: { kind: 'user' } }
 
+/**
+ * A controller in a panel session's effect scope, over a tab list the test
+ * sets as the plugin's conversation state would bring it.
+ */
 function harness(api: Partial<BrowserTabsApi>, options: BrowserTabsOptions = {}) {
   const panel: BrowserTabData[] = []
-  const controller = new BrowserTabsController(
+  const list = shallowRef<BrowserTabList | null>(null)
+  const error = shallowRef<BrowserTabsError | null>(null)
+  let reads = 0
+  const scope = effectScope()
+  const controller = scope.run(() => new BrowserTabsController(
     {
-      list: async () => ({ tabs: [] }),
+      tabs: { value: list, error, read: () => void (reads += 1) },
       open: async () => USER_TAB,
       close: async () => {},
       navigate: async () => {},
@@ -37,9 +45,10 @@ function harness(api: Partial<BrowserTabsApi>, options: BrowserTabsOptions = {})
       ...api,
     },
     { bound: () => panel, add: (data) => void panel.push(data) },
+    () => {},
     { visibility: ref<DocumentVisibilityState>('visible'), ...options },
-  )
-  return { controller, panel }
+  ))!
+  return { controller, panel, list, reads: () => reads, end: () => { controller.dispose(); scope.stop() } }
 }
 
 /**
@@ -58,15 +67,13 @@ function stubDecoder(decodes: (codec: string) => boolean): () => void {
   return () => void Reflect.deleteProperty(globalThis, 'VideoDecoder')
 }
 
-test('a browser tab no panel tab is bound to is added once, and nothing is ever removed', async () => {
-  let tabs = [AGENT_TAB]
-  const { controller, panel } = harness({ list: async () => ({ tabs }) })
-  await controller.refresh()
-  await controller.refresh()
+test('a browser tab no panel tab is bound to is added once, and nothing is ever removed', () => {
+  const { controller, panel, list } = harness({})
+  list.value = { tabs: [AGENT_TAB] }
+  list.value = { tabs: [AGENT_TAB] }
   expect(panel).toEqual([{ url: AGENT_TAB.url, tab: AGENT_TAB.id }])
   // The agent closed it: the panel tab stays, and the list says the browser lost it.
-  tabs = []
-  await controller.refresh()
+  list.value = { tabs: [] }
   expect(panel).toHaveLength(1)
   expect(controller.list.value).toEqual({ tabs: [] })
 })
@@ -95,23 +102,6 @@ test('a tab being opened is not taken for the agent\'s, and asking twice opens o
   await first
   expect(opens).toBe(1)
   expect(panel).toEqual([{ url: 'about:blank', tab: USER_TAB.id }])
-})
-
-test('a refused list keeps the last one and says why', async () => {
-  let refuse = false
-  const { controller } = harness({
-    list: async () => {
-      if (refuse) {
-        throw new BrowserTabsError('device_offline', 'The device has no live runner')
-      }
-      return { tabs: [AGENT_TAB] }
-    },
-  })
-  await controller.refresh()
-  refuse = true
-  await controller.refresh()
-  expect(controller.list.value?.tabs).toEqual([AGENT_TAB])
-  expect(controller.listError.value?.code).toBe('device_offline')
 })
 
 test('a tab the user closed is not taken for the agent\'s while the browser still lists it', async () => {
@@ -187,26 +177,22 @@ test('a hidden page closes its view, and shown again watches the shown tab on a 
   expect(views[1]!.closed).toBe(true)
 })
 
-test('a page shown again reads the tab list and adds the tabs the agent opened while it was hidden', async () => {
-  const visibility = ref<DocumentVisibilityState>('visible')
-  const answer = deferred<BrowserTabList>()
-  let reads = 0
-  const { controller, panel } = harness(
+test('a view that ends reads the tab list again, since the browser may have ended with it', async () => {
+  const opened: UserStreamHandlers[] = []
+  const { controller, reads } = harness(
     {
-      list: () => {
-        reads += 1
-        return answer.promise
+      stream: (handlers) => {
+        opened.push(handlers)
+        return { send: () => {}, close: () => {} }
       },
     },
-    { visibility },
+    { pictures: async () => true },
   )
-  visibility.value = 'hidden'
-  expect(reads).toBe(0)
-  visibility.value = 'visible'
-  expect(reads).toBe(1)
-  answer.resolve({ tabs: [AGENT_TAB] })
-  await answer.promise
-  expect(panel).toEqual([{ url: AGENT_TAB.url, tab: AGENT_TAB.id }])
+  await until(controller.pictures).toBe('supported')
+  controller.show(AGENT_TAB.id)
+  expect(reads()).toBe(0)
+  opened[0]!.closed('browser_ended')
+  expect(reads()).toBe(1)
   controller.dispose()
 })
 

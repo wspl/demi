@@ -3,7 +3,7 @@
  * draws a page, encodes it as the Host's capture would, and speaks the live
  * protocol, so the view's pictures, input, controls and dialogs show here.
  */
-import { LIVE_CONTROL_FRAME, LIVE_VIDEO_CODEC } from '@demicodes/plugin-browser/generated/live'
+import { LIVE_CONTROL_FRAME, LIVE_VIDEO_CODEC } from '@demicodes/plugin-browser/generated/plugin'
 import type {
   BrowserViewport,
   LiveControl,
@@ -15,7 +15,12 @@ import { shallowRef } from 'vue'
 import { encodeVideo } from '@demicodes/plugin-browser/live/frames'
 import type { OpenUserStream, UserStreamHandlers } from '@demicodes/web-ui/plugins/streams'
 import { CONTROL, META } from '@demicodes/plugin-browser/live/input'
-import { BrowserTabsError, type BrowserTabInfo, type BrowserTabsApi } from '@demicodes/plugin-browser/live/tabs'
+import {
+  BrowserTabsError,
+  type BrowserTabInfo,
+  type BrowserTabList,
+  type BrowserTabsApi,
+} from '@demicodes/plugin-browser/live/tabs'
 import type { HostInstall } from '@demicodes/web-ui/devices/installs'
 import { BROWSER_ARTIFACTS, playInstalls } from './installs'
 
@@ -349,9 +354,11 @@ class GalleryBrowser {
 }
 
 /**
- * The gallery's conversation browser: the tab requests a `browser` tab kind
- * makes and the view it opens, over one tab list, without a Host. Requests
- * take a moment, as a Host does, so the content's waiting shows. It starts
+ * The gallery's conversation browser: the tab list the plugin's state would
+ * bring, which every change publishes as the plugin marks its state changed,
+ * the tab requests a `browser` tab kind makes and the view it opens, over one
+ * tab list, without a Host. Requests take a moment, as a Host does, so the
+ * content's waiting shows. It starts
  * with the agent's and the user's tab unless a specimen supplies its own list,
  * such as an empty one for a panel whose strip starts empty. With `install`,
  * its first request waits for a simulated install of the browser's program
@@ -389,14 +396,18 @@ export function galleryBrowserTabs(
     }))
   }
 
+  function info(tab: LiveTab): BrowserTabInfo {
+    return { id: tab.id, title: tab.title, url: tab.url, createdBy: tab.createdBy }
+  }
+
+  /** The tab list as the plugin's state last brought it. */
+  const listed = shallowRef<BrowserTabList | null>({ tabs: tabs.map(info) })
+
   function changed(): void {
+    listed.value = { tabs: tabs.map(info) }
     for (const view of views) {
       view.state()
     }
-  }
-
-  function info(tab: LiveTab): BrowserTabInfo {
-    return { id: tab.id, title: tab.title, url: tab.url, createdBy: tab.createdBy }
   }
 
   function found(id: string): LiveTab {
@@ -420,7 +431,11 @@ export function galleryBrowserTabs(
   }
 
   return {
-    list: () => later(() => ({ tabs: tabs.map(info) })),
+    tabs: {
+      value: listed,
+      error: shallowRef(null),
+      read: () => void later(changed),
+    },
     open: (url) => later(() => {
       const tab: LiveTab = {
         id: `t${next++}`,

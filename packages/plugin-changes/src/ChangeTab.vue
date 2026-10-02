@@ -13,9 +13,8 @@ import {
   callChangeSource,
   joinPath,
   treeLayout,
+  usePage,
   type ChangeSources,
-  type ConversationFileService,
-  type IntentService,
 } from '@demicodes/plugin-sdk'
 import { changePath, goBack, goForward, showChange, type ChangeData } from './data'
 
@@ -25,22 +24,29 @@ import { changePath, goBack, goForward, showChange, type ChangeData } from './da
  * Conversation, over the conversation's files service.
  */
 const props = defineProps<{
+  conversation: string
+  tabId: string
   data: ChangeData
-  files: ConversationFileService
-  intents: IntentService
+  shown: boolean
 }>()
 const emit = defineEmits<{ update: [data: ChangeData] }>()
 
+const page = usePage()
+const files = page.files(props.conversation)
+files.showChanges()
+const intents = page.intents
+
 const changes = computed<ChangeSources>(() => ({
-  uncommitted: props.files.changes,
-  conversation: props.data.call ? callChangeSource(props.data.call, props.files.readCallChange) : null,
+  uncommitted: files.changes,
+  conversation: props.data.call ? callChangeSource(props.data.call, files.edit) : null,
 }))
 const selected = computed(() => changePath(props.data, props.data.mode, changes.value.uncommitted.files))
-const root = computed(() => props.files.workspace?.root ?? props.files.root ?? '/')
+const root = computed(() => files.workspace?.root ?? files.root ?? '/')
 
 /** A changed file opens in whatever shows files, by its absolute path. */
 function open(path: string): void {
-  props.intents.open('file', { path: path.startsWith('/') ? path : joinPath(root.value, path) })
+  const absolute = path.startsWith('/') ? path : joinPath(root.value, path)
+  intents.open(props.conversation, { intent: 'file', payload: { path: absolute } })
 }
 </script>
 

@@ -1,8 +1,6 @@
-import { defineComponent, h, type PropType } from 'vue'
+import { defineComponent, h } from 'vue'
 import { MonitorDot } from '@lucide/vue'
-import type { PanelTabKind } from '@demicodes/plugin-sdk'
-import { GlobePlus } from '@demicodes/plugin-sdk'
-import { ICON_PX } from '@demicodes/plugin-sdk'
+import { GlobePlus, ICON_PX, type PanelKind } from '@demicodes/plugin-sdk'
 import BrowserTabContent from './BrowserTabContent.vue'
 import {
   NEW_TAB_URL,
@@ -29,46 +27,26 @@ function browserTabTitle(controller: BrowserTabsController, data: BrowserTabData
 }
 
 /**
- * The `browser` tab kind of one conversation (`live-view.md` § A
- * browser tab in the panel). Its content reaches the conversation's browser
- * through `controller`; the panel sees only this registration.
+ * The `browser` tab kind (`live-view.md` § A browser tab in the panel). Its
+ * content reaches the conversation's browser through the page's panel
+ * session; the panel sees only this declaration.
  */
-export function browserTabKind(controller: BrowserTabsController): PanelTabKind<BrowserTabData> {
-  const content = defineComponent({
-    props: {
-      tabId: { type: String, required: true },
-      data: { type: Object as PropType<BrowserTabData>, required: true },
-      shown: { type: Boolean, required: true },
-    },
-    emits: { update: (_data: BrowserTabData) => true, close: () => true },
-    setup: (props, { emit }) => () =>
-      h(BrowserTabContent, {
-        tabId: props.tabId,
-        data: props.data,
-        shown: props.shown,
-        controller,
-        onUpdate: (data: BrowserTabData) => emit('update', data),
-        onClose: () => emit('close'),
-      }),
-  })
-  return {
-    kind: 'browser',
-    schema: browserTabDataSchema,
-    title: (data) => browserTabTitle(controller, data),
-    mark: BrowserTabMark,
-    content,
-    removed(data) {
-      const tab = data.tab
-      if (tab === undefined) {
-        return
-      }
-      // The panel tab is gone either way; the controller says what a refused close leaves.
-      controller.close(tab).catch(() => {})
-    },
-    create: {
-      label: "New tab in the conversation's browser",
-      icon: GlobePlus,
-      data: () => ({ url: NEW_TAB_URL }),
-    },
-  }
+export const browserTabKind: PanelKind<BrowserTabData, BrowserTabsController> = {
+  kind: 'browser',
+  schema: browserTabDataSchema,
+  title: (data, tab) => browserTabTitle(tab.session, data),
+  mark: BrowserTabMark,
+  content: BrowserTabContent,
+  removed(data, tab) {
+    if (data.tab === undefined) {
+      return
+    }
+    // The panel tab is gone either way; the controller says what a refused close leaves.
+    tab.session.close(data.tab).catch(() => {})
+  },
+  create: {
+    label: "New tab in the conversation's browser",
+    icon: GlobePlus,
+    data: () => ({ url: NEW_TAB_URL }),
+  },
 }
