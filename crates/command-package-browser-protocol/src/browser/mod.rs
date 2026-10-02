@@ -738,6 +738,8 @@ pub struct BrowserTab {
     pub title: String,
     pub url: String,
     pub created_by: BrowserCreatedBy,
+    /// Whether the browser loads the tab's top-level page.
+    pub loading: bool,
 }
 
 /// A tab's viewport (`live-view.md` § Modes): its CSS size, the pixel ratio

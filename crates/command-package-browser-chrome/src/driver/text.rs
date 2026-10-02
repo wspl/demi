@@ -894,8 +894,8 @@ mod tests {
                 "tabs",
                 json!({}),
                 json!({"tabs": [
-                    {"id": "t1", "title": "Sign in", "url": "http://localhost:3000/login", "createdBy": {"kind": "agent", "number": 0}},
-                    {"id": "t2", "title": "Admin", "url": "http://localhost:3000/admin", "createdBy": {"kind": "page", "opener": "t1"}},
+                    {"id": "t1", "title": "Sign in", "url": "http://localhost:3000/login", "createdBy": {"kind": "agent", "number": 0}, "loading": false},
+                    {"id": "t2", "title": "Admin", "url": "http://localhost:3000/admin", "createdBy": {"kind": "page", "opener": "t1"}, "loading": true},
                 ], "truncated": false}),
                 vec![
                     "Tab  Title    Created by  URL\n",

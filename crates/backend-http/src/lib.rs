@@ -260,9 +260,15 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/conversations/{id}/read", post(conversations::read))
         .route("/conversations/{id}/stream", get(conversations::stream))
         .route("/conversations/{id}/streams/{name}", get(streams::open))
+        .route("/conversations/{id}/panel", get(panel::read))
+        .route("/conversations/{id}/panel/tabs", post(panel::create))
         .route(
-            "/conversations/{id}/panel",
-            get(panel::read).put(panel::save),
+            "/conversations/{id}/panel/tabs/{tab}",
+            patch(panel::update).delete(panel::remove),
+        )
+        .route(
+            "/conversations/{id}/panel/tabs/{tab}/move",
+            post(panel::move_tab),
         )
         .route(
             "/conversations/{id}/draft",

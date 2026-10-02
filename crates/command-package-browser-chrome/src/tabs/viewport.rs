@@ -175,6 +175,11 @@ impl BrowserTab {
         self.state.viewport.borrow().current
     }
 
+    /// Whether the browser loads the tab's top-level page.
+    pub fn loading(&self) -> bool {
+        *self.state.loading.borrow()
+    }
+
     /// The Web viewport the tab last had, which `viewport reset` returns to.
     pub fn web_viewport(&self) -> BrowserViewport {
         self.state.viewport.borrow().web

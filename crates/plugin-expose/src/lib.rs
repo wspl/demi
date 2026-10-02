@@ -80,6 +80,8 @@ impl Plugin for Instance {
                 Request::PageCall { method, params, .. } => Ok(Reply::Result {
                     result: page::call(&method, params, &port).await?,
                 }),
+                Request::PanelTab { .. } => Ok(Reply::Done),
+                Request::Topic { .. } => Err(PluginError::undeclared("topic")),
                 Request::Context { .. } => Err(PluginError::undeclared("context source")),
             }
         })
