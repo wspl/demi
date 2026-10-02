@@ -12,7 +12,7 @@ The runner keeps control work apart from the work it controls. Its control
 thread reads the backend connection, routes each message to the work it
 belongs to, and drives the byte paths of pipes and streams, which only wait on
 the network; it never blocks. File and git requests, hashing, and other
-blocking work run on blocking threads a few at a time ([Load](#load)), and
+work that blocks run in goroutines of their own, a few at a time ([Load](#load)), and
 shell jobs run on a shell runtime of their own ([Shell jobs](#shell-jobs)). A
 burst of requests, a slow disk, or a busy job therefore never stops the runner
 from reading its connection. [Concurrency](../architecture/concurrency.md#runner)
@@ -148,7 +148,7 @@ when its temporary file goes fails instead of replacing the file.
 
 A `git_changes` request lists the uncommitted changes under a directory, and
 `git_show` sends a file as the last commit has it. The runner answers both in
-process with gitoxide; the device needs no git executable. Both name the
+process with go-git; the device needs no git executable. Both name the
 directory as `root`; a `git_show` also names the file's path relative to it
 and an output pipe, and streams the whole file into the pipe like any
 [file contents](#file-contents). Git stores the file compressed, often as the
@@ -219,7 +219,7 @@ whole tree. `watched` reports whether a watch is running.
 The runner keeps at most eight watched directories per connection and drops one
 after fifteen minutes without a request; closing the connection drops them all.
 
-Working-tree work runs on blocking threads off the connection's control thread.
+Working-tree work runs in its own goroutines, off the connection's reader.
 At most two computations run at a time; a request beyond that waits for one to
 finish ([Load](#load)), and requests for the same directory share one
 computation. A computation stops at its next check when the connection closes
@@ -337,8 +337,8 @@ slow reader holds back only itself and memory grows only with what runs. An
 agent's `demi browser wait` or a user's open live view holds nothing another
 command needs.
 
-Host work that finishes on its own runs on blocking threads, off the control
-thread, a few at a time, and a request beyond that waits for a slot:
+Host work that finishes on its own runs in its own goroutines, off the
+connection's reader, a few at a time, and a request beyond that waits for a slot:
 
 | Work | At a time |
 | --- | --- |
@@ -353,14 +353,20 @@ Every job, stream and request shares the runner's one table of open files. A
 job's login shell alone can hold about a hundred while it reads a profile that
 loads a version manager such as nvm, and launchd gives a service on macOS a
 limit of 256. So when it starts, the runner raises its own limit as far as the
-system allows: to the hard limit, and on macOS to at most the kernel's limit
-for one process. Every process it starts gets back the limit the runner was
+system allows: Go's runtime raises it before the runner runs, to one below the
+hard limit, and on macOS to at most the kernel's limit for one process, and
+the runner never sets it itself, since that would make its processes inherit
+the raised limit. Every process it starts gets back the limit the runner was
 started with, the one it would have from a terminal, unless its job's `ulimit`
 set another ([Builtins that act on a process](#builtins-that-act-on-a-process)),
 because some programs
 misbehave with a very high one: a program that uses `select()` cannot watch a
 descriptor numbered 1024 or above, and some programs close every descriptor up
-to their limit before they start. Windows has no such limit.
+to their limit before they start. The runner learns that limit, which its
+`ulimit` reports, once as it starts: it starts `/bin/sh`, which gets the limit
+back and, unlike a Go program, does not raise it again, and reads the soft and
+hard limits it reports, as `ulimit` checks a new limit with `/bin/sh -c :`
+([Builtins that act on a process](#builtins-that-act-on-a-process)). Windows has no such limit.
 
 Every pipe, local command connection and open file holds one while it lasts,
 and a network stream holds three: its socket and two pipes. When none is left,

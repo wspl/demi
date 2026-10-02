@@ -142,10 +142,6 @@ func generateBatch(ctx context.Context, patterns []string, ts bool, tsDir string
 						marks := markers(doc)
 						if len(marks) > 0 {
 							marked = true
-							if general.Tok != token.VAR {
-								loadErr = fmt.Errorf("%s: %s: table requires a variable", p.Fset.Position(value.Pos()), value.Names[0].Name)
-								return
-							}
 							table, err := readTable(p, value, marks)
 							if err != nil {
 								loadErr = err
@@ -411,7 +407,7 @@ func (g *generator) decoder(t types.Type) string {
 		return "func(b []byte)(" + g.typeName(t) + ",error){ return contract.List(b," + g.decoder(t.Elem()) + ") }"
 	case *types.Named:
 		if _, ok := t.Underlying().(*types.Interface); ok {
-			return g.prefix(t) + "Decode" + t.Obj().Name()
+			return g.prefix(t) + goName("Decode", t.Obj().Name())
 		}
 	}
 	return "contract.Decode[" + g.typeName(t) + "]"
@@ -425,7 +421,7 @@ func (g *generator) emitGo(d *definition) {
 	if has(d.marks, "union") {
 		if g.jsonReach[d.key] {
 			tag := bounds(d.marks["union"])["tag"]
-			g.line("func Decode%s(data []byte)(%s,error) {", name, name)
+			g.line("func %s(data []byte)(%s,error) {", goName("Decode", name), name)
 			if d.marks["union"] == "untagged" {
 				g.line("if err:=contract.CheckJSON(data);err!=nil{return nil,err}")
 				for _, v := range g.variants(d.key) {
@@ -446,18 +442,18 @@ func (g *generator) emitGo(d *definition) {
 				g.line("}; return nil,fmt.Errorf(\"unknown %s tag %s\",tag) }", name, verb)
 			}
 			// An interface cannot own UnmarshalJSON; the transport holder does.
-			g.line("type %sJSON struct { Value %s }; func(v *%sJSON) UnmarshalJSON(data []byte) error { value,err:=Decode%s(data); if err==nil {v.Value=value}; return err }; func(v %sJSON) MarshalJSON()([]byte,error){ if err:=Validate%s(v.Value);err!=nil{return nil,err}; return contract.EncodeJSON(v.Value) }", name, name, name, name, name, name)
+			g.line("type %sJSON struct { Value %s }; func(v *%sJSON) UnmarshalJSON(data []byte) error { value,err:=%s(data); if err==nil {v.Value=value}; return err }; func(v %sJSON) MarshalJSON()([]byte,error){ if err:=%s(v.Value);err!=nil{return nil,err}; return contract.EncodeJSON(v.Value) }", name, name, name, goName("Decode", name), name, goName("Validate", name))
 		}
-		g.line("func Validate%s(value %s)error{return contractValidate%s(value,0)}", name, name, name)
-		g.line("func contractValidate%s(value %s,depth int)error{if depth>1000{return fmt.Errorf(\"validation nesting exceeds 1000\")};switch v:=value.(type){", name, name)
+		g.line("func %s(value %s)error{return %s(value,0)}", goName("Validate", name), name, goName("contractValidate", name))
+		g.line("func %s(value %s,depth int)error{if depth>1000{return fmt.Errorf(\"validation nesting exceeds 1000\")};switch v:=value.(type){", goName("contractValidate", name), name)
 		for _, v := range g.variants(d.key) {
-			g.line("case *%s: if v==nil{return fmt.Errorf(\"nil variant\")}; return contractValidate%s(*v,depth+1)", v.name, v.name)
+			g.line("case *%s: if v==nil{return fmt.Errorf(\"nil variant\")}; return %s(*v,depth+1)", v.name, goName("contractValidate", v.name))
 		}
 		g.line("default:return fmt.Errorf(\"nil or unsupported %s\")}}", name)
 		return
 	}
 	if has(d.marks, "id") {
-		g.line("func Parse%s(value string)(%s,error){", name, name)
+		g.line("func %s(value string)(%s,error){", goName("Parse", name), name)
 		g.normalizeText(d, "value", "return \"\",err")
 		g.line("v:=%s(value);if err:=v.Validate();err!=nil{return \"\",err};return v,nil}", name)
 	}
@@ -476,11 +472,11 @@ func (g *generator) emitGo(d *definition) {
 	}
 
 	if g.jsonReach[d.key] {
-		g.line("func Decode%s(data []byte)(%s,error){return contract.Decode[%s](data)}", name, name, name)
+		g.line("func %s(data []byte)(%s,error){return contract.Decode[%s](data)}", goName("Decode", name), name, name)
 	}
 
-	g.line("func(v %s)Validate()error{return contractValidate%s(v,0)}", name, name)
-	g.line("func contractValidate%s(v %s,depth int)error{if depth>1000{return fmt.Errorf(\"validation nesting exceeds 1000\")}", name, name)
+	g.line("func(v %s)Validate()error{return %s(v,0)}", name, goName("contractValidate", name))
+	g.line("func %s(v %s,depth int)error{if depth>1000{return fmt.Errorf(\"validation nesting exceeds 1000\")}", goName("contractValidate", name), name)
 	if isStruct {
 		validationStruct := d.typ.Underlying().(*types.Struct)
 		for i := 0; i < validationStruct.NumFields(); i++ {
@@ -568,7 +564,11 @@ func (g *generator) emitGo(d *definition) {
 		}
 		g.line("if ok {")
 		if nullable {
-			g.line("if !contract.IsNull(raw) {")
+			if pointer, ok := f.Type().(*types.Pointer); optional && ok && isPointer(pointer.Elem()) {
+				g.line("if contract.IsNull(raw){next.%s=new(%s)}else{", f.Name(), g.typeName(pointer.Elem()))
+			} else {
+				g.line("if !contract.IsNull(raw) {")
+			}
 		}
 		g.line("value,err:=%s(raw); if err!=nil{return contract.At(%s,err)}; next.%s=value", g.decoder(f.Type()), q(key), f.Name())
 		if nullable {
@@ -613,9 +613,9 @@ func (g *generator) validation(t types.Type, expr, path string, m map[string]str
 				g.line("if %s!=nil{", expr)
 			}
 			if named.Obj().Pkg() == g.current {
-				g.line("if err:=contractValidate%s(%s,depth+1);err!=nil{return contract.At(%s,err)}", named.Obj().Name(), expr, path)
+				g.line("if err:=%s(%s,depth+1);err!=nil{return contract.At(%s,err)}", goName("contractValidate", named.Obj().Name()), expr, path)
 			} else {
-				g.line("if err:=%sValidate%s(%s);err!=nil{return contract.At(%s,err)}", g.prefix(named), named.Obj().Name(), expr, path)
+				g.line("if err:=%s%s(%s);err!=nil{return contract.At(%s,err)}", g.prefix(named), goName("Validate", named.Obj().Name()), expr, path)
 			}
 			if has(m, "nullable") {
 				g.line("}")
@@ -623,7 +623,7 @@ func (g *generator) validation(t types.Type, expr, path string, m map[string]str
 			return
 		}
 		if named.Obj().Pkg() == g.current {
-			g.line("if err:=contractValidate%s(%s,depth+1);err!=nil{return contract.At(%s,err)}", named.Obj().Name(), expr, path)
+			g.line("if err:=%s(%s,depth+1);err!=nil{return contract.At(%s,err)}", goName("contractValidate", named.Obj().Name()), expr, path)
 		} else {
 			g.line("if err:=%s.Validate();err!=nil{return contract.At(%s,err)}", expr, path)
 		}

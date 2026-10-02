@@ -2,6 +2,7 @@ package contract
 
 import (
 	"fmt"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -23,6 +24,15 @@ func (e *UTF8Error) Error() string {
 // CheckUTF8 returns nil for valid UTF-8, otherwise a *UTF8Error whose text
 // matches Rust's std::str::Utf8Error Display for the same bytes.
 func CheckUTF8(data []byte) error {
+	if invalid := checkUTF8(data); invalid != nil {
+		return invalid
+	}
+	return nil
+}
+
+// checkUTF8 identifies the first maximal invalid subpart for both contract
+// validation and Rust-compatible lossy decoding.
+func checkUTF8(data []byte) *UTF8Error {
 	for index := 0; index < len(data); {
 		r, size := utf8.DecodeRune(data[index:])
 		if r != utf8.RuneError || size != 1 {
@@ -51,4 +61,23 @@ func CheckUTF8(data []byte) error {
 		return &UTF8Error{ValidUpTo: index, ErrorLen: 1}
 	}
 	return nil
+}
+
+// LossyUTF8 decodes data like Rust's String::from_utf8_lossy, replacing each
+// maximal invalid UTF-8 subpart with one U+FFFD.
+func LossyUTF8(data []byte) string {
+	var text strings.Builder
+	for {
+		invalid := checkUTF8(data)
+		if invalid == nil {
+			text.Write(data)
+			return text.String()
+		}
+		text.Write(data[:invalid.ValidUpTo])
+		text.WriteRune(utf8.RuneError)
+		if invalid.ErrorLen == 0 {
+			return text.String()
+		}
+		data = data[invalid.ValidUpTo+invalid.ErrorLen:]
+	}
 }

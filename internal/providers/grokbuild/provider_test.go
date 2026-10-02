@@ -82,7 +82,7 @@ func stored(t *testing.T, pool *provider.MemoryCredentialPool) secret {
 	if err != nil {
 		t.Fatal(err)
 	}
-	value, err := Decodesecret([]byte(entry.Text))
+	value, err := decodeSecret([]byte(entry.Text))
 	if err != nil {
 		t.Fatal(err)
 	}

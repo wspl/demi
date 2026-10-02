@@ -44,7 +44,7 @@ func loginStored(t *testing.T, pool *provider.MemoryCredentialPool, id string) s
 	if err != nil || entry == nil {
 		t.Fatalf("missing account: %v", err)
 	}
-	s, err := Decodesecret([]byte(entry.Text))
+	s, err := decodeSecret([]byte(entry.Text))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/tools/contractgen/testdata/codecs"
 	"github.com/wspl/demi/tools/contractgen/testdata/features"
+	"github.com/wspl/demi/tools/contractgen/testdata/presence"
 	"github.com/wspl/demi/tools/contractgen/testdata/runner"
 )
 
@@ -230,5 +231,116 @@ func TestOpaqueWireCodecs(t *testing.T) {
 				t.Fatal("decoder bypassed codec validation")
 			}
 		})
+	}
+}
+
+// Nullable option and double-option states must survive both wire boundaries.
+// These local fixtures take less than a second and wait on no resources.
+func TestNullableOptionalPresence(t *testing.T) {
+	for _, tc := range []struct {
+		name, input, want string
+	}{
+		{"absent", `{}`, `{}`},
+		{"null", `{"option":null,"double":null,"items":null}`, `{"double":null,"items":null}`},
+		{"value", `{"option":"ok","double":"yes","items":["a"]}`, `{"option":"ok","double":"yes","items":["a"]}`},
+		{"empty", `{"option":"","double":"","items":[]}`, `{"option":"","double":"","items":[]}`},
+	} {
+		for _, format := range []string{"JSON", "MessagePack"} {
+			t.Run(tc.name+"/"+format, func(t *testing.T) {
+				input := []byte(tc.input)
+				decode := presence.DecodePatch
+				encode := contract.EncodeJSON
+				if format == "MessagePack" {
+					var err error
+					input, err = contract.EncodeMsgpack(json.RawMessage(input))
+					if err != nil {
+						t.Fatal(err)
+					}
+					decode = presence.DecodePatchMsgpack
+					encode = contract.EncodeMsgpack
+				}
+				value, err := decode(input)
+				if err != nil {
+					t.Fatal(err)
+				}
+				switch tc.name {
+				case "absent":
+					if value.Option != nil || value.Double != nil || value.Items != nil {
+						t.Fatal("absence created pointers")
+					}
+				case "null":
+					if value.Option != nil || value.Double == nil || *value.Double != nil || value.Items == nil || *value.Items != nil {
+						t.Fatal("null lost its option state")
+					}
+				default:
+					if value.Option == nil || value.Double == nil || *value.Double == nil || value.Items == nil || *value.Items == nil {
+						t.Fatal("value lost its option state")
+					}
+				}
+				if err := value.Validate(); err != nil {
+					t.Fatal(err)
+				}
+				data, err := encode(value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if format == "MessagePack" {
+					data, err = contract.MsgpackJSON(data)
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+				if string(data) != tc.want {
+					t.Fatalf("encoded %s, want %s", data, tc.want)
+				}
+			})
+		}
+	}
+	for _, input := range []string{`{"option":"longer"}`, `{"double":"longer"}`, `{"items":1}`} {
+		if _, err := presence.DecodePatch([]byte(input)); err == nil {
+			t.Errorf("JSON accepted %s", input)
+		}
+		packed, err := contract.EncodeMsgpack(json.RawMessage(input))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := presence.DecodePatchMsgpack(packed); err == nil {
+			t.Errorf("MessagePack accepted %s", input)
+		}
+	}
+	text := "longer"
+	pointer := &text
+	bad := presence.Patch{Double: &pointer}
+	if err := bad.Validate(); err == nil {
+		t.Fatal("double-option bypassed its value constraint")
+	}
+	if _, err := contract.EncodeJSON(bad); err == nil {
+		t.Fatal("JSON encoded invalid double-option")
+	}
+	if _, err := contract.EncodeMsgpack(bad); err == nil {
+		t.Fatal("MessagePack encoded invalid double-option")
+	}
+}
+
+// Timestamp fields must retain presence while using the MessagePack extension.
+// Local codecs only; budget below one second.
+func TestNullableTimestampPresence(t *testing.T) {
+	for _, input := range []string{`{}`, `{"at":null}`, `{"at":"2026-01-01T00:00:00.000Z"}`} {
+		value, err := presence.DecodeTimestampPatch([]byte(input))
+		if err != nil {
+			t.Fatal(err)
+		}
+		packed, err := contract.EncodeMsgpack(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		decoded, err := presence.DecodeTimestampPatchMsgpack(packed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := contract.EncodeJSON(decoded)
+		if err != nil || string(data) != input {
+			t.Fatalf("timestamp presence: %s, want %s: %v", data, input, err)
+		}
 	}
 }

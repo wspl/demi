@@ -162,7 +162,7 @@ func (v NativeOperation) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "operation", Value: v.Operation})
 	return contract.EncodeObject(fields)
 }
-func DecoderawBinding(data []byte) (rawBinding, error) {
+func decodeRawBinding(data []byte) (rawBinding, error) {
 	if err := contract.CheckJSON(data); err != nil {
 		return nil, err
 	}
@@ -178,20 +178,20 @@ func DecoderawBinding(data []byte) (rawBinding, error) {
 type rawBindingJSON struct{ Value rawBinding }
 
 func (v *rawBindingJSON) UnmarshalJSON(data []byte) error {
-	value, err := DecoderawBinding(data)
+	value, err := decodeRawBinding(data)
 	if err == nil {
 		v.Value = value
 	}
 	return err
 }
 func (v rawBindingJSON) MarshalJSON() ([]byte, error) {
-	if err := ValidaterawBinding(v.Value); err != nil {
+	if err := validateRawBinding(v.Value); err != nil {
 		return nil, err
 	}
 	return contract.EncodeJSON(v.Value)
 }
-func ValidaterawBinding(value rawBinding) error { return contractValidaterawBinding(value, 0) }
-func contractValidaterawBinding(value rawBinding, depth int) error {
+func validateRawBinding(value rawBinding) error { return contractValidateRawBinding(value, 0) }
+func contractValidateRawBinding(value rawBinding, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -210,9 +210,9 @@ func contractValidaterawBinding(value rawBinding, depth int) error {
 		return fmt.Errorf("nil or unsupported rawBinding")
 	}
 }
-func DecoderawGroup(data []byte) (rawGroup, error) { return contract.Decode[rawGroup](data) }
-func (v rawGroup) Validate() error                 { return contractValidaterawGroup(v, 0) }
-func contractValidaterawGroup(v rawGroup, depth int) error {
+func decodeRawGroup(data []byte) (rawGroup, error) { return contract.Decode[rawGroup](data) }
+func (v rawGroup) Validate() error                 { return contractValidateRawGroup(v, 0) }
+func contractValidateRawGroup(v rawGroup, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -228,7 +228,7 @@ func contractValidaterawGroup(v rawGroup, depth int) error {
 	for i, item := range v.Subcommands {
 		_ = i
 		_ = item
-		if err := contractValidaterawNode(item, depth+1); err != nil {
+		if err := contractValidateRawNode(item, depth+1); err != nil {
 			return contract.At(fmt.Sprintf("%s[%d]", "subcommands", i), err)
 		}
 	}
@@ -279,7 +279,7 @@ func (v *rawGroup) UnmarshalJSON(data []byte) error {
 			return contract.At("subcommands", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := func(b []byte) ([]rawNode, error) { return contract.List(b, DecoderawNode) }(raw)
+			value, err := func(b []byte) ([]rawNode, error) { return contract.List(b, decodeRawNode) }(raw)
 			if err != nil {
 				return contract.At("subcommands", err)
 			}
@@ -302,9 +302,9 @@ func (v rawGroup) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "subcommands", Value: v.Subcommands})
 	return contract.EncodeObject(fields)
 }
-func DecoderawLeaf(data []byte) (rawLeaf, error) { return contract.Decode[rawLeaf](data) }
-func (v rawLeaf) Validate() error                { return contractValidaterawLeaf(v, 0) }
-func contractValidaterawLeaf(v rawLeaf, depth int) error {
+func decodeRawLeaf(data []byte) (rawLeaf, error) { return contract.Decode[rawLeaf](data) }
+func (v rawLeaf) Validate() error                { return contractValidateRawLeaf(v, 0) }
+func contractValidateRawLeaf(v rawLeaf, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -357,7 +357,7 @@ func contractValidaterawLeaf(v rawLeaf, depth int) error {
 		}
 	}
 	if v.Output != nil {
-		if err := contractValidaterawLeafOutput((*v.Output), depth+1); err != nil {
+		if err := contractValidateRawLeafOutput((*v.Output), depth+1); err != nil {
 			return contract.At("output", err)
 		}
 	}
@@ -370,7 +370,7 @@ func contractValidaterawLeaf(v rawLeaf, depth int) error {
 		return contract.At("kind", err)
 	}
 	if v.Binding != nil {
-		if err := contractValidaterawBinding((*v.Binding), depth+1); err != nil {
+		if err := contractValidateRawBinding((*v.Binding), depth+1); err != nil {
 			return contract.At("binding", err)
 		}
 	}
@@ -513,7 +513,7 @@ func (v *rawLeaf) UnmarshalJSON(data []byte) error {
 	{
 		raw, ok := obj["binding"]
 		if ok {
-			value, err := func(b []byte) (*rawBinding, error) { return contract.Pointer(b, DecoderawBinding) }(raw)
+			value, err := func(b []byte) (*rawBinding, error) { return contract.Pointer(b, decodeRawBinding) }(raw)
 			if err != nil {
 				return contract.At("binding", err)
 			}
@@ -563,11 +563,11 @@ func (v rawLeaf) MarshalJSON() ([]byte, error) {
 	}
 	return contract.EncodeObject(fields)
 }
-func DecoderawLeafOutput(data []byte) (rawLeafOutput, error) {
+func decodeRawLeafOutput(data []byte) (rawLeafOutput, error) {
 	return contract.Decode[rawLeafOutput](data)
 }
-func (v rawLeafOutput) Validate() error { return contractValidaterawLeafOutput(v, 0) }
-func contractValidaterawLeafOutput(v rawLeafOutput, depth int) error {
+func (v rawLeafOutput) Validate() error { return contractValidateRawLeafOutput(v, 0) }
+func contractValidateRawLeafOutput(v rawLeafOutput, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -617,7 +617,7 @@ func (v rawLeafOutput) MarshalJSON() ([]byte, error) {
 	}
 	return contract.EncodeObject(fields)
 }
-func DecoderawNode(data []byte) (rawNode, error) {
+func decodeRawNode(data []byte) (rawNode, error) {
 	if err := contract.CheckJSON(data); err != nil {
 		return nil, err
 	}
@@ -633,20 +633,20 @@ func DecoderawNode(data []byte) (rawNode, error) {
 type rawNodeJSON struct{ Value rawNode }
 
 func (v *rawNodeJSON) UnmarshalJSON(data []byte) error {
-	value, err := DecoderawNode(data)
+	value, err := decodeRawNode(data)
 	if err == nil {
 		v.Value = value
 	}
 	return err
 }
 func (v rawNodeJSON) MarshalJSON() ([]byte, error) {
-	if err := ValidaterawNode(v.Value); err != nil {
+	if err := validateRawNode(v.Value); err != nil {
 		return nil, err
 	}
 	return contract.EncodeJSON(v.Value)
 }
-func ValidaterawNode(value rawNode) error { return contractValidaterawNode(value, 0) }
-func contractValidaterawNode(value rawNode, depth int) error {
+func validateRawNode(value rawNode) error { return contractValidateRawNode(value, 0) }
+func contractValidateRawNode(value rawNode, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -655,12 +655,12 @@ func contractValidaterawNode(value rawNode, depth int) error {
 		if v == nil {
 			return fmt.Errorf("nil variant")
 		}
-		return contractValidaterawGroup(*v, depth+1)
+		return contractValidateRawGroup(*v, depth+1)
 	case *rawLeaf:
 		if v == nil {
 			return fmt.Errorf("nil variant")
 		}
-		return contractValidaterawLeaf(*v, depth+1)
+		return contractValidateRawLeaf(*v, depth+1)
 	default:
 		return fmt.Errorf("nil or unsupported rawNode")
 	}
