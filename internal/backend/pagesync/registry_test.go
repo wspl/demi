@@ -147,3 +147,68 @@ func TestConcurrentChangesAndRelease(t *testing.T) {
 		}
 	})
 }
+
+// Session isolation is checked in memory with no IO or wall-time waits.
+func TestSignOutOnlyWakesMatchingSession(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var registry pagesync.SyncRegistry
+		firstSession := database.HashToken("alice-first-session")
+		secondSession := database.HashToken("alice-second-session")
+		first := registry.Register("alice", firstSession)
+		defer first.Release()
+		second := registry.Register("alice", secondSession)
+		defer second.Release()
+
+		ctx, cancel := context.WithCancel(t.Context())
+		var waiters sync.WaitGroup
+		defer func() {
+			cancel()
+			waiters.Wait()
+		}()
+		firstDone := make(chan error, 1)
+		secondDone := make(chan error, 1)
+		waiters.Go(func() { firstDone <- first.Marked(ctx) })
+		waiters.Go(func() { secondDone <- second.Marked(ctx) })
+		synctest.Wait()
+
+		registry.EndSession("alice", firstSession)
+		synctest.Wait()
+		select {
+		case err := <-firstDone:
+			if err != nil {
+				t.Fatalf("signed-out session wait: %v", err)
+			}
+		default:
+			t.Fatal("signed-out session did not wake")
+		}
+		select {
+		case err := <-secondDone:
+			t.Fatalf("other session woke on sign-out: %v", err)
+		default:
+		}
+		if diff := cmp.Diff(pagesync.Marked{SessionEnded: true}, first.Take()); diff != "" {
+			t.Fatal(diff)
+		}
+		if diff := cmp.Diff(pagesync.Marked{}, second.Take()); diff != "" {
+			t.Fatal(diff)
+		}
+
+		// The other session remains usable and wakes for its own sign-out.
+		registry.EndSession("alice", secondSession)
+		synctest.Wait()
+		select {
+		case err := <-secondDone:
+			if err != nil {
+				t.Fatalf("second session wait: %v", err)
+			}
+		default:
+			t.Fatal("second session did not wake for its own sign-out")
+		}
+		if diff := cmp.Diff(pagesync.Marked{SessionEnded: true}, second.Take()); diff != "" {
+			t.Fatal(diff)
+		}
+		if diff := cmp.Diff(pagesync.Marked{}, first.Take()); diff != "" {
+			t.Fatal(diff)
+		}
+	})
+}
