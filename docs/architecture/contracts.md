@@ -289,10 +289,12 @@ for contract packages. Declaration builders may override a property description
 `internal/declare` and `internal/host` own that text, not the type generator.
 No defaults are inferred.
 
-Generation fails with the declaration and field path for reachable `check`,
-normalized string `format`, `base64` and byte-slice rules. The built-in command
-schemas use none of those rules; new uses need an explicit schema mapping
-rather than silently dropping their behavior.
+A `check` function is a rule only Go enforces: schemas omit it, as Rust's
+schemas omit garde's custom rules, so a schema-reachable type may carry one.
+Generation fails with the declaration and field path for reachable normalized
+string `format`, `base64` and byte-slice rules. The built-in command schemas
+use none of those; new uses need an explicit schema mapping rather than
+silently dropping their behavior.
 It also rejects the unsupported shapes and invalid markers described above.
 `schema` takes no arguments and is only a type marker. JSON Schema validates
 parsed values; the generated decoder additionally rejects duplicate keys,
