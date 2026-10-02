@@ -374,19 +374,30 @@ func (c *Connection) Attach(ctx context.Context, id target.ID) (*Session, error)
 }
 
 // Subscribe registers before the next command. Empty methods selects all events.
+// Each selected type retains 16 events; selecting all shares 16 slots.
 // The caller closes the subscription; overflow is reported by Next.
 func (c *Connection) Subscribe(methods ...string) (*Subscription, error) {
-	return c.subscribe("", methods)
+	return c.subscribe("", 16, methods)
+}
+
+// SubscribeWithCapacity registers a stream with 1..256 slots per event type.
+// Selecting all events shares the capacity across types.
+// The caller closes the subscription; Next reports overwritten events.
+func (c *Connection) SubscribeWithCapacity(capacity int, methods ...string) (*Subscription, error) {
+	return c.subscribe("", capacity, methods)
 }
 
 // subscribe installs a bounded Chrome event listener without a worker goroutine.
-func (c *Connection) subscribe(session target.SessionID, methods []string) (*Subscription, error) {
+func (c *Connection) subscribe(session target.SessionID, capacity int, methods []string) (*Subscription, error) {
+	if capacity < 1 || capacity > 256 {
+		return nil, fmt.Errorf("event capacity must be in 1..=256")
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.ctx.Err() != nil {
 		return nil, &BrowserError{Kind: KindClosed}
 	}
-	s := &Subscription{connection: c, session: session, methods: append([]string(nil), methods...), wake: make(chan struct{}, 1)}
+	s := &Subscription{capacity: capacity, connection: c, session: session, methods: append([]string(nil), methods...), wake: make(chan struct{}, 1)}
 	c.subscriptions[s] = struct{}{}
 	return s, nil
 }
@@ -467,7 +478,12 @@ func (s *Session) Related(ctx context.Context, id target.ID) (FrameTarget, error
 
 // Subscribe registers for this session's events before the next command.
 func (s *Session) Subscribe(methods ...string) (*Subscription, error) {
-	return s.connection.subscribe(s.id, methods)
+	return s.connection.subscribe(s.id, 16, methods)
+}
+
+// SubscribeWithCapacity registers this session's events with 1..256 slots per type.
+func (s *Session) SubscribeWithCapacity(capacity int, methods ...string) (*Subscription, error) {
+	return s.connection.subscribe(s.id, capacity, methods)
 }
 
 // Close detaches descendants before the parent and releases local routing.
@@ -524,6 +540,7 @@ type Subscription struct {
 	session    target.SessionID
 	methods    []string
 	mu         sync.Mutex
+	capacity   int
 	queue      []Event
 	lost       uint64
 	closed     bool
@@ -549,8 +566,19 @@ func (s *Subscription) deliver(event Event) {
 	if s.closed {
 		return
 	}
-	if len(s.queue) == 16 {
-		s.queue = s.queue[1:]
+	count, oldest := 0, -1
+	for i, queued := range s.queue {
+		if len(s.methods) == 0 || queued.Method == event.Method {
+			count++
+			if oldest == -1 {
+				oldest = i
+			}
+		}
+	}
+	if count == s.capacity {
+		copy(s.queue[oldest:], s.queue[oldest+1:])
+		s.queue[len(s.queue)-1] = Event{}
+		s.queue = s.queue[:len(s.queue)-1]
 		s.lost++
 	}
 	s.queue = append(s.queue, event)

@@ -232,7 +232,11 @@ func checkMarks(m map[string]string) error {
 	if problem := m["!error"]; problem != "" {
 		return fmt.Errorf("%s", problem)
 	}
-	for _, key := range []string{"default", "nullable", "strict", "tolerant", "timestamp", "base64", "table", "schema", "flatten", "codec"} {
+	if value := m["codec"]; value != "" && value != "string" {
+		return fmt.Errorf("codec accepts only string")
+	}
+
+	for _, key := range []string{"default", "nullable", "strict", "tolerant", "timestamp", "base64", "table", "schema", "flatten"} {
 		if m[key] != "" {
 			return fmt.Errorf("%s takes no arguments", key)
 		}
@@ -257,6 +261,10 @@ func checkMarks(m map[string]string) error {
 	for _, key := range []string{"length", "range"} {
 		seen := map[string]bool{}
 		for _, arg := range strings.Fields(m[key]) {
+			if arg == "schema-only" && key == "range" && !seen[arg] {
+				seen[arg] = true
+				continue
+			}
 			if arg == "chars" && key == "length" {
 				continue
 			}

@@ -56,3 +56,6 @@ func (v Expose) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "address", Value: v.Address})
 	return contract.EncodeObject(fields)
 }
+func ExposeJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"address\":{\"type\":\"string\",\"description\":\"Where an expose's traffic goes on its device: `host:port` exactly as\\ngiven, or a bare port, which means `127.0.0.1:<port>`. The host is any\\nname or address the device can resolve, an IPv6 address in brackets; the\\nport is 1 to 65535.\"}},\"required\":[\"address\"],\"title\":\"Expose\",\"type\":\"object\"}")
+}
