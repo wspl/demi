@@ -1,6 +1,5 @@
 import { z } from 'zod'
 import { PluginCallError, type PluginHost } from '@demicodes/web-ui/plugins/client'
-import { pluginPageShown, type PluginPage } from '@demicodes/web-ui/plugins/slots'
 import { liveStreamAt } from '@demicodes/web-ui/transport/live-stream'
 import { ApiError, apiRequest, apiUrl, jsonBody, readResponse } from '../api/client'
 import type { ProductState } from '../api/generated/web-api'
@@ -40,7 +39,7 @@ export function productPluginHost(snapshot: () => ProductState | null): PluginHo
   }
 }
 
-/** Whether `page` fills its slots, by the product state's plugin list. */
-export function pageShown(snapshot: ProductState | null, page: PluginPage): boolean {
-  return pluginPageShown(page, snapshot?.plugins ?? [])
+/** Whether the user has `plugin` on, by the product state's plugin list. */
+export function pluginEnabled(snapshot: ProductState | null, plugin: string): boolean {
+  return snapshot?.plugins.some((entry) => entry.id === plugin && entry.enabled) ?? false
 }
